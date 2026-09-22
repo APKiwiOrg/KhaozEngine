@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -62,6 +64,35 @@ public class FileSystemPackStoreTests
         ReadOnlyMemory<byte>? read = await store.GetAsync(hash);
         Assert.NotNull(read);
         Assert.True(pack.TagChunk.StoredFile.Span.SequenceEqual(read.Value.Span));
+    }
+
+    // A per-write temporary name is what lets two publishers file ONE hash into one root without colliding,
+    // and the price of it is that a crashed write leaves a uniquely named orphan where an overwrite used to
+    // take care of itself. A successful write of the same hash sweeps the stale ones up.
+    [Fact]
+    public async Task PutAsync_deletes_an_old_temporary_of_the_same_hash_and_spares_a_fresh_one()
+    {
+        using var root = new TemporaryRoot();
+        var store = new FileSystemPackStore(root.Path);
+        CatalogPack pack = CatalogPack.Build();
+        string hash = pack.TagChunk.Hash;
+        string path = store.PathFor(hash);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+        string crashed = path + ".0123456789abcdef0123456789abcdef.tmp";
+        await File.WriteAllBytesAsync(crashed, [1, 2, 3]);
+        File.SetLastWriteTimeUtc(crashed, DateTime.UtcNow.AddHours(-2));
+        string inFlight = path + ".fedcba9876543210fedcba9876543210.tmp";
+        await File.WriteAllBytesAsync(inFlight, [4, 5, 6]);
+
+        await store.PutAsync(hash, pack.TagChunk.StoredFile);
+
+        Assert.True(File.Exists(path));
+        Assert.False(File.Exists(crashed));
+
+        // A temporary a SECOND writer has open right now is minutes old at most, and deleting one would
+        // break a write that is going to succeed.
+        Assert.True(File.Exists(inFlight));
     }
 
     // The one statement of the key layout, which three providers derive a name from: the local store's path,
@@ -290,6 +321,79 @@ public class FileSystemPackStoreTests
         string[] members = typeof(IPackStore).GetMethods().Select(m => m.Name).ToArray();
         Assert.DoesNotContain(members, m => m.Contains("Delete", StringComparison.Ordinal));
         Assert.Equal(4, members.Length);
+    }
+
+    // One temporary a sweep is not allowed to delete is a leftover to leave alone, not a reason to abandon
+    // every other orphan of the same destination. A pack root on shared storage can hold one file somebody
+    // else owns for a long time, and a sweep that gave up at the first of them would never catch up.
+    [Fact]
+    public async Task PutAsync_sweeps_the_other_stale_temporaries_when_one_cannot_be_deleted()
+    {
+        using var root = new TemporaryRoot();
+        var store = new FileSystemPackStore(root.Path);
+        CatalogPack pack = CatalogPack.Build();
+        string hash = pack.TagChunk.Hash;
+        string path = store.PathFor(hash);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+        string denied = await StaleTemporaryAsync(path, new string('0', 32));
+        bool isDenied = TrySetImmutable(denied, immutable: true);
+        var sweepable = new List<string>();
+        for (int i = 1; i <= 6; i++)
+        {
+            sweepable.Add(await StaleTemporaryAsync(
+                path, i.ToString(CultureInfo.InvariantCulture).PadLeft(32, 'a')));
+        }
+
+        try
+        {
+            await store.PutAsync(hash, pack.TagChunk.StoredFile);
+
+            Assert.True(File.Exists(path));
+            for (int i = 0; i < sweepable.Count; i++)
+            {
+                Assert.False(
+                    File.Exists(sweepable[i]),
+                    FormattableString.Invariant($"The sweep left {sweepable[i]} behind."));
+            }
+
+            // A temporary the sweep may not delete is left exactly as it is, which is the whole point of
+            // ignoring the error rather than failing a write that already landed.
+            Assert.Equal(isDenied, File.Exists(denied));
+        }
+        finally
+        {
+            TrySetImmutable(denied, immutable: false);
+        }
+    }
+
+    /// <summary>One temporary of a destination, old enough for the sweep to take it.</summary>
+    /// <param name="path">The destination whose sibling this is.</param>
+    /// <param name="token">The per-write token in the temporary's name.</param>
+    static async Task<string> StaleTemporaryAsync(string path, string token)
+    {
+        string temporary = path + "." + token + ".tmp";
+        await File.WriteAllBytesAsync(temporary, [1, 2, 3]);
+        File.SetLastWriteTimeUtc(temporary, DateTime.UtcNow.AddHours(-2));
+        return temporary;
+    }
+
+    /// <summary>
+    /// Makes one file undeletable, and answers whether the platform could. Only macOS offers it to a plain
+    /// user, so elsewhere this test still pins that every stale temporary is swept and nothing else.
+    /// </summary>
+    /// <param name="path">The file.</param>
+    /// <param name="immutable">Whether to set the flag or clear it.</param>
+    static bool TrySetImmutable(string path, bool immutable)
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return false;
+        }
+
+        using var chflags = Process.Start("/usr/bin/chflags", [immutable ? "uchg" : "nouchg", path]);
+        chflags.WaitForExit();
+        return chflags.ExitCode == 0;
     }
 
     static async Task<List<string>> Collect(IPackStore store, int versionNumber)

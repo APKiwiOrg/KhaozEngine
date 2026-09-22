@@ -554,14 +554,22 @@ Grimhollow already does exactly this by hand: 18 of its 35 item ids are retired 
 the rule, that retired ids are never removed so a stored stack still decodes and the player upgrade can
 find it (`b-grimhollow.md:30-36` citing `GrimhollowItems.cs:133-151`).
 
-**The one exception is a bulk import into an EMPTY database.** An import run against a store that holds no
+**The first exception is a bulk import into an EMPTY database.** An import run against a store that holds no
 rows for any content type MAY carry explicit ids, and the store ADOPTS them rather than allocating over
 them. Immediately afterwards it sets both its reserved and its issued high-water mark above the highest
 imported id PER TYPE, so every subsequent id comes from the allocator under the ordinary rule. No other
-write path may ever name an id, and an import into a database that already holds a row may not name one
-either. The empty-database condition is what makes the exception safe: it makes an import once-ever per
-database, so there is no second import to disagree with the first and nothing to renumber afterwards. The
-never-reuse guarantee is untouched, because the marks move PAST the imported range rather than into it.
+write path other than the two named here may ever name an id, and an import into a database that already
+holds a row may not name one either. The empty-database condition is what makes this one safe: it makes an
+import once-ever per database, so there is no second import to disagree with the first and nothing to
+renumber afterwards. The never-reuse guarantee is untouched, because the marks move PAST the imported range
+rather than into it.
+
+**The second exception is a CONTENT UPGRADE.** An upgrade adds a row the committed bundle already names by
+id, so it carries that number the way an import does, and carrying it is what keeps a game's code constants
+pointing at the rows they name. It runs against a populated catalog, so the publish proves each carried id is
+free before anything durable moves: an id a live or retired row already holds, one a second add in the same
+draft names, one over the type's declared ceiling and one that disagrees with the type's family blocks are
+all refused with the catalog exactly where it was.
 
 This exception is also what makes 6.5's promise reachable. Grimhollow's 35 item ids already sit inside
 every stored `ItemContainer` blob, and `GrimhollowJournalContracts.ValidateContainer` throws on an unknown

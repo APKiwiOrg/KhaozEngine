@@ -27,9 +27,10 @@ The constructor opens the database and runs the bootstrap pragma. It does NOT to
 
 ## The schema, and its two modes
 
-Fourteen tables: `catalog_metadata`, `catalog_type`, `catalog_version`, `catalog_row`, `catalog_row_field`,
+Fifteen tables: `catalog_metadata`, `catalog_type`, `catalog_version`, `catalog_row`, `catalog_row_field`,
 `catalog_family`, `catalog_family_block`, `catalog_id_high_water`, `catalog_draft`, `catalog_draft_edit`,
-`catalog_draft_edit_field`, `catalog_audit`, `catalog_remap_rule` and `catalog_chunk`. Every key column is
+`catalog_draft_edit_field`, `catalog_audit`, `catalog_remap_rule`, `catalog_chunk` and
+`catalog_content_upgrade`. Every key column is
 `TEXT COLLATE BINARY`, because content keys compare ordinally and never case insensitively. Every size cap is
 a `CHECK`. Every foreign key is declared and the bootstrap turns foreign key enforcement on, so a row can
 never point at a version that does not exist.
@@ -38,7 +39,13 @@ never point at a version that does not exist.
 `ContentAuthoringSchemaMode.ValidateOnly` refuses an empty or mismatched database rather than creating
 anything, which is what a production host sets so a typo in a connection string cannot silently create a
 second empty catalog and serve it. A mismatch throws `ContentAuthoringException` with reason
-`schema-mismatch`, naming the object and the migration `catalog-v1-initial`.
+`schema-mismatch`, naming the object and the migration `catalog-v2-content-upgrade-ledger`.
+
+Schema version 2 adds `catalog_content_upgrade`, the content upgrade ledger behind `IContentUpgradeLedger`.
+A version 1 file opened under `AutoCreate` is MIGRATED in place, in one transaction that adds that one table
+and changes nothing else, so the rows, the history, the audit, the open draft, the pin and the store epoch all
+survive it unchanged. Under `ValidateOnly` a version 1 file is refused instead, naming the migration. An
+applied ledger row is written inside the publish commit, so a duplicate upgrade id refuses the whole publish.
 
 `InitializeAsync` also writes the registry's types into `catalog_type`, which pins each type id to its key. A
 rename and a reassignment are both refused, because either one repoints every row already stored under the

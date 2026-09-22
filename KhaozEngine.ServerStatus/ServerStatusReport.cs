@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -52,6 +54,29 @@ public sealed record ServerStatusReport
     /// <summary>Optional operator message-of-the-day. The engine never renders it: a game localizes/echoes it as it sees fit.</summary>
     [JsonPropertyName("motd")]
     public string? Motd { get; init; }
+
+    /// <summary>
+    /// The address the server is reachable at RIGHT NOW, as an IP literal (IPv4 or IPv6). Null when the
+    /// publisher does not know it or nothing is running, which is the default. It exists because a host whose
+    /// public address rotates on every stop and start leaves a client that resolved the name inside the DNS
+    /// TTL dialling a dead address, and the publisher already knows the new one. A client reads it through
+    /// <see cref="TryGetServerAddress"/>, never as a raw string: the accessor is what keeps the field from
+    /// becoming a way to point a client anywhere.
+    /// </summary>
+    [JsonPropertyName("serverAddress")]
+    public string? ServerAddress { get; init; }
+
+    /// <summary>
+    /// Parses <see cref="ServerAddress"/> into an address a client may dial. True only for a canonical IP
+    /// literal that is plain unicast. It refuses null, empty, whitespace, a host name (refused rather than
+    /// resolved, since skipping the resolver is the entire point), anything carrying a port or brackets, a
+    /// non-canonical literal the lenient parser would otherwise accept, and the wildcard, broadcast,
+    /// loopback, multicast and link local forms including their IPv4 mapped IPv6 spellings. Private ranges
+    /// are allowed. See <see cref="DialableAddress"/> for the full rule. Never throws, never resolves a name
+    /// and never touches a socket.
+    /// </summary>
+    public bool TryGetServerAddress([NotNullWhen(true)] out IPAddress? address) =>
+        DialableAddress.TryParse(ServerAddress, out address);
 
     /// <summary>
     /// Shared serializer options for the contract: tolerant read (case-insensitive names, comments and

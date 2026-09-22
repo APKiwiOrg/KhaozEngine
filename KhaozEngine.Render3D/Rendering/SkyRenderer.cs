@@ -20,20 +20,24 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed class SkyRenderer : IDisposable
     {
-        /// <summary>96-byte UBO matching the Sky block in <see cref="ShaderSources.SkyFrag"/> (6 vec4; every member
+        /// <summary>480-byte UBO matching the Sky block in <see cref="ShaderSources.SkyFrag"/> (6 vec4 and three
+        /// <c>vec4[8]</c> disc arrays; every member
         /// 16-byte aligned, so std140 needs no extra padding). Size-checked by the UboLayoutTests tripwire.</summary>
         public struct SkyUbo
         {
             public Vector4 Horizon;   // rgb gradient at the horizon (bottom)
             public Vector4 Zenith;    // rgb gradient at the zenith (top)
-            public Vector4 SunColor;  // rgb sun disc + halo colour
-            public Vector4 SunNdc;    // xy = sun screen NDC, z = sunVisible (1/0), w = aspect (width/height)
-            public Vector4 Params;    // x=sunEnabled, y=sunRadius, z=haloStrength, w=haloFalloff
-            public Vector4 Res;       // xy = 1/renderWidth, 1/renderHeight
+            public Vector4 Res;       // xy = 1/renderWidth, 1/renderHeight, z = aspect (width/height), w = disc count
+            public Vector4 Ground;      // rgb ground band below the world horizon, a = blend depth (sin-elevation)
+            public Vector4 HorizonRay;  // view ray through NDC (x,y) = (x * .x + .z, y * .y + .w, -1)
+            public Vector4 HorizonUp;   // xyz = world-Y of the camera right/up/back axes, w = 1 when live
+            public SkyDiscVec4s DiscColor;  // per on-screen disc: rgb colour, a = opacity
+            public SkyDiscVec4s DiscPlace;  // xy = screen NDC, z = radius, w = halo strength
+            public SkyDiscVec4s DiscHalo;   // x = halo falloff
         }
 
-        /// <summary>Byte size of <see cref="SkyUbo"/> / the GPU uniform buffer. 6 * 16 (vec4) = 96.</summary>
-        internal const uint UboBytes = 96;
+        /// <summary>Byte size of <see cref="SkyUbo"/> / the GPU uniform buffer. (6 + 3 * 8) * 16 (vec4) = 480.</summary>
+        internal const uint UboBytes = 480;
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
@@ -81,32 +85,48 @@ namespace KhaozEngine.Render3D.Rendering
                 Outputs = outputs,
             });
 
-        /// <summary>Pure: pack the sky settings + the CPU-projected sun screen position into the UBO. The sun (a
-        /// DIRECTIONAL light) is placed at a screen NDC point per <see cref="SkySettings.Anchor"/> (see
+        /// <summary>Pure: pack the sky settings + the CPU-projected screen position of every disc into the UBO. Each
+        /// disc (a DIRECTIONAL body) is placed at a screen NDC point per <see cref="SkySettings.Anchor"/> (see
         /// <see cref="SkyMath.ProjectSunToNdc"/>): the world-anchored point-at-infinity projection (default, needs
-        /// <paramref name="projection"/>) or the legacy stylized backdrop. The projection is done ENTIRELY on the CPU
-        /// and the result rides in the existing <see cref="SkyUbo.SunNdc"/> slot, so the GPU UBO layout and the GLSL
-        /// <c>SkyFrag</c> are unchanged (it rides the existing single UBO, so no shader edit). The render size derives the
-        /// aspect (keeps the disc round) and the 1/size the shader uses to rebuild NDC from gl_FragCoord.</summary>
+        /// <paramref name="projection"/>) or the legacy stylized backdrop. The projection is done ENTIRELY on the CPU,
+        /// and <see cref="SkyDiscs.Resolve"/> decides which discs there are. The render size derives the aspect
+        /// (keeps the discs round) and the 1/size the shader uses to rebuild NDC from gl_FragCoord.</summary>
         public static SkyUbo PackUbo(SkySettings sky, Matrix4x4 view, Matrix4x4 projection, Vector3 lightDirection,
             int renderWidth, int renderHeight)
         {
-            Vector3 sun = sky.ResolveSunDirection(lightDirection);
-            bool visible = SkyMath.ProjectSunToNdc(sky.Anchor, view, projection, sun, out Vector2 sunNdc);
             float aspect = renderHeight > 0 ? (float)renderWidth / renderHeight : 1f;
             float invW = renderWidth > 0 ? 1f / renderWidth : 0f;
             float invH = renderHeight > 0 ? 1f / renderHeight : 0f;
             Vector4 horizon = sky.HorizonColor;
             Vector4 zenith = sky.ZenithColor;
-            Vector4 sunCol = sky.SunColor;
+            SkyHorizonFrame frame = SkyHorizonMath.ResolveFrame(sky, view, projection);
+
+            // Only the discs that project on screen are packed, in draw order, so the shader needs no visibility flag.
+            Span<SkyDisc> discs = stackalloc SkyDisc[SkySettings.MaxDiscs];
+            int resolved = SkyDiscs.Resolve(sky, lightDirection, discs);
+            SkyDiscVec4s color = default, place = default, halo = default;
+            int onScreen = 0;
+            for (int i = 0; i < resolved; i++)
+            {
+                SkyDisc disc = discs[i];
+                if (!SkyMath.ProjectSunToNdc(sky.Anchor, view, projection, disc.Direction, out Vector2 ndc)) continue;
+                color[onScreen] = disc.Color;
+                place[onScreen] = new Vector4(ndc.X, ndc.Y, disc.Radius, disc.HaloStrength);
+                halo[onScreen] = new Vector4(disc.HaloFalloff, 0f, 0f, 0f);
+                onScreen++;
+            }
+
             return new SkyUbo
             {
                 Horizon = new Vector4(horizon.X, horizon.Y, horizon.Z, 0f),
                 Zenith = new Vector4(zenith.X, zenith.Y, zenith.Z, 0f),
-                SunColor = new Vector4(sunCol.X, sunCol.Y, sunCol.Z, 0f),
-                SunNdc = new Vector4(sunNdc.X, sunNdc.Y, visible ? 1f : 0f, aspect),
-                Params = new Vector4(sky.SunEnabled ? 1f : 0f, sky.SunRadius, sky.HaloStrength, sky.HaloFalloff),
-                Res = new Vector4(invW, invH, 0f, 0f),
+                Res = new Vector4(invW, invH, aspect, onScreen),
+                Ground = new Vector4(frame.Ground.Color, frame.Ground.Softness),
+                HorizonRay = frame.Ray,
+                HorizonUp = new Vector4(frame.Up, frame.Live ? 1f : 0f),
+                DiscColor = color,
+                DiscPlace = place,
+                DiscHalo = halo,
             };
         }
 

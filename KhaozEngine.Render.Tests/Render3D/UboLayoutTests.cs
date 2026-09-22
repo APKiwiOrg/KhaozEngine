@@ -590,20 +590,21 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void SkyUbo_MarshalSize_EqualsUboBytesConstant_And_GlslBlock()
         {
-            // GLSL Sky block: 6 vec4 (Horizon, Zenith, SunColor, SunNdc, Params, Res) = 96 bytes. If the struct or
+            // GLSL Sky block: 6 vec4 (Horizon, Zenith, Res, Ground, HorizonRay, HorizonUp) + three vec4[8] disc arrays
+            // (DiscColor, DiscPlace, DiscHalo) = 480 bytes. If the struct or
             // the shader block drift apart, the per-frame sky UBO upload smears the colours / sun params. The other
             // half lives in ShaderSources.SkyFrag.
             Assert.Equal((int)SkyRenderer.UboBytes, Marshal.SizeOf<SkyRenderer.SkyUbo>());
-            Assert.Equal(6 * 16, (int)SkyRenderer.UboBytes);
+            Assert.Equal((6 + 3 * SkySettings.MaxDiscs) * 16, (int)SkyRenderer.UboBytes);
         }
 
         [Fact]
-        public void SkyFrag_DeclaresTheSixVec4Members()
+        public void SkyFrag_DeclaresEveryBlockMember()
         {
             // Assert every member of the Sky block is present (in the fragment that reads it), so a rename/reorder on
             // the shader side that silently changes the layout trips here. Other half: ShaderSources.SkyFrag.
-            foreach (var member in new[] { "vec4 Horizon;", "vec4 Zenith;", "vec4 SunColor;",
-                "vec4 SunNdc;", "vec4 Params;", "vec4 Res;" })
+            foreach (var member in new[] { "vec4 Horizon;", "vec4 Zenith;", "vec4 Res;", "vec4 Ground;",
+                "vec4 HorizonRay;", "vec4 HorizonUp;", "vec4 DiscColor[8];", "vec4 DiscPlace[8];", "vec4 DiscHalo[8];" })
                 Assert.True(ShaderSources.SkyFrag.Contains(member),
                     $"SkyFrag lost '{member}': the Sky UBO block drifted from SkyRenderer.SkyUbo. Fix ShaderSources.SkyFrag or the struct.");
         }
@@ -615,13 +616,14 @@ namespace KhaozEngine.Tests.Render3D
         {
             // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 34 vec4 (LightDir, LightColor, CameraPos,
             // DeepColor, ShallowColor, HorizonColor, WaveParams, ShoreGlint, DetailParams, SkyHorizon, SkyZenith,
-            // SkySunColor, SkyParams, ReflectGlint, SwellParams, SwellShape, Absorption, FoamColor, FoamParams,
+            // SkyParams, ReflectGlint, SwellParams, SwellShape, Absorption, FoamColor, FoamParams,
             // RippleSpectrum, FootprintParams, FftParams, FftTiles, FftVariance, FftFocus, FftRotCos, FftRotSin,
-            // FftSector, FftWave, BathyRect, BathyParams, SurfParams, SurfShape, RenderOrigin) = 128 + 544 = 672
+            // FftSector, FftWave, BathyRect, BathyParams, SurfParams, SurfShape, RenderOrigin, SkyGround) + three vec4[8] disc arrays (SkyDiscColor, SkyDiscDir, SkyDiscHalo)
+            // = 128 + 544 + 384 = 1056
             // bytes. If the struct or the shader block drift apart, the per-plane water UBO upload smears the
             // colours/wave/swell/foam params. Other half: ShaderSources.WaterFrag.
             Assert.Equal((int)WaterRenderer.PayloadBytes, Marshal.SizeOf<WaterRenderer.WaterUbo>());
-            Assert.Equal(2 * 64 + 34 * 16, (int)WaterRenderer.PayloadBytes);
+            Assert.Equal(2 * 64 + (34 + 3 * SkySettings.MaxDiscs) * 16, (int)WaterRenderer.PayloadBytes);
         }
 
         [Fact]
@@ -652,12 +654,13 @@ namespace KhaozEngine.Tests.Render3D
             // ShaderSources.WaterFrag.
             foreach (var member in new[] { "mat4 ViewProj;", "mat4 InvViewProj;", "vec4 LightDir;", "vec4 LightColor;",
                 "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
-                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", "vec4 SkySunColor;",
+                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", 
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
                 "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;",
                 "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
                 "vec4 FftRotSin;", "vec4 FftSector;", "vec4 FftWave;", "vec4 BathyRect;", "vec4 BathyParams;",
-                "vec4 SurfParams;", "vec4 SurfShape;", "vec4 RenderOrigin;" })
+                "vec4 SurfParams;", "vec4 SurfShape;", "vec4 RenderOrigin;", "vec4 SkyGround;",
+                "vec4 SkyDiscColor[8];", "vec4 SkyDiscDir[8];", "vec4 SkyDiscHalo[8];" })
                 Assert.True(ShaderSources.WaterFrag.Contains(member),
                     $"WaterFrag lost '{member}': the Water UBO block drifted from WaterRenderer.WaterUbo. Fix ShaderSources.WaterFrag or the struct.");
         }
@@ -669,12 +672,13 @@ namespace KhaozEngine.Tests.Render3D
             // (same one-UBO-per-set buffer) or the two stages disagree on the layout the driver builds.
             foreach (var member in new[] { "mat4 ViewProj;", "mat4 InvViewProj;", "vec4 LightDir;", "vec4 LightColor;",
                 "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
-                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", "vec4 SkySunColor;",
+                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", 
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
                 "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;",
                 "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
                 "vec4 FftRotSin;", "vec4 FftSector;", "vec4 FftWave;", "vec4 BathyRect;", "vec4 BathyParams;",
-                "vec4 SurfParams;", "vec4 SurfShape;", "vec4 RenderOrigin;" })
+                "vec4 SurfParams;", "vec4 SurfShape;", "vec4 RenderOrigin;", "vec4 SkyGround;",
+                "vec4 SkyDiscColor[8];", "vec4 SkyDiscDir[8];", "vec4 SkyDiscHalo[8];" })
                 Assert.True(ShaderSources.WaterVert.Contains(member),
                     $"WaterVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's. Fix ShaderSources.WaterVert.");
         }
@@ -687,12 +691,13 @@ namespace KhaozEngine.Tests.Render3D
             // in one grid mode only, which is exactly the kind of defect that survives a review.
             foreach (var member in new[] { "mat4 ViewProj;", "mat4 InvViewProj;", "vec4 LightDir;", "vec4 LightColor;",
                 "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
-                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", "vec4 SkySunColor;",
+                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", 
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
                 "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;",
                 "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
                 "vec4 FftRotSin;", "vec4 FftSector;", "vec4 FftWave;", "vec4 BathyRect;", "vec4 BathyParams;",
-                "vec4 SurfParams;", "vec4 SurfShape;", "vec4 RenderOrigin;" })
+                "vec4 SurfParams;", "vec4 SurfShape;", "vec4 RenderOrigin;", "vec4 SkyGround;",
+                "vec4 SkyDiscColor[8];", "vec4 SkyDiscDir[8];", "vec4 SkyDiscHalo[8];" })
                 Assert.True(ShaderSources.WaterClipmapVert.Contains(member),
                     $"WaterClipmapVert lost '{member}': the Water UBO block declaration drifted from WaterFrag's.");
         }

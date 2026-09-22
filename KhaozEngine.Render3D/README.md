@@ -416,7 +416,12 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   scene depth, so it fills only where no mesh drew, never touches the MRT normal/depth the outline pass reads, and
   costs nothing when off (`Sky.Enabled == false`, existing scenes byte-stable). The sun direction **defaults to the
   key light** (`Post.LightDirection`) so the sky and lighting agree (sun opposite the shadows). Override with
-  `Sky.SunDirectionOverride`. `Sky.Anchor` (a `SunAnchor`, default `SunAnchor.World`) chooses how the disc is placed:
+  `Sky.SunDirectionOverride`. `Sky.Horizon` (a `SkyHorizon`, default `Screen`) chooses where the horizon is: `World`
+  anchors the gradient to the world horizon and paints `Sky.GroundColor` below it (blend depth
+  `Sky.HorizonSoftness`), so a finite world runs on to the horizon and the sun disc sets through that line. It needs
+  a perspective camera and `SunAnchor.World`, and the water's reflected sky follows it. `Sky.ExtraDiscs` (a list of
+  `SkyDisc`, up to `SkySettings.MaxDiscs` = 8 with the primary) adds further bodies, each with its own direction,
+  colour and shape, drawn in order and reflected by the water. `Sky.Anchor` (a `SunAnchor`, default `SunAnchor.World`) chooses how the disc is placed:
   `World` anchors it to the world-space sun direction via a true point-at-infinity projection through the camera (the
   disc stays fixed over the world direction the sun lies in as the camera orbits, and is hidden when the sun is behind
   the camera - correct for the perspective `FollowCamera3D`/`FlyCamera3D`. It degenerates under the orthographic
@@ -431,7 +436,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   (three `SunCyclePalette` anchors) keyed on sun elevation, not time, so the same settings work at any
   latitude or day length. `SunCycle.Apply(state, scene.Post)` writes it onto `Post.LightDirection`/
   `LightColor`/`AmbientColor`/`FillLightColor` and `Post.Sky.HorizonColor`/`ZenithColor`/`SunColor`/
-  `SunEnabled`, plus `Post.Sky.SunDirectionOverride`. The night key follows `SunCycleSettings.NightKey`
+  `SunEnabled`/`GroundColor`, plus `Post.Sky.SunDirectionOverride`. `SunCycleSettings.DiscSetElevationDegrees`
+  (default 0) keeps the disc alive that far below the horizon so it can set through a `SkyHorizon.World` sky.
+  The night key follows `SunCycleSettings.NightKey`
   (`NightKeyMode`, default `AntiSolarMoon`): `AntiSolarMoon` is the historical virtual moon opposite the sun,
   dipping to zero across the crossing so the direction flip is invisible; `None` is a keyless night (black key,
   the sun's true direction held); `Moon` is a real decoupled moon body (own `MoonHourOffset`/`MoonDeclinationDegrees`/

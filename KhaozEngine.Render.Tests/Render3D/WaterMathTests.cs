@@ -495,11 +495,14 @@ namespace KhaozEngine.Tests.Render3D
             // sky the background pass paints.
             Assert.Equal(sky.HorizonColor.R, u.SkyHorizon.X, 4);
             Assert.Equal(sky.ZenithColor.B, u.SkyZenith.Z, 4);
-            Assert.Equal(sky.SunColor.G, u.SkySunColor.Y, 4);
-            Assert.Equal(1f, u.SkyParams.X, 4);
-            Assert.Equal(sky.SunRadius, u.SkyParams.Y, 4);
-            Assert.Equal(sky.HaloStrength, u.SkyParams.Z, 4);
-            Assert.Equal(sky.HaloFalloff, u.SkyParams.W, 4);
+            Assert.Equal(1f, u.SkyParams.X, 4);   // one reflected disc: the primary sun
+            Assert.Equal(sky.SunColor.G, u.SkyDiscColor[0].Y, 4);
+            Vector3 sunDir = sky.ResolveSunDirection(light);
+            Assert.Equal(sunDir.X, u.SkyDiscDir[0].X, 5);
+            Assert.Equal(sunDir.Y, u.SkyDiscDir[0].Y, 5);
+            Assert.Equal(sky.SunRadius, u.SkyDiscDir[0].W, 4);
+            Assert.Equal(sky.HaloStrength, u.SkyDiscHalo[0].X, 4);
+            Assert.Equal(sky.HaloFalloff, u.SkyDiscHalo[0].Y, 4);
 
             Assert.Equal(settings.SkyReflectionStrength, u.ReflectGlint.X, 4);
             Assert.Equal(settings.SkyReflectionSunStrength, u.ReflectGlint.Y, 4);
@@ -523,6 +526,33 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(settings.FoamCrestCoverage, u.FoamParams.Y, 4);
             Assert.Equal(settings.FoamShoreWidth, u.FoamParams.Z, 4);
             Assert.Equal(settings.FoamPatternScale, u.FoamParams.W, 4);
+        }
+
+        [Fact]
+        public void PackUbo_fades_the_reflected_sun_with_the_sky_disc_opacity()
+        {
+            // The sky dissolves a setting disc through SunColor alpha (#396). The sea must not keep reflecting it: the
+            // opacity rides in the reflected disc's alpha, and ShadeDirectionDiscs scales that disc by it.
+            var settings = new WaterSettings { SkyReflectionSunStrength = 0.4f };
+            var vp = Matrix4x4.CreateLookAt(new Vector3(0, 5, 5), Vector3.Zero, Vector3.UnitY);
+            var light = new Vector3(-0.5f, -0.85f, -0.35f);
+            var lightColor = new Color(1f, 0.95f, 0.86f, 1f);
+
+            var u = WaterRenderer.PackUbo(vp, vp, light, lightColor, Vector3.Zero, settings,
+                new SkySettings { SunColor = new Color(1f, 0.6f, 0.3f, 0.25f) }, timeSeconds: 0f);
+            Assert.Equal(0.4f, u.ReflectGlint.Y, 4);
+            Assert.Equal(0.25f, u.SkyDiscColor[0].W, 4);
+
+            Vector3 horizon = new(0.6f, 0.7f, 0.8f), zenith = new(0.2f, 0.4f, 0.7f);
+            Vector3 sunDir = Vector3.Normalize(new Vector3(0.2f, 0.6f, -0.4f));
+            SkyDisc Sun(float alpha) => new()
+            {
+                Direction = sunDir, Color = new Color(1f, 0.6f, 0.3f, alpha), Radius = 0.06f, HaloStrength = 0f, HaloFalloff = 0.04f,
+            };
+            Vector3 At(float alpha) => SkyMath.ShadeDirectionDiscs(sunDir, horizon, zenith, new[] { Sun(alpha) }, 1f);
+            Vector3 sky = SkyMath.ShadeDirectionDiscs(sunDir, horizon, zenith, ReadOnlySpan<SkyDisc>.Empty, 1f);
+            Assert.Equal(sky, At(0f));
+            Assert.Equal(Vector3.Lerp(sky, new Vector3(1f, 0.6f, 0.3f), 0.25f).X, At(0.25f).X, 4);
         }
 
         [Fact]

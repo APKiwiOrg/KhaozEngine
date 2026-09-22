@@ -424,7 +424,7 @@ jobs:
   # order of magnitude, and it is what stops the expensive legs from starting at all.
   legs:
     name: select legs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
       # Whether this run's selection includes the native Vulkan leg. The sync-validation job below is a
@@ -508,7 +508,7 @@ jobs:
           all='[
             {"os":"macos-26",      "backend":"metal-native",      "runner":"macos-26",                      "fullSuite":"always",    "d3d11Adapter":"",     "vulkanDevice":"",         "vulkanValidation":""},
             {"os":"windows-latest","backend":"direct3d11-native", "runner":"windows-latest",                "fullSuite":"scheduled", "d3d11Adapter":"warp", "vulkanDevice":"",         "vulkanValidation":""},
-            {"os":"ubuntu-latest", "backend":"vulkan-native",     "runner":"ubuntu-latest",                 "fullSuite":"scheduled", "d3d11Adapter":"",     "vulkanDevice":"llvmpipe", "vulkanValidation":"strict"}
+            {"os":"ubuntu-latest", "backend":"vulkan-native",     "runner":"ubuntu-24.04",                 "fullSuite":"scheduled", "d3d11Adapter":"",     "vulkanDevice":"llvmpipe", "vulkanValidation":"strict"}
           ]'
 
           if [ "$WANT" = all ]; then
@@ -748,9 +748,9 @@ jobs:
 
           echo "metal instruments on $LEG / $TRIGGER (unattended='${unattended}'): MTL_DEBUG_LAYER='${MTL_DEBUG_LAYER:-}' MTL_CAPTURE_ENABLED='${MTL_CAPTURE_ENABLED:-}'"
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
 
@@ -868,7 +868,7 @@ jobs:
       # Kilobytes of text. ignore = no spurious failure on a leg that never ran the step.
       - name: Upload Vulkan device limits
         if: always() && matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vulkan-device-limits-${{ matrix.backend }}
           path: vulkan-diagnostics/vulkaninfo.*.txt
@@ -1319,7 +1319,7 @@ jobs:
       # baseline the red boot's are read against, and half of a difference is not one. Kilobytes of text.
       - name: Upload device evidence
         if: always() && matrix.os == 'macos-26'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: device-evidence-${{ matrix.backend }}
           path: device-evidence/
@@ -1337,7 +1337,7 @@ jobs:
       # reader trusts when they go looking for a tier's evidence weeks later. It exists only when it is true now.
       - name: Upload validation log (strict tier)
         if: always() && env.VULKAN_VALIDATION_ARMED != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vulkan-validation-strict-${{ matrix.backend }}
           path: TestResults/suite-output.log
@@ -1392,7 +1392,7 @@ jobs:
       # A fourth case, the #617 control on the incumbent Metal leg, went with that leg in 18.0.0.
       - name: Upload Metal validation log
         if: always() && matrix.backend == 'metal-native'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: metal-validation-${{ env.METAL_DEEP_TIER != '' && 'shader-validation' || (env.METAL_CAPTURE_TIER != '' && 'capture' || 'debug-layer') }}-${{ matrix.backend }}
           path: TestResults/suite-output.log
@@ -1402,7 +1402,7 @@ jobs:
       # Kilobytes, failure-only, no dumps.
       - name: Upload crash-sequence evidence
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: crash-sequence-${{ matrix.backend }}
           path: TestResults/**/Sequence_*.xml
@@ -1413,7 +1413,7 @@ jobs:
       # failed for a non-golden reason and wrote no evidence.
       - name: Upload golden failure evidence
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: golden-evidence-${{ matrix.backend }}
           path: KhaozEngine.Render.Tests/Gpu/goldens-evidence/
@@ -1426,7 +1426,7 @@ jobs:
       # Kilobytes of text. ignore = no spurious failure on a leg that ran no golden compares at all.
       - name: Upload golden delta records
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: golden-deltas-${{ matrix.backend }}
           path: KhaozEngine.Render.Tests/Gpu/goldens-evidence/golden-deltas.*.txt
@@ -1438,7 +1438,7 @@ jobs:
       # failure-only. ignore = no spurious failure on a leg that failed for another reason.
       - name: Upload emitted-HLSL evidence
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: hlsl-evidence-${{ matrix.backend }}
           path: KhaozEngine.Render.Tests/Gpu/hlsl-evidence/
@@ -1452,7 +1452,7 @@ jobs:
         # Every leg since 17.41.0, the three native ones included: each owns the family it just wrote. The
         # guest-leg exclusion that used to sit here went with the goldenGuest column.
         if: always() && github.event_name == 'workflow_dispatch' && inputs.bake
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: goldens-${{ matrix.backend }}
           path: |
@@ -1500,15 +1500,19 @@ jobs:
   gpu-vulkan-sync:
     needs: legs
     name: ubuntu-latest / vulkan-native (sync validation)
-    runs-on: ubuntu-latest
+    # Frozen at what ubuntu-latest resolved to when the goldens were baked. Every other hosted job in
+    # this repo moved to ubuntu-26.04; the Vulkan legs did not, because the image carries Mesa and
+    # llvmpipe IS the device under test here. Promoting it is a golden re-bake, not a runner bump, and
+    # it gets its own change. Same reasoning as the macos-26 pin above.
+    runs-on: ubuntu-24.04
     if: |
       needs.legs.outputs.vulkan_native == 'true'
       && (github.event_name == 'schedule'
           || (github.event_name == 'workflow_dispatch' && !inputs.bake))
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
 
@@ -1655,7 +1659,7 @@ jobs:
       # this job was installed to find.
       - name: Upload validation log (sync tier)
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vulkan-validation-sync
           path: TestResults/sync-validation.log
@@ -1663,7 +1667,7 @@ jobs:
 
       - name: Upload crash-sequence evidence
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: crash-sequence-vulkan-native-sync
           path: TestResults/**/Sequence_*.xml
@@ -1671,7 +1675,7 @@ jobs:
 
       - name: Upload golden failure evidence
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: golden-evidence-vulkan-native-sync
           path: KhaozEngine.Render.Tests/Gpu/goldens-evidence/

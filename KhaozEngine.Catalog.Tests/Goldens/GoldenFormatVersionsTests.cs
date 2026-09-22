@@ -134,12 +134,15 @@ public sealed class GoldenFormatVersionsTests
     [Fact]
     public void AManifestAtTheEngineFormatGeneration_IsAccepted()
     {
-        // The refusal is on ABOVE and never on equal, so the golden's own generation is the boundary case.
+        // The refusal is on ABOVE and never on equal, and a generation BELOW this build's is an older pack
+        // this build still reads. The golden was baked at generation 1 and is that case from 19.14.0 on,
+        // which is the half of the rule a consumer's already published versions depend on.
         GoldenFile golden = GoldenLibrary.Get("v1", "manifest-server.kecm");
         Assert.True(
             ContentManifestCodec.TryDecode(golden.Stored, ContentManifestSide.Server, out ContentManifest? manifest, out string? reason),
             reason);
-        Assert.Equal((uint)ContentPackFormat.Generation, manifest.FormatGeneration);
+        Assert.True(manifest.FormatGeneration <= ContentPackFormat.Generation);
+        Assert.Equal(1u, manifest.FormatGeneration);
     }
 
     static bool HasVersion(string directory)

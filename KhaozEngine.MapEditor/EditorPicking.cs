@@ -42,7 +42,17 @@ public static class EditorPicking
     /// pickable.</para></summary>
     public static bool Pick(MapDocument doc, TerrainField field, Vector3 origin, Vector3 direction,
         float maxDistance, Func<string, float> heightOf, out PickResult result,
-        Func<SelectionKind, string, bool>? visible = null)
+        Func<SelectionKind, string, bool>? visible = null) =>
+        Pick(doc, field, origin, direction, maxDistance, heightOf, out result, visible, placementKindVisible: null);
+
+    /// <summary>The pick above with a second placement filter keyed on the kit id. A placement whose
+    /// <c>placementKindVisible(kind)</c> is false is skipped, which is how a hidden prop category (trees, rocks)
+    /// stops being clickable. It reads the kind from the placement already in hand. Both filters run once per
+    /// element inside the pick loop, so each must be constant-time: a filter that searches the document per call
+    /// makes one click quadratic in the placement count.</summary>
+    public static bool Pick(MapDocument doc, TerrainField field, Vector3 origin, Vector3 direction,
+        float maxDistance, Func<string, float> heightOf, out PickResult result,
+        Func<SelectionKind, string, bool>? visible, Func<string, bool>? placementKindVisible)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(field);
@@ -56,6 +66,7 @@ public static class EditorPicking
         foreach (MapPlacement p in doc.Placements)
         {
             if (visible is not null && !visible(SelectionKind.Placement, p.Id)) continue;   // hidden: not pickable
+            if (placementKindVisible is not null && !placementKindVisible(p.Kind)) continue;   // category hidden
             float h = heightOf(p.Kind) * p.Scale;
             float groundY = p.Y ?? field.SampleHeight(p.X, p.Z);
             float half = h * 0.3f;

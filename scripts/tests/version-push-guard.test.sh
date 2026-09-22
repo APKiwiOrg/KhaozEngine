@@ -106,6 +106,17 @@ echo '{"sharp":"0.35.4"}' > tools/kit/package-lock.json
 git commit --quiet -am "deps: patch a dev tool's dependency"
 check "a dev-tool dependency bump rides a release" allowed "$(try_push main)"
 
+# --- 2c. main past the tag with a .gitignore edit: ALLOWED ------------------------------------------
+# .gitignore decides what is TRACKED, never what a package contains. This case exists because the
+# guard refused its own author pushing exactly this, one commit after the tools/ carve-out.
+w=$(new_repo 1.0.0); cd "$w"
+git tag -a v1.0.0 -m "release(1.0.0): first" >/dev/null 2>&1
+git push --quiet origin v1.0.0 2>/dev/null
+printf '.worktrees/\n' >> .gitignore
+git add -A
+git commit --quiet -m "governance: ignore the worktree root"
+check "a gitignore edit rides a release" allowed "$(try_push main)"
+
 # --- 3. main sitting exactly at the tag: ALLOWED ----------------------------------------------------
 w=$(new_repo 1.0.0); cd "$w"
 echo 'changed' >> src/Engine.cs

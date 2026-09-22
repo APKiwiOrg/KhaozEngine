@@ -42,6 +42,42 @@ public class HttpPackStoreTests
             Assert.Single(origin.Requests));
     }
 
+    /// <summary>
+    /// The host finds its port by opening a probe on port 0, releasing it, and then binding a listener to
+    /// that number, so anything that takes the port in between wins it and the bind throws
+    /// <c>Address already in use</c>. That turned a whole selective run red once, on a diff that touches
+    /// none of this.
+    /// <para>
+    /// Here the first port handed out is one this test is HOLDING, which is that race with the timing taken
+    /// out of it. The start has to probe and bind again rather than throw, and what comes back has to be a
+    /// working endpoint on a different port rather than merely an object.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_start_that_loses_its_probed_port_takes_a_fresh_one()
+    {
+        var occupied = new TcpListener(IPAddress.Loopback, 0);
+        occupied.Start();
+        int taken = ((IPEndPoint)occupied.LocalEndpoint).Port;
+        try
+        {
+            int handed = 0;
+            using PackHttpHost origin = await PackHttpHost.StartAsync(
+                () => Interlocked.Increment(ref handed) == 1 ? taken : PackHttpHost.FreePort());
+
+            Assert.Equal(2, handed);
+            Assert.NotEqual(taken, origin.BaseAddress.Port);
+
+            using HttpClient client = origin.Client();
+            var store = new HttpPackStore(client, origin.BaseAddress);
+            Assert.Null(await store.GetAsync(new string('a', 64)));
+        }
+        finally
+        {
+            occupied.Stop();
+        }
+    }
+
     [Fact]
     public async Task GetAsync_answers_null_for_a_404_rather_than_throwing()
     {
@@ -282,6 +318,13 @@ public class HttpPackStoreTests
     /// </summary>
     sealed class PackHttpHost : IDisposable
     {
+        /// <summary>
+        /// How many ports a start will try before it gives up. A handful covers losing the race to another
+        /// suite on the same machine, and stopping short of forever keeps a machine with nothing free
+        /// reporting that rather than spinning.
+        /// </summary>
+        const int BindAttempts = 8;
+
         readonly HttpListener _listener = new();
         readonly ConcurrentQueue<string> _requests = new();
         readonly Dictionary<string, byte[]> _overrides = new(StringComparer.Ordinal);
@@ -314,13 +357,49 @@ public class HttpPackStoreTests
 
         string? _redirectTo;
 
-        public static async Task<PackHttpHost> StartAsync()
+        public static Task<PackHttpHost> StartAsync() => StartAsync(FreePort);
+
+        /// <summary>
+        /// The same start over a named source of ports, so the race test can hand out one it is HOLDING and
+        /// see what a start that loses the port does.
+        /// <para>
+        /// The probe and the bind are ONE unit here. A port the probe found free is not reserved: it is
+        /// released before the listener can take it, and anything on the machine may win it in between. So
+        /// a bind that fails takes a FRESH port rather than retrying the one that lost, up to
+        /// <see cref="BindAttempts"/> times, and the last attempt throws the way it always did rather than
+        /// hiding a machine with no free port at all.
+        /// </para>
+        /// </summary>
+        /// <param name="ports">Where each attempt's port comes from.</param>
+        public static async Task<PackHttpHost> StartAsync(Func<int> ports)
         {
-            var host = new PackHttpHost(FreePort());
-            host._listener.Start();
-            host._loop = Task.Run(host.AcceptAsync);
-            await Task.Yield();
-            return host;
+            ArgumentNullException.ThrowIfNull(ports);
+
+            for (int attempt = 1; ; attempt++)
+            {
+                var host = new PackHttpHost(ports());
+                try
+                {
+                    host._listener.Start();
+                }
+                catch (HttpListenerException) when (attempt < BindAttempts)
+                {
+                    host.Dispose();
+                    continue;
+                }
+                catch (HttpListenerException)
+                {
+                    // The last attempt throws the way it always did, but the host it built already owns a
+                    // temporary root, and a throw past it leaves that directory behind for the rest of the
+                    // run. Dispose first, then let the throw stand.
+                    host.Dispose();
+                    throw;
+                }
+
+                host._loop = Task.Run(host.AcceptAsync);
+                await Task.Yield();
+                return host;
+            }
         }
 
         /// <summary>Serves these bytes under that hash, whatever the store on disk holds.</summary>
@@ -370,14 +449,28 @@ public class HttpPackStoreTests
                 // The accept loop ends with the listener.
             }
 
-            _listener.Close();
+            try
+            {
+                _listener.Close();
+            }
+            catch (HttpListenerException)
+            {
+                // A listener that never bound has nothing to close, which is exactly the host a start
+                // disposes after losing the port race. The close is what threw the day this was reported.
+            }
+
             _root.Dispose();
         }
 
         /// <summary>A client with the endpoint as its base, and a short timeout so a hang is a failure.</summary>
         public HttpClient Client() => new() { BaseAddress = BaseAddress, Timeout = TimeSpan.FromSeconds(10) };
 
-        static int FreePort()
+        /// <summary>
+        /// A port nothing held at the moment it was asked for. It is not a RESERVATION: the probe has to
+        /// release the port before the listener can bind it, so anything on the machine may take it in
+        /// between, which is why a start that loses it probes again.
+        /// </summary>
+        public static int FreePort()
         {
             var probe = new TcpListener(IPAddress.Loopback, 0);
             probe.Start();

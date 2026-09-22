@@ -81,17 +81,40 @@ public sealed record ContentFieldEntry(
 /// <summary>
 /// One content type's ORDERED field list. A row's values are parallel to it by INDEX rather than keyed by
 /// name, so a codec is a positional walk and the schema index and the row index are the same number.
+/// <para>
+/// A schema also declares its <see cref="BaselineFieldCount"/>, the number of fields the type had when it
+/// FIRST SHIPPED. Everything at or after that index was appended by a later engine release, and
+/// <c>ContentRowTailRule</c> is the one place that says what the split means to a row's bytes. A schema that
+/// declares no baseline is entirely baseline, which is every type that has never gained a field and is why
+/// nothing else in the tree had to change.
+/// </para>
 /// </summary>
 public sealed class ContentFieldSchema
 {
     readonly Dictionary<string, (ContentFieldEntry Entry, int Index)> _byName;
 
     /// <summary>Builds a schema, checking every entry against the rules of contracts 4.7.</summary>
+    /// <param name="fields">The fields in declared order.</param>
+    /// <param name="baselineFieldCount">
+    /// How many leading fields shipped with the type, or null when every field did. An APPENDED field must be
+    /// optional: a required one could not be absent from an older row, so a body that never carried it would
+    /// have to be refused and the whole rule would buy nothing.
+    /// </param>
     /// <exception cref="ArgumentException">A name is blank or repeated, or a reference target does not match its kind.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">A scale is below 1, or is not 1 on a kind that is not scaled.</exception>
-    public ContentFieldSchema(IReadOnlyList<ContentFieldEntry> fields)
+    /// <exception cref="ArgumentOutOfRangeException">A scale is below 1, is not 1 on a kind that is not scaled, or the baseline is outside the field list.</exception>
+    public ContentFieldSchema(IReadOnlyList<ContentFieldEntry> fields, int? baselineFieldCount = null)
     {
         ArgumentNullException.ThrowIfNull(fields);
+
+        int baseline = baselineFieldCount ?? fields.Count;
+        if (baseline < 0 || baseline > fields.Count)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(baselineFieldCount),
+                baseline,
+                FormattableString.Invariant(
+                    $"A schema of {fields.Count} fields cannot declare {baseline} of them as its first release."));
+        }
 
         var ordered = new ContentFieldEntry[fields.Count];
         _byName = new Dictionary<string, (ContentFieldEntry, int)>(fields.Count, StringComparer.Ordinal);
@@ -107,14 +130,29 @@ public sealed class ContentFieldSchema
                     nameof(fields));
             }
 
+            if (i >= baseline && entry.Required && !entry.IsDerivedMarker)
+            {
+                throw new ArgumentException(
+                    FormattableString.Invariant(
+                        $"Field '{entry.Name}' at index {i} was appended after this type's first {baseline} fields and is declared required. An appended field is absent from every row written before it existed, so only an optional one can be appended."),
+                    nameof(fields));
+            }
+
             ordered[i] = entry;
         }
 
         Fields = ordered;
+        BaselineFieldCount = baseline;
     }
 
     /// <summary>The fields in DECLARED order, which is the order a row's values are parallel to.</summary>
     public IReadOnlyList<ContentFieldEntry> Fields { get; }
+
+    /// <summary>
+    /// How many leading fields shipped with the type. Fields from this index on were APPENDED by a later
+    /// engine release, are optional, and are the only ones a row's bytes may end before.
+    /// </summary>
+    public int BaselineFieldCount { get; }
 
     /// <summary>Looks a field up by name, ORDINALLY, the way every other key comparison in the catalog works.</summary>
     public bool TryGet(string name, [MaybeNullWhen(false)] out ContentFieldEntry entry)

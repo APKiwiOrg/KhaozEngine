@@ -204,6 +204,65 @@ public class TileEntityInteractTests
         Assert.True(TileReach.Contains(map, new TileRect(10, 10, 1, 1), 0, state.Tile));
     }
 
+    [Theory]
+    [InlineData(9, 9)]
+    [InlineData(10, 10)]
+    public void Policy_entity_interactions_match_prediction_and_authoritative_dispatch_without_walking(
+        int startX, int startZ)
+    {
+        long target = 0L;
+        using var h = new TileCombatHarness(TileMoveSimulatorTests.FlatWorld(),
+            new TileCoord(startX, startZ, 0),
+            entityInteractionReachPolicy: id => id == target
+                ? TileInteractionReachPolicy.IncludeDiagonals | TileInteractionReachPolicy.IncludeOverlap
+                : TileInteractionReachPolicy.Default);
+        h.Frames(8);
+        target = h.Server.SpawnActor(new TileCoord(10, 10, 0),
+            new TileActorSpawn(10, AttackTicks: 4, TileDirection.S) { FootprintSize = 2 });
+        h.Frames(8);
+        var raised = new List<long>();
+        h.Server.OnInteractEntity += (_, _, id) => raised.Add(id);
+        TileCoord before = h.Client.Prediction.PredictedState.Tile;
+
+        h.Client.Queue(TileCommand.InteractEntity(target, TileMoveMode.Run));
+        h.Frames(1);
+        Assert.Equal(before, h.Client.Prediction.PredictedState.Tile);
+        for (int i = 0; i < 20 && raised.Count == 0; i++) h.Frames(1);
+
+        Assert.Equal(new[] { target }, raised);
+        Assert.True(h.Server.TryGetPlayerState(0, out TileMoveState serverState));
+        Assert.Equal(before, serverState.Tile);
+        Assert.Equal(before, h.Client.Prediction.PredictedState.Tile);
+    }
+
+    [Fact]
+    public void Registered_actor_traversal_simulators_reuse_the_entity_interaction_policy_wrapper()
+    {
+        TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
+        TileCollisionMap map = TileMoveSimulatorTests.Bake(doc);
+        var hub = new InMemoryTransportHub();
+        long target = 0L;
+        using var server = new TileWorldServer(hub.Server, TileWorldServerTickTests.Config(new TileCoord(5, 5, 0)),
+            map, new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator(),
+            TileProtocol.CreateRegistry(), id => id == target
+                ? TileInteractionReachPolicy.IncludeDiagonals | TileInteractionReachPolicy.IncludeOverlap
+                : TileInteractionReachPolicy.Default);
+        var profile = new TileActorTraversalProfile(19);
+        server.Actors.RegisterTraversalProfile(profile, map);
+        target = server.SpawnActor(new TileCoord(10, 10, 0),
+            new TileActorSpawn(10, 4, TileDirection.S) { FootprintSize = 2 });
+        server.Tick(TileCombatHarness.Tick);
+        Assert.True(server.TryGetActorTraversalSimulator(profile, out TileMoveSimulator simulator));
+        var start = new TileCoord(9, 9, 0);
+
+        TileMoveState state = simulator.Step(TileMoveState.At(start, TileDirection.W),
+            TileCommand.InteractEntity(target, TileMoveMode.Run), TileCombatHarness.Tick);
+
+        Assert.Equal(start, state.Tile);
+        Assert.True(state.Route.IsIdle);
+        Assert.Equal(target, state.InteractTarget);
+    }
+
     sealed class FixedTarget(long id, TileRect footprint, int plane) : ITileTargets
     {
         public bool TryGetFootprint(long target, out TileRect found, out int foundPlane)

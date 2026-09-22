@@ -123,6 +123,11 @@ public sealed partial class SqlServerContentAuthoringStore
                 // 6. Every audit row, field level, against the version the rows are leaving.
                 await AppendPublishAuditAsync(scope, before, plan, request, token).ConfigureAwait(false);
 
+                // 6b. The applied ledger row, when this publish carries an upgrade. It is INSIDE this
+                // transaction, so the version and the history entry naming the upgrade that produced it land
+                // together, and an id the ledger already holds refuses the whole commit.
+                await InsertAppliedUpgradeAsync(scope, request, plan.VersionNumber, token).ConfigureAwait(false);
+
                 // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole
                 // draft, so anything else here survives rather than being deleted unpublished.
                 await DeleteFrozenEditsAsync(scope, plan, token).ConfigureAwait(false);

@@ -237,6 +237,14 @@ hidden.
   Its overload accepting `TilePathfinderScratch` hands that search its working memory.
   `agentSize` and `maxRadius` are validated at the top of `TryNearest` rather than left to the first search, so a
   bad argument throws whether the target is open, walled in, out of range or on another plane.
+- **`TileInteractionReach`** / **`TileInteractionReachPolicy`** - the opt-in interaction sibling of `TileReach`.
+  `Default` delegates to `TileReach` answer for answer. `IncludeDiagonals` adds the four footprint corners only
+  when `TileCollision.CanStep` admits the diagonal, so blocked neighbours, edge walls, corner flags and the
+  no-corner-cutting rule all remain in force. `IncludeOverlap` adds anchors whose whole actor footprint passes
+  `TileCollision.CanStand` and overlaps the target. The flags compose. `Set`, `Contains`, `TryNearest` and
+  `FacingToward` consume the same policy, so click prediction, path selection, arrival revalidation and the
+  authoritative pending action share one answer. Candidate order is cardinal, then SW, SE, NW, NE, then overlap
+  anchors in target scan order. Combat continues to use `TileReach` directly.
 - **`ITileTargets`** / **`TileDocumentTargets`** / **`TileEntityTargets`** / **`TileRemoteTargets`** - the seam
   that resolves a target id to a footprint and a plane, and its three implementations across TWO id spaces.
   `TileDocumentTargets` is the OBJECT space, backed by the document over `TileObjectArchetype.Interactive` and
@@ -250,6 +258,12 @@ hidden.
   centre is the wrong place to look at (the head of a long serpent, the door of a building) and every pose the
   client draws follows it. It resolves and refuses exactly where `TryGetFootprint` does, so a stale lock points
   nowhere new, and nothing in the rules reads it.
+  `GetInteractionReachPolicy(target)` is the rules half and defaults to `TileInteractionReachPolicy.Default`.
+  An authored-object resolver can override it directly. Entity resolvers remain engine-owned snapshots, so the
+  seven-parameter `TileWorldServer` and `TileWorldClient` constructors append the same
+  `Func<long, TileInteractionReachPolicy>` selector. Their original six-parameter constructors remain unchanged
+  and forward with no selector. Both heads must pass the same selector. A selector may opt one entity family into
+  diagonal or overlapping interaction without changing combat, other entity interactions or the wire format.
   `TileEntityTargets` is the server's ENTITY space, a per-tick SNAPSHOT over the live cells refreshed once before
   anything moves, which is what makes the actor pass and the movement pass order-independent in fact rather than
   in claim: every read is a keyed lookup into a map built before either pass began. `TileRemoteTargets` is the

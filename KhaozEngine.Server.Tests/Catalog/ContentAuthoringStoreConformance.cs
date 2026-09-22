@@ -40,13 +40,20 @@ public readonly record struct CatalogPointerLook(int ActiveVersion, bool Version
 public abstract partial class ContentAuthoringStoreConformance
 {
     /// <summary>The registry every store in one test instance is opened over. Per instance, never ambient.</summary>
-    protected ContentTypeRegistry Registry { get; } = CatalogFixtures.Registry(CatalogFixtures.ThingSpec);
+    protected ContentTypeRegistry Registry { get; } =
+        CatalogFixtures.Registry(CatalogFixtures.ThingSpec, CatalogFixtures.CappedSpec);
 
     /// <summary>The fixture type as a type id, which is what every seam member takes.</summary>
     protected static ContentTypeId Thing => CatalogFixtures.Thing;
 
+    /// <summary>The type that declares an id CEILING, which only the carried-id facts put a row on.</summary>
+    protected static ContentTypeId Capped => CatalogFixtures.Capped;
+
     /// <summary>The migration a schema refusal names, which is per provider and identical in both so far.</summary>
-    protected virtual string RequiredMigration => "catalog-v1-initial";
+    protected virtual string RequiredMigration => "catalog-v2-content-upgrade-ledger";
+
+    /// <summary>The schema version this build creates, which every provider reports after an AutoCreate.</summary>
+    protected virtual int CurrentSchemaVersion => 2;
 
     /// <summary>
     /// A store over an EMPTY, UNINITIALIZED database, which is what facts 1 and 2 need: the schema is the
@@ -133,6 +140,16 @@ public abstract partial class ContentAuthoringStoreConformance
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
         return store;
     }
+
+    /// <summary>
+    /// The upgrade ledger half of a store. Every backend implements it on the one type, which is what the
+    /// runner checks for before it plans anything.
+    /// </summary>
+    /// <param name="store">The store.</param>
+    protected static IContentUpgradeLedger Ledger(IContentAuthoringStore store)
+        => store as IContentUpgradeLedger
+            ?? throw new InvalidOperationException(
+                "A conformance store implements IContentUpgradeLedger: the upgrade facts read the ledger through it.");
 
     /// <summary>The durable id half of a store. Every backend implements both halves on the one type.</summary>
     /// <param name="store">The store.</param>

@@ -109,7 +109,7 @@ public sealed class InMemoryContentAuthoringStoreConformanceTests : ContentAutho
     /// mode to decide about, so both modes succeed and the version it reports is a constant. The assertion is
     /// kept rather than dropped, because the constant is what a provider is compared against.
     /// </remarks>
-    public override async Task Fact01_AutoCreateOnAnEmptyStoreCreatesTheSchemaAndReportsVersionOne()
+    public override async Task Fact01_AutoCreateOnAnEmptyStoreCreatesTheSchemaAndReportsTheCurrentVersion()
     {
         IContentAuthoringStore store = NewStore();
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);

@@ -121,6 +121,21 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Sun_opacity_dissolves_the_disc_into_the_gradient()
+        {
+            // A fading disc lets the sky through instead of darkening toward black (#396).
+            var sunNdc = new Vector2(0f, 0.2f);
+            var gradient = SkyMath.Shade(sunNdc, sunNdc, false, 1f, Horizon, Zenith, Sun, false, 0.05f, 0.5f, 0.18f);
+            var gone = SkyMath.Shade(sunNdc, sunNdc, true, 1f, Horizon, Zenith, Sun, true, 0.05f, 0.5f, 0.18f, sunOpacity: 0f);
+            var half = SkyMath.Shade(sunNdc, sunNdc, true, 1f, Horizon, Zenith, Sun, true, 0.05f, 0.5f, 0.18f, sunOpacity: 0.5f);
+            Assert.Equal(gradient, gone);
+            var expectedHalf = Vector3.Lerp(gradient, Sun, 0.5f);
+            Assert.Equal(expectedHalf.X, half.X, 4);
+            Assert.Equal(expectedHalf.Y, half.Y, 4);
+            Assert.Equal(expectedHalf.Z, half.Z, 4);
+        }
+
+        [Fact]
         public void Disc_is_aspect_corrected_round_in_pixels()
         {
             // At the same NDC distance horizontally vs vertically, a wide aspect makes the horizontal reach stop
@@ -336,23 +351,26 @@ namespace KhaozEngine.Tests.Render3D
 
             Assert.Equal(sky.HorizonColor.R, u.Horizon.X, 4);
             Assert.Equal(sky.ZenithColor.B, u.Zenith.Z, 4);
-            Assert.Equal(sky.SunColor.G, u.SunColor.Y, 4);
-            Assert.Equal(1f, u.SunNdc.Z, 4);                        // sun ahead: visible
-            Assert.Equal(800f / 600f, u.SunNdc.W, 4);              // aspect
-            Assert.Equal(1f, u.Params.X, 4);                       // sunEnabled
-            Assert.Equal(sky.SunRadius, u.Params.Y, 4);
-            Assert.Equal(sky.HaloStrength, u.Params.Z, 4);
-            Assert.Equal(sky.HaloFalloff, u.Params.W, 4);
+            Assert.Equal(1f, u.Res.W, 4);                           // sun ahead: one disc on screen
+            Assert.Equal(sky.SunColor.G, u.DiscColor[0].Y, 4);
+            Assert.Equal(sky.SunColor.A, u.DiscColor[0].W, 4);      // opacity rides in alpha
+            Assert.True(SkyMath.ProjectSunToNdc(sky.Anchor, view, projection, sky.ResolveSunDirection(light), out var sunNdc));
+            Assert.Equal(sunNdc.X, u.DiscPlace[0].X, 5);
+            Assert.Equal(sunNdc.Y, u.DiscPlace[0].Y, 5);
+            Assert.Equal(sky.SunRadius, u.DiscPlace[0].Z, 4);
+            Assert.Equal(sky.HaloStrength, u.DiscPlace[0].W, 4);
+            Assert.Equal(sky.HaloFalloff, u.DiscHalo[0].X, 4);
+            Assert.Equal(800f / 600f, u.Res.Z, 4);                  // aspect
             Assert.Equal(1f / 800f, u.Res.X, 6);
             Assert.Equal(1f / 600f, u.Res.Y, 6);
         }
 
         [Fact]
-        public void PackUbo_sun_disabled_sets_param_zero()
+        public void PackUbo_sun_disabled_packs_no_disc()
         {
             var sky = new SkySettings { SunEnabled = false };
             var u = SkyRenderer.PackUbo(sky, Matrix4x4.Identity, Matrix4x4.Identity, new Vector3(0, -1, 0), 100, 100);
-            Assert.Equal(0f, u.Params.X, 4);
+            Assert.Equal(0f, u.Res.W, 4);
         }
     }
 }

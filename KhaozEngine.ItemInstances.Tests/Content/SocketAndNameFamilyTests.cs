@@ -340,6 +340,7 @@ public class SocketAndNameFamilyTests
             ContentFieldValue.Absent(ContentFieldKind.ScaledInt),
             ContentFieldValue.Absent(ContentFieldKind.Int),
             Int(2),
+            ContentFieldValue.Absent(ContentFieldKind.KeyReference),
             ContentFieldValue.Absent(ContentFieldKind.KeyReference));
     }
 

@@ -67,6 +67,9 @@ namespace KhaozEngine.Terrain
         readonly ConcurrentDictionary<PropClusterKey, long> _propGenerations = new();
         bool _disposed;
 
+        /// <summary>Optional draw-time filter for retained prop batches. Null keeps the legacy all-visible path.</summary>
+        public PropDrawFilter? DrawFilter { get; set; }
+
         /// <summary>Cumulative HLOD merge totals for this sink: clusters merged versus clusters an apply actually
         /// consumed, with the byte totals. Always on and allocation-free. A steady difference between the two is
         /// merge work being thrown away, so <see cref="HlodMergeStats.DiscardedBytes"/> is the signal to watch.
@@ -184,6 +187,14 @@ namespace KhaozEngine.Terrain
                 if (snapshot[i].HasHlod) { anyHlod = true; break; }
             if (anyHlod) _hlodGate = new HlodBuildGate();
             _propClusters = scene is null ? PropClusterRenderer.CreateCpuOnly() : new PropClusterRenderer(scene);
+        }
+
+        internal Scene3DChunkSink(Scene3D scene, TerrainField field, IReadOnlyList<PropLayer> layers,
+                                  float chunkSize, PropClusterRenderer propClusters)
+            : this(scene, field, layers, chunkSize)
+        {
+            _propClusters.Dispose();
+            _propClusters = propClusters ?? throw new ArgumentNullException(nameof(propClusters));
         }
 
         /// <summary>Single-layer sink (back-compat): one scatter config, one mesh set, one draw radius. The splat
@@ -496,7 +507,8 @@ namespace KhaozEngine.Terrain
                 PropClusterCpuBuild cluster = _propClusters.BuildCpu(new PropClusterBuildRequest(
                     key, generation, ChunkGrid.AreaOf(coord, _chunkSize), layer, mergePlacements));
                 if (ring != ChunkRing.Gameplay)
-                    cluster = cluster.WithPlacementBatch(Array.Empty<PropPlacement>());
+                    cluster = cluster.WithPlacementBatch(Array.Empty<PropPlacement>(),
+                        preserveFilterPlacementBatch: !buildHlod && mergePlacements.Count == 0);
                 clusterBuilds[i] = cluster;
                 anyClusterBuild = true;
                 if (buildHlod && layer.HasHlod) hlod![i] = cluster.MergedMesh;
@@ -697,7 +709,7 @@ namespace KhaozEngine.Terrain
                 ChunkLoad load = kv.Value;
                 _scene.DrawTerrainChunk(load.Mesh, load.Region);
             }
-            _propClusters.Draw(focus);
+            _propClusters.Draw(focus, DrawFilter);
         }
 
         /// <summary>Free every still-loaded chunk's GPU mesh and clear the ring, so a sink teardown while the same

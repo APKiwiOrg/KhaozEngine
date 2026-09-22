@@ -54,8 +54,8 @@ namespace KhaozEngine.Tests.Gpu
         // The palette they were carved out of: eight slots of SkinnedBonePalette.SlotBytes, ONE per caster whatever
         // the cascade count. Unique by size, which is what lets its row assert per-buffer uniqueness.
         const uint SkinnedPaletteUboBytes = 8 * 8192;
-        // WaterRenderer: min four planes of SlotBytes (768), the 256-aligned round-up of the 672-byte payload.
-        const uint WaterUboBytes = 4 * 768;
+        // WaterRenderer: min four planes of SlotBytes, the 256-aligned round-up of the payload.
+        const uint WaterUboBytes = 4 * KhaozEngine.Render3D.Rendering.WaterRenderer.SlotBytes;
         // OverlayMeshRenderer / SpriteBatch: both start at eight 256-byte dynamic-offset slots.
         const uint OverlayUboBytes = 8 * 256;
         const uint ViewProjUboBytes = 8 * 256;

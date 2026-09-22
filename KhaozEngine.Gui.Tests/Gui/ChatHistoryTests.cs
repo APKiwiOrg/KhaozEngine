@@ -23,15 +23,82 @@ public sealed class ChatHistoryTests
     }
 
     [Fact]
-    public void Source_kind_and_intervening_entry_each_break_collapse()
+    public void Source_and_kind_each_break_collapse()
     {
         var history = new ChatHistory(8);
         history.Add(Entry(Utc(1), "1", "same"));
         history.Add(Entry(Utc(2), "2", "same"));
         history.Add(Entry(Utc(3), "1", "same", ChatEntryKind.System));
         history.Add(Entry(Utc(4), "1", "other"));
-        history.Add(Entry(Utc(5), "1", "same"));
-        Assert.Equal(5, history.Entries.Count);
+        Assert.Equal(4, history.Entries.Count);
+        Assert.All(history.Entries, entry => Assert.Equal(1, entry.RepeatCount));
+    }
+
+    /// <summary>The rule this history exists to get right: a repeat folds into its match WHEREVER that match
+    /// is, so a line arriving between two of them no longer starts the count over.</summary>
+    [Fact]
+    public void A_repeat_folds_into_its_match_across_intervening_entries()
+    {
+        var history = new ChatHistory(8);
+        history.Add(Entry(Utc(1), "1", "two parts"));
+        history.Add(Entry(Utc(2), "1", "one part"));
+        history.Add(Entry(Utc(3), "1", "two parts"));
+        history.Add(Entry(Utc(4), "1", "one part"));
+
+        Assert.Equal(new[] { "two parts", "one part" },
+            history.Entries.Select(e => e.CollapseKey));
+        Assert.Equal(new[] { 2, 2 }, history.Entries.Select(e => e.RepeatCount));
+    }
+
+    /// <summary>The fold keeps the matched entry's PLACE, so a long run of one line does not walk down the
+    /// history pushing everything else off the top.</summary>
+    [Fact]
+    public void A_folded_entry_keeps_its_place_and_takes_the_arrivals_time()
+    {
+        var history = new ChatHistory(8);
+        history.Add(Entry(Utc(1), "1", "repeated"));
+        history.Add(Entry(Utc(2), "1", "between"));
+        history.Add(Entry(Utc(3), "1", "repeated"));
+
+        Assert.Equal(new[] { "repeated", "between" },
+            history.Entries.Select(e => e.CollapseKey));
+        // The arrival's own stamp, which is the same rule an adjacent fold already followed. Times down the
+        // list are therefore not strictly ascending once an older line repeats.
+        Assert.Equal(Utc(3), history.Entries[0].TimestampUtc);
+        Assert.Equal(Utc(2), history.Entries[1].TimestampUtc);
+    }
+
+    /// <summary>A fold is not an add, so it never evicts. A history at capacity carrying a repeat of
+    /// something it already holds keeps everything.</summary>
+    [Fact]
+    public void A_fold_at_capacity_evicts_nothing()
+    {
+        var history = new ChatHistory(2);
+        history.Add(Entry(Utc(1), "1", "first"));
+        history.Add(Entry(Utc(2), "1", "second"));
+
+        history.Add(Entry(Utc(3), "1", "first"));
+
+        Assert.Equal(new[] { "first", "second" },
+            history.Entries.Select(e => e.CollapseKey));
+        Assert.Equal(2, history.Entries[0].RepeatCount);
+    }
+
+    /// <summary>A match that has already been EVICTED is gone, so the line starts a fresh count rather than
+    /// resurrecting a number nobody can see.</summary>
+    [Fact]
+    public void A_repeat_of_an_evicted_entry_starts_over()
+    {
+        var history = new ChatHistory(2);
+        history.Add(Entry(Utc(1), "1", "evicted"));
+        history.Add(Entry(Utc(2), "1", "second"));
+        history.Add(Entry(Utc(3), "1", "third"));
+
+        history.Add(Entry(Utc(4), "1", "evicted"));
+
+        Assert.Equal(new[] { "third", "evicted" },
+            history.Entries.Select(e => e.CollapseKey));
+        Assert.Equal(1, history.Entries[^1].RepeatCount);
     }
 
     [Fact]

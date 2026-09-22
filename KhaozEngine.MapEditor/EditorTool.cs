@@ -183,11 +183,6 @@ public sealed partial class EditorToolController
     /// handle region matches. The scene sets it from the camera distance each frame.</summary>
     public float GizmoScale { get; set; } = 1f;
 
-    /// <summary>Whether an element (kind, id) is pickable from the viewport, consulted by the Select-mode pick so a
-    /// hidden element cannot be clicked (it is still selectable from the outline, which does not go through here).
-    /// Defaults to everything pickable, and the scene points it at its <see cref="EditorVisibility.IsElementVisible"/>.</summary>
-    public Func<SelectionKind, string, bool> IsVisible { get; set; } = static (_, _) => true;
-
     /// <summary>True while a Select-mode gizmo drag is in flight.</summary>
     public bool IsDragging => _dragging;
 
@@ -388,23 +383,8 @@ public sealed partial class EditorToolController
             }
         }
 
-        // No handle grabbed: pick a placement / spawn first, else fall through to the overlay shapes under the
-        // ground point (exclusions, regions, feature markers), so those otherwise-invisible authoring shapes are
-        // selectable with the mouse. A pick that finds nothing at all clears the selection.
-        if (EditorPicking.Pick(_document.Doc, Field!, input.RayOrigin, input.RayDirection, PickDistance, HeightOf,
-                out EditorPicking.PickResult r, IsVisible))
-        {
-            if (r.Kind != SelectionKind.None)
-                _document.Selection.Set(r.Kind, r.Id);
-            else if (OverlayPicking.Pick(_document.Doc, r.Point.X, r.Point.Z, out OverlayPicking.OverlayPickResult o, IsVisible))
-                _document.Selection.Set(o.Kind, o.Id);
-            else
-                _document.Selection.Clear();
-        }
-        else
-        {
-            _document.Selection.Clear();
-        }
+        // No handle grabbed: the press picks (or clears) the selection.
+        PickSelection(input);
 
         // The press landed on the object body, not a handle. If the (now current) selection is a translate-capable
         // gizmo target, record a pending body drag from the ground point under the cursor: the held frames arm it
@@ -446,7 +426,7 @@ public sealed partial class EditorToolController
         out float? startY, out float startYaw, out float startScale, out bool rotatable)
     {
         pos = default; kind = SelectionKind.None; id = ""; startY = null; startYaw = 0f; startScale = 1f; rotatable = false;
-        EditorSelection sel = _document.Selection;
+        EditorSelection sel = _document.Selection; if (!SelectionVisible(sel)) return false;
         switch (sel.Kind)
         {
             case SelectionKind.Placement when FindPlacement(sel.Id) is { } p:

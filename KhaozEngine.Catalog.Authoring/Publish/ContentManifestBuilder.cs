@@ -10,9 +10,9 @@ namespace KhaozEngine.Catalog.Authoring;
 /// <b>The type list is the REGISTRY's, and the chunk list is the version's.</b> Every registered type is
 /// named, carrying no chunks when it authored no rows, because boot refuses a version whose manifest does not
 /// name a type this build registers (spec 9.6, the step 6 row). Building the type list out of the chunks
-/// instead made an empty registered type indistinguishable from a type this pack predates, and the six engine
-/// types are always registered while almost no game authors rows for all six, so <c>base_socket</c> alone made
-/// a real pack unbootable. The manifest hash therefore covers the REGISTRATION SET, which is what gives that
+/// instead made an empty registered type indistinguishable from a type this pack predates, and the engine
+/// types are always registered while almost no game authors rows for all of them, so <c>base_socket</c> alone
+/// made a real pack unbootable. The manifest hash therefore covers the REGISTRATION SET, which is what gives that
 /// refusal its meaning.
 /// </para>
 /// <para>

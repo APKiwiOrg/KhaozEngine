@@ -85,7 +85,7 @@ internal static class RemapFixtures
     /// <summary>The <c>mod_tier</c> type key, which the validator builds its tier index from.</summary>
     public const string ModTierKey = "mod_tier";
 
-    /// <summary>The six engine types plus the six Scope B stand-ins, fresh per call.</summary>
+    /// <summary>Every engine type plus the six Scope B stand-ins, fresh per call.</summary>
     public static ContentTypeRegistry Types() => InstanceValidationFixtures.Types();
 
     /// <summary>The v1 property registry, fresh per call, so no test registers into another's.</summary>

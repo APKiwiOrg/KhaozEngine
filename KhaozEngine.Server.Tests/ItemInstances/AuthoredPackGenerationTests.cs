@@ -245,7 +245,7 @@ public sealed class AuthoredPackGenerationTests
         Assert.Null(finding.Reason);
     }
 
-    /// <summary>The registry a server builds: the six engine types plus the eighteen of the band.</summary>
+    /// <summary>The registry a server builds: every engine type plus the eighteen of the band.</summary>
     static ContentTypeRegistry Registry(ModCandidateTablesIndex index)
     {
         var registry = new ContentTypeRegistry();

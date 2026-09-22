@@ -215,10 +215,19 @@ a publish is the state the marker describes. Call `ClearDraftFreezeAsync` when s
 ### Ids come from the edit, not from the caller
 
 There is ONE allocation path with two sources, and which one runs is a property of the edit. An `Add` with
-`definition_id` 0 is allocated one, an `Add` carrying a non-zero id keeps it, and only a bulk import into an
-empty database writes the second kind. After every add has an id, the high-water marks are SEEDED from the
-largest carried id per type, so the first ordinary add after an import does not allocate id 1 straight onto
-an imported row. `ContentIdAllocationRecord.Seeds` is empty for an ordinary publish.
+`definition_id` 0 is allocated one, an `Add` carrying a non-zero id keeps it, and two paths write the second
+kind and no others: a bulk import into an empty database, and a content upgrade adding a row the committed
+bundle already names by id. Both carry the number because a game states a definition id as a code constant,
+and the allocator's durable mark sits above the highest row id whenever an earlier publish was refused after
+it reserved. After every add has an id, the high-water marks are SEEDED from the largest carried id per type,
+so the first ordinary add after one of those does not allocate id 1 straight onto a row that already holds
+it. `ContentIdAllocationRecord.Seeds` is empty for an ordinary publish.
+
+A carried id is checked before the candidate is built, because step 3's seeding commits on its own and a
+refusal after it would leave the marks raised for a version nobody published. The publish refuses a carried
+id that a live or retired row already holds, one a second add in the same draft names, one over the type's
+declared ceiling, and one that disagrees with the type's family blocks, under `KEC0036`, `KEC0042` and
+`KEC0037`.
 
 Allocation runs BEFORE validation, because `KEC0006` resolves references and `KEC0010` asks about family
 membership, and neither can be asked of a row whose id does not exist yet.
@@ -492,6 +501,293 @@ atomically with its audit".
 minimum builds, the format generation, the publisher and the note. A published version is immutable from the
 moment its transaction commits, so there is no sealed flag. Holding a version back from a restart is the
 operator's PIN instead.
+
+## The content upgrade ledger
+
+`IContentUpgradeLedger` is a SEPARATE seam from `IContentAuthoringStore`, whose member list is fixed. The
+in-memory store and both providers implement it, and a provider holds it as the `catalog_content_upgrade`
+table schema version 2 adds.
+
+A `ContentUpgradeRecord` says which upgrade the catalog holds (`ContentUpgradeStamp`, a stable id of 1 to 128
+ordinal characters and a positive order), how it came to hold it, and at which version:
+
+- `Applied` means a runner published the upgrade's edits. The ledger row is written INSIDE the publish commit
+  from `ContentPublishRequest.Upgrade`, so the version and its history entry land together or neither does,
+  and a second publish of one upgrade id is refused whole with reason `upgrade-already-recorded`.
+- `Adopted` means the content was already present, so nothing was published.
+- `Baseline` means the catalog was seeded from a bundle that already carried the content.
+
+`RecordUpgradeAsync` writes the other two, with the ledger row and one `content-upgrade` audit row in one
+transaction. It refuses `Applied`, because only a publish commit can say a version was published, and
+recording an id the ledger already holds is a no-op, so a crash between a seed and its baseline record is
+resolved by running the record again. `ListUpgradesAsync` reads ascending by order and then by id.
+
+Engine package versions and published version numbers are not migration history. A version number says how
+many publishes happened, not which upgrades ran, and a convention over version notes cannot tell "applied,
+then tuned back" from "never applied".
+
+## Upgrade definitions and the runner
+
+A game build registers a new content type or needs new rows. A fresh install seeds the current bundle and
+works. An existing catalog still holds the older content, the strict runtime load refuses it correctly and
+fail closed, and the host exits before it opens a socket. The lifecycle here is what turns that into an
+ordinary step: versioned upgrade definitions shipped with the application, applied before the strict load,
+with durable history in the ledger above.
+
+**The engine owns the orchestration and a game owns only its definitions.** There is no game noun and no game
+content anywhere in this package.
+
+`ContentUpgradeDefinition` is a stable id, an `Order`, an operator-readable description, and a PLANNER. The
+id is the ledger's primary key, so it is stable forever and never reused: renaming one reruns it against every
+catalog in the field. `ContentUpgradeSet` is what a build ships, ordered ascending and validated whole at
+construction, because two definitions under one id would have the ledger record one and skip the other
+forever.
+
+**The identity is the id and never the order.** An order decides which of two PENDING definitions runs first
+and nothing else, so two shapes that look wrong are allowed and each one only adds an informational
+diagnostic:
+
+| What | Code | Why it is allowed |
+|---|---|---|
+| A shipped definition whose `Order` differs from the order the ledger recorded it under | `KECU0014` | The ledger holds the id, so the catalog already carries the upgrade and it never runs again. |
+| A pending definition ordered below one the catalog already holds, or below one a recovered draft makes this run publish first | `KECU0015` | Two feature branches merging produces both. The pending one has not run, so it runs now, against the catalog as it stands. |
+
+Two definitions sharing an id or an order in ONE set is still an `ArgumentException` at construction, because
+that is a build shipping an ambiguity rather than a catalog carrying a history.
+
+A planner is a pure function of `ContentUpgradeContext`, which carries the baseline version number, that
+version exported as a whole `ContentBundle`, and the frozen registry. It performs no I/O and returns one of
+three shapes:
+
+| Shape | Built with | What the runner does |
+|---|---|---|
+| Changes | `ContentUpgradePlan.Changes(edits, changeLines)` | Publishes the edits as ONE version stamped with the definition's id. |
+| Already satisfied | `ContentUpgradePlan.AlreadySatisfied(reason)` | Records the id as `Adopted`. No version is published. |
+| Refused | `ContentUpgradePlan.Refused(reason)` | Stops the run. Nothing is changed by that definition. |
+
+An empty edit list under `Changes` is an `ArgumentException`, because a planner with nothing to do is saying
+one of the other two.
+
+### The rules a planner follows
+
+1. **Detect by identity, never by value.** A row present under the committed id and the committed key is
+   present whatever its fields hold, because those fields may be operator tuning an upgrade has no business
+   reverting.
+2. **A value patch names the old shipped default it replaces.** A field already holding the new value is
+   satisfied, a field holding the named old default is patched, and a field holding anything else belongs to
+   an operator and is left exactly as it is.
+3. **A LIST is appended to by element, never patched by value.** A tag list an operator has extended equals
+   no default this build ever shipped, so a patch would leave that row unappended forever. `AppendTag` reads
+   the list the row holds, and a list already carrying the element is satisfied while a list without it is
+   written back with the element at the END. Every element already there keeps its position, nothing is
+   sorted and nothing is deduplicated. A field whose schema kind is not a tag list is refused, and so is a
+   tag id that is not a live tag row of the baseline or a tag row the same plan adds, which is exactly what
+   the publish validator accepts in a list. A retired tag row is not one of them.
+4. **A partial state is refused rather than completed.** Completing the remainder guesses which of the
+   existing rows an operator owns, and that guess is unrecoverable once it publishes. Every verb counts
+   toward the same satisfied and pending tallies, so a build saying "these six rows each get this tag, all
+   six or none" states it as six appends and gets a refusal on a mixed catalog.
+5. **One row is one edit.** A draft holds one pending intent per row, so the builder merges every patch and
+   every append of one row into a single update carrying all the changed fields, in the order they were
+   staged.
+
+A staging a draft could not hold verbatim is an `ArgumentException` from the builder, which the runner
+reports as an ordinary refusal: one field written twice under either `PatchField` or `AppendTag`, a row both
+written and retired, and one row staged twice under either verb. None of them has a single answer the draft
+could keep, and a plan that emitted two edits of one row would lose one at the store and then fail its own
+recovery check for good. Appending to a row the same plan ADDS is refused as well, because the catalog holds
+no such row yet and the values it is created with are the committed bundle's.
+
+`ContentUpgradeChecks` and `ContentUpgradePlanBuilder` are those rules as code, generic over the types and
+keys a caller passes. The checks are the ones the first hand-written catalog upgrade command proved: the
+committed target bundle agrees with this build's registry, every baseline type is schema compatible with the
+target, an identity is absent or present under BOTH the same id and the same key (anything else is a
+conflict), and plain allocation will issue exactly the committed ids, contiguously from the type's current
+highest row id. A type with id families is refused outright, because a family allocates from aligned blocks
+and nothing here can prove which id a member would be issued.
+
+Every check ANSWERS a refusal string rather than throwing, because the run reports catalog state to an
+operator and a stack trace is not an instruction. A planner that throws `InvalidDataException`,
+`ContentAuthoringException` or `ArgumentException` is still reported as a refusal, which is the shape a
+hand-written check already has.
+
+```csharp
+var definition = new ContentUpgradeDefinition(
+    id: "2026-09-add-recipe-type",
+    order: 4,
+    description: "adds the recipe type's rows",
+    plan: context => new ContentUpgradePlanBuilder(context, ShippedBundle)
+        .AddRows([new ContentUpgradeIdentity(recipeType, new ContentKey("iron_bar"))])
+        .AppendTag(itemType, new ContentKey("iron_ore"), "tags", smeltableTagId)
+        .RetireRow(recipeType, new ContentKey("iron_ingot"), ContentRetirePolicy.Placeholder)
+        .Build());
+
+ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
+    store, registry, new ContentUpgradeSet(definition),
+    new ContentUpgradeOptions(ContentUpgradeMode.Apply, actor, operatorId, serverBuild, clientBuild));
+```
+
+### What the runner does, in order
+
+1. A store implementing no `IContentUpgradeLedger` is `Unsupported`. No history means an upgrade reapplies
+   its defaults over an operator's values on the next run.
+2. No active version is `NoCatalog`. **The runner never seeds.** It is a SUCCESS, and a host that seeds its
+   bundle calls `ContentUpgradeRunner.RecordBaselineAsync` straight after, which records every shipped
+   definition as `Baseline`. A crash between the two is safe: the next run finds each definition satisfied and
+   records it as `Adopted` instead.
+3. A ledger id this build does not ship is `CatalogAheadOfBuild`, with nothing changed.
+4. Pending means shipped and not in the ledger. None pending is `UpToDate` and writes **nothing**: no draft,
+   no version, no audit row, no ledger row.
+5. An open draft is the runner's OWN only when three things hold together: the actor matches, the note is
+   `content upgrade <id>` naming a pending upgrade, and the draft's expanded edits are exactly what a fresh
+   plan of that definition produces against the current active version. The actor and the note alone are not
+   proof, because both stores keep the standing note when a writer passes none and neither rewrites the
+   identity that opened the draft, so an operator's edit lands under both. Such a draft is PUBLISHED as it
+   stands, and its definition runs FIRST, ahead of any pending upgrade ordered below it, because only that
+   definition can publish the draft that is standing and every other one would read it as a rival
+   publisher's. The jump is reported as `KECU0015` and changes nothing else: each definition is still planned
+   against a baseline exported at the version active right then. It is never discarded first and a marker
+   found standing over it is never cleared on sight: a marker naming the active version is a live publish or
+   a dead one and nothing on the seam tells them apart, and a publish is the store's own recovery for a dead
+   one. The publish path freezes the draft for itself and proves it again under that marker before taking it,
+   which the two draft proofs below set out. Any other open draft is operator work: `OperatorDraftOpen`,
+   draft untouched. The
+   publish pre-flight asks the same question, so a draft that appears after this step is answered the same
+   way, and only another runner's is waited out. What may be DISCARDED is a separate and weaker question,
+   answered below under the two draft proofs.
+6. A pin on another version is `PinnedElsewhere`. A pin on the active version does not block the publish, the
+   pin is never moved, and the report carries a `PinHeld` diagnostic naming the version to repin to.
+7. A supplied `ExpectedVersion` that is not the active version is `BaselineMoved`. It is checked again at
+   EVERY later re-read of the active version, so a run that stood off and came back to a version a rival left
+   stops rather than publishing onto a baseline nobody previewed. Only a version this run published itself is
+   not a move.
+8. Each pending definition runs in ascending order, after any definition whose draft step 5 recovered, and
+   publishes as its OWN version, so history shows each
+   upgrade separately and an interruption between two of them resumes at the second. The planner is handed a
+   bundle exported at the version active right then, so the second definition sees the first one's result.
+   The minimum builds rise to at least the running build's ordinals and never fall below the baseline's.
+9. After ANY publish failure the run READS the ledger and reports the disposition the row holds, which is
+   `Adopted` when a rival found the catalog already satisfied and published no version at all. It discards a
+   draft only under one of the two proofs below, and a `publish-in-progress` refusal means a rival is live,
+   so the draft is left alone and the run stands off. A refusal over a draft that is NOT this plan says
+   nothing about this plan, so that draft is resolved and the upgrade is tried again rather than blamed. An
+   exception thrown after the commit point and a refusal before it look identical from outside, and only the
+   ledger tells them apart.
+10. `Preview` writes nothing. It plans the first pending definition exactly and says which disposition an
+    APPLY would record, because a definition the catalog already carries publishes no version at all and a
+    preview that called that a plan left an operator to find out by running the apply. The step state is
+    `WouldPublish` when the apply would publish a new version with the change lines the step holds, and
+    `WouldAdopt` when the content is already present and the apply would write one adopted ledger row and
+    publish nothing. `ContentUpgradeStepResult.WouldRecord` answers the same thing in the ledger's own
+    vocabulary, so the preview and the row the apply writes read alike. The rest are listed as pending
+    carrying the reason they did not run, because a later plan depends on the published result of an
+    earlier one.
+
+Every refusal carries a stable `KECU` code beside a message naming the catalog, the upgrade id and the next
+action, and `ContentUpgradeReport.WriteTo` renders every line through `ContentBoot.LinePrefix`.
+`ContentUpgradeReport.ExitCode` is 0 on a success and `ContentBootResult.ContentFailureExitCode` otherwise.
+
+### The two draft proofs
+
+`ContentUpgradeDraftMatch` holds both, and they authorise different acts.
+
+| Act | Proof | What it asks |
+|---|---|---|
+| Publish a draft this attempt did not write whole | `IsPlan` | The draft holds EXACTLY one definition's change set: the same count, one edit per planned target under the same type, operation, definition id and key, and the same payload on each. |
+| Discard a draft that is in the way | `IsKnownWork` | EVERY edit the draft holds is, by that same identity and payload comparison, an edit of some plan this run computed. |
+
+The known set is every plan the run computed during the run plus a fresh replan of each still-pending
+definition. One edit outside it means the draft may hold work an operator authored, and the draft is left
+exactly as it stands under `OperatorDraftOpen`. A draft that is exactly the plan of a definition still
+PENDING is not discarded either, because that is the shape a rival holds between its own write and its own
+publish, and it is waited out. A frozen draft is never discarded at all. So the discard proof is strictly
+weaker than the publish proof, and it destroys nothing an operator had authored **as of the read it was
+computed over**.
+
+It exists for one draft: the one two runners' writes merged into. A write into the draft is not atomic with
+the read that found none, and a store's write APPENDS into whatever draft is open, so a rival that reached
+its own write inside that window leaves the single draft holding two definitions' edits under one actor and
+one note. It is nobody's plan, so nobody may publish it, and without the second proof nobody could discard it
+either: both runners read it as the other's live work and stood off until their patience ran out.
+
+### What is closed and what is only narrowed
+
+Three windows sit between a run's reads and its writes. One is closed and two are not.
+
+1. **Publish. CLOSED, by a freeze and a re-proof.** Every publish the runner performs calls `FreezeDraftAsync`
+   with the version the plan was computed against, re-reads the open draft under that marker, and publishes
+   only when it is exactly this definition's plan on that base version. While the marker stands the store
+   refuses `ApplyEditsAsync` and `DiscardDraftAsync`, so what was proved is what is published. The rule for
+   the marker is the whole of it: the runner freezes only a draft it has just read as exactly its own plan,
+   and it releases the marker on every attempt that froze and did not publish, including a cancelled token
+   and a fault of a type this package does not report on, because a run that stops for an operator must not
+   hand back a draft they can neither edit nor discard. What it releases is not always what it set.
+   `FreezeDraftAsync` OVERWRITES and carries no identity, so a publisher that froze the same draft in the gap
+   between the runner's read and the runner's own freeze has already lost its marker to the runner's. A rival
+   RUNNER loses nothing by that, because its own re-proof under its own freeze refuses a contaminated draft
+   exactly as this one did. The admin console's publish takes whatever is drafted with no plan proof at all,
+   and that is the third residue below.
+2. **Discard. NARROWED, not closed.** `DiscardDraftAsync` is refused while a freeze stands, so the marker
+   that closes the publish window is the one thing that cannot guard this one, and the proof stays check then
+   act. It is as narrow as the seam allows: the run re-reads the draft and re-proves `IsKnownWork` over
+   exactly what that read returned, with nothing awaited between the read and the discard.
+3. **Apply. NARROWED, not closed.** The ledger is re-read for this definition immediately before the write,
+   and a recorded id is adopted rather than written again. The `ContentDraft` the write RETURNS decides what
+   happens next, not the edits that went in, so a draft that is not exactly this plan, or one that opened on
+   a different base version, is never published. A draft the run may not publish is RESOLVED before it is
+   judged, so only a draft the run cannot prove is classified as a rival's to wait out or an operator's to
+   report.
+
+Three residues remain. The first two are one store round trip wide.
+
+- An operator edit landing between the known-work proof and the discard it authorised is lost.
+- An operator edit on the SAME target under the SAME operation as one of the run's planned edits, written
+  into the window where the run had seen no draft, is replaced by the run's own apply. A change set holds one
+  pending intent per row, so the second write of a target takes the first one's place.
+- A CONSOLE publish that froze the same draft in the gap between the runner's read and the runner's own
+  freeze loses its marker. The runner reads the draft as exactly its own plan, an operator edit lands, the
+  console's publish freezes the draft, the runner freezes over that marker, re-reads, fails its re-proof on
+  the changed draft and releases what stands. A further operator edit on a target inside the console
+  publish's own frozen edit set is then accepted, and that publish's commit deletes it unpublished.
+
+They are accepted rather than closed because of where the runner runs. A hosted upgrade runs in a maintenance
+window with editing AND console publishing stopped, and a local automatic boot has no operator at the
+keyboard at all. **A game whose admin console writes under the same actor string as its upgrade runner
+weakens every proof here**, because the actor is the first half of each of them, so the upgrade actor must be
+dedicated to the runner and used by nothing else.
+
+Clearing a draft this way is informational rather than a failure: `KECU0016` names the edit count and the
+version, and the upgrade is tried again against the re-read baseline. The worst an interleaving costs is a
+replan and a burnt version number.
+
+Contention with a second runner is waited out rather than reported. Two replicas booting together is an
+ordinary deployment and a boot that lost a race is a real outage, so a run stands off while another publish
+holds the one draft and replans when it is free. The ledger's primary key is what makes standing off safe: an
+upgrade that did land cannot be published a second time, and carried ids make two runners' plans for one
+definition identical so the commit's version confirmation lets exactly one win.
+
+The patience is spent on a catalog that is NOT MOVING rather than on a clock. Every wait reads the ledger,
+the active version and the open draft, and a rival that moved any of them buys the attempt count back, so a
+loaded machine cannot turn a correct run into a failure. A provider fault counts as contention only when the
+provider calls it transient, so a permissions or connectivity failure costs one attempt and is reported as
+`KECU0009` naming the upgrade, the operation and the next step.
+
+The patience is bounded twice. A catalog that never moves gives up after a little over thirty seconds, and
+the ceiling standing behind it is four of those budgets, so a rival that keeps making progress can hold one
+definition for about two minutes before the run fails. That is the worst case per pending definition, and a
+run with no rival pays none of it.
+
+### Host integration
+
+- **Local arm.** Open under `AutoCreate`. Seed and call `RecordBaselineAsync` when the report is `NoCatalog`,
+  otherwise run `Apply`, then perform the strict load. A failed report stops the host with the report text and
+  its exit code.
+- **Hosted arm.** A dependent server never upgrades implicitly. A deploy step runs the game's upgrade command
+  in `Preview`, then in `Apply` with `ExpectedVersion` set to the version it previewed, before the server
+  starts. A server booting against a catalog with pending upgrades refuses with the pending ids and the
+  command to run.
+- **Solo client.** A host that fails before listening hands its report to the client, which shows it on screen
+  instead of retrying a join that cannot succeed. The launching mechanism is game owned.
 
 ## The bundle
 

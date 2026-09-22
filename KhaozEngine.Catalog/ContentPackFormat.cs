@@ -27,8 +27,21 @@ public static class ContentPackFormat
     /// bump: a game that changed nothing of its own would otherwise have no way to say that the engine
     /// underneath it did. A reader whose generation is below a manifest's refuses on the same side and in
     /// the same way as a build minimum, the server at boot and the client at the door.
+    /// <para>
+    /// <b>Generation 2 is the <c>item</c> row gaining its trailing <c>category</c> field.</b> A generation 1
+    /// reader stops one field short of the end of every item row a generation 2 publish writes and refuses the
+    /// whole chunk, so the rule's test is met: it would be WRONG rather than merely older. Bumping the constant
+    /// moves that refusal to the manifest, where it reads as "this pack needs a newer build" instead of as a
+    /// malformed row deep in a chunk load.
+    /// </para>
+    /// <para>
+    /// It does not invalidate anything already published. A reader compares its own generation against the
+    /// manifest's and refuses only a manifest that is AHEAD of it, so a generation 2 build reads every
+    /// generation 1 pack. What it does mean is that the first version a consumer publishes after adopting this
+    /// engine is refused by its own older clients, which is the announcement this number exists to make.
+    /// </para>
     /// </summary>
-    public const int Generation = 1;
+    public const int Generation = 2;
 
     /// <summary>
     /// Folded into every digest, and bumped on any canonicalisation change, on purpose: bumping it

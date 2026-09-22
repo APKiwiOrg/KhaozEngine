@@ -74,6 +74,14 @@ public sealed partial class TileWorldClient : IDisposable
     /// less.</exception>
     public TileWorldClient(INetTransport transport, TileWorldClientConfig config, TileCollisionMap map,
         ITileTargets? targets = null, byte[]? connectToken = null, ReplicationRegistry? registry = null)
+        : this(transport, config, map, targets, connectToken, registry, null)
+    {
+    }
+
+    /// <summary>Builds a tile client with an optional per-entity interaction reach policy.</summary>
+    public TileWorldClient(INetTransport transport, TileWorldClientConfig config, TileCollisionMap map,
+        ITileTargets? targets, byte[]? connectToken, ReplicationRegistry? registry,
+        Func<long, TileInteractionReachPolicy>? entityInteractionReachPolicy)
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(config);
@@ -88,7 +96,10 @@ public sealed partial class TileWorldClient : IDisposable
         // way, and the entity one is the very instance the simulator steps against, so the local body looks at the
         // point the rules resolved rather than at a second read of the same id.
         objectTargets = targets;
-        entityTargets = new TileRemoteTargets(this);
+        ITileTargets remoteTargets = new TileRemoteTargets(this);
+        entityTargets = entityInteractionReachPolicy is null
+            ? remoteTargets
+            : new TileInteractionPolicyTargets(remoteTargets, entityInteractionReachPolicy);
         delayedTargets = new DelayedRemoteTargets(this);
         Simulator = new TileMoveSimulator(map, config.StepTicks, targets, config.Move, entityTargets);
         Prediction = new ClientPrediction<TileMoveState, TileCommand>(new SelfBoundStepper(this),

@@ -134,11 +134,24 @@ public readonly ref struct ItemRow
             return false;
         }
 
-        // The walk covers every written field of spec 3.3's schema, so a body that has not landed exactly on
-        // its end is not an item row, whatever the fields before that read as.
+        // The walk above is exactly ItemContentType.BaselineFieldCount fields, the list the type first shipped
+        // with, and what follows is ContentRowTailRule's tail: ONE appended field, `category`. A body that
+        // ends HERE is a row written before the schema gained it, or one written after that leaves it unset,
+        // which the canonical short encode makes the same bytes. A body that carries more must carry exactly
+        // that one varint, it must be NON ZERO because the zero form is what the short encode omits, and the
+        // body must land exactly on its end. Ending anywhere EARLIER is refused above, field by field.
+        //
+        // ItemRowTailAgreementTests holds this walk to the registered codec over every tail shape and asserts
+        // the item schema is still BaselineFieldCount + 1 fields. Appending a second field turns that red,
+        // which is the intended way for the next contributor to find this line.
         if (offset != span.Length)
         {
-            return false;
+            if (!ContentVarint.TryRead(span, ref offset, out uint category, out _)
+                || offset != span.Length
+                || category == 0)
+            {
+                return false;
+            }
         }
 
         row = new ItemRow(

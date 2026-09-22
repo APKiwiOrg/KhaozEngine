@@ -46,11 +46,18 @@ public static class ServerStatusReadoutKeys
     /// <summary>The operator message-of-the-day, when set. Raw type string?.</summary>
     public const string Motd = "motd";
 
+    /// <summary>
+    /// The address the publisher says the server is reachable at, once it has passed
+    /// <see cref="ServerStatusReport.TryGetServerAddress"/>. Empty when unset or refused. Raw type
+    /// <see cref="System.Net.IPAddress"/>?.
+    /// </summary>
+    public const string ServerAddress = "serverAddress";
+
     /// <summary>Every key above, in the exact order <see cref="ServerStatusReadout.Build"/> emits rows.</summary>
     public static readonly IReadOnlyList<string> All = new[]
     {
         Health, ServerVersion, MinClientVersion, LatestClientVersion, ClientVersion,
-        LastHeartbeat, LastDeploy, ExpectedBack, Staleness, State, Motd,
+        LastHeartbeat, LastDeploy, ExpectedBack, Staleness, State, Motd, ServerAddress,
     };
 }
 
@@ -67,7 +74,7 @@ public readonly record struct ServerStatusReadoutRow(string Key, string Value, o
 /// Builds the pure, ordered row list an in-game "server status" page renders. GPU-free and Gui-free by
 /// design: the engine ships the structure, a game supplies the labels (via <see cref="ServerStatusReadoutKeys"/>)
 /// and the Gui. <see cref="Build"/> takes no clock of its own (<c>nowUtc</c> is a parameter), does no IO, and
-/// always returns the same 11 rows in the same order, so it is fully deterministic and unit-testable.
+/// always returns the same 12 rows in the same order, so it is fully deterministic and unit-testable.
 ///
 /// <para>Every row is always present, even when its data is missing (no report ever, an optional field left
 /// unset, or an ETA that is not applicable to the current state): a missing value is an empty
@@ -133,6 +140,10 @@ public static class ServerStatusReadout
                 staleness),
             new ServerStatusReadoutRow(ServerStatusReadoutKeys.State, view.State.ToString(), view.State),
             new ServerStatusReadoutRow(ServerStatusReadoutKeys.Motd, view.Motd ?? "", view.Motd),
+            new ServerStatusReadoutRow(
+                ServerStatusReadoutKeys.ServerAddress,
+                view.ServerAddress?.ToString() ?? "",
+                view.ServerAddress),
         };
     }
 

@@ -89,7 +89,9 @@ namespace KhaozEngine.MapEditor
         /// can drain its write queue.
         /// </summary>
         public EditorRecentFiles(string publisher, string appName)
-            : this(new GameStorage(publisher, appName))
+            // Plaintext by choice: this storage only ever writes the recents list through Settings, which
+            // are plaintext under either posture, and never a game save.
+            : this(new GameStorage(publisher, appName, SaveEncoding.Plaintext))
         {
         }
 

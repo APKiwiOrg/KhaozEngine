@@ -3401,8 +3401,13 @@ in the first place:
 - A row that NAMES an id is imported with it. `catalog-import` writes an `Add` edit carrying the
   `definition_id`, step 3 of the publish skips allocation for it, and the type's high-water marks are seeded
   from the largest carried id afterwards. This is the case that makes an adoption a no-op for stored data, it
-  is contracts 5.1's narrow exception (CCR-2), and it is why the exception is licensed only into an empty
-  database: nothing is there to collide with.
+  is contracts 5.1's narrow exception (CCR-2), and it is why the import half of the exception is licensed
+  only into an empty database: nothing is there to collide with.
+- The other path that carries an id is a CONTENT UPGRADE, which adds a row the committed bundle already names
+  and therefore has to write that number rather than a number a counter happens to issue next. It runs against
+  a populated catalog, so the publish checks each carried id before the candidate is built and refuses one a
+  live or retired row holds, one a second add in the same draft names, one over the type's ceiling and one
+  that disagrees with the type's family blocks.
 - A row that names NO id is allocated one in edit ordinal order, so the bundle's row order determines the ids.
 
 Both run through one path, `catalog-import` producing a draft of `Add` edits and `catalog-publish` publishing

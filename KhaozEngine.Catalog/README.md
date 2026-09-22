@@ -107,17 +107,17 @@ var key = new ContentKey(rowBlob, start, length);       // no string materialise
   array. An unpaired surrogate in that string becomes the replacement character, matching a UTF-8
   encode and decode. Runtime callers holding row bytes use the byte-span overload.
 
-## The six engine content types
+## The seven engine content types
 
-`EngineContentTypes.Register(registry)` registers all six, once, before any pack loads. It carries their
+`EngineContentTypes.Register(registry)` registers all seven, once, before any pack loads. It carries their
 stable ids and keys, plus the two type keys the engine writes down and a GAME registers under,
 `equip_profile` and `socket_type`.
 
 - `TagContentType` - `tag`, id 1, the tag vocabulary contracts 4.6 makes content rather than strings. A
   derived name and the console's `sort` order, nothing else.
 - `ItemContentType` - `item`, id 2, the item base of spec 3.3: tags, stacking, tradability, value, three
-  asset references, the two icon-shot angles, durability, the socket CAP and the late-bound equip profile.
-  `IsAssetReference` is the shape it enforces, at most 128 bytes of `a-z0-9_./-`.
+  asset references, the two icon-shot angles, durability, the socket CAP, the late-bound equip profile and
+  the optional `category`. `IsAssetReference` is the shape it enforces, at most 128 bytes of `a-z0-9_./-`.
 - `StatContentType` - `stat`, id 3, contracts 13.1's table. A fixed power-of-ten `scale` with the stored
   integer scaled by it, so there is no float stat and no float modifier anywhere.
 - `LootTableContentType` - `loot_table`, id 4, `ServerOnly` at the type level, so the whole family is omitted
@@ -129,6 +129,75 @@ stable ids and keys, plus the two type keys the engine writes down and a GAME re
   would make `roll_count` meaningless on the table that set it.
 - `BaseSocketContentType` - `base_socket`, id 6, one socket an item base is authored WITH, in authored order,
   which `item.socket_max` caps rather than describes.
+- `ItemCategoryContentType` - `item_category`, id 7, the coarse bucket `item.category` names. The tag type's
+  shape exactly, a derived name and a `sort`, and it sits beside tags because a tag list is many per row and
+  reads as a predicate while a category is one per row and reads as a grouped listing. The engine ships no
+  category rows: a game publishes the vocabulary it wants and an item that belongs to none leaves the field
+  absent.
+
+### Adding a field to an engine type
+
+A type's field list may gain OPTIONAL fields at the END and nothing else. A row body is a positional walk, so
+inserting a field anywhere earlier moves every field after it and repoints every published row. `item.category`
+is the first field the engine has added this way and the rule it established. `ContentRowTailRule` owns it,
+`ContentFieldSchema.BaselineFieldCount` is what a type declares to opt in, and a schema that declares no
+baseline is entirely baseline, which is every type that has never gained a field.
+
+- **The baseline is the field count the type FIRST SHIPPED with**, `ItemContentType.BaselineFieldCount` is 16,
+  and it never moves again. Fields from that index on were appended later and must be optional, which
+  `ContentFieldSchema` refuses at declaration rather than leaving to a code review.
+- **ENCODE is canonical and SHORT.** Every baseline field is written, always. An appended field is written only
+  when it or a later appended field carries a value, so a row that sets none of them encodes to the bytes the
+  type's first release produced, BYTE FOR BYTE. A publish after an append therefore costs nothing at all on a
+  row that does not use the new field, and every untouched chunk keeps its hash.
+- **DECODE may end at the baseline boundary and never inside it.** A body that runs out at or after the
+  baseline is an older row and the rest of its fields come back absent, which is what lets a published version,
+  a carried-forward chunk and a shipped client pack keep reading under a longer schema. A body that runs out
+  INSIDE the baseline is refused with the token it always was, including at the boundary of an optional
+  baseline field, so a corrupt row cannot pass as a short one.
+- **The redundant long form is REFUSED**, with `field-malformed`, the same token a single trailing byte takes.
+  A body whose last appended field is the zero form is a second encoding of a row that already has one, and a
+  content-addressed format cannot carry two byte strings for one row. The release that appends a field is the
+  first that could write such a body, so nothing is being taken away.
+- **The zero form is a per KIND question and `ContentFieldValue.IsZeroForm` is the one place it is asked.**
+  True for absent, for a zero number and for empty bytes. The tail scan asks it rather than `IsAbsent`:
+  absence and zero are the same byte, and the decoder reports an optional field reading as zero back as
+  absent, so a scan on absence would keep a trailing explicit zero and give one row two chunk hashes.
+- **`ContentPackRebuild` of a version published under the shorter field list reproduces its recorded manifest
+  digests**, because the rows re-encode to the bytes they were published as. That matters: a rebuild is how a
+  server recovers the pack of the version it is about to boot, so a refusal there is a refused boot.
+- **The authoring store needs no migration.** `catalog_type` holds a type row and `catalog_row_field` holds a
+  row per field NAME, so neither carries a per-type column list to move.
+- **`ContentPackFormat.Generation` moves with the field**, because an older reader stops one field short of the
+  end of a row that sets the new field and would be wrong rather than merely older.
+
+### Adding a TYPE is a different and larger event
+
+Appending a field is transparent to an existing version. Registering a new content type is not, and the two
+should not be confused:
+
+- A manifest hash covers the REGISTRATION SET, not only the chunks, because a boot refuses a version whose
+  manifest does not name every type this build registers (`ContentBoot` step 6, `TypeAbsentFromVersion`). That
+  refusal is what makes an empty registered type distinguishable from a type the pack predates.
+- So a build that registers a new type cannot boot, and cannot rebuild, a version published before that type
+  existed. **A consumer adopting a release that adds an engine type republishes once under the new registry
+  before the new build serves.** Nothing needs authoring in that publish: every existing chunk carries forward
+  at its old hash and only the manifest is new.
+- In the same direction, an older build cannot read a version published by a registry that has the new type:
+  its manifest names a type the older build does not register, which is the first half of the same step 6
+  check.
+
+### A `Generation` bump permanently retires pack rebuild for older versions
+
+Worth knowing before reaching for the constant. `ContentManifestBuilder` stamps `ContentPackFormat.Generation`
+into every manifest it builds, and `ContentPackRebuild` rebuilds both manifests through that same builder and
+compares their digests against the ones the version record holds. A manifest rebuilt at generation N+1 cannot
+digest to one published at generation N, so **every generation bump makes pack rebuild refuse for every
+version published before it, forever, whatever the rows do.**
+
+In this release that costs nothing extra, because those versions already refuse on the missing `item_category`
+type. It is a standing cost of any future bump on a release that adds no type, and it is a reason to spend the
+number only when an older reader really would be WRONG rather than merely older.
 
 ## The four pack formats
 
@@ -194,7 +263,9 @@ decoder is also fuzzed against.
 - `ItemRow` - the typed view over the engine `item` type, and the only typed view in the catalog: a
   `ref struct` over the row body with `stackable`, `max_stack`, `value`, `durability_max` and `socket_max`
   decoded at construction, for the pricing, stacking and generation paths a field-by-name walk does not
-  budget for.
+  budget for. It walks the trailing fields it does not surface, `equip_profile` and `category`, and it
+  accepts a body that ends where an earlier field list ended. Read `category` off `ContentRow` instead: it is
+  a grouped-listing field rather than a per-operation one.
 
 ## The loaded runtime
 

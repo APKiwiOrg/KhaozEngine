@@ -160,9 +160,19 @@ static class ContentCandidateBuilder
             case ContentEditOperation.Add:
                 ContentCandidateRow added = NewRow(registration, edit, ordinal, version);
                 pendingByKey[(registration.Type.Value, edit.Key)] = rows.Count;
-                if (added.DefinitionId != 0)
+                // Added rather than assigned: the map entry is the row a later Update, Retire or Fork of that
+                // id resolves to, so an assignment would let a carried add take a base row's place silently.
+                // ContentCarriedIdChecks refuses every occupied carried id before this walk runs, so this
+                // refusal is unreachable, and it is here so that it stays a refusal if that ever changes.
+                if (added.DefinitionId != 0
+                    && !byId.TryAdd((registration.Type.Value, added.DefinitionId), rows.Count))
                 {
-                    byId[(registration.Type.Value, added.DefinitionId)] = rows.Count;
+                    throw new ContentAuthoringException(
+                        FormattableString.Invariant(
+                            $"Edit {ordinal} adds '{edit.Key}' to content type {registration.Type.Value} '{registration.TypeKey}' under definition id {added.DefinitionId}, which this candidate already carries a row for. An id is unique within its type and is never reused."),
+                        edit.Type,
+                        added.DefinitionId,
+                        ContentAuthoringException.EditTargetCollisionReason);
                 }
 
                 rows.Add(added);
@@ -399,7 +409,9 @@ static class ContentCandidateBuilder
         Overlay(registration, fields, edit.Fields, edit, ordinal);
 
         // The id is a property of the EDIT: an add carrying one keeps it, and one carrying 0 is allocated
-        // at step 3. Only a bulk import into an empty database writes the first kind.
+        // at step 3. Two paths write the first kind and no others, a bulk import and a content upgrade, and
+        // both do it because the committed bundle already names the row by that id.
+        // ContentCarriedIdChecks has refused every carried id that is not free before this walk runs.
         bool carried = edit.DefinitionId != 0;
         return new ContentCandidateRow
         {

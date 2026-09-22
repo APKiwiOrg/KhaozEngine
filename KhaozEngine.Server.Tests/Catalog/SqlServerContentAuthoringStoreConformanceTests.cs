@@ -134,8 +134,8 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
-    public override Task Fact01_AutoCreateOnAnEmptyStoreCreatesTheSchemaAndReportsVersionOne()
-        => base.Fact01_AutoCreateOnAnEmptyStoreCreatesTheSchemaAndReportsVersionOne();
+    public override Task Fact01_AutoCreateOnAnEmptyStoreCreatesTheSchemaAndReportsTheCurrentVersion()
+        => base.Fact01_AutoCreateOnAnEmptyStoreCreatesTheSchemaAndReportsTheCurrentVersion();
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
@@ -286,4 +286,134 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     [CatalogSqlServerFact]
     public override Task EveryProviderPublishesAnEmptyLanguageListWhichIsWhatARebuildReliesOn()
         => base.EveryProviderPublishesAnEmptyLanguageListWhichIsWhatARebuildReliesOn();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ANewStoreHoldsAnEmptyUpgradeLedger()
+        => base.ANewStoreHoldsAnEmptyUpgradeLedger();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task AStampedPublishWritesOneAppliedRowCarryingThePublishedVersion()
+        => base.AStampedPublishWritesOneAppliedRowCarryingThePublishedVersion();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task AnUnstampedPublishWritesNoLedgerRow()
+        => base.AnUnstampedPublishWritesNoLedgerRow();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ASecondPublishOfOneUpgradeIdIsRefusedAndChangesNothing()
+        => base.ASecondPublishOfOneUpgradeIdIsRefusedAndChangesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task AnAdoptedAndABaselineUpgradeAreRecordedAgainstTheActiveVersion()
+        => base.AnAdoptedAndABaselineUpgradeAreRecordedAgainstTheActiveVersion();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task RecordingAnUpgradeTheLedgerAlreadyHoldsIsANoOp()
+        => base.RecordingAnUpgradeTheLedgerAlreadyHoldsIsANoOp();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task RecordingAnAppliedUpgradeIsRefused()
+        => base.RecordingAnAppliedUpgradeIsRefused();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheLedgerReadsAscendingByOrderThenId()
+        => base.TheLedgerReadsAscendingByOrderThenId();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerPublishesAPendingUpgradeAsItsOwnVersion()
+        => base.TheUpgradeRunnerPublishesAPendingUpgradeAsItsOwnVersion();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerWritesNothingOnceEveryUpgradeIsRecorded()
+        => base.TheUpgradeRunnerWritesNothingOnceEveryUpgradeIsRecorded();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerHasNothingToDoAfterAFreshInstallRecordsItsBaseline()
+        => base.TheUpgradeRunnerHasNothingToDoAfterAFreshInstallRecordsItsBaseline();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerPreviewSaysAnApplyWouldPublishAndWritesNothing()
+        => base.TheUpgradeRunnerPreviewSaysAnApplyWouldPublishAndWritesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerPreviewSaysAnApplyWouldOnlyRecordAnAlreadyPresentUpgrade()
+        => base.TheUpgradeRunnerPreviewSaysAnApplyWouldOnlyRecordAnAlreadyPresentUpgrade();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerRefusesWhileAnOperatorDraftIsOpen()
+        => base.TheUpgradeRunnerRefusesWhileAnOperatorDraftIsOpen();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerLeavesItsOwnDraftAloneOnceAnOperatorHasAddedToIt()
+        => base.TheUpgradeRunnerLeavesItsOwnDraftAloneOnceAnOperatorHasAddedToIt();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerRecoversFromAStaleWriteInsideItsOwnPublishWindow()
+        => base.TheUpgradeRunnerRecoversFromAStaleWriteInsideItsOwnPublishWindow();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TheUpgradeRunnerNeverPublishesAnOperatorEditThatLandsInItsPublishWindow()
+        => base.TheUpgradeRunnerNeverPublishesAnOperatorEditThatLandsInItsPublishWindow();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedAddIntoAPopulatedCatalogPublishesUnderExactlyThatId()
+        => base.ACarriedAddIntoAPopulatedCatalogPublishesUnderExactlyThatId();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedAddUnderABurntIdIsAcceptedAndPublishesUnderIt()
+        => base.ACarriedAddUnderABurntIdIsAcceptedAndPublishesUnderIt();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ADraftHoldingACarriedAddReadsBackWithItsIdIntact()
+        => base.ADraftHoldingACarriedAddReadsBackWithItsIdIntact();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedAddOnALiveRowsIdIsRefusedAndChangesNothing()
+        => base.ACarriedAddOnALiveRowsIdIsRefusedAndChangesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedAddOnARetiredRowsIdIsRefusedAndChangesNothing()
+        => base.ACarriedAddOnARetiredRowsIdIsRefusedAndChangesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TwoCarriedAddsOfOneIdInOneDraftAreRefusedAndChangeNothing()
+        => base.TwoCarriedAddsOfOneIdInOneDraftAreRefusedAndChangeNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedAddOverTheTypesCeilingIsRefusedAndChangesNothing()
+        => base.ACarriedAddOverTheTypesCeilingIsRefusedAndChangesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACarriedAddInsideAFamilysBlockNamingNoFamilyIsRefusedAndChangesNothing()
+        => base.ACarriedAddInsideAFamilysBlockNamingNoFamilyIsRefusedAndChangesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TwoRecordersOfOneUpgradeIdWriteExactlyOneRow()
+        => base.TwoRecordersOfOneUpgradeIdWriteExactlyOneRow();
 }

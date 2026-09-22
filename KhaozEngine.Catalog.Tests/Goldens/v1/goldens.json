@@ -159,6 +159,11 @@
                 "name": "equip_profile",
                 "kind": "KeyReference",
                 "number": 12
+              },
+              {
+                "name": "category",
+                "kind": "KeyReference",
+                "absent": true
               }
             ]
           },
@@ -244,6 +249,11 @@
               },
               {
                 "name": "equip_profile",
+                "kind": "KeyReference",
+                "absent": true
+              },
+              {
+                "name": "category",
                 "kind": "KeyReference",
                 "absent": true
               }
@@ -337,6 +347,11 @@
                 "name": "equip_profile",
                 "kind": "KeyReference",
                 "number": 12
+              },
+              {
+                "name": "category",
+                "kind": "KeyReference",
+                "absent": true
               }
             ]
           }

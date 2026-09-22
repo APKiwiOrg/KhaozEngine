@@ -3,8 +3,8 @@ using System;
 namespace KhaozEngine.Catalog;
 
 /// <summary>
-/// The six engine content types of spec 3.1, their stable ids and keys, and the ONE helper that registers
-/// them. Six ids out of the engine band's 255 are spent, which is deliberate headroom: an engine release
+/// The seven engine content types of spec 3.1, their stable ids and keys, and the ONE helper that registers
+/// them. Seven ids out of the engine band's 255 are spent, which is deliberate headroom: an engine release
 /// adding a type can never collide with a game's.
 /// <para>
 /// A caller registers through <see cref="Register"/> rather than by naming a band, because
@@ -50,6 +50,12 @@ public static class EngineContentTypes
     /// <summary>The base socket type's stable key.</summary>
     public const string BaseSocketTypeKey = "base_socket";
 
+    /// <summary>The coarse bucket an item base belongs to, type id 7.</summary>
+    public const ushort ItemCategoryTypeId = 7;
+
+    /// <summary>The item category type's stable key, which <c>item.category</c> points at.</summary>
+    public const string ItemCategoryTypeKey = "item_category";
+
     /// <summary>
     /// The type key <c>item.equip_profile</c> points at. The engine writes the key once, here, and a GAME
     /// registers a type under it in its own id range. With no type registered under the key the field must
@@ -65,10 +71,10 @@ public static class EngineContentTypes
     public const string SocketTypeTypeKey = "socket_type";
 
     /// <summary>
-    /// Registers all six engine types, once, at process start and before any pack loads.
+    /// Registers all seven engine types, once, at process start and before any pack loads.
     /// </summary>
     /// <exception cref="ContentRegistrationException">
-    /// The registry is frozen, or one of the six ids or keys is already taken, which a second call to this
+    /// The registry is frozen, or one of the seven ids or keys is already taken, which a second call to this
     /// helper on the same registry is.
     /// </exception>
     public static void Register(ContentTypeRegistry registry)
@@ -134,6 +140,16 @@ public static class EngineContentTypes
             BaseSocketContentType.DefaultChunkSlots,
             BaseSocketContentType.MaxRowBytes,
             static (type, schema) => new BaseSocketContentType.Codec(type, schema));
+
+        RegisterOne(
+            registry,
+            ItemCategoryTypeId,
+            ItemCategoryTypeKey,
+            ItemCategoryContentType.CreateSchema(),
+            ContentVisibility.Client,
+            ItemCategoryContentType.DefaultChunkSlots,
+            ContentPackFormat.DefaultMaxRowBytes,
+            static (type, schema) => new ItemCategoryContentType.Codec(type, schema));
     }
 
     static void RegisterOne(

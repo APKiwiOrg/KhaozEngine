@@ -99,7 +99,7 @@ internal sealed class BootPack : IDisposable
     ];
 
     /// <summary>Publishes a version into a fresh store and points at it.</summary>
-    /// <param name="registry">The registry to encode against, or null for the six engine types.</param>
+    /// <param name="registry">The registry to encode against, or null for every engine type.</param>
     /// <param name="rows">The rows to publish, or null for <see cref="CleanRows"/>.</param>
     public static async Task<BootPack> CreateAsync(
         ContentTypeRegistry? registry = null,

@@ -107,7 +107,7 @@ public sealed class ContentChunkRecord
 /// <summary>Where one new row's definition id came from, spec 6.3's one path with two sources.</summary>
 public enum ContentIdSource
 {
-    /// <summary>The edit CARRIED the id, which only a bulk import into an empty database writes.</summary>
+    /// <summary>The edit CARRIED the id, which a bulk import and a content upgrade write and nothing else.</summary>
     Carried = 0,
 
     /// <summary>The plain per-type counter issued it.</summary>

@@ -42,6 +42,21 @@ public readonly struct ContentFieldValue : IEquatable<ContentFieldValue>
     /// <summary>True when the row carries no value for this field, which a live required field may not be.</summary>
     public bool IsAbsent { get; }
 
+    /// <summary>
+    /// True when this value goes on the wire as the ZERO FORM of its kind, the single <c>00</c> byte an absent
+    /// field writes: a zero varint for an int, a scaled int, a bool or a key reference, a zero count for a tag
+    /// list, a zero length for opaque bytes, and nothing at all for a derived marker.
+    /// <para>
+    /// <b>Absence and zero share an encoding</b> (see <c>ContentRowCodecBase</c>), so a field an author left
+    /// empty and a field an author set to 0 are the same bytes, and the decoder resolves an optional field
+    /// reading as zero back to <see cref="IsAbsent"/>. Anything deciding what the BYTES will be has to ask
+    /// this rather than <see cref="IsAbsent"/>, or it will disagree with the decoder about a row it wrote
+    /// itself. That is one predicate for a canonical format, and it lives here because it is a fact about a
+    /// value rather than about any one caller.
+    /// </para>
+    /// </summary>
+    public bool IsZeroForm => IsAbsent || (Number == 0 && Bytes.Length == 0);
+
     /// <summary>A field the row does not carry, and the only form a derived marker ever takes.</summary>
     public static ContentFieldValue Absent(ContentFieldKind kind) => new(kind, 0, default, true);
 

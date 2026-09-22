@@ -5,7 +5,7 @@ using System.Text;
 namespace KhaozEngine.Catalog.SqlServer;
 
 /// <summary>
-/// Every schema object version 1 declares, by NAME, as five sets: the tables, the named indexes (the primary
+/// Every schema object the current version declares, by NAME, as five sets: the tables, the named indexes (the primary
 /// keys among them, since a primary key IS an index in <c>sys.indexes</c>), the check constraints, the
 /// foreign keys and the default constraints.
 /// <para>
@@ -15,7 +15,11 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// <c>table.object</c> here, so a correctly named object hanging off the wrong table is caught too.
 /// </para>
 /// <para>
-/// These lists are TRANSCRIBED from <c>CatalogSchemaV1.sql</c>, and <c>SqlServerCatalogSchemaDriftTests</c>
+/// The <c>V1</c> sets at the bottom are the same lists minus the ledger table version 2 adds, which is what a
+/// version 1 database is validated against before it is migrated.
+/// </para>
+/// <para>
+/// These lists are TRANSCRIBED from <c>CatalogSchemaV2.sql</c>, and <c>SqlServerCatalogSchemaDriftTests</c>
 /// parses that file and asserts set equality against every one of them without needing an instance. Drift is
 /// also what
 /// <c>SqlServerCatalogSchemaTests</c>'s AutoCreate case exists to catch: it creates the schema from the file
@@ -25,9 +29,13 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// </summary>
 internal static class SqlServerCatalogSchemaExpectations
 {
-    /// <summary>The fourteen tables of spec 4.3.</summary>
+    /// <summary>The prefix every object version 2 adds is named with, which is how the version 1 sets are derived.</summary>
+    const string UpgradeLedger = "catalog_content_upgrade";
+
+    /// <summary>The fourteen tables of spec 4.3, plus the content upgrade ledger version 2 adds.</summary>
     internal static IReadOnlySet<string> Tables { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
+        UpgradeLedger,
         "catalog_metadata",
         "catalog_type",
         "catalog_version",
@@ -83,6 +91,8 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_audit.pk_catalog_audit",
         "catalog_chunk.ix_catalog_chunk_hash",
         "catalog_chunk.pk_catalog_chunk",
+        "catalog_content_upgrade.ix_catalog_content_upgrade_order",
+        "catalog_content_upgrade.pk_catalog_content_upgrade",
         "catalog_draft.pk_catalog_draft",
         "catalog_draft_edit.pk_catalog_draft_edit",
         "catalog_draft_edit.ux_catalog_draft_edit_target",
@@ -138,6 +148,7 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_audit.df_catalog_audit_operator",
         "catalog_audit.df_catalog_audit_type",
         "catalog_audit.df_catalog_audit_version",
+        "catalog_content_upgrade.df_catalog_content_upgrade_operator",
         "catalog_draft.df_catalog_draft_note",
         "catalog_draft_edit.df_catalog_draft_edit_definition",
         "catalog_draft_edit.df_catalog_draft_edit_imported",
@@ -168,6 +179,12 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_chunk.ck_catalog_chunk_stored",
         "catalog_chunk.ck_catalog_chunk_uncompressed",
         "catalog_chunk.ck_catalog_chunk_visibility",
+        "catalog_content_upgrade.ck_catalog_content_upgrade_actor",
+        "catalog_content_upgrade.ck_catalog_content_upgrade_disposition",
+        "catalog_content_upgrade.ck_catalog_content_upgrade_id",
+        "catalog_content_upgrade.ck_catalog_content_upgrade_operator",
+        "catalog_content_upgrade.ck_catalog_content_upgrade_order",
+        "catalog_content_upgrade.ck_catalog_content_upgrade_version",
         "catalog_draft.ck_catalog_draft_base",
         "catalog_draft.ck_catalog_draft_frozen",
         "catalog_draft.ck_catalog_draft_key",
@@ -236,4 +253,39 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_version.ck_catalog_version_published_by",
         "catalog_version.ck_catalog_version_server_hash",
     };
+
+    /// <summary>The tables version 1 declared, which is version 2's set without the ledger.</summary>
+    internal static IReadOnlySet<string> TablesV1 { get; } = WithoutTheLedger(Tables);
+
+    /// <summary>The named indexes version 1 declared.</summary>
+    internal static IReadOnlySet<string> IndexesV1 { get; } = WithoutTheLedger(Indexes);
+
+    /// <summary>The foreign keys version 1 declared, which version 2 does not add to.</summary>
+    internal static IReadOnlySet<string> ForeignKeysV1 { get; } = WithoutTheLedger(ForeignKeys);
+
+    /// <summary>The default constraints version 1 declared.</summary>
+    internal static IReadOnlySet<string> DefaultsV1 { get; } = WithoutTheLedger(Defaults);
+
+    /// <summary>The check constraints version 1 declared.</summary>
+    internal static IReadOnlySet<string> ChecksV1 { get; } = WithoutTheLedger(Checks);
+
+    /// <summary>
+    /// One set minus every object of the ledger table, which is the WHOLE of what version 2 added. Deriving
+    /// the version 1 sets rather than transcribing them a second time is what keeps a database this build
+    /// refuses to migrate from being one that merely drifted from a stale copy of the old list.
+    /// </summary>
+    /// <param name="names">A version 2 name set.</param>
+    static IReadOnlySet<string> WithoutTheLedger(IReadOnlySet<string> names)
+    {
+        var kept = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string name in names)
+        {
+            if (!name.StartsWith(UpgradeLedger, StringComparison.Ordinal))
+            {
+                kept.Add(name);
+            }
+        }
+
+        return kept;
+    }
 }

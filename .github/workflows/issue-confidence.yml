@@ -35,7 +35,7 @@ jobs:
       contains(github.event.issue.labels.*.name, 'kind/backlog')
       && ( !contains(join(github.event.issue.labels.*.name, ','), 'confidence/')
            || contains(github.event.issue.labels.*.name, 'needs/confidence') )
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Apply or demand a confidence label
         env:

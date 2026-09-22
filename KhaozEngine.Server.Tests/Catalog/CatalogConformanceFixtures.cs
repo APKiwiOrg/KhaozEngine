@@ -13,11 +13,13 @@ namespace KhaozEngine.Tests.Catalog;
 /// <param name="TypeKey">The stable string type key.</param>
 /// <param name="Visibility">The type's default visibility.</param>
 /// <param name="ChunkSlots">Id slots per chunk.</param>
+/// <param name="MaxDefinitionId">The declared id ceiling, or null for the whole positive int space.</param>
 internal sealed record CatalogTypeSpec(
     ushort TypeId,
     string TypeKey,
     ContentVisibility Visibility = ContentVisibility.Client,
-    int ChunkSlots = CatalogFixtures.ChunkSlots);
+    int ChunkSlots = CatalogFixtures.ChunkSlots,
+    int? MaxDefinitionId = null);
 
 /// <summary>
 /// The registry, the schema and the field edits every catalog provider suite in this project shares. It is a
@@ -42,6 +44,15 @@ internal static class CatalogFixtures
 
     /// <summary>The second type's key.</summary>
     public const string OtherTypeKey = "other_thing";
+
+    /// <summary>A third game-band type, the one that declares an id CEILING.</summary>
+    public const ushort CappedTypeId = 1026;
+
+    /// <summary>The capped type's key.</summary>
+    public const string CappedTypeKey = "capped_thing";
+
+    /// <summary>The ceiling <see cref="CappedSpec"/> declares, low enough to reach in one edit.</summary>
+    public const int Ceiling = 8;
 
     /// <summary>The required <c>Client</c> int field every fixture row carries.</summary>
     public const string ValueField = "value";
@@ -69,6 +80,17 @@ internal static class CatalogFixtures
 
     /// <summary>A second plain type, for a fact that spans two.</summary>
     public static CatalogTypeSpec OtherSpec => new(OtherTypeId, OtherTypeKey);
+
+    /// <summary>The capped type as a type id.</summary>
+    public static ContentTypeId Capped => new(CappedTypeId);
+
+    /// <summary>
+    /// The type that declares an id CEILING, which is what a format that cannot hold a bigger number makes a
+    /// type declare. It carries no rows in any fact but the one that proves a carried id over the ceiling is
+    /// refused.
+    /// </summary>
+    public static CatalogTypeSpec CappedSpec
+        => new(CappedTypeId, CappedTypeKey, MaxDefinitionId: Ceiling);
 
     /// <summary>The schema of a fixture type: one required Client int and one optional Client bool.</summary>
     public static ContentFieldSchema Schema()
@@ -106,7 +128,8 @@ internal static class CatalogFixtures
             null,
             schema,
             spec.Visibility,
-            spec.ChunkSlots);
+            spec.ChunkSlots,
+            maxDefinitionId: spec.MaxDefinitionId);
     }
 
     /// <summary>The field edits one fixture row carries.</summary>

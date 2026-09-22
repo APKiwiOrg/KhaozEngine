@@ -8,8 +8,9 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog.SqlServer;
 
 /// <summary>
-/// The one SQL Server schema test that needs NO SQL Server: the embedded <c>CatalogSchemaV1.sql</c> read as
-/// text against the five name sets the validator compares a live database to.
+/// The one SQL Server schema test that needs NO SQL Server: the embedded <c>CatalogSchemaV2.sql</c>, which is
+/// what a fresh create runs, read as text against the five name sets the validator compares a live database
+/// to.
 /// <para>
 /// <b>Why it exists.</b> <c>SqlServerCatalogSchemaExpectations</c> holds every object name transcribed BY
 /// HAND from that file, and <c>SqlServerCatalogSchemaValidation</c> compares <c>sys.tables</c>,

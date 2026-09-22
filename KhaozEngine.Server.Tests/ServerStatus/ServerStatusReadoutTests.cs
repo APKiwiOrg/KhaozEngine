@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using KhaozEngine.ServerStatus;
 using Xunit;
 
@@ -35,13 +36,14 @@ public class ServerStatusReadoutTests
             LastHeartbeatUtc = Now.AddSeconds(-12),
             LastDeployUtc = Now.AddHours(-2),
             Motd = "Double XP weekend.",
+            ServerAddress = "4.254.6.139",
         };
         ServerStatusSnapshot snapshot = Fresh(report);
         ServerStatusView view = ServerStatusEvaluator.Evaluate(snapshot, "1.4.5", Now);
 
         IReadOnlyList<ServerStatusReadoutRow> rows = ServerStatusReadout.Build(snapshot, view, "1.4.5", Now);
 
-        Assert.Equal(11, rows.Count);
+        Assert.Equal(12, rows.Count);
         Assert.Equal(ServerStatusReadoutKeys.All, rows.Select(r => r.Key).ToArray());
 
         Assert.Equal(new ServerStatusReadoutRow(ServerStatusReadoutKeys.Health, "Healthy", ServerHealth.Healthy), rows[0]);
@@ -55,6 +57,25 @@ public class ServerStatusReadoutTests
         Assert.Equal(new ServerStatusReadoutRow(ServerStatusReadoutKeys.Staleness, "0 s ago", TimeSpan.Zero), rows[8]);
         Assert.Equal(new ServerStatusReadoutRow(ServerStatusReadoutKeys.State, "ServerOk", ServerStatusState.ServerOk), rows[9]);
         Assert.Equal(new ServerStatusReadoutRow(ServerStatusReadoutKeys.Motd, "Double XP weekend.", "Double XP weekend."), rows[10]);
+        Assert.Equal(
+            new ServerStatusReadoutRow(ServerStatusReadoutKeys.ServerAddress, "4.254.6.139", IPAddress.Parse("4.254.6.139")),
+            rows[11]);
+    }
+
+    [Fact]
+    public void ServerAddressRow_IsEmpty_WhenThePublishedValueIsRefused()
+    {
+        // A published address the accessor will not hand to a dialer reads as nothing to show, the same as an
+        // unset one. The row never carries a string the client is not allowed to act on.
+        var report = new ServerStatusReport { Health = ServerHealth.Healthy, ServerAddress = "status.example.com" };
+        ServerStatusSnapshot snapshot = Fresh(report);
+        ServerStatusView view = ServerStatusEvaluator.Evaluate(snapshot, "1.0.0", Now);
+
+        IReadOnlyList<ServerStatusReadoutRow> rows = ServerStatusReadout.Build(snapshot, view, "1.0.0", Now);
+
+        ServerStatusReadoutRow row = rows.Single(r => r.Key == ServerStatusReadoutKeys.ServerAddress);
+        Assert.Equal("", row.Value);
+        Assert.Null(row.Raw);
     }
 
     [Fact]
@@ -64,7 +85,7 @@ public class ServerStatusReadoutTests
 
         IReadOnlyList<ServerStatusReadoutRow> rows = ServerStatusReadout.Build(ServerStatusSnapshot.Empty, view, "2.0.0", Now);
 
-        Assert.Equal(11, rows.Count);
+        Assert.Equal(12, rows.Count);
         Assert.Equal(ServerStatusReadoutKeys.All, rows.Select(r => r.Key).ToArray());
 
         string[] reportDerivedKeys =
@@ -73,6 +94,7 @@ public class ServerStatusReadoutTests
             ServerStatusReadoutKeys.MinClientVersion, ServerStatusReadoutKeys.LatestClientVersion,
             ServerStatusReadoutKeys.LastHeartbeat, ServerStatusReadoutKeys.LastDeploy,
             ServerStatusReadoutKeys.ExpectedBack, ServerStatusReadoutKeys.Staleness, ServerStatusReadoutKeys.Motd,
+            ServerStatusReadoutKeys.ServerAddress,
         };
         foreach (string key in reportDerivedKeys)
         {
@@ -128,7 +150,7 @@ public class ServerStatusReadoutTests
 
         IReadOnlyList<ServerStatusReadoutRow> rows = ServerStatusReadout.Build(snapshot, view, "1.0.0", Now);
 
-        Assert.Equal(11, rows.Count);
+        Assert.Equal(12, rows.Count);
         Assert.Equal("", rows.Single(r => r.Key == ServerStatusReadoutKeys.MinClientVersion).Value);
         Assert.Equal("", rows.Single(r => r.Key == ServerStatusReadoutKeys.LatestClientVersion).Value);
         Assert.Equal("", rows.Single(r => r.Key == ServerStatusReadoutKeys.Motd).Value);

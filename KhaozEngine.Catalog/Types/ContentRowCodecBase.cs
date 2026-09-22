@@ -162,6 +162,13 @@ public abstract class ContentRowCodecBase : IContentRowCodec
     /// The body carries the key and the fields and nothing else, so the decoded row takes id 0, parent 0
     /// and a live retired bit. A chunk's row TABLE owns the id and the retired flag (spec 7.3) and the
     /// chunk decoder is what puts them back on.
+    /// <para>
+    /// A body that ENDS before the schema does is a row written under an earlier field list, and
+    /// <see cref="ContentRowTailRule"/> is the one rule that covers it: the body may run out at or after the
+    /// schema's baseline and never inside it. A body that runs PAST the schema is
+    /// <see cref="ReasonFieldMalformed"/>, and so is one that carries the ZERO FORM of a trailing appended
+    /// field, because the canonical encode omits it and a row may not have two byte strings.
+    /// </para>
     /// </remarks>
     public bool TryDecode(ReadOnlySpan<byte> body, [MaybeNullWhen(false)] out ContentRow row, out string? reason)
     {
@@ -182,15 +189,25 @@ public abstract class ContentRowCodecBase : IContentRowCodec
         offset += (int)keyLength;
 
         var values = new ContentFieldValue[Schema.Fields.Count];
+        int consumedThrough = values.Length;
         for (int i = 0; i < values.Length; i++)
         {
+            if (offset == body.Length && ContentRowTailRule.MayEndAt(Schema, i))
+            {
+                FillAbsentFrom(values, i);
+                consumedThrough = i;
+                break;
+            }
+
             if (!TryReadField(body, ref offset, i, Schema.Fields[i], out values[i], out reason))
             {
                 return false;
             }
         }
 
-        if (offset != body.Length)
+        // Bytes past the end of the schema, and bytes for an appended field the canonical short form leaves
+        // out, are the same defect and take the same token: this body is not the one encoding its row has.
+        if (offset != body.Length || ContentRowTailRule.CarriesRedundantTail(Schema, values, consumedThrough))
         {
             reason = ReasonFieldMalformed;
             return false;
@@ -211,6 +228,22 @@ public abstract class ContentRowCodecBase : IContentRowCodec
     /// <param name="value">The value, never absent and never a derived marker.</param>
     protected virtual string? CheckFieldValue(int fieldIndex, ContentFieldEntry field, in ContentFieldValue value)
         => null;
+
+    /// <summary>
+    /// The body ended at a field <see cref="ContentRowTailRule"/> allows it to end at, so the rest of the
+    /// schema is an APPEND this row predates and every remaining field comes back absent. Nothing can be
+    /// refused here: an appended field is optional by construction, which
+    /// <see cref="ContentFieldSchema"/> enforces at declaration rather than at every decode.
+    /// </summary>
+    /// <param name="values">The value array being filled, which this completes.</param>
+    /// <param name="from">The first field the body had no bytes left for.</param>
+    void FillAbsentFrom(ContentFieldValue[] values, int from)
+    {
+        for (int i = from; i < values.Length; i++)
+        {
+            values[i] = ContentFieldValue.Absent(Schema.Fields[i].Kind);
+        }
+    }
 
     void CheckRowAgainstSchema(ContentRow row)
     {
@@ -311,7 +344,8 @@ public abstract class ContentRowCodecBase : IContentRowCodec
     {
         ReadOnlySpan<byte> key = row.Key.Utf8;
         int total = ContentVarint.Size((uint)key.Length) + key.Length;
-        for (int i = 0; i < Schema.Fields.Count; i++)
+        int written = ContentRowTailRule.WrittenFieldCount(Schema, row.Fields);
+        for (int i = 0; i < written; i++)
         {
             ContentFieldEntry field = Schema.Fields[i];
             ContentFieldValue value = row.Fields[i];
@@ -350,6 +384,11 @@ public abstract class ContentRowCodecBase : IContentRowCodec
     /// only to a field DECLARED signed and the catalog schema declares none. Changing this is a format
     /// change and a re-bake of every golden, not a codec tidy-up.
     /// </para>
+    /// <para>
+    /// The field COUNT it writes is <see cref="ContentRowTailRule.WrittenFieldCount"/> rather than the whole
+    /// schema, which is what makes the form canonical after a type gains a field: a row that sets none of the
+    /// appended fields goes out as the bytes the type's first release wrote.
+    /// </para>
     /// </summary>
     void WriteRow(ContentRow row, Span<byte> destination)
     {
@@ -358,7 +397,8 @@ public abstract class ContentRowCodecBase : IContentRowCodec
         key.CopyTo(destination[written..]);
         written += key.Length;
 
-        for (int i = 0; i < Schema.Fields.Count; i++)
+        int fields = ContentRowTailRule.WrittenFieldCount(Schema, row.Fields);
+        for (int i = 0; i < fields; i++)
         {
             ContentFieldEntry field = Schema.Fields[i];
             ContentFieldValue value = row.Fields[i];

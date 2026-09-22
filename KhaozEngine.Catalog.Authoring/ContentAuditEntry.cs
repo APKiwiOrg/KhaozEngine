@@ -42,6 +42,12 @@ public static class ContentAuditActions
     /// holds them, and a no-op sweep is what a monitoring script runs on a timer.
     /// </summary>
     public const string Sweep = "sweep";
+
+    /// <summary>
+    /// A content upgrade recorded in the ledger. The row carries the disposition as its field name, the
+    /// upgrade id as its after value, and the version the upgrade published or was recorded against.
+    /// </summary>
+    public const string ContentUpgrade = "content-upgrade";
 }
 
 /// <summary>

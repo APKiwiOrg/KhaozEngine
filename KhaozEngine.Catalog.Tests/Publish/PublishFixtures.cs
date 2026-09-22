@@ -19,12 +19,14 @@ namespace KhaozEngine.Tests.Catalog.Publish;
 /// <param name="Visibility">The type's default visibility.</param>
 /// <param name="HasSecret">Whether the schema carries the optional <c>ServerOnly</c> field.</param>
 /// <param name="ChunkSlots">Id slots per chunk.</param>
+/// <param name="MaxDefinitionId">The declared id ceiling, or null for the whole positive int space.</param>
 internal sealed record PublishTypeSpec(
     ushort TypeId,
     string TypeKey,
     ContentVisibility Visibility = ContentVisibility.Client,
     bool HasSecret = false,
-    int ChunkSlots = PublishFixtures.ChunkSlots);
+    int ChunkSlots = PublishFixtures.ChunkSlots,
+    int? MaxDefinitionId = null);
 
 /// <summary>
 /// The registries, stores, edits and publishers the three publish suites share. Everything is built in
@@ -67,6 +69,9 @@ internal static class PublishFixtures
 
     /// <summary>An id in chunk 1 at <see cref="ChunkSlots"/>, which every reuse test edits.</summary>
     public const int SecondChunkId = 300;
+
+    /// <summary>The id ceiling <see cref="CappedThing"/> declares, low enough to reach in one edit.</summary>
+    public const int Ceiling = 8;
 
     /// <summary>The actor every fixture edit and publish carries.</summary>
     public const string Actor = "publish-tests";
@@ -120,11 +125,19 @@ internal static class PublishFixtures
             null,
             schema,
             spec.Visibility,
-            spec.ChunkSlots);
+            spec.ChunkSlots,
+            maxDefinitionId: spec.MaxDefinitionId);
     }
 
     /// <summary>The one plain type every ordinary publish test uses.</summary>
     public static PublishTypeSpec Thing => new(ThingTypeId, ThingTypeKey);
+
+    /// <summary>
+    /// The plain type under a declared id CEILING, which is what a format that cannot hold a bigger number
+    /// makes a type declare. It keeps the same id and key, so a bundle built over either registry agrees.
+    /// </summary>
+    public static PublishTypeSpec CappedThing
+        => new(ThingTypeId, ThingTypeKey, MaxDefinitionId: Ceiling);
 
     /// <summary>The plain type with the per-field <c>ServerOnly</c> override turned on.</summary>
     public static PublishTypeSpec SecretThing => new(ThingTypeId, ThingTypeKey, HasSecret: true);

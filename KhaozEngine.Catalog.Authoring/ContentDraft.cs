@@ -64,8 +64,9 @@ public readonly record struct ContentFieldEdit(string Name, ContentFieldValue Va
 /// <para>
 /// <b>Ids are allocated at PUBLISH</b> (spec 6.3), so an ordinary <see cref="ContentEditOperation.Add"/>
 /// carries <see cref="DefinitionId"/> 0 and a <see cref="ContentEditOperation.Fork"/> carries no id for its
-/// copy at all. The one exception is a bulk import into an EMPTY database, which may carry the bundle's own
-/// id (contracts 5.1), and <see cref="ContentEdit.Import"/> is the only path that writes one.
+/// copy at all. The exceptions are the two paths that add a row a COMMITTED BUNDLE already names by id: a
+/// bulk import into an empty database and a content upgrade (contracts 5.1).
+/// <see cref="ContentEdit.Import"/> is the only path that writes one.
 /// </para>
 /// </summary>
 public sealed class ContentEdit
@@ -165,8 +166,20 @@ public sealed class ContentEdit
     }
 
     /// <summary>
-    /// A new row CARRYING its own id, which only a bulk import into an empty database may write (contracts
-    /// 5.1, spec 10.9). Every other write path leaves the id to the allocator.
+    /// A new row CARRYING its own id, which TWO paths write and no others: a bulk import into an empty
+    /// database, and a content upgrade adding a row the committed bundle already names (contracts 5.1, spec
+    /// 10.9). Every other write path leaves the id to the allocator.
+    /// <para>
+    /// <b>Both write it for the same reason.</b> The id is a name a game states as a code constant, so the
+    /// row has to land under the number the committed bundle gives it rather than under whatever a counter
+    /// issues next. The allocator's durable mark sits above the highest row id whenever a publish was refused
+    /// after it reserved, so predicting the counter is not a substitute for carrying the number.
+    /// </para>
+    /// <para>
+    /// The publish refuses a carried id that is not free: one a live or retired row already holds, one a
+    /// second add in the same draft names, one over the type's declared ceiling, and one that disagrees with
+    /// the type's family blocks. The refusal lands before any id mark moves.
+    /// </para>
     /// </summary>
     /// <param name="type">The content type.</param>
     /// <param name="definitionId">The id the bundle named, or 0 to let the allocator issue one.</param>

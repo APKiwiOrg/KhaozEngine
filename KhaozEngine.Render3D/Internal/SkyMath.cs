@@ -127,35 +127,84 @@ namespace KhaozEngine.Render3D.Internal
         /// <param name="sunOpacity">How much of the disc + halo is blended in, 0..1 (<see cref="SkySettings.SunColor"/>
         /// alpha). The blend REPLACES the sky colour, so a body fades by losing weight here, never by darkening
         /// <paramref name="sunColor"/>, which would paint a dark disc over the sky.</param>
+        /// <param name="worldHorizon">The world-horizon camera terms (<see cref="SkyHorizon.World"/>). The default is
+        /// the historical screen-space ramp with no ground.</param>
         public static Vector3 Shade(Vector2 ndc, Vector2 sunNdc, bool sunVisible, float aspect,
             Vector3 horizon, Vector3 zenith, Vector3 sunColor,
-            bool sunEnabled, float sunRadius, float haloStrength, float haloFalloff, float sunOpacity = 1f)
+            bool sunEnabled, float sunRadius, float haloStrength, float haloFalloff, float sunOpacity = 1f,
+            SkyHorizonFrame worldHorizon = default)
         {
-            // Vertical screen gradient: NDC.y in [-1,1] -> [0,1] (bottom -> top), smoothstep for a soft ramp.
-            float up = Math.Clamp(ndc.Y * 0.5f + 0.5f, 0f, 1f);
+            // The historical single-disc call: one primary disc at sunNdc, or none.
+            Span<ScreenDisc> one = stackalloc ScreenDisc[1];
+            int count = 0;
+            if (sunEnabled && sunVisible)
+            {
+                one[count++] = new ScreenDisc(sunNdc, new SkyDisc
+                {
+                    Color = new KhaozEngine.Primitives.Color(sunColor.X, sunColor.Y, sunColor.Z, sunOpacity),
+                    Radius = sunRadius, HaloStrength = haloStrength, HaloFalloff = haloFalloff,
+                });
+            }
+            return ShadeDiscs(ndc, aspect, horizon, zenith, one[..count], worldHorizon);
+        }
+
+        /// <summary>A disc with its screen position: what <see cref="ProjectSunToNdc"/> made of a
+        /// <see cref="SkyDisc"/> that is on screen this frame.</summary>
+        internal readonly struct ScreenDisc
+        {
+            public ScreenDisc(Vector2 ndc, SkyDisc disc)
+            {
+                Ndc = ndc;
+                Disc = disc;
+            }
+
+            public Vector2 Ndc { get; }
+            public SkyDisc Disc { get; }
+        }
+
+        /// <summary>The sky at one pixel with any number of discs, blended in order (a later disc goes over an
+        /// earlier one) and then covered by the ground band. <c>SkyFrag</c> mirrors this loop exactly.</summary>
+        public static Vector3 ShadeDiscs(Vector2 ndc, float aspect, Vector3 horizon, Vector3 zenith,
+            ReadOnlySpan<ScreenDisc> discs, SkyHorizonFrame worldHorizon = default)
+        {
+            // Screen horizon: a vertical screen gradient, NDC.y in [-1,1] -> [0,1] (bottom -> top). World horizon:
+            // the same ramp off the elevation of this pixel's view ray, which is the ShadeDirection gradient, so
+            // the sky the camera sees and the sky the water reflects are one function of direction.
+            float sinElevation = worldHorizon.Live ? worldHorizon.SinElevation(ndc) : 0f;
+            float up = worldHorizon.Live ? Math.Clamp(sinElevation, 0f, 1f) : Math.Clamp(ndc.Y * 0.5f + 0.5f, 0f, 1f);
             float t = Smoothstep(0f, 1f, up);
             Vector3 col = Vector3.Lerp(horizon, zenith, t);
 
-            if (sunEnabled && sunVisible)
+            foreach (ref readonly ScreenDisc placed in discs)
             {
+                SkyDisc body = placed.Disc;
                 // Aspect-correct the horizontal delta so the disc is round in pixels, then measure the screen-space
-                // distance from this pixel to the sun's projected position.
-                float dx = (ndc.X - sunNdc.X) * aspect;
-                float dy = ndc.Y - sunNdc.Y;
+                // distance from this pixel to the body's projected position.
+                float dx = (ndc.X - placed.Ndc.X) * aspect;
+                float dy = ndc.Y - placed.Ndc.Y;
                 float d = MathF.Sqrt(dx * dx + dy * dy);
-                float feather = MathF.Max(haloFalloff * 0.25f, 1e-4f);
-                float disc = 1f - Smoothstep(sunRadius, sunRadius + feather, d);
-                float halo = 0f;
-                if (haloStrength > 0f && haloFalloff > 0f)
-                {
-                    float beyond = MathF.Max(0f, d - sunRadius);
-                    halo = haloStrength * MathF.Exp(-beyond / haloFalloff);
-                }
-                float sun = Math.Clamp(disc + halo, 0f, 1f) * Math.Clamp(sunOpacity, 0f, 1f);
-                col = Vector3.Lerp(col, sunColor, sun);
+                float weight = DiscWeight(d, body) * Math.Clamp(body.Color.A, 0f, 1f);
+                col = Vector3.Lerp(col, new Vector3(body.Color.R, body.Color.G, body.Color.B), weight);
             }
-            return col;
+            // The ground goes over every disc: that is the horizon they set through.
+            return worldHorizon.Ground.Over(col, sinElevation);
         }
+
+        /// <summary>Solid disc plus halo at distance <paramref name="d"/> from the body's centre, before opacity.</summary>
+        static float DiscPlusHalo(float d, SkyDisc body)
+        {
+            float feather = MathF.Max(body.HaloFalloff * 0.25f, 1e-4f);
+            float disc = 1f - Smoothstep(body.Radius, body.Radius + feather, d);
+            float halo = 0f;
+            if (body.HaloStrength > 0f && body.HaloFalloff > 0f)
+            {
+                float beyond = MathF.Max(0f, d - body.Radius);
+                halo = body.HaloStrength * MathF.Exp(-beyond / body.HaloFalloff);
+            }
+            return disc + halo;
+        }
+
+        static float DiscWeight(float d, SkyDisc body) => Math.Clamp(DiscPlusHalo(d, body), 0f, 1f);
 
         /// <summary>
         /// The same sky, evaluated along a world-space DIRECTION instead of a screen pixel. Mirrored by the GLSL
@@ -184,35 +233,52 @@ namespace KhaozEngine.Render3D.Internal
         /// <param name="sunStrength">How much of the disc + halo this evaluation carries, 0..1. The water
         /// reflection scales it down because the sharp part of the reflected sun is already supplied by its own
         /// specular lobe, and carrying both at full strength double-counts the sun.</param>
+        /// <param name="ground">The ground band below the world horizon (<see cref="SkyHorizon.World"/>), laid over
+        /// the sun exactly as <see cref="Shade"/> does. The default is no ground.</param>
         public static Vector3 ShadeDirection(Vector3 direction, Vector3 sunDirection,
             Vector3 horizon, Vector3 zenith, Vector3 sunColor,
-            bool sunEnabled, float sunRadius, float haloStrength, float haloFalloff, float sunStrength)
+            bool sunEnabled, float sunRadius, float haloStrength, float haloFalloff, float sunStrength,
+            SkyGround ground = default)
+        {
+            // The historical single-disc call: the primary disc along sunDirection, or none.
+            Span<SkyDisc> one = stackalloc SkyDisc[1];
+            int count = 0;
+            if (sunEnabled)
+            {
+                one[count++] = new SkyDisc
+                {
+                    Direction = sunDirection,
+                    Color = new KhaozEngine.Primitives.Color(sunColor.X, sunColor.Y, sunColor.Z, 1f),
+                    Radius = sunRadius, HaloStrength = haloStrength, HaloFalloff = haloFalloff,
+                };
+            }
+            return ShadeDirectionDiscs(direction, horizon, zenith, one[..count], sunStrength, ground);
+        }
+
+        /// <summary>The sky along a world direction with any number of discs (unit <see cref="SkyDisc.Direction"/>s,
+        /// as <see cref="SkyDiscs.Resolve"/> leaves them). Each disc carries <paramref name="sunStrength"/> times
+        /// its own opacity. The water's <c>skyAlongDirection</c> mirrors this loop exactly.</summary>
+        public static Vector3 ShadeDirectionDiscs(Vector3 direction, Vector3 horizon, Vector3 zenith,
+            ReadOnlySpan<SkyDisc> discs, float sunStrength, SkyGround ground = default)
         {
             float up = Math.Clamp(direction.Y, 0f, 1f);
             float t = Smoothstep(0f, 1f, up);
             Vector3 col = Vector3.Lerp(horizon, zenith, t);
 
-            float strength = Math.Clamp(sunStrength, 0f, 1f);
-            if (sunEnabled && strength > 0f)
+            foreach (ref readonly SkyDisc body in discs)
             {
-                float d = (direction - sunDirection).Length();
-                float feather = MathF.Max(haloFalloff * 0.25f, 1e-4f);
-                float disc = 1f - Smoothstep(sunRadius, sunRadius + feather, d);
-                float halo = 0f;
-                if (haloStrength > 0f && haloFalloff > 0f)
-                {
-                    float beyond = MathF.Max(0f, d - sunRadius);
-                    halo = haloStrength * MathF.Exp(-beyond / haloFalloff);
-                }
-                float sun = Math.Clamp((disc + halo) * strength, 0f, 1f);
-                col = Vector3.Lerp(col, sunColor, sun);
+                float strength = Math.Clamp(sunStrength * body.Color.A, 0f, 1f);
+                if (strength <= 0f) continue;
+                float d = (direction - body.Direction).Length();
+                float weight = Math.Clamp(DiscPlusHalo(d, body) * strength, 0f, 1f);
+                col = Vector3.Lerp(col, new Vector3(body.Color.R, body.Color.G, body.Color.B), weight);
             }
-            return col;
+            return ground.Over(col, direction.Y);
         }
 
         /// <summary>GLSL-identical smoothstep (Hermite) so the mirrored shader matches this host math. Returns 0 for
         /// x&lt;=edge0, 1 for x&gt;=edge1, a smooth cubic between.</summary>
-        static float Smoothstep(float edge0, float edge1, float x)
+        internal static float Smoothstep(float edge0, float edge1, float x)
         {
             if (edge0 == edge1) return x < edge0 ? 0f : 1f;
             float u = Math.Clamp((x - edge0) / (edge1 - edge0), 0f, 1f);

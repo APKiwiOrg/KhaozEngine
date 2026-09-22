@@ -69,8 +69,8 @@ public sealed class ManifestTypeListTests
             ContentPublishBaseline.Empty,
             ContentEdit.Import(new ContentTypeId(EngineContentTypes.TagTypeId), 1, new ContentKey("metal"), [])));
 
-        // Every registered type, including the four the publish authored nothing for. base_socket is the one
-        // the issue was reported against, because no game authors rows for all six.
+        // Every registered type, including the five the publish authored nothing for. base_socket is the one
+        // the issue was reported against, because no game authors rows for all seven.
         Assert.Equal(
             [
                 EngineContentTypes.TagTypeId,
@@ -79,6 +79,7 @@ public sealed class ManifestTypeListTests
                 EngineContentTypes.LootTableTypeId,
                 EngineContentTypes.LootEntryTypeId,
                 EngineContentTypes.BaseSocketTypeId,
+                EngineContentTypes.ItemCategoryTypeId,
             ],
             plan.ServerManifest!.Types.Select(entry => entry.TypeId));
 
@@ -89,6 +90,7 @@ public sealed class ManifestTypeListTests
                 EngineContentTypes.ItemTypeId,
                 EngineContentTypes.StatTypeId,
                 EngineContentTypes.BaseSocketTypeId,
+                EngineContentTypes.ItemCategoryTypeId,
             ],
             plan.ClientManifest!.Types.Select(entry => entry.TypeId));
 

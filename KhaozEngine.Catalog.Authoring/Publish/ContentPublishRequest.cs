@@ -30,7 +30,19 @@ public sealed record ContentPublishRequest(
     string Note,
     int ExpectedBaseVersion,
     int? MinimumServerBuild = null,
-    int? MinimumClientBuild = null);
+    int? MinimumClientBuild = null)
+{
+    /// <summary>
+    /// The content upgrade this publish is applying, or null for an ordinary publish. When it is set, the
+    /// commit writes the <c>applied</c> ledger row inside its ONE transaction, so the version and its history
+    /// entry land together, and a second publish of the same upgrade id fails the commit with nothing changed.
+    /// <para>
+    /// <b>A property and not a positional parameter</b>, deliberately: every existing caller stays source and
+    /// binary compatible, and a publish that knows nothing about upgrades says nothing about them.
+    /// </para>
+    /// </summary>
+    public ContentUpgradeStamp? Upgrade { get; init; }
+}
 
 /// <summary>
 /// What a successful publish produced (spec 10.6's 200 response): the new version's identity on both sides,

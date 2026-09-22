@@ -148,6 +148,13 @@ public sealed class ContentAuthoringException : Exception
     /// </summary>
     public const string SchemaMismatchReason = "schema-mismatch";
 
+    /// <summary>
+    /// A publish carried a content upgrade id the ledger already holds. The upgrade id is the ledger's primary
+    /// key, so the commit is refused whole: the version, its rows, its chunks and the draft are all left
+    /// exactly as they were, and the caller re-reads the ledger rather than assuming which run won.
+    /// </summary>
+    public const string UpgradeAlreadyRecordedReason = "upgrade-already-recorded";
+
     /// <summary>Creates the exception with no message.</summary>
     public ContentAuthoringException()
     {

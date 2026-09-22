@@ -16,6 +16,9 @@ public interface ITileTargets
     /// answer a stale click gets after the thing it named stopped existing.</summary>
     bool TryGetFootprint(long target, out TileRect footprint, out int plane);
 
+    /// <summary>Optional additions to the default cardinal interaction reach for this target.</summary>
+    TileInteractionReachPolicy GetInteractionReachPolicy(long target) => TileInteractionReachPolicy.Default;
+
     /// <summary>
     /// Where a body LOOKING at this target points, in the tile units
     /// <see cref="TilePresenter.PoseAt(Vector2, float, TileDirection)"/> takes. PRESENTATION only: the reach rules,

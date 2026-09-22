@@ -4,16 +4,21 @@
     <PackageId>KhaozEngine.Catalog.SqlServer</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>SQL Server / Azure SQL IContentAuthoringStore backend for the content catalog over Microsoft.Data.SqlClient: SqlServerContentAuthoringStore persists the fourteen catalog tables (metadata, types, versions, temporal rows and their field values, families and their aligned id blocks, the id high-water marks, the one draft and its edits, the field-level audit, the append-only remap rules and the per-side chunk rows) behind a fresh pooled connection per call, with a versioned embedded schema that either auto-creates or validates. Raw parameterized async ADO.NET with @name parameters, no EF and no ORM, every key column pinned to Latin1_General_100_BIN2, and one Serializable transaction per publish, so two consoles publishing at once are a refusal rather than a race. The production and shared-authoring store; same contract as the SQLite backend. Opt-in: in NO umbrella, pulls Microsoft.Data.SqlClient, and a game client never links it.</Description>
+    <Description>SQL Server / Azure SQL IContentAuthoringStore backend for the content catalog over Microsoft.Data.SqlClient: SqlServerContentAuthoringStore persists the fifteen catalog tables (metadata, types, versions, temporal rows and their field values, families and their aligned id blocks, the id high-water marks, the one draft and its edits, the field-level audit, the append-only remap rules, the per-side chunk rows and the content upgrade ledger) behind a fresh pooled connection per call, with a versioned embedded schema that either auto-creates or validates. Raw parameterized async ADO.NET with @name parameters, no EF and no ORM, every key column pinned to Latin1_General_100_BIN2, and one Serializable transaction per publish, so two consoles publishing at once are a refusal rather than a race. The production and shared-authoring store; same contract as the SQLite backend. Opt-in: in NO umbrella, pulls Microsoft.Data.SqlClient, and a game client never links it.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.SqlClient" />
     <ProjectReference Include="../KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
+    <!-- Both versions ship: V2 is what a fresh create runs, and V1 is the operator's record of the shape the
+         v2 migration moves and what the migration tests build a version 1 database from. Same pair
+         KhaozEngine.WorldStore.SqlServer ships for the journal. -->
     <EmbeddedResource Include="CatalogSchemaV1.sql" />
-    <!-- SqlServerCatalogSchemaDriftTests reads the embedded DDL and the transcribed expectation sets and
-         asserts they name the same 117 objects, which is the one SQL Server schema check that needs no
-         instance (issue 922). Same grant KhaozEngine.WorldStore.SqlServer already makes. -->
+    <EmbeddedResource Include="CatalogSchemaV2.sql" />
+    <!-- SqlServerCatalogSchemaDriftTests reads the embedded version 2 DDL and the transcribed expectation
+         sets and asserts they name the same 159 objects (15 tables, 25 indexes, 13 foreign keys, 19 defaults
+         and 87 checks), which is the one SQL Server schema check that needs no instance (issue 922). Same
+         grant KhaozEngine.WorldStore.SqlServer already makes. -->
     <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

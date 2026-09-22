@@ -113,6 +113,46 @@ public sealed class GoldenFormatTests
                 + string.Join(", ", missing));
     }
 
+    /// <summary>
+    /// Every ROW of every golden chunk, decoded through its type's codec and re-encoded, reproduces the body
+    /// bytes the golden holds.
+    /// <para>
+    /// The re-encode assertion above is over the CONTAINER: it rebuilds the chunk from row bodies taken back
+    /// verbatim, so it would pass whatever a row codec did with them. This is the row-level statement, and it
+    /// is what pins the canonical SHORT encode of an appended field: <c>chunk-item-0.kecc</c> was baked when
+    /// <c>item</c> had sixteen fields, and a codec that wrote a seventeenth zero byte for the absent category
+    /// would fail here and would break every consumer's pack rebuild the same way.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Cases))]
+    public void GoldenRows_ReEncodeToTheirOwnBodyBytes(string version, string name)
+    {
+        GoldenFile golden = GoldenLibrary.Get(version, name);
+        if (golden.Kind != GoldenCodecs.ChunkKind)
+        {
+            return;
+        }
+
+        ContentTypeRegistry registry = GoldenCodecs.EngineRegistry();
+        Assert.True(
+            ContentChunkCodec.TryDecode(golden.Stored, registry, out ContentChunk? chunk, out string? reason),
+            reason);
+        Assert.True(registry.TryGet(chunk.Type, out ContentTypeRegistration? registration));
+        Assert.True(chunk.RowCount > 0);
+
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        for (int i = 0; i < chunk.RowCount; i++)
+        {
+            Assert.True(chunk.TryDecodeRowAt(i, registration.Codec, out ContentRow? row, out reason), reason);
+            buffer.ResetWrittenCount();
+            registration.Codec.Encode(row, buffer);
+            Assert.True(
+                chunk.RowBodyAt(i).SequenceEqual(buffer.WrittenSpan),
+                string.Create(CultureInfo.InvariantCulture, $"{golden} row {i} did not re-encode to its own bytes"));
+        }
+    }
+
     [Fact]
     public void TheWorkedExample_IsTheTagChunkOfSpecSevenNine()
     {

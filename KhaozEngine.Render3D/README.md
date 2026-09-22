@@ -911,6 +911,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     zero `MinBarWidth`, a black `TitleShadow`, drawn against a `Nameplate` carrying no `Bars`.
 
 - Animation (`Animation/`, pure + GPU-free, driven off a `Skeleton` + glTF `AnimationClip`s):
+  - `GltfLoader.LoadSkinned` retains each skeleton node's glTF name in `Skeleton.NodeNames` with an empty string for
+    an unnamed node. `Skeleton.IndexOf` and `TryIndexOf` resolve those names, while `BoneIndexOfNode` maps a skeleton
+    node back to its skin bone or returns `-1` for a non-joint ancestor. The skeleton includes every `skin.joints`
+    node and the ancestors needed to compose it. A child outside `skin.joints` does not reach `Skeleton`, so an
+    authored socket that needs name lookup remains a zero-weight skin joint.
   - `AnimationSampler` / `AnimationPlayer` - one-shot pose sampling and a stateful single-clip player with a
     crossfade (`Play(clip, crossfade)` -> `Update(dt)` -> `GetBonePalette(buffer)`). `Play` loops the clip; `PlayOnce`
     plays it ONCE and CLAMPS the playhead at the clip duration, holding the final frame (a death / knockdown pose that
@@ -922,7 +927,8 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     skeleton pose: a base locomotion layer below, masked `Override` / `Additive` action layers above (attack while
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +
     a `LayerMode`. `BoneMask` is per-node weights 0..1 (`BoneMask.Full`/`.Empty`, `BoneMask.Subtree(skel, root, w)`
-    for "this bone and all descendants at weight w" - the upper-body-action shape). Override lerps toward the layer
+    for "this bone and all descendants at weight w" - the upper-body-action shape). The root may be a node index or
+    a retained glTF name. Override lerps toward the layer
     pose by `weight x mask`. Additive applies the clip's delta from its first frame (the reference), scaled by
     `weight x mask`: the rotation delta is both EXTRACTED and APPLIED in the joint's LOCAL frame
     (`delta = inverse(reference) * sample`, applied as `base * delta`), so a base equal to the reference reproduces

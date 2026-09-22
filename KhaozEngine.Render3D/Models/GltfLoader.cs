@@ -522,6 +522,7 @@ namespace KhaozEngine.Render3D
             var parents = new int[ordered.Count];
             var restLocal = new JointPose[ordered.Count];
             var nodeLogical = new int[ordered.Count];
+            var nodeNames = new string[ordered.Count];
             for (int i = 0; i < ordered.Count; i++)
             {
                 Node node = ordered[i];
@@ -529,12 +530,13 @@ namespace KhaozEngine.Render3D
                 parents[i] = parent != null && indexOf.TryGetValue(parent, out int pi) ? pi : -1;
                 restLocal[i] = JointPose.FromMatrix(node.LocalMatrix);   // local transform relative to the parent
                 nodeLogical[i] = node.LogicalIndex;
+                nodeNames[i] = node.Name ?? string.Empty;
             }
 
             var jointToNode = new int[jointCount];
             for (int b = 0; b < jointCount; b++) jointToNode[b] = indexOf[jointNodes[b]];
 
-            return new Skeleton(parents, restLocal, nodeLogical, jointToNode);
+            return new Skeleton(parents, restLocal, nodeLogical, jointToNode, nodeNames);
         }
 
         static int NodeDepth(Node node)

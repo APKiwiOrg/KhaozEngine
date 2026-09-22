@@ -4960,6 +4960,14 @@ backwards: a looping clip wraps onto its tail, and a one-shot (`PlayOnce`) holds
 direction holds the final frame. `JointPose` is the TRS unit clips
 interpolate; `InterpolationMode` is LINEAR or STEP (CUBICSPLINE is read as its value keys).
 
+`GltfLoader.LoadSkinned` retains the glTF name of every skeleton node in `Skeleton.NodeNames`, using an empty
+string for an unnamed node. `Skeleton.IndexOf(name)` resolves a required name and lists the known names if it is
+missing. `TryIndexOf(name, out node)` is the non-throwing missing-name form. Duplicate non-empty names throw when
+name lookup is used because the target would be ambiguous. `BoneIndexOfNode(node)` maps a skeleton node back to
+its skin bone, or returns `-1` for a non-joint ancestor. A loaded skeleton contains every `skin.joints` node and
+the ancestors needed to compose those joints. It does not include a child outside `skin.joints`, so an authored
+socket that needs name lookup remains a zero-weight skin joint.
+
 ### Layered / masked animation (attack while running)
 
 `LayeredAnimator` composites N `AnimationLayer`s into one final skeleton pose: a base locomotion layer below,
@@ -4970,7 +4978,8 @@ weight, an optional `BoneMask`, and a `LayerMode`. It produces the same joint-WO
 A `BoneMask` gates a layer per node: `BoneMask.Subtree(skeleton, spineRootNode, weight)` marks that bone and all
 its descendants (the torso + arms + head) at `weight`, everything else 0 - the upper-body-action shape.
 `BoneMask.Full` / `.Empty` are the constants; a name overload
-`BoneMask.Subtree(skeleton, "spine", boneNames, weight)` resolves the root by bone name.
+`BoneMask.Subtree(skeleton, "spine", weight)` resolves the root through `Skeleton.NodeNames`. The older overload
+that accepts an explicit name list remains available for code-driven rigs.
 
     var anim = new LayeredAnimator(skeleton);
     // Base: full-body locomotion (drive its clip/playhead however you like - e.g. from your own state machine).

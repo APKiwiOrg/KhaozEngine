@@ -28,19 +28,99 @@ namespace KhaozEngine.Render3D
         /// mesh inverse-bind / vertex JOINTS_0 indices).</summary>
         public int[] JointToNode { get; }
 
+        /// <summary>glTF node name per skeleton node, in node order. An unnamed node is represented by an empty
+        /// string.</summary>
+        public IReadOnlyList<string> NodeNames { get; }
+
         public int NodeCount => ParentIndices.Length;
         public int BoneCount => JointToNode.Length;
 
         Dictionary<int, int>? _logicalToNode;
+        Dictionary<string, int>? _nameToNode;
+        int[]? _nodeToBone;
 
         public Skeleton(int[] parentIndices, JointPose[] restLocal, int[] nodeLogicalIndex, int[] jointToNode)
+            : this(parentIndices, restLocal, nodeLogicalIndex, jointToNode, EmptyNodeNames(parentIndices))
+        {
+        }
+
+        public Skeleton(int[] parentIndices, JointPose[] restLocal, int[] nodeLogicalIndex, int[] jointToNode,
+            IReadOnlyList<string> nodeNames)
         {
             ParentIndices = parentIndices ?? throw new ArgumentNullException(nameof(parentIndices));
             RestLocal = restLocal ?? throw new ArgumentNullException(nameof(restLocal));
             NodeLogicalIndex = nodeLogicalIndex ?? throw new ArgumentNullException(nameof(nodeLogicalIndex));
             JointToNode = jointToNode ?? throw new ArgumentNullException(nameof(jointToNode));
+            if (nodeNames is null) throw new ArgumentNullException(nameof(nodeNames));
             if (restLocal.Length != parentIndices.Length || nodeLogicalIndex.Length != parentIndices.Length)
                 throw new ArgumentException("parentIndices, restLocal, and nodeLogicalIndex must have one entry per skeleton node.");
+            if (nodeNames.Count != parentIndices.Length)
+                throw new ArgumentException("nodeNames must have one entry per skeleton node.", nameof(nodeNames));
+
+            var names = new string[nodeNames.Count];
+            for (int i = 0; i < names.Length; i++) names[i] = nodeNames[i] ?? string.Empty;
+            NodeNames = Array.AsReadOnly(names);
+        }
+
+        static string[] EmptyNodeNames(int[] parentIndices)
+        {
+            if (parentIndices is null) throw new ArgumentNullException(nameof(parentIndices));
+            return new string[parentIndices.Length];
+        }
+
+        /// <summary>Find a skeleton node by its case-sensitive glTF name. Throws an <see cref="ArgumentException"/>
+        /// naming the requested and known names when no node matches. Duplicate non-empty names are ambiguous and
+        /// throw an <see cref="InvalidOperationException"/> when name lookup is first used.</summary>
+        public int IndexOf(string nodeName)
+        {
+            if (TryIndexOf(nodeName, out int node)) return node;
+
+            var known = new List<string>();
+            for (int i = 0; i < NodeNames.Count; i++)
+                if (NodeNames[i].Length > 0) known.Add(NodeNames[i]);
+            string knownText = known.Count > 0 ? string.Join(", ", known) : "(none)";
+            throw new ArgumentException(
+                $"Skeleton joint '{nodeName}' was not found. Known names: {knownText}.", nameof(nodeName));
+        }
+
+        /// <summary>Try to find a skeleton node by its case-sensitive glTF name. Returns <c>false</c> and
+        /// <c>node = -1</c> when no node matches. Duplicate non-empty names throw because the lookup is ambiguous.</summary>
+        public bool TryIndexOf(string nodeName, out int node)
+        {
+            if (nodeName is null) throw new ArgumentNullException(nameof(nodeName));
+            if (NameToNode().TryGetValue(nodeName, out node)) return true;
+            node = -1;
+            return false;
+        }
+
+        Dictionary<string, int> NameToNode()
+        {
+            if (_nameToNode is not null) return _nameToNode;
+
+            var lookup = new Dictionary<string, int>(NodeNames.Count, StringComparer.Ordinal);
+            for (int i = 0; i < NodeNames.Count; i++)
+            {
+                string name = NodeNames[i];
+                if (name.Length == 0) continue;
+                if (!lookup.TryAdd(name, i))
+                    throw new InvalidOperationException($"Skeleton node name '{name}' is duplicated and cannot be resolved.");
+            }
+            _nameToNode = lookup;
+            return lookup;
+        }
+
+        /// <summary>The skin bone index for a skeleton node, or <c>-1</c> when the node is not a skin joint.</summary>
+        public int BoneIndexOfNode(int node)
+        {
+            if (node < 0 || node >= NodeCount) return -1;
+            if (_nodeToBone is null)
+            {
+                var nodeToBone = new int[NodeCount];
+                Array.Fill(nodeToBone, -1);
+                for (int bone = 0; bone < JointToNode.Length; bone++) nodeToBone[JointToNode[bone]] = bone;
+                _nodeToBone = nodeToBone;
+            }
+            return _nodeToBone[node];
         }
 
         /// <summary>The skeleton node a glTF logical node index maps to, or <c>-1</c> if that node is not in this

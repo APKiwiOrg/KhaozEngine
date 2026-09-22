@@ -56,7 +56,7 @@ public readonly record struct ContentVersionHashes(string ServerManifestHash, st
 /// <see cref="IContentVersionDirectory"/> and not this. Such a host sets
 /// <see cref="ContentBootOptions.VersionHashes"/> to the store, or makes the wrapper forward this interface
 /// too. A boot with neither skips the comparison at step 3, which is exactly the boot it ran before this check
-/// existed.
+/// existed, and <see cref="ContentBootResult.PackPointerCrossChecked"/> is false.
 /// </para>
 /// </summary>
 public interface IContentVersionHashSource
@@ -144,7 +144,8 @@ public sealed class ContentBootOptions
     /// <b>A WRAPPER skips the check.</b> A host whose <see cref="Directory"/> is its own type around an
     /// authoring store, implementing <see cref="IContentVersionDirectory"/> and forwarding the two number reads,
     /// is not a hash source, and its boot compares nothing unless it sets this or the wrapper forwards
-    /// <see cref="IContentVersionHashSource"/> as well. Setting it names the source at the call site.
+    /// <see cref="IContentVersionHashSource"/> as well. Setting it names the source at the call site, and
+    /// <see cref="ContentBootResult.PackPointerCrossChecked"/> says afterwards whether the comparison ran.
     /// </para>
     /// <para>
     /// It is read even when <see cref="ConfiguredVersion"/> is set, because the pin decides the NUMBER and this

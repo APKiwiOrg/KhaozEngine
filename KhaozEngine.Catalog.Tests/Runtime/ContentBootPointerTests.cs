@@ -68,6 +68,7 @@ public sealed class ContentBootPointerTests
             host.Line);
         Assert.False(holder.IsLoaded);
         Assert.Null(refused.Runtime);
+        Assert.False(refused.PackPointerCrossChecked);
     }
 
     /// <summary>
@@ -127,6 +128,7 @@ public sealed class ContentBootPointerTests
         Assert.Equal(VersionNumber, booted.Runtime.VersionNumber);
         Assert.Equal(published.ServerManifestHash, booted.Runtime.Identity.ManifestHash);
         Assert.True(holder.IsLoaded);
+        Assert.True(booted.PackPointerCrossChecked);
     }
 
     /// <summary>
@@ -151,6 +153,7 @@ public sealed class ContentBootPointerTests
 
         Assert.True(booted.Success, string.Join(" | ", host.Lines));
         Assert.Equal(a.ServerManifestHash, booted.Runtime!.Identity.ManifestHash);
+        Assert.False(booted.PackPointerCrossChecked);
 
         // And the other deployment with no fact to compare against: a config pin and no directory at all.
         var pinned = new BootHost();
@@ -165,6 +168,7 @@ public sealed class ContentBootPointerTests
         });
 
         Assert.True(second.Success, string.Join(" | ", pinned.Lines));
+        Assert.False(second.PackPointerCrossChecked);
     }
 
     /// <summary>
@@ -219,6 +223,7 @@ public sealed class ContentBootPointerTests
 
         Assert.True(booted.Success, string.Join(" | ", host.Lines));
         Assert.Equal(a.ServerManifestHash, booted.Runtime!.Identity.ManifestHash);
+        Assert.False(booted.PackPointerCrossChecked);
     }
 
     /// <summary>
@@ -253,6 +258,94 @@ public sealed class ContentBootPointerTests
             StoreName = StoreName,
         });
         Assert.Equal(ContentBootRefusal.PackPointerMismatch, pinned.Refusal);
+    }
+
+    /// <summary>
+    /// The wiring test a host writes: its own wrapper as the directory, the store as
+    /// <see cref="ContentBootOptions.VersionHashes"/>, a healthy pack, and a result that says the comparison
+    /// RAN rather than only that the boot succeeded, since a skipped check also succeeds.
+    /// </summary>
+    [Fact]
+    public async Task AWrapperWithVersionHashesSetReportsThePointerCrossChecked()
+    {
+        using var root = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var pack = new FileSystemPackStore(root.Path);
+        InMemoryContentAuthoringStore store = PublishFixtures.Store(registry, pack);
+        _ = await PublishAsync(store, value: 11);
+
+        var wrapper = new WrappedDirectory(store);
+        var host = new BootHost();
+        ContentBootResult checkedBoot = await host.RunAsync(
+            Options(registry, pack, wrapper, new ContentRuntimeHolder(), versionHashes: store));
+
+        Assert.True(checkedBoot.Success, string.Join(" | ", host.Lines));
+        Assert.True(checkedBoot.PackPointerCrossChecked);
+
+        ContentBootResult skipped = await new BootHost().RunAsync(
+            Options(registry, pack, wrapper, new ContentRuntimeHolder()));
+
+        Assert.True(skipped.Success);
+        Assert.False(skipped.PackPointerCrossChecked);
+    }
+
+    /// <summary>
+    /// A hash source holding no record of the version, which is a server pinned to a version its authoring
+    /// database never published. Nothing was compared, so the boot runs as before and does not claim it was.
+    /// </summary>
+    [Fact]
+    public async Task ASourceHoldingNoRecordOfTheVersionReportsNotCrossChecked()
+    {
+        using var root = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var pack = new FileSystemPackStore(root.Path);
+        _ = await PublishAsync(registry, pack, value: 11);
+        InMemoryContentAuthoringStore empty = PublishFixtures.Store(registry, new FileSystemPackStore(root.Path));
+
+        var host = new BootHost();
+        ContentBootResult booted = await host.RunAsync(new ContentBootOptions
+        {
+            Registry = registry,
+            Store = pack,
+            Holder = new ContentRuntimeHolder(),
+            ServerBuild = ServerBuild,
+            ConfiguredVersion = VersionNumber,
+            VersionHashes = empty,
+            StoreName = StoreName,
+        });
+
+        Assert.True(booted.Success, string.Join(" | ", host.Lines));
+        Assert.False(booted.PackPointerCrossChecked);
+    }
+
+    /// <summary>
+    /// The flag is a fact about step 3, so a pointer that agreed stays reported as checked when a LATER step
+    /// refuses. Here the pack demands a newer server build than the boot is told it runs.
+    /// </summary>
+    [Fact]
+    public async Task APointerThatAgreedStaysCrossCheckedWhenALaterStepRefuses()
+    {
+        using BootPack pack = await BootPack.CreateAsync();
+        var record = new FakeHashSource(
+            BootPack.VersionNumber,
+            new ContentVersionHashes(pack.ManifestHash, pack.ClientManifestHash));
+        ContentBootOptions options = pack.Options(serverBuild: (int)BootPack.MinimumServerBuild - 1);
+
+        ContentBootResult refused = await new BootHost().RunAsync(new ContentBootOptions
+        {
+            Registry = options.Registry,
+            Store = options.Store,
+            Holder = options.Holder,
+            ServerBuild = options.ServerBuild,
+            ConfiguredVersion = options.ConfiguredVersion,
+            Pointers = options.Pointers,
+            VersionHashes = record,
+            StoreName = options.StoreName,
+        });
+
+        Assert.Equal(ContentBootRefusal.ServerBuildTooOld, refused.Refusal);
+        Assert.Equal(1, record.Reads);
+        Assert.True(refused.PackPointerCrossChecked);
     }
 
     /// <summary>

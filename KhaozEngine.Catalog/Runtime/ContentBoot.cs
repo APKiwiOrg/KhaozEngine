@@ -59,6 +59,17 @@ public static class ContentBoot
             return step3.Refusal;
         }
 
+        ContentBootResult rest = await ContinueAsync(options, step3, version, cancellationToken).ConfigureAwait(false);
+        return step3.PointerCrossChecked ? rest.WithPackPointerCrossChecked() : rest;
+    }
+
+    /// <summary>Steps 4 to 11, once step 3 handed back a verified manifest.</summary>
+    static async Task<ContentBootResult> ContinueAsync(
+        ContentBootOptions options,
+        ManifestStep step3,
+        int version,
+        CancellationToken cancellationToken)
+    {
         ContentManifest manifest = step3.Manifest!;
 
         // Step 4 and step 5: a pack this build cannot read, and a build the pack will not be served by.
@@ -157,11 +168,12 @@ public static class ContentBoot
                     $"{LinePrefix}manifest for version {version} absent from {options.StoreName}.")));
         }
 
-        ContentBootResult? stale = await ContentBootPointerCheck.RunAsync(options, version, pointer, cancellationToken)
+        ContentBootPointerCheck.Outcome check = await ContentBootPointerCheck
+            .RunAsync(options, version, pointer, cancellationToken)
             .ConfigureAwait(false);
-        if (stale is not null)
+        if (check.Refusal is not null)
         {
-            return new ManifestStep(stale);
+            return new ManifestStep(check.Refusal);
         }
 
         ContentManifestRead read = await ContentPackReader.ReadManifestAsync(
@@ -203,7 +215,7 @@ public static class ContentBoot
                     $"{LinePrefix}manifest {read.Hash} declares version {manifest.VersionNumber}, expected {version}.")));
         }
 
-        return new ManifestStep(manifest, read.Hash);
+        return new ManifestStep(manifest, read.Hash, check.CrossChecked);
     }
 
     /// <summary>Step 3's outcome: the verified manifest and the address it was fetched under, or a refusal.</summary>
@@ -214,13 +226,15 @@ public static class ContentBoot
             Refusal = refusal;
             Manifest = null;
             Hash = string.Empty;
+            PointerCrossChecked = false;
         }
 
-        public ManifestStep(ContentManifest manifest, string hash)
+        public ManifestStep(ContentManifest manifest, string hash, bool pointerCrossChecked)
         {
             Refusal = null;
             Manifest = manifest;
             Hash = hash;
+            PointerCrossChecked = pointerCrossChecked;
         }
 
         public ContentBootResult? Refusal { get; }
@@ -228,6 +242,8 @@ public static class ContentBoot
         public ContentManifest? Manifest { get; }
 
         public string Hash { get; }
+
+        public bool PointerCrossChecked { get; }
     }
 
     /// <summary>Spec 9.6's row 4, wherever the generation was read.</summary>

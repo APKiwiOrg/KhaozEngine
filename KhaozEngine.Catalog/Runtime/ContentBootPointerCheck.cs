@@ -37,13 +37,14 @@ internal static class ContentBootPointerCheck
         => options.VersionHashes ?? options.Directory as IContentVersionHashSource;
 
     /// <summary>
-    /// The comparison, or null when it passed or had nothing to compare against.
+    /// The comparison: a refusal when the record disagrees, and otherwise whether a comparison ran at all, so
+    /// the boot can report <see cref="ContentBootResult.PackPointerCrossChecked"/>.
     /// </summary>
     /// <param name="options">The boot's options.</param>
     /// <param name="version">The version the boot resolved.</param>
     /// <param name="pointer">The pack store's pointer for that version.</param>
     /// <param name="cancellationToken">Cancels the record read.</param>
-    public static async Task<ContentBootResult?> RunAsync(
+    public static async Task<Outcome> RunAsync(
         ContentBootOptions options,
         int version,
         PackVersionPointer pointer,
@@ -52,7 +53,7 @@ internal static class ContentBootPointerCheck
         IContentVersionHashSource? source = SourceOf(options);
         if (source is null)
         {
-            return null;
+            return Outcome.NotChecked;
         }
 
         ContentVersionHashes? recorded = await source
@@ -60,17 +61,30 @@ internal static class ContentBootPointerCheck
             .ConfigureAwait(false);
         if (recorded is not ContentVersionHashes hashes)
         {
-            return null;
+            return Outcome.NotChecked;
         }
 
         if (!string.Equals(pointer.ServerManifestHash, hashes.ServerManifestHash, StringComparison.Ordinal))
         {
-            return Refusal(options, version, "server", pointer.ServerManifestHash, hashes.ServerManifestHash);
+            return new Outcome(
+                Refusal(options, version, "server", pointer.ServerManifestHash, hashes.ServerManifestHash),
+                CrossChecked: false);
         }
 
         return string.Equals(pointer.ClientManifestHash, hashes.ClientManifestHash, StringComparison.Ordinal)
-            ? null
-            : Refusal(options, version, "client", pointer.ClientManifestHash, hashes.ClientManifestHash);
+            ? new Outcome(null, CrossChecked: true)
+            : new Outcome(
+                Refusal(options, version, "client", pointer.ClientManifestHash, hashes.ClientManifestHash),
+                CrossChecked: false);
+    }
+
+    /// <summary>What the check did: a refusal, or null and whether the pointer was compared and agreed.</summary>
+    /// <param name="Refusal">The stale pointer's refusal, or null when the boot goes on.</param>
+    /// <param name="CrossChecked">True only when the comparison ran and both halves agreed.</param>
+    public readonly record struct Outcome(ContentBootResult? Refusal, bool CrossChecked)
+    {
+        /// <summary>No source, or no record: nothing was compared and nothing refused.</summary>
+        public static Outcome NotChecked => new(null, CrossChecked: false);
     }
 
     /// <summary>The stale pointer's line: which version, which store, which side, and the two hashes.</summary>

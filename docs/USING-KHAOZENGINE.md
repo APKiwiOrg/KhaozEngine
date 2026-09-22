@@ -15188,7 +15188,10 @@ seeding document, imported into an EMPTY database only.
 
 `ContentBoot.RunAsync` is the whole boot in one call, and it FAILS CLOSED. Each of its refusals comes back as
 a result carrying exit code 3 and the operator's exact lines, and there is no fallback to code defaults
-anywhere on the path, because a silent fallback catalog serves content no version names.
+anywhere on the path, because a silent fallback catalog serves content no version names. A `Directory` or
+`VersionHashes` provider that THROWS is a refusal too, `VersionSourceUnreadable` naming the read and the
+fault, so a host's database outage reaches the operator as a line rather than an unhandled exception. Only
+the caller's own cancellation propagates.
 
 Step 3 checks the `versions/<n>` POINTER before it fetches anything, because the pointer is the one object in
 a content-addressed store that is not named by its own hash. A catalog replaced at the same version number,

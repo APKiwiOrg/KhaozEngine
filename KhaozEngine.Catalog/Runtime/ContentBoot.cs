@@ -14,7 +14,8 @@ namespace KhaozEngine.Catalog;
 /// <para>
 /// <b>It fails CLOSED and it never exits the process.</b> Each of the twelve rows of spec 9.6's table comes
 /// back as a <see cref="ContentBootResult"/> carrying exit code 3 and the operator's exact lines, and the
-/// HOST writes them and exits. There is no fallback to code defaults anywhere on this path (contracts 10.5),
+/// HOST writes them and exits. So do the refusals beside the table: a stale pack pointer, and a version
+/// source that THROWS rather than answering. There is no fallback to code defaults anywhere on this path (contracts 10.5),
 /// because a silent fallback catalog serves content no version names and an outage is at least noticed.
 /// </para>
 /// <para>
@@ -35,15 +36,31 @@ public static class ContentBoot
     /// </summary>
     /// <param name="options">Everything the boot needs, handed in rather than reached for.</param>
     /// <param name="cancellationToken">Cancels the fetches.</param>
+    /// <returns>
+    /// The published runtime or a refusal. A version directory or hash source that throws is the refusal
+    /// <see cref="ContentBootRefusal.VersionSourceUnreadable"/>, not an exception.
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="OperationCanceledException">
+    /// <paramref name="cancellationToken"/> was cancelled, which propagates rather than refusing.
+    /// </exception>
     public static async Task<ContentBootResult> RunAsync(
         ContentBootOptions options,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        // Step 2: the version, from exactly one place.
-        int version = await ResolveVersionAsync(options, cancellationToken).ConfigureAwait(false);
+        // Step 2: the version, from exactly one place, and a directory that throws is a refusal like the rest.
+        int version;
+        try
+        {
+            version = await ResolveVersionAsync(options, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception fault) when (ContentBootSourceFault.IsFault(fault, cancellationToken))
+        {
+            return ContentBootSourceFault.Refuse(2, "version directory", fault);
+        }
+
         if (version <= 0)
         {
             return ContentBootResult.Refuse(
@@ -121,6 +138,10 @@ public static class ContentBoot
     /// <param name="options">The same options the boot will be handed, since the answer is theirs.</param>
     /// <param name="cancellationToken">Cancels the directory reads.</param>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <remarks>
+    /// Whatever the directory throws propagates from here unchanged, because this answers a number and has
+    /// no refusal to put it in. <see cref="RunAsync"/> is the member that turns it into one.
+    /// </remarks>
     public static async Task<int> ResolveVersionAsync(
         ContentBootOptions options,
         CancellationToken cancellationToken = default)

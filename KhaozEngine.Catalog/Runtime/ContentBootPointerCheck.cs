@@ -37,8 +37,8 @@ internal static class ContentBootPointerCheck
         => options.VersionHashes ?? options.Directory as IContentVersionHashSource;
 
     /// <summary>
-    /// The comparison: a refusal when the record disagrees, and otherwise whether a comparison ran at all, so
-    /// the boot can report <see cref="ContentBootResult.PackPointerCrossChecked"/>.
+    /// The comparison: a refusal when the record disagrees or its read throws, and otherwise whether a
+    /// comparison ran at all, so the boot can report <see cref="ContentBootResult.PackPointerCrossChecked"/>.
     /// </summary>
     /// <param name="options">The boot's options.</param>
     /// <param name="version">The version the boot resolved.</param>
@@ -56,9 +56,21 @@ internal static class ContentBootPointerCheck
             return Outcome.NotChecked;
         }
 
-        ContentVersionHashes? recorded = await source
-            .GetVersionHashesAsync(version, cancellationToken)
-            .ConfigureAwait(false);
+        ContentVersionHashes? recorded;
+        try
+        {
+            recorded = await source.GetVersionHashesAsync(version, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception fault) when (ContentBootSourceFault.IsFault(fault, cancellationToken))
+        {
+            return new Outcome(
+                ContentBootSourceFault.Refuse(
+                    3,
+                    FormattableString.Invariant($"version record for version {version}"),
+                    fault),
+                CrossChecked: false);
+        }
+
         if (recorded is not ContentVersionHashes hashes)
         {
             return Outcome.NotChecked;

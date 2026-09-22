@@ -653,8 +653,17 @@ if (!report.IsValid)
 ## The boot
 
 `ContentBoot.RunAsync(options)` is spec 9.5's order, run once at server start, spec 9.6's twelve refusals
-and the stale-pointer refusal beside them. **It fails closed and it never exits the process**: every refusal comes back as a
-`ContentBootResult` carrying exit code 3 and the operator's exact lines, and the HOST writes them and exits.
+and two beside them, the stale pointer and a version source that throws. **It fails closed and it never
+exits the process**: every refusal comes back as a `ContentBootResult` carrying exit code 3 and the
+operator's exact lines, and the HOST writes them and exits.
+
+The host's own providers are part of that promise. A directory whose pinned or active read throws, or a
+hash source whose record read throws, is `VersionSourceUnreadable` at step 2 or step 3, with one line naming
+the read and the exception's type and message, rather than an exception out of `RunAsync`. The caller's
+own cancellation is the exception: an `OperationCanceledException` while the boot's token is cancelled
+propagates. One with the token NOT cancelled, such as a driver's timeout, refuses like any other fault.
+`ResolveVersionAsync` answers a number and has no refusal to carry, so a directory fault propagates from it
+unchanged.
 That is what makes the whole exit table testable in process, and it is why the engine never decides the
 shutdown order of a process it knows nothing about. There is no fallback to code defaults anywhere on this
 path, because a silent fallback catalog serves content no version names and an outage is at least noticed.

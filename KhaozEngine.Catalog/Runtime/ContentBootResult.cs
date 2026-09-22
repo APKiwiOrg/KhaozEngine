@@ -5,8 +5,9 @@ using System.IO;
 namespace KhaozEngine.Catalog;
 
 /// <summary>
-/// Which row of spec 9.6's exit table a boot stopped at, or <see cref="None"/> when it did not. Every one of
-/// the twelve is a REFUSAL: a missing or invalid content version fails the boot, and there is no runtime
+/// Which row of spec 9.6's exit table a boot stopped at, or <see cref="None"/> when it did not. The table's
+/// twelve come first and the refusals added beside it follow in the order they shipped. Every one is a
+/// REFUSAL: a missing or invalid content version fails the boot, and there is no runtime
 /// fallback to code defaults anywhere (contracts 10.5), because a silent fallback catalog serves content no
 /// version names and an outage is at least noticed.
 /// </summary>
@@ -57,6 +58,14 @@ public enum ContentBootRefusal
     /// package, and inserting one in the middle would move every value under it.
     /// </summary>
     PackPointerMismatch,
+
+    /// <summary>
+    /// Step 2 or step 3: a version SOURCE threw rather than answering, either the directory's pinned or active
+    /// read or the version record's hash read. The host's own provider failed, so the boot cannot say which
+    /// version or which manifest to serve and refuses rather than letting the exception escape. Last for the
+    /// same reason as <see cref="PackPointerMismatch"/>.
+    /// </summary>
+    VersionSourceUnreadable,
 }
 
 /// <summary>
@@ -133,7 +142,7 @@ public sealed class ContentBootResult
     /// <summary>The published runtime, or null on every refusal.</summary>
     public ContentRuntime? Runtime { get; }
 
-    /// <summary>Which of the twelve refusals stopped the boot, or <see cref="ContentBootRefusal.None"/>.</summary>
+    /// <summary>Which refusal stopped the boot, or <see cref="ContentBootRefusal.None"/>.</summary>
     public ContentBootRefusal Refusal { get; }
 
     /// <summary>

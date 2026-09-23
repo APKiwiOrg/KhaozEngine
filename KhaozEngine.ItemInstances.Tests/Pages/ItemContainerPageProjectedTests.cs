@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using KhaozEngine.Catalog;
 using KhaozEngine.ItemInstances;
+using KhaozEngine.Items;
 using KhaozEngine.Tests.ItemInstances.Visibility;
 using Xunit;
 
@@ -194,6 +195,46 @@ public class ItemContainerPageProjectedTests
         // The raw encoder ships the whole wrapper, original included, which is the leak the viewer door closes.
         byte[] raw = ItemContainerPageCodec.Encode(0, 0, PageSlots, PageStamp, [entries[1].Entry]);
         Assert.Equal(wrapper.Length, Decode(raw, out _)[0].PayloadLength);
+    }
+
+    [Fact]
+    public void A_hollow_wrapper_from_a_projected_page_seats_on_the_client_as_a_quarantined_item()
+    {
+        // "It verifies, it seats" is the whole reason the entry crosses hollow rather than as the flag over zero
+        // bytes, so the page goes the client's whole way: projected, decoded, and seated into a container whose
+        // quarantine door is the wrapper's own verifier.
+        InstancePropertyRegistry registry = VisibilityFixtures.Registry();
+        byte[] original = VisibilityFixtures.EveryKind(identified: true, revealedMask: uint.MaxValue);
+        byte[] wrapper = QuarantineWrapper.Wrap(InstanceQuarantineReason.UnknownDefinition, 37, original);
+        ContainerPageChange quarantined =
+            Item(4, wrapper, identified: true, revealedMask: ulong.MaxValue, ItemContainerPageCodec.EntryFlagQuarantined);
+
+        byte[] page = Projected(registry, PropertyVisibility.Everyone, [quarantined]);
+        var decoded = new PageEntry[PageSlots];
+        Assert.True(ItemContainerPageCodec.TryDecode(
+            page, PageSlots, decoded, out PageHeader header, out int count, out string? decodeReason), decodeReason);
+        Assert.Equal(1, count);
+
+        var client = new PagedItemContainer(
+            pageCount: 1, capacity: PageSlots, static id => id != 0, ItemInstancePayload.IsCanonical, QuarantineWrapper.Verify);
+        client.Pages[0].SeatStamp(header.ContentVersion);
+        PageEntry entry = decoded[0];
+        client.Seat(entry.Slot, new ItemSlot(
+            new ItemStack(entry.DefinitionId, entry.Count, entry.InstanceId),
+            PayloadOf(page, entry).ToArray(),
+            entry.Quarantined));
+
+        ItemSlot seated = client.SlotAt(4);
+        Assert.True(seated.Quarantined);
+        Assert.Equal(new ItemStack(PoeDefinitionId, 1, InstanceIdAllocator.Pack(0, 9_004)), seated.Stack);
+        Assert.True(QuarantineWrapper.TryUnwrap(
+            seated.Payload.Span, out ReadOnlySpan<byte> preserved, out string? reason, out int stamp));
+        Assert.Equal(InstanceQuarantineReason.UnknownDefinition, reason);
+        Assert.Equal(37, stamp);
+        Assert.True(preserved.IsEmpty);
+        Assert.Equal(QuarantineWrapper.Size(InstanceQuarantineReason.UnknownDefinition, 37, 0), seated.Payload.Length);
+        Assert.Equal(PageStamp, client.Pages[0].ContentVersion);
+        Assert.False(client.Pages[0].IsDirty);
     }
 
     [Fact]

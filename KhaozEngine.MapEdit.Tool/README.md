@@ -115,10 +115,15 @@ it into the throwaway `ViewportWorld` the render call builds (`ViewportWorld.Tex
 render call gets the same textured-vs-flat choice the GUI viewport does without a live editor session
 open. Additive parameter, no new verb.
 
-Authored placements draw through the world's streamed placement layer, like scatter, so a render shows only
-the placements inside the gameplay ring around its streaming focus (the rect centre for `render_topdown`, the
-document bounds centre for `render_view`). A wide `render_topdown` rect or a `render_view` eye far from the
-bounds centre can leave distant placements out of the image.
+Authored placements and scatter draw through the world's streamed ring, so each render streams where it looks
+(`RenderStreamPlan`). `render_view` streams around its eye with the editor's default ring, so it shows what the
+live editor shows from that eye: placements and scatter within about 240 m. `render_topdown` streams around the
+rect centre and widens the gameplay ring, prop cull and companion cull until they reach every corner of the
+requested rect, so a whole-document render includes the far corners. The ring is capped at 24 chunks (a 1440 m
+reach, so a square rect up to about 1.9 km on a side is fully covered). Past the cap a wider rect still renders
+its terrain, but placements and scatter appear only within that reach of the rect centre. Render the rect in
+pieces for a larger map. On an Apple GPU a covered 1200 m square took 0.2 to 1.4 s (the higher figure
+includes first device start-up) and a capped 2 km square about 0.9 s.
 
 ## Verb surface (78 tools)
 

@@ -4980,8 +4980,8 @@ Matrix4x4 rigidWorld = BoneSocket.ComposeRigid(pieceLocal, jointModel, model);
 Both methods apply `pieceLocal * jointModel * model`. `ComposeRigid` first orthonormalises the joint's three basis
 rows and keeps its model-space translation. Use it for a solid held or worn prop when animation data may carry
 scale or shear that skinning blends across vertices but a one-joint attachment would show at full strength. A
-reflected joint stays reflected. If the basis is collapsed or otherwise has no orientation to recover, the joint
-passes through unchanged.
+reflected joint stays reflected. A non-finite, collapsed, or linearly dependent basis throws `ArgumentException`
+because no rigid orientation can be recovered.
 
 ### Layered / masked animation (attack while running)
 

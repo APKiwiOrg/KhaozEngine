@@ -75,6 +75,76 @@ namespace KhaozEngine.Tests.Render3D.Animation
             AssertVectorNear(jointModel.Translation, actual.Translation);
         }
 
+        [Fact]
+        public void ComposeRigid_ThrowsWhenJointXBasisIsZero()
+        {
+            var jointModel = new Matrix4x4(
+                0f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f,
+                0f, 0f, 1f, 0f,
+                3f, 4f, 5f, 1f);
+
+            ArgumentException error = Assert.Throws<ArgumentException>(() =>
+                BoneSocket.ComposeRigid(Matrix4x4.Identity, jointModel, Matrix4x4.Identity));
+
+            Assert.Equal("jointModel", error.ParamName);
+        }
+
+        [Fact]
+        public void ComposeRigid_ThrowsWhenJointYBasisDependsOnX()
+        {
+            var jointModel = new Matrix4x4(
+                1f, 0f, 0f, 0f,
+                2f, 0f, 0f, 0f,
+                0f, 0f, 1f, 0f,
+                3f, 4f, 5f, 1f);
+
+            ArgumentException error = Assert.Throws<ArgumentException>(() =>
+                BoneSocket.ComposeRigid(Matrix4x4.Identity, jointModel, Matrix4x4.Identity));
+
+            Assert.Equal("jointModel", error.ParamName);
+        }
+
+        [Fact]
+        public void ComposeRigid_ThrowsWhenJointZBasisDependsOnXAndY()
+        {
+            var jointModel = new Matrix4x4(
+                1f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f,
+                1f, 1f, 0f, 0f,
+                3f, 4f, 5f, 1f);
+
+            ArgumentException error = Assert.Throws<ArgumentException>(() =>
+                BoneSocket.ComposeRigid(Matrix4x4.Identity, jointModel, Matrix4x4.Identity));
+
+            Assert.Equal("jointModel", error.ParamName);
+        }
+
+        [Fact]
+        public void ComposeRigid_ThrowsWhenJointBasisIsNotFinite()
+        {
+            Matrix4x4 jointModel = Matrix4x4.Identity;
+            jointModel.M23 = float.NaN;
+
+            ArgumentException error = Assert.Throws<ArgumentException>(() =>
+                BoneSocket.ComposeRigid(Matrix4x4.Identity, jointModel, Matrix4x4.Identity));
+
+            Assert.Equal("jointModel", error.ParamName);
+        }
+
+        [Fact]
+        public void ComposeRigid_PreservesValidReflectedJointHandedness()
+        {
+            Matrix4x4 jointModel = Matrix4x4.CreateScale(-1f, 1f, 1f)
+                * Matrix4x4.CreateFromYawPitchRoll(0.4f, -0.3f, 0.2f)
+                * Matrix4x4.CreateTranslation(3f, 4f, 5f);
+
+            Matrix4x4 actual = BoneSocket.ComposeRigid(Matrix4x4.Identity, jointModel, Matrix4x4.Identity);
+
+            Assert.True(actual.GetDeterminant() < 0f, $"determinant was {actual.GetDeterminant()}");
+            AssertMatrixNear(jointModel, actual);
+        }
+
         static void AssertMatrixNear(Matrix4x4 expected, Matrix4x4 actual)
         {
             Assert.InRange(MathF.Abs(expected.M11 - actual.M11), 0f, Epsilon);

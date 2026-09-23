@@ -39,6 +39,7 @@ namespace KhaozEngine.Render3D
         // The receiver's slot table, INDEX-ALIGNED WITH THE COMPLETE UPLOADED LIGHT ORDER. Never the request order:
         // static requests sort by stable key and dynamics by distance, while the receiver indexes queue order.
         int[] _pointSlotUniform = Array.Empty<int>();
+        int[] _pointTransientSlotUniform = Array.Empty<int>();
 
         PointShadowSlots? _pointSlotCache;
         // One caster signature per atlas row, parallel to the cache. Kept here rather than in the cache because it
@@ -229,6 +230,7 @@ namespace KhaozEngine.Render3D
         void PublishPointShadowUniforms(PointShadowSlots cache, PointShadowSettings settings, int frame)
         {
             Array.Fill(_pointSlotUniform, -1);
+            Array.Fill(_pointTransientSlotUniform, -1);
             foreach (PointShadowRequest r in _pointRequests)
             {
                 if (r.Slot < 0) continue;
@@ -239,10 +241,10 @@ namespace KhaozEngine.Render3D
                 _pointSlotUniform[r.LightIndex] = r.Slot;   // the UPLOADED light order, not the request order
                 PointShadowedLights++;
             }
-            _model.SetPointShadowUniforms(_pointSlotUniform.AsSpan(0, _lights.Count), settings.ResolvedBias,
-                settings.ResolvedSlopeBias,
-                PointShadowFaceResolution, PointShadowRows, settings.Filter, settings.ResolvedLightSizeMetres,
-                settings.ResolvedMaxPenumbraTexels);
+            _model.SetPointShadowUniforms(_pointSlotUniform.AsSpan(0, _lights.Count),
+                _pointTransientSlotUniform.AsSpan(0, _lights.Count), settings.ResolvedBias,
+                settings.ResolvedSlopeBias, PointShadowFaceResolution, PointShadowRows, 0,
+                settings.Filter, settings.ResolvedLightSizeMetres, settings.ResolvedMaxPenumbraTexels);
         }
 
         /// <summary>Fold this frame's point-shadow counters into the shadow diagnostics snapshot. The key light's

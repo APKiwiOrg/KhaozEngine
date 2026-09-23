@@ -23,6 +23,23 @@ public sealed class PointLightBufferTests
         shadowMapResolution: 128, shadowCascadeCount: 1);
 
     [Fact]
+    public void TwentiethLightCarriesIndependentBaseAndTransientRowsInStructuredRecord()
+    {
+        var lights = Enumerable.Range(0, 20).Select(Light).ToArray();
+        var records = new ModelRenderer.PointLightGpuData[20];
+        int[] baseRows = Enumerable.Repeat(-1, 20).ToArray();
+        int[] transientRows = Enumerable.Repeat(-1, 20).ToArray();
+        baseRows[19] = 7;
+        transientRows[19] = 4;
+
+        ModelRenderer.BuildPointLightRecords(
+            lights, records, baseRows, transientRows, 0.01f, 0.02f);
+
+        Assert.Equal(48, Marshal.SizeOf<ModelRenderer.PointLightGpuData>());
+        Assert.Equal(new Vector4(7f, 0.01f, 0.02f, 4f), records[19].ShadowParams);
+    }
+
+    [Fact]
     public void RecordsAreFortyEightBytesAndPackEverySubmittedLight()
     {
         var lights = Enumerable.Range(0, 40).Select(Light).ToArray();
@@ -30,14 +47,14 @@ public sealed class PointLightBufferTests
         int[] slots = Enumerable.Range(0, lights.Length).Select(i => i % 7 == 0 ? i : -1).ToArray();
 
         int count = ModelRenderer.BuildPointLightRecords(
-            lights, records, slots, bias: 0.01f, slopeBias: 0.02f, new Vector3(10f, 20f, 30f));
+            lights, records, slots, [], bias: 0.01f, slopeBias: 0.02f, new Vector3(10f, 20f, 30f));
 
         Assert.Equal(48, Marshal.SizeOf<ModelRenderer.PointLightGpuData>());
         Assert.Equal(lights.Length, count);
         Assert.Equal(new Vector4(129f, 219f, 309f, 43f), records[39].PosRadius);
         Assert.Equal(lights[39].ColorIntensity, records[39].ColorIntensity);
-        Assert.Equal(new Vector4(-1f, 0.01f, 0.02f, 0f), records[39].ShadowParams);
-        Assert.Equal(new Vector4(35f, 0.01f, 0.02f, 0f), records[35].ShadowParams);
+        Assert.Equal(new Vector4(-1f, 0.01f, 0.02f, -1f), records[39].ShadowParams);
+        Assert.Equal(new Vector4(35f, 0.01f, 0.02f, -1f), records[35].ShadowParams);
     }
 
     [Fact]
@@ -46,14 +63,14 @@ public sealed class PointLightBufferTests
         var records = new ModelRenderer.PointLightGpuData[64];
         var first = Enumerable.Range(0, 40).Select(Light).ToArray();
         var firstSlots = Enumerable.Range(0, 40).ToArray();
-        ModelRenderer.BuildPointLightRecords(first, records, firstSlots, 0.1f, 0.2f);
+        ModelRenderer.BuildPointLightRecords(first, records, firstSlots, [], 0.1f, 0.2f);
 
         var second = new[] { Light(2), Light(3), Light(4) };
-        ModelRenderer.BuildPointLightRecords(second, records, [9], 0.3f, 0.4f);
+        ModelRenderer.BuildPointLightRecords(second, records, [9], [], 0.3f, 0.4f);
 
-        Assert.Equal(new Vector4(9f, 0.3f, 0.4f, 0f), records[0].ShadowParams);
-        Assert.Equal(new Vector4(-1f, 0.3f, 0.4f, 0f), records[1].ShadowParams);
-        Assert.Equal(new Vector4(-1f, 0.3f, 0.4f, 0f), records[2].ShadowParams);
+        Assert.Equal(new Vector4(9f, 0.3f, 0.4f, -1f), records[0].ShadowParams);
+        Assert.Equal(new Vector4(-1f, 0.3f, 0.4f, -1f), records[1].ShadowParams);
+        Assert.Equal(new Vector4(-1f, 0.3f, 0.4f, -1f), records[2].ShadowParams);
         Assert.Equal(default, records[3]);
         Assert.Equal(default, records[39]);
     }

@@ -89,7 +89,10 @@ public sealed class PointShadowUboLayoutTests
         using ModelRenderer model = NewRenderer(device);
 
         for (int i = 0; i < ModelRenderer.MaxPointLights; i++)
+        {
             Assert.Equal(-1f, Slot(model, i).Slot);
+            Assert.Equal(-1f, Slot(model, i).W);
+        }
         Assert.Equal((0f, 0f, 0f, 0f), AtlasParams(model));
         Assert.Equal((0f, 0f, 0f, 0f), FilterParams(model));
     }
@@ -99,12 +102,12 @@ public sealed class PointShadowUboLayoutTests
     {
         using var device = new FakeGpuDevice();
         using ModelRenderer model = NewRenderer(device);
-        model.SetPointShadowUniforms([0, 1, 2], 0.01f, 0.02f, 256, 8, PointShadowFilter.Soft, 0.15f, 6f);
+        model.SetPointShadowUniforms([0, 1, 2], [], 0.01f, 0.02f, 256, 8, 0, PointShadowFilter.Soft, 0.15f, 6f);
 
         model.ClearPointShadowUniforms();
 
         for (int i = 0; i < ModelRenderer.MaxPointLights; i++)
-            Assert.Equal((-1f, 0f, 0f, 0f), Slot(model, i));
+            Assert.Equal((-1f, 0f, 0f, -1f), Slot(model, i));
         Assert.Equal((0f, 0f, 0f, 0f), AtlasParams(model));
         Assert.Equal((0f, 0f, 0f, 0f), FilterParams(model));
     }
@@ -115,13 +118,37 @@ public sealed class PointShadowUboLayoutTests
         using var device = new FakeGpuDevice();
         using ModelRenderer model = NewRenderer(device);
 
-        model.SetPointShadowUniforms([3, -1, 0], 0.01f, 0.02f, 256, 8, PointShadowFilter.Soft, 0.15f, 6f);
+        model.SetPointShadowUniforms([3, -1, 0], [], 0.01f, 0.02f, 256, 8, 0, PointShadowFilter.Soft, 0.15f, 6f);
 
-        Assert.Equal((3f, 0.01f, 0.02f, 0f), Slot(model, 0));
-        Assert.Equal((-1f, 0.01f, 0.02f, 0f), Slot(model, 1));
-        Assert.Equal((0f, 0.01f, 0.02f, 0f), Slot(model, 2));
+        Assert.Equal((3f, 0.01f, 0.02f, -1f), Slot(model, 0));
+        Assert.Equal((-1f, 0.01f, 0.02f, -1f), Slot(model, 1));
+        Assert.Equal((0f, 0.01f, 0.02f, -1f), Slot(model, 2));
         for (int i = 3; i < ModelRenderer.MaxPointLights; i++)
             Assert.Equal(-1f, Slot(model, i).Slot);
+    }
+
+    [Fact]
+    public void SetPointShadowUniforms_MirrorsBothRowsForOnlyTheFirstSixteenLights()
+    {
+        using var device = new FakeGpuDevice();
+        using ModelRenderer model = NewRenderer(device);
+        int[] baseRows = Enumerable.Repeat(-1, 20).ToArray();
+        int[] transientRows = Enumerable.Repeat(-1, 20).ToArray();
+        baseRows[0] = 3;
+        transientRows[0] = 2;
+        baseRows[15] = 7;
+        transientRows[15] = 0;
+        baseRows[19] = 8;
+        transientRows[19] = 1;
+        model.EnsurePointShadowSlotCapacity(20);
+
+        model.SetPointShadowUniforms(baseRows, transientRows, 0.01f, 0.02f,
+            256, 8, 3, PointShadowFilter.Soft, 0.15f, 6f);
+
+        Assert.Equal((3f, 0.01f, 0.02f, 2f), Slot(model, 0));
+        Assert.Equal((7f, 0.01f, 0.02f, 0f), Slot(model, 15));
+        Assert.Equal(-1f, Slot(model, 1).W);
+        Assert.Equal((1f / 1536f, 1f / 2048f, 8f, 6f), AtlasParams(model));
     }
 
     [Fact]
@@ -130,7 +157,7 @@ public sealed class PointShadowUboLayoutTests
         using var device = new FakeGpuDevice();
         using ModelRenderer model = NewRenderer(device);
 
-        model.SetPointShadowUniforms([3, -1, 0], 0.01f, 0.02f, 256, 8, PointShadowFilter.Soft, 0.15f, 6f);
+        model.SetPointShadowUniforms([3, -1, 0], [], 0.01f, 0.02f, 256, 8, 0, PointShadowFilter.Soft, 0.15f, 6f);
 
         Assert.Equal((1f / 1536f, 1f / 2048f, 8f, 6f), AtlasParams(model));
     }
@@ -145,10 +172,10 @@ public sealed class PointShadowUboLayoutTests
         using var device = new FakeGpuDevice();
         using ModelRenderer model = NewRenderer(device);
 
-        model.SetPointShadowUniforms([0], 0.01f, 0.02f, 256, 8, PointShadowFilter.Soft, 0.15f, 6f);
+        model.SetPointShadowUniforms([0], [], 0.01f, 0.02f, 256, 8, 0, PointShadowFilter.Soft, 0.15f, 6f);
         Assert.Equal((1f, 0.15f, 6f, 256f), FilterParams(model));
 
-        model.SetPointShadowUniforms([0], 0.01f, 0.02f, 384, 12, PointShadowFilter.Hard, 0.5f, 16f);
+        model.SetPointShadowUniforms([0], [], 0.01f, 0.02f, 384, 12, 0, PointShadowFilter.Hard, 0.5f, 16f);
         Assert.Equal((0f, 0.5f, 16f, 384f), FilterParams(model));
     }
 
@@ -161,7 +188,7 @@ public sealed class PointShadowUboLayoutTests
         Array.Fill(slots, 2);
         model.EnsurePointShadowSlotCapacity(slots.Length);
 
-        model.SetPointShadowUniforms(slots, 0.5f, 0.25f, 64, 1, PointShadowFilter.Hard, 1f, 16f);
+        model.SetPointShadowUniforms(slots, [], 0.5f, 0.25f, 64, 1, 0, PointShadowFilter.Hard, 1f, 16f);
 
         for (int i = 0; i < ModelRenderer.MaxPointLights; i++)
             Assert.Equal(2f, Slot(model, i).Slot);
@@ -175,7 +202,7 @@ public sealed class PointShadowUboLayoutTests
         using ModelRenderer model = NewRenderer(device);
         byte[] before = model.FrameImage.ToArray();
 
-        model.SetPointShadowUniforms([5], 0.01f, 0.02f, 128, 4, PointShadowFilter.Soft, 0.2f, 4f);
+        model.SetPointShadowUniforms([5], [], 0.01f, 0.02f, 128, 4, 0, PointShadowFilter.Soft, 0.2f, 4f);
 
         ReadOnlySpan<byte> after = model.FrameImage;
         Assert.Equal((int)ModelRenderer.UboBytes, after.Length);

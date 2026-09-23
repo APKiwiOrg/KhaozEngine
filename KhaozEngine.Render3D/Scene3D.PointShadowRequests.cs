@@ -81,5 +81,6 @@ public sealed partial class Scene3D
         while (capacity < required)
             capacity = capacity > int.MaxValue / 2 ? required : capacity * 2;
         Array.Resize(ref _pointSlotUniform, capacity);
+        Array.Resize(ref _pointTransientSlotUniform, capacity);
     }
 }

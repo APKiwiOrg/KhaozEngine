@@ -30,10 +30,11 @@ internal sealed partial class ModelRenderer
     /// vec4s = 288 bytes.</summary>
     internal const uint PointShadowTailBytes = MaxPointLights * 16 + 32;
 
-    // The first sixteen (slot or -1, bias, slopeBias, 0) entries mirror the structured records for compatibility.
+    // The first sixteen (base row, bias, slopeBias, transient row) entries mirror the structured records.
     // Receiver shaders read the complete structured record list.
     readonly Vector4[] _pointShadowParams = NoPointShadowSlots();
     int[] _pointShadowSlots = new int[MaxPointLights];
+    int[] _pointShadowTransientSlots = new int[MaxPointLights];
     int _pointShadowSlotCount;
     float _pointShadowBias;
     float _pointShadowSlopeBias;
@@ -70,7 +71,7 @@ internal sealed partial class ModelRenderer
     static Vector4[] NoPointShadowSlots()
     {
         var slots = new Vector4[MaxPointLights];
-        for (int i = 0; i < slots.Length; i++) slots[i] = new Vector4(-1f, 0f, 0f, 0f);
+        for (int i = 0; i < slots.Length; i++) slots[i] = new Vector4(-1f, 0f, 0f, -1f);
         return slots;
     }
 
@@ -85,6 +86,7 @@ internal sealed partial class ModelRenderer
         while (capacity < required)
             capacity = capacity > int.MaxValue / 2 ? required : capacity * 2;
         Array.Resize(ref _pointShadowSlots, capacity);
+        Array.Resize(ref _pointShadowTransientSlots, capacity);
     }
 
     void CreatePointShadowDefault(IGpuResourceFactory factory)
@@ -95,38 +97,46 @@ internal sealed partial class ModelRenderer
         _pointShadowTexture = _pointShadowDefault;
     }
 
-    /// <summary>Set this frame's point-shadow tail. <paramref name="slots"/> is one atlas row index per point
-    /// light in the order they were queued, with -1 for a light that carries no map (past the budget, not
-    /// requested, or requested but never yet rendered). Lights past <paramref name="slots"/> read -1 too, so a
-    /// short span is the ordinary case rather than an error. <paramref name="bias"/> and
+    /// <summary>Set this frame's point-shadow tail. <paramref name="baseRows"/> and
+    /// <paramref name="transientRows"/> carry atlas row indices in queued light order, with -1 when a light has
+    /// no row. Lights past either span read -1 too, so a short span is valid. <paramref name="bias"/> and
     /// <paramref name="slopeBias"/> are in radius-normalized units, matching what the pass stores, and they are
     /// <see cref="PointShadowSettings.ResolvedBias"/> and <see cref="PointShadowSettings.ResolvedSlopeBias"/>
     /// rather than the raw fields: a negative bias inverts the receiver's compare into a light leak, so the
     /// clamped values are the ones that may reach this uniform. <paramref name="faceResolution"/> and
-    /// <paramref name="rows"/> are the live atlas layout. <paramref name="filter"/> selects which receiver path
+    /// <paramref name="baseRowsCount"/> are the live base atlas layout. <paramref name="transientRowsCount"/>
+    /// is the transient layout count reserved for the receiver extension. <paramref name="filter"/> selects which receiver path
     /// runs, and <paramref name="lightSizeMetres"/> and <paramref name="maxPenumbraTexels"/> are
     /// <see cref="PointShadowSettings.ResolvedLightSizeMetres"/> and
     /// <see cref="PointShadowSettings.ResolvedMaxPenumbraTexels"/> rather than the raw fields, on the same rule
     /// the two biases follow: the soft filter divides by neither of them, but a NaN in either poisons every tap
     /// offset it computes.</summary>
-    public void SetPointShadowUniforms(ReadOnlySpan<int> slots, float bias, float slopeBias,
-        int faceResolution, int rows, PointShadowFilter filter, float lightSizeMetres, float maxPenumbraTexels)
+    public void SetPointShadowUniforms(ReadOnlySpan<int> baseRows, ReadOnlySpan<int> transientRows,
+        float bias, float slopeBias, int faceResolution, int baseRowsCount, int transientRowsCount,
+        PointShadowFilter filter, float lightSizeMetres, float maxPenumbraTexels)
     {
-        if (_pointShadowSlots.Length < slots.Length)
+        if (_pointShadowSlots.Length < baseRows.Length || _pointShadowTransientSlots.Length < transientRows.Length)
             throw new InvalidOperationException(
-                $"The frame published {slots.Length} point-shadow slots to receiver storage with capacity "
+                $"The frame published {Math.Max(baseRows.Length, transientRows.Length)} point-shadow slots to receiver storage with capacity "
                 + $"{_pointShadowSlots.Length}. Grow it during frame preparation before command recording.");
-        slots.CopyTo(_pointShadowSlots);
-        _pointShadowSlotCount = slots.Length;
+        if (transientRowsCount < 0)
+            throw new ArgumentOutOfRangeException(nameof(transientRowsCount));
+        Array.Fill(_pointShadowSlots, -1);
+        Array.Fill(_pointShadowTransientSlots, -1);
+        baseRows.CopyTo(_pointShadowSlots);
+        transientRows.CopyTo(_pointShadowTransientSlots);
+        _pointShadowSlotCount = Math.Max(baseRows.Length, transientRows.Length);
         _pointShadowBias = bias;
         _pointShadowSlopeBias = slopeBias;
         for (int i = 0; i < MaxPointLights; i++)
         {
-            float slot = i < slots.Length ? slots[i] : -1f;
-            _pointShadowParams[i] = new Vector4(slot, bias, slopeBias, 0f);
+            float baseRow = i < baseRows.Length ? baseRows[i] : -1f;
+            float transientRow = i < transientRows.Length ? transientRows[i] : -1f;
+            _pointShadowParams[i] = new Vector4(baseRow, bias, slopeBias, transientRow);
         }
         _pointShadowAtlas = new Vector4(
-            1f / (PointShadowFaceCount * faceResolution), 1f / (rows * faceResolution), rows, PointShadowFaceCount);
+            1f / (PointShadowFaceCount * faceResolution), 1f / (baseRowsCount * faceResolution),
+            baseRowsCount, PointShadowFaceCount);
         _pointShadowFilter = new Vector4((float)filter, lightSizeMetres, maxPenumbraTexels, faceResolution);
         _frameImageDirty = true;
     }
@@ -139,7 +149,7 @@ internal sealed partial class ModelRenderer
         _pointShadowSlotCount = 0;
         _pointShadowBias = 0f;
         _pointShadowSlopeBias = 0f;
-        for (int i = 0; i < MaxPointLights; i++) _pointShadowParams[i] = new Vector4(-1f, 0f, 0f, 0f);
+        for (int i = 0; i < MaxPointLights; i++) _pointShadowParams[i] = new Vector4(-1f, 0f, 0f, -1f);
         _pointShadowAtlas = Vector4.Zero;
         _pointShadowFilter = Vector4.Zero;
         _frameImageDirty = true;

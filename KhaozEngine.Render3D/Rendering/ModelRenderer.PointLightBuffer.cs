@@ -39,7 +39,8 @@ internal sealed partial class ModelRenderer
     }
 
     internal static int BuildPointLightRecords(ReadOnlySpan<PointLightData> lights,
-        Span<PointLightGpuData> records, ReadOnlySpan<int> shadowSlots, float bias, float slopeBias,
+        Span<PointLightGpuData> records, ReadOnlySpan<int> baseRows, ReadOnlySpan<int> transientRows,
+        float bias, float slopeBias,
         Vector3 renderOrigin = default)
     {
         if (records.Length < lights.Length)
@@ -49,12 +50,13 @@ internal sealed partial class ModelRenderer
         var origin = new Vector4(renderOrigin, 0f);
         for (int i = 0; i < lights.Length; i++)
         {
-            float slot = i < shadowSlots.Length ? shadowSlots[i] : -1f;
+            float baseRow = i < baseRows.Length ? baseRows[i] : -1f;
+            float transientRow = i < transientRows.Length ? transientRows[i] : -1f;
             records[i] = new PointLightGpuData
             {
                 PosRadius = lights[i].PosRadius - origin,
                 ColorIntensity = lights[i].ColorIntensity,
-                ShadowParams = new Vector4(slot, bias, slopeBias, 0f),
+                ShadowParams = new Vector4(baseRow, bias, slopeBias, transientRow),
             };
         }
         records[lights.Length..].Clear();
@@ -157,6 +159,7 @@ internal sealed partial class ModelRenderer
                 + "Grow the point-light buffer during frame preparation before recording receiver draws.");
         UploadedPointLightCount = BuildPointLightRecords(lights, _pointLightRecords,
             _pointShadowSlots.AsSpan(0, _pointShadowSlotCount),
+            _pointShadowTransientSlots.AsSpan(0, _pointShadowSlotCount),
             _pointShadowBias, _pointShadowSlopeBias, renderOrigin);
         if (UploadedPointLightCount > 0)
             cl.UpdateBuffer(_pointLightBuffer, 0, _pointLightRecords.AsSpan(0, UploadedPointLightCount));

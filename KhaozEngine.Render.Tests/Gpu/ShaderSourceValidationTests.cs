@@ -13,7 +13,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <list type="bullet">
     /// <item>ModelVert+ModelFrag, SplatVert+SplatFrag, TileGroundVert+TileGroundFrag (ModelRenderer)</item>
     /// <item>ShadowDepthVert+ShadowDepthFrag, ShadowDepthDissolveVert+ShadowDepthDissolveFrag and the cutout pairs
-    /// (ShadowMapRenderer's rigid depth pipelines)</item>
+    /// (ShadowMapRenderer's rigid depth pipelines), SkinnedShadowDepthVert and SkinnedShadowDepthDissolveVert (its
+    /// skinned ones)</item>
     /// <item>LineVert+LineFrag (LineRenderer via OverlayRenderer)</item>
     /// <item>BillboardVert+BillboardFrag (BillboardRenderer via OverlayRenderer)</item>
     /// <item>BillboardVert+TexturedBillboardFrag (TexturedBillboardRenderer - reuses BillboardVert)</item>
@@ -161,6 +162,11 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void SkinnedShadowDepth()
             => ShaderValidation.ValidatePair(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag, "SkinnedShadowDepth");
+
+        // The dissolve-aware skinned depth vertex (issue #387), paired with the rigid dissolve fragment it reuses.
+        [Fact]
+        public void SkinnedShadowDepthDissolve()
+            => ShaderValidation.ValidatePair(ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag, "SkinnedShadowDepthDissolve");
 
         // The alpha-cutout depth pair and its inverted-dither sibling (issue #15): the only depth fragments that
         // sample a texture, at set 1.

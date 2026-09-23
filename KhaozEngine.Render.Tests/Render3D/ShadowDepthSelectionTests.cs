@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
 
@@ -13,10 +15,11 @@ namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
     /// Headless coverage of which depth pipeline each caster takes in the key light's cascade pass: the alpha-cutout
-    /// pipeline for a MASK caster (issue #15). The pure rules (<see cref="ShadowDepthSelection"/>) are asserted
-    /// directly, and their wiring is asserted on a real <see cref="Scene3D"/> frame recorded against
-    /// <see cref="FakeGpuDevice"/>, which remembers the shader sources behind every pipeline the pass binds. The
-    /// pixel proof is in <c>AlphaCutoutShadowGpuTests</c>.
+    /// pipeline for a MASK caster (issue #15) and the dissolve-aware and opted-out skinned casters (issue #387). The
+    /// pure rules (<see cref="ShadowDepthSelection"/>) are asserted directly, and their
+    /// wiring is asserted on a real <see cref="Scene3D"/> frame recorded against <see cref="FakeGpuDevice"/>, which
+    /// remembers the shader sources behind every pipeline the pass binds. The pixel proof is in
+    /// <c>AlphaCutoutShadowGpuTests</c> and <c>SkinnedShadowCasterPolicyGpuTests</c>.
     /// </summary>
     public sealed class ShadowDepthSelectionTests
     {
@@ -55,6 +58,87 @@ namespace KhaozEngine.Tests.Render3D
         {
             // AppendCasterSpans emits no span for it, so a None here is a bug upstream and is refused loudly.
             Assert.Throws<ArgumentOutOfRangeException>(() => ShadowDepthSelection.ForRigidSpan(ShadowCastKind.None, false));
+            Assert.Throws<ArgumentOutOfRangeException>(() => ShadowDepthSelection.ForCpuSkinned(ShadowCastKind.None));
+            Assert.Throws<ArgumentOutOfRangeException>(() => ShadowDepthSelection.ForGpuSkinned(ShadowCastKind.None));
+        }
+
+        [Fact]
+        public void Skinned_casters_take_the_rigid_pipelines_on_the_cpu_path_and_their_own_on_the_gpu_path()
+        {
+            Assert.Equal(ShadowDepthVariant.Opaque, ShadowDepthSelection.ForCpuSkinned(ShadowCastKind.Opaque));
+            Assert.Equal(ShadowDepthVariant.Dissolve, ShadowDepthSelection.ForCpuSkinned(ShadowCastKind.Dissolving));
+            Assert.Equal(ShadowDepthVariant.Skinned, ShadowDepthSelection.ForGpuSkinned(ShadowCastKind.Opaque));
+            Assert.Equal(ShadowDepthVariant.SkinnedDissolve, ShadowDepthSelection.ForGpuSkinned(ShadowCastKind.Dissolving));
+        }
+
+        static SkinnedSceneInstances.Instance Skinned(float dissolve = 0f, bool castsShadows = true)
+            => new(new SkinnedMeshHandle(0, 1), Matrix4x4.Identity, Color.White, Material.None, dissolve, 0f, default,
+                castsShadows);
+
+        [Fact]
+        public void Skinned_classification_covers_the_three_cases()
+        {
+            Assert.Equal(ShadowCastKind.Opaque, ShadowDepthSelection.ClassifySkinnedCaster(Skinned()));
+            Assert.Equal(ShadowCastKind.Dissolving, ShadowDepthSelection.ClassifySkinnedCaster(Skinned(dissolve: 0.4f)));
+            Assert.Equal(ShadowCastKind.None, ShadowDepthSelection.ClassifySkinnedCaster(Skinned(castsShadows: false)));
+            // Opted out wins over dissolving, as on the rigid side: no shadow beats a thin one.
+            Assert.Equal(ShadowCastKind.None,
+                ShadowDepthSelection.ClassifySkinnedCaster(Skinned(dissolve: 0.4f, castsShadows: false)));
+        }
+
+        [Fact]
+        public void A_skinned_draw_casts_unless_it_opts_out()
+        {
+            var queue = new SkinnedSceneInstances();
+            queue.Add(new SkinnedMeshHandle(0, 1), Matrix4x4.Identity, Color.White, Material.None);
+            queue.Add(new SkinnedMeshHandle(0, 1), Matrix4x4.Identity, Color.White, Material.None, 0.3f, 0.1f, Color.White);
+            queue.Add(new SkinnedMeshHandle(0, 1), Matrix4x4.Identity, Color.White, Material.None, 0f, 0f, default,
+                castsShadows: false);
+
+            Assert.True(queue.Items[0].CastsShadows);
+            Assert.True(queue.Items[1].CastsShadows);
+            Assert.False(queue.Items[2].CastsShadows);
+            Assert.False(queue.Items[2].Dissolving);
+        }
+
+        [Fact]
+        public void A_dissolving_skinned_depth_slot_carries_the_block_the_dissolve_vertex_reads()
+        {
+            // The slot the SkinnedShadowDepthDissolveVert block is read from, packed by the C# side: the std140
+            // offsets (mat4, mat4, vec4, vec4) must be where ShadowMapRenderer writes them, and it must fit a slot.
+            string block = ShaderSources.SkinnedShadowDepthDissolveVert.Split("uniform Palette")[0];
+            int mvp = block.IndexOf("mat4 LightMvp;", StringComparison.Ordinal);
+            int model = block.IndexOf("mat4 Model;", StringComparison.Ordinal);
+            int origin = block.IndexOf("vec4 RenderOrigin;", StringComparison.Ordinal);
+            int parms = block.IndexOf("vec4 DissolveParams;", StringComparison.Ordinal);
+            Assert.True(mvp >= 0 && mvp < model && model < origin && origin < parms, "the VBlock members moved");
+            Assert.Equal(64, ShadowMapRenderer.SkinnedDissolveModelOffset);
+            Assert.Equal(128, ShadowMapRenderer.SkinnedDissolveOriginOffset);
+            Assert.Equal(144, ShadowMapRenderer.SkinnedDissolveParamsOffset);
+            Assert.Equal(160, ShadowMapRenderer.SkinnedDissolvePayloadBytes);
+            Assert.True(ShadowMapRenderer.SkinnedDissolvePayloadBytes <= ShadowMapRenderer.SkinnedDepthSlotBytes);
+
+            var gd = new FakeGpuDevice();
+            using IGpuFramebuffer fb = NewTarget(gd.Factory);
+            using var renderer = new ModelRenderer(gd, fb.Outputs, 256, 1);
+            renderer.EnsureSkinnedShadowCapacity(2);
+            Matrix4x4 world = Matrix4x4.CreateRotationY(0.3f) * Matrix4x4.CreateTranslation(1f, 2f, 3f);
+            Matrix4x4 depth = Matrix4x4.CreateScale(0.5f) * Matrix4x4.CreateTranslation(0f, 0f, 0.25f);
+            var renderOrigin = new Vector3(4096f, 0f, -2048f);
+
+            renderer.PackSkinnedShadowSlot(0, world, depth);   // an opaque caster: the matrix alone
+            renderer.PackSkinnedShadowSlot(1, world, depth, renderOrigin, noiseScale: 3.5f, dissolveThreshold: 0.6f);
+
+            ReadOnlySpan<byte> opaque = renderer.ShadowMap.SkinnedShadowSlotBytes(0);
+            ReadOnlySpan<byte> dissolving = renderer.ShadowMap.SkinnedShadowSlotBytes(1);
+            Assert.Equal(world * depth, MemoryMarshal.Read<Matrix4x4>(opaque));
+            Assert.All(opaque.Slice(64).ToArray(), b => Assert.Equal(0, b));   // nothing beyond the matrix
+            Assert.Equal(world * depth, MemoryMarshal.Read<Matrix4x4>(dissolving));
+            Assert.Equal(world, MemoryMarshal.Read<Matrix4x4>(dissolving.Slice(ShadowMapRenderer.SkinnedDissolveModelOffset)));
+            Assert.Equal(new Vector4(renderOrigin, 0f),
+                MemoryMarshal.Read<Vector4>(dissolving.Slice(ShadowMapRenderer.SkinnedDissolveOriginOffset)));
+            Assert.Equal(new Vector4(3.5f, 0.6f, 0f, 0f),
+                MemoryMarshal.Read<Vector4>(dissolving.Slice(ShadowMapRenderer.SkinnedDissolveParamsOffset)));
         }
 
         // ---- the wiring, on a recorded frame -----------------------------------------------------------------
@@ -180,6 +264,116 @@ namespace KhaozEngine.Tests.Render3D
             // Neither plain dissolve pipeline: that would drop the alpha test for the whole fade.
             Assert.False(Bound(binds, ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag));
             Assert.False(Bound(binds, ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveInvertedFrag));
+        }
+
+        static (Scene3D Scene, SkinnedGltfMesh Tube, SkinnedMeshHandle Handle) SkinnedScene(FakeGpuDevice gd,
+            IGpuFramebuffer fb, bool gpuSkinning)
+        {
+            Scene3D scene = NewScene(gd, fb);
+            scene.UseGpuSkinning = gpuSkinning;
+            SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(0.5f, 4f, 10, 10, 6, Axis.Z);
+            return (scene, tube, scene.LoadSkinnedMesh(tube));
+        }
+
+        static readonly Matrix4x4 TubeAt = Matrix4x4.CreateTranslation(0f, 0.6f, 0f);
+
+        [Fact]
+        public void A_dissolving_gpu_skinned_caster_binds_the_skinned_dissolve_depth_pipeline()
+        {
+            var gd = new FakeGpuDevice();
+            using IGpuFramebuffer fb = NewTarget(gd.Factory);
+            var (scene, tube, h) = SkinnedScene(gd, fb, gpuSkinning: true);
+            using (scene)
+            {
+                List<FakeGraphicsPipelineRequest> solid = RecordFrame(scene, gd.Factory, fb,
+                    () => scene.DrawSkinned(h, tube.RestPose, TubeAt, Color.White));
+                Assert.True(Bound(solid, ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag));
+                Assert.False(Bound(solid, ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag));
+
+                List<FakeGraphicsPipelineRequest> fading = RecordFrame(scene, gd.Factory, fb,
+                    () => scene.DrawSkinned(h, tube.RestPose, TubeAt, Color.White, Material.None, 0.5f, 0.05f, Color.White));
+                Assert.True(Bound(fading, ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag),
+                    "a dissolving GPU-skinned caster still wrote solid depth");
+                Assert.False(Bound(fading, ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag));
+            }
+        }
+
+        [Fact]
+        public void A_dissolving_cpu_skinned_caster_binds_the_rigid_dissolve_depth_pipeline()
+        {
+            var gd = new FakeGpuDevice();
+            using IGpuFramebuffer fb = NewTarget(gd.Factory);
+            var (scene, tube, h) = SkinnedScene(gd, fb, gpuSkinning: false);
+            using (scene)
+            {
+                List<FakeGraphicsPipelineRequest> solid = RecordFrame(scene, gd.Factory, fb,
+                    () => scene.DrawSkinned(h, tube.RestPose, TubeAt, Color.White));
+                Assert.False(Bound(solid, ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag));
+
+                List<FakeGraphicsPipelineRequest> fading = RecordFrame(scene, gd.Factory, fb,
+                    () => scene.DrawSkinned(h, tube.RestPose, TubeAt, Color.White, Material.None, 0.5f, 0.05f, Color.White));
+                Assert.True(Bound(fading, ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag),
+                    "a dissolving CPU-skinned caster still wrote solid depth");
+            }
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void An_opted_out_skinned_draw_casts_nothing_but_still_draws(bool gpuSkinning)
+        {
+            var gd = new FakeGpuDevice();
+            using IGpuFramebuffer fb = NewTarget(gd.Factory);
+            var (scene, tube, h) = SkinnedScene(gd, fb, gpuSkinning);
+            using (scene)
+            {
+                MeshHandle floor = scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+
+                RecordFrame(scene, gd.Factory, fb, () =>
+                {
+                    scene.Draw(floor, Matrix4x4.Identity);
+                    scene.DrawSkinned(h, tube.RestPose, TubeAt, Color.White);
+                });
+                ShadowPassDiagnostics casting = scene.LastShadowPassDiagnostics;
+                Assert.True(casting.AnySkinnedCaster);
+                Assert.Equal(1, casting.SkinnedCasterCount);
+                Assert.Equal(casting.CascadeCount, casting.SkinnedDrawCalls);   // one depth draw per cascade
+
+                List<FakeGraphicsPipelineRequest> binds = RecordFrame(scene, gd.Factory, fb, () =>
+                {
+                    scene.Draw(floor, Matrix4x4.CreateTranslation(0.01f, 0f, 0f));   // keeps the rigid pass dirty
+                    scene.DrawSkinned(h, tube.RestPose, TubeAt, Color.White, Material.None, castsShadows: false);
+                });
+                ShadowPassDiagnostics optedOut = scene.LastShadowPassDiagnostics;
+                Assert.False(optedOut.AnySkinnedCaster);
+                Assert.Equal(0, optedOut.SkinnedCasterCount);
+                Assert.Equal(0, optedOut.SkinnedDrawCalls);
+                Assert.False(Bound(binds, ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag));
+                // A shadow policy, not a cull: the main pass still draws it.
+                Assert.Equal(1, scene.DrawnSkinnedInstances);
+            }
+        }
+
+        [Fact]
+        public void An_opted_out_dissolving_skinned_draw_casts_nothing()
+        {
+            var gd = new FakeGpuDevice();
+            using IGpuFramebuffer fb = NewTarget(gd.Factory);
+            var (scene, tube, h) = SkinnedScene(gd, fb, gpuSkinning: true);
+            using (scene)
+            {
+                MeshHandle floor = scene.LoadMesh(MeshPrimitives.Tile(10f, 0.1f));
+                List<FakeGraphicsPipelineRequest> binds = RecordFrame(scene, gd.Factory, fb, () =>
+                {
+                    scene.Draw(floor, Matrix4x4.Identity);
+                    scene.DrawSkinned(h, tube.RestPose, TubeAt, Color.White, Material.None, 0.5f, 0.05f, Color.White,
+                        castsShadows: false);
+                });
+                Assert.Equal(0, scene.LastShadowPassDiagnostics.SkinnedDrawCalls);
+                Assert.False(Bound(binds, ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag));
+                // The colour pass still dissolves it.
+                Assert.True(Bound(binds, ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag));
+            }
         }
     }
 }

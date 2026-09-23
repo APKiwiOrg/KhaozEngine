@@ -183,12 +183,22 @@ internal sealed partial class ModelRenderer
     public void PackSkinnedShadowSlot(uint slot, in Matrix4x4 model, in Matrix4x4 cascadeDepthMat) =>
         _shadowMap.PackSkinnedShadowSlot(slot, model, cascadeDepthMat);
 
+    /// <summary>Pack one DISSOLVING GPU-skinned caster's shadow-depth slot for one cascade (issue #387): the
+    /// folded <c>LightMvp</c> plus the render-relative <paramref name="model"/>, <paramref name="renderOrigin"/>,
+    /// that cascade's <paramref name="noiseScale"/> and the caster's <paramref name="dissolveThreshold"/>. Forwards
+    /// to <see cref="ShadowMapRenderer"/>.</summary>
+    public void PackSkinnedShadowSlot(uint slot, in Matrix4x4 model, in Matrix4x4 cascadeDepthMat,
+        Vector3 renderOrigin, float noiseScale, float dissolveThreshold) =>
+        _shadowMap.PackSkinnedShadowSlot(slot, model, cascadeDepthMat, renderOrigin, noiseScale, dissolveThreshold);
+
     /// <summary>Upload every packed GPU-skinned shadow slot in one whole-buffer write.</summary>
     public void UploadSkinnedShadowSlots(IGpuCommandList cl) => _shadowMap.UploadSkinnedShadowSlots(cl);
 
     /// <summary>Bind cascade <paramref name="cascade"/> for the GPU-skinning depth draws: scissor its atlas column
-    /// and switch to the skinned depth pipeline. Call per cascade after the rigid runs. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
-    public void BindShadowCascadeSkinned(IGpuCommandList cl, int cascade) => _shadowMap.BindCascadeSkinned(cl, cascade);
+    /// and switch to the skinned depth pipeline, or its dissolve-aware sibling when <paramref name="dissolve"/> is
+    /// set (issue #387). Call per cascade after the rigid runs. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
+    public void BindShadowCascadeSkinned(IGpuCommandList cl, int cascade, bool dissolve = false) =>
+        _shadowMap.BindCascadeSkinned(cl, cascade, dissolve);
 
     /// <summary>Draw one GPU-skinned caster into the CURRENTLY-BOUND cascade (rest-pose vertex buffer, the
     /// caster-cascade light-matrix slot at <paramref name="slot"/>, and the shared per-caster palette at

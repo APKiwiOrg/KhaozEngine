@@ -66,6 +66,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["ShadowDepthDissolve"] = "ShadowMapRenderer depth",
                 ["ShadowDepthDissolveInverted"] = "ShadowMapRenderer depth",
                 ["SkinnedShadowDepth"] = "ShadowMapRenderer skinned depth",
+                ["SkinnedShadowDepthDissolve"] = "ShadowMapRenderer skinned depth",
                 // The cutout pair adds the caster's albedo as a set of its own, so it is a pipeline shape of its
                 // own: the depth light block at set 0 and { Albedo, Samp } at set 1.
                 ["ShadowDepthCutout"] = "ShadowMapRenderer cutout depth",
@@ -197,7 +198,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(42, catalog.Length);
+            Assert.Equal(43, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

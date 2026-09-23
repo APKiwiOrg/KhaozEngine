@@ -150,6 +150,7 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         [InlineData("SkinnedShadowDepth")]
         [InlineData("ShadowDepthCutout")]
         [InlineData("ShadowDepthCutoutInverted")]
+        [InlineData("SkinnedShadowDepthDissolve")]
         public void TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(string programName)
         {
             ShippedGraphicsProgram program = Program(programName);
@@ -167,7 +168,7 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         }
 
         /// <summary>
-        /// THE SAME RULE ON THE DEPTH FRAGMENTS THAT READ MORE THAN THE DEPTH (issue #15). The cutout
+        /// THE SAME RULE ON THE DEPTH FRAGMENTS THAT READ MORE THAN THE DEPTH (issues #15 and #387). The cutout
         /// fragments read six interpolants and the inverted one has no use of its own for location 3, so without
         /// its 1e-30 sink SPIRV-Cross would drop it and leave locations 4 and 5 above a hole. Every fragment input
         /// must be gap-free from 0 and match a vertex output at the same index, as on the terrain pair below.
@@ -175,6 +176,7 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         [Theory]
         [InlineData("ShadowDepthCutout")]
         [InlineData("ShadowDepthCutoutInverted")]
+        [InlineData("SkinnedShadowDepthDissolve")]
         public void TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(string programName)
         {
             ShippedGraphicsProgram program = Program(programName);

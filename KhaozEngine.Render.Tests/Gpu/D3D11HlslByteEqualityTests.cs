@@ -118,10 +118,11 @@ namespace KhaozEngine.Tests.Gpu
             var graphics = ShippedShaderPrograms.GraphicsPrograms().ToArray();
             var compute = ShippedShaderPrograms.ComputeKernels().ToArray();
 
-            // 43 non-test CreateShadersFromSpirv call sites, 42 distinct source pairs (the Line pair is created
-            // three times). The cascade pass's cutout pair is the newest, and the count moves with every pipeline
-            // the renderers gain. Two compute kernels across the four reachable cascade resolutions.
-            Assert.Equal(42, graphics.Length);
+            // 44 non-test CreateShadersFromSpirv call sites, 43 distinct source pairs (the Line pair is created
+            // three times). The cascade pass's cutout pair and dissolve-aware skinned vertex are the newest, and the
+            // count moves with every pipeline the renderers gain. Two compute kernels across the four reachable
+            // cascade resolutions.
+            Assert.Equal(43, graphics.Length);
             Assert.Equal(8, compute.Length);
 
             Assert.Equal(graphics.Length, graphics.Select(p => p.Name).Distinct(StringComparer.Ordinal).Count());

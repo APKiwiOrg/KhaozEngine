@@ -359,5 +359,62 @@ void main() {
     lightClip.z = max(lightClip.z, 0.0);           // near-plane pancake, see the note above ShadowDepthVert
     gl_Position = lightClip;
 }";
+
+        // ---- Dissolve-aware skinned depth vertex (issue #387). SkinnedShadowDepthVert plus the character dissolve,
+        //      so a GPU-skinned caster mid-CharDissolve sheds its shadow with its body. Paired with the rigid
+        //      ShadowDepthDissolveFrag unchanged: it emits exactly that fragment's four interpolants.
+        //
+        //      The per-(caster, cascade) slot grows from the matrix alone to { LightMvp; Model; RenderOrigin;
+        //      DissolveParams }, 160 of its 256 bytes, packed only for a dissolving caster
+        //      (ShadowMapRenderer.PackSkinnedShadowSlot). LightMvp stays the folded matrix the plain vertex uses, so
+        //      a zero threshold records identical depth. The noise needs the ABSOLUTE world position, which is
+        //      reconstructed as the rigid variant does: Model is the render-relative world transform and
+        //      RenderOrigin is added back. DissolveParams.x is this cascade's noise scale and .y the threshold, which
+        //      reaches the fragment with a zero complement, because a character dissolve is always the plain keep
+        //      set (SkinnedModelDissolveFrag's `mask < threshold` discard). ----
+        public const string SkinnedShadowDepthDissolveVert = @"#version 450
+layout(set=0, binding=0) uniform VBlock {
+    mat4 LightMvp;         // Model * clip-corrected LightViewProj (folded per draw)
+    mat4 Model;            // render-relative world transform, for the world-anchored noise
+    vec4 RenderOrigin;     // xyz = this frame's render origin
+    vec4 DissolveParams;   // x = this cascade's dissolve noise scale, y = the caster's dissolve threshold
+};
+layout(set=1, binding=0) uniform Palette {
+    mat4 bones[128];       // this CASTER's composed palette (inverseBind*jointWorld), shared with the main pass
+};
+layout(location=0) in vec3 Position;
+layout(location=1) in vec3 Normal;
+layout(location=2) in vec4 Color;
+layout(location=3) in vec2 TexCoord;
+layout(location=4) in vec4 BoneIndices;
+layout(location=5) in vec4 BoneWeights;
+layout(location=6) in vec4 Tangent;
+layout(location=0) out float vLightDepth;
+layout(location=1) out vec3 vNoisePos;
+layout(location=2) out vec2 vDissolve;
+layout(location=3) out float vDissolveComplement;
+void main() {
+    float wsum = BoneWeights.x + BoneWeights.y + BoneWeights.z + BoneWeights.w;
+    mat4 skin;
+    if (wsum < 1e-8) {
+        skin = mat4(1.0);
+    } else {
+        skin = bones[int(BoneIndices.x)] * BoneWeights.x
+             + bones[int(BoneIndices.y)] * BoneWeights.y
+             + bones[int(BoneIndices.z)] * BoneWeights.z
+             + bones[int(BoneIndices.w)] * BoneWeights.w;
+    }
+    vec4 localPos = skin * vec4(Position, 1.0);
+    float sink = Normal.x + Color.x + TexCoord.x + Tangent.x;   // keep the vertex-input signature gap-free
+    localPos.x += sink * 1e-30;
+    vec4 lightClip = LightMvp * localPos;
+    vLightDepth = lightClip.z / lightClip.w;       // TRUE light-clip depth (unclamped), clamped per fragment below
+    lightClip.z = max(lightClip.z, 0.0);           // near-plane pancake, see the note above ShadowDepthVert
+    gl_Position = lightClip;
+    vec4 world = Model * localPos;
+    vNoisePos = (world.xyz + RenderOrigin.xyz) * DissolveParams.x;
+    vDissolve = vec2(DissolveParams.y, 0.0);
+    vDissolveComplement = 0.0;
+}";
     }
 }

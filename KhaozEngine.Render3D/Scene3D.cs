@@ -812,34 +812,17 @@ namespace KhaozEngine.Render3D
         /// <summary>As <see cref="DrawSkinned(SkinnedMeshHandle,ReadOnlySpan{Matrix4x4},Matrix4x4,Color)"/> with an
         /// explicit <paramref name="material"/> (emissive + specular).</summary>
         public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint, Material material)
-        {
-            if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
-            var entry = _skinnedMeshes[h.Index];
-            if (entry is null) return;
-            // This draw's bones go into slot N (N = its submission index), padded to the per-draw window so the
-            // dynamic-offset bind selects exactly this draw's palette. Slot N maps to bone byte offset
-            // N * SlotBytes and to instance buffer element N in the render loop.
-            int slot = _skinnedInstances.Items.Count;
-            ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
-            _skinnedInstances.Add(h, model, tint, material);
-        }
+            => DrawSkinned(h, boneMatrices, model, tint, material, castsShadows: true);
 
         /// <summary>As the material overload, but dissolves the mesh for a <see cref="CharDissolve"/> teleport:
         /// <paramref name="dissolve"/> is the 0..1 threshold (0 = solid, 1 = fully gone; feed
         /// <see cref="ITransition.Cover"/>), with a glowing emissive edge of <paramref name="edgeColor"/> and width
         /// <paramref name="edgeWidth"/> (a fraction of the noise range). A <paramref name="dissolve"/> of 0 draws
         /// exactly like the material overload (the normal pipeline), so it is safe to call unconditionally while
-        /// gating the value on the transition.</summary>
+        /// gating the value on the transition. The draw's SHADOW erodes with the same mask (issue #387).</summary>
         public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint,
             Material material, float dissolve, float edgeWidth, Color edgeColor)
-        {
-            if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
-            var entry = _skinnedMeshes[h.Index];
-            if (entry is null) return;
-            int slot = _skinnedInstances.Items.Count;
-            ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
-            _skinnedInstances.Add(h, model, tint, material, dissolve, edgeWidth, edgeColor);
-        }
+            => DrawSkinned(h, boneMatrices, model, tint, material, dissolve, edgeWidth, edgeColor, castsShadows: true);
 
         /// <summary>Skinned draws queued this frame. Internal: lets tests assert Begin clears the queue.</summary>
         internal int SkinnedInstanceCount => _skinnedInstances.Items.Count;
@@ -1682,7 +1665,7 @@ namespace KhaozEngine.Render3D
             // what it uploads. UseGpuSkinning (the default) records the GPU palette path: no per-frame vertex skin or
             // upload, only the per-draw UBO slots. With it off each draw is CPU-skinned into one concatenated stream
             // plus per-draw instance data (SkinningMath.SkinVertex mirrors the shader blend exactly). A draw that is
-            // camera-culled AND (shadows off, or outside the shadow volume) is skipped entirely:
+            // camera-culled AND (shadows off, opted out of casting, or outside the shadow volume) is skipped entirely:
             // no skin, no upload, no draw in either pass (see ClassifySkinnedVisibility). Both paths share that
             // classification and its counters, so DrawnSkinnedInstances / CulledSkinnedInstances match.
             var skinnedItems = _skinnedInstances.Items;
@@ -1705,12 +1688,13 @@ namespace KhaozEngine.Render3D
                     var src = _skinnedCpuVerts[it.Mesh.Index];
                     if (src is null) continue;
 
-                    var (visibleMain, visibleShadow) = ClassifySkinnedVisibility(
-                        entry.Bounds, it.World, FrustumCulling, camFrustum, shadowMapActive, _shadowFrustums.AsSpan(0, shadowCascadeCount));
+                    var (visibleMain, visibleShadow) = ClassifySkinnedVisibility(entry.Bounds, it.World, FrustumCulling,
+                        camFrustum, shadowMapActive && it.CastsShadows, _shadowFrustums.AsSpan(0, shadowCascadeCount));
                     if (!visibleMain && !visibleShadow) { _culledSkinnedInstances++; continue; }
                     if (visibleMain) _drawnSkinnedInstances++; else _culledSkinnedInstances++;
 
                     bool dissolving = it.Dissolving;
+                    ShadowCastKind shadowKind = ShadowDepthSelection.ClassifySkinnedCaster(it);   // issue #387
                     // During a dissolve the emissive channel carries the edge colour. SpecParams.z/.w carry the
                     // dissolve threshold + edge width (0 on a normal draw, so the values match the pre-dissolve path).
                     Vector4 emissive = dissolving ? it.DissolveEdge : it.Material.Emissive;
@@ -1724,7 +1708,7 @@ namespace KhaozEngine.Render3D
                         // _boneMatrices (submission index), packed into the shared palette at the compacted slot.
                         _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
                             entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
-                            ToRender(it.World), it.Tint, emissive, specParams, visibleMain, dissolving));   // reduced after the absolute classify
+                            ToRender(it.World), it.Tint, emissive, specParams, visibleMain, dissolving, shadowKind));   // reduced after the absolute classify
                     }
                     else
                     {
@@ -1739,8 +1723,11 @@ namespace KhaozEngine.Render3D
                             Emissive = emissive,
                             SpecParams = specParams,
                             IsDynamic = 1f,   // skinned character: tag it so the main ground-decal pass rejects it (issue #235)
+                            // Read by the rigid dissolve DEPTH pipeline (issue #387). The colour pass routes a
+                            // dissolving CPU-skinned draw through ModelDissolveFrag, which reads SpecParams.z/w instead.
+                            Dissolve = dissolving ? new Vector2(it.DissolveThreshold, it.DissolveEdgeWidth) : Vector2.Zero,
                         });
-                        _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet, dissolving, visibleMain));
+                        _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet, dissolving, visibleMain, shadowKind));
                     }
                 }
                 // Sizes the frame's three skinned destinations and uploads the ONE shared bone palette both passes
@@ -1753,7 +1740,7 @@ namespace KhaozEngine.Render3D
                         + (long)_cpuSkinnedInstances.Count * Unsafe.SizeOf<ModelRenderer.InstanceData>());
                 }
             }
-            int skinnedCasterCount = UseGpuSkinning ? _gpuSkinnedDraws.Count : _cpuSkinnedDraws.Count;
+            int skinnedCasterCount = CountSkinnedCasters();   // opted-out skinned draws neither cast nor dirty the atlas
 
             // Key-light cascaded shadow map (ShadowMode.ShadowMap): a depth-only pass over the SAME instanced casters
             // into the ortho light-space cascade atlas, BEFORE the model pass, so the model + splat fragments sample it.
@@ -2396,8 +2383,8 @@ namespace KhaozEngine.Render3D
         /// Carries the mesh's rest-pose vertex + index buffers (uploaded once at load - the GPU deforms them), the
         /// set-1 material set, the composed bone-palette slice (offset into <c>_boneMatrices</c> + bone count), the
         /// compacted per-caster slot, and the per-draw matrices/material the vertex shader folds. The shadow depth
-        /// pass packs + draws every entry (out-of-volume ones clip away). The main pass skips a
-        /// <see cref="VisibleMain"/>-false entry (camera-culled, kept only as a shadow caster).</summary>
+        /// pass packs + draws every entry whose <see cref="ShadowKind"/> casts (out-of-volume ones clip away). The
+        /// main pass skips a <see cref="VisibleMain"/>-false entry (camera-culled, kept only as a shadow caster).</summary>
         readonly struct GpuSkinnedDraw
         {
             public readonly IGpuBuffer RestVb, Ib;
@@ -2411,22 +2398,25 @@ namespace KhaozEngine.Render3D
             public readonly Vector4 Tint, Emissive, SpecParams;
             public readonly bool VisibleMain;
             public readonly bool Dissolve;
+            public readonly ShadowCastKind ShadowKind;   // how it takes part in the depth pass (issue #387)
             public GpuSkinnedDraw(IGpuBuffer restVb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
                 IGpuResourceSet? skinnedMaterialSet, int boneSpanStart, int boneCount, uint slot,
-                in Matrix4x4 world, Vector4 tint, Vector4 emissive, Vector4 specParams, bool visibleMain, bool dissolve)
+                in Matrix4x4 world, Vector4 tint, Vector4 emissive, Vector4 specParams, bool visibleMain, bool dissolve,
+                ShadowCastKind shadowKind = ShadowCastKind.Opaque)
             {
                 RestVb = restVb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat;
                 SkinnedMaterialSet = skinnedMaterialSet; BoneSpanStart = boneSpanStart; BoneCount = boneCount; Slot = slot;
                 World = world; Tint = tint; Emissive = emissive; SpecParams = specParams; VisibleMain = visibleMain; Dissolve = dissolve;
+                ShadowKind = shadowKind;
             }
         }
 
         /// <summary>One CPU-skinned draw: the mesh's index buffer + count, the base vertex of its deformed verts in
         /// the shared skinned vertex stream, and its optional material set. Built per frame in RenderInternal.
         /// Every entry here was CPU-skinned and uploaded (needed by at least one of the main or shadow pass). The
-        /// shadow depth pass draws every entry unconditionally (see RenderShadowDepthPass), while the main pass
-        /// draw loop skips an entry whose <see cref="VisibleMain"/> is false (camera-culled, kept only because it
-        /// is still a shadow caster).</summary>
+        /// shadow depth pass draws every entry whose <see cref="ShadowKind"/> casts (see RenderShadowDepthPass),
+        /// while the main pass draw loop skips an entry whose <see cref="VisibleMain"/> is false (camera-culled,
+        /// kept only because it is still a shadow caster).</summary>
         readonly struct CpuSkinnedDraw
         {
             public readonly IGpuBuffer Ib;
@@ -2436,9 +2426,11 @@ namespace KhaozEngine.Render3D
             public readonly IGpuResourceSet? MaterialSet;
             public readonly bool Dissolve;   // route through the CharDissolve pipeline variant
             public readonly bool VisibleMain;   // draw in the main visible pass, always true when culling is off
-            public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex, IGpuResourceSet? materialSet, bool dissolve = false, bool visibleMain = true)
+            public readonly ShadowCastKind ShadowKind;   // how it takes part in the depth pass (issue #387)
+            public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex, IGpuResourceSet? materialSet, bool dissolve = false, bool visibleMain = true, ShadowCastKind shadowKind = ShadowCastKind.Opaque)
             {
                 Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; BaseVertex = baseVertex; MaterialSet = materialSet; Dissolve = dissolve; VisibleMain = visibleMain;
+                ShadowKind = shadowKind;
             }
         }
 
@@ -2576,7 +2568,7 @@ namespace KhaozEngine.Render3D
         /// <paramref name="restBounds"/> transformed by its <paramref name="world"/> matrix, inflated by
         /// <see cref="SkinnedCullSafetyFactor"/>. <paramref name="cullMain"/> is <see cref="FrustumCulling"/> (off
         /// = always visible in the main pass, the rigid-instance parity path). <paramref name="shadowActive"/> is
-        /// whether the shadow-map tier is resolved this frame (off = never a shadow caster). The caster is a shadow
+        /// whether the shadow-map tier is resolved this frame AND the draw casts (off = never a shadow caster). It is a shadow
         /// caster when its inflated sphere intersects every lateral and far plane of ANY cascade in
         /// <paramref name="shadowFrustums"/>. The near plane is excluded because depth clamping pancakes closer
         /// casters onto it. Under the frustum-slice fit the cascades do not nest, so their union is tested. Returns

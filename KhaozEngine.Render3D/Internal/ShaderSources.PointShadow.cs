@@ -1,8 +1,8 @@
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// The omnidirectional POINT-light shadow pass's shader sources: three caster vertex/fragment pairs mirroring
-    /// the key light's three, plus the per-row clear quad. Part of the <see cref="ShaderSources"/> partial: see
+    /// The omnidirectional POINT-light shadow pass's shader sources: three rigid and three skinned caster pairs,
+    /// plus the per-row clear quad. Part of the <see cref="ShaderSources"/> partial: see
     /// ShaderSources.cs for the shared contract (GLSL #version 450, cross-compiled at load via the GPU seam's
     /// SPIR-V path).
     /// </summary>
@@ -199,6 +199,60 @@ void main() {
         if (mask >= 1.0 - threshold) discard;     // keep the complement of the plain half's keep-set
     }
 " + PointShadowDistanceWrite + @"
+}";
+
+        // One face header at set 0, one caster header at set 1, and the model pass's shared bone palette at set 2.
+        // The unused attributes feed a negligible sink so emitted HLSL keeps contiguous TEXCOORD0..6 inputs.
+        const string PointShadowSkinnedInputs = @"layout(set=1, binding=0) uniform Caster {
+    mat4 Model;
+    vec4 Dissolve;             // x = threshold, y = complement phase
+};
+layout(set=2, binding=0) uniform Palette {
+    mat4 bones[128];
+};
+layout(location=0) in vec3 Position;
+layout(location=1) in vec3 Normal;
+layout(location=2) in vec4 Color;
+layout(location=3) in vec2 TexCoord;
+layout(location=4) in vec4 BoneIndices;
+layout(location=5) in vec4 BoneWeights;
+layout(location=6) in vec4 Tangent;
+mat4 pointShadowSkin() {
+    float wsum = BoneWeights.x + BoneWeights.y + BoneWeights.z + BoneWeights.w;
+    if (wsum < 1e-8) return mat4(1.0);
+    return bones[int(BoneIndices.x)] * BoneWeights.x
+         + bones[int(BoneIndices.y)] * BoneWeights.y
+         + bones[int(BoneIndices.z)] * BoneWeights.z
+         + bones[int(BoneIndices.w)] * BoneWeights.w;
+}
+";
+
+        public const string PointShadowSkinnedVert = @"#version 450
+" + PointShadowCasterUniformBlock + PointShadowSkinnedInputs + @"layout(location=0) out vec3 vWorldPos;
+void main() {
+    vec4 localPos = pointShadowSkin() * vec4(Position, 1.0);
+    vec4 world = Model * localPos;
+    float sink = Normal.x + Color.x + TexCoord.x + Tangent.x;
+    world.x += sink * 1e-30;
+    gl_Position = LightVp * world;
+    vWorldPos = world.xyz;
+}";
+
+        public const string PointShadowSkinnedDissolveVert = @"#version 450
+" + PointShadowCasterUniformBlock + PointShadowSkinnedInputs + @"layout(location=0) out vec3 vWorldPos;
+layout(location=1) out vec3 vNoisePos;
+layout(location=2) out vec2 vDissolve;
+layout(location=3) out float vDissolveComplement;
+void main() {
+    vec4 localPos = pointShadowSkin() * vec4(Position, 1.0);
+    vec4 world = Model * localPos;
+    float sink = Normal.x + Color.x + TexCoord.x + Tangent.x;
+    world.x += sink * 1e-30;
+    gl_Position = LightVp * world;
+    vWorldPos = world.xyz;
+    vNoisePos = (world.xyz + Noise.yzw) * Noise.x;
+    vDissolve = vec2(Dissolve.x, 0.0);
+    vDissolveComplement = Dissolve.y;
 }";
 
         // ---- The per-row CLEAR (design decision 7). One light row is cleared by drawing a fullscreen triangle at

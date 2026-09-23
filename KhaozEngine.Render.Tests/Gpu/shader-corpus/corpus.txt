@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 424
+# Rows: 448
 Beam.fragment.hlsl 763e8e2481a2a78f468f6d62ed5e3a24df6ffd7ad4d0e8c280ac5ad953b177fe 1809
 Beam.fragment.msl f8bb4e895ae8c1794baa7115089311abef23c86d22b47d85f68e225dae39ad99 1493
 Beam.fragment.spirv 7023f2b860be99c43999b4be78b8fe5cbdba1e201d451dd77c137a80224eba79 2724
@@ -162,6 +162,30 @@ PointShadowRigidDissolveInverted.layout.msl ac1be3ad0aed38047f2bb90f944192c42d9d
 PointShadowRigidDissolveInverted.vertex.hlsl 581f7c835edc9634945e1bc4342f87d35cf08876f6a2c6431ce2277579f11448 2386
 PointShadowRigidDissolveInverted.vertex.msl 032aa3a331ef65877876c6d740c687386e6ab2c6caec6825966bd99c0dce3638 1473
 PointShadowRigidDissolveInverted.vertex.spirv ee2ccb892e5a885cb0cb23204a506bbbc3b6ac9d391a3e1a82c98499d0bed7ba 2684
+PointShadowSkinned.fragment.hlsl 5ab6ceaebdbd0411a43c304e258119911da8307364c5516dac52fa7a7507c902 1162
+PointShadowSkinned.fragment.msl 32190a4fba895804bd3a877088750afbd120003b6a0a5e4efc212b95afb6f9b5 883
+PointShadowSkinned.fragment.spirv c408f674c5b9d3493a85b85ce3fae9561075b57e0bc30b382708300fe22fe7eb 1544
+PointShadowSkinned.layout.hlsl e0d7a4238a034aa5b9e70aaad4e7fedafa59e460c8be1906e113ecf188ce451e 10 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:V]|set2[<unnamed>:UniformBuffer:V]
+PointShadowSkinned.layout.msl e0d7a4238a034aa5b9e70aaad4e7fedafa59e460c8be1906e113ecf188ce451e 10 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:V]|set2[<unnamed>:UniformBuffer:V]
+PointShadowSkinned.vertex.hlsl fb5ed86a7ba70d0492addd53227d40dca6c951904d94bbc0a600a0e04688293b 2421
+PointShadowSkinned.vertex.msl d69ccc6622f42626df78e4f49a3785ac16d28b1667922a95052ece805e2cf331 1875
+PointShadowSkinned.vertex.spirv a7cd99bf77d2e924316ba3a60afc2fc59efb313da8bfb9d6d103dcf8a7e947ac 3712
+PointShadowSkinnedDissolve.fragment.hlsl 96dbae0e072511b72494d7e5292147151140c9152b01172a63e47857a34c9b24 3277
+PointShadowSkinnedDissolve.fragment.msl 6ea68c5a3c93fcbd30416491c69b874c0be9beb8d7cd0e414963d043765a3253 2841
+PointShadowSkinnedDissolve.fragment.spirv 477f4e6ca49131b4bba36a8cef084920a8a6aee5efe933ecdb0d3bccbd0630aa 3808
+PointShadowSkinnedDissolve.layout.hlsl e0d7a4238a034aa5b9e70aaad4e7fedafa59e460c8be1906e113ecf188ce451e 10 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:V]|set2[<unnamed>:UniformBuffer:V]
+PointShadowSkinnedDissolve.layout.msl e0d7a4238a034aa5b9e70aaad4e7fedafa59e460c8be1906e113ecf188ce451e 10 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:V]|set2[<unnamed>:UniformBuffer:V]
+PointShadowSkinnedDissolve.vertex.hlsl a4bbfecf059e68eff97e513ee3f03e6da0a41c5182dda0f8a7a4aa4d51346124 2763
+PointShadowSkinnedDissolve.vertex.msl ce572485651a71f88da957f0f3bedccf3dc89651e4679651527c1a753cb0e5fc 2101
+PointShadowSkinnedDissolve.vertex.spirv be4521268fb43ae8443495d8d828cf8f75c1174226371461cb5571509a1d79d3 4200
+PointShadowSkinnedDissolveInverted.fragment.hlsl f4d4e0be05b7e33a54608bfe4e0912663d443a74ad65e2de92c4d416ff3b00c2 2867
+PointShadowSkinnedDissolveInverted.fragment.msl 6317581aec64d8266472970f735e64f830ab900a59f752632a8ce448a0fa0dbf 2467
+PointShadowSkinnedDissolveInverted.fragment.spirv 026eabe09b564b94fcef04f6501b10ab83c584cc6713a2fc5ae4a8ad467d741f 3476
+PointShadowSkinnedDissolveInverted.layout.hlsl e0d7a4238a034aa5b9e70aaad4e7fedafa59e460c8be1906e113ecf188ce451e 10 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:V]|set2[<unnamed>:UniformBuffer:V]
+PointShadowSkinnedDissolveInverted.layout.msl e0d7a4238a034aa5b9e70aaad4e7fedafa59e460c8be1906e113ecf188ce451e 10 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:UniformBuffer:V]|set2[<unnamed>:UniformBuffer:V]
+PointShadowSkinnedDissolveInverted.vertex.hlsl a4bbfecf059e68eff97e513ee3f03e6da0a41c5182dda0f8a7a4aa4d51346124 2763
+PointShadowSkinnedDissolveInverted.vertex.msl ce572485651a71f88da957f0f3bedccf3dc89651e4679651527c1a753cb0e5fc 2101
+PointShadowSkinnedDissolveInverted.vertex.spirv be4521268fb43ae8443495d8d828cf8f75c1174226371461cb5571509a1d79d3 4200
 PostBlit.fragment.hlsl 9712931143511eb994f19ab36144c6bd6995a8476c91584ab0f77ece7c3043e4 839
 PostBlit.fragment.msl 741534047d21682ed6af0632938e2e28257ec9e626cea9980d6231771f56c4b7 743
 PostBlit.fragment.spirv 915fdf5c58a63bdd0c301dfe5f2e6df3a7c29613554812e7554242e2278bf5ec 1376

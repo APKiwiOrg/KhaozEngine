@@ -8,12 +8,12 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>
-    /// The depth-only pass that fills the point-light shadow atlas: four pipelines (three caster variants plus the
-    /// row clear), one 256-byte-aligned dynamic uniform slot per (light, face), and the scissor bookkeeping that
+    /// The depth-only pass that fills either point-light shadow atlas: seven pipelines (three rigid casters,
+    /// three skinned casters and the row clear), aligned face and caster slot rings, and scissor bookkeeping that
     /// keeps one cell's geometry inside one cell.
     /// <para>
     /// It is <see cref="ShadowMapRenderer"/> one geometry over, and deliberately so: same R32F single-colour target,
-    /// same one-buffer dynamic-offset slot ring, same reuse of the model pass's already-uploaded instance buffer,
+    /// same dynamic-offset face slots, same reuse of the model pass's already-uploaded instance buffer,
     /// same per-cell scissor standing in for a viewport the command-list seam does not have. What differs is the
     /// projection (a 90 degree face rather than a cascade ortho), the stored value (linear distance over radius
     /// rather than clip depth) and the clear (per row, by a quad).
@@ -35,7 +35,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// frame rendering three lights packs eighteen slots and uploads once.
     /// </para>
     /// </remarks>
-    internal sealed class PointShadowRenderer : IDisposable
+    internal sealed partial class PointShadowRenderer : IDisposable
     {
         /// <summary>One 256-byte-aligned dynamic slot per (light, face). The payload is 144 bytes (a mat4, the
         /// light position and radius, the dissolve noise scale beside the render origin, the light's near radius
@@ -63,7 +63,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly List<IDisposable> _retired = new();
 
         /// <summary>
-        /// Build the pass: four shader sets, one layout, four pipelines and the first light's slot ring.
+        /// Build the pass: seven shader sets, two owned layouts, seven pipelines and the first slot rings.
         /// <para>
         /// EVERY ONE OF THOSE CAN BE REFUSED BY A BACKEND, and a refusal halfway through must not leave the
         /// earlier ones behind: the caller's contract is that a failed reconfigure keeps its PREVIOUS atlas
@@ -72,10 +72,12 @@ namespace KhaozEngine.Render3D.Rendering
         /// rethrows for <c>ModelRenderer.ReplaceShadowLayout</c> to answer false on.
         /// </para>
         /// </summary>
-        public PointShadowRenderer(IGpuDevice gd)
+        public PointShadowRenderer(IGpuDevice gd, IGpuResourceLayout paletteLayout)
         {
             ArgumentNullException.ThrowIfNull(gd);
+            ArgumentNullException.ThrowIfNull(paletteLayout);
             _gd = gd;
+            _paletteLayout = paletteLayout;
             IGpuResourceFactory f = gd.Factory;
             var built = new List<IDisposable>();
             try
@@ -89,7 +91,7 @@ namespace KhaozEngine.Render3D.Rendering
                 _clearShaders = Built(built, f.CreateShadersFromSpirv(
                     ShaderSources.PointShadowClearVert, ShaderSources.PointShadowClearFrag));
 
-                // One layout for all four pipelines. Both stages read it: the vertex takes the matrix and the
+                // The face layout is shared by all seven pipelines. Both stages read it: the vertex takes the matrix and the
                 // fragment takes the light position and radius it divides the distance by.
                 _layout = Built(built, f.CreateResourceLayout(new GpuResourceLayoutDescription(
                     new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer,
@@ -101,6 +103,7 @@ namespace KhaozEngine.Render3D.Rendering
                 _dissolveInvertedPipeline = Built(built,
                     BuildCasterPipeline(f, outputs, _dissolveInvertedShaders, dissolve: true));
                 _clearPipeline = Built(built, BuildClearPipeline(f, outputs));
+                InitializeSkinnedResources(f, outputs, built);
 
                 // One light's worth of slots up front, so the window set exists before the first pack and ClearRow
                 // can bind it at offset 0 whether or not anything has been packed yet.
@@ -344,6 +347,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
+            DisposeSkinnedResources();
             _clearPipeline.Dispose();
             _dissolveInvertedPipeline.Dispose();
             _dissolvePipeline.Dispose();

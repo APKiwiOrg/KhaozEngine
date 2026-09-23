@@ -12,6 +12,11 @@ namespace KhaozEngine.Render3D.Rendering;
 /// lighting work and the shared retirement queue landed in the same release.</summary>
 internal sealed partial class ModelRenderer
 {
+    internal IGpuResourceLayout SkinnedBonePaletteLayout => _bonePalette.Layout;
+    internal IGpuResourceSet SkinnedBonePaletteSet => _bonePalette.Set;
+    internal IGpuBuffer? CpuSkinnedVertexBuffer => _skinnedVertexBuffer;
+    internal IGpuBuffer? CpuSkinnedInstanceBuffer => _skinnedInstanceBuffer;
+
     /// <summary>Draw one CPU-skinned caster into the shadow map, reusing the shared skinned vertex + instance
     /// buffers (<see cref="UploadCpuSkinned"/> must have run this frame). <see cref="BeginShadowPass"/> bound.</summary>
     public void DrawShadowSkinnedCaster(IGpuCommandList cl, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,

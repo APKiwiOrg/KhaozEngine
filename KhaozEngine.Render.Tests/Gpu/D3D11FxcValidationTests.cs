@@ -291,6 +291,21 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
             Assert.Equal(Enumerable.Range(0, 7).Select(i => (uint)i).ToArray(), inputs);
         }
 
+        [Theory]
+        [InlineData("PointShadowSkinned")]
+        [InlineData("PointShadowSkinnedDissolve")]
+        [InlineData("PointShadowSkinnedDissolveInverted")]
+        public void Point_skinned_casters_keep_the_complete_seven_element_vertex_signature(string programName)
+        {
+            ShippedGraphicsProgram program = Program(programName);
+            CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
+                program.VertexGlsl, program.FragmentGlsl, program.Name);
+
+            uint[] inputs = Semantics(pair.VertexSource, "SPIRV_Cross_Input");
+
+            Assert.Equal(Enumerable.Range(0, 7).Select(i => (uint)i).ToArray(), inputs);
+        }
+
         /// <summary>
         /// THE CATALOG-WIDE SWEEP. The three named cases above pin history: shadow, terrain and overlay mesh are
         /// the specific programs that already holed a signature, each with its own fix and its own regression

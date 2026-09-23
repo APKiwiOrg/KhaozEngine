@@ -138,9 +138,9 @@ namespace KhaozEngine.Tests.Gpu
             Dictionary<string, string> emitted = EmitEverything();
             int distinct = emitted.Values.Distinct(StringComparer.Ordinal).Count();
 
-            // 104 with the five target-outline pairs. 94 was the cascade pass's cutout pair and
+            // 110 with the five target-outline pairs and three point-skinned pairs. 94 was the cascade cutout pair and
             // dissolve-aware skinned vertex, and the 76 above is the original 2026-08-08 measurement.
-            Assert.Equal(104, emitted.Count);
+            Assert.Equal(110, emitted.Count);
             Assert.True(distinct < emitted.Count,
                 $"The {emitted.Count} shipped stage emissions produced {distinct} distinct SPIR-V modules, so "
                 + "nothing is shared and decision V-S7's dedup buys nothing. Measured at 59 distinct on "

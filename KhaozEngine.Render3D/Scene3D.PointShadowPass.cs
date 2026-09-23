@@ -98,12 +98,13 @@ namespace KhaozEngine.Render3D
             if (atlas is null) return null;
             try
             {
-                return new PointShadowReplacement(atlas, new PointShadowRenderer(_gd));
+                return new PointShadowReplacement(atlas,
+                    new PointShadowRenderer(_gd, _model.SkinnedBonePaletteLayout));
             }
             catch
             {
                 // The atlas allocation is not the only thing a device can refuse: the pass behind it is four
-                // shader sets and four pipelines. This method answers null rather than throwing, so a refusal
+                // shader sets and seven pipelines. This method answers null rather than throwing, so a refusal
                 // here frees the atlas that was built for a pass that does not exist and leaves the previous
                 // atlas and renderer live, the way a refused cascade layout does.
                 atlas.Dispose();

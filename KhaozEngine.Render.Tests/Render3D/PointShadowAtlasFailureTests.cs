@@ -92,8 +92,8 @@ public sealed class PointShadowAtlasFailureTests
 
         Assert.False(scene.EnsurePointShadowAtlas(32, 2));
 
-        // Four pipelines were built before the refusal, which is what makes the cleanup worth asserting.
-        Assert.Equal(pipelinesBefore + 4, factory.GraphicsPipelines.Count);
+        // Four rigid and three skinned pipelines were built before the refusal.
+        Assert.Equal(pipelinesBefore + 7, factory.GraphicsPipelines.Count);
         // The refused set was never handed out, so nothing was added to the record and nothing is left live.
         Assert.Equal(setsBefore, factory.ResourceSets.Count);
     }

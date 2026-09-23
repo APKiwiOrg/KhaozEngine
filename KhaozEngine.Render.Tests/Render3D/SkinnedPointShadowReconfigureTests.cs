@@ -20,7 +20,8 @@ public sealed class SkinnedPointShadowReconfigureTests
             PointShadowAtlas.TryCreate(device, 32, 4));
         using PointShadowAtlas transientAtlas = Assert.IsType<PointShadowAtlas>(
             PointShadowAtlas.TryCreate(device, 32, 1));
-        using var renderer = new PointShadowRenderer(device);
+        using var palette = new SkinnedBonePalette(device);
+        using var renderer = new PointShadowRenderer(device, palette.Layout);
         using IGpuCommandList commands = device.Factory.CreateCommandList();
         commands.Begin();
 

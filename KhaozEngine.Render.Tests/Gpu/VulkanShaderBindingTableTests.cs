@@ -78,6 +78,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["PointShadowRigid"] = "PointShadowRenderer",
                 ["PointShadowRigidDissolve"] = "PointShadowRenderer",
                 ["PointShadowRigidDissolveInverted"] = "PointShadowRenderer",
+                ["PointShadowSkinned"] = "PointShadowRenderer skinned",
+                ["PointShadowSkinnedDissolve"] = "PointShadowRenderer skinned dissolve",
+                ["PointShadowSkinnedDissolveInverted"] = "PointShadowRenderer skinned dissolve inverted",
                 ["PointShadowClear"] = "PointShadowRenderer",
 
                 ["Beam"] = "BeamRenderer",
@@ -204,7 +207,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(48, catalog.Length);
+            Assert.Equal(51, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

@@ -136,10 +136,10 @@ namespace KhaozEngine.Tests.Gpu
                 ["Pixel.tone"] = L(T("Src"), S("Samp"), U("Tone", F)),
                 ["Pixel.apply"] = L(T("Src"), T("OffsetTex"), S("Samp"), U("Apply", F)),
 
-                // Render3D/Rendering/PointShadowRenderer.cs:85. ONE layout behind all four of that pass's
-                // pipelines, and the only shadow layout both stages read: the vertex takes the face matrix and the
-                // fragment takes the light position and radius it divides the stored distance by.
+                // The face layout behind all seven point-shadow pipelines. Both stages read it: the vertex takes
+                // the face matrix and the fragment takes the light position and radius for stored distance.
                 ["PointShadow"] = L(U("U", VF, dynamic: true)),
+                ["PointShadow.skinnedCaster"] = L(U("Caster", V, dynamic: true)),
 
                 // Render3D/Rendering/ShadowMapRenderer.cs:125 and :141
                 ["Shadow"] = L(U("U", V, dynamic: true)),
@@ -222,10 +222,13 @@ namespace KhaozEngine.Tests.Gpu
             ("PixelPostProcess composite", ["Pixel.composite"]),
             ("PixelPostProcess tone", ["Pixel.tone"]),
             ("PixelPostProcess apply", ["Pixel.apply"]),
-            // All FOUR point-shadow pipelines (the three caster variants and the row clear) are one row, the way
+            // The four rigid point-shadow pipelines (three caster variants and the row clear) are one row, the way
             // the cascade pass's three depth variants are: they differ in blend, depth state and shaders, and a
             // pipeline is in this table for its LAYOUT ARRAY, which is the same single set for all of them.
             ("PointShadowRenderer", ["PointShadow"]),
+            ("PointShadowRenderer skinned", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
+            ("PointShadowRenderer skinned dissolve", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
+            ("PointShadowRenderer skinned dissolve inverted", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("ShadowMapRenderer depth", ["Shadow"]),
             ("ShadowMapRenderer skinned depth", ["Shadow.skinned", "SkinnedBonePalette"]),
             ("ShadowMapRenderer cutout depth", ["Shadow", "Shadow.cutout"]),
@@ -248,8 +251,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(44, ShippedLayouts.Count);
-            Assert.Equal(42, ShippedPipelines.Count);
+            Assert.Equal(45, ShippedLayouts.Count);
+            Assert.Equal(45, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

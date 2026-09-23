@@ -10,7 +10,7 @@ namespace KhaozEngine.Render3D
     /// BOUNDARY, which is <see cref="Begin"/>, and none of it inside a recorded frame.
     /// <para>
     /// This is the cascade atlas's rule (<c>Scene3D.ShadowReconfigure.cs</c>) applied to the second atlas. An
-    /// allocation is a texture pair, a framebuffer, four pipelines and a rebuild of every material set in the
+    /// allocation is a texture pair, a framebuffer, seven pipelines and a rebuild of every material set in the
     /// scene, and the rebuild carries a <c>WaitForIdle</c>. Doing that with a command list open means a full GPU
     /// stall in the middle of recording a frame, and it means the sets the model pass is about to bind being
     /// swapped underneath it. So a frame that finds no atlas of the layout it wants RECORDS what it wanted,
@@ -36,7 +36,7 @@ namespace KhaozEngine.Render3D
         int _pointShadowStaticRequests;
 
         // The layout the device refused, LATCHED. An allocation refusal is not transient: retrying it every frame
-        // costs two texture allocations, four pipelines and a stall a frame, forever, for the same answer. Cleared
+        // costs two texture allocations, seven pipelines and a stall a frame, forever, for the same answer. Cleared
         // the moment a DIFFERENT layout is asked for, so a game that steps down to a smaller one is attempted.
         PointShadowLayout? _failedPointShadowLayout;
         bool _pointShadowFailureLogged;

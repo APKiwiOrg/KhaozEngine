@@ -10,11 +10,16 @@ namespace KhaozEngine.Tests.Accounts.Sqlite;
 
 /// <summary>
 /// What the SQLite store does to a table it did not create, and to the file it opens: Grimhollow's two layouts
-/// with rows already in them, the configured table name, the identifier rule, and the release on dispose. These
+/// with rows already in them, the subject key's collation, the configured table name, the identifier rule, and the
+/// release on dispose. These
 /// read the table raw, which the conformance suite never does, because the claims are about the table.
 /// </summary>
 public sealed class SqliteAccountStoreLayoutTests : IDisposable
 {
+    // Grimhollow's three columns after the subject, for layouts that vary only the subject key.
+    private const string LegacyColumns =
+        "display_name TEXT NOT NULL, whitelisted INTEGER NOT NULL, banned INTEGER NOT NULL";
+
     private static readonly DateTimeOffset Now = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
     private static readonly string[] EngineColumns =
         { "subject", "display_name", "whitelisted", "banned", "ban_reason", "ban_until" };
@@ -166,6 +171,67 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
             () => new SqliteAccountStore(SqliteScratch.ConnectionString(path), whitelistOnCreate: false));
 
         Assert.Equal(new[] { "subject", "display_name", "banned" }, SqliteScratch.Columns(path, "accounts"));
+    }
+
+    [Theory]
+    [InlineData("subject TEXT COLLATE NOCASE PRIMARY KEY, " + LegacyColumns + ");")]
+    [InlineData("subject TEXT, " + LegacyColumns + ", PRIMARY KEY (subject COLLATE NOCASE));")]
+    [InlineData("subject TEXT PRIMARY KEY COLLATE RTRIM, " + LegacyColumns + ");")]
+    [InlineData("subject TEXT COLLATE NOCASE PRIMARY KEY, " + LegacyColumns + ") WITHOUT ROWID;")]
+    [InlineData("subject TEXT PRIMARY KEY, " + LegacyColumns + "); CREATE UNIQUE INDEX subject_ci ON accounts (subject COLLATE NOCASE);")]
+    public void ATableWhoseSubjectKeyIsNotBinary_IsRefusedAtEnsure_NamingNoSubject_AndLeftAsItWas(string layout)
+    {
+        // The upsert's ON CONFLICT(subject) matches under the key's collation, so over any of these a verified sign-in
+        // as discord:alice would rename Alice's account and hand back discord:Alice to be signed into a token.
+        string path = scratch.NewDatabase("CREATE TABLE accounts (" + layout +
+            "INSERT INTO accounts VALUES ('discord:Alice', 'Alice', 1, 0);");
+
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(
+            () => new SqliteAccountStore(SqliteScratch.ConnectionString(path), whitelistOnCreate: true));
+
+        Assert.Contains("BINARY", refusal.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("alice", refusal.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(new[] { "subject", "display_name", "whitelisted", "banned" }, SqliteScratch.Columns(path, "accounts"));
+        Assert.Equal(new[] { "discord:Alice|Alice" }, SqliteScratch.Query(path, "SELECT subject, display_name FROM accounts;"));
+    }
+
+    [Theory]
+    [InlineData("subject TEXT NOT NULL COLLATE BINARY PRIMARY KEY, " + LegacyColumns + ");")]
+    [InlineData("subject TEXT COLLATE NOCASE, " + LegacyColumns + ", PRIMARY KEY (subject COLLATE BINARY));")]
+    [InlineData("subject TEXT PRIMARY KEY, " + LegacyColumns + "); CREATE INDEX subject_lookup ON accounts (subject COLLATE NOCASE);")]
+    public async Task ATableWhoseSubjectKeyIsBinary_IsAdopted_AndKeepsCaseDistinctAccountsApart(string layout)
+    {
+        // Only a key the upsert can match on decides it. A non-unique index is never that key, and a binary key over a
+        // case-insensitive column still matches exactly.
+        string path = scratch.NewDatabase("CREATE TABLE accounts (" + layout +
+            "INSERT INTO accounts VALUES ('discord:Alice', 'Alice', 1, 0);");
+        SqliteAccountStore store = Open(path, whitelistOnCreate: true);
+
+        AccountRecord other = await store.FindOrCreateAsync(SignIn("alice", "Mallory"));
+
+        Assert.Equal("discord:alice", other.Subject);
+        Assert.Equal(new AccountRecord("discord:Alice", "Alice", true, null), await store.FindAsync("discord:Alice"));
+    }
+
+    [Fact]
+    public async Task AnUpsertThatReturnsAnotherAccount_IsRefused_AndRolledBack_NamingNeitherSubject()
+    {
+        string path = scratch.NewPath();
+        SqliteAccountStore store = Open(path, whitelistOnCreate: true);
+        // Rebuilt behind the open store: the ensure cannot see a change made after it ran, so what stands between this
+        // sign-in and Alice's account is the check on the subject the upsert returned.
+        SqliteScratch.Execute(path,
+            "DROP TABLE accounts;" +
+            "CREATE TABLE accounts (subject TEXT NOT NULL COLLATE NOCASE PRIMARY KEY, display_name TEXT NULL, " +
+            "whitelisted INTEGER NOT NULL, banned INTEGER NOT NULL, ban_reason TEXT NULL, ban_until TEXT NULL);" +
+            "INSERT INTO accounts VALUES ('discord:Alice', 'Alice', 1, 0, NULL, NULL);");
+
+        InvalidOperationException refusal = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.FindOrCreateAsync(SignIn("alice", "Mallory")));
+
+        Assert.DoesNotContain("alice", refusal.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Mallory", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(new[] { "discord:Alice|Alice" }, SqliteScratch.Query(path, "SELECT subject, display_name FROM accounts;"));
     }
 
     [Fact]

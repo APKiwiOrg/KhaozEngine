@@ -148,6 +148,8 @@ public class ExchangeEndpointStatusTests
     [InlineData("""{"provider":"steam","accessToken":"ok-credential-7f3a"}""")]
     [InlineData("""{"provider":"Discord","accessToken":"ok-credential-7f3a"}""")]
     [InlineData("""{"provider":"discord","accessToken":"   "}""")]
+    [InlineData("""{"provider":"discord","accessToken":"ok-credential-7f3a\r\nX-Injected: 1"}""")]
+    [InlineData("""{"provider":"discord","accessToken":"ok-crédential-7f3a"}""")]
     [InlineData("""{"provider":"discord"}""")]
     [InlineData("""{"accessToken":"ok-credential-7f3a"}""")]
     [InlineData("""{}""")]

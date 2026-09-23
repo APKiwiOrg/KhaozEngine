@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using KhaozEngine.Identity.Exchange;
 using KhaozEngine.Identity.Exchange.AspNetCore;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -136,6 +137,40 @@ public class ExchangeForwardedHeadersTests
             new AuthExchangeHostingOptions { TrustedProxies = null! }));
         Assert.Throws<ArgumentOutOfRangeException>(() => WebApplication.CreateSlimBuilder().AddAuthExchangeHosting(
             new AuthExchangeHostingOptions { MaxRequestBodyBytes = 0 }));
+    }
+
+    [Fact]
+    public async Task AddWithoutUse_IsRefusedWhenTheExchangeIsMapped()
+    {
+        // Named proxies with no middleware would read no forwarded header at all: every caller in the proxy's bucket,
+        // and nothing said so. The map is where that composition is caught.
+        AuthExchange exchange = await ExchangeAccounts.BuildAsync();
+        await using WebApplication app = BuildWithHosting();
+
+        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() => app.MapAuthExchange(exchange));
+
+        Assert.Contains(nameof(AuthExchangeHosting.UseAuthExchangeHosting), refusal.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(AuthExchangeHosting.AddAuthExchangeHosting), refusal.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AddThenUseThenMap_Maps_AndAnAppWithNoHostingStillMaps()
+    {
+        AuthExchange exchange = await ExchangeAccounts.BuildAsync();
+        await using WebApplication composed = BuildWithHosting();
+        await using WebApplication bare = WebApplication.CreateSlimBuilder().Build();
+
+        composed.UseAuthExchangeHosting();
+
+        Assert.NotNull(composed.MapAuthExchange(exchange));
+        Assert.NotNull(bare.MapAuthExchange(exchange));
+    }
+
+    private static WebApplication BuildWithHosting()
+    {
+        WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
+        builder.AddAuthExchangeHosting(new AuthExchangeHostingOptions { TrustedProxies = TrustedProxyNetworks.PrivateRanges });
+        return builder.Build();
     }
 
     private static ForwardedHeadersOptions ConfiguredOptions(IPNetwork[] trusted)

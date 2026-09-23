@@ -16,7 +16,9 @@ public sealed class AuthExchangeHostingOptions
     /// headers OFF: no peer is believed, loopback included, and every limit keys on the TCP peer address. Behind a proxy
     /// that means every caller shares the proxy's bucket, so a proxied service names its proxies, usually
     /// <see cref="TrustedProxyNetworks.PrivateRanges"/> or the proxy's own subnet. Only the last hop is read, so a
-    /// client cannot choose its bucket by prepending addresses of its own.
+    /// client cannot choose its bucket by prepending addresses of its own. A catch-all is refused when the hosting is
+    /// added: a /0 in either family (which an unset <see cref="IPNetwork"/> is) or an IPv6 network holding the whole
+    /// IPv4-mapped block, since either lets every caller name its own bucket.
     /// </summary>
     public IReadOnlyList<IPNetwork> TrustedProxies { get; init; } = Array.Empty<IPNetwork>();
 
@@ -31,6 +33,12 @@ public sealed class AuthExchangeHostingOptions
     {
         if (TrustedProxies is null)
             throw new ArgumentNullException(nameof(TrustedProxies), "Pass an empty list to trust no proxy.");
+        for (int i = 0; i < TrustedProxies.Count; i++)
+        {
+            if (TrustedProxyNetworks.IsCatchAll(TrustedProxies[i]))
+                throw new ArgumentException(TrustedProxyNetworks.CatchAllRefusal(nameof(TrustedProxies), i),
+                    nameof(TrustedProxies));
+        }
         if (MaxRequestBodyBytes is <= 0)
             throw new ArgumentOutOfRangeException(nameof(MaxRequestBodyBytes), "The server-wide body cap must be positive.");
     }

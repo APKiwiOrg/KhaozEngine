@@ -44,7 +44,8 @@ public enum AuthExchangeCause
     /// <summary><see cref="AuthExchangeOutcome.Malformed"/>: no validator is registered under the provider id.</summary>
     UnknownProvider = 1,
 
-    /// <summary><see cref="AuthExchangeOutcome.Malformed"/>: the credential is blank or over the cap.</summary>
+    /// <summary><see cref="AuthExchangeOutcome.Malformed"/>: the credential is blank, over the cap, or carries anything
+    /// but visible ASCII.</summary>
     CredentialShape = 2,
 
     /// <summary><see cref="AuthExchangeOutcome.InvalidCredential"/>: the provider refused the credential.</summary>

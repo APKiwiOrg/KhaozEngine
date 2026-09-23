@@ -28,9 +28,11 @@ namespace KhaozEngine.Accounts.Sqlite;
 /// or run in two processes on one file (the statement is atomic).
 /// </para>
 /// <para>
-/// <b>Ordinal subjects.</b> Every comparison and ordering names <c>COLLATE BINARY</c>, so a table declared with
-/// another collation still answers exact matches and code-point order. A ban expiry is round-trip UTC text, read
-/// back with offset zero. Nothing here logs, and no message names a subject, a display name, a reason or the
+/// <b>Ordinal subjects.</b> Every comparison and ordering names <c>COLLATE BINARY</c>, so a column declared with
+/// another collation still answers exact matches and code-point order. The upsert's conflict target cannot name a
+/// collation that way, so the ensure refuses a subject KEY that is not <c>BINARY</c>, and find-or-create refuses (and
+/// rolls back) a returned row whose subject is not ordinally the minted one. A ban expiry is round-trip UTC text,
+/// read back with offset zero. Nothing here logs, and no message names a subject, a display name, a reason or the
 /// connection string.
 /// </para>
 /// </remarks>
@@ -58,7 +60,7 @@ public sealed class SqliteAccountStore : IAccountStore, IDisposable
     /// <exception cref="ArgumentException">The connection string is blank or the table name is not a plain
     /// identifier.</exception>
     /// <exception cref="InvalidOperationException">The named table exists without one of the four original
-    /// columns.</exception>
+    /// columns, or with a subject key that is not <c>BINARY</c> collated.</exception>
     public SqliteAccountStore(string connectionString, bool whitelistOnCreate, AccountTableOptions? table = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
@@ -111,14 +113,26 @@ public sealed class SqliteAccountStore : IAccountStore, IDisposable
         string subject = AccountStoreRules.MintSubject(signIn);
         ct.ThrowIfCancellationRequested();
         using SqliteStoreLease _ = await db.EnterAsync(ct).ConfigureAwait(false);
+        // In a transaction so a returned row that is not the minted subject's is rolled back with its refreshed name.
+        using SqliteTransaction tx = db.BeginTransaction();
         using SqliteCommand cmd = Command(findOrCreateSql, subject);
+        cmd.Transaction = tx;
         // Two bindings of one name: what a NEW row stores (empty for none on a legacy NOT NULL table), and what a
         // repeat refreshes to (null for none, which COALESCE turns into "keep the stored name").
         cmd.Parameters.Add("$insertName", SqliteType.Text).Value = StoredName(signIn.DisplayName);
         cmd.Parameters.Add("$name", SqliteType.Text).Value = (object?)signIn.DisplayName ?? DBNull.Value;
         cmd.Parameters.Add("$whitelisted", SqliteType.Integer).Value = WhitelistOnCreate ? 1L : 0L;
-        return await ReadOneAsync(cmd, ct).ConfigureAwait(false)
+        AccountRecord account = await ReadOneAsync(cmd, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The account upsert returned no row.");
+        // The ensure refuses a key that matches under another collation, but the table can change after it ran. A
+        // row whose subject is not exactly the minted one is someone else's account, and never goes back to a caller
+        // that would sign a token for it. Neither subject is quoted.
+        if (!string.Equals(account.Subject, subject, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "The account upsert returned a different account than the sign-in names, so the table's subject key " +
+                "no longer matches exactly (a collation other than BINARY). The write was rolled back.");
+        tx.Commit();
+        return account;
     }
 
     /// <inheritdoc />

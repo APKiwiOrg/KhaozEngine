@@ -30,6 +30,8 @@ public static class TrustedProxyNetworks
     // The IPv4-mapped block is ::ffff:0:0/96, so an IPv4 prefix sits 96 bits further in on its mapped twin.
     private const int MappedPrefixOffset = 96;
 
+    private static readonly IPAddress MappedBlockBase = IPAddress.Any.MapToIPv6();
+
     /// <summary>
     /// The three RFC 1918 private blocks (<c>10.0.0.0/8</c>, <c>172.16.0.0/12</c>, <c>192.168.0.0/16</c>), each followed
     /// by its IPv4-mapped IPv6 twin. The preset for a service behind a TLS-terminating proxy that forwards over a
@@ -63,20 +65,64 @@ public static class TrustedProxyNetworks
     /// gains its IPv4 twin. A plain IPv6 network has no twin and stands alone. Duplicates are dropped and the order is
     /// otherwise kept.
     /// </summary>
+    /// <remarks>
+    /// A catch-all is refused rather than paired, so the list this returns never trusts every IPv4 caller: a /0 in
+    /// either family (which is what <c>default(IPNetwork)</c> is, so an unfilled slot or a failed parse used anyway
+    /// counts), or an IPv6 network holding the whole mapped block, whose IPv4 twin would be a /0.
+    /// </remarks>
     /// <param name="networks">The networks to register.</param>
     /// <returns>A new list, safe to hand to the forwarded-headers options.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="networks"/> is null.</exception>
+    /// <exception cref="ArgumentException">A network is a catch-all. The message names its position, never its
+    /// value.</exception>
     public static IReadOnlyList<IPNetwork> WithBothFamilies(IEnumerable<IPNetwork> networks)
     {
         ArgumentNullException.ThrowIfNull(networks);
         var seen = new HashSet<IPNetwork>();
         var result = new List<IPNetwork>();
+        int index = 0;
         foreach (IPNetwork network in networks)
         {
+            if (IsCatchAll(network))
+                throw new ArgumentException(CatchAllRefusal(nameof(networks), index), nameof(networks));
             if (seen.Add(network)) result.Add(network);
             if (TwinOf(network) is { } twin && seen.Add(twin)) result.Add(twin);
+            index++;
         }
         return result.AsReadOnly();
     }
+
+    /// <summary>
+    /// Whether <paramref name="network"/> trusts every IPv4 caller in some form: a /0 in either family, or an IPv6
+    /// network that holds the whole IPv4-mapped block, which a dual-mode socket reports every IPv4 peer inside.
+    /// </summary>
+    internal static bool IsCatchAll(IPNetwork network)
+    {
+        if (network.PrefixLength == 0) return true;
+        if (network.BaseAddress.AddressFamily != AddressFamily.InterNetworkV6 || network.PrefixLength > MappedPrefixOffset)
+            return false;
+
+        // The network holds the block when its prefix bits match the block's base. Compared bit by bit rather than
+        // through IPNetwork.Contains, which on .NET 10 answers true for ::ffff:0.x.x.x inside unrelated networks such
+        // as fd00::/8.
+        Span<byte> networkBytes = stackalloc byte[16];
+        Span<byte> blockBytes = stackalloc byte[16];
+        network.BaseAddress.TryWriteBytes(networkBytes, out _);
+        MappedBlockBase.TryWriteBytes(blockBytes, out _);
+        int wholeBytes = network.PrefixLength / 8;
+        if (!networkBytes[..wholeBytes].SequenceEqual(blockBytes[..wholeBytes])) return false;
+        int spareBits = network.PrefixLength % 8;
+        if (spareBits == 0) return true;
+        int mask = (0xFF << (8 - spareBits)) & 0xFF;
+        return (networkBytes[wholeBytes] & mask) == (blockBytes[wholeBytes] & mask);
+    }
+
+    /// <summary>The refusal for a catch-all at <paramref name="index"/> in <paramref name="list"/>. Names the rule
+    /// and the position, never the network.</summary>
+    internal static string CatchAllRefusal(string list, int index) =>
+        $"{list}[{index}] trusts every IPv4 caller: it is a /0 (as an unset IPNetwork is) or it holds the whole " +
+        "IPv4-mapped block. Trusting it lets any caller choose its own rate-limit bucket through X-Forwarded-For. Name " +
+        "the proxies' own networks.";
 
     private static IPNetwork? TwinOf(IPNetwork network)
     {

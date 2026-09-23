@@ -58,6 +58,9 @@ public static class AuthExchangeEndpoints
     /// <returns>The endpoint's builder, for the host's own conventions.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="routes"/> or <paramref name="exchange"/> is null.</exception>
     /// <exception cref="ArgumentException">An option is out of range.</exception>
+    /// <exception cref="InvalidOperationException"><see cref="AuthExchangeHosting.AddAuthExchangeHosting"/> was called
+    /// but <see cref="AuthExchangeHosting.UseAuthExchangeHosting"/> has not run, so the named proxies would be
+    /// ignored.</exception>
     public static RouteHandlerBuilder MapAuthExchange(this IEndpointRouteBuilder routes, AuthExchange exchange,
         AuthExchangeEndpointOptions? options = null)
     {
@@ -67,6 +70,11 @@ public static class AuthExchangeEndpoints
         options.Validate();
 
         IServiceProvider services = routes.ServiceProvider;
+        if (services.GetService<AuthExchangeHosting.HostingMarker>() is { MiddlewareUsed: false })
+            throw new InvalidOperationException(
+                "AddAuthExchangeHosting was called on the builder but UseAuthExchangeHosting has not run on the app. " +
+                "Without its middleware no forwarded header is read, so the proxies it names are ignored and every " +
+                "caller behind them shares one rate-limit bucket. Call UseAuthExchangeHosting before MapAuthExchange.");
         ILogger logger = services.GetService<ILoggerFactory>()?.CreateLogger(typeof(AuthExchangeEndpoints).FullName!)
             ?? NullLogger.Instance;
         ForwardedHeaders forwarded = services.GetService<IOptions<ForwardedHeadersOptions>>()?.Value.ForwardedHeaders

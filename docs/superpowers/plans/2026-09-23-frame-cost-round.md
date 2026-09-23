@@ -7842,15 +7842,17 @@ git push origin feature/frame-cost-round
 
 ```bash
 gh workflow run cross-platform-gpu.yml --repo APKiwiOrg/KhaozEngine --ref feature/frame-cost-round -f legs=all -f bake=false
-gh run list --repo APKiwiOrg/KhaozEngine --workflow cross-platform-gpu.yml --branch feature/frame-cost-round \
-  --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId'
+sleep 10
+run_id=$(gh run list --repo APKiwiOrg/KhaozEngine --workflow cross-platform-gpu.yml --branch feature/frame-cost-round \
+  --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
+echo "$run_id"
 ```
 
 - [ ] **Step 2: Wait for the run and read every leg**
 
 ```bash
-gh run watch <run-id> --repo APKiwiOrg/KhaozEngine --exit-status
-gh run view <run-id> --repo APKiwiOrg/KhaozEngine --log-failed | tail -80
+gh run watch "$run_id" --repo APKiwiOrg/KhaozEngine --exit-status
+gh run view "$run_id" --repo APKiwiOrg/KhaozEngine --log-failed | tail -80
 ```
 
 Expected: every leg green. The River and two-disc grids were baked on all three legs in Task C1, and the
@@ -7859,7 +7861,7 @@ cluster change is byte-identical by construction.
 - [ ] **Step 3: If a leg fails**
 
 A failing golden on any leg is a regression until attributed. Follow `docs/CROSS-PLATFORM.md` "Tolerance and
-rebakes": find which item moved it by rerunning the leg with `-f legs=<leg> -f renderTestFilter=<scene>` on each item
+rebakes": find which item moved it by rerunning the failing leg with `-f legs=` set to that leg and `-f renderTestFilter=` set to the failing test, both read from the Step 2 log, on each item
 branch, fix the cause on that item branch, merge it again and rerun G1 Steps 3 to 6. Rebake only a grid whose move
 is an intended consequence the spec names, with the cause and worst-cell delta in the commit body.
 
@@ -7916,7 +7918,7 @@ sh scripts/check-dashes.sh --tree && sh scripts/check-prose.sh --tree && sh scri
 dotnet build KhaozEngine.slnx -c Release 2>&1 | tail -2
 scripts/pack-local-feed.sh
 scripts/check-local-feed.sh
-git add CHANGELOG.md docs/design/FRAME-COST-ROUND-DESIGN-2026-09-23.md docs/INDEX.md <each swept doc>
+git add -u -- CHANGELOG.md '*.md' '*/README.md'   # every tracked Markdown file the sweep corrected, nothing else
 git commit -m "release(20.2.0): the frame cost round rides 20.2.0"
 ```
 

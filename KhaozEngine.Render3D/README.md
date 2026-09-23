@@ -942,6 +942,13 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     over the closed phase range. Its signed result is positive for separation, zero for contact, and negative for
     penetration. Segment endpoints, capsule radii, and results are model-space metres. Both measurements require
     finite geometry and at least two samples, and run without a mesh, graphics device, or test framework.
+  - `Animation.Inspection.ClipHygiene.Check` checks allowed nodes, translation policy, scale channels, raw
+    quaternion units, key-time order, key density, loop continuity, and unresolved targets. Findings have stable
+    rule identifiers, invariant details, and deterministic track, rule, key, and loop ordering.
+  - `Animation.Inspection.ClipReport.Write` emits a canonical LF-terminated text snapshot in caller clip and phase
+    order. Each phase contains every node's sampled local rotation in skeleton order, followed by requested
+    model-space positions. Phase `1` preserves the authored end key. Names are escaped and floats use invariant
+    fixed-six precision, making repeated UTF-8 encodings byte-identical.
   - `LayeredAnimator` / `AnimationLayer` / `BoneMask` / `LayerMode` - N animation layers composited into one final
     skeleton pose: a base locomotion layer below, masked `Override` / `Additive` action layers above (attack while
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +

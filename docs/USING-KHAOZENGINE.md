@@ -4709,6 +4709,47 @@ float bladeClearance = SegmentClearance.Min(
 Both measurements require finite model-space geometry, one or more named targets, and at least two samples. They
 use `PoseProbe` internally and need no mesh, inverse-bind matrices, object world transform, or graphics device.
 
+Use `ClipHygiene.Check` to apply a game's authored-clip policy before content ships. Node matching is ordinal and
+case-sensitive. `AllowedNodes` may be null when every resolved target is eligible, while `TranslationAllowed`
+names the smaller set that may carry translation channels. Findings use stable rule identifiers and deterministic
+ordering, so a pipeline can print or compare them directly.
+
+```csharp
+var translationAllowed = new HashSet<string>(StringComparer.Ordinal) { "Hips", "Foot.L", "Foot.R" };
+var allowedNodes = new HashSet<string>(StringComparer.Ordinal) { "Hips", "Thigh.L", "Foot.L", "Thigh.R", "Foot.R" };
+var hygieneOptions = new ClipHygieneOptions(
+    translationAllowed,
+    allowedNodes,
+    Looping: true,
+    MinKeysPerSecond: 30f);
+
+IReadOnlyList<ClipHygieneFinding> findings = ClipHygiene.Check(byName["Walk"], skeleton, hygieneOptions);
+foreach (ClipHygieneFinding finding in findings)
+    Console.Error.WriteLine($"{finding.Rule}: {finding.NodeName}: {finding.Detail}");
+```
+
+`ClipHygiene` checks unresolved targets, allowed nodes, translation and scale policy, raw quaternion units,
+monotonic finite key times, key density, and the authored loop seam. Loop rotation treats a quaternion and its
+negation as the same orientation. Translation and scale loop comparisons use a `0.0001` component tolerance.
+
+Use `ClipReport.Write` when reviews or build checks need a canonical text snapshot. Clips, closed normalised
+phases, and requested positions keep caller order. Each phase writes every node's sampled local rotation in
+skeleton order, then the requested model-space positions. Phase `1` samples the authored end key.
+
+```csharp
+string report = ClipReport.Write(
+    skeleton,
+    new[] { byName["Idle"], byName["Walk"] },
+    new[] { 0f, 0.25f, 0.5f, 0.75f, 1f },
+    new[] { "Hips", "Foot.L", "Foot.R", "weapon_socket" });
+
+File.WriteAllText("clip-report.txt", report, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+```
+
+The report escapes backslash, tab, carriage return, and line feed in names. It uses invariant fixed-six floats,
+LF line endings, and one final LF. Repeated UTF-8 encodings of the same inputs are byte-identical. Non-finite
+phases, rotations, or requested positions are rejected. Both hygiene and reporting are pure and GPU-free.
+
 Each frame, feed it the movement state your controller already computes, then draw with its pose
 (the bone palette `DrawSkinned` consumes - it is joint-WORLD, the loader-attached skeleton composes it):
 

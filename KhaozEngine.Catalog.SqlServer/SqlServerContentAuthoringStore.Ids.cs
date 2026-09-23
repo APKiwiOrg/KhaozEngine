@@ -8,8 +8,9 @@ using Microsoft.Data.SqlClient;
 namespace KhaozEngine.Catalog.SqlServer;
 
 /// <summary>
-/// The id half: the two high-water marks per type, the families and their aligned blocks, and the four
-/// durable writes the reserve-before-issue rule spends (spec 4.7, contracts 5.2 and 6.2).
+/// The id half: the two high-water marks per type, the families and their aligned blocks, the four durable
+/// writes the reserve-before-issue rule spends (spec 4.7, contracts 5.2 and 6.2), and the seeding raise a
+/// carried id needs.
 /// <para>
 /// <b>Every <c>Commit</c> member here commits ON ITS OWN</b>, in its own transaction, and that is the whole
 /// of the rule rather than an implementation detail. The allocator waits for
@@ -201,6 +202,47 @@ public sealed partial class SqlServerContentAuthoringStore
                 ContentIdHighWater mark = await ReadHighWaterAsync(scope, type, token).ConfigureAwait(false);
                 await WriteHighWaterAsync(scope, type, WithIssued(type, mark, issuedThrough), token)
                     .ConfigureAwait(false);
+            },
+            cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<bool> CommitCarriedThroughAsync(
+        ContentTypeId type,
+        int carriedThrough,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(carriedThrough);
+        bool reserved = await RaiseToCarriedAsync(type, carriedThrough, issued: false, cancellationToken)
+            .ConfigureAwait(false);
+        bool issued = await RaiseToCarriedAsync(type, carriedThrough, issued: true, cancellationToken)
+            .ConfigureAwait(false);
+        return reserved || issued;
+    }
+
+    /// <summary>
+    /// One mark raised to at least a carried id, compared and written in ONE Serializable transaction. The
+    /// issued mark cannot pass the reserved one here, because the reserved mark already covers the id and
+    /// never falls.
+    /// </summary>
+    Task<bool> RaiseToCarriedAsync(
+        ContentTypeId type,
+        int carriedThrough,
+        bool issued,
+        CancellationToken cancellationToken)
+        => WriteAsync(
+            async (scope, token) =>
+            {
+                ContentIdHighWater mark = await ReadHighWaterAsync(scope, type, token).ConfigureAwait(false);
+                ContentIdHighWater raised = issued
+                    ? mark with { IssuedThrough = Math.Max(mark.IssuedThrough, carriedThrough) }
+                    : mark with { ReservedThrough = Math.Max(mark.ReservedThrough, carriedThrough) };
+                if (raised == mark)
+                {
+                    return false;
+                }
+
+                await WriteHighWaterAsync(scope, type, raised, token).ConfigureAwait(false);
+                return true;
             },
             cancellationToken);
 

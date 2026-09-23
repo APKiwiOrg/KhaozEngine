@@ -557,6 +557,23 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
     }
 
     /// <inheritdoc />
+    public Task<bool> CommitCarriedThroughAsync(
+        ContentTypeId type,
+        int carriedThrough,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(carriedThrough);
+        lock (_gate)
+        {
+            ContentIdHighWater mark = Mark(type);
+            var raised = new ContentIdHighWater(
+                Math.Max(mark.ReservedThrough, carriedThrough), Math.Max(mark.IssuedThrough, carriedThrough));
+            _highWater[type.Value] = raised;
+            return Task.FromResult(raised != mark);
+        }
+    }
+
+    /// <inheritdoc />
     public Task<ContentFamily?> ReadFamilyAsync(
         long familyId,
         CancellationToken cancellationToken = default)

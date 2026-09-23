@@ -143,7 +143,9 @@ the type, the ceiling and the high-water mark. Retired rows count toward a ceili
 reused and a retired row keeps the number it occupies.
 
 `IContentIdPersistence` is the durable half the allocator sits on, and every `Commit` member on it commits
-on its own. A backend implements it with its own transactions.
+on its own. A backend implements it with its own transactions. `CommitCarriedThroughAsync` is the publish's
+seeding write: it raises each mark to at least a carried id and compares inside the commit that writes it, so
+a backend never answers it from a mark read in an earlier call.
 
 ## The publish pipeline
 
@@ -222,6 +224,12 @@ and the allocator's durable mark sits above the highest row id whenever an earli
 it reserved. After every add has an id, the high-water marks are SEEDED from the largest carried id per type,
 so the first ordinary add after one of those does not allocate id 1 straight onto a row that already holds
 it. `ContentIdAllocationRecord.Seeds` is empty for an ordinary publish.
+
+The seeding raises each mark to the greater of its current value and the carried id, and the store makes that
+comparison inside the same commit as the write. Two upgrade runners seed one type without a lock spanning
+either publish, so a mark read first and written in a later call could be passed by the other runner's seed
+in between, and the stale lower number would be refused as a reservation taken back. A mark a rival already
+raised past the carried id is left where it stands, and `Seeds` then omits that type.
 
 A carried id is checked before the candidate is built, because step 3's seeding commits on its own and a
 refusal after it would leave the marks raised for a version nobody published. The publish refuses a carried

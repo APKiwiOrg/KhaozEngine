@@ -383,6 +383,13 @@ public class ContentIdAllocatorTests
             return inner.CommitIssuedThroughAsync(type, issuedThrough, cancellationToken);
         }
 
+        public Task<bool> CommitCarriedThroughAsync(
+            ContentTypeId type, int carriedThrough, CancellationToken cancellationToken = default)
+        {
+            _writes.Add(FormattableString.Invariant($"carried {carriedThrough}"));
+            return inner.CommitCarriedThroughAsync(type, carriedThrough, cancellationToken);
+        }
+
         public Task<ContentFamily?> ReadFamilyAsync(
             long familyId, CancellationToken cancellationToken = default)
             => inner.ReadFamilyAsync(familyId, cancellationToken);

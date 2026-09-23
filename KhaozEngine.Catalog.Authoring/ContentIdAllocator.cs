@@ -18,7 +18,8 @@ public readonly record struct ContentIdHighWater(int ReservedThrough, int Issued
 
 /// <summary>
 /// The DURABLE half the allocator sits on: the two high-water numbers per type, the per-type id ceiling, a
-/// family with its ordered blocks, and the four writes the order rule spends.
+/// family with its ordered blocks, the four writes the order rule spends, and the seeding write a carried id
+/// needs.
 /// <para>
 /// <b>Every <c>Commit</c> member COMMITS ON ITS OWN</b>, and that is the whole of contracts 6.2. The
 /// allocator calls <see cref="CommitReservedThroughAsync"/> and waits for it before any id below the new
@@ -28,8 +29,9 @@ public readonly record struct ContentIdHighWater(int ReservedThrough, int Issued
 /// same two numbers behind afterwards.
 /// </para>
 /// <para>
-/// It is a separate seam from <see cref="IContentAuthoringStore"/> because the allocator needs FIVE reads
-/// and four writes rather than a whole store, and because a backend implements it with its own transactions.
+/// It is a separate seam from <see cref="IContentAuthoringStore"/> because the allocator and the seeding step
+/// need three reads and five writes rather than a whole store, and because a backend implements it with its
+/// own transactions.
 /// </para>
 /// </summary>
 public interface IContentIdPersistence
@@ -66,6 +68,26 @@ public interface IContentIdPersistence
     Task CommitIssuedThroughAsync(
         ContentTypeId type,
         int issuedThrough,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Raises BOTH marks to at least an id an edit CARRIED, which is the publish's seeding step, and leaves a
+    /// mark that already covers it where it stands. The reserved mark commits on its own first and the issued
+    /// mark second, the same order as every other write here.
+    /// <para>
+    /// <b>Each comparison happens INSIDE the commit that writes it</b>, and that is the reason this member
+    /// exists. Two publishers seed one type without a lock spanning either publish, so a mark read in one call
+    /// and written in the next can be passed by a rival in between, and writing the stale number would take a
+    /// durable reservation back.
+    /// </para>
+    /// </summary>
+    /// <param name="type">The content type.</param>
+    /// <param name="carriedThrough">The largest id an edit of that type carried, at least 1.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <returns>True when either mark moved, false when both already covered the carried id.</returns>
+    Task<bool> CommitCarriedThroughAsync(
+        ContentTypeId type,
+        int carriedThrough,
         CancellationToken cancellationToken = default);
 
     /// <summary>One family with its blocks in ORDINAL order, or null when the store holds no such family.</summary>

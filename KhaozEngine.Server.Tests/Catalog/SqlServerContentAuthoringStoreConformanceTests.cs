@@ -409,6 +409,11 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
+    public override Task TheSeedingWriteRaisesAMarkToTheCarriedIdAndNeverLowersOne()
+        => base.TheSeedingWriteRaisesAMarkToTheCarriedIdAndNeverLowersOne();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
     public override Task ACarriedAddInsideAFamilysBlockNamingNoFamilyIsRefusedAndChangesNothing()
         => base.ACarriedAddInsideAFamilysBlockNamingNoFamilyIsRefusedAndChangesNothing();
 

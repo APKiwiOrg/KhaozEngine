@@ -105,27 +105,15 @@ static class ContentIdAllocation
         {
             var type = new ContentTypeId(typeId);
             int highest = carried[typeId];
-            ContentIdHighWater mark = await persistence
-                .ReadHighWaterAsync(type, cancellationToken).ConfigureAwait(false);
-            if (mark.ReservedThrough >= highest && mark.IssuedThrough >= highest)
-            {
-                continue;
-            }
 
-            // Reserve before issue, here as everywhere: the promise lands on its own commit first.
-            if (mark.ReservedThrough < highest)
+            // The store compares and writes in ONE commit per mark. Reading the marks here and writing them in
+            // a later call is the race two upgrade runners lost: a rival seeding the same type from a higher
+            // carried id lands in between, and the stale lower number is refused as a promise taken back.
+            if (await persistence
+                .CommitCarriedThroughAsync(type, highest, cancellationToken).ConfigureAwait(false))
             {
-                await persistence
-                    .CommitReservedThroughAsync(type, highest, cancellationToken).ConfigureAwait(false);
+                seeds.Add(new ContentIdSeed(type, highest));
             }
-
-            if (mark.IssuedThrough < highest)
-            {
-                await persistence
-                    .CommitIssuedThroughAsync(type, highest, cancellationToken).ConfigureAwait(false);
-            }
-
-            seeds.Add(new ContentIdSeed(type, highest));
         }
 
         return seeds;

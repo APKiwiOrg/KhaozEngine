@@ -928,6 +928,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     is the allocation-free sample into a reused per-node pose buffer; `AnimationPlayer.GetLocalPoses(buffer)` writes
     the composited LOCAL poses (the crossfade result before hierarchy composition) so a `LayeredAnimator` can take
     the locomotion crossfade as its base layer.
+  - `Animation.Inspection.PoseProbe` samples a clip without a GPU and exposes each skeleton node's model-space
+    matrix or position by node index or retained name. `SampleClip` takes a closed normalised phase, with phase `1`
+    preserving the authored end key. `SampleClipAtSeconds` clamps to the authored time range. `SetLocals` inspects
+    a caller-supplied local pose. Composition covers named hierarchy nodes outside the skin palette, which makes
+    zero-weight sockets available to asset checks.
   - `LayeredAnimator` / `AnimationLayer` / `BoneMask` / `LayerMode` - N animation layers composited into one final
     skeleton pose: a base locomotion layer below, masked `Override` / `Additive` action layers above (attack while
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +

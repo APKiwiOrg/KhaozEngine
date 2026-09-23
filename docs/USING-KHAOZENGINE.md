@@ -4643,6 +4643,24 @@ var clips = new Dictionary<LocomotionState, AnimationClip>
 var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 9f), crossfade: 0.15f);
 ```
 
+For headless asset checks, `PoseProbe` samples the same local tracks and composes every skeleton node without a
+mesh or graphics device:
+
+```csharp
+using KhaozEngine.Render3D.Animation.Inspection;
+
+var probe = new PoseProbe(skeleton);
+probe.SampleClip(byName["Walk"], normalisedPhase: 0.5f);
+Matrix4x4 socketModel = probe.JointModel("weapon_socket");
+Vector3 leftFoot = probe.JointPosition("Foot.L");
+```
+
+`SampleClip` accepts a phase in the closed range `[0, 1]`. Phase `1` samples the authored end key so a loop check
+can compare it with phase `0`. A runtime caller that wants looping wraps its phase first. `SampleClipAtSeconds`
+clamps seconds to the authored range, and `SetLocals` composes one caller-provided local pose per node. Returned
+matrices and positions are in model space before inverse-bind and object world transforms. Named hierarchy nodes
+outside the skin palette remain available, which is useful for zero-weight sockets.
+
 Each frame, feed it the movement state your controller already computes, then draw with its pose
 (the bone palette `DrawSkinned` consumes - it is joint-WORLD, the loader-attached skeleton composes it):
 

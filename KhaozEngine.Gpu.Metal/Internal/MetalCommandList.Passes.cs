@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -38,6 +39,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </remarks>
         public void SetFramebuffer(IGpuFramebuffer fb)
         {
+            // M-N5's one pool for this member. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentNullException.ThrowIfNull(fb);
 
@@ -54,6 +58,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </remarks>
         public void ClearColorTarget(uint index, Color rgba)
         {
+            // M-N5's one pool for this member. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             ObjectDisposedException.ThrowIf(_disposed, this);
             RequireRecording("Clearing a colour target");
 
@@ -65,6 +72,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// behaviour and what keeps the plane defined (M-A4's reasoning applied to a load).</remarks>
         public void ClearDepthStencil(float depth)
         {
+            // M-N5's one pool for this member. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             ObjectDisposedException.ThrowIf(_disposed, this);
             RequireRecording("Clearing the depth attachment");
 

@@ -102,6 +102,36 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
+        /// THE COST HALF OF #1114: neither encoder seam opens a pool of its own. The rule above proves every caller
+        /// is covered, and it would stay green if a pool came back into a seam member, because a nested pool is
+        /// correct. What it would cost is the push and pop per argument-table write and per draw that #600 measured
+        /// at 21 ns and Grimhollow's town frame spent 13% of its recording on. So the placement is pinned here,
+        /// over every member either type declares, with no list of names to fall behind.
+        /// </summary>
+        [Fact]
+        public void TheEncoderSeamsOpenNoPoolOfTheirOwn()
+        {
+            const BindingFlags declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance
+                | BindingFlags.Static | BindingFlags.DeclaredOnly;
+
+            MethodBase[] members = typeof(MetalEncoderSink).GetMethods(declared)
+                .Concat(typeof(MetalRenderApi).GetMethods(declared))
+                .Cast<MethodBase>()
+                .ToArray();
+
+            Assert.Contains(members, m => m.Name == nameof(MetalEncoderSink.SetBufferOffset));
+
+            string[] pooled = members.Where(OpensAPool).Select(Describe).ToArray();
+
+            Assert.True(pooled.Length == 0,
+                "These encoder-seam members open an autorelease pool of their own, which puts a push and a pop "
+                + "back on every argument-table write or draw. Since #1114 the caller holds the pool: the "
+                + "MetalCommandList member that caused the emission opens one, and "
+                + "NoEntryPointReachesAMessageSendWithoutAPool proves every caller does. Remove the pool here.\n"
+                + string.Join("\n", pooled));
+        }
+
+        /// <summary>
         /// THE POSITIVE CONTROL, and without it the row above could pass because the walk finds nothing at all. It
         /// asserts that the walk really does reach the interop layer from a real entry point when the pool is not
         /// counted, so "no violations" means the rule held rather than that the reflection quietly returned an
@@ -182,6 +212,39 @@ namespace KhaozEngine.Tests.Gpu
                 + "it stopped at IMetalEncoderSink rather than following the call to the package's implementation. "
                 + "Every caller of the scope would then read as clean because the walk is blind, not because it "
                 + "is pooled.");
+            Assert.Contains(path, m => m.DeclaringType == typeof(MetalEncoderSink));
+        }
+
+        /// <summary>
+        /// THE WALK FOLLOWS A GENERIC FLUSH BODY THROUGH THE SINK, which is the positive control for the definition
+        /// edge end to end (#1114). The argument-table writes a bind flush emits (<c>SetBuffers</c>,
+        /// <c>SetTextures</c>, <c>SetBufferOffset</c>) reach the interop layer only from inside
+        /// <c>MetalBindRecords.Flush</c>'s generic body, which calls further generic bodies and then the sink
+        /// through <see cref="IMetalEncoderSink"/>. Once the sink opens no pool, those emissions fall under the rule
+        /// only through that chain, so a walk that lost either edge on the way would report every draw clean
+        /// because it is blind, not because it is pooled.
+        /// </summary>
+        [Fact]
+        public void TheWalk_FollowsAGenericFlushBodyThroughTheSinkToTheInteropLayer()
+        {
+            MethodBase flush = typeof(MetalBindRecords)
+                .GetMethod(nameof(MetalBindRecords.Flush),
+                    BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)
+                ?? throw new InvalidOperationException("MetalBindRecords.Flush is gone.");
+
+            Assert.True(flush.IsGenericMethodDefinition,
+                "MetalBindRecords.Flush is no longer a generic definition, so this row no longer starts where the "
+                + "bind path's own call lands through the definition edge.");
+
+            var path = new List<MethodBase>();
+            bool reaches = Reaches(flush, new HashSet<MethodBase>(), path, stopAtPools: false);
+
+            _output.WriteLine(string.Join(" -> ", path.Select(Describe)));
+            Assert.True(reaches,
+                "The IL walk found no route from the MetalBindRecords.Flush definition to ObjCMsgSend, which means "
+                + "it lost the generic-definition edge or the interface edge somewhere in the flush chain. Every "
+                + "draw's argument-table writes would then read as clean because the walk is blind, not because "
+                + "they are pooled.");
             Assert.Contains(path, m => m.DeclaringType == typeof(MetalEncoderSink));
         }
 

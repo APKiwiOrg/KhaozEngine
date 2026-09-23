@@ -28,11 +28,12 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// caller encodes ASCII itself.
     /// </para>
     /// <para>
-    /// NOTHING HERE RUNS OFF macOS, and nothing here runs at type load either. There is deliberately no
-    /// <c>static readonly</c> selector field anywhere in this folder: a static initializer would P/Invoke into
-    /// libobjc the moment the type was touched, including on the Linux and Windows legs where this assembly is
-    /// referenced and its device-free tests run. Selectors are fetched through <see cref="Sel"/> instead, which
-    /// is only ever reached from a body already behind the platform guard.
+    /// NOTHING HERE RUNS OFF macOS apart from <see cref="ObjCAutoreleasePool"/>'s empty scope (#1114), and
+    /// nothing here runs at type load either. There is deliberately no <c>static readonly</c> selector field
+    /// anywhere in this folder: a static initializer would P/Invoke into libobjc the moment the type was touched,
+    /// including on the Linux and Windows legs where this assembly is referenced and its device-free tests run.
+    /// Selectors are fetched through <see cref="Sel"/> instead, which is only ever reached from a body already
+    /// behind the platform guard.
     /// </para>
     /// </summary>
     internal static unsafe partial class ObjCRuntime

@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -96,6 +97,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         static void StageAndCopy(IntPtr destination, uint destinationSizeBytes, uint offsetBytes,
             ReadOnlySpan<byte> data, MetalEncoderScope encoders, MetalStagingArena arena, IMetalBlitApi blit)
         {
+            // THE POOL FOR THIS UPLOAD (M-N5, #1114), here rather than on MetalCommandList.UpdateBuffer because this
+            // is the half that reaches Objective-C: a staging block, the blit encoder boundary and the copy. The
+            // ring half is a memcpy and every uniform write in the engine takes it, so a pool there would be a push
+            // and a pop bought for nothing, which the ring path has never paid.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             // THE SIZE PAD IS THE INCUMBENT'S OWN, reproduced rather than improved (section 9.3): the copy moves
             // the payload rounded up to four bytes, and MetalBufferPolicy.AllocationBytes is what makes those
             // extra bytes land inside the destination's allocation rather than past its end. The proof is

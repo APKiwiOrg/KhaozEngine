@@ -1010,8 +1010,8 @@ it validates without an extra step (with none yet, `HostLayer` stays empty until
 and picks it through the HostLayer chooser below).
 
 **Biome bands** (`SelectionKind.BiomeBand`, index-keyed, no reorder command) select into an inspector with a
-read-only "Affects" row stating what a band drives today (terrain shaping and the scatter rules keyed by
-that biome, ground tinting not yet wired), then a `Biome` `ChoiceRow` over the `BiomeId` enum names, then
+read-only "Affects" row stating what a band drives today (terrain shaping, the scatter rules keyed by that
+biome and the default ground splat mix), then a `Biome` `ChoiceRow` over the `BiomeId` enum names, then
 the nullable `Start`/`End` world-Z edges and the `BaseHeight`/`HillAmplitude` scalars (a band is a Z-axis
 slice, not a height range, and its rows and descriptions say Z, not "height", now that the terminology has
 been corrected). Each nullable edge is a `FloatRow` for the concrete value paired with an "<edge> open"

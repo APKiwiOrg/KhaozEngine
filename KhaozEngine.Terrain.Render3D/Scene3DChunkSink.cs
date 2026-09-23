@@ -107,9 +107,9 @@ namespace KhaozEngine.Terrain
         /// chunks register no scatter, prop colliders, dynamics, or terrain collider - they are render-only.</para>
         /// <para>Splat tuning: <paramref name="snowLine"/> sets the height of the snow transition (default 60), and
         /// <paramref name="splatRule"/> is the optional consumer rule for the per-vertex material mix every chunk
-        /// this sink bakes. A null rule is byte-identical to the pre-rule sink - the engine's
-        /// own <see cref="TerrainSplatWeights.From"/> weights go straight into the vertex. A world with a SECOND body
-        /// of water needs it, because <c>From</c> derives its sand band from the field's single water level, so a lake
+        /// this sink bakes. With a null rule the engine's own biome-tilted
+        /// <see cref="TerrainSplatWeights.FromBlend"/> weights go straight into the vertex. A world with a SECOND body
+        /// of water needs it, because the default derives its sand band from the field's single water level, so a lake
         /// edge otherwise bakes as grass running into water. Three constraints, all spelled out on
         /// <see cref="TerrainSplatContext"/> and all load-bearing: the rule must be PURE (each chunk is meshed
         /// independently, per region and LOD, on a background thread, and a meshed chunk is then held until it

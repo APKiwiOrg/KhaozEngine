@@ -706,9 +706,9 @@ delegates to it with no instance, so nothing that already compiles changes. The 
 ride a SIBLING component, `TileGroundItemInstance` (`InstanceId`, `Payload`), seated only when
 `instanceId` is non-zero: a drop with no instance carries no component and pays nothing on the wire.
 `TryGetGroundItemInstance(netId, out instance)` is the server read a claim goes through, beside
-`TryGetGroundItem`, and clients read it off `client.World` for the entity `client.View.Entities` holds
-under the drop's net id. There is no collector beside `CollectGroundItems` for the instance half yet
-([#926](https://github.com/APKiwiOrg/KhaozEngine/issues/926)).
+`TryGetGroundItem`. The client read is `TileWorldClient.CollectGroundItemInstances(buffer)` beside
+`CollectGroundItems`: every drop that carries an instance, as `(NetId, Item, Instance)`, in one walk of the
+entity set and the same cleared then filled shape. A drop with no instance is absent from it.
 
 Both halves are opaque, exactly as `TileGroundItem`'s `ItemId` is opaque. The engine never decodes a
 payload, has no way to, and never mints an instance id of its own: the same id and the same bytes come
@@ -1209,11 +1209,16 @@ foreach (byte[] chunk in TileFragmentedMessage.Fragment(streamId: 1, sequence: p
     server.SendGameMessageTo(slot, kind: GameKinds.PageChunk, chunk);
 
 // On the client, one reassembler per connection.
-if (reassembler.TryComplete(payload, out ReadOnlyMemory<byte> assembled, out string? reason))
-    ApplyPage(assembled.Span);      // decode HERE, and quarantine what will not decode
+if (reassembler.TryComplete(payload, out byte streamId, out ReadOnlyMemory<byte> assembled, out string? reason))
+    ApplyPage(streamId, assembled.Span);   // decode HERE, and quarantine what will not decode
 else if (reason != null)
-    Telemetry.Count(reason);        // refused, and the token says why
+    Telemetry.Count(reason);               // refused, and the token says why
 ```
+
+`streamId` is the id the chunk headers carried, set whenever the answer is true, so several streams on one
+message kind (a bag, the worn slots and a bank, say) are told apart by the header rather than by a copy of the
+stream inside the payload that could disagree with it. The three-out overload without it answers identically and
+delegates to this one.
 
 **One reassembler per connection slot.** The type holds the partial assemblies of ONE peer and no connection
 table of its own, so a server keeps an array or a map of them beside its session table and forwards each peer's
@@ -1226,6 +1231,8 @@ Four rules, and none of them is a timer, because a timer on a reliable ordered c
   a new one. That is what a server restarting a page mid transmission looks like, and it is not an error.
 - At most `MaxPartialAssemblies` partial assemblies are held at once, which is four. A fifth evicts the one
   fed longest ago and increments `EvictedAssemblies`. A restart is not an eviction and is not counted as one.
+  The bound is a hard constant with no constructor knob, so a host with more concurrently fragmented streams per
+  peer evicts silently and `EvictedAssemblies` is the only reading that reports it.
 - The last chunk hands the assembled bytes BACK through `TryComplete`. Nothing here decodes them, so a payload
   that will not decode is the caller's quarantine rather than a throw from the wire. A final chunk cut in its body
   is the case that reaches the caller, because the header declares no total length.
@@ -1249,9 +1256,10 @@ fit. The split is by OWNERSHIP of the bytes: `ContainerPageDelta` builds the del
 `ContainerPageSyncRequest` is the two byte resync a client answers with, both in `KhaozEngine.ItemInstances`,
 because the entry body they carry is the container codec's, and this package fragments whatever bytes it is
 handed and gains no items dependency at all. `ContainerPageDelta.TryBuild` answers -1 when the next change
-would not fit one frame, and -1 is the caller's cue to `Fragment` the whole encoded page instead. Never a
-second delta frame: two deltas for one page would have to be applied in order by a client that may have
-missed the first, which is the reassembly problem this type already solves once.
+would not fit one frame, and -1 is the caller's cue to `Fragment` the whole page instead, encoded for that
+viewer by `ItemContainerPageCodec.EncodeProjected`, which projects every entry exactly as the delta does.
+Never a second delta frame: two deltas for one page would have to be applied in order by a client that may
+have missed the first, which is the reassembly problem this type already solves once.
 
 Two facts a server composing the two owes its own code. `TileProtocol.MaxGameMessageBytes` is COPIED into
 `ContainerPageDelta.MaxGameMessageBytes`, because that package is `Foundation` and this one is `Server`, and

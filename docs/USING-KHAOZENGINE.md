@@ -5649,7 +5649,8 @@ Build a field (server and client both do this), `using KhaozEngine.Terrain;`:
     var field = new TerrainField(TerrainPresets.Clearing());   // gentle meadow -> mountains + a lake basin
     float h = field.SampleHeight(x, z);                        // ground height (Y up)
     Vector3 n = field.SampleNormal(x, z);                      // finite-difference normal, for lighting/slope
-    BiomeId b = field.SampleBiome(x, z);
+    BiomeId b = field.SampleBiome(x, z);                       // the dominant band's biome
+    BiomeWeights shares = field.SampleBiomeWeights(x, z);      // every biome's share, continuous, sums to 1
 
 `TerrainConfig` composes the field: `BiomeBand[]` (designed regions smoothstep-blended along Z, each with a
 base height + hill amplitude + `BiomeId`), the base-noise knobs, and an ordered `ITerrainFeature[]` folded in
@@ -5765,8 +5766,8 @@ field rougher than the engine's presets:
 float depth = TerrainLodConfig.Default.SkirtDepthFor(lod, chunkSize: 60f);        // 0.9375 m at tier 0, 7.5 m at tier 4
 var chunk = TerrainChunkBuilder.Build(field, region, lod, TerrainLodConfig.Default, depth);
 ``` With a `SplatMaterialHandle` supplied the weights drive the PBR splat pipeline (five
-tileable PBR layers, triplanar); without one the weights are blended into a height/slope vertex-colour ramp
-(the fallback). *Which* chunks exist and *when* they rebuild is the **World streaming** sub-project below
+tileable PBR layers, triplanar). Without one the weights are blended into a vertex-colour ramp (the
+fallback). *Which* chunks exist and *when* they rebuild is the **World streaming** sub-project below
 (`TerrainStreamer`). See "Textured terrain (PBR splat)" below for the material API. For water, see
 `Scene3D.DrawWater` and `PixelPostProcessSettings.Water` in the Render3D section above.
 
@@ -7570,7 +7571,7 @@ transform, only its chunk (and so its HLOD cluster) membership can differ at the
 Terrain chunks can render five tileable PBR layers (grass/dirt/rock/sand/snow) blended per-fragment by the splat
 weights baked into each vertex, with world-space triplanar tiling, normal maps, mips, and 16x anisotropic
 filtering plus a `+1` mip LOD bias (D3D11/Vulkan) that tames distance shimmer from a high-frequency tiling albedo.
-Without a material supplied the chunk falls back to the height/slope vertex-colour ramp (byte-identical).
+Without a material supplied the chunk falls back to a vertex-colour ramp of the same weights.
 
 Five layers is the whole point and also the whole limit: four weights ride in `ModelVertex.Color` and the fifth is
 the remainder, so this pipeline cannot take a material palette that is content rather than a fixed set. For that
@@ -7626,17 +7627,38 @@ scene.DrawTerrainChunk(handle, region);                   // the region places t
 two `texture2DArray`s - albedo + normal - are shared by all chunks using this material). The material may be
 reloaded; each `LoadTerrainMaterial` call allocates a fresh set of arrays.
 
-**4. Influence the mix with a splat rule (optional).** The weights themselves come from
-`TerrainSplatWeights.From`, which derives its sand band from the field's single `WaterLevel`. That is the sea, so
-a world with a SECOND body of water (a lake, river, pond, oasis, flooded interior) has a shoreline the engine
-cannot see: it bakes as grass running straight into the water. Pass a `splatRule` to `Scene3DChunkSink` (or
-`TerrainChunkBuilder.Build`) and each vertex's mix goes through your function first. It is the seam for material
-work generally - paths, trampled ground, biome-specific dirt.
+**The default mix.** The builder bakes `TerrainSplatWeights.FromBlend(height, slope01,
+field.SampleBiomeWeights(x, z), waterLevel, snowLine)` into every vertex. The physical rules come first: steep
+ground is rock, ground near or below the water is sand, ground above the snow line is snow, and what is left is
+grass with a little mid-slope dirt. The biome then moves part of that GRASS share to its own channels. It recolours
+open ground only and never takes weight from a cliff, a shore or a peak.
 
-The rule is handed a `TerrainSplatContext`: the vertex's `Height`, `Slope01`, `Biome`, its ABSOLUTE `WorldX`/
-`WorldZ`, and `Default`, the weights the engine itself baked for that vertex. `Default` is the point of the
-context. The common rule is "the engine's mix, adjusted", and a consumer that reimplements the whole mix drifts
-from the engine's tuning the first time `From` changes.
+| Biome | Share of grass moved | Why |
+|---|---|---|
+| Meadow | none | the default biome, so an all-Meadow world bakes exactly the mix it baked before biomes counted |
+| Forest | 0.30 to dirt | leaf litter and bare humus under a canopy that shades the grass out |
+| Marsh | 0.50 to dirt | waterlogged mud between grass tussocks |
+| Mountains | 0.30 to rock, 0.15 to dirt | thin soil over bedrock, so a ledge or valley floor reads stony |
+| Desert | 0.80 to sand, 0.15 to dirt | open sand with hardpan patches and a trace of scrub |
+| Snow | 0.85 to snow | snow cover below the snow line with a little tundra showing through |
+
+`SampleBiomeWeights` reads each biome's share off the same smoothstep band blend that shapes the height, so the
+tilt fades across a band's `BiomeBlend` window. A per-vertex dominant biome would switch it along one triangle row
+instead, which is the visible seam the blend avoids. `TerrainSplatWeights.From(height, slope01, biome, ...)` is the
+discrete form for one biome, bit-identical to `FromBlend` wherever that biome holds the whole share.
+
+**4. Influence the mix with a splat rule (optional).** The default derives its sand band from the field's single
+`WaterLevel`. That is the sea, so a world with a SECOND body of water (a lake, river, pond, oasis, flooded
+interior) has a shoreline the engine cannot see: it bakes as grass running straight into the water. Pass a
+`splatRule` to `Scene3DChunkSink` (or `TerrainChunkBuilder.Build`) and each vertex's mix goes through your function
+first. It is the seam for material work generally - paths, trampled ground, a game's own biome tuning.
+
+The rule is handed a `TerrainSplatContext`: the vertex's `Height`, `Slope01`, `Biome` (the dominant biome), its
+ABSOLUTE `WorldX`/`WorldZ`, and `Default`, the weights the engine itself baked for that vertex with the biome tilt
+already applied. `Default` is the point of the context. The common rule is "the engine's mix, adjusted", and a
+consumer that reimplements the whole mix drifts from the engine's tuning the first time the default changes. A rule
+that ignores `Default` bakes exactly what it returns, so the tilt never reaches it. A rule that wants the untilted
+mix calls `TerrainSplatWeights.From` with `BiomeId.Meadow`.
 
 ```csharp
 // lakes is pre-baked immutable data captured when the rule was built - never mutated afterwards.
@@ -7671,8 +7693,8 @@ Three constraints, all load-bearing:
   rule against a server that has never heard of it, and a saved world is unchanged. A headless server never
   builds chunk meshes, so it never runs the rule at all.
 
-Leave `splatRule` null (the default) and the builder is byte-identical to the pre-rule engine, asserted per
-vertex over a sampled grid rather than by a golden.
+Leave `splatRule` null (the default) and the builder bakes exactly the default mix, asserted per vertex over a
+sampled grid rather than by a golden.
 
 **Out of scope.** Runtime layer blending tweaks, streaming of different materials per biome region, and
 per-chunk material overrides are not provided - swap the handle on `Scene3DChunkSink` and rebuild the ring
@@ -11655,6 +11677,11 @@ if (server.TryGetGroundItem(netId, out TileGroundItem item)
     && server.TryGetGroundItemInstance(netId, out TileGroundItemInstance instance)
     && server.DespawnGroundItem(netId))
     inventory.Seat(item.ItemId, item.Count, instance.InstanceId, instance.Payload);
+
+// Client, per frame: only the drops that carry an instance, each paired with its own drop.
+client.CollectGroundItemInstances(instancedBuffer);
+foreach ((long netId, TileGroundItem item, TileGroundItemInstance instance) in instancedBuffer)
+    DrawInstanceMarker(item.Tile, instance.InstanceId);
 ```
 
 Both halves are opaque. The engine never decodes the payload, has no way to, and never mints an instance id
@@ -11664,9 +11691,8 @@ and a drop-and-claim cycle cannot launder an item into a fresh one. Three refusa
 with instance id 0 throws because the bytes would go nowhere, and the READER is total, so a declared length
 past the component's own framed payload arrives as an instance with an empty payload rather than as a dropped
 session. `TryGetGroundItemInstance` answers false for every drop spawned through the four-argument overload,
-and clients read the component off `client.World` for the entity `client.View.Entities` holds under the
-drop's net id, because there is no collector beside `CollectGroundItems` for it yet
-(https://github.com/APKiwiOrg/KhaozEngine/issues/926).
+and `CollectGroundItemInstances` leaves those drops out. It fills the caller's list in one walk of the entity
+set, cleared first and unsorted, exactly as `CollectGroundItems` fills its own.
 
 ### Object states, and drawing them (a chopped tree, 18.14.0)
 
@@ -12463,8 +12489,22 @@ Every `GameApp` / `GameApp3D` game gets a frame-cost HUD **for free, on by defau
 wiring: the base app builds a `KhaozEngine.Gui.DiagnosticsHud`, samples FPS, drives the toggle, and draws the
 panel over the frame. It starts hidden, so the only cost until you press F1 is the always-on counter increments
 (a handful of adds per draw, no allocation). Sections shown: **Performance** (fps, frame ms avg/min/max, managed
-MB), **Draw stats** (the counters below), and - for a 3D app - **Pass timings** (per-pass CPU encode ms, enabled
-only while the panel is visible so it costs nothing when hidden).
+MB), **Draw stats** (the counters below), for a 3D app **Pass timings** (per-pass CPU encode ms, enabled
+only while the panel is visible so it costs nothing when hidden), and **Build**.
+
+**Build** is one row naming the running app and its version, so a tester reading the panel can say which binary
+they ran. It needs no wiring and no debug switch. The default label is the entry assembly's product name and the
+default value is its `AssemblyInformationalVersionAttribute`, with a `+` build metadata suffix (the SourceLink
+commit) dropped. A game that composes its own display version puts it there once at load:
+
+```csharp
+Diagnostics?.SetBuildIdentity(BuildConfig.Product, BuildConfig.DisplayVersion);   // e.g. "Grimhollow", "Codex (0.10.2)"
+```
+
+The identity is read once, on the first refresh that shows it, and never per frame. The name and version are
+shown verbatim as non-localizable tokens. The section title is the localized
+`DiagnosticsOverlayStrings.BuildTitle` (key `diagnostics.overlay.build.title`, English fallback "Build"). Add
+that key to the game's catalog to translate it.
 
 Opt out or rebind via `GameAppOptions`:
 
@@ -12495,7 +12535,7 @@ Diagnostics?.AddSection(() => new OverlaySection("World", new[]
 ```
 
 Do NOT reach past this to `Diagnostics?.Overlay.SetSectionsProvider(...)`. That installs a provider over the
-engine's, so Performance, Draw stats and Pass timings all disappear unless the game rebuilds them itself. That
+engine's, so Performance, Draw stats, Pass timings and Build all disappear unless the game rebuilds them itself. That
 trap is why a game ended up drawing a second always-on readout beside the engine HUD and computing fps twice.
 `ClearSections()` drops the added sections again.
 
@@ -16387,11 +16427,54 @@ accounts (`PresentAtCommit`), a client originated operation arrived (`ClientOper
 are reasons an operation was REFUSED. `Close` records `Closed`, its own reason, so a batch you closed and took
 a commit from does not read afterwards as one the clock took away from you.
 
+The window needs a tick, and your journal layer may not own one. `Apply(operation)` applies on the batch's own
+tick, so a journal that never sees the server tick opens every batch at the default and uses that form:
+`TickBoundary` then never fires, and the batch is bounded by the other four closers and by your own `Close`.
+
+**The batch owns what it is opened over, from `Open` until `MarkCommitted`.** It holds each container by
+reference and writes through it on every `Apply`, through `IPagedContainerWorkingCopy` and nothing wider. The
+overload above hands it the `PagedItemContainer`s themselves. If you share containers copy on write, open over
+your own implementation instead, a `Dictionary<string, IPagedContainerWorkingCopy>`, and run your ownership
+check inside its three writes (`SetSlotAt`, `TakeSlotAt`, `MarkClean`). No page object crosses it, so every
+read stays shared and a batch copies only on the first write that joins. `MarkCommitted` calls `MarkClean`
+only on a container holding a dirty page, so a container the batch left clean is never copied.
+
 Whose identity it is decides what the normalized intent holds. A SERVER minted batch hashes the canonical
 ordered operation list. A CLIENT headed batch hashes the client operation's own encoding ALONE, under the
 client's own id, and the server work riding behind it contributes no intent bytes. That is what makes a
 resubmit after a reconnect, which omits server work the client never saw, hash identically and resolve
 replayed rather than conflicting, and a conflict there would tell a player a committed withdraw had failed.
+
+**A commit that carries more than the batch is composed from its parts.** A loot claim writes the loot
+source's stream beside the bag, and a click can carry coins or quest state, so `Close`, which answers a commit
+holding this batch alone, is the convenience over `TryBuildParts`:
+
+```csharp
+// storeLimits is what your store validates against. A batch you add to is opened on those limits LOWERED by
+// what you add (LowerByLoot is your own), so its window stops with room left for the loot.
+var batch = ContainerCommitBuilder.Open(
+    persistenceKey, ItemInstanceEvents.CraftActionKind, session.Scope, containers, server.TickCount,
+    new ContainerCommitOptions { Limits = LowerByLoot(storeLimits) });
+// ... the tick's operations join, then:
+
+if (batch.TryBuildParts(out IReadOnlyList<JournalEvent> events, out IReadOnlyList<JournalProjectionWrite> writes))
+{
+    // events are StreamKey's, one per operation in order. The identity rules stay the batch's:
+    // batch.Window.HoldsClientOperation, batch.Operations[0].OperationId, batch.BuildIntent() and
+    // batch.PresentAtCommit are what Close itself reads.
+    JournalCommit composed = ComposeWithLoot(batch, events, writes);
+    composed.Validate(storeLimits);   // the REAL total against the FULL limits, never batch.Options.Limits
+    JournalSubmission submitted = executor.Submit(composed);
+}
+```
+
+Taking the parts closes the batch exactly as `Close` does, and a batch holding no operation answers false and
+stays open. The limits are checked on the composed commit and never on a part: the window bounds the batch's
+own share, so a host that adds to it opens the batch with `ContainerCommitOptions.Limits` set to its store's
+limits lowered by what it adds, and validates the composed commit against the FULL limits it lowered from.
+Validating against `batch.Options.Limits` refuses the very commit the reservation made room for. `Close`
+validates against `Options.Limits` because a batch alone adds nothing.
+`KhaozEngine.ItemInstances.Journal/README.md` states the whole contract.
 
 ### What one viewer may see, and the one frame delta (19.0.0)
 
@@ -16433,11 +16516,20 @@ if (written < 0)
 {
     // It would not fit ONE frame, or a change carries a QUARANTINED entry, whose wrapper never projects.
     // Send the WHOLE page through the fragmenter, never a second delta: two deltas for one page would have
-    // to be applied in order by a client that may have missed the first.
-    var entries = new PageSlotInput[page.EntryCount];
-    int count = page.CopyEntriesTo(entries);
-    byte[] encodedPage = ItemContainerPageCodec.Encode(
-        page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion, entries.AsSpan(0, count));
+    // to be applied in order by a client that may have missed the first. The page goes out through the
+    // VIEWER door, which projects every entry exactly as the delta would have and carries a quarantined one
+    // hollow. ItemContainerPageCodec.Encode projects nothing and is for the journal and the store alone.
+    var stored = new PageSlotInput[page.EntryCount];
+    int count = page.CopyEntriesTo(stored);
+    var entries = new ContainerPageChange[count];
+    for (int i = 0; i < count; i++)
+        entries[i] = ContainerPageChange.Occupied(stored[i], IsIdentified(stored[i]), RevealedMask(stored[i]));
+
+    byte[] encodedPage = ItemContainerPageCodec.EncodeProjected(
+        properties,
+        PropertyVisibility.OwnerOnly,          // the same viewer level the delta was built for
+        page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion,
+        entries);
 
     foreach (byte[] chunk in TileFragmentedMessage.Fragment(streamId, sequence, encodedPage))
         server.SendGameMessageTo(slot, kind: GameKinds.PageChunk, chunk);
@@ -16447,6 +16539,14 @@ else
     server.SendGameMessageTo(slot, kind: GameKinds.PageDelta, frame.AsSpan(0, written));
 }
 ```
+
+**A page going to a viewer has ONE door too.** `ItemContainerPageCodec.EncodeProjected` takes the same
+`ContainerPageChange` values the delta takes and projects each payload through
+`ContainerPageProjection.ProjectPayload`, the member the delta projects through, so the whole page and the
+delta cannot disagree about what one viewer sees. A quarantined entry crosses HOLLOW: a wrapper carrying the
+stored reason and stamped version over no original bytes, which verifies and seats on the client while the
+preserved bytes stay on the server. The raw `Encode` projects nothing and writes the durable bytes, which is
+right for the journal's projection section and a store, and never for a client.
 
 Both projections descend into a SOCKET. Kind 132 is visible to everyone, so a filter that kept or dropped
 whole top-level fields shipped the gem inside a socket exactly as stored, and that gem's own owner-only
@@ -16466,9 +16566,11 @@ still kept verbatim in storage.
 `ContainerPageSyncRequest` is the other half and the ONE new client-to-server message: two bytes,
 `[ContainerId][PageIndex]`, with no field a payload could ride in. A client REFUSES a delta for a page it has
 not fully received and sends this instead, and on the last chunk of a fragmented page the assembled bytes go
-through the SAME decoder the server encoded with. **Rate limit it at one page per client per tick**, which is
-a server rule rather than engine code, because a server that serves every request it receives has handed an
-unauthenticated peer an amplifier of two bytes in and about 7 KB out.
+through the SAME decoder the server encoded with. `TileFragmentReassembler.TryComplete` hands back the
+`streamId` those chunks carried beside the bytes, so several containers fragmented under one kind are routed by
+the header rather than by a stream byte repeated inside the page. **Rate limit it at one page per client per
+tick**, which is a server rule rather than engine code, because a server that serves every request it receives
+has handed an unauthenticated peer an amplifier of two bytes in and about 7 KB out.
 
 **What is NOT here yet.** What is settled is every byte format, every id space, every ordering rule, the
 stacking test, the paging shape and the projection every replicated byte passes through, which are the
@@ -16477,13 +16579,11 @@ types and the item generator are spec 20 phase 4, and the crafting framework and
 are phase 5, both in `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`. `ContainerOperationKind.Craft`
 already carries the operation and its page write, and the event BODY is the crafting framework's to encode.
 
-Four named gaps sit on surfaces that DO exist. The page delta ships an encoder and no reader, while the
-fragmenter ships both halves (https://github.com/APKiwiOrg/KhaozEngine/issues/933). A full page send carries
-the STORED bytes rather than a per-viewer projection, so it and the delta disagree about what a non-owner
-sees (https://github.com/APKiwiOrg/KhaozEngine/issues/932). A lowered `max_stack` is not enforced on the
-merge path, which saturates at `int.MaxValue` and is reported after the fact by validator check 12
-(https://github.com/APKiwiOrg/KhaozEngine/issues/924). And a container operation's events are written with
-nothing able to read one back (https://github.com/APKiwiOrg/KhaozEngine/issues/941).
+Three named gaps sit on surfaces that DO exist. The page delta ships an encoder and no reader, while the
+fragmenter ships both halves (https://github.com/APKiwiOrg/KhaozEngine/issues/933). A lowered `max_stack` is
+not enforced on the merge path, which saturates at `int.MaxValue` and is reported after the fact by validator
+check 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/924). And a container operation's events are written
+with nothing able to read one back (https://github.com/APKiwiOrg/KhaozEngine/issues/941).
 
 ---
 
@@ -18548,8 +18648,9 @@ host loss. `IWorldStore` remains checkpoint persistence. `BatchedWriter<T>` rema
 Neither is an ownership authority.
 
 The core package provides the immutable values, `IMutationJournalStore`, `IMutationJournalMaintenance`,
-`IMutationJournalAgeMaintenance`, `InMemoryMutationJournalStore`, and `MutationJournalExecutor`. The SQLite and SQL
-Server provider packages implement the same store and maintenance seams. Their package READMEs cover schema modes
+`IMutationJournalAgeMaintenance`, the optional `IMutationJournalStreamListing`, `InMemoryMutationJournalStore`, and
+`MutationJournalExecutor`. The SQLite and SQL Server provider packages implement the same store, maintenance, and
+listing seams. Their package READMEs cover schema modes
 and permissions. The complete public type and limit reference is in
 [`KhaozEngine.WorldStore/README.md`](../KhaozEngine.WorldStore/README.md).
 
@@ -18742,6 +18843,14 @@ Projection bytes are opaque game-owned server bytes. An admin endpoint must auth
 lookup, parse the bytes with bounded versioned codecs, redact fields, and return a shaped DTO. Never send raw
 projection bytes to an untrusted browser. Poll only the selected stream while its detail view is active. There is no
 all-player polling endpoint and no inventory, bank, skill, or quest snapshot on simulation ticks.
+
+An operator tool that sweeps a whole store (a copy, a release rehearsal, an audit, or a migration check) lists
+streams through `IMutationJournalStreamListing.ListStreamsAsync` instead of querying the provider's tables. Each call
+reads one bounded page in ordinal key order, optionally by key prefix, and returns a continuation key until the
+listing is complete. Load each listed stream through the ordinary snapshot, event, and projection reads. Open the
+SQLite or SQL Server store with `SchemaMode = ReadOnly` when the source must not be written to. That mode issues no
+DDL, reports a missing or older schema as `SchemaMismatch` instead of repairing it, and makes every write path throw
+`NotSupportedException`. Do not hand a read only store to `MutationJournalExecutor`.
 
 ### Persisting players so the world survives a restart (`WorldPersistence`)
 

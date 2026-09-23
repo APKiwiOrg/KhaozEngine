@@ -55,11 +55,13 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStore, 
         timeProvider = options.TimeProvider ?? throw new ArgumentNullException(nameof(options), "Time provider cannot be null.");
         minimumRetryHorizon = options.MinimumRetryHorizon;
         this.testHook = testHook;
+        openedReadOnly = options.SchemaMode == SqliteJournalSchemaMode.ReadOnly;
 
         SqliteStoreConnection? connection = null;
         try
         {
-            connection = new SqliteStoreConnection(options.ConnectionString, SqliteJournalSchema.BootstrapSql(options));
+            string connectionString = openedReadOnly ? ReadOnlyConnectionString(options.ConnectionString) : options.ConnectionString;
+            connection = new SqliteStoreConnection(connectionString, SqliteJournalSchema.BootstrapSql(options));
             connection.Connection.DefaultTimeout = checked((int)Math.Ceiling(options.BusyTimeout.TotalSeconds));
             connection.Connection.CreateFunction(
                 OperationDeleteGuardFunction,

@@ -10,7 +10,9 @@ up regardless of load order. Plain `float` math throughout.
 - **`TerrainField`** - `SampleHeight` folds the analytic layers in order (biome-band shaping, smoothstep
   blended, base coordinate-hash fractal noise, then an ordered feature list), then adds the authored
   sculpt delta when a `TerrainSculpt` is attached. Also `SampleNormal` (central finite difference over
-  the composited height, at the sculpt cell size when sculpted), `SampleBiome` (dominant band), and
+  the composited height, at the sculpt cell size when sculpted), `SampleBiome` (dominant band),
+  `SampleBiomeWeights` (every biome's share off the same band blend, continuous across a boundary and summing
+  to 1, which the default terrain splat fades its per-biome tilt over), and
   `WaterLevel`. The `TerrainField(TerrainConfig, TerrainSculpt?)` constructor takes the sculpt layer; a
   null or empty one keeps the exact pure-analytic fast path. **`SetSculpt(TerrainSculpt?)`** swaps that
   layer at runtime by an atomic reference exchange, for a game whose authored sculpt streams in and out
@@ -33,6 +35,8 @@ up regardless of load order. Plain `float` math throughout.
   the editor's sculpt stroke already does. Removals apply before additions.
 - **`TerrainConfig`** / **`BiomeBand`** / **`BiomeId`** - authoring inputs. Defaults give a single
   gentle meadow band, supply `Biomes` (designed regions along world Z) and `Features` for more.
+  **`BiomeWeights`** is the value `SampleBiomeWeights` returns: an indexer by `BiomeId`, the `Dominant` biome
+  (always equal to `SampleBiome` at the same point) and `BiomeWeights.Single(biome)`.
 - **`TerrainNoise`** - stateless coordinate-hash noise (`Hash2`, `ValueNoise`, `Fbm`, `Turbulence`,
   `SmoothStep`). Every function depends only on its arguments plus the seed, no `Random`.
 - **`ITerrainFeature`** - a pure, composable height modifier applied in list order. Ready-made:
@@ -178,6 +182,7 @@ using KhaozEngine.Terrain;
 var field = new TerrainField(TerrainPresets.Clearing(seed: 5));
 float h = field.SampleHeight(x, z);            // same answer on server and client
 BiomeId biome = field.SampleBiome(x, z);
+BiomeWeights shares = field.SampleBiomeWeights(x, z);   // shares[BiomeId.Desert] is 0 to 1, all sum to 1
 
 var ground = new TerrainCollision(field);
 state = CharacterMovement.Step(state, cmd, dt, ground.GroundHeight, MoveTuning.Default,

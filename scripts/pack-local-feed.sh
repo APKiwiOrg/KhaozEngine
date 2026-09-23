@@ -3,10 +3,14 @@
 # This is the sanctioned way to run the ritual's pack, and AGENTS.md names it instead of the bare
 # dotnet command it wraps:
 #
-#   scripts/pack-local-feed.sh              # guard, then dotnet pack -c Release -o ./local-feed
+#   scripts/pack-local-feed.sh              # guard, then dotnet pack -c Release -o <feed>
 #   scripts/pack-local-feed.sh --dry-run    # guard only, print the command it would run
 #   PACK_RELEASED_OK=1 scripts/pack-local-feed.sh    # pack anyway over a released version
+#   KHAOZENGINE_FEED=DIR scripts/pack-local-feed.sh  # pack into DIR instead
 #
+# It packs the CURRENT tree, worktree or not. <feed> is the MAIN checkout's local-feed, the one
+# consumers' scripts/refresh-engine.sh read, so a pack from a linked worktree reaches them (#1063).
+# A relative KHAOZENGINE_FEED resolves against this tree's toplevel, not the directory you ran from.
 # Extra arguments after the options are forwarded to dotnet pack unchanged.
 #
 # The rule it enforces, and why, is scripts/pack-standard.sh (issue #492). Short version: the ritual
@@ -24,12 +28,19 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run|-n) dry=1; shift ;;
     --help|-h)
-      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     --) shift; break ;;
     *) break ;;
   esac
 done
+
+feed=$(pack_feed_dir) || {
+  echo "pack-local-feed: cannot locate the main checkout's local-feed from this repository layout." >&2
+  echo "pack-local-feed: set KHAOZENGINE_FEED to the feed directory and run this again." >&2
+  exit 1
+}
+echo "pack-local-feed: feed is $feed"
 
 ver=$(tag_props_version < Directory.Build.props 2>/dev/null || true)
 [ -n "${ver:-}" ] || { echo "pack-local-feed: could not read <KhaozEngineVersion> from Directory.Build.props." >&2; exit 1; }
@@ -47,11 +58,13 @@ else
   exit 1
 fi
 
-# local-feed is gitignored, so a fresh checkout has none and the nuget.config source would not resolve.
+# This tree's local-feed is gitignored, so a fresh checkout or worktree has none, and the nuget.config
+# source the pack's restore reads would not resolve. It is needed even when the output goes elsewhere.
 mkdir -p local-feed
-echo "pack-local-feed: dotnet pack -c Release -o ./local-feed${*:+ $*}"
+echo "pack-local-feed: dotnet pack -c Release -o $feed${*:+ $*}"
 if [ "$dry" = 1 ]; then
   echo "pack-local-feed: --dry-run, nothing packed."
   exit 0
 fi
-exec dotnet pack -c Release -o ./local-feed "$@"
+mkdir -p "$feed"
+exec dotnet pack -c Release -o "$feed" "$@"

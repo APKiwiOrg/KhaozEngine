@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace KhaozEngine.Terrain
 {
@@ -51,9 +52,7 @@ namespace KhaozEngine.Terrain
             for (int i = 0; i < _bands.Length; i++)
             {
                 ref readonly BiomeBand b = ref _bands[i];
-                float rise = float.IsNegativeInfinity(b.Start) ? 1f : TerrainNoise.SmoothStep(b.Start - blend, b.Start + blend, z);
-                float fall = float.IsPositiveInfinity(b.End) ? 1f : 1f - TerrainNoise.SmoothStep(b.End - blend, b.End + blend, z);
-                float w = rise * fall;
+                float w = BandWeight(in b, blend, z);
                 wSum += w;
                 baseH += w * b.BaseHeight;
                 hill += w * b.HillAmplitude;
@@ -61,6 +60,16 @@ namespace KhaozEngine.Terrain
             }
             if (wSum > 1e-6f) { baseH /= wSum; hill /= wSum; }
             return (baseH, hill, best);
+        }
+
+        /// <summary>One band's un-normalized blend weight at world Z. Shared by <see cref="ShapeAt"/> and
+        /// <see cref="SampleBiomeWeights"/> so the dominant band and the biome shares can never disagree.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static float BandWeight(in BiomeBand b, float blend, float z)
+        {
+            float rise = float.IsNegativeInfinity(b.Start) ? 1f : TerrainNoise.SmoothStep(b.Start - blend, b.Start + blend, z);
+            float fall = float.IsPositiveInfinity(b.End) ? 1f : 1f - TerrainNoise.SmoothStep(b.End - blend, b.End + blend, z);
+            return rise * fall;
         }
 
         /// <summary>Replaces the sculpt layer with a new immutable snapshot, by an atomic reference exchange. A
@@ -118,5 +127,29 @@ namespace KhaozEngine.Terrain
 
         /// <summary>The dominant biome at the world point (from the band blend).</summary>
         public BiomeId SampleBiome(float x, float z) => ShapeAt(z).biome;
+
+        /// <summary>The share of each biome at the world point, off the same band blend that shapes the height. The
+        /// shares sum to 1 and change continuously across a band boundary, and <see cref="BiomeWeights.Dominant"/>
+        /// equals <see cref="SampleBiome"/>. A point no band covers (a gap wider than the blend window) is all of the
+        /// dominant biome, matching <c>SampleBiome</c>'s fallback. The chunk builder feeds this to the default splat so
+        /// a biome's ground tint fades across the blend window instead of switching at the dominant-band line.</summary>
+        public BiomeWeights SampleBiomeWeights(float x, float z)
+        {
+            float blend = MathF.Max(1e-3f, _cfg.BiomeBlend);
+            Span<float> shares = stackalloc float[BiomeWeights.Count];
+            float wSum = 0f, bestW = -1f;
+            BiomeId best = _bands[0].Biome;
+            for (int i = 0; i < _bands.Length; i++)
+            {
+                ref readonly BiomeBand b = ref _bands[i];
+                float w = BandWeight(in b, blend, z);
+                wSum += w;
+                if ((uint)b.Biome < BiomeWeights.Count) shares[(int)b.Biome] += w;
+                if (w > bestW) { bestW = w; best = b.Biome; }
+            }
+            if (wSum <= 1e-6f) return BiomeWeights.Single(best);
+            for (int s = 0; s < shares.Length; s++) shares[s] /= wSum;
+            return new BiomeWeights(shares, best);
+        }
     }
 }

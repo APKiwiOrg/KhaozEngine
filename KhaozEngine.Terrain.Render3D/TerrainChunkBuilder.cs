@@ -24,16 +24,17 @@ namespace KhaozEngine.Terrain
     /// was baked into the vertex and no camera-relative render or physics rebase could recover it: the error was
     /// already in the buffer. <see cref="TerrainChunkMesh.Bounds"/> follows the vertices and is therefore
     /// chunk-local too.</para>
-    /// <para>The per-vertex material mix comes from <see cref="TerrainSplatWeights.From"/> unless the caller supplies
-    /// a <c>splatRule</c>, which sees each vertex's inputs plus the engine's own result and returns the weights to
-    /// bake (<see cref="TerrainSplatContext"/> carries the full contract). That is how a world with a SECOND body of
-    /// water gets a shoreline at all: <c>From</c> derives its sand band from the field's single water level.</para></summary>
+    /// <para>The per-vertex material mix is <see cref="TerrainSplatWeights.FromBlend"/> over the field's
+    /// <see cref="TerrainField.SampleBiomeWeights"/>, so each biome's ground tint fades across a band boundary. A caller
+    /// may supply a <c>splatRule</c>, which sees each vertex's inputs plus that result and returns the weights to bake
+    /// (<see cref="TerrainSplatContext"/> carries the full contract). That is how a world with a SECOND body of water
+    /// gets a shoreline at all: the default mix derives its sand band from the field's single water level.</para></summary>
     public static class TerrainChunkBuilder
     {
         /// <summary>Mesh a chunk at <paramref name="lod"/> using the default LOD tier table
         /// (<see cref="TerrainLodConfig.Default"/>). Byte-identical to the pre-data-driven behaviour for tiers 0/1/2.
         /// <para><paramref name="splatRule"/> is the optional consumer rule for the per-vertex material mix; null (the
-        /// default) bakes exactly what <see cref="TerrainSplatWeights.From"/> produces. Contract:
+        /// default) bakes exactly what <see cref="TerrainSplatWeights.FromBlend"/> produces. Contract:
         /// <see cref="TerrainSplatContext"/>.</para></summary>
         public static TerrainChunkMesh Build(TerrainField field, TerrainChunkRegion region, int lod, float skirtDepth = 0.3f, float snowLine = 60f,
                                              Func<TerrainSplatContext, TerrainSplatWeights>? splatRule = null)
@@ -44,8 +45,8 @@ namespace KhaozEngine.Terrain
         /// <paramref name="lodConfig"/> must be the same one the streamer picks tiers with, or a tier index means a
         /// different resolution on each side.
         /// <para><paramref name="splatRule"/> is the optional consumer rule for the per-vertex material mix. Null (the
-        /// default) bakes exactly what the engine's own <see cref="TerrainSplatWeights.From"/> produces, so a caller
-        /// that supplies nothing is byte-identical to the pre-rule builder. The full contract is on
+        /// default) bakes exactly what the engine's own <see cref="TerrainSplatWeights.FromBlend"/> produces for the
+        /// vertex's height, slope and <see cref="TerrainField.SampleBiomeWeights"/>. The full contract is on
         /// <see cref="TerrainSplatContext"/>, and all three parts of it are load-bearing: the rule must be PURE
         /// (each chunk is meshed independently, per region and LOD, off the frame thread, so an impure rule bakes
         /// neighbours that disagree at their shared edge), it runs on a HOT PATH (once per vertex of every streamed
@@ -78,12 +79,15 @@ namespace KhaozEngine.Terrain
                 float h = field.SampleHeight(x, z);
                 var n = field.SampleNormal(x, z);
                 float slope01 = 1f - n.Y;
-                BiomeId biome = field.SampleBiome(x, z);
-                var w = TerrainSplatWeights.From(h, slope01, biome, field.WaterLevel, snowLine);
+                // Biome shares, not just the dominant biome: the default mix fades a biome's tilt across the band's
+                // blend window, where a discrete biome would switch it along one triangle row. Dominant is exactly
+                // SampleBiome, so the rule still sees the biome it always did.
+                BiomeWeights biomes = field.SampleBiomeWeights(x, z);
+                BiomeId biome = biomes.Dominant;
+                var w = TerrainSplatWeights.FromBlend(h, slope01, biomes, field.WaterLevel, snowLine);
                 // Consumer splat rule (issue #373), presentation only. Null is the whole pre-rule path: the engine's
-                // weights go straight into the vertex, so a consumer that supplies nothing bakes byte-identical
-                // meshes. The rule sees the engine's own result as Default so "the engine's mix plus a sand band"
-                // does not have to reimplement (and then drift from) TerrainSplatWeights.From.
+                // weights go straight into the vertex. The rule sees the engine's own result as Default so "the
+                // engine's mix plus a sand band" does not have to reimplement (and then drift from) the default mix.
                 if (splatRule is not null) w = splatRule(new TerrainSplatContext(h, slope01, biome, x, z, w));
                 verts[vi] = new ModelVertex(new Vector3(lx, h, lz), n, TerrainRamp.Of(w), new Vector2((float)ix / res, (float)iz / res));
                 splat[vi] = w;

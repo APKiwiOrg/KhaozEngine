@@ -11,7 +11,7 @@ using Microsoft.Data.SqlClient;
 
 namespace KhaozEngine.WorldStore.SqlServer;
 
-internal static class SqlServerJournalSchema
+internal static partial class SqlServerJournalSchema
 {
     internal const int CurrentVersion = 2;
     internal const string RequiredMigration = "sqlserver-journal-v2-operation-retention";
@@ -102,16 +102,11 @@ internal static class SqlServerJournalSchema
                 throw ApplicationLockFailure(lockResult);
             }
 
-            int journalObjectCount;
-            await using (SqlCommand count = Command(connection, transaction, commandTimeoutSeconds, """
-                SELECT COUNT(*)
-                FROM sys.objects
-                WHERE schema_id = SCHEMA_ID(N'dbo')
-                  AND name LIKE N'journal[_]%'
-                  AND type IN (N'U', N'PK', N'F', N'C', N'D');
-                """))
-                journalObjectCount = Convert.ToInt32(await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
-
+            int journalObjectCount = await CountJournalObjectsAsync(
+                connection,
+                transaction,
+                commandTimeoutSeconds,
+                cancellationToken).ConfigureAwait(false);
             if (journalObjectCount == 0)
             {
                 if (mode == SqlServerJournalSchemaMode.ValidateOnly) throw Mismatch("missing");
@@ -173,6 +168,22 @@ internal static class SqlServerJournalSchema
                 _ => JournalStoreFailureKind.Unavailable,
             },
             $"SQL Server journal schema application lock failed with return code {returnCode}.");
+
+    private static async Task<int> CountJournalObjectsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        int commandTimeoutSeconds,
+        CancellationToken cancellationToken)
+    {
+        await using SqlCommand count = Command(connection, transaction, commandTimeoutSeconds, """
+            SELECT COUNT(*)
+            FROM sys.objects
+            WHERE schema_id = SCHEMA_ID(N'dbo')
+              AND name LIKE N'journal[_]%'
+              AND type IN (N'U', N'PK', N'F', N'C', N'D');
+            """);
+        return Convert.ToInt32(await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
+    }
 
     private static async Task<int> ReadDeclaredVersionAsync(
         SqlConnection connection,

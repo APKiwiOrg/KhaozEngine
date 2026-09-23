@@ -20,11 +20,13 @@ Pulls in:
   band, a visibility, a fixed identification mask bit and a field shape, the `KECQ` quarantine wrapper, container
   codec version 2 (`ItemContainerPageCodec`), the `IInstanceIdStore`-backed instance id allocator and the
   thirteen-check instance validator. On top of the record: `PagedItemContainer` and `ItemContainerPage`, the
-  paged container and its separate capacity gate, `InstanceStacking`'s byte-equality merge rule,
+  paged container and its separate capacity gate, `IPagedContainerWorkingCopy`, the narrow door a journal
+  commit builder writes a paged container through, `InstanceStacking`'s byte-equality merge rule,
   `InstanceRemapPass` and `VettedRemapRules`, the registry-derived pass that brings one stored page forward,
-  `ItemInstanceVisibility`, the one function answering whether a viewer may see a field, and the wire pair
-  built on it, `ContainerPageDelta` and `ContainerPageSyncRequest`. Also references `Diagnostics`, for the
-  validator's one injected log line.
+  `ItemInstanceVisibility`, the one function answering whether a viewer may see a field, and the wire built on
+  it: `ContainerPageProjection`, the one per entry projection that both `ContainerPageDelta` and
+  `ItemContainerPageCodec.EncodeProjected` write through, and `ContainerPageSyncRequest`. Also references
+  `Diagnostics`, for the validator's one injected log line.
 - `KhaozEngine.Diagnostics` - logging (sinks, categories, crash hooks) + `FrameStats` telemetry.
 - `KhaozEngine.Ecs` - struct-based archetype `World`/`Entity`/`ISystem` ECS with `ParallelForEach`.
 - `KhaozEngine.Identity` - pluggable player-identity seam: provider sign-in + server-side verified-subject

@@ -338,6 +338,25 @@ internal sealed class FakeVersionDirectory(int? pinned, int active) : IContentVe
     }
 }
 
+/// <summary>
+/// A version record's two manifest hashes, answered for one version and null for every other, which is the
+/// fact boot step 3 compares the pack pointer with.
+/// </summary>
+internal sealed class FakeHashSource(int version, ContentVersionHashes hashes) : IContentVersionHashSource
+{
+    /// <summary>How many times the record was read.</summary>
+    public int Reads { get; private set; }
+
+    /// <inheritdoc />
+    public Task<ContentVersionHashes?> GetVersionHashesAsync(
+        int versionNumber,
+        CancellationToken cancellationToken = default)
+    {
+        Reads++;
+        return Task.FromResult<ContentVersionHashes?>(versionNumber == version ? hashes : null);
+    }
+}
+
 /// <summary>An index that cannot build what it was asked for, which fails the boot closed at step 7b.</summary>
 internal sealed class BootThrowingIndex(ContentTypeId type) : IContentLoadIndex
 {

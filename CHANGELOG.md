@@ -99,6 +99,57 @@ repins, and the notes below say what each game changes when it does.
   Interest deltas add or remove the entity when visibility changes. The game remains responsible for
   durable owner identity and pickup authorization. Grimhollow uses this for owner-only book drops.
 
+**A content catalog can be reset.**
+
+- `SqliteCatalogReset` and `SqlServerCatalogReset` drop and recreate the whole content catalog in one transaction
+  and file one audit row for it ([#1035](https://github.com/APKiwiOrg/KhaozEngine/issues/1035)). It is for a game
+  whose committed bundle is the authority and whose store is replaced from it rather than published forward. The
+  drop set is the schema's own inventory intersected with what stands, never a name pattern, so a host's own
+  tables in the same database survive. An empty database is created, a catalog at an older schema version comes
+  back at this build's, a newer one is refused with nothing dropped, an open draft is refused unless forced, and a
+  partial or unreadable catalog is refused unless forced and then repaired.
+- `ContentCatalogResetResult` says what stood (the active version, its two manifest hashes, the rows dropped, the
+  prior and new schema versions) and cannot be built into a state that says two things. The same hashes are filed
+  in the audit row's `before_value`.
+- SQL Server takes the schema's application lock as the first statement, the lock the create and the version 1
+  migration take. SQLite refuses while another writer holds the file. SQLite also refuses a reset while a host table
+  holds a foreign key into the catalog declared `ON DELETE CASCADE`, `SET NULL` or `SET DEFAULT`, because its
+  `DROP TABLE` deletes the rows first and would fire that action on the host's own rows (reason
+  `host-foreign-key`). SQL Server refuses the same shape itself.
+- The pack store is not touched. A caller replacing content at the same version number clears or rebuilds its pack
+  root, which the next item makes the boot notice.
+
+**The content boot cross-checks the pack pointer.**
+
+- `ContentBoot` step 3 compares the pack store's `versions/<n>` pointer with the version record's two manifest
+  hashes and refuses a disagreement as `ContentBootRefusal.PackPointerMismatch` with an operator line naming both
+  ([#1039](https://github.com/APKiwiOrg/KhaozEngine/issues/1039)). A catalog replaced at the same version number
+  with different content no longer serves the old pack as current.
+- The hashes come from `ContentBootOptions.VersionHashes`, falling back to `Directory` when that is itself an
+  `IContentVersionHashSource`. `IContentAuthoringStore` is one, out of its own version record. A host that hands
+  the boot a WRAPPER around its store skips the check unless it sets `VersionHashes` or the wrapper forwards the
+  interface, and `ContentBootResult.PackPointerCrossChecked` says whether the comparison ran and agreed, so a
+  wiring test can assert it.
+- A version source that throws (the pinned or active read, or the hash read) is now a refusal,
+  `ContentBootRefusal.VersionSourceUnreadable`, rather than an exception out of `RunAsync`, which promises a result.
+  The caller's own cancellation still propagates, whatever exception type the driver reports it as. Both refusal
+  values are appended last, so no existing value moves, and a host with an exhaustive switch over the enum gains
+  two arms.
+
+**Shared game content types.**
+
+- New package `KhaozEngine.Catalog.GameTypes` in the `Foundation` umbrella
+  ([#1022](https://github.com/APKiwiOrg/KhaozEngine/issues/1022)): thirteen game-shaped content types (food,
+  equipment profiles and their stat lines, stores and shelves, monster drops, gathering nodes, recipes with their
+  inputs and outputs, tool tiers, skill curves, tuning knobs) with stable ids 1024 to 1036, stable keys, ordered
+  schemas, row codecs, per-type validators and a cross-type sweep. A game registers all thirteen with one call.
+- A game declares its duration unit, `ContentDurationUnit.Ticks` or `Seconds`, which picks each timing field's
+  NAME (`base_ticks` or `base_seconds`) with ids and codecs unchanged, so two games with different clocks share
+  the types. Field names are public and reads resolve by name, and field positions stay internal.
+- The sweep includes the loot number rules, `KGT1309` to `KGT1317`: numbers no roll ever reads, and a monster
+  whose drop tree can leave more lines than a game-named `max_drops_per_kill` knob allows. A game adds its own
+  whole-catalog rules through `GameContentSweepOptions.GameRules`, which run after the package's in the same slot.
+
 **Flaky tests fixed at the cause.**
 
 - `SqliteStoreConnection` opens its held connection with pooling off and no longer clears the pool on dispose

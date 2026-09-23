@@ -613,7 +613,7 @@ render verbs ever moved to a separate tool.
 
 ## Content catalog package edges
 
-The family is six packages, and every edge is forward and acyclic. `KhaozEngine.Catalog`, the read side, adds
+The family is seven packages, and every edge is forward and acyclic. `KhaozEngine.Catalog`, the read side, adds
 exactly two:
 
 ```
@@ -630,9 +630,10 @@ its declared `ContentRegistrationBand` and reached through an interface this pac
 reserved `KEC0100` to `KEC0199` code range is what tells an operator whose finding it is. That is the whole
 shape of the pass, and it is why it looks like an inversion rather than a call.
 
-The five packages above it add these, and nothing else:
+The six packages above it add these, and nothing else:
 
 ```
+KhaozEngine.Catalog.GameTypes -> KhaozEngine.Catalog              (the registry's field schema types, the row codec base and EngineContentTypes' keys. NOTHING else, and no seam of its own: the package is thirteen schemas and their codecs)
 KhaozEngine.Catalog.Authoring -> KhaozEngine.Catalog              (the registry, the codecs, the formats, IPackStore and the IContentVersionDirectory the store seam inherits. NOTHING else, and no SQL)
 KhaozEngine.Catalog.Netcode   -> KhaozEngine.Catalog              (ContentVersionIdentity and the one content-address rule)
 KhaozEngine.Catalog.Netcode   -> KhaozEngine.Netcode              (HandshakeToken's layer codec and IConnectionAuthenticator)

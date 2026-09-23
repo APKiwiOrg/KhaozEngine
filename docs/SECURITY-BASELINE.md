@@ -122,31 +122,93 @@ authenticated), not something `KhaozEngine.Commerce` verifies itself. Purchases 
 
 ### 4. Player identity (sign-in)
 
-Packages: `KhaozEngine.Identity`, `KhaozEngine.Identity.Oidc`, `KhaozEngine.Identity.Discord`. A provider
-credential (an OIDC id_token, a Discord access_token) is untrusted client input until the server verifies
-it: `IIdentityValidator.ValidateAsync` (`OidcTokenValidator` against the issuer's discovery document + JWKS,
-`DiscordTokenValidator` against Discord's `oauth2/@me` token-introspection endpoint, checking the token's
-issuing `application.id` against the consumer's own client id) is the only place a subject is established. The
-client-side `IIdentityProvider`/`IdentitySession` never asserts a verified identity on its own; it only
-produces the credential the server exchanges. Two hardening details baked into the client flow:
+Packages: `KhaozEngine.Identity`, `KhaozEngine.Identity.Oidc`, `KhaozEngine.Identity.Discord`, the exchange
+(`KhaozEngine.Identity.Exchange` and `KhaozEngine.Identity.Exchange.AspNetCore`), the account registry
+(`KhaozEngine.Accounts`, `.Sqlite`, `.SqlServer`) and `SigningSecret` and `SignedToken` in `KhaozEngine.Netcode`.
+
+A provider credential (an OIDC id_token, a Discord access token) is untrusted client input until the auth service
+verifies it. `IIdentityValidator` (`OidcTokenValidator` against the issuer's discovery document + JWKS,
+`DiscordTokenValidator` against Discord's `oauth2/@me` token-introspection endpoint, checking the token's issuing
+`application.id` against the consumer's own client id) is the only place a subject is established. The client-side
+`IIdentityProvider` and `IdentitySession` never assert a verified identity. They only produce the credential the auth
+service exchanges. Two hardening details are baked into the client flow:
 
 - **PKCE + `state`** (`KhaozEngine.Identity.Oidc.Pkce`, mirrored in `KhaozEngine.Identity.Discord`): the
-  authorization-code flow is generated with a PKCE code verifier/challenge (RFC 7636), so a stolen
-  authorization code cannot be redeemed without the verifier that only the originating client holds; the
-  `state` parameter is checked against the loopback redirect before the code is accepted, closing the
-  cross-site request forgery gap in a bare auth-code exchange.
+  authorization-code flow is generated with a PKCE code verifier and challenge (RFC 7636), so a stolen authorization
+  code cannot be redeemed without the verifier that only the originating client holds. The `state` parameter is
+  checked against the loopback redirect before the code is accepted, closing the cross-site request forgery gap in a
+  bare auth-code exchange.
 - **Token-at-rest posture** (`FileTokenCache`): the on-disk cached session is obfuscated (base64 + a fixed
-  in-assembly HMAC tag) and, on unix, written with owner-only file permissions (`0600`). Read this
-  precisely, the same as the `SaveEncoder` claim above: it is a **casual-read/tamper deterrent, not a
-  security boundary** - the HMAC key ships in the assembly, and a mismatched HMAC is tolerated on load so a
-  tampered or foreign-written file still round-trips its payload. An OS keychain-backed `ITokenCache` is
-  future hardening for a consumer that needs real at-rest confidentiality; swap it in behind the same seam.
+  in-assembly HMAC tag) and, on unix, written with owner-only file permissions (`0600`). Read this precisely, the same
+  as the `SaveEncoder` claim above: it is a **casual-read/tamper deterrent, not a security boundary**. The HMAC key
+  ships in the assembly, and a mismatched HMAC is tolerated on load so a tampered or foreign-written file still
+  round-trips its payload. An OS keychain-backed `ITokenCache` is future hardening for a consumer that needs real
+  at-rest confidentiality. Swap it in behind the same seam.
 
-The `SessionToken` HMAC secret (the key `SessionToken.Mint`/`TryVerify` sign and check against) is not part
-of this package at all: it lives in the **consumer's own secret store** (environment variable, Key Vault,
-whatever the consumer's server already uses), the same way `KhaozEngine.Commerce`'s `AccountId` is
-consumer-supplied. `KhaozEngine.Identity` mints and verifies the token; it never generates or stores the
-secret itself.
+**The exchange.** `AuthExchange` (the decision) behind `MapAuthExchange` (the endpoint) verifies a provider credential
+and trades it for a `SignedToken` the game server's `HmacTokenAuthenticator` verifies at the connect door.
+`POST /auth/exchange` is a public, unauthenticated endpoint, so the engine owns its guarantees rather than each game
+re-deriving them:
+
+- **Key strength.** `SigningSecret.Load` and `Decode` accept only standard base64 decoding to at least
+  `SigningSecret.MinimumBytes` (32) bytes, the HMAC-SHA256 output size. Unset reads as null, and set but invalid throws
+  an error naming the variable and never the value. `AuthExchange` refuses a shorter key at construction. Local
+  development uses `SigningSecret.CreateEphemeral()`, a random key that cannot leave the process, never a source
+  constant. `HmacTokenAuthenticator` checks no key length, so the game server loads its key through `SigningSecret`
+  too.
+- **Constant-time verification.** `SignedToken.TryVerify`, behind `HmacTokenAuthenticator`, and `SessionToken.TryVerify`
+  compare MACs with `CryptographicOperations.FixedTimeEquals`. The exchange compares no secret, and no bearer secret
+  guards the endpoint.
+- **Per-client rate limit.** A fixed one minute window, 5 exchanges by default, with no queue. The client key is the
+  IPv4 address, an IPv4-mapped IPv6 address folded to IPv4 first, or the IPv6 /64, so one host rotating through its
+  address block is one client. A connection with no address shares one bucket, so a missing address fails closed. A
+  refusal is a bare 429 whose `Retry-After` is the full window.
+- **Global bound.** 20 exchanges at once with a 20 deep oldest-first queue, scoped to the exchange endpoint, so a
+  distributed flood that stays under every per-client limit still cannot pile up provider calls and store round
+  trips, and a health probe beside the endpoint is never starved.
+- **Bounded provider cost.** A 10 s `ProviderTimeout` around every validator, which holds even for one that ignores
+  its cancellation token, so a stalled provider cannot park every place under the bound.
+- **Body caps.** An 8 KiB endpoint cap (413), applied as endpoint metadata and again by the handler's own bounded read,
+  an optional server-wide Kestrel cap, and a 4096 character credential cap checked before any provider call. The
+  per-client window runs first, the body cap second and the global bound third, so a flood is refused before any JSON
+  is parsed. The body is read before the global bound, so a slow upload holds a connection and never a place reserved
+  for work.
+- **Forwarded headers only from named proxies.** `X-Forwarded-For` and `X-Forwarded-Proto` are believed only from the
+  networks in `AuthExchangeHostingOptions.TrustedProxies`, and the list is empty by default, which turns them off.
+  The framework's default loopback entries are removed, every network is registered in both address families, and
+  the forward limit is one, so only the hop the trusted proxy appended is read and a client cannot choose its own
+  bucket.
+- **One failure envelope, no account oracle.** A provider outage, the provider deadline, a store fault and a policy
+  fault all answer the same 503 `unavailable` body, so a response never says which dependency failed. A refused
+  credential and a malformed request answer before any account lookup. Every answer that names an account follows a
+  verified credential and describes the caller's own account, and the store is find-or-create, so no answer means "no
+  such account".
+- **Ban before whitelist.** `AuthAdmission.Decide` refuses an active ban before a missing whitelist flag, and no policy
+  can reorder it, so a banned player never learns whether they were whitelisted. The ban reason and expiry reach the
+  client only with `IncludeBanDetails`, which is off by default.
+- **Token hygiene.** Every exchange answer carries `Cache-Control: no-store`. The engine adds no CORS header, and the
+  token is never a cookie. The wire is read and written with fixed JSON options a host's settings cannot change.
+- **Logging without secrets.** One line per exchange with the outcome, the cause, the provider id, the HTTP status and
+  the elapsed time, and the exception on a fault. A rate-limit refusal logs at Debug only, so a flood does not turn
+  into log volume. Never the credential, the session token, the key, the subject, the
+  display name, the ban reason or the client address. The provider id is logged only once it matched a registered
+  validator. The engine account stores log nothing and quote no account data in an exception. A game's own store may,
+  so the Warning line that carries the fault goes where account data may go.
+- **Least privilege and reserved subjects.** `AccountSchemaMode.ValidateOnly` lets the SQL Server store's runtime
+  identity run with DML only. A subject carrying `.` or under the reserved `guest:` prefix is never minted, whichever
+  store returned it.
+
+The endpoint serves plain HTTP behind a TLS-terminating proxy, which is how both games deploy. A service exposing
+Kestrel directly configures TLS itself.
+
+**One ban list.** `AccountBanStore` adapts the account store to `IBanStore`, so a ban is filed only on the account row.
+Handed to the door, the join and the admin endpoint, it refuses a banned account at connect even with an unexpired
+token, and the next exchange reads the same row.
+
+The signing key (the one `SignedToken` and `SessionToken` sign and check against) lives in the **consumer's own secret
+store** (an environment variable, Key Vault, whatever the consumer's server already uses) under the game's own variable,
+the same way `KhaozEngine.Commerce`'s `AccountId` is consumer-supplied. `SigningSecret` loads and validates it. The
+engine never generates a production key or stores one. Rotating the key invalidates every outstanding token.
 
 ### 5. Durable player mutations and admin projections
 
@@ -257,8 +319,9 @@ To keep the doc from overpromising, these are explicitly **not** provided or cla
 - **Sandboxing untrusted mods or scripts.** The engine runs no untrusted code in a sandbox. A game that
   loads third-party mods/plugins is running them with full process trust; isolating them is the game's
   problem and out of scope here.
-- **Side-channel resistance.** No constant-time guarantees, no timing/cache/power side-channel hardening.
-  The crypto in use (RSA verify for updates, HMAC for saves) uses BCL primitives as-is.
+- **Side-channel resistance.** Beyond the fixed-time MAC comparison in token verification, no constant-time
+  guarantees and no timing/cache/power side-channel hardening. The crypto in use (RSA verify for updates, HMAC for
+  saves and tokens) uses BCL primitives as-is.
 - **Confidentiality of the network channel.** Netcode is transport-free; the engine does not encrypt or
   authenticate the multiplayer channel. That is the transport's/game's responsibility.
 - **Protection against a malicious local user.** Anyone with the binary has the embedded HMAC key and the
@@ -282,8 +345,11 @@ The engine provides primitives and one hardened channel; a game still has to use
   `GameStorage` constructor argument so plaintext saves are never an accident.
 - The CETCompat default + DEP/ASLR on every head.
 - A server-side identity verification seam (`IIdentityValidator`) + PKCE-protected client sign-in flows
-  (`KhaozEngine.Identity.Oidc` / `.Discord`), and a stateless, fixed-time-compared HMAC session token
-  (`SessionToken`).
+  (`KhaozEngine.Identity.Oidc` / `.Discord`), and fixed-time-compared HMAC tokens (`SignedToken`, `SessionToken`).
+- A sign-in exchange (`KhaozEngine.Identity.Exchange` + `.AspNetCore`) with a validated signing key, per-client and
+  global rate limits, body caps, forwarded headers only from named proxies, one failure envelope with no account
+  oracle, ban-before-whitelist, `no-store` answers and logging without secrets (category 4), and one ban list over the
+  account registry (`AccountBanStore`).
 - A provider-neutral durable mutation journal with stable identity, atomic multi-stream commit, checked replay,
   bounded admission, snapshot verification, and selected-stream projection cursors.
 
@@ -312,9 +378,16 @@ The engine provides primitives and one hardened channel; a game still has to use
   live on the server; a client copy is a cache. Supply your own `IEntitlementValidator` for your purchase
   provider and your own verified `AccountId`; the engine does not authenticate players for you.
 - **Never trust a provider credential without server-side validation.** A client-held `ProviderCredential`
-  is not a verified identity; call `IIdentityValidator.ValidateAsync` on the server before treating a
-  subject as real. Own the `SessionToken` secret in your own secret store (the engine never generates or
-  stores it) and rotate it like any other server secret.
+  is not a verified identity. Exchange it through `AuthExchange`, or call `IIdentityValidator.ValidateDetailedAsync`
+  on the server, before treating a subject as real. Own the signing key in your own secret store (the engine never
+  generates or stores a production key), load it with `SigningSecret` on the auth service AND the game server, and
+  rotate it like any other server secret, knowing that rotation signs every player out.
+- **Name your trusted proxies.** Set `AuthExchangeHostingOptions.TrustedProxies` to the networks your
+  TLS-terminating proxy forwards from. Left empty, every caller behind the proxy shares its rate-limit bucket.
+  `TrustedProxyNetworks.PrivateRanges` trusts every RFC 1918 host, so name the proxy's own subnet when the private
+  network is shared with anything you do not control.
+- **Keep ban details off unless you want banned players to see the reason.** `IncludeBanDetails` sends the operator's
+  ban reason and expiry to the banned client. Leave it off unless those reasons are written for players.
 - **Authorize journal streams and projections.** Derive stream keys from the authenticated session. Keep gameplay
   validation on the simulation thread. Shape selected-stream projection data through a bounded game codec and an
   audited admin authorization check. Never expose raw projection bytes or add all-player polling.

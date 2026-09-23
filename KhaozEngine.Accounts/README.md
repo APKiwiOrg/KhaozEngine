@@ -47,13 +47,15 @@ The engine stores mint `{ProviderId}:{ProviderSubject}`, for example `discord:80
 
 - a provider id that is blank or carries `:` or `.`, and a provider subject that is blank or carries `.` (a
   `SignedToken` splits its fields on `.`),
+- a provider id or provider subject that begins or ends with whitespace (SQL Server compares padded strings, so `x`
+  and `x ` would collide on one account),
 - a subject that would fall under the reserved `guest:` prefix, which names a tokenless connection's seat,
 - a subject over 128 characters, a display name over 128 and a ban reason over 256 (UTF-16 code units, the engine
   table's column widths).
 
 A game's own `IAccountStore` over its own schema may mint differently (a provider-neutral `acct:<id>` from an
 identity column, say). Whatever it mints must still satisfy `AccountStoreRules.IsAdmissibleSubject`: non-empty, no
-`.`, and not under `guest:`.
+surrounding whitespace, no `.`, and not under `guest:`.
 
 ## One ban list: `AccountBanStore`
 
@@ -71,7 +73,8 @@ var admin = new ServerAdmin(server, bans);                          // POST /ban
 - `IsBanned` answers from an in-memory map of the filed bans and re-checks the expiry against the clock on every
   call, so a timed ban lapses on its own.
 - `BanAsync` and `UnbanAsync` write the store FIRST and the map second. A store write that throws leaves the map
-  unchanged. A subject no account has throws `ArgumentException`, which `Server.Admin` renders as a 400.
+  unchanged. A subject no account has throws `ArgumentException`, which `POST /ban` on `Server.Admin` renders as a
+  400.
 - `LoadAsync` reads `ListBannedAsync` into a new map and swaps it in whole, so it also drops a ban lifted out of
   band. A failed reload throws and keeps the previous map. Writes and reloads run one at a time, so a reload never
   overwrites a ban written while it was reading.

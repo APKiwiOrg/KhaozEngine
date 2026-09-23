@@ -1,7 +1,9 @@
 # The auth exchange, the account store and the signing secret
 
-Status: proposed, awaiting owner review. Engine issue
-[#707](https://github.com/APKiwiOrg/KhaozEngine/issues/707). No code exists yet.
+Status: implemented, pending release. Engine issue [#707](https://github.com/APKiwiOrg/KhaozEngine/issues/707).
+
+Implementation note: the handler reads the body before it takes a global slot, the reverse of the section 3 sketch, so
+a slow upload holds a connection and never a place reserved for work.
 
 Rationale only. Once shipped, the API and its use belong in the package READMEs, the "Identity / sign-in"
 section of [USING-KHAOZENGINE.md](../USING-KHAOZENGINE.md) and the rows of

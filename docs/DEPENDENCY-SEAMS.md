@@ -306,7 +306,7 @@ KhaozEngine.Accounts.SqlServer -> Microsoft.Data.SqlClient  (the driver, declare
 
 **One source of truth for bans.** The account store is the only place a ban is filed. `AccountBanStore` answers
 `IsBanned` from an in-memory map of the filed bans, re-checking the expiry on every call, writes to the store before
-the map, refuses a subject no account has with `ArgumentException` (which `Server.Admin` renders as a 400), and
+the map, refuses a subject no account has with `ArgumentException` (which `POST /ban` renders as a 400), and
 reloads through `LoadAsync`, which reads `ListBannedAsync` into a new map and swaps it in. Writes and reloads run one
 at a time, so a reload never overwrites a ban written while it was reading. A console that writes SQL directly, or a
 second server head, is picked up by the next reload, which a host may run on a timer.

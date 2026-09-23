@@ -110,7 +110,8 @@ public static class SqlServerCatalogReset
     /// The scripted release path is reset then import, so the first release against a new database takes
     /// that branch. A database carrying SOME of them is a half-finished deletion, refused under reason
     /// <c>catalog-partial</c> and repaired by <paramref name="force"/>, which drops what is left and
-    /// recreates the schema.
+    /// recreates the schema. So is one whose schema version cannot be read, whatever stands, every table
+    /// included.
     /// </para>
     /// <para>
     /// <b>The schema version decides the rest, whenever it can be read.</b> A catalog at an OLDER schema
@@ -225,8 +226,8 @@ public static class SqlServerCatalogReset
     /// of the schema's tables is not an error: the scripted release path is reset then import, so the first
     /// release against a new database lands here and the reset creates the schema through the very same
     /// script, dropping nothing. A database whose standing tables are not the whole set its schema version
-    /// declares is a half-finished deletion that no store can open and no read can describe, and
-    /// <paramref name="force"/> repairs it. A whole catalog is read.
+    /// declares, or whose schema version cannot be read at all, is one no store can open and no read can
+    /// describe, and <paramref name="force"/> repairs it. A whole catalog is read.
     /// </para>
     /// <para>
     /// A version 1 catalog is WHOLE when it stands at version 1's own set, which lacks the table version 2
@@ -263,13 +264,9 @@ public static class SqlServerCatalogReset
                 .ConfigureAwait(false);
         }
 
-        // Every table this build declares stands and the version still cannot be read, which is not a
-        // deletion and not something a repair can be sure about.
-        if (version is null && IsWhole(tables, SqlServerCatalogSchema.CurrentVersion))
-        {
-            throw Mismatch("carrying every catalog table and no readable schema version");
-        }
-
+        // What stands is not the whole set its version declares, or no version can be read at all, and the
+        // second holds whether some tables stand or every one of them does. None of these can be described,
+        // no migration can help any of them, and force repairs every one the same way.
         if (!force)
         {
             throw Partial(tables.Count, version);
@@ -546,24 +543,24 @@ public static class SqlServerCatalogReset
     }
 
     /// <summary>
-    /// The PARTIAL refusal: the standing tables are not the whole set any readable schema version declares,
-    /// which no store can open and no read can describe. It carries its own reason token rather than
-    /// <c>schema-mismatch</c>, because the remedy is not a migration. The reset itself is the remedy, and the
-    /// sentence says so.
+    /// The PARTIAL refusal: the standing tables are not the whole set their readable schema version declares,
+    /// or no schema version can be read at all, and either way no store can open it and no read can describe
+    /// it. It carries its own reason token rather than <c>schema-mismatch</c>, because the remedy is not a
+    /// migration. The reset itself is the remedy, and the sentence says so.
     /// </summary>
     static ContentAuthoringException Partial(int standing, int? version)
         => new(
             FormattableString.Invariant(
-                $"The SQL Server content catalog is PARTIAL: {standing} of the {SqlServerCatalogSchemaExpectations.Tables.Count} tables schema version {SqlServerCatalogSchema.CurrentVersion} declares stand, which is not the whole set {Declared(version)} declares, so what it holds cannot be read. Pass the reset's force flag to drop what is left and recreate the schema at version {SqlServerCatalogSchema.CurrentVersion}, which repairs it."),
+                $"The SQL Server content catalog is PARTIAL: {standing} of the {SqlServerCatalogSchemaExpectations.Tables.Count} tables schema version {SqlServerCatalogSchema.CurrentVersion} declares stand, {Measured(version)}, so what it holds cannot be read. Pass the reset's force flag to drop what is left and recreate the schema at version {SqlServerCatalogSchema.CurrentVersion}, which repairs it."),
             default,
             0,
             ContentAuthoringException.CatalogPartialReason);
 
-    /// <summary>Which schema version the partial refusal measured the standing tables against.</summary>
-    static string Declared(int? version)
+    /// <summary>What the partial refusal measured the standing tables against, or that it had nothing to measure with.</summary>
+    static string Measured(int? version)
         => version is int known
-            ? FormattableString.Invariant($"the schema version '{known}' its metadata row names")
-            : "any schema version";
+            ? FormattableString.Invariant($"which is not the whole set the schema version '{known}' its metadata row names declares")
+            : "and no schema version can be read from its metadata row";
 
     /// <summary>
     /// The refusal a database at a NEWER schema version gets, which no force flag overrides. It carries the

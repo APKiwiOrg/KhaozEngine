@@ -8,8 +8,8 @@ namespace KhaozEngine.Tests.Catalog.SqlServer;
 
 /// <summary>
 /// The two databases that are not a whole catalog, mirroring <c>SqliteCatalogResetRepairTests</c> fact for
-/// fact: one carrying NONE of the schema's tables, and one carrying some of them. The schema version rules
-/// are <c>SqlServerCatalogResetSchemaVersionTests</c>.
+/// fact: one carrying NONE of the schema's tables, one carrying some of them, and one with no schema version
+/// to read. The schema version rules are <c>SqlServerCatalogResetSchemaVersionTests</c>.
 /// </summary>
 [Collection(SqlServerCatalogCollection.Name)]
 public class SqlServerCatalogResetRepairTests
@@ -112,6 +112,53 @@ public class SqlServerCatalogResetRepairTests
         await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
         Assert.Equal(0, await store.GetActiveVersionAsync());
         Assert.Equal(reset.StoreEpoch, await store.GetStoreEpochAsync());
+    }
+
+    // No schema version to read is ONE state whatever stands, every table this build declares or version
+    // 1's set: refused under the same reason with force named as the remedy, and repaired by it.
+    [CatalogSqlServerFact]
+    public Task EveryTableStandingWithNoReadableSchemaVersionIsRefusedWithoutForceAndRepairedWithIt()
+        => AssertNoReadableVersionIsRepairableAsync(versionOneTables: false);
+
+    [CatalogSqlServerFact]
+    public Task VersionOnesTablesStandingWithNoReadableSchemaVersionIsRefusedWithoutForceAndRepairedWithIt()
+        => AssertNoReadableVersionIsRepairableAsync(versionOneTables: true);
+
+    static async Task AssertNoReadableVersionIsRepairableAsync(bool versionOneTables)
+    {
+        using var database = new SqlServerCatalogDatabase();
+        await SeedAsync(database);
+        if (versionOneTables)
+        {
+            database.Execute("DROP TABLE dbo.catalog_content_upgrade;");
+        }
+
+        database.Execute("DELETE FROM dbo.catalog_metadata;");
+        int standing = SqlServerCatalogResetHarness.CountTables(database);
+        Assert.Equal(SqlServerCatalogSchemaExpectations.Tables.Count - (versionOneTables ? 1 : 0), standing);
+
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => SqlServerCatalogReset.ResetAsync(
+                database.ConnectionString, Actor, Operator, "content release"));
+
+        Assert.Equal("catalog-partial", refused.Reason);
+        Assert.Contains("no schema version can be read", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("force", refused.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("migration", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(standing, SqlServerCatalogResetHarness.CountTables(database));
+        Assert.Equal(1, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_version;"));
+        Assert.Equal(2, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_row;"));
+
+        ContentCatalogResetResult repaired = await SqlServerCatalogReset.ResetAsync(
+            database.ConnectionString, Actor, Operator, "repair", force: true);
+
+        Assert.Equal(ContentCatalogPriorState.Unreadable, repaired.PriorState);
+        Assert.Equal(SqlServerCatalogSchema.CurrentVersion, repaired.SchemaVersion);
+        var store = new SqlServerContentAuthoringStore(
+            database.ConnectionString, SqlServerCatalogResetHarness.Registry(), database.Pack());
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
+        Assert.Equal(0, await store.GetActiveVersionAsync());
+        Assert.Equal(repaired.StoreEpoch, await store.GetStoreEpochAsync());
     }
 
     [CatalogSqlServerFact]

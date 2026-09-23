@@ -116,10 +116,11 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>
     /// A provider's catalog RESET found SOME of the schema's tables standing and not the rest, which is a
-    /// half-finished deletion rather than a migration: no store can open it and no read can describe what it
-    /// holds. The remedy is not a migration either, which is why this is not
-    /// <see cref="SchemaMismatchReason"/>. The reset repairs it under its own force flag by dropping what is
-    /// left and recreating the schema, and the refusal says so.
+    /// half-finished deletion rather than a migration, or found tables standing with no schema version it
+    /// could read, all of them included. No store can open either and no read can describe what it holds.
+    /// The remedy is not a migration, which is why this is not <see cref="SchemaMismatchReason"/>. The reset
+    /// repairs it under its own force flag by dropping what is left and recreating the schema, and the
+    /// refusal says so.
     /// </summary>
     public const string CatalogPartialReason = "catalog-partial";
 

@@ -36,7 +36,7 @@ namespace KhaozEngine.Catalog.Authoring;
 /// <param name="StoreEpoch">The epoch the recreated schema minted, which no earlier version shares.</param>
 /// <param name="PriorSchemaVersion">The schema version the catalog that was read stood at, or 0 when nothing was read.</param>
 /// <param name="SchemaVersion">The schema version the recreated catalog carries.</param>
-/// <param name="PriorState">Whether a whole catalog stood and was read, none stood at all, or a partial one stood and could not be read.</param>
+/// <param name="PriorState">Whether a whole catalog stood and was read, none stood at all, or a partial one or one with no readable schema version stood and could not be read.</param>
 /// <exception cref="ArgumentOutOfRangeException">A count or a version number is out of range, or the state is not one of the declared values.</exception>
 /// <exception cref="ArgumentException">The epoch is empty, or the arguments contradict each other.</exception>
 public sealed record ContentCatalogResetResult(
@@ -75,8 +75,9 @@ public sealed record ContentCatalogResetResult(
     public int SchemaVersion { get; } = SchemaVersion;
 
     /// <summary>
-    /// Whether a whole catalog stood and was read, none stood at all, or a partial one stood and could not be
-    /// read. Declared LAST so the CONSISTENCY RULES run on the way in, with every other value in scope.
+    /// Whether a whole catalog stood and was read, none stood at all, or a partial one or one with no readable
+    /// schema version stood and could not be read. Declared LAST so the CONSISTENCY RULES run on the way in,
+    /// with every other value in scope.
     /// </summary>
     public ContentCatalogPriorState PriorState { get; } = Validate(
         ActiveVersion,
@@ -102,7 +103,7 @@ public sealed record ContentCatalogResetResult(
         ContentCatalogPriorState.Absent => FormattableString.Invariant(
             $"Catalog reset. It stood at no catalog at all, because the database carried none of its tables, so nothing was dropped. {Now}"),
         _ => FormattableString.Invariant(
-            $"Catalog reset. It stood at a PARTIAL catalog, which no read could describe, so what stood was dropped and nothing can be said about what it held. {Now}"),
+            $"Catalog reset. It stood at a PARTIAL catalog or one with no readable schema version, which no read could describe, so what stood was dropped and nothing can be said about what it held. {Now}"),
     };
 
     /// <summary>What the recreate left, which every branch ends on.</summary>

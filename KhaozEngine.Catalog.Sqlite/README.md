@@ -126,7 +126,9 @@ rather than being refused for a migration that exists only as this script.
 describe. Without `force` it is refused with reason `catalog-partial` and a sentence naming the remedy. With
 `force` the reset drops what is left, recreates the schema and returns a result whose `PriorState` is
 `Unreadable`, because there is nothing truthful it can put in the version and the hashes. What stood is
-still dropped, and the summary says so.
+still dropped, and the summary says so. A catalog whose schema version cannot be read, because its metadata
+row is gone, is the same case whatever stands, every table included: refused under `catalog-partial` without
+`force` and repaired with it.
 
 **The schema version decides the rest, whenever it can be read.** A catalog at an OLDER schema version than
 this build writes is reset like any other and comes back at this build's version, because the recreate runs

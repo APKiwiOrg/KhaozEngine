@@ -26,9 +26,9 @@ public enum ContentCatalogPriorState
 
     /// <summary>
     /// The database carried SOME of the catalog's tables and not the whole set its schema version declares,
-    /// which no store can open and no read can describe. A forced reset drops what stands and recreates the
-    /// schema, which repairs it, and says so here because there is nothing truthful it can put in the version,
-    /// the hashes and the counts.
+    /// or carried tables with no schema version that could be read, which no store can open and no read can
+    /// describe. A forced reset drops what stands and recreates the schema, which repairs it, and says so here
+    /// because there is nothing truthful it can put in the version, the hashes and the counts.
     /// </summary>
     Unreadable = 2,
 }

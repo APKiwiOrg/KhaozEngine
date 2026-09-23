@@ -15264,7 +15264,8 @@ A database carrying NONE of the schema's tables is CREATED rather than refused, 
 same transaction, with the same audit row. The scripted release path is reset then import, so the first
 release against a new database takes that branch. A database carrying SOME of them is a half-finished deletion
 that no store can open: without `force` it is refused with reason `catalog-partial` and a sentence naming the
-remedy, and with `force` the reset drops what is left and recreates the schema.
+remedy, and with `force` the reset drops what is left and recreates the schema. A catalog whose schema version
+cannot be read, because its metadata row is gone, is the same case whatever stands, every table included.
 
 The schema version decides the rest whenever it can be read. A catalog at an OLDER schema version than the
 build writes is reset like any other and comes back at the build's version, because the recreate runs the

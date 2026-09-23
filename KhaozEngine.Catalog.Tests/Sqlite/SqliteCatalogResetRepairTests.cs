@@ -18,6 +18,7 @@ namespace KhaozEngine.Tests.Catalog.Sqlite;
 /// <b>A partial catalog is a half-finished manual deletion.</b> No store can open it and no read can describe
 /// what it holds, so without <c>force</c> it is refused with the reason token and the sentence that name the
 /// remedy, and with <c>force</c> the reset repairs it by dropping what is left and recreating the schema.
+/// A catalog with no schema version to read is the same case whatever stands, every table included.
 /// The schema version rules, older reset and newer refused, are <c>SqliteCatalogResetSchemaVersionTests</c>.
 /// </para>
 /// </summary>
@@ -133,6 +134,51 @@ public class SqliteCatalogResetRepairTests
         Assert.Equal(reset.StoreEpoch, await store.GetStoreEpochAsync());
         Assert.Equal(
             SqliteCatalogSchemaInventory.Tables.Count, SqliteCatalogResetHarness.Tables(database).Count);
+    }
+
+    /// <summary>
+    /// No schema version to read is ONE state whatever stands: every table this build declares, or version
+    /// 1's set. Both are refused under the same reason with force named as the remedy, and both are repaired
+    /// by it. A migration cannot help either, so the refusal does not send an operator to one.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NoReadableSchemaVersionIsRefusedWithoutForceAndRepairedWithItWhateverStands(bool versionOneTables)
+    {
+        using var database = new TemporaryCatalogDatabase();
+        await SeedAsync(database);
+        if (versionOneTables)
+        {
+            database.Execute("DROP TABLE catalog_content_upgrade;");
+        }
+
+        database.Execute("DELETE FROM catalog_metadata;");
+        int standing = SqliteCatalogResetHarness.Tables(database).Count;
+        Assert.Equal(SqliteCatalogSchemaInventory.Tables.Count - (versionOneTables ? 1 : 0), standing);
+
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => SqliteCatalogReset.ResetAsync(
+                database.ConnectionString, Actor, Operator, "content release"));
+
+        Assert.Equal("catalog-partial", refused.Reason);
+        Assert.Contains("no schema version can be read", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("force", refused.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("migration", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(standing, SqliteCatalogResetHarness.Tables(database).Count);
+        Assert.Equal(1L, database.Scalar("SELECT COUNT(*) FROM catalog_version;"));
+        Assert.Equal(2L, database.Scalar("SELECT COUNT(*) FROM catalog_row;"));
+
+        ContentCatalogResetResult repaired = await SqliteCatalogReset.ResetAsync(
+            database.ConnectionString, Actor, Operator, "repair", force: true);
+
+        Assert.Equal(ContentCatalogPriorState.Unreadable, repaired.PriorState);
+        Assert.Equal(SqliteCatalogSchema.CurrentVersion, repaired.SchemaVersion);
+        using var store = new SqliteContentAuthoringStore(
+            database.ConnectionString, SqliteCatalogResetHarness.Registry(), database.Pack());
+        await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
+        Assert.Equal(0, await store.GetActiveVersionAsync());
+        Assert.Equal(repaired.StoreEpoch, await store.GetStoreEpochAsync());
     }
 
     [Fact]

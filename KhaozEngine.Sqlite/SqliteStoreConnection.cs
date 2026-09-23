@@ -10,17 +10,22 @@ namespace KhaozEngine.Sqlite;
 /// semaphore that keeps SQLite from ever seeing two commands on it at once, and a dispose that genuinely releases
 /// the file.
 ///
-/// <para>The dispose is why this type exists rather than being a comment. Microsoft.Data.Sqlite pools connections by
-/// default, so <c>SqliteConnection.Dispose()</c> hands the native handle back to the pool instead of closing it, and
-/// the file stays open for as long as the pool holds it. Windows then refuses to delete or exclusively open it,
-/// while POSIX unlinks it happily and hands the SAME live handle to the next store opened on that path, which
-/// quietly serves the deleted database. <see cref="SqliteConnection.ClearPool"/> before the dispose is the whole
-/// fix, and it is one line that was copied wrong three times over: <c>SqliteWorldStore</c> (#713),
-/// <c>SqliteWalletStore</c> (#715) and a consumer's own accounts store all shipped the leak and all got the same
-/// patch. There is one copy now, and a store that sits its schema on this one inherits it.</para>
+/// <para>The held connection NEVER pools, whatever the connection string says, and that is why this type exists
+/// rather than being a comment. A store holds its connection for its whole life, so the provider's pool has nothing
+/// to offer it, and a pooled connection is exposed to two failures that have each broken a store here.</para>
 ///
-/// <para>Clearing the pool cannot close a connection out from under a second live store on the same file: an
-/// in-use connection is not idle in the pool, and is only disposed when its own owner releases it.</para>
+/// <para>The first is the file. <c>SqliteConnection.Dispose()</c> on a pooled connection hands the native handle
+/// back to the pool instead of closing it. Windows then refuses to delete or exclusively open the file, while POSIX
+/// unlinks it happily and hands the SAME live handle to the next store opened on that path, which quietly serves
+/// the deleted database. <c>SqliteWorldStore</c> (#713), <c>SqliteWalletStore</c> (#715) and a consumer's own
+/// accounts store all shipped that leak.</para>
+///
+/// <para>The second is the provider's checkout. Microsoft.Data.Sqlite 10.0.9 marks a pooled connection active
+/// before it records the owner, outside the pool lock, so a concurrent open or pool clear on the same file can read
+/// a live store's connection as leaked and reclaim it (dotnet/efcore#39008). The reclaim either lends the handle to
+/// a second owner, so two stores run statements on one native connection, or disposes it underneath the store.
+/// Clearing a pool on dispose made every store's dispose one of those clears. A connection that is in no pool is
+/// in neither path, and closing it releases the file.</para>
 ///
 /// <para>Sharing goes as far as the lifecycle and no further. The schema, the SQL and the record shape stay with
 /// the store: this type takes the bootstrap DDL as a string, hands out commands and transactions on the connection
@@ -32,18 +37,20 @@ public sealed class SqliteStoreConnection : IDisposable
     private readonly SemaphoreSlim gate = new(1, 1);
 
     /// <summary>
-    /// Opens <paramref name="connectionString"/> and runs <paramref name="bootstrapSql"/> once, so the store is
-    /// usable the moment the constructor returns. The connection is HELD for the lifetime of this object, which is
-    /// what lets an in-memory <c>Data Source=:memory:</c> store keep its data.
+    /// Opens <paramref name="connectionString"/> without pooling and runs <paramref name="bootstrapSql"/> once, so
+    /// the store is usable the moment the constructor returns. The connection is HELD for the lifetime of this
+    /// object, which is what lets an in-memory <c>Data Source=:memory:</c> store keep its data.
     /// </summary>
-    /// <param name="connectionString">The ADO.NET connection string, for example <c>Data Source=world.db</c>.</param>
+    /// <param name="connectionString">The ADO.NET connection string, for example <c>Data Source=world.db</c>. A
+    /// <c>Pooling</c> keyword in it is overridden to off.</param>
     /// <param name="bootstrapSql">The store's schema DDL, written to be idempotent (<c>CREATE TABLE IF NOT
     /// EXISTS</c>). Empty runs nothing.</param>
     public SqliteStoreConnection(string connectionString, string bootstrapSql)
     {
         ArgumentNullException.ThrowIfNull(connectionString);
         ArgumentNullException.ThrowIfNull(bootstrapSql);
-        connection = new SqliteConnection(connectionString);
+        connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder(connectionString) { Pooling = false }.ToString());
         connection.Open();
         if (bootstrapSql.Length == 0) return;
         using SqliteCommand cmd = connection.CreateCommand();
@@ -72,11 +79,10 @@ public sealed class SqliteStoreConnection : IDisposable
         return new SqliteStoreLease(gate);
     }
 
-    /// <summary>Closes the database, releasing the OS handle on the file rather than parking it in the provider's
-    /// connection pool. See the type doc for what the pool does to a file otherwise.</summary>
+    /// <summary>Closes the database. The connection is in no pool, so closing it releases the OS handle on the
+    /// file, and no other connection on the file is touched.</summary>
     public void Dispose()
     {
-        SqliteConnection.ClearPool(connection);
         connection.Dispose();
         gate.Dispose();
     }

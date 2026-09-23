@@ -13,14 +13,14 @@ byte[]? loaded = await store.LoadAsync("player:42");
 
 One `world_store(key, data, updated_at)` table, bootstrapped on construction; upsert via
 `INSERT ... ON CONFLICT(key) DO UPDATE`; raw parameterized async ADO.NET (no EF/ORM). Dispose the store to
-close the connection. Disposing also clears the provider's connection pool for that connection, so the OS handle
-on the database file is genuinely released rather than parked in the pool, and the file can be deleted, rotated
-or exclusively opened straight after (since 17.41.0). For production / Azure SQL use
+close the connection. The connection is never pooled, so the OS handle on the database file is genuinely released
+on dispose rather than parked in the provider's pool, and the file can be deleted, rotated or exclusively opened
+straight after (since 17.41.0). For production / Azure SQL use
 `KhaozEngine.WorldStore.SqlServer` against the same `IWorldStore` contract.
 
 The connection, the operation gate and that dispose are `KhaozEngine.Sqlite`'s `SqliteStoreConnection`, shared
 with every other SQLite store in the engine. Only the schema and the SQL live here. A game writing its own
-SQLite-backed store should sit it on the same type rather than reimplementing the pool-clearing dispose.
+SQLite-backed store should sit it on the same type rather than reimplementing that lifecycle.
 
 `SqliteMutationJournalStore` implements `IMutationJournalStore`, `IMutationJournalMaintenance`, and the additive
 `IMutationJournalAgeMaintenance` capability on the same connection lifecycle. It stores metadata and the restore
@@ -60,7 +60,7 @@ from event retention, so purging replay receipts leaves committed events in plac
 maintenance from deleting replay rows which may still be retried. `Limits` can lower any core journal maximum.
 `TimeProvider` controls public journal timestamps for deterministic hosts and tests. It does not control
 `PurgeOperationsByAgeAsync`, whose retention timestamps and cutoff come from SQLite. The older cutoff purge is also
-clipped to SQLite UTC minus `MinimumRetryHorizon`. Dispose the journal to clear the provider pool and release the
+clipped to SQLite UTC minus `MinimumRetryHorizon`. Dispose the journal to close its connection and release the
 database file.
 
 The process identity needs read, write, create, lock, and rename access to the database, WAL, and shared-memory

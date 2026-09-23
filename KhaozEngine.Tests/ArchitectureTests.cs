@@ -110,7 +110,7 @@ public partial class ArchitectureTests
         ["LiteNetLib"] = new[] { "Netcode.LiteNetLib" },
         // Persistence + commerce SQL backends. Managed provider plus the bundled native sqlite engine.
         // KhaozEngine.Sqlite is the shared store lifecycle the two SQLite backends sit on, so it is a third home
-        // for the provider rather than an escape from the seam: the pool-clearing dispose has to touch
+        // for the provider rather than an escape from the seam: the unpooled open and the dispose have to touch
         // SqliteConnection, and that discipline living once is the whole point of the package (#731).
         ["Microsoft.Data.Sqlite"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite" },
         ["SQLitePCLRaw.lib.e_sqlite3"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite" },

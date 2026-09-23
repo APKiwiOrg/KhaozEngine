@@ -221,3 +221,85 @@ jobs:
           executed=$(grep -o '<Counters [^/]*' "$trx" | head -1 | grep -o ' executed="[0-9]*"' | grep -o '[0-9]*')
           echo "catalog facts: executed ${executed:-unknown} of ${total:-unknown}"
           test -n "$total" && test "$total" -gt 0 && test "$executed" = "$total"
+
+  # The account store's SQL Server facts (the shared conformance suite and the Grimhollow layout fixtures),
+  # against a real SQL Server. Without KE_ACCOUNTS_SQLSERVER every one of them SKIPS, so build-test-pack proves
+  # nothing about KhaozEngine.Accounts.SqlServer. The fixtures create and drop their own tables, so they insist on
+  # "-accounts-test-" in the database name. The service's default collation is case-insensitive, which is the
+  # deployment the subject column's binary collation exists for. Same gating and standing as catalog-sqlserver:
+  # tags and manual dispatch always run it, a push or a pull request only when the diff touches the account
+  # packages, the package pins or this workflow, and it does not gate the publish leg.
+  accounts-sqlserver:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: 'Y'
+          # This credential belongs only to the disposable CI service, never a deployed database.
+          MSSQL_SA_PASSWORD: 'KhaozEngine_CI_Accounts_41!'
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'KhaozEngine_CI_Accounts_41!' -C -b -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      GITHUB_PACKAGES_PAT: ${{ secrets.GITHUB_TOKEN }}
+      KE_ACCOUNTS_SQLSERVER: 'Server=127.0.0.1,1433;Initial Catalog=khaoz-accounts-test-ci;User ID=sa;Password=KhaozEngine_CI_Accounts_41!;Encrypt=True;TrustServerCertificate=True'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Decide whether the account store is affected
+        id: affected
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          run=false
+          case "$REF" in refs/tags/v*) run=true ;; esac
+          [ "$EVENT" = workflow_dispatch ] && run=true
+          if [ "$run" = false ]; then
+            # A missing or all-zero base (first push of a branch) cannot be diffed, so it runs.
+            if ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+              run=true
+            elif git diff --name-only "$BASE" "$HEAD" | grep -Eq '^(KhaozEngine\.Accounts[^/]*/|Directory\.Packages\.props|\.github/workflows/ci\.yml)'; then
+              run=true
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "accounts-sqlserver: run=$run"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: steps.affected.outputs.run == 'true'
+        with:
+          dotnet-version: '10.0.x'
+      - name: Create the marked test database
+        if: steps.affected.outputs.run == 'true'
+        run: |
+          docker exec "${{ job.services.sqlserver.id }}" /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa \
+            -P 'KhaozEngine_CI_Accounts_41!' -C -b -Q "CREATE DATABASE [khaoz-accounts-test-ci]"
+      - name: Build the account tests
+        if: steps.affected.outputs.run == 'true'
+        run: |
+          mkdir -p local-feed
+          dotnet build KhaozEngine.Accounts.Tests/KhaozEngine.Accounts.Tests.csproj -c Release
+      # A run that SKIPS proved nothing, so the step fails unless every selected fact EXECUTED, read from the
+      # executed and total counters as catalog-sqlserver reads them.
+      - name: Account store facts against SQL Server
+        if: steps.affected.outputs.run == 'true'
+        run: |
+          dotnet test KhaozEngine.Accounts.Tests/KhaozEngine.Accounts.Tests.csproj -c Release --no-build \
+            --filter "FullyQualifiedName~KhaozEngine.Tests.Accounts.SqlServer" \
+            --logger "trx;LogFileName=accounts-sqlserver.trx" --results-directory "$RUNNER_TEMP/accounts"
+          trx="$RUNNER_TEMP/accounts/accounts-sqlserver.trx"
+          total=$(grep -o '<Counters [^/]*' "$trx" | head -1 | grep -o ' total="[0-9]*"' | grep -o '[0-9]*')
+          executed=$(grep -o '<Counters [^/]*' "$trx" | head -1 | grep -o ' executed="[0-9]*"' | grep -o '[0-9]*')
+          echo "account facts: executed ${executed:-unknown} of ${total:-unknown}"
+          test -n "$total" && test "$total" -gt 0 && test "$executed" = "$total"

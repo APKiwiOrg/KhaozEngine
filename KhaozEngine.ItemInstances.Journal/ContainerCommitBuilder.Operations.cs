@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.Catalog;
 using KhaozEngine.ItemInstances;
 using KhaozEngine.Items;
@@ -27,159 +28,24 @@ public sealed partial class ContainerCommitBuilder
     /// which is the only direction a cap can be approximated in.</summary>
     const int PageGrowthSlack = 64;
 
-    byte[] ApplyToWorkingCopy(in ContainerOperation operation)
+    void ApplyToWorkingCopy(in ContainerOperation operation)
     {
-        switch (operation.Kind)
-        {
-            case ContainerOperationKind.Move:
-                ApplyMove(operation);
-                break;
-            case ContainerOperationKind.Split:
-                ApplySplit(operation);
-                break;
-            case ContainerOperationKind.Merge:
-                ApplyMerge(operation);
-                break;
-            case ContainerOperationKind.Grant:
-                ApplyGrant(operation);
-                break;
-            case ContainerOperationKind.Take:
-                ApplyTake(operation);
-                break;
-            case ContainerOperationKind.Craft:
-                ApplyCraft(operation);
-                break;
-            default:
-                throw new ArgumentException(
-                    FormattableString.Invariant($"{operation.Kind} is not an operation."), nameof(operation));
-        }
-
+        if (!ContainerOperationApplier.TryApply(_containers, operation, out string? reason))
+            throw new ArgumentException(reason, nameof(operation));
         if (operation.PresentAtCommit) _presentAtCommit = true;
-
-        // A craft's event body is spec 10.6's and the crafting framework encodes it. Every other kind writes
-        // its own canonical encoding, so the event and the intent agree by construction.
-        return operation.Kind == ContainerOperationKind.Craft
-            ? operation.EventPayload.ToArray()
-            : operation.ToCanonicalArray();
-    }
-
-    void ApplyMove(in ContainerOperation operation)
-    {
-        IPagedContainerWorkingCopy source = _containers[operation.Container];
-        IPagedContainerWorkingCopy destination = _containers[operation.DestinationContainerOrOwn];
-        ItemSlot moving = Occupied(source, operation.Slot, operation.InstanceId);
-        Require(operation.Count <= moving.Stack.Count, "A move cannot carry more units than the slot holds.");
-        Require(
-            destination.SlotAt(operation.DestinationSlot).IsEmpty,
-            "A move lands in an empty slot. Folding one entry into another is a merge.");
-
-        if (operation.Count == moving.Stack.Count)
-        {
-            source.TakeSlotAt(operation.Slot);
-            destination.SetSlotAt(operation.DestinationSlot, moving);
-            return;
-        }
-
-        RequirePlain(moving);
-        source.SetSlotAt(operation.Slot, Fewer(moving, operation.Count));
-        destination.SetSlotAt(
-            operation.DestinationSlot,
-            new ItemSlot(new ItemStack(moving.Stack.ItemId, operation.Count), default, false));
-    }
-
-    void ApplySplit(in ContainerOperation operation)
-    {
-        IPagedContainerWorkingCopy container = _containers[operation.Container];
-        ItemSlot stack = Occupied(container, operation.Slot, operation.InstanceId);
-        RequirePlain(stack);
-        Require(operation.Count < stack.Stack.Count, "A split leaves units behind. Moving the lot is a move.");
-        Require(container.SlotAt(operation.DestinationSlot).IsEmpty, "A split lands in an empty slot.");
-
-        container.SetSlotAt(operation.Slot, Fewer(stack, operation.Count));
-        container.SetSlotAt(
-            operation.DestinationSlot,
-            new ItemSlot(new ItemStack(stack.Stack.ItemId, operation.Count), default, false));
-    }
-
-    void ApplyMerge(in ContainerOperation operation)
-    {
-        IPagedContainerWorkingCopy container = _containers[operation.Container];
-        Require(operation.Slot != operation.DestinationSlot, "A slot does not merge into itself.");
-        ItemSlot source = Occupied(container, operation.Slot, operation.InstanceId);
-        ItemSlot destination = Occupied(container, operation.DestinationSlot, operation.DestinationInstanceId);
-        Require(
-            InstanceStacking.CanMerge(destination, source, container.Stackable),
-            "Spec 4.6 refuses this merge: the definitions differ, the predicate says no, one side is quarantined, or the payloads are not byte identical.");
-
-        ItemSlot merged = InstanceStacking.Merge(destination, source, out int remainder);
-        container.SetSlotAt(operation.DestinationSlot, merged);
-        if (remainder == 0) container.TakeSlotAt(operation.Slot);
-        else container.SetSlotAt(operation.Slot, source with { Stack = source.Stack with { Count = remainder } });
-    }
-
-    void ApplyGrant(in ContainerOperation operation)
-    {
-        IPagedContainerWorkingCopy container = _containers[operation.Container];
-        var arriving = new ItemSlot(
-            new ItemStack(operation.DefinitionId, operation.Count, operation.InstanceId), operation.Payload, false);
-        ItemSlot seated = container.SlotAt(operation.Slot);
-        if (seated.IsEmpty)
-        {
-            // Spec 5.7 rule 1: a grant that opens a NEW slot is refused at or above capacity. Rule 2, the
-            // merge below, is allowed at any occupancy, which is why the gate is asked here and not there.
-            Require(!container.IsAtCapacity, "A grant opening a new slot is refused at capacity.");
-            container.SetSlotAt(operation.Slot, arriving);
-            return;
-        }
-
-        Require(
-            InstanceStacking.CanMerge(seated, arriving, container.Stackable),
-            "A grant into an occupied slot merges into it, and spec 4.6 refuses this merge.");
-        ItemSlot merged = InstanceStacking.Merge(seated, arriving, out int remainder);
-        Require(remainder == 0, "A grant the slot cannot hold in full is the caller's to split before it commits.");
-        container.SetSlotAt(operation.Slot, merged);
-    }
-
-    void ApplyTake(in ContainerOperation operation)
-    {
-        IPagedContainerWorkingCopy container = _containers[operation.Container];
-        ItemSlot held = Occupied(container, operation.Slot, operation.InstanceId);
-        Require(operation.Count <= held.Stack.Count, "A take cannot remove more units than the slot holds.");
-
-        if (operation.Count == held.Stack.Count)
-        {
-            container.TakeSlotAt(operation.Slot);
-            return;
-        }
-
-        RequirePlain(held);
-        container.SetSlotAt(operation.Slot, Fewer(held, operation.Count));
-    }
-
-    void ApplyCraft(in ContainerOperation operation)
-    {
-        IPagedContainerWorkingCopy container = _containers[operation.Container];
-        Require(operation.InstanceId != 0, "A craft targets an owned item, which always has an instance id.");
-        ItemSlot target = Occupied(container, operation.Slot, operation.InstanceId);
-        Require(!target.Quarantined, "A quarantined item is out of play and is not craftable.");
-
-        container.SetSlotAt(operation.Slot, target with { Payload = operation.Payload });
-        if (operation.DefinitionId == 0) return;
-
-        IPagedContainerWorkingCopy currency = _containers[operation.DestinationContainerOrOwn];
-        ItemSlot paid = currency.SlotAt(operation.DestinationSlot);
-        Require(!paid.IsEmpty, "The craft's currency slot is empty.");
-        Require(paid.Stack.ItemId == operation.DefinitionId, "The craft's currency slot holds a different definition.");
-        Require(operation.Count > 0 && operation.Count <= paid.Stack.Count, "The craft's currency slot holds too few units.");
-
-        if (operation.Count == paid.Stack.Count) currency.TakeSlotAt(operation.DestinationSlot);
-        else currency.SetSlotAt(operation.DestinationSlot, Fewer(paid, operation.Count));
     }
 
     /// <summary>The pages this operation would dirty that are not dirty already, which is what the projection
     /// write cap is counted in.</summary>
     int CountUndirtiedPages(in ContainerOperation operation)
     {
+        if (operation.Kind == ContainerOperationKind.Slide)
+        {
+            int pagesAdded = 0;
+            foreach (PageRef page in SlidePages(operation)) if (!page.IsDirty) pagesAdded++;
+            return pagesAdded;
+        }
+
         PageRef first = PageFor(operation.Container, operation.Slot);
         PageRef? second = SecondPage(operation);
         int added = first.IsDirty ? 0 : 1;
@@ -208,18 +74,56 @@ public sealed partial class ContainerCommitBuilder
     /// </summary>
     int ProjectedCommitBytes(in ContainerOperation operation, int projectedIntentBytes)
     {
+        if (operation.Kind == ContainerOperationKind.Slide)
+            return ProjectedSlideBytes(operation, projectedIntentBytes);
+
         PageRef first = PageFor(operation.Container, operation.Slot);
         PageRef? second = SecondPage(operation);
         int joining = first.IsDirty ? 0 : MeasurePage(first.Container, first.Index);
         if (second is { } other && !other.Is(first) && !other.IsDirty) joining += MeasurePage(other.Container, other.Index);
 
-        int eventBytes = operation.Kind == ContainerOperationKind.Craft
-            ? operation.EventPayload.Length
-            : operation.CanonicalByteCount;
+        int eventBytes = ContainerOperationEventCodec.EncodedSize(operation);
         int growth = EntryBound(_containers[operation.Container].SlotAt(operation.Slot))
             + operation.Payload.Length
             + PageGrowthSlack;
         return projectedIntentBytes + _eventBytes + eventBytes + _pageBytes + joining + growth;
+    }
+
+    int ProjectedSlideBytes(in ContainerOperation operation, int projectedIntentBytes)
+    {
+        List<PageRef> pages = SlidePages(operation);
+        int joining = 0;
+        foreach (PageRef page in pages)
+            if (!page.IsDirty) joining = checked(joining + MeasurePage(page.Container, page.Index));
+
+        IPagedContainerWorkingCopy source = _containers[operation.Container];
+        int growth = checked(pages.Count * PageGrowthSlack);
+        for (int offset = 0; offset < operation.Count; offset++)
+            growth = checked(growth + EntryBound(source.SlotAt(operation.Slot + offset)));
+
+        return checked(projectedIntentBytes + _eventBytes
+            + ContainerOperationEventCodec.EncodedSize(operation) + _pageBytes + joining + growth);
+    }
+
+    /// <summary>Every page intersecting either run, once, so a slide spanning a gap does not charge its
+    /// untouched pages against the journal's write limit.</summary>
+    List<PageRef> SlidePages(in ContainerOperation operation)
+    {
+        PageRef sourceFirst = PageFor(operation.Container, operation.Slot);
+        PageRef sourceLast = PageFor(operation.Container,
+            checked(operation.Slot + operation.Count - 1));
+        PageRef destinationFirst = PageFor(operation.Container, operation.DestinationSlot);
+        PageRef destinationLast = PageFor(operation.Container,
+            checked(operation.DestinationSlot + operation.Count - 1));
+
+        var pages = new List<PageRef>(sourceLast.Index - sourceFirst.Index + 1
+            + destinationLast.Index - destinationFirst.Index + 1);
+        for (int page = sourceFirst.Index; page <= sourceLast.Index; page++)
+            pages.Add(new PageRef(sourceFirst.Container, page));
+        for (int page = destinationFirst.Index; page <= destinationLast.Index; page++)
+            if (page < sourceFirst.Index || page > sourceLast.Index)
+                pages.Add(new PageRef(destinationFirst.Container, page));
+        return pages;
     }
 
     PageRef? SecondPage(in ContainerOperation operation) => operation.Kind switch
@@ -261,30 +165,5 @@ public sealed partial class ContainerCommitBuilder
                 slot.Stack.InstanceId,
                 slot.Payload.Length);
 
-    static ItemSlot Occupied(IPagedContainerWorkingCopy container, int slot, long instanceId)
-    {
-        ItemSlot held = container.SlotAt(slot);
-        Require(!held.IsEmpty, "The operation names an empty slot.");
 
-        // Spec 15.1: the declared instance id is what stops a replay landing on a slot something else has
-        // refilled since, so the working copy is held to it here as well as in the hash.
-        Require(
-            held.Stack.InstanceId == instanceId,
-            FormattableString.Invariant(
-                $"Slot {slot} holds instance {held.Stack.InstanceId} and the operation declared {instanceId}."));
-        return held;
-    }
-
-    static ItemSlot Fewer(in ItemSlot slot, int count)
-        => slot with { Stack = slot.Stack with { Count = slot.Stack.Count - count } };
-
-    static void RequirePlain(in ItemSlot slot)
-        => Require(
-            slot.Stack.InstanceId == 0 && slot.Payload.IsEmpty && !slot.Quarantined,
-            "Units cannot be split off an owned item: an owned item is one item, and its payload is not divisible.");
-
-    static void Require(bool condition, string message)
-    {
-        if (!condition) throw new ArgumentException(message);
-    }
 }

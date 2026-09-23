@@ -212,7 +212,8 @@ internal static class InstanceValidationFixtures
         int maxPrefixes = 0,
         int maxSuffixes = 0,
         int nameWordPositions = 0,
-        int? upgradeFrom = null)
+        int? upgradeFrom = null,
+        byte[]? displayRgb = null)
         => Make(
             registry,
             InstanceContentTypeIds.RarityRuleTypeKey,
@@ -224,7 +225,10 @@ internal static class InstanceValidationFixtures
             Int(maxPrefixes),
             Int(maxSuffixes),
             Int(nameWordPositions),
-            Optional(upgradeFrom));
+            Optional(upgradeFrom),
+            displayRgb is null
+                ? ContentFieldValue.Absent(ContentFieldKind.OpaqueBytes)
+                : ContentFieldValue.OfBytes(ContentFieldKind.OpaqueBytes, displayRgb));
 
     public static ContentRow RarityWeight(
         ContentTypeRegistry registry,

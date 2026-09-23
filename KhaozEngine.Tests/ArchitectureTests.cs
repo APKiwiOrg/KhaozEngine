@@ -37,6 +37,16 @@ public partial class ArchitectureTests
         "Physics.Bepu", "WorldStore.Sqlite", "WorldStore.SqlServer",
         "Server.Admin", "Social.Discord", "Commerce.Sqlite", "Commerce.SqlServer",
         "Identity.Oidc", "Identity.Discord", "Catalog.Sqlite", "Catalog.SqlServer", "Catalog.AzureBlob",
+        // The sign-in exchange core is needed only by a dedicated auth service, which should carry neither the sim
+        // stack nor a client umbrella. IdentityExchange_ReferencesOnlyIdentityAccountsAndNetcode pins its edges.
+        "Identity.Exchange",
+        // The exchange's ASP.NET Core handler carries the shared web framework, which neither a sim server nor a client
+        // may be made to carry. AspNetCoreFramework_IsContainedToWebPackages holds the framework to it and Server.Admin.
+        "Identity.Exchange.AspNetCore",
+        // The account registry seam is opt-in on the Commerce precedent: a server-only seam stays out of the
+        // Server umbrella until more than its first consumers want it. Accounts_ReferencesOnlyNetcode pins its edge.
+        // Its SQL backends follow the rule every SQL provider follows.
+        "Accounts", "Accounts.Sqlite", "Accounts.SqlServer",
         // THE THREE NATIVE GPU BACKENDS ARE NOT ON THIS LIST ANY MORE, and their absence is asserted rather than
         // assumed: NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu below requires the opposite of what
         // this list would have meant. They were opt-in from decisions P1 / V-P1 / M-P1, on pay-for-what-you-use
@@ -112,9 +122,9 @@ public partial class ArchitectureTests
         // KhaozEngine.Sqlite is the shared store lifecycle the two SQLite backends sit on, so it is a third home
         // for the provider rather than an escape from the seam: the unpooled open and the dispose have to touch
         // SqliteConnection, and that discipline living once is the whole point of the package (#731).
-        ["Microsoft.Data.Sqlite"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite" },
-        ["SQLitePCLRaw.lib.e_sqlite3"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite" },
-        ["Microsoft.Data.SqlClient"] = new[] { "WorldStore.SqlServer", "Commerce.SqlServer", "Catalog.SqlServer" },
+        ["Microsoft.Data.Sqlite"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite", "Accounts.Sqlite" },
+        ["SQLitePCLRaw.lib.e_sqlite3"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite", "Accounts.Sqlite" },
+        ["Microsoft.Data.SqlClient"] = new[] { "WorldStore.SqlServer", "Commerce.SqlServer", "Catalog.SqlServer", "Accounts.SqlServer" },
         // The blob SDK, contained in the catalog's public-origin pack store and nowhere else. Azure.Identity
         // has NO row here, and the absence is the assertion: the store takes a ready BlobContainerClient so
         // the host owns the credential, and the only project in the tree that references Azure.Identity is
@@ -613,6 +623,64 @@ public partial class ArchitectureTests
         Assert.Equal(new[] { "Ecs", "Render3D" }, actual);
     }
 
+    [Fact]
+    public void IdentityExchange_ReferencesOnlyIdentityAccountsAndNetcode()
+    {
+        // The exchange core takes Identity for the validator seam and the wire DTOs, Accounts for the store, and
+        // Netcode for SignedToken and SigningSecret, and nothing else: no HTTP stack (the ASP.NET Core handler is a
+        // package over this one) and no third-party package.
+        Project exchange = LoadGraph()["KhaozEngine.Identity.Exchange"];
+        string[] packages = exchange.PackageRefs.Where(p => !IgnoredInfraPackages.Contains(p)).ToArray();
+
+        Assert.Equal(new[] { "Accounts", "Identity", "Netcode" },
+            exchange.ProjectRefs.Select(Short).OrderBy(a => a, StringComparer.Ordinal).ToArray());
+        Assert.Empty(packages);
+    }
+
+    [Fact]
+    public void IdentityExchangeAspNetCore_ReferencesOnlyTheExchange()
+    {
+        // The handler takes the exchange core, which brings Identity, Accounts and Netcode, plus the shared web framework,
+        // and no package: the rate limiting and forwarded headers it configures are in that framework.
+        Project handler = LoadGraph()["KhaozEngine.Identity.Exchange.AspNetCore"];
+        string[] packages = handler.PackageRefs.Where(p => !IgnoredInfraPackages.Contains(p)).ToArray();
+
+        Assert.Equal(new[] { "Identity.Exchange" }, handler.ProjectRefs.Select(Short).ToArray());
+        Assert.Equal(new[] { AspNetCoreFramework }, handler.FrameworkRefs.ToArray());
+        Assert.Empty(packages);
+    }
+
+    /// <summary>
+    /// The shared ASP.NET Core framework is carried by exactly the two web packages, the admin endpoint and the sign-in
+    /// exchange handler. Both stay out of every umbrella (<see cref="OptInBackends"/>), so a sim server or a client never
+    /// carries the web stack. A third packable project taking the framework reference fails here, which is what keeps
+    /// the docs' "the two packages that reference ASP.NET Core" true. Test projects are not packable and are not scanned.
+    /// </summary>
+    [Fact]
+    public void AspNetCoreFramework_IsContainedToWebPackages()
+    {
+        string[] carriers = LoadGraph().Values
+            .Where(p => p.IsPackableLibrary && p.FrameworkRefs.Contains(AspNetCoreFramework))
+            .Select(p => Short(p.Name))
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "Identity.Exchange.AspNetCore", "Server.Admin" }, carriers);
+    }
+
+    [Fact]
+    public void Accounts_ReferencesOnlyNetcode()
+    {
+        // The account seam takes Netcode for IBanStore and BanRecord, which AccountBanStore implements, and nothing
+        // else: a game server and an admin console reach the store and the ban adapter without the exchange or
+        // Identity, and the SQL drivers live in the backend packages. No third-party package either.
+        Project accounts = LoadGraph()["KhaozEngine.Accounts"];
+        string[] packages = accounts.PackageRefs.Where(p => !IgnoredInfraPackages.Contains(p)).ToArray();
+
+        Assert.Equal(new[] { "Netcode" }, accounts.ProjectRefs.Select(Short).OrderBy(a => a, StringComparer.Ordinal).ToArray());
+        Assert.Empty(packages);
+    }
+
     /// <summary>
     /// <see cref="ItemStack"/> has exactly three components, and the empty stack is the all-zero one. The
     /// point is not the shape. A positional record struct generates a Deconstruct with one out parameter per
@@ -636,7 +704,9 @@ public partial class ArchitectureTests
     // <TargetFramework> from Directory.Build.props).
     sealed record Project(
         string Name, bool IsPackableLibrary, IReadOnlySet<string> ProjectRefs, IReadOnlySet<string> PackageRefs,
-        IReadOnlySet<string> TargetFrameworks);
+        IReadOnlySet<string> TargetFrameworks, IReadOnlySet<string> FrameworkRefs);
+
+    const string AspNetCoreFramework = "Microsoft.AspNetCore.App";
 
     static string Short(string stem) =>
         stem.StartsWith("KhaozEngine.", StringComparison.Ordinal) ? stem["KhaozEngine.".Length..] : stem;
@@ -672,11 +742,17 @@ public partial class ArchitectureTests
                     .Where(s => s is not null)
                     .Select(s => s!)
                     .ToHashSet(StringComparer.Ordinal);
+                HashSet<string> frameworkRefs = root.Descendants("FrameworkReference")
+                    .Select(e => (string?)e.Attribute("Include"))
+                    .Where(s => s is not null)
+                    .Select(s => s!)
+                    .ToHashSet(StringComparer.Ordinal);
                 HashSet<string> targetFrameworks = root.Descendants("TargetFrameworks")
                     .SelectMany(e => ((string?)e ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                     .ToHashSet(StringComparer.Ordinal);
 
-                graph[name] = new Project(name, hasPackageId && !nonPackable && !isExe, projRefs, pkgRefs, targetFrameworks);
+                graph[name] = new Project(name, hasPackageId && !nonPackable && !isExe, projRefs, pkgRefs, targetFrameworks,
+                    frameworkRefs);
             }
         }
         return graph;

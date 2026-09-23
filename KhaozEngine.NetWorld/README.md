@@ -515,9 +515,11 @@ is never what an eviction throws away, because nothing re-announces a departure 
 player slot.
 
 **`IBanStore`** is consulted at connect: a banned account is rejected before it spawns. `InMemoryBanStore` is
-the in-memory default; `WorldStoreBanStore` persists over any `IWorldStore` keyspace (`ban:{accountId}`) with a
-synchronous in-memory cache (call `LoadAsync()` once at startup). Pass either as the trailing `banStore:` ctor
-arg on `WorldServer` or `ShardedWorldServer`. Bans key on the verified account id; guests are not bannable.
+the in-memory default. `WorldStoreBanStore` persists over any `IWorldStore` keyspace (`ban:{accountId}`) with a
+synchronous in-memory cache (call `LoadAsync()` once at startup). `KhaozEngine.Accounts.AccountBanStore` files every
+ban on the sign-in account registry instead, and a game on that registry uses it as its one ban list, never beside
+`WorldStoreBanStore`. Pass the store as the trailing `banStore:` ctor arg on `WorldServer` or `ShardedWorldServer`.
+Bans key on the verified account id, and guests are not bannable.
 `IBanStore`, `BanRecord` and `InMemoryBanStore` live in the `KhaozEngine.Netcode` assembly under these same
 `KhaozEngine.NetWorld` names, and this package type-forwards them, so the connect gate and a tile server take the
 same seam and existing code compiles and binds unchanged. `WorldStoreBanStore` stays here.

@@ -81,15 +81,12 @@ internal static class ContainerCommitFixtures
     public static void SeatStack(PagedItemContainer container, int slot, int definitionId, int count)
         => container.Seat(slot, new ItemSlot(new ItemStack(definitionId, count), default, false));
 
-    /// <summary>A craft's event body stand-in. Spec 10.6 owns the real one and the crafting framework encodes
-    /// it, so a fact about the BATCH supplies bytes rather than pretending to own that format.</summary>
-    public static byte[] CraftEventBody(int ordinal)
-    {
-        byte[] body = new byte[127];
-        body[0] = 1;
-        body[1] = (byte)ordinal;
-        return body;
-    }
+    /// <summary>A readable craft audit body. The test chooses an after level that matches the operation it
+    /// hands to the builder, so the stored event cannot claim a different payload from the working copy.</summary>
+    public static byte[] CraftEventBody(int ordinal, int? afterLevel = null, int? beforeLevel = null)
+        => new ItemCraftedEvent(1, Instance, 1,
+            Payload(beforeLevel ?? (ordinal == 0 ? 42 : ordinal)),
+            Payload(afterLevel ?? ordinal + 1)).ToArray();
 
     /// <summary>A batch opened over one bank, with the options a fact usually wants.</summary>
     public static ContainerCommitBuilder OpenBank(

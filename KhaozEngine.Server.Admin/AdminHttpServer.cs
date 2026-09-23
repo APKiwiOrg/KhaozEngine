@@ -143,7 +143,16 @@ public sealed class AdminHttpServer : IAsyncDisposable
         g.MapPost("/unban", async Task<IResult> (UnbanRequest r) =>
         {
             if (!admin.BansSupported) return Results.StatusCode(StatusCodes.Status501NotImplemented);
-            await admin.UnbanAsync(r.AccountId);
+            try
+            {
+                await admin.UnbanAsync(r.AccountId);
+            }
+            catch (ArgumentException ex)
+            {
+                // AccountBanStore refuses a subject no account has, on an unban as on a ban. The operator named the
+                // wrong thing, so it is the same 400 /ban gives. The store's message does not echo the subject.
+                return Results.BadRequest(new { error = ex.Message });
+            }
             return Results.Accepted();
         });
 

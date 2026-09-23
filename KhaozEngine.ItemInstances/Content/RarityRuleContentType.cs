@@ -3,8 +3,8 @@ using KhaozEngine.Catalog;
 namespace KhaozEngine.ItemInstances;
 
 /// <summary>
-/// The <c>rarity_rule</c> content type of spec 8.5, how many affixes a rarity permits and its composed
-/// name template. Type id <see cref="InstanceContentTypeIds.RarityRuleTypeId"/>.
+/// The <c>rarity_rule</c> content type of spec 8.5, how many affixes a rarity permits, its composed
+/// name template, and its optional display colour. Type id <see cref="InstanceContentTypeIds.RarityRuleTypeId"/>.
 /// <para>
 /// <b>A rarity id is ONE BYTE forever, and that is a format constraint rather than a preference.</b> Kind
 /// 130 is <c>[RarityId: byte]</c>, pinned by contracts 9.8's <c>82 01 01 03</c>, so
@@ -40,7 +40,7 @@ public static class RarityRuleContentType
     /// <summary>Id slots per chunk, spec 8.1's table. Rarities are few, so the chunk is the smallest legal one.</summary>
     public const int DefaultChunkSlots = 256;
 
-    /// <summary>This type's row cap, which the default covers for a row of six small fields.</summary>
+    /// <summary>This type's row cap, which the default covers for its small field set.</summary>
     public const int MaxRowBytes = ContentPackFormat.DefaultMaxRowBytes;
 
     /// <summary>The type level visibility, spec 8.1. A client composes a rare's name from these bytes.</summary>
@@ -119,7 +119,20 @@ public static class RarityRuleContentType
     /// <summary>Its position in <see cref="CreateSchema"/>, which is its index in every row.</summary>
     public const int UpgradeFromIndex = 6;
 
-    /// <summary>The ordered field list, spec 8.5's first table exactly.</summary>
+    /// <summary>The number of fields the rarity rule first shipped with. An absent display colour leaves
+    /// those published row bytes unchanged.</summary>
+    public const int BaselineFieldCount = 7;
+
+    /// <summary>An opaque RGB colour for an item of this rarity. Absent means white.</summary>
+    public const string DisplayRgbField = "display_rgb";
+
+    /// <summary>The appended display colour's position in a row.</summary>
+    public const int DisplayRgbIndex = 7;
+
+    /// <summary>Exactly one byte for each red, green and blue channel.</summary>
+    public const int DisplayRgbBytes = 3;
+
+    /// <summary>The first seven fields of spec 8.5 followed by an optional display colour.</summary>
     public static ContentFieldSchema CreateSchema() => new(
     [
         new ContentFieldEntry(
@@ -139,7 +152,8 @@ public static class RarityRuleContentType
             InstanceContentTypeIds.RarityRuleTypeKey,
             ContentVisibility.Client,
             false),
-    ]);
+        new ContentFieldEntry(DisplayRgbField, ContentFieldKind.OpaqueBytes, null, ContentVisibility.Client, false),
+    ], BaselineFieldCount);
 
     /// <summary>
     /// The rarity rule row codec. It adds the three IN-ROW bounds the generic walk cannot express, checked
@@ -161,6 +175,8 @@ public static class RarityRuleContentType
                 NameWordPositionsField when value.Number is < 0 or > MaxNameWordPositions
                     => ReasonFieldMalformed,
                 UpgradeFromField when value.Number is < 0 or > MaxDefinitionId => ReasonFieldMalformed,
+                DisplayRgbField when !value.IsAbsent && value.Bytes.Length != DisplayRgbBytes
+                    => ReasonFieldMalformed,
                 _ => null,
             };
     }

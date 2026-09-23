@@ -85,7 +85,11 @@ public sealed class CraftReplayTests : IDisposable
 
         // The event is the only durable record of what the craft CHANGED, because the page is rewritten
         // whole on the next commit, so the body has to read back off the store.
-        Assert.True(ItemCraftedEvent.TryRead(stored.Payload, out ItemCraftedEvent read, out string? reason), reason);
+        Assert.Equal(2, stored.EventSchemaVersion);
+        Assert.True(ContainerOperationEventCodec.TryRead(stored.EventType, stored.EventSchemaVersion,
+            stored.Payload, out ContainerOperation replayOperation, out string? reason), reason);
+        Assert.True(ItemCraftedEvent.TryRead(replayOperation.EventPayload,
+            out ItemCraftedEvent read, out reason), reason);
         Assert.Equal(PolishingKit, read.CurrencyId);
         Assert.Equal(Instance, read.InstanceId);
         Assert.Equal(CraftContentVersion, read.ContentVersion);

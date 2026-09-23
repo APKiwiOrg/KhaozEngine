@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Accounts.SqlServer</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>SQL Server and Azure SQL IAccountStore backend for KhaozEngine.Accounts over Microsoft.Data.SqlClient: SqlServerAccountStore keeps the account registry in one flat accounts table (subject, display_name, whitelisted, banned, ban_reason, ban_until), the layout Grimhollow already runs, under a configurable and validated schema and table name, so an existing database is adopted in place. The schema is bootstrapped lazily on the first call, never in the constructor, under AutoCreate (create when absent, add a missing ban column when present, never touch a column it does not own) or ValidateOnly (catalog reads only, for a runtime identity without DDL rights). A fresh pooled connection per call, MERGE WITH (HOLDLOCK) for race-safe find-or-create, a binary collation on every subject comparison and ordering, parameterised SQL throughout. The production and shared account store. Opt-in: in NO umbrella.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Accounts/KhaozEngine.Accounts.csproj" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

@@ -134,15 +134,35 @@ public sealed class ContainerCommitBuilderTests
         ContainerCommitBuilder batch = OpenBank(
             bank, options: new ContainerCommitOptions { Limits = new JournalLimits(aggregateCommitBytes: 1_024) });
 
-        // Each craft carries a 127 byte event body, so the bound crosses a kilobyte long before either count
-        // cap is anywhere near its own.
+        // The bound crosses a kilobyte before the 128-event cap even with compact audit bodies.
         int applied = 0;
         while (batch.Apply(ContainerOperation.Craft(Bank, 4, Instance, Payload(applied + 1), CraftEventBody(applied))))
             applied++;
 
         Assert.Equal(ContainerBatchCloseReason.LimitReached, batch.Window.CloseReason);
-        Assert.InRange(applied, 1, 7);
+        Assert.InRange(applied, 1, 127);
         Assert.True(batch.Close(Mint(ServerId)).OwnedByteCount <= 1_024);
+    }
+
+    [Fact]
+    public void A_large_version_two_grant_is_refused_before_its_event_would_exceed_the_commit_cap()
+    {
+        byte[] payload = new ItemInstancePayloadBuilder().Add(1024, new byte[400]).ToArray();
+        ContainerOperation grant = ContainerOperation.Grant(Bank, 4, Sword, 1, Instance, payload);
+        PagedItemContainer roomyBank = Container();
+        ContainerCommitBuilder roomy = OpenBank(roomyBank);
+        Assert.True(roomy.Apply(grant));
+        int actualBytes = roomy.Close(Mint(ServerId)).OwnedByteCount;
+
+        PagedItemContainer tightBank = Container();
+        ContainerCommitBuilder tight = OpenBank(tightBank, options: new ContainerCommitOptions
+        {
+            Limits = new JournalLimits(aggregateCommitBytes: actualBytes - 1),
+        });
+
+        Assert.False(tight.Apply(grant));
+        Assert.True(tightBank.SlotAt(4).IsEmpty);
+        Assert.Equal(ContainerBatchCloseReason.LimitReached, tight.Window.CloseReason);
     }
 
     [Fact]
@@ -412,8 +432,9 @@ public sealed class ContainerCommitBuilderTests
         Assert.True(batch.Apply(ContainerOperation.Grant(Bank, 12, Potion, 3)));
         Assert.True(batch.Apply(ContainerOperation.Take(Bank, 0, 2)));
         Assert.True(batch.Apply(ContainerOperation.Craft(
-            Bank, 11, Instance, Payload(99), CraftEventBody(0), currencySlot: 2, currencyDefinitionId: Currency, currencyCount: 1)));
+            Bank, 11, Instance, Payload(99), CraftEventBody(0, afterLevel: 99), currencySlot: 2, currencyDefinitionId: Currency, currencyCount: 1)));
 
+        IReadOnlyList<JournalEvent> events = batch.Close(Mint(ServerId)).StreamMutations[0].Events;
         Assert.Equal(
             new[]
             {
@@ -424,7 +445,9 @@ public sealed class ContainerCommitBuilderTests
                 ItemInstanceEvents.Taken,
                 ItemInstanceEvents.Crafted,
             },
-            batch.Close(Mint(ServerId)).StreamMutations[0].Events.Select(value => value.EventType));
+            events.Select(value => value.EventType));
+        Assert.Equal(new[] { 1, 1, 1, 2, 1, 2 },
+            events.Select(value => value.EventSchemaVersion));
 
         Assert.Equal(8, bank.SlotAt(0).Stack.Count);
         Assert.True(bank.SlotAt(10).IsEmpty);
@@ -489,7 +512,7 @@ public sealed class ContainerCommitBuilderTests
         SeatItem(bank, 4, Sword, Instance);
         ContainerCommitBuilder batch = OpenBank(bank);
 
-        ContainerOperation free = ContainerOperation.Craft(Bank, 4, Instance, Payload(2), CraftEventBody(0));
+        ContainerOperation free = ContainerOperation.Craft(Bank, 4, Instance, Payload(2), CraftEventBody(0, afterLevel: 2));
         Assert.True(batch.Apply(free));
 
         Assert.Throws<ArgumentException>(() => (free with { DestinationContainer = Bag }).Validate());
@@ -498,7 +521,7 @@ public sealed class ContainerCommitBuilderTests
 
         // The currency fields are the CURRENCY's, so they are legal the moment one is consumed.
         ContainerOperation paid = ContainerOperation.Craft(
-            Bank, 4, Instance, Payload(3), CraftEventBody(1),
+            Bank, 4, Instance, Payload(3), CraftEventBody(1, afterLevel: 3, beforeLevel: 2),
             currencySlot: 5, currencyDefinitionId: Currency, currencyCount: 1);
         paid.Validate();
     }

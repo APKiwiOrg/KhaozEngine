@@ -249,10 +249,11 @@ public sealed partial class ContainerCommitBuilder
             return false;
         }
 
-        byte[] payload;
+        (int schemaVersion, byte[] payload) encoded;
         try
         {
-            payload = ApplyToWorkingCopy(operation);
+            encoded = ContainerOperationEventCodec.Write(operation);
+            ApplyToWorkingCopy(operation);
         }
         catch
         {
@@ -261,8 +262,8 @@ public sealed partial class ContainerCommitBuilder
         }
 
         _operations.Add(operation);
-        _events.Add(new JournalEvent(operation.EventType, 1, payload));
-        _eventBytes += payload.Length;
+        _events.Add(new JournalEvent(operation.EventType, encoded.schemaVersion, encoded.payload));
+        _eventBytes += encoded.payload.Length;
         _pageBytes = MeasureDirtyPages();
         return true;
     }

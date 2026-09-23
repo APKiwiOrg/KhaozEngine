@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Identity.Exchange.AspNetCore</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The ASP.NET Core minimal-API handler over KhaozEngine.Identity.Exchange: MapAuthExchange mounts POST /auth/exchange for a game's AuthExchange, and AddAuthExchangeHosting and UseAuthExchangeHosting configure forwarded headers from named trusted proxies (TrustedProxyNetworks presets registered in both address families) and an optional server-wide Kestrel body cap. The mapped endpoint carries its own bounds whatever the host's middleware is: an endpoint body cap (413), a per-client fixed window keyed on the IPv4 address or the IPv6 /64 (429 with Retry-After), and a global concurrency bound with an oldest-first queue (429), all before any JSON parsing. It maps Ok 200, NotWhitelisted and Banned 403 (ban details only when the game opts in), InvalidCredential 401, Unavailable 503 and Malformed or an unparseable body a bare 400, sends Cache-Control: no-store on every response, and logs outcome, cause, provider id, status and elapsed time, never a credential, token, subject or display name. One of the two packages that reference ASP.NET Core (a FrameworkReference), with KhaozEngine.Server.Admin. Opt-in: in NO umbrella.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The web stack, from the shared framework rather than a package. Contained to this package and
+         Server.Admin by ArchitectureTests.AspNetCoreFramework_IsContainedToWebPackages, so a sim server or a
+         client never carries it. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- The decision core, which brings Identity (the wire DTOs), Accounts and Netcode with it. Nothing else:
+         ArchitectureTests.IdentityExchangeAspNetCore_ReferencesOnlyTheExchange pins the edge. -->
+    <ProjectReference Include="../KhaozEngine.Identity.Exchange/KhaozEngine.Identity.Exchange.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

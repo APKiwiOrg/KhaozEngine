@@ -540,31 +540,37 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     whole stack is generated from those wind scalars, on the CPU (`Internal.GerstnerWaves`) and in the shader,
     rather than uploaded per component. The swell's NORMAL is evaluated per pixel at the fragment's still-water
     position rather than interpolated from the grid, so a coarse grid (a clipmap's outer rings, the far cells of a
-    large camera-focused plane) cannot shade it as flat triangle facets (#381). The whitecap fold is still carried
-    from the vertices. The grid is a fixed 97x97 vertex budget concentrated toward the camera by `GridFocusBias`
+    large camera-focused plane) cannot shade it as flat triangle facets (#381). The whitecap fold is evaluated the
+    same way, so those grids no longer draw whitecaps as triangles (#1100). The grid is a fixed 97x97 vertex budget
+    concentrated toward the camera by `GridFocusBias`
     (1 = uniform), since a consumer plane can be 1200 units across.
   - **Analytic sky reflection** (`SkyReflectionStrength`/`SkyReflectionSunStrength`): the fresnel term blends
     toward the sky evaluated along the reflected view ray (`Internal.SkyMath.ShadeDirection`, the same gradient +
     sun the background sky pass paints, in per-direction form) using `PixelPostProcessSettings.Sky`'s palette
     whether or not the sky PASS is enabled. `SkyReflectionStrength = 0` restores the flat `HorizonColor`.
-  - **GGX sun glint** (`GlintStrength`/`GlintRoughness`/`GlintDistantRoughness`): a peak-normalized GGX lobe whose
-    roughness widens wherever the surface is under-sampled, by camera distance over `DetailFadeDistance` OR by the
-    pixel's world footprint against the ripple wavelength, whichever is worse. `GlintRoughness = 0` selects the
-    legacy Blinn-Phong lobe on `GlintExponent`.
+  - **GGX sun glint** (`GlintStrength`/`GlintRoughness`/`GlintDistantRoughness`): a peak-normalized GGX lobe held
+    at or above a roughness floor that widens toward `GlintDistantRoughness` wherever the surface is under-sampled,
+    by camera distance over `DetailFadeDistance` OR by the pixel's world footprint against the ripple wavelength,
+    whichever is worse. The floor sits under the variance transfer below rather than adding to it, so the ripple
+    detail both respond to is counted once (#308). `GlintRoughness = 0` selects the legacy Blinn-Phong lobe on
+    `GlintExponent`.
   - **Depth grading** (`AbsorptionPerMetre` over `DeepColor`/`ShallowColor`): per-channel Beer-Lambert
     transmittance, so the ramp bends through green-teal rather than running straight between two colours. All-zero
     coefficients restore the two-stop smoothstep over `ShallowDepth`.
   - **Foam** (`FoamColor`/`FoamStrength`/`FoamCrestCoverage`/`FoamShoreWidth`/`FoamPatternScale`): procedural, no
     texture assets. Whitecaps from the determinant of the swell's horizontal Jacobian (steepness-normalized, so
     coverage means the same at any steepness) and a shoreline band from the reconstructed depth, both broken up by
-    a scrolling pattern thresholded into graphic lobes.
+    a scrolling pattern thresholded into graphic lobes. The fold eases toward 73% of itself as the pixel footprint
+    on the still-water plane grows, which keeps distant whitecap coverage where the old per-vertex fold left it
+    rather than whitening the horizon to the near field's density.
 
   On top of that the ripple normal field is a generated SLOPE SPECTRUM (14.26.0): `RippleComponents` cosines with
   golden-angle headings (no two parallel, no dominant ribbon direction) laddering by `RippleLacunarity` over about
   five octaves, amplitudes renormalized to a fixed slope variance so `NormalStrength` keeps its meaning, sampled at
   a domain-warped position (`WaveWarpStrength`). Each component is band-limited out of the normal once it falls
   below `FootprintSamples` pixel footprints, and the removed slope variance is transferred into the GGX lobe
-  (`VarianceToRoughness`, Toksvig-style) so distant water becomes a rougher surface rather than stripes or glass;
+  (`VarianceToRoughness`, Toksvig-style, widening `GlintRoughness` up to or past the glint's floor) so distant water
+  becomes a rougher surface rather than stripes or glass, and
   the swell's shading contrast fades on the same measure. `DetailFadeDistance`/`DistantDetailScale` remain as an
   artistic extra layered on top. Plus the
   depth-sampled shore fade (`ShoreFadeDistance`) and `Opacity`.
@@ -579,8 +585,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   crest carries the waterline and the foam line up the beach for free. The pure math is `WaterMath` (the ripple
   normal, domain warp, distance detail fade, grid layout and focus warp, absorption, reflection blend, GGX and
   legacy glint, roughness widening, foam), `RippleSpectrum` (the ripple spectrum, the footprint band-limit and the
-  variance transfer) and `GerstnerWaves` (the swell, whose offset and fold the vertex stage mirrors and whose
-  normal the fragment stage mirrors), all internal, headless-tested and mirroring the GLSL `WaterVert`/`WaterFrag`
+  variance transfer) and `GerstnerWaves` (the swell, whose offset the vertex stage mirrors and whose normal and
+  fold the fragment stage mirrors), all internal, headless-tested and mirroring the GLSL `WaterVert`/`WaterFrag`
   exactly.
 - Per-plane water look (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
   identical**): a trailing optional constructor parameter on `WaterPlane`, so every call site written before this

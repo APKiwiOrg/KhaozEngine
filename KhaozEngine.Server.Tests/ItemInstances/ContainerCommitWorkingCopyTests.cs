@@ -160,7 +160,7 @@ public sealed class ContainerCommitWorkingCopyTests
         Assert.True(batch.Apply(ContainerOperation.Take(Bank, 6, 9)));
         Assert.True(batch.Apply(ContainerOperation.Grant(Bank, 7, Potion, 3)));
         Assert.True(batch.Apply(ContainerOperation.Craft(
-            Bank, 150, Instance, Payload(7), CraftEventBody(0), currencySlot: 5, currencyDefinitionId: Currency, currencyCount: 1)));
+            Bank, 150, Instance, Payload(7), CraftEventBody(0, afterLevel: 7), currencySlot: 5, currencyDefinitionId: Currency, currencyCount: 1)));
     }
 
     static ContainerCommitBuilder OpenOver(IPagedContainerWorkingCopy copy, long tick = 4)

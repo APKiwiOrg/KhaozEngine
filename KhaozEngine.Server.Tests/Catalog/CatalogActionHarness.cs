@@ -105,9 +105,18 @@ internal sealed class CatalogActionHarness : IDisposable
     /// <summary>Dispatches one action through the registry the way the endpoint does.</summary>
     /// <param name="action">The action name.</param>
     /// <param name="body">The JSON body, or null for a call with none.</param>
-    public async Task<AdminActionResult> CallAsync(string action, string? body)
+    public Task<AdminActionResult> CallAsync(string action, string? body) => DispatchAsync(Admin, action, body);
+
+    /// <summary>A fresh admin surface with nothing registered, for a fact that registers its own set.</summary>
+    public static ServerAdmin NewSurface() => new(new NullAdminControllable());
+
+    /// <summary>Dispatches one action through any surface's registry the way the endpoint does.</summary>
+    /// <param name="admin">The surface to dispatch through.</param>
+    /// <param name="action">The action name.</param>
+    /// <param name="body">The JSON body, or null for a call with none.</param>
+    public static async Task<AdminActionResult> DispatchAsync(ServerAdmin admin, string action, string? body)
     {
-        bool found = Admin.TryGetAction(action, out var handler);
+        bool found = admin.TryGetAction(action, out var handler);
         Assert.True(found, "action '" + action + "' is registered.");
         using JsonDocument? document = body is null ? null : JsonDocument.Parse(body);
         JsonElement? payload = document?.RootElement;

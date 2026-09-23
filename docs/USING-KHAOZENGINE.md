@@ -15995,21 +15995,31 @@ source's stream beside the bag, and a click can carry coins or quest state, so `
 holding this batch alone, is the convenience over `TryBuildParts`:
 
 ```csharp
+// storeLimits is what your store validates against. A batch you add to is opened on those limits LOWERED by
+// what you add (LowerByLoot is your own), so its window stops with room left for the loot.
+var batch = ContainerCommitBuilder.Open(
+    persistenceKey, ItemInstanceEvents.CraftActionKind, session.Scope, containers, server.TickCount,
+    new ContainerCommitOptions { Limits = LowerByLoot(storeLimits) });
+// ... the tick's operations join, then:
+
 if (batch.TryBuildParts(out IReadOnlyList<JournalEvent> events, out IReadOnlyList<JournalProjectionWrite> writes))
 {
     // events are StreamKey's, one per operation in order. The identity rules stay the batch's:
     // batch.Window.HoldsClientOperation, batch.Operations[0].OperationId, batch.BuildIntent() and
     // batch.PresentAtCommit are what Close itself reads.
     JournalCommit composed = ComposeWithLoot(batch, events, writes);
-    composed.Validate(batch.Options.Limits);   // the REAL total, which no part can see
+    composed.Validate(storeLimits);   // the REAL total against the FULL limits, never batch.Options.Limits
     JournalSubmission submitted = executor.Submit(composed);
 }
 ```
 
 Taking the parts closes the batch exactly as `Close` does, and a batch holding no operation answers false and
 stays open. The limits are checked on the composed commit and never on a part: the window bounds the batch's
-own share, so a host that adds to it opens the batch with `ContainerCommitOptions.Limits` lowered by what it
-adds. `KhaozEngine.ItemInstances.Journal/README.md` states the whole contract.
+own share, so a host that adds to it opens the batch with `ContainerCommitOptions.Limits` set to its store's
+limits lowered by what it adds, and validates the composed commit against the FULL limits it lowered from.
+Validating against `batch.Options.Limits` refuses the very commit the reservation made room for. `Close`
+validates against `Options.Limits` because a batch alone adds nothing.
+`KhaozEngine.ItemInstances.Journal/README.md` states the whole contract.
 
 ### What one viewer may see, and the one frame delta (19.0.0)
 

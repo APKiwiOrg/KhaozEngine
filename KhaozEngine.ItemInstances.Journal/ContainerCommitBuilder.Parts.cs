@@ -17,12 +17,15 @@ namespace KhaozEngine.ItemInstances.Journal;
 /// <para>
 /// <b>The limits are checked on the commit, never on a part.</b> A part is not a commit and cannot know what
 /// joins it, so <see cref="TryBuildParts"/> validates no total. The window still bounds THIS batch's share as
-/// operations join, against <see cref="ContainerCommitOptions.Limits"/>. The composed commit is checked on its
-/// REAL total where it becomes whole: its own constructor holds it to the engine maxima, the host calls
-/// <see cref="JournalCommit.Validate"/> with <c>Options.Limits</c> exactly as <see cref="Close"/> does, and the
-/// store validates it again against its own limits on submission. A host that composes reserves room for what
-/// it adds by opening the batch with those limits lowered by that much, because the window closes on the
-/// batch's share and only the composed commit sees the whole.
+/// operations join, against <see cref="ContainerCommitOptions.Limits"/>. A host that composes reserves room for
+/// what it adds by opening the batch with its store's limits LOWERED by that much, so those are the batch's
+/// limits and never the commit's. The composed commit is checked on its REAL total where it becomes whole: its
+/// own constructor holds it to the engine maxima, the host calls <see cref="JournalCommit.Validate"/> with the
+/// FULL limits it lowered from, and the store validates it again against its own limits on submission.
+/// Validating it with the batch's <c>Options.Limits</c> refuses the very commit the reservation made room for:
+/// a batch opened at 62 of the store's 64 events fills to 62, the host adds 2, and the commit of 64 fits the
+/// store and fails the lowered 62. <see cref="Close"/> validates with <c>Options.Limits</c> because a commit
+/// holding the batch alone adds nothing, so there the batch's limits are the full ones.
 /// </para>
 /// </summary>
 public sealed partial class ContainerCommitBuilder

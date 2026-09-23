@@ -226,6 +226,20 @@ contributes, and `Close` is the convenience over the same parts for a commit hol
 ([#1044](https://github.com/APKiwiOrg/KhaozEngine/issues/1044)).
 
 ```csharp
+// storeLimits is what the store validates against. The batch is opened on it LOWERED by what this host adds
+// to the commit, one loot event, one loot write and their bytes, so its window stops with room left for them.
+var storeLimits = new JournalLimits(eventsPerOperation: 64);
+var batch = ContainerCommitBuilder.Open(
+    streamKey, actionKind, scope, containers, tick,
+    new ContainerCommitOptions
+    {
+        Limits = new JournalLimits(
+            eventsPerOperation: storeLimits.EventsPerOperation - 1,
+            projectionWritesPerOperation: storeLimits.ProjectionWritesPerOperation - 1,
+            aggregateCommitBytes: storeLimits.AggregateCommitBytes - lootBytes),
+    });
+// ... the tick's operations join, then:
+
 if (batch.TryBuildParts(out IReadOnlyList<JournalEvent> events, out IReadOnlyList<JournalProjectionWrite> writes))
 {
     Guid operationId = batch.Window.HoldsClientOperation ? batch.Operations[0].OperationId : Guid.NewGuid();
@@ -238,7 +252,7 @@ if (batch.TryBuildParts(out IReadOnlyList<JournalEvent> events, out IReadOnlyLis
         result,
         batch.PresentAtCommit || lootIsContested,
         batch.Options.QueueBehindAdmitted);
-    commit.Validate(batch.Options.Limits);   // the REAL total, which no part can see
+    commit.Validate(storeLimits);   // the REAL total against the FULL limits, never batch.Options.Limits
 }
 ```
 
@@ -252,11 +266,15 @@ if (batch.TryBuildParts(out IReadOnlyList<JournalEvent> events, out IReadOnlyLis
   operation's own id and `BuildIntent()`, so a resubmit still resolves replayed, and `PresentAtCommit` rides
   into whatever the batch rides in.
 - **The limits are checked on the commit and never on a part.** A part cannot know what joins it, so
-  `TryBuildParts` validates no total. The window bounds this batch's SHARE as operations join, and the
-  composed commit is checked on its real total where it becomes whole: its constructor holds it to the engine
-  maxima, `commit.Validate(batch.Options.Limits)` holds it to the configured ones exactly as `Close` does, and
-  the store validates it again on submission. A host that adds to a batch reserves room for what it adds by
-  opening the batch with `ContainerCommitOptions.Limits` lowered by that much.
+  `TryBuildParts` validates no total. The window bounds this batch's SHARE as operations join, and a host that
+  adds to a batch reserves room for what it adds by opening the batch with `ContainerCommitOptions.Limits` set
+  to its store's limits LOWERED by that much. The composed commit is checked on its real total where it
+  becomes whole: its constructor holds it to the engine maxima, `commit.Validate(storeLimits)` holds it to the
+  FULL configured limits the batch was lowered from, and the store validates it again on submission.
+  Validating it against `batch.Options.Limits` refuses the very commit the reservation made room for: a batch
+  opened at 62 of the store's 64 events fills to 62, the host adds 2, and the commit of 64 fits the store and
+  fails the lowered 62. `Close` validates against `Options.Limits` because a commit holding the batch alone
+  adds nothing, so there the batch's limits are the full ones.
 - `MarkCommitted` is owed once the COMPOSED commit has landed, exactly as after `Close`.
 
 ### The window and its five closers

@@ -15,8 +15,8 @@ namespace KhaozEngine.Showcase
 {
     /// <summary>The consolidated 2D and GUI toolkit tour, folding the old sprites / GUI-widgets / input-audio rooms
     /// into one <see cref="ScreenStack"/> whose single root screen (<see cref="ToolkitHostScreen"/>) carries a
-    /// <see cref="TabBar"/> over five pages: widgets, sprites and text, input and audio, immediate-mode, and the
-    /// screens-and-dialogs launcher. The modal demos (Settings, the pause overlay, the popup, patch notes) still
+    /// <see cref="TabBar"/> over six pages: widgets, sprites and text, input and audio, immediate-mode, the screens-and-dialogs
+    /// launcher, and drag and drop. The modal demos (Settings, the pause overlay, the popup, patch notes) still
     /// push real <see cref="Screen"/>s on top of the tab host, which IS the screen-stack demo. Esc is centralized
     /// here exactly as the old GUI room did: the topmost screen exits first, and only once the stack is back to the
     /// root does Esc leave the room. The room also hosts the toast demo (launched from the Screens page): it owns
@@ -175,12 +175,12 @@ namespace KhaozEngine.Showcase
     }
 
     /// <summary>The room's single root screen: an opaque backdrop, a <see cref="TabBar"/> at the top, and one of
-    /// five <see cref="ToolkitPage"/>s below it. Tab / Shift+Tab (or a click on the bar) switches pages, and the
+    /// six <see cref="ToolkitPage"/>s below it. Tab / Shift+Tab (or a click on the bar) switches pages, and the
     /// modal demos push real screens on top of this one.
     /// <para>
     /// Deliberately NOT a <see cref="ScreenComponentList"/>, even though every page is an
     /// <see cref="IScreenComponent"/>: the pages are mutually exclusive TABS, exactly one of which runs, and a
-    /// fan-out list is for the many-at-once case. The list would update and draw all five. This is the useful
+    /// fan-out list is for the many-at-once case. The list would update and draw all six. This is the useful
     /// half of the distinction: the interface is the per-component contract, the list is one collection over it,
     /// and a host with different collection semantics keeps its own array and still speaks the same contract.
     /// </para></summary>
@@ -210,13 +210,13 @@ namespace KhaozEngine.Showcase
                 new LocalizedText[]
                 {
                     ShowcaseStrings.TabWidgets, ShowcaseStrings.TabSprites, ShowcaseStrings.TabInput,
-                    ShowcaseStrings.TabImmediate, ShowcaseStrings.TabScreens,
+                    ShowcaseStrings.TabImmediate, ShowcaseStrings.TabScreens, ShowcaseStrings.TabDrag,
                 },
-                _a.Small, new Rect((db.Width - barW) * 0.5f, 56f, barW, 40f));
+                _a.Small, new Rect((db.Width - barW) * 0.5f, 56f, barW, 40f)) { TextScale = 0.85f };   // six labels share 920
 
             _pages = new ToolkitPage[]
             {
-                new WidgetsPage(), new SpritesTextPage(), new InputAudioPage(), new ImmediatePage(), new ScreensPage(),
+                new WidgetsPage(), new SpritesTextPage(), new InputAudioPage(), new ImmediatePage(), new ScreensPage(), new DragDropPage(),
             };
             _loaded = new bool[_pages.Length];
 

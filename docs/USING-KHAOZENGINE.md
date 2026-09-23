@@ -1675,6 +1675,10 @@ cursor crosses the slot edge, which takes a drag's origin with it.
 geometry and a same-parent constraint this primitive deliberately does not model. Same-widget ordinal reorder
 is `TreeView`, cross-widget payload transfer is `GuiDragContext`.
 
+`KhaozEngine.Showcase`'s drag-and-drop page (`DragDropPage.cs`) is the runnable reference: enter the "2D & GUI"
+room and open the "Drag & drop" tab to see the ghost, the reject wash on a refused slot, a destroy bin and the
+fly-home of a cancelled drop, all at the context's defaults.
+
 ### Right-click hit-testing (17.9.0)
 
 `Pointer` has the right-button twins of the left-button bounds helpers, carrying the same press-origin
@@ -18007,9 +18011,12 @@ r.Register<PrivateStats>(MoveProtocol.FirstConsumerTypeId + 2,
 net id automatically, so `OwnerOnly` "just works" (an observer's snapshot and delta both lack another player's
 owner-only component, including across a cell handoff). The flags gate the **server (write) side** only - build the
 client with the same registry to decode the bytes, but its channel flags are ignored (the read side decodes whatever
-is on the wire). Rules enforced at registration: a built-in id (`< FirstConsumerTypeId`) must keep `Default` (its
-unframed encoding is the core protocol), and `OwnerOnly` requires `Replicate` - either throws. A registry using only
-`Default` writes byte-identically to before channels existed. `MmoServerSample` demonstrates both shapes (`AggroCounter`
+is on the wire). Rules enforced at registration: a built-in id (`< FirstConsumerTypeId`) must keep `Default`,
+optionally with `OwnerOnly` (`ReplicationRegistry.BuiltinChannelsAllowed`), because its unframed encoding is the
+core protocol. `OwnerOnly` is allowed there because it drops the whole frame for a non-owner and never changes a
+frame's bytes, which is how the engine's own `MovementOwnerState` reaches the owner alone. `OwnerOnly` also requires
+`Replicate`. Anything else throws. A registry using only `Default` writes byte-identically to before channels existed.
+Owner scoping costs at most one filtered copy per observed entity per tick, shared by every non-owning client. `MmoServerSample` demonstrates both shapes (`AggroCounter`
 + `PrivateStats`). Every client-serving encoder honours these channels, including the whole-world
 `ServerReplicator` (`Capture` takes the `Replicate` channel, `WriteFor(slot, ownerNetId)` scopes `OwnerOnly`).
 
@@ -18073,7 +18080,9 @@ persistence.Issue += issue => log.Info(issue.ToString());   // migrated / skippe
   longer needs a schema bump**: the driver reads the stored generation and brings the body forward itself, reports it
   as a `Migrated` issue carrying `wire generation N -> M`, and rewrites the blob once. A blob stamped at a generation
   NEWER than the running build is `SkippedTooNew` (quarantined, never misread), which is the downgrade direction that
-  used to be a silent misparse.
+  used to be a silent misparse. Bringing a body forward zero-pads each built-in's appended fields, except at the two
+  generations that were not appends: 9 restructured the position, and 12 cut the two feel timers out of the movement
+  payload, which the pass writes into a `MovementOwnerState` frame so a restored entity keeps them.
 - **Blobs written before the stamp are inferred, and an inference that is not unique is REFUSED.** The migration
   walks the body at every candidate generation and discards the ones that recovered something no build writes:
   built-in ids ascend within an entity and none follows an extension frame, no id repeats, a movement payload's bool
@@ -19003,7 +19012,7 @@ var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning
 
 3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
 
-**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 10 as of authoritative facing, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, and 10 the move frame's flags byte plus `MovementState.FacingYawQ` together) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
+**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 12 as of the owner-only movement timers, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, 10 the move frame's flags byte plus `MovementState.FacingYawQ` together, 11 `MovementState.Commitment`, and 12 moving the two feel timers into the owner-only `MovementOwnerState` built-in) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
 
 ```csharp
 client.SnapshotDecodeFailed += err => ShowOutOfDateUI(err);   // "client out of date, please update"
@@ -19573,6 +19582,41 @@ so an old client is rejected at connect by the always-on `WireGenerationAuthenti
 ship together.**
 
 Full rationale and the phase plan: `docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
+
+### Owner-only movement timers: coyote time and jump buffer (`MovementOwnerState`, wire generation 12)
+
+`MoveState.TimeSinceGrounded` and `MoveState.JumpBufferRemaining` feed only the owning client's reconciliation
+replay. No remote reads them, so they ride their own built-in, `MovementOwnerState`
+(`MoveProtocol.MovementOwnerTypeId` = 6), registered `ReplicationChannels.Default | ReplicationChannels.OwnerOnly`,
+and `MovementState` no longer carries them.
+
+```csharp
+// Server side: the engine writes both halves at every spawn, teleport and tick. A game writing a movable entity's
+// components itself writes both too.
+world.Set(entity, MovementState.From(state));        // every observer in AoI
+world.Set(entity, MovementOwnerState.From(state));   // the owning client only, plus persistence and handoff
+
+// Rebuilding a full state: the owner half is a required argument. Pass default for an entity you do not own.
+world.TryGet(entity, out MovementState movement);
+world.TryGet(entity, out MovementOwnerState owner);
+PlayerMoveState full = PlayerMoveState.From(position, movement, owner);
+```
+
+- **Who receives it.** Both serve paths (full snapshot and AoI delta) on both heads write it only on the receiving
+  client's own player, so `WorldClient.TryGetComponent<MovementOwnerState>` answers `false` for any other player.
+  Cell persistence and cell handoff write it for every entity that has it, so a restored or handed-off player keeps
+  its coyote and jump-buffer windows. A border ghost does not carry it, and is never simulated.
+- **What it saves.** The movement payload drops from 64 to 56 bytes, 8 bytes less per moving player per observer per
+  snapshot, and on the delta path a change confined to the timers no longer resends the movement frame to observers
+  at all. The owner pays 2 bytes more, the owner frame's type id.
+- **Remotes are unaffected.** `VerticalVelocity`, `Grounded`, `Swimming`, `TeleportEpoch`, `ClimbRateQ`,
+  `SpeedScaleQ`, the carried arc, `FacingYawQ` and `Commitment` keep their meaning and their order.
+- **A missing owner component heals.** `PlayerMovementSystem` adds `MovementOwnerState` at the end of an entity's
+  first step when it has none, so its coyote clock carries from then on instead of restarting every tick.
+- **This is a wire break: generation 11 to 12.** Both built-ins changed shape, so mixed-generation peers are
+  rejected at connect by the always-on `WireGenerationAuthenticator`. **Client and server must ship together.** A
+  stored cell blob from an older generation still loads, and the bring-forward pass moves its timers from the
+  movement payload into an owner frame, so a restored entity has exactly the timers it was saved with.
 
 ### World pickups (walk-over collectibles)
 

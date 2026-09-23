@@ -711,12 +711,14 @@ public sealed partial class WorldClient : IDisposable
         // so the local prediction basis is the true authoritative value, never an interpolated one.
         if (view.TryGetEntity(localNetId, out Entity local) && world.TryGet(local, out ReplicatedPosition p))
         {
-            // Build the full authoritative basis from BOTH replicated components - position and the vertical axis
-            // (MovementState) - so prediction replay reproduces the jump/fall, not just the XZ plane. The basis KEEPS
+            // Build the full authoritative basis from the replicated components - position, the vertical axis
+            // (MovementState) and the feel timers (MovementOwnerState) - so prediction replay reproduces the jump/fall,
+            // coyote window and jump buffer, not just the XZ plane. The basis KEEPS
             // the server's frame stamp, and the client adopts that frame (rebasing its own physics world with it)
             // before the replay runs, so replayed commands step in the space the basis is expressed in.
             world.TryGet(local, out MovementState ms);           // default (grounded, 0) until first replicated
-            PlayerMoveState basis = PlayerMoveState.From(p, ms);
+            world.TryGet(local, out MovementOwnerState owner);    // the owner-only feel timers (served to us alone)
+            PlayerMoveState basis = PlayerMoveState.From(p, ms, owner);
             AdoptIslandFrame(p.Frame);
             if (first)
             {

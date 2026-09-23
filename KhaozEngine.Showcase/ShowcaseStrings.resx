@@ -95,6 +95,7 @@
   <data name="Tab.Input" xml:space="preserve"><value>Input &amp; audio</value></data>
   <data name="Tab.Immediate" xml:space="preserve"><value>Immediate mode</value></data>
   <data name="Tab.Screens" xml:space="preserve"><value>Screens &amp; dialogs</value></data>
+  <data name="Tab.Drag" xml:space="preserve"><value>Drag &amp; drop</value></data>
   <data name="Settings.Title" xml:space="preserve"><value>Settings</value></data>
   <data name="Settings.Volume" xml:space="preserve"><value>Volume</value></data>
   <data name="Settings.Fullscreen" xml:space="preserve"><value>Fullscreen</value></data>
@@ -144,6 +145,19 @@
   <data name="Screens.PatchNotesCaption" xml:space="preserve"><value>The turn-key player changelog panel</value></data>
   <data name="Screens.Toasts" xml:space="preserve"><value>Toast stack</value></data>
   <data name="Screens.ToastsCaption" xml:space="preserve"><value>Transient notifications: kinds, sticky, keyed replace</value></data>
+  <data name="Drag.Hint" xml:space="preserve"><value>Drag between the grids. The red slot refuses, the bin destroys, a drop on nothing flies home.</value></data>
+  <data name="Drag.SectionBag" xml:space="preserve"><value>Backpack</value></data>
+  <data name="Drag.SectionStash" xml:space="preserve"><value>Stash</value></data>
+  <data name="Drag.SectionDestroy" xml:space="preserve"><value>Bin</value></data>
+  <data name="Drag.DestroyHere" xml:space="preserve"><value>Drop here to destroy</value></data>
+  <data name="Drag.Legend" xml:space="preserve"><value>Hollow items carry no ghost painter, so they drag the built-in placeholder frame.</value></data>
+  <data name="Drag.Reset" xml:space="preserve"><value>Reset items</value></data>
+  <data name="Drag.StatusNone" xml:space="preserve"><value>Pick an item up to begin.</value></data>
+  <data name="Drag.StatusMoved" xml:space="preserve"><value>Last drop: moved.</value></data>
+  <data name="Drag.StatusSwapped" xml:space="preserve"><value>Last drop: swapped with the item already there.</value></data>
+  <data name="Drag.StatusDestroyed" xml:space="preserve"><value>Last drop: destroyed.</value></data>
+  <data name="Drag.StatusRefused" xml:space="preserve"><value>Last drop: refused by the red slot, so it flew home.</value></data>
+  <data name="Drag.StatusCancelled" xml:space="preserve"><value>Last drop: over nothing, so it flew home.</value></data>
   <data name="Toasts.Title" xml:space="preserve"><value>Toast Stack</value></data>
   <data name="Toasts.Standard" xml:space="preserve"><value>Standard toast</value></data>
   <data name="Toasts.Warning" xml:space="preserve"><value>Warning toast</value></data>

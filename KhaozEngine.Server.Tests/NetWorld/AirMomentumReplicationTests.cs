@@ -18,7 +18,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// has to survive, the sharded head's per-tick carry, and the anti-cheat check that momentum breaks unless it is
 /// fixed alongside. Three cases decide whether the feature works at all.
 /// <see cref="A_correction_mid_flight_replays_the_carried_arc_and_converges"/> is why
-/// <see cref="MovementState.HorizontalVelocityXQ"/> exists: <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/> rebuilds the client's
+/// <see cref="MovementState.HorizontalVelocityXQ"/> exists: <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState, in MovementOwnerState)"/> rebuilds the client's
 /// basis from the replicated components ALONE and <c>Reconcile</c> overwrites the whole predicted state with it, so a
 /// carried field missing from that seed resets to zero on every correction and the client drops an arc the server is
 /// still flying. <see cref="The_sharded_head_carries_the_arc_across_ticks_and_onto_the_wire"/> is the same failure on
@@ -78,7 +78,7 @@ public class AirMomentumReplicationTests
         // where no gameplay code is looking.
         Assert.Equal(0f, MovementState.DecodeHorizontalVelocity(default(MovementState).HorizontalVelocityXQ));
         Assert.Equal(0f, MovementState.DecodeHorizontalVelocity(default(MovementState).HorizontalVelocityZQ));
-        Assert.Equal(Vector2.Zero, PlayerMoveState.From(Vector3.Zero, default).Move.HorizontalVelocity);
+        Assert.Equal(Vector2.Zero, PlayerMoveState.From(Vector3.Zero, default, default).Move.HorizontalVelocity);
     }
 
     [Theory]
@@ -134,7 +134,7 @@ public class AirMomentumReplicationTests
         var state = new PlayerMoveState();
         state.Move.HorizontalVelocity = new Vector2(12.5f, -30.25f);   // both exact at the quantum
         MovementState wire = MovementState.From(state);
-        PlayerMoveState back = PlayerMoveState.From(Vector3.Zero, wire);
+        PlayerMoveState back = PlayerMoveState.From(Vector3.Zero, wire, MovementOwnerState.From(state));
         Assert.Equal(new Vector2(12.5f, -30.25f), back.Move.HorizontalVelocity);
     }
 
@@ -228,7 +228,7 @@ public class AirMomentumReplicationTests
                 // it: through the replicated components. Pending = seqs (i - lag + 1 .. i), replayed on top.
                 int ackSeq = i - lag;
                 PlayerMoveState authFull = contStates[ackSeq + 1];
-                PlayerMoveState basis = PlayerMoveState.From(authFull.Position, MovementState.From(authFull));
+                PlayerMoveState basis = PlayerMoveState.From(authFull.Position, MovementState.From(authFull), MovementOwnerState.From(authFull));
                 pred.Reconcile(i, basis, ackSeq);
             }
             recon.Add(Snap(pred.PredictedState));

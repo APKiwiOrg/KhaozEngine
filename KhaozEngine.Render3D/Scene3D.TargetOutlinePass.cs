@@ -62,12 +62,18 @@ public sealed partial class Scene3D
     void AddMeshOutlinePart(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world,
         float dissolve, bool dissolveComplement)
     {
+        MeshOutlineDrawGroup drawGroup = RequireMeshOutlineGroup(group);
+        drawGroup.Parts.Add(MeshOutlinePart.Rigid(mesh, world,
+            Math.Clamp(dissolve, 0f, 1f), dissolveComplement));
+        _meshOutlinePartCount++;
+    }
+
+    MeshOutlineDrawGroup RequireMeshOutlineGroup(MeshOutlineGroup group)
+    {
         if (group.Owner != _outlineOwner || group.Frame != _outlineFrame
             || group.Index < 0 || group.Index >= _meshOutlineGroups.Count)
             throw new ArgumentException("outline group does not belong to this scene and frame.", nameof(group));
-        _meshOutlineGroups[group.Index].Parts.Add(new MeshOutlinePart(mesh, world,
-            Math.Clamp(dissolve, 0f, 1f), dissolveComplement));
-        _meshOutlinePartCount++;
+        return _meshOutlineGroups[group.Index];
     }
 
     /// <summary>Queues a one-part target outline with a width measured in final framebuffer pixels.</summary>
@@ -85,11 +91,14 @@ public sealed partial class Scene3D
     internal int MeshOutlineGroupCount => _meshOutlineGroups.Count;
     internal int MeshOutlinePartCount => _meshOutlinePartCount;
     internal MeshOutlineOcclusion MeshOutlineOcclusionAt(int groupIndex) => _meshOutlineGroups[groupIndex].Occlusion;
+    internal float MeshOutlineDissolveAt(int groupIndex, int partIndex) =>
+        _meshOutlineGroups[groupIndex].Parts[partIndex].Dissolve;
 
     void BeginMeshOutlineFrame()
     {
         _outlineFrame = _outlineFrame == int.MaxValue ? 1 : _outlineFrame + 1;
         _meshOutlineGroups.Clear();
+        _outlineBoneMatrices.Clear();
         _meshOutlinePartCount = 0;
     }
 
@@ -108,8 +117,32 @@ public sealed partial class Scene3D
         }
     }
 
-    readonly record struct MeshOutlinePart(MeshHandle Mesh, Matrix4x4 World, float Dissolve,
-        bool DissolveComplement);
+    enum MeshOutlinePartKind
+    {
+        Rigid,
+        Skinned,
+    }
+
+    readonly record struct MeshOutlinePart(
+        MeshOutlinePartKind Kind,
+        MeshHandle Mesh,
+        SkinnedMeshHandle SkinnedMesh,
+        Matrix4x4 World,
+        float Dissolve,
+        bool DissolveComplement,
+        int BoneStart,
+        int BoneCount)
+    {
+        public static MeshOutlinePart Rigid(
+            MeshHandle mesh, Matrix4x4 world, float dissolve, bool complement) =>
+            new(MeshOutlinePartKind.Rigid, mesh, default, world, dissolve, complement, 0, 0);
+
+        public static MeshOutlinePart Skinned(
+            SkinnedMeshHandle mesh, Matrix4x4 world, float dissolve, bool complement,
+            int boneStart, int boneCount) =>
+            new(MeshOutlinePartKind.Skinned, default, mesh, world, dissolve, complement,
+                boneStart, boneCount);
+    }
 
     void DrawTargetOutlines(IGpuCommandList cl, Matrix4x4 viewProjection, IGpuFramebuffer target)
     {

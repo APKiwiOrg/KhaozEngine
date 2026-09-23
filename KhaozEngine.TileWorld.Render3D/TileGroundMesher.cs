@@ -78,13 +78,26 @@ public static partial class TileGroundMesher
         int plane,
         TileGroundLod lod,
         TileGroundMesherOptions? options = null)
+        => Build(doc, catalogs, region, plane, lod, options, memoiseCorners: true);
+
+    // memoiseCorners false is the direct path, every corner answer recomputed by each tile that reads it, which
+    // is what the per-build corner memo is proved bit for bit against.
+    internal static GltfMesh? Build(
+        TileWorldDocument doc,
+        TileWorldCatalogs catalogs,
+        RegionCoord region,
+        int plane,
+        TileGroundLod lod,
+        TileGroundMesherOptions? options,
+        bool memoiseCorners)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(catalogs);
         if (lod is not TileGroundLod.Full and not TileGroundLod.Coarse4)
             throw new ArgumentOutOfRangeException(nameof(lod));
 
-        var context = new TileMeshContext(doc, catalogs, options ?? new TileGroundMesherOptions(), region, plane);
+        var context = new TileMeshContext(doc, catalogs, options ?? new TileGroundMesherOptions(), region, plane,
+                                          memoiseCorners);
         var mesh = new MeshAccumulator();
         if (lod == TileGroundLod.Coarse4)
         {
@@ -224,10 +237,10 @@ public static partial class TileGroundMesher
     {
         int x = c.OriginX + lx;
         int z = c.OriginZ + lz;
-        short h00 = c.Doc.CornerHeightCm(x, z, c.Plane);
-        short h10 = c.Doc.CornerHeightCm(x + 1, z, c.Plane);
-        short h01 = c.Doc.CornerHeightCm(x, z + 1, c.Plane);
-        short h11 = c.Doc.CornerHeightCm(x + 1, z + 1, c.Plane);
+        short h00 = c.Corners.HeightCm(x, z);
+        short h10 = c.Corners.HeightCm(x + 1, z);
+        short h01 = c.Corners.HeightCm(x, z + 1);
+        short h11 = c.Corners.HeightCm(x + 1, z + 1);
         TileOverlayShape shape = c.Doc.GetOverlayShape(x, z, c.Plane);
         int rotation = c.Doc.GetOverlayRotation(x, z, c.Plane);
         bool swne = TileTriangulation.SplitSwNe(h00, h10, h01, h11, shape, rotation);
@@ -273,8 +286,8 @@ public static partial class TileGroundMesher
         return normal.Y < 0f ? -normal : normal;
     }
 
-    /// <summary>The document, catalogs, options and region-plane one Build call meshes against, so the per-tile
-    /// helpers do not carry six parameters each.</summary>
+    /// <summary>The document, catalogs, options and region-plane one Build call meshes against, plus the corner
+    /// memo scoped to that call, so the per-tile helpers do not carry seven parameters each.</summary>
     internal readonly struct TileMeshContext
     {
         internal TileMeshContext(
@@ -282,7 +295,8 @@ public static partial class TileGroundMesher
             TileWorldCatalogs catalogs,
             TileGroundMesherOptions options,
             RegionCoord region,
-            int plane)
+            int plane,
+            bool memoiseCorners)
         {
             Doc = doc;
             Catalogs = catalogs;
@@ -291,7 +305,11 @@ public static partial class TileGroundMesher
             OriginZ = region.OriginZ;
             Plane = plane;
             TileSize = doc.TileSize;
+            Corners = new TileGroundCornerCache(doc, options, region.OriginX, region.OriginZ, plane, memoiseCorners);
         }
+
+        /// <summary>This build's corner answers, each computed once however many tiles share the corner.</summary>
+        public TileGroundCornerCache Corners { get; }
 
         /// <summary>The world being meshed.</summary>
         public TileWorldDocument Doc { get; }

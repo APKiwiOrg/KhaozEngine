@@ -92,10 +92,10 @@ public static partial class TileGroundMesher
         LatticePoint se = CellCorner(c, lx, lz, size, 0, 1, 0, slots);
         LatticePoint nw = CellCorner(c, lx, lz, 0, size, 0, 1, slots);
         LatticePoint ne = CellCorner(c, lx, lz, size, size, 1, 1, slots);
-        short h00 = c.Doc.CornerHeightCm(c.OriginX + lx, c.OriginZ + lz, c.Plane);
-        short h10 = c.Doc.CornerHeightCm(c.OriginX + lx + size, c.OriginZ + lz, c.Plane);
-        short h01 = c.Doc.CornerHeightCm(c.OriginX + lx, c.OriginZ + lz + size, c.Plane);
-        short h11 = c.Doc.CornerHeightCm(c.OriginX + lx + size, c.OriginZ + lz + size, c.Plane);
+        short h00 = c.Corners.HeightCm(c.OriginX + lx, c.OriginZ + lz);
+        short h10 = c.Corners.HeightCm(c.OriginX + lx + size, c.OriginZ + lz);
+        short h01 = c.Corners.HeightCm(c.OriginX + lx, c.OriginZ + lz + size);
+        short h11 = c.Corners.HeightCm(c.OriginX + lx + size, c.OriginZ + lz + size);
         if (TileTriangulation.SplitSwNe(h00, h10, h01, h11, TileOverlayShape.Full, 0))
         {
             AddTriangle(mesh, c, sw.ToVertex(null), se.ToVertex(null), ne.ToVertex(null));
@@ -159,38 +159,17 @@ public static partial class TileGroundMesher
         int cx = c.OriginX + lx + dx;
         int cz = c.OriginZ + lz + dz;
         TileCornerSlots slots = TileCornerSlots.Uniform(SlotAt(c, cx, cz));
-        Vector3 position = TileWorldSpace.ToWorld(
-            lx + dx,
-            c.Doc.CornerHeightCm(cx, cz, c.Plane) * 0.01f,
-            lz + dz,
-            c.TileSize);
-        Vector3 normal = c.Options.SmoothNormals ? CornerNormal(c.Doc, cx, cz, c.Plane) : Vector3.UnitY;
-        return new LatticePoint(
-            position,
-            normal,
-            slots,
-            OverlayWeights,
-            CornerJitter(c.Doc, cx, cz, c.Plane, c.Options.JitterAmplitude));
+        c.Corners.Point(cx, cz, out Vector3 position, out Vector3 normal, out float jitter);
+        return new LatticePoint(position, normal, slots, OverlayWeights, jitter);
     }
 
     static LatticePoint CellCorner(
         in TileMeshContext c, int lx, int lz, int dx, int dz, int weightX, int weightZ,
         in TileCornerSlots slots)
     {
-        int cx = c.OriginX + lx + dx;
-        int cz = c.OriginZ + lz + dz;
-        Vector3 position = TileWorldSpace.ToWorld(
-            lx + dx,
-            c.Doc.CornerHeightCm(cx, cz, c.Plane) * 0.01f,
-            lz + dz,
-            c.TileSize);
-        Vector3 normal = c.Options.SmoothNormals ? CornerNormal(c.Doc, cx, cz, c.Plane) : Vector3.UnitY;
-        return new LatticePoint(
-            position,
-            normal,
-            slots,
-            CornerWeights(weightZ * 2 + weightX),
-            CornerJitter(c.Doc, cx, cz, c.Plane, c.Options.JitterAmplitude));
+        c.Corners.Point(c.OriginX + lx + dx, c.OriginZ + lz + dz, out Vector3 position, out Vector3 normal,
+                        out float jitter);
+        return new LatticePoint(position, normal, slots, CornerWeights(weightZ * 2 + weightX), jitter);
     }
 
     /// <summary>The mid-edge point between two corners: position, weights and jitter averaged, the normal

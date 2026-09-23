@@ -1,5 +1,4 @@
 using System;
-using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 
@@ -94,10 +93,10 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>One draw per routed plane, in queue order.</summary>
-        void DrawRoutedPlanes(IGpuCommandList cl, ReadOnlySpan<WaterPlane> planes, Vector3 cameraPos, float focusBias)
+        void DrawRoutedPlanes(IGpuCommandList cl, int planeCount)
         {
             PlaneRoute bound = PlaneRoute.Culled;
-            for (int i = 0; i < planes.Length; i++)
+            for (int i = 0; i < planeCount; i++)
             {
                 PlaneRoute route = _routes[i];
                 if (route == PlaneRoute.Culled) continue;
@@ -118,13 +117,8 @@ namespace KhaozEngine.Render3D.Rendering
                         cl.DrawIndexed((uint)_clipSlots[i].IndexCount, 1,
                             (uint)(i * _clipSliceIndices), i * _clipSliceVerts, 0);
                         break;
-                    default:
-                        // Still built and uploaded inside the pass. Task C2 moves it ahead of SetFramebuffer.
-                        int n = WaterMath.BuildGridPositions(planes[i], cameraPos.X, cameraPos.Z, focusBias,
-                            _gridScratch, _axisScratch);
-                        cl.UpdateBuffer<Vector3>(_vb!, 0, _gridScratch.AsSpan(0, n));
-                        cl.SetVertexBuffer(0, _vb!);
-                        cl.DrawIndexed((uint)WaterMath.GridIndexCount, 1, 0, 0, 0);
+                    case PlaneRoute.FocusedGrid:
+                        cl.DrawIndexed((uint)WaterMath.GridIndexCount, 1, 0, _routeSlots[i] * GridSliceVertices, 0);
                         break;
                 }
             }

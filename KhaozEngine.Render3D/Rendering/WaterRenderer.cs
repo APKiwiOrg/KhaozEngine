@@ -131,14 +131,6 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuTexture? _boundMap;
         // Same, for the depth field: a resolution change replaces the texture and the set has to follow it.
         IGpuTexture? _boundBathy;
-        // Fixed-size grid buffers: every WaterPlane draws through the SAME GridResolution grid (only the CPU-side
-        // vertex positions differ per plane, re-uploaded per draw), so these are allocated once and never regrown.
-        IGpuBuffer? _vb;
-        IGpuBuffer? _ib;
-        // Heap-allocated once, not stackalloc'd per draw: at GridResolution 97 the position scratch is 113 KB and
-        // the index scratch 216 KB, both far past what belongs on the stack.
-        readonly Vector3[] _gridScratch = new Vector3[WaterMath.GridResolution * WaterMath.GridResolution];
-        readonly float[] _axisScratch = new float[2 * WaterMath.GridResolution];
 
         // ---- Clipmap grid state ------------------------------------------------------------------------------
         // Its own buffers, because their SIZE depends on the ring settings rather than being the one fixed budget
@@ -312,18 +304,6 @@ namespace KhaozEngine.Render3D.Rendering
             ResizeUboImage(_capacity);   // the CPU mirror the whole-buffer upload covers (WaterRenderer.SlotUpload.cs)
             if (_set != null) _retired.Retire(_set);
             _set = null;
-        }
-
-        void EnsureGridBuffers()
-        {
-            if (_vb != null && _ib != null) return;
-            const uint vcount = WaterMath.GridResolution * WaterMath.GridResolution;
-            const uint icount = WaterMath.GridIndexCount;
-            _vb = _gd.Factory.CreateBuffer(new GpuBufferDescription(vcount * 12u, GpuBufferUsage.VertexBuffer));   // Vector3 = 12 bytes
-            _ib = _gd.Factory.CreateBuffer(new GpuBufferDescription(icount * sizeof(uint), GpuBufferUsage.IndexBuffer));
-            uint[] indices = new uint[icount];   // built once, then thrown away: the index layout never changes
-            WaterMath.BuildGridIndices(indices);
-            _gd.UpdateBuffer(_ib, 0, indices);
         }
 
         /// <summary>Pure: pack one plane + the frame's light/camera/water/sky settings into the UBO.
@@ -584,6 +564,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             if (planes.Length == 0) return;
             LastClipmapRebuilds = 0;
+            LastFocusedGridBuilds = 0;
             EnsureUboCapacity(planes.Length);
             RoutePlanes(planes, settings);
             if (_clipCount > 0)
@@ -592,7 +573,7 @@ namespace KhaozEngine.Render3D.Rendering
                 EnsureClipBuffers(planes, settings, renderOrigin);
             }
             if (_flatCount > 0) EnsureFlatBuffers(_flatCount);
-            if (_gridCount > 0) EnsureGridBuffers();
+            if (_gridCount > 0) EnsureGridBuffers(_gridCount);
 
             // ONE ocean update per frame, ahead of the per-plane loop and of BindTargets (which binds whatever maps
             // it produced). Every plane ON the ocean samples the same cascades: there is one sea state, not one per
@@ -637,15 +618,16 @@ namespace KhaozEngine.Render3D.Rendering
             // was a per-plane blocking Map on D3D11 (#408); see WaterRenderer.SlotUpload.cs.
             UploadSlots(cl);
 
-            // Flat quads and clipmap slices upload HERE, before a single draw is recorded, so no plane's geometry
-            // can be written over another's mid-pass.
+            // Every geometry upload happens HERE, before a single draw is recorded, so no plane's geometry can be
+            // written over another's mid-pass and the draw loop touches no buffer contents at all.
             UploadFlatQuads(cl, planes);
+            UploadFocusedGrids(cl, planes, cameraPos, settings.GridFocusBias);
             for (int i = 0; i < planes.Length; i++)
                 if (_routes[i] == PlaneRoute.Clipmap)
                     RefreshClipmapPlane(cl, i, planes[i], cameraPos, settings, renderOrigin);
 
             cl.SetFramebuffer(res.ColorDepthFB);
-            DrawRoutedPlanes(cl, planes, cameraPos, settings.GridFocusBias);
+            DrawRoutedPlanes(cl, planes.Length);
         }
 
         /// <summary>

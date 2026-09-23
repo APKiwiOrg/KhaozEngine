@@ -621,7 +621,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   producer is `Rendering.OceanFftProducer`. Rationale: `docs/design/FFT-OCEAN-DESIGN-2026-07-26.md`; attribution:
   `NOTICE.md`.
 - Water surface grid (`WaterSettings.GridMode`, a `WaterGridMode`): `CameraFocused` (the default) is the fixed
-  97x97 budget warped toward the camera by `GridFocusBias`, unchanged. `Clipmap` is a WORLD-LOCKED alternative -
+  97x97 budget warped toward the camera by `GridFocusBias`. Each displaced plane gets its own slice of one shared,
+  grow-only vertex buffer, and every slice uploads before the water pass opens. `Clipmap` is a WORLD-LOCKED alternative -
   concentric square rings, each at twice the previous ring's cell size, every vertex snapped to its own ring's
   lattice in world space, so the mesh does not slide through the wave field as the camera moves. That slide is a
   measured artifact rather than a theoretical one: on the FFT ocean a 0.10 m camera step at frozen wave time

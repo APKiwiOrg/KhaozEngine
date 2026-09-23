@@ -22,13 +22,15 @@ namespace KhaozEngine.Render3D.Rendering
     /// uniform write through <c>D3D11UniformRing</c> and never had the stall to begin with.
     /// </para>
     /// <para>
-    /// BYTE-IDENTICAL WHERE IT IS READ. Slot <c>i</c> holds exactly the bytes the per-plane write put there, at the
-    /// same base, so every bound range renders the same picture. Two regions differ and neither is ever read: the
-    /// <c>SlotBytes - PayloadBytes</c> pad at the tail of each slot (the shader's block ends at
-    /// <see cref="PayloadBytes"/>; the range is rounded up only because D3D11 rejects a non-multiple-of-16-constant
-    /// count) and the slots past the frame's plane count (no draw binds an offset beyond
-    /// <c>planes.Length - 1</c>). Both used to hold whatever the GPU allocation happened to carry and now hold the
-    /// mirror's zeros or an earlier frame's values.
+    /// BYTE-IDENTICAL WHERE IT IS READ. A drawn plane's slot <c>i</c> holds exactly the bytes the per-plane write
+    /// put there, at the same base, so every bound range renders the same picture. Three regions differ and none
+    /// is ever read. The first is the <c>SlotBytes - PayloadBytes</c> pad at the tail of each slot (the shader's
+    /// block ends at <see cref="PayloadBytes"/>, and the range is rounded up only because D3D11 rejects a
+    /// non-multiple-of-16-constant count). The second is the slots past the frame's plane count (no draw binds an
+    /// offset beyond <c>planes.Length - 1</c>). The third is a culled plane's slot: the draw loop skips it when
+    /// packing and the whole-buffer write still uploads it, but <c>DrawRoutedPlanes</c> skips culled planes and
+    /// never binds it. The first two used to hold whatever the GPU allocation happened to carry. All three now hold
+    /// the mirror's zeros or an earlier frame's values.
     /// </para>
     /// </summary>
     internal sealed partial class WaterRenderer
@@ -38,8 +40,9 @@ namespace KhaozEngine.Render3D.Rendering
         byte[] _uboImage = Array.Empty<byte>();
 
         /// <summary>Resize the CPU mirror to match a UBO grown to <paramref name="slots"/> slots, keeping what the
-        /// old one held (a plane's slot is repacked before every upload, so the carry-over only keeps the unread
-        /// tail stable rather than being load-bearing).</summary>
+        /// old one held (a drawn plane's slot is repacked before every upload, and a culled plane's slot is uploaded
+        /// without a repack but never read, so the carry-over only keeps unread bytes stable rather than being
+        /// load-bearing).</summary>
         void ResizeUboImage(int slots)
         {
             var image = new byte[checked(slots * (int)SlotBytes)];

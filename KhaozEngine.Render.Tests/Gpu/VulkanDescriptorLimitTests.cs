@@ -137,6 +137,8 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/ShadowMapRenderer.cs:125 and :141
                 ["Shadow"] = L(U("U", V, dynamic: true)),
                 ["Shadow.skinned"] = L(U("VBlock", V, dynamic: true)),
+                // The per-mesh albedo the cutout depth fragments alpha-test (issue #15), fragment only.
+                ["Shadow.cutout"] = L(T("Albedo"), S("Samp")),
 
                 // Render3D/Rendering/SkyRenderer.cs:50 and StarfieldRenderer.cs:53
                 ["Sky"] = L(U("Sky", F)),
@@ -168,7 +170,8 @@ namespace KhaozEngine.Tests.Gpu
         /// three sets since #407: the shared frame block and the per-draw header together in set 0, material
         /// textures alone in set 1, the per-caster bone palette in set 2. The skinned depth pipeline carries two,
         /// its light matrix and the very same palette layout, which is what makes one palette upload serve the main
-        /// pass and every cascade.
+        /// pass and every cascade. The cutout depth pipeline (issue #15) keeps ONE uniform buffer, the cascade light
+        /// block, and adds the MASK caster's albedo and sampler as a second set, the SpriteBatch shape.
         /// </para>
         /// </summary>
         internal static IReadOnlyList<(string Pipeline, string[] Slots)> ShippedPipelines { get; } =
@@ -211,6 +214,7 @@ namespace KhaozEngine.Tests.Gpu
             ("PointShadowRenderer", ["PointShadow"]),
             ("ShadowMapRenderer depth", ["Shadow"]),
             ("ShadowMapRenderer skinned depth", ["Shadow.skinned", "SkinnedBonePalette"]),
+            ("ShadowMapRenderer cutout depth", ["Shadow", "Shadow.cutout"]),
             ("SkyRenderer", ["Sky"]),
             ("StarfieldRenderer", ["Starfield"]),
             ("TexturedBillboardRenderer", ["TexturedBillboard"]),
@@ -228,10 +232,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // Foliage adds one layout and one pipeline beside the existing shared model material layout.
+            // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(39, ShippedLayouts.Count);
-            Assert.Equal(36, ShippedPipelines.Count);
+            Assert.Equal(40, ShippedLayouts.Count);
+            Assert.Equal(37, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

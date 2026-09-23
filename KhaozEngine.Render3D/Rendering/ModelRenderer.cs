@@ -582,6 +582,18 @@ namespace KhaozEngine.Render3D.Rendering
         public void BeginShadowCascadeRigidDissolveInverted(IGpuCommandList cl, int cascade) =>
             _shadowMap.BeginCascadeRigidDissolveInverted(cl, cascade);
 
+        /// <summary>Bind cascade <paramref name="cascade"/> on an ALPHA-CUTOUT depth pipeline (issue #15), for the
+        /// spans of a MASK mesh. <paramref name="inverted"/> picks the issue #391 inverted dither. Each span binds its
+        /// mesh's albedo with <see cref="BindShadowCutoutMaterial"/>. Switch back with
+        /// <see cref="BeginShadowCascadeRigid"/>.</summary>
+        public void BeginShadowCascadeRigidCutout(IGpuCommandList cl, int cascade, bool inverted) =>
+            _shadowMap.BeginCascadeRigidCutout(cl, cascade, inverted);
+
+        /// <summary>Bind one MASK caster's cutout set for the cutout pipeline. Forwards to
+        /// <see cref="ShadowMapRenderer.BindCutoutMaterial"/>.</summary>
+        public void BindShadowCutoutMaterial(IGpuCommandList cl, IGpuResourceSet cutoutMaterial) =>
+            _shadowMap.BindCutoutMaterial(cl, cutoutMaterial);
+
         /// <summary>Reset the scissor to full after the cascaded depth pass. Call once after all cascades are drawn.</summary>
         public void EndShadowPass(IGpuCommandList cl) => _shadowMap.EndDepthPass(cl);
 

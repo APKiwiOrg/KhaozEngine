@@ -491,7 +491,8 @@ namespace KhaozEngine.Render3D
             public readonly TextureHandle Roughness;
             /// <summary>Alpha-cutout threshold: 0 = OPAQUE (no clip), else the MASK cutoff. The model fragment
             /// discards a texel whose albedo alpha is below this, so a foliage/leaf-card texture renders as its
-            /// silhouette instead of a solid quad. OPAQUE (0) is byte-identical to the pre-cutout render.</summary>
+            /// silhouette instead of a solid quad, and with an albedo bound the key light's shadow pass cuts it out
+            /// too. OPAQUE (0) is byte-identical to the pre-cutout render.</summary>
             public readonly float AlphaCutoff;
             public SurfaceMaps(TextureHandle albedo, TextureHandle normal = default, TextureHandle roughness = default,
                 float alphaCutoff = 0f)
@@ -554,7 +555,7 @@ namespace KhaozEngine.Render3D
                 throw;
             }
             return LoadMeshInternal(mesh, material, outlineMaterial, alphaCutoff: maps.AlphaCutoff,
-                outlineNormals: outlineNormals);
+                outlineNormals: outlineNormals, cutoutAlbedo: a);
         }
 
         /// <summary>Upload a mesh and draw it through the splat-terrain pipeline with <paramref name="material"/>
@@ -2358,6 +2359,7 @@ namespace KhaozEngine.Render3D
                     mesh.Ib.Dispose();
                     mesh.MaterialSet?.Dispose();
                     mesh.OutlineMaterialSet?.Dispose();
+                    mesh.ShadowCutoutSet?.Dispose();
                 }
             foreach (var m in _skinnedMeshes)
                 if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); e.SkinnedMaterialSet?.Dispose(); }

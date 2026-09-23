@@ -47,6 +47,11 @@ namespace KhaozEngine.Render3D
     /// the whole mask at every t while each end stays continuous with the single-half draws that bracket the band.
     /// </para>
     /// <para>
+    /// A MASK caster (a leaf card, issue #15) is not a fourth kind: whether a mesh alpha-tests is fixed at load, so
+    /// the pass reads it off the mesh and <see cref="ShadowDepthSelection"/> routes that mesh's spans through a
+    /// cutout pipeline, whatever their kind. Opaque meshes keep the depth-only pipeline.
+    /// </para>
+    /// <para>
     /// Everything here classifies in ABSOLUTE space and reads the already-uploaded instance buffer, so the depth
     /// pass still costs no second upload. A frame that queues no dissolve and opts nothing out classifies every
     /// instance <see cref="ShadowCastKind.Opaque"/>, produces exactly one span per mesh run, and issues the same
@@ -311,9 +316,11 @@ namespace KhaozEngine.Render3D
         /// built): terrain (splat meshes) casts only when the scene set <see cref="TerrainCastsShadows"/>, and
         /// nothing the consumer opted out of ever casts. Terrain always RECEIVES via the shared lighting block,
         /// whichever way that flag is set.
-        /// A dissolving span switches to the dissolve-aware depth pipeline (or its inverted sibling, for the merged
-        /// half of an HLOD crossfade) so its shadow erodes with its mesh, and the plain pipeline is re-bound before
-        /// the skinned casters, which never dissolve in the depth pass. NEVER
+        /// Every span takes the pipeline <see cref="ShadowDepthSelection"/> names for it, switched only when it differs
+        /// from the one bound: a dissolving span takes the dissolve-aware pipeline (or its inverted sibling, for the
+        /// merged half of an HLOD crossfade) so its shadow erodes with its mesh, and a span of a MASK mesh takes a
+        /// cutout pipeline so its shadow is its silhouette (issue #15). The plain pipeline is re-bound before the
+        /// skinned casters, which never dissolve in the depth pass. NEVER
         /// camera-frustum-culled - every entry in <c>_cpuSkinnedDraws</c> is drawn unconditionally (an entry only got
         /// there because it is visible to the main pass, the shadow pass, or both - see
         /// <see cref="ClassifySkinnedVisibility"/>). The receiver tail is set separately and always (even on a
@@ -341,20 +348,26 @@ namespace KhaozEngine.Render3D
                 // The span list this cascade is about to walk, counted here rather than derived later, so the
                 // instrument reports the list the loop actually iterated (issue #410).
                 _shadowPassRigidSpans[c] = spansPerCascade[c].Count;
-                // Which of the two depth pipelines is bound right now. Switched only when a span's kind differs from
-                // the last one (the same pattern the main pass's dissolve draws use), so an all-opaque frame binds
-                // once per cascade exactly as before.
-                ShadowCastKind bound = ShadowCastKind.Opaque;
+                // Which depth pipeline is bound right now. Switched only when a draw's variant differs from the last
+                // one (the same pattern the main pass's dissolve draws use), so an all-opaque frame binds once per
+                // cascade exactly as before, and a cutout set is rebound only when the mesh or the pipeline changes.
+                ShadowDepthVariant bound = ShadowDepthVariant.Opaque;
+                IGpuResourceSet? boundCutout = null;
                 foreach (ShadowCasterSpan span in spansPerCascade[c])
                 {
                     var m = _meshes[span.Index];
                     if (m is not { } mesh) continue;   // unloaded between the span build and here: skip its slice
-                    if (span.Kind != bound)
+                    ShadowDepthVariant variant = ShadowDepthSelection.ForRigidSpan(span.Kind, mesh.CutsOutShadow);
+                    if (variant != bound)
                     {
-                        if (span.Kind == ShadowCastKind.Dissolving) _model.BeginShadowCascadeRigidDissolve(cl, c);
-                        else if (span.Kind == ShadowCastKind.DissolvingInverted) _model.BeginShadowCascadeRigidDissolveInverted(cl, c);
-                        else _model.BeginShadowCascadeRigid(cl, c);
-                        bound = span.Kind;
+                        BeginRigidDepthVariant(cl, c, variant);
+                        bound = variant;
+                        boundCutout = null;
+                    }
+                    if (mesh.CutsOutShadow && !ReferenceEquals(boundCutout, mesh.ShadowCutoutSet))
+                    {
+                        _model.BindShadowCutoutMaterial(cl, mesh.ShadowCutoutSet!);
+                        boundCutout = mesh.ShadowCutoutSet;
                     }
                     _model.DrawShadowCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat, span.Start, span.Count);
                     _shadowPassRigidDraws++;
@@ -363,8 +376,8 @@ namespace KhaozEngine.Render3D
                 if (!UseGpuSkinning && _cpuSkinnedDraws.Count > 0)
                 {
                     // The skinned instance stream carries no dissolve, but bind the plain pipeline back anyway so the
-                    // skinned casters never depend on which kind the last rigid span happened to leave bound.
-                    if (bound != ShadowCastKind.Opaque) _model.BeginShadowCascadeRigid(cl, c);
+                    // skinned casters never depend on which variant the last rigid span happened to leave bound.
+                    if (bound != ShadowDepthVariant.Opaque) _model.BeginShadowCascadeRigid(cl, c);
                     for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
                     {
                         var dr = _cpuSkinnedDraws[d];
@@ -409,6 +422,21 @@ namespace KhaozEngine.Render3D
                 }
             }
             _model.EndShadowPass(cl);
+        }
+
+        /// <summary>Bind cascade <paramref name="cascade"/> on the rigid depth pipeline <paramref name="variant"/>
+        /// names (every rigid and CPU-skinned variant: the skinned GPU pipelines bind through
+        /// <c>BindShadowCascadeSkinned</c>).</summary>
+        void BeginRigidDepthVariant(IGpuCommandList cl, int cascade, ShadowDepthVariant variant)
+        {
+            switch (variant)
+            {
+                case ShadowDepthVariant.Dissolve: _model.BeginShadowCascadeRigidDissolve(cl, cascade); break;
+                case ShadowDepthVariant.DissolveInverted: _model.BeginShadowCascadeRigidDissolveInverted(cl, cascade); break;
+                case ShadowDepthVariant.Cutout: _model.BeginShadowCascadeRigidCutout(cl, cascade, inverted: false); break;
+                case ShadowDepthVariant.CutoutInverted: _model.BeginShadowCascadeRigidCutout(cl, cascade, inverted: true); break;
+                default: _model.BeginShadowCascadeRigid(cl, cascade); break;
+            }
         }
     }
 }

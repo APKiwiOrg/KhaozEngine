@@ -75,6 +75,14 @@ namespace KhaozEngine.Render3D.Rendering
         // binds it. Shares _dissolveSet (same UBO window) - only the pipeline differs.
         readonly IGpuShaderSet _dissolveInvertedShaders;
 
+        // Alpha-cutout depth pipelines (issue #15): the dissolve pipelines' vertex extended with the cutout
+        // interpolants, and a fragment that also alpha-tests the caster's albedo. Bound ONLY for the spans of a MASK
+        // mesh that has an albedo texture, so an opaque caster never samples a texture in this pass. They share
+        // _dissolveSet (same UBO window), and add a per-mesh set 1 { Albedo, Samp } built by CreateCutoutMaterialSet.
+        readonly IGpuShaderSet _cutoutShaders;
+        readonly IGpuShaderSet _cutoutInvertedShaders;
+        readonly IGpuResourceLayout _cutoutMaterialLayout;   // set 1: the caster's albedo + sampler, fragment only
+
         // GPU-skinning depth pipeline (mirrors _pipeline for skinned casters) + its light-matrix grow-with-retire buffer.
         readonly IGpuShaderSet _skinnedShaders;
         readonly IGpuResourceLayout _skinnedLayout;   // set 0: { LightMvp } dynamic UBO, vertex only
@@ -130,6 +138,13 @@ namespace KhaozEngine.Render3D.Rendering
             _dissolveInvertedShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveInvertedFrag);
             _dissolveSet = f.CreateResourceSet(new GpuResourceSetDescription(_layout, new GpuBufferRange(_lightUbo, 0, CascadeSlotBytes)));
 
+            // Cutout depth shaders + the per-mesh albedo layout their fragment samples at set 1.
+            _cutoutShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthCutoutVert, ShaderSources.ShadowDepthCutoutFrag);
+            _cutoutInvertedShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthCutoutVert, ShaderSources.ShadowDepthCutoutInvertedFrag);
+            _cutoutMaterialLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("Albedo", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+
             // GPU-skinning depth shaders/layout (the fragment is the shared ShadowDepthFrag). Set 0 = { LightMvp }
             // dynamic UBO, vertex only, and set 1 = the shared per-caster palette. Built per shadow layout.
             _skinnedShaders = f.CreateShadersFromSpirv(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag);
@@ -173,6 +188,8 @@ namespace KhaozEngine.Render3D.Rendering
             IGpuPipeline? pipeline = null;
             IGpuPipeline? dissolvePipeline = null;
             IGpuPipeline? dissolveInvertedPipeline = null;
+            IGpuPipeline? cutoutPipeline = null;
+            IGpuPipeline? cutoutInvertedPipeline = null;
             IGpuPipeline? skinnedPipeline = null;
             try
             {
@@ -184,13 +201,18 @@ namespace KhaozEngine.Render3D.Rendering
                 pipeline = BuildPipeline(f, framebuffer.Outputs);
                 dissolvePipeline = BuildPipeline(f, framebuffer.Outputs, dissolve: true);
                 dissolveInvertedPipeline = BuildPipeline(f, framebuffer.Outputs, dissolve: true, invertedDissolve: true);
+                cutoutPipeline = BuildPipeline(f, framebuffer.Outputs, dissolve: true, cutout: true);
+                cutoutInvertedPipeline = BuildPipeline(f, framebuffer.Outputs, dissolve: true, invertedDissolve: true, cutout: true);
                 skinnedPipeline = BuildSkinnedPipeline(f, framebuffer.Outputs);
                 return new ShadowLayoutReplacement(res, count, atlas, depthStencil, framebuffer, pipeline,
-                    dissolvePipeline, dissolveInvertedPipeline, skinnedPipeline);
+                    dissolvePipeline, dissolveInvertedPipeline, cutoutPipeline, cutoutInvertedPipeline,
+                    skinnedPipeline);
             }
             catch
             {
                 skinnedPipeline?.Dispose();
+                cutoutInvertedPipeline?.Dispose();
+                cutoutPipeline?.Dispose();
                 dissolveInvertedPipeline?.Dispose();
                 dissolvePipeline?.Dispose();
                 pipeline?.Dispose();
@@ -248,8 +270,10 @@ namespace KhaozEngine.Render3D.Rendering
         // stride - is identical, so a span drawn through either records the same depth when the dissolve is 0.
         // <paramref name="invertedDissolve"/> picks the issue #391 fragment that keeps what the plain dissolve
         // fragment discards (the complementary half of an HLOD crossfade); it is meaningless without dissolve.
+        // <paramref name="cutout"/> (issue #15, with dissolve) swaps in the alpha-cutout shader set and adds the
+        // per-mesh albedo layout at set 1. The vertex and instance layouts are the dissolve variant's.
         IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription outputs, bool dissolve = false,
-            bool invertedDissolve = false)
+            bool invertedDissolve = false, bool cutout = false)
         {
             // Slot 0: per-vertex geometry (locations 0..4) - same layout the model pass uses, so the shared model
             // vertex buffer binds unchanged (only Position is read).
@@ -303,8 +327,9 @@ namespace KhaozEngine.Render3D.Rendering
                 // (issue #598, 17.39.0), which it was not when this pass was written.
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.Front, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _layout },
-                ShaderSet = dissolve ? (invertedDissolve ? _dissolveInvertedShaders : _dissolveShaders) : _shaders,
+                ResourceLayouts = cutout ? new[] { _layout, _cutoutMaterialLayout } : new[] { _layout },
+                ShaderSet = cutout ? (invertedDissolve ? _cutoutInvertedShaders : _cutoutShaders)
+                    : dissolve ? (invertedDissolve ? _dissolveInvertedShaders : _dissolveShaders) : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = outputs,
             });
@@ -380,6 +405,28 @@ namespace KhaozEngine.Render3D.Rendering
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
         }
+
+        /// <summary>As <see cref="BeginCascadeRigidDissolve"/>, but binds an ALPHA-CUTOUT depth pipeline (issue #15)
+        /// for the spans of a MASK mesh: <paramref name="inverted"/> picks the fragment carrying the issue #391
+        /// inverted dither. Same cascade scissor and light slot. Each span then binds its mesh's albedo with
+        /// <see cref="BindCutoutMaterial"/> before drawing.</summary>
+        public void BeginCascadeRigidCutout(IGpuCommandList cl, int cascade, bool inverted)
+        {
+            cl.SetPipeline(inverted ? _graph.CutoutInvertedPipeline : _graph.CutoutPipeline);
+            SetCascadeScissor(cl, cascade);
+            cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
+        }
+
+        /// <summary>Bind one MASK caster's albedo set (from <see cref="CreateCutoutMaterialSet"/>) at set 1 for the
+        /// cutout pipeline bound by <see cref="BeginCascadeRigidCutout"/>.</summary>
+        public void BindCutoutMaterial(IGpuCommandList cl, IGpuResourceSet cutoutMaterial)
+            => cl.SetGraphicsResourceSet(1, cutoutMaterial);
+
+        /// <summary>Build a MASK caster's cutout set: its <paramref name="albedo"/> and the device's linear sampler,
+        /// the pair the colour pass alpha-tests. It names no shadow resource, so a shadow layout replacement never
+        /// has to rebuild it. Owned by the caller (Scene3D keeps one per MASK mesh and frees it with the mesh).</summary>
+        public IGpuResourceSet CreateCutoutMaterialSet(IGpuTexture albedo)
+            => _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_cutoutMaterialLayout, albedo, _gd.LinearSampler));
 
         void SetCascadeScissor(IGpuCommandList cl, int cascade)
         {
@@ -487,6 +534,9 @@ namespace KhaozEngine.Render3D.Rendering
             _dissolveSet.Dispose();
             _dissolveShaders.Dispose();
             _dissolveInvertedShaders.Dispose();
+            _cutoutShaders.Dispose();
+            _cutoutInvertedShaders.Dispose();
+            _cutoutMaterialLayout.Dispose();
             _lightUbo.Dispose();
             _layout.Dispose();
             _shaders.Dispose();
@@ -501,7 +551,8 @@ namespace KhaozEngine.Render3D.Rendering
         {
             internal ShadowLayoutReplacement(int resolution, int cascadeCount, IGpuTexture shadowTexture,
                 IGpuTexture depthStencil, IGpuFramebuffer framebuffer, IGpuPipeline pipeline,
-                IGpuPipeline dissolvePipeline, IGpuPipeline dissolveInvertedPipeline, IGpuPipeline skinnedPipeline)
+                IGpuPipeline dissolvePipeline, IGpuPipeline dissolveInvertedPipeline, IGpuPipeline cutoutPipeline,
+                IGpuPipeline cutoutInvertedPipeline, IGpuPipeline skinnedPipeline)
             {
                 Resolution = resolution;
                 CascadeCount = cascadeCount;
@@ -511,6 +562,8 @@ namespace KhaozEngine.Render3D.Rendering
                 Pipeline = pipeline;
                 DissolvePipeline = dissolvePipeline;
                 DissolveInvertedPipeline = dissolveInvertedPipeline;
+                CutoutPipeline = cutoutPipeline;
+                CutoutInvertedPipeline = cutoutInvertedPipeline;
                 SkinnedPipeline = skinnedPipeline;
             }
 
@@ -522,11 +575,15 @@ namespace KhaozEngine.Render3D.Rendering
             internal IGpuPipeline Pipeline { get; }
             internal IGpuPipeline DissolvePipeline { get; }
             internal IGpuPipeline DissolveInvertedPipeline { get; }
+            internal IGpuPipeline CutoutPipeline { get; }
+            internal IGpuPipeline CutoutInvertedPipeline { get; }
             internal IGpuPipeline SkinnedPipeline { get; }
 
             public void Dispose()
             {
                 SkinnedPipeline.Dispose();
+                CutoutInvertedPipeline.Dispose();
+                CutoutPipeline.Dispose();
                 DissolveInvertedPipeline.Dispose();
                 DissolvePipeline.Dispose();
                 Pipeline.Dispose();

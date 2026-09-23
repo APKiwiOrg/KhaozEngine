@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 360
+# Rows: 376
 Beam.fragment.hlsl 763e8e2481a2a78f468f6d62ed5e3a24df6ffd7ad4d0e8c280ac5ad953b177fe 1809
 Beam.fragment.msl f8bb4e895ae8c1794baa7115089311abef23c86d22b47d85f68e225dae39ad99 1493
 Beam.fragment.spirv 7023f2b860be99c43999b4be78b8fe5cbdba1e201d451dd77c137a80224eba79 2724
@@ -242,6 +242,22 @@ ShadowDepth.layout.msl e8eed1a2f51170c13adbeff900db03067aa2d3a8ce527fef156b19efa
 ShadowDepth.vertex.hlsl 50ec6d5065aade350b949d7e16ea2d0f48f4d0da1b970004cb491b01089a0c66 1726
 ShadowDepth.vertex.msl 1d9d29607f966d9696e2ef972d195cd86eb5bae063d1a938fea193a5d0bc71e3 1153
 ShadowDepth.vertex.spirv 8c61e2cc398d5715515ec0a94d795a6860b89944ff901cd2076276ea586251dd 2112
+ShadowDepthCutout.fragment.hlsl 4caf2f230f0f0fb1b5f9a9749a877aac7c6136f5ec3494bdda34eabbdabad5f6 2962
+ShadowDepthCutout.fragment.msl ad2b229db3bf3e0f80790436c49513a1ba95a24cb97a992309ee0c544074e20b 2660
+ShadowDepthCutout.fragment.spirv b128be61f51b8780591dd1e89dfa154e87debf5b0bfad964fc6573fda7717f4b 3268
+ShadowDepthCutout.layout.hlsl 667b606dc744efbdb748c59ab315ff8363b13a43769c7d9ce0de79b77cdc529d 18 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+ShadowDepthCutout.layout.msl 667b606dc744efbdb748c59ab315ff8363b13a43769c7d9ce0de79b77cdc529d 18 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+ShadowDepthCutout.vertex.hlsl cab067b5fc972eb96ce3f56fd00a92e0b265ed53cedff3a402d0bc2d321bca50 2525
+ShadowDepthCutout.vertex.msl 3f6404b542a54734bfcf9011e025d50c7dd5d69f930a218d61dda1225680bfc0 1598
+ShadowDepthCutout.vertex.spirv 72fae092c945629b7ecf74d45619edd689bff71ca4aabd36fffe7f825c8a4708 2808
+ShadowDepthCutoutInverted.fragment.hlsl 67ef7cc04c16711315245d9625fcbf723cd7c280b0d9bc815a9b3445693e1a59 2679
+ShadowDepthCutoutInverted.fragment.msl 5268a730cd56b6b5047f5a4c55d7fa9bd7f05d8ce410d6003e435bb1f2b0d781 2373
+ShadowDepthCutoutInverted.fragment.spirv 81d80c6fc0303dcdd7c827290ae907525bf62a0affbc99921b7b1ef3c733faf2 3036
+ShadowDepthCutoutInverted.layout.hlsl 667b606dc744efbdb748c59ab315ff8363b13a43769c7d9ce0de79b77cdc529d 18 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+ShadowDepthCutoutInverted.layout.msl 667b606dc744efbdb748c59ab315ff8363b13a43769c7d9ce0de79b77cdc529d 18 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+ShadowDepthCutoutInverted.vertex.hlsl cab067b5fc972eb96ce3f56fd00a92e0b265ed53cedff3a402d0bc2d321bca50 2525
+ShadowDepthCutoutInverted.vertex.msl 3f6404b542a54734bfcf9011e025d50c7dd5d69f930a218d61dda1225680bfc0 1598
+ShadowDepthCutoutInverted.vertex.spirv 72fae092c945629b7ecf74d45619edd689bff71ca4aabd36fffe7f825c8a4708 2808
 ShadowDepthDissolve.fragment.hlsl 571411ac637995ef45d1a438640bd1a8ab042592ebfac1479d503a0423bf3160 2506
 ShadowDepthDissolve.fragment.msl 47e1fd5e5526eac4a2a76ea765e5825a057e2502bada97dceabb74ae2b6d7f12 2276
 ShadowDepthDissolve.fragment.spirv e3adb573acfd28f97e463b68fb62ef78c3ba39d77a6ce0bc62d2e5422b60dd55 2720

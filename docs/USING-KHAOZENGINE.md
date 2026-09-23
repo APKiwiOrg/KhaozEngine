@@ -4750,6 +4750,24 @@ The report escapes backslash, tab, carriage return, and line feed in names. It u
 LF line endings, and one final LF. Repeated UTF-8 encodings of the same inputs are byte-identical. Non-finite
 phases, rotations, or requested positions are rejected. Both hygiene and reporting are pure and GPU-free.
 
+Use `PoseBlend.BlendInto` to blend a caller-owned local pose buffer in place toward another. With no mask, every
+node uses the finite global weight. With a `BoneMask`, each node uses the global weight multiplied by its mask
+weight, clamped to `[0, 1]`.
+
+```csharp
+JointPose[] blendedLocals = (JointPose[])baseLocals.Clone();
+BoneMask leftLeg = BoneMask.Subtree(skeleton, "Thigh.L", 1f);
+
+PoseBlend.BlendInto(blendedLocals, inspectedLocals, weight: 0.35f, mask: leftLeg);
+probe.SetLocals(blendedLocals);
+```
+
+Source and destination spans must have equal length, and a mask must contain one weight per pose node. Zero
+effective weight preserves the destination exactly. Unit effective weight copies the source exactly. Intermediate
+weights interpolate translation and scale componentwise and use normalized shortest-arc spherical interpolation
+for rotation. Reusing the buffers and mask keeps warmed steady-state calls free of managed allocation. The helper
+is pure and needs no mesh, graphics device, or test framework.
+
 Each frame, feed it the movement state your controller already computes, then draw with its pose
 (the bone palette `DrawSkinned` consumes - it is joint-WORLD, the loader-attached skeleton composes it):
 

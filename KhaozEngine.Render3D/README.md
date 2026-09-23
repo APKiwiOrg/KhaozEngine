@@ -949,6 +949,11 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     order. Each phase contains every node's sampled local rotation in skeleton order, followed by requested
     model-space positions. Phase `1` preserves the authored end key. Names are escaped and floats use invariant
     fixed-six precision, making repeated UTF-8 encodings byte-identical.
+  - `Animation.Inspection.PoseBlend.BlendInto` blends one caller-owned local pose buffer toward another. Its finite
+    global weight is multiplied by an optional `BoneMask` per node and clamped to `[0, 1]`. Zero effective weight
+    leaves the destination exactly unchanged, unit effective weight copies the source exactly, and intermediate
+    weights lerp translation and scale while rotation follows the normalized shortest spherical arc. Warmed calls
+    allocate no managed memory and need no mesh, graphics device, or test framework.
   - `LayeredAnimator` / `AnimationLayer` / `BoneMask` / `LayerMode` - N animation layers composited into one final
     skeleton pose: a base locomotion layer below, masked `Override` / `Additive` action layers above (attack while
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +

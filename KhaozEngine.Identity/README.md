@@ -19,6 +19,7 @@ Pluggable player-identity seam: provider sign-in + server-side verified-subject 
 - **IdentitySession** - The client-side orchestrator: restores the cached session at launch (`RequiresSignIn` / `OfflineGrace` / `SignedIn`), drives interactive sign-in, renews a lapsed credential silently via `RefreshCredentialAsync`, and completes the exchange handshake via `AttachSessionTokenAsync`
 - **CredentialRefreshResult** / **CredentialRefreshOutcome** - The result of `RefreshCredentialAsync`: `Refreshed` (a new rotated credential, already persisted) or `Rejected` (a dead chain, fall back to interactive sign-in)
 - **SignInException** - The shared base every provider backend's sign-in failure derives from, so cross-provider code catches one type instead of one per backend
+- **AuthExchangeRequest** / **AuthExchangeResponse** / **AuthExchangeStatuses** - The `/auth/exchange` wire contract a client and an auth service share, so the JSON shape cannot drift between them
 
 Provider implementations (OIDC, Discord) are opt-in sibling packages. This core package depends on
 `KhaozEngine.Diagnostics`, `KhaozEngine.Platform` and `KhaozEngine.Serialization`. The loopback listener uses only
@@ -60,6 +61,27 @@ if (verified is VerifiedIdentity identity)
 `AttachSessionTokenAsync` persists the server-verified subject and display name. A later `RestoreAsync` returns
 both values for `SignedIn` and `OfflineGrace`, including after a provider credential refresh. Older cache JSON
 without `DisplayName` remains valid and restores it as null.
+
+## The `/auth/exchange` wire contract
+
+`AuthExchangeRequest(Provider, AccessToken)` is the body a client posts, and `AuthExchangeResponse` is the body the
+service answers with. `Status` is one of the `AuthExchangeStatuses` wire tokens (`ok`, `not_whitelisted`, `banned`,
+`invalid_credential`, `unavailable`), and every other member is null unless the exchange got far enough to know it.
+`BanReason` and `BanExpiresAtUtc` are set only on `banned`, and only when the service opts in to ban details.
+`RetryLater` (`retry_later`) is never sent: a client synthesizes it from a bare 429.
+
+```json
+{"provider":"discord","accessToken":"..."}
+{"status":"ok","sessionToken":"v2...","expiresAtUtc":"2026-09-30T12:00:00+00:00","subject":"discord:80351110224678912","displayName":"Wren","banReason":null,"banExpiresAtUtc":null}
+```
+
+The JSON names are pinned on the records, so the wire does not depend on the caller's serializer options. The shape
+is exactly what the engine's exchange writes and what the games' clients read, so a client written against an older
+copy of these records reads it unchanged, skipping any member it does not know. The records' `ToString` never prints
+the credential, the session token or the account.
+
+The decision behind the endpoint is `KhaozEngine.Identity.Exchange`, an opt-in package for the auth service. A
+client needs only these records.
 
 ## Telling a refused credential from a provider outage
 

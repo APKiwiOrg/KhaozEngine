@@ -5,7 +5,7 @@ using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering;
 
-/// <summary>Owns the fixed clustered-light index buffer shared by every lit receiver.</summary>
+/// <summary>Owns the fixed-size clustered-light index buffer shared by every lit receiver.</summary>
 internal sealed partial class ModelRenderer
 {
     PointLightClusterBuilder _pointLightClusters = null!;
@@ -56,7 +56,9 @@ internal sealed partial class ModelRenderer
         _pointLightClusters.Build(lights, correctedViewProjection, eyeRender, forward, projection, renderOrigin);
         _clusterDepth = _pointLightClusters.Depth;
         _clusterCamera = _pointLightClusters.CameraForward;
-        cl.UpdateBuffer<uint>(_pointLightClusterBuffer, 0, _pointLightClusters.Image);
+        // Only the used prefix, the headers plus this frame's indices, rather than the whole 940,032-byte image.
+        cl.UpdateBuffer<uint>(_pointLightClusterBuffer, 0,
+            new ReadOnlySpan<uint>(_pointLightClusters.Image, 0, _pointLightClusters.UsedUIntCount));
         _frameImageDirty = true;
     }
 }

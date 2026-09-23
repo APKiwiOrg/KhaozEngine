@@ -313,8 +313,14 @@ float samplePointShadow(texture2D atlas, sampler samp, vec3 toL, float dist, flo
 
 // pointAtlas/pointSamp are parameters for the same reason sampleKeyShadow's are: their set/binding differ per
 // fragment and GLSL cannot reference a fragment's own bindings from a shared function.
-bool pointLightClusterForFragment(vec3 worldPos, out uint clusterBase) {
-    clusterBase = 0u;
+//
+// THE CLUSTER IMAGE (PointLightClusterBuilder, issue #1112) is one uvec4 buffer in two regions. The first 864 uvec4
+// hold one header uint per cluster, four to an element: the low 8 bits are the cluster's light count, 255 meaning it
+// overflowed and stores nothing, and the high 24 bits are where its first index sits in the index region. The index
+// region follows at uvec4 864, four indices to an element, each cluster's run contiguous and in ascending submitted
+// order, so a clustered fragment sums the same lights in the same order the full list would.
+bool pointLightClusterForFragment(vec3 worldPos, out uint clusterIndex) {
+    clusterIndex = 0u;
     if (ClusterDepth.w < -0.5) return false;
 
     vec4 clip = ViewProj * vec4(worldPos, 1.0);
@@ -345,8 +351,7 @@ bool pointLightClusterForFragment(vec3 worldPos, out uint clusterBase) {
     int tileX = clamp(int(floor((ndc.x * 0.5 + 0.5) * 16.0)), 0, 15);
     int tileY = clamp(int(floor((ndc.y * 0.5 + 0.5) * 9.0)), 0, 8);
     int tileZ = clamp(int(floor(clamp(zNorm, 0.0, 1.0) * 24.0)), 0, 23);
-    int cluster = (tileZ * 9 + tileY) * 16 + tileX;
-    clusterBase = uint(cluster * 17);
+    clusterIndex = uint((tileZ * 9 + tileY) * 16 + tileX);
     return true;
 }
 
@@ -369,19 +374,24 @@ void computeLighting(texture2D pointAtlas, sampler pointSamp, vec3 N, vec3 world
     int npl = int(Params.y);
     if (npl <= 0) return;
 
-    uint clusterBase;
-    bool fullPointLightFallback = !pointLightClusterForFragment(worldPos, clusterBase);
-    uvec4 clusterHeader = uvec4(0u);
+    uint clusterIndex;
+    bool fullPointLightFallback = !pointLightClusterForFragment(worldPos, clusterIndex);
+    uint clusterCount = 0u;
+    uint clusterOffset = 0u;
     if (!fullPointLightFallback) {
-        clusterHeader = PointLightClusters[clusterBase];
-        if (clusterHeader.y != 0u || clusterHeader.x > 64u) fullPointLightFallback = true;
+        uvec4 packedHeaders = PointLightClusters[clusterIndex >> 2u];
+        uint clusterHeader = packedHeaders[int(clusterIndex & 3u)];
+        clusterCount = clusterHeader & 255u;
+        clusterOffset = clusterHeader >> 8u;
+        if (clusterCount > 64u) fullPointLightFallback = true;
     }
-    int candidateCount = fullPointLightFallback ? npl : int(clusterHeader.x);
+    int candidateCount = fullPointLightFallback ? npl : int(clusterCount);
     for (int candidate = 0; candidate < candidateCount; candidate++) {
         int clusteredLightIndex = 0;
         if (!fullPointLightFallback) {
-            uvec4 packedIndices = PointLightClusters[clusterBase + 1u + uint(candidate / 4)];
-            clusteredLightIndex = int(packedIndices[candidate & 3]);
+            uint indexSlot = clusterOffset + uint(candidate);
+            uvec4 packedIndices = PointLightClusters[864u + (indexSlot >> 2u)];
+            clusteredLightIndex = int(packedIndices[int(indexSlot & 3u)]);
         }
         int lightIndex = fullPointLightFallback ? candidate : clusteredLightIndex;
         if (lightIndex < 0 || lightIndex >= npl) continue;

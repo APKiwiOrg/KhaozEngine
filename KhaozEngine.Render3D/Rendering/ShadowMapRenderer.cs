@@ -415,7 +415,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.DrawIndexed((uint)indexCount, 1, 0, baseVertex, drawIndex);
         }
 
-        // ---- GPU-skinning shadow casters (opt-in). Each caster still gets ONE slot per cascade, because its
+        // ---- GPU-skinning shadow casters (the default). Each caster still gets ONE slot per cascade, because its
         //      LightMvp folds that cascade's own column-transformed matrix, but the slot is that matrix ALONE since
         //      #407. The bones live once per caster in the shared SkinnedBonePalette, bound at set 1. ----
 

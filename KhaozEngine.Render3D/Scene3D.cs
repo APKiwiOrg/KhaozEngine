@@ -160,10 +160,9 @@ namespace KhaozEngine.Render3D
         // Per-frame bone palette, slot-packed: draw i's composed matrices live at [i*MaxBonesPerDraw ..], padded to
         // the per-draw window so each draw's dynamic-offset bind selects exactly its slice. Cleared each Begin().
         readonly List<Matrix4x4> _boneMatrices = new();
-        // CPU skinning (the bone-buffer GPU read corrupted past element 0 in the windowed Veldrid/Metal swapchain
-        // context, so skinned meshes are deformed on the CPU and drawn through the proven-clean no-bone model
-        // pipeline). _skinnedCpuVerts caches each loaded mesh's source vertices (parallel to _skinnedMeshes); the
-        // three reused lists are the per-frame deformed-vertex stream, the per-draw instance data, and the draw list.
+        // CPU skinning (UseGpuSkinning false): _skinnedCpuVerts caches each loaded mesh's source vertices (parallel to
+        // _skinnedMeshes). The three reused lists are the per-frame deformed-vertex stream, the per-draw instance
+        // data, and the draw list.
         readonly List<SkinnedVertex[]?> _skinnedCpuVerts = new();
         readonly List<ModelVertex> _cpuSkinnedVerts = new();
         readonly List<ModelRenderer.InstanceData> _cpuSkinnedInstances = new();
@@ -202,22 +201,21 @@ namespace KhaozEngine.Render3D
         public bool FrustumCulling { get; set; } = true;
 
         /// <summary>
-        /// Opt-in GPU skinning: when true, skinned draws are deformed on the GPU (the vertex shader blends the bone
-        /// palette) instead of on the CPU. Default <b>OFF</b>. Set 0 binding 0 is the shared frame block both stages
-        /// read, binding 1 the per-draw <c>{ Model; P }</c> the vertex reads at its dynamic offset, set 1 the
-        /// per-mesh material maps the fragment reads, and set 2 the caster's <c>{ bones[128] }</c>, a buffer the
-        /// SHADOW pass binds as well so a palette goes up once a frame rather than once per pass per cascade (#407).
-        /// Until #604 the frame block and a CPU-folded <c>Mvp</c> rode in that per-draw block too, so the pipeline
-        /// read one buffer, which is what the retired Veldrid Metal backend needed
-        /// (<c>GpuSkinningReproGpuTests</c>). The rest-pose vertex buffer uploads once at load.
-        /// Only the per-draw palette + matrices upload each frame, so the CPU cost is a palette pack, not a full
-        /// vertex deform - the win at MMO crowd scale. Rendering is pixel-parity with the CPU path (the shader mirrors
-        /// <see cref="SkinningMath.SkinVertex"/>), and the shadow depth pass mirrors the flag. It ships OFF because the
-        /// offscreen repro is necessary but not sufficient for the historical windowed swapchain context: flip it on
-        /// for a windowed A/B against CPU skinning before relying on it (see docs/USING-KHAOZENGINE.md). Flippable per
-        /// frame. A culled draw skips its palette upload just like the CPU path.
+        /// GPU skinning, on by default: skinned draws are deformed in the vertex shader from the bone palette instead
+        /// of on the CPU. Set 0 binding 0 is the shared frame block both stages read, binding 3 the per-draw
+        /// <c>{ Model; P }</c> the vertex reads at its dynamic offset, set 1 the per-mesh material maps the fragment
+        /// reads, and set 2 the caster's <c>{ bones[128] }</c>, a buffer the SHADOW pass binds as well so a palette
+        /// goes up once a frame (#407). The rest-pose vertex buffer uploads once at load, so a frame uploads only the
+        /// per-draw palettes and matrices rather than a full vertex deform, which is the win at crowd scale.
+        /// Pixel-parity with the CPU path (the shader mirrors <see cref="SkinningMath.SkinVertex"/>), and the shadow
+        /// depth pass mirrors the flag. Set it <c>false</c> for CPU skinning, which stays supported. Flippable per
+        /// frame. It used to default off, guarding a windowed swapchain corruption on the Veldrid Metal backend,
+        /// which was deleted in 18.0.0.
         /// </summary>
-        public bool UseGpuSkinning { get; set; }
+        public bool UseGpuSkinning { get; set; } = DefaultUseGpuSkinning;
+
+        /// <summary>The value <see cref="UseGpuSkinning"/> starts at on a new scene.</summary>
+        internal const bool DefaultUseGpuSkinning = true;
 
         // Per-instance visibility for the current frame's main pass, index-aligned to the grouped instance buffer
         // (_instanceData). Reused across frames (grown, never per-frame allocated). true = draw in the visible pass.
@@ -771,7 +769,7 @@ namespace KhaozEngine.Render3D
         /// handles fall back to the renderer defaults (white albedo / flat normal / zero roughness). Normal
         /// perturbation requires the mesh to carry tangents - skinned glTF via <see cref="GltfLoader.LoadSkinned"/>
         /// or <see cref="SkinnedMeshBuilder"/> output both compute them; a tangent-less skinned vertex is lit by its
-        /// geometric normal. The tangent rides the per-frame CPU skin deform so the TBN tracks the pose.</summary>
+        /// geometric normal. The tangent rides the skin deform on either skinning path, so the TBN tracks the pose.</summary>
         public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, SurfaceMaps maps)
         {
             IGpuTexture? a = maps.Albedo.IsValid ? _textures[maps.Albedo.ListIndex] : null;
@@ -1662,10 +1660,10 @@ namespace KhaozEngine.Render3D
             // Main-pass visibility is aligned to the grouped stream. Shadows retain offscreen casters.
             ComputeMainPassVisibility(camFrustum);
 
-            // Resolve the shadow tier + (when active) this frame's cascade fit BEFORE the CPU skin pass below, so an
+            // Resolve the shadow tier + (when active) this frame's cascade fit BEFORE the skinned recording below, so an
             // off-camera skinned draw's shadow-caster visibility can be decided up front (see
             // ClassifySkinnedVisibility): a character camera-culled from the main pass but still inside the shadow
-            // volume must still be CPU-skinned so its shadow lands on-screen. RenderShadowDepthPass (below) reuses the
+            // volume must still be recorded so its shadow lands on-screen. RenderShadowDepthPass (below) reuses the
             // fitted cascades instead of recomputing them, so the two passes can never disagree on the fit. Under the
             // frustum-slice fit no single cascade bounds the rest, so the caster-visibility test unions ALL cascades'
             // frustums (extracted here), and a degenerate camera (count 0) drops shadows for the frame.
@@ -1679,16 +1677,13 @@ namespace KhaozEngine.Render3D
                     _shadowFrustums[i] = FrustumPlanes.Extract(_cascadeCpuVpsAbsolute[i]);
             }
 
-            // CPU-skin each queued skinned draw into one concatenated stream + per-draw instance data (deformed on the
-            // CPU because the GPU bone-buffer read corrupted past element 0 in the windowed Veldrid/Metal swapchain
-            // context - only bones[0] survives; extensively bisected). Built here (before both passes) so the shadow
-            // depth pass and the model pass share the uploaded skinned buffers. SkinningMath.SkinVertex mirrors the
-            // shader blend exactly. A draw that is camera-culled AND (shadows off, or outside the shadow ortho
-            // volume too) is skipped entirely here - no skin, no upload, no draw in either pass. See
-            // ClassifySkinnedVisibility for why this can never drop a caster whose shadow would have been visible.
-            // UseGpuSkinning (opt-in, default off) swaps the CPU deform for the GPU palette path: no per-frame
-            // vertex skin/upload, only the per-draw UBO slots (world matrix, packed constants, palette). Both paths share the
-            // same visibility classification + counters, so DrawnSkinnedInstances / CulledSkinnedInstances match.
+            // Record each queued skinned draw before both passes, so the shadow depth pass and the model pass share
+            // what it uploads. UseGpuSkinning (the default) records the GPU palette path: no per-frame vertex skin or
+            // upload, only the per-draw UBO slots. With it off each draw is CPU-skinned into one concatenated stream
+            // plus per-draw instance data (SkinningMath.SkinVertex mirrors the shader blend exactly). A draw that is
+            // camera-culled AND (shadows off, or outside the shadow volume) is skipped entirely:
+            // no skin, no upload, no draw in either pass (see ClassifySkinnedVisibility). Both paths share that
+            // classification and its counters, so DrawnSkinnedInstances / CulledSkinnedInstances match.
             var skinnedItems = _skinnedInstances.Items;
             _cpuSkinnedVerts.Clear();
             _cpuSkinnedInstances.Clear();
@@ -1763,7 +1758,7 @@ namespace KhaozEngine.Render3D
             // into the ortho light-space cascade atlas, BEFORE the model pass, so the model + splat fragments sample it.
             // Off/Blob leave the shadow tail at strength 0, so the frame is byte-stable (no depth pass, the shader never
             // taps the atlas). Set the shadow tail BEFORE SetFrameUniforms (which uploads the whole frame UBO incl. that
-            // tail). shadowMapActive + the cascade fit were resolved above (before the CPU skin pass), so this reuses
+            // tail). shadowMapActive + the cascade fit were resolved above (before the skinned recording), so this reuses
             // the exact same matrices the skinned-visibility split was computed against.
             float shadowDepthMs = 0f, modelMs = 0f, transparentsMs = 0f, waterSyncMs = 0f, postMs = 0f;
             long timingStart = 0;
@@ -2376,7 +2371,7 @@ namespace KhaozEngine.Render3D
 
         /// <summary>A GPU-resident skinned mesh: its vertex/index buffers, index count, optional material set, the
         /// CPU-side inverse-bind matrices needed to compose per-frame bone palettes at DrawSkinned time, and its
-        /// rest-pose local <see cref="Bounds"/> (used to frustum-cull queued draws before the CPU skin pass -
+        /// rest-pose local <see cref="Bounds"/> (used to frustum-cull queued draws before they are recorded -
         /// see <see cref="ClassifySkinnedVisibility"/>).</summary>
         sealed class SkinnedMeshEntry
         {
@@ -2583,7 +2578,7 @@ namespace KhaozEngine.Render3D
         /// caster when its inflated sphere intersects every lateral and far plane of ANY cascade in
         /// <paramref name="shadowFrustums"/>. The near plane is excluded because depth clamping pancakes closer
         /// casters onto it. Under the frustum-slice fit the cascades do not nest, so their union is tested. Returns
-        /// (VisibleMain, VisibleShadow) - a draw needs CPU skinning + upload iff either is true. Pure
+        /// (VisibleMain, VisibleShadow) - a draw is recorded and uploaded iff either is true. Pure
         /// <see cref="MeshBounds"/> + <see cref="FrustumPlanes"/> arithmetic (both already unit-tested), no GPU,
         /// headless-testable.
         /// </summary>

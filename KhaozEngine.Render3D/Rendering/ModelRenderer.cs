@@ -58,7 +58,7 @@ namespace KhaozEngine.Render3D.Rendering
         internal const uint ClusterTailBytes = 32;                                             // two vec4
         internal const uint UboBytes = ClusterTailOffset + ClusterTailBytes;                   // 1328
 
-        // ---- GPU skinning (opt-in) PER-DRAW block geometry. The skinned pipeline's set 0 binding 3 is a
+        // ---- GPU skinning (the default) PER-DRAW block geometry. The skinned pipeline's set 0 binding 3 is a
         // dynamic-offset UBO laid out as { mat4 Model; mat4 P } (see ShaderSources.SkinnedModelVert): the two header
         // mats and nothing else. Each draw occupies a 256-byte-aligned slot selected by a per-draw dynamic offset
         // (the SpriteBatch view-proj slot pattern), so a whole crowd shares one grow-with-retire buffer.
@@ -182,11 +182,10 @@ namespace KhaozEngine.Render3D.Rendering
 
         IGpuBuffer? _instanceBuffer;
         uint _instanceCapacity;          // capacity in instances
-        // CPU-skinned path: skinned meshes are deformed on the CPU each frame and drawn through THIS no-bone model
-        // pipeline (the bone-buffer GPU read corrupted past element 0 in the windowed Veldrid/Metal swapchain context;
-        // CPU skinning + the proven-clean rigid path sidesteps it - see Scene3D's skinned block). One concatenated
-        // transient vertex stream (all skinned draws' deformed verts) + a parallel per-draw instance stream, both
-        // grown geometrically and retired like _instanceBuffer.
+        // CPU-skinned path (Scene3D.UseGpuSkinning = false): skinned meshes are deformed on the CPU each frame and
+        // drawn through THIS no-bone model pipeline. One concatenated transient vertex stream (all skinned draws'
+        // deformed verts) + a parallel per-draw instance stream, both grown geometrically and retired like
+        // _instanceBuffer.
         IGpuBuffer? _skinnedVertexBuffer; uint _skinnedVertexCapacity;     // capacity in ModelVertex
         IGpuBuffer? _skinnedInstanceBuffer; uint _skinnedInstanceCapacity; // capacity in InstanceData
 

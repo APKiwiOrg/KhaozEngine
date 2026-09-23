@@ -98,6 +98,7 @@ namespace KhaozEngine.Tests.Gpu
             IGpuDevice gd = ctx.GpuDevice;
             using var preview = new Render3DPreview(gd, W, H);
             preview.Scene.Post.Hdr.Enabled = false;   // LDR: keep the magenta separable from the green tube
+            preview.Scene.UseGpuSkinning = false;     // the CPU path, pinned now that GPU skinning is the default
             FrameLookingDown(preview.Scene);
 
             MeshHandle floor = preview.Scene.LoadMesh(MeshPrimitives.Tile(14f, 0.1f));

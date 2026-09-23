@@ -7,9 +7,10 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// GPU-level proof that skinned-draw frustum culling (Scene3D.RenderInternal's CPU-skin pass) never breaks
-    /// shadow correctness: a skinned character camera-culled from the main pass must still be CPU-skinned and
-    /// rendered into the light-space shadow map when it sits inside the shadow's own ortho volume. Mirrors
+    /// GPU-level proof that skinned-draw frustum culling (Scene3D.RenderInternal's skinned-visibility pass) never
+    /// breaks shadow correctness: a skinned character camera-culled from the main pass must still be recorded and
+    /// rendered into the light-space shadow map when it sits inside the shadow's own ortho volume, on the CPU and the
+    /// GPU skinning path alike. Mirrors
     /// <see cref="FrustumCullingGpuTests"/>'s rigid-instance proof, exercised through the skinned queue instead.
     /// Invariant tests (no committed golden): they assert relationships between renders, so they run on any
     /// backend without a baked reference. Gated on KE_GPU_TESTS like the goldens.
@@ -20,13 +21,16 @@ namespace KhaozEngine.Tests.Gpu
 
         static SkinnedGltfMesh Tube() => SkinnedMeshBuilder.BuildTube(0.5f, 2f, 8, 8, 4, Axis.Z);
 
-        [GpuFact]
-        public void OffCameraSkinnedCaster_IsCulledFromTheMainPass_YetStillWritesTheShadowMap()
+        [GpuTheory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void OffCameraSkinnedCaster_IsCulledFromTheMainPass_YetStillWritesTheShadowMap(bool gpuSkinning)
         {
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = ctx.GpuDevice;
             using var preview = new Render3DPreview(gd, W, H);
             Scene3D scene = preview.Scene;
+            scene.UseGpuSkinning = gpuSkinning;
 
             MeshHandle floor = scene.LoadMesh(MeshPrimitives.Tile(12f, 0.1f));
             SkinnedMeshHandle caster = scene.LoadSkinnedMesh(Tube());
@@ -63,13 +67,16 @@ namespace KhaozEngine.Tests.Gpu
             scene.UnloadSkinnedMesh(caster);
         }
 
-        [GpuFact]
-        public void SkinnedCaster_OutsideBothTheCameraAndShadowVolumes_WritesNoShadowTexelsAndIsFullyCulled()
+        [GpuTheory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void SkinnedCaster_OutsideBothTheCameraAndShadowVolumes_WritesNoShadowTexelsAndIsFullyCulled(bool gpuSkinning)
         {
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = ctx.GpuDevice;
             using var preview = new Render3DPreview(gd, W, H);
             Scene3D scene = preview.Scene;
+            scene.UseGpuSkinning = gpuSkinning;
 
             MeshHandle floor = scene.LoadMesh(MeshPrimitives.Tile(12f, 0.1f));
             SkinnedMeshHandle caster = scene.LoadSkinnedMesh(Tube());

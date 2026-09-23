@@ -57,7 +57,7 @@ internal sealed partial class ModelRenderer
         cl.DrawIndexed((uint)indexCount, 1, 0, baseVertex, drawIndex);
     }
 
-    // ---- GPU skinning (opt-in). See the field block + ShaderSources.SkinnedModelVert for the two-buffer design. ----
+    // ---- GPU skinning (the default). See the field block + ShaderSources.SkinnedModelVert for the two-buffer design. ----
 
     /// <summary>Build a skinned mesh's set-1 material set (albedo/normal/roughness + shared sampler + shadow map),
     /// bound to the FRAGMENT-only skinned material layout. The frame UBO is NOT here - the skinned fragment reads

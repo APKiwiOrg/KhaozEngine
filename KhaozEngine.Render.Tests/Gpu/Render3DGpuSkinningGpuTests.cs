@@ -10,7 +10,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
 {
-    // On-device proof of the opt-in GPU skinning path (Scene3D.UseGpuSkinning). Set 0 binding 0 is the shared frame
+    // On-device proof of the GPU skinning path (Scene3D.UseGpuSkinning, the default). Set 0 binding 0 is the shared frame
     // block both stages read, binding 1 the per-draw {Model;P} the vertex reads at its dynamic offset, material maps
     // at set 1 for the fragment, and the caster's {bones[128]} at set 2, shared with the shadow depth pass (#407).
     // That is the #604 unfold of the fold-matrix binding the spike proved (GpuSkinningReproGpuTests variant 3),
@@ -264,13 +264,14 @@ namespace KhaozEngine.Tests.Gpu
             scene.UnloadMesh(floor);
         }
 
-        // ---- The flag defaults OFF, so every existing golden and consumer render is byte-identical until opted in. ----
+        // ---- The flag defaults ON (issue #15): the windowed Veldrid Metal fault it used to guard is gone with that
+        //      backend, and the parity tests above hold the GPU path to the CPU one on every backend. ----
         [GpuFact]
-        public void UseGpuSkinning_DefaultsOff()
+        public void UseGpuSkinning_DefaultsOn()
         {
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
             using var preview = new Render3DPreview(ctx.GpuDevice, W, H);
-            Assert.False(preview.Scene.UseGpuSkinning, "GPU skinning must default OFF (byte-identical to the CPU path until opted in)");
+            Assert.True(preview.Scene.UseGpuSkinning, "GPU skinning must default ON (set it false for the CPU path)");
         }
 
         // Clearly-dark opaque pixels (a shadow proxy on the lit floor).

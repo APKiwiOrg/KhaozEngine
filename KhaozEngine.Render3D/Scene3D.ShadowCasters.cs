@@ -375,7 +375,7 @@ namespace KhaozEngine.Render3D
                 }
             }
 
-            // GPU-skinned casters (opt-in): one LIGHT-MATRIX slot per (cascade, caster), folding that cascade's
+            // GPU-skinned casters (the default path): one LIGHT-MATRIX slot per (cascade, caster), folding that cascade's
             // column-transformed matrix, and nothing else. The caster's bones are NOT here: they were packed once
             // per caster into the shared palette in PrepareGpuSkinnedFrame and uploaded before this pass, so every
             // cascade below binds the SAME palette slot at the same offset (#407). That is what took the skinning

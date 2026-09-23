@@ -521,7 +521,7 @@ public sealed class ContainerCommitBuilderTests
 
         // The currency fields are the CURRENCY's, so they are legal the moment one is consumed.
         ContainerOperation paid = ContainerOperation.Craft(
-            Bank, 4, Instance, Payload(3), CraftEventBody(1, afterLevel: 3),
+            Bank, 4, Instance, Payload(3), CraftEventBody(1, afterLevel: 3, beforeLevel: 2),
             currencySlot: 5, currencyDefinitionId: Currency, currencyCount: 1);
         paid.Validate();
     }

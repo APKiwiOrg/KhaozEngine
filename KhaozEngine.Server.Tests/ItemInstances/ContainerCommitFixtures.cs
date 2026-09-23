@@ -83,8 +83,10 @@ internal static class ContainerCommitFixtures
 
     /// <summary>A readable craft audit body. The test chooses an after level that matches the operation it
     /// hands to the builder, so the stored event cannot claim a different payload from the working copy.</summary>
-    public static byte[] CraftEventBody(int ordinal, int? afterLevel = null)
-        => new ItemCraftedEvent(1, Instance, 1, Payload(ordinal), Payload(afterLevel ?? ordinal + 1)).ToArray();
+    public static byte[] CraftEventBody(int ordinal, int? afterLevel = null, int? beforeLevel = null)
+        => new ItemCraftedEvent(1, Instance, 1,
+            Payload(beforeLevel ?? (ordinal == 0 ? 42 : ordinal)),
+            Payload(afterLevel ?? ordinal + 1)).ToArray();
 
     /// <summary>A batch opened over one bank, with the options a fact usually wants.</summary>
     public static ContainerCommitBuilder OpenBank(

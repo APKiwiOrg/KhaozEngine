@@ -15130,9 +15130,9 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Skills`**: the skill progression kernel, the same split applied to experience: a movable
   `SkillXpCurve` with an identity, a `SkillBook` over a game-supplied `ISkillRoster` of dense int indices,
   the child-and-parent share in `SkillAwards`, the curve-change carry in `SkillXpRescale`, the readout
-  arithmetic in `SkillProgress` and byte-stable codecs for the book and the curve triple. No tick, no timer
-  and no time base of any kind, so a slow turn-based world and a continuous one share it (see "Skill
-  progression" below).
+  arithmetic in `SkillProgress`, the open-leaf total in `SkillTotals` and byte-stable codecs for the book
+  and the curve triple. No tick, no timer and no time base of any kind, so a slow turn-based world and a
+  continuous one share it (see "Skill progression" below).
 - **`KhaozEngine.Catalog`**: the tunable-content catalog's read half: a frozen `ContentTypeRegistry` with its
   field schemas and the seven engine content types, the content-addressed `KECC`/`KECM`/`KECT`/`KECR` pack
   formats, the `IPackStore` seam with `FileSystemPackStore` and `ContentPackReader`, the `IContentSnapshot`
@@ -15473,6 +15473,15 @@ points of `SkillAwards.ShareDenominator` (10,000) exactly one level up, and hand
 durable log that stores whole totals rather than deltas can record them without reading the book back, where
 a second award could already have landed. A locked skill refuses every award and every removal silently, and
 still holds whatever experience it was decoded with: a lock stops a number moving, it does not erase it.
+
+**The total level counts open leaves only.** `SkillTotals.TotalLevel(book, roster, curve)` adds up every open
+skill that no other skill names as its parent. A locked skill counts nothing even when it holds decoded
+experience, and a parent counts nothing because its level is fed by the children already counted. A server
+rule and a skills panel that both call it read the same number.
+
+```csharp
+int total = SkillTotals.TotalLevel(book, roster, curve);   // Vitality 10 + Melee 1 + Chopping 1 = 12
+```
 
 **The durable form is byte-stable and count-tolerant.** `SkillBookCodec` writes a byte version, a byte count
 and fixed-width `(id, little-endian double)` entries, so ADDING A SKILL IS NOT A MIGRATION: an older blob's

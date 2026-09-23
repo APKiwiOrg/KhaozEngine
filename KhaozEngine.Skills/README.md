@@ -151,6 +151,15 @@ an empty bar rather than one of undefined width. `RemainingToNextWhole` is the o
 remainder against the FLOORED experience shown above it, so the two lines add up to the next threshold
 instead of reading as nothing owed under a bar short of full.
 
+## `SkillTotals`
+
+`TotalLevel(book, roster, curve)` adds up the level of every OPEN LEAF skill, so a server rule and a client
+panel read the same total. A locked skill counts nothing, even holding experience it was decoded with, and
+so does a parent, open or locked, because its level is fed by the children already counted. A parent is any
+skill another skill names in `ParentOf`, locked children included. The roster and the curve arrive by
+argument, so a caller holding a newer roster or curve than the book was decoded under reads the total under
+the one it holds. A roster whose count differs from the book's is refused with `ArgumentException`.
+
 ## `SkillBookCodec`
 
 The durable and wire form: `byte version`, `byte count`, then `count` fixed-width entries of one id byte

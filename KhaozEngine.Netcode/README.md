@@ -378,6 +378,37 @@ discard claims they do not surface. The widest overload returns subject, display
   from the format. It validates the v3 claim shape but never surfaces the unverified persistence key. `displayName`
   is `null` for v1, the empty string for an empty v2 or v3 name, else the decoded name.
 
+### SigningSecret: the key both ends load
+
+`SigningSecret` loads the HMAC key `SignedToken` signs under. It lives here, beside the token, because the auth
+service mints under the key and the game server verifies under it, and the server must load its key without
+referencing anything that mints.
+
+```csharp
+// Game server or auth service. The variable name is the game's own.
+byte[]? secret = SigningSecret.Load(Environment.GetEnvironmentVariable, "MYGAME_TOKEN_SECRET");
+IConnectionAuthenticator tokenAuth = secret is null
+    ? new AllowAllAuthenticator()                                   // unset: local development
+    : new HmacTokenAuthenticator(secret, () => DateTimeOffset.UtcNow);
+
+// An in-process dev host that mints and verifies in one process takes a key that cannot leave it.
+byte[] devSecret = SigningSecret.CreateEphemeral();
+```
+
+- `Decode(raw, sourceName)` returns `null` when the value is unset or blank, and the decoded key when it is standard
+  base64 (the output of `openssl rand -base64 32`, trimmed) of at least `MinimumBytes` (32) bytes. A value that is
+  set but not base64, or decodes shorter, throws `InvalidOperationException`, so a misconfigured production key fails
+  loudly instead of becoming a door that verifies nothing. The message names `sourceName` and the rule it broke and
+  never any part of the value.
+- `Load(read, variable)` is `Decode(read(variable), variable)`. The environment arrives as a delegate, so an
+  in-process host or a test hands it a map and writes no process state.
+- `CreateEphemeral()` is 32 bytes from `RandomNumberGenerator`, for local development only. Never ship a key as a
+  source constant.
+
+The loader compares nothing. The one comparison under the key is `SignedToken.TryVerify`, which already checks the
+MAC with `CryptographicOperations.FixedTimeEquals`. The key itself stays in the game's secret store under the game's
+own variable. The engine validates it and stores nothing.
+
 ## Connect-time gate: ConnectionGate + HandshakeToken (17.40.0)
 
 Promoted out of Ruinborne, because two games need the identical door and a tile server cannot reference

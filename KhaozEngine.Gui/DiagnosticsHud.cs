@@ -12,9 +12,10 @@ namespace KhaozEngine.Gui
     /// Turn-key wiring of the frame-cost HUD: bundles a <see cref="FrameStats"/> FPS/frame-ms meter, an optional
     /// <see cref="PassTimings"/> per-pass meter (3D hosts), and a <see cref="DiagnosticsOverlay"/> behind one
     /// object, and registers a throttled sections provider that assembles the Performance, Draw-stats,
-    /// Pass-timings, and (optional) Network sections, plus any the game composed on through
-    /// <see cref="AddSection"/>. A host calls <see cref="Update"/> once per frame (samples FPS,
-    /// handles the toggle key + fade), feeds it the aggregated <see cref="SetDrawStats"/> and (3D) samples
+    /// Pass-timings, (optional) Network and Build sections, plus any the game composed on through
+    /// <see cref="AddSection"/>. The Build section names the running app and its version (see
+    /// <see cref="SetBuildIdentity"/>), so every game shows which binary is running with no wiring. A host calls
+    /// <see cref="Update"/> once per frame (samples FPS, handles the toggle key + fade), feeds it the aggregated <see cref="SetDrawStats"/> and (3D) samples
     /// <see cref="PassTimings"/> from its scene, then <see cref="Draw"/>s it in a 2D pass. Default hidden, toggled by
     /// the overlay theme's key (F1). While hidden the provider short-circuits to no sections, so the only per-frame
     /// cost is the always-on counter increments in the render surfaces themselves.
@@ -30,7 +31,8 @@ namespace KhaozEngine.Gui
         readonly DiagnosticsOverlay _overlay;
         readonly FrameStats _frameStats;
         readonly PassTimings? _passTimings;
-        readonly List<OverlaySection> _buf = new(4);
+        readonly DiagnosticsBuildSection _build;
+        readonly List<OverlaySection> _buf = new(5);
 
         RenderFrameStats _drawStats;
         Func<ClientNetStats?>? _netStatsSource;
@@ -48,10 +50,18 @@ namespace KhaozEngine.Gui
         /// </summary>
         public DiagnosticsHud(DiagnosticsOverlayTheme theme, bool withPassTimings, float refreshSeconds = 0.25f,
             bool visibleAtBoot = false)
+            : this(theme, withPassTimings, refreshSeconds, visibleAtBoot, DiagnosticsBuildSection.FromEntryAssembly)
+        {
+        }
+
+        // Test seam: the Build section's identity source, so a test can count how often it is read.
+        internal DiagnosticsHud(DiagnosticsOverlayTheme theme, bool withPassTimings, float refreshSeconds,
+            bool visibleAtBoot, Func<BuildIdentity> buildSource)
         {
             _overlay = new DiagnosticsOverlay(theme ?? throw new ArgumentNullException(nameof(theme)));
             _frameStats = new FrameStats();
             _passTimings = withPassTimings ? new PassTimings() : null;
+            _build = new DiagnosticsBuildSection(buildSource);
             _overlay.Visible = visibleAtBoot;
             _overlay.SetSectionsProvider(BuildSections, refreshSeconds);
         }
@@ -92,10 +102,28 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>
+        /// Show <paramref name="name"/> and <paramref name="version"/> in the built-in Build section instead of the
+        /// default, which is the entry assembly's product name and its
+        /// <see cref="System.Reflection.AssemblyInformationalVersionAttribute"/> with any <c>+</c> build metadata
+        /// suffix dropped. Pass the game's own display strings, e.g.
+        /// <c>SetBuildIdentity(BuildConfig.Product, BuildConfig.DisplayVersion)</c> for a game that composes its
+        /// version from its own <c>AssemblyMetadata</c> items. Both values are shown verbatim as non-localizable
+        /// tokens. The Build section's title is the localized <see cref="DiagnosticsOverlayStrings.BuildTitle"/>.
+        /// Called at load, before the panel is first shown, it means the default is never read. A later call
+        /// replaces an earlier one either way.
+        /// </summary>
+        public void SetBuildIdentity(string name, string version)
+        {
+            ArgumentNullException.ThrowIfNull(name);
+            ArgumentNullException.ThrowIfNull(version);
+            _build.Override(name, version);
+        }
+
+        /// <summary>
         /// Add a GAME section to the HUD, composed after the built-in Performance / Draw-stats / Pass-timings /
-        /// Network ones rather than replacing them. This is the composition seam: reaching for
+        /// Network / Build ones rather than replacing them. This is the composition seam: reaching for
         /// <see cref="Overlay"/> and calling <see cref="DiagnosticsOverlay.SetSectionsProvider"/> installs a new
-        /// provider OVER this one, which costs the three built-in sections unless the game reimplements all of them.
+        /// provider OVER this one, which costs the built-in sections unless the game reimplements all of them.
         /// <para><paramref name="section"/> is invoked on the same throttled refresh the built-ins are, so it builds
         /// its rows at the refresh rate rather than per frame, and returning null omits the section for that refresh
         /// (the shape <see cref="SetNetStatsSource"/> already uses for an off-network screen). Sections render in
@@ -134,8 +162,8 @@ namespace KhaozEngine.Gui
             _overlay.Draw(batch, font, white, viewport);
 
         // Throttled provider: skip all section-building while hidden and fully faded (zero overhead beyond the
-        // counter increments). Otherwise assemble Performance + Draw stats + (3D) Pass timings + (optional) Network,
-        // then whatever the game composed on through AddSection, in registration order.
+        // counter increments). Otherwise assemble Performance + Draw stats + (3D) Pass timings + (optional) Network
+        // + Build, then whatever the game composed on through AddSection, in registration order.
         IReadOnlyList<OverlaySection> BuildSections()
         {
             if (!_overlay.Visible && _overlay.Alpha <= 0f) return Array.Empty<OverlaySection>();
@@ -149,6 +177,7 @@ namespace KhaozEngine.Gui
                 _buf.Add(DiagnosticsOverlay.NetworkSection(net));
             else if (_transportStatsSource?.Invoke() is { } transport)
                 _buf.Add(DiagnosticsOverlay.NetworkSection(transport));
+            _buf.Add(_build.Section());
             if (_gameSections is { Count: > 0 } extra)
                 for (int i = 0; i < extra.Count; i++)
                     if (extra[i]() is { } section) _buf.Add(section);

@@ -1,3 +1,5 @@
+using KhaozEngine.Netcode;
+
 namespace KhaozEngine.TileWorld.Netcode;
 
 /// <summary>
@@ -24,7 +26,14 @@ public static class TileServerReason
 
     /// <summary>An operator closed this session with <see cref="TileWorldServer.Kick(int, string)"/>, or with the
     /// admin surface's <see cref="TileWorldServer.Kick(KhaozEngine.NetWorld.PlayerRef, string)"/> when it was handed
-    /// no reason that fits on the wire. Distinct from a ban, which is refused at the door by the connect gate and
-    /// never reaches a notice frame.</summary>
+    /// no reason that fits on the wire. Distinct from <see cref="Banned"/>.</summary>
     public const string Kicked = "ke:kicked";
+
+    /// <summary>This session's account is banned, and the session is closed. Sent when a ban reaches a player the
+    /// door already admitted: one recorded in <see cref="TileWorldServerConfig.BanStore"/> (or answered by
+    /// <see cref="TileWorldServerConfig.IsBanned"/>) between the door and the join, or while they play, and any
+    /// admin kick of a banned account, which is how <c>ServerAdmin.BanAsync</c>'s kick arrives. The SAME string as
+    /// <see cref="HandshakeToken.BannedReason"/>, the refusal the door sends a banned account that has not joined
+    /// yet, so a client maps one token to its one localized line wherever the ban lands.</summary>
+    public const string Banned = HandshakeToken.BannedReason;
 }

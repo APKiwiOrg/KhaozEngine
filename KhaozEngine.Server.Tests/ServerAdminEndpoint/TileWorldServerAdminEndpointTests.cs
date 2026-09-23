@@ -39,7 +39,7 @@ public class TileWorldServerAdminEndpointTests
         public readonly List<string> Notices = new();
         private float serverAccum;
 
-        public TileRig(string account)
+        public TileRig(string account, IBanStore? bans = null)
         {
             Server = new TileWorldServer(Hub.Server, new TileWorldServerConfig
             {
@@ -47,6 +47,7 @@ public class TileWorldServerAdminEndpointTests
                 StepTicks = Ticks,
                 Spawn = new TileCoord(5, 5, 0),
                 MaxPlayers = 8,
+                BanStore = bans,
             }, OpenMap());
             Client = new TileWorldClient(Hub.CreateClient(), new TileWorldClientConfig
             {
@@ -118,6 +119,28 @@ public class TileWorldServerAdminEndpointTests
         Assert.Equal(new[] { "game:hello", "game:bye" }, rig.Notices);
         Assert.Equal(1, rig.Server.PlayerCount);
         Assert.Equal("acct-b", Assert.Single(admin.ListOnline()).AccountId);
+    }
+
+    // #1104: one store at the tile door and behind it. ServerAdmin.BanAsync records the ban and kicks, the kick
+    // reads as the ban (the same ke:banned the door refuses with), and lifting it opens the door again.
+    [Fact]
+    public async Task ServerAdmin_BanAsync_ends_a_tile_session_with_the_ban_token()
+    {
+        var bans = new InMemoryBanStore();
+        using var rig = new TileRig("acct-ban", bans);
+        var admin = new ServerAdmin(rig.Server, bans);
+
+        await admin.BanAsync("acct-ban", "griefing");
+        rig.Frames(8);
+
+        Assert.Equal(new[] { TileServerReason.Banned }, rig.Notices);
+        Assert.Equal(HandshakeToken.BannedReason, TileServerReason.Banned);
+        Assert.Equal(0, rig.Server.PlayerCount);
+        Assert.False(rig.Client.IsJoined);
+        Assert.Equal("griefing", Assert.Single(admin.ListBans()).Reason);
+
+        await admin.UnbanAsync("acct-ban");
+        Assert.Empty(admin.ListBans());
     }
 
     [Fact]

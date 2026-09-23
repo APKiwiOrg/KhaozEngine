@@ -21,13 +21,17 @@ public class TileWorldServerAdminTests
     const float Dt = 0.25f;
     static readonly TileCoord Spawn = new(10, 10, 0);
 
-    static TileWorldServer Server(InMemoryTransportHub hub, TileCollisionMap? map = null, TilePresenter? presenter = null) =>
-        new(hub.Server, TileWorldServerTickTests.Config(Spawn) with { Presenter = presenter },
+    static TileWorldServer Server(InMemoryTransportHub hub, TileCollisionMap? map = null, TilePresenter? presenter = null,
+        Func<TileWorldServerConfig, TileWorldServerConfig>? configure = null)
+    {
+        TileWorldServerConfig config = TileWorldServerTickTests.Config(Spawn) with { Presenter = presenter };
+        return new(hub.Server, configure is null ? config : configure(config),
             map ?? TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()));
+    }
 
     // A server and a client that joined with a token, so the account the admin surface resolves is a real subject
-    // rather than a seat's guest id.
-    sealed class Joined : IDisposable
+    // rather than a seat's guest id. Internal so the ban suite drives the same pair.
+    internal sealed class Joined : IDisposable
     {
         public readonly InMemoryTransportHub Hub = new();
         public readonly TileWorldServer Server;
@@ -36,9 +40,10 @@ public class TileWorldServerAdminTests
         public int Disconnects;
         float serverAccum;
 
-        public Joined(string account, TilePresenter? presenter = null)
+        public Joined(string account, TilePresenter? presenter = null,
+            Func<TileWorldServerConfig, TileWorldServerConfig>? configure = null)
         {
-            Server = TileWorldServerAdminTests.Server(Hub, presenter: presenter);
+            Server = TileWorldServerAdminTests.Server(Hub, presenter: presenter, configure: configure);
             Client = new TileWorldClient(Hub.CreateClient(), new TileWorldClientConfig
             {
                 TickSeconds = TileLoopbackHarness.Tick,
@@ -54,11 +59,28 @@ public class TileWorldServerAdminTests
             Assert.True(Client.IsJoined);
         }
 
+        /// <summary>Another client over the same hub, pumped by <see cref="Frames"/> alongside the first.</summary>
+        public TileWorldClient Connect(byte[]? token)
+        {
+            var extra = new TileWorldClient(Hub.CreateClient(), new TileWorldClientConfig
+            {
+                TickSeconds = TileLoopbackHarness.Tick,
+                StepTicks = TileLoopbackHarness.Ticks,
+            }, TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()), connectToken: token);
+            extras.Add(extra);
+            extra.Tick(0.07f);
+            extra.Poll();
+            return extra;
+        }
+
+        readonly List<TileWorldClient> extras = new();
+
         public void Frames(int count)
         {
             for (int i = 0; i < count; i++)
             {
                 Client.Tick(TileLoopbackHarness.Frame);
+                foreach (TileWorldClient extra in extras) extra.Tick(TileLoopbackHarness.Frame);
                 Server.Poll();
                 serverAccum += TileLoopbackHarness.Frame;
                 while (serverAccum >= TileLoopbackHarness.Tick)
@@ -68,10 +90,17 @@ public class TileWorldServerAdminTests
                 }
                 Client.Poll();
                 Client.AdvancePresentation(TileLoopbackHarness.Frame);
+                foreach (TileWorldClient extra in extras) extra.Poll();
             }
         }
 
-        public void Dispose() { Client.Dispose(); Server.Dispose(); Hub.Dispose(); }
+        public void Dispose()
+        {
+            foreach (TileWorldClient extra in extras) extra.Dispose();
+            Client.Dispose();
+            Server.Dispose();
+            Hub.Dispose();
+        }
     }
 
     [Fact]

@@ -60,7 +60,8 @@ public sealed partial class TileWorldServer
     /// did not step, and the next call would overwrite it with the starvation neutral before any simulator saw it.
     /// Running the whole body per tick is what keeps a drain welded to the step it feeds.</para>
     /// <para>The order inside one tick is the admin surface's queued commands (see <c>TileWorldServer.Admin.cs</c>),
-    /// then the head's own systems, then drain ONE command per player into its owning
+    /// then the ban sweep over live sessions (<c>TileWorldServer.Bans.cs</c>), then the head's own systems, then drain
+    /// ONE command per player into its owning
     /// cell, then the actor step (every spawner ticks and every live actor's command and tag are written), then step
     /// every cell (which is where movement and the arrival facing happen), then authority handoff and border
     /// ghosting, then the post-movement hook, then the action queue, then combat, then serve every client its area
@@ -120,6 +121,10 @@ public sealed partial class TileWorldServer
         //     systems and ahead of the player index snapshot below, so a kick is out of the world before anything
         //     iterates and a teleport ships in this tick's serve. See TileWorldServer.Admin.cs.
         ApplyAdminCommands();
+        // 0b. Every live session whose account the ban store or predicate now bans, closed at the same point and for
+        //     the same reason. After the admin commands, so an admin kick of a banned account is the one that sends
+        //     the notice. See TileWorldServer.Bans.cs.
+        KickBannedSessions();
         OnBeforeTick?.Invoke(dt);
 
         // 0c. The entity target space, snapshotted ONCE. Everything for the rest of this tick resolves a net id to

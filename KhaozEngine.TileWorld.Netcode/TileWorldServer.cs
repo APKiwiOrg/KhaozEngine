@@ -28,8 +28,9 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// surface, <c>TileWorldServer.Actions.cs</c> the pending-action resolution, <c>TileWorldServer.Actors.cs</c> the
 /// actor lifecycle and the <see cref="TileActorHost"/> this file constructs, and
 /// <c>TileWorldServer.Combat.cs</c> the hit pipeline and death. <c>TileWorldServer.Observability.cs</c> forwards the
-/// connection health counters, and <c>TileWorldServer.Admin.cs</c> is the thread-safe admin surface
-/// (<c>IAdminControllable</c>) a <c>ServerAdmin</c> drives.</para>
+/// connection health counters, <c>TileWorldServer.Admin.cs</c> is the thread-safe admin surface
+/// (<c>IAdminControllable</c>) a <c>ServerAdmin</c> drives, and <c>TileWorldServer.Bans.cs</c> the ban checks after the
+/// door.</para>
 /// </summary>
 public sealed partial class TileWorldServer : IDisposable
 {
@@ -169,6 +170,7 @@ public sealed partial class TileWorldServer : IDisposable
         // instead, it would spawn the banned account into a cell, serve it to everyone in interest, and despawn it a
         // tick later. The refusal is HandshakeToken.BannedReason, the same token a composed ConnectionGate sends, so
         // a client cannot tell the paths apart and needs one branch rather than two. Either one refusing refuses.
+        // The join check and the per-tick sweep behind this door read the same two, see TileWorldServer.Bans.cs.
         IConnectionAuthenticator door = authenticator ?? new AllowAllAuthenticator();
         if (config.IsBanned is not null) door = new BanGateAuthenticator(door, config.IsBanned);
         if (config.BanStore is not null) door = new BanGateAuthenticator(door, config.BanStore);

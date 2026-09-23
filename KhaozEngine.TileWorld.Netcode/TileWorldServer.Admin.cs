@@ -88,7 +88,9 @@ public sealed partial class TileWorldServer : IAdminControllable
     /// its own localized string for it. An empty reason, or one longer than
     /// <see cref="TileProtocol.MaxNoticeBytes"/> once encoded, goes out as <see cref="TileServerReason.Kicked"/>
     /// instead, because this call cannot fail: <c>ServerAdmin.BanAsync</c> makes it after the ban is already
-    /// stored. An unknown target is ignored.</summary>
+    /// stored. A kick of an account the configured ban store or predicate bans goes out as
+    /// <see cref="TileServerReason.Banned"/> whatever reason it carried, so that kick reads as the ban it is. An
+    /// unknown target is ignored.</summary>
     /// <param name="target">The player, by slot or account id.</param>
     /// <param name="reason">A <see cref="TileServerReason"/> token, or a game's own.</param>
     public void Kick(PlayerRef target, string reason) =>
@@ -126,7 +128,7 @@ public sealed partial class TileWorldServer : IAdminControllable
                 case AdminKind.Kick:
                 {
                     int slot = ResolveSlot(command.Target);
-                    if (slot >= 0) Kick(slot, KickToken(command.Text));
+                    if (slot >= 0) Kick(slot, KickToken(slot, command.Text));
                     break;
                 }
                 case AdminKind.Broadcast:
@@ -136,8 +138,15 @@ public sealed partial class TileWorldServer : IAdminControllable
         }
     }
 
-    // What an admin kick puts on the wire. The fallback keeps the call infallible, see Kick(PlayerRef).
-    static string KickToken(string reason) => FitsNotice(reason) ? reason : TileServerReason.Kicked;
+    // What an admin kick puts on the wire. A banned account's kick IS the ban, whatever reason came with it, which is
+    // how ServerAdmin.BanAsync's kick reads as one (see TileWorldServer.Bans.cs). Otherwise the reason, with a fallback
+    // that keeps the call infallible, see Kick(PlayerRef).
+    string KickToken(int slot, string reason)
+    {
+        if (ChecksBans && accountIdBySlot.TryGetValue(slot, out string? account) && IsAccountBanned(account))
+            return TileServerReason.Banned;
+        return FitsNotice(reason) ? reason : TileServerReason.Kicked;
+    }
 
     void ApplyTeleport(in PlayerRef target, Vector3 position)
     {

@@ -149,18 +149,25 @@ public sealed record TileWorldServerConfig
     /// it, which is what OSRS does) is a different game rule rather than a bug.</para></summary>
     public int CombatLogoutTicks { get; init; }
 
-    /// <summary>Synchronous ban check over a verified account id, consulted at the door. Null admits everyone the
-    /// authenticator admits. For a head whose ban list is not an <see cref="KhaozEngine.NetWorld.IBanStore"/>. A
-    /// head that keeps one sets <see cref="BanStore"/> instead. Setting both refuses an account either one bans.</summary>
+    /// <summary>Synchronous ban check over a verified account id, consulted everywhere <see cref="BanStore"/> is: at
+    /// the door, at the join, and once per tick over every live session, so an account it starts answering true for
+    /// is kicked with <see cref="TileServerReason.Banned"/> on the next tick. Null admits everyone the authenticator
+    /// admits. For a head whose ban list is not an <see cref="KhaozEngine.NetWorld.IBanStore"/>. A head that keeps
+    /// one sets <see cref="BanStore"/> instead. Setting both refuses an account either one bans. Called on the host
+    /// thread once per tick per player, so it must be cheap, and nothing is caught.</summary>
     public Func<string, bool>? IsBanned { get; init; }
 
-    /// <summary>The ban store consulted at the door, read live on every connect through
-    /// <see cref="BanGateAuthenticator"/>, so a ban recorded mid-session refuses that account's next connect. Null,
-    /// the default, checks no store. It is the same seam a <c>WorldServer</c> takes as <c>banStore:</c> and an
-    /// admin surface writes to, so one store serves every door a game runs. The type is named
+    /// <summary>The ban store, read live at three points. At the DOOR, through <see cref="BanGateAuthenticator"/>, a
+    /// banned account is refused with <see cref="HandshakeToken.BannedReason"/> before it joins. At the JOIN, a ban
+    /// that landed after the door admitted the connection is told <see cref="TileServerReason.Banned"/> and dropped
+    /// before anything is spawned, the check a <c>WorldServer</c> makes over its <c>banStore:</c>. And once per TICK
+    /// over every live session, so a ban recorded while the player is in world, by any writer, closes the session on
+    /// the next tick with the same token. An admin kick of a banned account carries it too, which is how
+    /// <c>ServerAdmin.BanAsync</c>'s kick arrives. A tokenless guest seat is never checked. Null, the default,
+    /// checks no store. It is the same seam a <c>WorldServer</c> takes as <c>banStore:</c> and an admin surface
+    /// writes to, so one store serves every door a game runs. The type is named
     /// <c>KhaozEngine.NetWorld.IBanStore</c> but lives in <c>KhaozEngine.Netcode</c>, so this package still never
-    /// references <c>NetWorld</c>. A live session is NOT ended when its account is banned: pair the ban with
-    /// <see cref="TileWorldServer.Kick(int, string)"/> for that.</summary>
+    /// references <c>NetWorld</c>.</summary>
     public KhaozEngine.NetWorld.IBanStore? BanStore { get; init; }
 
     /// <summary>Consulted in Admit for every command whose mode is <see cref="TileMoveMode.Run"/>, over the

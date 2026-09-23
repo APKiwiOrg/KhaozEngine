@@ -140,6 +140,9 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
         string accountId = string.IsNullOrEmpty(subject)
             ? $"{PositionHintCache.GuestAccountPrefix}{slot}"
             : subject;
+        // A ban that landed after the door admitted this connection is told and dropped here, before anything is
+        // spawned. See TileWorldServer.Bans.cs.
+        if (RefuseBannedJoin(slot, accountId)) return;
         SpawnPlayer(slot, accountId, displayName);
         // A connection that arrives DURING a drain is admitted and told, rather than refused: the grace is what a
         // player needs to finish what they are doing, and a rejoin inside it (a reconnect after a drop) is exactly

@@ -10642,7 +10642,7 @@ while (running)
 ```
 
 **The order inside one tick** is fixed and worth knowing, because a game's own systems have to fit into it: the
-admin surface's queued commands (below), then the `OnBeforeTick` hook, then drain ONE command per player into its owning cell, then the ACTOR step (every spawner
+admin surface's queued commands (below), then the ban sweep over live sessions, then the `OnBeforeTick` hook, then drain ONE command per player into its owning cell, then the ACTOR step (every spawner
 ticks and every live actor's decision becomes a command), then step every cell (movement and the arrival facing),
 then authority handoff and border ghosting, then `OnAfterMovement`, then the action queue, then COMBAT (roll, apply,
 die), then serve every client its plane-filtered area of interest, and last the despawn every actor killed this tick owes.
@@ -10711,8 +10711,13 @@ top of the next tick, ahead of `OnBeforeTick`. The host-thread `Kick(int slot, s
   call. A position copied off `ListOnline` lands on the tile it was read from.
 - **`Kick` and `Broadcast` carry reason tokens,** the contract every notice on this protocol has. A kick reason
   that is empty or too long for a notice frame goes out as `TileServerReason.Kicked`, because the call cannot fail
-  (`ServerAdmin.BanAsync` makes it after the ban is stored). A broadcast has no fallback, so an empty or oversized
-  token throws `ArgumentException` at the call, which the endpoint answers with a 400.
+  (`ServerAdmin.BanAsync` makes it after the ban is stored). A kick of a banned account goes out as `ke:banned`
+  whatever reason it carried, so `BanAsync`'s kick reads as the ban. A broadcast has no fallback, so an empty or
+  oversized token throws `ArgumentException` at the call, which the endpoint answers with a 400.
+- **Bans reach a live session.** `TileWorldServerConfig.BanStore` (and `IsBanned`) are read at the door, at the
+  join, and once per tick over every live session, ahead of `OnBeforeTick`. A ban that lands after the door closes
+  the session with `TileServerReason.Banned`, the same string as the door's `ke:banned` refusal, whoever recorded
+  it, and a tokenless guest seat is never checked. This is the tile counterpart of the `WorldServer` join check.
 - `SetPosition` keeps the interface default and cuts like `Teleport`. The movement commitment pair is not
   supported and throws `NotSupportedException`.
 
@@ -19585,7 +19590,10 @@ var admin = new ServerAdmin(server, bans);                       // BanAsync rec
 
 `BanGateAuthenticator(inner, IBanStore, log?)` reads the store live on every connect. Its
 `BanGateAuthenticator(inner, Func<string,bool>, log?)` form stays for a ban list that is not a store. A tile server
-takes the store as `TileWorldServerConfig.BanStore`, at the door. The two paths read differently on a `WorldClient`:
+takes the store as `TileWorldServerConfig.BanStore` and reads it at the door, at the join, and once per tick over
+every live session, closing a banned session with the `ke:banned` notice token (`TileServerReason.Banned`), so a ban
+written straight to the store ends a tile session on the next tick with no kick of the game's own. The two paths
+read differently on a `WorldClient`:
 a door refusal is `DisconnectReason.RejectedToken` with `ke:banned` in `DisconnectReasonDetail`, terminal unless
 `RetryOnReject` is set, while the join kick is `DisconnectReason.Banned` and is retried.
 

@@ -995,7 +995,7 @@ var server = new TileWorldServer(
         Spawn = new TileCoord(64, 64, Plane: 0),
         MaxPendingConnections = 128,
         CanRun = slot => energy.Has(slot),         // null allows everyone. The authority behind run energy
-        BanStore = bans,                           // an IBanStore, read live at the door
+        BanStore = bans,                           // an IBanStore, read at the door, the join and every tick
         Presenter = new TilePresenter(document),   // the admin surface's world metres, the client's own mapping
     },
     map,
@@ -1173,11 +1173,20 @@ every connect, so a ban recorded mid-session refuses that account's next connect
 game runs. Do not also pass its `IsBanned` to `ConnectionGate.Wrap`, which would check it twice. The type is named
 `KhaozEngine.NetWorld.IBanStore` but lives in `KhaozEngine.Netcode`, which is why a tile head can use it without the
 `NetWorld` package. `TileWorldServerConfig.IsBanned` stays for a ban list that is not a store, and setting both
-refuses an account either one bans. A banned account's LIVE session is not ended by the ban. Pair it with
-`TileWorldServer.Kick`.
+refuses an account either one bans.
+
+The door is not the only place the ban is read. Behind it, the server checks the same store and predicate at the
+JOIN, so a ban that landed after the door admitted a connection is told `ke:banned` and dropped before anything is
+spawned, and once per TICK over every live session, so a ban recorded while the player is in world (by a console
+writing the store directly as much as by `ServerAdmin.BanAsync`) closes the session on the next tick with the same
+`ke:banned` notice. An admin kick of a banned account carries that token whatever reason it was given. So a tile game
+never pairs a ban with its own `Kick`. The token is `TileServerReason.Banned`, the same string as
+`HandshakeToken.BannedReason`, so a client maps the door refusal and the notice to one localized line. A tokenless
+guest seat is never checked, because its id names a seat the next connection inherits. The predicate runs once per
+tick per player on the host thread, so it must be as cheap as the store's `IsBanned` is required to be.
 
 `TileWorldClient.RefusedReason` and the `RefusedAtDoor` event carry the token. Once joined, the server's own
-out-of-band notices carry `TileServerReason`: `ke:cannot-reach`, `ke:draining` and `ke:kicked`, all prefixed `ke:`
+out-of-band notices carry `TileServerReason`: `ke:cannot-reach`, `ke:draining`, `ke:kicked` and `ke:banned`, all prefixed `ke:`
 so a game's own tokens can never collide with them.
 
 A notice frame declares its own length, and the decoder refuses one whose declared length does not account for the
@@ -1222,7 +1231,9 @@ unchanged and stay the right calls from game code already on the host thread.
   `ListOnline` lands on the tile it was read from.
 - **`Kick` and `Broadcast` carry reason tokens,** never text: the server owns no string catalog. A kick reason that
   is empty or longer than `TileProtocol.MaxNoticeBytes` goes out as `ke:kicked`, because the call has to succeed
-  (`ServerAdmin.BanAsync` makes it after the ban is stored). A broadcast has no fallback, so an empty or oversized
+  (`ServerAdmin.BanAsync` makes it after the ban is stored). A kick of an account the configured ban store or
+  predicate bans goes out as `ke:banned` instead, so `BanAsync`'s kick reads as the ban (see the connect door
+  section). A broadcast has no fallback, so an empty or oversized
   token throws `ArgumentException` at the call, and the endpoint answers it with a 400.
 - `SetPosition` keeps the interface default and cuts like `Teleport`. `BeginMovementCommitment` and
   `AbortMovementCommitment` throw `NotSupportedException`, since a tile world has no ballistic move.

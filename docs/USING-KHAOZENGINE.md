@@ -4313,7 +4313,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     The displacement is per vertex, but the swell's NORMAL is evaluated per pixel at the fragment's still-water
     position, so a grid too coarse to carry the swell (a clipmap's 8 and 16 m outer rings under the 42 m default,
     or the far cells of a large camera-focused plane) no longer shades it as flat triangle facets (#381). The
-    whitecap fold is still interpolated from the vertices.
+    whitecap fold is evaluated per pixel the same way, so those grids no longer draw whitecaps as triangles
+    (#1100).
   - **Surface grid** (`GridMode`, a `WaterGridMode`) - two layouts, and which one you want depends on whether the
     camera moves much. Clipmap mode uses a four-vertex, six-index quad for an effective `Procedural` source
     with zero `SwellAmplitude`. Ripples still shade it. FFT and nonzero-swell planes retain displaced
@@ -4441,7 +4442,11 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `SwellSteepness` so `FoamCrestCoverage` means the same fraction of the sea at any steepness. The shoreline band
     comes from the depth term - and because that depth is measured under the DISPLACED surface, the swell carries
     the foam line up and down the beach for free. Both are multiplied by a scrolling three-layer pattern
-    thresholded into clean graphic lobes (`FoamPatternScale`, drifting at `WaveSpeed`).
+    thresholded into clean graphic lobes (`FoamPatternScale`, drifting at `WaveSpeed`). The whitecap fold is
+    evaluated per pixel, and beyond the near field it eases toward 73% of itself as the pixel footprint on the
+    still-water plane grows. A coarse grid used to average the fold over its cells, which held distant whitecaps
+    at about a third of the near field's coverage, and the attenuation is calibrated to keep them there now that
+    the averaging, and the triangle-shaped whitecaps it drew, are gone. FFT-mode foam is unaffected.
   - **Reaching the previous look**: every addition is independently reachable at zero. For 14.24.0:
     `FootprintSamples = 0` (unbounded normal oscillation), `VarianceToRoughness = 0`, `RippleComponents = 3`. The
     exact three-cosine FIELD is deliberately NOT reachable, on the same grounds as the 14.22.0 checkerboard: its
@@ -4470,7 +4475,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     shallow shelf near the shore fades progressively.
   - The pure math (`WaterMath`, internal: the three-layer wave normal, the domain warp, the distance detail fade,
     the shallow-blend and shore-fade curves, Schlick fresnel, Blinn-Phong glint, grid tessellation sizing, plus
-    `GerstnerWaves` for the swell, whose offset and fold `WaterVert` mirrors and whose normal `WaterFrag` mirrors)
+    `GerstnerWaves` for the swell, whose offset `WaterVert` mirrors and whose normal and fold `WaterFrag` mirrors)
     is headless-tested and mirrors the GLSL `WaterFrag`/`WaterVert` exactly.
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.

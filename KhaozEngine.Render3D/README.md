@@ -540,8 +540,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     whole stack is generated from those wind scalars, on the CPU (`Internal.GerstnerWaves`) and in the shader,
     rather than uploaded per component. The swell's NORMAL is evaluated per pixel at the fragment's still-water
     position rather than interpolated from the grid, so a coarse grid (a clipmap's outer rings, the far cells of a
-    large camera-focused plane) cannot shade it as flat triangle facets (#381). The whitecap fold is still carried
-    from the vertices. The grid is a fixed 97x97 vertex budget concentrated toward the camera by `GridFocusBias`
+    large camera-focused plane) cannot shade it as flat triangle facets (#381). The whitecap fold is evaluated the
+    same way, so those grids no longer draw whitecaps as triangles (#1100). The grid is a fixed 97x97 vertex budget
+    concentrated toward the camera by `GridFocusBias`
     (1 = uniform), since a consumer plane can be 1200 units across.
   - **Analytic sky reflection** (`SkyReflectionStrength`/`SkyReflectionSunStrength`): the fresnel term blends
     toward the sky evaluated along the reflected view ray (`Internal.SkyMath.ShadeDirection`, the same gradient +
@@ -559,7 +560,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   - **Foam** (`FoamColor`/`FoamStrength`/`FoamCrestCoverage`/`FoamShoreWidth`/`FoamPatternScale`): procedural, no
     texture assets. Whitecaps from the determinant of the swell's horizontal Jacobian (steepness-normalized, so
     coverage means the same at any steepness) and a shoreline band from the reconstructed depth, both broken up by
-    a scrolling pattern thresholded into graphic lobes.
+    a scrolling pattern thresholded into graphic lobes. The fold eases toward 73% of itself as the pixel footprint
+    on the still-water plane grows, which keeps distant whitecap coverage where the old per-vertex fold left it
+    rather than whitening the horizon to the near field's density.
 
   On top of that the ripple normal field is a generated SLOPE SPECTRUM (14.26.0): `RippleComponents` cosines with
   golden-angle headings (no two parallel, no dominant ribbon direction) laddering by `RippleLacunarity` over about
@@ -582,8 +585,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   crest carries the waterline and the foam line up the beach for free. The pure math is `WaterMath` (the ripple
   normal, domain warp, distance detail fade, grid layout and focus warp, absorption, reflection blend, GGX and
   legacy glint, roughness widening, foam), `RippleSpectrum` (the ripple spectrum, the footprint band-limit and the
-  variance transfer) and `GerstnerWaves` (the swell, whose offset and fold the vertex stage mirrors and whose
-  normal the fragment stage mirrors), all internal, headless-tested and mirroring the GLSL `WaterVert`/`WaterFrag`
+  variance transfer) and `GerstnerWaves` (the swell, whose offset the vertex stage mirrors and whose normal and
+  fold the fragment stage mirrors), all internal, headless-tested and mirroring the GLSL `WaterVert`/`WaterFrag`
   exactly.
 - Per-plane water look (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
   identical**): a trailing optional constructor parameter on `WaterPlane`, so every call site written before this

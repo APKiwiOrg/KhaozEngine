@@ -541,7 +541,12 @@ namespace KhaozEngine.Render3D
         /// thing at any steepness. Needs <see cref="SwellAmplitude"/> above 0 to have anything to read. Default
         /// <c>0.65</c>: with the default swell that puts strong foam on about 5% of the surface and a trace of it
         /// on about 8%, so whitecaps read as scattered breaks rather than either a clean sea or a wash. (A real
-        /// ocean at moderate wind is nearer 1-3%; the stylized read wants a little more than the truth.)</summary>
+        /// ocean at moderate wind is nearer 1-3%; the stylized read wants a little more than the truth.)
+        /// <para>
+        /// The fold is evaluated per pixel, so a coarse grid no longer draws whitecaps as triangles. Beyond the near
+        /// field it eases toward 73% of itself as the pixel footprint grows, so distant water keeps about the
+        /// whitecap density a coarse grid used to leave it rather than whitening to the near field's (#1100).
+        /// </para></summary>
         public float FoamCrestCoverage = 0.65f;
 
         /// <summary>World-space depth below the surface over which the SHORELINE foam band fades out: full foam

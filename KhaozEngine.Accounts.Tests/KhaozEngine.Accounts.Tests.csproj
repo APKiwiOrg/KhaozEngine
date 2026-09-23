@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.Accounts.*, per AGENTS.md. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The seam, the reference store and the ban adapter. The durable backends' conformance legs join this
+         project beside InMemoryAccountStoreConformanceTests, each adding its own backend reference, so the one
+         suite runs against every store unchanged. -->
+    <ProjectReference Include="../KhaozEngine.Accounts/KhaozEngine.Accounts.csproj" />
+    <!-- For one fact only: AccountStoreRules.ReservedSubjectPrefix restates PositionHintCache.GuestAccountPrefix,
+         which Accounts cannot reference, and this is the project that sees both. WorldStore is dependency-free. -->
+    <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
+  </ItemGroup>
+</Project>

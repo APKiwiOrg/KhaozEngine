@@ -37,6 +37,9 @@ public partial class ArchitectureTests
         "Physics.Bepu", "WorldStore.Sqlite", "WorldStore.SqlServer",
         "Server.Admin", "Social.Discord", "Commerce.Sqlite", "Commerce.SqlServer",
         "Identity.Oidc", "Identity.Discord", "Catalog.Sqlite", "Catalog.SqlServer", "Catalog.AzureBlob",
+        // The account registry seam is opt-in on the Commerce precedent: a server-only seam stays out of the
+        // Server umbrella until more than its first consumers want it. Accounts_ReferencesOnlyNetcode pins its edge.
+        "Accounts",
         // THE THREE NATIVE GPU BACKENDS ARE NOT ON THIS LIST ANY MORE, and their absence is asserted rather than
         // assumed: NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu below requires the opposite of what
         // this list would have meant. They were opt-in from decisions P1 / V-P1 / M-P1, on pay-for-what-you-use
@@ -611,6 +614,19 @@ public partial class ArchitectureTests
         string[] actual = graph["KhaozEngine.Render3D.Ecs"].ProjectRefs.Select(Short).OrderBy(a => a, StringComparer.Ordinal).ToArray();
 
         Assert.Equal(new[] { "Ecs", "Render3D" }, actual);
+    }
+
+    [Fact]
+    public void Accounts_ReferencesOnlyNetcode()
+    {
+        // The account seam takes Netcode for IBanStore and BanRecord, which AccountBanStore implements, and nothing
+        // else: a game server and an admin console reach the store and the ban adapter without the exchange or
+        // Identity, and the SQL drivers live in the backend packages. No third-party package either.
+        Project accounts = LoadGraph()["KhaozEngine.Accounts"];
+        string[] packages = accounts.PackageRefs.Where(p => !IgnoredInfraPackages.Contains(p)).ToArray();
+
+        Assert.Equal(new[] { "Netcode" }, accounts.ProjectRefs.Select(Short).OrderBy(a => a, StringComparer.Ordinal).ToArray());
+        Assert.Empty(packages);
     }
 
     /// <summary>

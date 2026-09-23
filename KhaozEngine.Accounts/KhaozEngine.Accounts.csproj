@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Accounts</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The account registry seam behind sign-in: IAccountStore (find-or-create from a verified sign-in, read, keyset listing, and the whitelist and ban writes, none of which creates a row), the AccountRecord, AccountBan and AccountSignIn values, AccountStoreRules (the subject minting, reserved prefix and length rules every engine store applies alike), the InMemoryAccountStore reference and test store, and AccountBanStore, the one IBanStore over the account store, so a game files every ban in one place and the connect door, the join check and the admin endpoint all read it. Durable SQL backends are opt-in sibling packages. No SQL, no HTTP and no third-party dependency. Opt-in: in NO umbrella.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Netcode and nothing else: IBanStore and BanRecord, which AccountBanStore implements and returns. The
+         game server and an admin console take this package without the exchange or Identity, which is the
+         reason it is a package of its own. ArchitectureTests.Accounts_ReferencesOnlyNetcode pins the edge. -->
+    <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="KhaozEngine.Accounts/KhaozEngine.Accounts.csproj" />
   <Project Path="KhaozEngine.App/KhaozEngine.App.csproj" />
   <Project Path="KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
   <Project Path="KhaozEngine.Automation/KhaozEngine.Automation.csproj" />
@@ -103,6 +104,7 @@
   <Project Path="KhaozEngine.TestSupport.Windowing/KhaozEngine.TestSupport.Windowing.csproj" />
   <Project Path="KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj" />
   <Project Path="KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj" />
+  <Project Path="KhaozEngine.Accounts.Tests/KhaozEngine.Accounts.Tests.csproj" />
   <Project Path="KhaozEngine.Catalog.AzureBlob.Tests/KhaozEngine.Catalog.AzureBlob.Tests.csproj" />
   <Project Path="KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj" />
   <Project Path="KhaozEngine.Simulation.Tests/KhaozEngine.Simulation.Tests.csproj" />

@@ -931,8 +931,9 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   - `Animation.Inspection.PoseProbe` samples a clip without a GPU and exposes each skeleton node's model-space
     matrix or position by node index or retained name. `SampleClip` takes a closed normalised phase, with phase `1`
     preserving the authored end key. `SampleClipAtSeconds` clamps to the authored time range. `SetLocals` inspects
-    a caller-supplied local pose. Composition covers named hierarchy nodes outside the skin palette, which makes
-    zero-weight sockets available to asset checks.
+    a caller-supplied local pose. Composition covers every node in the supplied `Skeleton`, including non-palette
+    nodes in a code-built skeleton. A glTF-loaded child socket survives only when it is a zero-weight skin joint,
+    which places it in the bone palette. The loader otherwise retains only skin joints and their ancestors.
   - `LayeredAnimator` / `AnimationLayer` / `BoneMask` / `LayerMode` - N animation layers composited into one final
     skeleton pose: a base locomotion layer below, masked `Override` / `Additive` action layers above (attack while
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +

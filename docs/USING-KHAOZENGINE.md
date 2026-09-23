@@ -4658,8 +4658,10 @@ Vector3 leftFoot = probe.JointPosition("Foot.L");
 `SampleClip` accepts a phase in the closed range `[0, 1]`. Phase `1` samples the authored end key so a loop check
 can compare it with phase `0`. A runtime caller that wants looping wraps its phase first. `SampleClipAtSeconds`
 clamps seconds to the authored range, and `SetLocals` composes one caller-provided local pose per node. Returned
-matrices and positions are in model space before inverse-bind and object world transforms. Named hierarchy nodes
-outside the skin palette remain available, which is useful for zero-weight sockets.
+matrices and positions are in model space before inverse-bind and object world transforms. A code-built `Skeleton`
+may expose named nodes outside its skin palette. `GltfLoader.LoadSkinned` retains only skin joints and their
+ancestors, so an authored child socket that needs lookup must be a zero-weight entry in `skin.joints` and is then
+part of the bone palette.
 
 Each frame, feed it the movement state your controller already computes, then draw with its pose
 (the bone palette `DrawSkinned` consumes - it is joint-WORLD, the loader-attached skeleton composes it):

@@ -48,7 +48,9 @@ Sampling uses `samples` uniformly spaced looping phases `i / samples` for `i` in
 least two samples are required. A stance sample is one whose sole height is less than or equal to
 `groundHeight`. A stance interval is a maximal circular run of stance samples for one foot. The run
 at the end of the sample array joins the run at the beginning. A circular run is unwrapped so its
-phases increase beyond `1` after the join.
+phases increase beyond `1` after the join. The first sample of a run that crosses the loop boundary
+is the first stance sample after the preceding airborne sample. When every sample is in stance,
+there is one interval and sample index `0`, phase `0`, is its first sample.
 
 `strideMetres` is the forward distance covered by one complete clip cycle along model-space `+Z`. For
 an unwrapped phase `p`, distance-driven inspection places the character at `(0, 0, p *
@@ -72,25 +74,50 @@ samples and one capsule are required.
 
 ## ClipHygiene
 
-`ClipHygiene.Check` emits value findings in skeleton node order, then the fixed rule order below.
-Details use invariant culture. Unknown track targets sort after known nodes by target logical index.
+`ClipHygieneFinding.Rule` is one of the fixed identifiers below. For a resolved target,
+`NodeName` is the exact value from `Skeleton.NodeNames`, including an empty name. For an unresolved
+target, `NodeName` is empty and `Detail` carries the logical node index.
+
+Track-scoped findings come first. Tracks with resolved targets sort by skeleton node order. Tracks
+with unresolved targets follow in ascending logical node index. Ties retain `AnimationClip.Tracks`
+order. Within one track, findings use the rule order below. Channel-scoped findings use translation,
+rotation, then scale order. Key-scoped findings use increasing key index. Loop findings come last in
+skeleton node order. The exact channel tokens in details are `translation`, `rotation`, and `scale`.
+An unresolved track skips the name-dependent `allowed-node` and `translation` rules but remains
+eligible for `scale`, `rotation-unit`, `key-times`, and `key-density`. This ordering does not depend
+on a set or dictionary enumerator.
+
+Every detail number uses invariant culture. Finite floats use fixed six-decimal `F6` formatting with
+negative zero normalised to `0.000000`. Non-finite values use `NaN`, `Infinity`, or `-Infinity`.
+Logical indices and key indices use invariant decimal integers with no group separators.
 
 The rules are:
 
-1. `unknown-node` reports a track target that does not resolve to the skeleton.
-2. `allowed-node` reports every track whose resolved node name is outside non-null `AllowedNodes`.
-3. `translation` reports a translation track whose node name is outside `TranslationAllowed`.
-4. `scale` reports any scale track.
-5. `rotation-unit` reports a quaternion key that is non-finite or whose length squared differs from
-   one by more than `0.0001`.
-6. `key-times` reports each present channel whose key times are non-finite or are not strictly
-   increasing.
-7. `key-density` reports each present channel where `(keyCount - 1) / clip.Duration` is below
-   `MinKeysPerSecond`. A non-positive or non-finite duration fails every present channel.
-8. `loop` applies when `Looping` is true. It samples the complete local pose at time zero and at
-   `clip.Duration` and compares them. Translation and scale components may differ by at most
-   `0.0001`. Rotation passes when the absolute quaternion dot product is at least `0.99999`, so `q`
-   and `-q` are the same orientation. The authored end pose is compared directly and is never
+1. `unknown-node` emits one finding per unresolved track. `NodeName` is empty. `Detail` is
+   `logical-index=<target>`, for example `logical-index=107`.
+2. `allowed-node` emits one finding per resolved track whose exact node name is outside non-null
+   `AllowedNodes`. `Detail` is `track outside AllowedNodes`.
+3. `translation` emits one finding per translation channel whose exact node name is outside
+   `TranslationAllowed`. `Detail` is `translation outside TranslationAllowed`.
+4. `scale` emits one finding per scale channel. `Detail` is `scale channel present`.
+5. `rotation-unit` emits one finding per quaternion key that has a non-finite component or whose
+   length squared differs from one by more than `0.0001`. `Detail` is
+   `rotation key=<index> time=<time> length-squared=<value>`.
+6. `key-times` emits one finding for each non-finite key time and for each finite key time that is
+   less than or equal to its finite predecessor. For a non-finite time, `Detail` is
+   `<channel> key=<index> time=<time> non-finite`. For a non-increasing time, `Detail` is
+   `<channel> key=<index> time=<time> previous=<previous> not-increasing`.
+7. `key-density` emits one finding per present channel where `(keyCount - 1) / clip.Duration` is
+   below `MinKeysPerSecond`. `MinKeysPerSecond` must be finite and non-negative. For a positive finite
+   duration, `Detail` is `<channel> keys-per-second=<actual> minimum=<minimum>`. A non-positive or
+   non-finite duration fails every present channel with
+   `<channel> keys-per-second=undefined duration=<duration> minimum=<minimum>`.
+8. `loop` applies when `Looping` is true and emits one finding per mismatched skeleton node.
+   It samples the complete local pose at time zero and at `clip.Duration`. Translation and scale
+   components may differ by at most `0.0001`. Rotation passes when the absolute quaternion dot
+   product is at least `0.99999`, so `q` and `-q` are the same orientation. `Detail` is
+   `mismatch=<channels>`, where channels are listed once in translation, rotation, scale order, for
+   example `mismatch=translation,rotation`. The authored end pose is compared directly and is never
    wrapped to the start pose.
 
 `AllowedNodes` and `TranslationAllowed` use ordinal, case-sensitive skeleton names. An unresolved
@@ -135,8 +162,8 @@ values. The method allocates no managed memory in steady state.
 
 ## Test asset
 
-Tests generate a named two-legged skeleton and a walk clip in memory. The hierarchy includes a
-named weapon socket that is not part of the skin palette. Its asymmetric local transforms make
-matrix multiplication order observable. The walk clip contains explicit start, mid-cycle, and end
+Tests generate a named two-legged skeleton and a walk clip in memory. The code-built hierarchy
+includes a named weapon socket that is not part of the skin palette. Its asymmetric local transforms
+make matrix multiplication order observable. The walk clip contains explicit start, mid-cycle, and end
 keys. A companion non-looping endpoint clip gives phase `1` a value distinct from phase `0`. No
 authored file or graphics device participates.

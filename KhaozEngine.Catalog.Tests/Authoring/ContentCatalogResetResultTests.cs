@@ -31,7 +31,7 @@ public class ContentCatalogResetResultTests
     {
         var dangling = new ContentCatalogResetResult(9, null, null, 1, 2, Epoch, Current, Current, Read);
 
-        Assert.Contains("version 9, whose version row was MISSING", dangling.Summary, StringComparison.Ordinal);
+        Assert.Contains("active version 9, whose version row was MISSING", dangling.Summary, StringComparison.Ordinal);
         Assert.DoesNotContain("nothing published", dangling.Summary, StringComparison.Ordinal);
     }
 
@@ -49,7 +49,7 @@ public class ContentCatalogResetResultTests
     {
         var stood = new ContentCatalogResetResult(4, Hash, Hash, 4, 17, Epoch, Current, Current, Read);
 
-        Assert.Contains("version 4, server manifest " + Hash, stood.Summary, StringComparison.Ordinal);
+        Assert.Contains("active version 4, server manifest " + Hash, stood.Summary, StringComparison.Ordinal);
         Assert.Contains("client manifest " + Hash, stood.Summary, StringComparison.Ordinal);
         Assert.Contains("on schema version 2", stood.Summary, StringComparison.Ordinal);
         Assert.Contains("4 versions and 17 row revisions", stood.Summary, StringComparison.Ordinal);
@@ -174,7 +174,7 @@ public class ContentCatalogResetResultTests
         foreach (int prior in new[] { 1, Current })
         {
             yield return [0, null, null, 0, 0, prior, Read, "nothing published"];
-            yield return [3, Hash, Hash, 3, 12, prior, Read, "version 3, server manifest"];
+            yield return [3, Hash, Hash, 3, 12, prior, Read, "active version 3, server manifest"];
             yield return [3, null, null, 2, 12, prior, Read, "whose version row was MISSING"];
         }
     }

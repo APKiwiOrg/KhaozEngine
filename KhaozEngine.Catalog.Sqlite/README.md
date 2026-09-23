@@ -165,8 +165,9 @@ root or REBUILD it. The import that follows a reset overwrites the pointer only 
 so any other root a server boots from keeps the old one. `ContentPackRebuild.RunAsync` writes one published
 version's whole pack out of the store's own rows and rules, verified against the manifest digests the version
 row records. Do not leave that to the boot to notice.
-`ContentCatalogResetResult` carries the server and client manifest hashes that STOOD, which is the last moment
-they can be read, so a caller can tell an old pack root from a new one.
+`ContentCatalogResetResult` carries the ACTIVE version's server and client manifest hashes, which is the last moment
+they can be read, so a caller can tell an old pack root from a new one. A store pinned below its active version
+served the pin, which the result does not report.
 
 ## What the tables hold, and what they do not
 

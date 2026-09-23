@@ -15275,8 +15275,10 @@ backwards.
 
 `ContentCatalogResetResult` carries what stood (the active version number, its server and client manifest
 hashes, the counts of versions and row revisions dropped, and `PriorSchemaVersion`) plus the recreated
-`SchemaVersion` and the NEW `store_epoch`. The epoch is fresh on purpose: a reset store shares no history with
-the one it replaced. The result is also the last moment those
+`SchemaVersion` and the NEW `store_epoch`. The version is the ACTIVE one, `catalog_metadata.active_version`,
+and the summary says "active version" because that is what was read. A boot serves `pinned_version` when one
+is set, so a store pinned below its active version served the pin, which the result does not report. The epoch
+is fresh on purpose: a reset store shares no history with the one it replaced. The result is also the last moment those
 two hashes exist anywhere, because `catalog_version` goes with everything else.
 
 `PriorState` says which of the three a run was, and the record refuses to be built into a state that says two

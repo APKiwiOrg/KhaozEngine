@@ -28,7 +28,7 @@ namespace KhaozEngine.Catalog.Authoring;
 /// and any claim about what stood on a reset that did not read it.
 /// </para>
 /// </summary>
-/// <param name="ActiveVersion">The version the store served before the reset, or 0 when it had published nothing or nothing was read.</param>
+/// <param name="ActiveVersion">The store's ACTIVE version before the reset, <c>catalog_metadata.active_version</c>, or 0 when it had published nothing or nothing was read. A pin is not reported: a boot serves <c>pinned_version</c> when one is set, and this is not that.</param>
 /// <param name="ServerManifestHash">The active version's server manifest hash, or null when its row was not found or nothing was read.</param>
 /// <param name="ClientManifestHash">The active version's client manifest hash, or null when its row was not found or nothing was read.</param>
 /// <param name="VersionsDropped">How many rows <c>catalog_version</c> held, or 0 when nothing was read.</param>
@@ -50,7 +50,7 @@ public sealed record ContentCatalogResetResult(
     int SchemaVersion,
     ContentCatalogPriorState PriorState)
 {
-    /// <summary>The version the store served before the reset, or 0.</summary>
+    /// <summary>The store's active version before the reset, or 0. Never the pinned version a boot serves when one is set.</summary>
     public int ActiveVersion { get; } = ActiveVersion;
 
     /// <summary>The active version's server manifest hash, or null.</summary>
@@ -189,13 +189,16 @@ public sealed record ContentCatalogResetResult(
         return priorState;
     }
 
-    /// <summary>What the store served, named by number and by both hashes when it served anything.</summary>
+    /// <summary>
+    /// The store's ACTIVE version, named by number and by both hashes when it had one. The words say "active
+    /// version" because that is what was read, and a store pinned below it served the pin instead.
+    /// </summary>
     string Stood => this switch
     {
         { ActiveVersion: 0 } => "nothing published",
         { ServerManifestHash: null } => FormattableString.Invariant(
-            $"version {ActiveVersion}, whose version row was MISSING"),
+            $"active version {ActiveVersion}, whose version row was MISSING"),
         _ => FormattableString.Invariant(
-            $"version {ActiveVersion}, server manifest {ServerManifestHash}, client manifest {ClientManifestHash}"),
+            $"active version {ActiveVersion}, server manifest {ServerManifestHash}, client manifest {ClientManifestHash}"),
     };
 }

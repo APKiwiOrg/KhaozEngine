@@ -97,6 +97,37 @@ public class SqliteCatalogResetTests
     }
 
     [Fact]
+    public async Task AResetReportsTheActiveVersionAndNotAPinBelowIt()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        ContentVersionRecord active;
+        using (var store = new SqliteContentAuthoringStore(
+            database.ConnectionString, Registry(), database.Pack()))
+        {
+            await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+            await Seed(store, "one", "two");
+            await store.ApplyEditsAsync(
+                [ContentEdit.Add(Thing, new ContentKey("three"), PublishFixtures.Fields(33))],
+                Actor,
+                Operator,
+                "one more");
+            await store.PublishAsync(Request(1));
+            await store.SetPinnedVersionAsync(1, Actor, Operator);
+            active = (await store.GetVersionAsync(2))!;
+        }
+
+        ContentCatalogResetResult reset = await SqliteCatalogReset.ResetAsync(
+            database.ConnectionString, Actor, Operator, "content release");
+
+        // A boot would have served the pin, version 1. The result names the active version and says so.
+        Assert.Equal(2, reset.ActiveVersion);
+        Assert.Equal(active.ServerManifestHash, reset.ServerManifestHash);
+        Assert.Equal(active.ClientManifestHash, reset.ClientManifestHash);
+        Assert.Contains(
+            "active version 2, server manifest " + active.ServerManifestHash, reset.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AResetDropsEveryTableSoNoRowAndNoIdentityMarkSurvivesIt()
     {
         using var database = new TemporaryCatalogDatabase();

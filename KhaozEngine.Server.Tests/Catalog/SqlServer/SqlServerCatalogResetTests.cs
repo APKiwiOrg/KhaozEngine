@@ -98,6 +98,32 @@ public class SqlServerCatalogResetTests
     }
 
     [CatalogSqlServerFact]
+    public async Task AResetReportsTheActiveVersionAndNotAPinBelowIt()
+    {
+        using var database = new SqlServerCatalogDatabase();
+        SqlServerContentAuthoringStore store = await OpenAsync(database);
+        await Seed(store, "one", "two");
+        await store.ApplyEditsAsync(
+            [ContentEdit.Add(Thing, new ContentKey("three"), CatalogFixtures.Fields(33))],
+            Actor,
+            Operator,
+            "one more");
+        await store.PublishAsync(Request(1));
+        await store.SetPinnedVersionAsync(1, Actor, Operator);
+        ContentVersionRecord active = (await store.GetVersionAsync(2))!;
+
+        ContentCatalogResetResult reset = await SqlServerCatalogReset.ResetAsync(
+            database.ConnectionString, Actor, Operator, "content release");
+
+        // A boot would have served the pin, version 1. The result names the active version and says so.
+        Assert.Equal(2, reset.ActiveVersion);
+        Assert.Equal(active.ServerManifestHash, reset.ServerManifestHash);
+        Assert.Equal(active.ClientManifestHash, reset.ClientManifestHash);
+        Assert.Contains(
+            "active version 2, server manifest " + active.ServerManifestHash, reset.Summary, StringComparison.Ordinal);
+    }
+
+    [CatalogSqlServerFact]
     public async Task AResetDropsEveryTableSoNoRowAndNoIdentityMarkSurvivesIt()
     {
         using var database = new SqlServerCatalogDatabase();

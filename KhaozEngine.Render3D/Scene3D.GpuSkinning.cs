@@ -59,7 +59,8 @@ namespace KhaozEngine.Render3D
             {
                 GpuSkinnedDraw dr = _gpuSkinnedDraws[d];
                 if (!dr.VisibleMain) continue;
-                _model.PackSkinnedMainSlot(dr.Slot, dr.World, dr.Tint, dr.Emissive, dr.SpecParams);
+                _model.PackSkinnedMainSlot(dr.Slot, dr.World, dr.Tint, dr.Emissive, dr.SpecParams,
+                    dr.DissolveParams);
                 // Model + P alone: 1072 bytes left with #604's frame block and 3072 more with #407's palette.
                 _frameStats.AddSkinnedUniformUpload(ModelRenderer.SkinnedHeaderBytes);
                 packedMainSlots = true;

@@ -103,19 +103,19 @@ internal sealed partial class ModelRenderer
     /// shadow cascade. What is left is 128 bytes that really are per draw.
     /// </para></summary>
     public void PackSkinnedMainSlot(uint slot, in Matrix4x4 model,
-        Vector4 tint, Vector4 emissive, Vector4 specParams, float isDynamic = 1f)
+        Vector4 tint, Vector4 emissive, Vector4 specParams, Vector2 dissolve, float isDynamic = 1f)
     {
         uint baseOff = slot * SkinnedMainSlotBytes;
         _skinnedHeaderScratch[0] = model;
         // Row 3 is the P matrix's 4th column in the shader (GLSL reads the raw bytes column-major). Its .x carries
         // the dynamic-geometry decal mask (SkinnedModelVert -> vDynamic): every GPU-skinned draw is a skinned
         // character, so it defaults to 1 (dynamic), and the skinned fragment writes normal-target alpha 0 to keep
-        // the main ground-decal pass off it. The rest of the row stays 0.
+        // the main ground-decal pass off it. The row's last two components carry the dissolve parameters.
         _skinnedHeaderScratch[1] = new Matrix4x4(
             tint.X, tint.Y, tint.Z, tint.W,
             emissive.X, emissive.Y, emissive.Z, emissive.W,
             specParams.X, specParams.Y, specParams.Z, specParams.W,
-            isDynamic, 0f, 0f, 0f);
+            isDynamic, 0f, dissolve.X, dissolve.Y);
         // Straight into the persistent full-buffer image. UploadSkinnedMainSlots sends that image once every
         // slot is ready.
         Span<byte> destination = _skinnedMainImage.AsSpan(checked((int)baseOff), checked((int)SkinnedMainSlotBytes));

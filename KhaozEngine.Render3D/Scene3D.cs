@@ -1645,12 +1645,13 @@ namespace KhaozEngine.Render3D
 
                     bool dissolving = it.Dissolving;
                     ShadowCastKind shadowKind = ShadowDepthSelection.ClassifySkinnedCaster(it);   // issue #387
-                    // During a dissolve the emissive channel carries the edge colour. SpecParams.z/.w carry the
-                    // dissolve threshold + edge width (0 on a normal draw, so the values match the pre-dissolve path).
+                    // During a dissolve the emissive channel carries the edge colour. The cutoff remains in
+                    // SpecParams.z while the threshold and edge width travel in a dedicated dissolve vector.
                     Vector4 emissive = dissolving ? it.DissolveEdge : it.Material.Emissive;
-                    Vector4 specParams = dissolving
-                        ? new Vector4(it.Material.Specular, it.Material.Shininess, it.DissolveThreshold, it.DissolveEdgeWidth)
-                        : new Vector4(it.Material.Specular, it.Material.Shininess, 0f, 0f);
+                    Vector4 specParams = new(it.Material.Specular, it.Material.Shininess, entry.AlphaCutoff, 0f);
+                    Vector2 dissolveParams = dissolving
+                        ? new Vector2(it.DissolveThreshold, it.DissolveEdgeWidth)
+                        : Vector2.Zero;
 
                     if (UseGpuSkinning)
                     {
@@ -1658,7 +1659,8 @@ namespace KhaozEngine.Render3D
                         // _boneMatrices (submission index), packed into the shared palette at the compacted slot.
                         _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
                             entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
-                            ToRender(it.World), it.Tint, emissive, specParams, visibleMain, dissolving, shadowKind));   // reduced after the absolute classify
+                            ToRender(it.World), it.Tint, emissive, specParams, dissolveParams,
+                            visibleMain, dissolving, shadowKind));   // reduced after the absolute classify
                     }
                     else
                     {
@@ -1673,9 +1675,8 @@ namespace KhaozEngine.Render3D
                             Emissive = emissive,
                             SpecParams = specParams,
                             IsDynamic = 1f,   // skinned character: tag it so the main ground-decal pass rejects it (issue #235)
-                            // Read by the rigid dissolve DEPTH pipeline (issue #387). The colour pass routes a
-                            // dissolving CPU-skinned draw through ModelDissolveFrag, which reads SpecParams.z/w instead.
-                            Dissolve = dissolving ? new Vector2(it.DissolveThreshold, it.DissolveEdgeWidth) : Vector2.Zero,
+                            // The colour and rigid dissolve depth pipelines read this dedicated vector.
+                            Dissolve = dissolveParams,
                         });
                         _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet, dissolving, visibleMain, shadowKind));
                     }
@@ -2332,17 +2333,20 @@ namespace KhaozEngine.Render3D
             public readonly uint Slot;            // compacted per-caster slot: the main header window AND the shared palette
             public readonly Matrix4x4 World;
             public readonly Vector4 Tint, Emissive, SpecParams;
+            public readonly Vector2 DissolveParams;
             public readonly bool VisibleMain;
             public readonly bool Dissolve;
             public readonly ShadowCastKind ShadowKind;   // how it takes part in the depth pass (issue #387)
             public GpuSkinnedDraw(IGpuBuffer restVb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
                 IGpuResourceSet? skinnedMaterialSet, int boneSpanStart, int boneCount, uint slot,
-                in Matrix4x4 world, Vector4 tint, Vector4 emissive, Vector4 specParams, bool visibleMain, bool dissolve,
+                in Matrix4x4 world, Vector4 tint, Vector4 emissive, Vector4 specParams, Vector2 dissolveParams,
+                bool visibleMain, bool dissolve,
                 ShadowCastKind shadowKind = ShadowCastKind.Opaque)
             {
                 RestVb = restVb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat;
                 SkinnedMaterialSet = skinnedMaterialSet; BoneSpanStart = boneSpanStart; BoneCount = boneCount; Slot = slot;
-                World = world; Tint = tint; Emissive = emissive; SpecParams = specParams; VisibleMain = visibleMain; Dissolve = dissolve;
+                World = world; Tint = tint; Emissive = emissive; SpecParams = specParams;
+                DissolveParams = dissolveParams; VisibleMain = visibleMain; Dissolve = dissolve;
                 ShadowKind = shadowKind;
             }
         }

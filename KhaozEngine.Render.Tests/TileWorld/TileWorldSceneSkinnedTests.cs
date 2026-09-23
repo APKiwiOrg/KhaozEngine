@@ -132,8 +132,9 @@ public sealed class TileWorldSceneSkinnedTests
         Assert.Equal(world, packed.Model);
         Assert.Equal((Vector4)tint, packed.Tint);
         Assert.Equal((Vector4)edge, packed.Emissive);
-        Assert.Equal(0.65f, packed.SpecParams.Z, 5);
-        Assert.Equal(0.14f, packed.SpecParams.W, 5);
+        Assert.Equal(0f, packed.SpecParams.Z, 5);
+        Assert.Equal(0f, packed.SpecParams.W, 5);
+        Assert.Equal(new Vector2(0.65f, 0.14f), packed.Dissolve);
     }
 
     static void AssertSkinnedNotSupported(Action action)

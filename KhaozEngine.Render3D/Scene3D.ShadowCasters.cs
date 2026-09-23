@@ -411,9 +411,9 @@ namespace KhaozEngine.Render3D
                         uint slot = (uint)(c * gpuCount + d);
                         if (dr.ShadowKind == ShadowCastKind.Dissolving)
                         {
-                            // SpecParams.z carries the dissolve threshold on a dissolving draw (see RenderInternal).
+                            // The dedicated dissolve vector carries the threshold, independently of alpha cutoff.
                             _model.PackSkinnedShadowSlot(slot, dr.World, _cascadeDepthVps[c], _frameOrigin,
-                                _cascadeNoiseScales[c], dr.SpecParams.Z);
+                                _cascadeNoiseScales[c], dr.DissolveParams.X);
                             _frameStats.AddSkinnedUniformUpload(ShadowMapRenderer.SkinnedDissolvePayloadBytes);
                         }
                         else

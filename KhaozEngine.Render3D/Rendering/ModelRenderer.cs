@@ -127,9 +127,8 @@ namespace KhaozEngine.Render3D.Rendering
             public Matrix4x4 Model;       // 64 bytes (4 rows -> 4 Float4 instance attributes)
             public Vector4 Tint;          // 16
             public Vector4 Emissive;      // 16
-            // x = strength, y = shininess, z = alpha-cutout threshold (0 = OPAQUE/no clip, and ModelFrag discards
-            // texels with albedo alpha below it). The CharDissolve pipeline instead overloads z = dissolve
-            // threshold + w = edge width (a different fragment shader), so the two never collide within one draw.
+            // x = strength, y = shininess, z = alpha-cutout threshold (0 = opaque/no clip).
+            // Both ordinary and dissolve colour paths use the same cutoff.
             public Vector4 SpecParams;    // 16
             // Dynamic-geometry decal mask (issue #235): 0 = static world (the default; ModelFrag writes normal-target
             // alpha 1), 1 = dynamic/skinned geometry (ModelFrag writes alpha 0, so the main ground-decal pass rejects
@@ -144,7 +143,7 @@ namespace KhaozEngine.Render3D.Rendering
             // byte-identical and every GPU golden holds. ModelFrag gates the noise discard + edge on x > 0, so the
             // zero default (both InstanceData construction sites zero-fill via Add(default)) is inert. A single
             // Float2 attribute (location 13). The splat pipeline shares this layout and ignores it (terrain never
-            // dissolves), and the CharDissolve pipeline (ModelDissolveFrag) also ignores it (it reads SpecParams.z/w).
+            // dissolves). The CharDissolve pipeline reads this same field through its dedicated varying.
             public Vector2 Dissolve;      // 8
             // Complementary rigid-dissolve phase. Zero uses the ordinary keep set and one uses its inverse. Appended
             // so every existing field offset stays fixed and zero-filled callers preserve the old render path.
@@ -519,7 +518,7 @@ namespace KhaozEngine.Render3D.Rendering
                 maximumAnisotropy: cfg.MaximumAnisotropy, mipLodBias: cfg.MipLodBias));
 
         /// <summary>Bind the CharDissolve pipeline variant for the skinned draws that carry a dissolve threshold (the
-        /// SpecParams.z/.w channels drive the noise alpha-clip + emissive edge). Same material sets + frame UBO as
+        /// InstanceData.Dissolve channels drive the noise discard + emissive edge). Same material sets + frame UBO as
         /// <see cref="BindPass"/>; switch back with <see cref="BindPass"/> for non-dissolving draws.</summary>
         public void BindDissolvePass(IGpuCommandList cl) => cl.SetPipeline(_dissolvePipeline);
 

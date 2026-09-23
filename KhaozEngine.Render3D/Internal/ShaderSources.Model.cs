@@ -215,8 +215,8 @@ void main() {
 
         // ---- CharDissolve variant of ModelFrag: noise-thresholded alpha clip + emissive edge ----
         // Identical lighting to ModelFrag, plus a world-space value-noise dissolve mask: fragments where the mask is
-        // below the threshold (vSpecParams.z, 0=solid .. 1=gone; fed CharDissolve.Cover) are discarded, and a thin
-        // band just above the threshold (width vSpecParams.w) glows with the edge colour (which rides vEmissive during
+        // below the threshold (vDissolve.x, 0=solid .. 1=gone; fed CharDissolve.Cover) are discarded, and a thin
+        // band just above the threshold (width vDissolve.y) glows with the edge colour (which rides vEmissive during
         // a dissolve). World-space noise so the pattern is stable as the avatar moves. Only skinned draws the consumer
         // marks as dissolving use this pipeline; the normal path keeps ModelFrag byte-identical.
         public const string ModelDissolveFrag = @"#version 450
@@ -256,9 +256,10 @@ layout(location=2) in vec3 vWorldPos;
 layout(location=3) in vec2 vUv;
 layout(location=4) in vec4 vTint;
 layout(location=5) in vec4 vEmissive;   // during a dissolve this carries the emissive EDGE colour
-layout(location=6) in vec4 vSpecParams; // x=spec strength, y=shininess, z=dissolve threshold, w=dissolve edge width
+layout(location=6) in vec4 vSpecParams; // x=spec strength, y=shininess, z=alpha cutoff
 layout(location=7) in vec4 vTangent;
 layout(location=8) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
+layout(location=9) in vec2 vDissolve;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -274,13 +275,15 @@ float dnoise(vec3 p) {
                mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);
 }
 void main() {
-    float threshold = clamp(vSpecParams.z, 0.0, 1.0);
-    float edgeW = max(vSpecParams.w, 1e-3);
+    vec4 texRgba = texture(sampler2D(Albedo, Samp), vUv);
+    if (vSpecParams.z > 0.0 && texRgba.a < vSpecParams.z) discard;
+    float threshold = clamp(vDissolve.x, 0.0, 1.0);
+    float edgeW = max(vDissolve.y, 1e-3);
     float mask = dnoise((vWorldPos + RenderOrigin.xyz) * " + ShadowDissolveNoise.BaseScaleGlsl + @");   // 0..1 world-space dissolve mask
     if (mask < threshold) discard;          // dissolved away
 
     vec3 Ngeo = normalize(vNormalW);
-    vec3 texRgb = texture(sampler2D(Albedo, Samp), vUv).rgb;
+    vec3 texRgb = texRgba.rgb;
     vec3 normalTex = texture(sampler2D(NormalMap, Samp), vUv).xyz;
     float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;
     vec3 N = Ngeo;
@@ -381,6 +384,7 @@ layout(location=5) out vec4 vEmissive;
 layout(location=6) out vec4 vSpecParams;
 layout(location=7) out vec4 vTangent;
 layout(location=8) out float vDynamic;
+layout(location=9) out vec2 vDissolve;
 void main() {
     // 4-bone blend, mirroring SkinningMath.BlendSkinMatrix: raw (un-renormalized) weights, identity on ~0 total so an
     // unrigged vertex stays in place. bones[i] uploaded raw (System.Numerics row-major) reads column-major here as its
@@ -421,6 +425,7 @@ void main() {
     vSpecParams = P[2];
     vTangent = vec4(mat3(Model) * tLocal.xyz, tLocal.w);   // zero tangent -> (0,0,0,0), so the fragment uses Ngeo
     vDynamic = P[3].x;   // dynamic-geometry decal mask (issue #235): GPU-skinned draws default to 1 (see PackSkinnedMainSlot)
+    vDissolve = P[3].zw;
 }";
 
         // Skinned fragment: byte-for-byte ModelFrag lighting, off byte-for-byte ModelFrag's frame block, which since
@@ -542,6 +547,7 @@ layout(location=5) in vec4 vEmissive;
 layout(location=6) in vec4 vSpecParams;
 layout(location=7) in vec4 vTangent;
 layout(location=8) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
+layout(location=9) in vec2 vDissolve;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -557,13 +563,15 @@ float dnoise(vec3 p) {
                mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);
 }
 void main() {
-    float threshold = clamp(vSpecParams.z, 0.0, 1.0);
-    float edgeW = max(vSpecParams.w, 1e-3);
+    vec4 texRgba = texture(sampler2D(Albedo, Samp), vUv);
+    if (vSpecParams.z > 0.0 && texRgba.a < vSpecParams.z) discard;
+    float threshold = clamp(vDissolve.x, 0.0, 1.0);
+    float edgeW = max(vDissolve.y, 1e-3);
     float mask = dnoise((vWorldPos + RenderOrigin.xyz) * " + ShadowDissolveNoise.BaseScaleGlsl + @");
     if (mask < threshold) discard;
 
     vec3 Ngeo = normalize(vNormalW);
-    vec3 texRgb = texture(sampler2D(Albedo, Samp), vUv).rgb;
+    vec3 texRgb = texRgba.rgb;
     vec3 normalTex = texture(sampler2D(NormalMap, Samp), vUv).xyz;
     float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;
     vec3 N = Ngeo;

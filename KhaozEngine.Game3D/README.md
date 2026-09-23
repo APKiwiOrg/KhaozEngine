@@ -13,6 +13,8 @@ Pulls in:
   defaults).
 - `KhaozEngine.Render3D` - the stylized 3D renderer: `Scene3D`, glTF + procedural meshes,
   materials/lighting, skinning, billboards, ground decals.
+- `KhaozEngine.Render3D.Ecs` - the ECS arm of the renderer: the `Transform3D` and `MeshInstance`
+  components and `Scene3DBinder.Submit`, which draws every entity carrying both into a `Scene3D`.
 - `KhaozEngine.Game.Render3D` - the Game framework's 3D bridge: `GameApp3D`, `IGameScene3D`,
   the `SceneManager.Draw3D` extension, and the animated-character layer.
 - `KhaozEngine.Telegraphs.Render3D` - `Scene3D.GroundCircle/Ring/Beam/Cone/Arc` extensions that

@@ -10,7 +10,7 @@ namespace KhaozEngine.Localization.Analyzers;
 
 /// <summary>
 /// Enforces the KhaozEngine LocalizedText contract. KELOC001: a call to a method/constructor marked
-/// <c>[LocalizationStringSink]</c> (the obsolete raw-string Gui overloads, or a consumer-marked sink).
+/// <c>[LocalizationStringSink]</c> (a consumer-marked raw-string sink).
 /// KELOC002: <c>LocalizedText.Raw(...)</c> used outside a <c>[LocalizationExempt]</c> scope and outside
 /// DEBUG-conditional code. KELOC003: a bare string literal drawn straight to the engine's 2D text primitive
 /// <c>Render2D.SpriteBatch.DrawString</c> (the sink games hit when they render UI without Gui widgets).

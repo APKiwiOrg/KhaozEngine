@@ -72,7 +72,7 @@ public class DirectionalSpeedReconcileParityTests
             {
                 int ackSeq = i - Lag;
                 PlayerMoveState authFull = contStates[ackSeq + 1];
-                pred.Reconcile(i, PlayerMoveState.From(authFull.Position, MovementState.From(authFull)), ackSeq);
+                pred.Reconcile(i, PlayerMoveState.From(authFull.Position, MovementState.From(authFull), MovementOwnerState.From(authFull)), ackSeq);
                 reconciles++;
             }
             maxPosErr = MathF.Max(maxPosErr, Vector3.Distance(pred.PredictedState.Position, contStates[i + 1].Position));

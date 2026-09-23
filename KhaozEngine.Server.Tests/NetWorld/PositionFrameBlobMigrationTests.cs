@@ -40,8 +40,6 @@ public class PositionFrameBlobMigrationTests
     {
         VerticalVelocity = -2.5f,
         Grounded = true,
-        TimeSinceGrounded = 0.75f,
-        JumpBufferRemaining = 0.1f,
         Swimming = true,
         TeleportEpoch = 42u,
         ClimbRateQ = 5,
@@ -51,14 +49,16 @@ public class PositionFrameBlobMigrationTests
         FacingYawQ = 12345,
     };
 
+    // The feel timers every generation stored inside the movement payload until the owner split moved them to a frame
+    // of their own. A migrated body carries them in that frame.
+    private static readonly MovementOwnerState FullOwner = new() { TimeSinceGrounded = 0.75f, JumpBufferRemaining = 0.1f };
+
     // What a state written at `generation` must read back as on a current build: the fields that generation carried,
     // and the DEFAULT for every field the codec appended after it (there were no bytes on disk to carry them).
     private static MovementState AsStoredAt(int generation, MovementState m) => new()
     {
         VerticalVelocity = m.VerticalVelocity,
         Grounded = m.Grounded,
-        TimeSinceGrounded = m.TimeSinceGrounded,
-        JumpBufferRemaining = m.JumpBufferRemaining,
         Swimming = generation >= 3 && m.Swimming,
         TeleportEpoch = generation >= 4 ? m.TeleportEpoch : 0u,
         ClimbRateQ = generation >= 5 ? m.ClimbRateQ : (sbyte)0,
@@ -72,8 +72,6 @@ public class PositionFrameBlobMigrationTests
     {
         Assert.Equal(expected.VerticalVelocity, actual.VerticalVelocity);
         Assert.Equal(expected.Grounded, actual.Grounded);
-        Assert.Equal(expected.TimeSinceGrounded, actual.TimeSinceGrounded);
-        Assert.Equal(expected.JumpBufferRemaining, actual.JumpBufferRemaining);
         Assert.Equal(expected.Swimming, actual.Swimming);
         Assert.Equal(expected.TeleportEpoch, actual.TeleportEpoch);
         Assert.Equal(expected.ClimbRateQ, actual.ClimbRateQ);
@@ -100,7 +98,7 @@ public class PositionFrameBlobMigrationTests
         return new CellBlobFixtures.BodyBuilder()
             .Entity(1,
                 (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(generation, PlayerPos)),
-                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(generation, movement)),
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(generation, movement, FullOwner)),
                 (MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity("Runner")))
             .Entity(2, propComponents.ToArray())
             .ToBody();
@@ -147,6 +145,7 @@ public class PositionFrameBlobMigrationTests
         Assert.True(view.TryGetEntity(1, out Entity player));
         Assert.Equal(PlayerPos, clientWorld.Get<ReplicatedPosition>(player).Value);
         AssertMovement(AsStoredAt(generation, seeded), clientWorld.Get<MovementState>(player));
+        Assert.Equal(FullOwner, clientWorld.Get<MovementOwnerState>(player));   // split out of the stored payload
         Assert.Equal("Runner", clientWorld.Get<PlayerIdentity>(player).DisplayName);
 
         Assert.True(view.TryGetEntity(2, out Entity prop));
@@ -183,7 +182,7 @@ public class PositionFrameBlobMigrationTests
         byte[] v2Body = new CellBlobFixtures.BodyBuilder()
             .Entity(1,
                 (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(3, PlayerPos)),
-                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(3, FullMovement())),
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(3, FullMovement(), FullOwner)),
                 (MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity("Runner")))
             .ToBody();
 
@@ -204,7 +203,7 @@ public class PositionFrameBlobMigrationTests
         byte[] v2Body = new CellBlobFixtures.BodyBuilder()
             .Entity(1,
                 (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(3, PlayerPos)),
-                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(3, seeded)),
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(3, seeded, FullOwner)),
                 (MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity("Runner")))
             .ToBody();
 
@@ -237,7 +236,8 @@ public class PositionFrameBlobMigrationTests
                 (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(MoveProtocol.WireProtocolVersion, PlayerPos)),
                 (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(MoveProtocol.WireProtocolVersion,
                     AsStoredAt(NewestV2Generation, seeded))),
-                (MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity("Runner")))
+                (MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity("Runner")),
+                (MoveProtocol.MovementOwnerTypeId, CellBlobFixtures.MovementOwner(FullOwner)))
             .Entity(2,
                 (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(MoveProtocol.WireProtocolVersion, PropPos)),
                 (MoveProtocol.DynamicBodyTypeId, CellBlobFixtures.DynamicBody(
@@ -258,7 +258,7 @@ public class PositionFrameBlobMigrationTests
         byte[] v2Body = new CellBlobFixtures.BodyBuilder()
             .Entity(7,
                 (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(5, PropPos)),
-                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(5, FullMovement())),
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(5, FullMovement(), FullOwner)),
                 (ReplicationRegistry.FirstExtensionTypeId, new byte[] { (byte)extension.Length, 1, 2, 3, 4, 5 }))
             .ToBody();
 

@@ -306,7 +306,7 @@ public class SettingsManagerTests
             var paths = new AppDataPaths("APKiwi", "MigrateSave", env);
             File.WriteAllText(paths.GetFilePath("save.json"), "{\"SchemaVersion\":1,\"Items\":[]}");
 
-            using var storage = new GameStorage(paths);
+            using var storage = new GameStorage(paths, SaveEncoding.Plaintext);
             var chain = MigrationChain.For<SaveDoc>()
                 .Step(1, s => { s.Items.Add("from-v1"); return s; })
                 .Build(2);
@@ -332,7 +332,7 @@ public class SettingsManagerTests
             env.Folders[Environment.SpecialFolder.ApplicationData] = root;
             var paths = new AppDataPaths("APKiwi", "MigrateSm", env);
 
-            using var storage = new GameStorage(paths);
+            using var storage = new GameStorage(paths, SaveEncoding.Plaintext);
             File.WriteAllText(paths.GetFilePath(storage.Settings.SettingsFileName), "{\"SchemaVersion\":1,\"Value\":3}");
 
             var chain = MigrationChain.For<VersionedBox>()
@@ -378,7 +378,7 @@ public class SettingsManagerTests
             env.Folders[Environment.SpecialFolder.ApplicationData] = root;
             var paths = new AppDataPaths("APKiwi", "MigrateAbsent", env);
 
-            using var storage = new GameStorage(paths);
+            using var storage = new GameStorage(paths, SaveEncoding.Plaintext);
             var chain = MigrationChain.For<SaveDoc>()
                 .Step(1, s => { s.Items.Add("from-v1"); return s; })
                 .Build(2);

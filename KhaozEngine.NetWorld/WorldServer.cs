@@ -364,7 +364,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;   // server owns the monotonic epoch
         stateBySlot[slot] = next;
         world.Set(e, ReplicatedPosition.InFrame(islandFrame, next.Position));
-        world.Set(e, MovementState.From(next));
+        MovementComponents.Set(world, e, next);
     }
 
     /// <summary>Sets the display name replicated for a joined player (added to its entity as a
@@ -529,7 +529,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             PlayerMoveState state = simulator.Step(prev, cmd, dt);
             stateBySlot[slot] = state;
             world.Set(entityBySlot[slot], ReplicatedPosition.InFrame(islandFrame, state.Position));
-            world.Set(entityBySlot[slot], MovementState.From(state));   // replicate the vertical axis
+            MovementComponents.Set(world, entityBySlot[slot], state);   // replicate the vertical axis and timers
             InspectMovementCommitmentTransition(slot, prev, state);
             if (config.AntiCheat.CorrectionEnabled && !prev.Move.Commitment.IsActive)
                 TrackCorrection(slot, prev, state, dt);

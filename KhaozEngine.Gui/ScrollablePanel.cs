@@ -295,13 +295,6 @@ namespace KhaozEngine.Gui
             GuiDraw.FillStyled(batch, white, CurrentBounds, Style with { BorderThickness = 1f }, Background, Border);
         }
 
-        /// <summary>Obsolete: pass a <see cref="LocalizedText"/>. A raw string title bypasses localization.</summary>
-        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
-        [LocalizationStringSink]
-        [LocalizationExempt]
-        public void DrawHeader(SpriteBatch batch, Texture2D white, SpriteFont font, string title) =>
-            DrawHeader(batch, white, font, LocalizedText.Raw(title));
-
         /// <summary>Draw the header band: optional <see cref="HeaderBackground"/> fill, left-aligned <paramref name="title"/>,
         /// and a bottom divider. No-op when <see cref="HeaderHeight"/> is 0. The title is resolved against the
         /// ambient catalog on every draw, so a runtime locale switch takes effect on the next frame.</summary>

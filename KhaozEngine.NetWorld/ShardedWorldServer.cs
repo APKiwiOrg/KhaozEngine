@@ -301,8 +301,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             && host.TryGetOwner(netId, out CellSim cell, out Entity e)
             && cell.World.TryGet(e, out ReplicatedPosition rp))
         {
-            cell.World.TryGet(e, out MovementState ms);   // default (grounded, 0) if absent
-            state = PlayerMoveState.From(rp.Value, ms);
+            state = MovementComponents.Read(cell.World, e, rp.Value);   // default (grounded, 0) if absent
             return true;
         }
         state = default;
@@ -330,7 +329,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             // The state came from OUTSIDE the simulation (an admin teleport, a load-on-join record, a self-rescue),
             // so its position is absolute and lands in the owning cell's frame.
             cell.World.Set(e, ReplicatedPosition.FromWorld(next.Position, cell.Frame));
-            cell.World.Set(e, MovementState.From(next));
+            MovementComponents.Set(cell.World, e, next);
         }
     }
 
@@ -495,8 +494,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 cell.World.Set(e, new PendingMove { Command = cmd });
                 if (cell.World.TryGet(e, out ReplicatedPosition commitmentPosition))
                 {
-                    cell.World.TryGet(e, out MovementState commitmentMovement);
-                    PlayerMoveState before = PlayerMoveState.From(commitmentPosition.Value, commitmentMovement);
+                    PlayerMoveState before = MovementComponents.Read(cell.World, e, commitmentPosition.Value);
                     if (before.Move.Commitment.IsActive)
                         movementCommitmentScratch.Add((slot, before, cell, cell.TickCount));
                 }
@@ -505,8 +503,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 // host.Tick rather than threading the metric through the ECS.
                 if (trackCorrection && cell.World.TryGet(e, out ReplicatedPosition rp))
                 {
-                    cell.World.TryGet(e, out MovementState ms);
-                    correctionScratch.Add((slot, PlayerMoveState.From(rp.Value, ms), cell, cell.TickCount));
+                    correctionScratch.Add((slot, MovementComponents.Read(cell.World, e, rp.Value), cell, cell.TickCount));
                 }
             }
         }

@@ -21,7 +21,7 @@ namespace KhaozEngine.Gui
     /// <para>
     /// <b>Immediate vs retained:</b> use <see cref="GuiSurface"/> for HUDs/menus authored fresh each frame inside a
     /// <c>window.Run</c> loop - no instances to keep, one call site per widget, styled by <see cref="GuiStyle"/>.
-    /// Use the retained widgets (<see cref="Button(KhaozEngine.Render2D.SpriteFont, KhaozEngine.Primitives.Rect, string)"/>, <see cref="Toggle"/>, <see cref="Slider(KhaozEngine.Primitives.Rect, float)"/>,
+    /// Use the retained widgets (<see cref="Button(KhaozEngine.Render2D.SpriteFont, KhaozEngine.Primitives.Rect, KhaozEngine.App.LocalizedText)"/>, <see cref="Toggle"/>, <see cref="Slider(KhaozEngine.Primitives.Rect, float)"/>,
     /// <see cref="Dropdown"/>, <see cref="TextInput"/>, ...) when a control owns persistent state across frames
     /// (focus, drag, open/closed) or sits in a long-lived screen object: construct once, call <c>Update</c> then
     /// <c>Draw</c> each frame. Both paradigms reserve their rect on the <see cref="Pointer"/> for the same
@@ -64,7 +64,7 @@ namespace KhaozEngine.Gui
             return text;
         }
 
-        /// <summary>The style applied to <see cref="Button(SpriteFont, Rect, string)"/> when no explicit style is passed.</summary>
+        /// <summary>The style applied to <see cref="Button(SpriteFont, Rect, LocalizedText)"/> when no explicit style is passed.</summary>
         public GuiStyle Style { get; set; }
 
         /// <summary>The icon set resolved by <see cref="Icon"/>/<see cref="IconButton"/>/<see cref="StatChip(Rect, string, LocalizedText, LocalizedText, SpriteFont, GuiStyle, float)"/>; null = icons draw nothing.</summary>
@@ -178,13 +178,6 @@ namespace KhaozEngine.Gui
             _batch.DrawString(font, text.Resolve(), pos, (Color)color, scale);
         }
 
-        /// <summary>Obsolete: pass a <see cref="LocalizedText"/>. A raw string bypasses localization.</summary>
-        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
-        [LocalizationStringSink]
-        [LocalizationExempt]
-        public void Label(SpriteFont font, string text, Vector2 pos, Vector4 color) =>
-            Label(font, LocalizedText.Raw(text), pos, color);
-
         /// <summary>
         /// Draw <paramref name="text"/> aligned within <paramref name="rect"/> horizontally per
         /// <paramref name="align"/> and vertically centered, uniformly scaled by <paramref name="scale"/>
@@ -198,23 +191,9 @@ namespace KhaozEngine.Gui
             _batch.DrawString(font, s, pos, (Color)color, scale);
         }
 
-        /// <summary>Obsolete: pass a <see cref="LocalizedText"/>. A raw string bypasses localization.</summary>
-        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
-        [LocalizationStringSink]
-        [LocalizationExempt]
-        public void Label(SpriteFont font, Rect rect, string text, Vector4 color, GuiAlign align = GuiAlign.Center) =>
-            Label(font, rect, LocalizedText.Raw(text), color, align);
-
         /// <summary>A button with the surface's default <see cref="Style"/>. Returns true on a valid press-origin tap.</summary>
         public bool Button(SpriteFont font, Rect rect, LocalizedText label) =>
             Button(font, rect, label, Style);
-
-        /// <summary>Obsolete: pass a <see cref="LocalizedText"/>. A raw string bypasses localization.</summary>
-        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
-        [LocalizationStringSink]
-        [LocalizationExempt]
-        public bool Button(SpriteFont font, Rect rect, string label) =>
-            Button(font, rect, LocalizedText.Raw(label), Style);
 
         /// <summary>
         /// A button with hover/press/disabled/selected visuals. Returns true on the release frame of a tap whose
@@ -242,16 +221,9 @@ namespace KhaozEngine.Gui
             return clicked;
         }
 
-        /// <summary>Obsolete: pass a <see cref="LocalizedText"/>. A raw string bypasses localization.</summary>
-        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
-        [LocalizationStringSink]
-        [LocalizationExempt]
-        public bool Button(SpriteFont font, Rect rect, string label, GuiStyle style, bool enabled = true, bool selected = false) =>
-            Button(font, rect, LocalizedText.Raw(label), style, enabled, selected);
-
         /// <summary>
         /// An icon-only button (icon centred in a styled panel, tinted by the text colour, hover glow from the
-        /// style). Returns true on a valid press-origin tap; always reserves its rect. Mirrors <see cref="Button(SpriteFont, Rect, string, GuiStyle, bool, bool)"/>.
+        /// style). Returns true on a valid press-origin tap; always reserves its rect. Mirrors <see cref="Button(SpriteFont, Rect, LocalizedText, GuiStyle, bool, bool, float)"/>.
         /// </summary>
         public bool IconButton(Rect rect, string iconId, GuiStyle style, bool enabled = true, bool selected = false)
         {
@@ -306,20 +278,13 @@ namespace KhaozEngine.Gui
             _batch.DrawString(font, text, new Vector2(textX, ty), (Color)style.Text, scale);
         }
 
-        /// <summary>Obsolete: pass <see cref="LocalizedText"/> for the label/value. A raw string bypasses localization.</summary>
-        [Obsolete("Pass LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
-        [LocalizationStringSink]
-        [LocalizationExempt]
-        public void StatChip(Rect rect, string iconId, string label, string value, SpriteFont font, GuiStyle style) =>
-            StatChip(rect, iconId, LocalizedText.Raw(label), LocalizedText.Raw(value), font, style);
-
         /// <summary>A horizontal slider using the surface's default <see cref="Style"/>. Returns the value in [0,1].</summary>
         public float Slider(Rect rect, float value) => Slider(rect, value, Style);
 
         /// <summary>
         /// An immediate-mode horizontal slider. Returns the (possibly updated) value in [0,1]. While the pointer is
         /// pressed with its press-origin inside <paramref name="rect"/> (the same press-origin invariant as
-        /// <see cref="Button(SpriteFont, Rect, string)"/>, via <see cref="Pointer.IsDragStartIn"/> - shared with the
+        /// <see cref="Button(SpriteFont, Rect, LocalizedText)"/>, via <see cref="Pointer.IsDragStartIn"/> - shared with the
         /// retained <see cref="Slider(KhaozEngine.Primitives.Rect, float)"/>), the value tracks
         /// the pointer X clamped to [0,1] - the drag keeps control even if the cursor strays off the track, which
         /// <c>IsPressingIn</c> would not. The handle half-width is inset so the ends reach exactly 0 and 1. The
@@ -353,7 +318,7 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>
-        /// True when the pointer is over an enabled <see cref="Button(SpriteFont, Rect, string)"/> this frame.
+        /// True when the pointer is over an enabled <see cref="Button(SpriteFont, Rect, LocalizedText)"/> this frame.
         /// Valid after all widgets for the frame have been issued (read it before the next <see cref="Begin"/>).
         /// </summary>
         public bool IsHovering => _hoveredRect.HasValue;

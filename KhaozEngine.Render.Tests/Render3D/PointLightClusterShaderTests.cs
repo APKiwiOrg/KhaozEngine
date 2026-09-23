@@ -36,11 +36,13 @@ public sealed class PointLightClusterShaderTests
         int clusterRead = source.IndexOf("PointLightClusters[", StringComparison.Ordinal);
         Assert.True(zeroReturn >= 0, "zero lights need an explicit early return");
         Assert.True(clusterRead > zeroReturn, "zero lights must return before the cluster buffer is read");
-        Assert.Contains("int candidateCount = fullPointLightFallback ? npl : int(clusterHeader.x);",
+        Assert.Contains("int candidateCount = fullPointLightFallback ? npl : int(clusterCount);",
             source, StringComparison.Ordinal);
         Assert.Contains("int lightIndex = fullPointLightFallback ? candidate : clusteredLightIndex",
             source, StringComparison.Ordinal);
-        Assert.Contains("clusterHeader.y != 0u", source, StringComparison.Ordinal);
+        Assert.Contains(
+            $"if (clusterCount > {PointLightClusterBuilder.MaxLightsPerCluster}u) fullPointLightFallback = true;",
+            source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -64,9 +66,23 @@ public sealed class PointLightClusterShaderTests
         Assert.Contains($"* {PointLightClusterBuilder.ClusterCountX}.0", source, StringComparison.Ordinal);
         Assert.Contains($"* {PointLightClusterBuilder.ClusterCountY}.0", source, StringComparison.Ordinal);
         Assert.Contains($"* {PointLightClusterBuilder.ClusterCountZ}.0", source, StringComparison.Ordinal);
-        Assert.Contains($"cluster * {PointLightClusterBuilder.ClusterStrideUInts / 4}", source,
+        Assert.Contains("clusterIndex = uint((tileZ * 9 + tileY) * 16 + tileX);", source, StringComparison.Ordinal);
+        Assert.Contains("uvec4 packedHeaders = PointLightClusters[clusterIndex >> 2u];", source,
             StringComparison.Ordinal);
-        Assert.Contains($"clusterHeader.x > {PointLightClusterBuilder.MaxLightsPerCluster}u", source,
+        Assert.Contains($"clusterCount = clusterHeader & {PointLightClusterBuilder.CountMask}u;", source,
             StringComparison.Ordinal);
+        Assert.Contains($"clusterOffset = clusterHeader >> {PointLightClusterBuilder.CountBits}u;", source,
+            StringComparison.Ordinal);
+        Assert.Contains($"PointLightClusters[{PointLightClusterBuilder.HeaderRegionUvec4s}u + (indexSlot >> 2u)]",
+            source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheClusterLoopKeepsItsVaryingCountFormForDirect3D()
+    {
+        // STABLE-POINT-LIGHTING-2026-09-19.md: the count varies per fragment and every atlas read inside the loop uses
+        // explicit mip zero, so FXC never attempts an unbounded unroll.
+        Assert.Contains("for (int candidate = 0; candidate < candidateCount; candidate++) {",
+            ShaderSources.LightingCommonGlsl, StringComparison.Ordinal);
     }
 }

@@ -55,12 +55,18 @@ namespace KhaozEngine.Tests.Gpu
                 supportsCompletionFences: true);
             _ = D3D11CapabilityRead.UnsupportedSampleCountMessage(16, 8);
 
-            // Adapter selection (G2).
+            // Adapter selection (G2), including the high-performance default (#1115).
             var adapters = new List<D3D11AdapterInfo> { new("WARP", isSoftware: true) };
             D3D11AdapterRequest request = D3D11AdapterSelection.Parse("warp");
-            D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(request, adapters, out _);
+            D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(request, adapters,
+                gpuPreferenceAvailable: true, out _);
             _ = D3D11AdapterSelection.Describe(choice, adapters);
             _ = D3D11AdapterSelection.IsSoftwareChoice(choice, adapters);
+            D3D11AdapterChoice preferred = D3D11AdapterSelection.Choose(D3D11AdapterSelection.Parse(null), adapters,
+                gpuPreferenceAvailable: true, out _);
+            _ = D3D11AdapterSelection.Describe(preferred, adapters);
+            _ = D3D11AdapterSelection.HighPerformanceUnavailableWarning;
+            _ = D3D11AdapterSelection.HighPerformanceCreateFailedWarning("off-windows");
             _ = D3D11AdapterSelection.FromEnvironment();
 
             // The debug lever (G4), including the folded Vortice constant.

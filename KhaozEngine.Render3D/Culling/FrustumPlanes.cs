@@ -21,11 +21,13 @@ namespace KhaozEngine.Render3D
     /// top <c>clip.Y &lt;= clip.W</c>, near <c>clip.Z &gt;= 0</c>, far <c>clip.Z &lt;= clip.W</c>. Each becomes a
     /// plane by adding/subtracting the relevant column from column3 (the Gribb/Hartmann method adapted to the
     /// row-vector, zero-to-one-depth convention this engine actually uses).</para>
-    /// <para><b>Use an ABSOLUTE view-projection</b>, never <c>camera.ViewProjection</c> while a render origin is in
-    /// force. <c>Scene3D</c> latches an origin at <c>Begin</c>, and once it has, <c>camera.ViewProjection</c>
-    /// returns a RENDER-RELATIVE matrix, so extracting planes from it culls absolute bounds against the wrong
-    /// space entirely. Pass <c>Scene3D</c>'s internal <c>FrameAbsoluteViewProjection()</c> (or any other absolute
-    /// view-projection) instead. This is unrelated to the <c>GpuClip.Correct</c>-adjusted matrix, which stays
+    /// <para><b>The planes are in whatever frame the matrix maps from</b>, so test boxes in that same frame. Most
+    /// callers cull ABSOLUTE bounds and so need an ABSOLUTE view-projection, never <c>camera.ViewProjection</c>
+    /// while a render origin is in force. <c>Scene3D</c> latches an origin at <c>Begin</c>, and once it has,
+    /// <c>camera.ViewProjection</c> returns a RENDER-RELATIVE matrix, so extracting planes from it culls absolute
+    /// bounds against the wrong space entirely. Pass <c>Scene3D</c>'s internal <c>FrameAbsoluteViewProjection()</c>
+    /// (or any other absolute view-projection) instead. A caller whose boxes are render-relative passes the
+    /// render-relative matrix for the same reason. This is unrelated to the <c>GpuClip.Correct</c>-adjusted matrix, which stays
     /// wrong for culling either way: the clip-space Y flip only reorients GPU rasterization, so the world-space
     /// frustum is the same regardless (exactly as picking/world-to-screen math stays authored).</para>
     /// </remarks>
@@ -44,10 +46,11 @@ namespace KhaozEngine.Render3D
         };
 
         /// <summary>
-        /// Extract the six world-space frustum planes from a row-vector view-projection with [0, 1] clip depth
-        /// (the engine's convention: see the type remarks). Pass an ABSOLUTE view-projection, e.g. <c>Scene3D</c>'s
-        /// internal <c>FrameAbsoluteViewProjection()</c>: <c>camera.ViewProjection</c> is render-relative once a
-        /// render origin has latched.
+        /// Extract the six frustum planes from a row-vector view-projection with [0, 1] clip depth
+        /// (the engine's convention: see the type remarks). The planes are in whatever frame <paramref name="vp"/>
+        /// maps from, so the caller must test boxes in that frame. Most callers cull absolute bounds and pass an
+        /// ABSOLUTE view-projection, e.g. <c>Scene3D</c>'s internal <c>FrameAbsoluteViewProjection()</c>:
+        /// <c>camera.ViewProjection</c> is render-relative once a render origin has latched.
         /// </summary>
         public static FrustumPlanes Extract(Matrix4x4 vp)
         {

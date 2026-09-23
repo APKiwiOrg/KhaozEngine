@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -44,6 +45,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// list from two threads is a data race here and would be one inside the driver too. The one shared thing a
     /// list touches is the device's uncommitted-buffer counter, which is interlocked for exactly that
     /// reason.</para>
+    ///
+    /// <para><b>EVERY MEMBER THAT CAN REACH OBJECTIVE-C OPENS ONE AUTORELEASE POOL, AND NOTHING BELOW IT OPENS
+    /// ANOTHER ON THE ENCODER PATH (M-N5, #1114).</b> <c>Begin</c>, <c>End</c>, <c>Dispose</c>, the framebuffer
+    /// bind, both clears, both draws, the dispatch and the transfers each push one pool as their first statement,
+    /// and <see cref="MetalEncoderSink"/> and <see cref="MetalRenderApi"/> push none, so one push and one pop cover
+    /// a pass opening, a whole bind flush and the draw after it. The staged half of <c>UpdateBuffer</c> pushes its
+    /// own in <see cref="MetalBufferUpload"/>, because the ring half reaches no Objective-C at all and every uniform
+    /// write in the engine takes it. A pool opened here is popped here, on this list's one recording thread.
+    /// <c>MetalAutoreleaseArchitectureTests</c> walks through both seams, so a member added here that reaches
+    /// either one without a pool fails that walk.</para>
     /// </summary>
     internal sealed partial class MetalCommandList : IGpuCommandList
     {
@@ -253,6 +264,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </remarks>
         public void Begin()
         {
+            // M-N5's one pool for this member. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             ObjectDisposedException.ThrowIf(_disposed, this);
 
             if (_recording)
@@ -357,6 +371,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </remarks>
         public void End()
         {
+            // M-N5's one pool for this member. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             ObjectDisposedException.ThrowIf(_disposed, this);
 
             if (!_recording)
@@ -472,6 +489,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </summary>
         public void Dispose()
         {
+            // M-N5's one pool for this member, which the encoder ended below needs. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             if (_disposed) return;
             _disposed = true;
             _recording = false;

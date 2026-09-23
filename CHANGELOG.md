@@ -5,6 +5,65 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.4.1
+
+A patch that cuts per-frame CPU cost measured in Grimhollow, which is pinned and waiting on it
+([Grimhollow#325](https://github.com/APKiwiOrg/Grimhollow/issues/325)). It adds no public API and no setting. Two
+pixel differences are intended and bounded, and D3D11 now prefers the high-performance adapter. Design in
+`docs/design/FRAME-COST-ROUND-DESIGN-2026-09-23.md`.
+
+**Point caster index** ([#1110](https://github.com/APKiwiOrg/KhaozEngine/issues/1110)). Point shadow change
+detection was about half of Grimhollow's town path recording, because every static point light walked every
+instance and mixed its signature one byte at a time. A per-frame index now bins rigid casters by world sphere, and
+each signature and each rendered row asks it for the casters that touch the light, in the slot order the full walk
+gave. Signatures mix whole 64-bit words. A steady frame still allocates nothing.
+
+**Dissolve in point signatures** ([#1111](https://github.com/APKiwiOrg/KhaozEngine/issues/1111)). A prop in a
+distance fade or LOD crossfade band dirtied every static point light over it on each frame the draw focus moved, so
+Grimhollow's forest and meadow paths rebuilt static point rows on nearly every frame. The signature now mixes the
+dissolve threshold quantized to sixteen steps plus the complement flag. This is the first intended pixel
+difference: a fading prop's point shadow advances in sixteen dissolve steps instead of every frame. A complement
+flip at a constant threshold now rebuilds the row, which it did not before.
+
+**Compact point light clusters** ([#1112](https://github.com/APKiwiOrg/KhaozEngine/issues/1112)). Cluster
+building copied the whole 918 KiB image to the GPU on every frame that queued a light. The same buffer, binding and
+size now hold a compact header, one packed count and offset per cluster, followed by an index list, and a frame
+uploads only the used prefix, tens of KB for Grimhollow's town. Lights outside the view are dropped first and each
+light tests only the clusters in its conservative range. Assignment matches the old builder except where the old
+builder's slice-zero float rounding, with the eye kilometres from render space zero, admitted a huge light that
+does not reach the cluster in exact geometry. That light added nothing, so lighting does not change. The Vulkan,
+Metal and D3D11 shader hash tables are rebaked.
+
+**Water** ([#1113](https://github.com/APKiwiOrg/KhaozEngine/issues/1113)). Water was the town frame's largest
+steady allocation: not drawing it cut 13.6 KiB a frame to 4.0 KiB. Every procedural plane whose swell does not
+displace, an amplitude or wavelength of zero or less, now draws one quad of a shared buffer in either grid mode
+instead of a 97 by 97 grid. Displaced camera-focused planes each draw a slice of one shared grid buffer, and every
+upload lands before the water pass opens, so native Metal no longer ends and reopens the pass per plane.
+Procedural planes whose bounds, grown by the swell's reach, lie outside the view are skipped. FFT planes are never
+culled. The flat quad is the second intended pixel difference: it matches the zero-swell grid within mean 0.002
+and worst 0.02.
+
+**Metal encoder overhead** ([#1114](https://github.com/APKiwiOrg/KhaozEngine/issues/1114)). Autorelease pools
+opened around each Metal encoder call were about 13 percent of recording. The pool now sits on the
+`MetalCommandList` member that reaches the encoder, so one pool covers a pass opening, a whole bind flush and its
+draw. `MetalAutoreleaseArchitectureTests` walks through the package's own interface seams to keep every caller
+pooled. Hot selectors and the pass descriptor class are cached, a staged upload builds its diagnostic only on
+failure, and the staging arena reuses its block records, so steady staged uploads allocate nothing.
+
+**D3D11 high-performance adapter** ([#1115](https://github.com/APKiwiOrg/KhaozEngine/issues/1115)). With
+`KE_D3D11_ADAPTER` unset, the device is now created on the adapter `IDXGIFactory6` names as high performance, which
+on a hybrid laptop is the discrete GPU rather than the integrated one DXGI enumerates first. A runtime without
+`IDXGIFactory6` logs it and keeps DXGI's pick. A preferred adapter that cannot be fetched or refuses the device
+logs a warning and falls back to DXGI's pick. Every explicit `KE_D3D11_ADAPTER` value still wins and fails as
+before when its adapter refuses. The feature probe resolves the adapter the same way, so it probes the one the
+device uses. CI pins WARP, so no CI leg runs the new default.
+
+**ChatBox visible rows** ([#1116](https://github.com/APKiwiOrg/KhaozEngine/issues/1116)). `ChatBox.Draw` drew
+every cached history row and let the scroll clip discard the hidden ones, slicing each timestamped row into new
+strings every frame. It now draws only the rows that meet the content area, plus one past each edge so glyph
+overhang and scissor rounding leave the frame unchanged, and each cached row keeps its timestamp and message split
+from the last layout refresh. Drawing a steady history allocates nothing.
+
 ## 20.4.0
 
 A minor that adds published item rarity colours and replayable container operations for event sourced game

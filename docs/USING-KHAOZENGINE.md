@@ -4321,9 +4321,13 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     whitecap fold is evaluated per pixel the same way, so those grids no longer draw whitecaps as triangles
     (#1100).
   - **Surface grid** (`GridMode`, a `WaterGridMode`) - two layouts, and which one you want depends on whether the
-    camera moves much. Clipmap mode uses a four-vertex, six-index quad for an effective `Procedural` source
-    with zero `SwellAmplitude`. Ripples still shade it. FFT and nonzero-swell planes retain displaced
-    clipmaps, including in a mixed frame. The two layouts are:
+    camera moves much. In either layout, every `Procedural` plane whose effective swell does not displace (a
+    `SwellAmplitude` or `SwellWavelength` of zero or less) draws one four-vertex, six-index quad of a shared,
+    grow-only buffer, and the frame uploads every such quad once before the water pass opens. Ripples still shade
+    it. Each displaced camera-focused plane draws its own slice of a shared grid buffer, also uploaded before the
+    pass, and displaced planes under the clipmap keep their own clipmap slices. Before any geometry is built, a
+    procedural plane whose bounds, grown by how far its swell can move the surface, lie outside the view is
+    skipped. FFT planes are never culled. The two layouts are:
     - `WaterGridMode.CameraFocused` (the default): a fixed 97x97 budget (9,409 vertices, 18,432 triangles, one
       draw per plane), spread NON-uniformly by `GridFocusBias` toward the camera. That matters because the plane
       is whatever size the consumer asks for: at a 600-unit half-extent a uniform grid puts vertices 12 units
@@ -7036,7 +7040,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.4.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.4.1" />
 ```
 
 ```csharp
@@ -13454,7 +13458,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.4.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.4.1" />
 ```
 
 ```csharp
@@ -13490,7 +13494,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.4.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.4.1" />
 ```
 
 ```csharp
@@ -13732,7 +13736,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.4.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.4.1" />
 ```
 
 ```csharp
@@ -14387,7 +14391,11 @@ KE_D3D11_ADAPTER=1           # a zero-based index into the DXGI enumeration orde
 KE_D3D11_ADAPTER=GeForce     # a case-insensitive substring of an adapter description
 ```
 
-Unset leaves DXGI to pick, which is what the engine has always done. **A request that cannot be honoured WARNs
+Unset prefers the high-performance adapter, the one `IDXGIFactory6.EnumAdapterByGpuPreference` ranks first, so a
+hybrid laptop runs on its discrete GPU rather than on the integrated one DXGI lists first. On Windows 10 before
+version 1803, which has no `IDXGIFactory6`, unset lets DXGI pick as the engine always did, and a preferred adapter
+that cannot be fetched or refuses the device WARNs and lets DXGI pick too. `hardware` keeps its enumeration-order
+meaning, so on a hybrid laptop it can name the integrated GPU. **A request that cannot be honoured WARNs
 and falls back to letting DXGI pick, and never fails the run.** The warning names what was typed AND lists the
 adapters that were actually enumerated, which is the half that matters: a name substring is machine-specific by
 nature, so a value that is right on one machine is wrong on the next, and "nothing matched" without the list
@@ -17623,7 +17631,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.4.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.4.1" />
 </ItemGroup>
 ```
 

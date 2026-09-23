@@ -30,6 +30,11 @@ shader reads its cluster's indices into the growable point-light buffer. A clust
 the complete light list. Invalid or unsupported projection data takes the same correctness fallback.
 Overflow costs performance, never missing illumination.
 
+> **Layout replaced in 20.4.1 (note added 2026-09-24).** The frame cost round replaced the 17 records per
+> cluster with a compact header, one packed count and offset per cluster, followed by an index list in the
+> same buffer at the same binding and size. A frame uploads only the used prefix. See item 3 of
+> [`FRAME-COST-ROUND-DESIGN-2026-09-23.md`](FRAME-COST-ROUND-DESIGN-2026-09-23.md).
+
 CPU construction and shader lookup use the same GPU-corrected view-projection matrix, so neither side
 guesses the backend's fragment-coordinate Y convention. Two vectors appended to the frame uniform tail
 carry near/far and slicing parameters plus camera forward. Existing uniform offsets remain unchanged.

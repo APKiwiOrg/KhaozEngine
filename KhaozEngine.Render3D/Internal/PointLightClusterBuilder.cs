@@ -4,17 +4,38 @@ using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D.Internal;
 
-/// <summary>Builds the fixed clustered point-light index image consumed by lit receiver shaders.</summary>
+/// <summary>Builds the compact clustered point-light image consumed by lit receiver shaders: one header uint per
+/// cluster, then each cluster's light indices, contiguous and in ascending submitted order. Each light first gets a
+/// conservative cluster range from <see cref="PointLightClusterRanges"/>, and each cluster runs the exact plane test on
+/// only the lights whose range holds it (issue #1112).</summary>
 internal sealed class PointLightClusterBuilder
 {
     internal const int ClusterCountX = 16;
     internal const int ClusterCountY = 9;
     internal const int ClusterCountZ = 24;
     internal const int MaxLightsPerCluster = 64;
-    internal const int HeaderUInts = 4;
-    internal const int ClusterStrideUInts = HeaderUInts + MaxLightsPerCluster;
     internal const int ClusterCount = ClusterCountX * ClusterCountY * ClusterCountZ;
-    internal const int ImageUIntCount = ClusterCount * ClusterStrideUInts;
+
+    /// <summary>The image keeps the size of the fixed layout it replaced, seventeen uvec4 per cluster or 940,032 bytes,
+    /// so the buffer, its binding, its stride and every size pin stay as they were.</summary>
+    internal const int ImageUIntCount = ClusterCount * 17 * 4;
+
+    /// <summary>One header uint per cluster at the start of the image, four to a uvec4.</summary>
+    internal const int HeaderRegionUInts = ClusterCount;
+    internal const int HeaderRegionUvec4s = HeaderRegionUInts / 4;
+
+    /// <summary>Everything after the headers holds light indices, four to a uvec4. It is at least
+    /// <see cref="MaxLightsPerCluster"/> for every cluster, so a full grid can never run it out.</summary>
+    internal const int IndexRegionUInts = ImageUIntCount - HeaderRegionUInts;
+
+    /// <summary>A header's low <see cref="CountBits"/> bits hold the cluster's light count and the high bits hold the
+    /// offset of its first index in the index region.</summary>
+    internal const int CountBits = 8;
+    internal const uint CountMask = (1u << CountBits) - 1u;
+
+    /// <summary>The count of a cluster that passed more than <see cref="MaxLightsPerCluster"/> lights. It stores no
+    /// indices and its fragments walk the complete list.</summary>
+    internal const uint OverflowCount = CountMask;
 
     const int BoundaryCount = (ClusterCountX + 1) * (ClusterCountY + 1);
     const float GeometryEpsilonScale = 1e-4f;
@@ -24,6 +45,9 @@ internal sealed class PointLightClusterBuilder
     readonly float[] _nearDepth = new float[BoundaryCount];
     readonly float[] _farDepth = new float[BoundaryCount];
     readonly float[] _sliceDepth = new float[ClusterCountZ + 1];
+    readonly PointLightClusterRanges _ranges = new();
+    int[] _sliceCandidates = new int[16];
+    int[] _rowCandidates = new int[16];
 
     internal PointLightClusterBuilder()
     {
@@ -36,13 +60,31 @@ internal sealed class PointLightClusterBuilder
     internal int OverflowedClusters { get; private set; }
     internal int LightReferenceCount { get; private set; }
 
+    /// <summary>Cluster plane sets the latest build made. Tests read it to prove a cluster no light's range reaches is
+    /// never built.</summary>
+    internal int PlaneSetsBuilt { get; private set; }
+
+    /// <summary>Exact sphere tests the latest build ran, counted for the same reason.</summary>
+    internal int SphereTests { get; private set; }
+
+    /// <summary>How many uints of <see cref="Image"/> the latest build wrote, the headers plus the stored indices rounded
+    /// up to a whole uvec4. Only this prefix is uploaded.</summary>
+    internal int UsedUIntCount { get; private set; }
+
+    int _indexCursor;
+
     internal void Build(ReadOnlySpan<ModelRenderer.PointLightData> lights,
         Matrix4x4 gpuCorrectedRenderViewProjection, Vector3 eyeRender, Vector3 forward,
         Matrix4x4 projection, Vector3 renderOrigin)
     {
-        Array.Clear(Image);
+        // Only the headers are cleared. Indices are written behind a cursor and the upload stops at it, so whatever an
+        // earlier frame left past the cursor is never uploaded and never read.
+        Array.Clear(Image, 0, HeaderRegionUInts);
+        _indexCursor = 0;
         OverflowedClusters = 0;
         LightReferenceCount = 0;
+        PlaneSetsBuilt = 0;
+        SphereTests = 0;
         if (!TryPrepare(gpuCorrectedRenderViewProjection, eyeRender, forward, projection, renderOrigin,
                 out Vector3 cameraForward))
         {
@@ -51,24 +93,58 @@ internal sealed class PointLightClusterBuilder
         }
 
         CameraForward = new Vector4(cameraForward, 0f);
-        for (int z = 0; z < ClusterCountZ; z++)
+        _ranges.Gather(lights, renderOrigin, eyeRender, cameraForward, _clipNear, _clipFar, _sliceDepth,
+            FrameGeometryScale());
+        if (!AssignClusters(lights, renderOrigin))
         {
-            float depthNear = _sliceDepth[z];
-            float depthFar = _sliceDepth[z + 1];
-            for (int y = 0; y < ClusterCountY; y++)
+            MarkInvalid();
+            return;
+        }
+
+        // Round up to a whole uvec4 and zero the pad, so the upload is whole elements and the image is deterministic.
+        int used = HeaderRegionUInts + _indexCursor;
+        while ((used & 3) != 0) Image[used++] = 0u;
+        UsedUIntCount = used;
+    }
+
+    // Visits clusters in index order, z then y then x, testing each against only the lights whose range holds it. The
+    // candidate lists narrow per slice and then per row but never reorder, so every cluster still sees its lights in
+    // ascending submitted order.
+    bool AssignClusters(ReadOnlySpan<ModelRenderer.PointLightData> lights, Vector3 renderOrigin)
+    {
+        ReadOnlySpan<int> survivors = _ranges.Lights;
+        ReadOnlySpan<PointLightClusterRanges.ClusterRange> ranges = _ranges.Ranges;
+        EnsureCandidateCapacity(survivors.Length);
+        for (int z = _ranges.MinSlice; z <= _ranges.MaxSlice; z++)
+        {
+            int sliceCount = 0;
+            int minY = ClusterCountY;
+            int maxY = -1;
+            for (int entry = 0; entry < survivors.Length; entry++)
             {
-                for (int x = 0; x < ClusterCountX; x++)
+                if (!ranges[entry].ContainsSlice(z)) continue;
+                _sliceCandidates[sliceCount++] = entry;
+                minY = Math.Min(minY, ranges[entry].MinY);
+                maxY = Math.Max(maxY, ranges[entry].MaxY);
+            }
+            for (int y = minY; y <= maxY; y++)
+            {
+                int rowCount = 0;
+                int minX = ClusterCountX;
+                int maxX = -1;
+                for (int i = 0; i < sliceCount; i++)
                 {
-                    if (!TryBuildPlanes(x, y, depthNear, depthFar, out ClusterPlanes planes,
-                            out float clusterScale))
-                    {
-                        MarkInvalid();
-                        return;
-                    }
-                    PackCluster(lights, renderOrigin, x, y, z, in planes, clusterScale);
+                    int entry = _sliceCandidates[i];
+                    if (!ranges[entry].ContainsRow(y)) continue;
+                    _rowCandidates[rowCount++] = entry;
+                    minX = Math.Min(minX, ranges[entry].MinX);
+                    maxX = Math.Max(maxX, ranges[entry].MaxX);
                 }
+                for (int x = minX; x <= maxX; x++)
+                    if (!PackCluster(lights, renderOrigin, survivors, ranges, rowCount, x, y, z)) return false;
             }
         }
+        return true;
     }
 
     bool TryPrepare(in Matrix4x4 viewProjection, Vector3 eye, Vector3 forward, in Matrix4x4 projection,
@@ -162,31 +238,86 @@ internal sealed class PointLightClusterBuilder
         return valid && float.IsFinite(clusterScale);
     }
 
-    void PackCluster(ReadOnlySpan<ModelRenderer.PointLightData> lights, Vector3 renderOrigin,
-        int x, int y, int z, in ClusterPlanes planes, float clusterScale)
+    // The exact test is unchanged. Only its candidates changed: the lights whose range holds this cluster, still in
+    // ascending submitted order, so the first 64 that pass and the overflow point are the same as testing all of them,
+    // apart from the slice-zero rounding case PointLightClusterRanges describes, which adds no light.
+    // The planes are built at the first candidate, so a cluster no light's range reaches is never built.
+    bool PackCluster(ReadOnlySpan<ModelRenderer.PointLightData> lights, Vector3 renderOrigin,
+        ReadOnlySpan<int> survivors, ReadOnlySpan<PointLightClusterRanges.ClusterRange> ranges, int rowCount,
+        int x, int y, int z)
     {
-        int offset = ((z * ClusterCountY + y) * ClusterCountX + x) * ClusterStrideUInts;
+        int cluster = (z * ClusterCountY + y) * ClusterCountX + x;
+        int first = HeaderRegionUInts + _indexCursor;
+        ClusterPlanes planes = default;
+        float clusterScale = 0f;
+        bool planesBuilt = false;
+        bool overflow = false;
         int count = 0;
-        for (int light = 0; light < lights.Length; light++)
+        for (int i = 0; i < rowCount; i++)
         {
+            int entry = _rowCandidates[i];
+            if (!ranges[entry].ContainsColumn(x)) continue;
+            if (!planesBuilt)
+            {
+                if (!TryBuildPlanes(x, y, _sliceDepth[z], _sliceDepth[z + 1], out planes, out clusterScale))
+                    return false;
+                planesBuilt = true;
+                PlaneSetsBuilt++;
+            }
+            int light = survivors[entry];
             Vector4 posRadius = lights[light].PosRadius;
             var center = new Vector3(posRadius.X, posRadius.Y, posRadius.Z) - renderOrigin;
             float radius = posRadius.W;
-            if (!Finite(center) || !float.IsFinite(radius) || radius < 0f) continue;
             float epsilon = GeometryEpsilonScale * MathF.Max(1f,
                 MathF.Max(clusterScale, MathF.Max(MaxAbs(center), radius)));
+            SphereTests++;
             if (!planes.IntersectsSphere(center, radius, epsilon)) continue;
             if (count == MaxLightsPerCluster)
             {
-                Image[offset + 1] = 1u;
-                OverflowedClusters++;
+                overflow = true;
                 break;
             }
-            Image[offset + HeaderUInts + count] = (uint)light;
+            Image[first + count] = (uint)light;
             count++;
         }
-        Image[offset] = (uint)count;
+
+        // The diagnostic keeps its meaning: an overflowed cluster still counts the 64 references it accepted first.
         LightReferenceCount += count;
+        if (overflow)
+        {
+            // An overflowed cluster stores no indices. Its tentative ones sit past the cursor and the next cluster writes
+            // over them.
+            Image[cluster] = OverflowCount;
+            OverflowedClusters++;
+        }
+        else if (count > 0)
+        {
+            Image[cluster] = ((uint)_indexCursor << CountBits) | (uint)count;
+            _indexCursor += count;
+        }
+        return true;
+    }
+
+    // The largest coordinate any cluster corner can take this frame. Corners lie on the boundary rays at slice depths
+    // inside [minNear, maxFar], and a coordinate is affine in depth along a ray, so its extremes sit at the two ends of
+    // that interval. It bounds every cluster's own scale in the exact test's epsilon.
+    float FrameGeometryScale()
+    {
+        float scale = 0f;
+        for (int boundary = 0; boundary < BoundaryCount; boundary++)
+        {
+            scale = MathF.Max(scale, MaxAbs(PointAtDepth(boundary, _sliceDepth[0])));
+            scale = MathF.Max(scale, MaxAbs(PointAtDepth(boundary, _sliceDepth[ClusterCountZ])));
+        }
+        return scale;
+    }
+
+    void EnsureCandidateCapacity(int count)
+    {
+        if (_sliceCandidates.Length >= count) return;
+        int capacity = Math.Max(count, _sliceCandidates.Length * 2);
+        _sliceCandidates = new int[capacity];
+        _rowCandidates = new int[capacity];
     }
 
     Vector3 PointAtDepth(int boundary, float depth)
@@ -198,13 +329,13 @@ internal sealed class PointLightClusterBuilder
 
     void MarkInvalid()
     {
-        Array.Clear(Image);
+        Array.Fill(Image, OverflowCount, 0, HeaderRegionUInts);
+        _indexCursor = 0;
+        UsedUIntCount = HeaderRegionUInts;
         Depth = new Vector4(0f, 0f, 0f, -1f);
         CameraForward = Vector4.Zero;
         OverflowedClusters = ClusterCount;
         LightReferenceCount = 0;
-        for (int cluster = 0; cluster < ClusterCount; cluster++)
-            Image[cluster * ClusterStrideUInts + 1] = 1u;
     }
 
     static bool TryPlane(Vector3 a, Vector3 b, Vector3 c, Vector3 inside, out Plane plane)
@@ -244,9 +375,9 @@ internal sealed class PointLightClusterBuilder
         return Finite(point);
     }
 
-    static int BoundaryIndex(int x, int y) => y * (ClusterCountX + 1) + x;
+    internal static int BoundaryIndex(int x, int y) => y * (ClusterCountX + 1) + x;
 
-    static float MaxAbs(Vector3 value) =>
+    internal static float MaxAbs(Vector3 value) =>
         MathF.Max(MathF.Abs(value.X), MathF.Max(MathF.Abs(value.Y), MathF.Abs(value.Z)));
 
     static float MaxAbs(Vector3 a, Vector3 b, Vector3 c, Vector3 d,
@@ -254,7 +385,7 @@ internal sealed class PointLightClusterBuilder
         MathF.Max(MathF.Max(MathF.Max(MaxAbs(a), MaxAbs(b)), MathF.Max(MaxAbs(c), MaxAbs(d))),
             MathF.Max(MathF.Max(MaxAbs(e), MaxAbs(f)), MathF.Max(MaxAbs(g), MaxAbs(h))));
 
-    static bool Finite(Vector3 value) =>
+    internal static bool Finite(Vector3 value) =>
         float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
 
     static bool Finite(Vector4 value) =>

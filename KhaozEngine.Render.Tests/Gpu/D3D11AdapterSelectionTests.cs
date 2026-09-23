@@ -11,8 +11,8 @@ namespace KhaozEngine.Tests.Gpu
     /// THE ENUMERATION IS WINDOWS-ONLY AND THE CHOICE IS NOT, which is the whole reason
     /// <see cref="D3D11AdapterSelection"/> decides over a list of descriptions and flags rather than over
     /// <c>IDXGIAdapter</c> objects. Every rule below therefore runs under a plain <c>dotnet test</c> on macOS, and
-    /// the only untested-here piece is <c>D3D11DxgiQueries.DescribeAdaptersWindows</c>, which reads a description
-    /// and a flag off each enumerated adapter and decides nothing.
+    /// the untested-here pieces are the Windows glue in <c>D3D11DxgiQueries</c> and <c>D3D11AdapterResolution</c>,
+    /// which read descriptions, flags and the IDXGIFactory6 ranking and decide nothing.
     /// </para>
     /// <para>
     /// The reason this matters is CI integrity rather than convenience. The Windows golden leg runs on WARP only
@@ -94,11 +94,31 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("  GeForce  ", request.RawValue);
         }
 
+        /// <summary>
+        /// THE DEFAULT PREFERS THE HIGH-PERFORMANCE ADAPTER (https://github.com/APKiwiOrg/KhaozEngine/issues/1115).
+        /// DXGI lists the adapter driving the display first, which on a hybrid laptop is the integrated GPU, so
+        /// letting DXGI pick ran the engine on the slower of two GPUs. The choice names no index, because the
+        /// ranking is IDXGIFactory6's and not the enumeration's.
+        /// </summary>
         [Fact]
-        public void Choose_DefaultLetsDxgiPickAndWarnsAboutNothing()
+        public void Choose_UnsetPrefersTheHighPerformanceAdapterWhenIDXGIFactory6IsOffered()
         {
             D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse(null), TwoAdapters, out string? warning);
+                D3D11AdapterSelection.Parse(null), TwoAdapters, gpuPreferenceAvailable: true, out string? warning);
+
+            Assert.Equal(D3D11AdapterChoiceKind.HighPerformance, choice.Kind);
+            Assert.True(choice.Index < 0);
+            Assert.Null(warning);
+        }
+
+        /// <summary>The missing-interface fallback. IDXGIFactory6 arrived in Windows 10 1803, and without it the
+        /// engine lets DXGI pick as it always did. That is not a warning: nothing was asked for that could not be
+        /// given.</summary>
+        [Fact]
+        public void Choose_UnsetWithoutIDXGIFactory6LetsDxgiPickAndWarnsAboutNothing()
+        {
+            D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
+                D3D11AdapterSelection.Parse(null), TwoAdapters, gpuPreferenceAvailable: false, out string? warning);
 
             Assert.Equal(D3D11AdapterChoiceKind.DefaultEnumeration, choice.Kind);
             Assert.Null(warning);
@@ -112,7 +132,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Choose_WarpNeverConsultsTheEnumeration()
         {
             D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse("warp"), None, out string? warning);
+                D3D11AdapterSelection.Parse("warp"), None, gpuPreferenceAvailable: true, out string? warning);
 
             Assert.Equal(D3D11AdapterChoiceKind.WarpDriver, choice.Kind);
             Assert.Null(warning);
@@ -122,7 +142,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Choose_HardwareTakesTheFirstAdapterThatIsNotSoftware()
         {
             D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse("hardware"), TwoAdapters, out string? warning);
+                D3D11AdapterSelection.Parse("hardware"), TwoAdapters, gpuPreferenceAvailable: true, out string? warning);
 
             Assert.Equal(D3D11AdapterChoiceKind.Enumerated, choice.Kind);
             Assert.Equal(0, choice.Index);
@@ -133,7 +153,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Choose_HardwareWarnsAndFallsBackWhenThereIsNoHardwareAdapter()
         {
             D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse("hardware"), SoftwareOnly, out string? warning);
+                D3D11AdapterSelection.Parse("hardware"), SoftwareOnly, gpuPreferenceAvailable: true, out string? warning);
 
             Assert.Equal(D3D11AdapterChoiceKind.DefaultEnumeration, choice.Kind);
             Assert.NotNull(warning);
@@ -145,7 +165,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Choose_IndexTakesThatAdapter()
         {
             D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse("1"), TwoAdapters, out string? warning);
+                D3D11AdapterSelection.Parse("1"), TwoAdapters, gpuPreferenceAvailable: true, out string? warning);
 
             Assert.Equal(D3D11AdapterChoiceKind.Enumerated, choice.Kind);
             Assert.Equal(1, choice.Index);
@@ -159,7 +179,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Choose_AnOutOfRangeIndexWarnsAndFallsBack(string value)
         {
             D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse(value), TwoAdapters, out string? warning);
+                D3D11AdapterSelection.Parse(value), TwoAdapters, gpuPreferenceAvailable: true, out string? warning);
 
             Assert.Equal(D3D11AdapterChoiceKind.DefaultEnumeration, choice.Kind);
             Assert.NotNull(warning);
@@ -173,7 +193,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Choose_ANameSubstringMatchesCaseInsensitively(string value, int expected)
         {
             D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse(value), TwoAdapters, out string? warning);
+                D3D11AdapterSelection.Parse(value), TwoAdapters, gpuPreferenceAvailable: true, out string? warning);
 
             Assert.Equal(D3D11AdapterChoiceKind.Enumerated, choice.Kind);
             Assert.Equal(expected, choice.Index);
@@ -190,7 +210,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Choose_ANameThatMatchesNothingWarnsWithTheListAndFallsBack()
         {
             D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse("Radeon"), TwoAdapters, out string? warning);
+                D3D11AdapterSelection.Parse("Radeon"), TwoAdapters, gpuPreferenceAvailable: true, out string? warning);
 
             Assert.Equal(D3D11AdapterChoiceKind.DefaultEnumeration, choice.Kind);
             Assert.NotNull(warning);
@@ -209,7 +229,7 @@ namespace KhaozEngine.Tests.Gpu
         public void Choose_NeverThrowsOnAMachineThatEnumeratesNothing(string value)
         {
             D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.Parse(value), None, out string? warning);
+                D3D11AdapterSelection.Parse(value), None, gpuPreferenceAvailable: true, out string? warning);
 
             Assert.Equal(D3D11AdapterChoiceKind.DefaultEnumeration, choice.Kind);
             Assert.NotNull(warning);
@@ -238,6 +258,97 @@ namespace KhaozEngine.Tests.Gpu
                 new D3D11AdapterChoice(D3D11AdapterChoiceKind.Enumerated, 0), TwoAdapters), StringComparison.Ordinal);
             Assert.Contains(D3D11AdapterSelection.EnvVarName,
                 D3D11AdapterSelection.Describe(D3D11AdapterChoice.Default, TwoAdapters), StringComparison.Ordinal);
+        }
+
+        /// <summary>The preference does not depend on the enumeration. A machine with one adapter, only a software
+        /// adapter, or an enumeration that failed still asks IDXGIFactory6, which answers with whatever it ranks
+        /// first.</summary>
+        [Fact]
+        public void Choose_UnsetPrefersHighPerformanceWhateverTheEnumerationHolds()
+        {
+            var one = new[] { new D3D11AdapterInfo("Intel(R) UHD Graphics", isSoftware: false) };
+
+            foreach (IReadOnlyList<D3D11AdapterInfo> adapters in new[] { one, SoftwareOnly, None })
+            {
+                D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
+                    D3D11AdapterSelection.Parse(null), adapters, gpuPreferenceAvailable: true, out string? warning);
+
+                Assert.Equal(D3D11AdapterChoiceKind.HighPerformance, choice.Kind);
+                Assert.Null(warning);
+            }
+        }
+
+        /// <summary>
+        /// EVERY EXPLICIT VALUE KEEPS WINNING, with the preference offered or not, and warp above all, because it is
+        /// the value CI pins so the committed goldens keep their rasterizer. The expected kind travels as an int
+        /// because the enum is internal and a public test method cannot take it as a parameter.
+        /// </summary>
+        [Theory]
+        [InlineData("warp", (int)D3D11AdapterChoiceKind.WarpDriver, -1)]
+        [InlineData("hardware", (int)D3D11AdapterChoiceKind.Enumerated, 0)]
+        [InlineData("1", (int)D3D11AdapterChoiceKind.Enumerated, 1)]
+        [InlineData("GeForce", (int)D3D11AdapterChoiceKind.Enumerated, 0)]
+        [InlineData("Basic Render", (int)D3D11AdapterChoiceKind.Enumerated, 1)]
+        public void Choose_EveryExplicitValueWinsOverTheHighPerformanceDefault(string value, int expectedKind,
+            int expectedIndex)
+        {
+            foreach (bool available in new[] { true, false })
+            {
+                D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
+                    D3D11AdapterSelection.Parse(value), TwoAdapters, available, out string? warning);
+
+                Assert.Equal((D3D11AdapterChoiceKind)expectedKind, choice.Kind);
+                Assert.Equal(expectedIndex, choice.Index);
+                Assert.Null(warning);
+            }
+        }
+
+        /// <summary>An explicit value that cannot be honoured still lets DXGI pick, as it did before the
+        /// preference existed, and never lands on the high-performance default: a pin that failed says so and lands
+        /// where it always has.</summary>
+        [Theory]
+        [InlineData("2")]
+        [InlineData("Radeon")]
+        public void Choose_AnUnhonourableExplicitValueStillLetsDxgiPick(string value)
+        {
+            D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
+                D3D11AdapterSelection.Parse(value), TwoAdapters, gpuPreferenceAvailable: true, out string? warning);
+
+            Assert.Equal(D3D11AdapterChoiceKind.DefaultEnumeration, choice.Kind);
+            Assert.NotNull(warning);
+        }
+
+        /// <summary>The high-performance choice names no enumerated adapter, so like DXGI's own pick it answers
+        /// false and leaves the flag to the created device, which is the authority on which adapter ran.</summary>
+        [Fact]
+        public void IsSoftwareChoice_LeavesTheHighPerformanceAdapterToTheCreatedDevice()
+        {
+            Assert.False(D3D11AdapterSelection.IsSoftwareChoice(D3D11AdapterChoice.HighPerformance, SoftwareOnly));
+        }
+
+        [Fact]
+        public void Describe_NamesTheHighPerformanceDefaultAndTheLeverThatOverridesIt()
+        {
+            string line = D3D11AdapterSelection.Describe(D3D11AdapterChoice.HighPerformance, TwoAdapters);
+
+            Assert.Contains("high-performance", line, StringComparison.Ordinal);
+            Assert.Contains(D3D11AdapterSelection.EnvVarName, line, StringComparison.Ordinal);
+        }
+
+        /// <summary>The two ways the default can fail on a real factory both WARN in the same shape as every
+        /// unhonourable request above, naming the lever and saying DXGI is picking. The glue that raises them is
+        /// Windows-only, so the wording is pinned here.</summary>
+        [Fact]
+        public void HighPerformanceFallbacks_WarnNamingTheLeverAndThatDxgiPicks()
+        {
+            string unavailable = D3D11AdapterSelection.HighPerformanceUnavailableWarning;
+            string refused = D3D11AdapterSelection.HighPerformanceCreateFailedWarning("DXGI_ERROR_UNSUPPORTED");
+
+            Assert.Contains("Letting DXGI pick", unavailable, StringComparison.Ordinal);
+            Assert.Contains(D3D11AdapterSelection.EnvVarName, unavailable, StringComparison.Ordinal);
+            Assert.Contains("Letting DXGI pick", refused, StringComparison.Ordinal);
+            Assert.Contains("DXGI_ERROR_UNSUPPORTED", refused, StringComparison.Ordinal);
+            Assert.Contains(D3D11AdapterSelection.EnvVarName, refused, StringComparison.Ordinal);
         }
 
         /// <summary>Reading the live environment is the one impure member, and it has to work everywhere: the

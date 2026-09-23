@@ -32,7 +32,7 @@ namespace KhaozEngine.Tests.Gpu
         /// two writes to one range with no draw between them are a redundant write, and two with a draw between
         /// them are the ring-collapse hazard <see cref="UniformRewriteAudit"/> looks for (#483).</summary>
         internal readonly record struct Upload(IGpuBuffer Buffer, uint Offset, uint Bytes, byte[]? Data = null,
-            int DrawsBefore = 0)
+            int DrawsBefore = 0, int FramebufferBindsBefore = 0)
         {
             /// <summary>Whether this write covers the destination from offset 0 to its end. That is the only shape
             /// Veldrid's D3D11 backend sent down the cheap <c>UpdateSubresource</c> path for a uniform buffer;
@@ -58,6 +58,12 @@ namespace KhaozEngine.Tests.Gpu
         readonly List<Resolve> _resolves = new();
         readonly List<TextureCopy> _textureCopies = new();
         int _draws;
+        int _framebufferBinds;
+
+        /// <summary>Framebuffer binds recorded since the last <see cref="Clear"/>. Paired with
+        /// <see cref="Upload.FramebufferBindsBefore"/> it tells a test whether an upload landed before the pass
+        /// opened, which is what keeps a staging backend from ending and reopening the pass for it.</summary>
+        public int FramebufferBinds => _framebufferBinds;
 
         public RecordingGpuCommandList(IGpuCommandList inner) => Inner = inner;
 
@@ -90,6 +96,7 @@ namespace KhaozEngine.Tests.Gpu
             _textureCopies.Clear();
             ClearDraws();
             _draws = 0;
+            _framebufferBinds = 0;
             ClearReads();
         }
 
@@ -109,20 +116,25 @@ namespace KhaozEngine.Tests.Gpu
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged
         {
             _uploads.Add(new Upload(b, offsetBytes, (uint)Unsafe.SizeOf<T>(),
-                CapturePayloads ? MemoryMarshal.AsBytes(new ReadOnlySpan<T>(in data)).ToArray() : null, _draws));
+                CapturePayloads ? MemoryMarshal.AsBytes(new ReadOnlySpan<T>(in data)).ToArray() : null, _draws,
+                _framebufferBinds));
             Inner.UpdateBuffer(b, offsetBytes, in data);
         }
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged
         {
             _uploads.Add(new Upload(b, offsetBytes, (uint)(data.Length * Unsafe.SizeOf<T>()),
-                CapturePayloads ? MemoryMarshal.AsBytes(data).ToArray() : null, _draws));
+                CapturePayloads ? MemoryMarshal.AsBytes(data).ToArray() : null, _draws, _framebufferBinds));
             Inner.UpdateBuffer(b, offsetBytes, data);
         }
 
         public void Begin() => Inner.Begin();
         public void End() => Inner.End();
-        public void SetFramebuffer(IGpuFramebuffer fb) => Inner.SetFramebuffer(fb);
+        public void SetFramebuffer(IGpuFramebuffer fb)
+        {
+            _framebufferBinds++;
+            Inner.SetFramebuffer(fb);
+        }
         public void ClearColorTarget(uint index, Color rgba) => Inner.ClearColorTarget(index, rgba);
         public void ClearDepthStencil(float depth) => Inner.ClearDepthStencil(depth);
         public void SetPipeline(IGpuPipeline p) { NotePipeline(p); Inner.SetPipeline(p); }
@@ -156,7 +168,7 @@ namespace KhaozEngine.Tests.Gpu
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart)
         {
             NoteGraphicsReads();
-            NoteIndexedDraw(indexCount);
+            NoteIndexedDraw(indexCount, indexStart, vertexOffset);
             _draws++;
             Inner.DrawIndexed(indexCount, instanceCount, indexStart, vertexOffset, instanceStart);
         }

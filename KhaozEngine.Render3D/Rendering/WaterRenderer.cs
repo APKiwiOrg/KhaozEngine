@@ -15,9 +15,9 @@ namespace KhaozEngine.Render3D.Rendering
     /// passes and BEFORE <see cref="RenderResources.ResolveColor"/>,
     /// so it is occluded by geometry above it (depth test ON) but never corrupts the normal/linear-depth MRT the
     /// outline pass reads (depth WRITE off - see the in-source note on <see cref="ShaderSources.WaterVert"/>). One
-    /// draw per queued plane (its own dynamic-offset UBO slot, mirroring <see cref="GroundDecalRenderer"/>'s
-    /// per-decal slot pattern so multiple planes never share/overwrite one slot regardless of backend buffer-write
-    /// ordering).
+    /// draw per queued plane the view can reach (its own dynamic-offset UBO slot, mirroring
+    /// <see cref="GroundDecalRenderer"/>'s per-decal slot pattern so multiple planes never share/overwrite one slot
+    /// regardless of backend buffer-write ordering).
     /// </summary>
     internal sealed partial class WaterRenderer : IDisposable, IFramePreparer
     {
@@ -131,18 +131,10 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuTexture? _boundMap;
         // Same, for the depth field: a resolution change replaces the texture and the set has to follow it.
         IGpuTexture? _boundBathy;
-        // Fixed-size grid buffers: every WaterPlane draws through the SAME GridResolution grid (only the CPU-side
-        // vertex positions differ per plane, re-uploaded per draw), so these are allocated once and never regrown.
-        IGpuBuffer? _vb;
-        IGpuBuffer? _ib;
-        // Heap-allocated once, not stackalloc'd per draw: at GridResolution 97 the position scratch is 113 KB and
-        // the index scratch 216 KB, both far past what belongs on the stack.
-        readonly Vector3[] _gridScratch = new Vector3[WaterMath.GridResolution * WaterMath.GridResolution];
-        readonly float[] _axisScratch = new float[2 * WaterMath.GridResolution];
 
         // ---- Clipmap grid state ------------------------------------------------------------------------------
-        // Its own buffers, because their SIZE depends on the ring settings rather than being the one fixed budget
-        // the camera-focused grid has. Allocated on first clipmap use and regrown only when those settings move.
+        // Its own buffers, because their SIZE depends on the ring settings rather than being the fixed per-plane
+        // budget the camera-focused grid has. Allocated on first clipmap use and regrown only when those settings move.
         //
         // ONE buffer pair holding a per-plane SLICE each, rather than a shared scratch every plane overwrites.
         // That is what makes the cache below work at all with more than one plane: a cached "nothing moved" is a
@@ -312,18 +304,6 @@ namespace KhaozEngine.Render3D.Rendering
             ResizeUboImage(_capacity);   // the CPU mirror the whole-buffer upload covers (WaterRenderer.SlotUpload.cs)
             if (_set != null) _retired.Retire(_set);
             _set = null;
-        }
-
-        void EnsureGridBuffers()
-        {
-            if (_vb != null && _ib != null) return;
-            const uint vcount = WaterMath.GridResolution * WaterMath.GridResolution;
-            const uint icount = WaterMath.GridIndexCount;
-            _vb = _gd.Factory.CreateBuffer(new GpuBufferDescription(vcount * 12u, GpuBufferUsage.VertexBuffer));   // Vector3 = 12 bytes
-            _ib = _gd.Factory.CreateBuffer(new GpuBufferDescription(icount * sizeof(uint), GpuBufferUsage.IndexBuffer));
-            uint[] indices = new uint[icount];   // built once, then thrown away: the index layout never changes
-            WaterMath.BuildGridIndices(indices);
-            _gd.UpdateBuffer(_ib, 0, indices);
         }
 
         /// <summary>Pure: pack one plane + the frame's light/camera/water/sky settings into the UBO.
@@ -574,29 +554,28 @@ namespace KhaozEngine.Render3D.Rendering
         /// <paramref name="settings"/> is the SCENE-wide look, and a plane carrying a <see cref="WaterLook"/>
         /// resolves its own copy of it for the UBO slot only. Everything outside that slot keeps reading the scene
         /// object on purpose: the grid mode and the <c>Clipmap*</c> group select the displaced geometry, the sea
-        /// state drives one bake and the bathymetry one texture. A procedural plane whose effective swell is zero
-        /// uses the regular water pipeline over one quad because its vertex stage has no geometry to displace.
+        /// state drives one bake and the bathymetry one texture. A procedural plane whose effective swell does not
+        /// displace draws one quad of the shared flat buffer in either grid mode, because its vertex stage has no
+        /// geometry to displace (WaterRenderer.FlatPlane.cs).
         /// </para></summary>
         public void Draw(IGpuCommandList cl, RenderResources res, ReadOnlySpan<WaterPlane> planes,
             Matrix4x4 viewProj, Vector3 lightDirection, Color lightColor, Vector3 cameraPos, WaterSettings settings,
             SkySettings sky, float timeSeconds, Vector3 renderOrigin = default)
         {
             if (planes.Length == 0) return;
-            bool clipmap = settings.GridMode == WaterGridMode.Clipmap;
-            bool flatClipmap = clipmap && AnyFlatPlane(planes, settings);
-            bool displacedClipmap = clipmap && AnyDisplacedPlane(planes, settings);
             LastClipmapRebuilds = 0;
+            LastFocusedGridBuilds = 0;
             EnsureUboCapacity(planes.Length);
-            if (displacedClipmap)
+            // FrustumPlanes needs the matrix and the boxes tested against its planes in the same frame. The planes
+            // arrive reduced by the render origin and so does viewProj, so here both are render-relative.
+            int drawn = RoutePlanes(planes, settings, FrustumPlanes.Extract(viewProj));
+            if (_clipCount > 0)
             {
                 EnsureClipPipeline();
                 EnsureClipBuffers(planes, settings, renderOrigin);
             }
-            if (flatClipmap) EnsureFlatBuffers();
-            if (!clipmap)
-            {
-                EnsureGridBuffers();
-            }
+            if (_flatCount > 0) EnsureFlatBuffers(_flatCount);
+            if (_gridCount > 0) EnsureGridBuffers(_gridCount);
 
             // ONE ocean update per frame, ahead of the per-plane loop and of BindTargets (which binds whatever maps
             // it produced). Every plane ON the ocean samples the same cascades: there is one sea state, not one per
@@ -618,11 +597,15 @@ namespace KhaozEngine.Render3D.Rendering
             // itself or its revision changed (#645), so the steady state is a compare and nothing else.
             _bathymetry.Update(settings.Bathymetry);
             ShoreMaps shore = _bathymetry.Snapshot();
+            // Nothing the view can reach: no slots, no geometry and no pass. The ocean demand compare and its record
+            // above still ran over the whole queue, because PrepareFrame planned against the whole queue.
+            if (drawn == 0) return;
             BindTargets(res);
 
             Matrix4x4 clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
             for (int i = 0; i < planes.Length; i++)
             {
+                if (_routes[i] == PlaneRoute.Culled) continue;   // its slot is never bound this frame
                 // Per plane now, not once: the surf band measures the crest's height above THIS plane's still
                 // water, a scene may queue several planes at different levels, and each may carry its own look.
                 WaterLook? look = planes[i].Look;
@@ -641,46 +624,16 @@ namespace KhaozEngine.Render3D.Rendering
             // was a per-plane blocking Map on D3D11 (#408); see WaterRenderer.SlotUpload.cs.
             UploadSlots(cl);
 
-            // Clipmap: every upload happens HERE, before a single draw is recorded, so no plane's geometry can be
-            // written over another's mid-pass and the draw loop below touches no buffer contents at all.
-            if (clipmap)
-                for (int i = 0; i < planes.Length; i++)
-                    if (!UsesFlatQuad(planes[i], settings))
-                        RefreshClipmapPlane(cl, i, planes[i], cameraPos, settings, renderOrigin);
+            // Every geometry upload happens HERE, before a single draw is recorded, so no plane's geometry can be
+            // written over another's mid-pass and the draw loop touches no buffer contents at all.
+            UploadFlatQuads(cl, planes);
+            UploadFocusedGrids(cl, planes, cameraPos, settings.GridFocusBias);
+            for (int i = 0; i < planes.Length; i++)
+                if (_routes[i] == PlaneRoute.Clipmap)
+                    RefreshClipmapPlane(cl, i, planes[i], cameraPos, settings, renderOrigin);
 
             cl.SetFramebuffer(res.ColorDepthFB);
-            if (!clipmap)
-            {
-                cl.SetPipeline(_pipe);
-                cl.SetIndexBuffer(_ib!, GpuIndexFormat.UInt32);
-            }
-            for (int i = 0; i < planes.Length; i++)
-            {
-                cl.SetGraphicsResourceSet(0, _set!, (uint)i * SlotBytes);
-                if (clipmap)
-                {
-                    if (UsesFlatQuad(planes[i], settings))
-                    {
-                        DrawFlatPlane(cl, planes[i]);
-                        continue;
-                    }
-                    // Each plane reads its own slice: indexStart walks the index buffer, vertexOffset rebases the
-                    // plane-local indices onto its own vertex block.
-                    cl.SetPipeline(_clipPipe!);
-                    cl.SetIndexBuffer(_clipIb!, GpuIndexFormat.UInt32);
-                    cl.SetVertexBuffer(0, _clipVb!);
-                    cl.DrawIndexed((uint)_clipSlots[i].IndexCount, 1,
-                        (uint)(i * _clipSliceIndices), i * _clipSliceVerts, 0);
-                    continue;
-                }
-                // The grid concentrates its vertices around the camera's XZ (clamped inside the plane by
-                // BuildGridPositions), so the fixed vertex budget lands where the displaced swell actually reads.
-                int n = WaterMath.BuildGridPositions(planes[i], cameraPos.X, cameraPos.Z, settings.GridFocusBias,
-                    _gridScratch, _axisScratch);
-                cl.UpdateBuffer<Vector3>(_vb!, 0, _gridScratch.AsSpan(0, n));
-                cl.SetVertexBuffer(0, _vb!);
-                cl.DrawIndexed((uint)WaterMath.GridIndexCount, 1, 0, 0, 0);
-            }
+            DrawRoutedPlanes(cl, planes.Length);
         }
 
         /// <summary>

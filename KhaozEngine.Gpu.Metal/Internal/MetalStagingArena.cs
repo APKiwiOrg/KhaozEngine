@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu.Internal;
 
 namespace KhaozEngine.Gpu.Metal.Internal
@@ -228,16 +229,19 @@ namespace KhaozEngine.Gpu.Metal.Internal
             if (_liveness.IsDead) return default;
 
             List<OpenBlock> open = _open[_slot];
+            Span<OpenBlock> blocks = CollectionsMarshal.AsSpan(open);
 
-            for (int i = open.Count - 1; i >= 0; i--)
+            for (int i = blocks.Length - 1; i >= 0; i--)
             {
-                if (open[i].TryBump(sizeBytes, out MetalStagingLease lease)) return lease;
+                if (TryBump(ref blocks[i], sizeBytes, out MetalStagingLease lease)) return lease;
             }
 
-            var opened = new OpenBlock(TakeBlock(sizeBytes));
-            open.Add(opened);
+            open.Add(new OpenBlock(TakeBlock(sizeBytes)));
 
-            if (opened.TryBump(sizeBytes, out MetalStagingLease fresh)) return fresh;
+            // THE SPAN IS TAKEN AGAIN AFTER THE ADD, because the Add may have grown the list and moved its backing
+            // array out from under the one read above.
+            ref OpenBlock opened = ref CollectionsMarshal.AsSpan(open)[open.Count - 1];
+            if (TryBump(ref opened, sizeBytes, out MetalStagingLease fresh)) return fresh;
 
             throw new InvalidOperationException(
                 "A native Metal staging block of " + opened.Block.SizeBytes + " bytes could not hold a request "
@@ -427,29 +431,37 @@ namespace KhaozEngine.Gpu.Metal.Internal
             BlocksDestroyed++;
         }
 
-        // One block plus how far it has been bumped. A class rather than a struct because the list holds it and a
-        // bump has to be visible to the next Take through that list.
-        sealed class OpenBlock
+        // ONE BLOCK PLUS HOW FAR IT HAS BEEN BUMPED, held INLINE in the slot's list rather than as an object per
+        // block (#1114). A class cost one allocation every time a slot opened a block, which on a steady frame is
+        // every frame, and the list's backing array is already the storage a struct needs, reused across frames
+        // because Clear keeps the capacity.
+        struct OpenBlock
         {
-            ulong _used;
-
-            internal OpenBlock(MetalStagingBlock block) => Block = block;
-
-            internal MetalStagingBlock Block { get; }
-
-            internal bool TryBump(ulong sizeBytes, out MetalStagingLease lease)
+            internal OpenBlock(MetalStagingBlock block)
             {
-                lease = default;
-
-                ulong offset = (_used + (CopyAlignment - 1)) & ~(CopyAlignment - 1);
-                if (offset < _used) return false;
-                if (offset > Block.SizeBytes || sizeBytes > Block.SizeBytes - offset) return false;
-
-                lease = new MetalStagingLease(
-                    Block.Buffer, offset, Block.Mapped + (nint)offset, sizeBytes);
-                _used = offset + sizeBytes;
-                return true;
+                Block = block;
+                Used = 0;
             }
+
+            internal readonly MetalStagingBlock Block;
+            internal ulong Used;
+        }
+
+        // A STATIC TAKING THE RECORD BY REF, so a bump on a copy (a List indexer, a foreach variable) is a compile
+        // error rather than a lease that silently overlaps the next one. A mutating instance method would compile
+        // against either and only one of them would move the bump.
+        static bool TryBump(ref OpenBlock block, ulong sizeBytes, out MetalStagingLease lease)
+        {
+            lease = default;
+
+            ulong offset = (block.Used + (CopyAlignment - 1)) & ~(CopyAlignment - 1);
+            if (offset < block.Used) return false;
+            if (offset > block.Block.SizeBytes || sizeBytes > block.Block.SizeBytes - offset) return false;
+
+            lease = new MetalStagingLease(
+                block.Block.Buffer, offset, block.Block.Mapped + (nint)offset, sizeBytes);
+            block.Used = offset + sizeBytes;
+            return true;
         }
     }
 }

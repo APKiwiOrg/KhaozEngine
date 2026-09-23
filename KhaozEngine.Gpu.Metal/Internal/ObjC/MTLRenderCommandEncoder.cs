@@ -76,7 +76,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal unsafe void SetViewport(in MTLViewport viewport)
         {
             MTLViewport value = viewport;
-            ObjCMsgSend.SendVoidPtrNUInt(Handle, ObjCRuntime.Sel("setViewports:count:"), &value, 1);
+            ObjCMsgSend.SendVoidPtrNUInt(Handle, Selectors.SetViewports, &value, 1);
         }
 
         /// <summary><c>-setScissorRects:count:</c> with one rectangle, same shape and same lifetime argument as
@@ -86,7 +86,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal unsafe void SetScissorRect(in MTLScissorRect rect)
         {
             MTLScissorRect value = rect;
-            ObjCMsgSend.SendVoidPtrNUInt(Handle, ObjCRuntime.Sel("setScissorRects:count:"), &value, 1);
+            ObjCMsgSend.SendVoidPtrNUInt(Handle, Selectors.SetScissorRects, &value, 1);
         }
 
         /// <summary>
@@ -109,8 +109,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal unsafe void SetBuffers(MetalShaderStage stage, ReadOnlySpan<IntPtr> buffers,
             ReadOnlySpan<nuint> offsets, uint firstIndex)
         {
-            IntPtr selector = ObjCRuntime.Sel(Stage(stage, "setVertexBuffers:offsets:withRange:",
-                "setFragmentBuffers:offsets:withRange:"));
+            IntPtr selector = Stage(stage, Selectors.SetVertexBuffers, Selectors.SetFragmentBuffers);
 
             fixed (IntPtr* objects = buffers)
             fixed (nuint* offsetValues = offsets)
@@ -127,8 +126,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal unsafe void SetTextures(MetalShaderStage stage, ReadOnlySpan<IntPtr> textures, uint firstIndex)
         {
-            IntPtr selector = ObjCRuntime.Sel(
-                Stage(stage, "setVertexTextures:withRange:", "setFragmentTextures:withRange:"));
+            IntPtr selector = Stage(stage, Selectors.SetVertexTextures, Selectors.SetFragmentTextures);
 
             fixed (IntPtr* objects = textures)
             {
@@ -145,8 +143,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal unsafe void SetSamplerStates(MetalShaderStage stage, ReadOnlySpan<IntPtr> samplers,
             uint firstIndex)
         {
-            IntPtr selector = ObjCRuntime.Sel(
-                Stage(stage, "setVertexSamplerStates:withRange:", "setFragmentSamplerStates:withRange:"));
+            IntPtr selector = Stage(stage, Selectors.SetVertexSamplerStates, Selectors.SetFragmentSamplerStates);
 
             fixed (IntPtr* objects = samplers)
             {
@@ -167,25 +164,21 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetBufferOffset(MetalShaderStage stage, nuint offset, uint index)
-            => ObjCMsgSend.SendVoidNUIntNUInt(
-                Handle,
-                ObjCRuntime.Sel(Stage(stage, "setVertexBufferOffset:atIndex:",
-                    "setFragmentBufferOffset:atIndex:")),
-                offset,
-                index);
+            => ObjCMsgSend.SendVoidNUIntNUInt(Handle,
+                Stage(stage, Selectors.SetVertexBufferOffset, Selectors.SetFragmentBufferOffset), offset, index);
 
         /// <summary><c>-setRenderPipelineState:</c>, the first call of the pipeline-state block (section 6.3).
         /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetRenderPipelineState(MTLRenderPipelineState state)
-            => ObjCMsgSend.SendVoidPtr(Handle, ObjCRuntime.Sel("setRenderPipelineState:"), state.Handle);
+            => ObjCMsgSend.SendVoidPtr(Handle, Selectors.SetRenderPipelineState, state.Handle);
 
         /// <summary><c>-setCullMode:</c>.</summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetCullMode(MTLCullMode mode)
-            => ObjCMsgSend.SendVoidNUInt(Handle, ObjCRuntime.Sel("setCullMode:"), (nuint)(ulong)mode);
+            => ObjCMsgSend.SendVoidNUInt(Handle, Selectors.SetCullMode, (nuint)(ulong)mode);
 
         /// <summary><c>-setFrontFacingWinding:</c>. The selector carries the word <c>Winding</c> where the
         /// incumbent's own binding names the method <c>setFrontFacing</c>, and the SELECTOR is what the runtime
@@ -193,21 +186,20 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetFrontFacingWinding(MTLWinding winding)
-            => ObjCMsgSend.SendVoidNUInt(Handle, ObjCRuntime.Sel("setFrontFacingWinding:"), (nuint)(ulong)winding);
+            => ObjCMsgSend.SendVoidNUInt(Handle, Selectors.SetFrontFacingWinding, (nuint)(ulong)winding);
 
         /// <summary><c>-setTriangleFillMode:</c>.</summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetTriangleFillMode(MTLTriangleFillMode mode)
-            => ObjCMsgSend.SendVoidNUInt(Handle, ObjCRuntime.Sel("setTriangleFillMode:"), (nuint)(ulong)mode);
+            => ObjCMsgSend.SendVoidNUInt(Handle, Selectors.SetTriangleFillMode, (nuint)(ulong)mode);
 
         /// <summary><c>-setBlendColorRed:green:blue:alpha:</c>, four separate <c>float</c>s rather than a
         /// composite, which is what makes it the plain vector-register class.</summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetBlendColour(float red, float green, float blue, float alpha)
-            => ObjCMsgSend.SendVoidFloat4(Handle, ObjCRuntime.Sel("setBlendColorRed:green:blue:alpha:"),
-                red, green, blue, alpha);
+            => ObjCMsgSend.SendVoidFloat4(Handle, Selectors.SetBlendColor, red, green, blue, alpha);
 
         /// <summary>
         /// <c>-setDepthStencilState:</c>, one of the DEPTH PAIR.
@@ -220,7 +212,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetDepthStencilState(MTLDepthStencilState state)
-            => ObjCMsgSend.SendVoidPtr(Handle, ObjCRuntime.Sel("setDepthStencilState:"), state.Handle);
+            => ObjCMsgSend.SendVoidPtr(Handle, Selectors.SetDepthStencilState, state.Handle);
 
         /// <summary><c>-setDepthClipMode:</c>, emitted on every pipeline change beside the cull mode and the
         /// winding rather than with the depth pair, because it is rasterizer state and binds on a pass with no
@@ -228,14 +220,14 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetDepthClipMode(MTLDepthClipMode mode)
-            => ObjCMsgSend.SendVoidNUInt(Handle, ObjCRuntime.Sel("setDepthClipMode:"), (nuint)(ulong)mode);
+            => ObjCMsgSend.SendVoidNUInt(Handle, Selectors.SetDepthClipMode, (nuint)(ulong)mode);
 
         /// <summary><c>-setStencilReferenceValue:</c>, the third. A <c>uint32_t</c> and not an
         /// <c>NSUInteger</c>, declared at its real width for <c>SendVoidUInt</c>'s reason.</summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetStencilReferenceValue(uint reference)
-            => ObjCMsgSend.SendVoidUInt(Handle, ObjCRuntime.Sel("setStencilReferenceValue:"), reference);
+            => ObjCMsgSend.SendVoidUInt(Handle, Selectors.SetStencilReferenceValue, reference);
 
         /// <summary>
         /// <c>-drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:</c>, the LONG form
@@ -250,8 +242,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void DrawPrimitives(MTLPrimitiveType type, uint vertexStart, uint vertexCount,
             uint instanceCount, uint baseInstance)
-            => ObjCMsgSend.SendVoidDrawPrimitives(Handle,
-                ObjCRuntime.Sel("drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:"),
+            => ObjCMsgSend.SendVoidDrawPrimitives(Handle, Selectors.DrawPrimitives,
                 (nuint)(ulong)type, vertexStart, vertexCount, instanceCount, baseInstance);
 
         /// <summary>
@@ -273,9 +264,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void DrawIndexedPrimitives(MTLPrimitiveType type, uint indexCount, MTLIndexType indexType,
             MTLBuffer indexBuffer, nuint indexBufferOffset, uint instanceCount, int baseVertex, uint baseInstance)
-            => ObjCMsgSend.SendVoidDrawIndexedPrimitives(Handle,
-                ObjCRuntime.Sel("drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:"
-                    + "instanceCount:baseVertex:baseInstance:"),
+            => ObjCMsgSend.SendVoidDrawIndexedPrimitives(Handle, Selectors.DrawIndexedPrimitives,
                 (nuint)(ulong)type, indexCount, (nuint)(ulong)indexType, indexBuffer.Handle, indexBufferOffset,
                 instanceCount, baseVertex, baseInstance);
 
@@ -283,7 +272,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         // way. Compute is refused rather than folded into the vertex arm: a compute encoder is a different
         // protocol with unprefixed selectors, and sending a vertex selector to one is an unrecognised-selector
         // crash at best and a bind onto the wrong table at worst.
-        static string Stage(MetalShaderStage stage, string vertex, string fragment) => stage switch
+        static IntPtr Stage(MetalShaderStage stage, IntPtr vertex, IntPtr fragment) => stage switch
         {
             MetalShaderStage.Vertex => vertex,
             MetalShaderStage.Fragment => fragment,
@@ -292,5 +281,44 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
                 + "compute argument-table setters are unprefixed selectors on MTLComputeCommandEncoder, so this "
                 + "is a bind routed to the wrong encoder kind rather than a stage this type could serve."),
         };
+
+        /// <summary>
+        /// EVERY SELECTOR THIS TYPE SENDS, RESOLVED ONCE PER PROCESS (#1114), because every one of them is on the
+        /// per-draw, per-bind or per-pass path. A NESTED type for <c>MetalCompletionHandler</c>'s reason: the CLR
+        /// runs a type's initializer on first access to THAT type, and only the macOS-only members above touch
+        /// it, so nothing here reaches libobjc on the legs where this assembly's device-free tests run.
+        /// </summary>
+        [SupportedOSPlatform("macos")]
+        static class Selectors
+        {
+            internal static readonly IntPtr SetViewports = ObjCRuntime.Sel("setViewports:count:");
+            internal static readonly IntPtr SetScissorRects = ObjCRuntime.Sel("setScissorRects:count:");
+            internal static readonly IntPtr SetVertexBuffers =
+                ObjCRuntime.Sel("setVertexBuffers:offsets:withRange:");
+            internal static readonly IntPtr SetFragmentBuffers =
+                ObjCRuntime.Sel("setFragmentBuffers:offsets:withRange:");
+            internal static readonly IntPtr SetVertexTextures = ObjCRuntime.Sel("setVertexTextures:withRange:");
+            internal static readonly IntPtr SetFragmentTextures = ObjCRuntime.Sel("setFragmentTextures:withRange:");
+            internal static readonly IntPtr SetVertexSamplerStates =
+                ObjCRuntime.Sel("setVertexSamplerStates:withRange:");
+            internal static readonly IntPtr SetFragmentSamplerStates =
+                ObjCRuntime.Sel("setFragmentSamplerStates:withRange:");
+            internal static readonly IntPtr SetVertexBufferOffset = ObjCRuntime.Sel("setVertexBufferOffset:atIndex:");
+            internal static readonly IntPtr SetFragmentBufferOffset =
+                ObjCRuntime.Sel("setFragmentBufferOffset:atIndex:");
+            internal static readonly IntPtr SetRenderPipelineState = ObjCRuntime.Sel("setRenderPipelineState:");
+            internal static readonly IntPtr SetCullMode = ObjCRuntime.Sel("setCullMode:");
+            internal static readonly IntPtr SetFrontFacingWinding = ObjCRuntime.Sel("setFrontFacingWinding:");
+            internal static readonly IntPtr SetTriangleFillMode = ObjCRuntime.Sel("setTriangleFillMode:");
+            internal static readonly IntPtr SetBlendColor = ObjCRuntime.Sel("setBlendColorRed:green:blue:alpha:");
+            internal static readonly IntPtr SetDepthStencilState = ObjCRuntime.Sel("setDepthStencilState:");
+            internal static readonly IntPtr SetDepthClipMode = ObjCRuntime.Sel("setDepthClipMode:");
+            internal static readonly IntPtr SetStencilReferenceValue = ObjCRuntime.Sel("setStencilReferenceValue:");
+            internal static readonly IntPtr DrawPrimitives =
+                ObjCRuntime.Sel("drawPrimitives:vertexStart:vertexCount:instanceCount:baseInstance:");
+            internal static readonly IntPtr DrawIndexedPrimitives =
+                ObjCRuntime.Sel("drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:"
+                    + "instanceCount:baseVertex:baseInstance:");
+        }
     }
 }

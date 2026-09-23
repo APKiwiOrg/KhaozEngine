@@ -376,11 +376,12 @@ public class ContentIdAllocatorTests
             return inner.CommitReservedThroughAsync(type, reservedThrough, cancellationToken);
         }
 
-        public Task CommitIssuedThroughAsync(
-            ContentTypeId type, int issuedThrough, CancellationToken cancellationToken = default)
+        public async Task<int> CommitIssueAsync(
+            ContentTypeId type, int count, CancellationToken cancellationToken = default)
         {
-            _writes.Add(FormattableString.Invariant($"issue {issuedThrough}"));
-            return inner.CommitIssuedThroughAsync(type, issuedThrough, cancellationToken);
+            int first = await inner.CommitIssueAsync(type, count, cancellationToken).ConfigureAwait(false);
+            _writes.Add(FormattableString.Invariant($"issue {first + count - 1}"));
+            return first;
         }
 
         public Task<bool> CommitCarriedThroughAsync(
@@ -394,18 +395,19 @@ public class ContentIdAllocatorTests
             long familyId, CancellationToken cancellationToken = default)
             => inner.ReadFamilyAsync(familyId, cancellationToken);
 
-        public Task<ContentFamilyBlock> CommitFamilyBlockAsync(
+        public Task<ContentFamilyBlock?> CommitFamilyBlockAsync(
             long familyId, int baseId, int issuedThrough, CancellationToken cancellationToken = default)
         {
             _writes.Add(FormattableString.Invariant($"block {baseId} issue {issuedThrough}"));
             return inner.CommitFamilyBlockAsync(familyId, baseId, issuedThrough, cancellationToken);
         }
 
-        public Task CommitFamilyNextFreeIdAsync(
-            long familyId, int blockOrdinal, int nextFreeId, CancellationToken cancellationToken = default)
+        public async Task<int> CommitFamilyIssueAsync(
+            long familyId, int blockOrdinal, CancellationToken cancellationToken = default)
         {
-            _writes.Add(FormattableString.Invariant($"next {nextFreeId}"));
-            return inner.CommitFamilyNextFreeIdAsync(familyId, blockOrdinal, nextFreeId, cancellationToken);
+            int id = await inner.CommitFamilyIssueAsync(familyId, blockOrdinal, cancellationToken).ConfigureAwait(false);
+            _writes.Add(FormattableString.Invariant($"next {id + 1}"));
+            return id;
         }
     }
 }

@@ -173,41 +173,32 @@ public sealed partial class SqliteContentAuthoringStore
                 : null);
 
     /// <inheritdoc />
-    public async Task CommitReservedThroughAsync(
+    public Task CommitReservedThroughAsync(
         ContentTypeId type,
         int reservedThrough,
         CancellationToken cancellationToken = default)
+        => RaiseMarkAsync(type, reservedThrough, issued: false, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<int> CommitIssueAsync(
+        ContentTypeId type,
+        int count,
+        CancellationToken cancellationToken = default)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteTransaction transaction = _connection.BeginTransaction();
         ContentIdHighWater mark = await ReadHighWaterAsync(type, transaction, cancellationToken).ConfigureAwait(false);
-        if (reservedThrough < mark.ReservedThrough)
+        if (mark.IssuedThrough + (long)count > mark.ReservedThrough)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(reservedThrough),
-                reservedThrough,
-                FormattableString.Invariant(
-                    $"Content type {type.Value} has reserved through {mark.ReservedThrough}, and a durable promise is never taken back."));
+            return 0;
         }
 
         await WriteHighWaterAsync(
-            type, mark with { ReservedThrough = reservedThrough }, transaction, cancellationToken)
+            type, mark with { IssuedThrough = mark.IssuedThrough + count }, transaction, cancellationToken)
             .ConfigureAwait(false);
         transaction.Commit();
-    }
-
-    /// <inheritdoc />
-    public async Task CommitIssuedThroughAsync(
-        ContentTypeId type,
-        int issuedThrough,
-        CancellationToken cancellationToken = default)
-    {
-        using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
-        using SqliteTransaction transaction = _connection.BeginTransaction();
-        ContentIdHighWater mark = await ReadHighWaterAsync(type, transaction, cancellationToken).ConfigureAwait(false);
-        await WriteHighWaterAsync(type, WithIssued(type, mark, issuedThrough), transaction, cancellationToken)
-            .ConfigureAwait(false);
-        transaction.Commit();
+        return mark.IssuedThrough + 1;
     }
 
     /// <inheritdoc />
@@ -217,18 +208,19 @@ public sealed partial class SqliteContentAuthoringStore
         CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(carriedThrough);
-        bool reserved = await RaiseToCarriedAsync(type, carriedThrough, issued: false, cancellationToken)
+        bool reserved = await RaiseMarkAsync(type, carriedThrough, issued: false, cancellationToken)
             .ConfigureAwait(false);
-        bool issued = await RaiseToCarriedAsync(type, carriedThrough, issued: true, cancellationToken)
+        bool issued = await RaiseMarkAsync(type, carriedThrough, issued: true, cancellationToken)
             .ConfigureAwait(false);
         return reserved || issued;
     }
 
     /// <summary>
-    /// One mark raised to at least a carried id, compared and written in ONE transaction. The issued mark
-    /// cannot pass the reserved one here, because the reserved mark already covers the id and never falls.
+    /// One mark raised to at least a value, compared and written in ONE transaction. The seeding write raises
+    /// the issued mark only after the reserved one covers the same id, and the reserved mark never falls, so
+    /// the issued mark cannot pass it here.
     /// </summary>
-    async Task<bool> RaiseToCarriedAsync(
+    async Task<bool> RaiseMarkAsync(
         ContentTypeId type,
         int carriedThrough,
         bool issued,
@@ -260,7 +252,7 @@ public sealed partial class SqliteContentAuthoringStore
     }
 
     /// <inheritdoc />
-    public async Task<ContentFamilyBlock> CommitFamilyBlockAsync(
+    public async Task<ContentFamilyBlock?> CommitFamilyBlockAsync(
         long familyId,
         int baseId,
         int issuedThrough,
@@ -270,6 +262,15 @@ public sealed partial class SqliteContentAuthoringStore
         using SqliteTransaction transaction = _connection.BeginTransaction();
         ContentFamily family = await RequireFamilyAsync(familyId, transaction, cancellationToken)
             .ConfigureAwait(false);
+
+        // The range is free only while nothing has been issued at or above its base, read HERE.
+        ContentIdHighWater mark = await ReadHighWaterAsync(family.Type, transaction, cancellationToken)
+            .ConfigureAwait(false);
+        if (mark.IssuedThrough >= baseId)
+        {
+            return null;
+        }
+
         long active = await ReadLongAsync(
             "SELECT active_version FROM catalog_metadata WHERE metadata_key = 1;", transaction, cancellationToken)
             .ConfigureAwait(false);
@@ -296,8 +297,6 @@ public sealed partial class SqliteContentAuthoringStore
 
         // The advance rides with the insert, because a block row written without it leaves the plain counter
         // walking into the new block.
-        ContentIdHighWater mark = await ReadHighWaterAsync(family.Type, transaction, cancellationToken)
-            .ConfigureAwait(false);
         await WriteHighWaterAsync(
             family.Type, WithIssued(family.Type, mark, issuedThrough), transaction, cancellationToken)
             .ConfigureAwait(false);
@@ -307,10 +306,9 @@ public sealed partial class SqliteContentAuthoringStore
     }
 
     /// <inheritdoc />
-    public async Task CommitFamilyNextFreeIdAsync(
+    public async Task<int> CommitFamilyIssueAsync(
         long familyId,
         int blockOrdinal,
-        int nextFreeId,
         CancellationToken cancellationToken = default)
     {
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
@@ -318,13 +316,9 @@ public sealed partial class SqliteContentAuthoringStore
         ContentFamily family = await RequireFamilyAsync(familyId, transaction, cancellationToken)
             .ConfigureAwait(false);
         ContentFamilyBlock block = family.Blocks[blockOrdinal];
-        if (nextFreeId < block.NextFreeId || nextFreeId > block.TopExclusive)
+        if (block.IsFull)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(nextFreeId),
-                nextFreeId,
-                FormattableString.Invariant(
-                    $"Block {blockOrdinal} of family {familyId} spans [{block.BaseId}, {block.TopExclusive}) and stands at {block.NextFreeId}."));
+            return 0;
         }
 
         using (SqliteCommand update = Command(
@@ -334,13 +328,14 @@ public sealed partial class SqliteContentAuthoringStore
             """,
             transaction))
         {
-            Bind(update, "$next", (long)nextFreeId);
+            Bind(update, "$next", (long)block.NextFreeId + 1);
             Bind(update, "$family", familyId);
             Bind(update, "$ordinal", (long)blockOrdinal);
             await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         transaction.Commit();
+        return block.NextFreeId;
     }
 
     /// <summary>One family with its blocks, or null. The caller already holds the lease.</summary>

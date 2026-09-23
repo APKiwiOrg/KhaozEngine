@@ -414,6 +414,31 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
+    public override Task TwoPlainAllocationsThatInterleaveAreIssuedDifferentIds()
+        => base.TwoPlainAllocationsThatInterleaveAreIssuedDifferentIds();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TwoFamilyAllocationsThatInterleaveAreIssuedDifferentIds()
+        => base.TwoFamilyAllocationsThatInterleaveAreIssuedDifferentIds();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task TwoBlockReservationsThatInterleaveNeverOverlap()
+        => base.TwoBlockReservationsThatInterleaveNeverOverlap();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task APlainAllocationThatABlockReservationPassesTakesAnIdAboveTheBlock()
+        => base.APlainAllocationThatABlockReservationPassesTakesAnIdAboveTheBlock();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ManyConcurrentPlainAllocationsAreAllIssuedDifferentIds()
+        => base.ManyConcurrentPlainAllocationsAreAllIssuedDifferentIds();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
     public override Task ACarriedAddInsideAFamilysBlockNamingNoFamilyIsRefusedAndChangesNothing()
         => base.ACarriedAddInsideAFamilysBlockNamingNoFamilyIsRefusedAndChangesNothing();
 

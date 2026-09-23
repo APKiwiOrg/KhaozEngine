@@ -108,7 +108,7 @@ static class ContentIdAllocation
 
             // The store compares and writes in ONE commit per mark. Reading the marks here and writing them in
             // a later call is the race two upgrade runners lost: a rival seeding the same type from a higher
-            // carried id lands in between, and the stale lower number is refused as a promise taken back.
+            // carried id lands in between, and writing the stale lower number would take a promise back.
             if (await persistence
                 .CommitCarriedThroughAsync(type, highest, cancellationToken).ConfigureAwait(false))
             {

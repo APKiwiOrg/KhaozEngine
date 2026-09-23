@@ -143,9 +143,17 @@ the type, the ceiling and the high-water mark. Retired rows count toward a ceili
 reused and a retired row keeps the number it occupies.
 
 `IContentIdPersistence` is the durable half the allocator sits on, and every `Commit` member on it commits
-on its own. A backend implements it with its own transactions. `CommitCarriedThroughAsync` is the publish's
-seeding write: it raises each mark to at least a carried id and compares inside the commit that writes it, so
-a backend never answers it from a mark read in an earlier call.
+on its own. A backend implements it with its own transactions.
+
+**Every `Commit` member compares inside the commit that writes it**, because two hosts allocate from one
+catalog with no lock spanning either allocation, and a mark read in one call can be passed by a rival before
+the next call writes. `CommitReservedThroughAsync` raises the reservation to at least a value and leaves a
+higher one standing. `CommitIssueAsync` takes the next `count` plain ids only while the live reservation still
+covers them and answers the first, or 0. `CommitFamilyBlockAsync` inserts a block only while the type's issued
+mark is still below its base and answers null otherwise. `CommitFamilyIssueAsync` takes a block's next free id,
+or answers 0 for a full block. `CommitCarriedThroughAsync` is the publish's seeding write and raises both marks
+to at least a carried id. A 0 or a null means a rival allocation succeeded in between, so the allocator reads
+the marks again and tries once more, and the ceiling check on every pass ends it when the id space runs out.
 
 ## The publish pipeline
 
@@ -228,7 +236,7 @@ it. `ContentIdAllocationRecord.Seeds` is empty for an ordinary publish.
 The seeding raises each mark to the greater of its current value and the carried id, and the store makes that
 comparison inside the same commit as the write. Two upgrade runners seed one type without a lock spanning
 either publish, so a mark read first and written in a later call could be passed by the other runner's seed
-in between, and the stale lower number would be refused as a reservation taken back. A mark a rival already
+in between, and writing the stale lower number would take a reservation back. A mark a rival already
 raised past the carried id is left where it stands, and `Seeds` then omits that type.
 
 A carried id is checked before the candidate is built, because step 3's seeding commits on its own and a

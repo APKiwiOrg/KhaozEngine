@@ -71,8 +71,8 @@ public class CarriedIdSeedRaceTests
 
     /// <summary>
     /// Forwards every call, and on the FIRST write that reaches it for one type commits a rival's raise of
-    /// that type's two marks through the inner store before forwarding the write. The rival writes in the
-    /// same order any seed does, reserve then issue.
+    /// that type's two marks through the inner store before forwarding the write. The rival raises them the
+    /// way any seed does, through the seeding write.
     /// </summary>
     sealed class RivalRaiseIdPersistence(IContentIdPersistence inner, ContentTypeId watched, int rivalThrough)
         : IContentIdPersistence
@@ -94,11 +94,11 @@ public class CarriedIdSeedRaceTests
             await inner.CommitReservedThroughAsync(type, reservedThrough, cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task CommitIssuedThroughAsync(
-            ContentTypeId type, int issuedThrough, CancellationToken cancellationToken = default)
+        public async Task<int> CommitIssueAsync(
+            ContentTypeId type, int count, CancellationToken cancellationToken = default)
         {
             await RivalFirstAsync(type, cancellationToken).ConfigureAwait(false);
-            await inner.CommitIssuedThroughAsync(type, issuedThrough, cancellationToken).ConfigureAwait(false);
+            return await inner.CommitIssueAsync(type, count, cancellationToken).ConfigureAwait(false);
         }
 
         public async Task<bool> CommitCarriedThroughAsync(
@@ -112,13 +112,13 @@ public class CarriedIdSeedRaceTests
             long familyId, CancellationToken cancellationToken = default)
             => inner.ReadFamilyAsync(familyId, cancellationToken);
 
-        public Task<ContentFamilyBlock> CommitFamilyBlockAsync(
+        public Task<ContentFamilyBlock?> CommitFamilyBlockAsync(
             long familyId, int baseId, int issuedThrough, CancellationToken cancellationToken = default)
             => inner.CommitFamilyBlockAsync(familyId, baseId, issuedThrough, cancellationToken);
 
-        public Task CommitFamilyNextFreeIdAsync(
-            long familyId, int blockOrdinal, int nextFreeId, CancellationToken cancellationToken = default)
-            => inner.CommitFamilyNextFreeIdAsync(familyId, blockOrdinal, nextFreeId, cancellationToken);
+        public Task<int> CommitFamilyIssueAsync(
+            long familyId, int blockOrdinal, CancellationToken cancellationToken = default)
+            => inner.CommitFamilyIssueAsync(familyId, blockOrdinal, cancellationToken);
 
         async Task RivalFirstAsync(ContentTypeId written, CancellationToken cancellationToken)
         {
@@ -128,8 +128,7 @@ public class CarriedIdSeedRaceTests
             }
 
             Fired = true;
-            await inner.CommitReservedThroughAsync(watched, rivalThrough, cancellationToken).ConfigureAwait(false);
-            await inner.CommitIssuedThroughAsync(watched, rivalThrough, cancellationToken).ConfigureAwait(false);
+            await inner.CommitCarriedThroughAsync(watched, rivalThrough, cancellationToken).ConfigureAwait(false);
         }
     }
 }

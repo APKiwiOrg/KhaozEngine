@@ -4,9 +4,10 @@ Opt-in HTTPS admin endpoint for a KhaozEngine game server. A minimal Kestrel lis
 exposing the generic `ServerAdmin` surface as a small REST API: list/teleport/kick/broadcast online players,
 enumerate persisted accounts, ban/unban, and any game-registered admin actions.
 
-This is the only KhaozEngine package that references ASP.NET Core (via a `FrameworkReference`), and it is **not**
-bundled in the `KhaozEngine.Server` umbrella - add it explicitly when you want an admin endpoint, so a sim server
-that does not need one never pulls the web stack.
+This is one of the two KhaozEngine packages that reference ASP.NET Core (via a `FrameworkReference`), with the sign-in
+exchange handler `KhaozEngine.Identity.Exchange.AspNetCore`, and it is **not** bundled in the `KhaozEngine.Server`
+umbrella - add it explicitly when you want an admin endpoint, so a sim server that does not need one never pulls the
+web stack.
 
 ```csharp
 var admin = new ServerAdmin(worldServer, new WorldStoreBanStore(store), store);
@@ -85,6 +86,13 @@ CatalogAdminActions.Register(admin, store, registry);
 
 It registers SIXTEEN action names, which is a count the spec states once and means, and a test asserts them
 literally so a rename cannot drift past review.
+
+`CatalogAdminActions.RegisterReads(admin, store, registry)` registers only the five read actions in the table
+below and none of the other eleven. It is for a game whose catalog is bundle-derived: the committed
+bundle is the only authority, so its console serves reads and must not put publish, import, pin or edit one
+admin call away from the hosted store. Call it instead of `Register`, not beside it. `Register` reaches the
+reads through the same registration, so a `Register` after `RegisterReads` is refused at the first read name,
+exactly as a second `Register` is. A test dispatches all five over a store whose every write member throws.
 
 Every handler runs on the HTTP request thread and touches only the authoring store, never the simulation, so
 the threading contract holds by construction. The read actions:
@@ -289,6 +297,11 @@ Routes (under `/admin`, all require `Authorization: Bearer <token>`): `GET /onli
 `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`, `GET /actions` (lists registered
 action names), `GET /actions/{name}` (dispatches with a null payload), `POST /actions/{name}` (dispatches with an
 optional JSON body, an absent, empty, whitespace-only, or JSON-null body all reaching the handler as null).
+
+`GET /accounts` lists the world store's persisted keys (`IEnumerableWorldStore`), which answer who has state, not who
+may sign in. A game on the sign-in account registry (`KhaozEngine.Accounts`) passes its `AccountBanStore` as the ban
+store, so `POST /ban` and `POST /unban` write the account row the sign-in exchange reads, and a ban or an unban
+naming a subject with no account is a 400 that does not echo the subject.
 
 An action registered with `mutating: true` is POST ONLY: the GET route answers 405 with `Allow: POST` and
 never reaches the handler. Without it a destructive action with no required body is reachable by any GET a

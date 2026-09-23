@@ -5,10 +5,120 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.4.0
+
+A minor that adds published item rarity colours and replayable container operations for event sourced game
+hosts. Grant and Craft write self-contained version 2 events.
+
+**Item rarity display and event sourced containers.**
+
+- `rarity_rule.display_rgb` is an optional, client-visible three-byte RGB field. Old seven-field rows keep
+  their bytes. A missing rarity or colour reads white, and `RarityDisplayColors.Over(runtime)` resolves the
+  published colour from an item's kind 130 rarity ID without adding colour to player storage.
+- `ContainerOperationEventCodec` reads existing Move, Split, Merge, Take and plain Grant events, while new
+  Grant and Craft events carry the payload and location data an event sourced host needs to replay them
+  ([#1046](https://github.com/APKiwiOrg/KhaozEngine/issues/1046)). Old instance Grant and Craft events
+  still read for their available audit facts but explicitly refuse standalone container replay.
+- `ContainerOperationApplier.TryApply` admits against current rules, while `TryReplay` reconstructs accepted
+  events after stackability or capacity retunes. A new `Slide` operation compacts a contiguous bank run in one
+  `item-slid` event, preserving complete item slots.
+  The builder budgets every affected page and its byte growth before it admits the operation. A 999-shelf
+  shift takes one event and ten page writes.
+
+## 20.3.0
+
+A minor with two programs. The auth service both games hand-wrote moves into the engine as five opt-in packages,
+reviewed for security before release. Procedural water changes how it looks: a narrower, energy-correct far glint
+and whitecaps evaluated per pixel. Nothing a game calls changes meaning. A lake tuned against the old water look may
+want its whitecap settings retuned, and `KhaozEngine.Server.Admin`'s `POST /admin/unban` now answers 400 rather
+than 500 for a subject it cannot find.
+
+**Auth exchange, account store and signing secret** ([#707](https://github.com/APKiwiOrg/KhaozEngine/issues/707),
+design in `docs/design/AUTH-EXCHANGE-DESIGN-2026-09-23.md`).
+
+- `SigningSecret` in `KhaozEngine.Netcode` loads and validates the key both token ends share: standard base64,
+  trimmed, at least 32 bytes, unset is null, set but invalid throws naming the source and never the value, and the
+  working buffer is zeroed. It accepts exactly what both games' loaders accepted, so outstanding tokens keep
+  verifying. `CreateEphemeral` covers local development.
+- `KhaozEngine.Accounts` (opt-in, edge to `Netcode` only) is the account registry seam: `IAccountStore`,
+  `AccountRecord`, `AccountBan`, `AccountSignIn`, `AccountStoreRules` (`{provider}:{subject}` minting, the reserved
+  `guest:` prefix, 128, 128 and 256 character limits, no surrounding whitespace), `InMemoryAccountStore` and
+  `AccountBanStore`, an `IBanStore` over the account store so a game has one ban list for the door, the join check and
+  `ServerAdmin`. Every backend runs one shared conformance suite.
+- `KhaozEngine.Accounts.Sqlite` (`SqliteAccountStore`, on `SqliteStoreConnection`) and
+  `KhaozEngine.Accounts.SqlServer` (`SqlServerAccountStore`, `AccountSchemaMode.AutoCreate` or `ValidateOnly`)
+  adopt Grimhollow's existing `accounts` table in place under a configurable, validated table name. Find-or-create
+  is race-safe on both, every subject comparison is binary, and the SQLite store refuses a table whose subject key is
+  not BINARY collated rather than risk answering for another account. The SQL Server conformance runs in a new
+  `accounts-sqlserver` CI job against a real SQL Server 2022 service.
+- The `/auth/exchange` wire DTOs (`AuthExchangeRequest`, `AuthExchangeResponse`, `AuthExchangeStatuses`) join
+  `KhaozEngine.Identity`, byte-compatible with both games' current payloads, with fixed JSON names and a redacted
+  `ToString`.
+- `KhaozEngine.Identity.Exchange` (opt-in) is the pure decision core, `AuthExchange`. A 10 s provider deadline that
+  holds even for a validator that blocks, a provider outage that never reads as a bad credential, find-or-create
+  accounts, ban before whitelist through `AuthAdmission` (a policy cannot reorder it), v2 or v3 minting through
+  `IAuthExchangePolicy`, ban details off unless a game opts in, one response for every failure, a credential refused
+  as malformed unless it is visible ASCII, a signing key shorter than 32 bytes refused, and a token lifetime capped at
+  365 days.
+- `KhaozEngine.Identity.Exchange.AspNetCore` (opt-in, in no umbrella) mounts it: `AddAuthExchangeHosting`,
+  `UseAuthExchangeHosting` and `MapAuthExchange` (the order is enforced at map time). All limits run before any JSON
+  is parsed: 5 a minute per client (the IPv4 address or the IPv6 /64, 429 with `Retry-After: 60`), an 8 KiB body cap
+  (413), and a global bound of 20 with a queue of 20, taken only after the body is read so a slow upload holds no
+  place. Forwarded headers are trusted only from named proxies, in both address families, and a catch-all network
+  (any /0, including `default(IPNetwork)`) is refused. Every answer carries `Cache-Control: no-store`, and the one
+  log line per exchange never holds a credential, token, subject, display name or ban reason. With `Server.Admin`
+  it is one of the two packages that reference ASP.NET Core, which `ArchitectureTests` now enforces.
+- `POST /admin/unban` answers 400 without echoing the subject when an `AccountBanStore` refuses an unknown subject,
+  the same as `POST /admin/ban`.
+- Game adoption: [Ruinborne#553](https://github.com/APKiwiOrg/Ruinborne/issues/553) and
+  [Grimhollow#334](https://github.com/APKiwiOrg/Grimhollow/issues/334). The design review also found game-side
+  hardening items, filed as [Ruinborne#550](https://github.com/APKiwiOrg/Ruinborne/issues/550) and
+  [Grimhollow#324](https://github.com/APKiwiOrg/Grimhollow/issues/324).
+
+**Water glint and whitecaps.**
+
+- The sun glint's distance and footprint widening is now a floor under the Toksvig lobe rather than a second
+  widening added on top of it ([#308](https://github.com/APKiwiOrg/KhaozEngine/issues/308)). Both responded to the
+  same unresolved ripple detail, and the sum put the far lobe at about twice the surface's real slope variance. The
+  lobe now carries exactly that variance until `GlintDistantRoughness` takes over (1.12 to 1.17 times it after),
+  which makes the 14.26.0 energy-conservation claim hold. `GlintDistantRoughness` is now a minimum roughness. At the
+  defaults the near and mid sun path is visibly narrower where the distance ramp is partway. `VarianceToRoughness =
+  0` still gives the 14.24.0 lobe. `WaterMath.GlintAlpha` is the CPU mirror.
+- Procedural whitecaps are evaluated per pixel through the same shared Gerstner block as the #381 swell normal, so
+  coarse clipmap rings and far camera-focused cells no longer draw triangle-shaped foam
+  ([#1100](https://github.com/APKiwiOrg/KhaozEngine/issues/1100)). The foam edge-jump ratio on the 8 m and 16 m
+  rings falls from 10.2 and 11.4 to 0.90 and 1.02. In the far field the fold eases toward 73 percent of itself as the
+  swell's wavelengths fall below 80 pixel footprints, measured where the view ray meets the still-water plane, which
+  keeps distant whitecap coverage near the old per-vertex level (1.13 percent against 1.18 percent) instead of the 3.5
+  percent the per-pixel fold alone gives. `WaterMath.WhitecapFoldAttenuation` is the CPU mirror. FFT-mode foam is
+  unchanged.
+- **What a game sees at repin.** Close-up coarse rings now show the fold's true whitecap density, which the
+  per-vertex fold undersampled. A lake tuned against the old look, Ruinborne's inland lake included, reads choppier
+  and may want its whitecap settings retuned. The attenuation is keyed on the pixel footprint, so at 1080p it starts
+  about twice as far away as at the golden resolution.
+- `scene3d_water` and `scene3d_water_grid_focus` were rebaked on all three families.
+
+**Catalog admin reads.**
+
+- `CatalogAdminActions.RegisterReads(admin, store, registry)` registers the five catalog read actions
+  (`catalog-schema`, `catalog-list`, `catalog-get`, `catalog-draft` and `catalog-versions`) and none of the
+  other eleven ([#1132](https://github.com/APKiwiOrg/KhaozEngine/issues/1132)). A game whose catalog is
+  bundle-derived serves reads from its console and must not expose publish, import, pin or edit, and until now
+  it got the reads only by registering all sixteen. `Register` is unchanged and reaches the reads through the
+  same path, so a `Register` after `RegisterReads` is refused as a second `Register` is.
+
 ## 20.2.0
 
 A minor that acts on four owner calls left open by the 20.1.0 burn-down. A remote tile body no longer jumps
-at the start of a clicked route. Nothing a game calls changes meaning.
+at the start of a clicked route. Tooltip groups can keep separate bubbles in one pointer stack. Nothing a
+game calls changes meaning.
+
+**Tooltip stacks.**
+
+- `TooltipStackLayout.Place` positions measured tooltip boxes in display order beside a pointer and flips
+  the group at viewport edges. `AnchorFor` converts each placed box to an offset-mode `Tooltip` anchor.
+  Games can keep action, item information and stat changes in separate bubbles without each tooltip
+  clamping to a different position.
 
 **Remote tile steps.**
 

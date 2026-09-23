@@ -307,6 +307,25 @@ public class InstanceContentValidationTests
             InstanceContentFindings.RarityRuleShape);
     }
 
+    [Theory]
+    [InlineData("11")]
+    [InlineData("1122")]
+    [InlineData("11223344")]
+    public void A_rarity_colour_with_the_wrong_byte_length_is_refused_before_publish(string hex)
+    {
+        ContentTypeRegistry registry = Registry();
+        ContentSnapshot candidate = Snapshot(registry,
+            RarityRule(registry, 1, "rare", displayRgb: Convert.FromHexString(hex)));
+
+        ContentFinding finding = Only(Band(candidate), InstanceContentFindings.RarityRuleShape);
+        Assert.Contains("display_rgb", finding.Message, StringComparison.Ordinal);
+
+        ContentValidationReport report = Validate(candidate, registry);
+        Assert.False(report.IsValid);
+        Assert.Contains(report.Findings, value =>
+            value.Code == InstanceContentFindings.RarityRuleShape && value.Id == 1);
+    }
+
     [Fact]
     public void A_unique_line_whose_mod_carries_a_mod_tier_weight_row_is_KEC0107()
     {

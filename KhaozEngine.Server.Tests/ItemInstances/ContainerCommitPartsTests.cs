@@ -35,7 +35,7 @@ public sealed class ContainerCommitPartsTests
         Assert.True(batch.Apply(ContainerOperation.Move(Bank, 4, Bank, 150, 1, Instance)));
         Assert.True(batch.Apply(ContainerOperation.Take(Bank, 6, 2)));
         Assert.True(batch.Apply(ContainerOperation.Craft(
-            Bank, 150, Instance, Payload(7), CraftEventBody(0), currencySlot: 5, currencyDefinitionId: Currency, currencyCount: 1)));
+            Bank, 150, Instance, Payload(7), CraftEventBody(0, afterLevel: 7), currencySlot: 5, currencyDefinitionId: Currency, currencyCount: 1)));
     }
 
     /// <summary>What a host writes when it composes a commit from the parts and adds nothing, which is

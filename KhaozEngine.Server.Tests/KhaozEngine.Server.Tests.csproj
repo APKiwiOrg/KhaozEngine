@@ -18,6 +18,9 @@
     <None Include="NetWorld/Fixtures/cell-v1-32bit.blob" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <!-- ServerAdminEndpoint/AdminHttpServerTests.cs drives POST /ban and /unban over AccountBanStore, the store that
+         refuses a subject no account has. -->
+    <ProjectReference Include="../KhaozEngine.Accounts/KhaozEngine.Accounts.csproj" />
     <ProjectReference Include="../KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj" />
     <!-- The content catalog provider suites: the conformance class runs against the in-memory reference
          store (Catalog.Authoring), SQLite and SQL Server, which is why all three are here and the read side

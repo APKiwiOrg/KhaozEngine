@@ -56,8 +56,9 @@ Deliberately NOT included (add these explicitly if you need them):
   into every consumer, including hosts which use one backend or none.
 - `KhaozEngine.Catalog.Sqlite` / `KhaozEngine.Catalog.SqlServer` - the durable
   `IContentAuthoringStore` backends, opt-in for the same reason the `WorldStore` pair is.
-- `KhaozEngine.Server.Admin` - the HTTPS admin endpoint, the only package that references
-  ASP.NET Core. It is also where the sixteen registered content-catalog admin actions live.
+- `KhaozEngine.Server.Admin` - the HTTPS admin endpoint, one of the two packages that reference ASP.NET Core
+  (the other is the sign-in exchange handler `KhaozEngine.Identity.Exchange.AspNetCore`, which a game server never
+  needs). It is also where the sixteen registered content-catalog admin actions live.
 - `KhaozEngine.Physics.Bepu` - the BepuPhysics backend behind the `IPhysicsWorld` seam.
 
 A contracts-only project that just needs the wire types should reference

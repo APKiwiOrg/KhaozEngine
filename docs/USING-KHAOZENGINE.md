@@ -1352,6 +1352,11 @@ Each entry in `bodyLines` carries its own `TooltipLine.Scale` (default `1f`), an
 the title row above them, so one shared font can render the whole tooltip's size hierarchy (see "Scaling
 Gui text" above).
 
+For separate bubbles that must keep one order beside the pointer, measure each with `Tooltip.ComputeBounds`,
+pass the widths and heights to `TooltipStackLayout.Place`, then show each offset-mode `Tooltip` at
+`TooltipStackLayout.AnchorFor(box, tip.Metrics)`. Use the same viewport and metrics for measurement and drawing.
+The group flips as a unit near the right or bottom edge. Keep its total height within the viewport.
+
 **`ScrollablePanel` opt-in height glide (10.121.0)** - when a caller recomputes `panel.Bounds`'s height while the
 panel stays open (content arriving async, a tab switch changing row count), `EffectiveHeight` snapping instantly
 every frame is a visible jump. Set `HeightGlideSeconds` (default 0 = off, byte-identical) and feed dt through the
@@ -4313,7 +4318,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     The displacement is per vertex, but the swell's NORMAL is evaluated per pixel at the fragment's still-water
     position, so a grid too coarse to carry the swell (a clipmap's 8 and 16 m outer rings under the 42 m default,
     or the far cells of a large camera-focused plane) no longer shades it as flat triangle facets (#381). The
-    whitecap fold is still interpolated from the vertices.
+    whitecap fold is evaluated per pixel the same way, so those grids no longer draw whitecaps as triangles
+    (#1100).
   - **Surface grid** (`GridMode`, a `WaterGridMode`) - two layouts, and which one you want depends on whether the
     camera moves much. Clipmap mode uses a four-vertex, six-index quad for an effective `Procedural` source
     with zero `SwellAmplitude`. Ripples still shade it. FFT and nonzero-swell planes retain displaced
@@ -4407,7 +4413,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     once its wavelength drops below `FootprintSamples` pixel footprints, per component, so the long ripples
     survive where the short ones go. The slope variance that removes is transferred into the GGX lobe
     (Toksvig-style), so distant water settles into a smooth fresnel gradient with a believable sheen instead of
-    either stripes (no band-limit) or glass (band-limit without transfer). The swell's shading contrast fades on
+    either stripes (no band-limit) or glass (band-limit without transfer). The transfer widens `GlintRoughness`,
+    and the glint's distance and footprint widening (below) is a floor under it rather than a second widening, so
+    the removed detail counts once. The swell's shading contrast fades on
     the same measure, leaving its crest geometry untouched. This is the physics half of the anti-aliasing and it
     is why distance banding cannot come back through a knob: `DetailFadeDistance` is an artistic extra on top.
   - **Reflection**: the fresnel term blends the body colour toward the sky evaluated along the REFLECTED view ray
@@ -4417,12 +4425,16 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     it is actually pointing at. `SkyReflectionSunStrength` defaults below 1 because the sharp part of the reflected
     sun is already supplied by the glint lobe, and carrying both at full strength double-counts it.
   - **Glint**: a peak-normalized GGX lobe (so `GlintStrength` means the same brightness as the legacy Blinn-Phong
-    one) whose roughness widens toward `GlintDistantRoughness` wherever the surface is under-sampled - by camera
-    distance over `DetailFadeDistance`, or by the pixel's world FOOTPRINT against the ripple wavelength, whichever
-    is worse. The footprint measure is the one that is actually right (what aliases is a wave narrower than a
-    pixel; distance is a proxy that breaks under a wide FOV, under the ortho iso camera, and at a resolution other
-    than the one it was tuned at). Widening the lobe keeps sub-pixel detail as variance instead of discarding it,
-    so the far field settles into a soft sheen rather than a crawling sparkle.
+    one) whose roughness never falls below a floor that widens toward `GlintDistantRoughness` wherever the surface
+    is under-sampled - by camera distance over `DetailFadeDistance`, or by the pixel's world FOOTPRINT against the
+    ripple wavelength, whichever is worse. The footprint measure is the one that is actually right (what aliases is
+    a wave narrower than a pixel, and distance is a proxy that breaks under a wide FOV, under the ortho iso camera, and
+    at a resolution other than the one it was tuned at). Widening the lobe keeps sub-pixel detail as variance
+    instead of discarding it, so the far field settles into a soft sheen rather than a crawling sparkle. Since
+    #308 the floor sits under the Toksvig lobe from the band-limit instead of adding to it. Both respond to the
+    same unresolved ripple detail, and the sum put the far lobe at about twice the surface's slope variance. Now
+    the lobe carries exactly that variance until the floor takes over, and 1.12 to 1.17 times it on the floor.
+    `VarianceToRoughness = 0` leaves the lobe on the floor alone, the 14.24.0 lobe.
   - **Depth grading**: the reconstructed ground depth drives per-channel Beer-Lambert transmittance
     (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into `DeepColor`. Because red is absorbed
     several times faster than blue, the ramp bends through green-teal instead of running straight down the line
@@ -4435,7 +4447,11 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `SwellSteepness` so `FoamCrestCoverage` means the same fraction of the sea at any steepness. The shoreline band
     comes from the depth term - and because that depth is measured under the DISPLACED surface, the swell carries
     the foam line up and down the beach for free. Both are multiplied by a scrolling three-layer pattern
-    thresholded into clean graphic lobes (`FoamPatternScale`, drifting at `WaveSpeed`).
+    thresholded into clean graphic lobes (`FoamPatternScale`, drifting at `WaveSpeed`). The whitecap fold is
+    evaluated per pixel, and beyond the near field it eases toward 73% of itself as the pixel footprint on the
+    still-water plane grows. A coarse grid used to average the fold over its cells, which held distant whitecaps
+    at about a third of the near field's coverage, and the attenuation is calibrated to keep them there now that
+    the averaging, and the triangle-shaped whitecaps it drew, are gone. FFT-mode foam is unaffected.
   - **Reaching the previous look**: every addition is independently reachable at zero. For 14.24.0:
     `FootprintSamples = 0` (unbounded normal oscillation), `VarianceToRoughness = 0`, `RippleComponents = 3`. The
     exact three-cosine FIELD is deliberately NOT reachable, on the same grounds as the 14.22.0 checkerboard: its
@@ -4464,7 +4480,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     shallow shelf near the shore fades progressively.
   - The pure math (`WaterMath`, internal: the three-layer wave normal, the domain warp, the distance detail fade,
     the shallow-blend and shore-fade curves, Schlick fresnel, Blinn-Phong glint, grid tessellation sizing, plus
-    `GerstnerWaves` for the swell, whose offset and fold `WaterVert` mirrors and whose normal `WaterFrag` mirrors)
+    `GerstnerWaves` for the swell, whose offset `WaterVert` mirrors and whose normal and fold `WaterFrag` mirrors)
     is headless-tested and mirrors the GLSL `WaterFrag`/`WaterVert` exactly.
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
@@ -7020,7 +7036,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.2.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.4.0" />
 ```
 
 ```csharp
@@ -13438,7 +13454,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.4.0" />
 ```
 
 ```csharp
@@ -13474,7 +13490,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.4.0" />
 ```
 
 ```csharp
@@ -13716,7 +13732,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.4.0" />
 ```
 
 ```csharp
@@ -15871,6 +15887,17 @@ actual base version, and a draft a publish holds frozen answers 409 naming the r
 reached by `GET` is refused 405 with `Allow: POST`. What the caller still owns is the console UI: the engine
 ships the actions and the payload shapes, not a screen.
 
+A game whose catalog is bundle-derived registers the reads alone, instead of `Register`:
+
+```csharp
+CatalogAdminActions.RegisterReads(admin, store, registry);
+```
+
+That puts `catalog-schema`, `catalog-list`, `catalog-get`, `catalog-draft` and `catalog-versions` on the
+dispatch and none of the other eleven, so a console that serves the committed bundle cannot publish,
+import, pin or edit the hosted store. A later `Register` on the same surface is refused as a second `Register`
+is.
+
 ### The connect door, and the client's catch-up
 
 A server serves exactly ONE published content version. A client holding another is refused at the door rather
@@ -16386,6 +16413,23 @@ bytes. Checks 12 and 13 are tolerated policy findings that leave the record vali
 alert. `KhaozEngine.ItemInstances/README.md` is the type-by-type reference, including the thirteen checks in
 full, the `KECQ` layout, the durable reason ordinals and the kind bands.
 
+### Rarity display colour
+
+A `rarity_rule` row may carry `display_rgb` as exactly three client-visible RGB bytes. The catalog bundle
+writes them as six lower-case hex digits, so `000000` is black and `ffffff` is white. The field is an optional
+tail after `upgrade_from`. Older seven-field rows still decode and rebuild to their original bytes. A
+missing colour, missing rarity property, unknown rarity ID or malformed item payload reads white. Retired
+rarity rows remain readable for items already owned.
+
+The item payload carries only kind 130's rarity ID. Build the renderer-free lookup over the loaded client
+runtime, then ask it for the RGB integer of a visible slot. A game turns that integer into its own drawing
+colour. There is no per-instance colour copy to migrate when an author retunes a rarity row.
+
+```csharp
+RarityDisplayColors colours = RarityDisplayColors.Over(runtime);
+int rgb = colours.RgbOf(slot.Payload.Span);
+```
+
 ### Content, a roll, a craft and a stat (the four things over the record, 19.2.0)
 
 The sections above are the RECORD, the container and the wire, which is what an item IS and how it travels.
@@ -16732,6 +16776,34 @@ Validating against `batch.Options.Limits` refuses the very commit the reservatio
 validates against `Options.Limits` because a batch alone adds nothing.
 `KhaozEngine.ItemInstances.Journal/README.md` states the whole contract.
 
+### Replaying item operations from a journal
+
+An event sourced host starts with its prior container pages and applies stored events in stream order.
+`ContainerOperationEventCodec.TryRead` checks the event name, schema version and complete body, and returns
+the recorded operation. `ContainerOperationApplier.TryReplay` checks the known slot, instance, count,
+payload and currency preconditions before writing through the host's `IPagedContainerWorkingCopy`. It uses
+the historical admission of Merge and occupied Grant as proof of their former stackability, even if the
+current catalog changed. It also allows an admitted Grant after a later capacity reduction. The live builder
+uses `TryApply` and checks the current stackability and capacity. A false
+answer names a stored record the host must refuse or quarantine. A custom working-copy implementation is
+still responsible for accepting valid writes.
+
+```csharp
+if (!ContainerOperationEventCodec.TryRead(stored.EventType, stored.EventSchemaVersion,
+        stored.Payload, out ContainerOperation operation, out string? reason))
+    return Refuse(reason);
+if (!ContainerOperationApplier.TryReplay(containers, operation, out reason))
+    return Refuse(reason);
+```
+
+Move, Split, Merge, Take and Slide keep version 1 canonical event bodies. A new Grant uses version 2 to
+include the complete item payload, and a new Craft uses version 2 to include its target and currency slots
+beside the unchanged `ItemCraftedEvent` audit body. A version 1 plain Grant replays. A version 1 instance
+Grant and Craft have missing data and return explicit replay refusals. The old crafted body is still readable
+by `ItemCraftedEvent.TryRead` for audit. A bank compaction can use
+`ContainerOperation.Slide("bank", firstSourceSlot: 1, firstDestinationSlot: 0, count: 999)`. It moves the
+occupied run in one event, with all ten affected pages budgeted before admission.
+
 ### What one viewer may see, and the one frame delta (19.0.0)
 
 `ItemInstanceVisibility` is the ONE function answering whether a viewer may see a field, and both the
@@ -16898,37 +16970,219 @@ a raw server-authorized credit for anything outside the periodic/purchase paths.
 
 ## Identity / sign-in (`KhaozEngine.Identity`)
 
-`KhaozEngine.Identity` is the pluggable player-identity seam (in `Foundation`): client-side provider
-sign-in (`IIdentityProvider`), server-side credential verification (`IIdentityValidator`), a persisted
-sign-in session (`ITokenCache` + `FileTokenCache`), and a stateless HMAC session token (`SessionToken`).
-It is transport-agnostic - no HTTP, no ASP.NET - so the core package stays headless-testable. The provider
-backends (`KhaozEngine.Identity.Oidc` for generic OIDC, `KhaozEngine.Identity.Discord` for Discord OAuth2)
-and the HTTP exchange with a server are opt-in, wired by the consumer.
+Sign-in spans three processes. The client signs the player in with a provider and posts the credential to the game's
+auth service. The auth service verifies it, files the account and mints a connect token. The game server verifies that
+token at its door and refuses a banned account there. The engine supplies every piece, and a game writes only its
+composition and its policy.
+
+| Package | Runs in | What it brings |
+|---|---|---|
+| `KhaozEngine.Identity` (in `Foundation`) | client, auth service | `IIdentityProvider` (client sign-in), `IIdentityValidator` (server-side verification), `ITokenCache` + `FileTokenCache`, `IdentitySession`, and the `/auth/exchange` wire records `AuthExchangeRequest`, `AuthExchangeResponse` and `AuthExchangeStatuses` |
+| `KhaozEngine.Identity.Oidc`, `KhaozEngine.Identity.Discord` | client, auth service | the provider backends |
+| `KhaozEngine.Accounts`, with `.Sqlite` and `.SqlServer` | auth service, game server | `IAccountStore`, the account registry, and `AccountBanStore`, the one ban list over it |
+| `KhaozEngine.Identity.Exchange` | auth service | `AuthExchange`, the decision behind `/auth/exchange`, with no HTTP type in it |
+| `KhaozEngine.Identity.Exchange.AspNetCore` | auth service | `MapAuthExchange`, `AddAuthExchangeHosting` and `UseAuthExchangeHosting` |
+| `KhaozEngine.Netcode` (in `Server`) | auth service, game server | `SigningSecret`, the key both token ends load, with `SignedToken` and `HmacTokenAuthenticator` |
+
+Of these, only the endpoint package touches ASP.NET Core, so the exchange decision and the account stores test
+headlessly with no web server. The provider backends, the account packages and the two exchange packages are in no
+umbrella, so each process adds what it runs. The auth service references the endpoint package, which brings the
+exchange core, `Identity`, `Accounts` and `Netcode` with it, and adds a provider backend and an account backend. A game
+server adds `KhaozEngine.Accounts` and the backend its database needs. A client needs only `Identity` and a provider.
 
 ### The exchange model
 
-A provider credential (an id_token, a Discord access_token, ...) is not itself a verified identity: only
-the server can call the provider's validator and mint a session token. The shape every consumer wires:
+A provider credential (an OIDC id_token, a Discord access token) is not a verified identity. Only the auth service calls
+the provider's validator, and only the auth service and the game server hold the key a connect token is signed with:
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant Provider as OIDC/Discord provider
-    participant Server as Consumer's server
+    participant Auth as Game's auth service
+    participant Game as Game server
 
     Client->>Provider: interactive sign-in (system browser + loopback)
-    Provider-->>Client: ProviderCredential (credential token)
-    Client->>Server: POST /auth/exchange { credentialToken }
-    Server->>Provider: IIdentityValidator.ValidateAsync(credentialToken)
-    Provider-->>Server: VerifiedIdentity (subject, display name, claims)
-    Server->>Server: SessionToken.Mint(subject, displayName, expiry, secret)
-    Server-->>Client: { sessionToken, expiresAtUtc, subject, displayName }
+    Provider-->>Client: ProviderCredential
+    Client->>Auth: POST /auth/exchange AuthExchangeRequest(provider, accessToken)
+    Auth->>Provider: IIdentityValidator.ValidateDetailedAsync, under ProviderTimeout
+    Provider-->>Auth: VerifiedIdentity (subject, display name, claims)
+    Auth->>Auth: IAccountStore.FindOrCreateAsync, then AuthAdmission.Decide (ban, then whitelist)
+    Auth->>Auth: SignedToken.Mint under the SigningSecret key
+    Auth-->>Client: AuthExchangeResponse(status, sessionToken, expiresAtUtc, subject, displayName)
     Client->>Client: IdentitySession.AttachSessionTokenAsync(...)
+    Client->>Game: connect, presenting sessionToken as the connect token
+    Game->>Game: HmacTokenAuthenticator under the same key, BanGateAuthenticator over AccountBanStore
 ```
+
+The `sessionToken` the exchange mints is a `SignedToken` from `KhaozEngine.Netcode`: v2 (subject, display name and
+expiry) by default, v3 when the game's policy adds a persistence key. It is the connect token `HmacTokenAuthenticator`
+verifies (see "Sessions" in the multiplayer section). `SessionToken` in `KhaozEngine.Identity` is a separate,
+transport-free HMAC token for a request path of the consumer's own, and the exchange never mints it.
+
+### The auth service: `AuthExchange` behind `MapAuthExchange`
+
+A dedicated auth service composes four things and mounts them:
+
+```csharp
+using KhaozEngine.Accounts;
+using KhaozEngine.Accounts.SqlServer;
+using KhaozEngine.Identity;
+using KhaozEngine.Identity.Discord;
+using KhaozEngine.Identity.Exchange;
+using KhaozEngine.Identity.Exchange.AspNetCore;
+using KhaozEngine.Netcode;
+
+// 1. The key. The variable is the game's own. Unset is null, and set but invalid throws naming the variable.
+byte[] key = SigningSecret.Load(Environment.GetEnvironmentVariable, "MYGAME_TOKEN_SECRET")
+    ?? throw new InvalidOperationException("MYGAME_TOKEN_SECRET is not set.");
+
+// 2. The account registry. whitelistOnCreate is required on every store: it is what a first sign-in's row says.
+IAccountStore accounts = new SqlServerAccountStore(connectionString, whitelistOnCreate: false,
+    new SqlServerAccountStoreOptions(SchemaMode: AccountSchemaMode.ValidateOnly));
+
+// 3. The exchange: one validator per provider id, the store, the key, the options and an optional policy.
+var exchange = new AuthExchange(
+    new IIdentityValidator[] { new DiscordTokenValidator(discordClientId) },
+    accounts,
+    key,
+    new AuthExchangeOptions { TokenLifetime = TimeSpan.FromDays(7) },
+    policy: null);                                              // or the game's IAuthExchangePolicy
+
+// 4. The host. Name the proxies in front of the service, or forwarded headers stay off.
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+builder.AddAuthExchangeHosting(new AuthExchangeHostingOptions
+{
+    TrustedProxies = TrustedProxyNetworks.PrivateRanges,       // or the proxy's own subnet
+    MaxRequestBodyBytes = 8 * 1024,                             // optional server-wide Kestrel cap
+});
+WebApplication app = builder.Build();
+app.UseAuthExchangeHosting();                                   // forwarded headers, before the endpoints
+
+app.MapGet("/healthz", () => Results.Ok());                     // game-owned, outside the exchange's limits
+app.MapAuthExchange(exchange, new AuthExchangeEndpointOptions { IncludeBanDetails = false });
+app.Run();
+```
+
+The ASP.NET Core names come from a web project's implicit usings. What a game chooses:
+
+- **The key.** `SigningSecret.Load` reads standard base64 (the output of `openssl rand -base64 32`) decoding to at
+  least `SigningSecret.MinimumBytes` (32) bytes, and `AuthExchange` refuses a shorter key. For local development,
+  `SigningSecret.CreateEphemeral()` gives a key that dies with the process. Never a source constant.
+- **The store.** `InMemoryAccountStore` for tests and a local host, `SqliteAccountStore` for a single node, and
+  `SqlServerAccountStore` for production, where `AccountSchemaMode.ValidateOnly` lets the runtime identity run without
+  DDL rights. The engine stores keep one flat `accounts` table and mint `{ProviderId}:{ProviderSubject}`, for example
+  `discord:80351110224678912`. A game with its own schema implements `IAccountStore` over it and mints what it likes,
+  provided `AccountStoreRules.IsAdmissibleSubject` accepts the result. Each store's README has its table and the
+  contract.
+- **The whitelist.** `whitelistOnCreate` on the store is what a new account row says, so every reader of the row agrees.
+  `AuthExchangeOptions.RequireWhitelist` (true by default) is whether the exchange refuses an unwhitelisted account.
+  `false` is the policy of an open game, or of a local host bound to a throwaway in-memory store.
+- **The options.** `TokenLifetime` is required, at most `AuthExchangeOptions.MaxTokenLifetime` (365 days). Both games
+  use seven days. `ProviderTimeout` (10 s), `MaxCredentialChars` (4096) and `MaxDisplayNameChars` (64, a longer
+  provider name is clamped) have defaults.
+- **The policy.** `IAuthExchangePolicy` has two hooks, both with defaults. `ResolveDisplayName` picks the name the store
+  keeps, by default the provider's name, else the provider subject. `IssueClaimsAsync` runs only for an admitted account
+  and returns the token's `SessionClaims`, by default the stored name, else the subject, and no persistence key, which
+  mints v2. Return a persistence key to mint v3. No policy can reorder the gate: an active ban refuses before a missing
+  whitelist flag, so a banned player never learns whether they were whitelisted. A game that issues tokens on a route of
+  its own (a local development profile, say) admits through the same `AuthAdmission.Decide` and answers through
+  `AuthExchangeEndpoints.ToHttpResult`.
+- **The proxies.** `AuthExchangeHostingOptions.TrustedProxies` is empty by default, which turns forwarded headers off.
+  Behind a TLS-terminating proxy that puts every caller in the proxy's rate-limit bucket, and `MapAuthExchange` logs a
+  warning at mapping time that says so. `TrustedProxyNetworks.PrivateRanges` trusts every RFC 1918 host to name its own
+  address, so name the proxy's own subnet when the private network is shared with anything you do not control.
+- **The order.** Add, use, map, as above. `UseAuthExchangeHosting` throws without `AddAuthExchangeHosting`, and once
+  the hosting is added `MapAuthExchange` throws until `UseAuthExchangeHosting` has run, because without the middleware
+  the named proxies are ignored and every caller behind them shares one bucket.
+- **Ban details.** `AuthExchangeEndpointOptions.IncludeBanDetails` is off, so a ban reason written for operators never
+  reaches a player. Turn it on only when the game wants banned players to see the reason and the expiry.
+- **The bounds.** `PermitsPerClientPerMinute` (5), `Ipv6PartitionPrefixLength` (64), `MaxConcurrentExchanges` (20),
+  `MaxQueuedExchanges` (20) and `MaxRequestBodyBytes` (8 KiB) default to both games' values, on the `Pattern`
+  `/auth/exchange`.
+
+A verified provider subject carrying `.` cannot ride a `SignedToken`, whose fields split on it, so the engine stores
+refuse it and that sign-in answers `unavailable` with the `StoreFault` cause in the log. Discord snowflakes never carry
+one. An OIDC provider whose `sub` can carry one needs a game store that mints a surrogate id.
+
+The decision sequence is in the `KhaozEngine.Identity.Exchange` README, and the endpoint's order of checks, its answers
+and its log line are in the `KhaozEngine.Identity.Exchange.AspNetCore` README. What they guarantee is category 4 of
+[SECURITY-BASELINE.md](SECURITY-BASELINE.md).
+
+### The game server: the same key and one ban list
+
+The game server never references the exchange. It loads the key the auth service mints under, verifies the connect
+token with `HmacTokenAuthenticator`, and reads bans from the same account store through `AccountBanStore`:
+
+```csharp
+using KhaozEngine.Accounts;
+using KhaozEngine.Accounts.SqlServer;
+using KhaozEngine.Netcode;
+using KhaozEngine.NetWorld;
+
+byte[] key = SigningSecret.Load(Environment.GetEnvironmentVariable, "MYGAME_TOKEN_SECRET")
+    ?? throw new InvalidOperationException("MYGAME_TOKEN_SECRET is not set.");
+var tokenAuth = new HmacTokenAuthenticator(key, () => DateTimeOffset.UtcNow);
+
+// The table the auth service writes, through the same backend and options, adapted to IBanStore. The ONE ban list.
+IAccountStore accounts = new SqlServerAccountStore(connectionString, whitelistOnCreate: false,
+    new SqlServerAccountStoreOptions(SchemaMode: AccountSchemaMode.ValidateOnly));
+var bans = new AccountBanStore(accounts, TimeProvider.System);
+await bans.LoadAsync();                                          // at boot, and on a timer if anything else writes
+
+var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning.Default,
+    authenticator: new BanGateAuthenticator(tokenAuth, bans),    // refused at the door with ke:banned
+    banStore: bans);                                              // checked again at the join
+var admin = new ServerAdmin(server, bans);                       // POST /ban writes the account row
+```
+
+- **One key, loaded the same way.** `HmacTokenAuthenticator` verifies under whatever bytes it is handed and checks no
+  length, so load the server's key through `SigningSecret` too. Rotating the key invalidates every outstanding token.
+- **One ban list.** Hand the one `AccountBanStore` to every ban consumer: the door, `banStore:` on a float head,
+  `TileWorldServerConfig.BanStore` on a tile head and `ServerAdmin(bans:)`. A ban written through any of them lands on
+  the account row, the door refuses at once from the adapter's cache, and the next exchange reads the same row. Do not
+  also wire `WorldStoreBanStore`, whose `ban:{accountId}` keys would be a second list. `IsBanned` re-checks a timed
+  ban's expiry on every call, so the ban lapses on its own. A row changed outside the adapter (a console writing SQL, a
+  second head) reaches the door on the next `LoadAsync`. A ban or an unban naming a subject no account has is refused
+  with `ArgumentException`, which `POST /ban` and `POST /unban` answer with a 400 that does not echo the subject.
+- **The whitelist is decided when the token is minted.** A token carries no whitelist claim, so an account taken off
+  the whitelist keeps connecting until its token expires. A game that needs the change at once re-reads the row at its
+  join with `IAccountStore.FindAsync`.
 
 ### Client: `IdentitySession`
 
-`IdentitySession` drives launch-state restore, interactive sign-in, and the exchange handshake:
+`IdentitySession` drives launch-state restore, interactive sign-in and the exchange handshake. The HTTP call to the
+auth service is the game's own, a few lines over the wire records:
+
+```csharp
+using System.Net;
+using System.Net.Http.Json;
+using KhaozEngine.Identity;
+
+// authHttp.BaseAddress is the auth service. The records pin their JSON names, so any serializer options work.
+static async Task<AuthExchangeResponse> PostToAuthExchangeAsync(
+    HttpClient authHttp, ProviderCredential credential, CancellationToken ct)
+{
+    using HttpResponseMessage reply = await authHttp.PostAsJsonAsync("/auth/exchange",
+        new AuthExchangeRequest(credential.ProviderId, credential.CredentialToken), ct);
+    switch (reply.StatusCode)
+    {
+        case HttpStatusCode.OK or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+            or HttpStatusCode.ServiceUnavailable:
+            return await reply.Content.ReadFromJsonAsync<AuthExchangeResponse>(ct)
+                ?? new AuthExchangeResponse(AuthExchangeStatuses.Unavailable);
+        case HttpStatusCode.TooManyRequests:
+            // A bare 429 has no body. The client names it, and the service never sends this status.
+            return new AuthExchangeResponse(AuthExchangeStatuses.RetryLater);
+        case HttpStatusCode.BadRequest or HttpStatusCode.RequestEntityTooLarge:
+            // No body either: the request itself was refused, so sending it again cannot succeed.
+            return new AuthExchangeResponse(AuthExchangeStatuses.InvalidCredential);
+        default:
+            // Something in front of the service answered. Nothing about the account was decided.
+            return new AuthExchangeResponse(AuthExchangeStatuses.Unavailable);
+    }
+}
+```
 
 ```csharp
 using KhaozEngine.Identity;
@@ -16944,7 +17198,7 @@ IdentitySession session = new(provider, cache, new IdentitySessionOptions());
 IdentityState state = await session.RestoreAsync(ct);
 // RequiresSignIn -> show the sign-in screen. OfflineGrace -> play offline, session token has expired
 // but the last successful sign-in is still within IdentitySessionOptions.OfflineGraceWindow.
-// SignedIn -> a valid session token is held; go straight to gameplay.
+// SignedIn -> a valid session token is held, go straight to gameplay.
 
 if (state.Status == IdentityStatus.RequiresSignIn)
 {
@@ -16954,37 +17208,30 @@ if (state.Status == IdentityStatus.RequiresSignIn)
     // once AttachSessionTokenAsync below completes the server exchange.
     ProviderCredential credential = state.Credential!.Value;
 
-    // POST credential.CredentialToken to the consumer's own /auth/exchange endpoint (below),
-    // then complete sign-in with the server's verified subject + minted session token.
-    ExchangeResponse exchange = await PostToAuthExchangeAsync(credential.CredentialToken, ct);
-    state = await session.AttachSessionTokenAsync(
-        exchange.Subject, exchange.DisplayName, exchange.SessionToken, exchange.ExpiresAtUtc, ct);
+    AuthExchangeResponse exchange = await PostToAuthExchangeAsync(authHttp, credential, ct);
+    if (exchange.Status == AuthExchangeStatuses.Ok)
+        state = await session.AttachSessionTokenAsync(
+            exchange.Subject!, exchange.DisplayName, exchange.SessionToken!, exchange.ExpiresAtUtc!.Value, ct);
+    else
+        ShowExchangeRefusal(exchange);   // one localized line per status token, never the token itself
 }
+// state.SessionToken, as UTF-8 bytes, is the connect token the game server's HmacTokenAuthenticator verifies.
 ```
 
-### Server: validate + mint
+What each answer means to the client:
 
-The consumer owns the `/auth/exchange` HTTP endpoint (no ASP.NET dependency ships in `KhaozEngine.Identity`
-itself); it calls the matching `IIdentityValidator` and mints the session token:
+| HTTP | `Status` | What the client does |
+|---|---|---|
+| 200 | `ok` | Attach the token and connect with it. `SessionToken`, `ExpiresAtUtc`, `Subject` and `DisplayName` are set |
+| 403 | `not_whitelisted` | Show the not-whitelisted line. The credential was good, so keep it |
+| 403 | `banned` | Show the banned line. `BanReason` and `BanExpiresAtUtc` are set only when the service turned ban details on |
+| 401 | `invalid_credential` | The provider refused the credential. Discard it and sign in again |
+| 503 | `unavailable` | A provider, the provider deadline or the store failed. Keep the credential, back off and retry |
+| 429 | none, the client makes `retry_later` | Rate limited. Keep the credential and wait. The per-client window's `Retry-After` is the full minute, 60 seconds, not the time left in the window, and a refusal from the global bound carries none |
+| 400, 413 | none | Refused before the exchange ran: an unknown provider id, a blank or oversized credential, or a body over the cap. A client defect, not the player's |
 
-```csharp
-using KhaozEngine.Identity;
-using KhaozEngine.Identity.Oidc; // or KhaozEngine.Identity.Discord
-
-IIdentityValidator validator = new OidcTokenValidator(oidcOptions);
-VerifiedIdentity? verified = await validator.ValidateAsync(credentialTokenFromClient, ct);
-if (verified is not VerifiedIdentity identity)
-    return Results.Unauthorized();
-
-DateTimeOffset expiry = DateTimeOffset.UtcNow.AddHours(12);
-string sessionToken = SessionToken.Mint(identity.Subject, identity.DisplayName, expiry, sessionSecret);
-return Results.Ok(new { sessionToken, expiresAtUtc = expiry, identity.Subject, identity.DisplayName });
-```
-
-`sessionSecret` is the consumer's own signing key (see [SECURITY-BASELINE.md](SECURITY-BASELINE.md) for
-where it should live); every subsequent authenticated request calls `SessionToken.TryVerify` with the same
-secret. `SessionToken` is a fixed-time-compared HMAC-SHA256, so it never round-trips to the provider once
-minted.
+The status strings are wire tokens, never text to show. Map each to a `StringId`. A client written against an older
+copy of the records reads the response unchanged, because a reader skips members it does not know.
 
 ### A provider outage is not a bad credential
 
@@ -16992,19 +17239,21 @@ minted.
 limit is indistinguishable from an expired token. Acting on that reads an outage as a refusal: the client
 discards a good credential and re-runs sign-in against a provider that is already down.
 
-`ValidateDetailedAsync` carries the third outcome:
+`ValidateDetailedAsync` carries the third outcome. `AuthExchange` calls it under `ProviderTimeout` and answers an outage
+or the deadline with 503 `unavailable`, never `invalid_credential`. A game that calls a validator on a path of its own
+reads the three outcomes the same way:
 
 ```csharp
 IdentityValidation result = await validator.ValidateDetailedAsync(credentialTokenFromClient, ct);
 switch (result.Outcome)
 {
     case IdentityValidationOutcome.Verified:
-        VerifiedIdentity identity = result.Identity!.Value;
-        return Results.Ok(Mint(identity));
+        VerifiedIdentity identity = result.Identity!.Value;   // the verified subject
+        break;
     case IdentityValidationOutcome.ProviderUnavailable:
-        return Results.StatusCode(503);   // keep the credential, back off, retry
+        break;                                                  // keep the credential, back off, retry
     default:
-        return Results.Unauthorized();    // Refused: sign in again
+        break;                                                  // Refused: sign in again
 }
 ```
 
@@ -17058,11 +17307,12 @@ if (state.Status == IdentityStatus.OfflineGrace)
     }
 
     // Refreshed: session.Current now carries the rotated credential and the cache already holds it.
-    // Exchange it with the server, then complete sign-in via the turn-key attach overload.
+    // Exchange it with the auth service, then complete sign-in via the turn-key attach overload.
     ProviderCredential credential = session.Current.Credential!.Value;
-    ExchangeResponse exchange = await PostToAuthExchangeAsync(credential.CredentialToken, ct);
-    state = await session.AttachSessionTokenAsync(
-        exchange.Subject, exchange.DisplayName, exchange.SessionToken, exchange.ExpiresAtUtc, ct);
+    AuthExchangeResponse exchange = await PostToAuthExchangeAsync(authHttp, credential, ct);
+    if (exchange.Status == AuthExchangeStatuses.Ok)
+        state = await session.AttachSessionTokenAsync(
+            exchange.Subject!, exchange.DisplayName, exchange.SessionToken!, exchange.ExpiresAtUtc!.Value, ct);
 }
 ```
 
@@ -17088,13 +17338,13 @@ credential so the rotated token is the one saved.
 
 ### Choosing a provider backend
 
-- **`KhaozEngine.Identity.Oidc`** - any standards-compliant OIDC provider (Auth0, Okta, Azure AD, ...).
+- **`KhaozEngine.Identity.Oidc`** for any standards-compliant OIDC provider (Auth0, Okta, Azure AD, ...).
   `OidcClientProvider` drives the authorization-code + PKCE flow via the system browser and a local
-  loopback listener; `OidcTokenValidator` verifies the id_token against the issuer's discovery document +
-  JWKS. Add `Microsoft.IdentityModel.Protocols.OpenIdConnect` / `Microsoft.IdentityModel.JsonWebTokens`
+  loopback listener. `OidcTokenValidator` verifies the id_token against the issuer's discovery document +
+  JWKS. Add the `Microsoft.IdentityModel.Protocols.OpenIdConnect` and `Microsoft.IdentityModel.JsonWebTokens`
   weight only if you use this backend.
-- **`KhaozEngine.Identity.Discord`** - Discord's OAuth2 flow against its fixed authorize/token endpoints
-  (no discovery document). `DiscordClientProvider` is the `IIdentityProvider`; `DiscordTokenValidator`
+- **`KhaozEngine.Identity.Discord`** for Discord's OAuth2 flow against its fixed authorize and token endpoints
+  (no discovery document). `DiscordClientProvider` is the `IIdentityProvider`. `DiscordTokenValidator`
   verifies the access token via Discord's `/oauth2/@me` token-introspection endpoint and rejects any token
   not minted for the consumer's own client id (a required `expectedClientId` ctor argument, e.g.
   `new DiscordTokenValidator(discordOptions.ClientId)`). Using the plain `/users/@me` userinfo endpoint would
@@ -17102,9 +17352,10 @@ credential so the rotated token is the one saved.
   subject safe to exchange for a session token. Opaque-token OAuth2, not OIDC, so this backend has no
   `Microsoft.IdentityModel` dependency.
 
-Both backends are opt-in siblings (not in any umbrella); add the one your game's sign-in provider needs.
-See each package's README for the full API and [DEPENDENCY-SEAMS.md](DEPENDENCY-SEAMS.md) for the seam
-edges.
+Both backends are opt-in siblings (not in any umbrella). Add the one your game's sign-in provider needs, on the
+client and in the auth service. A provider's `ProviderId` (`oidc`, `discord`) is the `provider` the client posts,
+carried by `ProviderCredential.ProviderId`, and the key `AuthExchange` dispatches to its validator on. See each
+package's README for the full API and [DEPENDENCY-SEAMS.md](DEPENDENCY-SEAMS.md) for the seam edges.
 
 ### One catch for every backend
 
@@ -17372,7 +17623,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.2.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.4.0" />
 </ItemGroup>
 ```
 
@@ -18470,8 +18721,10 @@ Ship `AllowAllAuthenticator` for dev (it accepts everyone and uses the connect t
 subject; empty token -> empty subject). For an exposed server, gate on a signed bearer token instead:
 
 ```csharp
-// Issuer (your account service) mints a short-lived token bound to the player's account id:
-byte[] secret = LoadSharedSecret();                                  // same secret on issuer + game server
+// Issuer mints a short-lived token bound to the player's account id. A game with a sign-in service lets the
+// engine exchange do this (see "Identity / sign-in"). Both ends load the same key:
+byte[] secret = SigningSecret.Load(Environment.GetEnvironmentVariable, "MYGAME_TOKEN_SECRET")
+    ?? throw new InvalidOperationException("MYGAME_TOKEN_SECRET is not set.");
 string token = SignedToken.Mint("acct-42", DateTimeOffset.UtcNow.AddHours(1), secret);
 // ...hand `token` to the client; it presents it as its connect token (the NetClient `token` arg).
 
@@ -19853,12 +20106,15 @@ results: an unchanged tick hands back the SAME list instance, so identity is not
 signal. Read the values.
 
 **Bans.** `IBanStore` is consulted at connect (alongside the authenticator): a banned account is rejected before it
-spawns. `InMemoryBanStore` is the default; `WorldStoreBanStore` persists over any `IWorldStore` keyspace
-(`ban:{accountId}`) and caches in memory so the connect check stays synchronous (call `LoadAsync()` once at startup
-to hydrate from the store). Pass it as the trailing `banStore:` ctor arg on either server. Bans key on the verified
-account id; guests are not bannable. A rejected account receives a typed `ServerNoticeKind.Banned` notice (empty
-message) just before the drop, which the client maps to its own localized "you are banned" string, so the ban text
-never ships from the server as a hardcoded literal. The drop itself attributes as `DisconnectReason.Banned`,
+spawns. Three implementations ship, and a game picks one. `InMemoryBanStore` is the default. `WorldStoreBanStore`
+persists over any `IWorldStore` keyspace (`ban:{accountId}`) and caches in memory so the connect check stays
+synchronous (call `LoadAsync()` once at startup to hydrate from the store). `KhaozEngine.Accounts.AccountBanStore`
+files every ban on the account row in the game's account registry, the row the sign-in exchange reads, and is the one
+ban list for a game on that registry (see "Identity / sign-in"). Such a game does not also wire `WorldStoreBanStore`,
+whose keys would be a second list. Pass the store as the trailing `banStore:` ctor arg on either server. Bans key on
+the verified account id, and guests are not bannable. A rejected account receives a typed `ServerNoticeKind.Banned`
+notice (empty message) just before the drop, which the client maps to its own localized "you are banned" string, so
+the ban text never ships from the server as a hardcoded literal. The drop itself attributes as `DisconnectReason.Banned`,
 mirroring the way a `Shutdown` notice promotes the following drop to `ServerShutdown`, so a screen that only reads
 `client.DisconnectReason` can still tell a ban from a network outage. It stays retried on the reconnect backoff,
 deliberately: a ban may carry an expiry, and going terminal would sit out a five-minute ban forever. Read the
@@ -19870,7 +20126,7 @@ and binds unchanged and a head without `NetWorld` can still name them. Hand the 
 server:
 
 ```csharp
-var bans = new WorldStoreBanStore(store);                       // any IBanStore
+var bans = new WorldStoreBanStore(store);                       // any IBanStore, AccountBanStore included
 await bans.LoadAsync();
 var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning.Default,
     authenticator: new BanGateAuthenticator(tokenAuth, bans),   // refused at the door with ke:banned
@@ -19889,14 +20145,16 @@ a door refusal is `DisconnectReason.RejectedToken` with `ke:banned` in `Disconne
 
 **Account enumeration.** Stores opt into `IEnumerableWorldStore` (`InMemoryWorldStore`, `SqliteWorldStore`,
 `SqlServerWorldStore` all do): `EnumerateAsync(keyPrefix?)` streams `WorldStoreEntry { Key, UpdatedAt, Size? }`.
-Feature-detect with `store is IEnumerableWorldStore`.
+Feature-detect with `store is IEnumerableWorldStore`. These are the world store's keys, which answer who has persisted
+state and not who may sign in. The sign-in registry is `KhaozEngine.Accounts` (see "Identity / sign-in").
 
 **Facade.** `ServerAdmin(IAdminControllable server, IBanStore? bans = null, IEnumerableWorldStore? accounts = null)`
 composes the three. `BanAsync` persists then kicks if the account is online, `ListAccountsAsync(prefix)` materializes
 the enumeration, and unwired capabilities throw `NotSupportedException` (feature-detect via `BansSupported` /
 `AccountsSupported`). `BanAsync` refuses a TOKENLESS connection's account id (anything carrying the reserved
 `ResumePositionCache.GuestAccountPrefix`) with an `ArgumentException`, which `POST /admin/ban` surfaces as a 400
-carrying the reason. That id is `guest:{slot}` and the allocator recycles the slot, so banning it rejects every
+carrying the reason. An `AccountBanStore` also refuses a subject with no account row, and both `POST /admin/ban` and
+`POST /admin/unban` answer that with a 400 that does not echo the subject. That id is `guest:{slot}` and the allocator recycles the slot, so banning it rejects every
 future tokenless player seated there while the one who earned it reconnects onto another slot and carries on. Kick
 the slot (`Kick(PlayerRef.Slot(...))`) for a player with no durable identity.
 
@@ -19923,9 +20181,10 @@ to reject the request with a reason. The threading contract matches `IAdminContr
 on the caller's thread (an HTTP request thread), so it must never touch simulation state directly, a mutation
 enqueues to the host thread, and a read returns a published snapshot.
 
-**HTTPS endpoint (`KhaozEngine.Server.Admin`).** An opt-in package (the only one that pulls ASP.NET Core, via a
-`FrameworkReference`; not in the `Server` umbrella - add it explicitly). It hosts a minimal Kestrel REST API over a
-`ServerAdmin`, TLS + a single bearer token:
+**HTTPS endpoint (`KhaozEngine.Server.Admin`).** An opt-in package, and one of the two that reference ASP.NET Core
+through a `FrameworkReference`, with the sign-in exchange handler `KhaozEngine.Identity.Exchange.AspNetCore`. It is not
+in the `Server` umbrella, so add it explicitly. It hosts a minimal Kestrel REST API over a `ServerAdmin`, TLS + a single
+bearer token:
 
 ```csharp
 var admin = new ServerAdmin(worldServer, new WorldStoreBanStore(store), store);

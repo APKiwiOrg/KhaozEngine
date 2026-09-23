@@ -29,12 +29,33 @@ internal static class RarityAndUniqueChecks
         ICollection<ContentFinding> findings)
     {
         CheckRarityChildren(candidate, findings);
+        CheckRarityDisplayColors(candidate, findings);
         CheckRarityRules(candidate, findings);
         CheckUniqueChildren(candidate, findings);
 
         if (previous is not null)
         {
             CheckRarityIdHistory(candidate, previous, findings);
+        }
+    }
+
+    /// <summary>Every authored rarity, retired rows included, keeps a usable colour for owned items that
+    /// still name it. An absent optional tail means white.</summary>
+    static void CheckRarityDisplayColors(IContentSnapshot candidate, ICollection<ContentFinding> findings)
+    {
+        foreach (ContentRow row in candidate.Rows(Type(InstanceContentTypeIds.RarityRuleTypeId)))
+        {
+            if (row.Fields.Count <= RarityRuleContentType.DisplayRgbIndex) continue;
+            ContentFieldValue value = row.Fields[RarityRuleContentType.DisplayRgbIndex];
+            if (value.IsAbsent) continue;
+            if (value.Kind == ContentFieldKind.OpaqueBytes
+                && value.Bytes.Length == RarityRuleContentType.DisplayRgbBytes) continue;
+
+            findings.Add(new ContentFinding(
+                row.Type,
+                row.Id,
+                InstanceContentFindings.RarityRuleShape,
+                InstanceContentFindings.RarityDisplayRgbLength(row.Id, value.Bytes.Length)));
         }
     }
 

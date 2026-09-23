@@ -378,6 +378,37 @@ discard claims they do not surface. The widest overload returns subject, display
   from the format. It validates the v3 claim shape but never surfaces the unverified persistence key. `displayName`
   is `null` for v1, the empty string for an empty v2 or v3 name, else the decoded name.
 
+### SigningSecret: the key both ends load
+
+`SigningSecret` loads the HMAC key `SignedToken` signs under. It lives here, beside the token, because the auth
+service mints under the key and the game server verifies under it, and the server must load its key without
+referencing anything that mints.
+
+```csharp
+// Game server or auth service. The variable name is the game's own.
+byte[]? secret = SigningSecret.Load(Environment.GetEnvironmentVariable, "MYGAME_TOKEN_SECRET");
+IConnectionAuthenticator tokenAuth = secret is null
+    ? new AllowAllAuthenticator()                                   // unset: local development
+    : new HmacTokenAuthenticator(secret, () => DateTimeOffset.UtcNow);
+
+// An in-process dev host that mints and verifies in one process takes a key that cannot leave it.
+byte[] devSecret = SigningSecret.CreateEphemeral();
+```
+
+- `Decode(raw, sourceName)` returns `null` when the value is unset or blank, and the decoded key when it is standard
+  base64 (the output of `openssl rand -base64 32`, trimmed) of at least `MinimumBytes` (32) bytes. A value that is
+  set but not base64, or decodes shorter, throws `InvalidOperationException`, so a misconfigured production key fails
+  loudly instead of becoming a door that verifies nothing. The message names `sourceName` and the rule it broke and
+  never any part of the value.
+- `Load(read, variable)` is `Decode(read(variable), variable)`. The environment arrives as a delegate, so an
+  in-process host or a test hands it a map and writes no process state.
+- `CreateEphemeral()` is 32 bytes from `RandomNumberGenerator`, for local development only. Never ship a key as a
+  source constant.
+
+The loader compares nothing. The one comparison under the key is `SignedToken.TryVerify`, which already checks the
+MAC with `CryptographicOperations.FixedTimeEquals`. The key itself stays in the game's secret store under the game's
+own variable. The engine validates it and stores nothing.
+
 ## Connect-time gate: ConnectionGate + HandshakeToken (17.40.0)
 
 Promoted out of Ruinborne, because two games need the identical door and a tile server cannot reference
@@ -447,7 +478,8 @@ consumer compiles and binds unchanged and a file importing both namespaces sees 
 - Hand the SAME instance to both, `new BanGateAuthenticator(tokenAuth, bans)` and `banStore: bans`, and the two can
   never disagree about who is banned. A tile server takes it as `TileWorldServerConfig.BanStore` and reads it at the
   door, at the join, and once per tick over every live session, closing a banned one with the `ke:banned` notice
-  token, so a tile game never pairs a ban with its own kick.
+  token, so a tile game never pairs a ban with its own kick. A game with a sign-in exchange hands every one of them
+  `KhaozEngine.Accounts.AccountBanStore`, which files each ban on the account row the exchange reads.
 
 **One admin seam.** `IAdminControllable` (the live-admin surface: `ListOnline`, `Teleport`, `SetPosition`, `Kick`,
 `Broadcast` and the movement commitment pair) lives here on the same terms as the ban seam, with the three types it

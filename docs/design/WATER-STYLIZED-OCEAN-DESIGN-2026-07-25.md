@@ -247,3 +247,37 @@ measures tonal range and the fix widened it.
 was not kept reachable: the coherence IS the defect. What is reachable is `FootprintSamples = 0` (14.24.0's
 unbounded normal oscillation), `VarianceToRoughness = 0` (its lobe behaviour) and `RippleComponents = 3` (a
 sparse spectrum, though with golden-angle headings rather than the old fixed ones).
+
+## Revision: the glint widening is a floor under the Toksvig lobe (#308)
+
+The 14.26.0 transfer was stacked on the 14.24.0 widening, `alpha = sqrt(widened^2 + 2 * lost * gain)`. Both read
+the same signal, the ripple detail below the pixel footprint, so that detail was counted twice. At the shipped
+defaults with the distance ramp off, the lobe variance came out at 1.08, 1.33, 2.12 and 2.08 times the surface's
+real slope variance at footprints of 1, 3.93, 7.85 and 31.4 m, and at about 2.1 times wherever the distance ramp had
+saturated, which is the regime a perspective player sees.
+
+Gating the widening on the resolved share, or folding it into the transfer, left every golden byte-identical,
+because each acted only where the widening outran the distance ramp. The widening is a floor instead,
+`alpha = max(widened, sqrt(near^2 + 2 * lost * gain))`. The lobe carries exactly the surface's variance until
+`GlintDistantRoughness` takes over, then 1.12 to 1.17 times it, so that knob is an artistic minimum rather than an
+additive widening. `VarianceToRoughness = 0` still gives the 14.24.0 lobe exactly. The cost is a narrower near and
+mid lobe where the distance ramp is partway, which moves the water goldens and was accepted as a look decision.
+
+## Revision: the whitecap fold is evaluated per pixel (#1100)
+
+"Foam: Jacobian for crests" above computes the fold in the vertex stage and interpolates it. On a coarse grid, a
+clipmap's 8 and 16 m rings under the 42 m swell, that interpolation is linear inside each triangle, so the whitecaps
+came out as triangles, the same defect #381 fixed for the normal. The fragment now evaluates the fold at its
+still-water position through the shared `gerstnerEvaluate`.
+
+Per pixel the fold also stops being averaged over the grid's cells, and that averaging had held distant whitecaps at
+about a third of the near field's coverage. Left alone, the far field whitened to near-field density. The fold
+therefore eases toward 73% of itself as the swell components fall below 80 still-water pixel footprints. The two
+constants were calibrated against the per-vertex fold's coverage at 64 m and beyond, over five perspective views and
+both grid modes: 1.18% before, 3.51% per pixel alone and 1.13% attenuated. Averaged over the views, every distance
+band from 64 m out lands within 0.8 to 1.2 times the per-vertex figure. No single footprint measure matches both
+grid modes, which coarsen at different rates, so single views sit between 0.6 and 1.7 times it.
+
+The footprint is measured on the still-water plane along the view ray rather than on the displaced surface. The
+displaced surface's derivative jumps across triangle edges at grazing angles (#1101), and a thresholded foam edge
+would step with it. FFT-mode foam is unaffected.

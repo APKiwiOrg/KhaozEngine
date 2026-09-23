@@ -13,11 +13,9 @@ namespace KhaozEngine.ItemInstances.Journal;
 /// disagree the first time a member is inserted.
 /// </para>
 /// <para>
-/// <b>The payload codecs are NOT here yet, deliberately.</b> Spec 9.5's <c>item-generated</c> body and spec
-/// 10.6's <c>item-crafted</c> body are the generator's and the crafting framework's, and both arrive with the
-/// thing that writes them. Writing a codec for an event nothing emits would be a format frozen before its
-/// first caller, which is exactly what the payload work was careful not to do. What the names buy now is that
-/// the commit builder and the load path spell them the same way.
+/// <b>The payload codecs live beside their owners.</b> <see cref="ItemGeneratedEvent"/> and
+/// <see cref="ItemCraftedEvent"/> hold their audit bodies, while <see cref="ContainerOperationEventCodec"/>
+/// holds the replayable operation envelopes. This type keeps durable names and their kind mapping together.
 /// </para>
 /// </summary>
 public static class ItemInstanceEvents
@@ -61,9 +59,12 @@ public static class ItemInstanceEvents
     /// <summary>Units leaving a slot, which is the half of a withdraw the source stream owns.</summary>
     public const string Taken = "item-taken";
 
-    /// <summary>Every event type this package defines, in the order the spec defines them.</summary>
+    /// <summary>One occupied run shifted within a container, including every instance payload in it.</summary>
+    public const string Slid = "item-slid";
+
+    /// <summary>Every event type this package defines, in assignment order.</summary>
     public static IReadOnlyList<string> All { get; } =
-        new[] { Generated, Crafted, Moved, StackSplit, StackMerged, Granted, Taken };
+        new[] { Generated, Crafted, Moved, StackSplit, StackMerged, Granted, Taken, Slid };
 
     /// <summary>
     /// The durable event type one container operation writes. It is a switch on a KIND rather than on a
@@ -80,6 +81,7 @@ public static class ItemInstanceEvents
         ContainerOperationKind.Grant => Granted,
         ContainerOperationKind.Take => Taken,
         ContainerOperationKind.Craft => Crafted,
+        ContainerOperationKind.Slide => Slid,
         _ => throw new ArgumentException(
             FormattableString.Invariant($"{kind} is not an operation kind, so it writes no event."), nameof(kind)),
     };

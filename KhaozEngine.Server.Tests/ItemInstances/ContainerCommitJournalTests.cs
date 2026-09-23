@@ -263,7 +263,148 @@ public sealed class ContainerCommitJournalTests : IDisposable
             read.Sections.Single(section => section.SectionName == "bag/p00").Data.ToArray());
     }
 
+    [Fact]
+    public async Task Stored_instance_operations_replay_to_the_final_bag_and_ten_bank_pages()
+    {
+        SqliteMutationJournalStore store = await NewReplayStreamAsync();
+        PagedItemContainer liveBank = ReplayBank(), liveBag = ReplayBag();
+        byte[] before = RarityPayload(42), after = RarityPayload(43);
+
+        ContainerCommitBuilder grant = ReplayBatch(liveBank, liveBag, expectedVersion: 0);
+        Assert.True(grant.Apply(ContainerOperation.Grant(Bag, 0, Sword, 1, Instance, before)));
+        Assert.True(grant.TryBuildParts(out IReadOnlyList<JournalEvent> grantEvents,
+            out IReadOnlyList<JournalProjectionWrite> grantWrites));
+        const string lootStream = "loot:9";
+        var composed = new JournalCommit(
+            new JournalOperationIdentity(Guid.NewGuid(), Scope, grant.ActionKind, grant.BuildIntent()),
+            [
+                new JournalStreamMutation(StreamKey, 0, grantEvents),
+                new JournalStreamMutation(lootStream, 0, [new JournalEvent("loot-claimed", 1, new byte[] { 1 })]),
+            ],
+            grantWrites,
+            grant.Options.ResultSchema,
+            grant.Options.ResultSchemaVersion,
+            Array.Empty<byte>());
+        composed.Validate(JournalLimits.Maximum);
+        Assert.Equal(JournalCommitStatus.Applied, (await store.CommitAsync(composed)).Status);
+        grant.MarkCommitted();
+
+        await CommitReplayOperation(store, liveBank, liveBag,
+            ContainerOperation.Move(Bag, 0, Bank, 999, 1, Instance), expectedVersion: 1);
+        byte[] audit = new ItemCraftedEvent(1, Instance, 1, before, after).ToArray();
+        await CommitReplayOperation(store, liveBank, liveBag,
+            ContainerOperation.Craft(Bank, 999, Instance, after, audit,
+                currencyContainer: Bag, currencySlot: 1,
+                currencyDefinitionId: Currency, currencyCount: 1), expectedVersion: 2);
+        await CommitReplayOperation(store, liveBank, liveBag,
+            ContainerOperation.Take(Bank, 1, 1), expectedVersion: 3);
+        await CommitReplayOperation(store, liveBank, liveBag,
+            ContainerOperation.Slide(Bank, 1, 0, 999), expectedVersion: 4);
+
+        JournalEventPage page = await store.ReadEventsAsync(
+            new JournalEventRead(StreamKey, 0, null, 64, 64 * 1024));
+        Assert.Equal(5, page.Events.Count);
+        Assert.Equal(new[] { 2, 1, 2, 1, 1 },
+            page.Events.Select(value => value.EventSchemaVersion));
+        Assert.Single((await store.ReadEventsAsync(
+            new JournalEventRead(lootStream, 0, null, 64, 64 * 1024))).Events);
+
+        PagedItemContainer replayBank = ReplayBank(), replayBag = ReplayBag();
+        var copies = new Dictionary<string, IPagedContainerWorkingCopy>(StringComparer.Ordinal)
+        {
+            [Bank] = replayBank,
+            [Bag] = replayBag,
+        };
+        foreach (JournalStoredEvent stored in page.Events)
+        {
+            Assert.True(ContainerOperationEventCodec.TryRead(stored.EventType,
+                stored.EventSchemaVersion, stored.Payload, out ContainerOperation operation,
+                out string? readReason), readReason);
+            Assert.True(ContainerOperationApplier.TryReplay(copies, operation,
+                out string? applyReason), applyReason);
+        }
+
+        Assert.Equal(1, replayBank.SlotAt(0).Stack.Count);
+        Assert.Equal(Instance, replayBank.SlotAt(998).Stack.InstanceId);
+        Assert.Equal(after, replayBank.SlotAt(998).Payload.ToArray());
+        Assert.True(replayBank.SlotAt(999).IsEmpty);
+        Assert.True(replayBag.SlotAt(0).IsEmpty);
+        Assert.Equal(2, replayBag.SlotAt(1).Stack.Count);
+
+        JournalProjectionRead final = await store.ReadProjectionsAsync(new JournalProjectionQuery(StreamKey));
+        Assert.Equal(5L, final.HeadVersion);
+        for (int index = 0; index < 10; index++)
+            Assert.Equal(final.Sections.Single(section =>
+                    section.SectionName == ContainerSectionNames.Format(Bank, index)).Data.ToArray(),
+                EncodePage(replayBank, index));
+        Assert.Equal(final.Sections.Single(section => section.SectionName == "bag/p00").Data.ToArray(),
+            EncodePage(replayBag, 0));
+    }
+
     public void Dispose() => database.Dispose();
+
+    static PagedItemContainer ReplayBank()
+    {
+        PagedItemContainer bank = Container(pageCount: 10, capacity: 1000);
+        for (int slot = 1; slot < 999; slot++) SeatStack(bank, slot, Potion, slot + 1);
+        return bank;
+    }
+
+    static PagedItemContainer ReplayBag()
+    {
+        PagedItemContainer bag = Container(pageCount: 1, capacity: 30);
+        SeatStack(bag, 1, Currency, 3);
+        return bag;
+    }
+
+    static byte[] RarityPayload(int itemLevel)
+        => new ItemInstancePayloadBuilder()
+            .AddScalar(InstancePropertyKind.ItemLevel, (ulong)itemLevel)
+            .AddByte(InstancePropertyKind.Rarity, 1)
+            .ToArray();
+
+    static ContainerCommitBuilder ReplayBatch(PagedItemContainer bank, PagedItemContainer bag,
+        long expectedVersion)
+        => ContainerCommitBuilder.Open(StreamKey, ItemInstanceEvents.CraftActionKind, Scope,
+            Containers((Bank, bank), (Bag, bag)), tick: 4,
+            new ContainerCommitOptions { ExpectedVersion = expectedVersion });
+
+    static async Task CommitReplayOperation(SqliteMutationJournalStore store,
+        PagedItemContainer bank, PagedItemContainer bag, ContainerOperation operation, long expectedVersion)
+    {
+        ContainerCommitBuilder batch = ReplayBatch(bank, bag, expectedVersion);
+        Assert.True(batch.Apply(operation));
+        Assert.Equal(JournalCommitStatus.Applied,
+            (await store.CommitAsync(batch.Close(Mint(Guid.NewGuid())))).Status);
+        batch.MarkCommitted();
+    }
+
+    async Task<SqliteMutationJournalStore> NewReplayStreamAsync()
+    {
+        SqliteMutationJournalStore store = database.Open(database.NewPath());
+        PagedItemContainer bank = ReplayBank(), bag = ReplayBag();
+        var projections = new List<JournalProjectionWrite>();
+        for (int index = 0; index < bank.PageCount; index++)
+            projections.Add(new JournalProjectionWrite(StreamKey,
+                ContainerSectionNames.Format(Bank, index),
+                ContainerCommitOptions.DefaultProjectionSchema,
+                ItemContainerPageCodec.Version, EncodePage(bank, index)));
+        projections.Add(new JournalProjectionWrite(StreamKey, "bag/p00",
+            ContainerCommitOptions.DefaultProjectionSchema,
+            ItemContainerPageCodec.Version, EncodePage(bag, 0)));
+        Assert.Equal(JournalInitializeStatus.Initialized,
+            (await store.InitializeAsync(new JournalInitialization(
+                new JournalOperationIdentity(Guid.NewGuid(), Scope, "items.initialize", new byte[] { 1 }),
+                StreamKey, "player.snapshot.v1", 1, new byte[] { 1 }, projections,
+                "initialize.result.v1", 1, Array.Empty<byte>()))).Status);
+        Assert.Equal(JournalInitializeStatus.Initialized,
+            (await store.InitializeAsync(new JournalInitialization(
+                new JournalOperationIdentity(Guid.NewGuid(), Scope, "loot.initialize", new byte[] { 1 }),
+                "loot:9", "loot.snapshot.v1", 1, new byte[] { 1 },
+                Array.Empty<JournalProjectionWrite>(), "initialize.result.v1", 1,
+                Array.Empty<byte>()))).Status);
+        return store;
+    }
 
     JournalCommit CrossContainerMove(int destinationSlot, Guid operationId)
     {

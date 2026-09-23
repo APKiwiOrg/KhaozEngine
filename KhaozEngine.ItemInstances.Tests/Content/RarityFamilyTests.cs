@@ -129,7 +129,8 @@ public class RarityFamilyTests
         Assert.False(report.IsValid);
 
         ContentRow parented = Row(
-            rule, "beyond", Marker(), Int(4), Int(6), Int(3), Int(3), Int(2), Reference(256));
+            rule, "beyond", Marker(), Int(4), Int(6), Int(3), Int(3), Int(2), Reference(256),
+            ContentFieldValue.Absent(ContentFieldKind.OpaqueBytes));
         Assert.Throws<ArgumentException>(() => Encode(rule, parented));
 
         byte[] bytes = Forge(rule, "beyond", 4, 6, 3, 3, 2, 256);
@@ -143,7 +144,8 @@ public class RarityFamilyTests
         ContentTypeRegistry registry = Registered(Rarity);
 
         ContentFieldSchema rule = Lookup(registry, InstanceContentTypeIds.RarityRuleTypeKey).Schema;
-        Assert.Equal(7, rule.Fields.Count);
+        Assert.Equal(7, rule.BaselineFieldCount);
+        Assert.Equal(8, rule.Fields.Count);
         AssertField(rule, 0, "display_format", ContentFieldKind.LocalizedTextKey, null, ContentVisibility.Client, true);
         AssertField(rule, 1, "min_affixes", ContentFieldKind.Int, null, ContentVisibility.Client, true);
         AssertField(rule, 2, "max_affixes", ContentFieldKind.Int, null, ContentVisibility.Client, true);
@@ -151,6 +153,7 @@ public class RarityFamilyTests
         AssertField(rule, 4, "max_suffixes", ContentFieldKind.Int, null, ContentVisibility.Client, true);
         AssertField(rule, 5, "name_word_positions", ContentFieldKind.Int, null, ContentVisibility.Client, true);
         AssertField(rule, 6, "upgrade_from", ContentFieldKind.KeyReference, "rarity_rule", ContentVisibility.Client, false);
+        AssertField(rule, 7, "display_rgb", ContentFieldKind.OpaqueBytes, null, ContentVisibility.Client, false);
 
         ContentFieldSchema weight = Lookup(registry, InstanceContentTypeIds.RarityWeightTypeKey).Schema;
         Assert.Equal(3, weight.Fields.Count);
@@ -163,6 +166,60 @@ public class RarityFamilyTests
         AssertField(limit, 0, "rarity_rule_id", ContentFieldKind.KeyReference, "rarity_rule", ContentVisibility.Client, true);
         AssertField(limit, 1, "mod_kind", ContentFieldKind.Int, null, ContentVisibility.Client, true);
         AssertField(limit, 2, "max_count", ContentFieldKind.Int, null, ContentVisibility.Client, true);
+    }
+
+    [Fact]
+    public void A_seven_field_rarity_row_keeps_its_original_bytes()
+    {
+        ContentTypeRegistry registry = Registered(Rarity);
+        ContentTypeRegistration rule = Lookup(registry, InstanceContentTypeIds.RarityRuleTypeKey);
+        byte[] oldBytes = Forge(rule, "normal", 4, 6, 3, 3, 2, 0);
+
+        ContentRow decoded = Decode(rule, oldBytes);
+
+        Assert.True(decoded.Fields[7].IsAbsent);
+        Assert.Equal(oldBytes, Encode(rule, decoded));
+    }
+
+    [Theory]
+    [InlineData("000000")]
+    [InlineData("ffffff")]
+    public void A_rarity_row_keeps_an_explicit_opaque_rgb_value(string hex)
+    {
+        ContentTypeRegistry registry = Registered(Rarity);
+        ContentTypeRegistration rule = Lookup(registry, InstanceContentTypeIds.RarityRuleTypeKey);
+        ContentRow row = Row(rule, "normal", Marker(), Int(0), Int(0), Int(0), Int(0), Int(0),
+            ContentFieldValue.Absent(ContentFieldKind.KeyReference),
+            ContentFieldValue.OfBytes(ContentFieldKind.OpaqueBytes, Convert.FromHexString(hex)));
+
+        ContentRow decoded = Decode(rule, Encode(rule, row));
+
+        Assert.False(decoded.Fields[7].IsAbsent);
+        Assert.Equal(hex, Convert.ToHexString(decoded.Fields[7].Bytes.Span).ToLowerInvariant());
+    }
+
+    [Theory]
+    [InlineData("11")]
+    [InlineData("1122")]
+    [InlineData("11223344")]
+    public void A_rarity_colour_other_than_three_bytes_is_refused_on_both_sides(string hex)
+    {
+        ContentTypeRegistry registry = Registered(Rarity);
+        ContentTypeRegistration rule = Lookup(registry, InstanceContentTypeIds.RarityRuleTypeKey);
+        byte[] colour = Convert.FromHexString(hex);
+        ContentRow row = Row(rule, "normal", Marker(), Int(0), Int(0), Int(0), Int(0), Int(0),
+            ContentFieldValue.Absent(ContentFieldKind.KeyReference),
+            ContentFieldValue.OfBytes(ContentFieldKind.OpaqueBytes, colour));
+
+        Assert.Throws<ArgumentException>(() => Encode(rule, row));
+
+        byte[] prefix = Forge(rule, "normal", 0, 0, 0, 0, 0, 0);
+        byte[] malformed = new byte[prefix.Length + 1 + colour.Length];
+        prefix.CopyTo(malformed, 0);
+        malformed[prefix.Length] = (byte)colour.Length;
+        colour.CopyTo(malformed, prefix.Length + 1);
+        Assert.False(rule.Codec.TryDecode(malformed, out _, out string? reason));
+        Assert.Equal(ContentRowCodecBase.ReasonFieldMalformed, reason);
     }
 
     [Fact]
@@ -292,7 +349,7 @@ public class RarityFamilyTests
 
         // A naive reader spends at least one byte on every schema field. The marker spends none, so the real
         // row is exactly one byte shorter than that.
-        int naive = 1 + contentKey.Length + rule.Schema.Fields.Count;
+        int naive = 1 + contentKey.Length + rule.Schema.BaselineFieldCount;
         Assert.Equal(naive - 1, bytes.Length);
 
         Assert.Equal(
@@ -343,5 +400,6 @@ public class RarityFamilyTests
             Int(maxPrefixes),
             Int(maxSuffixes),
             Int(nameWordPositions),
-            ContentFieldValue.Absent(ContentFieldKind.KeyReference));
+            ContentFieldValue.Absent(ContentFieldKind.KeyReference),
+            ContentFieldValue.Absent(ContentFieldKind.OpaqueBytes));
 }

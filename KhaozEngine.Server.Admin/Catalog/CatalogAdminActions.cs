@@ -161,7 +161,8 @@ public static class CatalogAdminActions
 
     /// <summary>
     /// Registers all SIXTEEN catalog actions on <paramref name="admin"/>. Call it ONCE, at startup, before
-    /// the endpoint starts.
+    /// the endpoint starts. A console that must never write registers
+    /// <see cref="RegisterReads(ServerAdmin, IContentAuthoringStore, ContentTypeRegistry)"/> instead.
     /// </summary>
     /// <param name="admin">The admin surface the actions are registered on.</param>
     /// <param name="store">The authoring store every action reads and writes through.</param>
@@ -180,11 +181,44 @@ public static class CatalogAdminActions
         ArgumentNullException.ThrowIfNull(registry);
 
         CatalogAdminActionOptions resolved = options ?? new CatalogAdminActionOptions();
-        new CatalogReadActions(store, registry).Register(admin);
+        RegisterReads(admin, store, registry);
         new CatalogEditActions(store, registry).Register(admin);
         new CatalogPublishActions(store, registry).Register(admin);
         new CatalogVersionActions(store, registry, resolved).Register(admin);
         new CatalogBundleActions(store, registry).Register(admin);
         new CatalogOperationalActions(store, registry).Register(admin);
+    }
+
+    /// <summary>
+    /// Registers the FIVE read actions on <paramref name="admin"/> and nothing else: <c>catalog-schema</c>,
+    /// <c>catalog-list</c>, <c>catalog-get</c>, <c>catalog-draft</c> and <c>catalog-versions</c>. Call it ONCE,
+    /// at startup, before the endpoint starts, and INSTEAD of
+    /// <see cref="Register(ServerAdmin, IContentAuthoringStore, ContentTypeRegistry, CatalogAdminActionOptions)"/>
+    /// rather than beside it.
+    /// <para>
+    /// <b>It exists for a game whose catalog is bundle-derived.</b> There the committed bundle is the only
+    /// authority and the store is replaced from it on a content release, so the console serves reads and must
+    /// not expose publish, import, pin or edit. Registering all sixteen would put those one admin call away
+    /// from a hosted store the server's own database identity can write.
+    /// </para>
+    /// <para>
+    /// None of the five is registered mutating, so each answers <c>GET</c> as well as <c>POST</c>, and none
+    /// reaches a store member that writes. It is the same registration <c>Register</c> makes first, so a later
+    /// <c>Register</c> on the same surface is refused at the first read name, exactly as a second
+    /// <c>Register</c> is.
+    /// </para>
+    /// </summary>
+    /// <param name="admin">The admin surface the actions are registered on.</param>
+    /// <param name="store">The authoring store every read goes through.</param>
+    /// <param name="registry">The content type registry. Per instance, never ambient.</param>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+    /// <exception cref="ArgumentException">An action name is already registered, which a second call is.</exception>
+    public static void RegisterReads(ServerAdmin admin, IContentAuthoringStore store, ContentTypeRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(admin);
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(registry);
+
+        new CatalogReadActions(store, registry).Register(admin);
     }
 }

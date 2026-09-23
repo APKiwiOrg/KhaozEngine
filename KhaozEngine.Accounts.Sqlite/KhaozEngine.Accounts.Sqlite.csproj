@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Accounts.Sqlite</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>SQLite IAccountStore backend for KhaozEngine.Accounts over Microsoft.Data.Sqlite: SqliteAccountStore keeps the account registry in one flat accounts table (subject, display_name, whitelisted, banned, ban_reason, ban_until), the layout Grimhollow already runs, under a configurable and validated table name, so an existing database is adopted in place. The schema ensure creates the table when it is absent and only ADDS a missing ban column when it is present, never touching a column it does not own. One held unpooled connection through SqliteStoreConnection, a single-statement upsert for find-or-create, ordinal keyset listing, parameterised SQL throughout. The zero-infra dev, test and single-node account store. Opt-in: in NO umbrella.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Accounts/KhaozEngine.Accounts.csproj" />
+    <ProjectReference Include="../KhaozEngine.Sqlite/KhaozEngine.Sqlite.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- The patched native SQLite (CVE-2025-6965 / NU1903), the same override every SQLite backend
+         carries. Microsoft.Data.Sqlite 10.0.9 still pulls the vulnerable SQLitePCLRaw.lib.e_sqlite3
+         2.1.11 transitively. Drop it once Microsoft.Data.Sqlite references a patched build itself. -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

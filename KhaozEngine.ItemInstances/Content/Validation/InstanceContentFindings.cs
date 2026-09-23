@@ -67,7 +67,8 @@ public static class InstanceContentFindings
     public const string ModGroupCount = "KEC0105";
 
     /// <summary>
-    /// A <c>rarity_rule</c> whose counts contradict each other, or whose <c>upgrade_from</c> chain cycles.
+    /// A <c>rarity_rule</c> whose counts contradict each other, whose <c>upgrade_from</c> chain cycles,
+    /// or whose present display colour is not three RGB bytes.
     /// </summary>
     public const string RarityRuleShape = "KEC0106";
 
@@ -232,6 +233,10 @@ public static class InstanceContentFindings
     internal static string RarityKindCounts(int rarityId, long prefixes, long suffixes, long max)
         => FormattableString.Invariant(
             $"Rarity {rarityId} permits {prefixes} prefixes and {suffixes} suffixes and rolls up to {max} affixes. The two kind limits have to reach the total, or the rarity asks for affixes it has nowhere to put.");
+
+    internal static string RarityDisplayRgbLength(int rarityId, int length)
+        => FormattableString.Invariant(
+            $"Rarity {rarityId} carries 'display_rgb' as {length} bytes. An RGB colour has exactly three bytes, written in the bundle as six hex digits.");
 
     internal static string RarityCycle(int rarityId, string chain)
         => FormattableString.Invariant(

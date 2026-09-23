@@ -38,6 +38,10 @@ public enum ContainerOperationKind
     /// spec 10.6. The PLACEHOLDER of this phase: the operation and its page write are real, and the event
     /// BODY is the crafting framework's to encode.</summary>
     Craft = 6,
+
+    /// <summary>Shift one occupied run to an empty leading or trailing fringe in the same container.
+    /// One operation moves the run regardless of how many pages it crosses.</summary>
+    Slide = 7,
 }
 
 /// <summary>Who caused an operation, which is what spec 6.5 batches on.</summary>
@@ -79,6 +83,8 @@ public enum ContainerOperationOrigin
 /// </summary>
 public readonly record struct ContainerOperation
 {
+    static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
     [Flags]
     enum Field
     {
@@ -208,6 +214,147 @@ public readonly record struct ContainerOperation
         return bytes;
     }
 
+    /// <summary>Reads the canonical operation parameters of a stored event. A craft's audit body is not
+    /// part of this encoding and must be attached by its event decoder before live validation.</summary>
+    public static bool TryReadCanonical(
+        ReadOnlySpan<byte> source, out ContainerOperation operation, out string? reason)
+    {
+        operation = default;
+        int offset = 0;
+        if (!ReadNumber(source, ref offset, out int rawKind, out reason)) return false;
+        ContainerOperationKind kind = (ContainerOperationKind)rawKind;
+        if (kind is not (ContainerOperationKind.Move or ContainerOperationKind.Split
+            or ContainerOperationKind.Merge or ContainerOperationKind.Grant
+            or ContainerOperationKind.Take or ContainerOperationKind.Craft
+            or ContainerOperationKind.Slide))
+        {
+            reason = ContainerOperationEventCodec.Kind;
+            return false;
+        }
+
+        Field fields = FieldsOf(kind);
+        string container = "";
+        string? destinationContainer = null;
+        int slot = 0, destinationSlot = 0, definitionId = 0, count = 0;
+        long instanceId = 0, destinationInstanceId = 0;
+        if ((fields & Field.Container) != 0 && !ReadName(source, ref offset, out container, out reason))
+            return false;
+        if ((fields & Field.Slot) != 0 && !ReadNumber(source, ref offset, out slot, out reason))
+            return false;
+        if ((fields & Field.DestinationContainer) != 0
+            && !ReadName(source, ref offset, out destinationContainer, out reason)) return false;
+        if ((fields & Field.DestinationSlot) != 0
+            && !ReadNumber(source, ref offset, out destinationSlot, out reason)) return false;
+        if ((fields & Field.DefinitionId) != 0
+            && !ReadNumber(source, ref offset, out definitionId, out reason)) return false;
+        if ((fields & Field.Count) != 0 && !ReadNumber(source, ref offset, out count, out reason))
+            return false;
+        if ((fields & Field.InstanceId) != 0
+            && !ReadId(source, ref offset, out instanceId, out reason)) return false;
+        if ((fields & Field.DestinationInstanceId) != 0
+            && !ReadId(source, ref offset, out destinationInstanceId, out reason)) return false;
+        if (offset != source.Length)
+        {
+            reason = ContainerOperationEventCodec.Trailing;
+            return false;
+        }
+
+        // A free craft writes its own container name in the destination slot. Its canonical operation
+        // still carries no currency container, which is what ValidateCanonical checks.
+        if (kind == ContainerOperationKind.Craft && definitionId == 0
+            && StringComparer.Ordinal.Equals(destinationContainer, container)) destinationContainer = null;
+
+        var read = new ContainerOperation
+        {
+            Kind = kind,
+            Container = container,
+            Slot = slot,
+            DestinationContainer = destinationContainer,
+            DestinationSlot = destinationSlot,
+            DefinitionId = definitionId,
+            Count = count,
+            InstanceId = instanceId,
+            DestinationInstanceId = destinationInstanceId,
+        };
+        try
+        {
+            read.ValidateCanonical();
+        }
+        catch (ArgumentException)
+        {
+            reason = ContainerOperationEventCodec.FieldRange;
+            return false;
+        }
+
+        operation = read;
+        reason = null;
+        return true;
+    }
+
+    static bool ReadNumber(ReadOnlySpan<byte> source, ref int offset, out int value, out string? reason)
+    {
+        value = 0;
+        if (!ContentVarint.TryRead(source, ref offset, out uint raw, out string? varintReason))
+        {
+            reason = VarintReason(varintReason);
+            return false;
+        }
+        if (raw > int.MaxValue)
+        {
+            reason = ContainerOperationEventCodec.FieldRange;
+            return false;
+        }
+        value = (int)raw;
+        reason = null;
+        return true;
+    }
+
+    static bool ReadId(ReadOnlySpan<byte> source, ref int offset, out long value, out string? reason)
+    {
+        if (!InstanceIdAllocator.TryReadId(source, ref offset, out value, out string? varintReason))
+        {
+            reason = VarintReason(varintReason);
+            return false;
+        }
+        reason = null;
+        return true;
+    }
+
+    static bool ReadName(ReadOnlySpan<byte> source, ref int offset, out string name, out string? reason)
+    {
+        name = "";
+        if (!ContentVarint.TryRead(source, ref offset, out uint length, out string? varintReason))
+        {
+            reason = VarintReason(varintReason);
+            return false;
+        }
+        if (length == 0 || length > int.MaxValue)
+        {
+            reason = ContainerOperationEventCodec.FieldRange;
+            return false;
+        }
+        if (length > (uint)(source.Length - offset))
+        {
+            reason = ContainerOperationEventCodec.Truncated;
+            return false;
+        }
+        try
+        {
+            name = StrictUtf8.GetString(source.Slice(offset, (int)length));
+        }
+        catch (DecoderFallbackException)
+        {
+            reason = ContainerOperationEventCodec.Utf8;
+            return false;
+        }
+        offset += (int)length;
+        reason = null;
+        return true;
+    }
+
+    static string VarintReason(string? reason) => reason == ContentVarint.ReasonTruncated
+        ? ContainerOperationEventCodec.Truncated : ContainerOperationEventCodec.Varint;
+
     /// <summary>
     /// Refuses an operation this vocabulary cannot express. <b>It is not a game rule check.</b> An operation
     /// a game refuses never reaches the journal at all (spec 10.6), so everything here is a caller bug.
@@ -217,6 +364,14 @@ public readonly record struct ContainerOperation
     /// client operation carries no id, a craft carries no event body, or a craft that consumes no currency
     /// carries a currency field anyway.</exception>
     public void Validate()
+    {
+        ValidateCanonical();
+        Require(
+            Kind != ContainerOperationKind.Craft || !EventPayload.IsEmpty,
+            "A craft carries the event body of spec 10.6, which the crafting framework encodes.");
+    }
+
+    internal void ValidateCanonical()
     {
         Field fields = FieldsOf(Kind);
         Require(!string.IsNullOrEmpty(Container), "An operation names the container it acts on.");
@@ -237,9 +392,6 @@ public readonly record struct ContainerOperation
         Require(
             Origin == ContainerOperationOrigin.Client || OperationId == Guid.Empty,
             "A server caused operation has no id of its own: the batch mints one.");
-        Require(
-            Kind != ContainerOperationKind.Craft || !EventPayload.IsEmpty,
-            "A craft carries the event body of spec 10.6, which the crafting framework encodes.");
         Require(
             Kind == ContainerOperationKind.Craft || EventPayload.IsEmpty,
             "Only a craft carries an event body: every other kind writes its own canonical encoding.");
@@ -287,6 +439,18 @@ public readonly record struct ContainerOperation
             Container = container,
             Slot = slot,
             DestinationSlot = destinationSlot,
+            Count = count,
+        };
+
+    /// <summary>Slides one occupied run within a container while preserving slot order and payloads.</summary>
+    public static ContainerOperation Slide(string container, int firstSourceSlot,
+        int firstDestinationSlot, int count)
+        => new()
+        {
+            Kind = ContainerOperationKind.Slide,
+            Container = container,
+            Slot = firstSourceSlot,
+            DestinationSlot = firstDestinationSlot,
             Count = count,
         };
 
@@ -404,6 +568,7 @@ public readonly record struct ContainerOperation
         ContainerOperationKind.Craft =>
             Field.Container | Field.Slot | Field.DestinationContainer | Field.DestinationSlot | Field.DefinitionId
             | Field.Count | Field.InstanceId,
+        ContainerOperationKind.Slide => Field.Container | Field.Slot | Field.DestinationSlot | Field.Count,
         _ => throw new ArgumentException(
             FormattableString.Invariant($"{kind} is not an operation this vocabulary encodes."), nameof(kind)),
     };

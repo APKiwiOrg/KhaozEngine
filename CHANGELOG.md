@@ -92,6 +92,13 @@ repins, and the notes below say what each game changes when it does.
   bespoke world-identity client half is the first adopter ([#677](https://github.com/APKiwiOrg/KhaozEngine/issues/677)).
   Server-side hardening of the gate is [#1071](https://github.com/APKiwiOrg/KhaozEngine/issues/1071).
 
+**Ground item visibility.**
+
+- `TileWorldServerConfig.GroundItemVisibleToSlot` lets a game omit a ground entity from a viewer's
+  snapshot using the authenticated slot and ground net ID. A null callback keeps all drops public.
+  Interest deltas add or remove the entity when visibility changes. The game remains responsible for
+  durable owner identity and pickup authorization. Grimhollow uses this for owner-only book drops.
+
 **Flaky tests fixed at the cause.**
 
 - `SqliteStoreConnection` opens its held connection with pooling off and no longer clears the pool on dispose

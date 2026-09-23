@@ -11599,6 +11599,15 @@ placement throws like `SpawnActor`'s, the server's clock despawns expired drops 
 (`OnGroundItemExpired`), and drops are `Transient`: a cell capture never persists them. `TicksFor` in
 the snippet is illustrative, compute your TTL from your own tick seconds.
 
+For a private drop, supply `TileWorldServerConfig.GroundItemVisibleToSlot` before constructing the
+server. Its `(viewerSlot, groundNetId)` answer is consulted only for ground entities already in that
+viewer's plane and area of interest. Returning false removes the whole entity from that client's
+snapshot. Returning true later makes it enter through the normal delta. Null leaves every drop public.
+Store the owner against the game's durable ground record and compare that account with the verified
+account occupying `viewerSlot`. Do not use the slot itself as durable ownership because seats can be
+reused. The callback is synchronous on the simulation tick and must not mutate the world. The game's
+TAKE handler still has to check the same owner rule before moving the item, including for a forged net ID.
+
 #### An item INSTANCE on a drop (`TileGroundItemInstance`, 19.0.0)
 
 A game whose items are individuals rather than quantities drops one through the six-argument overload, and

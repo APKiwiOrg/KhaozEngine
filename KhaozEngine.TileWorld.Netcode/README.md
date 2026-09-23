@@ -690,6 +690,14 @@ The intended pickup shape, all game code: click routes a walk to the drop's tile
 own TAKE message naming the net id, your handler re-proves tile proximity per request, moves the
 stack into your own storage, and despawns.
 
+`TileWorldServerConfig.GroundItemVisibleToSlot` optionally filters a ground item's entire entity for
+each viewer. The callback receives the authenticated viewer slot and ground net ID after the normal
+plane and area-of-interest filters. Null keeps every drop public. False omits the entity from that
+viewer's snapshot, and a later change in either direction is carried by the ordinary interest delta.
+The callback runs synchronously on the simulation tick and must be pure and non-throwing. A game keeps
+its own owner identity and must still refuse a forged TAKE request from another player. Filtering
+replication never authorizes a claim.
+
 ### An item INSTANCE on a drop, when a stack is not just an id and a count
 
 A game whose items are individuals rather than quantities drops one through the six-argument overload,

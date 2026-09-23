@@ -330,8 +330,8 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Whether one instance's world bounding sphere reaches into a light's shadowing shell, which is
         /// the ONE definition of "this caster takes part in this light's map" (design decision 8). Shared by the
-        /// pass's caster cull and by the signature above, so the two can never disagree about which instances a
-        /// light's map depends on.
+        /// frame's <see cref="PointCasterIndex"/>, and through it by the pass's caster cull and the signature above,
+        /// so the two can never disagree about which instances a light's map depends on.
         /// <para>
         /// The shell has an inner wall as well as an outer one. An instance lying WHOLLY inside
         /// <paramref name="nearRadius"/> is the light's own fixture and every one of its fragments would be
@@ -350,20 +350,30 @@ namespace KhaozEngine.Render3D
             Vector3 exclusionMin = default, Vector3 exclusionMax = default)
         {
             bounds.WorldSphere(model, out Vector3 centre, out float r);
-            float reach = r + radius;
+            return InstanceTouchesLight(centre, r, lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
+        }
+
+        /// <summary>The same test on a world sphere already in hand, which is what the frame's
+        /// <see cref="PointCasterIndex"/> stores for every caster. The overload above transforms the bounds and asks
+        /// this one, so the index, the signature and the pass all read one definition of touching a light.</summary>
+        internal static bool InstanceTouchesLight(Vector3 centre, float sphereRadius,
+            Vector3 lightPosAbsolute, float radius, float nearRadius = 0f,
+            Vector3 exclusionMin = default, Vector3 exclusionMax = default)
+        {
+            float reach = sphereRadius + radius;
             float distanceSq = (centre - lightPosAbsolute).LengthSquared();
             if (distanceSq > reach * reach) return false;
             if (nearRadius > 0f)
             {
                 // Wholly inside the clearance: the farthest point of the sphere is still nearer than the near
                 // radius.
-                float farthest = MathF.Sqrt(distanceSq) + r;
+                float farthest = MathF.Sqrt(distanceSq) + sphereRadius;
                 if (farthest <= nearRadius) return false;
             }
             if (!IsExclusionBox(exclusionMin, exclusionMax)) return true;
-            return !(centre.X - r >= exclusionMin.X && centre.X + r <= exclusionMax.X
-                && centre.Y - r >= exclusionMin.Y && centre.Y + r <= exclusionMax.Y
-                && centre.Z - r >= exclusionMin.Z && centre.Z + r <= exclusionMax.Z);
+            return !(centre.X - sphereRadius >= exclusionMin.X && centre.X + sphereRadius <= exclusionMax.X
+                && centre.Y - sphereRadius >= exclusionMin.Y && centre.Y + sphereRadius <= exclusionMax.Y
+                && centre.Z - sphereRadius >= exclusionMin.Z && centre.Z + sphereRadius <= exclusionMax.Z);
         }
 
         /// <summary>Whether a corner pair is a real exclusion box: a volume with something inside it. The zero pair

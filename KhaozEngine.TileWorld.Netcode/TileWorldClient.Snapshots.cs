@@ -215,6 +215,11 @@ public sealed partial class TileWorldClient
     /// step. Unlike <see cref="LocalPose"/>, it has no extra local prediction tick. Compared with current server
     /// truth, both this pose and that delayed tile add <see cref="TileWorldClientConfig.InterpolationDelayTicks"/>,
     /// which buys room for a lost snapshot. Size a design that reads other players against the sum.</para>
+    /// <para>THE FIRST STEP OFF A STANDING BODY STARTS AT ZERO. The simulator spends a click's own tick on the step
+    /// it starts, so that step reads one tick in on the sample that commits it. This client reads the door off the
+    /// sample before, and draws that step from the tile it leaves over the ticks it actually has, landing on the
+    /// committed tile at the committed tick. Every other step, and a remote first seen already stepping, draws
+    /// exactly what <see cref="TilePresenter.Pose(in TileMoveState, float)"/> draws for its sample.</para>
     /// <para>A REMOTE HOLDING A LOCK IS AIMED, on the same rule <see cref="LocalPose"/> follows: standing still with
     /// a <see cref="TileMoveState.CombatTarget"/>, or with an <see cref="TileMoveState.InteractTarget"/> it has
     /// finished walking to, it looks at that target's <see cref="ITileTargets.TryGetAimPoint"/> instead of along
@@ -229,10 +234,10 @@ public sealed partial class TileWorldClient
     {
         pose = default;
         if (netId == LocalNetId || !remoteSamples.TryGetValue(netId, out RemoteSample sample)) return false;
-        float extraTicks = (float)Math.Max(0d, (RenderTime - sample.At) / config.TickSeconds);
+        float extraTicks = ExtraTicks(sample);
         pose = TryResolveAim(sample.State, delayed: true, out Vector2 aim)
-            ? Presenter.Pose(sample.State, aim, extraTicks)
-            : Presenter.Pose(sample.State, extraTicks);
+            ? Presenter.Pose(sample.State, aim, extraTicks, sample.ClickDoor)
+            : Presenter.Pose(sample.State, extraTicks, sample.ClickDoor);
         return true;
     }
 
@@ -360,11 +365,15 @@ public sealed partial class TileWorldClient
             into.Add((pair.Key, pair.Value.State.Tile, StepProgress(pair.Value), pair.Value.State.FootprintSize));
     }
 
-    // The presenter's own fraction, over the same sub-tick carry-forward TryGetRemotePose hands it, so a rule
-    // reading this and the body drawn by that call are measuring one glide rather than two.
+    // The presenter's own fraction, over the same sub-tick carry-forward and the same door TryGetRemotePose hands
+    // it, so a rule reading this and the body drawn by that call are measuring one glide rather than two.
     float StepProgress(in RemoteSample sample) =>
-        TilePresenter.StepFraction(sample.State,
-            (float)Math.Max(0d, (RenderTime - sample.At) / config.TickSeconds));
+        TilePresenter.StepFraction(sample.State, ExtraTicks(sample), sample.ClickDoor);
+
+    // Ticks since a sample was first seen on the render timeline, which is what the presenter carries a glide
+    // forward by. One definition for the pose and the progress, so they cannot drift apart.
+    float ExtraTicks(in RemoteSample sample) =>
+        (float)Math.Max(0d, (RenderTime - sample.At) / config.TickSeconds);
 
     /// <summary>
     /// The tile a remote is committed to on the FRESHEST server state this client holds, which is a different
@@ -550,9 +559,15 @@ public sealed partial class TileWorldClient
         // of states differing ONLY in the lock has equal StepTicks, so it belongs to a remote that is standing, and a
         // standing pose reads no fraction of a tick: the stamp this dedupe protects is only ever spent on a glide.
         // So the extra re-stamp such a change costs is a restart of a carry-forward nobody is drawing.
+        //
+        // The DOOR is read here too, because this is the one place both samples are in hand: a step that begins
+        // from a standing body reads one tick in on the sample that commits it, and only the sample before it can
+        // say so (see TileStepDoor). A remote seen for the first time has nothing before it and keeps the old read.
+        bool clickDoor = false;
         if (remoteSamples.TryGetValue(netId, out RemoteSample prev))
         {
             if (prev.State.Equals(now)) return;
+            clickDoor = TileStepDoor.IsClickDoor(prev.State, prev.ClickDoor, now);
         }
         else
         {
@@ -560,16 +575,17 @@ public sealed partial class TileWorldClient
             // despawned anything would be mutating the world mid iteration.
             enteredRemotes.Add(netId);
         }
-        remoteSamples[netId] = new RemoteSample(now, sampleTime);
+        remoteSamples[netId] = new RemoteSample(now, sampleTime, clickDoor);
     }
 
     /// <summary>
     /// One remote's drawing state. <paramref name="State"/> is the replicated state verbatim, which is what
     /// <see cref="TilePresenter.Pose(in TileMoveState, float)"/> is handed: the tile the remote is committed to and the one its body is
     /// still walking out of. <paramref name="At"/> is the render-timeline instant that state was first seen at,
-    /// which is what the fraction of a tick since then is measured from.
+    /// which is what the fraction of a tick since then is measured from. <paramref name="ClickDoor"/> is whether
+    /// the step in flight began from a standing body, which the presenter re-bases so that step starts at zero.
     /// </summary>
-    readonly record struct RemoteSample(TileMoveState State, double At);
+    readonly record struct RemoteSample(TileMoveState State, double At, bool ClickDoor);
 
     /// <summary>
     /// One remote's freshest committed tile. <paramref name="Tile"/> is straight off the newest applied snapshot,

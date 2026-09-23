@@ -323,6 +323,25 @@ the offset decays off it, which is the whole reason a misprediction does not pop
 lands, with nothing here to reset. A remote first seen, or seen more than one Chebyshev step from where it was, is
 stamped afresh and drawn on its new tile. Nothing slides across the tiles in between.
 
+**A remote's clicked first step starts at zero, and only a remote needs that done.** The simulator spends a
+click's own tick on the step it starts, so a step begun from a STANDING body reads `StepTicks = 1` on the tick it
+commits, where a step begun on landing reads zero. Drawn at `StepTicks / StepTotal`, a remote's first step jumped
+`1 / StepTotal` of a tile in the frame it committed: a quarter tile walking and half a tile running at the default
+cadences, and a whole tile at a one-tick cadence (#732). One state cannot tell the two doors apart, because the
+second tick of a landing-door step reads one as well. The sample before it can. `TileWorldClient` reads the door
+as a remote's sample changes (`TileStepDoor`: the first step seen after the body stood on the tile it leaves,
+carried while that step is in flight) and keeps the answer on its own per-remote sample. A landing, a re-path
+while moving, an epoch advance and a remote first seen already stepping all read as not the click door.
+`TryGetRemotePose` and the step progress reads hand the answer to the presenter, which re-bases a flagged step to
+`clamp((StepTicks - 1 + extraTicks) / max(1, StepTotal - 1))`. The body starts on the tile it leaves, plays that
+one step over the ticks it actually has, N/(N-1) of the ordinary pace and the ordinary pace at one tick, and lands
+on the committed tile at the committed tick. Every other step, `Pose(state, extraTicks)` and `StepFraction` read
+bit for bit as before, the simulation, the wire and the server are untouched, and the presenter still holds
+nothing because the door is an argument. The LOCAL body needs none of it. `ClientPrediction.RenderedState` eases
+from the previous predicted position, which on the click tick is the standing tile, so the local body already
+starts a clicked step at zero and moves at the ordinary pace. That easing is the extra local tick the bound above
+already counts.
+
 **`StepFrom` is what the body is drawn between.** It rides the state and the wire because the simulator and the
 reconcile need it, and because it is what makes a remote's snapshot say where that body is going rather than where
 it has been. Round three left it on the wire and stopped drawing between the two tiles. This draws between them

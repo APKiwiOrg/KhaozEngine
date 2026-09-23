@@ -297,10 +297,10 @@ public sealed partial class TileDrawPriority
     /// are standing still. Claimed alongside <paramref name="localTile"/>.</param>
     /// <param name="others">Every other actor, the tile it is COMMITTED to, and how far through the step into
     /// that tile it is: 0 as the step commits, 1 once the body has come to rest there, which is also the value a
-    /// body that is not stepping at all carries. <see cref="TilePresenter.StepFraction"/> is that number for a
-    /// state you hold, and <see cref="TileWorldClient.CollectRemoteSteps"/> is it for a live client's whole
-    /// crowd. A FINITE value outside 0 through 1 is CLAMPED into it, so a negative one reads as 0, the start of a
-    /// step. Only a value that is not a number reads as 1, a body at rest.</param>
+    /// body that is not stepping at all carries. <see cref="TilePresenter.StepFraction(in TileMoveState, float)"/>
+    /// is that number for a state you hold, and <see cref="TileWorldClient.CollectRemoteSteps"/> is it for a live
+    /// client's whole crowd. A FINITE value outside 0 through 1 is CLAMPED into it, so a negative one reads as 0,
+    /// the start of a step. Only a value that is not a number reads as 1, a body at rest.</param>
     /// <param name="dt">Seconds since the last rebuild, for the fades that have no step to ride.</param>
     public void Rebuild(long localNetId, TileCoord localTile, TileCoord? localLeaving,
         ReadOnlySpan<(long NetId, TileCoord Tile, float StepProgress)> others, float dt)

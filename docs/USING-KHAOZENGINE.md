@@ -12451,8 +12451,22 @@ Every `GameApp` / `GameApp3D` game gets a frame-cost HUD **for free, on by defau
 wiring: the base app builds a `KhaozEngine.Gui.DiagnosticsHud`, samples FPS, drives the toggle, and draws the
 panel over the frame. It starts hidden, so the only cost until you press F1 is the always-on counter increments
 (a handful of adds per draw, no allocation). Sections shown: **Performance** (fps, frame ms avg/min/max, managed
-MB), **Draw stats** (the counters below), and - for a 3D app - **Pass timings** (per-pass CPU encode ms, enabled
-only while the panel is visible so it costs nothing when hidden).
+MB), **Draw stats** (the counters below), for a 3D app **Pass timings** (per-pass CPU encode ms, enabled
+only while the panel is visible so it costs nothing when hidden), and **Build**.
+
+**Build** is one row naming the running app and its version, so a tester reading the panel can say which binary
+they ran. It needs no wiring and no debug switch. The default label is the entry assembly's product name and the
+default value is its `AssemblyInformationalVersionAttribute`, with a `+` build metadata suffix (the SourceLink
+commit) dropped. A game that composes its own display version puts it there once at load:
+
+```csharp
+Diagnostics?.SetBuildIdentity(BuildConfig.Product, BuildConfig.DisplayVersion);   // e.g. "Grimhollow", "Codex (0.10.2)"
+```
+
+The identity is read once, on the first refresh that shows it, and never per frame. The name and version are
+shown verbatim as non-localizable tokens. The section title is the localized
+`DiagnosticsOverlayStrings.BuildTitle` (key `diagnostics.overlay.build.title`, English fallback "Build"). Add
+that key to the game's catalog to translate it.
 
 Opt out or rebind via `GameAppOptions`:
 
@@ -12483,7 +12497,7 @@ Diagnostics?.AddSection(() => new OverlaySection("World", new[]
 ```
 
 Do NOT reach past this to `Diagnostics?.Overlay.SetSectionsProvider(...)`. That installs a provider over the
-engine's, so Performance, Draw stats and Pass timings all disappear unless the game rebuilds them itself. That
+engine's, so Performance, Draw stats, Pass timings and Build all disappear unless the game rebuilds them itself. That
 trap is why a game ended up drawing a second always-on readout beside the engine HUD and computing fps twice.
 `ClearSections()` drops the added sections again.
 

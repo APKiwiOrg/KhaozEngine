@@ -14,11 +14,13 @@ namespace KhaozEngine.MapEdit;
 /// perspective view from an eye toward a target. Both build a throwaway <see cref="ViewportWorld"/> inside the
 /// only public headless render entry (<see cref="Render3DSnapshot"/>), draw the streamed terrain plus
 /// scatter, authored placements, spawn markers, and water at full visibility, and encode the captured RGBA to a
-/// PNG. The top-down view also paints the exclusion, region, and feature overlays. Nothing is written to disk: the
-/// verbs hand the PNG bytes straight back as an MCP image block. A session without asset manifests renders
-/// terrain-only (the world tolerates unknown kinds and simply loads no meshes). When no headless GPU device can be
-/// created the render fails with a precise <see cref="InvalidOperationException"/> the adapter turns into a clean
-/// client error.</summary>
+/// PNG. Where each streams, and how far, is its <see cref="RenderStreamPlan"/>: the perspective view streams around
+/// the eye, and the top-down view widens its ring to cover the whole requested rect up to
+/// <see cref="RenderStreamPlan.MaxCoverChunks"/>. The top-down view also paints the exclusion, region, and feature
+/// overlays. Nothing is written to disk: the verbs hand the PNG bytes straight back as an MCP image block. A
+/// session without asset manifests renders terrain-only (the world tolerates unknown kinds and simply loads no
+/// meshes). When no headless GPU device can be created the render fails with a precise
+/// <see cref="InvalidOperationException"/> the adapter turns into a clean client error.</summary>
 public sealed class RenderService(MapEditSession session)
 {
     // Straight-down would degenerate the LookAt (view up parallel to forward), so tip the top-down camera a
@@ -29,7 +31,7 @@ public sealed class RenderService(MapEditSession session)
     // frame never clips terrain relief at the rect edges.
     const float HeightPadding = 10f;
 
-    // The streaming focus is lifted this far (metres) above the sampled ground at the rect/bounds centre so the
+    // The top-down streaming focus is lifted this far (metres) above the sampled ground at the rect centre so the
     // primed ring is centred on the zone the camera looks at, not buried in the terrain.
     const float FocusLift = 2f;
 
@@ -45,7 +47,14 @@ public sealed class RenderService(MapEditSession session)
     /// flag. Throws <see cref="InvalidOperationException"/> when no document is open or no headless GPU device
     /// exists.</summary>
     public byte[] RenderTopDown(float? minX = null, float? minZ = null, float? maxX = null, float? maxZ = null,
-        int width = 1024, int height = 1024, bool includeOverlays = true, bool textured = true)
+        int width = 1024, int height = 1024, bool includeOverlays = true, bool textured = true) =>
+        RenderTopDownWithCoverage(minX, minZ, maxX, maxZ, width, height, includeOverlays, textured).Png;
+
+    /// <summary><see cref="RenderTopDown"/> plus whether the rect was wider than the streamed ring covers
+    /// (<see cref="TopDownRender.Capped"/>), so the verb can tell its client that distant placements and scatter are
+    /// missing from the image.</summary>
+    public TopDownRender RenderTopDownWithCoverage(float? minX = null, float? minZ = null, float? maxX = null,
+        float? maxZ = null, int width = 1024, int height = 1024, bool includeOverlays = true, bool textured = true)
     {
         return session.WithDocument((doc, registry) =>
         {
@@ -63,14 +72,16 @@ public sealed class RenderService(MapEditSession session)
             (float midHeight, float heightSpan) = VerticalFrame(field, rMinX, rMinZ, rMaxX, rMaxZ, cx, cz);
 
             var visibility = new EditorVisibility();
-            var focus = new Vector3(cx, field.SampleHeight(cx, cz) + FocusLift, cz);
+            RenderStreamPlan plan = RenderStreamPlan.ForTopDown(
+                new Vector3(cx, field.SampleHeight(cx, cz) + FocusLift, cz), rMinX, rMinZ, rMaxX, rMaxZ);
+            Vector3 focus = plan.Focus;
 
             ViewportWorld? world = null;
-            return CaptureToPng(width, height,
+            byte[] png = CaptureToPng(width, height,
                 setup: scene =>
                 {
-                    world = ConfigureWorld(scene, textured);
-                    world.Build(doc, registry);
+                    world = ConfigureWorld(scene, textured, plan);
+                    world.BuildAround(doc, registry, focus);
                     IsoCamera3D cam = scene.Camera;
                     cam.Elevation = TopDownElevation;
                     cam.Azimuth = 0f;
@@ -84,6 +95,9 @@ public sealed class RenderService(MapEditSession session)
                     world.Draw(focus, selectedPlacementId: null, highlightTint: default, visibility);
                     if (includeOverlays) DrawOverlays(scene, doc, field, visibility);
                 });
+            return new TopDownRender(png, plan.Capped,
+                plan.Capped ? RenderStreamPlan.MaxCoveredReach : MathF.Sqrt(
+                    (rMaxX - rMinX) * (rMaxX - rMinX) + (rMaxZ - rMinZ) * (rMaxZ - rMinZ)) * 0.5f);
         });
     }
 
@@ -108,20 +122,16 @@ public sealed class RenderService(MapEditSession session)
 
         return session.WithDocument((doc, registry) =>
         {
-            TerrainField field = session.Field();
-            MapBounds b = doc.Bounds;
-            float bx = (b.MinX + b.MaxX) * 0.5f;
-            float bz = (b.MinZ + b.MaxZ) * 0.5f;
-
             var visibility = new EditorVisibility();
-            var focus = new Vector3(bx, field.SampleHeight(bx, bz) + FocusLift, bz);
+            RenderStreamPlan plan = RenderStreamPlan.ForView(eye);
+            Vector3 focus = plan.Focus;
 
             ViewportWorld? world = null;
             return CaptureToPng(width, height,
                 setup: scene =>
                 {
-                    world = ConfigureWorld(scene, textured);
-                    world.Build(doc, registry);
+                    world = ConfigureWorld(scene, textured, plan);
+                    world.BuildAround(doc, registry, focus);
                     scene.CameraOverride = new FlyCamera3D
                     {
                         Position = eye,
@@ -146,6 +156,17 @@ public sealed class RenderService(MapEditSession session)
     /// device.</summary>
     public ViewportWorld ConfigureWorld(Scene3D scene, bool textured) =>
         new(scene, session.ManifestPaths) { TexturedPropsEnabled = () => textured };
+
+    /// <summary><see cref="ConfigureWorld(Scene3D, bool)"/> plus the render's <paramref name="plan"/>: its render
+    /// distance and companion cull, applied before <see cref="ViewportWorld.Build"/> like the textured flag, so the
+    /// plan's wiring is headless-testable too.</summary>
+    internal ViewportWorld ConfigureWorld(Scene3D scene, bool textured, RenderStreamPlan plan)
+    {
+        ViewportWorld world = ConfigureWorld(scene, textured);
+        world.RenderDistance = plan.RenderDistance;
+        world.CompanionDrawRadius = plan.CompanionDrawRadius;
+        return world;
+    }
 
     // Runs the headless capture and encodes it to a PNG, wrapping any capture failure in an
     // InvalidOperationException that names the selected backend, so the client learns which backend the render was

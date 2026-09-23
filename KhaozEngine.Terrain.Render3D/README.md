@@ -139,7 +139,10 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
     knob (fade band, LOD variants, `WithHlod`, `colliders`) applies unchanged. The query runs on the build
     thread. `MapTileResidency` (`KhaozEngine.MapDoc`) is one, so a game streaming a tiled map document writes
     `PropLayer.PlacementLayer(residency, meshes, drawRadius)` and no glue. A frozen-list layer is untouched by
-    any of this.
+    any of this. When the source changes but the field does not, `TerrainStreamer.RefreshPlacements(coord)`
+    reaches `Scene3DChunkSink.RefreshPlacements` (its `IChunkPlacementRefreshSink`), which re-queries only the
+    live-source layers and any companion layer they host, rebuilds their prop clusters (and an HLOD layer's
+    merged mesh) and the chunk's prop statics, and never re-meshes the terrain or touches its collider.
 - **`PropRenderer`** - `Queue` (against a raw `SceneInstances`, headless-testable) and the `Scene3D.DrawProps`
   extension instance every placement within a draw radius of a focus point, distance-culling the rest. Both
   overload the same way as `PropLayer`: a single-handle map queues one instance per in-range placement, and a

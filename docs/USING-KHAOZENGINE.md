@@ -6837,7 +6837,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.0.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.1.0" />
 ```
 
 ```csharp
@@ -8055,6 +8055,11 @@ to the residency instead and the sink queries it at every chunk build:
 var decor = PropLayer.PlacementLayer(residency, propMeshes, drawRadius: 220f);
 ```
 
+When a live source's content changes while the field stays the same (an editor moving one placement), refresh
+the chunk's props instead of rebuilding it. `streamer.RefreshPlacements(coord)` re-queries only the live-source
+layers of that loaded chunk through `Scene3DChunkSink`'s `IChunkPlacementRefreshSink` and leaves its terrain mesh
+and collider alone. `Invalidate` is still the call for a field change.
+
 **Every teleport, zone change and camera jump runs the teleport contract.** This is the step most likely to
 be missed, because without it the world looks right within a few frames and the failure only shows as a
 brief fall-through on arrival:
@@ -9103,13 +9108,25 @@ their order IS significant: the FIRST matching override wins a patch of ground, 
 feature's live fold position. See the `KhaozEngine.MapEditor` README's "Feature apply order" section for
 the undo/redo selection-following caveat.
 
-**Water.** `ViewportWorld.Draw` submits one `Scene3D.DrawWater` plane every frame, sized to the document
-bounds and derived live from `Terrain.WaterLevel`, so a level edit shows up immediately, ahead of the
-scatter rebuild it also triggers. The terrain root in the outline tree opens an inspector with all seven
-terrain scalars editable (WaterLevel, Seed, BiomeBlend, GentleFrequency, GentleAmplitude, DetailFrequency,
-DetailOctaves), each routed through the widened `EditTerrainCommand` (nullable per-field, only-set-fields
-apply, per-field merge coalesces a scrub), plus a read-only Biomes count. Biome bands are edited from the
-`Biomes` outline category, not the terrain inspector, see Procedural setup below.
+**Authored placements.** `ViewportWorld` streams authored placements through its `Scene3DChunkSink` as one live
+`PropLayer.PlacementLayer` over the document (see Frozen zones: placement layers), not a whole-document
+`DrawProps` list. They follow the same chunk residency and `RenderDistance.PropDrawRadius` cull as scatter,
+driven by the editor camera, so a placement outside the gameplay ring (four 60 m chunks around the camera) is
+not drawn until its chunk streams in. An edit, undo or redo refreshes only the props of the chunks whose
+placements changed (`TerrainStreamer.RefreshPlacements`), on the next frame, and never re-meshes their terrain.
+The selected placement is drawn directly with the highlight tint, so a gizmo drag touches no chunk. The MapEdit
+tool's `render_view` streams around its eye, and `render_topdown` widens its ring to cover the requested rect
+(see the `KhaozEngine.MapEdit.Tool` README for the cap). See the `KhaozEngine.MapEditor` README's "Rebuild
+semantics" section.
+
+**Water.** `ViewportWorld.Draw` submits one `Scene3D.DrawWater` plane every frame, centred on the camera in XZ with a
+half-extent of `RenderDistance.OceanHalfExtent` (`ViewportWorld.BuildWaterPlane`), not sized to the document bounds, so
+its rim always sits past the far clip. Its height is derived live from `Terrain.WaterLevel`, so a level edit shows up
+immediately, ahead of the scatter rebuild it also triggers. The terrain root in the outline tree opens an inspector with
+all seven terrain scalars editable (WaterLevel, Seed, BiomeBlend, GentleFrequency, GentleAmplitude, DetailFrequency,
+DetailOctaves), each routed through the widened `EditTerrainCommand` (nullable per-field, only-set-fields apply,
+per-field merge coalesces a scrub), plus a read-only Biomes count. Biome bands are edited from the `Biomes` outline
+category, not the terrain inspector, see Procedural setup below.
 
 **Procedural setup.** The outline gains three more categories: `Biomes` (a sibling of `Terrain`), `Scatter
 Layers`, and `Companion Layers`, each ending in a `[+ add ...]` action node that appends a default element
@@ -13157,7 +13174,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.1.0" />
 ```
 
 ```csharp
@@ -13193,7 +13210,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.1.0" />
 ```
 
 ```csharp
@@ -13435,7 +13452,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.0.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.1.0" />
 ```
 
 ```csharp
@@ -17051,7 +17068,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.0.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.1.0" />
 </ItemGroup>
 ```
 

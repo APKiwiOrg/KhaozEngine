@@ -203,7 +203,8 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
             if (draw.Geometry == QueuedGeometry.GpuSkinned)
                 cl.SetGraphicsResourceSet(2, _skinning.PaletteSet,
                     (uint)draw.PaletteSlot * TargetOutlineSkinningStore.PaletteSlotBytes);
-            cl.SetVertexBuffer(0, draw.VertexBuffer);
+            cl.SetVertexBuffer(0, draw.VertexBuffer ?? throw new InvalidOperationException(
+                "outline draw has no prepared vertex buffer."));
             cl.SetIndexBuffer(draw.IndexBuffer, draw.IndexFormat);
             cl.DrawIndexed((uint)draw.IndexCount, 1, 0, draw.BaseVertex, 0);
         }
@@ -388,7 +389,7 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
 
     readonly record struct QueuedDraw(
         QueuedGeometry Geometry,
-        IGpuBuffer VertexBuffer,
+        IGpuBuffer? VertexBuffer,
         IGpuBuffer IndexBuffer,
         int IndexCount,
         GpuIndexFormat IndexFormat,

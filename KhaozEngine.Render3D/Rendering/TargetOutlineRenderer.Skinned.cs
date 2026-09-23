@@ -57,7 +57,7 @@ internal sealed partial class TargetOutlineRenderer
         for (int i = 0; i < sourceVertices.Length; i++)
             _cpuVertices.Add(SkinningMath.SkinVertex(sourceVertices[i], composedBones));
         WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, dissolveComplement, renderOrigin);
-        _queue.Add(new QueuedDraw(QueuedGeometry.CpuSkinned, indexBuffer, indexBuffer, indexCount,
+        _queue.Add(new QueuedDraw(QueuedGeometry.CpuSkinned, null, indexBuffer, indexCount,
             indexFormat, materialSet ?? _defaultMaterialSet, drawIndex, -1, baseVertex, 0, 0));
     }
 
@@ -104,6 +104,13 @@ internal sealed partial class TargetOutlineRenderer
                 if (draw.Geometry == QueuedGeometry.CpuSkinned)
                     _queue[i] = draw with { VertexBuffer = cpuVertexBuffer };
             }
+        }
+
+        foreach (QueuedDraw draw in _queue)
+        {
+            if (draw.Geometry == QueuedGeometry.CpuSkinned && draw.VertexBuffer is null)
+                throw new InvalidOperationException(
+                    "CPU-skinned outline vertices were not prepared before mask rendering.");
         }
     }
 

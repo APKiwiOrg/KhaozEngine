@@ -38,73 +38,86 @@ internal static class SqliteCatalogSchemaValidation
     /// </summary>
     /// <param name="connection">The held connection, already open and already bootstrapped.</param>
     /// <param name="mode">Whether an empty database may be created into.</param>
-    /// <exception cref="ContentAuthoringException">The schema is absent under ValidateOnly, carries a version this build does not support, or holds an object that does not match.</exception>
+    /// <exception cref="ContentAuthoringException">The schema is absent under ValidateOnly, carries a version this build does not support, holds an object that does not match, or does not read as a catalog.</exception>
+    /// <exception cref="SqliteException">SQLite failed for a reason that is not the schema, for example a lock held past the timeout.</exception>
     internal static void Initialize(SqliteConnection connection, ContentAuthoringSchemaMode mode)
     {
         ArgumentNullException.ThrowIfNull(connection);
 
+        IReadOnlyDictionary<string, string> actual = Read(() => ReadSchemaObjects(connection));
+        if (actual.Count == 0)
+        {
+            if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+            {
+                throw Mismatch("missing");
+            }
+
+            using (SqliteCommand create = connection.CreateCommand())
+            {
+                create.CommandText = SqliteCatalogSchema.Tables;
+                create.ExecuteNonQuery();
+            }
+
+            actual = Read(() => ReadSchemaObjects(connection));
+        }
+
+        long version = Read(() => ReadSchemaVersion(connection));
+        if (version == 1)
+        {
+            // The version 1 shape is checked BEFORE the migration runs, so a database that is version 1
+            // and something else besides is refused rather than half migrated. Under ValidateOnly the
+            // refusal names the migration, which is the one thing an operator can act on.
+            ValidateSchemaObjects(actual, SqliteCatalogSchema.VersionOneTables, 1);
+            if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+            {
+                throw Mismatch("at unsupported version '1'");
+            }
+
+            MigrateVersionOne(connection);
+            version = Read(() => ReadSchemaVersion(connection));
+        }
+
+        if (version != SqliteCatalogSchema.CurrentVersion)
+        {
+            throw Mismatch(FormattableString.Invariant($"at unsupported version '{version}'"));
+        }
+
+        // The objects are read HERE, after the version is settled and immediately before they are
+        // compared, so the two always describe one state of the file. Reusing the snapshot taken above
+        // would let a second host that migrated in between hand this one a version 1 view of the objects
+        // and a version 2 answer for the number, and it would refuse a correct database for a missing
+        // catalog_content_upgrade. Two replicas booting together is an ordinary deployment.
+        ValidateSchemaObjects(
+            Read(() => ReadSchemaObjects(connection)), SqliteCatalogSchema.Tables, SqliteCatalogSchema.CurrentVersion);
+
+        // The DDL declares every foreign key and SQLite enforces none of them unless this is on, so a
+        // database opened with it off would accept a row pointing at a version that does not exist.
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = "PRAGMA foreign_keys;";
+        if (Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture) != 1)
+        {
+            throw Mismatch("open with foreign key enforcement disabled");
+        }
+    }
+
+    /// <summary>
+    /// One read of the schema or its metadata, with a failure that describes the FILE turned into the refusal.
+    /// <para>
+    /// SQLite answers a missing table or column with <c>SQLITE_ERROR</c>, a damaged file with
+    /// <c>SQLITE_CORRUPT</c> and something that is not a database with <c>SQLITE_NOTADB</c>, and those are what
+    /// "unreadable, apply the migration" is true of. A lock, a full disk, an I/O error or a connection in the
+    /// wrong state is not, so it propagates as the provider's own exception. Only READS pass through here: the
+    /// create and the migration are writes, and a write that fails has said nothing about the schema.
+    /// </para>
+    /// </summary>
+    static T Read<T>(Func<T> read)
+    {
         try
         {
-            IReadOnlyDictionary<string, string> actual = ReadSchemaObjects(connection);
-            if (actual.Count == 0)
-            {
-                if (mode == ContentAuthoringSchemaMode.ValidateOnly)
-                {
-                    throw Mismatch("missing");
-                }
-
-                using (SqliteCommand create = connection.CreateCommand())
-                {
-                    create.CommandText = SqliteCatalogSchema.Tables;
-                    create.ExecuteNonQuery();
-                }
-
-                actual = ReadSchemaObjects(connection);
-            }
-
-            long version = ReadSchemaVersion(connection);
-            if (version == 1)
-            {
-                // The version 1 shape is checked BEFORE the migration runs, so a database that is version 1
-                // and something else besides is refused rather than half migrated. Under ValidateOnly the
-                // refusal names the migration, which is the one thing an operator can act on.
-                ValidateSchemaObjects(actual, SqliteCatalogSchema.VersionOneTables, 1);
-                if (mode == ContentAuthoringSchemaMode.ValidateOnly)
-                {
-                    throw Mismatch("at unsupported version '1'");
-                }
-
-                MigrateVersionOne(connection);
-                version = ReadSchemaVersion(connection);
-            }
-
-            if (version != SqliteCatalogSchema.CurrentVersion)
-            {
-                throw Mismatch(FormattableString.Invariant($"at unsupported version '{version}'"));
-            }
-
-            // The objects are read HERE, after the version is settled and immediately before they are
-            // compared, so the two always describe one state of the file. Reusing the snapshot taken above
-            // would let a second host that migrated in between hand this one a version 1 view of the objects
-            // and a version 2 answer for the number, and it would refuse a correct database for a missing
-            // catalog_content_upgrade. Two replicas booting together is an ordinary deployment.
-            ValidateSchemaObjects(
-                ReadSchemaObjects(connection), SqliteCatalogSchema.Tables, SqliteCatalogSchema.CurrentVersion);
-
-            // The DDL declares every foreign key and SQLite enforces none of them unless this is on, so a
-            // database opened with it off would accept a row pointing at a version that does not exist.
-            using SqliteCommand command = connection.CreateCommand();
-            command.CommandText = "PRAGMA foreign_keys;";
-            if (Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture) != 1)
-            {
-                throw Mismatch("open with foreign key enforcement disabled");
-            }
+            return read();
         }
-        catch (ContentAuthoringException)
-        {
-            throw;
-        }
-        catch (SqliteException exception)
+        catch (SqliteException exception) when (exception.SqliteErrorCode
+            is SQLitePCL.raw.SQLITE_ERROR or SQLitePCL.raw.SQLITE_CORRUPT or SQLitePCL.raw.SQLITE_NOTADB)
         {
             throw Mismatch("unreadable, so its metadata could not be checked", exception);
         }

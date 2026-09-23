@@ -1,8 +1,8 @@
 # KhaozEngine.Sqlite
 
 The shared SQLite store lifecycle. One type, `SqliteStoreConnection`: it holds an open
-`Microsoft.Data.Sqlite` connection, runs the store's bootstrap DDL once, serializes every command behind a
-lease, and disposes by clearing the provider's connection pool before closing the connection.
+`Microsoft.Data.Sqlite` connection that is never pooled, runs the store's bootstrap DDL once, serializes every
+command behind a lease, and closes the connection on dispose.
 
 ```csharp
 using KhaozEngine.Sqlite;
@@ -28,17 +28,30 @@ public sealed class AccountsStore : IDisposable
 }
 ```
 
-## Why the dispose is the point
+## Why the connection is never pooled
 
-`SqliteConnection.Dispose()` alone returns the native handle to the provider's connection pool instead of
-closing it, so the database file stays open for as long as the pool holds it. Windows then refuses to delete
-or exclusively open that file. POSIX unlinks it happily and hands the SAME live handle to the next store
-opened on that path, which quietly serves the deleted database. `SqliteConnection.ClearPool` before the
-dispose is the fix, and this package is where it lives, because the same line was copied wrong three times
-before it was extracted (`SqliteWorldStore`, `SqliteWalletStore`, and a consumer's own accounts store).
+The held connection opens with `Pooling` forced off, whatever the connection string says. A store holds its
+connection for its whole life, so the provider's pool has nothing to offer it, and a pooled connection is
+exposed to two failures.
 
-Clearing the pool cannot close a connection out from under a second live store on the same file: an in-use
-connection is not idle in the pool and is only disposed when its own owner releases it.
+The first is the file. `SqliteConnection.Dispose()` on a pooled connection returns the native handle to the
+pool instead of closing it, so the database file stays open for as long as the pool holds it. Windows then
+refuses to delete or exclusively open that file. POSIX unlinks it happily and hands the SAME live handle to
+the next store opened on that path, which quietly serves the deleted database. The same leak shipped three
+times before this package existed (`SqliteWorldStore`, `SqliteWalletStore`, and a consumer's own accounts
+store).
+
+The second is the provider's checkout. Microsoft.Data.Sqlite 10.0.9 marks a pooled connection active before
+it records its owner, outside the pool lock, so a concurrent open or pool clear on the same file can reclaim
+a live store's connection as leaked ([dotnet/efcore#39008](https://github.com/dotnet/efcore/issues/39008)).
+The reclaim either lends the handle to a second owner, which then runs statements on the same native
+connection ("cannot start a transaction within a transaction", or a rollback hook freed under a running
+ROLLBACK), or disposes it underneath the store (`ObjectDisposedException` on `SQLitePCL.sqlite3`). The pool
+clear that used to run on every dispose was one of those triggers, and so is any
+`SqliteConnection.ClearAllPools()` elsewhere in the process.
+
+A connection in no pool is in neither path. Disposing closes it, which releases the file, and touches no other
+connection on it.
 
 ## What it does not do
 

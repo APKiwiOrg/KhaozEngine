@@ -18460,7 +18460,7 @@ public sealed class AccountsStore : IDisposable
         return await cmd.ExecuteScalarAsync(ct) as byte[];
     }
 
-    public void Dispose() => db.Dispose();                       // clears the pool, then closes
+    public void Dispose() => db.Dispose();                       // closes the unpooled connection
 }
 ```
 

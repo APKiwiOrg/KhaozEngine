@@ -213,8 +213,8 @@ transaction as the block insert, which is what keeps the plain counter from walk
 ## Lifecycle
 
 The connection, the operation gate and the dispose are `KhaozEngine.Sqlite`'s `SqliteStoreConnection`, shared
-with every other SQLite store in the engine: one held connection, commands serialized behind a lease, and a
-dispose that clears the provider's connection pool before closing so the database file is genuinely released.
+with every other SQLite store in the engine: one held connection that is never pooled, commands serialized
+behind a lease, and a dispose that closes it so the database file is genuinely released.
 Dispose the store when you are done with it.
 
 The lease is not re-entrant, so no member holds one across a call back into the store. `Data Source=:memory:`

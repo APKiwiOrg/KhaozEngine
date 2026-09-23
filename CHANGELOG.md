@@ -56,6 +56,23 @@ keeps CPU skinning with one assignment. No call a game makes changes meaning. Th
   bakes exactly what it returns, and `From(..., BiomeId.Meadow, ...)` gives the untilted mix.
 - The map editor's biome band inspector no longer says ground tinting by biome is unwired.
 
+**Map editor exclusion and override drags.**
+
+- Exclusion and scatter-override edits re-serve props only, every frame
+  ([#771](https://github.com/APKiwiOrg/KhaozEngine/issues/771)). Those commands never change the terrain field, so
+  a bounded batch of them takes the new `ViewportWorld.RefreshLayerProps`: only the chunks the jitter-padded shape
+  bounds overlap re-serve their props, with no field rebuild, terrain re-mesh or authored re-snap. A gizmo drag
+  frame drops from about 11 ms to 0.4 ms on the showcase map and from 16 ms to 2.5 ms on a heavy synthetic zone.
+  After every drag frame, after the drag ends and after undo and redo, every loaded chunk matches a full rebuild,
+  which a test checks against an independent oracle.
+- `TerrainStreamer.RefreshProps(area)` and `IChunkPropRefreshSink` are new. `Scene3DChunkSink` re-serves every
+  prop layer of each loaded chunk in the rect exactly as a fresh build computes it and republishes clusters, HLOD
+  meshes and prop statics without touching terrain. Any other sink falls back to the in-place rebuild.
+- `Scene3DChunkSink.KeepsLayerShape(layers)` states the partial-refresh contract: only `Scatter` and `Companions`
+  configs may differ. `UpdateLayers` now re-runs the construction rules, so a bad companion host is refused rather
+  than failing in a later chunk build, and `ViewportWorld.PartialRebuild` with a layer refresh declines a list that
+  fails the test and falls back to the throttled full rebuild.
+
 **Container sync and the commit builder.**
 
 - `ItemContainerPageCodec.EncodeProjected(registry, viewerLevel, pageIndex, firstSlot, slotCount, contentVersion,

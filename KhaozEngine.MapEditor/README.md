@@ -916,7 +916,7 @@ make the other half of the guarantee: an exclusion or override command pads its 
 largest scatter jitter, because a candidate belongs to the chunk of its un-jittered cell centre while the shape
 test reads its jittered position. After every drag frame and after the drag ends, every loaded chunk therefore
 shows exactly what a full rebuild would. The full path tears down the sink + streamer, then
-rebuilds wholesale from the document, keeping the cached kit meshes and the splat material so a full rebuild
+rebuilds wholesale from the document (keeping the cached kit meshes and the splat material so a full rebuild
 does not re-decode every prop glTF from disk), then calls `EditorDocument.AcknowledgeWorldRebuild()`. The
 full path is throttled while a drag or draw gesture is live (`EditorToolController.IsDragging` / `IsDrawing`):
 it runs at most once per `MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the

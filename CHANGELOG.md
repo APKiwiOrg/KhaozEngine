@@ -202,6 +202,29 @@ repins, and the notes below say what each game changes when it does.
   [#720](https://github.com/APKiwiOrg/KhaozEngine/issues/720) happen only when a host drops into a mode several
   times slower than normal, which no local run reproduces, so the next one records the stacks that held the pool.
 
+**The map editor streams its authored placements.**
+
+- The editor viewport draws authored placements through a live `PropLayer.PlacementLayer`
+  (`AuthoredPlacementLayer`, an `IPlacementSource` over the document) rather than one unculled whole-document
+  `DrawProps` call every frame ([#290](https://github.com/APKiwiOrg/KhaozEngine/issues/290)). Placements follow
+  the streamed ring and `RenderDistance.PropDrawRadius` around the camera like scatter does, so a placement beyond
+  the gameplay ring (about 240 m) no longer draws. The editor loads no LOD or HLOD meshes, so there is no far
+  stand-in yet.
+- Picking follows the draw: a placement outside the gameplay ring or the prop cull is not clickable, except the
+  current selection, which always draws. `EditorToolController.PlacementDrawnAt` carries the rule.
+- `TerrainStreamer.RefreshPlacements(coord)` and `IChunkPlacementRefreshSink.RefreshPlacements(coord, handle)`
+  are new. `Scene3DChunkSink` re-serves only a loaded chunk's live-source placement layers and the companions they
+  host (prop instances, the HLOD merged mesh, prop colliders) at the chunk's own ring, and never re-meshes its
+  terrain. A sink without the interface falls back to `Invalidate`. An edit's chunk work drops from a median of
+  about 1.65 ms (p95 8 ms) to about 6.5 microseconds.
+- An execute, undo or redo refreshes only the props of the chunks whose placements changed, on the next frame. A
+  selection change touches at most two chunks and keeps document order. The selected placement draws with the
+  highlight tint outside the layer, so a gizmo drag refreshes no chunk.
+- `ke-mapedit`'s `render_view` streams around its eye rather than the document centre. `render_topdown` widens its
+  ring, prop cull and companion cull to cover the requested rect, capped at 24 chunks (a square up to about 1.9 km
+  is fully covered), and says in its reply when the cap cut placements and scatter beyond 1350 m.
+  `RenderService.RenderTopDownWithCoverage` and `TopDownRender` are new.
+
 **Tooling.**
 
 - `KhaozEngine.Showcase` has a "Drag & drop" tab in the 2D & GUI tour

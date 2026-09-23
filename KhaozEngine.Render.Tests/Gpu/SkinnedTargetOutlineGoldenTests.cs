@@ -15,7 +15,8 @@ public sealed class SkinnedTargetOutlineGoldenTests(SkinnedTargetOutlineScene sc
             gpuSkinning, SkinnedTargetOutlineScene.MixedPartCase.SkinnedBody);
         byte[] rigid = scene.CaptureMixedPart(
             gpuSkinning, SkinnedTargetOutlineScene.MixedPartCase.RigidBody);
-        byte[] outlined = scene.CaptureMixed(gpuSkinning, outlined: true);
+        byte[] unoutlined = scene.CaptureMixedGroup(gpuSkinning, outlined: false);
+        byte[] outlined = scene.CaptureMixedGroup(gpuSkinning, outlined: true);
         int seamPixels = 0;
         int internalRim = 0;
 
@@ -29,6 +30,7 @@ public sealed class SkinnedTargetOutlineGoldenTests(SkinnedTargetOutlineScene sc
             }
 
         Assert.True(seamPixels >= 20, $"mixed controls exposed only {seamPixels} interior overlap pixels");
+        Assert.Equal(0, SkinnedTargetOutlineScene.CountRim(unoutlined));
         Assert.Equal(0, internalRim);
         Assert.True(SkinnedTargetOutlineScene.CountRim(outlined) >= 80,
             "mixed target did not draw a substantial external rim");
@@ -96,6 +98,7 @@ public sealed class SkinnedTargetOutlineGoldenTests(SkinnedTargetOutlineScene sc
             gpuSkinning, SkinnedTargetOutlineScene.DissolveCase.PartialSceneDepthOutline);
         int changedBody = 0;
         int changedRim = 0;
+        int partialExternalRim = 0;
         int interiorRim = 0;
 
         for (int y = 0; y < SkinnedTargetOutlineScene.H; y++)
@@ -108,10 +111,15 @@ public sealed class SkinnedTargetOutlineGoldenTests(SkinnedTargetOutlineScene sc
                     != SkinnedTargetOutlineScene.IsRim(partialOutline, pixel)) changedRim++;
                 if (SkinnedTargetOutlineScene.IsRim(partialOutline, pixel)
                     && SkinnedTargetOutlineScene.IsErodedBody(solidBody, x, y, 3)) interiorRim++;
+                if (SkinnedTargetOutlineScene.IsRim(partialOutline, pixel)
+                    && !SkinnedTargetOutlineScene.IsErodedBody(solidBody, x, y, 3)) partialExternalRim++;
             }
 
         Assert.True(changedBody >= 100, $"partial dissolve changed only {changedBody} body pixels");
+        Assert.Equal(0, SkinnedTargetOutlineScene.CountRim(partialBody));
         Assert.True(changedRim >= 20, $"partial dissolve changed only {changedRim} external rim pixels");
+        Assert.True(partialExternalRim >= 40,
+            $"partial scene-depth outline drew only {partialExternalRim} external rim pixels");
         Assert.Equal(0, interiorRim);
     }
 
@@ -158,29 +166,35 @@ public sealed class SkinnedTargetOutlineGoldenTests(SkinnedTargetOutlineScene sc
         byte[] baseline = scene.CaptureCutout(gpuSkinning, outlined: false);
         byte[] outlined = scene.CaptureCutout(gpuSkinning, outlined: true);
         (int minX, int minY, int maxX, int maxY) = BodyBounds(baseline);
-        int width = maxX - minX + 1;
-        int height = maxY - minY + 1;
-        int holeBody = 0;
-        int holeRim = 0;
+        CutoutMetrics metrics = MeasureCutout(baseline, outlined, minX, minY, maxX, maxY);
 
-        for (int y = 0; y < SkinnedTargetOutlineScene.H; y++)
-            for (int x = 0; x < SkinnedTargetOutlineScene.W; x++)
-            {
-                int pixel = y * SkinnedTargetOutlineScene.W + x;
-                if (SkinnedTargetOutlineScene.IsRim(outlined, pixel))
-                    Assert.False(SkinnedTargetOutlineScene.IsBody(baseline, pixel),
-                        $"cutout outline covered opaque baseline texel {x},{y}");
+        Assert.True(metrics.BoundaryPixels >= 20,
+            $"baseline exposed only {metrics.BoundaryPixels} transparent hole-boundary pixels");
+        Assert.True(metrics.CenterPixels >= 20,
+            $"baseline exposed only {metrics.CenterPixels} well-inside transparent center pixels");
+        Assert.Equal(0, metrics.RimOverOpaqueBody);
+        Assert.True(metrics.BoundaryRim >= 20,
+            $"alpha-cutout hole boundary drew only {metrics.BoundaryRim} rim pixels");
+        Assert.Equal(0, metrics.CenterRim);
+    }
 
-                bool inHoleCentre = x >= minX + width * 35 / 100 && x <= maxX - width * 35 / 100
-                    && y >= minY + height * 35 / 100 && y <= maxY - height * 35 / 100;
-                if (inHoleCentre && SkinnedTargetOutlineScene.IsBody(baseline, pixel)) holeBody++;
-                bool insideOuterEdge = x >= minX + 8 && x <= maxX - 8
-                    && y >= minY + 8 && y <= maxY - 8;
-                if (insideOuterEdge && SkinnedTargetOutlineScene.IsRim(outlined, pixel)) holeRim++;
-            }
+    [GpuTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Cutout_metric_rejects_unrelated_rim_inside_the_transparent_center(bool gpuSkinning)
+    {
+        byte[] baseline = scene.CaptureCutout(gpuSkinning, outlined: false);
+        byte[] actual = scene.CaptureCutout(gpuSkinning, outlined: true);
+        (int minX, int minY, int maxX, int maxY) = BodyBounds(baseline);
+        byte[] falsePass = CutoutFalsePass(baseline, actual, minX, minY, maxX, maxY);
+        CutoutMetrics metrics = MeasureCutout(baseline, falsePass, minX, minY, maxX, maxY);
 
-        Assert.Equal(0, holeBody);
-        Assert.True(holeRim >= 20, $"alpha-cutout hole drew only {holeRim} rim pixels");
+        Assert.True(metrics.UnscopedInteriorRim >= 20,
+            "negative control did not satisfy the retired broad interior-rim count");
+        Assert.True(metrics.BoundaryRim < 20,
+            "negative control unexpectedly retained enough real hole-boundary rim");
+        Assert.True(metrics.CenterRim >= 20,
+            "negative control did not place unrelated rim in the transparent center");
     }
 
     [GpuFact]
@@ -238,4 +252,131 @@ public sealed class SkinnedTargetOutlineGoldenTests(SkinnedTargetOutlineScene sc
         int i = pixel * 4;
         return $"({pixels[i]},{pixels[i + 1]},{pixels[i + 2]},{pixels[i + 3]})";
     }
+
+    static CutoutMetrics MeasureCutout(
+        byte[] baseline,
+        byte[] outlined,
+        int minX,
+        int minY,
+        int maxX,
+        int maxY)
+    {
+        int boundaryPixels = 0;
+        int boundaryRim = 0;
+        int centerPixels = 0;
+        int centerRim = 0;
+        int rimOverOpaqueBody = 0;
+        int unscopedInteriorRim = 0;
+
+        for (int y = 0; y < SkinnedTargetOutlineScene.H; y++)
+            for (int x = 0; x < SkinnedTargetOutlineScene.W; x++)
+            {
+                int pixel = y * SkinnedTargetOutlineScene.W + x;
+                bool rim = SkinnedTargetOutlineScene.IsRim(outlined, pixel);
+                if (rim && SkinnedTargetOutlineScene.IsBody(baseline, pixel)) rimOverOpaqueBody++;
+                if (rim && IsInsideCutout(minX, minY, maxX, maxY, x, y)) unscopedInteriorRim++;
+                if (IsHoleBoundary(baseline, x, y, minX, minY, maxX, maxY))
+                {
+                    boundaryPixels++;
+                    if (rim) boundaryRim++;
+                }
+                if (IsHoleCenter(baseline, x, y, minX, minY, maxX, maxY))
+                {
+                    centerPixels++;
+                    if (rim) centerRim++;
+                }
+            }
+
+        return new CutoutMetrics(
+            boundaryPixels,
+            boundaryRim,
+            centerPixels,
+            centerRim,
+            rimOverOpaqueBody,
+            unscopedInteriorRim);
+    }
+
+    static byte[] CutoutFalsePass(
+        byte[] baseline,
+        byte[] actual,
+        int minX,
+        int minY,
+        int maxX,
+        int maxY)
+    {
+        byte[] falsePass = (byte[])actual.Clone();
+        int paintedCenter = 0;
+        for (int y = 0; y < SkinnedTargetOutlineScene.H; y++)
+            for (int x = 0; x < SkinnedTargetOutlineScene.W; x++)
+            {
+                int pixel = y * SkinnedTargetOutlineScene.W + x;
+                if (IsHoleBoundary(baseline, x, y, minX, minY, maxX, maxY))
+                    CopyPixel(baseline, falsePass, pixel);
+                if (paintedCenter >= 20
+                    || !IsHoleCenter(baseline, x, y, minX, minY, maxX, maxY)) continue;
+                SetRim(falsePass, pixel);
+                paintedCenter++;
+            }
+        return falsePass;
+    }
+
+    static bool IsHoleBoundary(
+        byte[] baseline,
+        int x,
+        int y,
+        int minX,
+        int minY,
+        int maxX,
+        int maxY) =>
+        IsInsideCutout(minX, minY, maxX, maxY, x, y)
+        && !SkinnedTargetOutlineScene.IsBody(baseline, y * SkinnedTargetOutlineScene.W + x)
+        && SkinnedTargetOutlineScene.HasBodyNear(baseline, x, y, 3);
+
+    static bool IsHoleCenter(
+        byte[] baseline,
+        int x,
+        int y,
+        int minX,
+        int minY,
+        int maxX,
+        int maxY) =>
+        IsInsideCutout(minX, minY, maxX, maxY, x, y)
+        && !SkinnedTargetOutlineScene.IsBody(baseline, y * SkinnedTargetOutlineScene.W + x)
+        && !SkinnedTargetOutlineScene.HasBodyNear(baseline, x, y, 8);
+
+    static bool IsInsideCutout(int minX, int minY, int maxX, int maxY, int x, int y)
+    {
+        int width = maxX - minX + 1;
+        int height = maxY - minY + 1;
+        return x >= minX + width / 5
+            && x <= maxX - width / 5
+            && y >= minY + height / 5
+            && y <= maxY - height / 5;
+    }
+
+    static void CopyPixel(byte[] source, byte[] destination, int pixel)
+    {
+        int i = pixel * 4;
+        destination[i] = source[i];
+        destination[i + 1] = source[i + 1];
+        destination[i + 2] = source[i + 2];
+        destination[i + 3] = source[i + 3];
+    }
+
+    static void SetRim(byte[] pixels, int pixel)
+    {
+        int i = pixel * 4;
+        pixels[i] = 255;
+        pixels[i + 1] = 0;
+        pixels[i + 2] = 0;
+        pixels[i + 3] = 255;
+    }
+
+    readonly record struct CutoutMetrics(
+        int BoundaryPixels,
+        int BoundaryRim,
+        int CenterPixels,
+        int CenterRim,
+        int RimOverOpaqueBody,
+        int UnscopedInteriorRim);
 }

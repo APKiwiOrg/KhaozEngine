@@ -111,6 +111,18 @@ public sealed class SkinnedTargetOutlineScene : IDisposable
             else DrawRigidBody(scene, HeldWorld);
         });
 
+    internal byte[] CaptureMixedGroup(bool gpuSkinning, bool outlined) =>
+        Capture(gpuSkinning, cutoutView: false, scene =>
+        {
+            DrawBody(scene, _bentPose!, PrimaryWorld);
+            DrawRigidBody(scene, HeldWorld);
+            if (!outlined) return;
+
+            MeshOutlineGroup mixed = scene.BeginMeshOutline(Rim, 2f);
+            scene.DrawSkinnedOutline(mixed, _tubeHandle, _bentPose!, PrimaryWorld);
+            scene.DrawMeshOutline(mixed, _boxHandle, HeldWorld);
+        });
+
     internal byte[] CapturePose(bool gpuSkinning, PoseCase poseCase) =>
         Capture(gpuSkinning, cutoutView: false, scene =>
         {

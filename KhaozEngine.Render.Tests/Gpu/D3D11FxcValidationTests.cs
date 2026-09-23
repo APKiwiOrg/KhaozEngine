@@ -148,6 +148,9 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         [InlineData("ShadowDepthDissolve")]
         [InlineData("ShadowDepthDissolveInverted")]
         [InlineData("SkinnedShadowDepth")]
+        [InlineData("ShadowDepthCutout")]
+        [InlineData("ShadowDepthCutoutInverted")]
+        [InlineData("SkinnedShadowDepthDissolve")]
         public void TheShadowVertexSink_KeepsTheEmittedInputSignatureGapFree(string programName)
         {
             ShippedGraphicsProgram program = Program(programName);
@@ -162,6 +165,33 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
                 + "every declared input with a 1e-30 weight so SPIRV-Cross cannot drop one. Removing it holes the "
                 + "signature, and a holed signature is what corrupted WARP so the main model and splat passes "
                 + "rendered no colour at all.");
+        }
+
+        /// <summary>
+        /// THE SAME RULE ON THE DEPTH FRAGMENTS THAT READ MORE THAN THE DEPTH (issues #15 and #387). The cutout
+        /// fragments read six interpolants and the inverted one has no use of its own for location 3, so without
+        /// its 1e-30 sink SPIRV-Cross would drop it and leave locations 4 and 5 above a hole. Every fragment input
+        /// must be gap-free from 0 and match a vertex output at the same index, as on the terrain pair below.
+        /// </summary>
+        [Theory]
+        [InlineData("ShadowDepthCutout")]
+        [InlineData("ShadowDepthCutoutInverted")]
+        [InlineData("SkinnedShadowDepthDissolve")]
+        public void TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(string programName)
+        {
+            ShippedGraphicsProgram program = Program(programName);
+            CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
+                program.VertexGlsl, program.FragmentGlsl, programName);
+
+            uint[] vertexOutputs = Semantics(pair.VertexSource, "SPIRV_Cross_Output");
+            uint[] fragmentInputs = Semantics(pair.FragmentSource, "SPIRV_Cross_Input");
+
+            Assert.NotEmpty(fragmentInputs);
+            AssertContiguousFromZero(fragmentInputs, programName + " fragment inputs",
+                "Every interpolant a shadow depth fragment declares must be read, with a 1e-30 sink where the "
+                + "fragment has no other use for it (ShaderSources.Shadow.cs), or FXC/WARP reads the ones above the "
+                + "hole as garbage.");
+            Assert.All(fragmentInputs, index => Assert.Contains(index, vertexOutputs));
         }
 
         /// <summary>

@@ -4,10 +4,13 @@ using System.Numerics;
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// Pure, GPU-free mirror of the water VERTEX shader's Gerstner swell: the wind-driven component generator, the
+    /// Pure, GPU-free mirror of the water shaders' Gerstner swell: the wind-driven component generator, the
     /// trochoidal displacement, its analytic normal, and the horizontal Jacobian that drives whitecap foam
-    /// (<c>WaterVert</c> in <see cref="ShaderSources"/> MUST mirror this exactly, the same contract
-    /// <see cref="WaterMath"/> has with <c>WaterFrag</c>). Documents the intended math and makes it
+    /// (<c>gerstnerEvaluate</c> in ShaderSources.WaterSwell.cs MUST mirror this exactly, the same contract
+    /// <see cref="WaterMath"/> has with <c>WaterFrag</c>). Both water stages run that one GLSL function:
+    /// <c>WaterVert</c> takes <see cref="Sample.Offset"/> and <see cref="Sample.Fold"/> per vertex, and
+    /// <c>WaterFrag</c> takes <see cref="Sample.Normal"/> per pixel at the fragment's still-water position, so
+    /// a coarse grid cannot facet the shading (#381). Documents the intended math and makes it
     /// headless-unit-testable. No GPU state, no allocations.
     /// <para>
     /// A Gerstner (trochoidal) wave moves each surface point on a circle rather than only up and down, so crests
@@ -22,8 +25,8 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>Largest component count the generator (and the mirrored GLSL loop) supports. The GLSL loop is
         /// bounded by this constant with an early break on the runtime count, which is the form every backend's
         /// cross-compiler handles without an unroll hazard. Raised from 6 to 8 in 14.26.0: a denser ladder makes
-        /// the near-field sea less regular, and the cost is one sin/cos pair per component per VERTEX, which is
-        /// cheap next to the per-pixel ripple spectrum.</summary>
+        /// the near-field sea less regular, and the cost is one sin/cos pair per component per VERTEX, plus the same
+        /// per PIXEL for the normal, which is still cheap next to the per-pixel ripple spectrum.</summary>
         public const int MaxComponents = 8;
 
         /// <summary>Deep-water gravity (m/s^2) for the dispersion relation below. A constant, not a knob: changing it
@@ -101,8 +104,8 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>
         /// Generate the swell's component stack from the compact wind-driven parameterization: one direction, one
         /// spread, one base wavelength, one total amplitude, one steepness, one speed scale, one seed. Mirrors the
-        /// GLSL generator in <c>WaterVert</c> exactly (same op order, same constants), so the CPU and the vertex
-        /// shader agree modulo float rounding.
+        /// GLSL generator <c>gerstnerComponent</c> both water stages share exactly (same op order, same constants),
+        /// so the CPU and the shaders agree modulo float rounding.
         /// <para>
         /// Nothing per-component is uploaded: the shader regenerates the identical stack from the same seven
         /// scalars. That keeps the UBO at two vec4s for the whole swell instead of one per component, and it means
@@ -168,8 +171,8 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>
         /// Evaluate the whole component stack at one still-water XZ position: the trochoidal offset, the analytic
-        /// normal of the displaced sheet, and the fold factor for whitecaps. Mirrors the GLSL loop in
-        /// <c>WaterVert</c> exactly.
+        /// normal of the displaced sheet, and the fold factor for whitecaps. Mirrors the GLSL
+        /// <c>gerstnerEvaluate</c> both water stages share exactly.
         /// <para>
         /// The fold factor is the determinant of the HORIZONTAL Jacobian of the displacement map (how much a unit
         /// patch of still water is squeezed or stretched by the horizontal pinch). It is 1 where the surface is

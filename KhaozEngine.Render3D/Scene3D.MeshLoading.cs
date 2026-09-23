@@ -7,14 +7,21 @@ namespace KhaozEngine.Render3D
     /// <summary>Rigid mesh upload and the outline-only normal stream built beside the ordinary model stream.</summary>
     public sealed partial class Scene3D
     {
+        // cutoutAlbedo is the MASK mesh's albedo texture (issue #15). With a positive alphaCutoff it gets a shadow
+        // cutout set, so the depth pass alpha-tests this mesh the way the colour pass does. Without either, none is
+        // built and the mesh keeps the depth-only shadow pipeline.
         MeshHandle LoadMeshInternal(GltfMesh mesh, IGpuResourceSet? material,
             IGpuResourceSet? outlineMaterial = null, int splatMaterial = -1,
-            float alphaCutoff = 0f, int tileGroundMaterial = -1, Vector3[]? outlineNormals = null)
+            float alphaCutoff = 0f, int tileGroundMaterial = -1, Vector3[]? outlineNormals = null,
+            IGpuTexture? cutoutAlbedo = null)
         {
             var f = _gd.Factory;
             IGpuBuffer? vb = null, outlineNormalVb = null, ib = null;
+            IGpuResourceSet? shadowCutout = null;
             try
             {
+                if (alphaCutoff > 0f && cutoutAlbedo is not null)
+                    shadowCutout = _model.ShadowMap.CreateCutoutMaterialSet(cutoutAlbedo);
                 outlineNormals ??= OutlineNormalBuilder.Build(mesh.Vertices, mesh.Indices32);
                 vb = f.CreateBuffer(new GpuBufferDescription(
                     (uint)(mesh.Vertices.Length * ModelVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
@@ -27,7 +34,7 @@ namespace KhaozEngine.Render3D
                 MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
                 int index = _slots.Alloc(out int generation);
                 var slot = new Mesh(vb, outlineNormalVb, ib, mesh.Indices32.Length, mesh.IndexFormat, in bounds,
-                    material, outlineMaterial, splatMaterial, alphaCutoff, tileGroundMaterial);
+                    material, outlineMaterial, splatMaterial, alphaCutoff, tileGroundMaterial, shadowCutout);
                 if (index < _meshes.Count) _meshes[index] = slot;
                 else _meshes.Add(slot);
                 return new MeshHandle(index, generation);
@@ -39,6 +46,7 @@ namespace KhaozEngine.Render3D
                 ib?.Dispose();
                 material?.Dispose();
                 outlineMaterial?.Dispose();
+                shadowCutout?.Dispose();
                 throw;
             }
         }

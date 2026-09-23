@@ -29,6 +29,19 @@ public static class HandshakeToken
     /// not something to hand the banned client.</summary>
     public const string BannedReason = "ke:banned";
 
+    /// <summary>The prefix of the content catalog door's version-mismatch refusal,
+    /// <c>ke:content-mismatch:&lt;serverVersion&gt;|&lt;serverHash&gt;|&lt;clientVersion&gt;|&lt;clientHash&gt;</c>.
+    /// Only the prefix lives here, as the one source of it: <c>KhaozEngine.Catalog.Netcode.ContentRefusal</c> builds
+    /// and strictly parses the whole token from it, and a client that only needs to know WHICH refusal it got
+    /// recognizes it by this prefix without referencing the catalog.</summary>
+    public const string ContentMismatchPrefix = "ke:content-mismatch:";
+
+    /// <summary>The prefix of the content catalog door's refusal for a client below the served version's minimum
+    /// client build, <c>ke:content-client-too-old:&lt;minimumClientBuild&gt;</c>. The same split as
+    /// <see cref="ContentMismatchPrefix"/>: the prefix here, the builder and the strict parser in
+    /// <c>KhaozEngine.Catalog.Netcode.ContentRefusal</c>.</summary>
+    public const string ContentClientTooOldPrefix = "ke:content-client-too-old:";
+
     /// <summary>Wraps <paramref name="innerToken"/> in one labelled layer.</summary>
     public static byte[] Wrap(string label, byte[]? innerToken)
     {

@@ -9,8 +9,8 @@ namespace KhaozEngine.Tests.Render3D
     /// <summary>
     /// Pure headless coverage for the water surface's Gerstner swell: the wind-driven component generator, the
     /// trochoidal displacement, its analytic normal, and the fold factor that drives whitecap foam. No GPU;
-    /// <see cref="GerstnerWaves"/> is the single source both this test and the GLSL <c>WaterVert</c> follow (see
-    /// the in-source mirror comment).
+    /// <see cref="GerstnerWaves"/> is the single source both this test and the GLSL swell block both water stages
+    /// share follow (see the in-source mirror comment).
     /// </summary>
     public class GerstnerWaveTests
     {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
@@ -34,8 +35,12 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Commands counted since the last <see cref="Clear"/>.</summary>
         public GpuCommandTally Tally { get; } = new();
 
+        /// <summary>Every pipeline bound since the last <see cref="Clear"/>, in bind order, so a test can assert
+        /// WHICH pipelines a pass selected as well as how many binds it issued.</summary>
+        public List<IGpuPipeline> PipelineBinds { get; } = new();
+
         /// <summary>Forget everything counted so far (call between frames to assert on ONE frame).</summary>
-        public void Clear() => Tally.Clear();
+        public void Clear() { Tally.Clear(); PipelineBinds.Clear(); }
 
         void Count(GpuCommandKind kind) => Tally.Add(kind);
 
@@ -51,7 +56,12 @@ namespace KhaozEngine.Tests.Gpu
             Inner.UpdateBuffer(b, offsetBytes, data);
         }
 
-        public void SetPipeline(IGpuPipeline p) { Count(GpuCommandKind.SetPipeline); Inner.SetPipeline(p); }
+        public void SetPipeline(IGpuPipeline p)
+        {
+            Count(GpuCommandKind.SetPipeline);
+            PipelineBinds.Add(p);
+            Inner.SetPipeline(p);
+        }
 
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)
         {

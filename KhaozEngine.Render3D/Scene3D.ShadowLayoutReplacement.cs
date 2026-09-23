@@ -64,7 +64,7 @@ public sealed partial class Scene3D
             if (_meshes[i] is not { MaterialSet: { } oldSet } mesh) continue;
             _meshes[i] = new Mesh(mesh.Vb, mesh.OutlineNormalVb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
                 in mesh.Bounds, replacementFor(oldSet), mesh.OutlineMaterialSet, mesh.SplatMaterial, mesh.AlphaCutoff,
-                mesh.TileGroundMaterial);
+                mesh.TileGroundMaterial, mesh.ShadowCutoutSet);
         }
 
         for (int i = 0; i < _skinnedMeshes.Count; i++)

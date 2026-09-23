@@ -68,8 +68,9 @@ namespace KhaozEngine.Render3D.Internal
         //
         //      The surface is a CPU-tessellated grid (WaterMath.GridResolution, laid out by
         //      WaterMath.BuildGridPositions with its vertices concentrated near the camera) displaced in the VERTEX
-        //      stage by a Gerstner swell, with three domain-warped scrolling ripple layers perturbing the normal
-        //      per pixel on top - or, under WaterWaveSource.FftOcean, by a Tessendorf FFT surface read out of the
+        //      stage by a Gerstner swell whose normal the FRAGMENT evaluates per pixel, with three
+        //      domain-warped scrolling ripple layers perturbing the normal per pixel on top - or, under
+        //      WaterWaveSource.FftOcean, by a Tessendorf FFT surface read out of the
         //      ocean map array (see ShaderSources.WaterFft). Two textures bound: the ocean map array and the
         //      resolved scene depth, IN THAT ORDER, and both stages sample the ocean first - the Metal
         //      first-sample-order rule, plus the harder constraint that each stage's resources must be a prefix of
@@ -100,14 +101,13 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>
         /// Water vertex stage: displaces the still-water grid by the Gerstner swell (or by the FFT cascades) and
-        /// hands the fragment the displaced world position, the swell's analytic normal, and its fold factor for
-        /// whitecaps.
+        /// hands the fragment the displaced world position, the swell's fold factor for whitecaps, and the
+        /// still-water position, where the fragment evaluates the swell's analytic normal per pixel.
         /// <para>
-        /// The component stack is REGENERATED here from the seven scalars in <c>SwellParams</c>/<c>SwellShape</c>
+        /// The component stack is REGENERATED from the seven scalars in <c>SwellParams</c>/<c>SwellShape</c>
         /// rather than uploaded per component, which is why the whole swell costs two vec4s of UBO instead of one
-        /// per wave. Mirrors <see cref="GerstnerWaves"/> exactly (same generator, same op order, same constants);
-        /// the loop is bounded by a compile-time constant with an early break on the runtime count, the form every
-        /// backend's cross-compiler handles without an unroll hazard.
+        /// per wave. The generator and both evaluators are ShaderSources.WaterSwell.cs, shared with the fragment, and
+        /// mirror <see cref="GerstnerWaves"/> exactly (same generator, same op order, same constants).
         /// </para>
         /// <para>
         /// <b>The tap loop.</b> Everything is evaluated once per TAP and summed by weight. On the camera-focused
@@ -123,27 +123,19 @@ namespace KhaozEngine.Render3D.Internal
         /// </para>
         /// </summary>
         static string VertSource(bool clipmap) => @"#version 450
-" + WaterShoreBindingsGlsl + WaterFftBindingsGlsl + WaterUboGlsl + WaterFftCommonGlsl + WaterShoreCommonGlsl + @"
+" + WaterShoreBindingsGlsl + WaterFftBindingsGlsl + WaterUboGlsl + WaterFftCommonGlsl + WaterShoreCommonGlsl
+  + WaterSwellCommonGlsl + @"
 layout(location=0) in vec3 Position;
 " + (clipmap ? @"layout(location=1) in vec2 Coarse;   // half the offset to the two COARSE neighbours; (0,0) = on their lattice
 layout(location=2) in float Cell;    // morphed sample spacing: what this vertex band-limits the cascades to
 layout(location=3) in float Morph;   // 0 = this ring's own surface, 1 = exactly the next ring out's
 " : "") + @"layout(location=0) out vec3 vWorldPos;
-layout(location=1) out vec3 vSwellNormal;
-layout(location=2) out float vFold;
-layout(location=3) out vec2 vRefXz;      // where this vertex samples the ocean maps: the STILL-water XZ, warped
-layout(location=4) out vec2 vFocusRot;   // the onshore-focus rotation as (cos, sin); (1, 0) when there is none
-
-const float KE_GRAVITY = 9.81;
-const float KE_LAMBDA_DECAY = 0.685;
-const float KE_TWO_PI = 6.28318531;
-const float KE_SEED_STRIDE = 1.61803399;
-const int   KE_MAX_COMPONENTS = 8;
+layout(location=1) out float vFold;
+layout(location=2) out vec2 vRefXz;      // the STILL-water XZ: where the fragment evaluates the swell's normal, and
+                                         // (warped) where the ocean maps are sampled
+layout(location=3) out vec2 vFocusRot;   // the onshore-focus rotation as (cos, sin); (1, 0) when there is none
 
 void main() {
-    float amplitude = SwellParams.x, wavelength = SwellParams.y;
-    float dirRad = SwellParams.z, spreadRad = SwellParams.w;
-    float steepness = SwellShape.x, speedScale = SwellShape.y, seed = SwellShape.w;
     float time = WaveParams.w;
 
 " + (clipmap ? @"    // The geomorph weights. A vertex on the coarse lattice has nowhere to blend TO positionally, so it
@@ -158,7 +150,6 @@ void main() {
     const float bandCell = 0.0;
 ") + @"
     vec3 p = vec3(0.0);
-    vec3 swellNormal = vec3(0.0);
     float fold = 0.0;
     // The ocean sampling frame. Accumulated out here so both branches leave the varyings written, and so the FFT
     // branch's values are the ones the fragment reads: the frame belongs to the still-water grid position, which
@@ -184,73 +175,24 @@ void main() {
         // space and only then reduced (see WaterClipmap.Build), so a render-origin rebase cannot re-quantize it.
         vec2 aXz = sxz + RenderOrigin.xz;
         vec3 tapPos = vec3(sxz.x, Position.y, sxz.y);
-        vec3 tapNormal = vec3(0.0, 1.0, 0.0);
         float tapFold = 0.0;
         vec2 tapRef = aXz;
         vec2 tapRot = vec2(1.0, 0.0);
 " + WaterShoreVertGlsl + @"
     // FFT ocean: the displacement is a texture lookup per cascade, and the normal + the fold both come out of the
-    // derivative map in the fragment, so the whole Gerstner block below is skipped rather than added to. The two
+    // derivative map in the fragment, so the Gerstner displacement below is skipped rather than added to. The two
     // sources are alternatives, never a sum - summing them would double-count the same sea twice over.
     if (FftParams.x > 0.5) {
 " + WaterFftVertGlsl + @"        tapPos += oceanDisp;
-    } else if (amplitude > 0.0 && wavelength > 0.0) {
-        int n = clamp(int(SwellShape.z + 0.5), 1, KE_MAX_COMPONENTS);
-        // Closed-form geometric sum (NOT an accumulated loop), matching GerstnerWaves.BuildComponents so the two
-        // round identically instead of drifting by however each happened to accumulate.
-        float lambdaSum = wavelength * (1.0 - pow(KE_LAMBDA_DECAY, float(n))) / (1.0 - KE_LAMBDA_DECAY);
-
-        vec3 offset = vec3(0.0);
-        float nx = 0.0, nz = 0.0, nyLoss = 0.0;   // analytic normal accumulators
-        float jxx = 0.0, jzz = 0.0, jxz = 0.0;    // horizontal Jacobian accumulators
-        for (int i = 0; i < KE_MAX_COMPONENTS; i++) {
-            if (i >= n) break;
-            float fi = n > 1 ? float(i) / float(n - 1) : 0.5;
-            float fan = fi * 2.0 - 1.0;
-            fan *= 0.55 + 0.45 * abs(fan);        // s-curve: cluster the middle, push the edges out
-            float angle = dirRad + spreadRad * fan;
-            float lambda = wavelength * pow(KE_LAMBDA_DECAY, float(i));
-            float k = KE_TWO_PI / lambda;
-            float a = amplitude * lambda / lambdaSum;
-            float omega = sqrt(KE_GRAVITY * k) * speedScale;
-            float q = a > 1e-6 ? steepness / (k * a * float(n)) : 0.0;
-            float ph = seed * float(i + 1) * KE_SEED_STRIDE;
-            vec2 d = vec2(cos(angle), sin(angle));
-
-            float phase = k * (d.x * aXz.x + d.y * aXz.y) - omega * time + ph;
-            float s = sin(phase), cs = cos(phase);
-
-            float qa = q * a;                      // horizontal orbital radius
-            offset.x += qa * d.x * cs;
-            offset.z += qa * d.y * cs;
-            offset.y += a * s;
-
-            float wa = k * a;                      // slope magnitude
-            nx += d.x * wa * cs;
-            nz += d.y * wa * cs;
-            nyLoss += q * wa * s;
-
-            float qka = q * k * a;                 // == steepness / n, by construction
-            jxx += qka * d.x * d.x * s;
-            jzz += qka * d.y * d.y * s;
-            jxz += qka * d.x * d.y * s;
-        }
-        tapPos += offset;
-
-        vec3 nv = vec3(-nx, 1.0 - nyLoss, -nz);
-        float nl = length(nv);
-        tapNormal = nl > 1e-8 ? nv / nl : vec3(0.0, 1.0, 0.0);
-
-        // Determinant of the horizontal Jacobian: 1 where undeformed, > 1 in stretched troughs, dropping toward 0
-        // at compressed crests. 1 - determinant is therefore a physical whitecap driver, and dividing by the
-        // steepness normalizes it so the foam coverage knob means the same thing at any steepness.
-        float jXX = 1.0 - jxx, jZZ = 1.0 - jzz, jXZ = -jxz;
-        float determinant = jXX * jZZ - jXZ * jXZ;
-        tapFold = max(0.0, 1.0 - determinant) / max(steepness, 1e-4);
+    } else {
+        // The swell's geometry and its whitecap fold. Its NORMAL is evaluated per pixel in the fragment at vRefXz,
+        // so the shading does not depend on how finely this grid samples the swell (#381, ShaderSources.WaterSwell.cs).
+        vec3 swellOffset, swellNormal;
+        gerstnerEvaluate(aXz, time, swellOffset, swellNormal, tapFold);
+        tapPos += swellOffset;
     }
 
         p += tapPos * tapWeight;
-        swellNormal += tapNormal * tapWeight;
         fold += tapFold * tapWeight;
         refXz += tapRef * tapWeight;
         focusRot += tapRot * tapWeight;
@@ -259,7 +201,6 @@ void main() {
 
     gl_Position = ViewProj * vec4(p, 1.0);
     vWorldPos = p;
-    vSwellNormal = swellNormal;
     vFold = fold;
     vRefXz = refXz;
     vFocusRot = focusRot;
@@ -267,29 +208,26 @@ void main() {
 
         /// <summary>
         /// Water fragment stage. Mirrors <see cref="WaterMath"/> (ripple normals, depth grading, reflection blend,
-        /// glint, foam, shore fade) and <see cref="SkyMath.ShadeDirection"/> (the reflected sky) exactly.
+        /// glint, foam, shore fade), <see cref="GerstnerWaves"/> (the swell's normal, per pixel) and
+        /// <see cref="SkyMath.ShadeDirection"/> (the reflected sky) exactly.
         /// </summary>
         public const string WaterFrag = @"#version 450
 " + WaterShoreBindingsGlsl + WaterFftBindingsGlsl + @"
 layout(set=0, binding=4) uniform texture2D DepthTex;   // .r = resolved scene linear depth (single-channel R32F)
 layout(set=0, binding=5) uniform sampler Samp;
-" + WaterUboGlsl + WaterFftCommonGlsl + WaterShoreCommonGlsl + @"
+" + WaterUboGlsl + WaterFftCommonGlsl + WaterShoreCommonGlsl + WaterSwellCommonGlsl + @"
 layout(location=0) in vec3 vWorldPos;
-layout(location=1) in vec3 vSwellNormal;
-layout(location=2) in float vFold;
-layout(location=3) in vec2 vRefXz;
-layout(location=4) in vec2 vFocusRot;
+layout(location=1) in float vFold;
+layout(location=2) in vec2 vRefXz;
+layout(location=3) in vec2 vFocusRot;
 layout(location=0) out vec4 oColor;
 
 const float KE_WHITECAP_SOFTNESS = 0.18;   // mirrors WaterMath.WhitecapSoftness
 const float KE_FFT_BREAKUP_SPAN = 0.5;     // mirrors WaterMath.FftBreakupSpan
-const float KE_TWO_PI = 6.28318531;
 const int   KE_MAX_RIPPLES = 12;           // mirrors RippleSpectrum.MaxComponents
-const int   KE_MAX_SWELL = 8;              // mirrors GerstnerWaves.MaxComponents
 const float KE_GOLDEN_ANGLE = 2.39996323;  // mirrors RippleSpectrum.GoldenAngle
 const float KE_PHASE_STRIDE = 4.74311;     // mirrors RippleSpectrum.PhaseStride
 const float KE_LEGACY_SLOPE_VARIANCE = 2.72317;   // mirrors RippleSpectrum.LegacySlopeVariance
-const float KE_LAMBDA_DECAY = 0.685;       // mirrors GerstnerWaves.LambdaDecay
 
 // Mirrors WaterMath.DomainWarp exactly: a slow, large-scale displacement of the sample position applied BEFORE the
 // ripple layers, so their pattern is bent over a distance several times their own wavelength. Its Jacobian is
@@ -522,6 +460,12 @@ void main() {
         N = slopeToNormal(oceanSlope.x, oceanSlope.y, 1.0);
         lostSlopeVariance = oceanLost;
     } else {
+    // The swell's normal, evaluated HERE at the still-water position rather than interpolated from the vertices, so
+    // a coarse grid (a clipmap's outer rings) cannot facet it (#381). Mirrors GerstnerWaves.Evaluate's Normal.
+    vec3 nSwell, swellOffset;
+    float swellFold;
+    gerstnerEvaluate(vRefXz, time, swellOffset, nSwell, swellFold);
+
     // Ripple spectrum, band-limited to this pixel. slope.xy is the surviving slope, slope.z the variance the
     // band-limit removed (handed to the glint lobe below rather than discarded).
     vec3 slope = waterSlope(wpAbsXz, time, waveScale, waveSpeed, warpStrength, detail,
@@ -551,7 +495,6 @@ void main() {
 
     // Shading normal: the attenuated swell normal with the ripple field's horizontal tilt added in.
     // Mirrors WaterMath.CombineNormals over the attenuated swell.
-    vec3 nSwell = normalize(vSwellNormal);
     vec3 nSum = vec3(nSwell.x * swellAtten + ripple.x, nSwell.y, nSwell.z * swellAtten + ripple.z);
     float nLen = length(nSum);
     N = nLen > 1e-8 ? nSum / nLen : vec3(0.0, 1.0, 0.0);

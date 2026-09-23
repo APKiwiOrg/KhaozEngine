@@ -39,7 +39,11 @@ public sealed class WorldClientConfig
     public bool AutoReconnect { get; init; } = true;
 
     /// <summary>Keep retrying even after a token rejection. Default false: a rejected token is terminal (it will not
-    /// fix itself), surfaced as <see cref="DisconnectReason.RejectedToken"/>.</summary>
+    /// fix itself), surfaced as <see cref="DisconnectReason.RejectedToken"/>. Only that reason follows this switch: the
+    /// typed refusals the same build can never clear (<see cref="DisconnectReason.IncompatibleVersion"/>,
+    /// <see cref="DisconnectReason.ContentMismatch"/>, <see cref="DisconnectReason.ContentVersionMismatch"/>,
+    /// <see cref="DisconnectReason.ContentClientTooOld"/> and <see cref="DisconnectReason.SignedInElsewhere"/>) stay
+    /// terminal whatever it says.</summary>
     public bool RetryOnReject { get; init; } = false;
 
     /// <summary>Backoff schedule for auto-reconnect.</summary>

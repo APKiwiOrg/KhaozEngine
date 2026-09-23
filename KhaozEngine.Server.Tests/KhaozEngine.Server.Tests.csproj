@@ -25,6 +25,9 @@
     <ProjectReference Include="../KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
     <ProjectReference Include="../KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj" />
     <ProjectReference Include="../KhaozEngine.Catalog.SqlServer/KhaozEngine.Catalog.SqlServer.csproj" />
+    <!-- The catalog content door, run against a WorldServer so the tests can prove a WorldClient types its two
+         refusals and a game still parses the kept token with ContentRefusal. NetWorld itself does not reference it. -->
+    <ProjectReference Include="../KhaozEngine.Catalog.Netcode/KhaozEngine.Catalog.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.Commerce/KhaozEngine.Commerce.csproj" />
     <ProjectReference Include="../KhaozEngine.Commerce.Sqlite/KhaozEngine.Commerce.Sqlite.csproj" />
     <ProjectReference Include="../KhaozEngine.Commerce.SqlServer/KhaozEngine.Commerce.SqlServer.csproj" />

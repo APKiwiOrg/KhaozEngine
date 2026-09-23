@@ -16839,7 +16839,7 @@ when genuinely cross-cutting. This is the standard, not a nicety - it's the reas
 the `AppWindow`/`InputState` seam. See `KhaozEngine.Render.Tests/Windowing` and `KhaozEngine.Gui.Tests/Gui`
 for the `InputState` builder patterns.
 
-### GPU test gate (`KhaozEngine.Gpu.TestKit`)
+### GPU test gate and golden helper (`KhaozEngine.Gpu.TestKit`)
 
 Reference `KhaozEngine.Gpu.TestKit` from a test project when GPU tests need the engine's standard run gate without
 taking an xUnit dependency from the helper package. `GpuTestGate.SkipReason()` returns null when the test should
@@ -16863,6 +16863,28 @@ public sealed class GameGpuFactAttribute : FactAttribute
     public GameGpuFactAttribute() => Skip = GpuTestGate.SkipReason();
 }
 ```
+
+`GoldenImage.Check(goldenDirectory, scene, rgba, width, height, tolerance)` takes an RGBA8 capture and uses
+`KhaozEngine.Imaging.GoldenGrid` to compare it with
+`<goldenDirectory>/<scene>.<actual-backend>.txt`. The suffix comes from the backend the cached headless probe
+actually created, with the canonical hyphenated token such as `vulkan-native`.
+
+The integer `tolerance` is in 8-bit per-channel units from 0 through 255. `GoldenImage` divides it by `255f` for
+the normalized `GoldenGrid` comparison and compares at the canonical serialized precision. `GoldenResult`
+reports `Pass`, `Rebaked`, an optional `SkipReason`, and `Detail`. A missing backend golden supplies the skip
+reason. A mismatch names the worst cell and R, G or B channel in `Detail`. Scene names are portable single-file
+names, and malformed lengths or non-finite reference cells fail with an actionable diagnostic.
+
+```csharp
+GoldenResult result = GoldenImage.Check(goldenDirectory, "inventory", rgba, width, height, tolerance: 15);
+
+// Send SkipReason through the test framework's skip mechanism when it is non-null.
+// Fail with Detail when Pass is false and SkipReason is null.
+```
+
+Set `KE_UPDATE_GOLDENS=1` to write the canonical golden instead of comparing. Only the exact value `1` enables a
+write. Every other value follows the normal compare or missing-golden path. A read, parse or write failure returns
+`Pass = false`, leaves `SkipReason` null, and includes the path plus the concrete failure in `Detail`.
 
 ### Localization coverage (`KhaozEngine.Localization.TestKit`)
 

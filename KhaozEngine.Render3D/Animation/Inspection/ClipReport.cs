@@ -25,6 +25,16 @@ namespace KhaozEngine.Render3D.Animation.Inspection
             for (int i = 0; i < positionNodes.Count; i++)
                 positionIndices[i] = skeleton.IndexOf(positionNodes[i]);
 
+            for (int phaseIndex = 0; phaseIndex < phases.Count; phaseIndex++)
+            {
+                float phase = phases[phaseIndex];
+                if (!float.IsFinite(phase) || phase < 0f || phase > 1f)
+                    throw new ArgumentOutOfRangeException(
+                        nameof(phases),
+                        phase,
+                        "Phases must be finite and in the closed range [0, 1].");
+            }
+
             var report = new StringBuilder("KhaozEngine ClipReport v1\n");
             var locals = new JointPose[skeleton.NodeCount];
             var probe = new PoseProbe(skeleton);
@@ -39,12 +49,6 @@ namespace KhaozEngine.Render3D.Animation.Inspection
                 for (int phaseIndex = 0; phaseIndex < phases.Count; phaseIndex++)
                 {
                     float phase = phases[phaseIndex];
-                    if (!float.IsFinite(phase) || phase < 0f || phase > 1f)
-                        throw new ArgumentOutOfRangeException(
-                            nameof(phases),
-                            phase,
-                            "Phases must be finite and in the closed range [0, 1].");
-
                     AnimationSampler.SampleInto(clip, skeleton, phase * clip.Duration, locals);
                     report.Append("phase\t").Append(Float(phase)).Append('\n');
                     AppendRotations(report, skeleton, locals);

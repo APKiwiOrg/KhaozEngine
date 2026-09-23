@@ -136,6 +136,30 @@ namespace KhaozEngine.Tests.Render3D.Animation.Inspection
         }
 
         [Fact]
+        public void Write_RejectsNonFinitePhaseWhenClipListIsEmpty()
+        {
+            var fixture = new InspectionFixture();
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => ClipReport.Write(
+                fixture.Skeleton,
+                Array.Empty<AnimationClip>(),
+                new[] { float.NaN },
+                Array.Empty<string>()));
+        }
+
+        [Fact]
+        public void Write_RejectsOutOfRangePhaseWhenClipListIsEmpty()
+        {
+            var fixture = new InspectionFixture();
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => ClipReport.Write(
+                fixture.Skeleton,
+                Array.Empty<AnimationClip>(),
+                new[] { 1.01f },
+                Array.Empty<string>()));
+        }
+
+        [Fact]
         public void Write_RejectsNonFiniteSampledRotationAndPosition()
         {
             var fixture = new InspectionFixture();

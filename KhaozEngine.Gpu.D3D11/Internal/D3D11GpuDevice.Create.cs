@@ -67,8 +67,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             using IDXGIFactory1 factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
             IReadOnlyList<D3D11AdapterInfo> adapters = D3D11DxgiQueries.DescribeAdaptersWindows(factory);
-            D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.FromEnvironment(), adapters, out string? adapterWarning);
+            D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(D3D11AdapterSelection.FromEnvironment(),
+                adapters, gpuPreferenceAvailable: false, out string? adapterWarning);
             if (adapterWarning != null) log.Warn(adapterWarning);
             log.Info(D3D11AdapterSelection.Describe(choice, adapters));
 

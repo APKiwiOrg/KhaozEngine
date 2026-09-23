@@ -447,6 +447,16 @@ consumer compiles and binds unchanged and a file importing both namespaces sees 
 - Hand the SAME instance to both, `new BanGateAuthenticator(tokenAuth, bans)` and `banStore: bans`, and the two can
   never disagree about who is banned. A tile server takes it as `TileWorldServerConfig.BanStore`.
 
+**One admin seam.** `IAdminControllable` (the live-admin surface: `ListOnline`, `Teleport`, `SetPosition`, `Kick`,
+`Broadcast` and the movement commitment pair) lives here on the same terms as the ban seam, with the three types it
+names: `PlayerRef`, `OnlinePlayer` and `MovementCommitmentRequest`. Their full names are still
+`KhaozEngine.NetWorld.*` and `KhaozEngine.NetWorld` type-forwards all four, so existing implementers and callers
+compile and bind unchanged. A head that never references `NetWorld` can implement it, which is what
+`KhaozEngine.TileWorld.Netcode`'s `TileWorldServer` does. `ServerAdmin`, the facade over it, stays in `NetWorld`.
+`MovementCommitmentRequest` validates its arguments without Locomotion, so its refusals are a restatement of
+`KhaozEngine.Locomotion.MovementCommitment`'s, held equal by `MovementCommitmentRequestParityTests` in
+`KhaozEngine.Server.Tests`.
+
 The three decorators are public and compose on their own when a head wants a different order, or only one of them.
 They forward both optional verified-claim companions. Version and world gates unwrap their own token layer before
 reading the inner display name or persistence key. The ban gate forwards the accepted inner token unchanged.

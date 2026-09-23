@@ -59,7 +59,8 @@ public sealed partial class TileWorldServer
     /// accumulator of its own, so a body that ran per CALL would drain a command into a cell on a frame the cell
     /// did not step, and the next call would overwrite it with the starvation neutral before any simulator saw it.
     /// Running the whole body per tick is what keeps a drain welded to the step it feeds.</para>
-    /// <para>The order inside one tick is the head's own systems, then drain ONE command per player into its owning
+    /// <para>The order inside one tick is the admin surface's queued commands (see <c>TileWorldServer.Admin.cs</c>),
+    /// then the head's own systems, then drain ONE command per player into its owning
     /// cell, then the actor step (every spawner ticks and every live actor's command and tag are written), then step
     /// every cell (which is where movement and the arrival facing happen), then authority handoff and border
     /// ghosting, then the post-movement hook, then the action queue, then combat, then serve every client its area
@@ -73,7 +74,8 @@ public sealed partial class TileWorldServer
     /// both bodies ended the tick. The serve comes after all of it, so a client sees the whole tick and never half
     /// of it. The one thing that follows the serve is the despawn a death owes an ACTOR, held back so the corpse is
     /// still in the world when each viewer's interest set is built and the blow that killed it therefore reaches
-    /// everyone watching the fight.</para>
+    /// everyone watching the fight. The admin surface's online snapshot is published last of all, so
+    /// <see cref="ListOnline"/> answers with the world the clients were just shown.</para>
     /// </summary>
     /// <param name="dt">Seconds elapsed since the last call. Negative is treated as zero.</param>
     public void Tick(float dt)
@@ -114,6 +116,10 @@ public sealed partial class TileWorldServer
         actorTraversalProfiles.Close();
         float dt = config.TickSeconds;
         foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();
+        // 0a. Whatever the admin surface queued from other threads since the last tick, ahead of the head's own
+        //     systems and ahead of the player index snapshot below, so a kick is out of the world before anything
+        //     iterates and a teleport ships in this tick's serve. See TileWorldServer.Admin.cs.
+        ApplyAdminCommands();
         OnBeforeTick?.Invoke(dt);
 
         // 0c. The entity target space, snapshotted ONCE. Everything for the rest of this tick resolves a net id to
@@ -234,6 +240,8 @@ public sealed partial class TileWorldServer
         //    once per tick for nothing.
         for (int i = 0; i < liveCells.Count; i++) liveCells[i].World.AdvanceTick();
         TickCount++;
+        // 7. The admin surface's online snapshot, the world the clients were just served.
+        PublishOnline();
     }
 
     // One viewer's slice of the tick's swings. The TARGET is what the interest set is asked about rather than the

@@ -471,7 +471,11 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
 
 ## Server administration (since 8.4.2)
 
-Both `WorldServer` and `ShardedWorldServer` implement **`IAdminControllable`**: `ListOnline()` returns the
+Both `WorldServer` and `ShardedWorldServer` implement **`IAdminControllable`**, and so does
+`KhaozEngine.TileWorld.Netcode`'s `TileWorldServer`, which is why the interface, `PlayerRef`, `OnlinePlayer` and
+`MovementCommitmentRequest` live in the `KhaozEngine.Netcode` assembly under these same `KhaozEngine.NetWorld` names.
+This package type-forwards all four, so existing code compiles and binds unchanged, and `ServerAdmin` and
+`MovementCommitmentResult` stay here. `ListOnline()` returns the
 connected players as a snapshot published once per tick. `Teleport(PlayerRef, Vector3)`, `Kick(PlayerRef, reason)`,
 and `Broadcast(text)` are queued and applied on the host thread between ticks, safe to call from another thread.
 The tick rebuilds the online snapshot into a reused buffer and republishes only when its content actually changed,
@@ -537,10 +541,10 @@ native run. `NewLine` is pinned to `"\n"`, matching `JsonDefaults.IndentedWrite`
 canonical LF on every OS rather than the platform newline (Windows previously persisted CRLF). Existing CRLF
 blobs still read fine and rewrite to LF the next time they are saved.
 
-The **`ServerAdmin`** facade composes an `IAdminControllable` server, an optional `IBanStore`, and an optional
-`IEnumerableWorldStore`: `BanAsync` persists and kicks if the account is online; `ListAccountsAsync(prefix)`
-materializes the account enumeration. Unwired capabilities throw `NotSupportedException` (feature-detect via
-`BansSupported` / `AccountsSupported`). A ban on a TOKENLESS connection's id (the `guest:` prefix) is refused
+The **`ServerAdmin`** facade composes an `IAdminControllable` server (any of the three heads), an optional
+`IBanStore`, and an optional `IEnumerableWorldStore`. `BanAsync` persists and kicks if the account is online, and
+`ListAccountsAsync(prefix)` materializes the account enumeration. Unwired capabilities throw
+`NotSupportedException` (feature-detect via `BansSupported` / `AccountsSupported`). A ban on a TOKENLESS connection's id (the `guest:` prefix) is refused
 with an `ArgumentException`: that id names a seat the allocator recycles, so the ban would land on whoever is
 seated there next while the player who earned it reconnects onto another slot. Kick the slot instead.
 

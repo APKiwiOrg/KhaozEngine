@@ -284,6 +284,53 @@ public sealed class TilePresenter
         PoseAt(new Vector2(footprint.X + (footprint.Width - 1) * 0.5f, footprint.Z + (footprint.Height - 1) * 0.5f),
             plane, facing);
 
+    /// <summary>
+    /// The inverse of <see cref="PoseAt(TileCoord, TileDirection)"/>: the tile whose span holds a world point, on the
+    /// plane whose drawn height at that tile's centre is nearest the point's. What a server-side tool handed a world
+    /// position snaps it with (<see cref="TileWorldServer.Teleport"/>), so a position read back off
+    /// <see cref="PoseAt(TileCoord, TileDirection)"/> lands on the tile it came from.
+    /// <para>PLANAR. Tile (x, z) spans x..x+1 and z..z+1 in tile units, so every point inside that span, its centre
+    /// included, answers that tile. The z negation is undone through <see cref="TileWorldSpace"/> here, which keeps
+    /// this the one file in the package that knows which way north is.</para>
+    /// <para>VERTICAL. Every plane below <paramref name="planeCount"/> is sampled at the tile centre, through
+    /// <see cref="Ground"/> when there is one and at the plane index times <see cref="PlaneHeight"/> when there is
+    /// not, and the nearest wins, the lower plane on a tie. So a point above the top plane snaps onto the top plane
+    /// rather than being refused, and a presenter whose planes all draw at one height (a zero
+    /// <see cref="PlaneHeight"/> and no ground) answers plane 0 whatever the height.</para>
+    /// </summary>
+    /// <param name="worldPosition">The point in world metres.</param>
+    /// <param name="planeCount">How many planes the world has, the candidates for the vertical snap.</param>
+    /// <param name="tile">The snapped tile, default when this returns false.</param>
+    /// <returns>False when a coordinate is not finite, when the tile would fall outside the <c>int</c> range, or when
+    /// <paramref name="planeCount"/> is below one.</returns>
+    public bool TryTileAt(Vector3 worldPosition, int planeCount, out TileCoord tile)
+    {
+        tile = default;
+        if (planeCount < 1 || !float.IsFinite(worldPosition.X) || !float.IsFinite(worldPosition.Y)
+            || !float.IsFinite(worldPosition.Z))
+            return false;
+        double tileX = Math.Floor((double)TileWorldSpace.TileX(worldPosition.X, TileSize));
+        double tileZ = Math.Floor((double)TileWorldSpace.TileZ(worldPosition.Z, TileSize));
+        if (!(tileX >= int.MinValue && tileX <= int.MaxValue && tileZ >= int.MinValue && tileZ <= int.MaxValue))
+            return false;
+        int x = (int)tileX, z = (int)tileZ;
+        // The same centred point Centre samples, so the height compared here is the height PoseAt drew.
+        float centreX = x + 0.5f, centreZ = z + 0.5f;
+        int nearest = 0;
+        float nearestGap = float.PositiveInfinity;
+        for (int plane = 0; plane < planeCount; plane++)
+        {
+            float gap = MathF.Abs(Height(centreX, centreZ, plane) - worldPosition.Y);
+            if (gap < nearestGap)
+            {
+                nearest = plane;
+                nearestGap = gap;
+            }
+        }
+        tile = new TileCoord(x, z, nearest);
+        return true;
+    }
+
     // A tile point as a world position on the tile CENTRE, which is the one place the half tile is added AND the
     // one place the ground is sampled. In TILE units, before TileWorldSpace, so the z half tile is negated with the
     // coordinate it belongs to rather than being added to a world metre and landing on the wrong side of the tile.

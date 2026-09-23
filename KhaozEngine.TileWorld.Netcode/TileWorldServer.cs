@@ -28,7 +28,8 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// surface, <c>TileWorldServer.Actions.cs</c> the pending-action resolution, <c>TileWorldServer.Actors.cs</c> the
 /// actor lifecycle and the <see cref="TileActorHost"/> this file constructs, and
 /// <c>TileWorldServer.Combat.cs</c> the hit pipeline and death. <c>TileWorldServer.Observability.cs</c> forwards the
-/// connection health counters.</para>
+/// connection health counters, and <c>TileWorldServer.Admin.cs</c> is the thread-safe admin surface
+/// (<c>IAdminControllable</c>) a <c>ServerAdmin</c> drives.</para>
 /// </summary>
 public sealed partial class TileWorldServer : IDisposable
 {

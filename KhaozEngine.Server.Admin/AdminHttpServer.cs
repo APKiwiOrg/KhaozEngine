@@ -74,9 +74,19 @@ public sealed class AdminHttpServer : IAsyncDisposable
 
         g.MapGet("/online", IResult () => Results.Json(admin.ListOnline()));
 
+        // A head may refuse a live command on the caller's thread, which is the operator naming something it cannot
+        // carry out (a tile head refuses a broadcast that is not a wire-sized reason token). That is a 400 carrying
+        // the reason, the same answer /ban gives, and not a 500 carrying a stack trace.
         g.MapPost("/teleport", IResult (TeleportRequest r) =>
         {
-            admin.Teleport(r.ToRef(), new Vector3(r.X, r.Y, r.Z));
+            try
+            {
+                admin.Teleport(r.ToRef(), new Vector3(r.X, r.Y, r.Z));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
             return Results.Accepted();
         });
 
@@ -88,7 +98,14 @@ public sealed class AdminHttpServer : IAsyncDisposable
 
         g.MapPost("/broadcast", IResult (BroadcastRequest r) =>
         {
-            admin.Broadcast(r.Text ?? string.Empty);
+            try
+            {
+                admin.Broadcast(r.Text ?? string.Empty);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
             return Results.Accepted();
         });
 

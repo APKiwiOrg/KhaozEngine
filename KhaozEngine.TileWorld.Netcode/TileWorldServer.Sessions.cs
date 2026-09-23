@@ -385,7 +385,7 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     /// <para>Idempotent: a second call while a drain is running is ignored rather than restarting the clock, so an
     /// operator who runs the command twice does not hand everyone a second grace period.</para>
     /// <para>When the grace is spent, the next <see cref="Tick"/> closes every remaining session through
-    /// <see cref="Kick"/>, so each player leaves by the ordinary path and a persistence layer gets the
+    /// <see cref="Kick(int, string)"/>, so each player leaves by the ordinary path and a persistence layer gets the
     /// <see cref="PlayerLeaving"/> it needs to file their final state. That close is the point
     /// <see cref="IsDrainComplete"/> turns true, and after it a new connection is told the reason and dropped
     /// rather than seated.</para>

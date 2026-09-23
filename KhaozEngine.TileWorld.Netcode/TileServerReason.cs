@@ -22,7 +22,9 @@ public static class TileServerReason
     /// out cleanly rather than discovering the shutdown as a dropped connection.</summary>
     public const string Draining = "ke:draining";
 
-    /// <summary>An operator closed this session with <see cref="TileWorldServer.Kick"/>. Distinct from a ban, which
-    /// is refused at the door by the connect gate and never reaches a notice frame.</summary>
+    /// <summary>An operator closed this session with <see cref="TileWorldServer.Kick(int, string)"/>, or with the
+    /// admin surface's <see cref="TileWorldServer.Kick(KhaozEngine.NetWorld.PlayerRef, string)"/> when it was handed
+    /// no reason that fits on the wire. Distinct from a ban, which is refused at the door by the connect gate and
+    /// never reaches a notice frame.</summary>
     public const string Kicked = "ke:kicked";
 }

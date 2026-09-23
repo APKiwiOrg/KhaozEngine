@@ -133,7 +133,7 @@ public sealed record TileWorldServerConfig
     /// none of those: an engine default here would be exactly the constant this design refuses to have.
     /// <para>While it runs, the body LINGERS: still stepped, still served to everyone in interest, still attackable,
     /// and only then persisted and drained through the ordinary leave path. That is what stops a losing fight being
-    /// escaped by pulling the plug. An operator <see cref="TileWorldServer.Kick"/> and a
+    /// escaped by pulling the plug. An operator <see cref="TileWorldServer.Kick(int, string)"/> and a
     /// <see cref="TileWorldServer.BeginDrain"/> both bypass it, because neither is the player's decision.</para>
     /// <para>A RECONNECT by the same account inside the window ends the lingering body rather than being refused or
     /// seated beside it, so one account never holds two live entities. The player comes back where they left, into
@@ -160,7 +160,7 @@ public sealed record TileWorldServerConfig
     /// admin surface writes to, so one store serves every door a game runs. The type is named
     /// <c>KhaozEngine.NetWorld.IBanStore</c> but lives in <c>KhaozEngine.Netcode</c>, so this package still never
     /// references <c>NetWorld</c>. A live session is NOT ended when its account is banned: pair the ban with
-    /// <see cref="TileWorldServer.Kick"/> for that.</summary>
+    /// <see cref="TileWorldServer.Kick(int, string)"/> for that.</summary>
     public KhaozEngine.NetWorld.IBanStore? BanStore { get; init; }
 
     /// <summary>Consulted in Admit for every command whose mode is <see cref="TileMoveMode.Run"/>, over the
@@ -178,6 +178,16 @@ public sealed record TileWorldServerConfig
     /// it down for every player, which is the engine refusing to swallow a game's bug rather than an
     /// oversight.</para></summary>
     public Func<int, bool>? CanRun { get; init; }
+
+    /// <summary>The tile-to-world mapping the server speaks wherever it deals in world metres rather than tiles,
+    /// which is the admin surface: <see cref="TileWorldServer.ListOnline"/> reports a player's committed tile as
+    /// <see cref="TilePresenter.PoseAt(TileCoord, TileDirection)"/> draws it, and <see cref="TileWorldServer.Teleport"/>
+    /// snaps a position back onto a tile and plane through <see cref="TilePresenter.TryTileAt"/>. Hand it the same
+    /// presenter the client draws with (<c>new TilePresenter(document)</c>), so an operator reads and types the
+    /// positions a player sees. Null, the default, is the client's own placeholder: one metre tiles and
+    /// <see cref="TileWorldDocument.DefaultPlaneHeight"/>, with no terrain. Read on the host thread only, so a
+    /// presenter over a <see cref="TileWorldDocument"/> is safe as long as the document is only edited there too.</summary>
+    public TilePresenter? Presenter { get; init; }
 
     /// <summary>What a second live session for one account does. Kicking the older one is the default because the
     /// alternative refuses the player who is actually at the keyboard.</summary>

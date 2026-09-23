@@ -301,13 +301,22 @@ ContentPublishResult published = await commit.PublishAsync(
     new ContentPublishRequest("admin-endpoint", "oid:8f2c", "autumn price pass", expectedBaseVersion: 12));
 ```
 
-**The ordering is the whole crash-safety property.** Step 9 writes every chunk file, the remap rule chunk,
-both manifest files and the version pointer to the pack store BEFORE the database transaction, at
-content-addressed names nothing references yet, so a crash there leaves inert bytes and the old version. A
-hash the store already holds is checked for with `ExistsAsync` and not rewritten, which is what makes a
-republish of an unchanged chunk free. The pointer goes last of the four, so a crash part way through leaves a
-version whose pointer is absent, which reads as a listing failure and skips the next sweep rather than
-authorising it to delete on a partial view.
+**The ordering is the whole crash-safety property.** Step 9 writes every chunk file, the remap rule chunk
+and both manifest files to the pack store BEFORE the database transaction, at content-addressed names nothing
+references yet, so a crash there leaves inert bytes and the old version. A hash the store already holds is
+checked for with `ExistsAsync` and not rewritten, which is what makes a republish of an unchanged chunk free.
+Two publishers may run step 9 at once, because every file it writes is named by its own content.
+
+**The version pointer is written inside step 10, not step 9.** `ContentPublishCommit` hands its pointer half to
+`CommitPublishAsync`, and the store writes the pointer as the last act before its transaction commits, once
+the version number is confirmed. Two publishers can prepare the same number from the same base, for example two
+replicas of different builds applying one upgrade, and a pointer written in step 9 let the one that went on to
+lose overwrite the committed version's pointer with manifests that never committed. The boot serves what that
+pointer names and the sweep keeps what it names, so that was content served that never committed and content
+deleted that did. Now a losing publisher is refused before it writes a pointer, and two publishers of one
+version never write it at once. A crash after the pointer write and before the commit leaves a pointer for a
+version that never committed, which keeps orphan files alive rather than deleting live ones, and the next
+attempt at that number overwrites it.
 
 The version POINTER at `versions/<n>` is the one object in a store not named by its own hash, and it is how a
 content-addressed store answers what a version contains once the authoring database is out of reach.
@@ -319,9 +328,10 @@ the publish rather than after the chunk files are already written.
 Step 10 is `IContentAuthoringStore.CommitPublishAsync`, ONE transaction and the only member that moves the
 active pointer. In order inside it: confirm the version number, insert the version row, apply every temporal
 row change, append every remap rule at the sequence above the highest, insert every chunk row one per side
-including the carried-forward ones, insert every audit row, delete the draft, then move the active pointer
-LAST. A reader that sees the new active version sees every row, rule, chunk and audit entry of it, because
-they committed together.
+including the carried-forward ones, insert every audit row, delete the draft, move the active pointer, then
+write the pack's version pointer through the `IPackVersionPointerStore` it was handed, or none when it was
+handed null. A reader that sees the new active version sees every row, rule, chunk and audit entry of it,
+because they committed together.
 
 The draft delete is scoped to `ContentPublishPlan.FrozenEdits`, the change set step 1 read. The freeze is
 what makes that the whole draft, so scoping it can only matter when the marker failed to hold, and that is

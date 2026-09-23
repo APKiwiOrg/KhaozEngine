@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -177,4 +178,54 @@ internal sealed class CrashSafetyHarness : IDisposable
         ContentPublishResult seeded = await Commit().PublishAsync(Request(0)).ConfigureAwait(false);
         Assert.Equal(1, seeded.VersionNumber);
     }
+}
+
+/// <summary>
+/// A pack store that dies INSIDE step 10: it writes the version pointer it was handed and then throws, which
+/// is a crash after the pointer write and before the transaction commits. Every other member forwards.
+/// </summary>
+internal sealed class PointerKillPackStore(FileSystemPackStore inner)
+    : IPackStore, IPackStorePruning, IPackVersionPointerStore
+{
+    /// <inheritdoc />
+    public Task<bool> ExistsAsync(string hash, CancellationToken cancellationToken = default)
+        => inner.ExistsAsync(hash, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<ReadOnlyMemory<byte>?> GetAsync(string hash, CancellationToken cancellationToken = default)
+        => inner.GetAsync(hash, cancellationToken);
+
+    /// <inheritdoc />
+    public Task PutAsync(string hash, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
+        => inner.PutAsync(hash, bytes, cancellationToken);
+
+    /// <inheritdoc />
+    public IAsyncEnumerable<string> ListAsync(int versionNumber, CancellationToken cancellationToken = default)
+        => inner.ListAsync(versionNumber, cancellationToken);
+
+    /// <inheritdoc />
+    public IAsyncEnumerable<string> EnumerateAsync(CancellationToken cancellationToken = default)
+        => inner.EnumerateAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> DeleteAsync(string hash, CancellationToken cancellationToken = default)
+        => inner.DeleteAsync(hash, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task PutVersionPointerAsync(
+        int versionNumber,
+        string serverManifestHash,
+        string clientManifestHash,
+        CancellationToken cancellationToken = default)
+    {
+        await inner.PutVersionPointerAsync(versionNumber, serverManifestHash, clientManifestHash, cancellationToken)
+            .ConfigureAwait(false);
+        throw new CrashProbeKill(ContentPublishStep.BeforeCommit);
+    }
+
+    /// <inheritdoc />
+    public Task<PackVersionPointer?> GetVersionPointerAsync(
+        int versionNumber,
+        CancellationToken cancellationToken = default)
+        => inner.GetVersionPointerAsync(versionNumber, cancellationToken);
 }

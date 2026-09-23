@@ -143,9 +143,10 @@ public class PublishCrashSafetyTests
 
     /// <summary>
     /// Spec 6.11's second pinned state: a kill between step 9 and step 10 leaves every file of the new version
-    /// in the pack AND its <c>versions/n</c> pointer, with nothing in the database referencing them and the
-    /// old version still active. The retried publish takes the SAME version number and OVERWRITES the stale
-    /// pointer.
+    /// in the pack with nothing in the database referencing them and the old version still active, and NO
+    /// <c>versions/n</c> pointer, because the pointer is written inside step 10. A kill INSIDE step 10, after
+    /// the pointer write and before the transaction commits, leaves a stale pointer for a version that never
+    /// committed. The retried publish takes the SAME version number and OVERWRITES it.
     /// <para>
     /// The retry publishes DIFFERENT content, so the overwrite is observable rather than a coincidence: a
     /// pointer that was never rewritten would still name the dead attempt's manifest.
@@ -154,7 +155,8 @@ public class PublishCrashSafetyTests
     [Theory]
     [InlineData(CrashStore.InMemory)]
     [InlineData(CrashStore.Sqlite)]
-    public async Task AKillBetweenTheFilesAndTheCommitLeavesAStalePointerTheRetryOverwrites(CrashStore kind)
+    public async Task AKillBeforeTheCommitLeavesNoPointerAndOneInsideItLeavesAStalePointerTheRetryOverwrites(
+        CrashStore kind)
     {
         using CrashSafetyHarness harness = await CrashSafetyHarness.StartAsync(kind);
         await harness.ApplyAsync(CrashSafetyHarness.Reprice());
@@ -167,6 +169,18 @@ public class PublishCrashSafetyTests
             }
         });
         await Assert.ThrowsAsync<CrashProbeKill>(() => killed.PublishAsync(CrashSafetyHarness.Request(1)));
+
+        // The files are there and the pointer is not: nothing has decided that this attempt is version 2.
+        Assert.Null(await harness.Pack.GetVersionPointerAsync(2));
+        Assert.Null(await harness.Store.GetVersionAsync(2));
+
+        // The kill inside the transaction, after the pointer write and before the commit.
+        var pointerKill = new PointerKillPackStore(harness.Pack);
+        var inside = new ContentPublishCommit(
+            harness.Store,
+            pointerKill,
+            new ContentPublisher(harness.Store, (IContentIdPersistence)harness.Store, harness.Registry));
+        await Assert.ThrowsAsync<CrashProbeKill>(() => inside.PublishAsync(CrashSafetyHarness.Request(1)));
 
         // Every file of the attempt is there, the pointer included, and the database knows nothing about it.
         PackVersionPointer? stale = await harness.Pack.GetVersionPointerAsync(2);

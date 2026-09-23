@@ -285,7 +285,7 @@ namespace KhaozEngine.Render3D
         long PointCasterSignature(Vector3 lightPosAbsolute, float radius, float nearRadius,
             Vector3 exclusionMin, Vector3 exclusionMax)
         {
-            ulong hash = 1469598103934665603UL;   // FNV-1a 64, offset basis
+            ulong hash = PointSignatureSeed;
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.X));
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.Y));
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.Z));
@@ -308,11 +308,9 @@ namespace KhaozEngine.Render3D
             {
                 MeshHandle mesh = _runs[_pointCasterIndex.RunOf(slot)].Mesh;
                 ref ModelRenderer.InstanceData data = ref instances[slot];
-                MixPointSignature(ref hash, (ulong)(uint)mesh.Index);
-                MixPointSignature(ref hash, (ulong)(uint)mesh.Generation);
-                MixPointSignature(ref hash, (ulong)(uint)PointCasterKind(slot));
-                MixPointSignature(ref hash, MatrixBits(data.Model));
-                MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(data.Dissolve.X));
+                MixPointSignature(ref hash, SignatureWord((uint)mesh.Index, (uint)mesh.Generation));
+                MixPointSignature(ref hash, SignatureWord(FloatBits(data.Dissolve.X), (uint)PointCasterKind(slot)));
+                MixPointSignature(ref hash, data.Model);
             }
             return unchecked((long)hash);
         }
@@ -373,36 +371,47 @@ namespace KhaozEngine.Render3D
 
         static ulong Quantise(float metres) => unchecked((ulong)(long)MathF.Round(metres * 1000f));   // millimetres
 
-        static ulong MatrixBits(in Matrix4x4 m)
+        // xxHash64's published primes. Fixed constants rather than System.HashCode, whose seed changes with every
+        // process, so a signature, and so a rebuild count, is the same in every run.
+        const ulong PointSignatureSeed = 0x27D4EB2F165667C5UL;
+        const ulong PointSignaturePrimeA = 0x9E3779B185EBCA87UL;
+        const ulong PointSignaturePrimeB = 0xC2B2AE3D27D4EB4FUL;
+
+        /// <summary>
+        /// Fold one whole 64-bit word into a signature with xxHash64's round: a multiply, a rotate and a multiply.
+        /// The byte-wise FNV it replaced cost eight multiplies per word and was most of the point-shadow frame.
+        /// <para>
+        /// A ONE-WORD CHANGE CAN NEVER COLLIDE. For a fixed word the round is a bijection of the running value (an
+        /// add, a rotate and an odd multiply), and for a fixed running value it is injective in the word (the word is
+        /// multiplied by an odd prime), so a caster that moved, changed kind or changed mesh always changes its
+        /// light's signature. A change in how many casters touch the light is left to the 64-bit odds.
+        /// </para>
+        /// Internal for the mixer tests.
+        /// </summary>
+        internal static void MixPointSignature(ref ulong hash, ulong word)
         {
-            ulong hash = 1469598103934665603UL;
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M11));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M12));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M13));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M14));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M21));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M22));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M23));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M24));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M31));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M32));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M33));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M34));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M41));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M42));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M43));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M44));
-            return hash;
+            hash += word * PointSignaturePrimeB;
+            hash = BitOperations.RotateLeft(hash, 31);
+            hash *= PointSignaturePrimeA;
         }
 
-        static void MixPointSignature(ref ulong hash, ulong value)
+        /// <summary>Fold a world matrix in as eight words, two elements each in row order, by their raw bits, so a
+        /// caster that moves by one float step changes the signature.</summary>
+        internal static void MixPointSignature(ref ulong hash, in Matrix4x4 model)
         {
-            for (int b = 0; b < 8; b++)
-            {
-                hash ^= (value >> (b * 8)) & 0xFF;
-                hash *= 1099511628211UL;   // FNV-1a 64, prime
-            }
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M11), FloatBits(model.M12)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M13), FloatBits(model.M14)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M21), FloatBits(model.M22)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M23), FloatBits(model.M24)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M31), FloatBits(model.M32)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M33), FloatBits(model.M34)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M41), FloatBits(model.M42)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M43), FloatBits(model.M44)));
         }
+
+        static ulong SignatureWord(uint low, uint high) => low | (ulong)high << 32;
+
+        static uint FloatBits(float value) => (uint)BitConverter.SingleToInt32Bits(value);
 
         /// <summary>One queued light asking for a map, with everything the budget and the pass need: where it is,
         /// how far it reaches, how much of its own fixture it clears as a sphere and as a box, what kind of map it

@@ -1,6 +1,6 @@
 # Frame cost round
 
-Status: spec approved by the owner on 2026-09-23. Implementation plan written, two owner decisions pending (see Plan amendments).
+Status: spec approved by the owner on 2026-09-23. Implementation plan written and approved for subagent-driven execution. Both owner decisions in Plan amendments were accepted.
 Date: 2026-09-23.
 Issues: [#1110](https://github.com/APKiwiOrg/KhaozEngine/issues/1110),
 [#1111](https://github.com/APKiwiOrg/KhaozEngine/issues/1111),
@@ -381,8 +381,8 @@ Measured by rerunning the Grimhollow probe as interleaved runs against 20.0.0 an
 ## Plan amendments
 
 Reading the code for the implementation plan (`docs/superpowers/plans/2026-09-23-frame-cost-round.md`) corrected
-the details below. Where an amendment and an earlier section disagree, the amendment wins. Two are owner decisions
-and are marked.
+the details below. Where an amendment and an earlier section disagree, the amendment wins. Two were owner decisions
+and are marked with their outcome.
 
 Item 1.
 
@@ -400,7 +400,7 @@ Item 3.
   side planes never narrow the range of a light that reaches the near plane.
 - The tile range comes from signed distances to the 17 column and 10 row boundary planes, the same planes the
   clusters test, widened by 1e-3 of the frame's geometry scale.
-- **Owner decision.** Building planes only for reached clusters means a degenerate cluster no light reaches no
+- **Owner decision, accepted on 2026-09-23.** Building planes only for reached clusters means a degenerate cluster no light reaches no
   longer forces the whole frame to the full-list fallback. That happens only for a near plane below about 1 mm.
   Pixels are identical either way, because the fallback walks every light and a light outside its radius adds
   zero, but the diagnostics and the buffer contents differ for those cameras.
@@ -418,7 +418,7 @@ Item 4.
 
 Item 5.
 
-- **Owner decision.** `MetalAutoreleaseArchitectureTests` cannot pass unchanged. Its IL walk resolves a call
+- **Owner decision, accepted on 2026-09-23.** `MetalAutoreleaseArchitectureTests` cannot pass unchanged. Its IL walk resolves a call
   through `IMetalEncoderSink` or `IMetalRenderApi` to the bodiless interface member, so every seam member is a
   computed entry point that must open its own pool. The walk gains two edges: an interface call reaches every
   package implementation, and a constructed generic call reaches its definition. The rule text, its failure message

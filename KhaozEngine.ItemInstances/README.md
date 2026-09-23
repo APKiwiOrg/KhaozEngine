@@ -464,8 +464,18 @@ changed an id (`ApplyRemap`). Reading never does, a write that leaves the slot h
 never does, and seating a decoded page (`Seat`, `SeatStamp`) never does either, because that IS the page's
 stored state. `ApplyRemap` moves the stamp only when something changed and only upward, because a clean page
 claiming a version no stored byte carries would lose the claim on the next load anyway, and a page stamped
-NEWER than the active version is never rewound. `CopyDirtyPagesTo` is what the commit builder asks for: the
-dirty pages join whatever commit comes next rather than causing one.
+NEWER than the active version is never rewound. `CopyDirtyPagesTo` hands the dirty pages out, and they join
+whatever commit comes next rather than causing one.
+
+**`PagedItemContainer` is an `IPagedContainerWorkingCopy`**, the narrow door the commit builder in
+`KhaozEngine.ItemInstances.Journal` reads and writes a container through
+([#1045](https://github.com/APKiwiOrg/KhaozEngine/issues/1045)). It is ten members and no page object:
+`PageCount`, `Stackable`, `IsAtCapacity` and `SlotAt`, the three writes `SetSlotAt`, `TakeSlotAt` and
+`MarkClean`, and the page reads by INDEX, `IsPageDirty`, `PageContentVersion` and `CopyPageEntriesTo`. A page
+is read by index because an `ItemContainerPage` carries write members of its own, so handing one out would be a
+second door around the first. The container implements the three page reads explicitly, because `Pages`
+already answers them for a caller holding it. A host that shares its containers copy on write implements the
+interface itself, runs its ownership check inside the three writes, and opens the builder over that instead.
 
 ```csharp
 var bag = new PagedItemContainer(

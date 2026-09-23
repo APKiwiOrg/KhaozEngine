@@ -108,27 +108,33 @@ public sealed partial class ContainerCommitBuilder
         var writes = new List<JournalProjectionWrite>(ProjectionWriteCount);
         foreach (string name in _names)
         {
-            PagedItemContainer container = _containers[name];
-            int dirty = container.CopyDirtyPagesTo(_pages);
-            for (int index = 0; index < dirty; index++)
+            IPagedContainerWorkingCopy container = _containers[name];
+            for (int page = 0; page < container.PageCount; page++)
             {
-                ItemContainerPage page = _pages[index];
+                if (!container.IsPageDirty(page)) continue;
+
                 writes.Add(new JournalProjectionWrite(
                     StreamKey,
-                    ContainerSectionNames.Format(name, page.PageIndex),
+                    ContainerSectionNames.Format(name, page),
                     Options.ProjectionSchema,
                     Options.ProjectionSchemaVersion,
-                    EncodePage(page)));
+                    EncodePage(container, page)));
             }
         }
 
         return writes.ToArray();
     }
 
-    byte[] EncodePage(ItemContainerPage page)
+    /// <summary>The STORED page, through the raw encoder, because a projection section is read back by the
+    /// server and never by a viewer.</summary>
+    byte[] EncodePage(IPagedContainerWorkingCopy container, int pageIndex)
     {
-        int count = page.CopyEntriesTo(_entries);
+        int count = container.CopyPageEntriesTo(pageIndex, _entries);
         return ItemContainerPageCodec.Encode(
-            page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion, _entries.AsSpan(0, count));
+            pageIndex,
+            ItemContainerPage.FirstSlotOf(pageIndex),
+            ItemContainerPageCodec.ContainerPageSlots,
+            container.PageContentVersion(pageIndex),
+            _entries.AsSpan(0, count));
     }
 }

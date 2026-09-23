@@ -15973,6 +15973,17 @@ accounts (`PresentAtCommit`), a client originated operation arrived (`ClientOper
 are reasons an operation was REFUSED. `Close` records `Closed`, its own reason, so a batch you closed and took
 a commit from does not read afterwards as one the clock took away from you.
 
+The window needs a tick, and your journal layer may not own one. `Apply(operation)` applies on the batch's own
+tick, so a journal that never sees the server tick opens every batch at the default and uses that form:
+`TickBoundary` then never fires, and the batch is bounded by the other four closers and by your own `Close`.
+
+**The batch owns what it is opened over, from `Open` until `MarkCommitted`.** It holds each container by
+reference and writes through it on every `Apply`, through `IPagedContainerWorkingCopy` and nothing wider. The
+overload above hands it the `PagedItemContainer`s themselves. If you share containers copy on write, open over
+your own implementation instead, a `Dictionary<string, IPagedContainerWorkingCopy>`, and run your ownership
+check inside its three writes (`SetSlotAt`, `TakeSlotAt`, `MarkClean`). No page object crosses it, so every
+read stays shared and a batch copies only on the first write that joins.
+
 Whose identity it is decides what the normalized intent holds. A SERVER minted batch hashes the canonical
 ordered operation list. A CLIENT headed batch hashes the client operation's own encoding ALONE, under the
 client's own id, and the server work riding behind it contributes no intent bytes. That is what makes a

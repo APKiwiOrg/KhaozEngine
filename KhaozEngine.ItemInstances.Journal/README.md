@@ -190,6 +190,23 @@ refused for exactly that reason.
 **`Close` does not clear the dirty flags and `MarkCommitted` does.** A batch whose commit fails terminally
 leaves its pages owing the next commit a rewrite, which is the state the consumer's resync agrees with.
 
+**The batch owns what it is opened over, from `Open` until `MarkCommitted`.** It holds each container by
+reference and every `Apply` writes through it, so between those two calls the containers are the batch's and
+nothing else writes them. It reads and writes through `IPagedContainerWorkingCopy` and nothing wider: ten
+members, three of which write (`SetSlotAt`, `TakeSlotAt`, `MarkClean`), and no page object crosses it
+([#1045](https://github.com/APKiwiOrg/KhaozEngine/issues/1045)). `Open` has two overloads. Handed the
+`PagedItemContainer`s themselves, the batch holds their real write doors. Handed a host's own
+`IPagedContainerWorkingCopy`, it holds only what the host lets it: a host that shares its containers copy on
+write runs its ownership check inside the three writes and serves every read from the shared view, so opening
+a batch, measuring it and a refused `Apply` copy nothing, and the first joined write copies once.
+
+```csharp
+var batch = ContainerCommitBuilder.Open(
+    streamKey, actionKind, scope,
+    new Dictionary<string, IPagedContainerWorkingCopy> { ["bag"] = bagWorkingCopy, ["bank"] = bankWorkingCopy },
+    tick);
+```
+
 **A `Close` that THROWS leaves the batch where it was.** The batch is flagged closed and the window is closed
 last, after the commit is built and validated, so a throw on the way there leaves the batch still open with
 its pages still dirty, closable again once the caller has fixed what threw, rather than holding something that
@@ -260,6 +277,12 @@ answer, `Open` while it is still taking operations:
 `Closed` is the sixth member and the one that is NOT a closer: it is what `Close` records, so a batch the
 caller closed and took a commit from does not read afterwards as one the clock took away from it. The five
 above are reasons an operation was REFUSED, and a caller acts on them to decide where that operation goes.
+
+**The window needs a tick, and a host's journal layer may not have one.** The tick usually lives on the tile
+server, and the journal is often a separate owner that never sees it. `Open` takes the tick and the one
+argument `Apply` applies on the batch's own tick, so such a host either passes the server tick in from its
+owner, or opens every batch at the default and applies with the one argument form. `TickBoundary` then never
+fires, and the batch is bounded by the other four closers and by the caller's own `Close`.
 
 A refused `Apply` changes NOTHING: the working copy is untouched, no event is written, and the caller opens the
 next batch for that operation. An operation the working copy cannot PERFORM is a different thing and throws,

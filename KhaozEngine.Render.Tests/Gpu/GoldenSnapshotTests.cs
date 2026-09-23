@@ -1283,10 +1283,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// Skinned PBR-lite (gap E): a bent procedural tube drawn through the CPU-skinning path (pinned, since GPU
-        /// skinning is the default, and held to the GPU path by Render3DGpuSkinningGpuTests' parity rows) with a
-        /// tangent-space normal map + roughness gradient bound via <see cref="Scene3D.LoadSkinnedMesh(SkinnedGltfMesh,Scene3D.SurfaceMaps)"/>.
-        /// The tube's computed tangents ride the per-frame skin deform, so the TBN tracks the bent pose and the normal map perturbs the lit surface.
+        /// Skinned PBR-lite (gap E): a bent procedural tube drawn through the CPU-skinning path its grid was baked on (GPU skinning is the
+        /// default, and Render3DGpuSkinningGpuTests.NormalRoughnessSkinned_CpuVsGpu_Parity holds the GPU path to this one with the same maps)
+        /// with a tangent-space normal map + roughness gradient bound via <see cref="Scene3D.LoadSkinnedMesh(SkinnedGltfMesh,Scene3D.SurfaceMaps)"/>.
+        /// The tube's computed tangents ride the skin deform, so the TBN tracks the bent pose and the normal map perturbs the lit surface.
         /// </summary>
         [GpuFact]
         public void Golden3D_SkinnedNormalRoughness()

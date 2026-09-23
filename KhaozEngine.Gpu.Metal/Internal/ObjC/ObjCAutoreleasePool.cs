@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.Versioning;
 
 namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 {
@@ -28,6 +27,13 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// passing through a method that calls <see cref="Enter"/>. That is why the pool is a named type and not an
     /// inline push and pop pair: a walk can see a call, and it cannot see a discipline.
     /// </para>
+    /// <para>
+    /// IT IS A NO-OP OFF macOS SINCE #1114, the one member of this folder that answers on another platform. The
+    /// pool moved up to the <c>MetalCommandList</c> members that reach the encoder seams, and the device-free
+    /// tests on the Linux and Windows legs drive those members through fake sinks. There <see cref="Enter"/> hands
+    /// back a scope that pushed nothing and <see cref="Dispose"/> pops nothing, so neither loads libobjc. On macOS
+    /// it is the same push and pop as before.
+    /// </para>
     /// </summary>
     internal readonly ref struct ObjCAutoreleasePool
     {
@@ -38,22 +44,31 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// <summary>
         /// Push a pool and hand back the scope that pops it. Always used as
         /// <c>using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();</c> at the TOP of the body, so the pop
-        /// happens on every exit including a throw.
+        /// happens on every exit including a throw. Off macOS the scope is empty and costs a branch.
         /// </summary>
-        [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static ObjCAutoreleasePool Enter() => new(ObjCRuntime.AutoreleasePoolPush());
+        internal static ObjCAutoreleasePool Enter()
+        {
+            if (!OperatingSystem.IsMacOS()) return default;
+            return new(ObjCRuntime.AutoreleasePoolPush());
+        }
 
         /// <summary>
         /// Pop the pool, releasing everything autoreleased inside the scope.
         /// <para>
         /// Popping a pool pops every pool pushed after it too, which is the runtime's own behaviour and is why
         /// the <c>ref struct</c> above matters: a scope that escaped its frame and popped late would drain
-        /// objects a caller further up is still using.
+        /// objects a caller further up is still using. An empty scope pops nothing, which is also what keeps a
+        /// <c>default</c> scope from ever reaching <c>objc_autoreleasePoolPop</c> with nil.
         /// </para>
         /// </summary>
-        [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public void Dispose() => ObjCRuntime.AutoreleasePoolPop(_pool);
+        public void Dispose()
+        {
+            if (!OperatingSystem.IsMacOS()) return;
+            if (_pool == IntPtr.Zero) return;
+
+            ObjCRuntime.AutoreleasePoolPop(_pool);
+        }
     }
 }

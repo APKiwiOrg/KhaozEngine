@@ -23,10 +23,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <see cref="IMetalRenderApi"/>, so constructing one per list would box one per list to describe a value
     /// that cannot differ.</para>
     ///
-    /// <para><b>EVERY BODY OPENS AN AUTORELEASE POOL (M-N5).</b> <c>+renderPassDescriptor</c> and every
-    /// attachment slot it vends are autoreleased objects, and a pass built inside a frame loop with no pool
-    /// accumulates all of them until something else drains. The descriptor's OWN lifetime is not what the pool
-    /// covers: it is retained explicitly, because it has to outlive this call and reach the encoder's begin.
+    /// <para><b>NO BODY OPENS AN AUTORELEASE POOL, AND EVERY CALLER HOLDS ONE (M-N5, #1114).</b>
+    /// <c>+renderPassDescriptor</c> and every attachment slot it vends are autoreleased objects, and they are
+    /// drained by the pool of the <c>MetalCommandList</c> member that opened the pass (a draw, a clear-only
+    /// <c>End</c>, a framebuffer change or a resolve). The descriptor's OWN lifetime is still not what that pool
+    /// covers: it stays retained explicitly, so its lifetime does not depend on where the caller's pool sits.
     /// </para>
     /// </summary>
     [SupportedOSPlatform("macos")]
@@ -44,8 +45,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public IntPtr CreateRenderPassDescriptor(ReadOnlySpan<MetalColourAttachment> colour,
             in MetalDepthAttachment depth)
         {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
             MTLRenderPassDescriptor descriptor = MTLRenderPassDescriptor.Create();
             if (descriptor.IsNull) return IntPtr.Zero;
 
@@ -88,8 +87,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public IntPtr CreateResolveDescriptor(IntPtr source, IntPtr destination)
         {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
             MTLRenderPassDescriptor descriptor = MTLRenderPassDescriptor.Create();
             if (descriptor.IsNull) return IntPtr.Zero;
 
@@ -128,8 +125,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void SetGraphicsState(IntPtr encoder, in MetalGraphicsStateBlock block)
         {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
             var target = new MTLRenderCommandEncoder(encoder);
             target.SetRenderPipelineState(new MTLRenderPipelineState(block.RenderState));
             target.SetCullMode(block.CullMode);
@@ -159,37 +154,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (descriptor == IntPtr.Zero) return;
 
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
             new MTLRenderPassDescriptor(descriptor).Release();
         }
 
         /// <inheritdoc/>
-        /// <remarks>
-        /// THE POOL IS HERE EVEN THOUGH <c>setViewports:count:</c> CREATES NO OBJECT, and the uniformity is the
-        /// point rather than an oversight. M-N5's rule is enforced by an IL walk with no allowlist
-        /// (<c>MetalAutoreleaseArchitectureTests</c>), so an entry point that reaches the interop layer opens a
-        /// pool, full stop. The alternative is a rule with exceptions, which means every reader of every new
-        /// selector has to decide whether THAT one autoreleases, and the incumbent's four-wrapped-sites-out-of-N
-        /// shape is exactly what that decision-per-call-site produces. A push and a pop is two C calls on a path
-        /// that runs once per framebuffer change.
-        /// </remarks>
+        /// <remarks>Once per framebuffer change or encoder boundary, under the caller's pool.</remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void SetViewport(IntPtr encoder, float x, float y, float width, float height,
             float minDepth, float maxDepth)
-        {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            new MTLRenderCommandEncoder(encoder).SetViewport(
+            => new MTLRenderCommandEncoder(encoder).SetViewport(
                 new MTLViewport(x, y, width, height, minDepth, maxDepth));
-        }
 
         /// <inheritdoc/>
-        /// <remarks>Pooled for <see cref="SetViewport"/>'s reason.</remarks>
+        /// <remarks>Under the caller's pool, like <see cref="SetViewport"/>.</remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void SetScissorRect(IntPtr encoder, uint x, uint y, uint width, uint height)
-        {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            new MTLRenderCommandEncoder(encoder).SetScissorRect(new MTLScissorRect(x, y, width, height));
-        }
+            => new MTLRenderCommandEncoder(encoder).SetScissorRect(new MTLScissorRect(x, y, width, height));
 
         // THE DEPTH AND STENCIL PLANES, which Metal splits across two attachment slots over ONE texture where
         // the seam has one ClearDepthStencil carrying one float. The stencil slot is named only when the format

@@ -46,6 +46,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <see cref="MetalUncommittedBuffers"/> is blind to it because the list counted that buffer as released.
     /// Ending an encoder on a buffer nobody will commit is one native call, and it buys the slot back, a driver
     /// left in a clean state, and one code path instead of three.</para>
+    ///
+    /// <para><b>NO MEMBER OPENS AN AUTORELEASE POOL, AND THE CALLER ALWAYS HOLDS ONE (M-N5, #1114).</b> The pool
+    /// sits on the <c>MetalCommandList</c> member that caused the emission (the draw, the dispatch, the staged
+    /// upload, the framebuffer change, a clear, a transfer, <c>Begin</c>, <c>End</c> or <c>Dispose</c>), so one push
+    /// and one pop cover a pass opening, a whole bind flush and the draw after it. The encoders these factories
+    /// hand back are retained before that pool drains, which is the paragraph above and unchanged.
+    /// <c>MetalAutoreleaseArchitectureTests</c> walks through this seam to prove every caller is pooled, and
+    /// <c>TheEncoderSeamsOpenNoPoolOfTheirOwn</c> keeps a per-call pool from coming back.</para>
     /// </summary>
     [SupportedOSPlatform("macos")]
     internal readonly struct MetalEncoderSink : IMetalEncoderSink
@@ -53,16 +61,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public IntPtr BeginRenderEncoder(IntPtr commandBuffer, IntPtr descriptor)
-        {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            return Retained(new MTLCommandBuffer(commandBuffer).RenderCommandEncoder(descriptor));
-        }
+            => Retained(new MTLCommandBuffer(commandBuffer).RenderCommandEncoder(descriptor));
 
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public IntPtr BeginBlitEncoder(IntPtr commandBuffer)
         {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
             // .Handle because a list holds its encoder across calls and every transition here is by raw pointer.
             // The typed MTLBlitCommandEncoder exists for the setup batch, which opens, copies and ends in one go.
             return Retained(new MTLCommandBuffer(commandBuffer).BlitCommandEncoder().Handle);
@@ -73,10 +77,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// barrier machinery behind it.</remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public IntPtr BeginComputeEncoder(IntPtr commandBuffer)
-        {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-            return Retained(new MTLCommandBuffer(commandBuffer).ComputeCommandEncoder(MTLDispatchType.Serial));
-        }
+            => Retained(new MTLCommandBuffer(commandBuffer).ComputeCommandEncoder(MTLDispatchType.Serial));
 
         /// <inheritdoc/>
         /// <remarks>The end AND the release, in that order: releasing an encoder that has not been ended would
@@ -87,7 +88,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         {
             if (encoder == IntPtr.Zero) return;
 
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
             new MTLCommandEncoder(encoder).EndEncoding();
             ObjCRuntime.ObjcRelease(encoder);
         }
@@ -104,8 +104,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void SetBuffers(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> buffers,
             ReadOnlySpan<nuint> offsets, uint firstIndex)
         {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
             if (stage == MetalShaderStage.Compute)
                 new MTLComputeCommandEncoder(encoder).SetBuffers(buffers, offsets, firstIndex);
             else
@@ -118,8 +116,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void SetTextures(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> textures,
             uint firstIndex)
         {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
             if (stage == MetalShaderStage.Compute)
                 new MTLComputeCommandEncoder(encoder).SetTextures(textures, firstIndex);
             else
@@ -132,8 +128,6 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void SetSamplerStates(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> samplers,
             uint firstIndex)
         {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
             if (stage == MetalShaderStage.Compute)
                 new MTLComputeCommandEncoder(encoder).SetSamplerStates(samplers, firstIndex);
             else
@@ -142,40 +136,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <inheritdoc/>
         /// <remarks>
-        /// THE HOTTEST MEMBER IN THIS TYPE, and it still opens a pool, because M-N5 is a rule without exceptions
-        /// and <see cref="MetalRenderApi"/>'s two setters already pay the same for the same reason. None of the
-        /// four setters here returns an autoreleased object, so the pool has nothing to drain: what it buys is
-        /// that <c>MetalAutoreleaseArchitectureTests</c> can state the rule as "no path reaches a message send
-        /// unpooled" with no exception list, and an exception list is the thing that rots.
-        /// <para>
-        /// AND THE COST IS MEASURED RATHER THAN ARGUED (https://github.com/APKiwiOrg/KhaozEngine/issues/600).
-        /// Measured on 2026-08-11, on an M2 Max, against a real <c>MTLRenderCommandEncoder</c>, in a Release
-        /// build with the Metal debug layer OFF, best of seven samples and stable across sample sizes of 20k
-        /// and 200k iterations: this member costs about 61 ns per call, and the same
-        /// <c>setBufferOffset:atIndex:</c> with no pool around it costs about 40 ns.
-        /// </para>
-        /// <para>
-        /// SO THE POOL COSTS 21 ns HERE, WHICH IS THE 61 MINUS THE 40 AND NOT THE 14 THE THIRD ROW REPORTS. The
-        /// pool pair measured standalone (a push and a pop with no message send between them) is about 14 ns.
-        /// In situ it is 21, because the pooled member is not the pair alone: it also carries its own
-        /// <c>NoInlining</c> frame and the <c>using</c> scope's disposal around the same send. The 14 is the
-        /// floor the pair costs anywhere, the 21 is what this member pays for having one, and the "roughly a
-        /// THIRD" below is 21 of 61. It is not the noise the issue guessed at either way.
-        /// </para>
-        /// <para>
-        /// AT THE SHADOW PASS'S OWN WORST SHAPE that is around 63 microseconds a frame, ASSUMING 3000
-        /// offsets-only rebinds in it: 3000 times 21 ns, against the thousands per frame section 6.3 names. A
-        /// fraction of a percent of a 60 Hz budget. Small and real, which is why nothing changes here yet: the
-        /// answer if it ever matters is structural (one pool per FLUSH), never an exclusion list. These are a
-        /// property of that machine and that build rather than of this member, so read them as the measurement
-        /// they were and take them again before quoting them.
-        /// </para>
+        /// THE HOTTEST MEMBER IN THIS TYPE, and since #1114 it opens no pool of its own.
+        /// https://github.com/APKiwiOrg/KhaozEngine/issues/600 measured it on 2026-08-11 (M2 Max, Release, debug
+        /// layer off, best of seven) at about 61 ns with a pool around the send and about 40 ns without, so the
+        /// pool was 21 ns of it, and recorded that the answer if that ever mattered was structural, one pool per
+        /// flush, never an exclusion list. Grimhollow's town frame is where it mattered: 13% of
+        /// <c>Scene3D.RenderInternal</c> was the pool pair. The pool now sits on the <c>MetalCommandList</c> member
+        /// that caused the flush, so a draw pays one pair however many argument-table writes precede it.
         /// </remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void SetBufferOffset(MetalShaderStage stage, IntPtr encoder, nuint offset, uint index)
         {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
             if (stage == MetalShaderStage.Compute)
                 new MTLComputeCommandEncoder(encoder).SetBufferOffset(offset, index);
             else
@@ -189,12 +160,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void Draw(IntPtr encoder, MTLPrimitiveType topology, uint vertexStart, uint vertexCount,
             uint instanceCount, uint baseInstance)
-        {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
-            new MTLRenderCommandEncoder(encoder).DrawPrimitives(
+            => new MTLRenderCommandEncoder(encoder).DrawPrimitives(
                 topology, vertexStart, vertexCount, instanceCount, baseInstance);
-        }
 
         /// <inheritdoc/>
         /// <remarks>THE ONE MEMBER IN THIS TYPE WHOSE ABI ROW 1's SPIKE DOES NOT COVER: two of its arguments
@@ -204,25 +171,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void DrawIndexed(IntPtr encoder, MTLPrimitiveType topology, uint indexCount, IntPtr indexBuffer,
             nuint indexBufferOffset, bool sixteenBitIndices, uint instanceCount, int baseVertex,
             uint baseInstance)
-        {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
-            new MTLRenderCommandEncoder(encoder).DrawIndexedPrimitives(
+            => new MTLRenderCommandEncoder(encoder).DrawIndexedPrimitives(
                 topology, indexCount, sixteenBitIndices ? MTLIndexType.UInt16 : MTLIndexType.UInt32,
                 new MTLBuffer(indexBuffer), indexBufferOffset, instanceCount, baseVertex, baseInstance);
-        }
 
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public void Dispatch(IntPtr encoder, uint groupCountX, uint groupCountY, uint groupCountZ,
             uint threadsPerGroupX, uint threadsPerGroupY, uint threadsPerGroupZ)
-        {
-            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
-
-            new MTLComputeCommandEncoder(encoder).DispatchThreadgroups(
+            => new MTLComputeCommandEncoder(encoder).DispatchThreadgroups(
                 new MTLSize(groupCountX, groupCountY, groupCountZ),
                 new MTLSize(threadsPerGroupX, threadsPerGroupY, threadsPerGroupZ));
-        }
 
         // The retain is what makes the encoder's lifetime this backend's rather than the caller's pool's. See the
         // class note: the alternative is a pool spanning a whole recording, which is the accumulation M-N5 exists

@@ -56,7 +56,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
             fixed (IntPtr* objects = buffers)
             fixed (nuint* offsetValues = offsets)
             {
-                ObjCMsgSend.SendVoidBuffersRange(Handle, ObjCRuntime.Sel("setBuffers:offsets:withRange:"),
+                ObjCMsgSend.SendVoidBuffersRange(Handle, Selectors.SetBuffers,
                     objects, offsetValues, new NSRange(firstIndex, (nuint)buffers.Length));
             }
         }
@@ -69,7 +69,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         {
             fixed (IntPtr* objects = textures)
             {
-                ObjCMsgSend.SendVoidObjectsRange(Handle, ObjCRuntime.Sel("setTextures:withRange:"), objects,
+                ObjCMsgSend.SendVoidObjectsRange(Handle, Selectors.SetTextures, objects,
                     new NSRange(firstIndex, (nuint)textures.Length));
             }
         }
@@ -82,7 +82,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         {
             fixed (IntPtr* objects = samplers)
             {
-                ObjCMsgSend.SendVoidObjectsRange(Handle, ObjCRuntime.Sel("setSamplerStates:withRange:"), objects,
+                ObjCMsgSend.SendVoidObjectsRange(Handle, Selectors.SetSamplerStates, objects,
                     new NSRange(firstIndex, (nuint)samplers.Length));
             }
         }
@@ -94,7 +94,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetBufferOffset(nuint offset, uint index)
-            => ObjCMsgSend.SendVoidNUIntNUInt(Handle, ObjCRuntime.Sel("setBufferOffset:atIndex:"), offset, index);
+            => ObjCMsgSend.SendVoidNUIntNUInt(Handle, Selectors.SetBufferOffset, offset, index);
 
         /// <summary><c>-setComputePipelineState:</c>, the compute half of the pipeline-state block. One call
         /// rather than the render encoder's five to eight, because a compute pipeline has no rasterizer state, no
@@ -102,7 +102,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void SetComputePipelineState(MTLComputePipelineState state)
-            => ObjCMsgSend.SendVoidPtr(Handle, ObjCRuntime.Sel("setComputePipelineState:"), state.Handle);
+            => ObjCMsgSend.SendVoidPtr(Handle, Selectors.SetComputePipelineState, state.Handle);
 
         /// <summary>
         /// <c>-dispatchThreadgroups:threadsPerThreadgroup:</c>.
@@ -121,8 +121,21 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void DispatchThreadgroups(MTLSize threadgroupsPerGrid, MTLSize threadsPerThreadgroup)
-            => ObjCMsgSend.SendVoidDispatchThreadgroups(Handle,
-                ObjCRuntime.Sel("dispatchThreadgroups:threadsPerThreadgroup:"),
+            => ObjCMsgSend.SendVoidDispatchThreadgroups(Handle, Selectors.DispatchThreadgroups,
                 threadgroupsPerGrid, threadsPerThreadgroup);
+
+        /// <summary>The compute encoder's selectors, resolved once per process (#1114), in a nested type for the
+        /// reason <see cref="MTLRenderCommandEncoder"/>'s own gives.</summary>
+        [SupportedOSPlatform("macos")]
+        static class Selectors
+        {
+            internal static readonly IntPtr SetBuffers = ObjCRuntime.Sel("setBuffers:offsets:withRange:");
+            internal static readonly IntPtr SetTextures = ObjCRuntime.Sel("setTextures:withRange:");
+            internal static readonly IntPtr SetSamplerStates = ObjCRuntime.Sel("setSamplerStates:withRange:");
+            internal static readonly IntPtr SetBufferOffset = ObjCRuntime.Sel("setBufferOffset:atIndex:");
+            internal static readonly IntPtr SetComputePipelineState = ObjCRuntime.Sel("setComputePipelineState:");
+            internal static readonly IntPtr DispatchThreadgroups =
+                ObjCRuntime.Sel("dispatchThreadgroups:threadsPerThreadgroup:");
+        }
     }
 }

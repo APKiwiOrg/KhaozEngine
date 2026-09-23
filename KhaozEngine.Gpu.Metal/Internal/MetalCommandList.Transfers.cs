@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -57,6 +58,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes,
             uint sizeInBytes)
         {
+            // M-N5's one pool for this member. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentNullException.ThrowIfNull(src);
             ArgumentNullException.ThrowIfNull(dst);
@@ -95,6 +99,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </remarks>
         public void CopyTexture(IGpuTexture src, IGpuTexture dst)
         {
+            // M-N5's one pool for this member. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             (MetalTexture source, MetalTexture destination) = BeginTextureCopy(src, dst, "Copying a texture");
             RequireMatchingShape(source, destination);
 
@@ -129,6 +136,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst,
             uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
         {
+            // M-N5's one pool for this member. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             (MetalTexture source, MetalTexture destination) =
                 BeginTextureCopy(src, dst, "Copying a texture subresource");
 
@@ -152,6 +162,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </remarks>
         public void GenerateMipmaps(IGpuTexture texture)
         {
+            // M-N5's one pool for this member. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentNullException.ThrowIfNull(texture);
 
@@ -234,6 +247,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// </param>
         internal void StandaloneResolvePass(IntPtr sourceTexture, IntPtr destinationTexture)
         {
+            // M-N5's one pool, here rather than on ResolveTexture so the device-free row that drives this member
+            // directly takes the same shape. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             // END WHATEVER IS OPEN BEFORE THE DESCRIPTOR IS EVEN BUILT, which is the incumbent's own order and the
             // half the scope cannot do for this member. Plain EnsureNoEncoder, not EndPass: see the remarks above.
             _encoders.EnsureNoEncoder();

@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using KhaozEngine.Gpu.Metal.Internal.ObjC;
 
 namespace KhaozEngine.Gpu.Metal.Internal
 {
@@ -75,9 +76,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // THE RULE ITSELF MOVED TO MetalCopyAlignment AT ROW 14 and nothing about it changed: CopyBuffer and
             // the staging-to-staging arm of a texture copy need the identical refusal, and a second spelling of
             // section 9.3's ruling is the one that would drift.
-            MetalCopyAlignment.RequireAlignedOffset(offsetBytes, nameof(offsetBytes),
-                "A record-time upload of " + lengthBytes.ToString(CultureInfo.InvariantCulture)
-                + " bytes to a non-uniform native Metal buffer", "destination");
+            //
+            // AND THE MESSAGE IS BUILT ON THE REFUSAL AND NOWHERE ELSE (#1114). It names the payload's size, which
+            // is a number formatted and two strings joined, and building it as an argument ran both on every staged
+            // upload that was about to succeed. The check asks the same predicate the refusal does, so the two
+            // cannot disagree about what is aligned.
+            if (!MetalCopyAlignment.IsAligned(offsetBytes))
+            {
+                MetalCopyAlignment.RequireAlignedOffset(offsetBytes, nameof(offsetBytes),
+                    "A record-time upload of " + lengthBytes.ToString(CultureInfo.InvariantCulture)
+                    + " bytes to a non-uniform native Metal buffer", "destination");
+            }
 
             return MetalCopyAlignment.PaddedSize(lengthBytes);
         }
@@ -88,6 +97,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
         static void StageAndCopy(IntPtr destination, uint destinationSizeBytes, uint offsetBytes,
             ReadOnlySpan<byte> data, MetalEncoderScope encoders, MetalStagingArena arena, IMetalBlitApi blit)
         {
+            // THE POOL FOR THIS UPLOAD (M-N5, #1114), here rather than on MetalCommandList.UpdateBuffer because this
+            // is the half that reaches Objective-C: a staging block, the blit encoder boundary and the copy. The
+            // ring half is a memcpy and every uniform write in the engine takes it, so a pool there would be a push
+            // and a pop bought for nothing, which the ring path has never paid.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             // THE SIZE PAD IS THE INCUMBENT'S OWN, reproduced rather than improved (section 9.3): the copy moves
             // the payload rounded up to four bytes, and MetalBufferPolicy.AllocationBytes is what makes those
             // extra bytes land inside the destination's allocation rather than past its end. The proof is

@@ -51,6 +51,13 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// </summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal void EndEncoding() => ObjCMsgSend.SendVoid(Handle, ObjCRuntime.Sel("endEncoding"));
+        internal void EndEncoding() => ObjCMsgSend.SendVoid(Handle, Selectors.EndEncoding);
+
+        /// <summary>The shared protocol's one selector, resolved once per process (#1114).</summary>
+        [SupportedOSPlatform("macos")]
+        static class Selectors
+        {
+            internal static readonly IntPtr EndEncoding = ObjCRuntime.Sel("endEncoding");
+        }
     }
 }

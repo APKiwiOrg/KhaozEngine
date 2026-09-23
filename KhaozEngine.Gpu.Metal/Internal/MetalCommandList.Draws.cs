@@ -142,6 +142,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// graphics pipeline is bound.</exception>
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {
+            // M-N5's one pool for the pass opening, the bind flush and the draw. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             MetalGraphicsPipeline pipeline = BeginDraw("Drawing", out IntPtr encoder);
             if (encoder == IntPtr.Zero) return;
 
@@ -173,6 +176,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         public void DrawIndexed(uint indexCount, uint instanceCount, uint indexStart, int vertexOffset,
             uint instanceStart)
         {
+            // M-N5's one pool for the pass opening, the bind flush and the draw. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             MetalGraphicsPipeline pipeline = RequireGraphicsPipeline("Drawing indexed");
 
             // THE INDEX REFUSAL COMES BEFORE THE PASS OPENS, beside the pipeline refusal and for its reason: a
@@ -227,6 +233,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// bound.</exception>
         public void Dispatch(uint groupCountX, uint groupCountY, uint groupCountZ)
         {
+            // M-N5's one pool for this member. See the type remarks.
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+
             ObjectDisposedException.ThrowIf(_disposed, this);
             RequireRecording("Dispatching compute work");
 

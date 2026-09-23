@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
+using System.Threading;
 
 namespace KhaozEngine.Gpu.Metal.Internal.ObjC
 {
@@ -214,11 +215,33 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static MTLRenderPassDescriptor Create()
         {
-            IntPtr descriptor = ObjCMsgSend.Send(
-                ObjCRuntime.ClassNamed("MTLRenderPassDescriptor"), ObjCRuntime.Sel("renderPassDescriptor"));
+            IntPtr descriptor = ObjCMsgSend.Send(DescriptorClass(), Selectors.RenderPassDescriptor);
 
             return new MTLRenderPassDescriptor(
                 descriptor == IntPtr.Zero ? IntPtr.Zero : ObjCRuntime.ObjcRetain(descriptor));
+        }
+
+        // THE CLASS, CACHED ONLY ONCE IT IS REAL (#1114). ClassNamed encodes its name into a fresh array per call,
+        // and this runs at every pass begin. objc_getClass answers nil for a class whose framework is not loaded
+        // yet, so a nil answer is never kept: caching it would make every later pass in the process build nothing.
+        static IntPtr _class;
+
+        [SupportedOSPlatform("macos")]
+        static IntPtr DescriptorClass()
+        {
+            IntPtr cached = Volatile.Read(ref _class);
+            if (cached != IntPtr.Zero) return cached;
+
+            IntPtr resolved = ObjCRuntime.ClassNamed("MTLRenderPassDescriptor");
+            if (resolved != IntPtr.Zero) Volatile.Write(ref _class, resolved);
+            return resolved;
+        }
+
+        /// <summary>The factory selector, resolved once per process (#1114).</summary>
+        [SupportedOSPlatform("macos")]
+        static class Selectors
+        {
+            internal static readonly IntPtr RenderPassDescriptor = ObjCRuntime.Sel("renderPassDescriptor");
         }
 
         /// <summary>Give back the retain <see cref="Create"/> took. Idempotent against a nil handle, which is

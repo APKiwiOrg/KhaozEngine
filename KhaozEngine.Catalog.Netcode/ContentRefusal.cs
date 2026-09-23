@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using KhaozEngine.Catalog;
+using KhaozEngine.Netcode;
 
 namespace KhaozEngine.Catalog.Netcode;
 
@@ -18,6 +19,11 @@ namespace KhaozEngine.Catalog.Netcode;
 /// token is also the whole input to the fetch loop of spec 8.7.
 /// </para>
 /// <para>
+/// The two PREFIXES are defined once, in <see cref="HandshakeToken"/>, beside the engine's other refusal tokens, so a
+/// <c>KhaozEngine.NetWorld.WorldClient</c> can type the two refusals without referencing this package. Everything
+/// after the prefix, the builders and the strict parsers, lives only here.
+/// </para>
+/// <para>
 /// <b>No value in either token ever contains a colon.</b> A version number is decimal and a hash is a content
 /// address, both checked here, so a client that presents a hostile layer gets EMPTY client fields rather
 /// than a payload that re-splits under its own parser.
@@ -32,11 +38,13 @@ namespace KhaozEngine.Catalog.Netcode;
 /// </summary>
 public static class ContentRefusal
 {
-    /// <summary>The refusal prefix for a content identity mismatch, carrying both sides.</summary>
-    public const string MismatchPrefix = "ke:content-mismatch:";
+    /// <summary>The refusal prefix for a content identity mismatch, carrying both sides. The same constant as
+    /// <see cref="HandshakeToken.ContentMismatchPrefix"/>, which is its one source.</summary>
+    public const string MismatchPrefix = HandshakeToken.ContentMismatchPrefix;
 
-    /// <summary>The refusal prefix for a client below the version's minimum client build.</summary>
-    public const string ClientTooOldPrefix = "ke:content-client-too-old:";
+    /// <summary>The refusal prefix for a client below the version's minimum client build. The same constant as
+    /// <see cref="HandshakeToken.ContentClientTooOldPrefix"/>, which is its one source.</summary>
+    public const string ClientTooOldPrefix = HandshakeToken.ContentClientTooOldPrefix;
 
     /// <summary>
     /// The mismatch token. A null <paramref name="client"/> writes EMPTY client fields, which is the answer

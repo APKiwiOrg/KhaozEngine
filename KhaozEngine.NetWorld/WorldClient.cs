@@ -32,7 +32,7 @@ public sealed partial class WorldClient : IDisposable
     private WorldConnectionState state = WorldConnectionState.Connecting;
     private DisconnectReason disconnectReason = DisconnectReason.None;
     private string disconnectReasonDetail = string.Empty;
-    private ConnectRefusal refusal;   // the last refusal, read by the typed detail properties below
+    private ConnectRefusal refusal;   // the last refusal, read by ContentMismatch below
     private readonly float disconnectTimeout;
     private float secondsSinceServerFrame;
     private bool sawShutdownNotice;
@@ -173,15 +173,6 @@ public sealed partial class WorldClient : IDisposable
     /// <summary>Both identities while the reason is <see cref="DisconnectReason.ContentMismatch"/>, else null.</summary>
     public ContentMismatchDetail? ContentMismatch =>
         disconnectReason == DisconnectReason.ContentMismatch ? refusal.WorldMismatch : null;
-
-    /// <summary>Both content versions while the reason is <see cref="DisconnectReason.ContentVersionMismatch"/>, else null.</summary>
-    public ContentVersionMismatchDetail? ContentVersionMismatch =>
-        disconnectReason == DisconnectReason.ContentVersionMismatch ? refusal.ContentVersionMismatch : null;
-
-    /// <summary>The build the served content version requires while the reason is
-    /// <see cref="DisconnectReason.ContentClientTooOld"/>, else null.</summary>
-    public int? MinimumClientBuild =>
-        disconnectReason == DisconnectReason.ContentClientTooOld ? refusal.MinimumClientBuild : null;
 
     /// <summary>Number of the in-flight reconnect attempt (0 while connected or on the initial connect). Render
     /// "reconnecting (attempt N)..." from this and <see cref="SecondsUntilNextRetry"/>.</summary>

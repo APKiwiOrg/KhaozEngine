@@ -15614,14 +15614,32 @@ address before it is kept), retries with capped jittered exponential backoff, an
 chunk is written to a temporary name and moved. What the caller still owns is the pack HOSTING and the build
 ordinals: the engine reads a build number, it does not mint one.
 
-On a `WorldClient` both refusals arrive TYPED, so a float head need not parse the reason string to know which one
-it got. `ke:content-mismatch:` is `DisconnectReason.ContentVersionMismatch`, with both sides on
-`WorldClient.ContentVersionMismatch` (a `ContentVersionMismatchDetail(Server, Client)`, `Client` null when the
-client presented no content layer). `ke:content-client-too-old:` is `DisconnectReason.ContentClientTooOld`, with
-the build to reach on `WorldClient.MinimumClientBuild`. Both are terminal like `IncompatibleVersion`, not even
-retried under `RetryOnReject`, and both keep the whole token in `DisconnectReasonDetail`, which is what it held
-when they arrived as `RejectedToken`, so `ContentRefusal.TryParseMismatch(client.DisconnectReasonDetail, ...)`
-still works. A token the strict parsers refuse stays a plain `RejectedToken`.
+On a `WorldClient` both refusals arrive TYPED, so a float head knows which one it got without parsing anything. A
+token starting `ke:content-mismatch:` is `DisconnectReason.ContentVersionMismatch`, and one starting
+`ke:content-client-too-old:` is `DisconnectReason.ContentClientTooOld`. Both are terminal like
+`IncompatibleVersion`, not even retried under `RetryOnReject`. `KhaozEngine.NetWorld` does not reference this
+package: it recognizes the two by the prefixes `HandshakeToken.ContentMismatchPrefix` and
+`ContentClientTooOldPrefix`, which are the one source `ContentRefusal` builds its tokens from, and keeps the whole
+token in `DisconnectReasonDetail`, exactly what it held when they arrived as `RejectedToken`. The sides come out of
+it through the catalog's own strict parsers:
+
+```csharp
+switch (client.DisconnectReason)
+{
+    case DisconnectReason.ContentVersionMismatch
+        when ContentRefusal.TryParseMismatch(client.DisconnectReasonDetail, out ContentVersionIdentity server,
+            out ContentVersionIdentity? held):   // held is null when the client presented no content layer
+        ShowContentUpdate(server, held);
+        break;
+    case DisconnectReason.ContentClientTooOld
+        when ContentRefusal.TryParseClientTooOld(client.DisconnectReasonDetail, out int minimumClientBuild):
+        ShowClientUpdate(minimumClientBuild);
+        break;
+}
+```
+
+The reason names the refusal by prefix alone, so a body the strict parser refuses still reads as the content door's
+refusal and simply parses to nothing.
 
 ### Filling a client origin
 
@@ -19218,7 +19236,7 @@ client.AdvancePresentation(dt);
 EntityRenderState[] snapshot = client.Snapshot();
 ```
 
-`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below), and the catalog content door's two refusals, `ContentVersionMismatch` and `ContentClientTooOld` (see "The connect door, and the client's catch-up"). The last two were appended after every shipped value, so no numeric value moved. The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below), and the catalog content door's two refusals, `ContentVersionMismatch` and `ContentClientTooOld` (see "The connect door, and the client's catch-up", which parses `DisconnectReasonDetail` with `ContentRefusal`). The last two were appended after every shipped value, so no numeric value moved. The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
 
 **One account, one live session (17.38.0).** The join gate keys a live session by the SUBJECT the authenticator verified, so two clients presenting one account's connect token cannot become two live sessions. Above the session layer that shape is unrepresentable: `WorldPersistence` keys one record per account, so the two shared it and the later join left the earlier session unrestored, then let its default-spawn state overwrite the record once the winner left (#662). Set the policy on either head:
 

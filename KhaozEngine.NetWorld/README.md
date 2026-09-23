@@ -423,13 +423,15 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   - Unconfigured on both sides, the Hello is byte-identical to the wire without the slot.
   - `ContentIdentity` is non-empty, pipe-free and within `HandshakeToken.MaxLabelBytes`, or the `WorldClient`
     constructor throws. The gate holds the server identity to the same rule and throws at construction.
-- **Catalog content refusals, typed.** The catalog content door (`KhaozEngine.Catalog.Netcode`) refuses with
-  `ke:content-mismatch:` or `ke:content-client-too-old:`, and `WorldClient` reads them as
-  **`DisconnectReason.ContentVersionMismatch`** (both sides on `WorldClient.ContentVersionMismatch`, a
-  `ContentVersionMismatchDetail(Server, Client)`) and **`DisconnectReason.ContentClientTooOld`** (the build to reach
-  on `WorldClient.MinimumClientBuild`). Both are terminal, even under `RetryOnReject`, and `DisconnectReasonDetail`
-  keeps the whole token so a `ContentRefusal` parse over it keeps working. Both members were appended after every
-  shipped value. This package references `KhaozEngine.Catalog.Netcode` for the parsers.
+- **Catalog content refusals, typed.** The catalog content door (`KhaozEngine.Catalog.Netcode`) refuses with a
+  token starting `ke:content-mismatch:` or `ke:content-client-too-old:`, and `WorldClient` reads them as
+  **`DisconnectReason.ContentVersionMismatch`** and **`DisconnectReason.ContentClientTooOld`**. Both are terminal,
+  even under `RetryOnReject`, and both members were appended after every shipped value. This package does NOT
+  reference the catalog: it recognizes the two by `HandshakeToken.ContentMismatchPrefix` and
+  `ContentClientTooOldPrefix` in `KhaozEngine.Netcode`, the prefixes `ContentRefusal` builds from, and keeps the
+  whole token in `DisconnectReasonDetail`. A game that runs the content door already references
+  `KhaozEngine.Catalog.Netcode` and reads the sides with `ContentRefusal.TryParseMismatch` or
+  `TryParseClientTooOld` over that detail.
   - **Adopting it is a wire change: bump the game's own `ProtocolVersion` in the same release**, so an old peer on
     either side is turned away at the version gate before it can read the identity layer as an auth token.
   - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 12)

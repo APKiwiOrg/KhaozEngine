@@ -1,21 +1,21 @@
-using KhaozEngine.Catalog.Netcode;
+using System;
 using KhaozEngine.Netcode;
 
 namespace KhaozEngine.NetWorld;
 
 /// <summary>
 /// What one connect refusal means to a <see cref="WorldClient"/>: the typed <see cref="DisconnectReason"/>, the
-/// <see cref="WorldClient.DisconnectReasonDetail"/> string, whether the attempt may be retried, and the parsed detail
-/// of the refusals that carry one. The ONE place the client reads a refusal token, each through the parser its
-/// producer owns, so a new engine refusal is a new row here rather than a new branch in the session loop.
+/// <see cref="WorldClient.DisconnectReasonDetail"/> string, whether the attempt may be retried, and the parsed world
+/// mismatch. The ONE place the client reads a refusal token, so a new engine refusal is a new row here rather than a
+/// new branch in the session loop. Tokens this package owns are parsed here. The catalog content door's two are only
+/// RECOGNIZED, by the prefixes <see cref="HandshakeToken"/> holds, because parsing them needs
+/// <c>KhaozEngine.Catalog.Netcode</c>, which the core world client does not reference.
 /// </summary>
 internal readonly record struct ConnectRefusal(
     DisconnectReason Reason,
     string Detail,
     ConnectRefusal.RetryRule Retry,
-    ContentMismatchDetail WorldMismatch = default,
-    ContentVersionMismatchDetail ContentVersionMismatch = default,
-    int MinimumClientBuild = 0)
+    ContentMismatchDetail WorldMismatch = default)
 {
     /// <summary>Whether a refused attempt goes back on the reconnect backoff.</summary>
     internal enum RetryRule
@@ -49,15 +49,14 @@ internal readonly record struct ConnectRefusal(
         if (ContentMismatchDetail.TryParse(reason, out ContentMismatchDetail world))
             return new(DisconnectReason.ContentMismatch, world.ServerIdentity, RetryRule.Never, WorldMismatch: world);
 
-        // The catalog content door's two refusals. Both are terminal for the same reason as the two above: a
-        // retry presents the same build and the same content. The detail stays the WHOLE token, which is what a
-        // game parsing it under RejectedToken already reads with ContentRefusal.
-        if (ContentVersionMismatchDetail.TryParse(reason, out ContentVersionMismatchDetail content))
-            return new(DisconnectReason.ContentVersionMismatch, reason!, RetryRule.Never,
-                ContentVersionMismatch: content);
-        if (ContentRefusal.TryParseClientTooOld(reason, out int minimumClientBuild))
-            return new(DisconnectReason.ContentClientTooOld, reason!, RetryRule.Never,
-                MinimumClientBuild: minimumClientBuild);
+        // The catalog content door's two refusals, recognized by prefix alone. Both are terminal for the same reason
+        // as the two above: a retry presents the same build and the same content. The detail stays the WHOLE token,
+        // which a game that runs the content door parses with Catalog.Netcode's ContentRefusal, the one strict
+        // parser, exactly as it did when these arrived as RejectedToken.
+        if (reason is not null && reason.StartsWith(HandshakeToken.ContentMismatchPrefix, StringComparison.Ordinal))
+            return new(DisconnectReason.ContentVersionMismatch, reason, RetryRule.Never);
+        if (reason is not null && reason.StartsWith(HandshakeToken.ContentClientTooOldPrefix, StringComparison.Ordinal))
+            return new(DisconnectReason.ContentClientTooOld, reason, RetryRule.Never);
 
         // The KICK half of the duplicate-session gate: another client took this account's seat. Terminal, and the
         // one reason here that has to be: retrying would displace the session that just displaced this one, and the

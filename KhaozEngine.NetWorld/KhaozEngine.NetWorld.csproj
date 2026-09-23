@@ -16,9 +16,6 @@
     <ProjectReference Include="../KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
     <ProjectReference Include="../KhaozEngine.Simulation/KhaozEngine.Simulation.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
-    <!-- ContentRefusal's strict parsers, so WorldClient types the catalog content door's two refusals rather than
-         restating their wire tokens. It adds KhaozEngine.Catalog, the dependency-free read side, and nothing else. -->
-    <ProjectReference Include="../KhaozEngine.Catalog.Netcode/KhaozEngine.Catalog.Netcode.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>

@@ -10,11 +10,11 @@ namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>
 /// The catalog content door's two refusals reach a <see cref="WorldClient"/> as typed reasons (#1071):
-/// <c>ke:content-mismatch:</c> as <see cref="DisconnectReason.ContentVersionMismatch"/> with both versions on
-/// <see cref="WorldClient.ContentVersionMismatch"/>, and <c>ke:content-client-too-old:</c> as
-/// <see cref="DisconnectReason.ContentClientTooOld"/> with the build on <see cref="WorldClient.MinimumClientBuild"/>.
-/// Both are terminal like <see cref="DisconnectReason.IncompatibleVersion"/>, and both keep the whole token in
-/// <see cref="WorldClient.DisconnectReasonDetail"/>, which is what a game parsing it under RejectedToken reads.
+/// <c>ke:content-mismatch:</c> as <see cref="DisconnectReason.ContentVersionMismatch"/> and
+/// <c>ke:content-client-too-old:</c> as <see cref="DisconnectReason.ContentClientTooOld"/>. Both are terminal like
+/// <see cref="DisconnectReason.IncompatibleVersion"/>. NetWorld only RECOGNIZES them, by the prefixes
+/// <see cref="HandshakeToken"/> holds, and keeps the whole token in <see cref="WorldClient.DisconnectReasonDetail"/>,
+/// which a game running the content door parses with <see cref="ContentRefusal"/>, as these tests do.
 /// </summary>
 public class CatalogRefusalMappingTests
 {
@@ -53,12 +53,11 @@ public class CatalogRefusalMappingTests
         Pump(server, client);
 
         Assert.True(client.Joined);
-        Assert.Null(client.ContentVersionMismatch);
-        Assert.Null(client.MinimumClientBuild);
+        Assert.Equal(DisconnectReason.None, client.DisconnectReason);
     }
 
     [Fact]
-    public void A_content_mismatch_is_typed_with_both_versions_and_keeps_the_whole_token()
+    public void A_content_mismatch_is_typed_and_the_kept_token_parses_with_the_catalog_parser()
     {
         var hub = new InMemoryTransportHub();
         WorldServer server = Server(hub);
@@ -69,16 +68,17 @@ public class CatalogRefusalMappingTests
 
         Assert.Equal(WorldConnectionState.Disconnected, client.ConnectionState);
         Assert.Equal(DisconnectReason.ContentVersionMismatch, client.DisconnectReason);
-        Assert.Equal(new ContentVersionMismatchDetail(Served, held), client.ContentVersionMismatch);
         Assert.Equal(ContentRefusal.Mismatch(Served, held), client.DisconnectReasonDetail);
-        Assert.True(ContentRefusal.TryParseMismatch(client.DisconnectReasonDetail, out _, out _));
+        Assert.True(ContentRefusal.TryParseMismatch(client.DisconnectReasonDetail,
+            out ContentVersionIdentity serverSide, out ContentVersionIdentity? clientSide));
+        Assert.Equal(Served, serverSide);
+        Assert.Equal(held, clientSide);
         Assert.Null(client.ContentMismatch);
-        Assert.Null(client.MinimumClientBuild);
         Assert.Equal(0, server.PlayerCount);
     }
 
     [Fact]
-    public void A_client_with_no_content_layer_reads_a_mismatch_with_no_client_side()
+    public void A_client_with_no_content_layer_reads_a_mismatch_whose_client_side_parses_as_none()
     {
         var hub = new InMemoryTransportHub();
         WorldServer server = Server(hub);
@@ -87,11 +87,13 @@ public class CatalogRefusalMappingTests
         Pump(server, client);
 
         Assert.Equal(DisconnectReason.ContentVersionMismatch, client.DisconnectReason);
-        Assert.Equal(new ContentVersionMismatchDetail(Served, null), client.ContentVersionMismatch);
+        Assert.True(ContentRefusal.TryParseMismatch(client.DisconnectReasonDetail, out _, out ContentVersionIdentity? clientSide));
+        Assert.Null(clientSide);
+        Assert.Equal(0, server.PlayerCount);
     }
 
     [Fact]
-    public void A_client_below_the_minimum_build_is_typed_with_the_build_it_has_to_reach()
+    public void A_client_below_the_minimum_build_is_typed_and_the_build_parses_out_of_the_kept_token()
     {
         var hub = new InMemoryTransportHub();
         WorldServer server = Server(hub, minimumClientBuild: 4118);
@@ -100,9 +102,9 @@ public class CatalogRefusalMappingTests
         Pump(server, client);
 
         Assert.Equal(DisconnectReason.ContentClientTooOld, client.DisconnectReason);
-        Assert.Equal(4118, client.MinimumClientBuild);
         Assert.Equal("ke:content-client-too-old:4118", client.DisconnectReasonDetail);
-        Assert.Null(client.ContentVersionMismatch);
+        Assert.True(ContentRefusal.TryParseClientTooOld(client.DisconnectReasonDetail, out int minimumClientBuild));
+        Assert.Equal(4118, minimumClientBuild);
         Assert.Equal(0, server.PlayerCount);
     }
 
@@ -127,31 +129,51 @@ public class CatalogRefusalMappingTests
         Assert.Equal(0, client.ReconnectAttempt);
     }
 
-    // The tokens are STABLE WIRE STRINGS, so the classification is pinned on literals rather than on the builders.
+    // The prefixes are STABLE WIRE STRINGS with ONE source in Netcode. Pinned literally, and the catalog's own
+    // constants are the same values, so the builder and the recognizer cannot drift apart.
     [Fact]
-    public void The_literal_tokens_map_to_their_typed_reasons_and_never_retry()
+    public void The_prefixes_live_once_in_Netcode_and_the_catalog_builds_from_them()
     {
-        string mismatch = $"ke:content-mismatch:47|{ServedHash}|46|{OtherHash}";
-        ConnectRefusal read = ConnectRefusal.Read(mismatch);
-        Assert.Equal(DisconnectReason.ContentVersionMismatch, read.Reason);
-        Assert.Equal(mismatch, read.Detail);
-        Assert.Equal(new ContentVersionMismatchDetail(Served, new ContentVersionIdentity(46, OtherHash)),
-            read.ContentVersionMismatch);
-        Assert.False(read.AllowsReconnect(retryOnReject: true));
-
-        read = ConnectRefusal.Read("ke:content-client-too-old:4118");
-        Assert.Equal(DisconnectReason.ContentClientTooOld, read.Reason);
-        Assert.Equal("ke:content-client-too-old:4118", read.Detail);
-        Assert.Equal(4118, read.MinimumClientBuild);
-        Assert.False(read.AllowsReconnect(retryOnReject: true));
+        Assert.Equal("ke:content-mismatch:", HandshakeToken.ContentMismatchPrefix);
+        Assert.Equal("ke:content-client-too-old:", HandshakeToken.ContentClientTooOldPrefix);
+        Assert.Equal(HandshakeToken.ContentMismatchPrefix, ContentRefusal.MismatchPrefix);
+        Assert.Equal(HandshakeToken.ContentClientTooOldPrefix, ContentRefusal.ClientTooOldPrefix);
+        Assert.StartsWith(HandshakeToken.ContentMismatchPrefix, ContentRefusal.Mismatch(Served, null), StringComparison.Ordinal);
+        Assert.StartsWith(HandshakeToken.ContentClientTooOldPrefix, ContentRefusal.ClientTooOld(3), StringComparison.Ordinal);
     }
 
     [Theory]
-    [InlineData("ke:content-mismatch:not-a-token")]
-    [InlineData("ke:content-mismatch:47|short|46|short")]
-    [InlineData("ke:content-client-too-old:")]
-    [InlineData("ke:content-client-too-old:-3")]
-    public void A_malformed_catalog_token_stays_a_plain_rejection(string reason)
+    [InlineData("ke:content-mismatch:47|aaaa|46|bbbb", DisconnectReason.ContentVersionMismatch)]
+    [InlineData("ke:content-mismatch:", DisconnectReason.ContentVersionMismatch)]
+    [InlineData("ke:content-client-too-old:4118", DisconnectReason.ContentClientTooOld)]
+    [InlineData("ke:content-client-too-old:", DisconnectReason.ContentClientTooOld)]
+    public void A_token_carrying_either_prefix_maps_to_its_typed_reason_keeps_the_whole_token_and_never_retries(
+        string reason, DisconnectReason expected)
+    {
+        ConnectRefusal read = ConnectRefusal.Read(reason);
+
+        Assert.Equal(expected, read.Reason);
+        Assert.Equal(reason, read.Detail);
+        Assert.False(read.AllowsReconnect(retryOnReject: true));
+    }
+
+    [Fact]
+    public void The_typed_reason_names_the_refusal_and_the_catalog_parser_still_judges_the_body()
+    {
+        // NetWorld recognizes the door by prefix only, so a body the strict parser refuses still reads as the
+        // content door's refusal. What it SAYS is the catalog parser's call, and a malformed body says nothing.
+        const string mangled = "ke:content-mismatch:not-a-token";
+
+        Assert.Equal(DisconnectReason.ContentVersionMismatch, ConnectRefusal.Read(mangled).Reason);
+        Assert.False(ContentRefusal.TryParseMismatch(mangled, out _, out _));
+    }
+
+    [Theory]
+    [InlineData("ke:content-mismatch")]
+    [InlineData("KE:CONTENT-MISMATCH:47|a|46|b")]
+    [InlineData("ke:content-client-too-old")]
+    [InlineData("x ke:content-client-too-old:1")]
+    public void Anything_short_of_the_exact_prefix_stays_a_plain_rejection(string reason)
     {
         ConnectRefusal read = ConnectRefusal.Read(reason);
 
@@ -172,6 +194,8 @@ public class CatalogRefusalMappingTests
         Assert.True(ConnectRefusal.Read(SessionRejectReason.AlreadySignedIn).AllowsReconnect(retryOnReject: false));
         Assert.Equal(DisconnectReason.RejectedToken, ConnectRefusal.Read(HandshakeToken.BannedReason).Reason);
         Assert.Equal(HandshakeToken.BannedReason, ConnectRefusal.Read(HandshakeToken.BannedReason).Detail);
+        Assert.Equal(DisconnectReason.RejectedToken, ConnectRefusal.Read(null).Reason);
+        Assert.Equal(string.Empty, ConnectRefusal.Read(null).Detail);
     }
 
     // Appended LAST so no shipped numeric value moves: a consumer that persisted or switched on the raw value keeps

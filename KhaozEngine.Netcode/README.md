@@ -403,6 +403,11 @@ the token and shows its own localized string.
   `DisconnectReason.ContentMismatch`.
 - `BannedReason` is the flat `ke:banned`. It carries no detail, because a ban reason is an operator concern rather
   than something to hand the banned client.
+- `ContentMismatchPrefix` (`ke:content-mismatch:`) and `ContentClientTooOldPrefix` (`ke:content-client-too-old:`)
+  are the content catalog door's two refusal PREFIXES and nothing more. `KhaozEngine.Catalog.Netcode.ContentRefusal`
+  builds and strictly parses the whole tokens from them, and a `KhaozEngine.NetWorld.WorldClient` recognizes the two
+  refusals by them, as `DisconnectReason.ContentVersionMismatch` and `ContentClientTooOld`, without referencing the
+  catalog.
 
 **`ConnectionGate.Wrap(tokenAuth, protocolVersion, worldHash, log?, isBanned?)`** composes the door and returns
 the `IConnectionAuthenticator` the server takes. Order is load-bearing:

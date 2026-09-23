@@ -150,7 +150,8 @@ Each fact has one canonical source:
 
 Every feature, bug fix and API change gets a full doc sweep. Search the added or removed type,
 package, flag and behavior across every Markdown file, package README and `AGENTS.md`. Correct stale
-descriptions, not only version declarations. `scripts/check-doc-versions.sh` verifies package catalog
+descriptions, not only version declarations. On macOS `git grep -E` does not honour `\b`, so a sweep
+pattern using it matches nothing and reports clean. Use `git grep -w` or `git grep -P` there. `scripts/check-doc-versions.sh` verifies package catalog
 coverage, package readmes, example versions and the newest changelog heading. It cannot verify prose
 accuracy.
 

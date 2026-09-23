@@ -60,6 +60,47 @@ public class TileObjectPlacementTests
         }
     }
 
+    // The anchor height is ONE sample at the footprint centre, never the highest lattice corner under the footprint,
+    // and the package README says why. These are the two shapes that ruled the corner max out: a 3x3 deck spanning a
+    // carved channel from rim to rim, which is authored against the bed its centre sits on and would rise the whole
+    // carve, and a 1x1 prop on a steep tile, which would float by half the tile's rise.
+    [Fact]
+    public void The_anchor_height_is_the_centre_sample_not_the_highest_footprint_corner()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        for (int z = 0; z <= 16; z++)
+        {
+            // A channel three tiles wide at x 4..6. Its rim corner columns (4 and 7) stay at the bank, 0.
+            doc.SetCornerHeightCm(5, z, 0, -80);
+            doc.SetCornerHeightCm(6, z, 0, -80);
+            // A 2 m rise across the one tile at x 10.
+            doc.SetCornerHeightCm(11, z, 0, 200);
+            doc.SetCornerHeightCm(12, z, 0, 200);
+        }
+
+        var deck = new TileObjectArchetype { Id = "deck", SizeX = 3, SizeZ = 3 };
+        var overChannel = new TileObject { Id = 1, ArchetypeId = "deck", X = 4, Z = 6, Plane = 0, Rotation = 0 };
+        float bank = doc.CornerHeight(4, 6, 0), bed = doc.CornerHeight(5, 6, 0);
+        Assert.Equal(bank, HighestFootprintCorner(doc, deck, overChannel));
+        Assert.Equal(bed, TileObjectPlacement.AnchorPosition(doc, deck, overChannel).Y);
+
+        var rock = new TileObjectArchetype { Id = "rock", SizeX = 1, SizeZ = 1 };
+        var onRise = new TileObject { Id = 2, ArchetypeId = "rock", X = 10, Z = 6, Plane = 0, Rotation = 0 };
+        float top = doc.CornerHeight(11, 6, 0);
+        Assert.Equal(top, HighestFootprintCorner(doc, rock, onRise));
+        Assert.Equal(top * 0.5f, TileObjectPlacement.AnchorPosition(doc, rock, onRise).Y);
+    }
+
+    static float HighestFootprintCorner(TileWorldDocument doc, TileObjectArchetype archetype, TileObject o)
+    {
+        TileRect footprint = TileFootprint.Of(archetype, o.X, o.Z, o.Rotation);
+        float highest = float.NegativeInfinity;
+        for (int z = footprint.Z; z <= footprint.Z1; z++)
+            for (int x = footprint.X; x <= footprint.X1; x++)
+                highest = MathF.Max(highest, doc.CornerHeight(x, z, o.Plane));
+        return highest;
+    }
+
     // The query's own basis is the drawn rotation with exact axes on a quarter turn. It must agree with the matrix to
     // well under a millimetre on any turn, or the deck the query answers is not the deck on screen.
     [Theory]

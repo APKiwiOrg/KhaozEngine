@@ -44,4 +44,13 @@ public enum DisconnectReason
     /// <see cref="ReconnectBackoff.MaxAttempts"/>, or turns <see cref="WorldClientConfig.AutoReconnect"/> off when it
     /// reads this reason.</para></summary>
     Banned,
+    /// <summary>The client was built against different content than the server: its
+    /// <see cref="WorldClientConfig.ContentIdentity"/> does not match the identity the server's
+    /// <see cref="Netcode.WorldIdentityGateAuthenticator"/> requires, or the client sent none.
+    /// <see cref="WorldClient.ContentMismatch"/> carries both identities and <see cref="WorldClient.DisconnectReasonDetail"/>
+    /// the server's. Distinct from <see cref="IncompatibleVersion"/>: two builds can share a protocol version and still
+    /// load different content, and the version gate runs first, so a client that is also version-skewed reads
+    /// <see cref="IncompatibleVersion"/>. Not retried: the same build keeps failing. Show "different game content,
+    /// please update".</summary>
+    ContentMismatch,
 }

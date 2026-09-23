@@ -89,6 +89,15 @@ that is the transport's and the game's responsibility.
   (it recovers the JSON even on an HMAC mismatch, logging a warning). See
   `KhaozEngine.Persistence/SaveEncoder.cs` and its package README for the full API and the
   strict-by-default `LoadWithOutcome` recovery ladder.
+- **Save posture: saves encoded, settings plaintext.** Fleet policy is that game saves (progress,
+  unlocks, campaign state) carry the `SaveEncoder` envelope in every KhaozEngine game, and settings and
+  user-set config (window position, preferences) stay plaintext because they are the player's to
+  hand-edit. `GameStorage` enforces the save half at compile time: both constructors take a required
+  `SaveEncoding`, either `SaveEncoding.Encoded(encoder)` or the explicit `SaveEncoding.Plaintext`, and
+  `GameStorageOptions` has no encoder field to leave unset. A plaintext save is therefore a visible,
+  greppable decision at the construction site, never a default. The settings half is structural:
+  `GameStorage.Settings` and `CreateSettingsManager` never see the encoder and write plaintext JSON under
+  either posture. Audit it in `KhaozEngine.Persistence/SaveEncoding.cs` and `GameStorage.cs`.
 - **Serialization** (`KhaozEngine.Serialization`): shared `System.Text.Json` defaults (tolerant-read).
   The engine does not use `BinaryFormatter` or any known-unsafe deserializer; JSON is the wire/disk format.
 - **glTF meshes** (`KhaozEngine.Render3D`): `GltfLoader.Load` / `LoadSkinned` parse mesh data. Meshes a
@@ -269,7 +278,8 @@ The engine provides primitives and one hardened channel; a game still has to use
   caps + optional backlog catch-up wired by `WorldServerConfig.MaxInputBacklog`, so a flooded/ungated client
   cannot make the server crawl a deep input backlog one move per tick, `UnitAxisQuantizer` clamp).
 - A JSON-schema validation primitive (runtime + build-time) for content.
-- An HMAC tamper-deterrent on saves (deterrent, not a boundary).
+- An HMAC tamper-deterrent on saves (deterrent, not a boundary), with the save posture a required
+  `GameStorage` constructor argument so plaintext saves are never an accident.
 - The CETCompat default + DEP/ASLR on every head.
 - A server-side identity verification seam (`IIdentityValidator`) + PKCE-protected client sign-in flows
   (`KhaozEngine.Identity.Oidc` / `.Discord`), and a stateless, fixed-time-compared HMAC session token
@@ -293,6 +303,9 @@ The engine provides primitives and one hardened channel; a game still has to use
   publish.
 - **Decide CETCompat per head** if you have a reason to re-enable it (e.g. you only target current Windows
   and want the hardware mitigation back).
+- **Encode your saves.** Construct `GameStorage` with `SaveEncoding.Encoded` and a game-specific
+  `SaveEncoder` prefix and key. Reserve `SaveEncoding.Plaintext` for a storage that holds no game saves,
+  and keep settings in `GameStorage.Settings`, which stays plaintext by design.
 - **Don't treat the save HMAC as security.** If you need real integrity/confidentiality of player data,
   put it server-side; the client-side key is not a secret.
 - **Run `KhaozEngine.Commerce` server-side for real or scored currency.** The wallet balance and ledger

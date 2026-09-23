@@ -399,7 +399,8 @@ the token and shows its own localized string.
   `ke:incompatible-version:<version>`, carrying the version the server requires.
 - `WorldMismatchReason(serverHash, clientHash)` / `TryParseWorldMismatch` build and read
   `ke:world-mismatch:<server>|<client>`, carrying BOTH hashes so the client can say which world it built against
-  (a hex hash never contains a pipe).
+  (a hex hash never contains a pipe). A `KhaozEngine.NetWorld.WorldClient` surfaces it as
+  `DisconnectReason.ContentMismatch`.
 - `BannedReason` is the flat `ke:banned`. It carries no detail, because a ban reason is an operator concern rather
   than something to hand the banned client.
 
@@ -454,13 +455,15 @@ whatever authenticator it is handed, and `WorldClient` always stamps the matchin
 outermost through `ProtocolHandshake.BuildClientToken`, so `BuildToken` output presented as-is is refused by the
 wire gate before the version gate ever sees it. In other words `BuildToken` produces the INNER token and
 `ProtocolHandshake` wraps it. There, pass `ConnectionGate.Wrap(...)` as the `authenticator:` arg, leave
-`WorldClientConfig.ProtocolVersion` to carry the version layer, and set the connect token to
-`HandshakeToken.Wrap(worldHash, authToken)` alone, so the layers arrive as
-`[ke-wire:N][ProtocolVersion][worldHash][auth]`.
+`WorldClientConfig.ProtocolVersion` to carry the version layer, set `WorldClientConfig.ContentIdentity = worldHash`
+and pass the auth token alone, so the layers arrive as `[ke-wire:N][ProtocolVersion][worldHash][auth]`.
+`WorldClient` reads a `ke:world-mismatch:` refusal as `DisconnectReason.ContentMismatch`, with both hashes on
+`WorldClient.ContentMismatch`.
 
 Ruinborne still emits its own `rb:world-mismatch:` reason token (`Ruinborne.Shared.RuinborneWorldIdentity`), so its
 gate is NOT yet an alias of this one. Swapping it over changes a wire reason token its shipped clients already
-match on, which needs a Ruinborne protocol-version bump plus a client-side reason mapping. The promoted parser is
+match on, which needs a Ruinborne protocol-version bump plus a client-side reason mapping. The engine side of that
+mapping now exists: `WorldClient` reads the engine token as `DisconnectReason.ContentMismatch`. The promoted parser is
 also the stricter of the two: `RuinborneWorldIdentity` reads a body with no pipe as all-server-hash, where
 `TryParseWorldMismatch` returns false. The engine's own producer always writes the pipe, so nothing breaks today,
 but the swap has to account for the dropped tolerance.

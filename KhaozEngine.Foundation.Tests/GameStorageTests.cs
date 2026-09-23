@@ -44,7 +44,7 @@ public class GameStorageTests
         // Build AppDataPaths with the fake env (KhaozEngine.App exposes internals to the test
         // assembly), then hand it to the public AppDataPaths-accepting GameStorage ctor.
         var paths = new AppDataPaths("APKiwi", "TestGame", env);
-        return new GameStorage(paths, options);
+        return new GameStorage(paths, SaveEncoding.Plaintext, options);
     }
 
     private static GameStorage NewEncodedStorage(out string root)
@@ -54,7 +54,7 @@ public class GameStorageTests
         env.Folders[Environment.SpecialFolder.ApplicationData] = root;
         var encoder = new SaveEncoder(new byte[] { 1, 2, 3, 4 }, "KESAVE");
         var paths = new AppDataPaths("APKiwi", "TestGame", env);
-        return new GameStorage(paths, new GameStorageOptions { Encoder = encoder });
+        return new GameStorage(paths, SaveEncoding.Encoded(encoder));
     }
 
     private static void Cleanup(string root)
@@ -65,7 +65,7 @@ public class GameStorageTests
 
     // dir is the resolved BaseDirectory (root/APKiwi/TestGame), not the fake ApplicationData root,
     // so callers can Path.Combine(dir, fileName) directly against what GameStorage writes to.
-    private static GameStorage CreateStorage(out string dir, Action<GameStorageOptions>? configure = null)
+    private static GameStorage CreateStorage(out string dir, Action<GameStorageOptions>? configure = null, SaveEncoding? encoding = null)
     {
         string root = Directory.CreateTempSubdirectory().FullName;
         var env = new FakeAppDataEnvironment { IsMacOS = true };
@@ -75,14 +75,14 @@ public class GameStorageTests
 
         var options = new GameStorageOptions { BackupGenerations = 2 };
         configure?.Invoke(options);
-        return new GameStorage(paths, options);
+        return new GameStorage(paths, encoding ?? SaveEncoding.Plaintext, options);
     }
 
     private static GameStorage CreateStorageWithEncoder(out SaveEncoder encoder, out string dir, Action<GameStorageOptions>? configure = null)
     {
         var localEncoder = new SaveEncoder(Encoding.UTF8.GetBytes("gs-test-key"), "GSV1");
         encoder = localEncoder;
-        return CreateStorage(out dir, o => { o.Encoder = localEncoder; configure?.Invoke(o); });
+        return CreateStorage(out dir, configure, SaveEncoding.Encoded(localEncoder));
     }
 
     [Fact]

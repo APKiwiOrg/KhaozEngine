@@ -121,18 +121,21 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
     /// server and client surface hands a consumer, so the position and the stamp can never disagree out there.</summary>
     public readonly PlayerMoveState Absolute => ToAnchor(Vector2.Zero);
 
-    /// <summary>Rebuilds a full state from the two replicated components: the 3D <paramref name="position"/>
-    /// (<see cref="ReplicatedPosition"/>) plus the vertical <paramref name="movement"/> (<see cref="MovementState"/>,
-    /// which also carries the <see cref="TeleportEpoch"/>).</summary>
-    public static PlayerMoveState From(Vector3 position, in MovementState movement) => new()
+    /// <summary>Rebuilds a full state from the three replicated components: the 3D <paramref name="position"/>
+    /// (<see cref="ReplicatedPosition"/>), the vertical <paramref name="movement"/> (<see cref="MovementState"/>,
+    /// which also carries the <see cref="TeleportEpoch"/>) and the owner-only feel timers <paramref name="owner"/>
+    /// (<see cref="MovementOwnerState"/>). Only the owning client and the server hold <paramref name="owner"/>. Pass
+    /// <c>default</c> for any other entity (both timers zero). A remote observer never receives it, and nothing it
+    /// renders reads either timer.</summary>
+    public static PlayerMoveState From(Vector3 position, in MovementState movement, in MovementOwnerState owner) => new()
     {
         Move = new MoveState
         {
             Position = position,
             VerticalVelocity = movement.VerticalVelocity,
             Grounded = movement.Grounded,
-            TimeSinceGrounded = movement.TimeSinceGrounded,
-            JumpBufferRemaining = movement.JumpBufferRemaining,
+            TimeSinceGrounded = owner.TimeSinceGrounded,
+            JumpBufferRemaining = owner.JumpBufferRemaining,
             Swimming = movement.Swimming,
             ClimbRate = MovementState.DecodeClimbRate(movement.ClimbRateQ),
             // Seed the sim-local ascent EWMA (MoveState.ClimbRateEwma, which does NOT ride the wire) from the wire's
@@ -194,17 +197,18 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
     };
 
     /// <summary>
-    /// Rebuilds a full state from the two replicated components, KEEPING the position's frame: the state's
+    /// Rebuilds a full state from the three replicated components, KEEPING the position's frame: the state's
     /// <see cref="Position"/> is the component's <see cref="ReplicatedPosition.Local"/> and its
     /// <see cref="FrameAnchor"/> is that component's stamp. This is the reconciliation basis a client builds off the
     /// wire, and keeping the frame is what lets prediction replay in the same space the server stepped in.
-    /// <para>Use the <see cref="From(Vector3, in MovementState)"/> overload with
+    /// <para>Use the <see cref="From(Vector3, in MovementState, in MovementOwnerState)"/> overload with
     /// <see cref="ReplicatedPosition.Value"/> for a state that is going out to a consumer, where absolute is the
     /// contract.</para>
     /// </summary>
-    public static PlayerMoveState From(in ReplicatedPosition position, in MovementState movement)
+    public static PlayerMoveState From(in ReplicatedPosition position, in MovementState movement,
+        in MovementOwnerState owner)
     {
-        PlayerMoveState state = From(position.Local, movement);
+        PlayerMoveState state = From(position.Local, movement, owner);
         Vector3 anchor = position.Frame.Anchor;
         state.FrameAnchor = new Vector2(anchor.X, anchor.Z);
         return state;

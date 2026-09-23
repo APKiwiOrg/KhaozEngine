@@ -30,8 +30,6 @@ public class WireGenerationBlobMigrationTests
     {
         VerticalVelocity = -1.5f,
         Grounded = true,
-        TimeSinceGrounded = 0.25f,
-        JumpBufferRemaining = 0.5f,
         Swimming = true,
         TeleportEpoch = 9u,
         ClimbRateQ = -4,
@@ -41,31 +39,41 @@ public class WireGenerationBlobMigrationTests
         FacingYawQ = 4242,
     };
 
-    private static byte[] BodyAt(int generation, MovementState m) =>
-        new CellBlobFixtures.BodyBuilder()
-            .Entity(11,
-                (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(generation, Pos)),
-                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(generation, m)))
-            .ToBody();
+    private static MovementOwnerState Owner() => new() { TimeSinceGrounded = 0.25f, JumpBufferRemaining = 0.5f };
+
+    // One player as a build at that generation stored it. From the owner split on, the timers are a frame of their
+    // own, which the writer (and the rewrite that brings an older body forward) always emits for a player.
+    private static byte[] BodyAt(int generation, MovementState m, MovementOwnerState owner = default)
+    {
+        var components = new List<(ushort, byte[])>
+        {
+            (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(generation, Pos)),
+            (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(generation, m, owner)),
+        };
+        if (generation >= BuiltinBlobLayout.MovementOwnerWireGeneration)
+            components.Add((MoveProtocol.MovementOwnerTypeId, CellBlobFixtures.MovementOwner(owner)));
+        return new CellBlobFixtures.BodyBuilder().Entity(11, components.ToArray()).ToBody();
+    }
 
     [Fact]
     public void NormalizeV3ToV4_WidensAGeneration9Body_ToTheCurrentLayout()
     {
         MovementState m = Movement();
-        byte[] atNine = BodyAt(BuiltinBlobLayout.FramedPositionWireGeneration, m);
+        byte[] atNine = BodyAt(BuiltinBlobLayout.FramedPositionWireGeneration, m, Owner());
 
         byte[] normalized = WireGenerationBlobMigration.NormalizeV3ToV4(atNine);
 
-        // Generation 9 predates FacingYawQ, so the field it never wrote comes back at its default.
+        // Generation 9 predates FacingYawQ, so the field it never wrote comes back at its default. The timers it
+        // stored inside the movement payload come back as an owner frame.
         MovementState expected = m;
         expected.FacingYawQ = 0;
-        Assert.Equal(BodyAt(MoveProtocol.WireProtocolVersion, expected), normalized);
+        Assert.Equal(BodyAt(MoveProtocol.WireProtocolVersion, expected, Owner()), normalized);
     }
 
     [Fact]
     public void NormalizeV3ToV4_ACurrentGenerationBody_IsUnchanged()
     {
-        byte[] atCurrent = BodyAt(MoveProtocol.WireProtocolVersion, Movement());
+        byte[] atCurrent = BodyAt(MoveProtocol.WireProtocolVersion, Movement(), Owner());
         Assert.Equal(atCurrent, WireGenerationBlobMigration.NormalizeV3ToV4(atCurrent));
     }
 
@@ -115,7 +123,7 @@ public class WireGenerationBlobMigrationTests
         byte[] v1Body = new CellBlobFixtures.BodyBuilder(netId32: true)
             .Entity(11,
                 (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(1, Pos)),
-                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(1, m)))
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(1, m, Owner())))
             .ToBody();
 
         byte[] widened = NetIdBlobMigration.WidenV1ToV2(v1Body, context);
@@ -127,9 +135,7 @@ public class WireGenerationBlobMigrationTests
         MovementState expected = default;
         expected.VerticalVelocity = m.VerticalVelocity;
         expected.Grounded = m.Grounded;
-        expected.TimeSinceGrounded = m.TimeSinceGrounded;
-        expected.JumpBufferRemaining = m.JumpBufferRemaining;
-        Assert.Equal(BodyAt(MoveProtocol.WireProtocolVersion, expected), framed);
+        Assert.Equal(BodyAt(MoveProtocol.WireProtocolVersion, expected, Owner()), framed);
     }
 
     [Fact]
@@ -171,7 +177,7 @@ public class WireGenerationBlobMigrationTests
         MovementState m = Movement();
         var store = new InMemoryWorldStore();
         await store.SaveAsync("cell:0:0", CellBlobFixtures.Wrap(
-            WireGenerationBlobMigration.StampedSchemaVersion, older, BodyAt(older, m)));
+            WireGenerationBlobMigration.StampedSchemaVersion, older, BodyAt(older, m, Owner())));
 
         var host = new ShardPersistenceHost(MoveProtocol.CreateRegistry());
         var cp = new CellPersistence(host, store);
@@ -191,7 +197,10 @@ public class WireGenerationBlobMigrationTests
         Assert.Equal(m.TeleportEpoch, restored.TeleportEpoch);
         Assert.Equal(m.HorizontalVelocityXQ, restored.HorizontalVelocityXQ);
         Assert.Equal(m.FacingYawQ, restored.FacingYawQ);
-        Assert.Equal(default, restored.Commitment);   // the older generation never wrote it
+        Assert.Equal(default, restored.Commitment);   // seeded at its default
+        // Whether the stored timers sat inside the movement payload (before the owner split) or in a frame of their
+        // own, they come back on the owner-only component.
+        Assert.Equal(Owner(), cell.World.Get<MovementOwnerState>(e));
 
         // A brought-forward cell is rewritten once, so the stored blob now carries the CURRENT generation and the
         // next boot does no work.
@@ -255,5 +264,6 @@ public class WireGenerationBlobMigrationTests
         Assert.Equal(C00, cell.Coord);
         cell.World.Set(e, ReplicatedPosition.InFrame(cell.Frame, cell.Frame.ToLocal(Pos)));
         cell.World.Set(e, Movement());
+        cell.World.Set(e, Owner());
     }
 }

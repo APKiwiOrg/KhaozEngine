@@ -191,9 +191,15 @@ internal static class CellBlobRewriter
         int toGeneration, in CellBlobWalkPolicy policy)
     {
         var frames = new CellBlobEntityFrames();
+        byte[]? ownerTimers = null;   // a split movement frame's timers, held until the owner frame's slot comes up
         while (true)
         {
             if (!TryReadUInt16(body, ref pos, out ushort typeId)) return false;
+            if (ownerTimers is not null && MovementOwnerBlobSplit.ShouldFlushBefore(typeId))
+            {
+                MovementOwnerBlobSplit.WriteOwnerFrame(bw, ownerTimers);
+                ownerTimers = null;
+            }
             if (typeId == 0) { bw.Write(typeId); return true; }   // end-of-entity terminator
             if (!frames.Accept(typeId, policy)) return false;
             bw.Write(typeId);
@@ -223,11 +229,20 @@ internal static class CellBlobRewriter
             int fromLen = BuiltinBlobLayout.PayloadLength(typeId, fromGeneration);
             if (fromLen < 0) return false;   // absent at this generation, or an id the engine does not own
             int toLen = BuiltinBlobLayout.PayloadLength(typeId, toGeneration);
-            if (toLen < fromLen) return false;
             if ((long)pos + fromLen > body.Length) return false;
 
             if (typeId == MoveProtocol.MovementTypeId && !policy.AcceptsMovementPayload(body, pos, fromGeneration))
                 return false;
+
+            if (typeId == MoveProtocol.MovementTypeId && MovementOwnerBlobSplit.Applies(fromGeneration, toGeneration))
+            {
+                // The one built-in that shrank: its feel timers leave for an owner frame of their own, written
+                // after the entity's remaining built-ins (see MovementOwnerBlobSplit).
+                if (!MovementOwnerBlobSplit.TryWriteMovement(body, ref pos, bw, fromLen, toLen, out ownerTimers))
+                    return false;
+                continue;
+            }
+            if (toLen < fromLen) return false;
 
             if (typeId == MoveProtocol.PositionTypeId && toLen != fromLen)
             {

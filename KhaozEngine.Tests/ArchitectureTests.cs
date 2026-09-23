@@ -39,7 +39,8 @@ public partial class ArchitectureTests
         "Identity.Oidc", "Identity.Discord", "Catalog.Sqlite", "Catalog.SqlServer", "Catalog.AzureBlob",
         // The account registry seam is opt-in on the Commerce precedent: a server-only seam stays out of the
         // Server umbrella until more than its first consumers want it. Accounts_ReferencesOnlyNetcode pins its edge.
-        "Accounts",
+        // Its SQL backends follow the rule every SQL provider follows.
+        "Accounts", "Accounts.Sqlite", "Accounts.SqlServer",
         // THE THREE NATIVE GPU BACKENDS ARE NOT ON THIS LIST ANY MORE, and their absence is asserted rather than
         // assumed: NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu below requires the opposite of what
         // this list would have meant. They were opt-in from decisions P1 / V-P1 / M-P1, on pay-for-what-you-use
@@ -115,9 +116,9 @@ public partial class ArchitectureTests
         // KhaozEngine.Sqlite is the shared store lifecycle the two SQLite backends sit on, so it is a third home
         // for the provider rather than an escape from the seam: the unpooled open and the dispose have to touch
         // SqliteConnection, and that discipline living once is the whole point of the package (#731).
-        ["Microsoft.Data.Sqlite"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite" },
-        ["SQLitePCLRaw.lib.e_sqlite3"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite" },
-        ["Microsoft.Data.SqlClient"] = new[] { "WorldStore.SqlServer", "Commerce.SqlServer", "Catalog.SqlServer" },
+        ["Microsoft.Data.Sqlite"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite", "Accounts.Sqlite" },
+        ["SQLitePCLRaw.lib.e_sqlite3"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite", "Accounts.Sqlite" },
+        ["Microsoft.Data.SqlClient"] = new[] { "WorldStore.SqlServer", "Commerce.SqlServer", "Catalog.SqlServer", "Accounts.SqlServer" },
         // The blob SDK, contained in the catalog's public-origin pack store and nowhere else. Azure.Identity
         // has NO row here, and the absence is the assertion: the store takes a ready BlobContainerClient so
         // the host owns the credential, and the only project in the tree that references Azure.Identity is

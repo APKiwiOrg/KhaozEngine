@@ -655,7 +655,7 @@ namespace KhaozEngine.Terrain
         {
             FlushPendingBuilds();
             if (!_loaded.TryGetValue(coord, out Entry? e)) return false;
-            if (_sink is IChunkPlacementRefreshSink refresh) refresh.RefreshPlacements(coord, e.Handle, e.Ring);
+            if (_sink is IChunkPlacementRefreshSink refresh) refresh.RefreshPlacements(coord, e.Handle);
             else InvalidateLoaded(coord);
             return true;
         }

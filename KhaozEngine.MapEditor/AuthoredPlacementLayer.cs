@@ -31,17 +31,17 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
     readonly float _chunkSize;
     readonly PlacementCache _cache = new();
 
-    // What PlacementsIn serves. Replaced wholesale on publish and never mutated after, so a build-thread read of
-    // a stale reference still sees a coherent set.
-    Dictionary<ChunkCoord, PropPlacement[]> _buckets = new();
+    // What PlacementsIn serves, each bucket in document order. Replaced wholesale on publish and never mutated
+    // after, so a build-thread read of a stale reference still sees a coherent set.
+    Dictionary<ChunkCoord, Served[]> _buckets = new();
 
     // The published set keyed by diff key, plus the scratch the next refresh fills. Swapped per refresh.
     Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
     Dictionary<string, Entry> _next = new(StringComparer.Ordinal);
-    readonly List<Entry> _included = new();
+    readonly List<(string Key, Entry Entry)> _included = new();
     readonly HashSet<string> _seenIds = new(StringComparer.Ordinal);
     readonly HashSet<ChunkCoord> _dirty = new();
-    readonly Dictionary<ChunkCoord, List<PropPlacement>> _rebucket = new();
+    readonly Dictionary<ChunkCoord, List<Served>> _rebucket = new();
 
     // The placement list the published set was collected from, and its lazily built id-to-first-index map, which
     // the selection-only path reads.
@@ -55,7 +55,11 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
     string? _syncedSelectedId;
     bool _synced;
 
-    readonly record struct Entry(PropPlacement Prop, ChunkCoord Coord);
+    // A served placement's transform, its chunk and its index in the document's placement list.
+    readonly record struct Entry(PropPlacement Prop, ChunkCoord Coord, int Index);
+
+    // One bucket slot: the diff key travels with the placement so the selection path can find and order it.
+    readonly record struct Served(string Key, PropPlacement Prop);
 
     /// <summary>Creates an empty layer source bucketed at <paramref name="chunkSize"/>, which must match the sink's
     /// chunk size so a bucket is exactly one streamed chunk.</summary>
@@ -102,7 +106,7 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
     public void PlacementsIn(RectArea area, List<PropPlacement> into)
     {
         ArgumentNullException.ThrowIfNull(into);
-        Dictionary<ChunkCoord, PropPlacement[]> buckets = Volatile.Read(ref _buckets);
+        Dictionary<ChunkCoord, Served[]> buckets = Volatile.Read(ref _buckets);
         if (buckets.Count == 0) return;
         ChunkCoord min = ChunkGrid.CoordOf(area.MinX, area.MinZ, _chunkSize);
         ChunkCoord max = ChunkGrid.CoordOf(area.MaxX, area.MaxZ, _chunkSize);
@@ -111,20 +115,23 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
         {
             // A query wider than the populated set walks the buckets instead of the coord range. The sink only
             // asks for single chunks, so this is the tooling path.
-            foreach (PropPlacement[] bucket in buckets.Values) AppendInside(bucket, area, into);
+            foreach (Served[] bucket in buckets.Values) AppendInside(bucket, area, into);
             return;
         }
         for (int z = min.Z; z <= max.Z; z++)
         for (int x = min.X; x <= max.X; x++)
-            if (buckets.TryGetValue(new ChunkCoord(x, z), out PropPlacement[]? bucket))
+            if (buckets.TryGetValue(new ChunkCoord(x, z), out Served[]? bucket))
                 AppendInside(bucket, area, into);
     }
 
-    static void AppendInside(PropPlacement[] bucket, RectArea area, List<PropPlacement> into)
+    static void AppendInside(Served[] bucket, RectArea area, List<PropPlacement> into)
     {
-        foreach (PropPlacement p in bucket)
+        foreach (Served served in bucket)
+        {
+            PropPlacement p = served.Prop;
             if (p.X >= area.MinX && p.X < area.MaxX && p.Z >= area.MinZ && p.Z < area.MaxZ)
                 into.Add(p);
+        }
     }
 
     bool RefreshCore(MapDocument doc, TerrainField field, EditorVisibility? visibility, string? selectedId,
@@ -164,24 +171,24 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
     }
 
     // The selection-only path: nothing but the selected id changed since the last refresh, so exactly two
-    // placements can change membership. The old selection rejoins the layer unless it is hidden, and the new one
-    // leaves it. Only their chunks' buckets are rewritten, so a selection click costs a dictionary copy and two
-    // small arrays instead of a pass over the document. A first-occurrence id is its own diff key (see KeyFor), which
-    // is what lets the published entries be edited by id here.
+    // placements can change membership. The old selection rejoins the layer at its document position unless it is
+    // hidden, and the new one leaves it. Only their chunks' buckets are rewritten, so a selection click costs a
+    // dictionary copy and two small arrays. The first selection after a document change also builds the id map, one
+    // O(n) pass. A first-occurrence id is its own diff key (see KeyFor), which is what lets the published entries be
+    // edited by id here.
     void SwapSelection(EditorVisibility? visibility, string? oldId, string? newId)
     {
         _dirty.Clear();
         IReadOnlyList<EditorPlacement> placements = _collected!;
         Dictionary<string, int> firstIndex = _firstIndex ??= FirstIndexOf(placements);
-        var buckets = new Dictionary<ChunkCoord, PropPlacement[]>(_buckets);
+        var buckets = new Dictionary<ChunkCoord, Served[]>(_buckets);
         if (oldId is not null && firstIndex.TryGetValue(oldId, out int oldIndex)
             && (visibility is null || !visibility.IsElementHidden(SelectionKind.Placement, oldId)))
         {
             PropPlacement prop = placements[oldIndex].Prop;
-            var entry = new Entry(prop, ChunkGrid.CoordOf(prop.X, prop.Z, _chunkSize));
+            var entry = new Entry(prop, ChunkGrid.CoordOf(prop.X, prop.Z, _chunkSize), oldIndex);
             _entries[oldId] = entry;
-            buckets[entry.Coord] = buckets.TryGetValue(entry.Coord, out PropPlacement[]? bucket)
-                ? [.. bucket, prop] : [prop];
+            InsertInOrder(buckets, oldId, entry);
             _dirty.Add(entry.Coord);
         }
         Selected = null;
@@ -189,13 +196,39 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
         {
             if (_entries.Remove(newId, out Entry left))
             {
-                RemoveOne(buckets, left);
+                RemoveKey(buckets, left.Coord, newId);
                 _dirty.Add(left.Coord);
             }
             if (visibility is null || !visibility.IsElementHidden(SelectionKind.Placement, newId))
                 Selected = placements[newIndex];
         }
         if (_dirty.Count > 0) Volatile.Write(ref _buckets, buckets);
+    }
+
+    // Inserts a rejoining placement before the first bucket member that comes after it in the document, so the
+    // bucket keeps the order a full refresh would publish.
+    void InsertInOrder(Dictionary<ChunkCoord, Served[]> buckets, string key, Entry entry)
+    {
+        var served = new Served(key, entry.Prop);
+        if (!buckets.TryGetValue(entry.Coord, out Served[]? bucket))
+        {
+            buckets[entry.Coord] = [served];
+            return;
+        }
+        int at = bucket.Length;
+        for (int i = 0; i < bucket.Length; i++)
+        {
+            if (_entries.TryGetValue(bucket[i].Key, out Entry member) && member.Index > entry.Index)
+            {
+                at = i;
+                break;
+            }
+        }
+        var grown = new Served[bucket.Length + 1];
+        Array.Copy(bucket, 0, grown, 0, at);
+        grown[at] = served;
+        Array.Copy(bucket, at, grown, at + 1, bucket.Length - at);
+        buckets[entry.Coord] = grown;
     }
 
     static Dictionary<string, int> FirstIndexOf(IReadOnlyList<EditorPlacement> placements)
@@ -205,20 +238,20 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
         return index;
     }
 
-    static void RemoveOne(Dictionary<ChunkCoord, PropPlacement[]> buckets, Entry entry)
+    static void RemoveKey(Dictionary<ChunkCoord, Served[]> buckets, ChunkCoord coord, string key)
     {
-        if (!buckets.TryGetValue(entry.Coord, out PropPlacement[]? bucket)) return;
-        int at = Array.FindIndex(bucket, p => SameTransform(p, entry.Prop));
+        if (!buckets.TryGetValue(coord, out Served[]? bucket)) return;
+        int at = Array.FindIndex(bucket, s => string.Equals(s.Key, key, StringComparison.Ordinal));
         if (at < 0) return;
         if (bucket.Length == 1)
         {
-            buckets.Remove(entry.Coord);
+            buckets.Remove(coord);
             return;
         }
-        var trimmed = new PropPlacement[bucket.Length - 1];
+        var trimmed = new Served[bucket.Length - 1];
         Array.Copy(bucket, 0, trimmed, 0, at);
         Array.Copy(bucket, at + 1, trimmed, at, bucket.Length - at - 1);
-        buckets[entry.Coord] = trimmed;
+        buckets[coord] = trimmed;
     }
 
     // Fills _next and _included (document order) with every placement this source should serve, and records the
@@ -244,9 +277,10 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
                 continue;
             }
             if (hidden) continue;
-            var entry = new Entry(placement.Prop, ChunkGrid.CoordOf(placement.Prop.X, placement.Prop.Z, _chunkSize));
+            var entry = new Entry(placement.Prop,
+                ChunkGrid.CoordOf(placement.Prop.X, placement.Prop.Z, _chunkSize), i);
             _next[key] = entry;
-            _included.Add(entry);
+            _included.Add((key, entry));
         }
     }
 
@@ -285,17 +319,17 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
     void Publish()
     {
         _rebucket.Clear();
-        foreach (Entry entry in _included)
+        foreach ((string key, Entry entry) in _included)
         {
             if (!_dirty.Contains(entry.Coord)) continue;
-            if (!_rebucket.TryGetValue(entry.Coord, out List<PropPlacement>? list))
-                _rebucket[entry.Coord] = list = new List<PropPlacement>();
-            list.Add(entry.Prop);
+            if (!_rebucket.TryGetValue(entry.Coord, out List<Served>? list))
+                _rebucket[entry.Coord] = list = new List<Served>();
+            list.Add(new Served(key, entry.Prop));
         }
-        var buckets = new Dictionary<ChunkCoord, PropPlacement[]>(_buckets);
+        var buckets = new Dictionary<ChunkCoord, Served[]>(_buckets);
         foreach (ChunkCoord coord in _dirty)
         {
-            if (_rebucket.TryGetValue(coord, out List<PropPlacement>? list)) buckets[coord] = list.ToArray();
+            if (_rebucket.TryGetValue(coord, out List<Served>? list)) buckets[coord] = list.ToArray();
             else buckets.Remove(coord);
         }
         Volatile.Write(ref _buckets, buckets);

@@ -27,7 +27,7 @@ namespace KhaozEngine.Terrain
             return refreshed;
         }
 
-        /// <summary>Re-serves <paramref name="load"/>'s live-source layers at <paramref name="ring"/> and republishes
+        /// <summary>Re-serves <paramref name="load"/>'s live-source layers at its own ring and republishes
         /// their clusters through <paramref name="clusters"/>, bumping an HLOD layer's generation in
         /// <paramref name="generations"/> exactly as a rebuild in place does. A gameplay chunk adopts the fresh
         /// placements into a new <see cref="Scene3DChunkSink.ChunkLoad.LayerProps"/> array. A decor chunk carries no
@@ -36,12 +36,12 @@ namespace KhaozEngine.Terrain
         /// placements.</summary>
         internal static bool Refresh(PropClusterRenderer clusters,
             ConcurrentDictionary<PropClusterKey, long> generations, float chunkSize, ChunkCoord coord,
-            Scene3DChunkSink.ChunkLoad load, ChunkRing ring, IReadOnlyList<PropLayer> layers, TerrainField field)
+            Scene3DChunkSink.ChunkLoad load, IReadOnlyList<PropLayer> layers, TerrainField field)
         {
             List<int> refreshed = RefreshedLayers(layers);
             if (refreshed.Count == 0) return false;
             RectArea area = ChunkGrid.AreaOf(coord, chunkSize);
-            bool gameplay = ring == ChunkRing.Gameplay;
+            bool gameplay = load.Ring == ChunkRing.Gameplay;
 
             var fresh = new IReadOnlyList<PropPlacement>[layers.Count];
             foreach (int i in refreshed)

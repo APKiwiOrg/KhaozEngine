@@ -682,13 +682,14 @@ namespace KhaozEngine.Terrain
             Apply(coord, lod, ring, BuildCpu(coord, lod, ring, reason), handle);
 
         /// <inheritdoc />
-        /// <remarks>Handled by <see cref="ChunkPlacementRefresh"/>. When a refreshed layer registers colliders, the
-        /// chunk's prop statics are rebuilt from the adopted placements. Nothing else on the chunk changes.</remarks>
-        public void RefreshPlacements(ChunkCoord coord, object handle, ChunkRing ring)
+        /// <remarks>Handled by <see cref="ChunkPlacementRefresh"/> at the chunk's own <see cref="ChunkLoad.Ring"/>.
+        /// When a refreshed layer registers colliders, the chunk's prop statics are rebuilt from the adopted
+        /// placements. Nothing else on the chunk changes.</remarks>
+        public void RefreshPlacements(ChunkCoord coord, object handle)
         {
             var load = (ChunkLoad)handle;
             bool colliders = ChunkPlacementRefresh.Refresh(_propClusters, _propGenerations, _chunkSize, coord, load,
-                ring, _layers, _field);
+                _layers, _field);
             if (!colliders || _physics is null || _collisionShapes is null) return;
             ChunkStatics.RemoveAll(_physics, load.Statics);
             AddStatics(load);

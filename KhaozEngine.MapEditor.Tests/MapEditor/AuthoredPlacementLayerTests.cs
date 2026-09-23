@@ -233,16 +233,57 @@ public sealed class AuthoredPlacementLayerTests
             var full = new AuthoredPlacementLayer(Chunk);
             full.Refresh(doc, field, visibility, selected, invalidate: null);
 
-            Assert.Equal(Everything(full), Everything(layer));
+            Assert.Equal(ChunkByChunk(full), ChunkByChunk(layer));
             Assert.Equal(full.Selected, layer.Selected);
         }
     }
 
-    static string[] Everything(AuthoredPlacementLayer layer)
+    // Every chunk's served placements in the order the sink would receive them, chunk by chunk in a fixed coord
+    // order, so two layers compare on exact per-chunk order rather than as sets.
+    static string[] ChunkByChunk(AuthoredPlacementLayer layer)
     {
+        var all = new List<string>();
         var served = new List<PropPlacement>();
-        layer.PlacementsIn(new RectArea(-2000f, -2000f, 2000f, 2000f), served);
-        return served.Select(p => $"{p.Id}@{p.X},{p.Z}").OrderBy(k => k, StringComparer.Ordinal).ToArray();
+        for (int z = -4; z <= 3; z++)
+        for (int x = -4; x <= 3; x++)
+        {
+            served.Clear();
+            layer.PlacementsIn(ChunkGrid.AreaOf(new ChunkCoord(x, z), Chunk), served);
+            foreach (PropPlacement p in served) all.Add($"{x},{z}:{p.Id}@{p.X},{p.Z}");
+        }
+        return all.ToArray();
+    }
+
+    [Fact]
+    public void AMoveThatChangesOnlyZ_ReachesTheLayer()
+    {
+        using var rig = new Rig();
+        rig.Editor.Execute(new AddPlacementCommand(Placement("a", "oak", 10f, 10f)));
+        rig.Frame();
+        rig.Sink.TakeRefreshes();
+
+        rig.Editor.SealGesture();
+        rig.Editor.Execute(new MovePlacementCommand("a", 10f, 30f, null));
+        rig.Frame();
+
+        PropPlacement moved = Assert.Single(rig.Served());
+        Assert.Equal((10f, Ground, 30f), (moved.X, moved.Y, moved.Z));
+        Assert.Equal(new[] { new ChunkCoord(0, 0) }, rig.Sink.TakeRefreshes());
+    }
+
+    [Fact]
+    public void BuildSinkLayers_AuthoredLayerStaysEqual_SoUpdateLayersKeepsIt()
+    {
+        var doc = new MapDocument { Id = "update-layers" };
+        doc.ScatterLayers.Add(new MapScatterLayer { Name = "forest" });
+        doc.CompanionLayers.Add(new MapCompanionLayer { Name = "ferns", HostLayer = "forest" });
+        var world = new ViewportWorld(null!, Array.Empty<string>());
+        IReadOnlyList<PropLayer> before = world.BuildSinkLayers(doc);
+        IReadOnlyList<PropLayer> after = world.BuildSinkLayers(doc);
+
+        Assert.Equal(before[^1], after[^1]);
+        var sink = new Scene3DChunkSink(null!, Field(Ground), before, Chunk);
+        sink.UpdateLayers(after);
     }
 
     [Fact]
@@ -472,7 +513,7 @@ public sealed class AuthoredPlacementLayerTests
             Query(coord);
         }
 
-        public void RefreshPlacements(ChunkCoord coord, object handle, ChunkRing ring)
+        public void RefreshPlacements(ChunkCoord coord, object handle)
         {
             _refreshes.Add(coord);
             Query(coord);

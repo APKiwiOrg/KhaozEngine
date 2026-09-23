@@ -81,9 +81,10 @@ namespace KhaozEngine.Terrain
     /// <see cref="TerrainStreamer.RefreshPlacements"/> after pending builds are flushed.</summary>
     public interface IChunkPlacementRefreshSink : IChunkSink
     {
-        /// <summary>Re-serve the live placement-source layers of the loaded chunk behind <paramref name="handle"/>
-        /// at its current <paramref name="ring"/>, leaving its terrain mesh and tier as they are.</summary>
-        void RefreshPlacements(ChunkCoord coord, object handle, ChunkRing ring);
+        /// <summary>Re-serve the live placement-source layers of the loaded chunk behind <paramref name="handle"/>,
+        /// leaving its terrain mesh, tier and ring as they are. The ring comes from the handle itself, so a caller
+        /// cannot write live placements into a decor chunk by passing the wrong one.</summary>
+        void RefreshPlacements(ChunkCoord coord, object handle);
     }
 
     /// <summary>Optional sink seam for a live terrain LOD table change.</summary>

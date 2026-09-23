@@ -8113,6 +8113,24 @@ the chunk's props instead of rebuilding it. `streamer.RefreshPlacements(coord)` 
 layers of that loaded chunk through `Scene3DChunkSink`'s `IChunkPlacementRefreshSink` and leaves its terrain mesh
 and collider alone. `Invalidate` is still the call for a field change.
 
+The same holds for a change to scatter or companion configs that leaves the field alone, such as a moved
+exclusion. Hand the sink the new layers, then refresh the props of the chunks the change can reach:
+
+```csharp
+streamer.FlushPendingBuilds();
+if (sink.KeepsLayerShape(layers))
+{
+    sink.UpdateLayers(layers);
+    streamer.RefreshProps(reach);   // every prop layer of the loaded chunks in reach, terrain untouched
+}
+```
+
+`KeepsLayerShape` is what makes refreshing only some chunks safe: it is true only when each layer differs in
+nothing but its `Scatter` and `Companions` configs, since a chunk left alone keeps state derived from the old
+list. `reach` must cover every chunk whose placements the new configs change, which for a scatter exclusion is
+its bounds padded by the layer's jitter. A layer-count, kind or companion-host change needs every loaded chunk
+rebuilt (`UpdateLayers` then `InvalidateAll`) or a new sink.
+
 **Every teleport, zone change and camera jump runs the teleport contract.** This is the step most likely to
 be missed, because without it the world looks right within a few frames and the failure only shows as a
 brief fall-through on arrival:
@@ -9418,9 +9436,11 @@ column is also wider: `OutlinePanelWidth` (260, unchanged) and `InspectorPanelWi
 shared 260) now split independently, giving the grouped companion/scatter-layer rows room to breathe.
 
 **Viewport rebuild performance.** Bounded terrain-height edits invalidate only loaded chunks overlapping
-the accumulated dirty region. Exclusion and scatter-override edits first refresh the captured generation
-configuration, then invalidate their jitter-padded shape bounds. Terrain scalars, biome bands and
-same-topology scatter or companion value edits refresh every loaded chunk without rebuilding the viewport.
+the accumulated dirty region. Exclusion and scatter-override edits leave the field alone, so they refresh the
+captured generation configuration and re-serve only the props of the loaded chunks their jitter-padded shape
+bounds overlap (`ViewportWorld.RefreshLayerProps`), with no terrain re-mesh, every drag frame. Terrain scalars,
+biome bands and same-topology scatter or companion value edits refresh every loaded chunk without rebuilding
+the viewport.
 Pending asynchronous work is flushed before field or layer snapshots change. Layer-count, layer-kind,
 placement-layer, kit and HLOD topology changes retain the full rebuild path (#14). Full rebuilds are
 throttled to at most once per
@@ -10673,7 +10693,7 @@ while (running)
 ```
 
 **The order inside one tick** is fixed and worth knowing, because a game's own systems have to fit into it: the
-`OnBeforeTick` hook, then drain ONE command per player into its owning cell, then the ACTOR step (every spawner
+admin surface's queued commands (below), then the ban sweep over live sessions, then the `OnBeforeTick` hook, then drain ONE command per player into its owning cell, then the ACTOR step (every spawner
 ticks and every live actor's decision becomes a command), then step every cell (movement and the arrival facing),
 then authority handoff and border ghosting, then `OnAfterMovement`, then the action queue, then COMBAT (roll, apply,
 die), then serve every client its plane-filtered area of interest, and last the despawn every actor killed this tick owes.
@@ -10683,7 +10703,8 @@ so an actor's decision moves it on this tick rather than the next), handoff afte
 carries a player over a region boundary, combat after all of it so a swing is judged on where both bodies ended
 the tick, and the serve last so a client sees a whole tick and never half of one. The one thing that FOLLOWS the
 serve is the actor despawn, held back so the corpse is still in the world when each viewer's interest set is
-built and the killing blow therefore reaches everyone watching the fight.
+built and the killing blow therefore reaches everyone watching the fight. The admin surface's online snapshot is
+published after that, last of all.
 
 **The run gate.** `CanRun` is consulted in admission for every command whose mode is `Run`, over the player's slot,
 and returning false steps that tick at `Walk` instead whatever the client sent, landing at the start of the next
@@ -10718,6 +10739,43 @@ if (server.IsDrainComplete)                                // grace spent AND ev
     await persistence.FlushAsync();
     running = false;
 }
+```
+
+**The admin surface.** `TileWorldServer` implements `IAdminControllable`, the same interface the float heads do, so
+`ServerAdmin` and the `KhaozEngine.Server.Admin` endpoint take it directly with no adapter (see "Server
+administration" below). The interface is named under `KhaozEngine.NetWorld` but lives in `KhaozEngine.Netcode`, so
+the tile package still never references `NetWorld`. Every member is safe from any thread: `ListOnline()` reads a
+snapshot published at the end of each tick, and `Teleport`, `Kick` and `Broadcast` are queued and applied at the
+top of the next tick, ahead of `OnBeforeTick`. The host-thread `Kick(int slot, string reasonToken)`,
+`BroadcastNotice` and `SetPlayerState` stay the right calls from game code already on the host thread.
+
+- **Positions are world metres** through `TileWorldServerConfig.Presenter`, which should be the presenter the client
+  draws with (`new TilePresenter(document)`). Null is the client's own placeholder, one metre tiles and the
+  document default plane height. A listed position is the committed tile's centre, `PoseAt(state.Tile)`, and
+  `Grounded` is always true with a zero vertical velocity.
+- **`Teleport` is a tile move.** The position is snapped onto a tile and plane with `TilePresenter.TryTileAt` (the
+  tile whose span holds the point, on the plane whose drawn height there is nearest), and the player is placed
+  through `SetPlayerState(..., teleport: true)`, so the epoch advances and the client cuts and resyncs. The route,
+  any pending interaction and any combat lock go with it. A tile in a region the collision map has not loaded, or
+  one blocked whole, is REFUSED: the player stays put and `TeleportRefused` is raised on the host thread as (slot,
+  tile, `TileTeleportRefusal.OutsideWorld` or `Blocked`). A non-finite position throws `ArgumentException` at the
+  call. A position copied off `ListOnline` lands on the tile it was read from.
+- **`Kick` and `Broadcast` carry reason tokens,** the contract every notice on this protocol has. A kick reason
+  that is empty or too long for a notice frame goes out as `TileServerReason.Kicked`, because the call cannot fail
+  (`ServerAdmin.BanAsync` makes it after the ban is stored). A kick of a banned account goes out as `ke:banned`
+  whatever reason it carried, so `BanAsync`'s kick reads as the ban. A broadcast has no fallback, so an empty or
+  oversized token throws `ArgumentException` at the call, which the endpoint answers with a 400.
+- **Bans reach a live session.** `TileWorldServerConfig.BanStore` (and `IsBanned`) are read at the door, at the
+  join, and once per tick over every live session, ahead of `OnBeforeTick`. A ban that lands after the door closes
+  the session with `TileServerReason.Banned`, the same string as the door's `ke:banned` refusal, whoever recorded
+  it, and a tokenless guest seat is never checked. This is the tile counterpart of the `WorldServer` join check.
+- `SetPosition` keeps the interface default and cuts like `Teleport`. The movement commitment pair is not
+  supported and throws `NotSupportedException`.
+
+```csharp
+var server = new TileWorldServer(transport, config with { Presenter = new TilePresenter(document) }, map);
+server.TeleportRefused += (slot, tile, why) => log.Warn($"teleport of slot {slot} to {tile} refused: {why}");
+var admin = new ServerAdmin(server, bans);           // the same facade a WorldServer head builds
 ```
 
 ### Standing a client up
@@ -19522,11 +19580,19 @@ await persistence.FlushAsync();
 
 A generic, opt-in admin surface for a live server. Nothing changes for a server that does not use it.
 
-**Live commands.** Both `WorldServer` and `ShardedWorldServer` implement `IAdminControllable`:
+**Live commands.** `WorldServer`, `ShardedWorldServer` and the tile world's `TileWorldServer` all implement
+`IAdminControllable`:
 `ListOnline()` returns the connected players (slot, account id, display name, position, grounded, vertical velocity,
 net id) from a snapshot published once per tick; `Teleport(PlayerRef, Vector3)`, `Kick(PlayerRef, reason)`, and
 `Broadcast(text)` are queued and applied on the host thread between ticks, so you can call them safely from another
-thread (an HTTP handler). Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`.
+thread (an HTTP handler). Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`. The tile head's
+readings of these (world-metre positions through a presenter, a tile-snapping teleport that refuses a blocked or
+unloaded tile, reason tokens rather than text) are in the tile-world netcode section's "The admin surface".
+
+`IAdminControllable`, `PlayerRef`, `OnlinePlayer` and `MovementCommitmentRequest` live in the `KhaozEngine.Netcode`
+assembly under their `KhaozEngine.NetWorld` names and are forwarded from `KhaozEngine.NetWorld`, the same move the
+ban seam made, so existing code compiles and binds unchanged and a head without `NetWorld` can implement the
+interface. `MovementCommitmentResult` names a Locomotion type and stays in `NetWorld`.
 
 **Two position levers, and picking the wrong one is expensive.** `Teleport` always advances the teleport epoch,
 which is the client's signal to CUT: a camera cut, a chunk-ring prime and rebuild, an avatar render-height snap.
@@ -19581,7 +19647,10 @@ var admin = new ServerAdmin(server, bans);                       // BanAsync rec
 
 `BanGateAuthenticator(inner, IBanStore, log?)` reads the store live on every connect. Its
 `BanGateAuthenticator(inner, Func<string,bool>, log?)` form stays for a ban list that is not a store. A tile server
-takes the store as `TileWorldServerConfig.BanStore`, at the door. The two paths read differently on a `WorldClient`:
+takes the store as `TileWorldServerConfig.BanStore` and reads it at the door, at the join, and once per tick over
+every live session, closing a banned session with the `ke:banned` notice token (`TileServerReason.Banned`), so a ban
+written straight to the store ends a tile session on the next tick with no kick of the game's own. The two paths
+read differently on a `WorldClient`:
 a door refusal is `DisconnectReason.RejectedToken` with `ke:banned` in `DisconnectReasonDetail`, terminal unless
 `RetryOnReject` is set, while the join kick is `DisconnectReason.Banned` and is retried.
 
@@ -19641,8 +19710,9 @@ await endpoint.StopAsync();
 Routes (all under `/admin`, all require `Authorization: Bearer <token>`): `GET /online`, `POST /teleport`,
 `POST /kick`, `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`, `GET /actions`
 (lists registered action names, sorted ordinal), `GET /actions/{name}` (dispatches with a null payload),
-`POST /actions/{name}` (dispatches with an optional JSON body). Mutations return 202. Capabilities not wired
-return 501. An unknown action name returns 404. A malformed JSON body returns 400 with `{ "error": "malformed
+`POST /actions/{name}` (dispatches with an optional JSON body). Mutations return 202. A teleport or broadcast the
+head refuses on the caller's thread with an `ArgumentException` (a tile head refuses a broadcast that is not a
+wire-sized token) returns 400 with `{ "error": ... }`. Capabilities not wired return 501. An unknown action name returns 404. A malformed JSON body returns 400 with `{ "error": "malformed
 json body" }`. An absent, empty, whitespace-only, or literal JSON-null request body all reach the handler as a
 null payload, so the common `payload?.GetProperty(...)` idiom is safe against a caller that posts nothing. Bind
 defaults to loopback. There are no changes to the game client wire protocol.

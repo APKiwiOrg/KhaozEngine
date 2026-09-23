@@ -1,5 +1,6 @@
 using System.Numerics;
 
+// Lives in KhaozEngine.Netcode under its shipped NetWorld name, beside IAdminControllable. See IAdminControllable.cs.
 namespace KhaozEngine.NetWorld;
 
 /// <summary>A point-in-time view of one connected player for an admin console.</summary>

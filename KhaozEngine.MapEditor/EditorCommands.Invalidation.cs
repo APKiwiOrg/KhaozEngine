@@ -6,11 +6,19 @@ namespace KhaozEngine.MapEditor;
 public abstract partial class EditorCommand
 {
     internal virtual RectArea? DirtyRegionFor(MapDocument doc) => DirtyRegion;
+
+    /// <summary>True unless the command is known to leave the terrain field unchanged. Only meaningful while
+    /// <see cref="AffectsWorld"/> is true. An exclusion or scatter-override edit changes nothing but the captured
+    /// scatter configs, so it reports false and its bounded region only needs its props re-served
+    /// (<see cref="ViewportWorld.RefreshLayerProps(MapDocument, RectArea)"/>), never a field swap or a terrain re-mesh. True is the safe
+    /// default for everything else.</summary>
+    internal virtual bool ChangesField => true;
 }
 
 public sealed partial class AddExclusionCommand
 {
     internal override bool RefreshesLayerConfig => true;
+    internal override bool ChangesField => false;
     internal override RectArea? DirtyRegion => ShapeGeometry.TryBounds(_exclusion.Shape, out RectArea area) ? area : null;
     internal override RectArea? DirtyRegionFor(MapDocument doc) =>
         ShapeGeometry.TryBounds(_exclusion.Shape, ShapeGeometry.BoundsMarginFor(doc), out RectArea area) ? area : null;
@@ -20,6 +28,7 @@ public sealed partial class AddExclusionCommand
 public sealed partial class RemoveExclusionCommand
 {
     internal override bool RefreshesLayerConfig => true;
+    internal override bool ChangesField => false;
     internal override RectArea? DirtyRegion =>
         _removed is not null && ShapeGeometry.TryBounds(_removed.Shape, out RectArea area) ? area : null;
     internal override RectArea? DirtyRegionFor(MapDocument doc) => _removed is not null
@@ -30,6 +39,7 @@ public sealed partial class RemoveExclusionCommand
 public sealed partial class EditExclusionShapeCommand
 {
     internal override bool RefreshesLayerConfig => true;
+    internal override bool ChangesField => false;
     internal override RectArea? DirtyRegion => EditorInvalidationBounds.Of(_oldShape, _newShape);
     internal override RectArea? DirtyRegionFor(MapDocument doc) =>
         EditorInvalidationBounds.Of(_oldShape, _newShape, ShapeGeometry.BoundsMarginFor(doc));
@@ -40,6 +50,7 @@ public sealed partial class EditExclusionLayersCommand
 {
     MapShapeDoc? _shape;
     internal override bool RefreshesLayerConfig => true;
+    internal override bool ChangesField => false;
     internal override RectArea? DirtyRegion => ShapeGeometry.TryBounds(_shape, out RectArea area) ? area : null;
     internal override RectArea? DirtyRegionFor(MapDocument doc) =>
         ShapeGeometry.TryBounds(_shape, ShapeGeometry.BoundsMarginFor(doc), out RectArea area) ? area : null;
@@ -49,6 +60,7 @@ public sealed partial class EditExclusionLayersCommand
 public sealed partial class AddScatterOverrideCommand
 {
     internal override bool RefreshesLayerConfig => true;
+    internal override bool ChangesField => false;
     internal override RectArea? DirtyRegion => ShapeGeometry.TryBounds(_override.Shape, out RectArea area) ? area : null;
     internal override RectArea? DirtyRegionFor(MapDocument doc) =>
         ShapeGeometry.TryBounds(_override.Shape, ShapeGeometry.BoundsMarginFor(doc), out RectArea area) ? area : null;
@@ -58,6 +70,7 @@ public sealed partial class AddScatterOverrideCommand
 public sealed partial class RemoveScatterOverrideCommand
 {
     internal override bool RefreshesLayerConfig => true;
+    internal override bool ChangesField => false;
     internal override RectArea? DirtyRegion =>
         _removed is not null && ShapeGeometry.TryBounds(_removed.Shape, out RectArea area) ? area : null;
     internal override RectArea? DirtyRegionFor(MapDocument doc) => _removed is not null
@@ -68,6 +81,7 @@ public sealed partial class RemoveScatterOverrideCommand
 public sealed partial class EditScatterOverrideShapeCommand
 {
     internal override bool RefreshesLayerConfig => true;
+    internal override bool ChangesField => false;
     internal override RectArea? DirtyRegion => EditorInvalidationBounds.Of(_oldShape, _newShape);
     internal override RectArea? DirtyRegionFor(MapDocument doc) =>
         EditorInvalidationBounds.Of(_oldShape, _newShape, ShapeGeometry.BoundsMarginFor(doc));
@@ -77,6 +91,7 @@ public sealed partial class EditScatterOverrideShapeCommand
 public sealed partial class EditScatterOverrideValuesCommand
 {
     internal override bool RefreshesLayerConfig => true;
+    internal override bool ChangesField => false;
     internal override RectArea? DirtyRegion => ShapeGeometry.TryBounds(_newValue.Shape, out RectArea area) ? area : null;
     internal override RectArea? DirtyRegionFor(MapDocument doc) =>
         ShapeGeometry.TryBounds(_newValue.Shape, ShapeGeometry.BoundsMarginFor(doc), out RectArea area) ? area : null;
@@ -86,6 +101,7 @@ public sealed partial class EditScatterOverrideValuesCommand
 public sealed partial class ReorderScatterOverrideCommand
 {
     internal override bool RefreshesLayerConfig => true;
+    internal override bool ChangesField => false;
     internal override bool InvalidatesAllLoaded => true;
 }
 

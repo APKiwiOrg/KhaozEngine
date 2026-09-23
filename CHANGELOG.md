@@ -56,6 +56,23 @@ keeps CPU skinning with one assignment. No call a game makes changes meaning. Th
   bakes exactly what it returns, and `From(..., BiomeId.Meadow, ...)` gives the untilted mix.
 - The map editor's biome band inspector no longer says ground tinting by biome is unwired.
 
+**Map editor exclusion and override drags.**
+
+- Exclusion and scatter-override edits re-serve props only, every frame
+  ([#771](https://github.com/APKiwiOrg/KhaozEngine/issues/771)). Those commands never change the terrain field, so
+  a bounded batch of them takes the new `ViewportWorld.RefreshLayerProps`: only the chunks the jitter-padded shape
+  bounds overlap re-serve their props, with no field rebuild, terrain re-mesh or authored re-snap. A gizmo drag
+  frame drops from about 11 ms to 0.4 ms on the showcase map and from 16 ms to 2.5 ms on a heavy synthetic zone.
+  After every drag frame, after the drag ends and after undo and redo, every loaded chunk matches a full rebuild,
+  which a test checks against an independent oracle.
+- `TerrainStreamer.RefreshProps(area)` and `IChunkPropRefreshSink` are new. `Scene3DChunkSink` re-serves every
+  prop layer of each loaded chunk in the rect exactly as a fresh build computes it and republishes clusters, HLOD
+  meshes and prop statics without touching terrain. Any other sink falls back to the in-place rebuild.
+- `Scene3DChunkSink.KeepsLayerShape(layers)` states the partial-refresh contract: only `Scatter` and `Companions`
+  configs may differ. `UpdateLayers` now re-runs the construction rules, so a bad companion host is refused rather
+  than failing in a later chunk build, and `ViewportWorld.PartialRebuild` with a layer refresh declines a list that
+  fails the test and falls back to the throttled full rebuild.
+
 **Container sync and the commit builder.**
 
 - `ItemContainerPageCodec.EncodeProjected(registry, viewerLevel, pageIndex, firstSlot, slotCount, contentVersion,
@@ -186,6 +203,30 @@ keeps CPU skinning with one assignment. No call a game makes changes meaning. Th
 - `TileColors.Parse` throws `TileWorldException` for a null colour, like every other malformed colour. The object
   anchor stays sampled at the footprint centre on purpose, now documented: the corner maximum would float small
   props on steps and slopes (83 of Grimhollow's 2,463 one-tile objects would move by more than a centimetre).
+
+**Server admin on a tile world.**
+
+- `TileWorldServer` implements `IAdminControllable` ([#826](https://github.com/APKiwiOrg/KhaozEngine/issues/826)),
+  so `ServerAdmin` and the `KhaozEngine.Server.Admin` endpoint drive a tile world with no game-side adapter.
+  Commands queue and apply at the top of the next tick. `ListOnline` is a per-tick snapshot whose positions are
+  world metres through the new `TileWorldServerConfig.Presenter`.
+- A tile `Teleport` snaps a world position to a tile and plane with the new `TilePresenter.TryTileAt`, places the
+  player as a teleport so the client cuts, and refuses a blocked or unloaded tile through
+  `TileWorldServer.TeleportRefused` (`TileTeleportRefusal.OutsideWorld` or `Blocked`). `Kick` and `Broadcast` carry
+  reason tokens. `POST /admin/teleport` and `/admin/broadcast` answer 400 with the reason when the head refuses a
+  command on the caller's thread.
+- `IAdminControllable`, `PlayerRef`, `OnlinePlayer` and `MovementCommitmentRequest` move into the
+  `KhaozEngine.Netcode` assembly under their shipped `KhaozEngine.NetWorld` names, forwarded from NetWorld as the
+  ban seam was, so existing source and binaries bind unchanged. `MovementCommitmentRequest` now validates its own
+  arguments without the Locomotion package, and a parity test holds its exceptions and direction normalization
+  equal to `MovementCommitment`'s.
+- A ban that reaches an admitted tile player ends the session
+  ([#1104](https://github.com/APKiwiOrg/KhaozEngine/issues/1104)). `TileWorldServerConfig.BanStore` and `IsBanned`
+  are read at join and once per tick over live sessions, and an admin kick of a banned account carries
+  `TileServerReason.Banned`, the same `ke:banned` string the door refuses with. Tokenless guest seats are never
+  checked. The float heads still check at join only
+  ([#1103](https://github.com/APKiwiOrg/KhaozEngine/issues/1103)). Grimhollow's adoption is
+  [Grimhollow#320](https://github.com/APKiwiOrg/Grimhollow/issues/320).
 
 **Tooling.**
 

@@ -63,9 +63,10 @@ public sealed class MapEditorOptions
     /// mid-gesture edit stream (dragging a lake's radius, say) does not re-mesh the whole streamed world every
     /// frame. The default 0.25 keeps the viewport visibly live during a drag without paying for a rebuild on
     /// every frame. 0 disables the throttle (rebuilds every frame, the pre-throttle behaviour). Only the FULL
-    /// rebuild path is throttled: a bounded-region <see cref="MapEditorScene.PartialRebuildWorld"/> is cheap by
-    /// construction and always runs immediately, and once the gesture ends the very next check performs the
-    /// final full rebuild regardless of this interval.</summary>
+    /// rebuild path is throttled: a bounded-region <see cref="MapEditorScene.RefreshWorldProps"/> or
+    /// <see cref="MapEditorScene.PartialRebuildWorld"/> is cheap by construction and always runs immediately, and
+    /// once the gesture ends the very next check performs the final full rebuild regardless of this
+    /// interval.</summary>
     public float GestureRebuildInterval = 0.25f;
 
     /// <summary>The viewport's render distance, as one coherent set: the streamed terrain far field, the streamed

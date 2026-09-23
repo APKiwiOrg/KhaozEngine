@@ -506,6 +506,10 @@ always keep the constructor map.
   at 64 and 3 KB at 12) and `CombatLogoutTicks` (zero by default, and one number with two jobs: how long a
   dropped fighter's body lingers attackable, and the lookback that decides whether a leaving player was fighting
   at all).
+  It is also an **`IAdminControllable`** (`ListOnline`, `Teleport`, `Kick(PlayerRef, reason)`, `Broadcast`, plus
+  `TeleportRefused` and `TileWorldServerConfig.Presenter`), so `ServerAdmin` drives it directly. See the admin
+  surface section below.
+- **`TileTeleportRefusal`** - why an admin teleport left a player where they were: `OutsideWorld` or `Blocked`.
 - **`TileGameMessageHandler`** - the delegate an opaque game message arrives on.
 
 **Client**
@@ -991,7 +995,8 @@ var server = new TileWorldServer(
         Spawn = new TileCoord(64, 64, Plane: 0),
         MaxPendingConnections = 128,
         CanRun = slot => energy.Has(slot),         // null allows everyone. The authority behind run energy
-        BanStore = bans,                           // an IBanStore, read live at the door
+        BanStore = bans,                           // an IBanStore, read at the door, the join and every tick
+        Presenter = new TilePresenter(document),   // the admin surface's world metres, the client's own mapping
     },
     map,
     new TileDocumentTargets(document, catalogs),
@@ -1168,17 +1173,70 @@ every connect, so a ban recorded mid-session refuses that account's next connect
 game runs. Do not also pass its `IsBanned` to `ConnectionGate.Wrap`, which would check it twice. The type is named
 `KhaozEngine.NetWorld.IBanStore` but lives in `KhaozEngine.Netcode`, which is why a tile head can use it without the
 `NetWorld` package. `TileWorldServerConfig.IsBanned` stays for a ban list that is not a store, and setting both
-refuses an account either one bans. A banned account's LIVE session is not ended by the ban. Pair it with
-`TileWorldServer.Kick`.
+refuses an account either one bans.
+
+The door is not the only place the ban is read. Behind it, the server checks the same store and predicate at the
+JOIN, so a ban that landed after the door admitted a connection is told `ke:banned` and dropped before anything is
+spawned, and once per TICK over every live session, so a ban recorded while the player is in world (by a console
+writing the store directly as much as by `ServerAdmin.BanAsync`) closes the session on the next tick with the same
+`ke:banned` notice. An admin kick of a banned account carries that token whatever reason it was given. So a tile game
+never pairs a ban with its own `Kick`. The token is `TileServerReason.Banned`, the same string as
+`HandshakeToken.BannedReason`, so a client maps the door refusal and the notice to one localized line. A tokenless
+guest seat is never checked, because its id names a seat the next connection inherits. The predicate runs once per
+tick per player on the host thread, so it must be as cheap as the store's `IsBanned` is required to be.
 
 `TileWorldClient.RefusedReason` and the `RefusedAtDoor` event carry the token. Once joined, the server's own
-out-of-band notices carry `TileServerReason`: `ke:cannot-reach`, `ke:draining` and `ke:kicked`, all prefixed `ke:`
+out-of-band notices carry `TileServerReason`: `ke:cannot-reach`, `ke:draining`, `ke:kicked` and `ke:banned`, all prefixed `ke:`
 so a game's own tokens can never collide with them.
 
 A notice frame declares its own length, and the decoder refuses one whose declared length does not account for the
 WHOLE datagram, pad byte included. A lying length is the shape a probe takes and no legitimate sender produces one,
 so the strictness is deliberate, but it constrains transport choice: a transport that pads every datagram out to a
 fixed size cannot carry these notices, because the padding it adds is length the frame never declared.
+
+## The admin surface
+
+`TileWorldServer` implements `IAdminControllable`, the live-admin interface `WorldServer` and `ShardedWorldServer`
+implement, so `ServerAdmin` and the `KhaozEngine.Server.Admin` HTTPS endpoint take a tile server directly:
+
+```csharp
+var admin = new ServerAdmin(server, bans);                 // in the head, which references NetWorld for ServerAdmin
+server.TeleportRefused += (slot, tile, why) => log.Warn($"teleport of {slot} to {tile} refused: {why}");
+```
+
+The interface, `PlayerRef` and `OnlinePlayer` are named under `KhaozEngine.NetWorld` but live in
+`KhaozEngine.Netcode`, the same arrangement as `IBanStore`, so this package still never references `NetWorld`.
+`ServerAdmin` itself is in `NetWorld`, so a head that wants the facade references it, which is the head's choice.
+
+ONE THREADING RULE, the interface's own. Every member may be called from any thread. `ListOnline()` answers from a
+snapshot published at the end of each tick, empty until the first tick. `Teleport`, `Kick` and `Broadcast` are
+queued and applied at the top of the next tick, before `OnBeforeTick` and before the tick snapshots its player
+index, and a target is resolved then rather than when it was queued, because a slot is a seat the next connection
+recycles. The host-thread `Kick(int slot, string reasonToken)`, `BroadcastNotice` and `SetPlayerState` are
+unchanged and stay the right calls from game code already on the host thread.
+
+- **Positions are world metres** through `TileWorldServerConfig.Presenter`. Give it the presenter the client draws
+  with. Null is the client's placeholder (one metre tiles, `TileWorldDocument.DefaultPlaneHeight`). A listed
+  position is `PoseAt(state.Tile)`, the committed tile's centre, which is a whole tile ahead of a body mid glide.
+  `Grounded` is always true and `VerticalVelocity` always zero. A body lingering under `CombatLogoutTicks` is
+  listed, as `PlayerCount` counts it.
+- **`Teleport` is a tile move.** `TilePresenter.TryTileAt` snaps the position to the tile whose span holds it, on the
+  plane whose drawn height there is nearest (ties go down, a point above the top plane snaps onto it). The player
+  is then placed through `SetPlayerState(..., teleport: true)`, so the epoch advances and the client cuts and
+  resyncs rather than gliding across the map. The route, any pending interaction and any combat lock go with it,
+  and facing and mode are kept. A tile in a region the collision map has not loaded, or one blocked whole
+  (`TileCollisionFlags.Blocked`), is REFUSED: the player stays where they are and `TeleportRefused` fires on the
+  host thread with `TileTeleportRefusal.OutsideWorld` or `Blocked`. The check runs on the host thread because the
+  collision map is the head's. A non-finite position throws `ArgumentException` at the call. A position copied off
+  `ListOnline` lands on the tile it was read from.
+- **`Kick` and `Broadcast` carry reason tokens,** never text: the server owns no string catalog. A kick reason that
+  is empty or longer than `TileProtocol.MaxNoticeBytes` goes out as `ke:kicked`, because the call has to succeed
+  (`ServerAdmin.BanAsync` makes it after the ban is stored). A kick of an account the configured ban store or
+  predicate bans goes out as `ke:banned` instead, so `BanAsync`'s kick reads as the ban (see the connect door
+  section). A broadcast has no fallback, so an empty or oversized
+  token throws `ArgumentException` at the call, and the endpoint answers it with a 400.
+- `SetPosition` keeps the interface default and cuts like `Teleport`. `BeginMovementCommitment` and
+  `AbortMovementCommitment` throw `NotSupportedException`, since a tile world has no ballistic move.
 
 ## A payload too large for one game message
 

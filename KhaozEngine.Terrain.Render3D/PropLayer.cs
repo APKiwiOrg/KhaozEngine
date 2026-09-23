@@ -205,6 +205,16 @@ namespace KhaozEngine.Terrain
                 LodCrossfadeWidth, identity);
         }
 
+        /// <summary>This layer with only its generation configs replaced and every other field kept, including the
+        /// kind-defining ones, so the copy can break the one-source invariant above. It exists only to compare two
+        /// layers while ignoring their generation configs (see <see cref="PropLayerTopology"/>) and must never
+        /// reach a sink.</summary>
+        internal PropLayer WithGeneration(ScatterConfig? scatter, CompanionConfig? companions) =>
+            new(scatter, companions, HostLayerIndex, Meshes, PartMeshes, DrawRadius, FadeBandWidth,
+                LodMeshes, LodPartMeshes, LodDistance, HlodSourceMeshes, HlodDistance, HlodWeldCell,
+                HlodCrossfadeWidth, Placements, RegisterColliders, PlacementSource, CastsShadows, BlobRadii,
+                LodCrossfadeWidth, Identity);
+
         /// <summary>A scatter layer driven by its own <see cref="ScatterConfig"/> (single-handle mesh set).
         /// <paramref name="fadeBandWidth"/> (default 0 = hard cut) is the dissolve fade band just inside
         /// <paramref name="drawRadius"/> (see <see cref="FadeBandWidth"/>). Optional <paramref name="lodMeshes"/> plus

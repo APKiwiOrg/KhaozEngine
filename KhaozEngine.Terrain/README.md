@@ -138,6 +138,13 @@ up regardless of load order. Plain `float` math throughout.
   `IChunkPlacementRefreshSink` to re-serve only its live-source layers, leaving the terrain mesh, terrain
   collider and dynamics alone. Any other sink falls back to `Invalidate(coord)`. Returns false for a chunk that
   is not loaded, which picks the source up when it streams in. `Scene3DChunkSink` implements it.
+- **`TerrainStreamer.RefreshProps(area)`** / **`IChunkPropRefreshSink`** - a props-only refresh of EVERY prop
+  layer of each loaded chunk overlapping a rect, for a sink whose generation configs changed while the field did
+  not (an editor exclusion or scatter-override drag after `Scene3DChunkSink.UpdateLayers`). The rect maps to
+  chunks exactly as `Invalidate(RectArea)` maps it, pending builds are flushed first, and a sink implementing
+  `IChunkPropRefreshSink` re-serves each layer as a fresh build would while leaving the terrain mesh, terrain
+  collider and dynamics alone. Any other sink falls back to the in-place rebuild. Returns how many loaded chunks
+  were refreshed. `Scene3DChunkSink` implements it.
 - **`ChunkBuildReason`** / **`IChunkBuildReasonSink`** / **`IReasonedAsyncChunkSink`** - attributed rebuilds.
   Fresh loads, tier changes, ring changes and invalidates carry their reason through the scheduler generation,
   so a sink can reuse immutable placement data on a pure tier transition and a superseded completion cannot

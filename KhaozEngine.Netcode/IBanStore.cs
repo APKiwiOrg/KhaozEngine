@@ -23,7 +23,8 @@ public readonly record struct BanRecord(string AccountId, string Reason, DateTim
 /// <c>ShardedWorldServer</c> handed the store as <c>banStore:</c> checks it after the authenticator admitted the
 /// peer and kicks with a typed <c>ServerNotice(ServerNoticeKind.Banned)</c>, which is the route a game
 /// banned-player banner renders. Pass the SAME instance to both and the two can never disagree about who is
-/// banned. A tile server takes it as <c>TileWorldServerConfig.BanStore</c>, at the door.</para>
+/// banned. A tile server takes it as <c>TileWorldServerConfig.BanStore</c> and reads it at the door, at the join, and
+/// once per tick over every live session, kicking a banned one with the <c>ke:banned</c> notice token.</para>
 /// <para>Defined in the <c>KhaozEngine.Netcode</c> assembly under this namespace, and type-forwarded from
 /// <c>KhaozEngine.NetWorld</c>, where it shipped.</para>
 /// </summary>

@@ -25,6 +25,7 @@ public sealed class EditorDocument
     bool _pendingRegionIsFull;
     bool _pendingAllLoaded;
     bool _pendingLayerConfigRefresh;
+    bool _pendingFieldChange;
 
     /// <summary>Creates an editor document over <paramref name="doc"/>, defaulting the feature registry to
     /// <see cref="MapDocRegistry.CreateDefault"/> when none is supplied.</summary>
@@ -91,6 +92,11 @@ public sealed class EditorDocument
     /// <summary>True when captured scatter and companion configs must refresh before chunk invalidation.</summary>
     public bool PendingLayerConfigRefresh => _pendingLayerConfigRefresh;
 
+    /// <summary>True when some command in the pending batch may have changed the terrain field (see
+    /// <c>EditorCommand.ChangesField</c>). False means the batch changed captured scatter configs only (exclusion and
+    /// scatter-override edits), so the chunks it covers need their props re-served but keep their terrain mesh.</summary>
+    public bool PendingFieldChange => _pendingFieldChange;
+
     /// <summary>True when the pending edit requires a full sink and streamer rebuild.</summary>
     public bool PendingFullRebuild => _pendingRegionIsFull;
 
@@ -102,6 +108,7 @@ public sealed class EditorDocument
         _pendingRegionIsFull = false;
         _pendingAllLoaded = false;
         _pendingLayerConfigRefresh = false;
+        _pendingFieldChange = false;
     }
 
     /// <summary>Applies a command through the history stack, then raises the change signals. This is the only
@@ -172,6 +179,7 @@ public sealed class EditorDocument
         if (command is not EditorCommand ec || !ec.AffectsWorld) return;
         WorldRebuildPending = true;
         _pendingLayerConfigRefresh |= ec.RefreshesLayerConfig;
+        _pendingFieldChange |= ec.ChangesField;
         if (_pendingRegionIsFull) return;
         if (ec.InvalidatesAllLoaded)
         {

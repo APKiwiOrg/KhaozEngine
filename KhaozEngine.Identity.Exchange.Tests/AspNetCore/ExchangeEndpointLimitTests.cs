@@ -1,7 +1,9 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Accounts;
@@ -15,7 +17,8 @@ namespace KhaozEngine.Tests.Identity.Exchange.AspNetCore;
 
 /// <summary>
 /// The endpoint's own bounds over a real socket: the per-client window with its <c>Retry-After</c>, the IPv6 /64
-/// grouping, the global bound and its queue, a health probe that none of them starve, and caller cancellation.
+/// grouping, the global bound and its queue, a slow upload that holds no place under it, a health probe that none of
+/// them starve, and caller cancellation.
 /// </summary>
 [Collection(ExchangeKestrelCollection.Name)]
 public class ExchangeEndpointLimitTests
@@ -101,6 +104,45 @@ public class ExchangeEndpointLimitTests
     }
 
     [Fact]
+    public async Task ASlowUpload_HoldsNoPlaceUnderTheGlobalBound()
+    {
+        // One place and no queue. Were the body read under the bound, the upload that never finishes would hold the
+        // only place and the complete request behind it would be refused.
+        var reading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using ExchangeHttpHost host = await ExchangeHttpHost.StartAsync(await ExchangeAccounts.BuildAsync(),
+            new AuthExchangeEndpointOptions { PermitsPerClientPerMinute = 100, MaxConcurrentExchanges = 1, MaxQueuedExchanges = 0 },
+            middleware: (context, next) =>
+            {
+                if (context.Request.Headers.ContainsKey(SlowUploadHeader))
+                    context.Request.Body = new FirstReadSignal(context.Request.Body, reading);
+                return next(context);
+            });
+
+        var neverEnds = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var abandon = new CancellationTokenSource();
+        using var upload = new HttpRequestMessage(HttpMethod.Post, "/auth/exchange") { Content = new NeverEndingBody(neverEnds.Task) };
+        upload.Headers.TransferEncodingChunked = true;
+        upload.Headers.Add(SlowUploadHeader, "1");
+        Task<HttpResponseMessage> slow = host.Client.SendAsync(upload, abandon.Token);
+        try
+        {
+            // The handler has started reading the slow body, so any place it takes before the read, it holds now.
+            await reading.Task.WaitAsync(Wait);
+
+            ExchangeReply complete = await host.ExchangeAsync("discord", ExchangeAccounts.OkCredential).WaitAsync(Wait);
+
+            Assert.Equal(HttpStatusCode.OK, complete.Status);
+            Assert.False(slow.IsCompleted);
+        }
+        finally
+        {
+            await abandon.CancelAsync();
+            neverEnds.TrySetResult();
+        }
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => slow);
+    }
+
+    [Fact]
     public async Task CallerCancellation_PropagatesIntoTheExchange_AndFreesItsPlace()
     {
         var blocking = new BlockingValidator();
@@ -126,6 +168,8 @@ public class ExchangeEndpointLimitTests
         blocking.Release();
         Assert.Equal(HttpStatusCode.OK, (await host.ExchangeAsync("discord", "second")).Status);
     }
+
+    private const string SlowUploadHeader = "X-Test-Slow-Upload";
 
     private static async Task WaitForAsync(Func<bool> condition)
     {
@@ -177,5 +221,66 @@ public class ExchangeEndpointLimitTests
             return IdentityValidation.Verified(new VerifiedIdentity(credentialToken, "discord", "Wren",
                 new System.Collections.Generic.Dictionary<string, string>()));
         }
+    }
+
+    /// <summary>A chunked body that sends the start of a request and then nothing, until the test lets it end.</summary>
+    private sealed class NeverEndingBody(Task end) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            SerializeToStreamAsync(stream, context, CancellationToken.None);
+
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context,
+            CancellationToken cancellationToken)
+        {
+            await stream.WriteAsync(Encoding.UTF8.GetBytes("{\"provider\":\"discord\","), cancellationToken).ConfigureAwait(false);
+            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await end.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
+    }
+
+    /// <summary>The request body, unchanged, except that the handler's first read of it is reported.</summary>
+    private sealed class FirstReadSignal(Stream inner, TaskCompletionSource reading) : Stream
+    {
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            reading.TrySetResult();
+            return inner.ReadAsync(buffer, cancellationToken);
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException("The handler reads the body asynchronously.");
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }

@@ -52,9 +52,13 @@ internal sealed class ExchangeHttpHost : IAsyncDisposable
 
     public HttpClient Client { get; }
 
+    /// <summary>
+    /// Starts the host. <paramref name="middleware"/> runs after the hosting's middleware and before the endpoints, for
+    /// a fact that watches a request on its way in.
+    /// </summary>
     public static async Task<ExchangeHttpHost> StartAsync(AuthExchange exchange,
         AuthExchangeEndpointOptions? endpoint = null, AuthExchangeHostingOptions? hosting = null,
-        CapturedLogs? logs = null)
+        CapturedLogs? logs = null, Func<HttpContext, RequestDelegate, Task>? middleware = null)
     {
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
@@ -68,6 +72,7 @@ internal sealed class ExchangeHttpHost : IAsyncDisposable
 
         WebApplication app = builder.Build();
         app.UseAuthExchangeHosting();
+        if (middleware is not null) app.Use(middleware);
         app.MapGet("/healthz", () => Results.Ok());
         app.MapAuthExchange(exchange, endpoint);
         await app.StartAsync();

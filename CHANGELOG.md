@@ -172,6 +172,15 @@ repins, and the notes below say what each game changes when it does.
   [#1018](https://github.com/APKiwiOrg/KhaozEngine/issues/1018),
   [#1032](https://github.com/APKiwiOrg/KhaozEngine/issues/1032),
   [#1017](https://github.com/APKiwiOrg/KhaozEngine/issues/1017)).
+- `KhaozEngine.MapEditor.Tests` raises the same thread pool floor `KhaozEngine.Server.Tests` does, now shared from
+  `KhaozEngine.TestSupport`. The Windows full tier caught the map editor host starving for 8.3 s at startup with the
+  pool at its default four workers, and that host runs the MCP rows that cancel on a loaded runner
+  ([#553](https://github.com/APKiwiOrg/KhaozEngine/issues/553)).
+- The Windows `direct3d11-native` full tier arms a thread pool starvation watchdog (`KE_POOL_WATCH=1`) in both hosts
+  and uploads its log, a heap dump per host on the first long episode, and trx timings as the
+  `pool-watch-direct3d11-native` artifact. The loopback listener timeouts in
+  [#720](https://github.com/APKiwiOrg/KhaozEngine/issues/720) happen only when a host drops into a mode several
+  times slower than normal, which no local run reproduces, so the next one records the stacks that held the pool.
 
 **Tooling.**
 

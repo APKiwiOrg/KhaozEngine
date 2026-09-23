@@ -121,6 +121,25 @@ public sealed class ManyPointLightsGpuTests(ManyPointLightsScene scene) : IClass
     }
 
     [GpuTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Model_receiver_reads_its_light_from_a_non_zero_cluster_offset_behind_an_in_view_crowd(bool perspective)
+    {
+        ManyPointLightsScene.Shot alone = scene.Capture(ManyPointLightsScene.Surface.Model, LeftAzimuth,
+            ManyPointLightsScene.LightQueue.RelevantOnly, perspective: perspective);
+        ManyPointLightsScene.Shot crowded = scene.Capture(ManyPointLightsScene.Surface.Model, LeftAzimuth,
+            ManyPointLightsScene.LightQueue.InViewCrowdRelevantLast, perspective: perspective);
+
+        PointLightClusterProjection projection = perspective
+            ? PointLightClusterProjection.Perspective
+            : PointLightClusterProjection.Orthographic;
+        AssertMatchesAlone(alone, crowded, $"model behind an in-view crowd, perspective {perspective}", projection);
+        Assert.True(crowded.Clusters.LightReferenceCount >= alone.Clusters.LightReferenceCount + 48,
+            $"the crowd added {crowded.Clusters.LightReferenceCount - alone.Clusters.LightReferenceCount} cluster "
+            + "references, fewer than one per crowd light, so the receiver may never read past offset zero");
+    }
+
+    [GpuTheory]
     [InlineData(ManyPointLightsScene.Surface.Model)]
     [InlineData(ManyPointLightsScene.Surface.TileGround)]
     [InlineData(ManyPointLightsScene.Surface.SplatTerrain)]
@@ -153,6 +172,8 @@ public sealed class ManyPointLightsGpuTests(ManyPointLightsScene scene) : IClass
         scene.Capture(ManyPointLightsScene.Surface.GpuSkinned, RightAzimuth, ManyPointLightsScene.LightQueue.RelevantAfter300);
         scene.Capture(ManyPointLightsScene.Surface.Model, LeftAzimuth,
             ManyPointLightsScene.LightQueue.ClusterOverflow, perspective: true);
+        scene.Capture(ManyPointLightsScene.Surface.Model, RightAzimuth,
+            ManyPointLightsScene.LightQueue.InViewCrowdRelevantLast, perspective: true);
 
         ManyPointLightsScene.Shot aged = scene.Capture(
             ManyPointLightsScene.Surface.Model, LeftAzimuth, ManyPointLightsScene.LightQueue.RelevantLast);
@@ -235,6 +256,7 @@ public sealed class ManyPointLightsScene : IDisposable
         ClusterOverflow,
         InvalidGeometryAlongsideRelevant,
         ClusterOverflowWithInvalidGeometry,
+        InViewCrowdRelevantLast,
     }
 
     public sealed record Shot(byte[] Rgba, int Brightness, PointLightClusterDiagnostics Clusters);
@@ -349,6 +371,17 @@ public sealed class ManyPointLightsScene : IDisposable
     static void QueueLights(Scene3D scene, LightQueue lights)
     {
         if (lights == LightQueue.None) return;
+        if (lights == LightQueue.InViewCrowdRelevantLast)
+        {
+            // Forty-eight lights hanging 1.5 m over the receiver with a 1 m radius. They are in view, so the grid stores
+            // their indices ahead of the contributing light's and the receiver's clusters read from non-zero offsets,
+            // but none of them reaches the receiver, so the picture must match the contributing light alone.
+            for (int i = 0; i < 48; i++)
+                scene.AddLight(new Vector3(-3.5f + i % 8, 1.5f, -2.5f + i / 8), Color.White, radius: 1f,
+                    intensity: 2f);
+            AddRelevant(scene);
+            return;
+        }
         if (lights is LightQueue.InvalidGeometryAlongsideRelevant or LightQueue.ClusterOverflowWithInvalidGeometry)
         {
             foreach (float radius in new[] { -6f, 0f, float.NaN, float.PositiveInfinity })

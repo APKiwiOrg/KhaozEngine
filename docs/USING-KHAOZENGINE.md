@@ -3754,9 +3754,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         rather than on the clamped edge of the one it started in, and there is no seam along the 45 degree
         planes. `PointShadowFilter.Hard` is the original four taps at half-texel offsets inside one cell, an
         edge one atlas texel wide wherever it stands, and it renders exactly as it did before this filter
-        existed. The cost is about fifteen atlas fetches a lit fragment against Hard's four, paid only by the
-        one to three lights that actually reach a fragment: a light whose attenuation has already fallen to zero
-        samples nothing at all.
+        existed. The base-only cost is about fifteen atlas fetches a lit fragment against Hard's four. An
+        assigned transient row reads both atlases at each tap. The cost is paid only by lights that reach a
+        fragment: a light whose attenuation has already fallen to zero samples nothing at all.
       - **`LightSizeMetres` (default `0.15`) is how big the emitter looks, and it is the only thing that decides
         how far a soft penumbra spreads.** The shadow widens as
         `LightSizeMetres * (receiverDistance - blockerDistance) / blockerDistance`, so a candle at a couple of
@@ -3772,7 +3772,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         may re-render, which bounds the frame in which several of them changed at once. A still scene rebuilds
         none, which is the whole point of the cache. `MaxDynamicLightsPerFrame` (default `4`) caps the
         every-frame maps, and each one of those is six faces every frame, so it is the hard ceiling on the
-        pass's steady cost.
+        pass's steady cost. Current-pose transient rows have no separate budget: deferring one would reuse an old
+        skinned pose. Their capacity is capped by the live base atlas instead.
       - **A `Dynamic` light has NO IDENTITY ACROSS FRAMES, so its budget is harder than the static one.** It
         carries no key, so the engine keys its row by the light's PLACE IN THE QUEUE, and that place belongs to a
         different light as soon as one of them expires and the rest shift down. So a dynamic row carries nothing
@@ -3785,7 +3786,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         dynamic lights alight AT ONCE at or under the budget, raise `MaxDynamicLightsPerFrame` if the scene
         genuinely needs more (and pay six faces a frame for each), and use `LightShadow.Static(key)` for
         anything that does not move.
-      - **`AtlasBytes` estimates the configured floor, and allocation happens at a FRAME BOUNDARY.** Nothing
+      - **`AtlasBytes` estimates the configured base floor, and allocation happens at a FRAME BOUNDARY.** Nothing
         is allocated until a frame has actually carried a request, so a game that never asks for a point shadow
         pays no memory for any of these numbers. The allocation and every rebind then happen at the next frame
         boundary rather than inside the frame that asked, beside the cascade atlas's own pending layout, so the
@@ -3794,7 +3795,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         plus 5 of `D32FloatS8UInt` depth per texel: `28,311,552` bytes (27 MiB) at the defaults and `95,551,488`
         bytes (about 91 MiB) at `384` by `12`. Read it into a settings screen the way `ShadowMapResolution`'s
         cascade cost is read. Static expansion may require more rows, while extent or allocation limits may
-        reduce face resolution. Use `scene.ResolvedPointShadows` for the actual live dimensions and refusal state.
+        reduce face resolution. A compact transient atlas for current skinned poses adds live memory only when a
+        static light intersects a skinned caster. Its exact high-water row count is capped by the live base atlas.
+        `PointShadowSettings.AtlasBytes` remains the configured base floor. Use `scene.ResolvedPointShadows` for
+        actual live dimensions, base and transient bytes, and refusal state.
       - **The three detail profiles carry it.** `ShadowSettings.ForDetail(ShadowMapDetail.Low)` sets
         `Enabled = false` (a whole second shadow pass is the first thing a low-end profile should stop paying)
         and `Filter = Hard` with it, so a game that turns point shadows back on over a low-end profile inherits
@@ -3807,29 +3811,36 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         releases the atlas there. The two do not merge and a request wins: the boundary assigns the clone over
         the live settings object, so an in-place edit made in the same frame goes with the object it was made on,
         whichever order the two happened in. Use one or the other within a frame.
-      - **`scene.ResolvedPointShadows` is what the frame is actually rendering, not what was asked for.** It is a
-        `PointShadowResolution`: `Enabled` (an atlas is live and a light that asks can be given a row, so it is
-        false both when the settings turned point shadows off and when nothing has asked for one yet),
-        `FaceResolution` and `MaxShadowedLights` (the LIVE layout, both `0` when there is no atlas), `Degraded`
-        (the last requested layout could not be brought up, so the three values above are something other than
-        what was asked for) and `Reason` (a diagnostics and log string naming the layout refused and what failed,
-        empty when nothing was). Read this into a settings screen rather than the settings object, or the screen
-        reports a quality level the frame is not rendering at. Two failure shapes, and they differ: when an
-        ALLOCATION is refused the previous atlas is untouched and keeps shadowing at the layout it had, the
-        refused layout is latched so it is not retried every frame (a different request clears the latch and is
-        attempted), and `Degraded` stands with its `Reason` until then. When the receiver REBIND fails during a
-        reshape there is no previous atlas to fall back on, because bringing the new one up freed it, so the
-        receivers go back to the 1x1 default and the scene runs unshadowed with `Degraded` and a `Reason` saying
-        so. Neither case throws and neither leaves the scene sampling a dead texture.
+      - **`scene.ResolvedPointShadows` reports what is live, including memory.** Its `PointShadowResolution` has
+        `Enabled`, `FaceResolution`, and `MaxShadowedLights` for the live base layout. `BaseAtlasBytes`,
+        `TransientAtlasRows`, `TransientAtlasBytes`, and `TotalAtlasBytes` report the allocated colour and depth
+        storage, including a retained transient high-water atlas. `Degraded` and `Reason` report a refused
+        layout. A refused base allocation keeps the previous complete pair. A refused transient texture or
+        framebuffer keeps the previous compatible transient atlas or its white default. A base shrink never
+        keeps an oversized transient atlas: if its compatible replacement is refused, the new rigid base lands
+        with the white transient default. A receiver-set rebind failure keeps the complete old pair and disposes
+        the candidates. Refused transient shapes are latched until row demand or face resolution changes.
+        Turning the setting off frees both atlases at the next boundary when the default pair can be rebound.
+        If that rebind is refused, sampling stops but the old textures stay allocated until they can be released.
+        No receiver samples a disposed texture.
       - **The counters.** `scene.PointShadowedLights` is how many lights carried a map last frame, and
         `LastShadowPassDiagnostics` carries `PointShadowedLights`, `PointStaticRebuilds`, `PointDynamicRenders`,
-        `PointFaceDrawCalls` and `PointSlotsInUse` beside the cascade pass's own counters.
-      - **Rigid casters only in this round.** Models, tile ground and splat terrain write into a point map on
-        the same rules they write into the cascade atlas, `DrawShadowOnly` instances included and
-        `castsShadows: false` instances excluded. A SKINNED caster writes into neither point map yet, so a
-        character standing between a shadowed light and a wall throws no shadow from that light. It is a
-        follow-up rather than an oversight: a cached map that had baked a body into it would be wrong the
-        following frame.
+        `PointTransientDemand`, `PointTransientRowsRendered`, `PointDynamicSkinnedDrawCalls`,
+        `PointStaticTransientSkinnedDrawCalls`, `PointFaceDrawCalls`, and `PointSlotsInUse` beside the cascade
+        pass's own counters. `PointStaticRebuilds` still counts rigid static base rebuilds only. A changing
+        skinned pose can redraw a transient row every frame while this rigid counter stays at zero.
+      - **Skinned bodies cast point shadows by default.** `Scene3D.DrawSkinned` and its dissolved variants use
+        CPU or GPU skinning and cast unless `castsShadows: false` is passed. Models, tile ground, splat terrain,
+        and `DrawShadowOnly` instances remain rigid casters. Static lights keep those rigid casters in cached
+        base rows and put current skinned poses in a compact transient atlas. Dynamic lights clear and draw rigid
+        and skinned casters together in their selected base row. A static transient row is independent of the
+        light's base row number. The receiver selects one face and local UV for each hard or soft tap, reads both
+        atlases there, and compares against the nearer stored depth. When no transient row is assigned it takes
+        the original base-only path before any transient fetch. Skinned colour and target-outline alpha cutouts
+        are available, while skinned key-light cutout remains
+        [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097) and point-light MASK alpha testing remains
+        [#1098](https://github.com/APKiwiOrg/KhaozEngine/issues/1098). This adds no point-shadow quality field
+        and no new draw overload.
       - **A LAMP IS SHADOWED BY ITSELF UNLESS YOU CLEAR ITS FIXTURE** (issue #1010). The pass stores the nearest
         surface in every direction, and a placed light sits inside its own lantern, post head or forge hood, so
         with nothing cleared the nearest surface is a few centimetres of the lamp itself and the light reaches

@@ -12,6 +12,10 @@ submitted pose on CPU or GPU skinning, even without an ordinary body draw. Parti
 agree with the ordinary body, and tile-world scenes forward grouped submissions
 ([#1053](https://github.com/APKiwiOrg/KhaozEngine/issues/1053)).
 
+Skinned characters now cast placed and dynamic point-light shadows. Placed lights keep rigid maps cached while
+poses animate in a compact transient atlas, and CPU and GPU skinning agree. The live point-shadow report includes
+the transient memory cost ([#1054](https://github.com/APKiwiOrg/KhaozEngine/issues/1054)).
+
 **Position-stable draws and the skills total level.**
 
 - `RandomDraw.Below(rng, exclusiveMax)` and `RandomDraw.UpTo(rng, inclusiveMax)` in `KhaozEngine.Primitives`

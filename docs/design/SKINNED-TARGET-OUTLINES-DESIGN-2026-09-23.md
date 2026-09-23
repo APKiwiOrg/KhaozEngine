@@ -32,10 +32,11 @@ The existing rigid outline API, legacy inverted hull silhouette API, composite a
 world object selection policy keep their current contracts. This work does not make the outline pass own
 animation, choose a pose, or retain caller memory after submission.
 
-Skinned alpha cutout in shadow maps is outside this target outline change and tracked by
-[#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097). The current key light skinned path has no cutout
-variant, and the point shadow path has no skinned caster path. Those paths do not share the target outline
-resources or acceptance proof and need a separate renderer decision.
+Skinned alpha cutout in shadow maps is outside this target outline change. Key-light skinned cutout remains
+[#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097). A separate point-shadow round now draws skinned
+casters, while point-light MASK alpha testing remains
+[#1098](https://github.com/APKiwiOrg/KhaozEngine/issues/1098). Neither shadow path shares target-outline
+resources or acceptance proof.
 
 ## Public API
 

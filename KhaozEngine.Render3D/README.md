@@ -333,14 +333,29 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   A `Dynamic` light has no identity across frames and its row lives for one frame, so a dynamic light whose map was
   not redrawn on a given frame renders UNSHADOWED for that frame rather than sampling an older one. Stay at or
   under the budget, raise it, or prefer `LightShadow.Static(key)` for anything that does not move.
-  `AtlasBytes` reports the cost once allocated (27 MiB at the defaults). `ShadowSettings.ForDetail` seeds it on the
-  same three profiles (`Low` off, `High` 384 by 12 at about 91 MiB), `Scene3D.RequestShadowMapDetail` carries it on a
-  live scene and `Scene3D.RequestPointShadowSettings` requests a custom one, both at the next frame boundary and both
-  keeping the previous atlas when allocation fails, with `Scene3D.ResolvedPointShadows` reporting what is in force and
-  why.
-  Rigid casters only in this round (`DrawShadowOnly` instances included, skinned casters a follow-up). Read
-  `Scene3D.PointShadowedLights`, or `PointShadowedLights`/`PointStaticRebuilds`/`PointDynamicRenders`/
-  `PointFaceDrawCalls`/`PointSlotsInUse` on `ShadowPassDiagnostics`.
+  `PointShadowSettings.AtlasBytes` estimates the configured base-atlas floor (27 MiB at the defaults).
+  `ShadowSettings.ForDetail` seeds the same three profiles (`Low` off, `High` 384 by 12 at about 91 MiB).
+  `Scene3D.RequestShadowMapDetail` carries a profile on a
+  live scene and `Scene3D.RequestPointShadowSettings` requests a custom one at the next frame boundary.
+  `Scene3D.DrawSkinned` and its dissolved variants cast by default through CPU or GPU skinning. Static lights keep
+  rigid casters (`DrawShadowOnly` included) in cached base rows and render each current skinned pose in a compact
+  transient atlas. Dynamic lights clear and redraw rigid and skinned casters together in their selected base row.
+  `castsShadows: false` excludes a skinned draw from point work. The transient atlas grows to exact demand at a
+  frame boundary, keeps high-water capacity within a compatible base layout, and never exceeds its base row count.
+  Receiver hard and soft taps compare the nearer of the base and transient depths. An unassigned transient row
+  takes the original base-only sampling path.
+  `Scene3D.ResolvedPointShadows` reports live `BaseAtlasBytes`, `TransientAtlasRows`, `TransientAtlasBytes` and
+  `TotalAtlasBytes` beside the live layout and any degradation. A refused transient texture or framebuffer keeps
+  the previous compatible atlas or the white default. A failed receiver-set rebind keeps the complete old pair.
+  On a base shrink, transient allocation may fail while the new rigid base still lands with the white transient
+  default. Read `Scene3D.PointShadowedLights`, or `PointShadowedLights`/`PointStaticRebuilds`/
+  `PointDynamicRenders`/`PointTransientDemand`/`PointTransientRowsRendered`/
+  `PointDynamicSkinnedDrawCalls`/`PointStaticTransientSkinnedDrawCalls`/`PointFaceDrawCalls`/`PointSlotsInUse` on
+  `ShadowPassDiagnostics`. `PointStaticRebuilds` counts rigid base rebuilds only.
+  Point-light MASK alpha testing remains [#1098](https://github.com/APKiwiOrg/KhaozEngine/issues/1098).
+  Skinned colour and outline cutouts are available, while key-light skinned cutout remains
+  [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097). No draw overload or point-shadow quality
+  field was added.
 - Frustum culling: `Scene3D.FrustumCulling` (on by default) skips any queued mesh instance whose world-space
   bounding sphere is entirely outside the camera frustum, so off-screen terrain chunks and props cost nothing to
   draw. Pixel-neutral by construction (only provably-offscreen geometry is dropped), so existing renders stay

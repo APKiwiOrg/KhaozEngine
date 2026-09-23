@@ -1,6 +1,6 @@
 # Skinned point-light shadow casters
 
-Status: approved by the owner on 2026-09-23. Implementation pending. Issue [#1054](https://github.com/APKiwiOrg/KhaozEngine/issues/1054).
+Status: implemented for staged 20.5.0. Approved by the owner on 2026-09-23. Issue [#1054](https://github.com/APKiwiOrg/KhaozEngine/issues/1054).
 Date: 2026-09-23.
 
 ## Outcome

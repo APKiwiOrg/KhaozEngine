@@ -16386,6 +16386,23 @@ bytes. Checks 12 and 13 are tolerated policy findings that leave the record vali
 alert. `KhaozEngine.ItemInstances/README.md` is the type-by-type reference, including the thirteen checks in
 full, the `KECQ` layout, the durable reason ordinals and the kind bands.
 
+### Rarity display colour
+
+A `rarity_rule` row may carry `display_rgb` as exactly three client-visible RGB bytes. The catalog bundle
+writes them as six lower-case hex digits, so `000000` is black and `ffffff` is white. The field is an optional
+tail after `upgrade_from`. Older seven-field rows still decode and rebuild to their original bytes. A
+missing colour, missing rarity property, unknown rarity ID or malformed item payload reads white. Retired
+rarity rows remain readable for items already owned.
+
+The item payload carries only kind 130's rarity ID. Build the renderer-free lookup over the loaded client
+runtime, then ask it for the RGB integer of a visible slot. A game turns that integer into its own drawing
+colour. There is no per-instance colour copy to migrate when an author retunes a rarity row.
+
+```csharp
+RarityDisplayColors colours = RarityDisplayColors.Over(runtime);
+int rgb = colours.RgbOf(slot.Payload.Span);
+```
+
 ### Content, a roll, a craft and a stat (the four things over the record, 19.2.0)
 
 The sections above are the RECORD, the container and the wire, which is what an item IS and how it travels.

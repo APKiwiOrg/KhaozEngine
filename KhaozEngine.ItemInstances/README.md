@@ -785,7 +785,7 @@ row carries a key reference to its parent, and a `sort` wherever its order is me
 |---|---|---|---|---|---|---|
 | 256 | `mod` | none | one affix: its `kind` (1 prefix, 2 suffix, 3 to 255 game), its `group_id`, its `legacy` flag and its display `line` | Client | 4,096 | 1,024 |
 | 257 | `mod_group` | none | an exclusivity group and its `max_per_item` | Client | 256 | 1,024 |
-| 258 | `rarity_rule` | none | how many affixes a rarity permits, its per kind caps, its `name_word_positions` and its `upgrade_from` | Client | 256 | 1,024 |
+| 258 | `rarity_rule` | none | how many affixes a rarity permits, its per kind caps, its `name_word_positions`, its `upgrade_from` and optional `display_rgb` | Client | 256 | 1,024 |
 | 259 | `unique_template` | none | a fixed item on a `base_id`, with its `name`, its `item_level_min` and its `weight` | Client | 4,096 | 1,024 |
 | 260 | `socket_type` | none | what a socket accepts: a `display_format` and a `max_nested_bytes` budget | Client | 256 | 1,024 |
 | 261 | `crafting_currency` | none | a named sequence of steps, what it consumes and its `max_steps` | Client | 4,096 | 1,024 |
@@ -821,6 +821,20 @@ client downloads no weight row at all rather than a row with a hole in it.
 `EngineContentTypes.SocketTypeTypeKey`, this band is what registers a type under it, and the late binding
 resolves at registry freeze. That is the one key here the engine owns.
 
+**A rarity's display colour is published content.** `rarity_rule.display_rgb` is optional and carries
+exactly three RGB bytes. The bundle exports them as six lower-case hex digits such as `000000` for black,
+`75b7f0` for blue, or `ffffff` for white. A seven-field row published before this field existed keeps its
+original bytes and reads white. The item instance payload stores kind 130's rarity ID, never colour bytes.
+`RarityDisplayColors.Over(runtime)` resolves the active client pack once, then `RgbOf(slot.Payload.Span)`
+returns a 24-bit RGB integer. No rarity property, an absent colour, an unknown rarity ID, or a malformed
+payload reads `0xFFFFFF`. A retired rarity row still supplies its authored colour to an owned item. A game
+converts the returned RGB to its own drawing colour type.
+
+```csharp
+RarityDisplayColors colours = RarityDisplayColors.Over(runtime);
+int rgb = colours.RgbOf(slot.Payload.Span);
+```
+
 **Every type states its own field names AND its own schema positions**, as `<Field>Field` and `<Field>Index`
 constants on the type (`StatLineContentType.CombineField` is `"combine"` and `StatLineContentType.CombineIndex`
 is 3). A positional reader reads the constant rather than counting the schema by hand, which is the thing
@@ -842,7 +856,7 @@ runbook all key on, so it is never renumbered and a withdrawn one is never reiss
 | `KEC0103` | `TierOrdinalMoved` | PUBLISH ONLY. a tier ordinal that moved since the previous published version, or one that was live then and is gone now with no remap rule naming its row |
 | `KEC0104` | `StatLineShape` | a `stat_line` whose `stat_id` does not resolve, whose `combine` is not 1, 2 or 3, or whose `min` is above its `max` |
 | `KEC0105` | `ModGroupCount` | a `mod_group` whose `max_per_item` is below 1 |
-| `KEC0106` | `RarityRuleShape` | a rarity whose counts contradict each other, or whose `upgrade_from` chain cycles |
+| `KEC0106` | `RarityRuleShape` | a rarity whose counts contradict each other, whose `upgrade_from` chain cycles, or whose present `display_rgb` is not three bytes |
 | `KEC0107` | `UniqueLineShape` | a `unique_line` whose mod does not resolve, whose ordinal names no tier of it, or whose mod carries a weight row |
 | `KEC0108` | `SocketTagOverlap` | a `socket_type` whose accept and reject tag sets overlap |
 | `KEC0109` | `RareNameCoverage` | a word `position` outside 1 to 255, or a rarity that rolls a name position no word of non-zero weight can fill |

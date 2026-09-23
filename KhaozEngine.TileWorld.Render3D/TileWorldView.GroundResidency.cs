@@ -52,27 +52,15 @@ public sealed partial class TileWorldView
     {
         TileWorldDocument snapshot = SnapshotGroundDocument(region);
         TileWorldCatalogs catalogs = TileWorldCatalogs.Merge(_catalogs);
-        var options = new TileGroundMesherOptions
-        {
-            JitterAmplitude = _options.Mesher.JitterAmplitude,
-            SmoothNormals = _options.Mesher.SmoothNormals,
-            Slots = _options.Mesher.Slots,
-        };
         for (int plane = 0; plane < _planes; plane++)
-            RequestGroundPlane(region, handles, plane, lod, snapshot, catalogs, options);
+            RequestGroundPlane(region, handles, plane, lod, snapshot, catalogs, _mesher);
     }
 
     void RequestGroundPlane(RegionCoord region, RegionHandles handles, int plane, TileGroundLod lod)
     {
         TileWorldDocument snapshot = SnapshotGroundDocument(region);
         TileWorldCatalogs catalogs = TileWorldCatalogs.Merge(_catalogs);
-        var options = new TileGroundMesherOptions
-        {
-            JitterAmplitude = _options.Mesher.JitterAmplitude,
-            SmoothNormals = _options.Mesher.SmoothNormals,
-            Slots = _options.Mesher.Slots,
-        };
-        RequestGroundPlane(region, handles, plane, lod, snapshot, catalogs, options);
+        RequestGroundPlane(region, handles, plane, lod, snapshot, catalogs, _mesher);
     }
 
     void RequestGroundPlane(

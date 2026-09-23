@@ -500,8 +500,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// Every row here that means "nothing is registered" says so explicitly with a scope rather than leaning on
     /// the ambient state, which is the same shape the Vulkan rows use and is the stronger form either way: it
-    /// asserts what the code does with no provider present rather than what it happens to do given whatever
-    /// <c>KhaozEngine.TestSupport.Gpu</c> registers at discovery on the day the test runs.
+    /// asserts what the code does with no provider present rather than what it happens to do after
+    /// <c>GpuTestGate</c> and the Render.Tests module initializer register the real provider.
     /// </para>
     /// </summary>
     [Collection("GraphicsBackendGlobalState")]

@@ -11,8 +11,11 @@ public partial class MapEditorScene
     /// <summary>Consumes a pending world rebuild after every edit source this frame (tools, then chrome, which
     /// covers the property-grid inspector), so an edit from either one lands in the streamed world before the
     /// next frame's pick. A pending edit that reported a bounded region
-    /// (<see cref="EditorDocument.PendingRebuildRegion"/>) rebuilds ONLY the chunks that region overlaps via
-    /// <see cref="PartialRebuildWorld"/>, never throttled (it is cheap by construction). A null region (a
+    /// (<see cref="EditorDocument.PendingRebuildRegion"/>) touches ONLY the chunks that region overlaps, never
+    /// throttled (it is cheap by construction): a batch that changed captured scatter configs and left the field
+    /// alone (exclusion and scatter-override edits, <see cref="EditorDocument.PendingFieldChange"/> false) re-serves
+    /// those chunks' props through <see cref="RefreshWorldProps"/>, and anything else re-meshes them through
+    /// <see cref="PartialRebuildWorld"/>, which is also where a declined props-only refresh lands. A null region (a
     /// whole-world edit, or the partial path declining because the world is not built) falls through to the full
     /// <see cref="RebuildWorld"/>, which IS throttled while a drag or draw gesture is live
     /// (<see cref="EditorToolController.IsDragging"/> / <see cref="EditorToolController.IsDrawing"/>): a full
@@ -58,7 +61,8 @@ public partial class MapEditorScene
             _document.AcknowledgeWorldRebuild();
             return;
         }
-        if (_document.PendingRebuildRegion is RectArea dirty && PartialRebuildWorld(dirty))
+        if (_document.PendingRebuildRegion is RectArea dirty
+            && ((PropsOnlyPending && RefreshWorldProps(dirty)) || PartialRebuildWorld(dirty)))
         {
             _document.AcknowledgeWorldRebuild();
             return;
@@ -76,6 +80,17 @@ public partial class MapEditorScene
             _gestureRebuildAccumulator = 0f;
         }
     }
+
+    // A bounded batch whose commands all left the field alone and changed captured generation config.
+    bool PropsOnlyPending => _document.PendingLayerConfigRefresh && !_document.PendingFieldChange;
+
+    /// <summary>Props-only seam: re-serve the props of the loaded chunks overlapping <paramref name="dirty"/> from
+    /// the document's rebuilt scatter configs, keeping the field and every terrain mesh
+    /// (<c>ViewportWorld.RefreshLayerProps</c>). Returns false when the viewport is not built or declines the new
+    /// layer list, so <see cref="CheckWorldRebuild"/> falls back to <see cref="PartialRebuildWorld"/>. The field is
+    /// unchanged, so the tool controller keeps its reference. Overridable so a headless test can observe the
+    /// dispatch without a device.</summary>
+    protected virtual bool RefreshWorldProps(RectArea dirty) => _viewport.RefreshLayerProps(_document.Doc, dirty);
 
     /// <summary>Partial-rebuild seam: re-mesh only the loaded chunks overlapping <paramref name="dirty"/> and
     /// re-point the tool controller at the swapped field. Returns false when the viewport is not built (the

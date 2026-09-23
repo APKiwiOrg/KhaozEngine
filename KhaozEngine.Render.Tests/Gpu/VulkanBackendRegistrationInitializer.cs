@@ -6,8 +6,8 @@ namespace KhaozEngine.Tests.Gpu
     /// THE BELT for the native VULKAN registration, the exact sibling of
     /// <see cref="D3D11BackendRegistrationInitializer"/> and here for the same one reason.
     /// <para>
-    /// <see cref="GpuFactAttribute"/>'s static constructor registers both native backends and covers every
-    /// assembly that runs GPU tests, because it fires during xUnit's discovery pass. This assembly also holds
+    /// <c>GpuTestGate</c> registers all three native backends, and <see cref="GpuFactAttribute"/> reaches it during
+    /// xUnit's discovery pass. This assembly also holds
     /// plain <c>[Fact]</c>s asserting the process really does have the REAL Vulkan provider registered
     /// (<c>VulkanBackendRegistrationTests</c>), and a filtered run of exactly those never touches the attribute
     /// and never fires that hook. So the belt is here, thin, delegating to the shared idempotent registration.

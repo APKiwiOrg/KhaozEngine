@@ -97,7 +97,7 @@ public static class GatheringNodeContentType
             EngineContentTypes.ItemTypeKey,
             ContentVisibility.Client,
             true),
-        new ContentFieldEntry(RespawnField(unit), ContentFieldKind.Int, null, ContentVisibility.Client, true),
+        ContentDurationFields.Entry(unit, RespawnField(unit), ContentVisibility.Client, true),
     ]);
 
     /// <summary>
@@ -110,7 +110,7 @@ public static class GatheringNodeContentType
     /// fails loudly.
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
-    /// <param name="unit">The game's own time unit, which picks the duration field's name.</param>
+    /// <param name="unit">The game's own time unit, which picks the duration field's name, kind and scale.</param>
     /// <param name="validator">
     /// The type's own validator, or null for none. <see cref="Validator"/> is the one this package ships
     /// for it, and a game passes that, one of its own, a wrapper over both, or null.

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Gpu.TestKit</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <Description>Framework-agnostic GPU test gate and golden-image helper for engine consumers.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu.D3D11/KhaozEngine.Gpu.D3D11.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu.Metal/KhaozEngine.Gpu.Metal.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu.Vulkan/KhaozEngine.Gpu.Vulkan.csproj" />
+    <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+  </ItemGroup>
+</Project>

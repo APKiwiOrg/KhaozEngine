@@ -118,6 +118,27 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
     field at several points and would otherwise mesh one chunk from two fields. A build that has already returned
     and is waiting to apply is the half `FlushPendingBuilds` covers, so the fix for that exception is to flush,
     never to retry.
+  - **`UpdateLayers(layers)`** swaps the captured generation configs every FUTURE chunk build reads, under the same
+    flush precondition and in-flight refusal as `UpdateField`. The list must pass the construction rules again
+    and keep the sink's topology: the same count and, per index, the same kind and HLOD presence, with every
+    placement layer unchanged. The placement buckets and the HLOD gate derive from exactly those parts, so they
+    stay valid without a rebuild. A companion may name a different host, which is only safe when every loaded
+    chunk is rebuilt afterwards (`TerrainStreamer.InvalidateAll`).
+  - **`KeepsLayerShape(layers)`** is the stricter test for refreshing only SOME chunks after `UpdateLayers`
+    (`TerrainStreamer.Invalidate(RectArea)` or `RefreshProps(RectArea)`). A chunk left alone keeps placements
+    derived from the old companion hosts, and its prop clusters keep the old layer's meshes, radii and identity,
+    so it is true only when each layer differs from the current one in nothing but its `Scatter` and
+    `Companions` configs. The caller also owns the other half: the rect must cover every chunk whose placements
+    the new configs change. For a scatter exclusion or override that means the shape bounds padded by the
+    layer's jitter, since a candidate belongs to the chunk of its un-jittered cell centre while the shape test
+    reads its jittered position.
+  - **`RefreshProps(coord, handle)`** (its `IChunkPropRefreshSink`, reached through
+    `TerrainStreamer.RefreshProps(area)`) re-serves every prop layer of a loaded chunk from the current configs
+    and field, the same placements a fresh build of the chunk computes, and rebuilds its prop clusters, an HLOD
+    layer's merged mesh and its prop statics. It never re-meshes the terrain or touches its collider, so a
+    generation-config edit that leaves the field alone (the map editor's exclusion and scatter-override drags)
+    costs scatter work instead of a chunk rebuild. A decor chunk with no HLOD layer carries nothing a config
+    change can alter and is skipped.
 - **`PropLayer`** - one scatter, companion, or placement layer's config + mesh set + draw radius, plus its
   dissolve fade band and optional far LOD variants. `PropLayer.ScatterLayer(scatter, meshes, drawRadius,
   fadeBandWidth = 0, lodMeshes = null, lodDistance = 0)` / `CompanionLayer(hostLayerIndex, companions, meshes,

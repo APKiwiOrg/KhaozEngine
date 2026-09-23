@@ -14,7 +14,7 @@ lands for container sync, tile netcode and journal operator tools
 Two defaults change. The engine terrain splat now reads the biome, so a world with non-Meadow bands looks
 different at repin (an all-Meadow world bakes bit-identical weights). `Scene3D.UseGpuSkinning` is now on by
 default, which renders pixel for pixel the same as CPU skinning and only moves the work to the GPU, and a game
-keeps CPU skinning with one assignment. No call a game makes changes meaning. The one source-level note is the new `ContainerCommitBuilder.Open` overload, below.
+keeps CPU skinning with one assignment. No call a game makes changes meaning. The one source-level note is the new `ContainerCommitBuilder.Open` overload, below. The one schema change is a seconds duration in `KhaozEngine.Catalog.GameTypes`, which now keeps hundredths, and no game had adopted that unit.
 
 **The map editor streams its authored placements.**
 
@@ -55,6 +55,23 @@ keeps CPU skinning with one assignment. No call a game makes changes meaning. Th
 - A splat rule's `ctx.Default` carries the tilted mix and `ctx.Biome` is unchanged. A rule that ignores `Default`
   bakes exactly what it returns, and `From(..., BiomeId.Meadow, ...)` gives the untilted mix.
 - The map editor's biome band inspector no longer says ground tinting by biome is unwired.
+
+**Map editor exclusion and override drags.**
+
+- Exclusion and scatter-override edits re-serve props only, every frame
+  ([#771](https://github.com/APKiwiOrg/KhaozEngine/issues/771)). Those commands never change the terrain field, so
+  a bounded batch of them takes the new `ViewportWorld.RefreshLayerProps`: only the chunks the jitter-padded shape
+  bounds overlap re-serve their props, with no field rebuild, terrain re-mesh or authored re-snap. A gizmo drag
+  frame drops from about 11 ms to 0.4 ms on the showcase map and from 16 ms to 2.5 ms on a heavy synthetic zone.
+  After every drag frame, after the drag ends and after undo and redo, every loaded chunk matches a full rebuild,
+  which a test checks against an independent oracle.
+- `TerrainStreamer.RefreshProps(area)` and `IChunkPropRefreshSink` are new. `Scene3DChunkSink` re-serves every
+  prop layer of each loaded chunk in the rect exactly as a fresh build computes it and republishes clusters, HLOD
+  meshes and prop statics without touching terrain. Any other sink falls back to the in-place rebuild.
+- `Scene3DChunkSink.KeepsLayerShape(layers)` states the partial-refresh contract: only `Scatter` and `Companions`
+  configs may differ. `UpdateLayers` now re-runs the construction rules, so a bad companion host is refused rather
+  than failing in a later chunk build, and `ViewportWorld.PartialRebuild` with a layer refresh declines a list that
+  fails the test and falls back to the throttled full rebuild.
 
 **Container sync and the commit builder.**
 
@@ -131,6 +148,24 @@ keeps CPU skinning with one assignment. No call a game makes changes meaning. Th
   `RuinborneConnectionSignals.IsServerRefusal` checks for `RejectedToken`, so it should add the two new members,
   or a planned-update status can override the content refusal copy.
 
+**Skinned animation inspection and GPU goldens.**
+
+- `Skeleton` retains glTF node names, resolves nodes and skin bones by name, and lets `BoneMask.Subtree` use a named
+  root ([#1052](https://github.com/APKiwiOrg/KhaozEngine/issues/1052)). A glTF child socket must be a zero-weight
+  skin joint, since the loader keeps skin joints and their ancestors.
+- `BoneSocket.Compose` and `ComposeRigid` attach a rigid piece through a posed joint. The rigid variant removes
+  scale and shear, preserves reflection and refuses an invalid basis
+  ([#96](https://github.com/APKiwiOrg/KhaozEngine/issues/96)).
+- `ITileWorldScene` exposes skinned load, unload, solid draw and dissolved draw calls, with
+  `Scene3DTileWorldScene` forwarding them to `Scene3D`. Older scene fakes compile and explicitly refuse a skinned
+  call ([#1058](https://github.com/APKiwiOrg/KhaozEngine/issues/1058)).
+- `KhaozEngine.Render3D.Animation.Inspection` adds pure clip pose probing, foot-plant and segment-clearance
+  measures, deterministic hygiene findings and reports, and allocation-free masked local-pose blending
+  ([#1055](https://github.com/APKiwiOrg/KhaozEngine/issues/1055)).
+- Packable `KhaozEngine.Gpu.TestKit` supplies a framework-agnostic GPU test gate and golden-grid comparison and
+  re-bake helper. `KhaozEngine.TestSupport.Gpu` delegates its shared gate to it while keeping xUnit out of the
+  package ([#1056](https://github.com/APKiwiOrg/KhaozEngine/issues/1056)).
+
 **Water shading.**
 
 - The procedural swell's normal is evaluated per pixel rather than interpolated across the surface grid
@@ -170,6 +205,55 @@ keeps CPU skinning with one assignment. No call a game makes changes meaning. Th
   skinning paths ([#387](https://github.com/APKiwiOrg/KhaozEngine/issues/387)), so a character mid-`CharDissolve`
   no longer leaves a solid shadow under an almost invisible body. A dissolving GPU-skinned caster uses 160 of its
   256-byte per-cascade slot, and a plain caster keeps the 64-byte matrix.
+
+**Tile world rendering minors.**
+
+- `TileGroundMesher` computes each lattice corner's height, normal, jitter and material slot once per region-plane
+  build rather than once per touching tile, through the new per-build `TileGroundCornerCache`
+  ([#636](https://github.com/APKiwiOrg/KhaozEngine/issues/636)). A busy 64 by 64 region builds about 2.3 times
+  faster (median 5.4 ms to 2.25 ms), with bit-identical meshes and no golden movement.
+- `TileWorldView` builds every ground mesh from a copy of `TileWorldViewOptions.Mesher` taken at construction, so
+  a later change or replacement no longer reaches only the regions rebuilt afterwards. `TileGroundMesherOptions.Copy`
+  is new. Every unresolved archetype shares one placeholder upload, freed once on dispose.
+- `TileWorldView.CollectLoadedRegions(into)` and `TileRegionResidency.CollectResident(into)` fill a reused buffer
+  without allocating, and `TileRegionResidency.Update` uses them, so a settled ring allocates nothing per frame.
+  `LoadedRegions` and `Resident` are unchanged.
+- `TileColors.Parse` throws `TileWorldException` for a null colour, like every other malformed colour. The object
+  anchor stays sampled at the footprint centre on purpose, now documented: the corner maximum would float small
+  props on steps and slopes (83 of Grimhollow's 2,463 one-tile objects would move by more than a centimetre).
+
+**Server admin on a tile world.**
+
+- `TileWorldServer` implements `IAdminControllable` ([#826](https://github.com/APKiwiOrg/KhaozEngine/issues/826)),
+  so `ServerAdmin` and the `KhaozEngine.Server.Admin` endpoint drive a tile world with no game-side adapter.
+  Commands queue and apply at the top of the next tick. `ListOnline` is a per-tick snapshot whose positions are
+  world metres through the new `TileWorldServerConfig.Presenter`.
+- A tile `Teleport` snaps a world position to a tile and plane with the new `TilePresenter.TryTileAt`, places the
+  player as a teleport so the client cuts, and refuses a blocked or unloaded tile through
+  `TileWorldServer.TeleportRefused` (`TileTeleportRefusal.OutsideWorld` or `Blocked`). `Kick` and `Broadcast` carry
+  reason tokens. `POST /admin/teleport` and `/admin/broadcast` answer 400 with the reason when the head refuses a
+  command on the caller's thread.
+- `IAdminControllable`, `PlayerRef`, `OnlinePlayer` and `MovementCommitmentRequest` move into the
+  `KhaozEngine.Netcode` assembly under their shipped `KhaozEngine.NetWorld` names, forwarded from NetWorld as the
+  ban seam was, so existing source and binaries bind unchanged. `MovementCommitmentRequest` now validates its own
+  arguments without the Locomotion package, and a parity test holds its exceptions and direction normalization
+  equal to `MovementCommitment`'s.
+- A ban that reaches an admitted tile player ends the session
+  ([#1104](https://github.com/APKiwiOrg/KhaozEngine/issues/1104)). `TileWorldServerConfig.BanStore` and `IsBanned`
+  are read at join and once per tick over live sessions, and an admin kick of a banned account carries
+  `TileServerReason.Banned`, the same `ke:banned` string the door refuses with. Tokenless guest seats are never
+  checked. The float heads still check at join only
+  ([#1103](https://github.com/APKiwiOrg/KhaozEngine/issues/1103)). Grimhollow's adoption is
+  [Grimhollow#320](https://github.com/APKiwiOrg/Grimhollow/issues/320).
+
+**A seconds duration keeps its hundredths.**
+
+- Under `ContentDurationUnit.Seconds` the four duration fields of `KhaozEngine.Catalog.GameTypes` (the food attack
+  delay, the equip profile attack, the gathering node respawn, the recipe base) are a `ScaledInt` at scale 100, so a
+  stored 233 reads back as 2.33 seconds ([#1022](https://github.com/APKiwiOrg/KhaozEngine/issues/1022)). A 6 Hz game's
+  8, 14 and 16 tick timings (1.333, 2.333 and 2.667 s) had no whole-second form, and at a 30 Hz step the hundredth
+  lands on the exact tick. Under `Ticks` every schema is byte identical to 20.0.0, so a game on ticks adopts with no
+  content change. The rule lives in one internal home beside the name rule, so a fifth duration field cannot miss it.
 
 **Tooling.**
 

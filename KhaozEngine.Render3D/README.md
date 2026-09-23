@@ -163,6 +163,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   (`PixelPostProcessSettings.TransparentBackground`) so it composites cleanly. `Resize` drains the device
   before disposing the old target/framebuffer, since the previous frame's queued render may still reference
   them.
+- `Render3DSnapshot.Capture` - headless one-shot RGBA8 capture. Existing callers still receive the byte array.
+  `CaptureWithBackend` runs the same render path once and returns `Render3DCapture`, whose `Rgba`, `Width`,
+  `Height` and `Backend` identify the pixels and the exact device that produced them. A golden caller passes
+  `capture.Backend` to `GoldenImage.Check` instead of resolving or guessing a backend separately.
 - `PixelPostProcessSettings` / `Palette` / `Palettes` - palette quantization, Bayer dither, depth/normal
   edge outline, cel bands, all independently toggleable (the smooth look is the default).
 - Anti-aliasing: `PixelPostProcessSettings.Quality.AntiAliasing` (a `RenderQuality` container) is the AA dropdown
@@ -929,6 +933,16 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     zero `MinBarWidth`, a black `TitleShadow`, drawn against a `Nameplate` carrying no `Bars`.
 
 - Animation (`Animation/`, pure + GPU-free, driven off a `Skeleton` + glTF `AnimationClip`s):
+  - `BoneSocket.Compose(local, jointModel, model)` attaches a rigid piece with the row-vector order
+    `local * jointModel * model`. `ComposeRigid` uses the same order after removing scale and shear from the joint
+    basis while keeping its translation. Use the rigid form for props that must follow a posed joint without
+    inheriting non-rigid animation data. It keeps a reflected basis reflected. A non-finite, collapsed, or
+    linearly dependent basis throws `ArgumentException` because no rigid orientation can be recovered.
+  - `GltfLoader.LoadSkinned` retains each skeleton node's glTF name in `Skeleton.NodeNames` with an empty string for
+    an unnamed node. `Skeleton.IndexOf` and `TryIndexOf` resolve those names, while `BoneIndexOfNode` maps a skeleton
+    node back to its skin bone or returns `-1` for a non-joint ancestor. The skeleton includes every `skin.joints`
+    node and the ancestors needed to compose it. A child outside `skin.joints` does not reach `Skeleton`, so an
+    authored socket that needs name lookup remains a zero-weight skin joint.
   - `AnimationSampler` / `AnimationPlayer` - one-shot pose sampling and a stateful single-clip player with a
     crossfade (`Play(clip, crossfade)` -> `Update(dt)` -> `GetBonePalette(buffer)`). `Play` loops the clip; `PlayOnce`
     plays it ONCE and CLAMPS the playhead at the clip duration, holding the final frame (a death / knockdown pose that
@@ -936,11 +950,38 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     is the allocation-free sample into a reused per-node pose buffer; `AnimationPlayer.GetLocalPoses(buffer)` writes
     the composited LOCAL poses (the crossfade result before hierarchy composition) so a `LayeredAnimator` can take
     the locomotion crossfade as its base layer.
+  - `Animation.Inspection.PoseProbe` samples a clip without a GPU and exposes each skeleton node's model-space
+    matrix or position by node index or retained name. `SampleClip` takes a closed normalised phase, with phase `1`
+    preserving the authored end key. `SampleClipAtSeconds` clamps to the authored time range. `SetLocals` inspects
+    a caller-supplied local pose. Composition covers every node in the supplied `Skeleton`, including non-palette
+    nodes in a code-built skeleton. A glTF-loaded child socket survives only when it is a zero-weight skin joint,
+    which places it in the bone palette. The loader otherwise retains only skin joints and their ancestors.
+  - `Animation.Inspection.FootPlant.Measure` samples one or more named feet over looping phases and returns the
+    lowest sole height, its first phase, and the largest horizontal slide within a circular stance run. Supply the
+    clip's forward `+Z` stride in metres so an in-place backward-moving foot is inspected in travel space. All-stance
+    clips anchor their single run at phase `0`.
+  - `Animation.Inspection.SegmentClearance.Min` samples a node-mounted segment against named-node `Capsule` axes
+    over the closed phase range. Its signed result is positive for separation, zero for contact, and negative for
+    penetration. Segment endpoints, capsule radii, and results are model-space metres. Both measurements require
+    finite geometry and at least two samples, and run without a mesh, graphics device, or test framework.
+  - `Animation.Inspection.ClipHygiene.Check` checks allowed nodes, translation policy, scale channels, raw
+    quaternion units, key-time order, key density, loop continuity, and unresolved targets. Findings have stable
+    rule identifiers, invariant details, and deterministic track, rule, key, and loop ordering.
+  - `Animation.Inspection.ClipReport.Write` emits a canonical LF-terminated text snapshot in caller clip and phase
+    order. Each phase contains every node's sampled local rotation in skeleton order, followed by requested
+    model-space positions. Phase `1` preserves the authored end key. Names are escaped and floats use invariant
+    fixed-six precision, making repeated UTF-8 encodings byte-identical.
+  - `Animation.Inspection.PoseBlend.BlendInto` blends one caller-owned local pose buffer toward another. Its finite
+    global weight is multiplied by an optional `BoneMask` per node and clamped to `[0, 1]`. Zero effective weight
+    leaves the destination exactly unchanged, unit effective weight copies the source exactly, and intermediate
+    weights lerp translation and scale while rotation follows the normalized shortest spherical arc. Warmed calls
+    allocate no managed memory and need no mesh, graphics device, or test framework.
   - `LayeredAnimator` / `AnimationLayer` / `BoneMask` / `LayerMode` - N animation layers composited into one final
     skeleton pose: a base locomotion layer below, masked `Override` / `Additive` action layers above (attack while
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +
     a `LayerMode`. `BoneMask` is per-node weights 0..1 (`BoneMask.Full`/`.Empty`, `BoneMask.Subtree(skel, root, w)`
-    for "this bone and all descendants at weight w" - the upper-body-action shape). Override lerps toward the layer
+    for "this bone and all descendants at weight w" - the upper-body-action shape). The root may be a node index or
+    a retained glTF name. Override lerps toward the layer
     pose by `weight x mask`. Additive applies the clip's delta from its first frame (the reference), scaled by
     `weight x mask`: the rotation delta is both EXTRACTED and APPLIED in the joint's LOCAL frame
     (`delta = inverse(reference) * sample`, applied as `base * delta`), so a base equal to the reference reproduces

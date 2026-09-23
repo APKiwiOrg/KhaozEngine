@@ -8,6 +8,11 @@ The 3D arm of the KhaozEngine snapshot harness. One extension method, kept in it
   `Render3DSnapshot.Capture` (`setup` runs once, `drawFrame` runs per frame, `frames` defaults
   to 1) and saves it through the same encode -> write -> log path as the 2D shots.
 
+For a golden test that also needs capture provenance, call `Render3DSnapshot.CaptureWithBackend` directly.
+It returns `Render3DCapture` with `Rgba`, `Width`, `Height` and the actual `Backend` from the device used by that
+same capture. Pass those values to `GoldenImage.Check`, including `capture.Backend` as its required final argument.
+`SnapshotRunner.Save` can write `capture.Rgba` when the same pixels also need a PNG.
+
 ```csharp
 return SnapshotHost.Main(args, shots =>
 {

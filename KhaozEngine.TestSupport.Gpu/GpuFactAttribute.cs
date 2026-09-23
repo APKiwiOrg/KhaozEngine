@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.TestKit;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -25,42 +26,6 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class GpuFactAttribute : FactAttribute
     {
-        /// <summary>
-        /// WHERE THE ENGINE'S NATIVE BACKENDS GET REGISTERED, for every assembly that runs GPU tests. An
-        /// explicit static constructor is what makes the CLR run this the first time anything touches this type,
-        /// which is during xUnit's discovery pass in any assembly carrying a <c>[GpuFact]</c> (or a
-        /// <c>[GpuTheory]</c>, whose own constructor calls straight into this one's statics), so it lands before
-        /// any test body rather than whenever the loader happens to pull the support assembly in.
-        /// <para>
-        /// It is deliberately not a <c>[ModuleInitializer]</c>: this is a LIBRARY, where CA2255 rejects one, and
-        /// the reason the analyzer gives is the reason the hook belongs here anyway. Registration should follow
-        /// the ATTRIBUTE, which is what says "this assembly runs GPU tests", not the assembly load, which says
-        /// nothing. Full reasoning on <see cref="D3D11BackendRegistration"/>.
-        /// </para>
-        /// <para>
-        /// ALL THREE native backend packages register here, which is the property the shared home was moved for,
-        /// and the third one arriving is what says the move worked: it cost one line. Each call is idempotent
-        /// and thread-safe on its own side, so ordering between them means nothing and none can be reached
-        /// twice. Each is also safe on every operating system, the Metal and Direct3D 11 ones because their
-        /// platform guards keep the OS-specific interop off the load path and the Vulkan one because it has no
-        /// platform boundary to keep.
-        /// </para>
-        /// </summary>
-        static GpuFactAttribute()
-        {
-            D3D11BackendRegistration.EnsureRegistered();
-            VulkanBackendRegistration.EnsureRegistered();
-            MetalBackendRegistration.EnsureRegistered();
-        }
-
-        // One headless device-creation attempt per process. null = a device was created (and disposed) fine, so
-        // probe mode may run; a non-null string is the reason probe mode skips.
-        static readonly Lazy<string?> ProbeReason = new(ProbeHeadlessDevice);
-
-        /// <summary>The shared probe accessor <see cref="GpuTheoryAttribute"/> passes to <see cref="SkipReason"/>,
-        /// so both attributes hit the SAME once-per-process device probe instead of each keeping their own.</summary>
-        internal static string? ProbeReasonValue() => ProbeReason.Value;
-
         // The capability probe, separate from the device probe above and equally once-per-process: the backend name
         // and whether that backend signals a fence on GPU completion. Null when no device could be created, which
         // deliberately does NOT skip - see RequiresCompletionFences.
@@ -70,9 +35,7 @@ namespace KhaozEngine.Tests.Gpu
 
         public GpuFactAttribute()
         {
-            string? reason = SkipReason(
-                Environment.GetEnvironmentVariable("KE_GPU_TESTS"),
-                ProbeReasonValue);
+            string? reason = GpuTestGate.SkipReason();
             if (reason != null) Skip = reason;
         }
 
@@ -107,33 +70,12 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Pure decision for <see cref="RequiresCompletionFences"/>: the skip reason for the probed
         /// <paramref name="caps"/>, or null to RUN. A null probe (no device could be created) runs, so a broken
         /// device errors downstream instead of being reported as a capability skip. Factored out to be unit-tested
-        /// headlessly, exactly like <see cref="SkipReason"/>.</summary>
+        /// headlessly, exactly like <see cref="GpuTestGate.SkipReason"/>.</summary>
         internal static string? CompletionFenceSkipReason((string Backend, bool Fences)? caps)
             => caps is { Fences: false } c
                 ? $"the {c.Backend} device reports no GPU-completion fence support "
                     + "(GpuCapabilities.SupportsCompletionFences), which is what this test measures"
                 : null;
-
-        /// <summary>
-        /// Pure decision for whether a <see cref="GpuFactAttribute"/> should skip, given the raw
-        /// <c>KE_GPU_TESTS</c> value and a device <paramref name="probe"/> (invoked only in probe mode). Returns
-        /// null to RUN, else the skip reason. Factored out so it can be unit-tested headlessly with stub probes,
-        /// without mutating process environment variables:
-        /// <list type="bullet">
-        ///   <item><description><c>"1"</c> (strict) always runs: never skips, so device-creation failure becomes a
-        ///   test error downstream, not a silent skip.</description></item>
-        ///   <item><description><c>"probe"</c> runs iff <paramref name="probe"/> returns null, else skips with the
-        ///   probe's reason.</description></item>
-        ///   <item><description>anything else skips with the "set KE_GPU_TESTS" reason.</description></item>
-        /// </list>
-        /// </summary>
-        internal static string? SkipReason(string? envValue, Func<string?> probe)
-        {
-            if (envValue == "1") return null;                 // strict: run; failures error, never skip.
-            if (envValue == "probe")
-                return probe();                               // null => run, else the probe's skip reason.
-            return "set KE_GPU_TESTS=1 (strict) or KE_GPU_TESTS=probe (skip if no device) to run GPU golden tests";
-        }
 
         /// <summary>Create a headless device once, read what it can do, dispose it. Null when it could not be
         /// created: a capability requirement never turns a dead device into a skip.</summary>
@@ -261,7 +203,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Pure decision for <see cref="RequiresFourSampleMsaa"/>: the skip reason for the probed
         /// <paramref name="caps"/>, or null to RUN. Factored out to be unit-tested headlessly, exactly like
-        /// <see cref="SkipReason"/> and <see cref="CompletionFenceSkipReason"/>.</summary>
+        /// <see cref="GpuTestGate.SkipReason"/> and <see cref="CompletionFenceSkipReason"/>.</summary>
         internal static string? FourSampleMsaaSkipReason(
             (string Backend, GpuSampleCounts Supported)? caps)
             => caps is { } c && (c.Supported & GpuSampleCounts.Four) == 0
@@ -329,17 +271,5 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        static string? ProbeHeadlessDevice()
-        {
-            try
-            {
-                using var ctx = KhaozEngine.Gpu.GpuDeviceContext.CreateHeadless();
-                return null;
-            }
-            catch (Exception ex)
-            {
-                return $"KE_GPU_TESTS=probe: no headless GPU device ({ex.GetType().Name}: {ex.Message})";
-            }
-        }
     }
 }

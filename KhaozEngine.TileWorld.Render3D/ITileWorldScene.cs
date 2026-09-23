@@ -66,6 +66,35 @@ public interface ITileWorldScene
     void DrawMeshDissolved(MeshHandle handle, Matrix4x4 world, float dissolve, float edgeWidth, Color edgeColor) =>
         DrawMesh(handle, world);
 
+    /// <summary>Uploads one skinned mesh. An implementation that cannot preserve its skin refuses the call.</summary>
+    /// <exception cref="NotSupportedException">This scene implementation has no skinned-mesh pass.</exception>
+    SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) =>
+        throw new NotSupportedException("This tile-world scene does not support skinned meshes.");
+
+    /// <summary>Uploads one skinned mesh with its decoded glTF material maps. An implementation that cannot
+    /// preserve its skin refuses the call.</summary>
+    /// <exception cref="NotSupportedException">This scene implementation has no skinned-mesh pass.</exception>
+    SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, GltfMaterialMaps maps) =>
+        throw new NotSupportedException("This tile-world scene does not support skinned meshes.");
+
+    /// <summary>Frees a skinned-mesh handle. An implementation without skinned meshes refuses the call.</summary>
+    /// <exception cref="NotSupportedException">This scene implementation has no skinned-mesh pass.</exception>
+    void UnloadSkinnedMesh(SkinnedMeshHandle handle) =>
+        throw new NotSupportedException("This tile-world scene does not support skinned meshes.");
+
+    /// <summary>Queues one skinned mesh with this frame's bone palette, world transform and tint. An implementation
+    /// that cannot preserve its skin refuses the call.</summary>
+    /// <exception cref="NotSupportedException">This scene implementation has no skinned-mesh pass.</exception>
+    void DrawSkinned(SkinnedMeshHandle handle, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 world, Color tint) =>
+        throw new NotSupportedException("This tile-world scene does not support skinned meshes.");
+
+    /// <summary>Queues one skinned mesh with the scene's dissolve treatment. An implementation that cannot
+    /// preserve its skin refuses the call.</summary>
+    /// <exception cref="NotSupportedException">This scene implementation has no skinned-mesh pass.</exception>
+    void DrawSkinnedDissolved(SkinnedMeshHandle handle, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 world,
+        Color tint, float dissolve, float edgeWidth, Color edgeColor) =>
+        throw new NotSupportedException("This tile-world scene does not support skinned meshes.");
+
     /// <summary>Uploads the ground material set every region-plane mesh of this world is drawn with, once per
     /// view, and returns its handle. Defaults to an invalid handle so an implementation written before textured
     /// ground existed keeps compiling and keeps drawing through the untextured upload below.</summary>
@@ -178,6 +207,25 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
     /// <inheritdoc />
     public void DrawMeshDissolved(MeshHandle handle, Matrix4x4 world, float dissolve, float edgeWidth, Color edgeColor) =>
         _scene.Draw(handle, world, Color.White, Material.None, dissolve, edgeWidth, edgeColor);
+
+    /// <inheritdoc />
+    public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) => _scene.LoadSkinnedMesh(mesh);
+
+    /// <inheritdoc />
+    public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, GltfMaterialMaps maps) =>
+        _scene.LoadSkinnedMesh(mesh, maps);
+
+    /// <inheritdoc />
+    public void UnloadSkinnedMesh(SkinnedMeshHandle handle) => _scene.UnloadSkinnedMesh(handle);
+
+    /// <inheritdoc />
+    public void DrawSkinned(SkinnedMeshHandle handle, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 world,
+        Color tint) => _scene.DrawSkinned(handle, boneMatrices, world, tint);
+
+    /// <inheritdoc />
+    public void DrawSkinnedDissolved(SkinnedMeshHandle handle, ReadOnlySpan<Matrix4x4> boneMatrices,
+        Matrix4x4 world, Color tint, float dissolve, float edgeWidth, Color edgeColor) =>
+        _scene.DrawSkinned(handle, boneMatrices, world, tint, Material.None, dissolve, edgeWidth, edgeColor);
 
     /// <inheritdoc />
     public void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, Color color, float widthMetres) =>

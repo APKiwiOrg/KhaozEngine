@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.TileWorld;
 /// whole catalog, idempotent loads, dirty coalescing that rebuilds nothing else, the roof rule, and the
 /// placeholder an unresolved archetype falls back to. Every test drives a recording fake, so none of this needs
 /// a device.</summary>
-public class TileWorldViewTests
+public sealed class TileWorldViewTests
 {
     // Near enough to the house that every one of its props is inside the default draw radius, so a missing draw
     // is the roof rule or a lost handle, never the distance cull.

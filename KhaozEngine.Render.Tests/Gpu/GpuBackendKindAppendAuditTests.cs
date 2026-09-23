@@ -153,9 +153,9 @@ namespace KhaozEngine.Tests.Gpu
 
         // --- row 3: the CreateForWindow / CreateHeadless Veldrid switches, the worst of the three. Asserted in
         // GpuBackendKindAppendAuditRegistryTests below, because pinning "nothing registered" is now itself a
-        // registry mutation: KhaozEngine.Gpu.D3D11 exists and a static constructor on GpuFactAttribute in the
-        // shared KhaozEngine.TestSupport.Gpu project registers its real provider, fired at test discovery
-        // (KhaozEngine.TestSupport.Gpu/D3D11BackendRegistration.cs). ---
+        // registry mutation: GpuTestGate registers the real provider when GpuFactAttribute reaches it during
+        // discovery. The Render.Tests module initializer also keeps filtered plain-Fact registration tests
+        // covered through KhaozEngine.TestSupport.Gpu/D3D11BackendRegistration.cs. ---
 
         /// <summary>
         /// The fourteenth site, and the one section 4.3 does not list because it did not exist when the table was
@@ -563,10 +563,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// Every row here that means "nothing is registered" now says so with an explicit
     /// <c>BackendProviderScope(kind, provider: null)</c>, because nothing is no longer the ambient state:
-    /// <c>KhaozEngine.Gpu.D3D11</c> exists and a static constructor on <c>GpuFactAttribute</c> in the shared
-    /// <c>KhaozEngine.TestSupport.Gpu</c> project registers its REAL provider, fired at test discovery
-    /// (<c>KhaozEngine.TestSupport.Gpu/D3D11BackendRegistration.cs</c>), with a thin module-initializer belt
-    /// remaining in <c>KhaozEngine.Render.Tests</c> covering the registry tests that carry no <c>[GpuFact]</c>.
+    /// <c>KhaozEngine.Gpu.D3D11</c> exists and <c>GpuTestGate</c> registers its REAL provider when
+    /// <c>GpuFactAttribute</c> reaches the gate during test discovery. A thin module-initializer belt remains in
+    /// <c>KhaozEngine.Render.Tests</c> for registry tests that carry no <c>[GpuFact]</c>.
     /// Pinning the unregistered behaviour explicitly is the stronger form anyway: it asserts what the
     /// code does when no provider is present rather than what it happens to do given today's ambient
     /// registration, so it keeps holding the day a second backend package registers here too.

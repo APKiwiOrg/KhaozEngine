@@ -58,7 +58,7 @@ public static class FoodContentType
             ContentVisibility.Client,
             true),
         new ContentFieldEntry(HealsField, ContentFieldKind.Int, null, ContentVisibility.Client, true),
-        new ContentFieldEntry(AttackDelayField(unit), ContentFieldKind.Int, null, ContentVisibility.Client, true),
+        ContentDurationFields.Entry(unit, AttackDelayField(unit), ContentVisibility.Client, true),
     ]);
 
     /// <summary>
@@ -79,7 +79,7 @@ public static class FoodContentType
     /// </para>
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
-    /// <param name="unit">The game's own time unit, which picks the duration field's name.</param>
+    /// <param name="unit">The game's own time unit, which picks the duration field's name, kind and scale.</param>
     /// <param name="validator">
     /// The type's own validator, or null for none. <see cref="Validator"/> is the one this package ships
     /// for it, and a game passes that, one of its own, a wrapper over both, or null.
@@ -130,8 +130,10 @@ public static class FoodContentType
     /// fixed in one round rather than one row at a time.
     /// </para>
     /// <para>
-    /// The delay rule is unit-neutral. The field is named for the game's own clock and the rule is about its
-    /// SIGN, which is the same statement under either spelling, so it reads the position rather than a name.
+    /// The delay rule holds under either unit. The field is named for the game's own clock and the rule is
+    /// about the stored integer's SIGN. Under <see cref="ContentDurationUnit.Seconds"/> that integer is
+    /// hundredths of a second, and a positive scale never moves a sign, so the rule refuses the same numbers
+    /// under either spelling and reads the position rather than a name.
     /// </para>
     /// </remarks>
     public sealed class Validator : IContentValidator

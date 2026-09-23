@@ -202,8 +202,10 @@ public class GameTypeCodecTests
     [Fact]
     public void TheUnitChangesNoEncodedByte()
     {
-        // A field NAME is not written into a row body, so the same numbers encode to the same bytes under
-        // either unit. That is what lets a game move its unit without restating a single authored row.
+        // Neither a field NAME nor the difference between an Int and a ScaledInt is written into a row body,
+        // because both kinds go out as the same varint, so the same numbers encode to the same bytes under
+        // either unit. The bytes do not say which unit wrote them: a game moving its unit restates the
+        // NUMBERS, ticks into hundredths of a second, and never the format.
         ContentTypeRegistry other = Registered(ContentDurationUnit.Seconds);
 
         foreach (ContentTypeRegistration registration in
@@ -217,6 +219,46 @@ public class GameTypeCodecTests
             twin.Codec.Encode(Populated(twin), theirs);
 
             Assert.Equal(mine.WrittenSpan.ToArray(), theirs.WrittenSpan.ToArray());
+        }
+    }
+
+    [Fact]
+    public void ASecondsDurationRoundTripsAsHundredths()
+    {
+        // 2.33 seconds is stored as 233 and comes back as 233, which the schema's own scale reads as 2.33.
+        // The package converts nothing: the scale rides in the schema and dividing by it is the game's.
+        ContentTypeRegistry seconds = Registered(ContentDurationUnit.Seconds);
+        ContentTypeRegistry ticks = Registered(Ticks);
+
+        foreach ((string key, string field) in new[]
+        {
+            (GameContentTypeIds.FoodKey, FoodContentType.AttackDelaySecondsField),
+            (GameContentTypeIds.EquipProfileKey, EquipProfileContentType.AttackSecondsField),
+            (GameContentTypeIds.GatheringNodeKey, GatheringNodeContentType.RespawnSecondsField),
+            (GameContentTypeIds.RecipeKey, RecipeContentType.BaseSecondsField),
+        })
+        {
+            Assert.True(seconds.TryGetByKey(key, out ContentTypeRegistration? registration));
+            int index = registration.Schema.IndexOf(field);
+            Assert.True(index >= 0, field);
+
+            ContentRow row = Populated(registration, index, 233);
+            var buffer = new ArrayBufferWriter<byte>();
+            registration.Codec.Encode(row, buffer);
+
+            Assert.True(registration.Codec.TryDecode(buffer.WrittenSpan, out ContentRow? back, out string? reason), reason ?? key);
+            ContentFieldValue duration = back.Fields[index];
+            Assert.False(duration.IsAbsent, field);
+            Assert.Equal(ContentFieldKind.ScaledInt, duration.Kind);
+            Assert.Equal(233, duration.Number);
+            Assert.Equal(2.33m, (decimal)duration.Number / registration.Schema.Fields[index].Scale);
+
+            // The same stored integer is the same bytes a tick count of 233 writes. Only the schema says
+            // which unit it counts.
+            Assert.True(ticks.TryGetByKey(key, out ContentTypeRegistration? twin));
+            var tickBuffer = new ArrayBufferWriter<byte>();
+            twin.Codec.Encode(Populated(twin, index, 233), tickBuffer);
+            Assert.Equal(tickBuffer.WrittenSpan.ToArray(), buffer.WrittenSpan.ToArray());
         }
     }
 
@@ -276,12 +318,18 @@ public class GameTypeCodecTests
     }
 
     /// <summary>A row carrying a distinct positive value for every field of its type.</summary>
-    static ContentRow Populated(ContentTypeRegistration registration)
+    static ContentRow Populated(ContentTypeRegistration registration) => Populated(registration, -1, 0);
+
+    /// <summary>
+    /// The same row, with the field at <paramref name="index"/> carrying <paramref name="stored"/> in the kind
+    /// its schema declares.
+    /// </summary>
+    static ContentRow Populated(ContentTypeRegistration registration, int index, long stored)
     {
         var values = new ContentFieldValue[registration.Schema.Fields.Count];
         for (int i = 0; i < values.Length; i++)
         {
-            values[i] = ContentFieldValue.OfNumber(registration.Schema.Fields[i].Kind, i + 1);
+            values[i] = ContentFieldValue.OfNumber(registration.Schema.Fields[i].Kind, i == index ? stored : i + 1);
         }
 
         return new ContentRow(

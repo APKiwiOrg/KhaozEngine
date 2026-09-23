@@ -128,7 +128,8 @@ public sealed class WorldIdentityGateAuthenticator : IConnectionAuthenticator, I
 /// <see cref="HandshakeToken.BannedReason"/> wire token (<c>ke:banned</c>), before the peer joins at all, so a
 /// client sees a refused connect rather than a kick. The other path is the JOIN check a <c>WorldServer</c> or
 /// <c>ShardedWorldServer</c> runs over its <c>banStore:</c>, which kicks with a typed
-/// <c>ServerNotice(ServerNoticeKind.Banned)</c>. Both read the one <see cref="IBanStore"/> seam, so hand the SAME
+/// <c>ServerNotice(ServerNoticeKind.Banned)</c>, and that a <c>TileWorldServer</c> runs at the join and every tick
+/// over its <c>TileWorldServerConfig.BanStore</c>, which kicks with the <c>ke:banned</c> notice token. Both read the one <see cref="IBanStore"/> seam, so hand the SAME
 /// store to this gate and to <c>banStore:</c> and the two can never disagree about who is banned.</para>
 /// <para>The <c>Func&lt;string,bool&gt;</c> constructor predates the store one and is kept for a head whose ban
 /// list is not an <see cref="IBanStore"/>. Both constructors refuse identically.</para></summary>

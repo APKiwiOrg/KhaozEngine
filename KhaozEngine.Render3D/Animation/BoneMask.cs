@@ -7,7 +7,7 @@ namespace KhaozEngine.Render3D
     /// through: weight 1 lets a node take the layer fully, 0 leaves it on the base, a fraction blends. A mask is a
     /// skeleton-shaped array (one weight per <see cref="Skeleton.NodeCount"/> node, in node order), reusable and
     /// allocation-free to apply (<see cref="Weight"/> is a plain array read). Build one for an upper-body action with
-    /// <see cref="Subtree(Skeleton, int, float)"/> / <see cref="Subtree(Skeleton, string, IReadOnlyList{string}, float)"/>
+    /// <see cref="Subtree(Skeleton, int, float)"/> / <see cref="Subtree(Skeleton, string, float)"/>
     /// ("this bone and all its descendants at weight w, the rest at 0"). Pure presentation; GPU-free.</summary>
     public sealed class BoneMask
     {
@@ -70,6 +70,14 @@ namespace KhaozEngine.Render3D
                 if (p >= 0 && inSubtree[p]) { inSubtree[i] = true; weights[i] = w; }
             }
             return new BoneMask(weights);
+        }
+
+        /// <summary>A subtree mask keyed by glTF node name. Resolves <paramref name="rootBoneName"/> through the
+        /// names retained by <paramref name="skel"/>, then defers to <see cref="Subtree(Skeleton, int, float)"/>.</summary>
+        public static BoneMask Subtree(Skeleton skel, string rootBoneName, float weight)
+        {
+            if (skel is null) throw new ArgumentNullException(nameof(skel));
+            return Subtree(skel, skel.IndexOf(rootBoneName), weight);
         }
 
         /// <summary>A subtree mask keyed by bone NAME: resolves <paramref name="rootBoneName"/> to a node via

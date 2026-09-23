@@ -4700,6 +4700,131 @@ var clips = new Dictionary<LocomotionState, AnimationClip>
 var character = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 9f), crossfade: 0.15f);
 ```
 
+For headless asset checks, `PoseProbe` samples the same local tracks and composes every skeleton node without a
+mesh or graphics device:
+
+```csharp
+using KhaozEngine.Render3D.Animation.Inspection;
+
+var probe = new PoseProbe(skeleton);
+probe.SampleClip(byName["Walk"], normalisedPhase: 0.5f);
+Matrix4x4 socketModel = probe.JointModel("weapon_socket");
+Vector3 leftFoot = probe.JointPosition("Foot.L");
+```
+
+`SampleClip` accepts a phase in the closed range `[0, 1]`. Phase `1` samples the authored end key so a loop check
+can compare it with phase `0`. A runtime caller that wants looping wraps its phase first. `SampleClipAtSeconds`
+clamps seconds to the authored range, and `SetLocals` composes one caller-provided local pose per node. Returned
+matrices and positions are in model space before inverse-bind and object world transforms. A code-built `Skeleton`
+may expose named nodes outside its skin palette. `GltfLoader.LoadSkinned` retains only skin joints and their
+ancestors, so an authored child socket that needs lookup must be a zero-weight entry in `skin.joints` and is then
+part of the bone palette.
+
+Use `FootPlant.Measure` to inspect sole height and stance stability over a looping clip. Samples use phases
+`i / samples`, so the duplicate loop endpoint is excluded. A sole at or below `groundHeight` is in stance. Stance
+runs join across the loop boundary, and an all-stance foot anchors its one run at phase `0`. `strideMetres` is the
+forward `+Z` distance covered by one clip cycle. It moves each sampled sole into distance-driven travel space before
+measuring horizontal slide.
+
+```csharp
+FootPlantReport feet = FootPlant.Measure(
+    byName["Walk"],
+    skeleton,
+    new[] { "Foot.L", "Foot.R" },
+    soleOffset: new Vector3(0f, -0.04f, 0f),
+    groundHeight: 0f,
+    strideMetres: 1.8f,
+    samples: 120);
+
+if (feet.MinSoleHeight < -0.01f || feet.MaxStanceSlide > 0.02f)
+    throw new InvalidOperationException("Walk clip failed foot-plant inspection.");
+```
+
+Use `SegmentClearance.Min` for an attached blade, tool, or other line segment that must stay clear of limb
+capsules. The segment transform is `segmentLocal * ridingNodeModel`. Sampling uses the closed phases
+`i / (samples - 1)`, including the authored end key. The returned metres are signed, with a negative value meaning
+the segment penetrated a capsule.
+
+```csharp
+Matrix4x4 bladeLocal = Matrix4x4.CreateTranslation(0.08f, 0f, 0.12f);
+var bodyCapsules = new[]
+{
+    new Capsule("Forearm.R", "Hand.R", 0.06f),
+};
+
+float bladeClearance = SegmentClearance.Min(
+    byName["Attack"],
+    skeleton,
+    "weapon_socket",
+    in bladeLocal,
+    segmentStart: Vector3.Zero,
+    segmentEnd: new Vector3(0f, 0f, 0.9f),
+    bodyCapsules,
+    samples: 120);
+```
+
+Both measurements require finite model-space geometry, one or more named targets, and at least two samples. They
+use `PoseProbe` internally and need no mesh, inverse-bind matrices, object world transform, or graphics device.
+
+Use `ClipHygiene.Check` to apply a game's authored-clip policy before content ships. Node matching is ordinal and
+case-sensitive. `AllowedNodes` may be null when every resolved target is eligible, while `TranslationAllowed`
+names the smaller set that may carry translation channels. Findings use stable rule identifiers and deterministic
+ordering, so a pipeline can print or compare them directly.
+
+```csharp
+var translationAllowed = new HashSet<string>(StringComparer.Ordinal) { "Hips", "Foot.L", "Foot.R" };
+var allowedNodes = new HashSet<string>(StringComparer.Ordinal) { "Hips", "Thigh.L", "Foot.L", "Thigh.R", "Foot.R" };
+var hygieneOptions = new ClipHygieneOptions(
+    translationAllowed,
+    allowedNodes,
+    Looping: true,
+    MinKeysPerSecond: 30f);
+
+IReadOnlyList<ClipHygieneFinding> findings = ClipHygiene.Check(byName["Walk"], skeleton, hygieneOptions);
+foreach (ClipHygieneFinding finding in findings)
+    Console.Error.WriteLine($"{finding.Rule}: {finding.NodeName}: {finding.Detail}");
+```
+
+`ClipHygiene` checks unresolved targets, allowed nodes, translation and scale policy, raw quaternion units,
+monotonic finite key times, key density, and the authored loop seam. Loop rotation treats a quaternion and its
+negation as the same orientation. Translation and scale loop comparisons use a `0.0001` component tolerance.
+
+Use `ClipReport.Write` when reviews or build checks need a canonical text snapshot. Clips, closed normalised
+phases, and requested positions keep caller order. Each phase writes every node's sampled local rotation in
+skeleton order, then the requested model-space positions. Phase `1` samples the authored end key.
+
+```csharp
+string report = ClipReport.Write(
+    skeleton,
+    new[] { byName["Idle"], byName["Walk"] },
+    new[] { 0f, 0.25f, 0.5f, 0.75f, 1f },
+    new[] { "Hips", "Foot.L", "Foot.R", "weapon_socket" });
+
+File.WriteAllText("clip-report.txt", report, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+```
+
+The report escapes backslash, tab, carriage return, and line feed in names. It uses invariant fixed-six floats,
+LF line endings, and one final LF. Repeated UTF-8 encodings of the same inputs are byte-identical. Non-finite
+phases, rotations, or requested positions are rejected. Both hygiene and reporting are pure and GPU-free.
+
+Use `PoseBlend.BlendInto` to blend a caller-owned local pose buffer in place toward another. With no mask, every
+node uses the finite global weight. With a `BoneMask`, each node uses the global weight multiplied by its mask
+weight, clamped to `[0, 1]`.
+
+```csharp
+JointPose[] blendedLocals = (JointPose[])baseLocals.Clone();
+BoneMask leftLeg = BoneMask.Subtree(skeleton, "Thigh.L", 1f);
+
+PoseBlend.BlendInto(blendedLocals, inspectedLocals, weight: 0.35f, mask: leftLeg);
+probe.SetLocals(blendedLocals);
+```
+
+Source and destination spans must have equal length, and a mask must contain one weight per pose node. Zero
+effective weight preserves the destination exactly. Unit effective weight copies the source exactly. Intermediate
+weights interpolate translation and scale componentwise and use normalized shortest-arc spherical interpolation
+for rotation. Reusing the buffers and mask keeps warmed steady-state calls free of managed allocation. The helper
+is pure and needs no mesh, graphics device, or test framework.
+
 Each frame, feed it the movement state your controller already computes, then draw with its pose
 (the bone palette `DrawSkinned` consumes - it is joint-WORLD, the loader-attached skeleton composes it):
 
@@ -5019,6 +5144,29 @@ backwards: a looping clip wraps onto its tail, and a one-shot (`PlayOnce`) holds
 direction holds the final frame. `JointPose` is the TRS unit clips
 interpolate; `InterpolationMode` is LINEAR or STEP (CUBICSPLINE is read as its value keys).
 
+`GltfLoader.LoadSkinned` retains the glTF name of every skeleton node in `Skeleton.NodeNames`, using an empty
+string for an unnamed node. `Skeleton.IndexOf(name)` resolves a required name and lists the known names if it is
+missing. `TryIndexOf(name, out node)` is the non-throwing missing-name form. Duplicate non-empty names throw when
+name lookup is used because the target would be ambiguous. `BoneIndexOfNode(node)` maps a skeleton node back to
+its skin bone, or returns `-1` for a non-joint ancestor. A loaded skeleton contains every `skin.joints` node and
+the ancestors needed to compose those joints. It does not include a child outside `skin.joints`, so an authored
+socket that needs name lookup remains a zero-weight skin joint.
+
+`BoneSocket` composes a rigid piece onto one of those posed joints without a scene or GPU. System.Numerics uses
+row vectors, so the piece-local transform stays innermost:
+
+```csharp
+Matrix4x4 world = BoneSocket.Compose(pieceLocal, jointModel, model);
+// Same order, but the joint's scale and shear do not deform the attached rigid piece.
+Matrix4x4 rigidWorld = BoneSocket.ComposeRigid(pieceLocal, jointModel, model);
+```
+
+Both methods apply `pieceLocal * jointModel * model`. `ComposeRigid` first orthonormalises the joint's three basis
+rows and keeps its model-space translation. Use it for a solid held or worn prop when animation data may carry
+scale or shear that skinning blends across vertices but a one-joint attachment would show at full strength. A
+reflected joint stays reflected. A non-finite, collapsed, or linearly dependent basis throws `ArgumentException`
+because no rigid orientation can be recovered.
+
 ### Layered / masked animation (attack while running)
 
 `LayeredAnimator` composites N `AnimationLayer`s into one final skeleton pose: a base locomotion layer below,
@@ -5029,7 +5177,8 @@ weight, an optional `BoneMask`, and a `LayerMode`. It produces the same joint-WO
 A `BoneMask` gates a layer per node: `BoneMask.Subtree(skeleton, spineRootNode, weight)` marks that bone and all
 its descendants (the torso + arms + head) at `weight`, everything else 0 - the upper-body-action shape.
 `BoneMask.Full` / `.Empty` are the constants; a name overload
-`BoneMask.Subtree(skeleton, "spine", boneNames, weight)` resolves the root by bone name.
+`BoneMask.Subtree(skeleton, "spine", weight)` resolves the root through `Skeleton.NodeNames`. The older overload
+that accepts an explicit name list remains available for code-driven rigs.
 
     var anim = new LayeredAnimator(skeleton);
     // Base: full-body locomotion (drive its clip/playhead however you like - e.g. from your own state machine).
@@ -8116,6 +8265,24 @@ the chunk's props instead of rebuilding it. `streamer.RefreshPlacements(coord)` 
 layers of that loaded chunk through `Scene3DChunkSink`'s `IChunkPlacementRefreshSink` and leaves its terrain mesh
 and collider alone. `Invalidate` is still the call for a field change.
 
+The same holds for a change to scatter or companion configs that leaves the field alone, such as a moved
+exclusion. Hand the sink the new layers, then refresh the props of the chunks the change can reach:
+
+```csharp
+streamer.FlushPendingBuilds();
+if (sink.KeepsLayerShape(layers))
+{
+    sink.UpdateLayers(layers);
+    streamer.RefreshProps(reach);   // every prop layer of the loaded chunks in reach, terrain untouched
+}
+```
+
+`KeepsLayerShape` is what makes refreshing only some chunks safe: it is true only when each layer differs in
+nothing but its `Scatter` and `Companions` configs, since a chunk left alone keeps state derived from the old
+list. `reach` must cover every chunk whose placements the new configs change, which for a scatter exclusion is
+its bounds padded by the layer's jitter. A layer-count, kind or companion-host change needs every loaded chunk
+rebuilt (`UpdateLayers` then `InvalidateAll`) or a new sink.
+
 **Every teleport, zone change and camera jump runs the teleport contract.** This is the step most likely to
 be missed, because without it the world looks right within a few frames and the failure only shows as a
 brief fall-through on arrival:
@@ -9421,9 +9588,11 @@ column is also wider: `OutlinePanelWidth` (260, unchanged) and `InspectorPanelWi
 shared 260) now split independently, giving the grouped companion/scatter-layer rows room to breathe.
 
 **Viewport rebuild performance.** Bounded terrain-height edits invalidate only loaded chunks overlapping
-the accumulated dirty region. Exclusion and scatter-override edits first refresh the captured generation
-configuration, then invalidate their jitter-padded shape bounds. Terrain scalars, biome bands and
-same-topology scatter or companion value edits refresh every loaded chunk without rebuilding the viewport.
+the accumulated dirty region. Exclusion and scatter-override edits leave the field alone, so they refresh the
+captured generation configuration and re-serve only the props of the loaded chunks their jitter-padded shape
+bounds overlap (`ViewportWorld.RefreshLayerProps`), with no terrain re-mesh, every drag frame. Terrain scalars,
+biome bands and same-topology scatter or companion value edits refresh every loaded chunk without rebuilding
+the viewport.
 Pending asynchronous work is flushed before field or layer snapshots change. Layer-count, layer-kind,
 placement-layer, kit and HLOD topology changes retain the full rebuild path (#14). Full rebuilds are
 throttled to at most once per
@@ -10676,7 +10845,7 @@ while (running)
 ```
 
 **The order inside one tick** is fixed and worth knowing, because a game's own systems have to fit into it: the
-`OnBeforeTick` hook, then drain ONE command per player into its owning cell, then the ACTOR step (every spawner
+admin surface's queued commands (below), then the ban sweep over live sessions, then the `OnBeforeTick` hook, then drain ONE command per player into its owning cell, then the ACTOR step (every spawner
 ticks and every live actor's decision becomes a command), then step every cell (movement and the arrival facing),
 then authority handoff and border ghosting, then `OnAfterMovement`, then the action queue, then COMBAT (roll, apply,
 die), then serve every client its plane-filtered area of interest, and last the despawn every actor killed this tick owes.
@@ -10686,7 +10855,8 @@ so an actor's decision moves it on this tick rather than the next), handoff afte
 carries a player over a region boundary, combat after all of it so a swing is judged on where both bodies ended
 the tick, and the serve last so a client sees a whole tick and never half of one. The one thing that FOLLOWS the
 serve is the actor despawn, held back so the corpse is still in the world when each viewer's interest set is
-built and the killing blow therefore reaches everyone watching the fight.
+built and the killing blow therefore reaches everyone watching the fight. The admin surface's online snapshot is
+published after that, last of all.
 
 **The run gate.** `CanRun` is consulted in admission for every command whose mode is `Run`, over the player's slot,
 and returning false steps that tick at `Walk` instead whatever the client sent, landing at the start of the next
@@ -10721,6 +10891,43 @@ if (server.IsDrainComplete)                                // grace spent AND ev
     await persistence.FlushAsync();
     running = false;
 }
+```
+
+**The admin surface.** `TileWorldServer` implements `IAdminControllable`, the same interface the float heads do, so
+`ServerAdmin` and the `KhaozEngine.Server.Admin` endpoint take it directly with no adapter (see "Server
+administration" below). The interface is named under `KhaozEngine.NetWorld` but lives in `KhaozEngine.Netcode`, so
+the tile package still never references `NetWorld`. Every member is safe from any thread: `ListOnline()` reads a
+snapshot published at the end of each tick, and `Teleport`, `Kick` and `Broadcast` are queued and applied at the
+top of the next tick, ahead of `OnBeforeTick`. The host-thread `Kick(int slot, string reasonToken)`,
+`BroadcastNotice` and `SetPlayerState` stay the right calls from game code already on the host thread.
+
+- **Positions are world metres** through `TileWorldServerConfig.Presenter`, which should be the presenter the client
+  draws with (`new TilePresenter(document)`). Null is the client's own placeholder, one metre tiles and the
+  document default plane height. A listed position is the committed tile's centre, `PoseAt(state.Tile)`, and
+  `Grounded` is always true with a zero vertical velocity.
+- **`Teleport` is a tile move.** The position is snapped onto a tile and plane with `TilePresenter.TryTileAt` (the
+  tile whose span holds the point, on the plane whose drawn height there is nearest), and the player is placed
+  through `SetPlayerState(..., teleport: true)`, so the epoch advances and the client cuts and resyncs. The route,
+  any pending interaction and any combat lock go with it. A tile in a region the collision map has not loaded, or
+  one blocked whole, is REFUSED: the player stays put and `TeleportRefused` is raised on the host thread as (slot,
+  tile, `TileTeleportRefusal.OutsideWorld` or `Blocked`). A non-finite position throws `ArgumentException` at the
+  call. A position copied off `ListOnline` lands on the tile it was read from.
+- **`Kick` and `Broadcast` carry reason tokens,** the contract every notice on this protocol has. A kick reason
+  that is empty or too long for a notice frame goes out as `TileServerReason.Kicked`, because the call cannot fail
+  (`ServerAdmin.BanAsync` makes it after the ban is stored). A kick of a banned account goes out as `ke:banned`
+  whatever reason it carried, so `BanAsync`'s kick reads as the ban. A broadcast has no fallback, so an empty or
+  oversized token throws `ArgumentException` at the call, which the endpoint answers with a 400.
+- **Bans reach a live session.** `TileWorldServerConfig.BanStore` (and `IsBanned`) are read at the door, at the
+  join, and once per tick over every live session, ahead of `OnBeforeTick`. A ban that lands after the door closes
+  the session with `TileServerReason.Banned`, the same string as the door's `ke:banned` refusal, whoever recorded
+  it, and a tokenless guest seat is never checked. This is the tile counterpart of the `WorldServer` join check.
+- `SetPosition` keeps the interface default and cuts like `Teleport`. The movement commitment pair is not
+  supported and throws `NotSupportedException`.
+
+```csharp
+var server = new TileWorldServer(transport, config with { Presenter = new TilePresenter(document) }, map);
+server.TeleportRefused += (slot, tile, why) => log.Warn($"teleport of slot {slot} to {tile} refused: {why}");
+var admin = new ServerAdmin(server, bans);           // the same facade a WorldServer head builds
 ```
 
 ### Standing a client up
@@ -14516,6 +14723,13 @@ existing rigid mesh noise dissolve, including the matching shadow mask, exposed 
 `Scene3DTileWorldScene` forwards it to `Scene3D`. A custom implementation that does not override the member
 falls back to the solid `DrawMesh`, so adding the capability does not require a downstream scene rewrite.
 
+For a skinned body presented through the same tile scene seam, load with `LoadSkinnedMesh(mesh)` or
+`LoadSkinnedMesh(mesh, maps)`, draw with `DrawSkinned`, use `DrawSkinnedDissolved` for the character dissolve
+path, and release the handle with `UnloadSkinnedMesh`. `Scene3DTileWorldScene` forwards those calls to `Scene3D`,
+including `Material.None` for the dissolved draw. The members have default implementations so older custom scenes
+keep compiling, but every default throws `NotSupportedException`. A rigid draw or a no-op cannot preserve the
+skinned body, so unsupported use fails at the call instead of dropping or misdrawing it.
+
 **Build the static list.** The game collects the shapes it wants outlined as a flat
 `IReadOnlyList<CollisionStatic>` (`readonly record struct CollisionStatic(PhysicsShape Shape, Pose Pose)`) -
 typically the same `PhysicsShape`/`Pose` pairs already registered with `IPhysicsWorld`, or a hand-placed debug
@@ -14839,9 +15053,9 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Catalog.GameTypes`**: the thirteen game-shaped content types over that catalog, the shapes a
   world with food, equipment, shops, drops, gathering, crafting, tools and tuning knobs authors anyway, as
   stable ids in the game band, stable keys, ordered schemas and row codecs. A game declares its time unit
-  through `ContentDurationUnit` and the four duration fields take the matching name, with identical order,
-  kinds and codecs either way. No enum, no name, no roster and no balance number in it (see "Shared game
-  content types" below).
+  through `ContentDurationUnit` and the four duration fields take the matching name, whole ticks as an `Int`
+  or hundredths of a second as a `ScaledInt` at scale 100, with identical order and row bytes either way. No
+  enum, no name, no roster and no balance number in it (see "Shared game content types" below).
 - **`KhaozEngine.Commerce`**: server-authoritative currency wallet (`IWalletStore`, `Wallet`, entitlement
   redemption, `PeriodicGrant` built on `Progression`). Not in any umbrella; add explicitly. SQL backends are
   the opt-in `Commerce.Sqlite`/`Commerce.SqlServer` siblings (see "Commerce / wallet" below).
@@ -15812,13 +16026,18 @@ writes the key down and registers no type under it. A type under any other key i
 and every item's `equip_profile` would have to stay 0.
 
 **A game declares its time unit.** A world stepping a fixed tick stores ticks and a wall-clock world stores
-seconds, so `ContentDurationUnit` goes to each schema factory and picks the NAME of the four duration fields:
-`attack_delay_ticks` or `attack_delay_seconds` on `food`, `attack_ticks` or `attack_seconds` on
-`equip_profile`, `respawn_ticks` or `respawn_seconds` on `gathering_node`, and `base_ticks` or `base_seconds`
-on `recipe`. Field order, kinds, reference targets, visibility, required flags, scales and the row codecs are
-IDENTICAL under either unit, so the choice costs a name in the generic editor and the localization key derived
-from it, and never a byte of layout. The package converts nothing, because only the game knows how long its
-tick is.
+seconds to the hundredth, so `ContentDurationUnit` goes to each schema factory and picks the NAME of the four
+duration fields: `attack_delay_ticks` or `attack_delay_seconds` on `food`, `attack_ticks` or `attack_seconds`
+on `equip_profile`, `respawn_ticks` or `respawn_seconds` on `gathering_node`, and `base_ticks` or
+`base_seconds` on `recipe`. Under `Ticks` a duration is a plain `Int` of whole ticks, the shape the types
+first shipped with. Under `Seconds` it is a `ScaledInt` at scale 100, HUNDREDTHS of a second, because whole
+seconds cannot hold a timing between two of them: 2.33 seconds is stored as 233. Field order, reference
+targets, visibility, required flags and the row bytes are IDENTICAL under either unit, because both kinds go
+out as the same varint, so the choice costs a name, the localization key derived from it and the scale the
+schema declares, and never a byte of layout. The package converts nothing. It stores the integer the game
+authored, the schema carries its scale for `ContentFieldLookup.IndexIn(runtime, type, field, out int scale)`
+to hand a reader, and turning it into a span of time is the game's, because only the game knows how long
+its tick is.
 
 ```csharp
 using KhaozEngine.Catalog;
@@ -15869,8 +16088,9 @@ Eight take nothing at all. `StoreContentType.Validator` takes the registry, beca
 the dearest item the candidate carries and so needs where the engine `item` type keeps its `value`. **That
 index is read off the live registration at validation time and never off a schema the validator built at
 type load**, which is this build's idea of the item type rather than the one the candidate was registered
-against. Every rule is unit-neutral: a duration rule is about the number's SIGN, so one validator serves
-both spellings.
+against. Every rule holds under either unit: a duration rule is about the stored integer's SIGN, and a
+positive scale never moves a sign, so one validator serves both spellings and one hundredth of a second
+passes where one tick does.
 
 **Two validators need an answer only a game has, and both take it as a predicate over the raw stored
 number** rather than as an enum, a roster or a list. `RecipeValidatorOptions` carries four, every one
@@ -17266,6 +17486,72 @@ when genuinely cross-cutting. This is the standard, not a nicety - it's the reas
 the `AppWindow`/`InputState` seam. See `KhaozEngine.Render.Tests/Windowing` and `KhaozEngine.Gui.Tests/Gui`
 for the `InputState` builder patterns.
 
+### GPU test gate and golden helper (`KhaozEngine.Gpu.TestKit`)
+
+Reference `KhaozEngine.Gpu.TestKit` from a test project when GPU tests need the engine's standard run gate without
+taking an xUnit dependency from the helper package. `GpuTestGate.SkipReason()` returns null when the test should
+run, otherwise it returns the reason the test framework should use to skip it.
+
+- `KE_GPU_TESTS=1` is strict. The gate returns null without probing, so a missing device fails in the test body.
+- `KE_GPU_TESTS=probe` creates one headless device and caches either success or the concrete creation failure.
+- Unset, empty and other values return the setup reason without touching a device.
+
+The package registers the Direct3D 11, Vulkan and Metal native providers before any probe. Use
+`GpuTestGate.BackendName` when naming a backend-specific artifact. It reports the established golden family of the
+device the cached probe actually created, including `direct3d11-native`, `vulkan-native` or `metal-native`. It does
+not guess from the operating system, so an unpinned fallback cannot be attributed to the requested backend. This
+property describes that cached probe only.
+
+```csharp
+using KhaozEngine.Gpu.TestKit;
+using Xunit;
+
+public sealed class GameGpuFactAttribute : FactAttribute
+{
+    public GameGpuFactAttribute() => Skip = GpuTestGate.SkipReason();
+}
+```
+
+`GoldenImage.Check(goldenDirectory, scene, rgba, width, height, tolerance, captureBackend)` takes an RGBA8 capture
+and uses `KhaozEngine.Imaging.GoldenGrid` to compare it with
+`<goldenDirectory>/<scene>.<capture-backend>.txt`. Pass `ctx.GpuDevice.Backend` from the exact device that rendered
+the capture. The helper maps that enum through the audited golden-family table and produces the canonical
+hyphenated token such as `vulkan-native`. It does not use the cached default probe as capture provenance, and an
+unmapped enum value fails instead of falling back.
+
+The integer `tolerance` is in 8-bit per-channel units from 0 through 255. `GoldenImage` divides it by `255f` for
+the normalized `GoldenGrid` comparison. The fresh downsample remains unrounded while the committed grid carries
+four decimal places. Comparison adds `0.00005f`, half of one stored decimal step, plus a `0.0000001f` floating-point
+epsilon to the normalized tolerance. `GoldenResult` reports `Pass`, `Rebaked`, an optional `SkipReason`, and
+`Detail`. A missing backend golden supplies the skip reason. A mismatch names the worst cell and R, G or B
+channel in `Detail`. Scene names are portable single-file names, including rejection of Windows device stems such
+as `CON`, `PRN`, `AUX`, `NUL`, `COM1` and `LPT1` with any casing and even with an extension. Malformed lengths or
+non-finite reference cells fail with an actionable diagnostic. The Windows superscript-digit forms `COM¹` through
+`COM³` and `LPT¹` through `LPT³` are rejected as reserved device stems too.
+
+```csharp
+GoldenResult result = GoldenImage.Check(
+    goldenDirectory, "inventory", rgba, width, height, tolerance: 15,
+    captureBackend: ctx.GpuDevice.Backend);
+
+// Send SkipReason through the test framework's skip mechanism when it is non-null.
+// Fail with Detail when Pass is false and SkipReason is null.
+```
+
+`Render3DSnapshot` creates and owns its device internally. Its metadata path carries the backend out of the same
+render as the pixels, so a golden caller does not resolve or guess it separately:
+
+```csharp
+Render3DCapture capture = Render3DSnapshot.CaptureWithBackend(width, height, setup, drawFrame);
+GoldenResult result = GoldenImage.Check(
+    goldenDirectory, "world", capture.Rgba, capture.Width, capture.Height, tolerance: 15,
+    captureBackend: capture.Backend);
+```
+
+Set `KE_UPDATE_GOLDENS=1` to write the canonical golden instead of comparing. Only the exact value `1` enables a
+write. Every other value follows the normal compare or missing-golden path. A read, parse or write failure returns
+`Pass = false`, leaves `SkipReason` null, and includes the path plus the concrete failure in `Detail`.
+
 ### Localization coverage (`KhaozEngine.Localization.TestKit`)
 
 If your game ships satellite `.resx` translations, guard them with one assert instead of a hand-rolled reflection
@@ -17750,6 +18036,10 @@ around each one. `SnapshotRunner` wraps the existing headless capture helpers (`
 `Render3DSnapshot.Capture`) with: capture → PNG-encode → write `<outDir>/<name>.png` → log the path, plus a final
 `done -> <dir> (N shots)` summary. Deterministic (no timestamps), window-free; the underlying capture still needs
 a GPU device, so a snapshot tool runs on a dev box / GPU CI, not the headless unit-test lane.
+
+`Render3DSnapshot.CaptureWithBackend` is the direct path when a caller also needs the exact backend that produced
+the pixels. It returns one `Render3DCapture` containing `Rgba`, `Width`, `Height` and `Backend` without a second
+render. The original `Capture` remains the byte-array convenience and uses the same implementation.
 
 ```csharp
 var runner = new SnapshotRunner("/tmp/shots");        // creates the dir; logger defaults to Console.WriteLine
@@ -19521,11 +19811,19 @@ await persistence.FlushAsync();
 
 A generic, opt-in admin surface for a live server. Nothing changes for a server that does not use it.
 
-**Live commands.** Both `WorldServer` and `ShardedWorldServer` implement `IAdminControllable`:
+**Live commands.** `WorldServer`, `ShardedWorldServer` and the tile world's `TileWorldServer` all implement
+`IAdminControllable`:
 `ListOnline()` returns the connected players (slot, account id, display name, position, grounded, vertical velocity,
 net id) from a snapshot published once per tick; `Teleport(PlayerRef, Vector3)`, `Kick(PlayerRef, reason)`, and
 `Broadcast(text)` are queued and applied on the host thread between ticks, so you can call them safely from another
-thread (an HTTP handler). Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`.
+thread (an HTTP handler). Target a player by `PlayerRef.Slot(n)` or `PlayerRef.Account("...")`. The tile head's
+readings of these (world-metre positions through a presenter, a tile-snapping teleport that refuses a blocked or
+unloaded tile, reason tokens rather than text) are in the tile-world netcode section's "The admin surface".
+
+`IAdminControllable`, `PlayerRef`, `OnlinePlayer` and `MovementCommitmentRequest` live in the `KhaozEngine.Netcode`
+assembly under their `KhaozEngine.NetWorld` names and are forwarded from `KhaozEngine.NetWorld`, the same move the
+ban seam made, so existing code compiles and binds unchanged and a head without `NetWorld` can implement the
+interface. `MovementCommitmentResult` names a Locomotion type and stays in `NetWorld`.
 
 **Two position levers, and picking the wrong one is expensive.** `Teleport` always advances the teleport epoch,
 which is the client's signal to CUT: a camera cut, a chunk-ring prime and rebuild, an avatar render-height snap.
@@ -19580,7 +19878,10 @@ var admin = new ServerAdmin(server, bans);                       // BanAsync rec
 
 `BanGateAuthenticator(inner, IBanStore, log?)` reads the store live on every connect. Its
 `BanGateAuthenticator(inner, Func<string,bool>, log?)` form stays for a ban list that is not a store. A tile server
-takes the store as `TileWorldServerConfig.BanStore`, at the door. The two paths read differently on a `WorldClient`:
+takes the store as `TileWorldServerConfig.BanStore` and reads it at the door, at the join, and once per tick over
+every live session, closing a banned session with the `ke:banned` notice token (`TileServerReason.Banned`), so a ban
+written straight to the store ends a tile session on the next tick with no kick of the game's own. The two paths
+read differently on a `WorldClient`:
 a door refusal is `DisconnectReason.RejectedToken` with `ke:banned` in `DisconnectReasonDetail`, terminal unless
 `RetryOnReject` is set, while the join kick is `DisconnectReason.Banned` and is retried.
 
@@ -19640,8 +19941,9 @@ await endpoint.StopAsync();
 Routes (all under `/admin`, all require `Authorization: Bearer <token>`): `GET /online`, `POST /teleport`,
 `POST /kick`, `POST /broadcast`, `GET /accounts?prefix=`, `GET /bans`, `POST /ban`, `POST /unban`, `GET /actions`
 (lists registered action names, sorted ordinal), `GET /actions/{name}` (dispatches with a null payload),
-`POST /actions/{name}` (dispatches with an optional JSON body). Mutations return 202. Capabilities not wired
-return 501. An unknown action name returns 404. A malformed JSON body returns 400 with `{ "error": "malformed
+`POST /actions/{name}` (dispatches with an optional JSON body). Mutations return 202. A teleport or broadcast the
+head refuses on the caller's thread with an `ArgumentException` (a tile head refuses a broadcast that is not a
+wire-sized token) returns 400 with `{ "error": ... }`. Capabilities not wired return 501. An unknown action name returns 404. A malformed JSON body returns 400 with `{ "error": "malformed
 json body" }`. An absent, empty, whitespace-only, or literal JSON-null request body all reach the handler as a
 null payload, so the common `payload?.GetProperty(...)` idiom is safe against a caller that posts nothing. Bind
 defaults to loopback. There are no changes to the game client wire protocol.

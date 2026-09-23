@@ -17,22 +17,23 @@
     <PackageReference Include="xunit" />
   </ItemGroup>
   <ItemGroup>
-    <!-- GpuFactAttribute.ProbeHeadlessDevice calls KhaozEngine.Gpu.GpuDeviceContext.CreateHeadless. -->
+    <!-- GpuFactAttribute and GpuTheoryAttribute delegate the shared environment and device gate here. -->
+    <ProjectReference Include="../KhaozEngine.Gpu.TestKit/KhaozEngine.Gpu.TestKit.csproj" />
+    <!-- Capability-specific attribute probes and the shared uniform-ring adapters use the GPU seam directly. -->
     <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
-    <!-- D3D11BackendRegistration.EnsureRegistered, called from GpuFactAttribute's static constructor, registers
-         the native backend for every assembly that takes [GpuFact] from here, which is what stops a GPU-testing
-         project being wired without it (see that file). Safe to reference
+    <!-- The Direct3D 11 uniform-ring adapter and the filtered registration-test helper use this backend. The
+         packable Gpu.TestKit owns attribute-gated registration. Safe to reference
          unconditionally on every OS: the package is net10.0, not net10.0-windows, and its Windows boundary is
          platform guards over NoInlining bodies, so nothing here puts the Vortice interop on the load path off
          Windows (decision P1). -->
     <ProjectReference Include="../KhaozEngine.Gpu.D3D11/KhaozEngine.Gpu.D3D11.csproj" />
-    <!-- VulkanBackendRegistration.EnsureRegistered, the second half of that same static constructor. Safe to
+    <!-- The Vulkan uniform-ring adapter and the filtered registration-test helper use this backend. Safe to
          reference unconditionally for a simpler reason than the Direct3D 11 package needs: decision V-P1 gives
          it net10.0 with no OS suffix and no platform guard at all, because Vulkan is not a Windows API. The
          Vulkan loader is resolved at runtime and a machine without one answers the functional probe with false,
          so referencing this on macOS costs nothing and loads nothing. -->
     <ProjectReference Include="../KhaozEngine.Gpu.Vulkan/KhaozEngine.Gpu.Vulkan.csproj" />
-    <!-- MetalBackendRegistration.EnsureRegistered, the third line of that same static constructor. Safe to
+    <!-- The Metal uniform-ring adapter and the filtered registration-test helper use this backend. Safe to
          reference unconditionally for the Direct3D 11 package's reason rather than the Vulkan package's:
          decision M-P1 gives it net10.0 with no OS suffix and a [SupportedOSPlatformGuard("macos")] over
          NoInlining bodies, so referencing it on Linux or Windows loads no Objective-C and the JIT never
@@ -40,7 +41,7 @@
     <ProjectReference Include="../KhaozEngine.Gpu.Metal/KhaozEngine.Gpu.Metal.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- GpuFactSkipReasonTests (Render.Tests) exercises the internal SkipReason gate. -->
+    <!-- GpuFactSkipReasonTests (Render.Tests) exercises capability-specific internal skip decisions. -->
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
   </ItemGroup>
 </Project>

@@ -101,6 +101,7 @@ namespace KhaozEngine.Render3D
             EnsurePointCasterIndex();
             AcquirePointShadowSlots(cache, frame);
             ChoosePointShadowRebuilds(cache, settings);
+            ScheduleSkinnedPointShadows(cache, settings, frame);
             int draws = RenderChosenPointShadowRows(cl, cache, frame);
             PublishPointShadowUniforms(cache, settings, frame);
             cache.ReleaseUnrequested(frame);
@@ -196,16 +197,32 @@ namespace KhaozEngine.Render3D
         /// rows clean. Returns the caster draw calls issued, which is what the diagnostics report.</summary>
         int RenderChosenPointShadowRows(IGpuCommandList cl, PointShadowSlots cache, int frame)
         {
-            BeginPointShadowFrame(_pointRebuilds.Count);
-            if (_pointRebuilds.Count == 0) return 0;
+            int rowCount = _pointRebuilds.Count + _selectedPointTransientRequests.Count;
+            BeginPointShadowFrame(rowCount);
+            if (rowCount == 0) return 0;
 
             for (int packed = 0; packed < _pointRebuilds.Count; packed++)
             {
-                PointShadowRequest r = _pointRequests[_pointRebuilds[packed]];
-                PackPointShadowSlot(packed, r.Slot, r.Position, r.Radius, r.NearRadius,
-                    r.ExclusionMin, r.ExclusionMax);
+                int requestIndex = _pointRebuilds[packed];
+                PointShadowRequest r = _pointRequests[requestIndex];
+                PointShadowCasterSet casters = PointShadowCasterSet.Rigid;
+                if (_pointDynamicSkinnedRequests[requestIndex]) casters |= PointShadowCasterSet.Skinned;
+                PackPointShadowSlotForTarget(_pointShadowAtlas, packed, r.Slot, r.Position, r.Radius,
+                    r.NearRadius, r.ExclusionMin, r.ExclusionMax, requestIndex, casters);
+            }
+            for (int selected = 0; selected < _selectedPointTransientRequests.Count; selected++)
+            {
+                int requestIndex = _selectedPointTransientRequests[selected];
+                PointShadowRequest r = _pointRequests[requestIndex];
+                int packed = _pointRebuilds.Count + selected;
+                PackPointShadowSlotForTarget(_pointShadowTransientAtlas, packed,
+                    _pointTransientRowsByRequest[requestIndex], r.Position, r.Radius,
+                    r.NearRadius, r.ExclusionMin, r.ExclusionMax, requestIndex, PointShadowCasterSet.Skinned);
             }
             UploadPointShadowFaces(cl);
+            if (UseGpuSkinning && (_selectedPointTransientRequests.Count > 0
+                || Array.Exists(_pointDynamicSkinnedRequests, static selected => selected)))
+                PrepareGpuSkinnedPointCasters(cl);
             int draws = RenderPointShadowSlots(cl);
             foreach (int index in _pointRebuilds) cache.MarkClean(_pointRequests[index].Slot, frame);
             return draws;
@@ -231,19 +248,22 @@ namespace KhaozEngine.Render3D
         {
             Array.Fill(_pointSlotUniform, -1);
             Array.Fill(_pointTransientSlotUniform, -1);
-            foreach (PointShadowRequest r in _pointRequests)
+            for (int i = 0; i < _pointRequests.Count; i++)
             {
+                PointShadowRequest r = _pointRequests[i];
                 if (r.Slot < 0) continue;
                 bool sampleable = r.Mode == LightShadowMode.Dynamic
                     ? cache.LastRenderedFrame(r.Slot) == frame
                     : cache.EverRendered(r.Slot);
                 if (!sampleable) continue;
                 _pointSlotUniform[r.LightIndex] = r.Slot;   // the UPLOADED light order, not the request order
+                _pointTransientSlotUniform[r.LightIndex] = _pointTransientRowsByRequest[i];
                 PointShadowedLights++;
             }
             _model.SetPointShadowUniforms(_pointSlotUniform.AsSpan(0, _lights.Count),
                 _pointTransientSlotUniform.AsSpan(0, _lights.Count), settings.ResolvedBias,
-                settings.ResolvedSlopeBias, PointShadowFaceResolution, PointShadowRows, 0,
+                settings.ResolvedSlopeBias, PointShadowFaceResolution, PointShadowRows,
+                PointShadowTransientRows,
                 settings.Filter, settings.ResolvedLightSizeMetres, settings.ResolvedMaxPenumbraTexels);
         }
 
@@ -259,6 +279,10 @@ namespace KhaozEngine.Render3D
                 PointShadowedLights = PointShadowedLights,
                 PointStaticRebuilds = statics,
                 PointDynamicRenders = dynamics,
+                PointTransientDemand = _pointTransientDemandThisFrame,
+                PointTransientRowsRendered = _pointTransientRowsRenderedThisFrame,
+                PointDynamicSkinnedDrawCalls = _pointDynamicSkinnedDrawCallsThisFrame,
+                PointStaticTransientSkinnedDrawCalls = _pointStaticTransientSkinnedDrawCallsThisFrame,
                 PointFaceDrawCalls = draws,
                 PointSlotsInUse = cache.InUse,
             };

@@ -1660,7 +1660,7 @@ namespace KhaozEngine.Render3D
                         _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
                             entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
                             ToRender(it.World), it.Tint, emissive, specParams, dissolveParams,
-                            visibleMain, dissolving, shadowKind));   // reduced after the absolute classify
+                            visibleMain, dissolving, shadowKind, pointSphere));   // reduced after the absolute classify
                     }
                     else
                     {
@@ -1678,7 +1678,8 @@ namespace KhaozEngine.Render3D
                             // The colour and rigid dissolve depth pipelines read this dedicated vector.
                             Dissolve = dissolveParams,
                         });
-                        _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex, entry.MaterialSet, dissolving, visibleMain, shadowKind));
+                        _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat,
+                            baseVertex, entry.MaterialSet, dissolving, visibleMain, shadowKind, pointSphere));
                     }
                 }
                 // Sizes the frame's three skinned destinations and uploads the ONE shared bone palette both passes
@@ -1828,8 +1829,8 @@ namespace KhaozEngine.Render3D
                 }
             }
 
-            // Skinned draws: an entry with VisibleMain false is drawn only into the shadow map (camera-culled,
-            // shadow-visible - see ClassifySkinnedVisibility), so it must NOT also draw here. The GPU path's loop
+            // Skinned draws: an entry with VisibleMain false is retained for a key or point shadow only, so it
+            // must not draw here. The GPU path's loop
             // lives in Scene3D.GpuSkinning.cs, beside the palette upload it depends on.
             if (UseGpuSkinning) DrawGpuSkinnedMain(cl);
             else if (_cpuSkinnedDraws.Count > 0)
@@ -2314,64 +2315,6 @@ namespace KhaozEngine.Render3D
             _textures.Clear();
             DisposeSplatMaterials();
             DisposeTileGroundAndPointShadowResources();
-        }
-
-        /// <summary>One GPU-skinned draw (built per frame in RenderInternal when <see cref="UseGpuSkinning"/> is on).
-        /// Carries the mesh's rest-pose vertex + index buffers (uploaded once at load - the GPU deforms them), the
-        /// set-1 material set, the composed bone-palette slice (offset into <c>_boneMatrices</c> + bone count), the
-        /// compacted per-caster slot, and the per-draw matrices/material the vertex shader folds. The shadow depth
-        /// pass packs + draws every entry whose <see cref="ShadowKind"/> casts (out-of-volume ones clip away). The
-        /// main pass skips a <see cref="VisibleMain"/>-false entry (camera-culled, kept only as a shadow caster).</summary>
-        readonly struct GpuSkinnedDraw
-        {
-            public readonly IGpuBuffer RestVb, Ib;
-            public readonly int IndexCount;
-            public readonly GpuIndexFormat IndexFormat;
-            public readonly IGpuResourceSet? SkinnedMaterialSet;
-            public readonly int BoneSpanStart;   // into _boneMatrices (submission index * MaxBonesPerDraw)
-            public readonly int BoneCount;
-            public readonly uint Slot;            // compacted per-caster slot: the main header window AND the shared palette
-            public readonly Matrix4x4 World;
-            public readonly Vector4 Tint, Emissive, SpecParams;
-            public readonly Vector2 DissolveParams;
-            public readonly bool VisibleMain;
-            public readonly bool Dissolve;
-            public readonly ShadowCastKind ShadowKind;   // how it takes part in the depth pass (issue #387)
-            public GpuSkinnedDraw(IGpuBuffer restVb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
-                IGpuResourceSet? skinnedMaterialSet, int boneSpanStart, int boneCount, uint slot,
-                in Matrix4x4 world, Vector4 tint, Vector4 emissive, Vector4 specParams, Vector2 dissolveParams,
-                bool visibleMain, bool dissolve,
-                ShadowCastKind shadowKind = ShadowCastKind.Opaque)
-            {
-                RestVb = restVb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat;
-                SkinnedMaterialSet = skinnedMaterialSet; BoneSpanStart = boneSpanStart; BoneCount = boneCount; Slot = slot;
-                World = world; Tint = tint; Emissive = emissive; SpecParams = specParams;
-                DissolveParams = dissolveParams; VisibleMain = visibleMain; Dissolve = dissolve;
-                ShadowKind = shadowKind;
-            }
-        }
-
-        /// <summary>One CPU-skinned draw: the mesh's index buffer + count, the base vertex of its deformed verts in
-        /// the shared skinned vertex stream, and its optional material set. Built per frame in RenderInternal.
-        /// Every entry here was CPU-skinned and uploaded (needed by at least one of the main or shadow pass). The
-        /// shadow depth pass draws every entry whose <see cref="ShadowKind"/> casts (see RenderShadowDepthPass),
-        /// while the main pass draw loop skips an entry whose <see cref="VisibleMain"/> is false (camera-culled,
-        /// kept only because it is still a shadow caster).</summary>
-        readonly struct CpuSkinnedDraw
-        {
-            public readonly IGpuBuffer Ib;
-            public readonly int IndexCount;
-            public readonly GpuIndexFormat IndexFormat;
-            public readonly int BaseVertex;
-            public readonly IGpuResourceSet? MaterialSet;
-            public readonly bool Dissolve;   // route through the CharDissolve pipeline variant
-            public readonly bool VisibleMain;   // draw in the main visible pass, always true when culling is off
-            public readonly ShadowCastKind ShadowKind;   // how it takes part in the depth pass (issue #387)
-            public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex, IGpuResourceSet? materialSet, bool dissolve = false, bool visibleMain = true, ShadowCastKind shadowKind = ShadowCastKind.Opaque)
-            {
-                Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; BaseVertex = baseVertex; MaterialSet = materialSet; Dissolve = dissolve; VisibleMain = visibleMain;
-                ShadowKind = shadowKind;
-            }
         }
 
         /// <summary>A contiguous run of instances of one mesh handle inside the flat instance array.</summary>

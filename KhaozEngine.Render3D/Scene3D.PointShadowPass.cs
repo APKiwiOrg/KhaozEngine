@@ -28,9 +28,8 @@ namespace KhaozEngine.Render3D
     /// and the frame origin rides in the uniform slot for the dissolve variants' world-anchored noise.
     /// </para>
     /// <para>
-    /// SKINNED CASTERS ARE OUT OF THIS ROUND, by design decision 5. A cached static map that had baked a character
-    /// into it would be wrong the moment that character moved, and the dynamic path is a follow-up with its own
-    /// issue. Rigid casters (shadow-only instances included) are the whole caster set here.
+    /// Static base rows keep rigid casters only. Skinned casters write current poses into transient rows, while
+    /// dynamic base rows receive both types after their per-frame clear.
     /// </para>
     /// </remarks>
     public sealed partial class Scene3D
@@ -162,9 +161,10 @@ namespace KhaozEngine.Render3D
             PackPointShadowSlotForTarget(_pointShadowAtlas, packedSlotIndex, slot, lightPosAbsolute, radius,
                 nearRadius, exclusionMin, exclusionMax);
 
-        internal void PackPointShadowSlotForTarget(PointShadowAtlas? targetAtlas, int packedSlotIndex, int slot,
+        void PackPointShadowSlotForTarget(PointShadowAtlas? targetAtlas, int packedSlotIndex, int slot,
             Vector3 lightPosAbsolute, float radius, float nearRadius = 0f,
-            Vector3 exclusionMin = default, Vector3 exclusionMax = default)
+            Vector3 exclusionMin = default, Vector3 exclusionMax = default,
+            int requestIndex = -1, PointShadowCasterSet casters = PointShadowCasterSet.Rigid)
         {
             if (_pointShadows is not { } renderer || targetAtlas is not { } atlas) return;
 
@@ -185,7 +185,8 @@ namespace KhaozEngine.Render3D
                     noiseScale, _frameOrigin, nearRadius, exclusionMinRender, exclusionMaxRender);
             }
             _packedPointSlots.Add(new PackedPointShadowSlot(
-                packedSlotIndex, slot, lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax));
+                packedSlotIndex, atlas, slot, requestIndex, casters,
+                lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax));
         }
 
         /// <summary>The box a light with no box of its own is packed with: empty by construction, so the fragments'
@@ -217,49 +218,60 @@ namespace KhaozEngine.Render3D
         internal int RenderPointShadowSlots(IGpuCommandList cl)
         {
             ArgumentNullException.ThrowIfNull(cl);
-            if (_pointShadows is not { } renderer || _pointShadowAtlas is not { } atlas
+            if (_pointShadows is not { } renderer || _pointShadowAtlas is null
                 || _packedPointSlots.Count == 0) return 0;
 
             int draws = 0;
             IGpuBuffer? instances = _model.InstanceBuffer;
-            renderer.BeginPass(cl, atlas);
+            PointShadowAtlas? activeAtlas = null;
             foreach (PackedPointShadowSlot packed in _packedPointSlots)
             {
-                renderer.ClearRow(cl, atlas, packed.Slot);
-                if (instances is null) continue;
+                if (!ReferenceEquals(activeAtlas, packed.Atlas))
+                {
+                    if (activeAtlas is not null) renderer.EndPass(cl);
+                    renderer.BeginPass(cl, packed.Atlas);
+                    activeAtlas = packed.Atlas;
+                }
+                renderer.ClearRow(cl, packed.Atlas, packed.Row);
 
-                // The caster set is per LIGHT (it is a sphere cull against that light), so it is rebuilt here
-                // rather than once for the pass. This is CPU work with nothing recorded, so it costs the pass
-                // nothing to do it between draws.
-                BuildPointCasterSpans(packed.LightPosAbsolute, packed.Radius, packed.NearRadius,
-                    packed.ExclusionMin, packed.ExclusionMax);
+                bool drawRigid = (packed.Casters & PointShadowCasterSet.Rigid) != 0 && instances is not null;
+                if (drawRigid)
+                    BuildPointCasterSpans(packed.LightPosAbsolute, packed.Radius, packed.NearRadius,
+                        packed.ExclusionMin, packed.ExclusionMax);
                 for (int face = 0; face < PointShadowMath.FaceCount; face++)
                 {
-                    ShadowCastKind bound = ShadowCastKind.None;
-                    foreach (ShadowCasterSpan span in _pointCasterSpans)
+                    if (drawRigid)
                     {
-                        var m = _meshes[span.Index];
-                        if (m is not { } mesh) continue;   // unloaded between the span build and here: skip its slice
-                        if (span.Kind != bound)
+                        ShadowCastKind bound = ShadowCastKind.None;
+                        foreach (ShadowCasterSpan span in _pointCasterSpans)
                         {
-                            renderer.BeginFace(cl, atlas, packed.PackedIndex * PointShadowMath.FaceCount + face, face,
-                                packed.Slot, span.Kind);
-                            bound = span.Kind;
+                            var m = _meshes[span.Index];
+                            if (m is not { } mesh) continue;
+                            if (span.Kind != bound)
+                            {
+                                renderer.BeginFace(cl, packed.Atlas,
+                                    packed.PackedIndex * PointShadowMath.FaceCount + face, face,
+                                    packed.Row, span.Kind);
+                                bound = span.Kind;
+                            }
+                            renderer.DrawCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
+                                instances!, span.Start, span.Count);
+                            draws++;
                         }
-                        renderer.DrawCasterRun(cl, mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                            instances, span.Start, span.Count);
-                        draws++;
                     }
+                    if ((packed.Casters & PointShadowCasterSet.Skinned) != 0 && packed.RequestIndex >= 0)
+                        draws += DrawPointSkinnedCastersForFace(cl, renderer, packed, face);
                 }
             }
-            renderer.EndPass(cl);
+            if (activeAtlas is not null) renderer.EndPass(cl);
             return draws;
         }
 
         /// <summary>One light packed into this frame's ring: where its six faces sit in the ring, which atlas row
         /// it renders into, and the light itself, which the draw re-culls its casters against.</summary>
         readonly record struct PackedPointShadowSlot(
-            int PackedIndex, int Slot, Vector3 LightPosAbsolute, float Radius, float NearRadius,
+            int PackedIndex, PointShadowAtlas Atlas, int Row, int RequestIndex, PointShadowCasterSet Casters,
+            Vector3 LightPosAbsolute, float Radius, float NearRadius,
             Vector3 ExclusionMin, Vector3 ExclusionMax);
 
         /// <summary>

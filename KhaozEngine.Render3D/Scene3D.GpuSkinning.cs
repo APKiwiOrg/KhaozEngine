@@ -12,7 +12,7 @@ namespace KhaozEngine.Render3D
     /// own draw loop. The shadow half lives in <c>Scene3D.ShadowCasters.cs</c>, which reads the same palette.
     /// <para>
     /// WHAT A FRAME UPLOADS, AND WHY IT IS SHAPED THIS WAY (issue #407). A caster's palette is the same bytes in
-    /// the main pass and in every shadow cascade, so it goes up ONCE, here, before either pass draws. Only the
+    /// the main pass, every shadow cascade and point faces, so it goes up ONCE before any pass draws. Only the
     /// matrices in front of it are per draw: <c>{ Model; P }</c> per caster in the main pass, <c>{ LightMvp }</c>
     /// per caster-cascade in the depth pass. They cannot share one set with the palette because a resource-set bind
     /// carries exactly one dynamic offset, which is why the palette is a set of its own in both pipelines.
@@ -21,8 +21,8 @@ namespace KhaozEngine.Render3D
     public sealed partial class Scene3D
     {
         /// <summary>Size this frame's skinned destinations and upload the shared bone palette. Called from the
-        /// skinned-visibility pass once <c>_gpuSkinnedDraws</c> is built, BEFORE the shadow depth pass and the main
-        /// pass, both of which read the palette this records.</summary>
+        /// skinned-visibility pass once <c>_gpuSkinnedDraws</c> is built, before key, point and main draws that
+        /// share the palette this records.</summary>
         void PrepareGpuSkinnedFrame(IGpuCommandList cl, bool shadowMapActive)
         {
             if (_gpuSkinnedDraws.Count == 0) return;
@@ -45,7 +45,7 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>The main pass's GPU-skinned draws. An entry with <c>VisibleMain</c> false is camera-culled and
-        /// drawn only into the shadow map (see ClassifySkinnedVisibility), so it must NOT also draw here. Packs
+        /// retained for a key or point shadow, so it must NOT also draw here. Packs
         /// every visible draw's 128-byte header slot, uploads them in one write, then draws through the skinned
         /// pipeline: rest-pose buffer at vertex slot 0, set 0 = shared frame block + this draw's header window,
         /// set 1 = material, set 2 = this caster's palette (already uploaded by

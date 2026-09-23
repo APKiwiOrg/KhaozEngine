@@ -130,6 +130,18 @@ namespace KhaozEngine.Render3D
         /// <see cref="PointShadowSettings.MaxDynamicLightsPerFrame"/>. Every one of them is six faces.</summary>
         public int PointDynamicRenders { get; init; }
 
+        /// <summary>Static point lights that intersected a retained skinned caster before transient capacity was applied.</summary>
+        public int PointTransientDemand { get; init; }
+
+        /// <summary>Current-pose static transient rows rendered this frame.</summary>
+        public int PointTransientRowsRendered { get; init; }
+
+        /// <summary>Skinned caster face draws into dynamic base rows this frame.</summary>
+        public int PointDynamicSkinnedDrawCalls { get; init; }
+
+        /// <summary>Skinned caster face draws into static transient rows this frame.</summary>
+        public int PointStaticTransientSkinnedDrawCalls { get; init; }
+
         /// <summary>Every caster draw call the point shadow pass issued this frame, across every face of every
         /// light it rendered. The point pass's counterpart to <see cref="TotalDrawCalls"/>.</summary>
         public int PointFaceDrawCalls { get; init; }

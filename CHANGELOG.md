@@ -5,10 +5,47 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.3.0
+
+A minor that changes how procedural water looks: a narrower, energy-correct far glint and whitecaps evaluated
+per pixel. Nothing a game calls changes meaning, but a lake tuned against the old look may want its whitecap
+settings retuned (below).
+
+**Water glint and whitecaps.**
+
+- The sun glint's distance and footprint widening is now a floor under the Toksvig lobe rather than a second
+  widening added on top of it ([#308](https://github.com/APKiwiOrg/KhaozEngine/issues/308)). Both responded to the
+  same unresolved ripple detail, and the sum put the far lobe at about twice the surface's real slope variance. The
+  lobe now carries exactly that variance until `GlintDistantRoughness` takes over (1.12 to 1.17 times it after),
+  which makes the 14.26.0 energy-conservation claim hold. `GlintDistantRoughness` is now a minimum roughness. At the
+  defaults the near and mid sun path is visibly narrower where the distance ramp is partway. `VarianceToRoughness =
+  0` still gives the 14.24.0 lobe. `WaterMath.GlintAlpha` is the CPU mirror.
+- Procedural whitecaps are evaluated per pixel through the same shared Gerstner block as the #381 swell normal, so
+  coarse clipmap rings and far camera-focused cells no longer draw triangle-shaped foam
+  ([#1100](https://github.com/APKiwiOrg/KhaozEngine/issues/1100)). The foam edge-jump ratio on the 8 m and 16 m
+  rings falls from 10.2 and 11.4 to 0.90 and 1.02. In the far field the fold eases toward 73 percent of itself as the
+  swell's wavelengths fall below 80 pixel footprints, measured where the view ray meets the still-water plane, which
+  keeps distant whitecap coverage near the old per-vertex level (1.13 percent against 1.18 percent) instead of the 3.5
+  percent the per-pixel fold alone gives. `WaterMath.WhitecapFoldAttenuation` is the CPU mirror. FFT-mode foam is
+  unchanged.
+- **What a game sees at repin.** Close-up coarse rings now show the fold's true whitecap density, which the
+  per-vertex fold undersampled. A lake tuned against the old look, Ruinborne's inland lake included, reads choppier
+  and may want its whitecap settings retuned. The attenuation is keyed on the pixel footprint, so at 1080p it starts
+  about twice as far away as at the golden resolution.
+- `scene3d_water` and `scene3d_water_grid_focus` were rebaked on all three families.
+
 ## 20.2.0
 
 A minor that acts on four owner calls left open by the 20.1.0 burn-down. A remote tile body no longer jumps
-at the start of a clicked route. Nothing a game calls changes meaning.
+at the start of a clicked route. Tooltip groups can keep separate bubbles in one pointer stack. Nothing a
+game calls changes meaning.
+
+**Tooltip stacks.**
+
+- `TooltipStackLayout.Place` positions measured tooltip boxes in display order beside a pointer and flips
+  the group at viewport edges. `AnchorFor` converts each placed box to an offset-mode `Tooltip` anchor.
+  Games can keep action, item information and stat changes in separate bubbles without each tooltip
+  clamping to a different position.
 
 **Remote tile steps.**
 

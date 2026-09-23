@@ -6,10 +6,10 @@ namespace KhaozEngine.Render3D.Internal
     /// <c>WaterVert</c> and <c>WaterFrag</c>, so there is ONE copy of the swell maths and it mirrors
     /// <see cref="GerstnerWaves"/> (same generator, same op order, same constants).
     /// <para>
-    /// <b>The split.</b> The vertex stage takes the offset, which is geometry and can only live on the vertices, and
-    /// the fold factor, which it interpolates to the fragment as it always has. The fragment stage takes the analytic
-    /// NORMAL, evaluated per pixel at the fragment's still-water position. The normal used to come from the vertex
-    /// and be interpolated, and on a coarse grid that is wrong in a way no knob fixed
+    /// <b>The split.</b> The vertex stage takes the offset, which is geometry and can only live on the vertices. The
+    /// fragment stage takes the analytic NORMAL and the whitecap FOLD, both evaluated per pixel at the fragment's
+    /// still-water position. The normal used to come from the vertex and be interpolated, and on a coarse grid that
+    /// is wrong in a way no knob fixed
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/381">#381</see>): a clipmap's outer rings have 8
     /// and 16 m cells under a 42 m swell whose shortest component is 13.5 m, so the vertices undersample the normal
     /// and the rasterizer interpolates what is left into large flat facets. A normal evaluated per pixel does not
@@ -18,9 +18,11 @@ namespace KhaozEngine.Render3D.Internal
     /// one.
     /// </para>
     /// <para>
-    /// The fold stays per vertex on purpose. Evaluating it per pixel as well would round off the triangle-shaped
-    /// whitecaps a coarse ring draws, but it also raises the far field's whitecap count to the near field's, which
-    /// is a change of look rather than a fix of the shading, and it is left to its own decision.
+    /// The fold followed in <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1100">#1100</see>, for the
+    /// same reason: interpolated across a coarse ring it is linear inside each triangle, so the whitecaps it
+    /// thresholds came out as triangles. Per pixel it also stops being averaged over those cells, which had been
+    /// holding distant whitecap coverage well under the near field's, so the fragment eases it toward a floor as the
+    /// pixel footprint grows (<see cref="WaterMath.WhitecapFoldAttenuation"/>).
     /// </para>
     /// <para>
     /// The fragment's still-water position is <c>vRefXz</c>, which under the procedural source is exactly the

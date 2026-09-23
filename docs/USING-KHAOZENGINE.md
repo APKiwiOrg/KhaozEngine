@@ -1352,6 +1352,11 @@ Each entry in `bodyLines` carries its own `TooltipLine.Scale` (default `1f`), an
 the title row above them, so one shared font can render the whole tooltip's size hierarchy (see "Scaling
 Gui text" above).
 
+For separate bubbles that must keep one order beside the pointer, measure each with `Tooltip.ComputeBounds`,
+pass the widths and heights to `TooltipStackLayout.Place`, then show each offset-mode `Tooltip` at
+`TooltipStackLayout.AnchorFor(box, tip.Metrics)`. Use the same viewport and metrics for measurement and drawing.
+The group flips as a unit near the right or bottom edge. Keep its total height within the viewport.
+
 **`ScrollablePanel` opt-in height glide (10.121.0)** - when a caller recomputes `panel.Bounds`'s height while the
 panel stays open (content arriving async, a tab switch changing row count), `EffectiveHeight` snapping instantly
 every frame is a visible jump. Set `HeightGlideSeconds` (default 0 = off, byte-identical) and feed dt through the
@@ -4313,7 +4318,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     The displacement is per vertex, but the swell's NORMAL is evaluated per pixel at the fragment's still-water
     position, so a grid too coarse to carry the swell (a clipmap's 8 and 16 m outer rings under the 42 m default,
     or the far cells of a large camera-focused plane) no longer shades it as flat triangle facets (#381). The
-    whitecap fold is still interpolated from the vertices.
+    whitecap fold is evaluated per pixel the same way, so those grids no longer draw whitecaps as triangles
+    (#1100).
   - **Surface grid** (`GridMode`, a `WaterGridMode`) - two layouts, and which one you want depends on whether the
     camera moves much. Clipmap mode uses a four-vertex, six-index quad for an effective `Procedural` source
     with zero `SwellAmplitude`. Ripples still shade it. FFT and nonzero-swell planes retain displaced
@@ -4407,7 +4413,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     once its wavelength drops below `FootprintSamples` pixel footprints, per component, so the long ripples
     survive where the short ones go. The slope variance that removes is transferred into the GGX lobe
     (Toksvig-style), so distant water settles into a smooth fresnel gradient with a believable sheen instead of
-    either stripes (no band-limit) or glass (band-limit without transfer). The swell's shading contrast fades on
+    either stripes (no band-limit) or glass (band-limit without transfer). The transfer widens `GlintRoughness`,
+    and the glint's distance and footprint widening (below) is a floor under it rather than a second widening, so
+    the removed detail counts once. The swell's shading contrast fades on
     the same measure, leaving its crest geometry untouched. This is the physics half of the anti-aliasing and it
     is why distance banding cannot come back through a knob: `DetailFadeDistance` is an artistic extra on top.
   - **Reflection**: the fresnel term blends the body colour toward the sky evaluated along the REFLECTED view ray
@@ -4417,12 +4425,16 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     it is actually pointing at. `SkyReflectionSunStrength` defaults below 1 because the sharp part of the reflected
     sun is already supplied by the glint lobe, and carrying both at full strength double-counts it.
   - **Glint**: a peak-normalized GGX lobe (so `GlintStrength` means the same brightness as the legacy Blinn-Phong
-    one) whose roughness widens toward `GlintDistantRoughness` wherever the surface is under-sampled - by camera
-    distance over `DetailFadeDistance`, or by the pixel's world FOOTPRINT against the ripple wavelength, whichever
-    is worse. The footprint measure is the one that is actually right (what aliases is a wave narrower than a
-    pixel; distance is a proxy that breaks under a wide FOV, under the ortho iso camera, and at a resolution other
-    than the one it was tuned at). Widening the lobe keeps sub-pixel detail as variance instead of discarding it,
-    so the far field settles into a soft sheen rather than a crawling sparkle.
+    one) whose roughness never falls below a floor that widens toward `GlintDistantRoughness` wherever the surface
+    is under-sampled - by camera distance over `DetailFadeDistance`, or by the pixel's world FOOTPRINT against the
+    ripple wavelength, whichever is worse. The footprint measure is the one that is actually right (what aliases is
+    a wave narrower than a pixel, and distance is a proxy that breaks under a wide FOV, under the ortho iso camera, and
+    at a resolution other than the one it was tuned at). Widening the lobe keeps sub-pixel detail as variance
+    instead of discarding it, so the far field settles into a soft sheen rather than a crawling sparkle. Since
+    #308 the floor sits under the Toksvig lobe from the band-limit instead of adding to it. Both respond to the
+    same unresolved ripple detail, and the sum put the far lobe at about twice the surface's slope variance. Now
+    the lobe carries exactly that variance until the floor takes over, and 1.12 to 1.17 times it on the floor.
+    `VarianceToRoughness = 0` leaves the lobe on the floor alone, the 14.24.0 lobe.
   - **Depth grading**: the reconstructed ground depth drives per-channel Beer-Lambert transmittance
     (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into `DeepColor`. Because red is absorbed
     several times faster than blue, the ramp bends through green-teal instead of running straight down the line
@@ -4435,7 +4447,11 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     `SwellSteepness` so `FoamCrestCoverage` means the same fraction of the sea at any steepness. The shoreline band
     comes from the depth term - and because that depth is measured under the DISPLACED surface, the swell carries
     the foam line up and down the beach for free. Both are multiplied by a scrolling three-layer pattern
-    thresholded into clean graphic lobes (`FoamPatternScale`, drifting at `WaveSpeed`).
+    thresholded into clean graphic lobes (`FoamPatternScale`, drifting at `WaveSpeed`). The whitecap fold is
+    evaluated per pixel, and beyond the near field it eases toward 73% of itself as the pixel footprint on the
+    still-water plane grows. A coarse grid used to average the fold over its cells, which held distant whitecaps
+    at about a third of the near field's coverage, and the attenuation is calibrated to keep them there now that
+    the averaging, and the triangle-shaped whitecaps it drew, are gone. FFT-mode foam is unaffected.
   - **Reaching the previous look**: every addition is independently reachable at zero. For 14.24.0:
     `FootprintSamples = 0` (unbounded normal oscillation), `VarianceToRoughness = 0`, `RippleComponents = 3`. The
     exact three-cosine FIELD is deliberately NOT reachable, on the same grounds as the 14.22.0 checkerboard: its
@@ -4464,7 +4480,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     shallow shelf near the shore fades progressively.
   - The pure math (`WaterMath`, internal: the three-layer wave normal, the domain warp, the distance detail fade,
     the shallow-blend and shore-fade curves, Schlick fresnel, Blinn-Phong glint, grid tessellation sizing, plus
-    `GerstnerWaves` for the swell, whose offset and fold `WaterVert` mirrors and whose normal `WaterFrag` mirrors)
+    `GerstnerWaves` for the swell, whose offset `WaterVert` mirrors and whose normal and fold `WaterFrag` mirrors)
     is headless-tested and mirrors the GLSL `WaterFrag`/`WaterVert` exactly.
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
@@ -7020,7 +7036,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.2.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.3.0" />
 ```
 
 ```csharp
@@ -13438,7 +13454,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.3.0" />
 ```
 
 ```csharp
@@ -13474,7 +13490,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.3.0" />
 ```
 
 ```csharp
@@ -13716,7 +13732,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.3.0" />
 ```
 
 ```csharp
@@ -17389,7 +17405,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.2.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.3.0" />
 </ItemGroup>
 ```
 

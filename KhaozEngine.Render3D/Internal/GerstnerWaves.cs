@@ -8,10 +8,10 @@ namespace KhaozEngine.Render3D.Internal
     /// trochoidal displacement, its analytic normal, and the horizontal Jacobian that drives whitecap foam
     /// (<c>gerstnerEvaluate</c> in ShaderSources.WaterSwell.cs MUST mirror this exactly, the same contract
     /// <see cref="WaterMath"/> has with <c>WaterFrag</c>). Both water stages run that one GLSL function:
-    /// <c>WaterVert</c> takes <see cref="Sample.Offset"/> and <see cref="Sample.Fold"/> per vertex, and
-    /// <c>WaterFrag</c> takes <see cref="Sample.Normal"/> per pixel at the fragment's still-water position, so
-    /// a coarse grid cannot facet the shading (#381). Documents the intended math and makes it
-    /// headless-unit-testable. No GPU state, no allocations.
+    /// <c>WaterVert</c> takes <see cref="Sample.Offset"/> per vertex, and <c>WaterFrag</c> takes
+    /// <see cref="Sample.Normal"/> and <see cref="Sample.Fold"/> per pixel at the fragment's still-water position,
+    /// so a coarse grid can neither facet the shading (#381) nor draw triangle-shaped whitecaps (#1100). Documents
+    /// the intended math and makes it headless-unit-testable. No GPU state, no allocations.
     /// <para>
     /// A Gerstner (trochoidal) wave moves each surface point on a circle rather than only up and down, so crests
     /// pinch and troughs flatten: that is the shape a plain sum-of-sines height field cannot produce, and it is what

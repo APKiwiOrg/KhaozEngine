@@ -43,8 +43,9 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// a pack root, and a pack root left standing under a replaced catalog still holds a version pointer naming
 /// the manifest of the content that was there before. A caller that replaces content at the same version
 /// number must CLEAR its pack root or REBUILD it through <c>ContentPackRebuild</c>, rather than leave that to
-/// the boot to notice. The hashes that STOOD come back on <see cref="ContentCatalogResetResult"/>, which is the last
-/// moment they can be read, so an old pack root can be told from a new one.
+/// the boot to notice. The hashes that STOOD come back on <see cref="ContentCatalogResetResult"/> and are
+/// filed in the new store's reset audit row, in <c>before_value</c>, so an old pack root can be told from a
+/// new one.
 /// </para>
 /// </summary>
 public static class SqlServerCatalogReset

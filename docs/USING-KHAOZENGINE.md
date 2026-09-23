@@ -15279,8 +15279,9 @@ hashes, the counts of versions and row revisions dropped, and `PriorSchemaVersio
 `SchemaVersion` and the NEW `store_epoch`. The version is the ACTIVE one, `catalog_metadata.active_version`,
 and the summary says "active version" because that is what was read. A boot serves `pinned_version` when one
 is set, so a store pinned below its active version served the pin, which the result does not report. The epoch
-is fresh on purpose: a reset store shares no history with the one it replaced. The result is also the last moment those
-two hashes exist anywhere, because `catalog_version` goes with everything else.
+is fresh on purpose: a reset store shares no history with the one it replaced. `catalog_version` goes with
+everything else, so no version row holds those two hashes afterwards. The result carries them, and so does the
+reset's own audit row in the new store, which files `reset.Summary` in `catalog_audit.before_value`.
 
 `PriorState` says which of the three a run was, and the record refuses to be built into a state that says two
 things: a version number with no row behind it reads as that number and the words "whose version row was
@@ -15294,8 +15295,9 @@ Every property is get-only, so a `with` expression cannot move one value past th
 content at the same version number must CLEAR its pack root or REBUILD it with `ContentPackRebuild.RunAsync`,
 which writes one published version's whole pack out of the store's own rows and rules and verifies it against
 the manifest digests the version row records. The import after a reset overwrites the pointer only in the pack
-store it was handed. Do not leave that to the boot to notice. The two hashes on the result are the
-last record of what the pack root should have been holding, and are what a caller compares against it.
+store it was handed. Do not leave that to the boot to notice. The two hashes on the result, also filed in
+the reset's audit row, are what the pack root should have been holding, and are what a caller compares
+against it.
 
 ### The server boot
 

@@ -7,11 +7,11 @@ namespace KhaozEngine.Catalog.Authoring;
 /// with. Every provider's reset answers with this, so an operator console prints one line whichever backend
 /// it drove.
 /// <para>
-/// <b>The hashes are the ones that STOOD, which is the only moment they can be read.</b> A reset drops
-/// <c>catalog_version</c> with everything else, so after it returns there is no query that can answer what
-/// the store used to serve. A caller replacing content at the same version number needs exactly those two
-/// hashes to tell whether a pack root on disk is the old content or the new, and this record is the last
-/// place they exist.
+/// <b>The hashes are the ones that STOOD, read before the drop.</b> A reset drops <c>catalog_version</c>
+/// with everything else, so after it returns no version row can answer what the store used to serve. A
+/// caller replacing content at the same version number needs exactly those two hashes to tell whether a
+/// pack root on disk is the old content or the new. This record carries them, and so does the reset's own
+/// audit row in the new store, which files <see cref="Summary"/> in <c>catalog_audit.before_value</c>.
 /// </para>
 /// <para>
 /// <b><see cref="StoreEpoch"/> is NEW, and so is <see cref="SchemaVersion"/>.</b> The reset recreates the

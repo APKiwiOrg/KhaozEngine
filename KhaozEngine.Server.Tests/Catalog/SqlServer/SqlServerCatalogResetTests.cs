@@ -121,6 +121,11 @@ public class SqlServerCatalogResetTests
         Assert.Equal(active.ClientManifestHash, reset.ClientManifestHash);
         Assert.Contains(
             "active version 2, server manifest " + active.ServerManifestHash, reset.Summary, StringComparison.Ordinal);
+
+        // The result is not the only place the hashes outlive the drop: the reset's own audit row files them.
+        string filed = Text(database, "SELECT before_value FROM dbo.catalog_audit WHERE action = N'reset';");
+        Assert.Contains(active.ServerManifestHash, filed, StringComparison.Ordinal);
+        Assert.Contains(active.ClientManifestHash, filed, StringComparison.Ordinal);
     }
 
     [CatalogSqlServerFact]

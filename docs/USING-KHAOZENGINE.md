@@ -14387,7 +14387,11 @@ KE_D3D11_ADAPTER=1           # a zero-based index into the DXGI enumeration orde
 KE_D3D11_ADAPTER=GeForce     # a case-insensitive substring of an adapter description
 ```
 
-Unset leaves DXGI to pick, which is what the engine has always done. **A request that cannot be honoured WARNs
+Unset prefers the high-performance adapter, the one `IDXGIFactory6.EnumAdapterByGpuPreference` ranks first, so a
+hybrid laptop runs on its discrete GPU rather than on the integrated one DXGI lists first. On Windows 10 before
+version 1803, which has no `IDXGIFactory6`, unset lets DXGI pick as the engine always did, and a preferred adapter
+that cannot be fetched or refuses the device WARNs and lets DXGI pick too. `hardware` keeps its enumeration-order
+meaning, so on a hybrid laptop it can name the integrated GPU. **A request that cannot be honoured WARNs
 and falls back to letting DXGI pick, and never fails the run.** The warning names what was typed AND lists the
 adapters that were actually enumerated, which is the half that matters: a name substring is machine-specific by
 nature, so a value that is right on one machine is wrong on the next, and "nothing matched" without the list

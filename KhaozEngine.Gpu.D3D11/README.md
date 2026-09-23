@@ -69,9 +69,10 @@ because a settings file outlives the build that wrote it.
 ## What the machine probe checks
 
 `GpuBackendSelector.IsBackendSupported(GpuBackendKind.Direct3D11Native)` routes to this package's own
-functional probe (the deleted Veldrid incumbent could not answer for a backend it did not implement). The probe
-creates a throwaway feature level 11_0 device on the default hardware adapter, falling back to WARP, and reads
-`D3D11_FEATURE_D3D11_OPTIONS` off it. Two features are hard requirements:
+functional probe (the deleted Veldrid incumbent could not answer for a backend it did not implement).
+The probe creates a throwaway feature level 11_0 device on the adapter the device itself would be created on,
+resolved through the same `KE_D3D11_ADAPTER` policy described below, then falls back to the default hardware
+adapter and to WARP, and reads `D3D11_FEATURE_D3D11_OPTIONS` off it. Two features are hard requirements:
 
 - **`ConstantBufferOffsetting`** - every constant-buffer bind goes through `*SetConstantBuffers1` with an
   explicit first constant and constant count.
@@ -94,9 +95,12 @@ incumbent backend and file the numbers under this one.
 rather than as the order the sections of this file happen to come in.
 
 1. **The adapter.** `KE_D3D11_ADAPTER` is parsed, the DXGI enumeration is described, and the choice is logged as
-   an INFO line naming which adapter ran and why. `warp` resolves through `DriverType.Warp` rather than through
-   the enumeration, so the one value CI pins is the one value that cannot fail to resolve. A request that cannot
-   be honoured WARNs and falls back to letting DXGI pick.
+   an INFO line naming which adapter ran and why. Unset prefers the adapter
+   `IDXGIFactory6.EnumAdapterByGpuPreference` ranks first for high performance, so a hybrid laptop runs on its
+   discrete GPU rather than on the integrated one DXGI lists first. `warp` resolves through `DriverType.Warp`
+   rather than through the enumeration, so the one value CI pins is the one value that cannot fail to resolve. A
+   request that cannot be honoured WARNs and falls back to letting DXGI pick, and so does a high-performance adapter
+   that cannot be fetched or refuses the device.
 2. **The device.** `D3D11CreateDevice` at feature level 11_0, with `GpuD3D11DeviceFlags` OR'd against the
    `KE_D3D11_DEBUG` layer flag. A machine with no Graphics Tools answers `DXGI_ERROR_SDK_COMPONENT_MISSING`, and
    that one HRESULT retries WITHOUT the debug flag and WARNs naming the feature to install. Then
@@ -1018,22 +1022,27 @@ at teardown, so the wrapper's `Dispose` returns without even marking itself disp
 destroy releases anything. It is built through the factory's non-owning path rather than constructed directly, so
 it still carries the same creation gate and the same four hardcodes every other sampler on this backend does.
 
-**`KE_D3D11_ADAPTER=warp|hardware|<index>|<name substring>` pins the adapter (G2).** Unset leaves DXGI to pick.
-A request that cannot be honoured WARNs and falls back to the default enumeration, never fails, and the warning
+**`KE_D3D11_ADAPTER=warp|hardware|<index>|<name substring>` pins the adapter (G2).** Unset prefers the
+high-performance adapter, the one `IDXGIFactory6.EnumAdapterByGpuPreference(0, HighPerformance)` ranks first, and
+creates the device on it with `DriverType.Unknown`. A runtime without `IDXGIFactory6`, which is Windows 10 before
+version 1803, lets DXGI pick as the engine always did, and a preferred adapter that cannot be fetched or refuses
+the device WARNs and lets DXGI pick too. `hardware` keeps its enumeration-order meaning, so on a hybrid laptop it
+can name the integrated GPU while unset names the discrete one. A request that cannot be honoured WARNs and falls
+back to letting DXGI pick, never fails, and the warning
 lists the adapters that WERE enumerated, because a name substring is machine-specific and "nothing matched"
 without the list sends the reader to check their spelling when the machine is usually what changed. There is no
 unrecognized VALUE: anything that is not `warp` or `hardware` and does not parse as an integer is a name
 substring. `warp` is resolved through `DriverType.Warp` rather than through the enumeration, so the one value CI
 pins cannot fail to resolve on a machine whose factory enumerates no software adapter. The selection policy
-decides over a list of descriptions and flags, so it is device-free tested, and only the enumeration itself is
-Windows-only.
+decides over a list of descriptions and flags, so it is device-free tested, and only the enumeration and the
+`IDXGIFactory6` query are Windows-only.
 
 The reason it exists is CI integrity. The Windows golden leg runs on WARP only because `windows-latest` carries
 no hardware adapter and DXGI falls back, so a runner image that grew a paravirtual adapter would silently change
 the rasterizer the 36 committed goldens are compared on, and the failure would arrive as a diff on unrelated
 goldens with nothing naming the cause. `DXGI_ADAPTER_FLAG_SOFTWARE` is recorded in the telemetry session header
-as `softwareAdapter`, read off the CREATED device rather than off the choice, so it is right on the default path
-where nothing in the engine picked the adapter at all.
+as `softwareAdapter`, read off the CREATED device rather than off the choice, so it is right on every path,
+including DXGI's own pick where nothing in the engine chose the adapter.
 
 **`KE_D3D11_DEBUG=1` adds `D3D11_CREATE_DEVICE_DEBUG` and pumps `ID3D11InfoQueue` into the engine log (G4).**
 Corruption and error severities are raised to WARN, which is a deliberate ceiling rather than an oversight: ERROR

@@ -10,9 +10,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <summary>
     /// EVERY QUESTION DECISIONS G1 AND G2 ASK A REAL DEVICE OR A REAL ADAPTER, and nothing else. Six queries in
     /// total: the adapter name, three multisample checks, one format-support check, and the software-adapter flag,
-    /// plus the adapter enumeration. Everything downstream of them (the fold, the constants, the trimming, the
-    /// selection policy, the guard) is engine logic in <see cref="D3D11CapabilityRead"/> and
-    /// <see cref="D3D11AdapterSelection"/>, where it runs on macOS.
+    /// plus the adapter enumeration and the two <c>IDXGIFactory6</c> questions the high-performance default asks.
+    /// Everything downstream of them (the fold, the constants, the trimming, the selection policy, the guard) is
+    /// engine logic in <see cref="D3D11CapabilityRead"/> and <see cref="D3D11AdapterSelection"/>, where it runs on
+    /// macOS.
     /// <para>
     /// Every body here is <see cref="MethodImplOptions.NoInlining"/> behind
     /// <see cref="KhaozEngineD3D11.IsPlatformSupported"/>, which is what keeps the JIT from resolving a Vortice
@@ -222,6 +223,59 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // letting DXGI pick, which is the behaviour the engine had before this lever existed.
             }
             return adapters;
+        }
+
+        /// <summary>
+        /// Whether the factory offers <c>IDXGIFactory6</c>, the fact <see cref="D3D11AdapterSelection.Choose"/>
+        /// takes for the unset request. Windows 10 1803 and later answer yes. A failed query answers no, which keeps
+        /// the engine on DXGI's own pick, the behaviour it had before the preference existed.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        [SupportedOSPlatform("windows")]
+        internal static bool SupportsGpuPreferenceWindows(IDXGIFactory1 factory)
+        {
+            ArgumentNullException.ThrowIfNull(factory);
+
+            try
+            {
+                using IDXGIFactory6? factory6 = factory.QueryInterfaceOrNull<IDXGIFactory6>();
+                return factory6 is not null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// The adapter <c>IDXGIFactory6.EnumAdapterByGpuPreference(0, HighPerformance)</c> ranks first, external
+        /// then discrete then integrated, or null when the factory has no <c>IDXGIFactory6</c> or the call fails.
+        /// The caller owns the adapter and releases it.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        [SupportedOSPlatform("windows")]
+        internal static IDXGIAdapter1? HighPerformanceAdapterWindows(IDXGIFactory1 factory)
+        {
+            ArgumentNullException.ThrowIfNull(factory);
+
+            try
+            {
+                using IDXGIFactory6? factory6 = factory.QueryInterfaceOrNull<IDXGIFactory6>();
+                if (factory6 is null) return null;
+
+                SharpGen.Runtime.Result result = factory6.EnumAdapterByGpuPreference(0,
+                    GpuPreference.HighPerformance, out IDXGIAdapter1? adapter);
+                if (result.Success && adapter is not null) return adapter;
+
+                adapter?.Dispose();
+                return null;
+            }
+            catch
+            {
+                // A preference is an optimisation, so an unanswerable query falls back rather than failing device
+                // creation over which GPU would have been faster.
+                return null;
+            }
         }
 
         // One CheckMultisampleQualityLevels walk for one format. Separate so the delegate the device-free walk

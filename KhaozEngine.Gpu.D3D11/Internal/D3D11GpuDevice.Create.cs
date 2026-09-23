@@ -66,13 +66,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             uint creationFlags = ResolveCreationFlags();
 
             using IDXGIFactory1 factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
-            IReadOnlyList<D3D11AdapterInfo> adapters = D3D11DxgiQueries.DescribeAdaptersWindows(factory);
-            D3D11AdapterChoice choice = D3D11AdapterSelection.Choose(
-                D3D11AdapterSelection.FromEnvironment(), adapters, out string? adapterWarning);
+            D3D11AdapterChoice choice = D3D11AdapterResolution.ChooseWindows(factory,
+                out IReadOnlyList<D3D11AdapterInfo> adapters, out string? adapterWarning);
             if (adapterWarning != null) log.Warn(adapterWarning);
             log.Info(D3D11AdapterSelection.Describe(choice, adapters));
 
-            IDXGIAdapter1? requested = ResolveAdapterWindows(factory, choice);
+            IDXGIAdapter1? requested = D3D11AdapterResolution.AdapterForWindows(factory, choice,
+                out string? resolveWarning);
+            if (resolveWarning != null) log.Warn(resolveWarning);
             IDXGIAdapter? deviceAdapter = null;
             ID3D11Device? device = null;
             ID3D11DeviceContext? immediate = null;
@@ -80,8 +81,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             try
             {
-                device = CreateDeviceWindows(requested, DriverTypeFor(choice, requested), ref creationFlags,
-                    out immediate);
+                device = CreateOnChoiceWindows(choice, ref requested, ref creationFlags, out immediate);
 
                 // DECISION R7 NEEDS THE VERSIONED CONTEXT, because every constant-buffer bind goes through
                 // *SetConstantBuffers1 and those six methods live on ID3D11DeviceContext1. Asking once here is
@@ -340,32 +340,34 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             return flags | debug;
         }
 
-        // The adapter an ENUMERATED choice names, re-fetched at its index because the enumeration handed the
-        // policy plain descriptions and released its own objects. A failed enumeration is not a fault: the index
-        // was valid when the list was taken and an adapter can be removed between the two, so this falls back to
-        // letting DXGI pick, which is what every other unsatisfiable request does.
+        // THE HIGH-PERFORMANCE DEFAULT NEVER COSTS A SESSION. When the adapter IDXGIFactory6 ranked first refuses a
+        // device, the device is created again with a null adapter and DriverType.Hardware, which is DXGI's own pick
+        // and what the engine did before the preference existed. Only the default takes this retry. An adapter
+        // pinned through KE_D3D11_ADAPTER fails loudly as it always has, because a pin that silently moved would
+        // defeat the reason it was set.
+        //
+        // The adapter travels BY REF so the retry can release it and null the caller's reference, which keeps the
+        // caller's finally from releasing it a second time.
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
-        static IDXGIAdapter1? ResolveAdapterWindows(IDXGIFactory1 factory, in D3D11AdapterChoice choice)
+        static ID3D11Device CreateOnChoiceWindows(in D3D11AdapterChoice choice, ref IDXGIAdapter1? adapter,
+            ref uint flags, out ID3D11DeviceContext immediateContext)
         {
-            if (choice.Kind != D3D11AdapterChoiceKind.Enumerated) return null;
+            DriverType driverType = D3D11AdapterResolution.DriverTypeFor(choice, adapter);
+            if (choice.Kind != D3D11AdapterChoiceKind.HighPerformance || adapter is null)
+                return CreateDeviceWindows(adapter, driverType, ref flags, out immediateContext);
 
-            SharpGen.Runtime.Result result = factory.EnumAdapters1(choice.Index, out IDXGIAdapter1? adapter);
-            if (result.Success && adapter is not null) return adapter;
-
-            adapter?.Dispose();
-            log.Warn($"Adapter {choice.Index} was enumerated a moment ago and is no longer there, so "
-                + $"{D3D11AdapterSelection.EnvVarName} could not be honoured after all. Letting DXGI pick.");
-            return null;
-        }
-
-        // Direct3D requires DriverType.Unknown when an adapter is supplied and refuses an adapter alongside
-        // Hardware or Warp, so the two halves of the choice are one decision rather than two arguments a caller
-        // could pair up wrongly.
-        static DriverType DriverTypeFor(in D3D11AdapterChoice choice, IDXGIAdapter1? adapter)
-        {
-            if (adapter is not null) return DriverType.Unknown;
-            return choice.Kind == D3D11AdapterChoiceKind.WarpDriver ? DriverType.Warp : DriverType.Hardware;
+            try
+            {
+                return CreateDeviceWindows(adapter, driverType, ref flags, out immediateContext);
+            }
+            catch (Exception ex) when (ex is SharpGen.Runtime.SharpGenException or InvalidOperationException)
+            {
+                log.Warn(D3D11AdapterSelection.HighPerformanceCreateFailedWarning(ex.Message));
+                adapter.Dispose();
+                adapter = null;
+                return CreateDeviceWindows(null, DriverType.Hardware, ref flags, out immediateContext);
+            }
         }
 
         // THE CREATION CALL AND DECISION G4's RETRY ARM. Feature level 11_0 and nothing higher, for the reason

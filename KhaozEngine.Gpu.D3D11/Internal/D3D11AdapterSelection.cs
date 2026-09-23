@@ -7,7 +7,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <summary>What <c>KE_D3D11_ADAPTER</c> was understood to be asking for.</summary>
     internal enum D3D11AdapterRequestKind
     {
-        /// <summary>Unset or blank: let DXGI enumerate and pick, which is what the engine has always done.</summary>
+        /// <summary>Unset or blank: the high-performance adapter where the factory offers <c>IDXGIFactory6</c>,
+        /// otherwise DXGI's own pick, which is what the engine did before the preference existed.</summary>
         Default = 0,
 
         /// <summary>The software rasterizer, whatever hardware is present. The value CI pins.</summary>
@@ -23,12 +24,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         NameSubstring = 4,
     }
 
-    /// <summary>What <see cref="D3D11AdapterSelection.Choose"/> decided, which is one of three shapes rather than
+    /// <summary>What <see cref="D3D11AdapterSelection.Choose"/> decided, which is one of four shapes rather than
     /// an index plus sentinels, so a caller cannot read "no adapter" as adapter zero.</summary>
     internal enum D3D11AdapterChoiceKind
     {
-        /// <summary>Create with a null adapter and <c>DriverType.Hardware</c>, letting DXGI pick. Both the
-        /// unset case and every request that could not be honoured land here.</summary>
+        /// <summary>Create with a null adapter and <c>DriverType.Hardware</c>, letting DXGI pick. The unset
+        /// request on a runtime without <c>IDXGIFactory6</c> and every request that could not be honoured land
+        /// here. The glue takes the same path, without changing the choice, when a high-performance adapter cannot
+        /// be fetched or refuses the device.</summary>
         DefaultEnumeration = 0,
 
         /// <summary>Create with a null adapter and <c>DriverType.Warp</c>.</summary>
@@ -37,6 +40,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>Create against the enumerated adapter at <see cref="D3D11AdapterChoice.Index"/>, with
         /// <c>DriverType.Unknown</c>, which is what Direct3D requires when an adapter is supplied.</summary>
         Enumerated = 2,
+
+        /// <summary>Create against the adapter <c>IDXGIFactory6.EnumAdapterByGpuPreference(0, HighPerformance)</c>
+        /// ranks first, with <c>DriverType.Unknown</c>. What the unset request resolves to whenever the factory
+        /// offers <c>IDXGIFactory6</c>, so a hybrid laptop runs on its discrete GPU rather than on the integrated
+        /// one DXGI lists first (https://github.com/APKiwiOrg/KhaozEngine/issues/1115). It names no index, because
+        /// the ranking is the factory's and not the enumeration's.</summary>
+        HighPerformance = 3,
     }
 
     /// <summary>One enumerated adapter as the selection policy needs to see it: its description and whether DXGI
@@ -99,6 +109,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         internal static D3D11AdapterChoice Default => new(D3D11AdapterChoiceKind.DefaultEnumeration, -1);
         internal static D3D11AdapterChoice Warp => new(D3D11AdapterChoiceKind.WarpDriver, -1);
+        internal static D3D11AdapterChoice HighPerformance => new(D3D11AdapterChoiceKind.HighPerformance, -1);
     }
 
     /// <summary>
@@ -125,12 +136,20 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// plain list of descriptions and flags, so the whole policy runs under <c>dotnet test</c> on macOS. Only the
     /// enumeration itself is Windows-only (<c>D3D11DxgiQueries.DescribeAdaptersWindows</c>).
     /// </para>
+    /// <para>
+    /// UNSET PREFERS THE HIGH-PERFORMANCE ADAPTER (https://github.com/APKiwiOrg/KhaozEngine/issues/1115). DXGI lists
+    /// the adapter driving the display first, which on a hybrid laptop is the integrated GPU, so leaving the pick
+    /// to DXGI ran the engine on the slower of two GPUs. Whether the factory offers <c>IDXGIFactory6</c> is passed
+    /// in as a fact, so the rule is decided and tested off Windows like every other one here. An explicit value
+    /// still wins, and one that cannot be honoured still lets DXGI pick, exactly as before.
+    /// </para>
     /// </summary>
     internal static class D3D11AdapterSelection
     {
         /// <summary>The env var, following the engine's <c>KE_</c> convention. Recognized values:
         /// <c>warp</c>, <c>hardware</c>, a zero-based index, or any other text as a case-insensitive substring of
-        /// an adapter description. Unset or blank leaves DXGI to pick. Case-insensitive, whitespace trimmed.
+        /// an adapter description. Unset or blank prefers the high-performance adapter. Case-insensitive,
+        /// whitespace trimmed.
         /// </summary>
         internal const string EnvVarName = "KE_D3D11_ADAPTER";
 
@@ -170,10 +189,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>
         /// Which adapter <paramref name="request"/> names in <paramref name="adapters"/>, with
         /// <paramref name="warning"/> set when the request could not be honoured and the default enumeration is
-        /// being used instead. Never throws for a bad request, by design.
+        /// being used instead. <paramref name="gpuPreferenceAvailable"/> is whether the factory offers
+        /// <c>IDXGIFactory6</c>, and it decides the unset request and nothing else. Never throws for a bad
+        /// request, by design.
         /// </summary>
         internal static D3D11AdapterChoice Choose(in D3D11AdapterRequest request,
-            IReadOnlyList<D3D11AdapterInfo> adapters, out string? warning)
+            IReadOnlyList<D3D11AdapterInfo> adapters, bool gpuPreferenceAvailable, out string? warning)
         {
             ArgumentNullException.ThrowIfNull(adapters);
             warning = null;
@@ -181,7 +202,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             switch (request.Kind)
             {
                 case D3D11AdapterRequestKind.Default:
-                    return D3D11AdapterChoice.Default;
+                    // IDXGIFactory6 arrived in Windows 10 1803. Without it the engine lets DXGI pick, as it always
+                    // did, and that is not a warning: nothing was asked for that could not be given.
+                    return gpuPreferenceAvailable ? D3D11AdapterChoice.HighPerformance : D3D11AdapterChoice.Default;
 
                 case D3D11AdapterRequestKind.Warp:
                     // Not resolved against the list on purpose. WARP is reachable through DriverType.Warp on every
@@ -227,8 +250,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <see cref="D3D11AdapterChoiceKind.WarpDriver"/> by definition and for an enumerated adapter DXGI
         /// flagged software.
         /// <para>
-        /// It answers false for <see cref="D3D11AdapterChoiceKind.DefaultEnumeration"/>, which is NOT a claim that
-        /// the adapter is hardware: nothing here knows which adapter DXGI picked. The device reads the truth off
+        /// It answers false for <see cref="D3D11AdapterChoiceKind.DefaultEnumeration"/> and
+        /// <see cref="D3D11AdapterChoiceKind.HighPerformance"/>, which is NOT a claim that the adapter is hardware:
+        /// nothing here knows which adapter DXGI picked or ranked first. The device reads the truth off
         /// the created device instead (<c>D3D11DxgiQueries.IsSoftwareAdapterWindows</c>), and this exists for the
         /// two cases that are decided before any device exists.
         /// </para>
@@ -244,8 +268,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>
         /// The INFO line naming which adapter the session ran on and why, logged through the existing
-        /// <c>GPU adapter:</c> line's neighbourhood rather than replacing it. The default case says nothing about
-        /// the variable, because a line about an unset lever on every Windows session is a line nobody reads.
+        /// <c>GPU adapter:</c> line's neighbourhood rather than replacing it. The unpinned cases name the lever,
+        /// because they are the ones a reader chasing the wrong GPU needs to learn it from.
         /// </summary>
         internal static string Describe(in D3D11AdapterChoice choice, IReadOnlyList<D3D11AdapterInfo> adapters)
         {
@@ -261,11 +285,27 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                         ? adapters[choice.Index].Description
                         : "an adapter that is no longer enumerated";
                     return $"D3D11 adapter selection: adapter {choice.Index} ('{name}'), from {EnvVarName}.";
+                case D3D11AdapterChoiceKind.HighPerformance:
+                    return "D3D11 adapter selection: the high-performance adapter IDXGIFactory6 ranks first, which "
+                        + $"is the default. Set {EnvVarName}=warp|hardware|<index>|<name substring> to pin one.";
                 default:
-                    return "D3D11 adapter selection: DXGI's own choice, which is the default. Set "
+                    return "D3D11 adapter selection: DXGI's own choice, taken when this runtime offers no "
+                        + "IDXGIFactory6 or a pinned request could not be honoured. Set "
                         + $"{EnvVarName}=warp|hardware|<index>|<name substring> to pin one.";
             }
         }
+
+        /// <summary>The WARN when <c>IDXGIFactory6</c> is offered but hands back no high-performance adapter. The
+        /// session then lets DXGI pick, as the engine did before the preference existed.</summary>
+        internal static string HighPerformanceUnavailableWarning
+            => "IDXGIFactory6 is offered but handed back no high-performance adapter. Letting DXGI pick, as the "
+                + $"engine did before the preference existed. Set {EnvVarName} to pin an adapter.";
+
+        /// <summary>The WARN when the high-performance adapter refuses a device, with the refusal's own message.
+        /// The device is then created again the way the engine created it before the preference existed.</summary>
+        internal static string HighPerformanceCreateFailedWarning(string reason)
+            => $"The high-performance adapter refused a feature level 11_0 device ({reason}). Letting DXGI pick, "
+                + $"as the engine did before the preference existed. Set {EnvVarName} to pin an adapter.";
 
         static string NoHardwareWarning(string? raw, IReadOnlyList<D3D11AdapterInfo> adapters)
             => $"{EnvVarName}='{raw}' asked for a hardware adapter and this machine enumerates none "

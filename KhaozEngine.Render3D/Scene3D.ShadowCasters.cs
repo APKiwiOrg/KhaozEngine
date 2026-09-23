@@ -449,17 +449,21 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Bind cascade <paramref name="cascade"/> on the rigid depth pipeline <paramref name="variant"/>
-        /// names (every rigid and CPU-skinned variant: the skinned GPU pipelines bind through
-        /// <c>BindShadowCascadeSkinned</c>).</summary>
-        void BeginRigidDepthVariant(IGpuCommandList cl, int cascade, ShadowDepthVariant variant)
+        /// names (every rigid and CPU-skinned variant). The GPU-skinned variants bind through
+        /// <c>BindShadowCascadeSkinned</c> and are refused here, as <see cref="ShadowDepthSelection"/> refuses a
+        /// kind it has no pipeline for. Internal so the headless tests can pin that refusal.</summary>
+        internal void BeginRigidDepthVariant(IGpuCommandList cl, int cascade, ShadowDepthVariant variant)
         {
             switch (variant)
             {
+                case ShadowDepthVariant.Opaque: _model.BeginShadowCascadeRigid(cl, cascade); break;
                 case ShadowDepthVariant.Dissolve: _model.BeginShadowCascadeRigidDissolve(cl, cascade); break;
                 case ShadowDepthVariant.DissolveInverted: _model.BeginShadowCascadeRigidDissolveInverted(cl, cascade); break;
                 case ShadowDepthVariant.Cutout: _model.BeginShadowCascadeRigidCutout(cl, cascade, inverted: false); break;
                 case ShadowDepthVariant.CutoutInverted: _model.BeginShadowCascadeRigidCutout(cl, cascade, inverted: true); break;
-                default: _model.BeginShadowCascadeRigid(cl, cascade); break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(variant), variant,
+                        "a GPU-skinned depth variant binds through BindShadowCascadeSkinned, not a rigid pipeline");
             }
         }
     }

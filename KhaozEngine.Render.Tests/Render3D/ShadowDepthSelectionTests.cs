@@ -123,6 +123,20 @@ namespace KhaozEngine.Tests.Render3D
             Assert.All(rigid, r => Assert.Equal(GpuFaceCull.Front, r.Description.Rasterizer.CullMode));
         }
 
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void A_gpu_skinned_variant_is_refused_by_the_rigid_bind(bool dissolving)
+        {
+            // The variant travels as a bool because the enum is internal and a public test may not name it.
+            ShadowDepthVariant variant = dissolving ? ShadowDepthVariant.SkinnedDissolve : ShadowDepthVariant.Skinned;
+            var gd = new FakeGpuDevice();
+            using IGpuFramebuffer fb = NewTarget(gd.Factory);
+            using var scene = new Scene3D(gd, fb.Outputs);
+            using IGpuCommandList cl = gd.Factory.CreateCommandList();
+            Assert.Throws<ArgumentOutOfRangeException>(() => scene.BeginRigidDepthVariant(cl, 0, variant));
+        }
+
         [Fact]
         public void A_dissolving_skinned_depth_slot_carries_the_block_the_dissolve_vertex_reads()
         {

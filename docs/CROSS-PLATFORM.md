@@ -759,7 +759,7 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   numerically negligible LIVE sink that reads every declared input (summed with a `1e-30` scale, so the optimizer
   cannot fold it away) keeps the signature contiguous without changing the output to the bit. See the in-source
   hazard note next to `ShadowDepthVert` in `KhaozEngine.Render3D/Internal/ShaderSources.Shadow.cs`. Its
-  dissolve-aware sibling (`ShadowDepthDissolveVert`, 17.x) declares the model pass's full 0..13 input set and
+  dissolve-aware sibling (`ShadowDepthDissolveVert`, 17.x) declares the model pass's full 0..14 input set and
   carries the same sink over everything it does not genuinely read, for the same reason, and so do the alpha-cutout
   and dissolve-aware skinned depth vertices. The same sink works on the fragment side:
   `ShadowDepthCutoutInvertedFrag` has no other use for its location 3 interpolant, and live inputs at 4 and 5 sit

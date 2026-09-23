@@ -73,8 +73,8 @@ var admin = new ServerAdmin(server, bans);                          // POST /ban
 - `IsBanned` answers from an in-memory map of the filed bans and re-checks the expiry against the clock on every
   call, so a timed ban lapses on its own.
 - `BanAsync` and `UnbanAsync` write the store FIRST and the map second. A store write that throws leaves the map
-  unchanged. A subject no account has throws `ArgumentException`, which `POST /ban` on `Server.Admin` renders as a
-  400.
+  unchanged. A subject no account has throws `ArgumentException`, which `POST /ban` and `POST /unban` on
+  `Server.Admin` render as a 400 that does not echo the subject.
 - `LoadAsync` reads `ListBannedAsync` into a new map and swaps it in whole, so it also drops a ban lifted out of
   band. A failed reload throws and keeps the previous map. Writes and reloads run one at a time, so a reload never
   overwrites a ban written while it was reading.

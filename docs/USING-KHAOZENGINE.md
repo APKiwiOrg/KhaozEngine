@@ -17018,6 +17018,9 @@ The ASP.NET Core names come from a web project's implicit usings. What a game ch
   Behind a TLS-terminating proxy that puts every caller in the proxy's rate-limit bucket, and `MapAuthExchange` logs a
   warning at mapping time that says so. `TrustedProxyNetworks.PrivateRanges` trusts every RFC 1918 host to name its own
   address, so name the proxy's own subnet when the private network is shared with anything you do not control.
+- **The order.** Add, use, map, as above. `UseAuthExchangeHosting` throws without `AddAuthExchangeHosting`, and once
+  the hosting is added `MapAuthExchange` throws until `UseAuthExchangeHosting` has run, because without the middleware
+  the named proxies are ignored and every caller behind them shares one bucket.
 - **Ban details.** `AuthExchangeEndpointOptions.IncludeBanDetails` is off, so a ban reason written for operators never
   reaches a player. Turn it on only when the game wants banned players to see the reason and the expiry.
 - **The bounds.** `PermitsPerClientPerMinute` (5), `Ipv6PartitionPrefixLength` (64), `MaxConcurrentExchanges` (20),
@@ -17066,8 +17069,8 @@ var admin = new ServerAdmin(server, bans);                       // POST /ban wr
   the account row, the door refuses at once from the adapter's cache, and the next exchange reads the same row. Do not
   also wire `WorldStoreBanStore`, whose `ban:{accountId}` keys would be a second list. `IsBanned` re-checks a timed
   ban's expiry on every call, so the ban lapses on its own. A row changed outside the adapter (a console writing SQL, a
-  second head) reaches the door on the next `LoadAsync`. A ban naming a subject no account has is refused with
-  `ArgumentException`.
+  second head) reaches the door on the next `LoadAsync`. A ban or an unban naming a subject no account has is refused
+  with `ArgumentException`, which `POST /ban` and `POST /unban` answer with a 400 that does not echo the subject.
 - **The whitelist is decided when the token is minted.** A token carries no whitelist claim, so an account taken off
   the whitelist keeps connecting until its token expires. A game that needs the change at once re-reads the row at its
   join with `IAccountStore.FindAsync`.

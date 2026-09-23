@@ -173,11 +173,16 @@ re-deriving them:
   per-client window runs first, the body cap second and the global bound third, so a flood is refused before any JSON
   is parsed. The body is read before the global bound, so a slow upload holds a connection and never a place reserved
   for work.
+- **Visible ASCII credentials.** A credential carrying any character outside visible ASCII (`!` to `~`), such as a
+  control character, a space or a non-ASCII character, is `Malformed` (a bare 400) at the shape step, before any
+  provider call, so a CR or LF never reaches a provider's HTTP client as an outage and a logged stack trace.
 - **Forwarded headers only from named proxies.** `X-Forwarded-For` and `X-Forwarded-Proto` are believed only from the
   networks in `AuthExchangeHostingOptions.TrustedProxies`, and the list is empty by default, which turns them off.
   The framework's default loopback entries are removed, every network is registered in both address families, and
   the forward limit is one, so only the hop the trusted proxy appended is read and a client cannot choose its own
-  bucket.
+  bucket. A catch-all is refused when the hosting is added: any /0 in either family, which is what
+  `default(IPNetwork)` is, or an IPv6 network holding the whole IPv4-mapped block. The refusal names the list position
+  and never the value.
 - **One failure envelope, no account oracle.** A provider outage, the provider deadline, a store fault and a policy
   fault all answer the same 503 `unavailable` body, so a response never says which dependency failed. A refused
   credential and a malformed request answer before any account lookup. Every answer that names an account follows a
@@ -197,6 +202,9 @@ re-deriving them:
 - **Least privilege and reserved subjects.** `AccountSchemaMode.ValidateOnly` lets the SQL Server store's runtime
   identity run with DML only. A subject carrying `.` or under the reserved `guest:` prefix is never minted, whichever
   store returned it.
+- **Exact subject match.** `SqliteAccountStore` refuses at ensure an adopted table whose subject key (the primary key
+  or a unique index on `subject` alone) is not `BINARY` collated. Find-or-create's `ON CONFLICT(subject)` matches
+  under the key's collation, so a `NOCASE` key would let `oidc:alice` sign in as `oidc:Alice`.
 
 The endpoint serves plain HTTP behind a TLS-terminating proxy, which is how both games deploy. A service exposing
 Kestrel directly configures TLS itself.

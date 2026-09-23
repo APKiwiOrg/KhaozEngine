@@ -293,8 +293,8 @@ optional JSON body, an absent, empty, whitespace-only, or JSON-null body all rea
 
 `GET /accounts` lists the world store's persisted keys (`IEnumerableWorldStore`), which answer who has state, not who
 may sign in. A game on the sign-in account registry (`KhaozEngine.Accounts`) passes its `AccountBanStore` as the ban
-store, so `POST /ban` and `POST /unban` write the account row the sign-in exchange reads, and a ban naming a subject
-with no account is a 400.
+store, so `POST /ban` and `POST /unban` write the account row the sign-in exchange reads, and a ban or an unban
+naming a subject with no account is a 400 that does not echo the subject.
 
 An action registered with `mutating: true` is POST ONLY: the GET route answers 405 with `Allow: POST` and
 never reaches the handler. Without it a destructive action with no required body is reachable by any GET a

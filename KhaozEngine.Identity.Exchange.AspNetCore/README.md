@@ -45,7 +45,7 @@ behind them shares one bucket.
 | `AuthExchangeEndpoints` | `MapAuthExchange(routes, exchange, options?)` returns the `RouteHandlerBuilder`. `ToHttpResult(result, includeBanDetails)`, `Unavailable()` and `StatusCodeFor(outcome)` are the mapping, public for a game that maps a route of its own over the core. |
 | `AuthExchangeEndpointOptions` | `Pattern` (`/auth/exchange`), `MaxRequestBodyBytes` (8 KiB, at most 1 MiB), `PermitsPerClientPerMinute` (5), `Ipv6PartitionPrefixLength` (64), `MaxConcurrentExchanges` (20), `MaxQueuedExchanges` (20), `IncludeBanDetails` (false). Validated when the endpoint is mapped. |
 | `AuthExchangeHosting` | `AddAuthExchangeHosting(builder, options?)` and `UseAuthExchangeHosting(app)`. |
-| `AuthExchangeHostingOptions` | `TrustedProxies` (empty, which turns forwarded headers off) and `MaxRequestBodyBytes` (null, which leaves Kestrel's default). |
+| `AuthExchangeHostingOptions` | `TrustedProxies` (empty, which turns forwarded headers off, and never a catch-all: any /0, `default(IPNetwork)` included, or an IPv6 network holding the whole IPv4-mapped block is refused) and `MaxRequestBodyBytes` (null, which leaves Kestrel's default). |
 | `TrustedProxyNetworks` | `PrivateRanges` (RFC 1918 in both families), `Loopback` (a same-host proxy), and `WithBothFamilies(networks)`, the rule the hosting applies to any list, which refuses a catch-all. |
 | `AuthExchangeClientKey` | `For(peer, ipv6PrefixLength)`, the per-client partition key: the IPv4 address, a mapped address folded to IPv4, the IPv6 /64, or one shared key for a connection with no address. |
 

@@ -47,11 +47,13 @@ For local development, `SigningSecret.CreateEphemeral()` gives a key that dies w
 
 `ExchangeAsync` runs one fixed order:
 
-1. **Shape.** An unknown provider id (ordinal), or a credential that is blank or over `MaxCredentialChars`, is
+1. **Shape.** An unknown provider id (ordinal), or a credential that is empty, over `MaxCredentialChars` or carries
+   any character outside visible ASCII (`!` to `~`, so no control character, space or non-ASCII character), is
    `Malformed` before any provider call.
 2. **Provider.** `ValidateDetailedAsync` runs under `ProviderTimeout`. A reported outage (a provider 5xx, 429 or 408),
    a validator that throws, or the deadline is `Unavailable`. A refusal is `InvalidCredential`. Neither touches an
-   account. The deadline holds even for a validator that ignores its cancellation token.
+   account. The deadline holds even for a validator that ignores its cancellation token or blocks synchronously
+   before returning its task, because the call starts on the thread pool.
 3. **Account.** The policy resolves the display name, clamped to `MaxDisplayNameChars` without splitting a surrogate
    pair, and the store finds or creates the account. A subject that `AccountStoreRules.IsAdmissibleSubject` refuses
    (empty, carrying `.`, or under `guest:`) is a server fault and never a token.

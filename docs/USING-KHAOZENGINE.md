@@ -5649,7 +5649,8 @@ Build a field (server and client both do this), `using KhaozEngine.Terrain;`:
     var field = new TerrainField(TerrainPresets.Clearing());   // gentle meadow -> mountains + a lake basin
     float h = field.SampleHeight(x, z);                        // ground height (Y up)
     Vector3 n = field.SampleNormal(x, z);                      // finite-difference normal, for lighting/slope
-    BiomeId b = field.SampleBiome(x, z);
+    BiomeId b = field.SampleBiome(x, z);                       // the dominant band's biome
+    BiomeWeights shares = field.SampleBiomeWeights(x, z);      // every biome's share, continuous, sums to 1
 
 `TerrainConfig` composes the field: `BiomeBand[]` (designed regions smoothstep-blended along Z, each with a
 base height + hill amplitude + `BiomeId`), the base-noise knobs, and an ordered `ITerrainFeature[]` folded in
@@ -5765,8 +5766,8 @@ field rougher than the engine's presets:
 float depth = TerrainLodConfig.Default.SkirtDepthFor(lod, chunkSize: 60f);        // 0.9375 m at tier 0, 7.5 m at tier 4
 var chunk = TerrainChunkBuilder.Build(field, region, lod, TerrainLodConfig.Default, depth);
 ``` With a `SplatMaterialHandle` supplied the weights drive the PBR splat pipeline (five
-tileable PBR layers, triplanar); without one the weights are blended into a height/slope vertex-colour ramp
-(the fallback). *Which* chunks exist and *when* they rebuild is the **World streaming** sub-project below
+tileable PBR layers, triplanar). Without one the weights are blended into a vertex-colour ramp (the
+fallback). *Which* chunks exist and *when* they rebuild is the **World streaming** sub-project below
 (`TerrainStreamer`). See "Textured terrain (PBR splat)" below for the material API. For water, see
 `Scene3D.DrawWater` and `PixelPostProcessSettings.Water` in the Render3D section above.
 
@@ -7570,7 +7571,7 @@ transform, only its chunk (and so its HLOD cluster) membership can differ at the
 Terrain chunks can render five tileable PBR layers (grass/dirt/rock/sand/snow) blended per-fragment by the splat
 weights baked into each vertex, with world-space triplanar tiling, normal maps, mips, and 16x anisotropic
 filtering plus a `+1` mip LOD bias (D3D11/Vulkan) that tames distance shimmer from a high-frequency tiling albedo.
-Without a material supplied the chunk falls back to the height/slope vertex-colour ramp (byte-identical).
+Without a material supplied the chunk falls back to a vertex-colour ramp of the same weights.
 
 Five layers is the whole point and also the whole limit: four weights ride in `ModelVertex.Color` and the fifth is
 the remainder, so this pipeline cannot take a material palette that is content rather than a fixed set. For that
@@ -7626,17 +7627,38 @@ scene.DrawTerrainChunk(handle, region);                   // the region places t
 two `texture2DArray`s - albedo + normal - are shared by all chunks using this material). The material may be
 reloaded; each `LoadTerrainMaterial` call allocates a fresh set of arrays.
 
-**4. Influence the mix with a splat rule (optional).** The weights themselves come from
-`TerrainSplatWeights.From`, which derives its sand band from the field's single `WaterLevel`. That is the sea, so
-a world with a SECOND body of water (a lake, river, pond, oasis, flooded interior) has a shoreline the engine
-cannot see: it bakes as grass running straight into the water. Pass a `splatRule` to `Scene3DChunkSink` (or
-`TerrainChunkBuilder.Build`) and each vertex's mix goes through your function first. It is the seam for material
-work generally - paths, trampled ground, biome-specific dirt.
+**The default mix.** The builder bakes `TerrainSplatWeights.FromBlend(height, slope01,
+field.SampleBiomeWeights(x, z), waterLevel, snowLine)` into every vertex. The physical rules come first: steep
+ground is rock, ground near or below the water is sand, ground above the snow line is snow, and what is left is
+grass with a little mid-slope dirt. The biome then moves part of that GRASS share to its own channels. It recolours
+open ground only and never takes weight from a cliff, a shore or a peak.
 
-The rule is handed a `TerrainSplatContext`: the vertex's `Height`, `Slope01`, `Biome`, its ABSOLUTE `WorldX`/
-`WorldZ`, and `Default`, the weights the engine itself baked for that vertex. `Default` is the point of the
-context. The common rule is "the engine's mix, adjusted", and a consumer that reimplements the whole mix drifts
-from the engine's tuning the first time `From` changes.
+| Biome | Share of grass moved | Why |
+|---|---|---|
+| Meadow | none | the default biome, so an all-Meadow world bakes exactly the mix it baked before biomes counted |
+| Forest | 0.30 to dirt | leaf litter and bare humus under a canopy that shades the grass out |
+| Marsh | 0.50 to dirt | waterlogged mud between grass tussocks |
+| Mountains | 0.30 to rock, 0.15 to dirt | thin soil over bedrock, so a ledge or valley floor reads stony |
+| Desert | 0.80 to sand, 0.15 to dirt | open sand with hardpan patches and a trace of scrub |
+| Snow | 0.85 to snow | snow cover below the snow line with a little tundra showing through |
+
+`SampleBiomeWeights` reads each biome's share off the same smoothstep band blend that shapes the height, so the
+tilt fades across a band's `BiomeBlend` window. A per-vertex dominant biome would switch it along one triangle row
+instead, which is the visible seam the blend avoids. `TerrainSplatWeights.From(height, slope01, biome, ...)` is the
+discrete form for one biome, bit-identical to `FromBlend` wherever that biome holds the whole share.
+
+**4. Influence the mix with a splat rule (optional).** The default derives its sand band from the field's single
+`WaterLevel`. That is the sea, so a world with a SECOND body of water (a lake, river, pond, oasis, flooded
+interior) has a shoreline the engine cannot see: it bakes as grass running straight into the water. Pass a
+`splatRule` to `Scene3DChunkSink` (or `TerrainChunkBuilder.Build`) and each vertex's mix goes through your function
+first. It is the seam for material work generally - paths, trampled ground, a game's own biome tuning.
+
+The rule is handed a `TerrainSplatContext`: the vertex's `Height`, `Slope01`, `Biome` (the dominant biome), its
+ABSOLUTE `WorldX`/`WorldZ`, and `Default`, the weights the engine itself baked for that vertex with the biome tilt
+already applied. `Default` is the point of the context. The common rule is "the engine's mix, adjusted", and a
+consumer that reimplements the whole mix drifts from the engine's tuning the first time the default changes. A rule
+that ignores `Default` bakes exactly what it returns, so the tilt never reaches it. A rule that wants the untilted
+mix calls `TerrainSplatWeights.From` with `BiomeId.Meadow`.
 
 ```csharp
 // lakes is pre-baked immutable data captured when the rule was built - never mutated afterwards.
@@ -7671,8 +7693,8 @@ Three constraints, all load-bearing:
   rule against a server that has never heard of it, and a saved world is unchanged. A headless server never
   builds chunk meshes, so it never runs the rule at all.
 
-Leave `splatRule` null (the default) and the builder is byte-identical to the pre-rule engine, asserted per
-vertex over a sampled grid rather than by a golden.
+Leave `splatRule` null (the default) and the builder bakes exactly the default mix, asserted per vertex over a
+sampled grid rather than by a golden.
 
 **Out of scope.** Runtime layer blending tweaks, streaming of different materials per biome region, and
 per-chunk material overrides are not provided - swap the handle on `Scene3DChunkSink` and rebuild the ring

@@ -92,6 +92,29 @@ repins, and the notes below say what each game changes when it does.
   bespoke world-identity client half is the first adopter ([#677](https://github.com/APKiwiOrg/KhaozEngine/issues/677)).
   Server-side hardening of the gate is [#1071](https://github.com/APKiwiOrg/KhaozEngine/issues/1071).
 
+**Flaky tests fixed at the cause.**
+
+- `SqliteStoreConnection` opens its held connection with pooling off and no longer clears the pool on dispose
+  ([#1069](https://github.com/APKiwiOrg/KhaozEngine/issues/1069)). Microsoft.Data.Sqlite 10.0.9 marks a pooled
+  connection active before it records the owner, so a concurrent open or pool clear on the same file can reclaim a
+  live store's connection as leaked ([dotnet/efcore#39008](https://github.com/dotnet/efcore/issues/39008)). The
+  reclaim either lent one native handle to two stores or disposed it under one. That is the "cannot start a
+  transaction within a transaction" that failed the 19.15.0 tag build before its publish, the rollback hook crash in
+  [#1047](https://github.com/APKiwiOrg/KhaozEngine/issues/1047) and Grimhollow's disposed handle in
+  [Grimhollow#309](https://github.com/APKiwiOrg/Grimhollow/issues/309). Every `KhaozEngine.*.Sqlite` store inherits
+  it, so a consumer changes nothing. A `Pooling` keyword in a store's connection string is now overridden. A game's
+  own pooled Microsoft.Data.Sqlite connections stay exposed until the provider ships the upstream fix.
+- The SQLite catalog reports a schema as "unreadable, apply migration" only when a schema read fails with
+  `SQLITE_ERROR`, `SQLITE_CORRUPT` or `SQLITE_NOTADB`. A lock, an I/O error, or a failed create or migration now
+  surfaces as the provider's own `SqliteException`, so an operator is not sent to migrate a healthy database.
+- `ResidentMemory.Read` in the unpacked `KhaozEngine.Benchmarks` reports live bytes, the heap size less its
+  fragmentation, from the forced full blocking collection. The heap size counted the free gaps a swept large
+  object heap keeps, so inside a full suite a retention read as zero or as a release
+  ([#1043](https://github.com/APKiwiOrg/KhaozEngine/issues/1043),
+  [#1018](https://github.com/APKiwiOrg/KhaozEngine/issues/1018),
+  [#1032](https://github.com/APKiwiOrg/KhaozEngine/issues/1032),
+  [#1017](https://github.com/APKiwiOrg/KhaozEngine/issues/1017)).
+
 **Tooling.**
 
 - `KhaozEngine.Showcase` has a "Drag & drop" tab in the 2D & GUI tour

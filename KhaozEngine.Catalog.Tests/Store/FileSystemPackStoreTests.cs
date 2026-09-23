@@ -179,6 +179,45 @@ public class FileSystemPackStoreTests
         Assert.Equal(new byte[] { 0x01, 0x02, 0x03 }, await File.ReadAllBytesAsync(path));
     }
 
+    /// <summary>
+    /// Two writers of one object that both got past the existence check: the second move finds the file the
+    /// first one placed and must leave it, because replacing a file another writer is replacing, or that a
+    /// reader has open, is what Windows refuses with an access denied naming no path. The rival's copy lands in
+    /// the window between this put's temporary and its move, and marker bytes make a replace observable.
+    /// </summary>
+    [Fact]
+    public async Task PutAsync_that_finds_its_object_placed_by_another_writer_keeps_that_file()
+    {
+        using var root = new TemporaryRoot();
+        var store = new FileSystemPackStore(root.Path);
+        CatalogPack pack = CatalogPack.Build();
+        byte[] rival = [0x01, 0x02, 0x03];
+        store.BeforePlace = destination => File.WriteAllBytes(destination, rival);
+
+        await store.PutAsync(pack.TagChunk.Hash, pack.TagChunk.StoredFile);
+
+        string path = store.PathFor(pack.TagChunk.Hash);
+        Assert.Equal(rival, await File.ReadAllBytesAsync(path));
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(path)!, "*.tmp"));
+    }
+
+    /// <summary>The version pointer is the one file that is replaced, because it is named by a number.</summary>
+    [Fact]
+    public async Task The_version_pointer_replaces_the_one_already_there()
+    {
+        using var root = new TemporaryRoot();
+        var store = new FileSystemPackStore(root.Path);
+        CatalogPack pack = CatalogPack.Build();
+
+        await store.PutVersionPointerAsync(7, pack.TagChunk.Hash, pack.TagChunk.Hash);
+        await store.PutVersionPointerAsync(7, pack.ServerManifestHash, pack.ClientManifestHash);
+
+        PackVersionPointer? pointer = await store.GetVersionPointerAsync(7);
+        Assert.NotNull(pointer);
+        Assert.Equal(pack.ServerManifestHash, pointer.ServerManifestHash);
+        Assert.Equal(pack.ClientManifestHash, pointer.ClientManifestHash);
+    }
+
     [Fact]
     public async Task The_version_pointer_lands_outside_the_shard_tree()
     {

@@ -25,6 +25,7 @@
          lives in KhaozEngine.Server.Tests beside the other provider suites. -->
     <ProjectReference Include="../KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
     <ProjectReference Include="../KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
+    <ProjectReference Include="../KhaozEngine.Catalog.GameTypes/KhaozEngine.Catalog.GameTypes.csproj" />
     <ProjectReference Include="../KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj" />
   </ItemGroup>
 </Project>

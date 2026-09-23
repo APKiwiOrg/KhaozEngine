@@ -690,6 +690,14 @@ The intended pickup shape, all game code: click routes a walk to the drop's tile
 own TAKE message naming the net id, your handler re-proves tile proximity per request, moves the
 stack into your own storage, and despawns.
 
+`TileWorldServerConfig.GroundItemVisibleToSlot` optionally filters a ground item's entire entity for
+each viewer. The callback receives the authenticated viewer slot and ground net ID after the normal
+plane and area-of-interest filters. Null keeps every drop public. False omits the entity from that
+viewer's snapshot, and a later change in either direction is carried by the ordinary interest delta.
+The callback runs synchronously on the simulation tick and must be pure and non-throwing. A game keeps
+its own owner identity and must still refuse a forged TAKE request from another player. Filtering
+replication never authorizes a claim.
+
 ### An item INSTANCE on a drop, when a stack is not just an id and a count
 
 A game whose items are individuals rather than quantities drops one through the six-argument overload,
@@ -698,9 +706,9 @@ delegates to it with no instance, so nothing that already compiles changes. The 
 ride a SIBLING component, `TileGroundItemInstance` (`InstanceId`, `Payload`), seated only when
 `instanceId` is non-zero: a drop with no instance carries no component and pays nothing on the wire.
 `TryGetGroundItemInstance(netId, out instance)` is the server read a claim goes through, beside
-`TryGetGroundItem`, and clients read it off `client.World` for the entity `client.View.Entities` holds
-under the drop's net id. There is no collector beside `CollectGroundItems` for the instance half yet
-([#926](https://github.com/APKiwiOrg/KhaozEngine/issues/926)).
+`TryGetGroundItem`. The client read is `TileWorldClient.CollectGroundItemInstances(buffer)` beside
+`CollectGroundItems`: every drop that carries an instance, as `(NetId, Item, Instance)`, in one walk of the
+entity set and the same cleared then filled shape. A drop with no instance is absent from it.
 
 Both halves are opaque, exactly as `TileGroundItem`'s `ItemId` is opaque. The engine never decodes a
 payload, has no way to, and never mints an instance id of its own: the same id and the same bytes come
@@ -983,7 +991,7 @@ var server = new TileWorldServer(
         Spawn = new TileCoord(64, 64, Plane: 0),
         MaxPendingConnections = 128,
         CanRun = slot => energy.Has(slot),         // null allows everyone. The authority behind run energy
-        IsBanned = bans.IsBanned,
+        BanStore = bans,                           // an IBanStore, read live at the door
     },
     map,
     new TileDocumentTargets(document, catalogs),
@@ -991,7 +999,7 @@ var server = new TileWorldServer(
     // so two heads with independently updated catalogs would pass the gate and disagree on every wall.
     ConnectionGate.Wrap(tokenAuth, protocolVersion: "grimhollow-1",
                         worldHash: TileWorldHash.OfWorldAndCatalogs(document, catalogs),
-                        log: Console.WriteLine, isBanned: bans.IsBanned),
+                        log: Console.WriteLine),
     registry);
 
 server.OnInteract += (slot, netId, target) => game.Interact(slot, target);
@@ -1154,6 +1162,15 @@ of them carrying an engine wire token the client matches and localizes itself:
 | Banned account | `ke:banned` |
 | Bad or expired auth token | whatever the inner `IConnectionAuthenticator` returned |
 
+The ban check is `TileWorldServerConfig.BanStore`, an `IBanStore` the server wraps around the door and reads live on
+every connect, so a ban recorded mid-session refuses that account's next connect. It is the same seam a
+`WorldServer` takes as `banStore:` and a hand-built `BanGateAuthenticator` reads, so one store serves every door a
+game runs. Do not also pass its `IsBanned` to `ConnectionGate.Wrap`, which would check it twice. The type is named
+`KhaozEngine.NetWorld.IBanStore` but lives in `KhaozEngine.Netcode`, which is why a tile head can use it without the
+`NetWorld` package. `TileWorldServerConfig.IsBanned` stays for a ban list that is not a store, and setting both
+refuses an account either one bans. A banned account's LIVE session is not ended by the ban. Pair it with
+`TileWorldServer.Kick`.
+
 `TileWorldClient.RefusedReason` and the `RefusedAtDoor` event carry the token. Once joined, the server's own
 out-of-band notices carry `TileServerReason`: `ke:cannot-reach`, `ke:draining` and `ke:kicked`, all prefixed `ke:`
 so a game's own tokens can never collide with them.
@@ -1192,11 +1209,16 @@ foreach (byte[] chunk in TileFragmentedMessage.Fragment(streamId: 1, sequence: p
     server.SendGameMessageTo(slot, kind: GameKinds.PageChunk, chunk);
 
 // On the client, one reassembler per connection.
-if (reassembler.TryComplete(payload, out ReadOnlyMemory<byte> assembled, out string? reason))
-    ApplyPage(assembled.Span);      // decode HERE, and quarantine what will not decode
+if (reassembler.TryComplete(payload, out byte streamId, out ReadOnlyMemory<byte> assembled, out string? reason))
+    ApplyPage(streamId, assembled.Span);   // decode HERE, and quarantine what will not decode
 else if (reason != null)
-    Telemetry.Count(reason);        // refused, and the token says why
+    Telemetry.Count(reason);               // refused, and the token says why
 ```
+
+`streamId` is the id the chunk headers carried, set whenever the answer is true, so several streams on one
+message kind (a bag, the worn slots and a bank, say) are told apart by the header rather than by a copy of the
+stream inside the payload that could disagree with it. The three-out overload without it answers identically and
+delegates to this one.
 
 **One reassembler per connection slot.** The type holds the partial assemblies of ONE peer and no connection
 table of its own, so a server keeps an array or a map of them beside its session table and forwards each peer's
@@ -1209,6 +1231,8 @@ Four rules, and none of them is a timer, because a timer on a reliable ordered c
   a new one. That is what a server restarting a page mid transmission looks like, and it is not an error.
 - At most `MaxPartialAssemblies` partial assemblies are held at once, which is four. A fifth evicts the one
   fed longest ago and increments `EvictedAssemblies`. A restart is not an eviction and is not counted as one.
+  The bound is a hard constant with no constructor knob, so a host with more concurrently fragmented streams per
+  peer evicts silently and `EvictedAssemblies` is the only reading that reports it.
 - The last chunk hands the assembled bytes BACK through `TryComplete`. Nothing here decodes them, so a payload
   that will not decode is the caller's quarantine rather than a throw from the wire. A final chunk cut in its body
   is the case that reaches the caller, because the header declares no total length.
@@ -1232,9 +1256,10 @@ fit. The split is by OWNERSHIP of the bytes: `ContainerPageDelta` builds the del
 `ContainerPageSyncRequest` is the two byte resync a client answers with, both in `KhaozEngine.ItemInstances`,
 because the entry body they carry is the container codec's, and this package fragments whatever bytes it is
 handed and gains no items dependency at all. `ContainerPageDelta.TryBuild` answers -1 when the next change
-would not fit one frame, and -1 is the caller's cue to `Fragment` the whole encoded page instead. Never a
-second delta frame: two deltas for one page would have to be applied in order by a client that may have
-missed the first, which is the reassembly problem this type already solves once.
+would not fit one frame, and -1 is the caller's cue to `Fragment` the whole page instead, encoded for that
+viewer by `ItemContainerPageCodec.EncodeProjected`, which projects every entry exactly as the delta does.
+Never a second delta frame: two deltas for one page would have to be applied in order by a client that may
+have missed the first, which is the reassembly problem this type already solves once.
 
 Two facts a server composing the two owes its own code. `TileProtocol.MaxGameMessageBytes` is COPIED into
 `ContainerPageDelta.MaxGameMessageBytes`, because that package is `Foundation` and this one is `Server`, and
@@ -1265,9 +1290,6 @@ unauthenticated peer an amplifier of two bytes in and about 7 KB out.
   full serve re-sends it for every entity in the viewer's area of interest rather than once on first sight.
   Sending it once needs a per-client already-told set the tile wire does not have, which is
   [#679](https://github.com/APKiwiOrg/KhaozEngine/issues/679).
-- **The ban check is a `Func<string,bool>` predicate, not a store.** `IBanStore` lives in `KhaozEngine.NetWorld`,
-  which this package must never reference. Unifying the two ban seams is
-  [#678](https://github.com/APKiwiOrg/KhaozEngine/issues/678).
 - **No actions beyond the seam.** `TileActionKind` distinguishes authored-object and entity interactions so their
   overlapping ids reach `OnInteract` and `OnInteractEntity` respectively. The engine knows nothing about what an
   interaction does after the callback.

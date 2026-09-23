@@ -211,8 +211,9 @@ internal sealed class TextPublishingStore(IContentAuthoringStore inner) : IConte
     public Task<ContentVersionRecord> CommitPublishAsync(
         ContentPublishPlan plan,
         ContentPublishRequest request,
+        IPackVersionPointerStore? pointers,
         CancellationToken cancellationToken = default)
-        => inner.CommitPublishAsync(plan, request, cancellationToken);
+        => inner.CommitPublishAsync(plan, request, pointers, cancellationToken);
 
     /// <inheritdoc />
     public Task<ContentPublishResult> PublishAsync(

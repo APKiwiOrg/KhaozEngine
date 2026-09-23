@@ -9,8 +9,8 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
 
 - **`TerrainChunkBuilder.Build(field, region, lod[, lodConfig][, skirtDepth][, splatRule])`** -> **`TerrainChunkMesh`** - samples the
   field on a LOD-chosen grid into a `Render3D` `GltfMesh` with edge skirts (mismatched-LOD neighbours
-  stay crack-free), a per-vertex splat-weight array (grass/dirt/rock/sand/snow), a height/slope vertex-colour
-  ramp, and an AABB (`TerrainChunkBounds`) for culling. CPU only, no GPU device. The `lodConfig` overload
+  stay crack-free), a per-vertex splat-weight array (grass/dirt/rock/sand/snow), a vertex-colour ramp of those
+  weights, and an AABB (`TerrainChunkBounds`) for culling. CPU only, no GPU device. The `lodConfig` overload
   resolves the tier's resolution through a custom table; the plain overload uses `TerrainLodConfig.Default`.
   - **`skirtDepth`** defaults to a flat 0.3 m, which is only right for the densest tier. The slit a skirt hides is
     the coarse neighbour's, bounded by how far the field departs from that side's chord across ONE of its cells, so
@@ -23,14 +23,34 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   `x - region.OriginX`, so a chunk 100 km out has vertices of magnitude at most its own size instead of being
   quantized to that magnitude's 7.8 mm float32 lattice at bake time. The placement travels in the draw transform
   and in the collision static's pose. Offset the bounds by the region origin for a world-space box.
+  - **The default mix** is `TerrainSplatWeights.FromBlend(height, slope01, field.SampleBiomeWeights(x, z),
+    waterLevel, snowLine)`. The physical rules come first: steep ground is rock, ground near or below the water is
+    sand, ground above the snow line is snow, and the rest is grass with a little mid-slope dirt. The biome then
+    moves part of that GRASS share to its own channels, so it recolours open ground and never takes weight from a
+    cliff, a shore or a peak:
+
+    | Biome | Share of grass moved | Why |
+    |---|---|---|
+    | Meadow | none | the default biome, so an all-Meadow world bakes exactly its old mix |
+    | Forest | 0.30 to dirt | leaf litter and bare humus under a canopy |
+    | Marsh | 0.50 to dirt | waterlogged mud between grass tussocks |
+    | Mountains | 0.30 to rock, 0.15 to dirt | thin soil over bedrock, so a ledge reads stony |
+    | Desert | 0.80 to sand, 0.15 to dirt | open sand with hardpan patches |
+    | Snow | 0.85 to snow | snow cover below the snow line, a little tundra showing |
+
+    `SampleBiomeWeights` gives each biome's share off the same smoothstep band blend that shapes the height, so
+    the tilt fades across a band's `BiomeBlend` window instead of switching along one triangle row where the
+    dominant biome flips. `TerrainSplatWeights.From(height, slope01, biome, ...)` is the discrete form, bit-identical
+    to `FromBlend` wherever one biome holds the whole share.
   - **`splatRule`** (optional, default null) is the consumer hook on the per-vertex material mix. Null bakes
-    exactly what `TerrainSplatWeights.From` produces, so an existing caller is byte-identical. The rule is handed a
-    **`TerrainSplatContext`** (`Height`, `Slope01`, `Biome`, ABSOLUTE `WorldX`/`WorldZ`, and `Default` = the
-    engine's own weights for that vertex) and returns the weights to bake. This is how a world with a SECOND body
-    of water gets a shoreline at all: `From` derives its sand band from the field's single `WaterLevel`, which is
-    the sea, so a lake edge otherwise bakes as grass meeting water. It is equally the seam for paths, trampled
-    ground, and biome-specific dirt. Handing over `Default` is what keeps a rule from reimplementing (and then
-    drifting from) the engine's mix. Three constraints, spelled out on `TerrainSplatContext`: the rule must be
+    exactly the default mix above. The rule is handed a **`TerrainSplatContext`** (`Height`, `Slope01`, `Biome` =
+    the dominant biome, ABSOLUTE `WorldX`/`WorldZ`, and `Default` = the engine's own weights for that vertex, biome
+    tilt included) and returns the weights to bake. A rule that ignores `Default` bakes exactly what it returns,
+    and one that wants the untilted mix calls `TerrainSplatWeights.From` with `BiomeId.Meadow`. This is how a
+    world with a SECOND body of water gets a shoreline at all: the default derives its sand band from the field's
+    single `WaterLevel`, which is the sea, so a lake edge otherwise bakes as grass meeting water. It is equally the
+    seam for paths, trampled ground, and a game's own biome tuning. Handing over `Default` is what keeps a rule
+    from reimplementing (and then drifting from) the engine's mix. Three constraints, spelled out on `TerrainSplatContext`: the rule must be
     **pure** (chunk meshes are cached per region + LOD and built off the frame thread, so an impure rule bakes
     neighbours that disagree at their shared edge), it is a **hot path** (once per vertex of every streamed chunk),
     and splat is **presentation only** (no field, collision, document, or world-identity impact, so a client may
@@ -139,7 +159,10 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
     knob (fade band, LOD variants, `WithHlod`, `colliders`) applies unchanged. The query runs on the build
     thread. `MapTileResidency` (`KhaozEngine.MapDoc`) is one, so a game streaming a tiled map document writes
     `PropLayer.PlacementLayer(residency, meshes, drawRadius)` and no glue. A frozen-list layer is untouched by
-    any of this.
+    any of this. When the source changes but the field does not, `TerrainStreamer.RefreshPlacements(coord)`
+    reaches `Scene3DChunkSink.RefreshPlacements` (its `IChunkPlacementRefreshSink`), which re-queries only the
+    live-source layers and any companion layer they host, rebuilds their prop clusters (and an HLOD layer's
+    merged mesh) and the chunk's prop statics, and never re-meshes the terrain or touches its collider.
 - **`PropRenderer`** - `Queue` (against a raw `SceneInstances`, headless-testable) and the `Scene3D.DrawProps`
   extension instance every placement within a draw radius of a focus point, distance-culling the rest. Both
   overload the same way as `PropLayer`: a single-handle map queues one instance per in-range placement, and a

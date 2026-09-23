@@ -52,7 +52,18 @@ public static class EditorPicking
     /// makes one click quadratic in the placement count.</summary>
     public static bool Pick(MapDocument doc, TerrainField field, Vector3 origin, Vector3 direction,
         float maxDistance, Func<string, float> heightOf, out PickResult result,
-        Func<SelectionKind, string, bool>? visible, Func<string, bool>? placementKindVisible)
+        Func<SelectionKind, string, bool>? visible, Func<string, bool>? placementKindVisible) =>
+        Pick(doc, field, origin, direction, maxDistance, heightOf, out result, visible, placementKindVisible,
+            placementDrawn: null);
+
+    /// <summary>The pick above with a third placement filter over the whole placement. A placement for which
+    /// <c>placementDrawn(placement)</c> is false is skipped, which is how the editor keeps a placement its viewport
+    /// does not draw (outside the streamed ring or the prop cull) from being clicked through visible terrain. Runs
+    /// once per placement, so it must be constant-time like the other filters.</summary>
+    internal static bool Pick(MapDocument doc, TerrainField field, Vector3 origin, Vector3 direction,
+        float maxDistance, Func<string, float> heightOf, out PickResult result,
+        Func<SelectionKind, string, bool>? visible, Func<string, bool>? placementKindVisible,
+        Func<MapPlacement, bool>? placementDrawn)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(field);
@@ -67,6 +78,7 @@ public static class EditorPicking
         {
             if (visible is not null && !visible(SelectionKind.Placement, p.Id)) continue;   // hidden: not pickable
             if (placementKindVisible is not null && !placementKindVisible(p.Kind)) continue;   // category hidden
+            if (placementDrawn is not null && !placementDrawn(p)) continue;   // not drawn in the viewport
             float h = heightOf(p.Kind) * p.Scale;
             float groundY = p.Y ?? field.SampleHeight(p.X, p.Z);
             float half = h * 0.3f;

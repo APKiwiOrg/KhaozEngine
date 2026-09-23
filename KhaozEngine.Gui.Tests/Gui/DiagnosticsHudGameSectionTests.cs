@@ -38,7 +38,7 @@ namespace KhaozEngine.Tests.Gui
 
             hud.Update(KeyFrame(Key.F1), 0.016f);
 
-            Assert.Equal(new[] { "Performance", "Draw stats", "World" }, Titles(hud));
+            Assert.Equal(new[] { "Performance", "Draw stats", "Build", "World" }, Titles(hud));
         }
 
         [Fact]
@@ -50,7 +50,7 @@ namespace KhaozEngine.Tests.Gui
 
             hud.Update(KeyFrame(Key.F1), 0.016f);
 
-            Assert.Equal(new[] { "Performance", "Draw stats", "World", "Connection" }, Titles(hud));
+            Assert.Equal(new[] { "Performance", "Draw stats", "Build", "World", "Connection" }, Titles(hud));
         }
 
         [Fact]
@@ -94,7 +94,7 @@ namespace KhaozEngine.Tests.Gui
             hud.ClearSections();
             hud.Update(KeyFrame(), 0.016f);
 
-            Assert.Equal(new[] { "Performance", "Draw stats" }, Titles(hud));
+            Assert.Equal(new[] { "Performance", "Draw stats", "Build" }, Titles(hud));
         }
 
         [Fact]

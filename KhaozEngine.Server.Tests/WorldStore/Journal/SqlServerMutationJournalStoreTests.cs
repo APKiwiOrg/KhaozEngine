@@ -244,6 +244,11 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
     [SqlServerFact] public Task Purge_removes_replay_children_before_parent_and_preserves_events() => Conformance().Purge_removes_replay_children_before_parent_and_preserves_events();
     [SqlServerFact] public Task Cancellation_before_work_leaves_no_rows() => Conformance().Cancellation_before_work_leaves_no_rows();
     [SqlServerFact] public Task Concurrent_commits_against_one_head_are_linearizable() => Conformance().Concurrent_commits_against_one_head_are_linearizable();
+    [SqlServerFact] public Task Stream_listing_returns_every_stream_in_ordinal_key_order_with_its_head() => Conformance().Stream_listing_returns_every_stream_in_ordinal_key_order_with_its_head();
+    [SqlServerFact] public Task Stream_listing_filters_by_an_ordinal_case_sensitive_key_prefix() => Conformance().Stream_listing_filters_by_an_ordinal_case_sensitive_key_prefix();
+    [SqlServerFact] public Task Stream_listing_pages_through_a_continuation_until_the_listing_is_complete() => Conformance().Stream_listing_pages_through_a_continuation_until_the_listing_is_complete();
+    [SqlServerFact] public Task Stream_listing_continuation_is_a_key_so_later_streams_ahead_of_it_are_listed() => Conformance().Stream_listing_continuation_is_a_key_so_later_streams_ahead_of_it_are_listed();
+    [SqlServerFact] public Task Stream_listing_of_an_empty_store_is_one_complete_empty_page() => Conformance().Stream_listing_of_an_empty_store_is_one_complete_empty_page();
 
     private BoundConformance Conformance() => new(CreateStore);
 
@@ -279,7 +284,7 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
             new byte[] { eventValue });
 
     private sealed class BoundConformance(Func<TimeSpan?, MutationJournalStoreHarness> createStore)
-        : MutationJournalStoreConformance
+        : MutationJournalStreamListingConformance
     {
         protected override MutationJournalStoreHarness CreateStore(TimeSpan? minimumRetryHorizon = null)
             => createStore(minimumRetryHorizon);

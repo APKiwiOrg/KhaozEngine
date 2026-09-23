@@ -4,10 +4,11 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
+// Lives in KhaozEngine.Netcode under its shipped NetWorld name, beside IBanStore. See IBanStore.cs for why.
 namespace KhaozEngine.NetWorld;
 
 /// <summary>Dependency-free in-memory <see cref="IBanStore"/>. Expiry is checked against an injectable clock
-/// (default <see cref="DateTimeOffset.UtcNow"/>); expired entries are pruned lazily on read.</summary>
+/// (default <see cref="DateTimeOffset.UtcNow"/>), and expired entries are pruned lazily on read.</summary>
 public sealed class InMemoryBanStore : IBanStore
 {
     private readonly ConcurrentDictionary<string, BanRecord> bans = new();

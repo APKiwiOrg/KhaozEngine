@@ -192,11 +192,20 @@ public sealed class MapEditorResponsivenessTests
         }));
         Assert.Equal(unselected.Count, legacyProps.Count);
 
-        var authoredBuffer = new AuthoredPlacementBuffer();
-        authoredBuffer.Prepare(authored, scene.Visibility, static _ => true, selectedId);
-        Report(Measure("authored-prepare", EditOperations, () =>
-            authoredBuffer.Prepare(authored, scene.Visibility, static _ => true, selectedId)));
-        Assert.Equal(legacyProps, authoredBuffer.Unselected);
+        MapDocument profileDoc = scene.Document.Doc;
+        var authoredLayer = new AuthoredPlacementLayer(TerrainChunkRegion.DefaultSize);
+        authoredLayer.Refresh(profileDoc, field, scene.Visibility, selectedId, invalidate: null);
+        Report(Measure("authored-layer-idle-refresh", EditOperations, () =>
+            authoredLayer.Refresh(profileDoc, field, scene.Visibility, selectedId, invalidate: null)));
+        Report(Measure("authored-layer-document-refresh", EditOperations, () =>
+        {
+            authoredLayer.Invalidate();
+            authoredLayer.Refresh(profileDoc, field, scene.Visibility, selectedId, invalidate: null);
+        }));
+        var served = new List<PropPlacement>();
+        authoredLayer.PlacementsIn(new RectArea(float.MinValue, float.MinValue, float.MaxValue, float.MaxValue),
+            served);
+        Assert.Equal(legacyProps.Count, served.Count);
 
         var terrainOnlyCache = new PlacementCache();
         IReadOnlyList<EditorPlacement> rebuilt = Array.Empty<EditorPlacement>();
@@ -209,12 +218,10 @@ public sealed class MapEditorResponsivenessTests
         scene.Visibility.TerrainOnly = true;
         Report(Measure("terrain-only-dirty-cache", EditOperations, () =>
         {
-            terrainOnlyCache.Invalidate();
-            authoredBuffer.Prepare(terrainOnlyCache, scene.Document.Doc, field,
-                scene.Visibility, static _ => true, selectedId);
+            authoredLayer.Invalidate();
+            authoredLayer.Refresh(profileDoc, field, scene.Visibility, selectedId, invalidate: null);
         }));
-        Assert.True(terrainOnlyCache.IsDirty);
-        Assert.Empty(authoredBuffer.Unselected);
+        Assert.True(authoredLayer.IsDirty);
         scene.Visibility.TerrainOnly = false;
 
         MapBounds mapBounds = scene.Document.Doc.Bounds;

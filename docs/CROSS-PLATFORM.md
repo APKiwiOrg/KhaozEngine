@@ -547,7 +547,7 @@ INTERMEDIATE target, ask what in the final image would have to move before assum
 | -------------------------------- | ----------------------------------------------------------------------------- |
 | `push` / `pull_request` on main  | **verify**: `metal-native` runs the full suite. `direct3d11-native` and `vulkan-native` run the golden tests only. The only validation tier that runs is Metal's debug layer, which the Metal leg arms on every trigger, and it arms it ALONE: `MTL_CAPTURE_ENABLED` would displace the `MTLDebugDevice` that does the validating ([#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614)) |
 | `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: all three legs run the full suite (`vulkan-native` serialized and under `strict` validation), plus the `sync` validation job. The Metal leg keeps its debug layer here, alone for the same #614 reason, and does NOT arm `MTL_SHADER_VALIDATION` ([#617](https://github.com/APKiwiOrg/KhaozEngine/issues/617)) |
-| `workflow_dispatch` `bake=false` | same as `schedule` (all three legs full suite, `vulkan-native` serialized, plus the `sync` job), plus the one thing no other trigger can do: `tier` picks the Metal leg's shape, where `deep` (the default) adds `MTL_SHADER_VALIDATION=1`, `capture` adds `MTL_CAPTURE_ENABLED=1` instead, and `push` is the unattended debug-device shape. A `push` dispatch against a `deep` one is #617's control since `18.0.0`, the incumbent-leg input that used to be it having gone with that leg |
+| `workflow_dispatch` `bake=false` | same as `schedule` (all three legs full suite, `vulkan-native` serialized, plus the `sync` job), plus the one thing no other trigger can do: `tier` picks the Metal leg's shape, where `push` (the default) is the unattended debug-device shape, `deep` is the opt-in shader validation tier that adds `MTL_SHADER_VALIDATION=1`, and `capture` adds `MTL_CAPTURE_ENABLED=1` instead. A `push` dispatch against a `deep` one is #617's control since `18.0.0`, the incumbent-leg input that used to be it having gone with that leg |
 | `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) on all three legs, each writing its own family, uploaded as per-backend goldens. Every leg has been a bake leg since `17.41.0`, when the three native legs became owners. The `sync` job still does not run: it is a validation instrument over a subset rather than a producer of references, and the `vulkan-native` matrix leg bakes that family. The copy constraint that used to sit here died with row 4 of [#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683): each leg's artifact is committed as it comes |
 
 Software rasterizers on the runners (no real GPU):
@@ -661,7 +661,7 @@ gives two same-named `golden-deltas.direct3d11.txt` files that are two implement
 of references. The macOS pair is the one where mixing those up costs the most, because `metal` is the fleet's
 cross-backend reference family.
 
-Five artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
+Six artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
 PASSED:
 
 - **`vulkan-validation-strict-vulkan-native`** and **`vulkan-validation-sync`** are the two validation tiers'
@@ -729,6 +729,16 @@ PASSED:
   a same-boot control is deleted, and a green run of this leg is the only baseline left. The step is `continue-on-error` with `|| true` on every command,
   because a diagnostic that can redden the leg it is diagnosing would be a second flake on top of the one being
   chased.
+- **`pool-watch-direct3d11-native`** is the thread pool starvation watchdog's evidence from the Windows full
+  tier ([#720](https://github.com/APKiwiOrg/KhaozEngine/issues/720),
+  [#553](https://github.com/APKiwiOrg/KhaozEngine/issues/553)). `POOL_WATCH_ARMED` sets `KE_POOL_WATCH=1` for
+  that tier alone, and `KhaozEngine.Server.Tests` and `KhaozEngine.MapEditor.Tests` then arm
+  `ThreadPoolStarvationWatchdog` from `KhaozEngine.TestSupport`. Each armed host writes a `pool-watch-armed` line,
+  then one `pool-starvation` line per episode of pool queue latency past two seconds, and takes one heap dump on
+  the first episode that lasts ten, which `dotnet-dump analyze` reads with `threadpool` and `clrstack -all`. An
+  armed line with nothing after it is a clean run. The same tier adds a trx logger, and the artifact carries those
+  files too, so an episode's timestamps can be laid against every test that was running beside it. Retention is
+  three days because a dump can run to gigabytes.
 
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
 untouched.

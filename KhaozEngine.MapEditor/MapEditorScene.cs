@@ -275,8 +275,8 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _document = new EditorDocument(CreateDocument(registry), registry);
         _controller = new EditorToolController(_document)
         {
-            HeightOf = KindHeight,
-            IsVisible = _visibility.IsElementVisible, PlacementKindVisible = PropKindVisible,
+            HeightOf = KindHeight, IsVisible = _visibility.IsElementVisible,
+            PlacementKindVisible = PropKindVisible, PlacementDrawnAt = PlacementDrawnAt,
         };
         _viewport = new ViewportWorld(_scene, _options.ManifestPaths)
         {
@@ -2048,15 +2048,15 @@ public partial class MapEditorScene : GameScene, IGameScene3D
 
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Range")));
         _inspector.Rows.Add(new ReadOnlyRow(LocalizedText.Raw("Affects"),
-            () => "terrain shape + scatter",
+            () => "terrain shape + scatter + ground mix",
             LocalizedText.Raw(
-                "This band's Biome drives terrain shaping (BaseHeight and HillAmplitude) and the scatter rules keyed " +
-                "by that biome, blended over its world-Z range. Ground tinting by biome is not wired yet.")));
+                "This band's Biome drives terrain shaping (BaseHeight and HillAmplitude), the scatter rules keyed by " +
+                "that biome and the default ground mix (Desert sand, Snow snow), blended over its world-Z range.")));
         _inspector.Rows.Add(new ChoiceRow(LocalizedText.Raw("Biome"), BiomeChoices,
             () => (BandAt(index)?.Biome ?? BiomeId.Meadow).ToString(),
             v => { if (Enum.TryParse(v, out BiomeId biome)) EditBand(index, b => b.Biome = biome); },
             description: LocalizedText.Raw(
-                "Which biome's height and scatter rules apply within this band's Start/End world-Z range.")));
+                "Which biome's height, scatter and ground-mix rules apply within this band's Start/End world-Z range.")));
 
         AddBandFloatRow(index, "Start",
             "Lower world-space Z position where this band begins applying (bands are a Z-axis slice, not a height " +

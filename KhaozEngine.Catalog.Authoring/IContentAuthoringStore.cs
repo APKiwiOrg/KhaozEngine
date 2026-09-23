@@ -54,14 +54,18 @@ public sealed record ContentRowRevision(
 /// <b>It IS the boot's <see cref="IContentVersionDirectory"/></b>, which is where its two version reads are
 /// declared. A host that boots off its authoring database assigns the store itself to
 /// <c>ContentBootOptions.Directory</c> and writes no adapter, and the two members have ONE home rather than
-/// the two that drifted apart.
+/// the two that drifted apart. It is the boot's <see cref="IContentVersionHashSource"/> too, answered here
+/// out of <see cref="GetVersionAsync"/>, so the boot's stale-pointer check costs no backend a member. That
+/// reaches the boot only when the boot is handed this object: a host that hands it a WRAPPER of its own
+/// implementing <see cref="IContentVersionDirectory"/> alone sets <c>ContentBootOptions.VersionHashes</c> to
+/// the store, or the check is skipped.
 /// </para>
 /// <para>
 /// Every member is asynchronous because both backends are, and every member takes a cancellation token so a
 /// console request that goes away does not hold a transaction open behind it.
 /// </para>
 /// </summary>
-public interface IContentAuthoringStore : IContentVersionDirectory
+public interface IContentAuthoringStore : IContentVersionDirectory, IContentVersionHashSource
 {
     /// <summary>
     /// Opens the store's schema under the given mode, creating it only under
@@ -117,6 +121,20 @@ public interface IContentAuthoringStore : IContentVersionDirectory
     /// <param name="versionNumber">The version number.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     Task<ContentVersionRecord?> GetVersionAsync(int versionNumber, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The boot's stale-pointer check, answered out of the version row this seam already holds, so no backend
+    /// implements a member for it and no host writes an adapter. A store holding no such version answers null,
+    /// which the boot reads as nothing to compare rather than as a refusal.
+    /// </summary>
+    /// <param name="versionNumber">The version the boot resolved.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    async Task<ContentVersionHashes?> IContentVersionHashSource.GetVersionHashesAsync(
+        int versionNumber,
+        CancellationToken cancellationToken)
+        => await GetVersionAsync(versionNumber, cancellationToken).ConfigureAwait(false) is ContentVersionRecord record
+            ? new ContentVersionHashes(record.ServerManifestHash, record.ClientManifestHash)
+            : null;
 
     /// <summary>
     /// Loads one published version as a snapshot, decoding through the registry's codecs. The registry is
@@ -229,9 +247,20 @@ public interface IContentAuthoringStore : IContentVersionDirectory
     /// of it, because they committed together. The pointer moves for the NEXT boot: a running server keeps
     /// serving the version it loaded.
     /// </para>
+    /// <para>
+    /// <b>The pack's <c>versions/&lt;n&gt;</c> pointer is written HERE, as the last act before the
+    /// transaction commits</b>, when <paramref name="pointers"/> is given. By then the number is confirmed and
+    /// every other write of the commit has landed, so only the publisher that is winning the version writes
+    /// its pointer. A publisher that lost the version is refused before the write and never names its own
+    /// uncommitted manifests under the committed number, and two publishers of one version never write that
+    /// pointer at once. A failure after the write and before the commit leaves a pointer for a version that
+    /// never committed, which keeps orphan files alive rather than deleting live ones, and the next attempt
+    /// at that number overwrites it inside its own transaction.
+    /// </para>
     /// </summary>
     /// <param name="plan">The plan steps 1 to 8 produced, whose pack files step 9 has already written.</param>
     /// <param name="request">The publish request, whose actor, operator and note the version row and the audit carry.</param>
+    /// <param name="pointers">Where the version's pointer is written inside the commit, or null to write none.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     /// <returns>The version row the transaction inserted.</returns>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
@@ -239,6 +268,7 @@ public interface IContentAuthoringStore : IContentVersionDirectory
     Task<ContentVersionRecord> CommitPublishAsync(
         ContentPublishPlan plan,
         ContentPublishRequest request,
+        IPackVersionPointerStore? pointers,
         CancellationToken cancellationToken = default);
 
     /// <summary>

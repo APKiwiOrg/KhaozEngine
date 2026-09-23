@@ -92,6 +92,7 @@ public sealed partial class InMemoryContentAuthoringStore
     public Task<ContentVersionRecord> CommitPublishAsync(
         ContentPublishPlan plan,
         ContentPublishRequest request,
+        IPackVersionPointerStore? pointers,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -164,6 +165,17 @@ public sealed partial class InMemoryContentAuthoringStore
             // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole
             // draft, so anything else here survives rather than being deleted unpublished.
             ContentDraft? draft = DraftAfterCommit(plan);
+
+            // 7b. The pack's version pointer, the last thing the build does and still inside the gate, so the
+            // publisher that passed the confirmation above is the only one that writes it. The gate is a
+            // monitor rather than an async lock, so the write is waited on here: releasing the gate first
+            // would put the write outside this commit, which is the window it has to stay out of.
+            if (pointers is not null)
+            {
+                pointers.PutVersionPointerAsync(
+                    plan.VersionNumber, plan.ServerManifestHash, plan.ClientManifestHash, cancellationToken)
+                    .GetAwaiter().GetResult();
+            }
 
             // APPLY. List and dictionary writes and four assignments, and the rule append at 4, which is a
             // walk of a list this store owns. Nothing here can refuse.

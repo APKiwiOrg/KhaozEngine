@@ -146,13 +146,17 @@ internal static class SqliteCatalogSchemaValidation
     static IReadOnlyDictionary<string, string> ReadSchemaObjects(SqliteConnection connection)
     {
         using SqliteCommand command = connection.CreateCommand();
-        command.CommandText = """
+
+        // The underscores are ESCAPED, because SQLite's LIKE reads a bare one as any single character. A host
+        // table named catalogs or cataloguer would otherwise be counted as a catalog object, which decides
+        // this method's own create-or-validate answer and then refuses the open as an unexpected object.
+        command.CommandText = FormattableString.Invariant($"""
             SELECT type || ':' || name, sql
             FROM sqlite_master
-            WHERE (type = 'table' AND lower(name) LIKE 'catalog_%')
-               OR (type = 'index' AND (lower(name) LIKE 'ix_catalog_%' OR lower(name) LIKE 'ux_catalog_%'))
+            WHERE (type = 'table' AND {SqliteCatalogSchemaInventory.TableNameClause})
+               OR (type = 'index' AND {SqliteCatalogSchemaInventory.IndexNameClause})
             ORDER BY type, name COLLATE BINARY;
-            """;
+            """);
         using SqliteDataReader reader = command.ExecuteReader();
         var objects = new Dictionary<string, string>(StringComparer.Ordinal);
         while (reader.Read())

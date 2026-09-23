@@ -679,8 +679,10 @@ of its group. A renamable element's row is polled through the same live-key clos
 viewport: `EditorPicking.Pick` and `OverlayPicking.Pick` both take an optional visibility filter, wired to
 `EditorToolController.IsVisible` (which the scene points at `EditorVisibility.IsElementVisible`), that skips
 it. A hidden prop category (Trees, Rocks) filters placements through a second, kit-keyed filter,
-`EditorToolController.PlacementKindVisible`, which the pick reads from the placement it already holds. Both
-filters run once per element inside the pick loop, so both must be constant-time. A filter that searches the
+`EditorToolController.PlacementKindVisible`, which the pick reads from the placement it already holds. A third,
+position-keyed filter, `EditorToolController.PlacementDrawnAt`, skips a placement the viewport does not draw
+(see Rebuild semantics below), except the current selection. All three filters run once per element inside the
+pick loop, so each must be constant-time. A filter that searches the
 document per call makes one click quadratic: that cost about 510 ms per click on a 17,281-placement island
 before the kit-keyed filter replaced an id lookup. But a hidden element stays exactly where it was in the outline tree, since the outline is rebuilt straight from the
 document and visibility never touches the document. Selecting it from the outline still opens its
@@ -824,13 +826,41 @@ edit (`RenameScatterOverrideCommand`) is `false`, since a name change affects ne
 order. An exclusion reorder (`ReorderExclusionCommand`) is also `false`, since exclusions combine as a set
 union with no order dependency (see Feature apply order above), the one place a reorder command does NOT
 match its sibling add/edit/remove commands' `AffectsWorld` value. Placement/spawn/region edits are `false`
-(they draw outside the streamed sink, so a drag never triggers a chunk rebuild). `EditorDocument` sets
+(spawns and regions draw outside the streamed sink, and placements reach it through their own incremental
+layer path, below, so neither needs a world rebuild). `EditorDocument` sets
 `WorldRebuildPending` whenever an executed, undone, or redone command's `AffectsWorld` is true.
 
 Visibility switches do not enter any rebuild path. `ViewportWorld.BuildPropLayers` keeps every scatter and
 companion layer resident and carries the host scatter-layer identity into its `PropLayer`. At draw time the
 sink filters retained batches by layer and kit identity. The same effective category predicate gates authored
-placement drawing, picking, and the selected placement gizmo. See Visibility above.
+placement drawing, picking, and the selected placement gizmo. Picking also follows the streamed draw: a placement
+counts as pickable only when the viewport draws it, meaning its chunk is resident in the gameplay ring and it lies
+within `RenderDistance.PropDrawRadius` of the camera the last frame drew from (`ViewportWorld.IsPlacementDrawnAt`,
+wired to `EditorToolController.PlacementDrawnAt`). A click on visible terrain therefore never selects an
+undrawn placement behind it. The current placement selection stays pickable, since the viewport always draws it.
+See Visibility above.
+
+**Authored placements stream through the sink.** `ViewportWorld.BuildSinkLayers` appends one live
+`PropLayer.PlacementLayer` after the scatter and companion layers, backed by `AuthoredPlacementLayer` (an
+`IPlacementSource` over the document) and render-only (`colliders: false`). Authored placements therefore get
+the same chunk residency and `RenderDistance.PropDrawRadius` cull as scatter, driven by the editor camera: a
+placement outside the gameplay ring (four 60 m chunks around the camera at every render-distance setting) is
+not drawn, and it appears once its chunk streams in. The viewport no longer submits a whole-document
+`DrawProps` list every frame.
+
+`DocumentChanged` marks the layer dirty. The next `ViewportWorld.Draw` diffs the placements against the set the
+layer last published, keyed by stable id, and refreshes only the loaded chunks whose placements changed (one
+chunk for a rotate, scale, add or delete, two for a move across a chunk edge). The refresh is props-only
+(`TerrainStreamer.RefreshPlacements`): the sink re-queries the placement layer for that chunk and republishes
+its prop instances, and the chunk's terrain mesh is never rebuilt. Execute, undo and redo all take this path,
+so an edit shows on the next frame. An idle frame costs a few compares and allocates nothing. The selected
+placement is kept out of the layer and drawn directly with the highlight tint, so a gizmo drag touches no
+chunk. A selection change moves only the old and new selected placements between the layer and the highlight
+draw, keeping each chunk's document order, and refreshes at most the two chunks they sit in. It skips the diff
+over the document, but the first selection after a document change builds an id-to-index map, which is one O(n)
+pass that allocates. Later selections until the next document change cost tens of microseconds. A per-element hide
+leaves the layer through the diff. The **Authored props** switch, Terrain Only and prop categories gate the
+layer through the sink's draw filter without a refresh, and the diff is deferred while the group is hidden.
 
 A rebuild reads the document as it stands, and mid-edit that can be invalid: `ViewportWorld`'s prop-layer
 build throws `MapDocumentException` for a companion layer naming a host scatter layer the document does not
@@ -880,8 +910,9 @@ there to fix a one-frame lag the editor used to have: chrome used to run after t
 inspector edit's `WorldRebuildPending` flip landed one frame too late for that frame's rebuild). So when the
 inspector's `FloatRow` setter calls `EditorDocument.Execute(new EditFeatureCommand(...))`, the streamed world
 rebuilds (or partial-rebuilds) the SAME frame, same as a gizmo-driven drag (`UpdateTools`, which runs even
-earlier still). Placement/spawn drags never trigger a rebuild either way (`AffectsWorld` is always false,
-since they draw outside the streamed sink), and neither do region drags (game-interpreted, also `AffectsWorld`
+earlier still). Placement/spawn drags never trigger a rebuild either way (`AffectsWorld` is always false: a
+spawn draws outside the streamed sink, and the dragged placement is the selected one, which the authored
+placement layer serves outside the sink), and neither do region drags (game-interpreted, also `AffectsWorld`
 false).
 
 ## Bake-region
@@ -979,8 +1010,8 @@ it validates without an extra step (with none yet, `HostLayer` stays empty until
 and picks it through the HostLayer chooser below).
 
 **Biome bands** (`SelectionKind.BiomeBand`, index-keyed, no reorder command) select into an inspector with a
-read-only "Affects" row stating what a band drives today (terrain shaping and the scatter rules keyed by
-that biome, ground tinting not yet wired), then a `Biome` `ChoiceRow` over the `BiomeId` enum names, then
+read-only "Affects" row stating what a band drives today (terrain shaping, the scatter rules keyed by that
+biome and the default ground splat mix), then a `Biome` `ChoiceRow` over the `BiomeId` enum names, then
 the nullable `Start`/`End` world-Z edges and the `BaseHeight`/`HillAmplitude` scalars (a band is a Z-axis
 slice, not a height range, and its rows and descriptions say Z, not "height", now that the terminology has
 been corrected). Each nullable edge is a `FloatRow` for the concrete value paired with an "<edge> open"

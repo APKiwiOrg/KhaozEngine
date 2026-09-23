@@ -12,6 +12,7 @@ public sealed partial class SqliteMutationJournalStore
 {
     public async Task<JournalCompactionResult> CompactAsync(JournalCompaction compaction, CancellationToken cancellationToken = default)
     {
+        ThrowIfReadOnly(nameof(CompactAsync));
         ArgumentNullException.ThrowIfNull(compaction);
         cancellationToken.ThrowIfCancellationRequested();
         compaction.Validate(limits);
@@ -85,6 +86,7 @@ public sealed partial class SqliteMutationJournalStore
         JournalOperationPurge purge,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfReadOnly(nameof(PurgeOperationsAsync));
         ArgumentNullException.ThrowIfNull(purge);
         cancellationToken.ThrowIfCancellationRequested();
         Invoke(JournalTestHookPhase.BeforeTransaction);
@@ -159,6 +161,7 @@ public sealed partial class SqliteMutationJournalStore
 
     public async Task<Guid> RotateStoreEpochAsync(CancellationToken cancellationToken = default)
     {
+        ThrowIfReadOnly(nameof(RotateStoreEpochAsync));
         cancellationToken.ThrowIfCancellationRequested();
         Invoke(JournalTestHookPhase.BeforeTransaction);
         using SqliteStoreLease lease = await db.EnterAsync(cancellationToken).ConfigureAwait(false);

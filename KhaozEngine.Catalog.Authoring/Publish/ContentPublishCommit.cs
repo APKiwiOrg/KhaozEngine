@@ -16,11 +16,17 @@ public sealed record ContentPackWrite(int ObjectsWritten, long BytesWritten);
 /// a publish that WRITES, and it is a separate type from the pipeline that prepares one for exactly that
 /// reason.
 /// <para>
-/// <b>The ordering is the whole crash-safety property.</b> Every chunk file, the rule chunk, both manifests
-/// and the version pointer go to the pack store BEFORE the database transaction, at content-addressed names
-/// nothing references yet, so a crash there leaves inert bytes and the old version. The transaction is the
-/// only commit point and it is atomic by construction, so a crash at any moment leaves either the old
-/// version or the new one and never a torn one.
+/// <b>The ordering is the whole crash-safety property.</b> Every chunk file, the rule chunk and both
+/// manifests go to the pack store BEFORE the database transaction, at content-addressed names nothing
+/// references yet, so a crash there leaves inert bytes and the old version. The transaction is the only
+/// commit point and it is atomic by construction, so a crash at any moment leaves either the old version or
+/// the new one and never a torn one.
+/// </para>
+/// <para>
+/// <b>The version pointer is the one file that is not content addressed, so step 9 does not write it.</b>
+/// It is handed to step 10, which writes it inside the transaction once the version number is confirmed. Two
+/// publishers can prepare the same number from the same base, and a pointer written in step 9 let the one
+/// that went on to lose overwrite the committed version's pointer with manifests that never committed.
 /// </para>
 /// <para>
 /// <b>Step 11 runs only after a SUCCESSFUL commit</b>, and it is skipped whenever the store listing fails,
@@ -113,10 +119,11 @@ public sealed class ContentPublishCommit
             // STEP 9. Every file first, at names nothing references yet.
             ContentPackWrite write = await WriteAsync(plan, cancellationToken).ConfigureAwait(false);
 
-            // STEP 10. The one transaction, which is the only commit point there is.
+            // STEP 10. The one transaction, which is the only commit point there is. It writes the version
+            // pointer too, and only once it knows this publish is the one that takes the number.
             Step(ContentPublishStep.BeforeCommit);
             ContentVersionRecord record = await _store
-                .CommitPublishAsync(plan, request, cancellationToken).ConfigureAwait(false);
+                .CommitPublishAsync(plan, request, Pointers, cancellationToken).ConfigureAwait(false);
             Step(ContentPublishStep.AfterCommit);
 
             // STEP 11. Only now, and only because the commit succeeded.
@@ -161,17 +168,18 @@ public sealed class ContentPublishCommit
     }
 
     /// <summary>
-    /// Step 9. Every chunk file, the rule chunk, both manifest files and the version POINTER, in that order,
-    /// before the database is touched at all.
+    /// Step 9. Every chunk file, the rule chunk and both manifest files, in that order, before the database is
+    /// touched at all. Every one of them is named by its own hash, which is why two publishers may run this
+    /// step at once: they write the same bytes under the same name or different bytes under different names.
     /// <para>
     /// <b>A hash the store already holds is not rewritten.</b> That is checked first, and it is what makes a
     /// republish of an unchanged chunk free: a chunk file's name is a hash of its own contents, so writing one
     /// twice is idempotent by construction and writing one nothing references is inert.
     /// </para>
     /// <para>
-    /// The pointer goes last of the four, so a crash part way through leaves a version whose pointer is
-    /// absent, which reads as a listing failure and SKIPS the next sweep rather than authorising it to delete
-    /// on a partial view.
+    /// <b>The version pointer is not written here.</b> It names a version NUMBER rather than content, and the
+    /// number is only decided inside step 10, which writes it. A plan written here and never committed leaves
+    /// no pointer at all, which reads as nothing to the sweep because the sweep only lists committed versions.
     /// </para>
     /// </summary>
     /// <param name="plan">A plan that validated.</param>
@@ -220,10 +228,6 @@ public sealed class ContentPublishCommit
             plan.ClientManifestHash, ContentManifestCodec.Encode(client), cancellationToken).ConfigureAwait(false);
         objects += serverWrote + clientWrote;
         bytes += serverBytes + clientBytes;
-
-        await Pointers.PutVersionPointerAsync(
-            plan.VersionNumber, plan.ServerManifestHash, plan.ClientManifestHash, cancellationToken)
-            .ConfigureAwait(false);
 
         return new ContentPackWrite(objects, bytes);
     }

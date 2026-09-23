@@ -118,7 +118,17 @@ public static partial class ItemContainerPageCodec
             + ContentVarint.Size((uint)payloadLength)
             + payloadLength;
 
-    /// <summary>Encodes a page into a fresh array.</summary>
+    /// <summary>
+    /// Encodes the STORED page into a fresh array.
+    /// <para>
+    /// <b>It projects nothing</b>: every payload is written as handed in, which for a container's own entries
+    /// is the durable bytes, server-only and owner-only fields and whole quarantine wrappers included. That is
+    /// right, and safe, only where the bytes are read back by the SERVER: the journal's projection section,
+    /// a store, a snapshot. A page going to any VIEWER, its owner included, goes through
+    /// <see cref="EncodeProjected"/> instead, which is the one door that projects
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1049">#1049</see>).
+    /// </para>
+    /// </summary>
     /// <param name="pageIndex">Which page of the container this is. 0 for a whole container.</param>
     /// <param name="firstSlot">The container slot this page's slot 0 is.</param>
     /// <param name="slotCount">Slots in THIS page.</param>
@@ -135,7 +145,9 @@ public static partial class ItemContainerPageCodec
         return page;
     }
 
-    /// <summary>Encodes a page into a caller's buffer and answers the bytes written.</summary>
+    /// <summary>Encodes the STORED page into a caller's buffer and answers the bytes written. It projects
+    /// nothing, so it is for the server's own reads only, exactly as the array overload is, and a page going
+    /// to a viewer goes through <see cref="EncodeProjected"/>.</summary>
     /// <param name="destination">At least <see cref="EncodedSize"/> bytes.</param>
     /// <param name="pageIndex">Which page of the container this is. 0 for a whole container.</param>
     /// <param name="firstSlot">The container slot this page's slot 0 is.</param>

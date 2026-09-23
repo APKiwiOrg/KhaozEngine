@@ -86,6 +86,7 @@ public partial class MapEditorScene
             HeightOf = KindHeight,
             IsVisible = _visibility.IsElementVisible,
             PlacementKindVisible = PropKindVisible,
+            PlacementDrawnAt = PlacementDrawnAt,
             PlaceKind = previousController.PlaceKind,
             SpawnArchetype = previousController.SpawnArchetype,
             PlacingPlayerSpawn = previousController.PlacingPlayerSpawn,

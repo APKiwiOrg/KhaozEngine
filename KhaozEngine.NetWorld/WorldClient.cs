@@ -32,7 +32,7 @@ public sealed partial class WorldClient : IDisposable
     private WorldConnectionState state = WorldConnectionState.Connecting;
     private DisconnectReason disconnectReason = DisconnectReason.None;
     private string disconnectReasonDetail = string.Empty;
-    private ContentMismatchDetail contentMismatch;
+    private ConnectRefusal refusal;   // the last refusal, read by ContentMismatch below
     private readonly float disconnectTimeout;
     private float secondsSinceServerFrame;
     private bool sawShutdownNotice;
@@ -166,11 +166,13 @@ public sealed partial class WorldClient : IDisposable
     public DisconnectReason DisconnectReason => disconnectReason;
 
     /// <summary>Extra detail: the reject string for <see cref="DisconnectReason.RejectedToken"/>, the server's required
-    /// version or content identity for <c>IncompatibleVersion</c> and <c>ContentMismatch</c>. Empty otherwise.</summary>
+    /// version or content identity for <c>IncompatibleVersion</c> and <c>ContentMismatch</c>, the whole refusal token for
+    /// <c>ContentVersionMismatch</c> and <c>ContentClientTooOld</c>. Empty otherwise.</summary>
     public string DisconnectReasonDetail => disconnectReasonDetail;
 
     /// <summary>Both identities while the reason is <see cref="DisconnectReason.ContentMismatch"/>, else null.</summary>
-    public ContentMismatchDetail? ContentMismatch => disconnectReason == DisconnectReason.ContentMismatch ? contentMismatch : null;
+    public ContentMismatchDetail? ContentMismatch =>
+        disconnectReason == DisconnectReason.ContentMismatch ? refusal.WorldMismatch : null;
 
     /// <summary>Number of the in-flight reconnect attempt (0 while connected or on the initial connect). Render
     /// "reconnecting (attempt N)..." from this and <see cref="SecondsUntilNextRetry"/>.</summary>
@@ -304,50 +306,11 @@ public sealed partial class WorldClient : IDisposable
                     OnServerFrame(ev.Data);
                     break;
                 case ClientSessionEventKind.Rejected:
-                    if (ProtocolHandshake.TryParseIncompatibleReason(ev.RejectReason, out string requiredVersion))
-                    {
-                        // Version handshake rejected us: terminal (retrying the same build will keep failing).
-                        disconnectReason = DisconnectReason.IncompatibleVersion;
-                        disconnectReasonDetail = requiredVersion;
-                        FailAttempt(allowReconnect: false);
-                    }
-                    else if (ContentMismatchDetail.TryParse(ev.RejectReason, out contentMismatch))
-                    {
-                        // Built against other content than the server: terminal, the same build keeps failing.
-                        disconnectReason = DisconnectReason.ContentMismatch;
-                        disconnectReasonDetail = contentMismatch.ServerIdentity;
-                        FailAttempt(allowReconnect: false);
-                    }
-                    else if (ev.RejectReason == SessionRejectReason.SignedInElsewhere)
-                    {
-                        // The KICK half of the duplicate-session gate: another client took this account's seat.
-                        // Terminal, and the one reason here that has to be: retrying would displace the session that
-                        // just displaced this one, and the two clients would trade the seat forever. The game shows
-                        // its own localized line and offers a manual sign-in.
-                        disconnectReason = DisconnectReason.SignedInElsewhere;
-                        disconnectReasonDetail = string.Empty;
-                        FailAttempt(allowReconnect: false);
-                    }
-                    else if (ev.RejectReason == SessionRejectReason.AlreadySignedIn)
-                    {
-                        // The REFUSAL half (a RefuseNewer server). Retried, unlike the kick: a refusal displaces
-                        // nobody, so there is no seat to trade and no ping-pong to start. What is usually holding the
-                        // seat is this player's OWN half-dead connection, which the server drops once its transport
-                        // timeout expires (LiteNetLib leaves DisconnectTimeout at 5 s), and the default backoff
-                        // spends its first three attempts inside that window - so answering terminally dumped a
-                        // player to manual sign-in for a one-second blip. From attempt four (7.5 s in) the backoff
-                        // has outlasted the window and the seat is free. A game that would rather stop asking sets
-                        // ReconnectBackoff.MaxAttempts, or AutoReconnect false.
-                        disconnectReason = DisconnectReason.AlreadySignedIn;
-                        disconnectReasonDetail = string.Empty;
-                        FailAttempt(allowReconnect: true);
-                    }
-                    else
-                    {
-                        disconnectReason = DisconnectReason.RejectedToken;
-                        disconnectReasonDetail = ev.RejectReason;
-                        FailAttempt(allowReconnect: retryOnReject);
-                    }
+                    // ConnectRefusal owns what each refusal token means and whether the attempt is retried.
+                    refusal = ConnectRefusal.Read(ev.RejectReason);
+                    disconnectReason = refusal.Reason;
+                    disconnectReasonDetail = refusal.Detail;
+                    FailAttempt(allowReconnect: refusal.AllowsReconnect(retryOnReject));
                     break;
                 case ClientSessionEventKind.Disconnected:
                     if (state != WorldConnectionState.Disconnected)

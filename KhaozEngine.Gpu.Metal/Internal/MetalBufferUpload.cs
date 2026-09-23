@@ -75,9 +75,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // THE RULE ITSELF MOVED TO MetalCopyAlignment AT ROW 14 and nothing about it changed: CopyBuffer and
             // the staging-to-staging arm of a texture copy need the identical refusal, and a second spelling of
             // section 9.3's ruling is the one that would drift.
-            MetalCopyAlignment.RequireAlignedOffset(offsetBytes, nameof(offsetBytes),
-                "A record-time upload of " + lengthBytes.ToString(CultureInfo.InvariantCulture)
-                + " bytes to a non-uniform native Metal buffer", "destination");
+            //
+            // AND THE MESSAGE IS BUILT ON THE REFUSAL AND NOWHERE ELSE (#1114). It names the payload's size, which
+            // is a number formatted and two strings joined, and building it as an argument ran both on every staged
+            // upload that was about to succeed. The check asks the same predicate the refusal does, so the two
+            // cannot disagree about what is aligned.
+            if (!MetalCopyAlignment.IsAligned(offsetBytes))
+            {
+                MetalCopyAlignment.RequireAlignedOffset(offsetBytes, nameof(offsetBytes),
+                    "A record-time upload of " + lengthBytes.ToString(CultureInfo.InvariantCulture)
+                    + " bytes to a non-uniform native Metal buffer", "destination");
+            }
 
             return MetalCopyAlignment.PaddedSize(lengthBytes);
         }

@@ -647,11 +647,15 @@ KhaozEngine.Catalog.AzureBlob -> Azure.Storage.Blobs              (the SDK, decl
 KhaozEngine.Server            -> KhaozEngine.Catalog.Authoring    (umbrella ProjectReference)
 KhaozEngine.Server            -> KhaozEngine.Catalog.Netcode      (umbrella ProjectReference)
 KhaozEngine.Server.Admin      -> KhaozEngine.Catalog.Authoring    (CatalogAdminActions, the sixteen registered actions)
+KhaozEngine.NetWorld          -> KhaozEngine.Catalog.Netcode      (ContentRefusal's parsers, so WorldClient types the door's two refusals)
 ```
 
 **Three of those placements are the load-bearing ones.** `Catalog.Authoring` and `Catalog.Netcode` are in the
-`Server` umbrella and not in `Foundation`, because neither may enter a client graph: the door layer needs
-`Netcode`, and the authoring seam is what every SQL provider hangs off. The two SQL providers are in NO
+`Server` umbrella and not in `Foundation`, because neither may enter a Foundation-only client graph: the door
+layer needs `Netcode`, and the authoring seam is what every SQL provider hangs off. A networked float client does
+reach `Catalog.Netcode`, through `NetWorld`, which already carries `Netcode` and reads the door's two refusals
+with `ContentRefusal`'s strict parsers rather than restating the wire tokens. That edge adds `Catalog`, the
+dependency-free read side, and no authoring type. The two SQL providers are in NO
 umbrella, the same rule the `WorldStore` and `Commerce` pairs follow, so an umbrella consumer takes no database
 dependency for content it only reads. And `CatalogAdminActions` lives in `KhaozEngine.Server.Admin` rather than
 in `Catalog.Authoring`: the helper needs `ServerAdmin` and the authoring store together, and putting it in the

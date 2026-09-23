@@ -87,3 +87,6 @@ its own localized string, never display text, so `ContentRefusal.TryParseMismatc
   carries the server's version number and manifest hash, which is the whole input the fetch loop needs.
 - The refusal carries NO URL. A URL in a refusal token is a redirect an unauthenticated party controls, so
   the client is configured with its pack base address the way it is configured with its server address.
+- A `KhaozEngine.NetWorld.WorldClient` reads both tokens as typed reasons, `DisconnectReason.ContentVersionMismatch`
+  and `DisconnectReason.ContentClientTooOld`, through these parsers, and keeps the whole token in
+  `DisconnectReasonDetail`. A tile head reads the raw token off `TileWorldClient.RefusedReason`.

@@ -413,7 +413,11 @@ the `IConnectionAuthenticator` the server takes. Order is load-bearing:
    with its own rule and nests the rest by hand.
 2. `WorldIdentityGateAuthenticator` sits just inside it, refusing a client built against a different world so it
    can never join and render its own map while the server simulates another. Distinct from the version gate on
-   purpose: a patch that leaves the world alone still interoperates. `log` receives both hashes on every refusal.
+   purpose: a patch that leaves the world alone still interoperates. The refusal token carries both identities.
+   `log` receives the server's identity and whether the client sent one, never the client's label, which is
+   whatever an unauthenticated peer put in the layer. The gate guards any opaque identity, not only a world, so
+   its log wording names none. Its constructor refuses an empty, piped or over-cap identity with
+   `ArgumentException`, the rule a client's identity is held to, so `Wrap` fails at boot on a bad `worldHash`.
 3. The real token authenticator (`HmacTokenAuthenticator`, or `AllowAllAuthenticator` for dev) is next, reached
    only once version and world both match.
 4. `BanGateAuthenticator` WRAPS the token authenticator when `isBanned` is supplied, so its check runs last, after

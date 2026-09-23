@@ -53,4 +53,21 @@ public enum DisconnectReason
     /// <see cref="IncompatibleVersion"/>. Not retried: the same build keeps failing. Show "different game content,
     /// please update".</summary>
     ContentMismatch,
+    /// <summary>The client holds a different published content VERSION than the server serves: the catalog content
+    /// door (<see cref="KhaozEngine.Catalog.Netcode.ContentIdentityGateAuthenticator"/>) refused it with
+    /// <c>ke:content-mismatch:</c>. <see cref="WorldClient.ContentVersionMismatch"/> carries both versions, and
+    /// <see cref="WorldClient.DisconnectReasonDetail"/> the whole refusal token, which is what it carried when this
+    /// refusal still arrived as <see cref="RejectedToken"/>, so a
+    /// <see cref="KhaozEngine.Catalog.Netcode.ContentRefusal"/> parse over it keeps working. Distinct from
+    /// <see cref="ContentMismatch"/>, which is the opaque identity layer. Not retried, not even with
+    /// <see cref="WorldClientConfig.RetryOnReject"/>: the same build keeps failing until its content changes. Show
+    /// "content out of date, please update".</summary>
+    ContentVersionMismatch,
+    /// <summary>The client stated a build below the served content version's minimum client build, and the catalog
+    /// content door refused it with <c>ke:content-client-too-old:</c> ahead of the version check.
+    /// <see cref="WorldClient.MinimumClientBuild"/> carries the build it has to reach, and
+    /// <see cref="WorldClient.DisconnectReasonDetail"/> the whole refusal token, as it did under
+    /// <see cref="RejectedToken"/>. Not retried, not even with <see cref="WorldClientConfig.RetryOnReject"/>: only an
+    /// update clears it. Show "client out of date, please update".</summary>
+    ContentClientTooOld,
 }

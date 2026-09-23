@@ -12,6 +12,7 @@ internal sealed partial class TargetOutlineRenderer
     readonly IGpuShaderSet _skinnedVisibleShaders;
     readonly TargetOutlineSkinningStore _skinning;
     readonly List<Matrix4x4> _gpuPaletteBones = new();
+    readonly List<ModelVertex> _cpuVertices = new();
     int _nextGpuPaletteSlot;
     int _groupPaletteSlotStart;
 
@@ -38,31 +39,72 @@ internal sealed partial class TargetOutlineRenderer
             poseStart, composedBones.Length));
     }
 
+    public void EnqueueSkinnedCpu(
+        ReadOnlySpan<SkinnedVertex> sourceVertices,
+        IGpuBuffer indexBuffer,
+        int indexCount,
+        GpuIndexFormat indexFormat,
+        IGpuResourceSet? materialSet,
+        ReadOnlySpan<Matrix4x4> composedBones,
+        int drawIndex,
+        Matrix4x4 world,
+        float alphaCutoff,
+        float dissolve,
+        bool dissolveComplement,
+        Vector3 renderOrigin)
+    {
+        int baseVertex = _cpuVertices.Count;
+        for (int i = 0; i < sourceVertices.Length; i++)
+            _cpuVertices.Add(SkinningMath.SkinVertex(sourceVertices[i], composedBones));
+        WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, dissolveComplement, renderOrigin);
+        _queue.Add(new QueuedDraw(QueuedGeometry.CpuSkinned, indexBuffer, indexBuffer, indexCount,
+            indexFormat, materialSet ?? _defaultMaterialSet, drawIndex, -1, baseVertex, 0, 0));
+    }
+
     void BeginSkinnedFrame()
     {
         _nextGpuPaletteSlot = 0;
         _groupPaletteSlotStart = 0;
         _gpuPaletteBones.Clear();
+        _cpuVertices.Clear();
     }
 
     void BeginSkinnedGroup()
     {
         _gpuPaletteBones.Clear();
+        _cpuVertices.Clear();
         _groupPaletteSlotStart = _nextGpuPaletteSlot;
     }
 
     void PrepareGpuPalette(IGpuCommandList commands)
     {
         int groupPaletteSlotCount = _nextGpuPaletteSlot - _groupPaletteSlotStart;
-        if (groupPaletteSlotCount == 0) return;
-        _skinning.EnsurePaletteCapacity(_nextGpuPaletteSlot);
-        Span<Matrix4x4> bones = CollectionsMarshal.AsSpan(_gpuPaletteBones);
-        foreach (QueuedDraw draw in _queue)
+        if (groupPaletteSlotCount > 0) _skinning.EnsurePaletteCapacity(_nextGpuPaletteSlot);
+        IGpuBuffer? cpuVertexBuffer = _cpuVertices.Count > 0
+            ? _skinning.EnsureCpuVertexCapacity(_cpuVertices.Count)
+            : null;
+
+        if (groupPaletteSlotCount > 0)
         {
-            if (draw.Geometry != QueuedGeometry.GpuSkinned) continue;
-            _skinning.PackPalette(draw.PaletteSlot, bones.Slice(draw.PoseStart, draw.PoseCount));
+            Span<Matrix4x4> bones = CollectionsMarshal.AsSpan(_gpuPaletteBones);
+            foreach (QueuedDraw draw in _queue)
+            {
+                if (draw.Geometry != QueuedGeometry.GpuSkinned) continue;
+                _skinning.PackPalette(draw.PaletteSlot, bones.Slice(draw.PoseStart, draw.PoseCount));
+            }
+            _skinning.UploadPalette(commands, _groupPaletteSlotStart, groupPaletteSlotCount);
         }
-        _skinning.UploadPalette(commands, _groupPaletteSlotStart, groupPaletteSlotCount);
+
+        if (cpuVertexBuffer is not null)
+        {
+            _skinning.UploadCpuVertices(commands, CollectionsMarshal.AsSpan(_cpuVertices));
+            for (int i = 0; i < _queue.Count; i++)
+            {
+                QueuedDraw draw = _queue[i];
+                if (draw.Geometry == QueuedGeometry.CpuSkinned)
+                    _queue[i] = draw with { VertexBuffer = cpuVertexBuffer };
+            }
+        }
     }
 
     void WriteDrawPayload(int drawIndex, Matrix4x4 world, float alphaCutoff,

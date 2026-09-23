@@ -34,6 +34,107 @@ public sealed class SkinnedTargetOutlineRendererTests
     }
 
     [Fact]
+    public void Cpu_outline_records_with_zero_ordinary_skinned_instances()
+    {
+        using var h = new Harness();
+        SkinnedGltfMesh tube = Tube();
+        SkinnedMeshHandle mesh = h.Scene.LoadSkinnedMesh(tube);
+        h.Scene.UseGpuSkinning = false;
+
+        FrameRecord frame = h.Record(scene =>
+        {
+            MeshOutlineGroup group = scene.BeginMeshOutline(Color.White, 1.25f);
+            scene.DrawSkinnedOutline(group, mesh, tube.RestPose, Matrix4x4.Identity);
+            Assert.Equal(0, scene.SkinnedInstanceCount);
+        });
+
+        Assert.Equal(0, h.Scene.SkinnedInstanceCount);
+        Assert.Equal(2, frame.OutlineMaskDraws.Count);
+        Assert.All(frame.OutlineMaskDraws, draw => Assert.True(IsRigidMask(draw)));
+        Assert.Single(CpuVertexUploads(frame, tube.Vertices.Length));
+    }
+
+    [Fact]
+    public void Cpu_parts_share_one_vertex_upload_and_advance_base_vertex_offsets()
+    {
+        using var h = new Harness();
+        SkinnedGltfMesh tube = Tube();
+        SkinnedMeshHandle mesh = h.Scene.LoadSkinnedMesh(tube);
+        h.Scene.UseGpuSkinning = false;
+
+        FrameRecord frame = h.Record(scene =>
+        {
+            MeshOutlineGroup group = scene.BeginMeshOutline(Color.White, 1.25f);
+            scene.DrawSkinnedOutline(group, mesh, tube.RestPose, Matrix4x4.Identity);
+            scene.DrawSkinnedOutline(group, mesh, tube.RestPose, Matrix4x4.CreateTranslation(1f, 0f, 0f));
+        });
+
+        int vertexCount = tube.Vertices.Length;
+        Assert.Equal(new[] { 0, vertexCount, 0, vertexCount },
+            frame.OutlineMaskDraws.Select(draw => draw.VertexOffset).ToArray());
+        Assert.Single(CpuVertexUploads(frame, vertexCount * 2));
+        Assert.Single(frame.OutlineMaskDraws.Select(draw => draw.VertexBuffer).Distinct());
+    }
+
+    [Fact]
+    public void Cpu_and_gpu_paths_read_the_same_outline_pose_snapshot()
+    {
+        SkinnedGltfMesh tube = Tube();
+        Matrix4x4[] pose = BentPose(tube, 0.42f);
+        using var gpu = new Harness();
+        SkinnedMeshHandle gpuMesh = gpu.Scene.LoadSkinnedMesh(tube);
+        FrameRecord gpuFrame = gpu.Record(scene =>
+        {
+            MeshOutlineGroup group = scene.BeginMeshOutline(Color.White, 1.25f);
+            scene.DrawSkinnedOutline(group, gpuMesh, pose, Matrix4x4.Identity);
+        });
+        RecordingGpuCommandList.Upload paletteUpload = Assert.Single(gpuFrame.Uploads,
+            upload => upload.Bytes == TargetOutlineSkinningStore.PaletteSlotBytes);
+
+        using var cpu = new Harness();
+        SkinnedMeshHandle cpuMesh = cpu.Scene.LoadSkinnedMesh(tube);
+        FrameRecord cpuFrame = cpu.Record(scene =>
+        {
+            MeshOutlineGroup group = scene.BeginMeshOutline(Color.White, 1.25f);
+            scene.DrawSkinnedOutline(group, cpuMesh, pose, Matrix4x4.Identity);
+            scene.UseGpuSkinning = false;
+        });
+        RecordingGpuCommandList.Upload cpuUpload = Assert.Single(CpuVertexUploads(cpuFrame, tube.Vertices.Length));
+
+        ReadOnlySpan<Matrix4x4> palette = MemoryMarshal.Cast<byte, Matrix4x4>(paletteUpload.Data!)
+            .Slice(0, tube.BoneCount);
+        ModelVertex[] expected = Skin(tube.Vertices, palette);
+        ModelVertex[] actual = MemoryMarshal.Cast<byte, ModelVertex>(cpuUpload.Data!).ToArray();
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void Outline_pose_is_separate_from_the_ordinary_pose_for_the_same_handle()
+    {
+        using var h = new Harness();
+        SkinnedGltfMesh tube = Tube();
+        SkinnedMeshHandle mesh = h.Scene.LoadSkinnedMesh(tube);
+        Matrix4x4[] ordinaryPose = (Matrix4x4[])tube.RestPose.Clone();
+        Matrix4x4[] outlinePose = BentPose(tube, 0.55f);
+        h.Scene.UseGpuSkinning = false;
+
+        FrameRecord frame = h.Record(scene =>
+        {
+            scene.DrawSkinned(mesh, ordinaryPose, Matrix4x4.Identity, Color.White);
+            MeshOutlineGroup group = scene.BeginMeshOutline(Color.White, 1.25f);
+            scene.DrawSkinnedOutline(group, mesh, outlinePose, Matrix4x4.Identity);
+        });
+
+        RecordingGpuCommandList.Upload[] uploads = CpuVertexUploads(frame, tube.Vertices.Length);
+        Assert.Equal(2, uploads.Length);
+        ModelVertex[] ordinary = MemoryMarshal.Cast<byte, ModelVertex>(uploads[0].Data!).ToArray();
+        ModelVertex[] outline = MemoryMarshal.Cast<byte, ModelVertex>(uploads[1].Data!).ToArray();
+        Assert.Equal(Skin(tube.Vertices, Compose(tube, ordinaryPose)), ordinary);
+        Assert.Equal(Skin(tube.Vertices, Compose(tube, outlinePose)), outline);
+        Assert.False(ordinary.AsSpan().SequenceEqual(outline));
+    }
+
+    [Fact]
     public void Gpu_palette_slots_advance_by_TargetOutlineSkinningStore_PaletteSlotBytes()
     {
         using var h = new Harness();
@@ -201,6 +302,93 @@ public sealed class SkinnedTargetOutlineRendererTests
         Assert.Equal(2, frame.OutlineMaskDraws.Count);
     }
 
+    [Fact]
+    public void Gpu_palette_growth_failure_keeps_the_old_capacity_and_aborts_before_composite()
+    {
+        using var h = new Harness();
+        SkinnedGltfMesh tube = Tube();
+        SkinnedMeshHandle mesh = h.Scene.LoadSkinnedMesh(tube);
+        MeshHandle rigid = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
+        WarmRigidCapacity(h, rigid, 5);
+        FrameRecord small = h.Record(scene => SubmitSkinnedParts(scene, mesh, tube.RestPose, 1));
+        FakeBuffer oldBuffer = Assert.Single(small.NewBuffers,
+            buffer => buffer.SizeInBytes == 4 * TargetOutlineSkinningStore.PaletteSlotBytes);
+        FakeResourceSet oldSet = FindSet(h.Factory, oldBuffer);
+        h.Factory.ThrowOnResourceSetCreate = h.Factory.ResourceSets.Count + 1;
+
+        FrameRecord failed = h.RecordFailure(scene => SubmitSkinnedParts(scene, mesh, tube.RestPose, 5));
+
+        Assert.IsType<InvalidOperationException>(failed.Failure);
+        AssertFailedBeforeMask(failed);
+        Assert.False(oldBuffer.Disposed);
+        Assert.False(oldSet.Disposed);
+        Assert.True(failed.NewBuffers[^1].Disposed);
+        h.Factory.ThrowOnResourceSetCreate = 0;
+        Assert.Equal(2, h.Record(scene => SubmitSkinnedParts(scene, mesh, tube.RestPose, 1)).OutlineMaskDraws.Count);
+        h.Record(scene => SubmitSkinnedParts(scene, mesh, tube.RestPose, 5));
+        Assert.False(oldBuffer.Disposed);
+        Assert.False(oldSet.Disposed);
+    }
+
+    [Fact]
+    public void Cpu_vertex_growth_failure_keeps_the_old_capacity_and_aborts_before_composite()
+    {
+        using var h = new Harness();
+        SkinnedGltfMesh tube = Tube();
+        SkinnedMeshHandle mesh = h.Scene.LoadSkinnedMesh(tube);
+        MeshHandle rigid = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
+        int growthParts = 256 / tube.Vertices.Length + 1;
+        WarmRigidCapacity(h, rigid, growthParts);
+        h.Scene.UseGpuSkinning = false;
+        FrameRecord small = h.Record(scene => SubmitSkinnedParts(scene, mesh, tube.RestPose, 1));
+        FakeBuffer oldBuffer = Assert.Single(small.NewBuffers,
+            buffer => buffer.SizeInBytes == 256 * ModelVertex.SizeInBytes);
+        h.Factory.ThrowOnBufferCreate = h.Factory.Buffers.Count + 1;
+
+        FrameRecord failed = h.RecordFailure(
+            scene => SubmitSkinnedParts(scene, mesh, tube.RestPose, growthParts));
+
+        Assert.IsType<InvalidOperationException>(failed.Failure);
+        AssertFailedBeforeMask(failed);
+        Assert.False(oldBuffer.Disposed);
+        h.Factory.ThrowOnBufferCreate = 0;
+        Assert.Equal(2, h.Record(scene => SubmitSkinnedParts(scene, mesh, tube.RestPose, 1)).OutlineMaskDraws.Count);
+        h.Record(scene => SubmitSkinnedParts(scene, mesh, tube.RestPose, growthParts));
+        Assert.False(oldBuffer.Disposed);
+    }
+
+    [Fact]
+    public void Grown_resources_stay_alive_until_renderer_disposal()
+    {
+        var h = new Harness();
+        SkinnedGltfMesh tube = Tube();
+        SkinnedMeshHandle mesh = h.Scene.LoadSkinnedMesh(tube);
+        MeshHandle rigid = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
+        int cpuGrowthParts = 256 / tube.Vertices.Length + 1;
+        WarmRigidCapacity(h, rigid, Math.Max(5, cpuGrowthParts));
+        FrameRecord gpuSmall = h.Record(scene => SubmitSkinnedParts(scene, mesh, tube.RestPose, 1));
+        FakeBuffer oldPalette = Assert.Single(gpuSmall.NewBuffers,
+            buffer => buffer.SizeInBytes == 4 * TargetOutlineSkinningStore.PaletteSlotBytes);
+        FakeResourceSet oldPaletteSet = FindSet(h.Factory, oldPalette);
+        h.Scene.UseGpuSkinning = false;
+        FrameRecord cpuSmall = h.Record(scene => SubmitSkinnedParts(scene, mesh, tube.RestPose, 1));
+        FakeBuffer oldCpu = Assert.Single(cpuSmall.NewBuffers,
+            buffer => buffer.SizeInBytes == 256 * ModelVertex.SizeInBytes);
+
+        h.Scene.UseGpuSkinning = true;
+        h.Record(scene => SubmitSkinnedParts(scene, mesh, tube.RestPose, 5));
+        h.Scene.UseGpuSkinning = false;
+        h.Record(scene => SubmitSkinnedParts(scene, mesh, tube.RestPose, cpuGrowthParts));
+
+        Assert.False(oldPalette.Disposed);
+        Assert.False(oldPaletteSet.Disposed);
+        Assert.False(oldCpu.Disposed);
+        h.Dispose();
+        Assert.True(oldPalette.Disposed);
+        Assert.True(oldPaletteSet.Disposed);
+        Assert.True(oldCpu.Disposed);
+    }
+
     static void AssertNoOutlineWork(FrameRecord frame)
     {
         foreach (GpuCommandKind kind in new[]
@@ -215,6 +403,23 @@ public sealed class SkinnedTargetOutlineRendererTests
             Assert.Equal(0, frame.Delta(kind));
         Assert.Equal(frame.BaselineDrawCalls, frame.DrawCalls);
     }
+
+    static void AssertFailedBeforeMask(FrameRecord frame)
+    {
+        Assert.Empty(frame.OutlineMaskDraws);
+        foreach (GpuCommandKind kind in new[]
+        {
+            GpuCommandKind.ClearColorTarget,
+            GpuCommandKind.ClearDepthStencil,
+            GpuCommandKind.SetFramebuffer,
+            GpuCommandKind.DrawIndexed,
+            GpuCommandKind.Draw,
+        })
+            Assert.Equal(0, frame.Delta(kind));
+    }
+
+    static bool IsRigidMask(RecordingGpuCommandList.IndexedDraw draw) =>
+        IsRigidFull(draw) || IsRigidVisible(draw);
 
     static bool IsRigidFull(RecordingGpuCommandList.IndexedDraw draw) => IsPipeline(draw,
         ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineFullMaskFrag);
@@ -237,6 +442,53 @@ public sealed class SkinnedTargetOutlineRendererTests
     static SkinnedGltfMesh Tube() =>
         SkinnedMeshBuilder.BuildTube(0.25f, 2f, 4, 6, 3, Axis.Z);
 
+    static Matrix4x4[] BentPose(SkinnedGltfMesh tube, float radians)
+    {
+        Matrix4x4[] pose = (Matrix4x4[])tube.RestPose.Clone();
+        pose[1] = Matrix4x4.CreateRotationX(radians) * pose[1];
+        return pose;
+    }
+
+    static Matrix4x4[] Compose(SkinnedGltfMesh tube, ReadOnlySpan<Matrix4x4> pose)
+    {
+        var composed = new Matrix4x4[tube.BoneCount];
+        for (int i = 0; i < composed.Length; i++)
+            composed[i] = SkinningMath.Compose(pose[i], tube.InverseBind[i]);
+        return composed;
+    }
+
+    static ModelVertex[] Skin(ReadOnlySpan<SkinnedVertex> source, ReadOnlySpan<Matrix4x4> palette)
+    {
+        var vertices = new ModelVertex[source.Length];
+        for (int i = 0; i < vertices.Length; i++) vertices[i] = SkinningMath.SkinVertex(source[i], palette);
+        return vertices;
+    }
+
+    static RecordingGpuCommandList.Upload[] CpuVertexUploads(FrameRecord frame, int vertexCount) =>
+        frame.Uploads.Where(upload => upload.Bytes == vertexCount * ModelVertex.SizeInBytes).ToArray();
+
+    static void SubmitSkinnedParts(Scene3D scene, SkinnedMeshHandle mesh,
+        ReadOnlySpan<Matrix4x4> pose, int count)
+    {
+        MeshOutlineGroup group = scene.BeginMeshOutline(Color.White, 1.25f);
+        for (int i = 0; i < count; i++)
+            scene.DrawSkinnedOutline(group, mesh, pose, Matrix4x4.CreateTranslation(i, 0f, 0f));
+    }
+
+    static void WarmRigidCapacity(Harness h, MeshHandle rigid, int count)
+    {
+        h.Record(scene =>
+        {
+            MeshOutlineGroup group = scene.BeginMeshOutline(Color.White, 1.25f);
+            for (int i = 0; i < count; i++)
+                scene.DrawMeshOutline(group, rigid, Matrix4x4.CreateTranslation(i, 0f, 0f));
+        });
+    }
+
+    static FakeResourceSet FindSet(FakeGpuResourceFactory factory, IGpuBuffer buffer) =>
+        Assert.Single(factory.ResourceSets, set => set.Resources.Any(resource =>
+            resource is GpuBufferRange range && ReferenceEquals(range.Buffer, buffer)));
+
     sealed class Harness : IDisposable
     {
         readonly FakeGpuDevice _device = new();
@@ -244,8 +496,10 @@ public sealed class SkinnedTargetOutlineRendererTests
         readonly FakeGpuResourceFactory _factory;
         readonly IGpuTexture _targetTexture;
         readonly IGpuFramebuffer _target;
+        bool _disposed;
 
         public Scene3D Scene { get; }
+        public FakeGpuResourceFactory Factory => _factory;
 
         public Harness()
         {
@@ -263,11 +517,17 @@ public sealed class SkinnedTargetOutlineRendererTests
 
         public FrameRecord Record(Action<Scene3D> submit)
         {
-            FrameRecord baseline = RecordOne(null, null);
-            return RecordOne(submit, baseline);
+            FrameRecord baseline = RecordOne(null, null, captureFailure: false);
+            return RecordOne(submit, baseline, captureFailure: false);
         }
 
-        FrameRecord RecordOne(Action<Scene3D>? submit, FrameRecord? baseline)
+        public FrameRecord RecordFailure(Action<Scene3D> submit)
+        {
+            FrameRecord baseline = RecordOne(null, null, captureFailure: false);
+            return RecordOne(submit, baseline, captureFailure: true);
+        }
+
+        FrameRecord RecordOne(Action<Scene3D>? submit, FrameRecord? baseline, bool captureFailure)
         {
             int bufferStart = _factory.Buffers.Count;
             Scene.Begin();
@@ -280,7 +540,16 @@ public sealed class SkinnedTargetOutlineRendererTests
             using var tally = new CommandTallyGpuCommandList(recording);
             using var binds = new ResourceSetCaptureCommandList(tally);
             Scene.PrepareFrame();
-            Scene.RenderInternal(binds, 32, 24, _target);
+            Exception? failure = null;
+            try
+            {
+                Scene.RenderInternal(binds, 32, 24, _target);
+            }
+            catch (Exception ex)
+            {
+                if (!captureFailure) throw;
+                failure = ex;
+            }
             var maskDraws = recording.IndexedDraws.Where(IsOutlineMask).ToArray();
             uint[] paletteOffsets = binds.Binds.Where(bind => bind.Slot == 2 && bind.Pipeline is FakePipeline
             {
@@ -290,13 +559,15 @@ public sealed class SkinnedTargetOutlineRendererTests
             return new FrameRecord(tally.Tally, baseline?.Tally ?? new GpuCommandTally(),
                 recording.Uploads.ToArray(), recording.Reads.ToArray(), maskDraws, paletteOffsets,
                 _factory.Buffers.Skip(bufferStart).ToArray(), Scene.LastFrameStats.DrawCalls,
-                baseline?.DrawCalls ?? 0);
+                baseline?.DrawCalls ?? 0, failure);
         }
 
         public bool IsUniform(IGpuBuffer buffer) => _tracker.IsUniform(buffer);
 
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
             Scene.Dispose();
             _target.Dispose();
             _targetTexture.Dispose();
@@ -314,7 +585,8 @@ public sealed class SkinnedTargetOutlineRendererTests
         uint[] SkinnedPaletteOffsets,
         FakeBuffer[] NewBuffers,
         int DrawCalls,
-        int BaselineDrawCalls)
+        int BaselineDrawCalls,
+        Exception? Failure)
     {
         public int Delta(GpuCommandKind kind) => Tally[kind] - BaselineTally[kind];
     }

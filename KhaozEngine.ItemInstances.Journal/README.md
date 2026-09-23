@@ -199,6 +199,8 @@ members, three of which write (`SetSlotAt`, `TakeSlotAt`, `MarkClean`), and no p
 `IPagedContainerWorkingCopy`, it holds only what the host lets it: a host that shares its containers copy on
 write runs its ownership check inside the three writes and serves every read from the shared view, so opening
 a batch, measuring it and a refused `Apply` copy nothing, and the first joined write copies once.
+`MarkCommitted` calls `MarkClean` only on a container holding a dirty page, after its commit landed, so a
+stream holding `bag` and `bank` where a click touched only `bag` never asks the bank to take ownership.
 
 ```csharp
 var batch = ContainerCommitBuilder.Open(

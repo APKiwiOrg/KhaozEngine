@@ -39,7 +39,9 @@ namespace KhaozEngine.ItemInstances.Journal;
 /// <see cref="IPagedContainerWorkingCopy"/> and nothing wider, so a host that shares its containers copy on
 /// write opens the batch over its own implementation, runs its ownership check inside the three write
 /// members, and keeps every read shared
-/// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1045">#1045</see>).
+/// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1045">#1045</see>). <see cref="MarkCommitted"/>
+/// calls <c>MarkClean</c> only on a container holding a dirty page, so a container the batch left clean is
+/// never written at all.
 /// </para>
 /// <para>
 /// Nothing here is thread safe, exactly like the containers it edits: one owner, one tick, one batch.
@@ -319,13 +321,20 @@ public sealed partial class ContainerCommitBuilder
     }
 
     /// <summary>
-    /// Clears every page's dirty flag, which the batch owes them once its commit has LANDED. Nothing calls it
-    /// for you: a commit that failed terminally leaves the pages dirty on purpose, so the next ordinary commit
-    /// carries them again and the consumer's resync has something to agree with.
+    /// Clears every page's dirty flag, which the batch owes them once its commit has LANDED. It calls
+    /// <see cref="IPagedContainerWorkingCopy.MarkClean"/> on each container holding a dirty page and on no
+    /// other, because the call is a write: a copy on write host takes ownership in it, and a bank the batch
+    /// never dirtied would be copied to clear flags it never had. Nothing calls it for you: a commit that failed
+    /// terminally leaves the pages dirty on purpose, so the next ordinary commit carries them again and the
+    /// consumer's resync has something to agree with.
     /// </summary>
     public void MarkCommitted()
     {
-        foreach (string name in _names) _containers[name].MarkClean();
+        foreach (string name in _names)
+        {
+            IPagedContainerWorkingCopy container = _containers[name];
+            if (DirtyPageCount(container) != 0) container.MarkClean();
+        }
     }
 
     /// <summary>

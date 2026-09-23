@@ -22,52 +22,68 @@ public sealed class ContainerCommitWorkingCopyTests
 {
     const int PageSlots = ItemContainerPageCodec.ContainerPageSlots;
 
-    /// <summary>A working copy that records every write before forwarding it to the container only it holds.</summary>
+    /// <summary>A working copy that records every member it is reached through, and every write, BEFORE
+    /// forwarding to the container only it holds, so a member that throws is still on the record.</summary>
     sealed class RecordingWorkingCopy(PagedItemContainer inner) : IPagedContainerWorkingCopy
     {
         public List<string> Writes { get; } = new();
+
+        /// <summary>Every member reached, by name and in order, reads and writes alike.</summary>
+        public List<string> Reached { get; } = new();
 
         public int Reads { get; private set; }
 
         public PagedItemContainer Inner => inner;
 
-        public int PageCount => Read(inner.PageCount);
+        public int PageCount => Read(nameof(PageCount), () => inner.PageCount);
 
-        public Func<int, bool> Stackable => Read(inner.Stackable);
+        public Func<int, bool> Stackable => Read(nameof(Stackable), () => inner.Stackable);
 
-        public bool IsAtCapacity => Read(inner.IsAtCapacity);
+        public bool IsAtCapacity => Read(nameof(IsAtCapacity), () => inner.IsAtCapacity);
 
-        public ItemSlot SlotAt(int containerSlot) => Read(inner.SlotAt(containerSlot));
+        public ItemSlot SlotAt(int containerSlot) => Read(nameof(SlotAt), () => inner.SlotAt(containerSlot));
 
         public bool SetSlotAt(int containerSlot, ItemSlot value)
         {
-            Writes.Add(FormattableString.Invariant($"set {containerSlot}"));
+            Write(nameof(SetSlotAt), FormattableString.Invariant($"set {containerSlot}"));
             return inner.SetSlotAt(containerSlot, value);
         }
 
         public ItemSlot TakeSlotAt(int containerSlot)
         {
-            Writes.Add(FormattableString.Invariant($"take {containerSlot}"));
+            Write(nameof(TakeSlotAt), FormattableString.Invariant($"take {containerSlot}"));
             return inner.TakeSlotAt(containerSlot);
         }
 
-        public bool IsPageDirty(int pageIndex) => Read(inner.Pages[pageIndex].IsDirty);
+        public bool IsPageDirty(int pageIndex) => Read(nameof(IsPageDirty), () => inner.Pages[pageIndex].IsDirty);
 
-        public int PageContentVersion(int pageIndex) => Read(inner.Pages[pageIndex].ContentVersion);
+        public int PageContentVersion(int pageIndex) =>
+            Read(nameof(PageContentVersion), () => inner.Pages[pageIndex].ContentVersion);
 
-        public int CopyPageEntriesTo(int pageIndex, Span<PageSlotInput> destination) =>
-            Read(inner.Pages[pageIndex].CopyEntriesTo(destination));
+        public int CopyPageEntriesTo(int pageIndex, Span<PageSlotInput> destination)
+        {
+            Reached.Add(nameof(CopyPageEntriesTo));
+            Reads++;
+            return inner.Pages[pageIndex].CopyEntriesTo(destination);
+        }
 
         public void MarkClean()
         {
-            Writes.Add("mark-clean");
+            Write(nameof(MarkClean), "mark-clean");
             inner.MarkClean();
         }
 
-        T Read<T>(T value)
+        T Read<T>(string member, Func<T> read)
         {
+            Reached.Add(member);
             Reads++;
-            return value;
+            return read();
+        }
+
+        void Write(string member, string write)
+        {
+            Reached.Add(member);
+            Writes.Add(write);
         }
     }
 
@@ -81,6 +97,9 @@ public sealed class ContainerCommitWorkingCopyTests
         PagedItemContainer? _own;
 
         public int Copies { get; private set; }
+
+        /// <summary>How many times <see cref="MarkClean"/> was called, which is a write and so takes ownership.</summary>
+        public int Cleans { get; private set; }
 
         public PagedItemContainer Current => _own ?? shared;
 
@@ -103,7 +122,11 @@ public sealed class ContainerCommitWorkingCopyTests
         public int CopyPageEntriesTo(int pageIndex, Span<PageSlotInput> destination) =>
             Current.Pages[pageIndex].CopyEntriesTo(destination);
 
-        public void MarkClean() => Own().MarkClean();
+        public void MarkClean()
+        {
+            Cleans++;
+            Own().MarkClean();
+        }
 
         PagedItemContainer Own()
         {
@@ -194,10 +217,15 @@ public sealed class ContainerCommitWorkingCopyTests
         Assert.False(batch.Apply(ContainerOperation.Take(Bank, 6, 1), tick: 5));
         Assert.Equal(ContainerBatchCloseReason.TickBoundary, batch.Window.CloseReason);
 
-        // A slot outside the address space is refused by the builder's own range check before any write.
+        // A slot outside the address space is refused by the builder's own range check before the working copy
+        // is reached with it. The double's own page read throws the same exception type, so the exception
+        // alone proves nothing: what proves the check is that nothing but PageCount, the check's own read, was
+        // reached at all.
         ContainerCommitBuilder second = OpenOver(recording);
+        recording.Reached.Clear();
         Assert.Throws<ArgumentOutOfRangeException>(() => second.Apply(ContainerOperation.Take(Bank, 2 * PageSlots, 1)));
         Assert.True(second.Window.IsOpen);
+        Assert.All(recording.Reached, member => Assert.Equal(nameof(IPagedContainerWorkingCopy.PageCount), member));
 
         Assert.Empty(recording.Writes);
     }
@@ -235,5 +263,46 @@ public sealed class ContainerCommitWorkingCopyTests
         ContainerCommitBuilder direct = OpenBank(plain);
         ApplyWork(direct);
         Assert.Equal(Fingerprint(direct.Close(Mint(ServerId))), Fingerprint(commit));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_container_the_batch_never_dirtied_is_never_copied_or_cleaned(bool takeParts)
+    {
+        // A stream holding a bag and a bank, and a click that touches only the bag. MarkClean is a write, so a
+        // copy on write host takes ownership in it, and a batch that cleaned every container it was opened
+        // over deep copied the bank on every commit to clear flags it never set.
+        var bag = new CopyOnWriteWorkingCopy(SeededBank());
+        var bank = new CopyOnWriteWorkingCopy(SeededBank());
+        ContainerCommitBuilder batch = ContainerCommitBuilder.Open(
+            StreamKey,
+            ItemInstanceEvents.CraftActionKind,
+            Scope,
+            new Dictionary<string, IPagedContainerWorkingCopy> { [Bag] = bag, [Bank] = bank },
+            tick: 4);
+        AssertUntouched(bank);
+
+        Assert.True(batch.Apply(ContainerOperation.Take(Bag, 6, 9)));
+        Assert.Equal(1, bag.Copies);
+        AssertUntouched(bank);
+
+        IReadOnlyList<JournalProjectionWrite> writes;
+        if (takeParts) Assert.True(batch.TryBuildParts(out _, out writes));
+        else writes = batch.Close(Mint(ServerId)).ProjectionWrites;
+        Assert.Equal(ContainerSectionNames.Format(Bag, 0), Assert.Single(writes).SectionName);
+        AssertUntouched(bank);
+
+        batch.MarkCommitted();
+        AssertUntouched(bank);
+        Assert.Equal(1, bag.Copies);
+        Assert.Equal(1, bag.Cleans);
+        Assert.Equal(0, bag.Current.DirtyPageCount);
+    }
+
+    static void AssertUntouched(CopyOnWriteWorkingCopy copy)
+    {
+        Assert.Equal(0, copy.Copies);
+        Assert.Equal(0, copy.Cleans);
     }
 }

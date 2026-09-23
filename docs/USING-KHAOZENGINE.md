@@ -15982,7 +15982,8 @@ reference and writes through it on every `Apply`, through `IPagedContainerWorkin
 overload above hands it the `PagedItemContainer`s themselves. If you share containers copy on write, open over
 your own implementation instead, a `Dictionary<string, IPagedContainerWorkingCopy>`, and run your ownership
 check inside its three writes (`SetSlotAt`, `TakeSlotAt`, `MarkClean`). No page object crosses it, so every
-read stays shared and a batch copies only on the first write that joins.
+read stays shared and a batch copies only on the first write that joins. `MarkCommitted` calls `MarkClean`
+only on a container holding a dirty page, so a container the batch left clean is never copied.
 
 Whose identity it is decides what the normalized intent holds. A SERVER minted batch hashes the canonical
 ordered operation list. A CLIENT headed batch hashes the client operation's own encoding ALONE, under the

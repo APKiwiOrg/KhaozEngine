@@ -27,6 +27,11 @@ namespace KhaozEngine.ItemInstances;
 /// container slots over the address space <c>PageCount * ContainerPageSlots</c>, a write dirties a page only
 /// when it changed what the page stores, and <see cref="MarkClean"/> clears every page.
 /// </para>
+/// <para>
+/// <b><see cref="MarkClean"/> is called only on a container holding a dirty page, and only after the commit
+/// carrying that page has landed.</b> A builder opened over a bag and a bank where a click touched only the bag
+/// never calls it on the bank, so a host that takes ownership in it copies only what a commit wrote.
+/// </para>
 /// </summary>
 public interface IPagedContainerWorkingCopy
 {
@@ -66,6 +71,7 @@ public interface IPagedContainerWorkingCopy
     /// <param name="destination">At least <see cref="ItemContainerPageCodec.ContainerPageSlots"/> long.</param>
     int CopyPageEntriesTo(int pageIndex, Span<PageSlotInput> destination);
 
-    /// <summary>Clears every page's dirty flag, which a builder owes once the commit carrying them has landed.</summary>
+    /// <summary>Clears every page's dirty flag, which a builder owes once the commit carrying them has landed. A
+    /// builder calls it only when at least one page is dirty.</summary>
     void MarkClean();
 }

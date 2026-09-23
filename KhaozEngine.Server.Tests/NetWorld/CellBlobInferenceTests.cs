@@ -82,8 +82,6 @@ public class CellBlobInferenceTests
         {
             VerticalVelocity = -3.25f,
             Grounded = true,
-            TimeSinceGrounded = 1.5f,
-            JumpBufferRemaining = 0.25f,
             Swimming = false,
             TeleportEpoch = 77u,
             ClimbRateQ = 9,
@@ -98,7 +96,7 @@ public class CellBlobInferenceTests
         return new CellBlobFixtures.BodyBuilder()
             .Entity(1,
                 (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(8, Pos)),
-                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(8, seeded)),
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(8, seeded, V2Owner)),
                 (TrinketId, ExtensionFrame(payload)))
             .ToBody();
     }
@@ -117,8 +115,6 @@ public class CellBlobInferenceTests
         {
             VerticalVelocity = 2f,
             Grounded = false,
-            TimeSinceGrounded = 0.5f,
-            JumpBufferRemaining = 0f,
             Swimming = true,
             TeleportEpoch = 3u,
             ClimbRateQ = -1,
@@ -135,17 +131,20 @@ public class CellBlobInferenceTests
 
         return new CellBlobFixtures.BodyBuilder()
             .Entity(11,
-                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(10, seeded)),
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(10, seeded, V3Owner)),
                 (BulkyId, ExtensionFrame(extensionPayload)))
             .ToBody();
     }
+
+    // The feel timers the two adversarial bodies stored inside their movement payloads. They come back on the
+    // MovementOwnerState frame the rewrite splits them into.
+    private static readonly MovementOwnerState V2Owner = new() { TimeSinceGrounded = 1.5f, JumpBufferRemaining = 0.25f };
+    private static readonly MovementOwnerState V3Owner = new() { TimeSinceGrounded = 0.5f, JumpBufferRemaining = 0f };
 
     private static void AssertMovement(MovementState expected, MovementState actual)
     {
         Assert.Equal(expected.VerticalVelocity, actual.VerticalVelocity);
         Assert.Equal(expected.Grounded, actual.Grounded);
-        Assert.Equal(expected.TimeSinceGrounded, actual.TimeSinceGrounded);
-        Assert.Equal(expected.JumpBufferRemaining, actual.JumpBufferRemaining);
         Assert.Equal(expected.Swimming, actual.Swimming);
         Assert.Equal(expected.TeleportEpoch, actual.TeleportEpoch);
         Assert.Equal(expected.ClimbRateQ, actual.ClimbRateQ);
@@ -177,6 +176,7 @@ public class CellBlobInferenceTests
         MovementState expected = seeded;
         expected.FacingYawQ = 0;   // generation 8 predates the field, so it restores at its default
         AssertMovement(expected, world.Get<MovementState>(e));
+        Assert.Equal(V2Owner, world.Get<MovementOwnerState>(e));
         Assert.Equal(Pos, world.Get<ReplicatedPosition>(e).Value);
         Assert.Equal(trinket.A, world.Get<Trinket>(e).A);
         Assert.Equal(trinket.B, world.Get<Trinket>(e).B);
@@ -226,6 +226,7 @@ public class CellBlobInferenceTests
         MovementState expected = seeded;
         expected.FacingYawQ = 0;   // generation 8 predates the field
         AssertMovement(expected, cell.World.Get<MovementState>(restored));
+        Assert.Equal(V2Owner, cell.World.Get<MovementOwnerState>(restored));
 
         // The same host, same bytes, with nothing offering a registry: back to the inference that cannot decide.
         var store2 = new InMemoryWorldStore();
@@ -256,6 +257,7 @@ public class CellBlobInferenceTests
             .Entity(11,
                 (MoveProtocol.MovementTypeId,
                     CellBlobFixtures.Movement(MoveProtocol.WireProtocolVersion, seeded)),
+                (MoveProtocol.MovementOwnerTypeId, CellBlobFixtures.MovementOwner(V3Owner)),
                 (BulkyId, ExtensionFrame(extensionPayload)))
             .ToBody();
         Assert.Equal(expected, normalized);
@@ -265,6 +267,7 @@ public class CellBlobInferenceTests
         view.Apply(world, normalized);
         Assert.True(view.TryGetEntity(11, out Entity e));
         AssertMovement(seeded, world.Get<MovementState>(e));
+        Assert.Equal(V3Owner, world.Get<MovementOwnerState>(e));
         Assert.Equal(extensionPayload, world.Get<Bulky>(e).Data);
     }
 
@@ -290,7 +293,7 @@ public class CellBlobInferenceTests
         byte[] ambiguous = new CellBlobFixtures.BodyBuilder()
             .Entity(21,
                 (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(3, Pos)),
-                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(3, Gen3Movement())),
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(3, Gen3Movement(), Gen3Owner)),
                 (MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity("Runner")))
             .ToBody();
         byte[] blob = CellBlobFixtures.Wrap(PositionFrameBlobMigration.AbsolutePositionSchemaVersion, 0, ambiguous);
@@ -340,6 +343,7 @@ public class CellBlobInferenceTests
         Assert.Equal(Gen3Movement().VerticalVelocity, m.VerticalVelocity);
         Assert.True(m.Swimming);
         Assert.Equal(0u, m.TeleportEpoch);   // generation 3 predates it
+        Assert.Equal(Gen3Owner, cell.World.Get<MovementOwnerState>(restored));   // split out of the stored payload
     }
 
     /// <summary>
@@ -355,7 +359,7 @@ public class CellBlobInferenceTests
         byte[] fromTheFuture = CellBlobFixtures.Wrap(WireGenerationBlobMigration.StampedSchemaVersion,
             MoveProtocol.WireProtocolVersion + 1,
             new CellBlobFixtures.BodyBuilder()
-                .Entity(31, (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(10, Gen3Movement())))
+                .Entity(31, (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(10, Gen3Movement(), Gen3Owner)))
                 .ToBody());
         var store = new InMemoryWorldStore();
         await store.SaveAsync("cell:0:0", fromTheFuture);
@@ -386,10 +390,10 @@ public class CellBlobInferenceTests
     {
         VerticalVelocity = -1.25f,
         Grounded = true,
-        TimeSinceGrounded = 0.5f,
-        JumpBufferRemaining = 0.75f,
         Swimming = true,
     };
+
+    private static readonly MovementOwnerState Gen3Owner = new() { TimeSinceGrounded = 0.5f, JumpBufferRemaining = 0.75f };
 
     /// <summary>
     /// The sweep, and the test that would have caught this before it shipped: two thousand bodies per schema range,
@@ -459,7 +463,8 @@ public class CellBlobInferenceTests
             if (rng.Next(4) != 0)
                 components.Add((MoveProtocol.PositionTypeId,
                     CellBlobFixtures.Position(generation, new Vector3(rng.Next(-64, 64), rng.Next(0, 32), rng.Next(-64, 64)))));
-            components.Add((MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(generation, CellBlobFixtures.RandomMovement(rng))));
+            (MovementState Movement, MovementOwnerState Owner) stored = CellBlobFixtures.RandomMovement(rng);
+            components.Add((MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(generation, stored)));
             if (rng.Next(3) == 0)
                 components.Add((MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity(RandomName(rng))));
             if (rng.Next(4) == 0)
@@ -467,6 +472,9 @@ public class CellBlobInferenceTests
                     Quaternion.Identity, new Vector3(rng.Next(-5, 5), 0f, rng.Next(-5, 5)), Vector3.Zero)));
             if (generation >= BuiltinBlobLayout.PickupWireGeneration && rng.Next(4) == 0)
                 components.Add((MoveProtocol.PickupTypeId, CellBlobFixtures.Pickup(rng.Next(1, 999), rng.Next(1, 99))));
+            // From the owner split the timers are a frame of their own, which every player carries.
+            if (generation >= BuiltinBlobLayout.MovementOwnerWireGeneration)
+                components.Add((MoveProtocol.MovementOwnerTypeId, CellBlobFixtures.MovementOwner(stored.Owner)));
             if (rng.Next(2) == 0)
             {
                 var payload = new byte[6];

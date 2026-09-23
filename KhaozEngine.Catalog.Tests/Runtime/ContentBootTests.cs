@@ -381,7 +381,8 @@ public class ContentBootTests
         using BootPack pack = await BootPack.CreateAsync();
 
         // The config pin wins ALWAYS, and the authoring database is not even read, which is the deployment
-        // this design recommends: a server with a pin and a pack store needs no authoring database at boot.
+        // this design recommends: a server with a pin, a pack store and no hash source needs no authoring
+        // database at boot.
         var ignored = new FakeVersionDirectory(pinned: 9, active: 9);
         Assert.True((await new BootHost().RunAsync(pack.Options(directory: ignored))).Success);
         Assert.Equal(0, ignored.PinnedReads);

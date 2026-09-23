@@ -24,16 +24,22 @@ internal static class CellBlobFixtures
 {
     /// <summary>
     /// What the movement codec wrote at <paramref name="generation"/>: the same fields in the same order, stopping
-    /// after the last one that generation had. Each line below is one wire generation's addition.
+    /// after the last one that generation had. Each line below is one wire generation's change. The two feel timers
+    /// in <paramref name="owner"/> sat in the movement payload until
+    /// <see cref="BuiltinBlobLayout.MovementOwnerWireGeneration"/>, and from there on they are a frame of their own
+    /// (<see cref="MovementOwner"/>), so they are written here only below it.
     /// </summary>
-    internal static byte[] Movement(int generation, MovementState m)
+    internal static byte[] Movement(int generation, MovementState m, MovementOwnerState owner = default)
     {
         using var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
         bw.Write(m.VerticalVelocity);                            // generation 1
         bw.Write(m.Grounded);                                    // generation 1
-        bw.Write(m.TimeSinceGrounded);                           // generation 1
-        bw.Write(m.JumpBufferRemaining);                         // generation 1
+        if (generation < BuiltinBlobLayout.MovementOwnerWireGeneration)
+        {
+            bw.Write(owner.TimeSinceGrounded);                   // generation 1, moved out in generation 12
+            bw.Write(owner.JumpBufferRemaining);                 // generation 1, moved out in generation 12
+        }
         if (generation >= 3) bw.Write(m.Swimming);               // generation 3: the surface-swim flag
         if (generation >= 4) bw.Write(m.TeleportEpoch);          // generation 4: the authoritative teleport epoch
         if (generation >= 5) bw.Write(m.ClimbRateQ);             // generation 5: the quantized step-climb rate
@@ -55,6 +61,18 @@ internal static class CellBlobFixtures
             bw.Write(m.Commitment.TimeoutRemaining);
             bw.Write((byte)m.Commitment.EndReason);
         }
+        bw.Flush();
+        return ms.ToArray();
+    }
+
+    /// <summary>What the owner-only movement codec writes, from wire generation
+    /// <see cref="BuiltinBlobLayout.MovementOwnerWireGeneration"/> on: the two feel timers.</summary>
+    internal static byte[] MovementOwner(MovementOwnerState owner)
+    {
+        using var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+        bw.Write(owner.TimeSinceGrounded);
+        bw.Write(owner.JumpBufferRemaining);
         bw.Flush();
         return ms.ToArray();
     }
@@ -134,22 +152,30 @@ internal static class CellBlobFixtures
     /// A movement payload filled adversarially rather than plausibly: the quantized shorts that sit at the END of the
     /// payload take any value in their range, including the ones that read as an extension type id and a frame length
     /// when a candidate generation under-reads the payload. That is the shape a mis-inference needs, so a sweep that
-    /// seeds tidy values never finds one.
+    /// seeds tidy values never finds one. The feel timers are drawn in the order the fields sat before the owner split,
+    /// so a seeded sweep produces the same stored bytes it always did.
     /// </summary>
-    internal static MovementState RandomMovement(Random rng) => new()
+    internal static (MovementState Movement, MovementOwnerState Owner) RandomMovement(Random rng)
     {
-        VerticalVelocity = (float)(rng.NextDouble() * 20 - 10),
-        Grounded = rng.Next(2) == 0,
-        TimeSinceGrounded = (float)rng.NextDouble(),
-        JumpBufferRemaining = (float)rng.NextDouble(),
-        Swimming = rng.Next(2) == 0,
-        TeleportEpoch = (uint)rng.Next(0, 1000),
-        ClimbRateQ = (sbyte)rng.Next(-128, 128),
-        SpeedScaleQ = (sbyte)rng.Next(-128, 128),
-        HorizontalVelocityXQ = (short)rng.Next(short.MinValue, short.MaxValue + 1),
-        HorizontalVelocityZQ = (short)rng.Next(short.MinValue, short.MaxValue + 1),
-        FacingYawQ = (short)rng.Next(short.MinValue, short.MaxValue + 1),
-    };
+        var m = new MovementState { VerticalVelocity = (float)(rng.NextDouble() * 20 - 10), Grounded = rng.Next(2) == 0 };
+        var owner = new MovementOwnerState
+        {
+            TimeSinceGrounded = (float)rng.NextDouble(),
+            JumpBufferRemaining = (float)rng.NextDouble(),
+        };
+        m.Swimming = rng.Next(2) == 0;
+        m.TeleportEpoch = (uint)rng.Next(0, 1000);
+        m.ClimbRateQ = (sbyte)rng.Next(-128, 128);
+        m.SpeedScaleQ = (sbyte)rng.Next(-128, 128);
+        m.HorizontalVelocityXQ = (short)rng.Next(short.MinValue, short.MaxValue + 1);
+        m.HorizontalVelocityZQ = (short)rng.Next(short.MinValue, short.MaxValue + 1);
+        m.FacingYawQ = (short)rng.Next(short.MinValue, short.MaxValue + 1);
+        return (m, owner);
+    }
+
+    /// <summary><see cref="Movement(int, MovementState, MovementOwnerState)"/> for a stored pair.</summary>
+    internal static byte[] Movement(int generation, (MovementState Movement, MovementOwnerState Owner) stored) =>
+        Movement(generation, stored.Movement, stored.Owner);
 
     /// <summary>Assembles a snapshot body: <c>[count][per entity: netId + (typeId, payload).. + 0]</c>. Entity ids are
     /// written 32-bit when the ctor's <c>netId32</c> is set (the pre-10.0.0 cell-blob schema v1 shape), 64-bit

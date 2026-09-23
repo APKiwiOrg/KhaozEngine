@@ -22,7 +22,8 @@ internal readonly record struct ScaleMeasurement(
 
 /// <summary>
 /// Budget 12 and the scale test of the spec's test plan row 5. Both are resident-memory questions, so
-/// both are a <c>GC.GetTotalMemory(true)</c> delta across a build that keeps every byte it produced.
+/// both are a <see cref="ResidentMemory.Read"/> delta across a build that keeps every byte it produced,
+/// with the <c>GC.GetTotalMemory(true)</c> delta beside it.
 /// </summary>
 internal static class ItemsMemoryMeasurements
 {

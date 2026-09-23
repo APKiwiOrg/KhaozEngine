@@ -88,6 +88,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Stat channels (`KhaozEngine.Stats`)](#stat-channels-khaozenginestats)
 - [Skill progression (`KhaozEngine.Skills`)](#skill-progression-khaozengineskills)
 - [Content catalog (`KhaozEngine.Catalog`)](#content-catalog-khaozenginecatalog)
+- [Shared game content types (`KhaozEngine.Catalog.GameTypes`)](#shared-game-content-types-khaozenginecataloggametypes)
 - [Item instances (`KhaozEngine.ItemInstances`)](#item-instances-khaozengineiteminstances)
 - [Commerce / wallet (`KhaozEngine.Commerce`)](#commerce-wallet-khaozenginecommerce)
 - [Identity / sign-in (`KhaozEngine.Identity`)](#identity-sign-in-khaozengineidentity)
@@ -1674,6 +1675,10 @@ cursor crosses the slot edge, which takes a drag's origin with it.
 **Do not reach for this to reorder rows inside one widget.** `TreeView` already does that, with insertion-line
 geometry and a same-parent constraint this primitive deliberately does not model. Same-widget ordinal reorder
 is `TreeView`, cross-widget payload transfer is `GuiDragContext`.
+
+`KhaozEngine.Showcase`'s drag-and-drop page (`DragDropPage.cs`) is the runnable reference: enter the "2D & GUI"
+room and open the "Drag & drop" tab to see the ghost, the reject wash on a refused slot, a destroy bin and the
+fly-home of a cancelled drop, all at the context's defaults.
 
 ### Right-click hit-testing (17.9.0)
 
@@ -14732,6 +14737,12 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   field schemas and the seven engine content types, the content-addressed `KECC`/`KECM`/`KECT`/`KECR` pack
   formats, the `IPackStore` seam with `FileSystemPackStore` and `ContentPackReader`, the `IContentSnapshot`
   read seam, and the pure `ContentValidator`. No third-party dependency at all (see "Content catalog" below).
+- **`KhaozEngine.Catalog.GameTypes`**: the thirteen game-shaped content types over that catalog, the shapes a
+  world with food, equipment, shops, drops, gathering, crafting, tools and tuning knobs authors anyway, as
+  stable ids in the game band, stable keys, ordered schemas and row codecs. A game declares its time unit
+  through `ContentDurationUnit` and the four duration fields take the matching name, with identical order,
+  kinds and codecs either way. No enum, no name, no roster and no balance number in it (see "Shared game
+  content types" below).
 - **`KhaozEngine.Commerce`**: server-authoritative currency wallet (`IWalletStore`, `Wallet`, entitlement
   redemption, `PeriodicGrant` built on `Progression`). Not in any umbrella; add explicitly. SQL backends are
   the opt-in `Commerce.Sqlite`/`Commerce.SqlServer` siblings (see "Commerce / wallet" below).
@@ -15205,11 +15216,134 @@ rewrote one chunk and reused the rest. `ContentRollback` builds a reviewable dra
 version's field values, `ContentDiff` is the field-level comparison, and `ContentBundle` is the lossless
 seeding document, imported into an EMPTY database only.
 
+### Replacing a catalog from its bundle
+
+A game that ships its client content pack inside the client build cuts that pack from a fresh store, so the
+pack is always content version 1. The connect door compares the version NUMBER as well as the manifest hash,
+and the number is inside the hashed manifest, so such a game cannot publish its server store forward to
+version 2. It REPLACES the store from its committed bundle on every content release, and `ImportBundleAsync`
+refuses a store that has published anything. The way back to an importable store is a RESET, one per durable
+provider, `SqliteCatalogReset.ResetAsync` and `SqlServerCatalogReset.ResetAsync`.
+
+```csharp
+ContentCatalogResetResult reset = await SqliteCatalogReset.ResetAsync(
+    migrationConnectionString,                      // DDL rights, not the application role's
+    actor: "release-runner",
+    operatorId: "oid:8f2c",
+    note: "autumn pass",
+    force: false,                                   // true destroys an open draft
+    ct);
+
+logger.Info(reset.Summary);                         // also filed in the new store's catalog_audit
+
+using var store = new SqliteContentAuthoringStore(connectionString, registry, packStore);
+await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate, ct);
+await store.ImportBundleAsync(bundle, "release-runner", "oid:8f2c", "autumn pass", ct);   // version 1 again
+```
+
+Both drop every catalog object and recreate the schema from the same script the initializer creates from, in
+ONE transaction, so either the catalog is replaced or it is exactly as it stood. That is not a nicety: a
+half-dropped catalog refuses the next open outright, because the initializer creates only when it counts zero
+catalog tables and validates every object by name otherwise. Drop and recreate rather than `DELETE`, because a
+delete leaves the identity state on `catalog_family`, `catalog_draft_edit` and `catalog_audit` where it stood
+and the next family id after a reimport would land above the bundle's.
+
+The drop names the schema's own INVENTORY intersected with what the database holds, rather than a name
+pattern, so a table added to the schema goes with the rest and a table the build does not declare is never
+touched. A host may keep its own tables in the catalog's database or SQLite file, including one whose name a
+`catalog_` pattern would match, and a reset never drops one or changes a row in one. The store's own open still
+refuses a host table whose name starts with `catalog_` as an object the schema does not declare, so keep host
+tables outside that prefix.
+
+A host FOREIGN KEY into a catalog table is where that could break, so both providers refuse instead. SQLite's
+`DROP TABLE` deletes every row before it drops the table, and that delete fires the host key's delete action,
+so the SQLite reset reads every host key first and refuses one declared `ON DELETE CASCADE`, `SET NULL` or
+`SET DEFAULT` with reason `host-foreign-key`, before anything is dropped and whatever `force` says. A
+`NO ACTION` or `RESTRICT` host key with a row still referencing the catalog fails the SQLite reset at its
+commit instead. SQL Server refuses to drop a table any foreign key references, whatever its action, so there
+every such key fails the reset with SQL error 3726. A failed reset rolls back as a whole on both providers,
+catalog and host alike. A host that resets its catalog keeps its references to it out of foreign keys.
+
+It is a separate type per provider rather than a member on `IContentAuthoringStore`, because a reset is DDL
+and the everyday authoring path is DML: a production deployment should not give its application role DDL at
+all, so the reset takes the migration credential's own connection string. An open draft is refused with reason
+`draft-open` unless `force` is set. `actor`, `operatorId` and `note` are checked against the caps
+`catalog_audit` declares before the transaction opens, so an argument outside them is an `ArgumentException`
+with nothing dropped rather than a provider error after the drop.
+
+Neither reset runs beside another writer. The SQL Server reset takes the schema's exclusive application lock
+as the first statement of its transaction, the same lock on the same resource name the schema create and the
+version 1 migration take, so a host starting or migrating at that moment and the reset wait for each other
+rather than interleave. A reset that cannot have the lock within a minute is refused, having changed nothing.
+SQLite takes one writer per database file, so a reset against a file another connection is writing waits for
+the busy timeout its connection string names and then fails with the provider's busy error, having changed
+nothing. Stop the writers first, and give the reset's own connection string a short `Default Timeout`.
+
+A database carrying NONE of the schema's tables is CREATED rather than refused, through the same script in the
+same transaction, with the same audit row. The scripted release path is reset then import, so the first
+release against a new database takes that branch. A database carrying SOME of them is a half-finished deletion
+that no store can open: without `force` it is refused with reason `catalog-partial` and a sentence naming the
+remedy, and with `force` the reset drops what is left and recreates the schema. A catalog whose schema version
+cannot be read, because its metadata row is gone, is the same case whatever stands, every table included.
+
+The schema version decides the rest whenever it can be read. A catalog at an OLDER schema version than the
+build writes is reset like any other and comes back at the build's version, because the recreate runs the
+build's script. A whole version 1 catalog, without the `catalog_content_upgrade` table version 2 added, is a
+whole catalog and needs no `force`. A catalog at a NEWER schema version is refused with `schema-mismatch`
+before anything is dropped, `force` or not, because recreating an older schema over it would move the database
+backwards.
+
+`ContentCatalogResetResult` carries what stood (the active version number, its server and client manifest
+hashes, the counts of versions and row revisions dropped, and `PriorSchemaVersion`) plus the recreated
+`SchemaVersion` and the NEW `store_epoch`. The version is the ACTIVE one, `catalog_metadata.active_version`,
+and the summary says "active version" because that is what was read. A boot serves `pinned_version` when one
+is set, so a store pinned below its active version served the pin, which the result does not report. The epoch
+is fresh on purpose: a reset store shares no history with the one it replaced. `catalog_version` goes with
+everything else, so no version row holds those two hashes afterwards. The result carries them, and so does the
+reset's own audit row in the new store, which files `reset.Summary` in `catalog_audit.before_value`.
+
+`PriorState` says which of the three a run was, and the record refuses to be built into a state that says two
+things: a version number with no row behind it reads as that number and the words "whose version row was
+MISSING" rather than as "nothing published", a version row's hashes beside no version dropped are refused, a
+reset that read no catalog cannot report a version, a hash, a prior schema version or anything dropped, and a
+prior schema version newer than the recreated one is refused.
+Every property is get-only, so a `with` expression cannot move one value past those rules.
+
+**The pack store is NOT touched by a reset.** A pack root left standing under a replaced catalog still holds a
+`versions/<n>` pointer naming the manifest of the content that was there before, so a caller that replaces
+content at the same version number must CLEAR its pack root or REBUILD it with `ContentPackRebuild.RunAsync`,
+which writes one published version's whole pack out of the store's own rows and rules and verifies it against
+the manifest digests the version row records. The import after a reset overwrites the pointer only in the pack
+store it was handed. Do not leave that to the boot to notice. The two hashes on the result, also filed in
+the reset's audit row, are what the pack root should have been holding, and are what a caller compares
+against it.
+
 ### The server boot
 
-`ContentBoot.RunAsync` is the whole boot in one call, and it FAILS CLOSED. Each of its twelve refusals comes
-back as a result carrying exit code 3 and the operator's exact lines, and there is no fallback to code
-defaults anywhere on the path, because a silent fallback catalog serves content no version names.
+`ContentBoot.RunAsync` is the whole boot in one call, and it FAILS CLOSED. Each of its refusals comes back as
+a result carrying exit code 3 and the operator's exact lines, and there is no fallback to code defaults
+anywhere on the path, because a silent fallback catalog serves content no version names. A `Directory` or
+`VersionHashes` provider that THROWS is a refusal too, `VersionSourceUnreadable` naming the read and the
+fault, so a host's database outage reaches the operator as a line rather than an unhandled exception. Only
+the caller's own cancellation propagates.
+
+Step 3 checks the `versions/<n>` POINTER before it fetches anything, because the pointer is the one object in
+a content-addressed store that is not named by its own hash. A catalog replaced at the same version number,
+with the old pack root still on disk, passes every later check: the old manifest digests to its own name,
+declares the right number, decodes, and every chunk verifies, while the connect door advertises the new row's
+client hash over the old rows. The boot compares both halves of the pointer ordinally with the version record
+and a disagreement refuses as `PackPointerMismatch` naming the version, the store, the side and both hashes,
+which is the operator's cue to rebuild the root.
+
+The record comes from `VersionHashes` when it is set, otherwise from `Directory` only when that object is
+itself an `IContentVersionHashSource`, which every `IContentAuthoringStore` is out of its own version record.
+**A host that hands the boot a WRAPPER around its store skips the check.** A type of its own that implements
+`IContentVersionDirectory` and forwards the two number reads is not a hash source, so set `VersionHashes` to
+the store, or make the wrapper forward `IContentVersionHashSource` as well. `VersionHashes` is read under a
+config pin too, so a pinned server that sets it reads that one version record at boot. A source with no
+record of the version, or no source at all, has no fact to compare against and skips the check.
+`boot.PackPointerCrossChecked` is true only when the comparison ran and agreed, which is what a host's wiring
+test asserts, because a boot that skipped the check succeeds just the same.
 
 ```csharp
 var holder = new ContentRuntimeHolder();
@@ -15221,6 +15355,8 @@ ContentBootResult boot = await ContentBoot.RunAsync(
         Holder = holder,
         ServerBuild = buildOrdinal,                 // required: a default of 0 refuses every pack with a minimum
         ConfiguredVersion = config.ContentVersion,  // config wins over the operator's pin, always
+        Directory = catalogDatabase,                // a wrapper of the host's own around its authoring store
+        VersionHashes = authoringStore,             // so step 3 still checks the pointer against the record
         WorldKeys = world.ContentKeys,
     },
     ct);
@@ -15247,7 +15383,9 @@ The authoring store keeps rows, rules and hashes and never the pack BYTES, so a 
 outlive its process comes back to an empty store while the database still names an active version, and the
 boot above refuses at step 3 with `manifest for version N absent`. `ContentPackRebuild.RunAsync` writes that
 version's whole pack again out of the authoring store: check the pointer first, rebuild when it is missing,
-then boot exactly as before.
+then boot exactly as before. A root that is STALE rather than empty, a pack the version number no longer
+means, is the same repair reached through a different line: the boot refuses with `PackPointerMismatch` and
+the rebuild overwrites the pointer and writes whatever the record's manifests name.
 
 The version to rebuild is the one the BOOT will load, which is what `ContentBoot.ResolveVersionAsync` answers
 out of the same options, and it is not in general the store's active version: a config pin wins over
@@ -15514,6 +15652,234 @@ seam, the four pack formats, the `kec/` digests, the remap rules and the `KEC` f
 documents its own connection string, schema mode and migration name. The reasoning is
 `docs/design/CONTENT-CATALOG-DESIGN-2026-09-15.md`, written against the shared contracts in
 `docs/design/CONTENT-CONTRACTS-DESIGN-2026-09-14.md`.
+
+---
+
+## Shared game content types (`KhaozEngine.Catalog.GameTypes`)
+
+The engine's own seven content types (`tag`, `item`, `stat`, `loot_table`, `loot_entry`, `base_socket`,
+`item_category`) are the shapes every catalog needs. This package is the next layer up: the thirteen shapes a
+world with food, equipment, shops, drops, gathering, crafting, tools and tuning knobs writes anyway, so two
+games that author the same facts store them under the same keys and read them with the same code.
+
+`GameContentTypeIds` is the whole id table, ascending and contiguous from the game band floor:
+
+| Id | Key | Id | Key |
+| --- | --- | --- | --- |
+| 1024 | `food` | 1031 | `recipe` |
+| 1025 | `equip_profile` | 1032 | `recipe_input` |
+| 1026 | `equip_stat_line` | 1033 | `recipe_output` |
+| 1027 | `store` | 1034 | `tool_tier` |
+| 1028 | `store_shelf` | 1035 | `skill_curve` |
+| 1029 | `monster_drop` | 1036 | `game_tuning` |
+| 1030 | `gathering_node` | | |
+
+**The package owns no vocabulary.** A skill, a station, a repeat mode, an equip slot, a weapon archetype, an
+npc kind and a creature kind are raw numbers on a row. There is no enum, no name, no icon, no roster and no
+balance number, which is the split `Items`, `Stats` and `Skills` already draw: kernel in the engine, meaning
+in the game. Nothing registers itself either, because which of the thirteen a world uses, which validator
+each carries and what a row's numbers mean are all the game's.
+
+**`equip_profile` registers under `EngineContentTypes.EquipProfileTypeKey`**, never a second copy of the
+spelling. The engine `item` type carries an `equip_profile` key reference that is late bound: the engine
+writes the key down and registers no type under it. A type under any other key is one nothing ever points at,
+and every item's `equip_profile` would have to stay 0.
+
+**A game declares its time unit.** A world stepping a fixed tick stores ticks and a wall-clock world stores
+seconds, so `ContentDurationUnit` goes to each schema factory and picks the NAME of the four duration fields:
+`attack_delay_ticks` or `attack_delay_seconds` on `food`, `attack_ticks` or `attack_seconds` on
+`equip_profile`, `respawn_ticks` or `respawn_seconds` on `gathering_node`, and `base_ticks` or `base_seconds`
+on `recipe`. Field order, kinds, reference targets, visibility, required flags, scales and the row codecs are
+IDENTICAL under either unit, so the choice costs a name in the generic editor and the localization key derived
+from it, and never a byte of layout. The package converts nothing, because only the game knows how long its
+tick is.
+
+```csharp
+using KhaozEngine.Catalog;
+using KhaozEngine.Catalog.GameTypes;
+
+const ContentDurationUnit Unit = ContentDurationUnit.Ticks;
+FoodContentType.Register(registry, Unit, new FoodContentType.Validator());
+StoreContentType.Register(registry, new StoreContentType.Validator(registry));
+MonsterDropContentType.Register(registry, new MonsterDropContentType.Validator());
+```
+
+**This sample drops the cross-type sweep, silently.** `food`'s slot is where the sweep rides, and passing
+`FoodContentType.Validator` alone registers food's own rules and nothing else. A game registering by hand
+passes `new GameContentChecks(registry, sweepOptions, new FoodContentType.Validator())` there instead, and
+`GameContentTypes.Register` below does it for the whole set.
+
+Each type's own `Register` supplies the id, the key, the band, the type's visibility, its chunk slots, the
+schema for the unit and the codec over it. **The visibility and the chunk slot count are not a caller's to
+choose.** `monster_drop` registered as `Client` would put every drop row's key in the client manifest, and a
+wrong slot count moves every content address, so two worlds authoring the same facts would stop agreeing
+about where they live. Neither fails loudly, which is why the hand-written eight-argument call is not the
+documented path. The validator is a parameter the caller passes, and a type that ships one names it
+`Validator` on the type class.
+
+**Reach a field BY NAME, never by a literal position.** A row's values are parallel by index to its type's
+schema, and a duration field is named for the game's own unit, so a reader resolves the position once at
+construction through `KhaozEngine.Catalog`'s `ContentFieldLookup.IndexIn(runtime, type, field)` and a field the schema lacks is a
+REFUSAL naming both rather than a -1 a caller reads as zero. On a server that runs at boot, before a socket is
+open, so a publish that moved a field stops the boot rather than pricing a world at nothing and carrying on.
+
+`GameContentFindings` is the `KGT` finding-code table, banded by content type a hundred to a band with 1300
+held for a cross-type sweep. A code is a stable token a counter, a test and a runbook key on, and it is never
+reused and never renumbered, which is why the whole table is written down before the rules that emit the
+codes. The engine folds a game-band finding into `KEC0040` and puts the `KGT` code in the message text, so
+that is what an operator reads off a refused publish.
+
+**Eleven of the thirteen ship a validator**, each a nested `Validator` on its type class: `food` (`KGT0101`
+to `KGT0103`), `equip_stat_line` (`KGT0201`, `KGT0202`), `store` (`KGT0301` to `KGT0303`), `store_shelf`
+(`KGT0401` to `KGT0403`), `monster_drop` (`KGT0501`), `gathering_node` (`KGT0601` to `KGT0603`), `recipe`
+(`KGT0701` to `KGT0710`), `recipe_input` (`KGT0801` to `KGT0803`), `recipe_output` (`KGT0901` to `KGT0903`),
+`tool_tier` (`KGT1001` to `KGT1003`) and `skill_curve` (`KGT1101` to `KGT1103`). The two recipe sides are
+one rule set read twice, under two sets of codes, so a report names which side of the recipe is wrong.
+`equip_profile` and `game_tuning` ship none on purpose: the first carries no rule a schema does not already
+make, and every rule about the second is a statement about the SET of rows or about a type that READS a
+knob.
+
+Eight take nothing at all. `StoreContentType.Validator` takes the registry, because it holds a rate against
+the dearest item the candidate carries and so needs where the engine `item` type keeps its `value`. **That
+index is read off the live registration at validation time and never off a schema the validator built at
+type load**, which is this build's idea of the item type rather than the one the candidate was registered
+against. Every rule is unit-neutral: a duration rule is about the number's SIGN, so one validator serves
+both spellings.
+
+**Two validators need an answer only a game has, and both take it as a predicate over the raw stored
+number** rather than as an enum, a roster or a list. `RecipeValidatorOptions` carries four, every one
+required: `IsKnownRepeatMode` (`KGT0710`), `IsPayableSkill` (`KGT0702`), `IsOpenSkill` (`KGT0703`) and
+`IsNameableStation` (`KGT0707`). Two SEPARATE skill predicates, because a number nothing stands for and a
+real skill that is not open yet are different defects with different fixes and different codes, and
+`IsOpenSkill` is asked only of a skill `IsPayableSkill` already accepted.
+`RecipeValidatorOptions.NoStation` is 0 and is never offered to the predicate, so a row naming it is
+`KGT0706` rather than `KGT0707`. `SkillCurveContentType.Validator` takes one `isKnownSkill` predicate, a
+different question from `IsPayableSkill` because a curve row is about any skill the game has, and its
+message names the raw NUMBER.
+
+**`GameContentTypes.Register` puts all thirteen on a registry in one call**, the way
+`EngineContentTypes.Register` does for the engine's seven. Every member of `GameContentOptions` is required,
+so a game cannot forget a seam and leave a rule silently never firing:
+
+```csharp
+GameContentTypes.Register(registry, ContentDurationUnit.Ticks, new GameContentOptions
+{
+    Recipe = new RecipeValidatorOptions
+    {
+        IsKnownRepeatMode = value => value is >= 0 and <= 1,
+        IsPayableSkill = value => MyGame.Skills.TakesRecipes(value),
+        IsOpenSkill = value => MyGame.Skills.IsOpen(value),
+        IsNameableStation = value => value is >= 1 and <= 3,
+    },
+    IsKnownSkill = value => MyGame.Skills.Exists(value),
+    Sweep = new GameContentSweepOptions
+    {
+        MaxLevelKnob = "max_level",
+        MaxChanceKnob = "gathering_max_chance_bp",
+        RequiredKnobs = MyGame.Tuning.EveryKnobThisBuildReads,
+        MaxDropsPerKillKnob = "max_drops_per_kill",
+    },
+});
+```
+
+The per-type `Register` calls stay public, because registering only the types a world authors is the
+ordinary case and a game that wants a validator of its own on one type needs the narrow call.
+
+### The cross-type sweep
+
+`GameContentChecks` holds the sixteen rules no single type can state, because each one reads a row of one type
+against a row of another or against a global knob.
+
+| Code | Rule | Needs |
+| --- | --- | --- |
+| `KGT1301` | a shelf item a player cannot trade | the engine `item` type |
+| `KGT1302` | a node quoting a chance over the global ceiling | `MaxChanceKnob` |
+| `KGT1303` | a node gated on a level over the global cap | `MaxLevelKnob` |
+| `KGT1304` | a recipe gated on a level over the global cap | `MaxLevelKnob` |
+| `KGT1305` | a recipe with no live `recipe_output` row | nothing |
+| `KGT1306` | a tool tier whose item does not carry its family tag | the engine `item` type |
+| `KGT1307` | a knob the build reads with no row in a table that carries the rest | `RequiredKnobs` |
+| `KGT1309` | a weighted loot entry quoting a chance, which a pick never rolls | the engine loot types |
+| `KGT1310` | a guaranteed loot entry carrying a weight, which no pick lands on | the engine loot types |
+| `KGT1311` | a weighted loot entry at no weight, which no pick reaches | the engine loot types |
+| `KGT1312` | a loot table asking for picks over a pool with no weight | the engine loot types |
+| `KGT1313` | a loot table taking no pick that still holds weighted entries | the engine loot types |
+| `KGT1314` | a guaranteed loot chance outside 0 to 10,000 basis points | the engine loot types |
+| `KGT1315` | a guaranteed loot entry at no chance, which never fires | the engine loot types |
+| `KGT1316` | a monster whose loot tree can leave more lines off one kill than the knob allows | `MaxDropsPerKillKnob` |
+| `KGT1317` | a drops-per-kill knob that is not a whole number at or above one | `MaxDropsPerKillKnob` |
+
+`KGT1308` is held back. The numbers were first assigned in a game that spent 1308 on a refusal its own read
+layer raises, and reads stay in each game, so the number stays unused here.
+
+**`GameContentSweepOptions` names the knobs and nothing else.** A tuning row's key is one world's vocabulary,
+so the sweep holds the rules and a game says which rows they read: `MaxLevelKnob`, `MaxChanceKnob`,
+`RequiredKnobs` and `MaxDropsPerKillKnob`. **A null name disables that rule and an empty list disables the required-knob rule**, so a
+world with no level cap has no rule to run rather than a rule that refuses everything or passes everything.
+`GameContentSweepOptions.None` is every knob-driven rule off, and the ten that read no knob still run.
+
+`KGT1307` is ASYMMETRIC on purpose. A required name with no row is a finding, because the boot would fall
+back to a default the pack does not name, and a row whose name is not required is IGNORED, because a knob a
+newer build writes must not stop an older server loading the pack. It is also gated on the table being
+authored at all: a candidate with no tuning rows makes no claim, and a boot falls back wholesale rather than
+half way.
+
+**The seven loot number rules are the engine's composition rule written down as refusals.** Every guaranteed
+entry rolls its own `chance_bp`, then a table takes `roll_count` weighted picks over the rest, and a pick
+never rolls a chance. So a chance on a weighted entry, a weight on a guaranteed one, a weighted entry at no
+weight, picks over an empty pool, a pool nothing picks from, a guaranteed chance outside the basis-point range
+and a guaranteed entry at no chance are all numbers nobody rolls against. The engine's own loot checks,
+`KEC0023` and `KEC0024`, refuse none of them. An ABSENT chance on a weighted entry is nothing authored and is never refused, and a
+weighted entry whose chance is also out of range draws the weighted finding alone.
+
+**`KGT1316` is a MAXIMUM, computed.** A table's most lines is every live guaranteed entry's own most plus
+`roll_count` times the widest single weighted entry, recursing through `nested_table` down to
+`LootRoller.MaxNestedDepth` exactly as a roll does, and saturating at `long.MaxValue` rather than wrapping. One
+finding per offending monster, naming the deepest table whose own structure produced the count, unless a
+`roll_count` above one is doing the multiplying, in which case that table answers for it.
+
+**VERSION FOLLOWS CONTENT.** `KGT1316` and `KGT1317` run only on a candidate carrying a live row under
+`MaxDropsPerKillKnob`. Absence says the catalog was authored before the rule, so an older baseline and every
+intermediate version an upgrade chain publishes still sweep clean. For the same reason a game does not list
+that knob in `RequiredKnobs`.
+
+**The sweep rides ONE registration slot.** The engine takes one `IContentValidator` per type and hands each
+of them the WHOLE candidate, and it offers a game no whole-registry slot of its own: the one pass that is
+not per-type, the item-instances band, is engine code reached through a band registration a game cannot
+join. So a whole-registry check mounted on all thirteen would report every defect thirteen times. It goes on
+the lowest game id, `food`, COMPOSED over that type's own validator, and runs once.
+`GameContentTypes.Register` wires that up, and `GameContentChecks` is public with a `beside` parameter for a
+game registering by hand.
+
+Both rules that read an ITEM row, and the loot rules, resolve their field positions off the live registry at
+validation time, for the same reason the store's ceiling rule does.
+
+Every knob is read out of the CANDIDATE. Nothing here reads a running process: a sweep that did would pass
+or fail the same pack differently depending on what a server happened to have loaded.
+
+#### A game's own whole-catalog rules
+
+`GameContentSweepOptions.GameRules` is the hook for a cross-type rule the package does not hold. Each one is
+the engine's own `IContentValidator`, and it runs in the sweep's slot AFTER every rule of the package's own,
+handed the same slot type id, the same candidate and the same findings list:
+
+```csharp
+Sweep = new GameContentSweepOptions
+{
+    MaxLevelKnob = "max_level",
+    GameRules = [new MyGame.Content.QuestItemsAreNeverSold()],
+},
+```
+
+A game finding reaches the report the way a package finding does, folded into `KEC0040` under the slot's type
+key with the game's own code in the message. Empty, which is the default, changes nothing. **The hook rides
+the sweep and cannot run without it**, which is why it is not a second slot: a game rule mounted on a type of
+its own would run once per mounting, and one mounted on `food` in place of `GameContentChecks` would drop the
+package's sweep. A rule that throws is the slot's throw, reported as one `KEC0040` with none of the slot's
+findings kept, so a rule that can fail on content adds a finding instead. A null list or a null member is
+refused when `GameContentChecks` is built.
+
+`KhaozEngine.Catalog.GameTypes/README.md` is the API reference, type by type.
 
 ---
 
@@ -17905,9 +18271,12 @@ r.Register<PrivateStats>(MoveProtocol.FirstConsumerTypeId + 2,
 net id automatically, so `OwnerOnly` "just works" (an observer's snapshot and delta both lack another player's
 owner-only component, including across a cell handoff). The flags gate the **server (write) side** only - build the
 client with the same registry to decode the bytes, but its channel flags are ignored (the read side decodes whatever
-is on the wire). Rules enforced at registration: a built-in id (`< FirstConsumerTypeId`) must keep `Default` (its
-unframed encoding is the core protocol), and `OwnerOnly` requires `Replicate` - either throws. A registry using only
-`Default` writes byte-identically to before channels existed. `MmoServerSample` demonstrates both shapes (`AggroCounter`
+is on the wire). Rules enforced at registration: a built-in id (`< FirstConsumerTypeId`) must keep `Default`,
+optionally with `OwnerOnly` (`ReplicationRegistry.BuiltinChannelsAllowed`), because its unframed encoding is the
+core protocol. `OwnerOnly` is allowed there because it drops the whole frame for a non-owner and never changes a
+frame's bytes, which is how the engine's own `MovementOwnerState` reaches the owner alone. `OwnerOnly` also requires
+`Replicate`. Anything else throws. A registry using only `Default` writes byte-identically to before channels existed.
+Owner scoping costs at most one filtered copy per observed entity per tick, shared by every non-owning client. `MmoServerSample` demonstrates both shapes (`AggroCounter`
 + `PrivateStats`). Every client-serving encoder honours these channels, including the whole-world
 `ServerReplicator` (`Capture` takes the `Replicate` channel, `WriteFor(slot, ownerNetId)` scopes `OwnerOnly`).
 
@@ -17971,7 +18340,9 @@ persistence.Issue += issue => log.Info(issue.ToString());   // migrated / skippe
   longer needs a schema bump**: the driver reads the stored generation and brings the body forward itself, reports it
   as a `Migrated` issue carrying `wire generation N -> M`, and rewrites the blob once. A blob stamped at a generation
   NEWER than the running build is `SkippedTooNew` (quarantined, never misread), which is the downgrade direction that
-  used to be a silent misparse.
+  used to be a silent misparse. Bringing a body forward zero-pads each built-in's appended fields, except at the two
+  generations that were not appends: 9 restructured the position, and 12 cut the two feel timers out of the movement
+  payload, which the pass writes into a `MovementOwnerState` frame so a restored entity keeps them.
 - **Blobs written before the stamp are inferred, and an inference that is not unique is REFUSED.** The migration
   walks the body at every candidate generation and discards the ones that recovered something no build writes:
   built-in ids ascend within an entity and none follows an extension frame, no id repeats, a movement payload's bool
@@ -18089,7 +18460,7 @@ public sealed class AccountsStore : IDisposable
         return await cmd.ExecuteScalarAsync(ct) as byte[];
     }
 
-    public void Dispose() => db.Dispose();                       // clears the pool, then closes
+    public void Dispose() => db.Dispose();                       // closes the unpooled connection
 }
 ```
 
@@ -18901,7 +19272,7 @@ var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning
 
 3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
 
-**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 10 as of authoritative facing, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, and 10 the move frame's flags byte plus `MovementState.FacingYawQ` together) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
+**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 12 as of the owner-only movement timers, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, 10 the move frame's flags byte plus `MovementState.FacingYawQ` together, 11 `MovementState.Commitment`, and 12 moving the two feel timers into the owner-only `MovementOwnerState` built-in) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
 
 ```csharp
 client.SnapshotDecodeFailed += err => ShowOutOfDateUI(err);   // "client out of date, please update"
@@ -19471,6 +19842,41 @@ so an old client is rejected at connect by the always-on `WireGenerationAuthenti
 ship together.**
 
 Full rationale and the phase plan: `docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
+
+### Owner-only movement timers: coyote time and jump buffer (`MovementOwnerState`, wire generation 12)
+
+`MoveState.TimeSinceGrounded` and `MoveState.JumpBufferRemaining` feed only the owning client's reconciliation
+replay. No remote reads them, so they ride their own built-in, `MovementOwnerState`
+(`MoveProtocol.MovementOwnerTypeId` = 6), registered `ReplicationChannels.Default | ReplicationChannels.OwnerOnly`,
+and `MovementState` no longer carries them.
+
+```csharp
+// Server side: the engine writes both halves at every spawn, teleport and tick. A game writing a movable entity's
+// components itself writes both too.
+world.Set(entity, MovementState.From(state));        // every observer in AoI
+world.Set(entity, MovementOwnerState.From(state));   // the owning client only, plus persistence and handoff
+
+// Rebuilding a full state: the owner half is a required argument. Pass default for an entity you do not own.
+world.TryGet(entity, out MovementState movement);
+world.TryGet(entity, out MovementOwnerState owner);
+PlayerMoveState full = PlayerMoveState.From(position, movement, owner);
+```
+
+- **Who receives it.** Both serve paths (full snapshot and AoI delta) on both heads write it only on the receiving
+  client's own player, so `WorldClient.TryGetComponent<MovementOwnerState>` answers `false` for any other player.
+  Cell persistence and cell handoff write it for every entity that has it, so a restored or handed-off player keeps
+  its coyote and jump-buffer windows. A border ghost does not carry it, and is never simulated.
+- **What it saves.** The movement payload drops from 64 to 56 bytes, 8 bytes less per moving player per observer per
+  snapshot, and on the delta path a change confined to the timers no longer resends the movement frame to observers
+  at all. The owner pays 2 bytes more, the owner frame's type id.
+- **Remotes are unaffected.** `VerticalVelocity`, `Grounded`, `Swimming`, `TeleportEpoch`, `ClimbRateQ`,
+  `SpeedScaleQ`, the carried arc, `FacingYawQ` and `Commitment` keep their meaning and their order.
+- **A missing owner component heals.** `PlayerMovementSystem` adds `MovementOwnerState` at the end of an entity's
+  first step when it has none, so its coyote clock carries from then on instead of restarting every tick.
+- **This is a wire break: generation 11 to 12.** Both built-ins changed shape, so mixed-generation peers are
+  rejected at connect by the always-on `WireGenerationAuthenticator`. **Client and server must ship together.** A
+  stored cell blob from an older generation still loads, and the bring-forward pass moves its timers from the
+  movement payload into an owner frame, so a restored entity has exactly the timers it was saved with.
 
 ### World pickups (walk-over collectibles)
 

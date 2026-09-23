@@ -51,7 +51,7 @@ public class PlayerMoveSwimTests
     {
         MovementState swimming = RoundTrip(new MovementState
         {
-            VerticalVelocity = -1.5f, Grounded = false, TimeSinceGrounded = 3f, JumpBufferRemaining = 0f, Swimming = true,
+            VerticalVelocity = -1.5f, Grounded = false, Swimming = true,
         });
         Assert.True(swimming.Swimming);
         Assert.False(swimming.Grounded);

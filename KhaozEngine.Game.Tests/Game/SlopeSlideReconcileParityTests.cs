@@ -78,7 +78,7 @@ public class SlopeSlideReconcileParityTests
                 int ackSeq = t - lag;
                 PlayerMoveState authFull = contStates[ackSeq + 1];
                 MovementState wire = MovementState.From(authFull);            // the real quantizers
-                PlayerMoveState basis = PlayerMoveState.From(authFull.Position, wire);
+                PlayerMoveState basis = PlayerMoveState.From(authFull.Position, wire, MovementOwnerState.From(authFull));
                 pred.Reconcile(t, basis, ackSeq);
             }
             recon.Add(pred.PredictedState);
@@ -169,7 +169,7 @@ public class SlopeSlideReconcileParityTests
             $"the fixture never built a slide to carry, |v|={s.Move.HorizontalVelocity.Length():F3}");
 
         MovementState wire = MovementState.From(s);
-        PlayerMoveState decoded = PlayerMoveState.From(s.Position, wire);
+        PlayerMoveState decoded = PlayerMoveState.From(s.Position, wire, MovementOwnerState.From(s));
 
         Assert.Equal(s.Move.HorizontalVelocity.X, decoded.Move.HorizontalVelocity.X, 2);
         Assert.Equal(s.Move.HorizontalVelocity.Y, decoded.Move.HorizontalVelocity.Y, 2);
@@ -236,7 +236,7 @@ public class SlopeSlideReconcileParityTests
                 int ackSeq = t - lag;
                 PlayerMoveState authFull = contStates[ackSeq + 1];
                 MovementState wire = MovementState.From(authFull);      // the real quantizers, Grounded included
-                PlayerMoveState basis = PlayerMoveState.From(authFull.Position, wire);
+                PlayerMoveState basis = PlayerMoveState.From(authFull.Position, wire, MovementOwnerState.From(authFull));
                 Assert.Equal(authFull.Grounded, basis.Grounded);        // the memory itself, through the codec
                 pred.Reconcile(t, basis, ackSeq);
             }

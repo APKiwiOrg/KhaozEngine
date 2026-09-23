@@ -322,7 +322,7 @@ public class AuthoringValueTests
     }
 
     [Fact]
-    public void TheStoreSeamCarriesTheTwentyNineMembersEveryProviderImplements()
+    public void TheStoreSeamCarriesTheTwentyNineMembersEveryProviderImplementsAndOneItAnswersItself()
     {
         // Spec 2.3 and the phase 1 plan name these so a provider implements ONE shape. A member added here
         // without being added to every backend is the drift this pins. The two freeze members are spec 6.2's:
@@ -336,6 +336,10 @@ public class AuthoringValueTests
         // count below is the seam's own declarations plus the inherited interfaces': reflection over an
         // interface returns neither its base interfaces' members nor anything it does not declare itself.
         // What a provider implements is unchanged by where a member is declared.
+        // The ONE name reflection sees beyond the list is IContentVersionHashSource.GetVersionHashesAsync,
+        // which the boot's stale-pointer check reads and the seam ANSWERS out of GetVersionAsync, so no
+        // backend gained a member and it is pinned separately rather than added to the provider's list.
+        const string answered = "GetVersionHashesAsync";
         string[] expected =
         [
             "AllocateAsync",
@@ -381,8 +385,12 @@ public class AuthoringValueTests
             .OrderBy(static name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(expected, actual);
-        Assert.Equal(29, actual.Length);
+        Assert.Contains(answered, actual);
+        Assert.Equal(
+            expected,
+            actual.Where(name => !string.Equals(name, answered, StringComparison.Ordinal)).ToArray());
+        Assert.Equal(29, expected.Length);
+        Assert.Equal(30, actual.Length);
     }
 
     [Fact]

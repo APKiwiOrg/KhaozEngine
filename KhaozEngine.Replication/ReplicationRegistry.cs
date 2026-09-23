@@ -44,8 +44,9 @@ public sealed class ReplicationRegistry
     /// replication, cell persistence, cell handoff, owner-only visibility); it defaults to
     /// <see cref="ReplicationChannels.Default"/> (replicate + persist + migrate), the pre-9.28.0 behaviour, so
     /// omitting it leaves the wire byte-identical. A built-in id (below <see cref="FirstExtensionTypeId"/>) must
-    /// keep <see cref="ReplicationChannels.Default"/> - its unframed encoding is the core protocol - and
-    /// <see cref="ReplicationChannels.OwnerOnly"/> requires <see cref="ReplicationChannels.Replicate"/>; either
+    /// keep <see cref="ReplicationChannels.Default"/>, optionally with <see cref="ReplicationChannels.OwnerOnly"/>
+    /// (see <see cref="BuiltinChannelsAllowed"/>), because its unframed encoding is the core protocol. And
+    /// <see cref="ReplicationChannels.OwnerOnly"/> requires <see cref="ReplicationChannels.Replicate"/>. Either
     /// violation throws.
     /// </summary>
     public void Register<T>(ushort typeId, Action<T, BinaryWriter> write, Func<BinaryReader, T> read,
@@ -64,11 +65,12 @@ public sealed class ReplicationRegistry
                 $"Type id {typeId} supplied both a lerp and discreteSample; a component either interpolates or is nearest-sampled, not both.",
                 nameof(discreteSample));
         // Built-in ids (< the floor) are the core protocol: their exact unframed encoding on every channel is fixed,
-        // so per-channel flags must never alter what they write. Reject any non-default channel set below the floor.
-        if (!IsExtension(typeId) && channels != ReplicationChannels.Default)
+        // so per-channel flags must never alter what they write. See BuiltinChannelsAllowed for the one exception.
+        if (!IsExtension(typeId) && !BuiltinChannelsAllowed(channels))
             throw new ArgumentException(
-                $"Built-in type id {typeId} (< FirstExtensionTypeId {FirstExtensionTypeId}) must keep ReplicationChannels.Default; " +
-                "per-channel flags are only honored for consumer extension components.", nameof(channels));
+                $"Built-in type id {typeId} (< FirstExtensionTypeId {FirstExtensionTypeId}) must keep ReplicationChannels.Default, " +
+                "optionally with ReplicationChannels.OwnerOnly; any other per-channel flags are only honored for consumer " +
+                "extension components.", nameof(channels));
         // OwnerOnly is a modifier on the Replicate channel (it scopes a replicated component to its owning client);
         // it is meaningless without Replicate, so reject it rather than silently making the component invisible.
         if ((channels & ReplicationChannels.OwnerOnly) != 0 && (channels & ReplicationChannels.Replicate) == 0)
@@ -134,6 +136,20 @@ public sealed class ReplicationRegistry
         ordered.Add(codec);
         byId[typeId] = codec;
     }
+
+    /// <summary>
+    /// Whether <paramref name="channels"/> is a legal channel set for a built-in id (below
+    /// <see cref="FirstExtensionTypeId"/>): <see cref="ReplicationChannels.Default"/>, or
+    /// <see cref="ReplicationChannels.Default"/> | <see cref="ReplicationChannels.OwnerOnly"/>.
+    /// <para>Dropping a channel would change what a built-in writes into a persisted blob or a handoff capture, and a
+    /// stored body is walked by a fixed per-generation layout. <see cref="ReplicationChannels.OwnerOnly"/> changes
+    /// none of that. It never alters a built-in's bytes, it only decides whether the whole <c>[typeId][payload]</c>
+    /// frame is written for a given viewer. A viewer that is not sent the frame has nothing to skip, so the unframed
+    /// stream stays aligned for every client, and persistence and handoff still write the frame unconditionally.</para>
+    /// </summary>
+    public static bool BuiltinChannelsAllowed(ReplicationChannels channels) =>
+        channels == ReplicationChannels.Default
+        || channels == (ReplicationChannels.Default | ReplicationChannels.OwnerOnly);
 
     /// <summary>Codecs in registration order (the order the writer serializes present components).</summary>
     internal IReadOnlyList<ComponentCodec> Ordered => ordered;

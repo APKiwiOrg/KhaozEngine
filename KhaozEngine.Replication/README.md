@@ -29,12 +29,18 @@ area-of-interest deltas.
   `Persist` (cell persistence blob), `Migrate` (cell handoff), and `OwnerOnly` (a `Replicate` modifier: replicated
   ONLY to the client that owns the entity, never to another observer in AoI). Default is `Default` = `Replicate |
   Persist | Migrate` - the pre-9.28.0 behaviour where persisted == replicated == migrated - so existing
-  registrations and every built-in are unchanged and the wire stays byte-identical for them. This decouples what
+  registrations are unchanged and the wire stays byte-identical for them. This decouples what
   used to be one coupled path: a mob's server-only aggro table (`Persist | Migrate`, no `Replicate`) survives handoff
   + restart but never reaches a client, and a player's private inventory / exact HP (`Default | OwnerOnly`) reaches
   only its own client. The flags gate the **server (write) side** only; the client read side decodes whatever is on
-  the wire (so channel flags on a client-built registry are ignored). A built-in id must keep `Default` (its unframed
-  encoding is the core protocol) and `OwnerOnly` requires `Replicate` - either violation throws at registration.
+  the wire (so channel flags on a client-built registry are ignored). A built-in id must keep `Default`, optionally
+  with `OwnerOnly` (`ReplicationRegistry.BuiltinChannelsAllowed`), because its unframed encoding is the core
+  protocol. `OwnerOnly` is the one modifier a built-in may carry: it decides only whether the WHOLE `[typeId][payload]`
+  frame reaches a viewer and never changes the frame's bytes, so a viewer that is not sent it has nothing to skip and
+  persistence and handoff still write it (the NetWorld `MovementOwnerState` feel timers use this). `OwnerOnly` also
+  requires `Replicate`. Any other set throws at registration.
+  Owner scoping costs at most one filtered copy per entity per tick: the owner is handed the entity's captured
+  component set itself, and every other viewer one shared public view built on first use.
   Every client-serving path honours the channels: `SnapshotWriter` / `AoiDeltaReplicator` take the serving channel +
   an optional `ownerNetId` to scope `OwnerOnly`, and `ServerReplicator.Capture` captures only the `Replicate` channel
   while `ServerReplicator.WriteFor(slot, ownerNetId)` scopes `OwnerOnly` per client (a Persist-/Migrate-only server

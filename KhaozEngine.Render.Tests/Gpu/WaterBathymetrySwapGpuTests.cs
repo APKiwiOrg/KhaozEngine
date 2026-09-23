@@ -29,10 +29,10 @@ namespace KhaozEngine.Tests.Gpu
     /// </para>
     /// <para>
     /// <b>What it measures on Metal.</b> Before the fix the swap moved the render by 0.00000 mean and 0.00000
-    /// worst: byte-identical, the #639 lane's number. After it, 0.01428 mean and 0.29195 worst against a golden
-    /// tolerance of 0.06. Swapping back to the deep field returns to the FIRST deep capture at 0.00000 on both,
-    /// which is asserted against the tolerance rather than byte-for-byte because two software rasterizers also
-    /// have to pass it.
+    /// worst: byte-identical, the #639 lane's number. After it, 0.01428 mean and 0.29195 worst against an
+    /// in-session tolerance of 0.06. Swapping back to the deep field returns to the FIRST deep capture at 0.00000
+    /// on both, which is asserted against the tolerance rather than byte-for-byte because two software
+    /// rasterizers also have to pass it.
     /// </para>
     /// </summary>
     public sealed class WaterBathymetrySwapGpuTests
@@ -97,14 +97,14 @@ namespace KhaozEngine.Tests.Gpu
             float[] back = Capture(gd, scene, commands, framebuffer, target, tile, deep);
 
             (float Mean, float Worst) moved = Difference(first, swapped);
-            Assert.True(moved.Worst > GoldenCompare.Tolerance,
+            Assert.True(moved.Worst > GoldenCompare.InSessionTolerance,
                 $"assigning a sloped depth field over a uniformly deep one of the same resolution moved the render " +
-                $"by {moved.Worst:F5} at worst (mean {moved.Mean:F5}), which is inside the golden tolerance of " +
-                $"{GoldenCompare.Tolerance:F2}. The shallows should be calming and the surf breaking on them, so " +
-                "this is the previous field's depths still sitting on the GPU (#645).");
+                $"by {moved.Worst:F5} at worst (mean {moved.Mean:F5}), which is inside the in-session tolerance of " +
+                $"{GoldenCompare.InSessionTolerance:F2}. The shallows should be calming and the surf breaking on " +
+                "them, so this is the previous field's depths still sitting on the GPU (#645).");
 
             (float Mean, float Worst) restored = Difference(first, back);
-            Assert.True(restored.Worst < GoldenCompare.Tolerance,
+            Assert.True(restored.Worst < GoldenCompare.InSessionTolerance,
                 $"swapping back to the deep field left the render {restored.Worst:F5} from the first deep capture " +
                 $"(mean {restored.Mean:F5}). The same field through the same scene has to draw the same sea, so " +
                 "either the second swap never uploaded or the scene is carrying state across a configuration " +

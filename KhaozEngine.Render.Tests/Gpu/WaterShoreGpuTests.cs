@@ -153,7 +153,7 @@ namespace KhaozEngine.Tests.Gpu
             // 1. LOCALITY. A field is bound and every knob is live, but the water is 400 m deep everywhere, so
             //    tanh(k d) is 1 and the break line is far below the seabed. The picture must be the no-field one.
             (float mean, float worst) sameSea = Difference(none, deep);
-            Assert.True(sameSea.worst < GoldenCompare.Tolerance,
+            Assert.True(sameSea.worst < GoldenCompare.InSessionTolerance,
                 $"a uniformly DEEP depth field moved the render by {sameSea.worst:F4} (mean {sameSea.mean:F4}). " +
                 "The taper is supposed to be 1 in deep water, so binding a field must change nothing out there - " +
                 "this says the shoaling is global rather than local.");
@@ -195,7 +195,7 @@ namespace KhaozEngine.Tests.Gpu
             float[] ordinary = Render(tune(1f, 1f));
             float[] overdriven = Render(tune(1.6f, 1f));
             (float sameMean, float sameWorst) = Difference(ordinary, overdriven);
-            Assert.True(sameWorst < GoldenCompare.Tolerance,
+            Assert.True(sameWorst < GoldenCompare.InSessionTolerance,
                 $"whitecap strength changed isolated surf by {sameWorst:F4} worst and {sameMean:F4} mean");
 
             float[] low = Render(tune(1.6f, 0.35f));

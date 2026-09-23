@@ -7,14 +7,22 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.1.0
 
-The burn-down continues on a fresh minor now that 20.0.0 is released. Everything here is additive: the map
-editor streams its authored placements and gains a props-only chunk refresh, a batch of Grimhollow parity requests
-lands for container sync, tile netcode and journal operator tools
-([Grimhollow#246](https://github.com/APKiwiOrg/Grimhollow/issues/246)), and the F1 overlay names the running build.
-Two defaults change. The engine terrain splat now reads the biome, so a world with non-Meadow bands looks
-different at repin (an all-Meadow world bakes bit-identical weights). `Scene3D.UseGpuSkinning` is now on by
-default, which renders pixel for pixel the same as CPU skinning and only moves the work to the GPU, and a game
-keeps CPU skinning with one assignment. No call a game makes changes meaning. The one source-level note is the new `ContainerCommitBuilder.Open` overload, below. The one schema change is a seconds duration in `KhaozEngine.Catalog.GameTypes`, which now keeps hundredths, and no game had adopted that unit.
+A minor that consolidates everything since 20.0.0: the rest of the oldest-backlog burn-down and a batch of
+Grimhollow parity requests ([Grimhollow#246](https://github.com/APKiwiOrg/Grimhollow/issues/246)). The map editor
+streams its authored placements and drags exclusions and scatter overrides without re-meshing terrain. Shadow
+casters honour alpha cutouts and skinned dissolve, and coarse clipmap water no longer shades as facets. The connect
+gate has one ban seam and typed catalog refusals, and a tile world server takes the engine's admin surface and ban
+kicks. Container sync, tile netcode, journal operator tools, skinned animation inspection, bone sockets and a
+packable GPU test kit land, the F1 overlay names the running build, and the engine goldens compare at 0.01.
+
+Two defaults change what a game sees. The engine terrain splat now reads the biome, so a world with non-Meadow
+bands looks different at repin (an all-Meadow world bakes bit-identical weights). `Scene3D.UseGpuSkinning` is on
+by default, which renders pixel for pixel the same as CPU skinning and only moves the work to the GPU, and a game
+keeps CPU skinning with one assignment. Nothing is removed and no call a game makes changes meaning. Source-level
+notes: the new `ContainerCommitBuilder.Open` overload, and `DisconnectReason` gains `ContentVersionMismatch` and
+`ContentClientTooOld`, so a game that read catalog refusals as `RejectedToken` sees them under their own names.
+The one schema change is a seconds duration in `KhaozEngine.Catalog.GameTypes`, which now keeps hundredths, and
+no game had adopted that unit.
 
 **The map editor streams its authored placements.**
 
@@ -257,6 +265,18 @@ keeps CPU skinning with one assignment. No call a game makes changes meaning. Th
 
 **Tooling.**
 
+- The engine goldens compare at their own 0.01 tolerance (`GoldenCompare.Tolerance`) instead of the 0.06 consumer
+  default ([#1080](https://github.com/APKiwiOrg/KhaozEngine/issues/1080)). The golden audit measured the captures
+  as bit-identical run to run and within 0.0005 across backend families, so 0.06 only hid real change: at that
+  tolerance the starfield, debug lines, the edge outline, bloom and MSAA could each be deleted with the golden still
+  green. `docs/CROSS-PLATFORM.md` now requires a controlled same-GPU rebake with a stated cause for any moved grid,
+  and `scene3d_water_grid_focus` was rebaked on all three families for the per-pixel swell normal.
+  `GoldenGrid.DefaultTolerance` stays 0.06 for games' own scenes, and in-session A/B rows keep it as
+  `GoldenCompare.InSessionTolerance`.
+- `CascadeHandoffBlendGoldenTests` adds a pixel A/B that fails when the cascade blend band is dropped, which the
+  hand-off golden could not see ([#1081](https://github.com/APKiwiOrg/KhaozEngine/issues/1081)). The golden
+  coverage comments and docs now state what the audit measured rather than what the goldens were assumed to
+  catch ([#1086](https://github.com/APKiwiOrg/KhaozEngine/issues/1086)).
 - `scripts/pack-local-feed.sh` packs the current tree into the MAIN checkout's `local-feed` from any worktree, and
   `scripts/check-local-feed.sh` reads the same feed, both through `pack_feed_dir` in `scripts/pack-standard.sh`
   ([#1063](https://github.com/APKiwiOrg/KhaozEngine/issues/1063)). `KHAOZENGINE_FEED` overrides both. `.gitignore` also ignores a `local-feed` symlink.

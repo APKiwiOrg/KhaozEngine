@@ -9,8 +9,17 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// Tolerance-based image regression: downsamples a raw RGBA buffer to a small grid of average RGB per cell
     /// and either WRITES a committed reference grid (when <c>KE_UPDATE_GOLDENS=1</c>) or COMPARES against it with
-    /// a per-channel tolerance. Robust to minor driver noise; a real shader/UBO/blend/winding regression moves a
-    /// cell well past the tolerance.
+    /// a per-channel tolerance.
+    /// <para>
+    /// WHAT IT SEES, AS MEASURED (<c>docs/design/GOLDEN-TEST-AUDIT-2026-09-23.md</c> section 3). A change that moves
+    /// a region of the frame: a pass that stops drawing, a wrong sampler address mode or texture slot, a broken water
+    /// or particle shader. Every whole-area deletion the audit tried failed with margin. What it does not see is
+    /// sparse, thin or low-contrast detail, or anything held in an intermediate target. At the old 0.06 tolerance the
+    /// starfield, debug ring, edge outline, bloom and MSAA could each be deleted with the golden still green (worst
+    /// cells 0.0258 to 0.0524, so they fail at the current <see cref="Tolerance"/>). Dropping the cascade blend band
+    /// moves its grid by only 0.0080, under even 0.01. A feature like that needs an in-session pixel A/B beside its
+    /// scene (<c>CascadeHandoffBlendGoldenTests</c>).
+    /// </para>
     /// <para>
     /// GOLDEN NAMING CONTRACT: the cross-platform GPU matrix
     /// (<c>.github/workflows/cross-platform-gpu.yml</c>) selects tests with
@@ -29,8 +38,35 @@ namespace KhaozEngine.Tests.Gpu
         public const int GridW = KhaozEngine.Imaging.GoldenGrid.DefaultGridW;
         /// <summary>Downsample grid height in cells.</summary>
         public const int GridH = KhaozEngine.Imaging.GoldenGrid.DefaultGridH;
-        /// <summary>Per-channel absolute-difference tolerance (channels are 0..1).</summary>
-        public const float Tolerance = KhaozEngine.Imaging.GoldenGrid.DefaultTolerance;
+        /// <summary>
+        /// Per-channel absolute-difference tolerance (channels are 0..1) for the engine's own goldens. Deliberately
+        /// not <see cref="KhaozEngine.Imaging.GoldenGrid.DefaultTolerance"/>: that is the consumer default games
+        /// golden-test their own scenes with, and it is a separate decision.
+        /// <para>
+        /// Measured, not guessed (<c>docs/design/GOLDEN-TEST-AUDIT-2026-09-23.md</c> sections 2 and 6). Same-backend
+        /// captures are bit-identical from run to run on all three legs, real Metal matches the hosted Metal leg
+        /// pixel for pixel, and every committed grid reproduced within 0.0005. At 0.06 six measured feature
+        /// deletions still passed: the starfield, the debug ring, the edge outline, bloom, MSAA and the cascade blend
+        /// band. At 0.01 five of the six fail (the blend band moves only 0.0080), and a one 8-bit step rounding
+        /// change (0.0046) still passes.
+        /// </para>
+        /// <para>
+        /// A grid that moves past this is a code, toolchain, driver or runner-image change, never noise. Rebake it
+        /// through the controlled same-GPU comparison and attribute the move (<c>docs/CROSS-PLATFORM.md</c>,
+        /// "Tolerance and rebakes").
+        /// </para>
+        /// </summary>
+        public const float Tolerance = 0.01f;
+
+        /// <summary>
+        /// The per-channel bar for rows that compare two grids they rendered themselves in one session (a scene at
+        /// the origin against the same scene 100 km out, a depth field swapped and restored), rather than a capture
+        /// against a committed grid. Those rows often compare two different code paths, which legitimately differ
+        /// by edge and rounding noise (the mid-frame camera swap in <c>FarFromOriginGoldenTests</c> measures 0.029
+        /// on Metal), and they were calibrated against 0.06. It stays at that value so tightening
+        /// <see cref="Tolerance"/> changes no A/B verdict in either direction.
+        /// </summary>
+        public const float InSessionTolerance = 0.06f;
 
         /// <summary>
         /// Downsample <paramref name="rgba"/> (raw RGBA8, <paramref name="w"/>×<paramref name="h"/>) to a

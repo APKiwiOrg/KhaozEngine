@@ -4148,7 +4148,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     is a property of legacy mode. Everything after the blit (overlay renderers, Gui, 2D) is unchanged in both modes.
   - Formats: HDR mode flips the colour targets (`ColorTex`/`MsColor`/`PingA`/`PingB`/`BloomA`/`BloomB`) to
     `R16G16B16A16Float`. The encoded-normal and linear-depth MRT targets, the swapchain, and everything post-blit
-    stay LDR. MSAA resolves the float16 target (the `scene3d_hdr_msaa` golden proves the resolve). The tonemap runs
+    stay LDR. MSAA resolves the float16 target. The `scene3d_hdr_msaa` golden sees only the final image: the golden
+    audit measured MSAA switched off moving its grid by 0.0258 at worst, which passed the old 0.06 tolerance and
+    fails the current 0.01. `MsaaSceneGpuTests` asserts that MSAA anti-aliases geometry edges through the resolve,
+    and `MsaaResolveTargetGoldenTests` reads the resolved depth and normal targets back. The tonemap runs
     on the engine's existing display-referred shading values (no separate scene-linear conversion pass), so the
     current art direction is preserved, just with headroom added.
 - **Water** (`Scene3D.DrawWater(in WaterPlane)` + `Post.Water`, a `WaterSettings`, **default off/no-op**): an opt-in
@@ -18078,8 +18081,10 @@ Console.WriteLine(path);
 **Golden-grid regression: `KhaozEngine.Imaging.GoldenGrid`.** The reusable core behind the engine's golden-image
 tests (`GoldenCompare` in the test project delegates to it) and the `SnapshotTool diff`/`score` commands: BCL-only,
 no files/backends/xUnit, so a game can golden-test its own scenes the same way. A "grid" is a `float[]`, row-major,
-3 floats/cell (R,G,B in 0..1). Defaults `DefaultGridW` 32, `DefaultGridH` 18, `DefaultTolerance` 0.06 match the
-committed engine goldens, and `Serialize` is byte-identical to those committed `.txt` files.
+3 floats/cell (R,G,B in 0..1). Grid defaults `DefaultGridW` 32 and `DefaultGridH` 18 match the committed engine
+goldens, and `Serialize` is byte-identical to those committed `.txt` files. `DefaultTolerance` 0.06 is the consumer
+default. The engine's own goldens compare at a tighter 0.01 (`GoldenCompare.Tolerance`, see
+[CROSS-PLATFORM.md](CROSS-PLATFORM.md#tolerance-and-rebakes)), because their captures reproduce within 0.0005.
 
 ```csharp
 float[] got  = GoldenGrid.Downsample(capture, 480, 320);            // average RGB per cell (alpha ignored)

@@ -65,8 +65,8 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void Golden3D_FixedAsymmetricScene()
         {
-            // Renders under the HDR-default chain now (float16 + ACES tonemap). The committed scene3d grids predate HDR
-            // and are rebaked by the coordinator, so this is EXPECTED to fail locally until that bake lands.
+            // HDR-default chain (float16 + ACES). Committed grids match it (worst 0.0001 on Metal in the golden audit).
+            // Starfield, debug ring and outline deleted moved it 0.0355, 0.0461, 0.0483 (green at 0.06, red at 0.01).
             byte[] rgba = CaptureScene3dScene(_ => { });
             GoldenCompare.AssertOrUpdate("scene3d", rgba, W, H);
         }
@@ -228,7 +228,7 @@ namespace KhaozEngine.Tests.Gpu
         // island's edge, projected onto its own plane where there is no geometry instead of truncating. The scene is
         // shared with the raw-pixel A/B (GroundDecalVoidGoldenTests) and the showcase dumps
         // (TelegraphVoidShowcaseGpuTests) - see VoidDecalScene for the geometry's derivation. This grid is a coarse
-        // net by nature (32x18 averaged cells, 0.06 tolerance). The pixel-level statements about WHICH region does
+        // net by nature (32x18 averaged cells, 0.01 tolerance). The pixel-level statements about WHICH region does
         // what live in the A/B tests, which is deliberate after 11.9.0 showed the grid is blind to sparse detail.
         // telegraph_ground and telegraph_modern staying byte-exact is the other half of the contract: they carry no
         // flagged decals and must not move at all.
@@ -1057,10 +1057,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // Rendering gap #6: opt-in LDR threshold + separable-blur bloom. A dark scene (starfield off, near-black
-        // background + a dim floor) with three motivating bright sources - an emissive sphere (Material.Glowing), a
-        // bright magenta beam, and an additive white billboard - so the halo reads clearly against a mostly-dark
-        // frame. Off (the default) stays byte-stable via the untouched scene3d/scene3d_beam goldens; this locks
-        // bloom ON at its default knobs (Threshold 0.7, Knee 0.15, Intensity 0.6, Radius 4).
+        // background + a dim floor) with three bright sources (an emissive sphere, a magenta beam, an additive white
+        // billboard), bloom ON at its default knobs (Threshold 0.7, Knee 0.15, Intensity 0.6, Radius 4). The golden
+        // audit measured bloom off at 0.0524 and intensity halved at 0.0219 on Metal: green at the old 0.06, red at
+        // 0.01. The guard below is one-sided by design: it bounds too much bloom, not too little.
         [GpuFact]
         public void Golden3D_Bloom()
         {
@@ -1568,8 +1568,8 @@ namespace KhaozEngine.Tests.Gpu
             GoldenCompare.AssertOrUpdate("scene3d_hdr_bloom", rgba, W, H);
         }
 
-        // HDR + MSAA(4): the float16 multisampled resolve on a minimal scene (a lit cube + one emissive sphere), so the
-        // MSAA edge variance stays inside the coarse grid tolerance. Baked by the coordinator (not in this stage).
+        // HDR + MSAA(4) on a minimal scene (a lit cube + one emissive sphere). The golden audit measured MSAA off at
+        // 0.0258 on Metal (green at 0.06, red at 0.01). MsaaResolveTargetGoldenTests reads the resolve targets (#603).
         [GpuFact]
         public void Golden3D_HdrMsaa()
         {

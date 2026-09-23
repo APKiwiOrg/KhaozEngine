@@ -11,7 +11,9 @@ namespace KhaozEngine.Tests.Gpu
     /// End-to-end GPU checks for the bloom pass-interaction correctness points that a coarse RGB golden grid
     /// cannot see: half-res target allocation (lazy, off = zero, re-derived on resize), and
     /// <see cref="PixelPostProcessSettings.TransparentBackground"/> alpha preservation (bloom must not resurrect an
-    /// alpha-0 background pixel). Pixel/visual coverage of the bloom halo itself is the scene3d_bloom golden.
+    /// alpha-0 background pixel). The halo itself is only coarsely covered by the scene3d_bloom golden: the golden
+    /// audit measured bloom off at 0.0524 and intensity halved at 0.0219 on its grid (green at the old 0.06, red at
+    /// 0.01). <c>HdrPipelineGpuTests.Hdr_bloom_extracts_over_range_only</c> asserts halo pixels.
     /// Skipped unless KE_GPU_TESTS=1 (needs a Metal device).
     /// </summary>
     public sealed class BloomGpuTests

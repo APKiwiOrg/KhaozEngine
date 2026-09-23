@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.Gpu
     // That is the #604 unfold of the fold-matrix binding the spike proved (GpuSkinningReproGpuTests variant 3),
     // which folded the frame block and a CPU-computed Mvp into every draw's slot so the pipeline read one buffer,
     // plus #407 taking the palette out of what was left. These
-    // render the SAME posed tube through both paths and assert pixel parity within the golden tolerance, that the GPU
+    // render the SAME posed tube through both paths and assert pixel parity within their own ParityTol (0.08), that the GPU
     // reads EVERY bone (a bent pose deforms, not just bones[0]), the rest-pose identity check (palette=identity must
     // render the undeformed mesh - the check that caught the old attempt's corruption), multi-character same-mesh
     // scenes with the flag on, and shadow parity flag-on vs flag-off. Skipped unless KE_GPU_TESTS is set.

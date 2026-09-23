@@ -175,8 +175,10 @@ it was on. It is a probe, not a fix: it can cost performance, so it is off by de
 `GoldenCompare.GoldenPath(name)` resolves `KhaozEngine.Render.Tests/Gpu/goldens/<name>.<backend>.txt` where
 `<backend>` = `GoldenCompare.GoldenBackendToken(GpuBackendSelector.Select())`. Each rendering API has its own
 reference grid because a software rasterizer (lavapipe, WARP) does not match Apple Metal pixel-for-pixel.
-Per-backend goldens absorb that while still catching real shader / UBO / blend / winding / orientation
-regressions (coarse 32×18 grid, per-channel tolerance).
+Per-backend goldens absorb that while still catching region-scale regressions: a pass that stops drawing, a wrong
+sampler address mode or texture slot, a broken shader (coarse 32×18 grid, per-channel tolerance of 0.01, see
+"Tolerance and rebakes" below). They do not see sparse, thin or low-contrast detail or intermediate targets, as
+measured in section 3 of [GOLDEN-TEST-AUDIT-2026-09-23.md](design/GOLDEN-TEST-AUDIT-2026-09-23.md).
 
 **THREE FAMILIES SINCE `18.0.0`.** The token is a mapping rather than the enum name, and it has been through
 two moves. Until `17.41.0` it mapped seven kinds onto four families: `GpuBackendKind.Direct3D11Native` resolved
@@ -229,6 +231,31 @@ pin still names the pre-split `KhaozEngine.Tests/Gpu/goldens/*.txt` path today, 
 LF text, and a Windows checkout with `autocrlf` on would otherwise convert them to CRLF, breaking the byte-identity
 contract between the committed file and `GoldenGrid.Serialize`'s LF output. This exact failure shipped and was
 fixed in 10.18.1 (Metal and Vulkan legs and every actual golden compare were green, only the endings differed).
+
+### Tolerance and rebakes
+
+The engine's committed-grid compare fails on any cell channel that moves by more than
+`GoldenCompare.Tolerance`, 0.01. It does not inherit `GoldenGrid.DefaultTolerance` (0.06), which stays the
+consumer default games golden-test their own scenes with. The value is measured in
+[GOLDEN-TEST-AUDIT-2026-09-23.md](design/GOLDEN-TEST-AUDIT-2026-09-23.md) sections 2 and 6. Same-backend
+captures are bit-identical from run to run on all three legs, real Metal matches the hosted Metal leg pixel for
+pixel, and every committed grid reproduced within 0.0005 at the audit. At 0.06 six measured feature deletions
+still passed (the starfield, the debug ring, the edge outline, bloom, MSAA and the cascade blend band). At 0.01
+five of the six fail.
+
+The current legs carry no driver noise for a tolerance to absorb, so a grid that moves is a code, toolchain,
+driver or runner-image change. **A toolchain, driver or runner-image change that moves a grid is rebaked through
+a controlled same-GPU comparison and attributed, never waved through as noise.** The comparison captures the
+scenes before and after the change on the same GPU with the same filter, and only the grids it shows moving may
+be replaced. [OLDEST-BACKLOG-RENDER-VALIDATION-2026-09-19.md](design/OLDEST-BACKLOG-RENDER-VALIDATION-2026-09-19.md)
+is the worked example. The rebake commit or its issue names the cause and lists each moved scene with its
+worst-cell delta. A move nobody can attribute is a regression until shown otherwise. Every compare also appends
+its worst cell to `golden-deltas.<backend>.txt` (see "Failure-evidence PNGs" below), which is where the
+before and after numbers come from on a CI leg.
+
+Rows that compare two grids they rendered themselves in one session, such as `FarFromOriginGoldenTests`, are
+not held to that value. They compare two code paths that legitimately differ by edge noise, and use
+`GoldenCompare.InSessionTolerance` (0.06), the value they were calibrated against.
 
 ## CI matrix (`.github/workflows/cross-platform-gpu.yml`)
 

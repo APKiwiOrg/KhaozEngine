@@ -14,7 +14,8 @@ namespace KhaozEngine.Imaging
     /// <para>
     /// A grid is a flat <c>float[]</c>, row-major, 3 floats per cell (R, G, B in 0..1), length
     /// <c>gridW * gridH * 3</c>. The default grid is <see cref="DefaultGridW"/>x<see cref="DefaultGridH"/> at
-    /// tolerance <see cref="DefaultTolerance"/>, matching the committed engine goldens.
+    /// tolerance <see cref="DefaultTolerance"/>, a loose default for a game golden-testing its own scenes. The engine's own
+    /// goldens compare tighter, at 0.01, because their captures reproduce bit for bit (see docs/CROSS-PLATFORM.md).
     /// </para>
     /// </summary>
     public static class GoldenGrid

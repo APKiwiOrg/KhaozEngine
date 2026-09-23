@@ -34,17 +34,26 @@ namespace KhaozEngine.ItemInstances.Journal;
 /// which is exactly the state the consumer resyncs from.
 /// </para>
 /// <para>
+/// <b>The batch owns what it is opened over, from <c>Open</c> until <see cref="MarkCommitted"/>.</b> It holds
+/// each container by reference and every <c>Apply</c> writes through it. It reads and writes through
+/// <see cref="IPagedContainerWorkingCopy"/> and nothing wider, so a host that shares its containers copy on
+/// write opens the batch over its own implementation, runs its ownership check inside the three write
+/// members, and keeps every read shared
+/// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1045">#1045</see>). <see cref="MarkCommitted"/>
+/// calls <c>MarkClean</c> only on a container holding a dirty page, so a container the batch left clean is
+/// never written at all.
+/// </para>
+/// <para>
 /// Nothing here is thread safe, exactly like the containers it edits: one owner, one tick, one batch.
 /// </para>
 /// </summary>
 public sealed partial class ContainerCommitBuilder
 {
-    readonly Dictionary<string, PagedItemContainer> _containers;
+    readonly Dictionary<string, IPagedContainerWorkingCopy> _containers;
     readonly string[] _names;
     readonly List<ContainerOperation> _operations = new();
     readonly List<JournalEvent> _events = new();
     readonly PageSlotInput[] _entries = new PageSlotInput[ItemContainerPageCodec.ContainerPageSlots];
-    readonly ItemContainerPage[] _pages;
     int _eventBytes;
     int _pageBytes;
     bool _presentAtCommit;
@@ -55,7 +64,7 @@ public sealed partial class ContainerCommitBuilder
         string streamKey,
         string actionKind,
         string scope,
-        Dictionary<string, PagedItemContainer> containers,
+        Dictionary<string, IPagedContainerWorkingCopy> containers,
         string[] names,
         long tick,
         ContainerCommitOptions options)
@@ -67,11 +76,6 @@ public sealed partial class ContainerCommitBuilder
         _containers = containers;
         _names = names;
         Window = new ContainerBatchWindow(streamKey, tick, options.Limits);
-
-        int widest = 1;
-        foreach (PagedItemContainer container in containers.Values)
-            if (container.PageCount > widest) widest = container.PageCount;
-        _pages = new ItemContainerPage[widest];
         _pageBytes = MeasureDirtyPages();
     }
 
@@ -104,13 +108,46 @@ public sealed partial class ContainerCommitBuilder
         get
         {
             int dirty = 0;
-            foreach (string name in _names) dirty += _containers[name].DirtyPageCount;
+            foreach (string name in _names) dirty += DirtyPageCount(_containers[name]);
             return dirty;
         }
     }
 
     /// <summary>
-    /// Opens a batch on one stream, over the containers that stream holds.
+    /// Opens a batch on one stream, over the containers that stream holds, as the containers themselves. The
+    /// batch owns them until <see cref="MarkCommitted"/>. A host that shares its containers copy on write
+    /// opens over its own <see cref="IPagedContainerWorkingCopy"/> instead.
+    /// </summary>
+    /// <param name="streamKey">The stream. Every page this batch writes is a section of it.</param>
+    /// <param name="actionKind">The durable action kind, <c>ItemInstanceEvents.CraftActionKind</c> for a
+    /// held craft.</param>
+    /// <param name="scope">The authenticated scope the operation is admitted under.</param>
+    /// <param name="containers">The stream's containers by name, which is the name their sections are filed
+    /// under.</param>
+    /// <param name="tick">The server tick this batch belongs to. The window is one tick.</param>
+    /// <param name="options">The journal facts of <see cref="ContainerCommitOptions"/>, defaulted when
+    /// null.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="containers"/> is empty or holds a null container
+    /// or a name the section scheme refuses.</exception>
+    public static ContainerCommitBuilder Open(
+        string streamKey,
+        string actionKind,
+        string scope,
+        IReadOnlyDictionary<string, PagedItemContainer> containers,
+        long tick = 0,
+        ContainerCommitOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(containers);
+        var doors = new Dictionary<string, IPagedContainerWorkingCopy>(containers.Count, StringComparer.Ordinal);
+        foreach (KeyValuePair<string, PagedItemContainer> pair in containers) doors.Add(pair.Key, pair.Value);
+        return Open(streamKey, actionKind, scope, doors, tick, options);
+    }
+
+    /// <summary>
+    /// Opens a batch on one stream, over the working copies of the containers that stream holds. Every read and
+    /// every write the batch makes goes through <see cref="IPagedContainerWorkingCopy"/>, and the batch holds
+    /// each one by reference from here until <see cref="MarkCommitted"/>.
     /// </summary>
     /// <param name="streamKey">The stream. Every page this batch writes is a section of it.</param>
     /// <param name="actionKind">The durable action kind, <c>ItemInstanceEvents.CraftActionKind</c> for a
@@ -129,7 +166,7 @@ public sealed partial class ContainerCommitBuilder
         string streamKey,
         string actionKind,
         string scope,
-        IReadOnlyDictionary<string, PagedItemContainer> containers,
+        IReadOnlyDictionary<string, IPagedContainerWorkingCopy> containers,
         long tick = 0,
         ContainerCommitOptions? options = null)
     {
@@ -140,8 +177,8 @@ public sealed partial class ContainerCommitBuilder
         if (containers.Count == 0)
             throw new ArgumentException("A batch is opened over at least one container.", nameof(containers));
 
-        var copy = new Dictionary<string, PagedItemContainer>(containers.Count, StringComparer.Ordinal);
-        foreach (KeyValuePair<string, PagedItemContainer> pair in containers)
+        var copy = new Dictionary<string, IPagedContainerWorkingCopy>(containers.Count, StringComparer.Ordinal);
+        foreach (KeyValuePair<string, IPagedContainerWorkingCopy> pair in containers)
         {
             if (pair.Value is null)
                 throw new ArgumentException($"Container '{pair.Key}' is null.", nameof(containers));
@@ -182,8 +219,7 @@ public sealed partial class ContainerCommitBuilder
     /// it.</exception>
     public bool Apply(in ContainerOperation operation, long tick)
     {
-        if (_closed) throw new InvalidOperationException("This batch is closed.");
-        if (_faulted) throw new InvalidOperationException("This batch was abandoned when an operation threw.");
+        ThrowIfEnded();
         operation.Validate();
         if (!Window.IsOpen) return false;
 
@@ -233,7 +269,9 @@ public sealed partial class ContainerCommitBuilder
 
     /// <summary>
     /// Closes the batch and builds its commit: ONE identity, ONE event per operation in order, ONE projection
-    /// write per dirty page, ONE result.
+    /// write per dirty page, ONE result. It is the convenience over <see cref="TryBuildParts"/> for a commit
+    /// that carries this batch and nothing else: the same events and the same projection writes, under an
+    /// identity and a result, validated against <see cref="ContainerCommitOptions.Limits"/>.
     /// <para>
     /// <b>Whose identity it is decides what the intent holds</b> (spec 6.5). A SERVER minted batch carries the
     /// canonical ORDERED operation list, and its id comes from <paramref name="identityFactory"/>. A CLIENT
@@ -259,17 +297,15 @@ public sealed partial class ContainerCommitBuilder
     public JournalCommit Close(Func<Guid> identityFactory, ReadOnlyMemory<byte> result = default)
     {
         ArgumentNullException.ThrowIfNull(identityFactory);
-        if (_closed) throw new InvalidOperationException("This batch is closed.");
-        if (_faulted) throw new InvalidOperationException("This batch was abandoned when an operation threw.");
-        if (_operations.Count == 0)
+        if (!TryCollectParts(out JournalEvent[] events, out JournalProjectionWrite[] projectionWrites))
             throw new InvalidOperationException("A batch holding no operation has nothing to commit.");
 
         Guid operationId = Window.HoldsClientOperation ? _operations[0].OperationId : identityFactory();
         var identity = new JournalOperationIdentity(operationId, Scope, ActionKind, BuildIntent());
         var commit = new JournalCommit(
             identity,
-            new[] { new JournalStreamMutation(StreamKey, Options.ExpectedVersion, _events) },
-            BuildProjectionWrites(),
+            new[] { new JournalStreamMutation(StreamKey, Options.ExpectedVersion, events) },
+            projectionWrites,
             Options.ResultSchema,
             Options.ResultSchemaVersion,
             result.ToArray(),
@@ -280,19 +316,25 @@ public sealed partial class ContainerCommitBuilder
         // Recorded LAST, once there is a commit to show for it. Flagging the batch closed first left a throw
         // out of the writes holding a batch that could never be closed again, with its pages still dirty and
         // no fault flag, so the caller held something that had committed nothing and could do nothing.
-        _closed = true;
-        Window.Close(ContainerBatchCloseReason.Closed);
+        End();
         return commit;
     }
 
     /// <summary>
-    /// Clears every page's dirty flag, which the batch owes them once its commit has LANDED. Nothing calls it
-    /// for you: a commit that failed terminally leaves the pages dirty on purpose, so the next ordinary commit
-    /// carries them again and the consumer's resync has something to agree with.
+    /// Clears every page's dirty flag, which the batch owes them once its commit has LANDED. It calls
+    /// <see cref="IPagedContainerWorkingCopy.MarkClean"/> on each container holding a dirty page and on no
+    /// other, because the call is a write: a copy on write host takes ownership in it, and a bank the batch
+    /// never dirtied would be copied to clear flags it never had. Nothing calls it for you: a commit that failed
+    /// terminally leaves the pages dirty on purpose, so the next ordinary commit carries them again and the
+    /// consumer's resync has something to agree with.
     /// </summary>
     public void MarkCommitted()
     {
-        foreach (string name in _names) _containers[name].MarkClean();
+        foreach (string name in _names)
+        {
+            IPagedContainerWorkingCopy container = _containers[name];
+            if (DirtyPageCount(container) != 0) container.MarkClean();
+        }
     }
 
     /// <summary>
@@ -314,52 +356,35 @@ public sealed partial class ContainerCommitBuilder
         return intent;
     }
 
-    JournalProjectionWrite[] BuildProjectionWrites()
-    {
-        var writes = new List<JournalProjectionWrite>(ProjectionWriteCount);
-        foreach (string name in _names)
-        {
-            PagedItemContainer container = _containers[name];
-            int dirty = container.CopyDirtyPagesTo(_pages);
-            for (int index = 0; index < dirty; index++)
-            {
-                ItemContainerPage page = _pages[index];
-                writes.Add(new JournalProjectionWrite(
-                    StreamKey,
-                    ContainerSectionNames.Format(name, page.PageIndex),
-                    Options.ProjectionSchema,
-                    Options.ProjectionSchemaVersion,
-                    EncodePage(page)));
-            }
-        }
-
-        return writes.ToArray();
-    }
-
-    byte[] EncodePage(ItemContainerPage page)
-    {
-        int count = page.CopyEntriesTo(_entries);
-        return ItemContainerPageCodec.Encode(
-            page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion, _entries.AsSpan(0, count));
-    }
-
     int MeasureDirtyPages()
     {
         int bytes = 0;
         foreach (string name in _names)
         {
-            PagedItemContainer container = _containers[name];
-            int dirty = container.CopyDirtyPagesTo(_pages);
-            for (int index = 0; index < dirty; index++) bytes += MeasurePage(_pages[index]);
+            IPagedContainerWorkingCopy container = _containers[name];
+            for (int page = 0; page < container.PageCount; page++)
+                if (container.IsPageDirty(page)) bytes += MeasurePage(container, page);
         }
 
         return bytes;
     }
 
-    int MeasurePage(ItemContainerPage page)
+    int MeasurePage(IPagedContainerWorkingCopy container, int pageIndex)
     {
-        int count = page.CopyEntriesTo(_entries);
+        int count = container.CopyPageEntriesTo(pageIndex, _entries);
         return ItemContainerPageCodec.EncodedSize(
-            page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion, _entries.AsSpan(0, count));
+            pageIndex,
+            ItemContainerPage.FirstSlotOf(pageIndex),
+            ItemContainerPageCodec.ContainerPageSlots,
+            container.PageContentVersion(pageIndex),
+            _entries.AsSpan(0, count));
+    }
+
+    static int DirtyPageCount(IPagedContainerWorkingCopy container)
+    {
+        int dirty = 0;
+        for (int page = 0; page < container.PageCount; page++)
+            if (container.IsPageDirty(page)) dirty++;
+        return dirty;
     }
 }

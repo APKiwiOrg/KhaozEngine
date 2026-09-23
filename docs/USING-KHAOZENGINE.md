@@ -16362,11 +16362,54 @@ accounts (`PresentAtCommit`), a client originated operation arrived (`ClientOper
 are reasons an operation was REFUSED. `Close` records `Closed`, its own reason, so a batch you closed and took
 a commit from does not read afterwards as one the clock took away from you.
 
+The window needs a tick, and your journal layer may not own one. `Apply(operation)` applies on the batch's own
+tick, so a journal that never sees the server tick opens every batch at the default and uses that form:
+`TickBoundary` then never fires, and the batch is bounded by the other four closers and by your own `Close`.
+
+**The batch owns what it is opened over, from `Open` until `MarkCommitted`.** It holds each container by
+reference and writes through it on every `Apply`, through `IPagedContainerWorkingCopy` and nothing wider. The
+overload above hands it the `PagedItemContainer`s themselves. If you share containers copy on write, open over
+your own implementation instead, a `Dictionary<string, IPagedContainerWorkingCopy>`, and run your ownership
+check inside its three writes (`SetSlotAt`, `TakeSlotAt`, `MarkClean`). No page object crosses it, so every
+read stays shared and a batch copies only on the first write that joins. `MarkCommitted` calls `MarkClean`
+only on a container holding a dirty page, so a container the batch left clean is never copied.
+
 Whose identity it is decides what the normalized intent holds. A SERVER minted batch hashes the canonical
 ordered operation list. A CLIENT headed batch hashes the client operation's own encoding ALONE, under the
 client's own id, and the server work riding behind it contributes no intent bytes. That is what makes a
 resubmit after a reconnect, which omits server work the client never saw, hash identically and resolve
 replayed rather than conflicting, and a conflict there would tell a player a committed withdraw had failed.
+
+**A commit that carries more than the batch is composed from its parts.** A loot claim writes the loot
+source's stream beside the bag, and a click can carry coins or quest state, so `Close`, which answers a commit
+holding this batch alone, is the convenience over `TryBuildParts`:
+
+```csharp
+// storeLimits is what your store validates against. A batch you add to is opened on those limits LOWERED by
+// what you add (LowerByLoot is your own), so its window stops with room left for the loot.
+var batch = ContainerCommitBuilder.Open(
+    persistenceKey, ItemInstanceEvents.CraftActionKind, session.Scope, containers, server.TickCount,
+    new ContainerCommitOptions { Limits = LowerByLoot(storeLimits) });
+// ... the tick's operations join, then:
+
+if (batch.TryBuildParts(out IReadOnlyList<JournalEvent> events, out IReadOnlyList<JournalProjectionWrite> writes))
+{
+    // events are StreamKey's, one per operation in order. The identity rules stay the batch's:
+    // batch.Window.HoldsClientOperation, batch.Operations[0].OperationId, batch.BuildIntent() and
+    // batch.PresentAtCommit are what Close itself reads.
+    JournalCommit composed = ComposeWithLoot(batch, events, writes);
+    composed.Validate(storeLimits);   // the REAL total against the FULL limits, never batch.Options.Limits
+    JournalSubmission submitted = executor.Submit(composed);
+}
+```
+
+Taking the parts closes the batch exactly as `Close` does, and a batch holding no operation answers false and
+stays open. The limits are checked on the composed commit and never on a part: the window bounds the batch's
+own share, so a host that adds to it opens the batch with `ContainerCommitOptions.Limits` set to its store's
+limits lowered by what it adds, and validates the composed commit against the FULL limits it lowered from.
+Validating against `batch.Options.Limits` refuses the very commit the reservation made room for. `Close`
+validates against `Options.Limits` because a batch alone adds nothing.
+`KhaozEngine.ItemInstances.Journal/README.md` states the whole contract.
 
 ### What one viewer may see, and the one frame delta (19.0.0)
 
@@ -16408,11 +16451,20 @@ if (written < 0)
 {
     // It would not fit ONE frame, or a change carries a QUARANTINED entry, whose wrapper never projects.
     // Send the WHOLE page through the fragmenter, never a second delta: two deltas for one page would have
-    // to be applied in order by a client that may have missed the first.
-    var entries = new PageSlotInput[page.EntryCount];
-    int count = page.CopyEntriesTo(entries);
-    byte[] encodedPage = ItemContainerPageCodec.Encode(
-        page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion, entries.AsSpan(0, count));
+    // to be applied in order by a client that may have missed the first. The page goes out through the
+    // VIEWER door, which projects every entry exactly as the delta would have and carries a quarantined one
+    // hollow. ItemContainerPageCodec.Encode projects nothing and is for the journal and the store alone.
+    var stored = new PageSlotInput[page.EntryCount];
+    int count = page.CopyEntriesTo(stored);
+    var entries = new ContainerPageChange[count];
+    for (int i = 0; i < count; i++)
+        entries[i] = ContainerPageChange.Occupied(stored[i], IsIdentified(stored[i]), RevealedMask(stored[i]));
+
+    byte[] encodedPage = ItemContainerPageCodec.EncodeProjected(
+        properties,
+        PropertyVisibility.OwnerOnly,          // the same viewer level the delta was built for
+        page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion,
+        entries);
 
     foreach (byte[] chunk in TileFragmentedMessage.Fragment(streamId, sequence, encodedPage))
         server.SendGameMessageTo(slot, kind: GameKinds.PageChunk, chunk);
@@ -16422,6 +16474,14 @@ else
     server.SendGameMessageTo(slot, kind: GameKinds.PageDelta, frame.AsSpan(0, written));
 }
 ```
+
+**A page going to a viewer has ONE door too.** `ItemContainerPageCodec.EncodeProjected` takes the same
+`ContainerPageChange` values the delta takes and projects each payload through
+`ContainerPageProjection.ProjectPayload`, the member the delta projects through, so the whole page and the
+delta cannot disagree about what one viewer sees. A quarantined entry crosses HOLLOW: a wrapper carrying the
+stored reason and stamped version over no original bytes, which verifies and seats on the client while the
+preserved bytes stay on the server. The raw `Encode` projects nothing and writes the durable bytes, which is
+right for the journal's projection section and a store, and never for a client.
 
 Both projections descend into a SOCKET. Kind 132 is visible to everyone, so a filter that kept or dropped
 whole top-level fields shipped the gem inside a socket exactly as stored, and that gem's own owner-only
@@ -16454,13 +16514,11 @@ types and the item generator are spec 20 phase 4, and the crafting framework and
 are phase 5, both in `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`. `ContainerOperationKind.Craft`
 already carries the operation and its page write, and the event BODY is the crafting framework's to encode.
 
-Four named gaps sit on surfaces that DO exist. The page delta ships an encoder and no reader, while the
-fragmenter ships both halves (https://github.com/APKiwiOrg/KhaozEngine/issues/933). A full page send carries
-the STORED bytes rather than a per-viewer projection, so it and the delta disagree about what a non-owner
-sees (https://github.com/APKiwiOrg/KhaozEngine/issues/932). A lowered `max_stack` is not enforced on the
-merge path, which saturates at `int.MaxValue` and is reported after the fact by validator check 12
-(https://github.com/APKiwiOrg/KhaozEngine/issues/924). And a container operation's events are written with
-nothing able to read one back (https://github.com/APKiwiOrg/KhaozEngine/issues/941).
+Three named gaps sit on surfaces that DO exist. The page delta ships an encoder and no reader, while the
+fragmenter ships both halves (https://github.com/APKiwiOrg/KhaozEngine/issues/933). A lowered `max_stack` is
+not enforced on the merge path, which saturates at `int.MaxValue` and is reported after the fact by validator
+check 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/924). And a container operation's events are written
+with nothing able to read one back (https://github.com/APKiwiOrg/KhaozEngine/issues/941).
 
 ---
 

@@ -511,6 +511,10 @@ public sealed class ContainerCommitBuilderTests
         Assert.Throws<ArgumentException>(() => ContainerCommitBuilder.Open(
             StreamKey, ItemInstanceEvents.CraftActionKind, Scope, Containers(("bank/p00", Container()))));
         Assert.Throws<ArgumentNullException>(() => ContainerCommitBuilder.Open(
-            StreamKey, ItemInstanceEvents.CraftActionKind, Scope, null!));
+            StreamKey, ItemInstanceEvents.CraftActionKind, Scope, (IReadOnlyDictionary<string, PagedItemContainer>)null!));
+        Assert.Throws<ArgumentNullException>(() => ContainerCommitBuilder.Open(
+            StreamKey, ItemInstanceEvents.CraftActionKind, Scope, (IReadOnlyDictionary<string, IPagedContainerWorkingCopy>)null!));
+        Assert.Throws<ArgumentException>(() => ContainerCommitBuilder.Open(
+            StreamKey, ItemInstanceEvents.CraftActionKind, Scope, new Dictionary<string, PagedItemContainer> { [Bank] = null! }));
     }
 }

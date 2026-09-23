@@ -23,7 +23,8 @@ Pulls in:
   (`ContainerSectionNames`, `<container>/p<NN>`), its load path (`ContainerLoad.Load`: decode, remap,
   unwrap, validate, in one pass with no store read) and its batched commit builder
   (`ContainerCommitBuilder`: one tick's operations against an in-memory working copy, emitted as ONE
-  `JournalCommit` with one identity, one event per operation and one projection write per dirty page).
+  `JournalCommit` with one identity, one event per operation and one projection write per dirty page, or
+  handed out as parts through `TryBuildParts` for a commit the host composes across streams).
   It is a `Server` package because composing a `JournalCommit` needs `KhaozEngine.WorldStore`, and the
   record itself stays in `Foundation`.
 - `KhaozEngine.Catalog.Authoring` - the authoring half of the content catalog: the

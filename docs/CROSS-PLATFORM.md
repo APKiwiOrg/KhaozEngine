@@ -661,7 +661,7 @@ gives two same-named `golden-deltas.direct3d11.txt` files that are two implement
 of references. The macOS pair is the one where mixing those up costs the most, because `metal` is the fleet's
 cross-backend reference family.
 
-Five artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
+Six artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
 PASSED:
 
 - **`vulkan-validation-strict-vulkan-native`** and **`vulkan-validation-sync`** are the two validation tiers'
@@ -729,6 +729,16 @@ PASSED:
   a same-boot control is deleted, and a green run of this leg is the only baseline left. The step is `continue-on-error` with `|| true` on every command,
   because a diagnostic that can redden the leg it is diagnosing would be a second flake on top of the one being
   chased.
+- **`pool-watch-direct3d11-native`** is the thread pool starvation watchdog's evidence from the Windows full
+  tier ([#720](https://github.com/APKiwiOrg/KhaozEngine/issues/720),
+  [#553](https://github.com/APKiwiOrg/KhaozEngine/issues/553)). `POOL_WATCH_ARMED` sets `KE_POOL_WATCH=1` for
+  that tier alone, and `KhaozEngine.Server.Tests` and `KhaozEngine.MapEditor.Tests` then arm
+  `ThreadPoolStarvationWatchdog` from `KhaozEngine.TestSupport`. Each armed host writes a `pool-watch-armed` line,
+  then one `pool-starvation` line per episode of pool queue latency past two seconds, and takes one heap dump on
+  the first episode that lasts ten, which `dotnet-dump analyze` reads with `threadpool` and `clrstack -all`. An
+  armed line with nothing after it is a clean run. The same tier adds a trx logger, and the artifact carries those
+  files too, so an episode's timestamps can be laid against every test that was running beside it. Retention is
+  three days because a dump can run to gigabytes.
 
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
 untouched.

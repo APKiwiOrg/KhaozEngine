@@ -760,7 +760,12 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   cannot fold it away) keeps the signature contiguous without changing the output to the bit. See the in-source
   hazard note next to `ShadowDepthVert` in `KhaozEngine.Render3D/Internal/ShaderSources.Shadow.cs`. Its
   dissolve-aware sibling (`ShadowDepthDissolveVert`, 17.x) declares the model pass's full 0..13 input set and
-  carries the same sink over everything it does not genuinely read, for the same reason.
+  carries the same sink over everything it does not genuinely read, for the same reason, and so do the alpha-cutout
+  and dissolve-aware skinned depth vertices. The same sink works on the fragment side:
+  `ShadowDepthCutoutInvertedFrag` has no other use for its location 3 interpolant, and live inputs at 4 and 5 sit
+  above it, so it reads it with a `1e-30` weight rather than leave a hole in the pixel-input signature.
+  `D3D11FxcValidationTests` asserts on the emitted HLSL that every shadow depth vertex's input signature, and the
+  cutout and skinned dissolve fragments' interpolants, are contiguous.
 - **Sampling textures in binding order is retired.** Native Metal authors resource indices through
   `MslIndexRemap`. The higher-binding-first conditional pixel-readback case in
   `MetalConditionalTextureOrderGpuTests` verifies both runtime branches. Samples can be conditional

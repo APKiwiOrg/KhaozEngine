@@ -224,11 +224,18 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   through a dissolve-aware depth pipeline instead, so its SHADOW erodes with the same world-space noise mask that
   erodes the mesh: a prop fading out at its draw radius no longer casts a fully solid shadow under an almost-invisible
   caster, and across an HLOD crossfade the props' shadow thins out as the merged mesh's thins in rather than both
-  casting at full strength. `DrawShadowOnly(handle, transform)` is the opposite of the opt-out: the instance
-  records depth for the key light and never draws in the COLOUR pass, so a view can hide geometry from the eye and
-  keep the shadow the world still throws (a tile world's hidden roof), counted by `ShadowOnlyInstances` and by
-  neither `DrawnInstances` nor `CulledInstances`. All three are inert at their defaults (no dissolve, casting on,
-  not shadow-only), and a frame with none of them is byte-identical to before. `Scene3D.TerrainCastsShadows` (default `false`) is the third, scene-wide policy: leave it
+  casting at full strength. A MASK caster (a mesh loaded with an alpha cutoff and an albedo, such as a leaf card)
+  is drawn through an alpha-cutout depth pipeline, so its shadow is its silhouette rather than the solid quad. Only
+  those spans sample the albedo: an opaque caster keeps the depth-only pipeline with no texture sample and no
+  discard. Skinned draws follow the same policy: `DrawSkinned(..., material, castsShadows: false)` (and the
+  dissolve overload's `castsShadows` argument) keeps a character out of the depth pass, and a dissolving skinned
+  draw sheds its shadow with its body on both skinning paths. `DrawShadowOnly(handle, transform)` is the opposite
+  of the opt-out: the instance records depth for the key light and never draws in the COLOUR pass, so a view can
+  hide geometry from the eye and keep the shadow the world still throws (a tile world's hidden roof), counted by
+  `ShadowOnlyInstances` and by neither `DrawnInstances` nor `CulledInstances`. The per-draw ones are inert at
+  their defaults (no dissolve, casting on, not shadow-only), a MASK mesh is the only one that takes the cutout
+  pipeline, and a frame with none of them is byte-identical to before. `Scene3D.TerrainCastsShadows` (default
+  `false`) is the scene-wide policy: leave it
   off and splat terrain stays receive-only as it always was, set it and terrain chunks join the caster list through
   the same per-cascade cull, which is what a SCULPTED world with real hills wants (a 49 m mountain otherwise throws
   no shadow while the trees standing on it do). A degenerate camera makes
@@ -339,22 +346,24 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   caster still writes the shadow map, so its shadow lands on-screen). Read the win from `Scene3D.DrawnInstances` /
   `Scene3D.CulledInstances`. Mesh-local bounds (`MeshBounds`, computed once at `LoadMesh`) feed the pure plane math
   `FrustumPlanes.Extract(camera.ViewProjection)` + `IntersectsAabb`/`IntersectsSphere` (headless, allocation-free).
-  Skinned draws (`DrawSkinned`) get the same treatment BEFORE the CPU skin pass, so an off-screen character skips
-  the per-vertex skin + upload entirely, not just its draw call: a camera-culled draw is skinned only if it is
+  Skinned draws (`DrawSkinned`) get the same treatment BEFORE they are recorded, so an off-screen character skips
+  its skin or palette upload entirely, not just its draw call: a camera-culled draw is kept only if it casts and is
   ALSO inside the active shadow map's own ortho volume (so an off-camera caster still throws an on-screen shadow -
   the shadow pass is never camera-culled, matching the rigid contract). Rest-pose bounds are inflated by a safety
   factor (`Scene3D.SkinnedCullSafetyFactor`) to cover a pose swinging a limb outside the rest silhouette. Read the
   win from `Scene3D.DrawnSkinnedInstances` / `Scene3D.CulledSkinnedInstances`.
-- GPU skinning (opt-in, `Scene3D.UseGpuSkinning`, default OFF): the vertex shader blends the bone palette instead of
+- GPU skinning (`Scene3D.UseGpuSkinning`, default ON): the vertex shader blends the bone palette instead of
   the CPU (`SkinningMath.SkinVertex`), so the rest-pose vertex buffer uploads once at load and only the per-draw
   palette + matrices upload each frame - the win at MMO crowd scale. Pixel-parity with the CPU path, same culling +
-  shadow pass. Set 0 binding 0 is the shared frame block both stages read, binding 1 the per-draw `{ Model; P }`
+  shadow pass. Set it `false` for CPU skinning, which stays supported and is flippable per frame. Set 0 binding 0 is
+  the shared frame block both stages read, binding 3 the per-draw `{ Model; P }`
   the vertex reads at its dynamic offset, material maps at set 1, and the per-CASTER bone palette at set 2. It was
   one combined buffer with the frame block copied into every draw's slot until issue #604 unfolded it, and it kept
   the palette per draw until issue #407 gave it a buffer of its own that the shadow pass binds too, so a caster's
   bones upload ONCE a frame instead of once per pass per cascade. All three packed buffers upload whole and once,
-  avoiding D3D11's partial-uniform staging path. Ships OFF
-  pending a windowed A/B against CPU skinning (the Showcase 3D room's F key + HUD). See `docs/USING-KHAOZENGINE.md`.
+  avoiding D3D11's partial-uniform staging path. It shipped off while a windowed swapchain corruption on the Veldrid
+  Metal backend was open, and that backend was deleted in 18.0.0. The Showcase 3D room's F key flips the path live
+  for a windowed A/B. See `docs/USING-KHAOZENGINE.md`.
 - Per-pass timing: `Scene3D.EnableTiming` (default `false`, no cost when off - a single `bool` check, no
   `Stopwatch` call, no allocation) brackets each render pass with a CPU `Stopwatch` and exposes the result as
   `Scene3D.PassTimingsMs` (a `Scene3DPassTimingsMs`: `ShadowDepthMs`/`ModelMs`/`TransparentsMs`/`PostMs`). This is
@@ -829,8 +838,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   MASK. The value flows through `Scene3D.SurfaceMaps.AlphaCutoff` and the loaded mesh's material state, and the
   model fragment discards any texel whose sampled baseColor alpha is below it, so an alpha-cutout leaf-card
   texture renders as its silhouette instead of a solid (and, for the Quaternius kits, black-fringed) quad. An
-  OPAQUE mesh (cutoff 0) is byte-identical to the pre-cutout render. Shadow casters do not alpha-test (a
-  cutout prop casts its full-quad silhouette). Baked kits pair this with a bake-time RGB dilation (alpha bleed)
+  OPAQUE mesh (cutoff 0) is byte-identical to the pre-cutout render. The key light's cascaded shadow pass applies
+  the same test to a MASK caster that has an albedo, so the leaf card casts its silhouette. Point-light shadow maps
+  do not alpha-test yet and record the full quad. Baked kits pair this with a bake-time RGB dilation (alpha bleed)
   in `tools/kit-bake` so mip/bilinear averaging pulls leaf colour, not the black stored under the leaves.
   - `MeshOps.WithTangents(GltfMesh) -> GltfMesh` computes a per-vertex tangent from UV + position (Lengyel
     accumulate, then Gram-Schmidt against the normal) so a UV-mapped primitive mesh (e.g. `MeshPrimitives.Box`)

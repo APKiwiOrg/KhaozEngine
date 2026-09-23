@@ -34,22 +34,6 @@ namespace KhaozEngine.Gui
             Bounds = bounds; Content = text; Font = font;
         }
 
-        /// <summary>Obsolete: pass a <see cref="LocalizedText"/>. A raw string bypasses localization.</summary>
-        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
-        [LocalizationStringSink]
-        [LocalizationExempt]
-        public Label(Rect bounds, string text, SpriteFont font)
-            : this(bounds, LocalizedText.Raw(text), font) { }
-
-        /// <summary>Obsolete shim for the former string field.</summary>
-        [Obsolete("Use Content (LocalizedText). Setting Text stores a raw, non-localized value.")]
-        [LocalizationExempt]
-        public string Text
-        {
-            get => Content.Resolve();
-            set => Content = LocalizedText.Raw(value);
-        }
-
         /// <summary>The current resolved text (for tests / measurement).</summary>
         public string Resolved => Content.Resolve();
 

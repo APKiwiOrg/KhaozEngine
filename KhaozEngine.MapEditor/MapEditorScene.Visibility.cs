@@ -56,6 +56,10 @@ public partial class MapEditorScene
     bool PropKindVisible(string kitId) =>
         _visibility.GetCategory(_viewport.PropCategoryOf(kitId));
 
+    // The pick filter's drawn-here half. An unbuilt viewport (the headless scene) streams nothing, so it gates
+    // nothing. A built one answers from what it last drew.
+    bool PlacementDrawnAt(float x, float z) => !_viewport.IsBuilt || _viewport.IsPlacementDrawnAt(x, z);
+
     IReadOnlyList<string> ScatterLayerNames()
     {
         var names = new string[_document.Doc.ScatterLayers.Count];

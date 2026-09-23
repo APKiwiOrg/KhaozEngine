@@ -17,10 +17,15 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// and it is not counted as an eviction.</item>
 /// <item>At most <see cref="MaxPartialAssemblies"/> partial assemblies are held at once. A fifth evicts the one
 /// fed longest ago and increments <see cref="EvictedAssemblies"/>. A bounded memory rule rather than a timer,
-/// because a timer on a reliable ordered channel measures nothing, and this type holds no clock at all.</item>
+/// because a timer on a reliable ordered channel measures nothing, and this type holds no clock at all. The
+/// bound is a hard constant with no constructor knob, so a host with more concurrently fragmented streams per
+/// peer than that evicts SILENTLY, and <see cref="EvictedAssemblies"/> is the only thing that reports it.</item>
 /// <item>On the last chunk the assembled bytes are handed BACK through
-/// <see cref="TryComplete(ReadOnlySpan{byte}, out ReadOnlyMemory{byte}, out string?)"/>. Nothing here decodes
-/// them, so a payload that fails to decode is the caller's quarantine rather than a throw from the wire.</item>
+/// <see cref="TryComplete(ReadOnlySpan{byte}, out byte, out ReadOnlyMemory{byte}, out string?)"/>, with the
+/// stream id the chunk headers carried. Nothing here decodes them, so a payload that fails to decode is the
+/// caller's quarantine rather than a throw from the wire. A caller with several streams on one message kind routes
+/// the bytes by that id rather than repeating the stream inside its own payload, where the two could
+/// disagree.</item>
 /// <item>A partial assembly still open when the connection drops is discarded through an explicit
 /// <see cref="DropConnection"/> the server calls from its own disconnect path. Nothing here holds a timer or a
 /// background task.</item>
@@ -87,12 +92,29 @@ public sealed class TileFragmentReassembler
     /// non null one means the chunk was REFUSED and names why.</para>
     /// <para><paramref name="assembled"/> is the assembly's own buffer, which this type drops on the way out, so
     /// the caller owns it and nothing here writes to it again.</para>
+    /// <para>The stream the bytes belong to is not handed back by this overload. A caller with more than one
+    /// fragmented stream on a message kind uses
+    /// <see cref="TryComplete(ReadOnlySpan{byte}, out byte, out ReadOnlyMemory{byte}, out string?)"/>, which this
+    /// one delegates to.</para>
     /// </summary>
-    public bool TryComplete(ReadOnlySpan<byte> chunk, out ReadOnlyMemory<byte> assembled, out string? reason)
+    public bool TryComplete(ReadOnlySpan<byte> chunk, out ReadOnlyMemory<byte> assembled, out string? reason) =>
+        TryComplete(chunk, out _, out assembled, out reason);
+
+    /// <summary>
+    /// Feeds one chunk and, when it completes a transmission, hands back WHICH stream it completed. Every answer
+    /// is <see cref="TryComplete(ReadOnlySpan{byte}, out ReadOnlyMemory{byte}, out string?)"/>'s, which delegates
+    /// here.
+    /// <para><paramref name="streamId"/> is the <c>StreamId</c> the chunk headers carried, the same byte
+    /// <see cref="TileFragmentedMessage.TryReadChunk"/> reads off every one, so a game that sends several streams
+    /// under one message kind routes the assembled bytes by the header rather than repeating the stream inside its
+    /// payload. Set whenever the answer is true, and not to be read on a false.</para>
+    /// </summary>
+    public bool TryComplete(ReadOnlySpan<byte> chunk, out byte streamId, out ReadOnlyMemory<byte> assembled,
+        out string? reason)
     {
         assembled = default;
         reason = null;
-        if (!TileFragmentedMessage.TryReadChunk(chunk, out byte streamId, out ushort sequence, out int index,
+        if (!TileFragmentedMessage.TryReadChunk(chunk, out streamId, out ushort sequence, out int index,
                 out int count, out ReadOnlySpan<byte> bytes))
         {
             reason = MalformedChunk;

@@ -66,7 +66,8 @@ KhaozEngine.Render.Tests/Gpu/msl-evidence/
 gpu-skinning-evidence/
 
 # Dev-only local NuGet feed (packed packages live here; the durable store is GitHub Packages - see AGENTS.md)
-local-feed/
+# No trailing slash, so a local-feed that is a symlink to another feed is ignored as well (#1063).
+local-feed
 
 # Runtime world DB written by the NetworkedWalkServer demo (SqliteWorldStore default path), plus its WAL/SHM sidecars
 networked-walk-world.db

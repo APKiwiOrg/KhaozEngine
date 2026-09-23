@@ -61,9 +61,12 @@ public readonly record struct ContainerPageChange(PageSlotInput Entry, bool Iden
 /// <para>
 /// <b>The bodies are PER VIEWER.</b> There is one door and it projects, so a caller cannot build a delta that
 /// skipped the filter: every payload goes through
+/// <see cref="ContainerPageProjection.ProjectPayload"/>, which is
 /// <see cref="ItemInstanceVisibility.PublicView"/> at the viewer's level for that item, and an owner-only
 /// field reaches the owner and nobody else (spec 7.4). A payload this process cannot project carries NO
-/// bytes, which is the same fail-closed direction an unregistered kind takes.
+/// bytes, which is the same fail-closed direction an unregistered kind takes. The whole page this delta
+/// falls back to is <see cref="ItemContainerPageCodec.EncodeProjected"/>, which projects through the SAME
+/// member, so the two cannot disagree about what one viewer sees.
 /// </para>
 /// <para>
 /// <b>A QUARANTINED entry abandons the delta</b> rather than riding it. A quarantine wrapper is not a
@@ -74,7 +77,8 @@ public readonly record struct ContainerPageChange(PageSlotInput Entry, bool Iden
 /// either: they are unprojected by construction, so a non-owner would receive the owner-only fields of the
 /// item inside (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/932">#932</see>). Abandoning is
 /// rule 4 of this same message, already written for the case where the next change does not fit, and the
-/// caller sends the whole page through the fragmenter.
+/// caller sends the whole page through the fragmenter, encoded by
+/// <see cref="ItemContainerPageCodec.EncodeProjected"/>, which carries the entry HOLLOW.
 /// </para>
 /// <para>
 /// <b>What the CLIENT does with one, which this message leans on.</b> A client REFUSES a delta for a page it
@@ -200,7 +204,8 @@ public static class ContainerPageDelta
                     continue;
                 }
 
-                ReadOnlySpan<byte> view = Project(registry, change, viewerLevel, scratch);
+                int viewBytes = ContainerPageProjection.ProjectPayload(registry, change, viewerLevel, scratch);
+                ReadOnlySpan<byte> view = scratch.AsSpan(0, viewBytes);
                 PageSlotInput entry = change.Entry;
                 int cost = slotCost + 1 + ItemContainerPageCodec.EntryBodySize(
                     entry.Flags, entry.DefinitionId, entry.Count, entry.InstanceId, view.Length);
@@ -224,29 +229,6 @@ public static class ContainerPageDelta
         }
 
         return written;
-    }
-
-    /// <summary>
-    /// The bytes of one item this viewer may see. Empty when the payload is empty, which is every plain
-    /// stack, and empty when the payload does not project, which is the same fail-closed direction an
-    /// unregistered kind takes. A quarantine wrapper never reaches here: the whole delta is abandoned
-    /// before anything is written.
-    /// </summary>
-    static ReadOnlySpan<byte> Project(
-        InstancePropertyRegistry registry,
-        in ContainerPageChange change,
-        PropertyVisibility viewerLevel,
-        byte[]? scratch)
-    {
-        ReadOnlySpan<byte> payload = change.Entry.Payload.Span;
-        if (payload.IsEmpty || scratch is null)
-        {
-            return default;
-        }
-
-        int view = ItemInstanceVisibility.PublicView(
-            registry, payload, viewerLevel, change.Identified, change.RevealedMask, scratch);
-        return view < 0 ? default : scratch.AsSpan(0, view);
     }
 
     /// <summary>Vets the change set and answers the longest payload in it, which sizes the one scratch

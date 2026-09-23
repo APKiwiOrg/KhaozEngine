@@ -34,14 +34,72 @@ public class ConnectionGateTests
     }
 
     [Fact]
-    public void A_world_mismatch_refuses_with_both_hashes_and_logs_them()
+    public void A_world_mismatch_refuses_with_both_hashes_and_logs_the_server_side_only()
     {
         string? logged = null;
         Assert.False(Gate(log: m => logged = m).TryAuthenticate(Token(Version, "otherworld", "acct"), out _, out string reason));
         Assert.True(HandshakeToken.TryParseWorldMismatch(reason, out string server, out string client));
         Assert.Equal(Hash, server);
         Assert.Equal("otherworld", client);
-        Assert.Contains("otherworld", logged);
+
+        // The refusal token carries the client's label because a client parses it. The operator line does not: the
+        // label is whatever an unauthenticated peer put in the layer, and the gate guards content in general, so
+        // its wording names no world either.
+        Assert.NotNull(logged);
+        Assert.Contains(Hash, logged);
+        Assert.DoesNotContain("otherworld", logged);
+        Assert.DoesNotContain("world", logged, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("a different one", logged);
+    }
+
+    [Fact]
+    public void A_hostile_client_label_never_reaches_the_log_line()
+    {
+        string? logged = null;
+        var gate = new WorldIdentityGateAuthenticator(Hash, log: m => logged = m);
+        byte[] token = HandshakeToken.Wrap("forged\n[ban] refused a connection for banned account 'admin'.", null);
+
+        Assert.False(gate.TryAuthenticate(token, out _, out _));
+        Assert.DoesNotContain("forged", logged);
+        Assert.DoesNotContain("\n", logged);
+    }
+
+    [Fact]
+    public void A_client_with_no_identity_layer_is_logged_as_having_sent_none()
+    {
+        string? logged = null;
+        var gate = new WorldIdentityGateAuthenticator(Hash, log: m => logged = m);
+
+        Assert.False(gate.TryAuthenticate(Encoding.UTF8.GetBytes("bare"), out _, out string reason));
+        Assert.Equal($"ke:world-mismatch:{Hash}|", reason);
+        Assert.Contains("sent none", logged);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("hash|with-pipe")]
+    [InlineData("|")]
+    public void An_unusable_server_identity_is_refused_at_construction(string identity)
+    {
+        Assert.Throws<ArgumentException>(() => new WorldIdentityGateAuthenticator(identity));
+        Assert.Throws<ArgumentException>(() => ConnectionGate.Wrap(new AllowAllAuthenticator(), Version, identity));
+    }
+
+    [Fact]
+    public void A_server_identity_no_layer_can_carry_is_refused_at_construction()
+    {
+        string tooLong = new('a', HandshakeToken.MaxLabelBytes + 1);
+        Assert.Throws<ArgumentException>(() => new WorldIdentityGateAuthenticator(tooLong));
+
+        // The cap is UTF-8 bytes, not chars: 128 two-byte chars are 256 bytes.
+        Assert.Throws<ArgumentException>(() => new WorldIdentityGateAuthenticator(new string('\u00e9', 128)));
+        _ = new WorldIdentityGateAuthenticator(new string('a', HandshakeToken.MaxLabelBytes));
+    }
+
+    [Fact]
+    public void A_null_server_identity_is_still_an_argument_null()
+    {
+        Assert.Throws<ArgumentNullException>(() => new WorldIdentityGateAuthenticator(null!));
     }
 
     [Fact]

@@ -224,9 +224,10 @@ public sealed partial class PagedItemContainer
     }
 
     /// <summary>
-    /// Copies the dirty pages out, which is what the commit builder asks for (spec 5.6). It folds them into
-    /// whatever commit comes next alongside the pages the operation itself changed, and that is what makes
-    /// the lazy remap rewrite cost nothing: it never CAUSES a commit, it only joins one.
+    /// Copies the dirty pages out (spec 5.6). The commit builder asks the same question page by page through
+    /// <see cref="IPagedContainerWorkingCopy"/>, which hands out no page object, and folds the dirty pages into
+    /// whatever commit comes next alongside the pages the operation itself changed. That is what makes the lazy
+    /// remap rewrite cost nothing: it never CAUSES a commit, it only joins one.
     /// </summary>
     /// <param name="destination">At least <see cref="DirtyPageCount"/> long.</param>
     /// <exception cref="ArgumentException"><paramref name="destination"/> is too short.</exception>

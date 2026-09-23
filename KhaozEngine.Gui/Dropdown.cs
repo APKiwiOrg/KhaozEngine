@@ -15,20 +15,7 @@ namespace KhaozEngine.Gui
     /// localization analyzer. A settings selector (difficulty, display mode, quality) is exactly the shape that
     /// used to ship unlocalizable, because a plain <c>string</c> member is not a sink the analyzer can see.
     /// </summary>
-    public readonly record struct DropdownOption(LocalizedText Content, int Value)
-    {
-        /// <summary>Obsolete: pass a <see cref="LocalizedText"/>. A raw string bypasses localization.</summary>
-        [Obsolete("Pass a LocalizedText; a raw string bypasses localization. Use a StringId or LocalizedText.Raw(...) for non-localizable text.")]
-        [LocalizationStringSink]
-        [LocalizationExempt]
-        public DropdownOption(string label, int value) : this(LocalizedText.Raw(label), value) { }
-
-        /// <summary>Obsolete shim for the former string member: resolves <see cref="Content"/> against the
-        /// ambient catalog.</summary>
-        [Obsolete("Use Content (LocalizedText), or the Dropdown's SelectedLabel for the resolved string.")]
-        [LocalizationExempt]
-        public string Label => Content.Resolve();
-    }
+    public readonly record struct DropdownOption(LocalizedText Content, int Value);
 
     /// <summary>
     /// A selector over <see cref="Pointer"/>: the trigger shows the current option; a tap opens a list below it;

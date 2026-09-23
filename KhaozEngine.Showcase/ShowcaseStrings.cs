@@ -54,6 +54,7 @@ namespace KhaozEngine.Showcase
         public static readonly StringId TabInput = new("Tab.Input");
         public static readonly StringId TabImmediate = new("Tab.Immediate");
         public static readonly StringId TabScreens = new("Tab.Screens");
+        public static readonly StringId TabDrag = new("Tab.Drag");
 
         // Settings dialog
         public static readonly StringId SettingsTitle = new("Settings.Title");
@@ -113,6 +114,21 @@ namespace KhaozEngine.Showcase
         public static readonly StringId ScreensPatchNotesCaption = new("Screens.PatchNotesCaption");
         public static readonly StringId ScreensToasts = new("Screens.Toasts");
         public static readonly StringId ScreensToastsCaption = new("Screens.ToastsCaption");
+
+        // Drag and drop page
+        public static readonly StringId DragHint = new("Drag.Hint");
+        public static readonly StringId DragSectionBag = new("Drag.SectionBag");
+        public static readonly StringId DragSectionStash = new("Drag.SectionStash");
+        public static readonly StringId DragSectionDestroy = new("Drag.SectionDestroy");
+        public static readonly StringId DragDestroyHere = new("Drag.DestroyHere");
+        public static readonly StringId DragLegend = new("Drag.Legend");
+        public static readonly StringId DragReset = new("Drag.Reset");
+        public static readonly StringId DragStatusNone = new("Drag.StatusNone");
+        public static readonly StringId DragStatusMoved = new("Drag.StatusMoved");
+        public static readonly StringId DragStatusSwapped = new("Drag.StatusSwapped");
+        public static readonly StringId DragStatusDestroyed = new("Drag.StatusDestroyed");
+        public static readonly StringId DragStatusRefused = new("Drag.StatusRefused");
+        public static readonly StringId DragStatusCancelled = new("Drag.StatusCancelled");
 
         // Toasts demo (pushed from the Screens page)
         public static readonly StringId ToastsTitle = new("Toasts.Title");

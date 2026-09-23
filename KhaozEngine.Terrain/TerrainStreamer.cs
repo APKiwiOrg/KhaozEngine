@@ -646,6 +646,20 @@ namespace KhaozEngine.Terrain
             InvalidateLoaded(coord);
         }
 
+        /// <summary>Re-serves one loaded chunk's live placement-source layers without rebuilding its terrain, for a
+        /// placement edit that leaves the field alone. A sink implementing <see cref="IChunkPlacementRefreshSink"/>
+        /// republishes only those layers' props. Any other sink falls back to <see cref="Invalidate(ChunkCoord)"/>.
+        /// Pending async builds are flushed first, so a build that queried the old placements cannot land after the
+        /// refresh. Returns false for a chunk that is not loaded: it queries the source when it streams in.</summary>
+        public bool RefreshPlacements(ChunkCoord coord)
+        {
+            FlushPendingBuilds();
+            if (!_loaded.TryGetValue(coord, out Entry? e)) return false;
+            if (_sink is IChunkPlacementRefreshSink refresh) refresh.RefreshPlacements(coord, e.Handle);
+            else InvalidateLoaded(coord);
+            return true;
+        }
+
         /// <summary>Rebuilds every loaded chunk in place at its current tier and ring. Pending async builds are
         /// flushed once before the pass, then each resident chunk receives one invalidate.</summary>
         public void InvalidateAll()

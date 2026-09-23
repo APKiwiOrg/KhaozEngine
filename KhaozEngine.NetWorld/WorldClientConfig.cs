@@ -39,7 +39,11 @@ public sealed class WorldClientConfig
     public bool AutoReconnect { get; init; } = true;
 
     /// <summary>Keep retrying even after a token rejection. Default false: a rejected token is terminal (it will not
-    /// fix itself), surfaced as <see cref="DisconnectReason.RejectedToken"/>.</summary>
+    /// fix itself), surfaced as <see cref="DisconnectReason.RejectedToken"/>. Only that reason follows this switch: the
+    /// typed refusals the same build can never clear (<see cref="DisconnectReason.IncompatibleVersion"/>,
+    /// <see cref="DisconnectReason.ContentMismatch"/>, <see cref="DisconnectReason.ContentVersionMismatch"/>,
+    /// <see cref="DisconnectReason.ContentClientTooOld"/> and <see cref="DisconnectReason.SignedInElsewhere"/>) stay
+    /// terminal whatever it says.</summary>
     public bool RetryOnReject { get; init; } = false;
 
     /// <summary>Backoff schedule for auto-reconnect.</summary>
@@ -53,6 +57,20 @@ public sealed class WorldClientConfig
     /// cannot decode. Null (default) = no version sent: byte-identical to the pre-handshake wire, and a
     /// version-checking server treats it as a legacy/unknown-version client.</summary>
     public string? ProtocolVersion { get; init; }
+
+    /// <summary>Opt-in content identity: an opaque string the game computes for the content this build loads (a map or
+    /// data hash, say). The engine attaches no meaning to it. When set, the client wraps it as a connect-token layer
+    /// just inside the <see cref="ProtocolVersion"/> layer (<see cref="ProtocolHandshake.WrapContentIdentity"/>),
+    /// and a server whose authenticator composes a <see cref="Netcode.WorldIdentityGateAuthenticator"/> with the same
+    /// identity inside its version gate admits it. On a mismatch, or when this is null and the server requires one, the
+    /// client disconnects with <see cref="DisconnectReason.ContentMismatch"/>, and <see cref="WorldClient.ContentMismatch"/>
+    /// carries both identities. Null (default) = no layer: byte-identical to the wire without the slot.
+    /// <para>Adopting the slot is a wire change. An older server reads the identity layer as the auth token, so bump
+    /// your own <see cref="ProtocolVersion"/> in the same release and the version gate turns old peers away first.</para>
+    /// <para>Must be non-empty, must not contain <c>|</c> (the refusal token's separator) and must fit
+    /// <see cref="Netcode.HandshakeToken.MaxLabelBytes"/> UTF-8 bytes. The <see cref="WorldClient"/> constructor
+    /// throws <see cref="System.ArgumentException"/> otherwise.</para></summary>
+    public string? ContentIdentity { get; init; }
 
     /// <summary>Advertise delta replication on join so a delta-aware server serves this client per-tick area-of-interest
     /// deltas (only what changed since the client's acknowledged baseline) instead of a full snapshot every tick.

@@ -5,6 +5,11 @@ namespace KhaozEngine.MapEdit;
 /// <summary>Result of opening or creating a document: the resolved path, its identity, and a full summary.</summary>
 public sealed record OpenResult(string Path, string Id, string DisplayName, MapSummary Summary);
 
+/// <summary>A top-down render: the PNG plus whether its streamed ring hit the cover cap. When
+/// <see cref="Capped"/> is true, placements and scatter show only within <see cref="CoveredReach"/> metres of the
+/// rect centre, and the rest of the rect renders terrain only.</summary>
+public sealed record TopDownRender(byte[] Png, bool Capped, float CoveredReach);
+
 /// <summary>Result of a save: the path written and whether it was saved.</summary>
 public sealed record SaveResult(string Path, bool Saved);
 

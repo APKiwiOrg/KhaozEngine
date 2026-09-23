@@ -2,6 +2,10 @@
 
 Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `System.Numerics`).
 
+The package carries no ECS edge. Entity rendering (`Transform3D`, `MeshInstance`, `Scene3DBinder.Submit`) lives
+in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only consumer does not pull `Ecs`,
+`Simulation` and `Serialization`. The `Game3D` umbrella carries both.
+
 - `IsoCamera3D` - orthographic isometric camera (configurable angle/zoom/target; `ScreenToRay`/`ScreenToGround`
   picking; `Frame` fit-to-bounds).
 - `FlyCamera3D` / `FlyCameraController` - free-fly editor camera: `FlyCamera3D` implements `IIsoCamera3D` (a
@@ -44,8 +48,8 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
   byte-identical to before. The origin is LATCHED at `Begin()`. `RenderOrigin = Vector3.Zero` opts out exactly.
   The three engine cameras implement `IRenderOriginAware`. A consumer camera that does not falls the WHOLE
   pipeline back to the absolute path (never half an origin) and `RenderOriginActive` reports `false`.
-  `Transform3D.ToMatrix(Vector3 renderOrigin)` builds a reduced matrix for a consumer that wants one, which
-  `Scene3D` itself never requires. Terrain chunk vertices, terrain texturing at range and depth precision are
+  `Transform3D.ToMatrix(Vector3 renderOrigin)` (in `KhaozEngine.Render3D.Ecs`) builds a reduced matrix for a
+  consumer that wants one, which `Scene3D` itself never requires. Terrain chunk vertices, terrain texturing at range and depth precision are
   explicitly NOT fixed by it. See docs/USING-KHAOZENGINE.md.
 - `GltfLoader` / `GltfMesh` / `MeshPrimitives` / `MeshBuilder` - runtime glTF load (SharpGLTF) + procedural meshes.
 - `Scene3D` + `Render3DSurface(AppWindow)` - multi-instance mesh draw (`LoadMesh`/`LoadTexture`/`Begin`/`Draw`

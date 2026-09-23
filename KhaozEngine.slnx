@@ -5,6 +5,7 @@
   <Project Path="KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
   <Project Path="KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
   <Project Path="KhaozEngine.Catalog.AzureBlob/KhaozEngine.Catalog.AzureBlob.csproj" />
+  <Project Path="KhaozEngine.Catalog.GameTypes/KhaozEngine.Catalog.GameTypes.csproj" />
   <Project Path="KhaozEngine.Catalog.Netcode/KhaozEngine.Catalog.Netcode.csproj" />
   <Project Path="KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj" />
   <Project Path="KhaozEngine.Catalog.SqlServer/KhaozEngine.Catalog.SqlServer.csproj" />
@@ -75,6 +76,7 @@
   <Project Path="KhaozEngine.ItemInstances.Journal/KhaozEngine.ItemInstances.Journal.csproj" />
   <Project Path="KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
   <Project Path="KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+  <Project Path="KhaozEngine.Render3D.Ecs/KhaozEngine.Render3D.Ecs.csproj" />
   <Project Path="KhaozEngine.Telegraphs/KhaozEngine.Telegraphs.csproj" />
   <Project Path="KhaozEngine.Telegraphs.Render3D/KhaozEngine.Telegraphs.Render3D.csproj" />
   <Project Path="KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />

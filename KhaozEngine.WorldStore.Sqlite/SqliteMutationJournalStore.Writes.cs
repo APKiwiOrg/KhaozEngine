@@ -15,6 +15,7 @@ public sealed partial class SqliteMutationJournalStore
         JournalInitialization initialization,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfReadOnly(nameof(InitializeAsync));
         ArgumentNullException.ThrowIfNull(initialization);
         cancellationToken.ThrowIfCancellationRequested();
         initialization.Identity.Validate(limits);
@@ -116,6 +117,7 @@ public sealed partial class SqliteMutationJournalStore
 
     public async Task<JournalCommitResult> CommitAsync(JournalCommit commit, CancellationToken cancellationToken = default)
     {
+        ThrowIfReadOnly(nameof(CommitAsync));
         ArgumentNullException.ThrowIfNull(commit);
         cancellationToken.ThrowIfCancellationRequested();
         commit.Identity.Validate(limits);

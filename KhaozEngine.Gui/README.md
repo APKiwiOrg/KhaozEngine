@@ -7,10 +7,10 @@ Immediate-mode + retained UI on the custom MonoGame-free stack.
 `ScrollablePanel.DrawHeader`, and `PopupPanel` - its `TitleContent` / `DismissContent` /
 `PrimaryActionContent` plus the `PopupRow.Header` / `Stat` factories) take a `LocalizedText` (from
 `KhaozEngine.App`) instead of a raw `string`. Pass a `StringId` (implicitly converts) for localizable copy, or
-`LocalizedText.Raw("...")` for non-localizable text (names, numbers, debug). The old `string` overloads remain
-but are `[Obsolete]`; the
-`KhaozEngine.Localization.Analyzers` analyzer (in the `Game2D`/`Game3D` umbrellas) flags them. `IconButton`'s
-string argument is an icon-atlas key, not player text, so it is unchanged. See the App package for
+`LocalizedText.Raw("...")` for non-localizable text (names, numbers, debug). These sinks have no `string`
+overload, so a bare literal is a compile error. The `KhaozEngine.Localization.Analyzers` analyzer (in the
+`Game2D`/`Game3D` umbrellas) reviews each `LocalizedText.Raw` use. `IconButton`'s string argument is an
+icon-atlas key, not player text, so it is unchanged. See the App package for
 `StringId` / `LocalizedText` / `LocalizationContext`.
 
 ## Radial menu and source-target use
@@ -585,8 +585,7 @@ chat.Draw(batch, white);
   - `Dropdown` - trigger + option list (opens below); two-phase draw (`Draw` trigger / `DrawOverlay` list last).
     `DropdownOption` is `(LocalizedText Content, int Value)`, so a settings selector (difficulty, display mode,
     quality) localizes through a `StringId` and a bare literal no longer compiles at that sink. `SelectedLabel` is
-    the resolved string and `SelectedContent` the unresolved value. The `(string, int)` ctor and the `Label` member
-    remain, `[Obsolete]`, so an existing caller keeps building.
+    the resolved string and `SelectedContent` the unresolved value.
     Opt-in (default off): `ShowChevron` draws an up/down caret reflecting the open state; `Opacity` fades the whole
     dropdown for a host transition. `TextScale` (default `1f`) scales the trigger label AND every option row's
     label, text only: the rects, the row fills, the chevron and the hit-testing are unchanged. Pointer actions
@@ -658,9 +657,8 @@ chat.Draw(batch, white);
   - `TextInput` - single-line field; tap-to-focus, typed keys edit the text (via `TextEntry`), blinking caret.
     A held key auto-repeats (Backspace deletes / a character keeps typing) at the OS repeat rate. `SetText(value)`
     replaces the buffer programmatically (clamped to `MaxLength`, seen as a change by the next `Update`); `Focus()` /
-    `Unfocus()` drive focus directly. The placeholder is `LocalizedText` via `PlaceholderContent` (the former
-    `Placeholder` string is an `[Obsolete]` shim). `PrefixContent` is an optional `LocalizedText` that defaults to
-    empty and resolves lazily through the current localization catalog. It draws in `TextColor` before either the
+    `Unfocus()` drive focus directly. The placeholder is `LocalizedText` via `PlaceholderContent`.
+    `PrefixContent` is an optional `LocalizedText` that defaults to empty and resolves lazily through the current localization catalog. It draws in `TextColor` before either the
     placeholder or typed text. It is presentation only, so editing and `MaxLength` apply solely to the text
     buffer. `Opacity` fades the whole field for a host transition, and `TextScale` (default `1f`) scales the prefix,
     text and placeholder only (the rect, the caret sliver and the hit-testing are unchanged). All three share the
@@ -779,8 +777,7 @@ chat.Draw(batch, white);
     directly in immediate mode: hosting it in a non-passthrough `Screen` already blocks everything below.
     Text is `LocalizedText`: `TitleContent` / `DismissContent` / `PrimaryActionContent` and the resolve-at-build
     `PopupRow.Header(LocalizedText)` / `Stat(LocalizedText, LocalizedText, ...)` factories (rebuild the rows to pick
-    up a runtime locale switch). The former `Title` / `DismissText` / `PrimaryActionText` string members and the
-    `PopupRow.Header(string)` / `Stat(string, ...)` factories remain as `[Obsolete]` shims. Overflowing content
+    up a runtime locale switch). Overflowing content
     scrolls (wheel via the `Update(Pointer, float wheelDelta)` overload + drag-to-scroll, scissor-clipped, `ScrollOffset`
     read-only, `ScrollWheelSpeed` tunable); the two footer buttons shrink to fit a narrow panel (wide panels stay at the
     fixed width). Opt-in additive: `WrapLongLabels` wraps a stat row with an empty value across the content width (row
@@ -799,8 +796,8 @@ chat.Draw(batch, white);
   - `ScrollablePanel` - wheel/drag scrolling fixed-height list. Set `DragScrollingEnabled = false` when row
     content owns pointer dragging and the wheel must remain available. It defaults to true. Rows are drawn
     between `BeginClip`/`EndClip` (scissor), and hit-tested with `TappedItemIndex`. Opt-in overlay chrome (all default to no-ops, so existing callers are
-    byte-identical): a header band (`HeaderHeight` + `DrawHeader`, whose title is a `LocalizedText` with the old
-    `string` overload kept `[Obsolete]`) above the scroll region; a slide-up animation
+    byte-identical): a header band (`HeaderHeight` + `DrawHeader`, whose title is a `LocalizedText`) above the
+    scroll region; a slide-up animation
     driven by an external `TransitionAlpha` from a docked bottom edge (`SlideFromBottom`); drag-to-resize the header
     within `MinHeight`/`MaxHeight` (`Resizable`); and a dimmed `Scrim` with tap-outside-to-close (`ScrimDismissed`).
     Geometry is exposed via `CurrentBounds`/`ContentBounds` (== `Bounds` with no knob set). Opt-in height glide
@@ -988,7 +985,15 @@ chat.Draw(batch, white);
   at `Bounds.Right` + a gap to sit a second panel directly beside it.
 - `DiagnosticsHud` - turn-key wiring of the frame-cost HUD: bundles a `FrameStats` meter, an optional
   `PassTimings` meter (3D hosts), and a `DiagnosticsOverlay` behind one object, with a throttled provider that
-  assembles the Performance / Draw-stats / Pass-timings / (optional) Network sections. Call `Update(input, dt)`
+  assembles the Performance / Draw-stats / Pass-timings / (optional) Network / Build sections. The Build section
+  is one row, the app's name as the label and its build version as the value, shown for every game with no
+  wiring and no debug switch. By default it is the entry assembly's product name and its
+  `AssemblyInformationalVersionAttribute`, with a `+` build metadata suffix (the SourceLink commit) dropped.
+  `SetBuildIdentity(string name, string version)` shows the game's own display strings instead, e.g.
+  `Diagnostics?.SetBuildIdentity(BuildConfig.Product, BuildConfig.DisplayVersion)`. The identity is read once,
+  on the first refresh that shows it, never per frame. Its title is the localized
+  `DiagnosticsOverlayStrings.BuildTitle` (`diagnostics.overlay.build.title`, English fallback "Build"). The
+  name and version are shown verbatim as non-localizable tokens. Call `Update(input, dt)`
   once per frame (samples FPS, handles the toggle + fade), feed `SetDrawStats(in RenderFrameStats)` the aggregate
   and (3D) sample its `PassTimings`, then `Draw`. Hidden by default, and while hidden the provider builds nothing,
   so the only cost is the surfaces' always-on counter increments. `SetNetStatsSource(Func<ClientNetStats?>?)` opts a
@@ -998,7 +1003,7 @@ chat.Draw(batch, white);
   for a section of the GAME's own: it renders after the built-in ones instead of replacing them, is polled on the
   same throttled refresh, and returning null omits it for that refresh. Registration order is render order, and
   `ClearSections()` drops the added ones. Reaching past this to `Overlay.SetSectionsProvider` installs a provider
-  OVER the built-in one and costs all four built-in sections, which is the trap this seam exists to close.
+  OVER the built-in one and costs all five built-in sections, which is the trap this seam exists to close.
   The ctor's `visibleAtBoot` starts the panel shown (default false), for a build whose tester has to read a value
   without first finding the toggle key. `GameApp`/`GameApp3D` wire one automatically (F1).
 - `TextEntry` - headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.

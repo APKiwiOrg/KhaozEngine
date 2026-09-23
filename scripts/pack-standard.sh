@@ -24,6 +24,32 @@
 # commit, so at tag time no v<version> tag exists yet and the state is plain "staged". The guard is
 # silent through a normal release. It only speaks in the window this issue is about, which is the one
 # between a tag and the next bump.
+#
+# WHERE THE FEED IS (issue #1063) is part of the same standard, because the pack and the report have to
+# agree on it: pack_feed_dir below is the one answer both use.
+
+# pack_feed_dir -> the feed a pack writes and the report reads, as an absolute path on stdout. Run with
+# cwd at the toplevel, which both callers cd to first.
+# KHAOZENGINE_FEED wins when set, the same variable consumers' scripts/refresh-engine.sh read. A relative
+# value resolves against that toplevel, not against wherever the caller was standing. Otherwise it is
+# the MAIN checkout's local-feed from any worktree, because that is the feed consumers read. A linked
+# worktree's own local-feed is a dead end: a pack landing there never reaches a consumer. The
+# common git dir is shared by every worktree and its parent is the main checkout. When that layout does
+# not hold (a bare repository, a separate git dir) this prints nothing and returns 1, so the caller
+# refuses and asks for KHAOZENGINE_FEED rather than guessing a location.
+pack_feed_dir() {
+  if [ -n "${KHAOZENGINE_FEED:-}" ]; then
+    case "$KHAOZENGINE_FEED" in
+      /*) printf '%s' "$KHAOZENGINE_FEED" ;;
+      *) printf '%s/%s' "$(pwd -P)" "$KHAOZENGINE_FEED" ;;
+    esac
+    return 0
+  fi
+  _pfc=$(git rev-parse --git-common-dir 2>/dev/null) || return 1
+  _pfc=$(CDPATH='' cd -- "$_pfc" 2>/dev/null && pwd -P) || return 1
+  [ "$(basename "$_pfc")" = .git ] || return 1
+  printf '%s/local-feed' "$(dirname "$_pfc")"
+}
 
 # pack_file_mtime <path> -> modification time in unix seconds (empty when it cannot be read).
 # GNU and BSD stat disagree on the flag, and picking wrong is not a clean failure: GNU's -f is

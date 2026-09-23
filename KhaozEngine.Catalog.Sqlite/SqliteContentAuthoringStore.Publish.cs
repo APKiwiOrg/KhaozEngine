@@ -51,6 +51,7 @@ public sealed partial class SqliteContentAuthoringStore
     public async Task<ContentVersionRecord> CommitPublishAsync(
         ContentPublishPlan plan,
         ContentPublishRequest request,
+        IPackVersionPointerStore? pointers,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -152,6 +153,16 @@ public sealed partial class SqliteContentAuthoringStore
             Bind(pointer, "$version", (long)plan.VersionNumber);
             Bind(pointer, "$now", Millis(_clock()));
             await pointer.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        // 9. The pack's version pointer, after every statement above and before the commit, so only the
+        // publisher that holds this transaction past the confirmation writes it. A failure here rolls the
+        // whole version back.
+        if (pointers is not null)
+        {
+            await pointers.PutVersionPointerAsync(
+                plan.VersionNumber, plan.ServerManifestHash, plan.ClientManifestHash, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         transaction.Commit();

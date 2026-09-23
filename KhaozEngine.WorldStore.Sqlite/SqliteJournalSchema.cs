@@ -10,6 +10,12 @@ public enum SqliteJournalSchemaMode
 {
     AutoCreate,
     ValidateOnly,
+
+    /// <summary>Opens the database file read only at the connection level, validates the version-two schema with
+    /// no DDL, and makes the store refuse every write path with <see cref="System.NotSupportedException"/>. A
+    /// missing or older schema is refused with <c>SchemaMismatch</c>, never created or migrated. The WAL requirement
+    /// is not checked because only a writer depends on it.</summary>
+    ReadOnly,
 }
 
 internal static class SqliteJournalSchema
@@ -163,7 +169,7 @@ END;
             IReadOnlyDictionary<string, string> actual = ReadSchemaObjects(connection);
             if (actual.Count == 0)
             {
-                if (mode == SqliteJournalSchemaMode.ValidateOnly) throw Mismatch("missing");
+                if (mode != SqliteJournalSchemaMode.AutoCreate) throw Mismatch("missing");
                 EnableWal(connection);
                 using SqliteCommand create = connection.CreateCommand();
                 create.CommandText = Tables;
@@ -175,7 +181,7 @@ END;
             if (version == 1)
             {
                 ValidateSchemaObjects(actual, VersionOneTables, 1);
-                if (mode == SqliteJournalSchemaMode.ValidateOnly) throw Mismatch("unsupported version '1'");
+                if (mode != SqliteJournalSchemaMode.AutoCreate) throw Mismatch("unsupported version '1'");
                 MigrateVersionOne(connection);
                 actual = ReadSchemaObjects(connection);
                 version = ReadSchemaVersion(connection);
@@ -189,6 +195,7 @@ END;
             if (Convert.ToInt32(command.ExecuteScalar()) != 1)
                 throw Mismatch("foreign key enforcement is disabled");
 
+            if (mode == SqliteJournalSchemaMode.ReadOnly) return;
             if (mode == SqliteJournalSchemaMode.AutoCreate) EnableWal(connection);
             command.CommandText = "PRAGMA journal_mode;";
             string journalMode = Convert.ToString(command.ExecuteScalar()) ?? string.Empty;

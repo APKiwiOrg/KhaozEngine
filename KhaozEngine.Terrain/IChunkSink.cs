@@ -73,6 +73,20 @@ namespace KhaozEngine.Terrain
         object BuildCpu(ChunkCoord coord, int lod, ChunkRing ring, ChunkBuildReason reason);
     }
 
+    /// <summary>Optional sink seam for a props-only refresh of one loaded chunk. The sink re-queries its live
+    /// placement-source layers (<see cref="IPlacementSource"/>) for the chunk, regenerates any companion layer
+    /// hosted by one, and republishes only those layers' prop instances and static colliders. It never re-meshes
+    /// the terrain, never touches the terrain collider and never respawns dynamics, which is what makes a placement
+    /// edit far cheaper than <see cref="TerrainStreamer.Invalidate(ChunkCoord)"/>. Called on the frame thread by
+    /// <see cref="TerrainStreamer.RefreshPlacements"/> after pending builds are flushed.</summary>
+    public interface IChunkPlacementRefreshSink : IChunkSink
+    {
+        /// <summary>Re-serve the live placement-source layers of the loaded chunk behind <paramref name="handle"/>,
+        /// leaving its terrain mesh, tier and ring as they are. The ring comes from the handle itself, so a caller
+        /// cannot write live placements into a decor chunk by passing the wrong one.</summary>
+        void RefreshPlacements(ChunkCoord coord, object handle);
+    }
+
     /// <summary>Optional sink seam for a live terrain LOD table change.</summary>
     public interface IChunkLodConfigSink
     {

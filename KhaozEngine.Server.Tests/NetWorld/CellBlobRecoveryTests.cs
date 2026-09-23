@@ -199,8 +199,6 @@ public class CellBlobRecoveryTests
         {
             VerticalVelocity = -4.5f,
             Grounded = true,
-            TimeSinceGrounded = 2.25f,
-            JumpBufferRemaining = 0.125f,
             Swimming = false,
             TeleportEpoch = 12u,
             ClimbRateQ = 3,
@@ -209,11 +207,16 @@ public class CellBlobRecoveryTests
             HorizontalVelocityZQ = -1000,
             FacingYawQ = 700,
         };
-        return new CellBlobFixtures.BodyBuilder()
-            .Entity(41,
-                (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(generation, new Vector3(8.5f, 2f, -3.25f))),
-                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(generation, movement)),
-                (MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity("Walker")))
-            .ToBody();
+        var owner = new MovementOwnerState { TimeSinceGrounded = 2.25f, JumpBufferRemaining = 0.125f };
+        var components = new List<(ushort, byte[])>
+        {
+            (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(generation, new Vector3(8.5f, 2f, -3.25f))),
+            (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(generation, movement, owner)),
+            (MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity("Walker")),
+        };
+        // From the owner split the timers are a frame of their own, after the other built-ins.
+        if (generation >= BuiltinBlobLayout.MovementOwnerWireGeneration)
+            components.Add((MoveProtocol.MovementOwnerTypeId, CellBlobFixtures.MovementOwner(owner)));
+        return new CellBlobFixtures.BodyBuilder().Entity(41, components.ToArray()).ToBody();
     }
 }

@@ -44,6 +44,7 @@ public sealed partial class SqlServerContentAuthoringStore
     public Task<ContentVersionRecord> CommitPublishAsync(
         ContentPublishPlan plan,
         ContentPublishRequest request,
+        IPackVersionPointerStore? pointers,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -144,6 +145,17 @@ public sealed partial class SqlServerContentAuthoringStore
                     BindInt(pointer, "@version", plan.VersionNumber);
                     BindTime(pointer, "@now", _clock());
                     await pointer.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                }
+
+                // 9. The pack's version pointer, after every statement above and before the commit. The
+                // update just above holds the metadata row exclusively, so a rival publishing the same number
+                // is blocked or chosen as the deadlock victim before it gets here, and only the winner writes
+                // the pointer. A failure here rolls the whole version back.
+                if (pointers is not null)
+                {
+                    await pointers.PutVersionPointerAsync(
+                        plan.VersionNumber, plan.ServerManifestHash, plan.ClientManifestHash, token)
+                        .ConfigureAwait(false);
                 }
 
                 return record;

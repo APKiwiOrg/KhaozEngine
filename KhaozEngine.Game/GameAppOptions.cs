@@ -194,8 +194,9 @@ namespace KhaozEngine.Game
         /// <summary>
         /// Opt OUT of the built-in diagnostics HUD (default <c>false</c>, i.e. the HUD is ON). By default
         /// <see cref="GameApp"/> wires a <see cref="KhaozEngine.Gui.DiagnosticsHud"/> (FPS / frame-ms / heap,
-        /// draw-call + triangle counters, and - for a 3D app - per-pass CPU-encode timings), hidden until toggled
-        /// with <see cref="DiagnosticsToggleKey"/>. While hidden its only cost is the always-on render counters. The
+        /// draw-call + triangle counters, for a 3D app per-pass CPU-encode timings, the network section when a
+        /// source is set, and the app's name and build version), hidden until toggled with
+        /// <see cref="DiagnosticsToggleKey"/>. While hidden its only cost is the always-on render counters. The
         /// field is inverted (a disable flag) so the default-zero struct value keeps the HUD on, whether options are
         /// built with <see cref="For"/> or a raw <c>new GameAppOptions { ... }</c>.
         /// </summary>

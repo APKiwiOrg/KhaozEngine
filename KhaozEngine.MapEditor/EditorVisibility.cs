@@ -43,16 +43,34 @@ public sealed class EditorVisibility
     readonly Dictionary<string, bool> _layers = new(StringComparer.Ordinal);
     readonly Dictionary<EditorPropCategory, bool> _categories = new();
     readonly HashSet<(SelectionKind Kind, string Id)> _hidden = new();
+    bool _terrainOnly;
+
+    /// <summary>Bumped by every mutator, so a consumer that derives state from this instance can tell it went
+    /// stale with one integer compare instead of rescanning. The viewport's authored placement layer uses it to
+    /// skip its per-frame refresh while nothing changed.</summary>
+    internal int Version { get; private set; }
 
     /// <summary>Whether the viewport temporarily shows terrain alone. This masks every non-terrain choice without
     /// changing it, so clearing the override restores the underlying category, group, layer, and element state.</summary>
-    public bool TerrainOnly { get; set; }
+    public bool TerrainOnly
+    {
+        get => _terrainOnly;
+        set
+        {
+            _terrainOnly = value;
+            Version++;
+        }
+    }
 
     /// <summary>Whether <paramref name="group"/> is visible (the default for a group never toggled).</summary>
     public bool GetGroup(VisibilityGroup group) => !TerrainOnly && GetGroupChoice(group);
 
     /// <summary>Sets whether <paramref name="group"/> is visible.</summary>
-    public void SetGroup(VisibilityGroup group, bool visible) => _groups[group] = visible;
+    public void SetGroup(VisibilityGroup group, bool visible)
+    {
+        _groups[group] = visible;
+        Version++;
+    }
 
     internal bool GetGroupChoice(VisibilityGroup group) =>
         !_groups.TryGetValue(group, out bool visible) || visible;
@@ -61,7 +79,11 @@ public sealed class EditorVisibility
     public bool GetCategory(EditorPropCategory category) => !TerrainOnly && GetCategoryChoice(category);
 
     /// <summary>Sets the underlying visibility choice for an explicitly classified prop category.</summary>
-    public void SetCategory(EditorPropCategory category, bool visible) => _categories[category] = visible;
+    public void SetCategory(EditorPropCategory category, bool visible)
+    {
+        _categories[category] = visible;
+        Version++;
+    }
 
     internal bool GetCategoryChoice(EditorPropCategory category) =>
         !_categories.TryGetValue(category, out bool visible) || visible;
@@ -79,6 +101,7 @@ public sealed class EditorVisibility
     {
         ArgumentNullException.ThrowIfNull(name);
         _layers[name] = visible;
+        Version++;
     }
 
     internal bool GetLayerChoice(string name)
@@ -95,6 +118,7 @@ public sealed class EditorVisibility
         _layers.Clear();
         _categories.Clear();
         _hidden.Clear();
+        Version++;
     }
 
     /// <summary>Moves the visibility override for a renamed scatter layer from <paramref name="from"/> to
@@ -112,6 +136,7 @@ public sealed class EditorVisibility
         if (!_layers.TryGetValue(from, out bool visible)) return;
         _layers.Remove(from);
         _layers[to] = visible;
+        Version++;
     }
 
     /// <summary>Whether the individual element (<paramref name="kind"/>, <paramref name="id"/>) is hidden,
@@ -125,6 +150,7 @@ public sealed class EditorVisibility
         (SelectionKind Kind, string Id) key = (kind, id ?? "");
         if (hidden) _hidden.Add(key);
         else _hidden.Remove(key);
+        Version++;
     }
 
     /// <summary>Whether the element (<paramref name="kind"/>, <paramref name="id"/>) both draws and picks: its
@@ -183,6 +209,7 @@ public sealed class EditorVisibility
         // index (the hash set cannot tell the two apart), silently losing a hide.
         foreach ((int oldIndex, int _) in moves) _hidden.Remove((kind, oldIndex.ToString(CultureInfo.InvariantCulture)));
         foreach ((int _, int newIndex) in moves) _hidden.Add((kind, newIndex.ToString(CultureInfo.InvariantCulture)));
+        Version++;
     }
 
     /// <summary>Drops the hide entry for the element removed at <paramref name="index"/> of <paramref name="kind"/>
@@ -205,6 +232,7 @@ public sealed class EditorVisibility
         }
         foreach ((int oldIndex, int _) in moves) _hidden.Remove((kind, oldIndex.ToString(CultureInfo.InvariantCulture)));
         foreach ((int _, int newIndex) in moves) _hidden.Add((kind, newIndex.ToString(CultureInfo.InvariantCulture)));
+        Version++;
     }
 
     /// <summary>Shifts every hidden index of <paramref name="kind"/> at or above <paramref name="index"/> up by one,
@@ -227,6 +255,7 @@ public sealed class EditorVisibility
         // interleaved remove+add can drop an entry when one shifted key equals another not-yet-processed old key.
         foreach ((int oldIndex, int _) in moves) _hidden.Remove((kind, oldIndex.ToString(CultureInfo.InvariantCulture)));
         foreach ((int _, int newIndex) in moves) _hidden.Add((kind, newIndex.ToString(CultureInfo.InvariantCulture)));
+        Version++;
     }
 
     /// <summary>Moves the hide entry for an id/name-keyed element of <paramref name="kind"/> from
@@ -241,6 +270,7 @@ public sealed class EditorVisibility
         if (string.Equals(oldKey, newKey, StringComparison.Ordinal)) return;
         if (!_hidden.Remove((kind, oldKey))) return;
         _hidden.Add((kind, newKey));
+        Version++;
     }
 
     // The RemoveAt(from) + Insert(to) list-move remap for a single index, the same formula the reorder commands

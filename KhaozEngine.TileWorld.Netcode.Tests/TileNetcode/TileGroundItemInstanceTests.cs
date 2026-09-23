@@ -311,6 +311,77 @@ public class TileGroundItemInstanceTests
     }
 
     [Fact]
+    public void CollectGroundItemInstances_returns_only_drops_carrying_an_instance_each_paired_with_its_own_drop()
+    {
+        // A plain drop beside two instanced ones, all on the real wire. Distinct items, counts, ids and payloads,
+        // so a pairing that crossed two drops cannot pass by coincidence.
+        using var pair = new Pair(new TileCoord(10, 10, 0));
+        pair.Frames(8);
+        long plain = pair.Server.SpawnGroundItem(new TileCoord(11, 10, 0), itemId: 3, count: 9, ttlTicks: 1000);
+        long sword = pair.Server.SpawnGroundItem(new TileCoord(12, 9, 0), itemId: 7, count: 1, ttlTicks: 1000,
+            instanceId: 4_100_200_300_400L, payload: [1, 2, 3]);
+        long ring = pair.Server.SpawnGroundItem(new TileCoord(9, 11, 0), itemId: 8, count: 2, ttlTicks: 1000,
+            instanceId: 77L, payload: [9]);
+        pair.Frames(8);
+
+        var drops = new List<(long NetId, TileGroundItem Item)>();
+        pair.Client.CollectGroundItems(drops);
+        Assert.Equal(3, drops.Count);   // the plain drop reached this client, so its absence below is the filter
+
+        var instanced = new List<(long NetId, TileGroundItem Item, TileGroundItemInstance Instance)>();
+        pair.Client.CollectGroundItemInstances(instanced);
+
+        Assert.Equal(2, instanced.Count);
+        Assert.DoesNotContain(instanced, entry => entry.NetId == plain);
+        var byId = instanced.ToDictionary(entry => entry.NetId);   // unsorted by contract, so read by net id
+
+        (_, TileGroundItem swordItem, TileGroundItemInstance swordInstance) = byId[sword];
+        Assert.Equal(7, swordItem.ItemId);
+        Assert.Equal(1, swordItem.Count);
+        Assert.Equal(new TileCoord(12, 9, 0), swordItem.Tile);
+        Assert.Equal(4_100_200_300_400L, swordInstance.InstanceId);
+        Assert.Equal<byte[]>([1, 2, 3], swordInstance.Payload);
+
+        (_, TileGroundItem ringItem, TileGroundItemInstance ringInstance) = byId[ring];
+        Assert.Equal(8, ringItem.ItemId);
+        Assert.Equal(2, ringItem.Count);
+        Assert.Equal(new TileCoord(9, 11, 0), ringItem.Tile);
+        Assert.Equal(77L, ringInstance.InstanceId);
+        Assert.Equal<byte[]>([9], ringInstance.Payload);
+    }
+
+    [Fact]
+    public void CollectGroundItemInstances_clears_the_callers_list_before_filling_it()
+    {
+        using var pair = new Pair(new TileCoord(10, 10, 0));
+        pair.Frames(8);
+        var stale = (NetId: 99L, Item: new TileGroundItem { ItemId = 1, Count = 1 },
+            Instance: new TileGroundItemInstance { InstanceId = 1L, Payload = [] });
+        var instanced = new List<(long NetId, TileGroundItem Item, TileGroundItemInstance Instance)> { stale, stale };
+
+        // Nothing instanced on the ground yet: the stale entries go and nothing replaces them.
+        pair.Server.SpawnGroundItem(new TileCoord(11, 10, 0), itemId: 3, count: 9, ttlTicks: 1000);
+        pair.Frames(8);
+        pair.Client.CollectGroundItemInstances(instanced);
+        Assert.Empty(instanced);
+
+        // A drop despawned since the last call is absent from the next, with no lifecycle held by the caller.
+        long sword = pair.Server.SpawnGroundItem(new TileCoord(12, 9, 0), itemId: 7, count: 1, ttlTicks: 1000,
+            instanceId: 42L, payload: [1]);
+        pair.Frames(8);
+        instanced.Add(stale);
+        pair.Client.CollectGroundItemInstances(instanced);
+        Assert.Equal(sword, Assert.Single(instanced).NetId);
+
+        Assert.True(pair.Server.DespawnGroundItem(sword));
+        pair.Frames(8);
+        pair.Client.CollectGroundItemInstances(instanced);
+        Assert.Empty(instanced);
+
+        Assert.Throws<ArgumentNullException>(() => pair.Client.CollectGroundItemInstances(null!));
+    }
+
+    [Fact]
     public void The_instance_id_is_an_unsigned_varint_over_the_int64_bit_pattern()
     {
         // The package has no ContentVarint (it must not gain a dependency on KhaozEngine.Catalog), so the helper

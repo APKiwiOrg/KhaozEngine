@@ -212,6 +212,8 @@ on:
     branches: [ main ]
     paths:
       - 'KhaozEngine.Render3D/**'
+      # The Render3D ECS arm (Scene3DBinder, Transform3D, MeshInstance), split out of Render3D in 20.0.0.
+      - 'KhaozEngine.Render3D.Ecs/**'
       - 'KhaozEngine.Render2D/**'
       - 'KhaozEngine.Gpu/**'
       # The native Direct3D 11 backend. Its shader path owns the FXC call, so a change here can reject HLSL
@@ -674,6 +676,15 @@ jobs:
       # input above. The instrument the unattended triggers exist to carry is the debug layer, so the capture is
       # the one that moves to an attended trigger.
       METAL_CAPTURE_TIER: ${{ (matrix.backend == 'metal-native' && github.event_name == 'workflow_dispatch' && inputs.tier == 'capture') && '1' || '' }}
+      # WHETHER THIS RUN ARMS THE THREAD POOL STARVATION WATCHDOG (#720, #553), as one expression with two
+      # readers (the test step's KE_POOL_WATCH and trx logger, and the evidence upload). The Windows full tier
+      # alone: that is the only place Server.Tests and MapEditor.Tests have been seen dropping into a mode
+      # several times slower than normal, and every loopback HTTP timeout and MCP cancellation in the family
+      # came from a run in that mode. The watchdog is TestSupport's ThreadPoolStarvationWatchdog. It logs each
+      # episode of pool queue latency past two seconds and takes one heap dump per test host on the first
+      # episode that lasts ten, so the stacks holding the pool can be read with dotnet-dump afterwards. It
+      # changes nothing about what the leg tests or how it gates.
+      POOL_WATCH_ARMED: ${{ (matrix.backend == 'direct3d11-native' && (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && !(github.event_name == 'workflow_dispatch' && inputs.renderTestFilter)) && '1' || '' }}
     steps:
       # THE TIER-EDIT GUARD (https://github.com/APKiwiOrg/KhaozEngine/issues/614), and the only step in this job
       # that asserts something about THIS FILE rather than about the engine. It runs before the checkout because
@@ -1114,7 +1125,14 @@ jobs:
           # run #614 has actually read came off the cron or a dispatch, which were detailed already, so this
           # makes the push tail match the tail that instrument was designed against instead of diverging from it.
           #
-          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native') && '--logger console;verbosity=detailed' || '' }}
+          #
+          # AND A TRX LOGGER WHERE THE POOL WATCHDOG IS ARMED, so a starvation episode's timestamps can be laid
+          # against the start and end of every test that was running beside it. The console logger is unchanged.
+          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native') && '--logger console;verbosity=detailed' || (env.POOL_WATCH_ARMED != '' && '--logger trx' || '') }}
+          # The watchdog itself (see POOL_WATCH_ARMED in the job env). Empty everywhere else, which leaves it off.
+          # Absolute, because each test host runs from its own output directory.
+          KE_POOL_WATCH: ${{ env.POOL_WATCH_ARMED }}
+          KE_POOL_WATCH_DIR: ${{ github.workspace }}/TestResults/pool-watch
           # THE THREE SHADER DISK CACHES, ALL FROM ONE VALUE (#614). Blank on every ordinary trigger, which is
           # the shipped default location, and `off` on a dispatch that asked for it. Each variable belongs to one
           # backend and is inert on the other two legs, so setting all three on every leg costs nothing and is
@@ -1397,6 +1415,21 @@ jobs:
           name: metal-validation-${{ env.METAL_DEEP_TIER != '' && 'shader-validation' || (env.METAL_CAPTURE_TIER != '' && 'capture' || 'debug-layer') }}-${{ matrix.backend }}
           path: TestResults/suite-output.log
           if-no-files-found: ignore
+
+      # THE POOL WATCHDOG'S EVIDENCE, on always() and only where POOL_WATCH_ARMED armed it: a green run's
+      # episode lines are as much a reading as a red run's. The watch directory holds one log per armed test host
+      # (an armed line, then one line per episode) and at most one heap dump per host, and the trx files give
+      # every test's start and end. A dump can run to a gigabyte or two, hence the short retention.
+      - name: Upload thread pool watch evidence
+        if: always() && env.POOL_WATCH_ARMED != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pool-watch-${{ matrix.backend }}
+          path: |
+            TestResults/pool-watch/
+            TestResults/*.trx
+          retention-days: 3
+          if-no-files-found: warn
 
       # On a host crash: surface the --blame Sequence.xml (names the last-started test on the dead host).
       # Kilobytes, failure-only, no dumps.

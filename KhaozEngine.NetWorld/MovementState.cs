@@ -11,7 +11,9 @@ namespace KhaozEngine.NetWorld;
 /// <see cref="ReplicatedPosition"/> so the vertical axis survives a sharded cell handoff (handoff transfers
 /// registered components) and reaches the client, where it forms the authoritative reconciliation basis. Registered
 /// in <see cref="MoveProtocol.CreateRegistry"/> as type id <see cref="MoveProtocol.MovementTypeId"/>; not
-/// interpolated (remotes render from <see cref="ReplicatedPosition"/>; only the local owner uses this, exactly).
+/// interpolated (remotes render from <see cref="ReplicatedPosition"/>). It reaches every observer in AoI. The two
+/// feel timers that only the owner's reconciliation replay reads (coyote time and jump buffer) are not here: they
+/// ride <see cref="MovementOwnerState"/>, which reaches the owner alone (split out in wire generation 12).
 /// </summary>
 public struct MovementState : IComponent
 {
@@ -24,12 +26,6 @@ public struct MovementState : IComponent
 
     /// <summary>True while resting on the ground this tick.</summary>
     public bool Grounded;
-
-    /// <summary>Seconds since last grounded (coyote-time accounting).</summary>
-    public float TimeSinceGrounded;
-
-    /// <summary>Seconds of jump-buffer remaining (jump-buffer accounting).</summary>
-    public float JumpBufferRemaining;
 
     /// <summary>True while the player is surface-swimming (mirrors <see cref="KhaozEngine.Locomotion.MoveState.Swimming"/>).
     /// Replicated alongside the vertical axis so the local owner reconciles it AND remote clients read it to drive the
@@ -65,7 +61,7 @@ public struct MovementState : IComponent
     /// <para>Server-authored ONLY: it is set through <c>ShardedWorldServer.SetSpeedScale</c> /
     /// <c>WorldServer.SetSpeedScale</c> and never derived from anything a client sends, so a hostile client cannot
     /// grant itself a multiplier. It must ride the wire (rather than living only on the sim-local
-    /// <see cref="KhaozEngine.Locomotion.MoveState"/>) because <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/> rebuilds the client's
+    /// <see cref="KhaozEngine.Locomotion.MoveState"/>) because <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState, in MovementOwnerState)"/> rebuilds the client's
     /// reconcile basis from the replicated components alone: a scale absent from here would reset on every correction
     /// and the pending command window would replay at the wrong speed.</para>
     /// Added on the wire in generation 6 (<see cref="MoveProtocol.WireProtocolVersion"/>). A mismatched peer is
@@ -81,7 +77,7 @@ public struct MovementState : IComponent
     /// to mean the harmless thing. For a multiplier that is 1 (unmodified), and for a carried velocity it is 0
     /// (carrying nothing), which degrades a state that never went through a step to the old instant-to-target model
     /// rather than to a phantom drift.
-    /// <para>It must ride the wire because <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/> rebuilds the client's reconcile basis
+    /// <para>It must ride the wire because <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState, in MovementOwnerState)"/> rebuilds the client's reconcile basis
     /// from the replicated components ALONE. A carried velocity absent from there does not merely lag: it resets to
     /// the struct default on EVERY correction, so a client corrected mid-flight drops its arc to zero, rebuilds a new
     /// one from whatever the command happens to be, and replays the whole pending window on that. This is exactly the
@@ -109,7 +105,7 @@ public struct MovementState : IComponent
     /// <para>It must ride the wire because <see cref="KhaozEngine.Locomotion.MoveState.FacingYaw"/> is CARRIED state:
     /// with a finite <see cref="KhaozEngine.Locomotion.MoveTuning.FacingTurnSpeed"/> this tick's heading is the
     /// previous tick's plus a bounded shortest-arc step, so a replay needs the authoritative heading to know where it
-    /// is turning FROM. <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/> rebuilds the
+    /// is turning FROM. <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState, in MovementOwnerState)"/> rebuilds the
     /// client's reconcile basis from the replicated components ALONE and <c>Reconcile</c> overwrites the whole
     /// predicted state with it, so a heading absent from that seed would not lag behind the server: it would reset to
     /// 0 on every correction and the character would restart its turn from due -Z several times a second. This is the
@@ -145,7 +141,7 @@ public struct MovementState : IComponent
     /// (<see cref="PlayerMovementSystem"/>) reconstructs a fresh <see cref="KhaozEngine.Locomotion.MoveState"/> from
     /// this component every tick, so a step OUTPUT has nowhere else to survive to the end of
     /// <see cref="ShardedWorldServer.Tick"/>, where the movement-anomaly check reads it back through
-    /// <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/>. The single-<see cref="World"/> <see cref="WorldServer"/> never reads this
+    /// <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState, in MovementOwnerState)"/>. The single-<see cref="World"/> <see cref="WorldServer"/> never reads this
     /// field: it holds the whole <see cref="PlayerMoveState"/> per slot and reads the step's own output directly.
     /// <para>DELIBERATELY absent from the movement codec (see <see cref="MoveProtocol.CreateRegistry"/>): it is a
     /// server-side anti-cheat input that no client has any use for, so replicating it would widen the built-in wire
@@ -165,7 +161,7 @@ public struct MovementState : IComponent
     /// OUTPUT has nowhere else to survive to the end of <see cref="ShardedWorldServer.Tick"/> - which is where a game
     /// reads it, per slot, from <see cref="ShardedWorldServer.OnAfterTick"/> (via
     /// <see cref="ShardedWorldServer.TryGetPlayerState"/>, which rebuilds through
-    /// <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/>). The single-<see cref="World"/>
+    /// <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState, in MovementOwnerState)"/>). The single-<see cref="World"/>
     /// <see cref="WorldServer"/> never reads this field: it holds the whole <see cref="PlayerMoveState"/> per slot and
     /// reads the step's own output directly.
     /// <para>DELIBERATELY absent from the movement codec (see <see cref="MoveProtocol.CreateRegistry"/>): the server
@@ -335,15 +331,13 @@ public struct MovementState : IComponent
     /// somewhere odd, which its own next command corrects.</summary>
     public static float DecodeFacingYaw(short q) => q * FacingYawQuantum;
 
-    /// <summary>The vertical part of a full <see cref="PlayerMoveState"/> (the position is in
-    /// <see cref="ReplicatedPosition"/>).</summary>
+    /// <summary>The observer-visible vertical part of a full <see cref="PlayerMoveState"/> (the position is in
+    /// <see cref="ReplicatedPosition"/> and the owner-only feel timers in <see cref="MovementOwnerState.From"/>).</summary>
     public static MovementState From(in PlayerMoveState state) => new()
     {
         Commitment = state.Move.Commitment,
         VerticalVelocity = state.Move.VerticalVelocity,
         Grounded = state.Move.Grounded,
-        TimeSinceGrounded = state.Move.TimeSinceGrounded,
-        JumpBufferRemaining = state.Move.JumpBufferRemaining,
         Swimming = state.Move.Swimming,
         TeleportEpoch = state.TeleportEpoch,
         ClimbRateQ = QuantizeClimbRate(state.Move.ClimbRate),

@@ -70,7 +70,7 @@ public class FacingReconcileParityTests
                 // components alone. Pending = seqs (i - lag + 1 .. i), replayed on top.
                 int ackSeq = i - lag;
                 PlayerMoveState authFull = contStates[ackSeq + 1];
-                PlayerMoveState basis = PlayerMoveState.From(authFull.Position, MovementState.From(authFull));
+                PlayerMoveState basis = PlayerMoveState.From(authFull.Position, MovementState.From(authFull), MovementOwnerState.From(authFull));
                 pred.Reconcile(i, basis, ackSeq);
             }
             recon.Add(Snap(pred.PredictedState));
@@ -146,7 +146,7 @@ public class FacingReconcileParityTests
                 PlayerMoveState authFull = contStates[ackSeq + 1];
                 MovementState wire = MovementState.From(authFull);
                 wire.FacingYawQ = 0;   // the field absent from the codec, simulated
-                pred.Reconcile(i, PlayerMoveState.From(authFull.Position, wire), ackSeq);
+                pred.Reconcile(i, PlayerMoveState.From(authFull.Position, wire, MovementOwnerState.From(authFull)), ackSeq);
             }
             worst = MathF.Max(worst,
                 MathF.Abs(CharacterMovement.WrapYaw(pred.PredictedState.Move.FacingYaw - contStates[i + 1].Move.FacingYaw)));

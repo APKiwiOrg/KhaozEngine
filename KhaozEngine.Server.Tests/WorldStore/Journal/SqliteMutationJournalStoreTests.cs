@@ -10,7 +10,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.WorldStore.Journal;
 
-public sealed class SqliteMutationJournalStoreTests : MutationJournalStoreConformance, IDisposable
+public sealed class SqliteMutationJournalStoreTests : MutationJournalStreamListingConformance, IDisposable
 {
     private readonly SqliteJournalTestDatabase database = new();
 

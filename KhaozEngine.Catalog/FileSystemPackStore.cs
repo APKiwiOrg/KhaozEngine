@@ -18,12 +18,17 @@ namespace KhaozEngine.Catalog;
 /// provider lays the same tree out under an HTTP base address, so one tree serves both.
 /// </para>
 /// <para>
-/// Writes go to a UNIQUELY NAMED temporary in the same shard directory and then
-/// <c>File.Move(temp, final, overwrite: true)</c>, the map document's idiom. <c>overwrite: true</c> is
-/// correct here PRECISELY because the name is the content: rewriting a hash with its own bytes is a no-op by
-/// definition. An <c>fsync</c> before the move happens only under
-/// <see cref="PackDurability.PowerFail"/>, because a pack file lost to a power cut is refetchable from its
-/// hash and a lost world file is not.
+/// Writes go to a UNIQUELY NAMED temporary in the same shard directory and are then moved into place. An
+/// <c>fsync</c> before the move happens only under <see cref="PackDurability.PowerFail"/>, because a pack
+/// file lost to a power cut is refetchable from its hash and a lost world file is not.
+/// </para>
+/// <para>
+/// <b>A content-addressed object is placed CREATE ONLY and is never replaced</b>, which is the same promise
+/// the blob provider makes with its conditional upload. The name is the content, so an object that is already
+/// there when the move runs holds these exact bytes, and the move that finds it is a put that succeeded.
+/// Replacing it instead is what fails on Windows: a replace over a file another writer is replacing, or that
+/// a reader has open, is refused with an access denied that names no path. Only the version pointer, which is
+/// named by a number rather than by its content, is ever replaced.
 /// </para>
 /// <para>
 /// <b>The temporary's name carries a random token rather than being the destination plus an extension</b>,
@@ -212,7 +217,7 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        await WriteThenMoveAsync(path, bytes, cancellationToken).ConfigureAwait(false);
+        await WriteThenMoveAsync(path, bytes, replace: false, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -230,8 +235,11 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
     }
 
     /// <summary>
-    /// Publish step 9's version pointer: the version's two manifest hashes and nothing else, written with the
-    /// same temp-then-move idiom as every other file so a reader never sees a half-written one.
+    /// The publish's version pointer: the version's two manifest hashes and nothing else, written with the
+    /// same temp-then-move idiom as every other file so a reader never sees a half-written one. It is the one
+    /// file here that REPLACES what it finds, because a pointer left by an attempt that never committed has to
+    /// give way to the attempt that does. A publish writes it inside its commit, so two publishers of one
+    /// version never write it at once.
     /// </summary>
     /// <exception cref="ContentPackException">Either hash is not a content address.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="versionNumber"/> is not positive.</exception>
@@ -247,7 +255,7 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         byte[] bytes = Encoding.UTF8.GetBytes(serverManifestHash + "\n" + clientManifestHash + "\n");
-        await WriteThenMoveAsync(path, bytes, cancellationToken).ConfigureAwait(false);
+        await WriteThenMoveAsync(path, bytes, replace: true, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -372,7 +380,18 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
         }
     }
 
-    async Task WriteThenMoveAsync(string path, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
+    /// <summary>
+    /// Called with the destination path after the temporary is written and before it is moved into place. It
+    /// is the test seam that lands a rival's copy of the same object in exactly that window, and it is null on
+    /// every store a host builds.
+    /// </summary>
+    internal Action<string>? BeforePlace { get; set; }
+
+    async Task WriteThenMoveAsync(
+        string path,
+        ReadOnlyMemory<byte> bytes,
+        bool replace,
+        CancellationToken cancellationToken)
     {
         // Per WRITE rather than per destination, so two publishers filing one hash into one root do not
         // collide on the temporary. The name ends in the temporary extension and is never a content address,
@@ -391,7 +410,12 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
                 }
             }
 
-            File.Move(temporary, path, overwrite: true);
+            BeforePlace?.Invoke(path);
+            if (!Place(temporary, path, replace))
+            {
+                // The object was already there, put by another writer, and it is these bytes by definition.
+                TryDeleteTemporary(temporary);
+            }
         }
         catch
         {
@@ -400,6 +424,30 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
         }
 
         SweepStaleTemporaries(path);
+    }
+
+    /// <summary>
+    /// Moves the temporary into place, answering false when a create-only move found the destination already
+    /// there. Only a failure that leaves the destination PRESENT is read that way. Any other failure is a
+    /// failed write and is thrown.
+    /// </summary>
+    static bool Place(string temporary, string path, bool replace)
+    {
+        if (replace)
+        {
+            File.Move(temporary, path, overwrite: true);
+            return true;
+        }
+
+        try
+        {
+            File.Move(temporary, path, overwrite: false);
+            return true;
+        }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException && File.Exists(path))
+        {
+            return false;
+        }
     }
 
     /// <summary>

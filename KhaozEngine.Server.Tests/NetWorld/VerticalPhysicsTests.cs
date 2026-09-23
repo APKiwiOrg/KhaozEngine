@@ -81,12 +81,12 @@ public class VerticalPhysicsTests
         Entity e = server.Spawn();
         server.Set(e, new NetId(7));
         server.Set(e, ReplicatedPosition.FromWorld(new Vector3(1f, 2f, 3f), WorldFrame.Origin));
-        server.Set(e, new MovementState
-        {
-            VerticalVelocity = 5.5f, Grounded = true, TimeSinceGrounded = 0.2f, JumpBufferRemaining = 0.05f,
-        });
+        server.Set(e, new MovementState { VerticalVelocity = 5.5f, Grounded = true });
+        server.Set(e, new MovementOwnerState { TimeSinceGrounded = 0.2f, JumpBufferRemaining = 0.05f });
 
-        byte[] snapshot = SnapshotWriter.WriteFiltered(server, registry, new HashSet<long> { 7 });
+        // Served to entity 7's own client, the only viewer the owner-only timers reach.
+        byte[] snapshot = SnapshotWriter.WriteFiltered(server, registry, new HashSet<long> { 7 },
+            ReplicationChannels.Replicate, ownerNetId: 7);
 
         var view = new ClientReplicationView(registry);
         var client = new World();
@@ -96,8 +96,9 @@ public class VerticalPhysicsTests
         MovementState ms = client.Get<MovementState>(ce);
         Assert.Equal(5.5f, ms.VerticalVelocity, 4);
         Assert.True(ms.Grounded);
-        Assert.Equal(0.2f, ms.TimeSinceGrounded, 4);
-        Assert.Equal(0.05f, ms.JumpBufferRemaining, 4);
+        MovementOwnerState owner = client.Get<MovementOwnerState>(ce);
+        Assert.Equal(0.2f, owner.TimeSinceGrounded, 4);
+        Assert.Equal(0.05f, owner.JumpBufferRemaining, 4);
     }
 
     // Reads the (single) player's replicated vertical velocity straight off a server's authoritative world.

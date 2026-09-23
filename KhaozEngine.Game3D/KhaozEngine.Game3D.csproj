@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Game3D</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Umbrella metapackage for a desktop 3D game on the KhaozEngine 5.x stack: a strict superset of KhaozEngine.Game2D plus Render3D and Game.Render3D (the 3D scene integration: GameApp3D, IGameScene3D, and the SceneManager.Draw3D extension), the Ground* telegraph extensions, Terrain.Render3D (the chunked-LOD terrain mesh builder over KhaozEngine.Terrain's analytic field), and TileWorld.Render3D (the ground mesher, prop path, region streaming and snapshot capture that render a KhaozEngine.TileWorld document). One reference gives the full 2D + 3D + game-loop stack. No networking (Netcode) - add KhaozEngine.Netcode.LiteNetLib if you need it. Contains no code; just dependencies.</Description>
+    <Description>Umbrella metapackage for a desktop 3D game on the KhaozEngine 5.x stack: a strict superset of KhaozEngine.Game2D plus Render3D, Render3D.Ecs (Transform3D, MeshInstance and the Scene3DBinder ECS draw) and Game.Render3D (the 3D scene integration: GameApp3D, IGameScene3D, and the SceneManager.Draw3D extension), the Ground* telegraph extensions, Terrain.Render3D (the chunked-LOD terrain mesh builder over KhaozEngine.Terrain's analytic field), and TileWorld.Render3D (the ground mesher, prop path, region streaming and snapshot capture that render a KhaozEngine.TileWorld document). One reference gives the full 2D + 3D + game-loop stack. No networking (Netcode) - add KhaozEngine.Netcode.LiteNetLib if you need it. Contains no code; just dependencies.</Description>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
@@ -23,6 +23,8 @@
                       PrivateAssets="contentfiles;analyzers" />
     <!-- ...plus the 3D renderer and the Game<->Render3D bridge -->
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+    <!-- the ECS arm of Render3D: Transform3D, MeshInstance and Scene3DBinder -->
+    <ProjectReference Include="../KhaozEngine.Render3D.Ecs/KhaozEngine.Render3D.Ecs.csproj" />
     <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Telegraphs.Render3D/KhaozEngine.Telegraphs.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />

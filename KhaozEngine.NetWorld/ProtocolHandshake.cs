@@ -46,6 +46,24 @@ public static class ProtocolHandshake
         return WrapToken(WireGenerationLabel(wireGeneration), consumerLayer);
     }
 
+    /// <summary>Wraps <paramref name="innerToken"/> in the OPTIONAL content-identity layer
+    /// (<see cref="WorldClientConfig.ContentIdentity"/>), or returns it unchanged when
+    /// <paramref name="contentIdentity"/> is null. Pass the result as <see cref="BuildClientToken"/>'s inner token so
+    /// the layers read <c>[ke-wire:N][consumerVersion][contentIdentity][inner]</c>, which is what
+    /// <see cref="WorldClient"/> sends. Mirrors the server-side composition
+    /// <c>VersionCheckingAuthenticator(consumerVersion, rule, WorldIdentityGateAuthenticator(contentIdentity, inner))</c>
+    /// inside the automatic wire gate.</summary>
+    /// <exception cref="ArgumentException"><paramref name="contentIdentity"/> is empty, contains <c>|</c>, or exceeds
+    /// <see cref="HandshakeToken.MaxLabelBytes"/> UTF-8 bytes.</exception>
+    public static byte[]? WrapContentIdentity(string? contentIdentity, byte[]? innerToken)
+    {
+        if (contentIdentity is null) return innerToken;
+        // An empty layer reads the same as no layer at the gate. A pipe would re-split the refusal token.
+        if (contentIdentity.Length == 0 || contentIdentity.Contains('|'))
+            throw new ArgumentException("A content identity is non-empty and never contains '|'.", nameof(contentIdentity));
+        return WrapToken(contentIdentity, innerToken);
+    }
+
     /// <summary>Builds a version-wrapped connect token: <c>[magic][verLen:byte][version utf8][inner token]</c>.
     /// <paramref name="innerToken"/> is the auth token the inner <see cref="Netcode.IConnectionAuthenticator"/>
     /// expects (may be null/empty for an anonymous connection).</summary>

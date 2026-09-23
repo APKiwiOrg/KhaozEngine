@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.TileWorld.Netcode;
 using Xunit;
 
@@ -270,5 +271,87 @@ public class TileFragmentedMessageTests
         }
 
         Assert.Equal(0, reassembler.PartialAssemblyCount);
+    }
+
+    [Fact]
+    public void Interleaved_streams_on_one_message_kind_each_complete_with_their_own_stream_id()
+    {
+        // A paged container wire: a bag, the worn slots and a bank on ONE kind, told apart by the header's stream
+        // id alone. Two multi chunk pages interleave on the wire and a single chunk one lands between them.
+        const ushort Kind = 140;
+        byte[] bag = Payload(2500);
+        byte[] bank = Payload(3100);
+        bank[0] ^= 0xFF;   // distinct contents, so a mixed up completion cannot pass by coincidence
+        byte[] worn = Payload(40);
+        byte[][] bagChunks = TileFragmentedMessage.Fragment(streamId: 0, sequence: 5, bag);
+        byte[][] bankChunks = TileFragmentedMessage.Fragment(streamId: 2, sequence: 5, bank);
+        byte[][] wornChunks = TileFragmentedMessage.Fragment(streamId: 1, sequence: 5, worn);
+        Assert.Equal(3, bagChunks.Length);
+        Assert.Equal(4, bankChunks.Length);
+        Assert.Single(wornChunks);
+
+        byte[][] wire =
+        {
+            bagChunks[0], bankChunks[0], bagChunks[1], wornChunks[0], bankChunks[1], bankChunks[2], bagChunks[2],
+            bankChunks[3],
+        };
+        var reassembler = new TileFragmentReassembler(Slot);
+        var completed = new List<(byte StreamId, byte[] Bytes)>();
+        foreach (byte[] chunk in wire)
+        {
+            byte[] frame = TileProtocol.EncodeGameMessage(TileProtocol.ServerFrameGameMessage, Kind, chunk);
+            Assert.True(TileProtocol.TryDecodeGameMessage(frame, TileProtocol.ServerFrameGameMessage,
+                out ushort kind, out ReadOnlySpan<byte> payload));
+            Assert.Equal(Kind, kind);
+            bool done = reassembler.TryComplete(payload, out byte streamId, out ReadOnlyMemory<byte> assembled,
+                out string? reason);
+            Assert.Null(reason);   // every chunk here is accepted, completing or pending
+            if (done) completed.Add((streamId, assembled.ToArray()));
+        }
+
+        // The single chunk transmission completes on arrival and the two pages on their own last chunks, each
+        // naming the stream its header carried rather than whichever stream was fed last.
+        Assert.Equal(3, completed.Count);
+        Assert.Equal(1, completed[0].StreamId);
+        Assert.Equal(worn, completed[0].Bytes);
+        Assert.Equal(0, completed[1].StreamId);
+        Assert.Equal(bag, completed[1].Bytes);
+        Assert.Equal(2, completed[2].StreamId);
+        Assert.Equal(bank, completed[2].Bytes);
+        Assert.Equal(0, reassembler.PartialAssemblyCount);
+        Assert.Equal(0, reassembler.EvictedAssemblies);
+    }
+
+    [Fact]
+    public void The_overload_without_a_stream_id_answers_exactly_as_the_one_with_it()
+    {
+        // The three-out overload delegates, so the same wire fed to one reassembler of each shape gets the same
+        // answer chunk for chunk: completions, pending accepts and refusals alike.
+        byte[][] first = TileFragmentedMessage.Fragment(streamId: 4, sequence: 1, Payload(2200));
+        byte[][] second = TileFragmentedMessage.Fragment(streamId: 6, sequence: 9, Payload(1500));
+        byte[][] wire =
+        {
+            first[0], second[0], first[1], second[1], first[2],
+            first[1],                        // out of sequence: nothing open for stream 4 any more
+            new byte[] { 1, 0, 0, 0, 0 },    // malformed: a chunk count of zero
+        };
+
+        var withId = new TileFragmentReassembler(Slot);
+        var withoutId = new TileFragmentReassembler(Slot);
+        var completedIds = new List<byte>();
+        foreach (byte[] chunk in wire)
+        {
+            bool answered = withId.TryComplete(chunk, out byte streamId, out ReadOnlyMemory<byte> expected,
+                out string? expectedReason);
+            Assert.Equal(answered, withoutId.TryComplete(chunk, out ReadOnlyMemory<byte> assembled,
+                out string? reason));
+            Assert.Equal(expectedReason, reason);
+            Assert.Equal(expected.ToArray(), assembled.ToArray());
+            if (answered) completedIds.Add(streamId);
+        }
+
+        Assert.Equal(new byte[] { 6, 4 }, completedIds);
+        Assert.Equal(withId.PartialAssemblyCount, withoutId.PartialAssemblyCount);
+        Assert.Equal(withId.EvictedAssemblies, withoutId.EvictedAssemblies);
     }
 }

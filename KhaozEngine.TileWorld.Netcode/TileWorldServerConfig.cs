@@ -39,6 +39,13 @@ public sealed record TileWorldServerConfig
     /// grid query, which is where <see cref="OverlapMargin"/> comes in.</para></summary>
     public float InterestRadius { get; init; } = 15f;
 
+    /// <summary>Optional server-owned visibility rule for a ground item in a viewer's normal area of interest.
+    /// The arguments are the authenticated viewer slot and the ground item's net id. A null rule serves every
+    /// ground item as before. A false answer excludes the entire ground entity from that viewer's snapshot and
+    /// delta. Runs synchronously on the simulation tick, so callers keep it pure and non-throwing. This is a
+    /// presentation gate only: the game still authorizes pickup.</summary>
+    public Func<int, long, bool>? GroundItemVisibleToSlot { get; init; }
+
     /// <summary>Border overlap in tiles. Must be at least <see cref="InterestRadius"/> or the home cell cannot hold
     /// the whole interest as ghosts, which is checked at construction rather than left to the first serve after a
     /// player walks near an edge.
@@ -143,9 +150,18 @@ public sealed record TileWorldServerConfig
     public int CombatLogoutTicks { get; init; }
 
     /// <summary>Synchronous ban check over a verified account id, consulted at the door. Null admits everyone the
-    /// authenticator admits. A head backs this with whatever store it keeps, which is why it is a delegate rather
-    /// than an interface the engine would then have to define a schema for.</summary>
+    /// authenticator admits. For a head whose ban list is not an <see cref="KhaozEngine.NetWorld.IBanStore"/>. A
+    /// head that keeps one sets <see cref="BanStore"/> instead. Setting both refuses an account either one bans.</summary>
     public Func<string, bool>? IsBanned { get; init; }
+
+    /// <summary>The ban store consulted at the door, read live on every connect through
+    /// <see cref="BanGateAuthenticator"/>, so a ban recorded mid-session refuses that account's next connect. Null,
+    /// the default, checks no store. It is the same seam a <c>WorldServer</c> takes as <c>banStore:</c> and an
+    /// admin surface writes to, so one store serves every door a game runs. The type is named
+    /// <c>KhaozEngine.NetWorld.IBanStore</c> but lives in <c>KhaozEngine.Netcode</c>, so this package still never
+    /// references <c>NetWorld</c>. A live session is NOT ended when its account is banned: pair the ban with
+    /// <see cref="TileWorldServer.Kick"/> for that.</summary>
+    public KhaozEngine.NetWorld.IBanStore? BanStore { get; init; }
 
     /// <summary>Consulted in Admit for every command whose mode is <see cref="TileMoveMode.Run"/>, over the
     /// player's SLOT. Null, the default, allows running for everyone and costs nothing.

@@ -574,29 +574,25 @@ namespace KhaozEngine.Render3D.Rendering
         /// <paramref name="settings"/> is the SCENE-wide look, and a plane carrying a <see cref="WaterLook"/>
         /// resolves its own copy of it for the UBO slot only. Everything outside that slot keeps reading the scene
         /// object on purpose: the grid mode and the <c>Clipmap*</c> group select the displaced geometry, the sea
-        /// state drives one bake and the bathymetry one texture. A procedural plane whose effective swell is zero
-        /// uses the regular water pipeline over one quad because its vertex stage has no geometry to displace.
+        /// state drives one bake and the bathymetry one texture. A procedural plane whose effective swell does not
+        /// displace draws one quad of the shared flat buffer in either grid mode, because its vertex stage has no
+        /// geometry to displace (WaterRenderer.FlatPlane.cs).
         /// </para></summary>
         public void Draw(IGpuCommandList cl, RenderResources res, ReadOnlySpan<WaterPlane> planes,
             Matrix4x4 viewProj, Vector3 lightDirection, Color lightColor, Vector3 cameraPos, WaterSettings settings,
             SkySettings sky, float timeSeconds, Vector3 renderOrigin = default)
         {
             if (planes.Length == 0) return;
-            bool clipmap = settings.GridMode == WaterGridMode.Clipmap;
-            bool flatClipmap = clipmap && AnyFlatPlane(planes, settings);
-            bool displacedClipmap = clipmap && AnyDisplacedPlane(planes, settings);
             LastClipmapRebuilds = 0;
             EnsureUboCapacity(planes.Length);
-            if (displacedClipmap)
+            RoutePlanes(planes, settings);
+            if (_clipCount > 0)
             {
                 EnsureClipPipeline();
                 EnsureClipBuffers(planes, settings, renderOrigin);
             }
-            if (flatClipmap) EnsureFlatBuffers();
-            if (!clipmap)
-            {
-                EnsureGridBuffers();
-            }
+            if (_flatCount > 0) EnsureFlatBuffers(_flatCount);
+            if (_gridCount > 0) EnsureGridBuffers();
 
             // ONE ocean update per frame, ahead of the per-plane loop and of BindTargets (which binds whatever maps
             // it produced). Every plane ON the ocean samples the same cascades: there is one sea state, not one per
@@ -641,46 +637,15 @@ namespace KhaozEngine.Render3D.Rendering
             // was a per-plane blocking Map on D3D11 (#408); see WaterRenderer.SlotUpload.cs.
             UploadSlots(cl);
 
-            // Clipmap: every upload happens HERE, before a single draw is recorded, so no plane's geometry can be
-            // written over another's mid-pass and the draw loop below touches no buffer contents at all.
-            if (clipmap)
-                for (int i = 0; i < planes.Length; i++)
-                    if (!UsesFlatQuad(planes[i], settings))
-                        RefreshClipmapPlane(cl, i, planes[i], cameraPos, settings, renderOrigin);
+            // Flat quads and clipmap slices upload HERE, before a single draw is recorded, so no plane's geometry
+            // can be written over another's mid-pass.
+            UploadFlatQuads(cl, planes);
+            for (int i = 0; i < planes.Length; i++)
+                if (_routes[i] == PlaneRoute.Clipmap)
+                    RefreshClipmapPlane(cl, i, planes[i], cameraPos, settings, renderOrigin);
 
             cl.SetFramebuffer(res.ColorDepthFB);
-            if (!clipmap)
-            {
-                cl.SetPipeline(_pipe);
-                cl.SetIndexBuffer(_ib!, GpuIndexFormat.UInt32);
-            }
-            for (int i = 0; i < planes.Length; i++)
-            {
-                cl.SetGraphicsResourceSet(0, _set!, (uint)i * SlotBytes);
-                if (clipmap)
-                {
-                    if (UsesFlatQuad(planes[i], settings))
-                    {
-                        DrawFlatPlane(cl, planes[i]);
-                        continue;
-                    }
-                    // Each plane reads its own slice: indexStart walks the index buffer, vertexOffset rebases the
-                    // plane-local indices onto its own vertex block.
-                    cl.SetPipeline(_clipPipe!);
-                    cl.SetIndexBuffer(_clipIb!, GpuIndexFormat.UInt32);
-                    cl.SetVertexBuffer(0, _clipVb!);
-                    cl.DrawIndexed((uint)_clipSlots[i].IndexCount, 1,
-                        (uint)(i * _clipSliceIndices), i * _clipSliceVerts, 0);
-                    continue;
-                }
-                // The grid concentrates its vertices around the camera's XZ (clamped inside the plane by
-                // BuildGridPositions), so the fixed vertex budget lands where the displaced swell actually reads.
-                int n = WaterMath.BuildGridPositions(planes[i], cameraPos.X, cameraPos.Z, settings.GridFocusBias,
-                    _gridScratch, _axisScratch);
-                cl.UpdateBuffer<Vector3>(_vb!, 0, _gridScratch.AsSpan(0, n));
-                cl.SetVertexBuffer(0, _vb!);
-                cl.DrawIndexed((uint)WaterMath.GridIndexCount, 1, 0, 0, 0);
-            }
+            DrawRoutedPlanes(cl, planes, cameraPos, settings.GridFocusBias);
         }
 
         /// <summary>

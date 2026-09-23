@@ -43,6 +43,7 @@ not deleted: the reasoning behind a shipped decision is the thing that is expens
 
 | Doc | The program | Status |
 |---|---|---|
+| [TILE-GROUND-VIEWER-VISIBILITY-2026-09-23.md](design/TILE-GROUND-VIEWER-VISIBILITY-2026-09-23.md) | Optional per-viewer ground-item interest predicate, leaving ownership and pickup rules to consumers. | **In progress.** Grimhollow is the first consumer. |
 | [GOLDEN-TEST-AUDIT-2026-09-23.md](design/GOLDEN-TEST-AUDIT-2026-09-23.md) | Audit of what the committed-grid goldens can and cannot see ([#19](https://github.com/APKiwiOrg/KhaozEngine/issues/19)): the mechanism, a deletion experiment over 18 scenes on real Metal, measured run-to-run and cross-backend noise, the tier map, the rebake history and per-leg headroom. | **Complete.** Verdict plus nine ranked follow-ups filed as [#1080](https://github.com/APKiwiOrg/KhaozEngine/issues/1080) to [#1088](https://github.com/APKiwiOrg/KhaozEngine/issues/1088), led by tightening the tolerance to 0.01 and a cascade-blend test that can fail. |
 | [STABLE-POINT-LIGHTING-2026-09-19.md](design/STABLE-POINT-LIGHTING-2026-09-19.md) | Full 3D clustered forward lighting, growable receiver storage and stable keyed static-shadow residency. | Implementation and backend verification for 19.6.0. |
 | [OLDEST-BACKLOG-RENDER-VALIDATION-2026-09-19.md](design/OLDEST-BACKLOG-RENDER-VALIDATION-2026-09-19.md) | Same-GPU control measurements and the bounded native reference update for the 19.7.0 rendering fixes. | Validation record for the staged batch. |

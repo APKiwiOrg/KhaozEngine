@@ -167,7 +167,11 @@ re-deriving them:
   distributed flood that stays under every per-client limit still cannot pile up provider calls and store round
   trips, and a health probe beside the endpoint is never starved.
 - **Bounded provider cost.** A 10 s `ProviderTimeout` around every validator, which holds even for one that ignores
-  its cancellation token, so a stalled provider cannot park every place under the bound.
+  its cancellation token or blocks synchronously (the call starts on the thread pool), so a stalled provider cannot
+  park every place under the bound.
+- **Enforced mount order.** `MapAuthExchange` throws at map time when `AddAuthExchangeHosting` ran but
+  `UseAuthExchangeHosting` never did, because named proxies without their middleware would put every caller in one
+  rate-limit bucket.
 - **Body caps.** An 8 KiB endpoint cap (413), applied as endpoint metadata and again by the handler's own bounded read,
   an optional server-wide Kestrel cap, and a 4096 character credential cap checked before any provider call. The
   per-client window runs first, the body cap second and the global bound third, so a flood is refused before any JSON

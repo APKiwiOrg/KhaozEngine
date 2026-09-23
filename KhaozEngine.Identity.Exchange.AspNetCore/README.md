@@ -60,7 +60,7 @@ behind them shares one bucket.
 | `Unavailable` | 503 | `unavailable`, whichever dependency failed |
 | `Malformed`, or a body that is not the request's JSON | 400 | none |
 | body over `MaxRequestBodyBytes` | 413 | none |
-| per-client window spent, or global bound and queue full | 429 | none, `Retry-After` when the window knows it |
+| per-client window spent, or global bound and queue full | 429 | none. The per-client refusal carries `Retry-After: 60`, the global one carries none |
 
 Every answer carries `Cache-Control: no-store`. None carries a CORS header or a cookie. The body is read and written
 with fixed web-default JSON options, so a host's global JSON settings cannot change the wire. A client turns the bare

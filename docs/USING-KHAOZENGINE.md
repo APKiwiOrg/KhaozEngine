@@ -20108,7 +20108,8 @@ composes the three. `BanAsync` persists then kicks if the account is online, `Li
 the enumeration, and unwired capabilities throw `NotSupportedException` (feature-detect via `BansSupported` /
 `AccountsSupported`). `BanAsync` refuses a TOKENLESS connection's account id (anything carrying the reserved
 `ResumePositionCache.GuestAccountPrefix`) with an `ArgumentException`, which `POST /admin/ban` surfaces as a 400
-carrying the reason. That id is `guest:{slot}` and the allocator recycles the slot, so banning it rejects every
+carrying the reason. An `AccountBanStore` also refuses a subject with no account row, and both `POST /admin/ban` and
+`POST /admin/unban` answer that with a 400 that does not echo the subject. That id is `guest:{slot}` and the allocator recycles the slot, so banning it rejects every
 future tokenless player seated there while the one who earned it reconnects onto another slot and carries on. Kick
 the slot (`Kick(PlayerRef.Slot(...))`) for a player with no durable identity.
 

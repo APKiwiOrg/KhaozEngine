@@ -37,7 +37,8 @@ These graph rules are not just prose. Headless architecture tests in `KhaozEngin
   seam/backend home, and any new one must be added to the allowlist deliberately), the layering invariants
   (`Primitives` is the zero-dependency leaf, `Simulation` may reference `Determinism` and nothing else, the
   Foundation umbrella stays GPU-free, `App` never references `Gui`), the locked ProjectReference membership of the four umbrellas, opt-in backends staying out of
-  every umbrella's transitive closure, the INVERSE rule for the three native GPU backends (every umbrella that
+  every umbrella's transitive closure, the `Microsoft.AspNetCore.App` framework reference staying in its two web
+  packages (`AspNetCoreFramework_IsContainedToWebPackages`), the INVERSE rule for the three native GPU backends (every umbrella that
   carries `Gpu` must carry all three, since 18.0.0), `Render3D` staying seams-only and ECS-free, and the repository-wide
   one-shader-toolchain rule (`NoTwoShaderToolchains`, which since 18.0.0 subsumes the narrower per-backend
   no-`Veldrid`-package guard it replaced).
@@ -103,7 +104,7 @@ this doc cannot silently drift apart.
 | Server heartbeat (liveness) | `KhaozEngine.ServerStatus` (`IServerHeartbeatSink`, `ServerHeartbeat`, `Null`/`InMemory` reference sinks, `ServerHeartbeatService`) | **game-side** (the one-table upsert against the status DB), no engine backend package | Microsoft.Data.SqlClient / any - in the game, never the engine |
 | Social / presence | `KhaozEngine.Social` (`ISocialProvider`, whose `TryInitialize` must be re-attemptable on the same instance and whose `IsConnected` is the RECOVERABLE way to report a dropped connection where a throw is the terminal one, value types, `NullSocialProvider` no-op, `SocialPresenceController` + `SocialPresenceState`/`SocialPresenceOptions`) | `KhaozEngine.Social.Discord` (`DiscordSocialProvider`) | none - hand-rolled Discord IPC over `System.IO.Pipes` / `System.Net.Sockets` (no third-party lib) |
 | Player identity | `KhaozEngine.Identity` (`IIdentityProvider`, `IIdentityValidator` + `IdentityValidation` - the three-outcome result of `ValidateDetailedAsync`, so a backend can report a provider outage instead of flattening it onto a refused credential, `ITokenCache` + `FileTokenCache`, `IBrowserLauncher`, `ILoopbackListener`, shared `Interactive.SystemBrowserLauncher` and `Interactive.HttpLoopbackListener` adapters, `IdentitySession` orchestrator, `SessionToken` HMAC, `SignInException` - the shared base a backend's own sign-in failure derives from, so a consumer catches one type across every provider, and the `/auth/exchange` wire DTOs `AuthExchangeRequest`, `AuthExchangeResponse` and `AuthExchangeStatuses` a client and an auth service share) | `KhaozEngine.Identity.Oidc` (`OidcClientProvider`, `OidcTokenValidator`, legacy adapter wrappers), `KhaozEngine.Identity.Discord` (`DiscordClientProvider`, `DiscordTokenValidator`) | Microsoft.IdentityModel.Protocols.OpenIdConnect + Microsoft.IdentityModel.JsonWebTokens (Oidc only). Discord backend has no third-party lib (plain HTTP token-introspection call) |
-| Sign-in exchange | `KhaozEngine.Identity.Exchange` (`AuthExchange`, the pure decision behind `/auth/exchange`: any `IIdentityValidator` keyed by provider id, any `IAccountStore`, a signing key of at least `SigningSecret.MinimumBytes`, and the fixed shape, provider deadline, find-or-create, admissible-subject, ban-then-whitelist and mint sequence. `AuthExchangeResult` with `AuthExchangeOutcome` and the log-only `AuthExchangeCause`, `AuthExchangeOptions`, `AuthAdmission.Decide`, and `IAuthExchangePolicy` + `SessionClaims`, the game's display name and token claims hooks, which cannot reorder the gate) | the game's own `IAuthExchangePolicy` (Ruinborne's character shell and v3 persistence key), or the defaults (Grimhollow's provider-subject name fallback and v2). The HTTP handler is a separate package over the core, so the core stays testable with no web server | (no extra dep. Engine edges to `Identity`, `Accounts` and `Netcode` only, and no HTTP type) |
+| Sign-in exchange | `KhaozEngine.Identity.Exchange` (`AuthExchange`, the pure decision behind `/auth/exchange`: any `IIdentityValidator` keyed by provider id, any `IAccountStore`, a signing key of at least `SigningSecret.MinimumBytes`, and the fixed shape, provider deadline, find-or-create, admissible-subject, ban-then-whitelist and mint sequence. `AuthExchangeResult` with `AuthExchangeOutcome` and the log-only `AuthExchangeCause`, `AuthExchangeOptions`, `AuthAdmission.Decide`, and `IAuthExchangePolicy` + `SessionClaims`, the game's display name and token claims hooks, which cannot reorder the gate) | the game's own `IAuthExchangePolicy` (Ruinborne's character shell and v3 persistence key), or the defaults (Grimhollow's provider-subject name fallback and v2). The HTTP handler is `KhaozEngine.Identity.Exchange.AspNetCore`, a separate package over the core (`MapAuthExchange`, `AddAuthExchangeHosting`, `TrustedProxyNetworks`, `AuthExchangeClientKey`), so the core stays testable with no web server | (no extra dep in the core. Engine edges to `Identity`, `Accounts` and `Netcode` only, and no HTTP type. The handler takes the `Microsoft.AspNetCore.App` shared framework through a `FrameworkReference` and no package) |
 | Windowing / input | `KhaozEngine.Windowing` `AppWindow` is the sole toucher; everyone reads the immutable `InputState` via `InputManager`/`Pointer` (input IN), and drives gamepad rumble OUT through `AppWindow.Rumble` (`IRumble`; pure `RumbleMixer` + Silk `IRumbleOutput` sink; `NoopRumble` headless). GLFW backend exposes no motors, so rumble no-ops there | (containment, not a swap) | Silk.NET / GLFW |
 | glTF load | `KhaozEngine.Render3D` `GltfLoader` (returns engine `GltfMesh`/`AnimationClip`/`Skeleton`) | (containment, in loader) | SharpGLTF |
 | Image decode | `KhaozEngine.Render2D` `ImageRgba` (`Decode`/`Load` -> engine RGBA8 value type) | (containment, in `ImageRgba`) | StbImageSharp |
@@ -144,8 +145,10 @@ trade needs durable delivery or a forced reload before either client receives su
 
 `KhaozEngine.Server.Admin` sits outside the seam/backend pattern: it is not a backend (the server heads implement
 `IAdminControllable` themselves), but it is deliberately NOT in the `Server`
-umbrella because it is the only package that references ASP.NET Core (via a `FrameworkReference` on
-`Microsoft.AspNetCore.App`). Its dependency edge is:
+umbrella because it references ASP.NET Core (via a `FrameworkReference` on `Microsoft.AspNetCore.App`). It is one of
+the two packages that do, with the sign-in exchange handler `KhaozEngine.Identity.Exchange.AspNetCore` (see the auth
+exchange edge below), and `ArchitectureTests.AspNetCoreFramework_IsContainedToWebPackages` fails the build if a third
+packable project takes the framework reference. Its dependency edge is:
 
 ```
 KhaozEngine.Server.Admin -> KhaozEngine.NetWorld (ServerAdmin, plus IAdminControllable and IBanStore through NetWorld's Netcode edge)
@@ -252,6 +255,21 @@ graph through `Foundation`, while this package is needed only by a dedicated aut
 service should carry neither the sim stack of `Server` nor a client umbrella.
 `ArchitectureTests.IdentityExchange_ReferencesOnlyIdentityAccountsAndNetcode` pins the three edges and the absence of
 any package reference, and `Identity.Exchange` is on the `OptInBackends` list.
+
+**The ASP.NET Core handler.** `KhaozEngine.Identity.Exchange.AspNetCore` mounts the core as `POST /auth/exchange` and
+configures the host around it. Its edges are:
+
+```
+KhaozEngine.Identity.Exchange.AspNetCore -> KhaozEngine.Identity.Exchange   (AuthExchange, AuthExchangeResult and the Identity wire DTOs it serializes)
+KhaozEngine.Identity.Exchange.AspNetCore -> Microsoft.AspNetCore.App [shared framework, FrameworkReference]
+```
+
+The rate limiting (`System.Threading.RateLimiting`), the forwarded headers and the routing metadata it uses are all in
+that shared framework, so it adds no package. It is the second package after `Server.Admin` to take the framework, and
+it stays out of every umbrella on the same precedent: a sim server that runs no auth endpoint must not carry the web
+stack. `ArchitectureTests.IdentityExchangeAspNetCore_ReferencesOnlyTheExchange` pins its edge,
+`ArchitectureTests.AspNetCoreFramework_IsContainedToWebPackages` holds the framework reference to these two packages
+among packable projects, and `Identity.Exchange.AspNetCore` is on the `OptInBackends` list.
 
 **What the game plugs in, and what it cannot.** The validator set, the store and the policy are seams. The ORDER is
 not: `AuthAdmission.Decide` refuses a ban before a missing whitelist flag, because that order is a disclosure property
@@ -1906,7 +1924,7 @@ To swap or add a backend for a seam that already has the separate-package split:
 | Server heartbeat | `../KhaozEngine.ServerStatus/ServerHeartbeat.cs` (`IServerHeartbeatSink`, `Null`/`InMemory` sinks), `ServerHeartbeatService.cs` | game-side SQL upsert (not in the engine) |
 | Social / presence | `../KhaozEngine.Social/ISocialProvider.cs`, `NullSocialProvider.cs`, `SocialPresenceController.cs` | `../KhaozEngine.Social.Discord/DiscordSocialProvider.cs` (+ `Internal/DiscordIpcClient.cs`, `NamedPipeDiscordTransport.cs`) |
 | Player identity | `../KhaozEngine.Identity/IIdentityProvider.cs`, `IIdentityValidator.cs`, `IdentityValidation.cs`, `ITokenCache.cs`, `IBrowserLauncher.cs`, `ILoopbackListener.cs`, `SystemBrowserLauncher.cs`, `HttpLoopbackListener.cs`, `IdentitySession.cs`, `SessionToken.cs`, `FileTokenCache.cs`, `SignInException.cs`, `AuthExchangeProtocol.cs` | `../KhaozEngine.Identity.Oidc/OidcClientProvider.cs`, `OidcTokenValidator.cs`, `SystemBrowserLauncher.cs`, `HttpLoopbackListener.cs`, and `../KhaozEngine.Identity.Discord/DiscordClientProvider.cs`, `DiscordTokenValidator.cs` |
-| Sign-in exchange | `../KhaozEngine.Identity.Exchange/IAuthExchangePolicy.cs`, `AuthExchangeOptions.cs`, `AuthExchangeOutcome.cs`, `AuthExchangeResult.cs` | `../KhaozEngine.Identity.Exchange/AuthExchange.cs`, `AuthAdmission.cs` |
+| Sign-in exchange | `../KhaozEngine.Identity.Exchange/IAuthExchangePolicy.cs`, `AuthExchangeOptions.cs`, `AuthExchangeOutcome.cs`, `AuthExchangeResult.cs` | `../KhaozEngine.Identity.Exchange/AuthExchange.cs`, `AuthAdmission.cs`, and the HTTP handler `../KhaozEngine.Identity.Exchange.AspNetCore/AuthExchangeEndpoints.cs`, `AuthExchangeHandler.cs`, `AuthExchangeHosting.cs`, `TrustedProxyNetworks.cs`, `AuthExchangeClientKey.cs` (ASP.NET Core) |
 | Windowing/input | `../KhaozEngine.Windowing/AppWindow.cs` (sole toucher; the pure event-to-snapshot half is `InputAccumulator.cs`) | Silk.NET/GLFW, contained |
 | glTF load | `../KhaozEngine.Render3D/Models/GltfLoader.cs` (contains SharpGLTF) | (containment) |
 | Image decode | `../KhaozEngine.Render2D/ImageRgba.cs` (contains StbImageSharp) | (containment) |

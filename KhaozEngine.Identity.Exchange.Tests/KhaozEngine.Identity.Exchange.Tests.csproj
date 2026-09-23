@@ -9,11 +9,15 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
+    <!-- AspNetCore/ hosts the handler on a real Kestrel bound to 127.0.0.1:0, the AdminHttpServerTests precedent, so
+         the byte cap and the limiters run over a socket and no test host package is added. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The exchange core, which brings Identity, Accounts and Netcode with it. The ASP.NET Core handler's
-         in-process HTTP facts join this project with that package and its framework reference. -->
+    <!-- The exchange core, which brings Identity, Accounts and Netcode with it. -->
     <ProjectReference Include="../KhaozEngine.Identity.Exchange/KhaozEngine.Identity.Exchange.csproj" />
+    <!-- The ASP.NET Core handler over the core, for the in-process HTTP facts under AspNetCore/. -->
+    <ProjectReference Include="../KhaozEngine.Identity.Exchange.AspNetCore/KhaozEngine.Identity.Exchange.AspNetCore.csproj" />
     <!-- The validator both games pass, driven through a stub handler, so a Discord 5xx or 429 is proven to answer
          Unavailable end to end rather than only through a scripted validator. -->
     <ProjectReference Include="../KhaozEngine.Identity.Discord/KhaozEngine.Identity.Discord.csproj" />

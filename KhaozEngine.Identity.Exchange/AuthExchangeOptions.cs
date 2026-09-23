@@ -14,7 +14,17 @@ public sealed class AuthExchangeOptions
     /// </summary>
     public static readonly TimeSpan MaxProviderTimeout = TimeSpan.FromMilliseconds(int.MaxValue);
 
-    /// <summary>How long a minted token verifies for. Required, positive. Both games use seven days.</summary>
+    /// <summary>
+    /// The longest <see cref="TokenLifetime"/> accepted: one year. A bearer token that outlives a year outlives any
+    /// rotation plan, and an unbounded value would overflow the expiry the exchange computes from the clock, so a
+    /// typo in configuration fails at construction instead of inside every request.
+    /// </summary>
+    public static readonly TimeSpan MaxTokenLifetime = TimeSpan.FromDays(365);
+
+    /// <summary>
+    /// How long a minted token verifies for. Required, positive, and at most <see cref="MaxTokenLifetime"/>. Both
+    /// games use seven days.
+    /// </summary>
     public required TimeSpan TokenLifetime { get; init; }
 
     /// <summary>
@@ -48,8 +58,9 @@ public sealed class AuthExchangeOptions
 
     internal void Validate()
     {
-        if (TokenLifetime <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(TokenLifetime), "The token lifetime must be positive.");
+        if (TokenLifetime <= TimeSpan.Zero || TokenLifetime > MaxTokenLifetime)
+            throw new ArgumentOutOfRangeException(nameof(TokenLifetime),
+                $"The token lifetime must be positive and at most {MaxTokenLifetime.TotalDays} days.");
         if (MaxCredentialChars <= 0)
             throw new ArgumentOutOfRangeException(nameof(MaxCredentialChars), "The credential cap must be positive.");
         if (MaxDisplayNameChars <= 0 || MaxDisplayNameChars > AccountStoreRules.MaxDisplayNameChars)

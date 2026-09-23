@@ -40,6 +40,9 @@ public partial class ArchitectureTests
         // The sign-in exchange core is needed only by a dedicated auth service, which should carry neither the sim
         // stack nor a client umbrella. IdentityExchange_ReferencesOnlyIdentityAccountsAndNetcode pins its edges.
         "Identity.Exchange",
+        // The exchange's ASP.NET Core handler carries the shared web framework, which neither a sim server nor a client
+        // may be made to carry. AspNetCoreFramework_IsContainedToWebPackages holds the framework to it and Server.Admin.
+        "Identity.Exchange.AspNetCore",
         // The account registry seam is opt-in on the Commerce precedent: a server-only seam stays out of the
         // Server umbrella until more than its first consumers want it. Accounts_ReferencesOnlyNetcode pins its edge.
         "Accounts",
@@ -634,6 +637,37 @@ public partial class ArchitectureTests
     }
 
     [Fact]
+    public void IdentityExchangeAspNetCore_ReferencesOnlyTheExchange()
+    {
+        // The handler takes the exchange core, which brings Identity, Accounts and Netcode, plus the shared web framework,
+        // and no package: the rate limiting and forwarded headers it configures are in that framework.
+        Project handler = LoadGraph()["KhaozEngine.Identity.Exchange.AspNetCore"];
+        string[] packages = handler.PackageRefs.Where(p => !IgnoredInfraPackages.Contains(p)).ToArray();
+
+        Assert.Equal(new[] { "Identity.Exchange" }, handler.ProjectRefs.Select(Short).ToArray());
+        Assert.Equal(new[] { AspNetCoreFramework }, handler.FrameworkRefs.ToArray());
+        Assert.Empty(packages);
+    }
+
+    /// <summary>
+    /// The shared ASP.NET Core framework is carried by exactly the two web packages, the admin endpoint and the sign-in
+    /// exchange handler. Both stay out of every umbrella (<see cref="OptInBackends"/>), so a sim server or a client never
+    /// carries the web stack. A third packable project taking the framework reference fails here, which is what keeps
+    /// the docs' "the two packages that reference ASP.NET Core" true. Test projects are not packable and are not scanned.
+    /// </summary>
+    [Fact]
+    public void AspNetCoreFramework_IsContainedToWebPackages()
+    {
+        string[] carriers = LoadGraph().Values
+            .Where(p => p.IsPackableLibrary && p.FrameworkRefs.Contains(AspNetCoreFramework))
+            .Select(p => Short(p.Name))
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "Identity.Exchange.AspNetCore", "Server.Admin" }, carriers);
+    }
+
+    [Fact]
     public void Accounts_ReferencesOnlyNetcode()
     {
         // The account seam takes Netcode for IBanStore and BanRecord, which AccountBanStore implements, and nothing
@@ -669,7 +703,9 @@ public partial class ArchitectureTests
     // <TargetFramework> from Directory.Build.props).
     sealed record Project(
         string Name, bool IsPackableLibrary, IReadOnlySet<string> ProjectRefs, IReadOnlySet<string> PackageRefs,
-        IReadOnlySet<string> TargetFrameworks);
+        IReadOnlySet<string> TargetFrameworks, IReadOnlySet<string> FrameworkRefs);
+
+    const string AspNetCoreFramework = "Microsoft.AspNetCore.App";
 
     static string Short(string stem) =>
         stem.StartsWith("KhaozEngine.", StringComparison.Ordinal) ? stem["KhaozEngine.".Length..] : stem;
@@ -705,11 +741,17 @@ public partial class ArchitectureTests
                     .Where(s => s is not null)
                     .Select(s => s!)
                     .ToHashSet(StringComparer.Ordinal);
+                HashSet<string> frameworkRefs = root.Descendants("FrameworkReference")
+                    .Select(e => (string?)e.Attribute("Include"))
+                    .Where(s => s is not null)
+                    .Select(s => s!)
+                    .ToHashSet(StringComparer.Ordinal);
                 HashSet<string> targetFrameworks = root.Descendants("TargetFrameworks")
                     .SelectMany(e => ((string?)e ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                     .ToHashSet(StringComparer.Ordinal);
 
-                graph[name] = new Project(name, hasPackageId && !nonPackable && !isExe, projRefs, pkgRefs, targetFrameworks);
+                graph[name] = new Project(name, hasPackageId && !nonPackable && !isExe, projRefs, pkgRefs, targetFrameworks,
+                    frameworkRefs);
             }
         }
         return graph;

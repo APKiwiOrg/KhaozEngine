@@ -4,9 +4,10 @@ Opt-in HTTPS admin endpoint for a KhaozEngine game server. A minimal Kestrel lis
 exposing the generic `ServerAdmin` surface as a small REST API: list/teleport/kick/broadcast online players,
 enumerate persisted accounts, ban/unban, and any game-registered admin actions.
 
-This is the only KhaozEngine package that references ASP.NET Core (via a `FrameworkReference`), and it is **not**
-bundled in the `KhaozEngine.Server` umbrella - add it explicitly when you want an admin endpoint, so a sim server
-that does not need one never pulls the web stack.
+This is one of the two KhaozEngine packages that reference ASP.NET Core (via a `FrameworkReference`), with the sign-in
+exchange handler `KhaozEngine.Identity.Exchange.AspNetCore`, and it is **not** bundled in the `KhaozEngine.Server`
+umbrella - add it explicitly when you want an admin endpoint, so a sim server that does not need one never pulls the
+web stack.
 
 ```csharp
 var admin = new ServerAdmin(worldServer, new WorldStoreBanStore(store), store);

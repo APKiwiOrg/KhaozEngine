@@ -66,6 +66,9 @@ an empty or duplicated validator set, and any option out of range.
 
 ## Mapping a result to HTTP
 
+`KhaozEngine.Identity.Exchange.AspNetCore` mounts the exchange as a minimal-API endpoint with this mapping, its own body
+cap, per-client window and global bound, and the log line below. A host on another stack maps it the same way.
+
 | Outcome | Status | Body |
 |---|---|---|
 | `Ok` | 200 | `ok` with token, expiry, subject and display name |

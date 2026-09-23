@@ -538,6 +538,9 @@ the existing noise dissolve and shadow mask when the scene supports it. `DrawGro
 ground-cover instances to the scene and defaults to drawing none. `DrawOverlayMesh(MeshHandle, Matrix4x4)`
 forwards the unlit, depth-tested, alpha-blended overlay pass. Its default throws `NotSupportedException`,
 so a custom scene cannot silently turn a translucent request into an opaque mesh.
+The two `LoadSkinnedMesh` forms, `UnloadSkinnedMesh`, `DrawSkinned` and `DrawSkinnedDissolved` also remain
+default interface members, but every default throws `NotSupportedException`. The shipped adapter forwards them
+to `Scene3D`. This keeps older custom scenes compiling while refusing a call that cannot preserve a skinned body.
 `CreatePropClusterOwner()` returns the view-owned `ITileWorldPropClusterOwner` used for detached CPU builds,
 scene-thread apply and draw, invalidation, unload and disposal. Its default also throws `NotSupportedException`.
 An older custom scene can still host the default empty `TileWorldViewOptions.PropLayers`, while an opted-in

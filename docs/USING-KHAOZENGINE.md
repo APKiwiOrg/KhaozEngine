@@ -14415,6 +14415,13 @@ existing rigid mesh noise dissolve, including the matching shadow mask, exposed 
 `Scene3DTileWorldScene` forwards it to `Scene3D`. A custom implementation that does not override the member
 falls back to the solid `DrawMesh`, so adding the capability does not require a downstream scene rewrite.
 
+For a skinned body presented through the same tile scene seam, load with `LoadSkinnedMesh(mesh)` or
+`LoadSkinnedMesh(mesh, maps)`, draw with `DrawSkinned`, use `DrawSkinnedDissolved` for the character dissolve
+path, and release the handle with `UnloadSkinnedMesh`. `Scene3DTileWorldScene` forwards those calls to `Scene3D`,
+including `Material.None` for the dissolved draw. The members have default implementations so older custom scenes
+keep compiling, but every default throws `NotSupportedException`. A rigid draw or a no-op cannot preserve the
+skinned body, so unsupported use fails at the call instead of dropping or misdrawing it.
+
 **Build the static list.** The game collects the shapes it wants outlined as a flat
 `IReadOnlyList<CollisionStatic>` (`readonly record struct CollisionStatic(PhysicsShape Shape, Pose Pose)`) -
 typically the same `PhysicsShape`/`Pose` pairs already registered with `IPhysicsWorld`, or a hand-placed debug

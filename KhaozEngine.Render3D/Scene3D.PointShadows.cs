@@ -92,6 +92,9 @@ namespace KhaozEngine.Render3D
             // Whatever the settings now say, this frame renders into the atlas that EXISTS. A layout the boundary
             // has not brought up yet (or refused outright) leaves the previous one live, and a frame that
             // second-guessed it here would throw away a working map over a number nothing has acted on.
+            // THE CASTERS ARE INDEXED ONCE, here, where a request and a live atlas both exist. Every static
+            // signature and every row the pass draws below asks this one index rather than walking every instance.
+            EnsurePointCasterIndex();
             AcquirePointShadowSlots(cache, frame);
             ChoosePointShadowRebuilds(cache, settings);
             int draws = RenderChosenPointShadowRows(cl, cache, frame);
@@ -258,8 +261,9 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// A 64-bit signature of everything that would be drawn into one static light's map: every rigid caster
-        /// standing inside the light sphere, by mesh identity, world matrix, cast kind and dissolve threshold,
-        /// combined with the light's own position, radius, near radius and exclusion box quantised to a millimetre.
+        /// standing inside the light sphere, by mesh identity, world matrix, cast kind and dissolve (its threshold in
+        /// sixteen steps and its complement phase), combined with the light's own position, radius, near radius and
+        /// exclusion box quantised to a millimetre.
         /// <para>
         /// THE TWO CLEARANCES BELONG HERE because they decide what the map CONTAINS: either one takes the light's
         /// own fixture out of its own shadow. A row rendered at one clearance is not the map the same key asks for
@@ -267,22 +271,23 @@ namespace KhaozEngine.Render3D
         /// ever.
         /// </para>
         /// <para>
-        /// It walks the instances in exactly the order <c>BuildPointCasterSpans</c> does and applies exactly the
-        /// same three rejections, so a signature can only miss a change that the pass would also not have drawn.
+        /// It reads the same index query <c>BuildPointCasterSpans</c> reads, so a signature can only miss a change
+        /// that the pass would also not have drawn.
         /// </para>
         /// <para>
-        /// ONLY THE LIGHT IS QUANTISED, and that is the whole of what the millimetre rounding buys: a light
+        /// ONLY THE LIGHT AND THE DISSOLVE ARE QUANTISED. The light's millimetre rounding buys one thing: a light
         /// parented to a jittering transform does not rebuild its own map for a move nothing can see. A CASTER is
         /// compared by the raw bits of its matrix, so a caster that jitters re-renders every light it stands
         /// inside, every frame. That is accepted rather than overlooked: the cost is bounded by
         /// <see cref="PointShadowSettings.MaxStaticRebuildsPerFrame"/> and the oldest-first order, so a jittering
-        /// caster spends the static budget and delays the other lights rather than multiplying the work.
+        /// caster spends the static budget and delays the other lights rather than multiplying the work. The
+        /// dissolve's sixteen steps answer a different problem, see <see cref="PointDissolveWord"/>.
         /// </para>
         /// </summary>
         long PointCasterSignature(Vector3 lightPosAbsolute, float radius, float nearRadius,
             Vector3 exclusionMin, Vector3 exclusionMax)
         {
-            ulong hash = 1469598103934665603UL;   // FNV-1a 64, offset basis
+            ulong hash = PointSignatureSeed;
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.X));
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.Y));
             MixPointSignature(ref hash, Quantise(lightPosAbsolute.Z));
@@ -295,43 +300,27 @@ namespace KhaozEngine.Render3D
             MixPointSignature(ref hash, Quantise(exclusionMax.Y));
             MixPointSignature(ref hash, Quantise(exclusionMax.Z));
 
-            // Read by reference: an InstanceData is 128 bytes and this runs once per instance per static request
-            // per frame, so copying one out of the list to reach two of its fields is the one thing here worth
-            // avoiding.
+            // The casters come from the frame's index (Scene3D.PointCasters.cs): exactly the ones the pass will draw
+            // for this light, in ascending slot order, which is the order the walk over every run visited them in.
+            // Read by reference: an InstanceData is 128 bytes and this runs once per touching caster per static
+            // request per frame.
+            QueryPointCasters(lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
             Span<ModelRenderer.InstanceData> instances = CollectionsMarshal.AsSpan(_instanceData);
-            foreach (MeshRun run in _runs)
+            foreach (int slot in _pointCasterHits)
             {
-                if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
-                var m = _meshes[run.Mesh.Index];
-                if (m is not { } mesh) continue;
-                if (!MeshCastsShadows(mesh.SplatMaterial, TerrainCastsShadows)) continue;
-                for (uint s = 0; s < run.Count; s++)
-                {
-                    int slot = (int)(run.Start + s);
-                    if (slot >= instances.Length) break;
-                    ShadowCastKind kind = slot < _instanceCastKinds.Count
-                        ? _instanceCastKinds[slot]
-                        : ShadowCastKind.Opaque;
-                    if (kind == ShadowCastKind.None) continue;
-                    ref ModelRenderer.InstanceData data = ref instances[slot];
-                    if (!InstanceTouchesLight(mesh.Bounds, data.Model, lightPosAbsolute, radius, nearRadius,
-                        exclusionMin, exclusionMax))
-                        continue;
-
-                    MixPointSignature(ref hash, (ulong)(uint)run.Mesh.Index);
-                    MixPointSignature(ref hash, (ulong)(uint)run.Mesh.Generation);
-                    MixPointSignature(ref hash, (ulong)(uint)kind);
-                    MixPointSignature(ref hash, MatrixBits(data.Model));
-                    MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(data.Dissolve.X));
-                }
+                MeshHandle mesh = _runs[_pointCasterIndex.RunOf(slot)].Mesh;
+                ref ModelRenderer.InstanceData data = ref instances[slot];
+                MixPointSignature(ref hash, SignatureWord((uint)mesh.Index, (uint)mesh.Generation));
+                MixPointSignature(ref hash, SignatureWord(PointDissolveWord(data), (uint)PointCasterKind(slot)));
+                MixPointSignature(ref hash, data.Model);
             }
             return unchecked((long)hash);
         }
 
         /// <summary>Whether one instance's world bounding sphere reaches into a light's shadowing shell, which is
         /// the ONE definition of "this caster takes part in this light's map" (design decision 8). Shared by the
-        /// pass's caster cull and by the signature above, so the two can never disagree about which instances a
-        /// light's map depends on.
+        /// frame's <see cref="PointCasterIndex"/>, and through it by the pass's caster cull and the signature above,
+        /// so the two can never disagree about which instances a light's map depends on.
         /// <para>
         /// The shell has an inner wall as well as an outer one. An instance lying WHOLLY inside
         /// <paramref name="nearRadius"/> is the light's own fixture and every one of its fragments would be
@@ -350,20 +339,30 @@ namespace KhaozEngine.Render3D
             Vector3 exclusionMin = default, Vector3 exclusionMax = default)
         {
             bounds.WorldSphere(model, out Vector3 centre, out float r);
-            float reach = r + radius;
+            return InstanceTouchesLight(centre, r, lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
+        }
+
+        /// <summary>The same test on a world sphere already in hand, which is what the frame's
+        /// <see cref="PointCasterIndex"/> stores for every caster. The overload above transforms the bounds and asks
+        /// this one, so the index, the signature and the pass all read one definition of touching a light.</summary>
+        internal static bool InstanceTouchesLight(Vector3 centre, float sphereRadius,
+            Vector3 lightPosAbsolute, float radius, float nearRadius = 0f,
+            Vector3 exclusionMin = default, Vector3 exclusionMax = default)
+        {
+            float reach = sphereRadius + radius;
             float distanceSq = (centre - lightPosAbsolute).LengthSquared();
             if (distanceSq > reach * reach) return false;
             if (nearRadius > 0f)
             {
                 // Wholly inside the clearance: the farthest point of the sphere is still nearer than the near
                 // radius.
-                float farthest = MathF.Sqrt(distanceSq) + r;
+                float farthest = MathF.Sqrt(distanceSq) + sphereRadius;
                 if (farthest <= nearRadius) return false;
             }
             if (!IsExclusionBox(exclusionMin, exclusionMax)) return true;
-            return !(centre.X - r >= exclusionMin.X && centre.X + r <= exclusionMax.X
-                && centre.Y - r >= exclusionMin.Y && centre.Y + r <= exclusionMax.Y
-                && centre.Z - r >= exclusionMin.Z && centre.Z + r <= exclusionMax.Z);
+            return !(centre.X - sphereRadius >= exclusionMin.X && centre.X + sphereRadius <= exclusionMax.X
+                && centre.Y - sphereRadius >= exclusionMin.Y && centre.Y + sphereRadius <= exclusionMax.Y
+                && centre.Z - sphereRadius >= exclusionMin.Z && centre.Z + sphereRadius <= exclusionMax.Z);
         }
 
         /// <summary>Whether a corner pair is a real exclusion box: a volume with something inside it. The zero pair
@@ -374,36 +373,78 @@ namespace KhaozEngine.Render3D
 
         static ulong Quantise(float metres) => unchecked((ulong)(long)MathF.Round(metres * 1000f));   // millimetres
 
-        static ulong MatrixBits(in Matrix4x4 m)
+        // xxHash64's published primes. Fixed constants rather than System.HashCode, whose seed changes with every
+        // process, so a signature, and so a rebuild count, is the same in every run.
+        const ulong PointSignatureSeed = 0x27D4EB2F165667C5UL;
+        const ulong PointSignaturePrimeA = 0x9E3779B185EBCA87UL;
+        const ulong PointSignaturePrimeB = 0xC2B2AE3D27D4EB4FUL;
+
+        /// <summary>
+        /// Fold one whole 64-bit word into a signature with xxHash64's round: a multiply, a rotate and a multiply.
+        /// The byte-wise FNV it replaced cost eight multiplies per word and was most of the point-shadow frame.
+        /// <para>
+        /// A ONE-WORD CHANGE CAN NEVER COLLIDE. For a fixed word the round is a bijection of the running value (an
+        /// add, a rotate and an odd multiply), and for a fixed running value it is injective in the word (the word is
+        /// multiplied by an odd prime). So a change confined to one word always changes the light's signature: a
+        /// single matrix element moving by any amount, a cast kind change, a dissolve step, a complement flip, or a
+        /// mesh change on a light's only caster. Any wider change is left to the 64-bit odds. That includes a change
+        /// in how many casters touch the light, and a mesh change among several casters, which can reorder the other
+        /// casters' words because the runs are grouped by mesh in first-seen order.
+        /// </para>
+        /// Internal for the mixer tests.
+        /// </summary>
+        internal static void MixPointSignature(ref ulong hash, ulong word)
         {
-            ulong hash = 1469598103934665603UL;
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M11));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M12));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M13));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M14));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M21));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M22));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M23));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M24));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M31));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M32));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M33));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M34));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M41));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M42));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M43));
-            MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(m.M44));
-            return hash;
+            hash += word * PointSignaturePrimeB;
+            hash = BitOperations.RotateLeft(hash, 31);
+            hash *= PointSignaturePrimeA;
         }
 
-        static void MixPointSignature(ref ulong hash, ulong value)
+        /// <summary>Fold a world matrix in as eight words, two elements each in row order, by their raw bits, so a
+        /// caster that moves by one float step changes the signature.</summary>
+        internal static void MixPointSignature(ref ulong hash, in Matrix4x4 model)
         {
-            for (int b = 0; b < 8; b++)
-            {
-                hash ^= (value >> (b * 8)) & 0xFF;
-                hash *= 1099511628211UL;   // FNV-1a 64, prime
-            }
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M11), FloatBits(model.M12)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M13), FloatBits(model.M14)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M21), FloatBits(model.M22)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M23), FloatBits(model.M24)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M31), FloatBits(model.M32)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M33), FloatBits(model.M34)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M41), FloatBits(model.M42)));
+            MixPointSignature(ref hash, SignatureWord(FloatBits(model.M43), FloatBits(model.M44)));
         }
+
+        static ulong SignatureWord(uint low, uint high) => low | (ulong)high << 32;
+
+        static uint FloatBits(float value) => (uint)BitConverter.SingleToInt32Bits(value);
+
+        /// <summary>
+        /// The dissolve half of one caster's signature word: its threshold in <see cref="PointDissolveSteps"/> steps,
+        /// <c>round(clamp(threshold, 0, 1) * 16)</c>, plus <see cref="PointDissolveComplementBit"/> when the caster
+        /// keeps the complementary noise set.
+        /// <para>
+        /// QUANTISED ON PURPOSE, AND ONLY HERE (issue #1111). A prop inside a distance fade or an LOD crossfade band
+        /// changes its threshold on every frame the draw focus moves, and the raw bits made every static light over
+        /// it dirty on every one of those frames, which spent the whole rebuild budget on dithers nobody could tell
+        /// apart. Sixteen steps keep a fading prop's point shadow moving in visible increments. The row itself is
+        /// still drawn with each instance's ACTUAL threshold at the moment it is rebuilt, so between steps the map
+        /// keeps the previous step's dither. That is the one intended pixel difference in the point pass.
+        /// </para>
+        /// <para>
+        /// THE COMPLEMENT FLAG IS PART OF WHAT IS DRAWN. The dissolve pipeline keeps the exact opposite noise set when
+        /// it is set, so a flip at a constant threshold is a different map, and a signature that left it out kept the
+        /// old one. It is read the way the shader reads it, above one half.
+        /// </para>
+        /// </summary>
+        static uint PointDissolveWord(in ModelRenderer.InstanceData data)
+        {
+            // A NaN threshold passes the clamp and converts to step 0, which is still one fixed answer per frame.
+            uint step = (uint)(int)MathF.Round(Math.Clamp(data.Dissolve.X, 0f, 1f) * PointDissolveSteps);
+            return data.DissolveComplement > 0.5f ? step | PointDissolveComplementBit : step;
+        }
+
+        const float PointDissolveSteps = 16f;
+        const uint PointDissolveComplementBit = 1u << 8;
 
         /// <summary>One queued light asking for a map, with everything the budget and the pass need: where it is,
         /// how far it reaches, how much of its own fixture it clears as a sphere and as a box, what kind of map it

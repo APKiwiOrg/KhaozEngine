@@ -51,7 +51,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// sits on the <c>MetalCommandList</c> member that caused the emission (the draw, the dispatch, the staged
     /// upload, the framebuffer change, a clear, a transfer, <c>Begin</c>, <c>End</c> or <c>Dispose</c>), so one push
     /// and one pop cover a pass opening, a whole bind flush and the draw after it. The encoders these factories
-    /// hand back are retained before that pool drains, which is the paragraph above and unchanged.
+    /// hand back are retained before that pool drains, as the EVERY ENCODER IS RETAINED AT ITS BEGIN paragraph
+    /// explains, and that is unchanged.
     /// <c>MetalAutoreleaseArchitectureTests</c> walks through this seam to prove every caller is pooled, and
     /// <c>TheEncoderSeamsOpenNoPoolOfTheirOwn</c> keeps a per-call pool from coming back.</para>
     /// </summary>

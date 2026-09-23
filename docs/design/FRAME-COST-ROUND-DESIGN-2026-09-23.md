@@ -1,6 +1,6 @@
 # Frame cost round
 
-Status: spec approved by the owner on 2026-09-23. Implementation plan written and approved for subagent-driven execution. Both owner decisions in Plan amendments were accepted.
+Status: implemented in 20.4.1. The owner approved the spec, the implementation plan and both owner decisions in Plan amendments on 2026-09-23.
 Date: 2026-09-23.
 Issues: [#1110](https://github.com/APKiwiOrg/KhaozEngine/issues/1110),
 [#1111](https://github.com/APKiwiOrg/KhaozEngine/issues/1111),
@@ -221,8 +221,10 @@ Assignment keeps its exact per-cluster plane test and changes which clusters it 
   depth range in slices. A light whose sphere crosses the near plane takes the full tile range.
 - Clusters are visited in index order. Each cluster tests, in ascending order, only the lights whose range
   contains it, with the existing exact plane test.
-- The assignment is therefore identical to today's, cluster by cluster, and in the same order. Output stays
-  byte-identical, which matters because lighting sums are order sensitive.
+- The assignment is therefore identical to today's, cluster by cluster, and in the same order, except where the
+  brute force's own slice-zero float rounding admits a huge light that does not reach the cluster in exact
+  geometry. That light adds nothing, so lighting stays identical, which matters because lighting sums are order
+  sensitive. `PointLightClusterRangeTests` pins the difference, and Plan amendments records it.
 - Cluster planes are still built from the GPU-corrected view-projection so the CPU and the shader keep sharing it.
   They are built only for clusters that some light's range reaches. Caching planes per projection was rejected
   because it would move assignment to view space and break that shared definition.
@@ -268,14 +270,17 @@ inside the pass. Grimhollow's river has zero swell, so every plane takes the ful
 This is the second intended pixel difference. A flat quad matches the zero-swell grid mathematically, because
 every varying is affine or constant and fog, depth fade, shore and foam are per fragment, but it is not
 byte-identical. `WaterFlatPlaneTests` already bounds the difference at mean under 0.002 and worst under 0.02.
-`Golden3D_TileWorld_River` is rebaked within that bound.
+On Metal, `tileworld_river` and `scene3d_sky_two_discs` moved 0.0001, inside the 0.01 golden compare, so no Metal
+rebake was needed. The integration CI run decides the D3D11 and Vulkan legs, and any rebake there names its cause
+and worst-cell delta.
 
 ### Tests
 
 - `WaterFlatPlaneTests` extended to the camera-focused mode and to each widened flat case.
 - A headless allocation test for a steady frame with 35 planes in the water path. The Metal staging allocation
   itself is item 5.
-- `Golden3D_TileWorld_River` rebaked and reviewed.
+- `Golden3D_TileWorld_River` within the golden compare on every leg, rebaked on a CI leg only with its cause and
+  worst-cell delta named.
 
 ### Coordination
 
@@ -357,10 +362,10 @@ hybrid laptop is usually the integrated GPU.
 
 ## Version, release and adoption
 
-- The round rides the staged, untagged 20.2.0. If 20.2.0 is tagged before this round integrates, the round takes
-  the next free version under the contributor rules.
-- Items land as separate commits on `feature/frame-cost-round`, followed by one release commit that extends the
-  newest `CHANGELOG.md` entry, runs the full documentation sweep and updates guarded declarations.
+- The round released as 20.4.1. Engine `main` shipped 20.3.0 and 20.4.0 while it ran and nothing was staged past
+  20.4.0, so it took the next free version. It is a patch because it adds no public API.
+- Items land as separate commits on `feature/frame-cost-round`, followed by one release commit that adds the
+  20.4.1 `CHANGELOG.md` entry, runs the full documentation sweep and updates guarded declarations.
 - The integration branch passes the full Release suite, the native Metal GPU suite locally and the Metal, D3D11
   and Vulkan CI legs. `scripts/pack-local-feed.sh` packs it.
 - Grimhollow is pinned and waiting on this change, so the release tag is created with `scripts/tag-release.sh`
@@ -376,7 +381,8 @@ Measured by rerunning the Grimhollow probe as interleaved runs against 20.0.0 an
 - Forest and meadow paths with no session: static point rebuilds on at most 5% of frames, from nearly every frame.
 - Steady allocation at or under 5 KiB per frame and no gen0 over 600 frames on the town path.
 - GPU median no worse than baseline.
-- Every golden within tolerance, with the River rebake reviewed.
+- Every golden within tolerance. On Metal the River and sky-disc goldens moved 0.0001 and needed no rebake. A
+  D3D11 or Vulkan rebake of either, if the integration CI run needs one, names its cause and worst-cell delta.
 
 ## Plan amendments
 
@@ -406,6 +412,12 @@ Item 3.
   zero, but the diagnostics and the buffer contents differ for those cameras.
 - An overflowed cluster still adds 64 to `LightReferenceCount`, so the diagnostic keeps its value and meaning. The
   upload is rounded up to a whole `uvec4`.
+- Assignment is identical to the brute force except where the brute force's own slice-zero float rounding admits a
+  huge light that does not reach the cluster in exact geometry. That happens with the eye kilometres from render
+  space zero, where slice-zero corners round by a few percent of their size. The range builder drops the light,
+  which adds no light, so lighting is identical. Only the diagnostics and the buffer contents differ.
+  `PointLightClusterRangeTests` pins it, holding the brute force only to what rounding cannot change on any
+  architecture.
 
 Item 4.
 

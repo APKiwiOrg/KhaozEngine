@@ -46,7 +46,7 @@ namespace KhaozEngine.Render3D
         };
 
         /// <summary>
-        /// Extract the six world-space frustum planes from a row-vector view-projection with [0, 1] clip depth
+        /// Extract the six frustum planes from a row-vector view-projection with [0, 1] clip depth
         /// (the engine's convention: see the type remarks). The planes are in whatever frame <paramref name="vp"/>
         /// maps from, so the caller must test boxes in that frame. Most callers cull absolute bounds and pass an
         /// ABSOLUTE view-projection, e.g. <c>Scene3D</c>'s internal <c>FrameAbsoluteViewProjection()</c>:

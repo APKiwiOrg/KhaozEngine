@@ -63,6 +63,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(retry == 0,
                 $"{MeasuredFrames} frames of {UploadsPerFrame} staged uploads allocated {first} bytes while "
                 + $"recording on the first pass and {retry} on the retry, expected zero on at least one");
+            Assert.True(list.Arena.BlocksCreated > 0,
+                "no staging block was ever created, so these uploads never staged and this row measured nothing");
             Assert.Null(device.Diagnostics.DeviceLossReason);
 
             _output.WriteLine($"{MeasuredFrames} steady frames allocated {first} managed bytes while recording, "

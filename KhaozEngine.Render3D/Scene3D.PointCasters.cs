@@ -16,7 +16,10 @@ namespace KhaozEngine.Render3D;
 /// BUILT LAZILY, ONCE PER POINT-SHADOW FRAME. <c>PreparePointShadows</c> builds it before the first signature, and
 /// every query goes through the same guard, so the diagnostic entry points that render a row outside a frame's
 /// request (<see cref="DebugRenderPointShadowSlot"/>, or a test driving <see cref="RenderPointShadowSlots"/>
-/// directly) read an index built from the instances they are drawing rather than an older one.
+/// directly) read an index built from the instances they are drawing rather than an older one. Mesh handle
+/// validity and <see cref="TerrainCastsShadows"/> are read when the index is built, so they reflect the last
+/// rendered frame. A mesh unloaded or a <see cref="TerrainCastsShadows"/> change after that frame shows from the
+/// next one.
 /// </para>
 /// </summary>
 public sealed partial class Scene3D

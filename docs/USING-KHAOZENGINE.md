@@ -4321,9 +4321,13 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     whitecap fold is evaluated per pixel the same way, so those grids no longer draw whitecaps as triangles
     (#1100).
   - **Surface grid** (`GridMode`, a `WaterGridMode`) - two layouts, and which one you want depends on whether the
-    camera moves much. Clipmap mode uses a four-vertex, six-index quad for an effective `Procedural` source
-    with zero `SwellAmplitude`. Ripples still shade it. FFT and nonzero-swell planes retain displaced
-    clipmaps, including in a mixed frame. The two layouts are:
+    camera moves much. In either layout, every `Procedural` plane whose effective swell does not displace (a
+    `SwellAmplitude` or `SwellWavelength` of zero or less) draws one four-vertex, six-index quad of a shared,
+    grow-only buffer, and the frame uploads every such quad once before the water pass opens. Ripples still shade
+    it. Each displaced camera-focused plane draws its own slice of a shared grid buffer, also uploaded before the
+    pass, and displaced planes under the clipmap keep their own clipmap slices. Before any geometry is built, a
+    procedural plane whose bounds, grown by how far its swell can move the surface, lie outside the view is
+    skipped. FFT planes are never culled. The two layouts are:
     - `WaterGridMode.CameraFocused` (the default): a fixed 97x97 budget (9,409 vertices, 18,432 triangles, one
       draw per plane), spread NON-uniformly by `GridFocusBias` toward the camera. That matters because the plane
       is whatever size the consumer asks for: at a 600-unit half-extent a uniform grid puts vertices 12 units

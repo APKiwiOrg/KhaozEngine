@@ -645,7 +645,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   camera-focused grid, and draws one six-index quad through the regular water pipeline. FFT planes and procedural
   planes with any swell keep their grid. Before any geometry is built, a procedural plane whose rectangle, grown by
   how far its swell can move the surface, lies wholly outside the view frustum is skipped. FFT planes are never
-  culled. Its snap lattice is decided in ABSOLUTE world space and only then reduced by the
+  culled. The clipmap's snap lattice is decided in ABSOLUTE world space and only then reduced by the
   camera-relative `RenderOrigin`, so an origin rebase moves no ring. Since 17.3.0 `ClipmapGeomorphBand` (0.5, `0`
   restores the 16.12.0 grid exactly) fades each ring's outer band toward the next ring out's evaluation - sampled
   displacement and band-limit spacing both - instead of swapping level at the boundary; it subsumes the stitch

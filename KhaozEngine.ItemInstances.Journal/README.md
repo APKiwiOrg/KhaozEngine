@@ -190,6 +190,25 @@ refused for exactly that reason.
 **`Close` does not clear the dirty flags and `MarkCommitted` does.** A batch whose commit fails terminally
 leaves its pages owing the next commit a rewrite, which is the state the consumer's resync agrees with.
 
+**The batch owns what it is opened over, from `Open` until `MarkCommitted`.** It holds each container by
+reference and every `Apply` writes through it, so between those two calls the containers are the batch's and
+nothing else writes them. It reads and writes through `IPagedContainerWorkingCopy` and nothing wider: ten
+members, three of which write (`SetSlotAt`, `TakeSlotAt`, `MarkClean`), and no page object crosses it
+([#1045](https://github.com/APKiwiOrg/KhaozEngine/issues/1045)). `Open` has two overloads. Handed the
+`PagedItemContainer`s themselves, the batch holds their real write doors. Handed a host's own
+`IPagedContainerWorkingCopy`, it holds only what the host lets it: a host that shares its containers copy on
+write runs its ownership check inside the three writes and serves every read from the shared view, so opening
+a batch, measuring it and a refused `Apply` copy nothing, and the first joined write copies once.
+`MarkCommitted` calls `MarkClean` only on a container holding a dirty page, after its commit landed, so a
+stream holding `bag` and `bank` where a click touched only `bag` never asks the bank to take ownership.
+
+```csharp
+var batch = ContainerCommitBuilder.Open(
+    streamKey, actionKind, scope,
+    new Dictionary<string, IPagedContainerWorkingCopy> { ["bag"] = bagWorkingCopy, ["bank"] = bankWorkingCopy },
+    tick);
+```
+
 **A `Close` that THROWS leaves the batch where it was.** The batch is flagged closed and the window is closed
 last, after the commit is built and validated, so a throw on the way there leaves the batch still open with
 its pages still dirty, closable again once the caller has fixed what threw, rather than holding something that
@@ -200,6 +219,65 @@ usually takes: `ExpectedVersion` (the ADMITTED head rather than the committed on
 already queued), the `item-container` projection schema at the page codec's own version, the
 `item-container.result` result schema, the `JournalLimits` the batch is bounded by, and
 `QueueBehindAdmitted`, which is on by default so a click lands behind a held craft rather than being refused.
+
+### Composing a batch into a larger commit
+
+A real host's commits are rarely container only. A loot claim carries the loot source's stream beside the
+bag, and an ordinary click can carry coins, experience or quest state. `TryBuildParts` hands out what the batch
+contributes, and `Close` is the convenience over the same parts for a commit holding this batch alone
+([#1044](https://github.com/APKiwiOrg/KhaozEngine/issues/1044)).
+
+```csharp
+// storeLimits is what the store validates against. The batch is opened on it LOWERED by what this host adds
+// to the commit, one loot event, one loot write and their bytes, so its window stops with room left for them.
+var storeLimits = new JournalLimits(eventsPerOperation: 64);
+var batch = ContainerCommitBuilder.Open(
+    streamKey, actionKind, scope, containers, tick,
+    new ContainerCommitOptions
+    {
+        Limits = new JournalLimits(
+            eventsPerOperation: storeLimits.EventsPerOperation - 1,
+            projectionWritesPerOperation: storeLimits.ProjectionWritesPerOperation - 1,
+            aggregateCommitBytes: storeLimits.AggregateCommitBytes - lootBytes),
+    });
+// ... the tick's operations join, then:
+
+if (batch.TryBuildParts(out IReadOnlyList<JournalEvent> events, out IReadOnlyList<JournalProjectionWrite> writes))
+{
+    Guid operationId = batch.Window.HoldsClientOperation ? batch.Operations[0].OperationId : Guid.NewGuid();
+    var commit = new JournalCommit(
+        new JournalOperationIdentity(operationId, batch.Scope, batch.ActionKind, batch.BuildIntent()),
+        [new JournalStreamMutation(batch.StreamKey, batch.Options.ExpectedVersion, events), lootStream],
+        [.. writes, .. lootWrites],
+        batch.Options.ResultSchema,
+        batch.Options.ResultSchemaVersion,
+        result,
+        batch.PresentAtCommit || lootIsContested,
+        batch.Options.QueueBehindAdmitted);
+    commit.Validate(storeLimits);   // the REAL total against the FULL limits, never batch.Options.Limits
+}
+```
+
+- **The events are one per operation, in order, and they are the events of `StreamKey`.** Anything else the
+  composed commit writes to that same stream joins them in ONE `JournalStreamMutation`, because a commit names
+  a stream once. The projection writes are one per dirty page.
+- **Taking the parts closes the batch exactly as `Close` does**, `Closed` included, so nothing joins behind
+  them and the same work cannot be taken twice. A batch holding no operation answers false and stays open,
+  because a dirty page never causes a commit of its own. A throw while the parts are built records nothing.
+- **The identity rules are still the batch's.** A batch a client operation heads commits under that
+  operation's own id and `BuildIntent()`, so a resubmit still resolves replayed, and `PresentAtCommit` rides
+  into whatever the batch rides in.
+- **The limits are checked on the commit and never on a part.** A part cannot know what joins it, so
+  `TryBuildParts` validates no total. The window bounds this batch's SHARE as operations join, and a host that
+  adds to a batch reserves room for what it adds by opening the batch with `ContainerCommitOptions.Limits` set
+  to its store's limits LOWERED by that much. The composed commit is checked on its real total where it
+  becomes whole: its constructor holds it to the engine maxima, `commit.Validate(storeLimits)` holds it to the
+  FULL configured limits the batch was lowered from, and the store validates it again on submission.
+  Validating it against `batch.Options.Limits` refuses the very commit the reservation made room for: a batch
+  opened at 62 of the store's 64 events fills to 62, the host adds 2, and the commit of 64 fits the store and
+  fails the lowered 62. `Close` validates against `Options.Limits` because a commit holding the batch alone
+  adds nothing, so there the batch's limits are the full ones.
+- `MarkCommitted` is owed once the COMPOSED commit has landed, exactly as after `Close`.
 
 ### The window and its five closers
 
@@ -219,6 +297,12 @@ answer, `Open` while it is still taking operations:
 `Closed` is the sixth member and the one that is NOT a closer: it is what `Close` records, so a batch the
 caller closed and took a commit from does not read afterwards as one the clock took away from it. The five
 above are reasons an operation was REFUSED, and a caller acts on them to decide where that operation goes.
+
+**The window needs a tick, and a host's journal layer may not have one.** The tick usually lives on the tile
+server, and the journal is often a separate owner that never sees it. `Open` takes the tick and the one
+argument `Apply` applies on the batch's own tick, so such a host either passes the server tick in from its
+owner, or opens every batch at the default and applies with the one argument form. `TickBoundary` then never
+fires, and the batch is bounded by the other four closers and by the caller's own `Close`.
 
 A refused `Apply` changes NOTHING: the working copy is untouched, no event is written, and the caller opens the
 next batch for that operation. An operation the working copy cannot PERFORM is a different thing and throws,

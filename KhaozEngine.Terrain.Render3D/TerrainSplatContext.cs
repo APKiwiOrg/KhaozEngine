@@ -2,14 +2,15 @@ namespace KhaozEngine.Terrain
 {
     /// <summary>Everything one terrain vertex knows, handed to a consumer-supplied splat rule
     /// (<c>Func&lt;TerrainSplatContext, TerrainSplatWeights&gt;</c>) so a game can influence the material mix the
-    /// chunk builder bakes. <see cref="Default"/> is the engine's own <see cref="TerrainSplatWeights.From"/> result
-    /// for this vertex, so the common rule is "the engine's mix, adjusted", not a reimplementation that drifts from
-    /// the engine's tuning the first time <c>From</c> changes.
-    /// <para>The motivating case is a second body of water. <c>From</c> derives its sand band from the field's single
-    /// <c>WaterLevel</c>, which is the sea, so an inland lake's shoreline bakes as grass running straight into the
-    /// water. A rule reads <see cref="WorldX"/>/<see cref="WorldZ"/>/<see cref="Height"/>, decides it is near a lake
-    /// edge, and pushes <see cref="TerrainSplatWeights.Sand"/> up. Paths, trampled ground, and biome-specific dirt
-    /// are the same shape.</para>
+    /// chunk builder bakes. <see cref="Default"/> is the engine's own default mix for this vertex, biome tilt included,
+    /// so the common rule is "the engine's mix, adjusted", not a reimplementation that drifts from the engine's tuning
+    /// the first time the default changes. A rule that ignores <see cref="Default"/> bakes exactly what it returns,
+    /// whatever the engine's default does.
+    /// <para>The motivating case is a second body of water. The default mix derives its sand band from the field's
+    /// single <c>WaterLevel</c>, which is the sea, so an inland lake's shoreline bakes as grass running straight into
+    /// the water. A rule reads <see cref="WorldX"/>/<see cref="WorldZ"/>/<see cref="Height"/>, decides it is near a
+    /// lake edge, and pushes <see cref="TerrainSplatWeights.Sand"/> up. Paths, trampled ground, and a game's own
+    /// biome tuning are the same shape.</para>
     /// <para><b>Three constraints, all load-bearing.</b></para>
     /// <para><b>1. The rule must be PURE.</b> Same context in, same weights out, forever, on any thread. Chunk
     /// meshes are built per (region, LOD) and cached until unload, and the streamer builds them on background
@@ -33,14 +34,19 @@ namespace KhaozEngine.Terrain
     /// not renormalize the rule's output: that would be a per-vertex cost paid by every consumer to paper over one
     /// consumer's bug.</para></summary>
     /// <param name="Height">The vertex's world height in metres (the field's sampled height, absolute, not chunk-local).</param>
-    /// <param name="Slope01">Steepness as <c>1 - normal.Y</c>, 0 flat and 1 vertical. Same value
-    /// <see cref="TerrainSplatWeights.From"/> was given.</param>
-    /// <param name="Biome">The field's designed biome at this vertex (<c>TerrainField.SampleBiome</c>).</param>
+    /// <param name="Slope01">Steepness as <c>1 - normal.Y</c>, 0 flat and 1 vertical. Same value the default mix
+    /// was given.</param>
+    /// <param name="Biome">The field's dominant biome at this vertex (<c>TerrainField.SampleBiome</c>). The default
+    /// mix reads the continuous shares (<c>TerrainField.SampleBiomeWeights</c>) instead, so near a band boundary
+    /// <see cref="Default"/> carries part of the neighbouring biome's tilt.</param>
     /// <param name="WorldX">The vertex's ABSOLUTE world X in metres. Chunk vertices are stored chunk-local, but the
     /// field is sampled at the absolute coordinate and that is what a rule needs to place a feature in the world.</param>
     /// <param name="WorldZ">The vertex's ABSOLUTE world Z in metres.</param>
-    /// <param name="Default">What the engine's own rule (<see cref="TerrainSplatWeights.From"/>) baked for this
-    /// vertex, normalized. Return it unchanged to defer to the engine for a vertex the rule has no opinion on.</param>
+    /// <param name="Default">What the engine's own rule baked for this vertex, normalized:
+    /// <see cref="TerrainSplatWeights.FromBlend"/> over the field's biome shares, so it already carries the biome
+    /// tilt (Desert toward sand, Snow toward snow, and so on). Return it unchanged to defer to the engine for a vertex
+    /// the rule has no opinion on. A rule that wants the untilted mix calls
+    /// <see cref="TerrainSplatWeights.From"/> with <see cref="BiomeId.Meadow"/>.</param>
     public readonly record struct TerrainSplatContext(
         float Height,
         float Slope01,

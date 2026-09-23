@@ -35,8 +35,9 @@ namespace KhaozEngine.Game
         readonly Pointer _uiPointer = new();
         readonly Render2DSurface _surface2D;
 
-        // Built-in frame-cost HUD (FPS/frame-ms/heap + draw counters + 3D pass timings), toggled with F1. Null when
-        // opted out via GameAppOptions.DisableDiagnosticsOverlay. The font + white pixel back its rendering.
+        // Built-in frame-cost HUD (FPS/frame-ms/heap + draw counters + 3D pass timings + network + build), toggled
+        // with F1. Null when opted out via GameAppOptions.DisableDiagnosticsOverlay. The font + white pixel back its
+        // rendering.
         readonly DiagnosticsHud? _hud;
         readonly DpiFont? _hudFont;
         readonly Texture2D? _hudWhite;

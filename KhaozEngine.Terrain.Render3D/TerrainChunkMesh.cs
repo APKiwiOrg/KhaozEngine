@@ -2,8 +2,8 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Terrain
 {
-    /// <summary>The CPU output of meshing one chunk: a Render3D GltfMesh (vertex colours = the height/slope ramp),
-    /// a parallel per-vertex splat-weight array (plumbed for the later PBR upgrade), an AABB for culling, and the
+    /// <summary>The CPU output of meshing one chunk: a Render3D GltfMesh (vertex colours = the splat ramp fallback),
+    /// a parallel per-vertex splat-weight array (what the textured splat pipeline packs), an AABB for culling, and the
     /// LOD/region it was built at. Hand Mesh to Scene3D.LoadMesh (or the TerrainScene3D extensions).</summary>
     public sealed class TerrainChunkMesh
     {

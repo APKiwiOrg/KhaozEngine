@@ -150,13 +150,15 @@ is to handle a failure.
 
 **Turn-key diagnostics HUD** (default ON, F1): `GameApp` / `GameApp3D` wire a `Gui.DiagnosticsHud` automatically -
 an F1-toggled panel showing fps / frame-ms / heap, the frame draw counters (`RenderFrameStats`: draw calls,
-instances, triangles, upload bytes, 2D quads/flushes/tex-switches), and, for a 3D app, per-pass CPU-encode
-timings (`Scene3D.EnableTiming` is coupled to visibility, so it costs nothing while hidden). Hidden by default,
+instances, triangles, upload bytes, 2D quads/flushes/tex-switches), for a 3D app per-pass CPU-encode
+timings (`Scene3D.EnableTiming` is coupled to visibility, so it costs nothing while hidden), and a Build row naming
+the app and its version (the entry assembly's product and informational version by default). Hidden by default,
 so the only cost until F1 is the always-on counter increments. `GameAppOptions.DiagnosticsToggleKey` rebinds the
 key (default `Key.F1`), `GameAppOptions.DiagnosticsVisibleAtBoot` starts it shown instead of hidden, and
 `GameAppOptions.DisableDiagnosticsOverlay` turns it off. A subclass reaches it through
 the protected `Diagnostics` property (e.g. `Diagnostics?.SetNetStatsSource(...)` for a Network section, or
-`Diagnostics?.AddSection(() => ...)` for a section of the game's own, composed after the built-in four) and can
+`Diagnostics?.AddSection(() => ...)` for a section of the game's own, composed after the built-in five, or
+`Diagnostics?.SetBuildIdentity(name, version)` for the game's own display version) and can
 override `CollectFrameStats` / `SupportsPassTimings` (`GameApp3D` already adds the scene's `LastFrameStats` and
 the pass-timing section). See `docs/USING-KHAOZENGINE.md` "Seeing where the frame goes".
 

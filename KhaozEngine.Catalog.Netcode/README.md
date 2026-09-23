@@ -87,3 +87,10 @@ its own localized string, never display text, so `ContentRefusal.TryParseMismatc
   carries the server's version number and manifest hash, which is the whole input the fetch loop needs.
 - The refusal carries NO URL. A URL in a refusal token is a redirect an unauthenticated party controls, so
   the client is configured with its pack base address the way it is configured with its server address.
+- The two PREFIXES are defined once, as `HandshakeToken.ContentMismatchPrefix` and `ContentClientTooOldPrefix` in
+  `KhaozEngine.Netcode`, and `ContentRefusal.MismatchPrefix` and `ClientTooOldPrefix` are those same constants.
+  Everything after the prefix, both builders and both strict parsers, lives only here.
+- A `KhaozEngine.NetWorld.WorldClient` recognizes both by prefix, without referencing this package, and reports
+  `DisconnectReason.ContentVersionMismatch` or `DisconnectReason.ContentClientTooOld` with the whole token in
+  `DisconnectReasonDetail`. Parse that detail with `TryParseMismatch` or `TryParseClientTooOld` for the sides. A tile
+  head reads the same raw token off `TileWorldClient.RefusedReason`.

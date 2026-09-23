@@ -93,7 +93,7 @@ namespace KhaozEngine.Tests.Gui
 
             Assert.True(hud.Visible);
             var titles = hud.Overlay.Sections.Select(s => s.Title).ToArray();
-            Assert.Equal(new[] { "Performance", "Draw stats" }, titles);
+            Assert.Equal(new[] { "Performance", "Draw stats", "Build" }, titles);
             Assert.Equal("7", Value(hud.Overlay.Sections[1], "draw calls"));
         }
 

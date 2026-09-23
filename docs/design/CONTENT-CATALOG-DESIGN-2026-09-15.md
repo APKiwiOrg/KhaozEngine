@@ -960,10 +960,10 @@ that a content authoring store should follow the journal style because it needs 
 (`a-engine.md:741-748`), and this spec agrees: the content schema will gain tables as Scope B's types land and
 as inheritance ships, so it needs a migration path from the first release.
 
-**SQLite sits on `SqliteStoreConnection` and this is not optional.** One held connection, one
-`SemaphoreSlim(1,1)` gate, and a dispose that calls `SqliteConnection.ClearPool(connection)` BEFORE
-`connection.Dispose()` (`KhaozEngine.Sqlite/SqliteStoreConnection.cs:76-82`). The type doc says why it exists:
-the same pool-clearing line was copied wrong three times over. Every command runs under a lease from
+**SQLite sits on `SqliteStoreConnection` and this is not optional.** One held connection opened with
+`Pooling` forced off, one `SemaphoreSlim(1,1)` gate, and a dispose that closes it. The type doc says why it
+exists: the same pooled-handle leak was copied three times over, and a pooled connection can be reclaimed from
+a live store by a concurrent open or pool clear on the same file. Every command runs under a lease from
 `EnterAsync`, and a transaction takes the lease FIRST (`SqliteStoreConnection.cs:62-73`).
 
 There is no equivalent shared SQL Server connection type, and this spec does not add one. The SQL Server
@@ -1907,15 +1907,20 @@ content-addressed names nothing references yet.
 - A chunk whose hash already exists in the store is NOT rewritten. `IPackStore.ExistsAsync(hash)` is checked
   first, which is what makes a republish of an unchanged chunk free.
 - A manifest file is named by its manifest hash, so the same rule applies.
-- The filesystem provider writes to `<hash>.tmp` and then `File.Move(temp, final, overwrite: true)`, the map
-  document's idiom (`MapTiledFile.Save.cs:183-192`), with a `stream.Flush(flushToDisk: true)` before the move
-  when the store is configured for power-fail durability.
+- The filesystem provider writes to a uniquely named temporary and then moves it into place CREATE ONLY, with
+  a `stream.Flush(flushToDisk: true)` before the move when the store is configured for power-fail
+  durability. An object another writer already placed holds the same bytes and is kept rather than replaced,
+  because a replace over a file another writer is replacing, or that a reader has open, fails on Windows
+  (#1076).
 
-**Step 9 also writes the version POINTER, and it is the one object in the store that is not named by its own
-hash.** It goes at `versions/<n>`, it holds that version's two manifest hashes and nothing else, and it is the
-only way a CONTENT-ADDRESSED store can answer "what does version 47 contain". The authoring database knows,
-and the store has no access to it while the sweep runs against the store (section 6.12), so the fact has to
-exist on both sides. `IPackStore.ListAsync(versionNumber)` reads the pointer and then the manifests it names
+**The publish also writes the version POINTER, and it is the one object in the store that is not named by its
+own hash.** It goes at `versions/<n>`, it holds that version's two manifest hashes and nothing else, and it is
+the only way a CONTENT-ADDRESSED store can answer "what does version 47 contain". Because it is named by a
+number, it is written INSIDE step 10's transaction, after the number is confirmed and before the commit, and
+not in step 9 with the files (#1076). Two publishers can prepare one number from one base, and a pointer
+written in step 9 let the one that went on to lose overwrite the committed version's pointer. The authoring
+database knows, and the store has no access to it while the sweep runs against the store (section 6.12), so
+the fact has to exist on both sides. `IPackStore.ListAsync(versionNumber)` reads the pointer and then the manifests it names
 (sections 8.1 and 8.2).
 
 Two consequences, stated so nobody treats the pointer as a second content address:
@@ -1924,10 +1929,10 @@ Two consequences, stated so nobody treats the pointer as a second content addres
   the authenticated channel the whole trust chain hangs on (section 13.2). A mutable name in the store is
   therefore never in the integrity path, and a pointer an attacker rewrote costs the publisher's own sweep and
   nothing else.
-- **A crash between step 9 and step 10 leaves a pointer for a version that never committed.** That keeps a set
-  of orphan files ALIVE rather than deleting live ones, which is the safe direction, and it self-repairs:
-  version numbers are never skipped (contracts 7.1), so the retried publish takes the same number and
-  overwrites the pointer with its own.
+- **A crash inside step 10, after the pointer write, leaves a pointer for a version that never committed.**
+  That keeps a set of orphan files ALIVE rather than deleting live ones, which is the safe direction, and it
+  self-repairs: version numbers are never skipped (contracts 7.1), so the retried publish takes the same
+  number and overwrites the pointer with its own.
 
 Nothing else points at any of these files until step 10, so a crash here leaves orphans and nothing else. Step
 11 sweeps them.
@@ -1964,8 +1969,8 @@ pin action for holding a version back.
 | During step 1 to 8 | Nothing written. The draft is intact. | Republish. Nothing to clean. |
 | Between step 3's reservation commit and step 4 | A gap of reserved-but-unissued ids. | None needed. The gap is invisible and bounded by 1,024 per type (section 4.7). |
 | During step 9, part way through the chunk files | Some chunk files exist that nothing references. The old version is still active. | Republish writes them again idempotently, since a chunk file's name is its own hash. Step 11 of the NEXT successful publish sweeps any that are never referenced. |
-| Between step 9 and step 10 | Every file of the new version exists, and so does its `versions/<n>` pointer. Nothing in the database references them. The old version is still active. | Republish. The `ExistsAsync` check at step 9 makes the rewrite free, so a retried publish after a crash here is fast, and it takes the same version number and overwrites the stale pointer (section 6.9). |
-| During step 10 | The transaction rolls back. The old version is active. The orphan files remain. | Republish, then sweep. |
+| Between step 9 and step 10 | Every file of the new version exists and its `versions/<n>` pointer does not. Nothing in the database references them. The old version is still active. | Republish. The `ExistsAsync` check at step 9 makes the rewrite free, so a retried publish after a crash here is fast. |
+| During step 10 | The transaction rolls back. The old version is active. The orphan files remain, and so does the `versions/<n>` pointer when the crash came after its write. | Republish, then sweep. The retry takes the same version number and overwrites the stale pointer inside its own transaction (section 6.9). |
 | Between step 10 and step 11 | The new version is fully live. Orphan files from a PREVIOUS failed attempt remain. | The next publish sweeps them. An operator may run the sweep alone (section 10.11). |
 
 The property that makes all six rows safe is that **a chunk file's name is a hash of its own contents**, so
@@ -2588,11 +2593,12 @@ One file per hash under a two-level shard, `<root>/<hash[0..2]>/<hash[2..4]>/<ha
 because a flat directory of a thousand chunks times 50 versions is fine and a flat directory of a million is not, and
 the shard is derived from the hash so it needs no index.
 
-Writes go to `<hash>.tmp` in the same shard directory and then `File.Move(temp, final, overwrite: true)`, the
-map document's idiom (`MapTiledFile.Save.cs:183-192`). `overwrite: true` is correct here precisely because
-the name is the content: rewriting a hash with its own bytes is a no-op by definition.
+Writes go to a uniquely named temporary in the same shard directory and are then moved into place CREATE
+ONLY. The name is the content, so an object already there holds the same bytes and is kept, and a replace is
+never attempted, because Windows refuses one over a file another writer is replacing or a reader has open
+(#1076). The version pointer is the one file that is replaced.
 
-`ListAsync(version)` reads `<root>/versions/<n>`, the pointer written at publish step 9, takes the two
+`ListAsync(version)` reads `<root>/versions/<n>`, the pointer written inside publish step 10, takes the two
 manifest hashes it holds, reads both manifests out of the shard tree and yields every hash they name plus the
 two manifest hashes themselves. It does NOT walk the directory. A directory walk would find orphans, and a
 store's job is to answer what a version contains, not what happens to be on disk. The publish sweep needs

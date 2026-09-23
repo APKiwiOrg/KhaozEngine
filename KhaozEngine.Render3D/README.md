@@ -534,8 +534,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     `SwellSteepness`/`SwellSpeed`/`SwellSeed`/`SwellComponents`): a stack of up to eight trochoidal components
     displacing the surface grid in the VERTEX stage, so crests pinch and the surface has a real silhouette. The
     whole stack is generated from those wind scalars, on the CPU (`Internal.GerstnerWaves`) and in the shader,
-    rather than uploaded per component. The grid is a fixed 97x97 vertex budget concentrated toward the camera by
-    `GridFocusBias` (1 = uniform), since a consumer plane can be 1200 units across.
+    rather than uploaded per component. The swell's NORMAL is evaluated per pixel at the fragment's still-water
+    position rather than interpolated from the grid, so a coarse grid (a clipmap's outer rings, the far cells of a
+    large camera-focused plane) cannot shade it as flat triangle facets (#381). The whitecap fold is still carried
+    from the vertices. The grid is a fixed 97x97 vertex budget concentrated toward the camera by `GridFocusBias`
+    (1 = uniform), since a consumer plane can be 1200 units across.
   - **Analytic sky reflection** (`SkyReflectionStrength`/`SkyReflectionSunStrength`): the fresnel term blends
     toward the sky evaluated along the reflected view ray (`Internal.SkyMath.ShadeDirection`, the same gradient +
     sun the background sky pass paints, in per-direction form) using `PixelPostProcessSettings.Sky`'s palette
@@ -572,8 +575,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   crest carries the waterline and the foam line up the beach for free. The pure math is `WaterMath` (the ripple
   normal, domain warp, distance detail fade, grid layout and focus warp, absorption, reflection blend, GGX and
   legacy glint, roughness widening, foam), `RippleSpectrum` (the ripple spectrum, the footprint band-limit and the
-  variance transfer) and `GerstnerWaves` (the swell), all internal, headless-tested and mirroring the GLSL
-  `WaterVert`/`WaterFrag` exactly.
+  variance transfer) and `GerstnerWaves` (the swell, whose offset and fold the vertex stage mirrors and whose
+  normal the fragment stage mirrors), all internal, headless-tested and mirroring the GLSL `WaterVert`/`WaterFrag`
+  exactly.
 - Per-plane water look (`WaterPlane.Look`, a `WaterLook`, since 17.7.0, **default `null` = the scene's look, byte-
   identical**): a trailing optional constructor parameter on `WaterPlane`, so every call site written before this
   existed still compiles and still packs from the caller's own `WaterSettings` object unchanged. Every field on

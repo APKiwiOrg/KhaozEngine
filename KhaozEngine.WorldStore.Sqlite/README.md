@@ -13,21 +13,23 @@ byte[]? loaded = await store.LoadAsync("player:42");
 
 One `world_store(key, data, updated_at)` table, bootstrapped on construction; upsert via
 `INSERT ... ON CONFLICT(key) DO UPDATE`; raw parameterized async ADO.NET (no EF/ORM). Dispose the store to
-close the connection. Disposing also clears the provider's connection pool for that connection, so the OS handle
-on the database file is genuinely released rather than parked in the pool, and the file can be deleted, rotated
-or exclusively opened straight after (since 17.41.0). For production / Azure SQL use
+close the connection. The connection is never pooled, so the OS handle on the database file is genuinely released
+on dispose rather than parked in the provider's pool, and the file can be deleted, rotated or exclusively opened
+straight after (since 17.41.0). For production / Azure SQL use
 `KhaozEngine.WorldStore.SqlServer` against the same `IWorldStore` contract.
 
 The connection, the operation gate and that dispose are `KhaozEngine.Sqlite`'s `SqliteStoreConnection`, shared
 with every other SQLite store in the engine. Only the schema and the SQL live here. A game writing its own
-SQLite-backed store should sit it on the same type rather than reimplementing the pool-clearing dispose.
+SQLite-backed store should sit it on the same type rather than reimplementing that lifecycle.
 
 `SqliteMutationJournalStore` implements `IMutationJournalStore`, `IMutationJournalMaintenance`, and the additive
-`IMutationJournalAgeMaintenance` capability on the same connection lifecycle. It stores metadata and the restore
+`IMutationJournalAgeMaintenance` and `IMutationJournalStreamListing` capabilities on the same connection lifecycle.
+It stores metadata and the restore
 epoch, stream heads, immutable events, current projection sections, snapshots, replay receipts, and receipt stream
 ranges in normalized tables. Writes use one immediate transaction under the connection lease. Auto-create enables
 WAL only for an absent journal or after validating an existing supported schema. Validate-only verifies WAL without
 changing the journal mode. Foreign keys and a configurable busy timeout are enabled for the held connection.
+`ListStreamsAsync` reads one bounded page from the `journal_stream` key range the prefix selects.
 
 ```csharp
 using KhaozEngine.WorldStore.Journal;
@@ -56,15 +58,26 @@ unsupported schemas fail startup with `SchemaMismatch` and name the required mig
 checks the complete table and index definitions before normal store mutation. Operation retention is independent
 from event retention, so purging replay receipts leaves committed events in place.
 
+`SqliteJournalSchemaMode.ReadOnly` is for operator tools that read a database which must not change, such as a copy
+of production loaded by a release rehearsal. The store opens its connection with `Mode=ReadOnly` whatever the
+connection string says, so SQLite itself rejects a write. It validates the version-two schema with no DDL. A missing
+file fails with `Unavailable` and creates no file. A missing, older, or newer schema fails with `SchemaMismatch` and
+is never created or migrated. The WAL check is skipped because only a writer depends on it, and the journal mode is
+left as it is. `InitializeAsync`, `CommitAsync`, `CompactAsync`, `PurgeOperationsAsync`, `PurgeOperationsByAgeAsync`,
+and `RotateStoreEpochAsync` throw `NotSupportedException` before touching the database. Reads, operation resolution,
+and `ListStreamsAsync` work as usual. The database file is never written. On a WAL database SQLite may create the
+`-wal` and `-shm` side files beside it, because a WAL reader needs the shared-memory index.
+
 `BusyTimeout` controls how long the held connection waits on a locked database. `MinimumRetryHorizon` prevents
 maintenance from deleting replay rows which may still be retried. `Limits` can lower any core journal maximum.
 `TimeProvider` controls public journal timestamps for deterministic hosts and tests. It does not control
 `PurgeOperationsByAgeAsync`, whose retention timestamps and cutoff come from SQLite. The older cutoff purge is also
-clipped to SQLite UTC minus `MinimumRetryHorizon`. Dispose the journal to clear the provider pool and release the
+clipped to SQLite UTC minus `MinimumRetryHorizon`. Dispose the journal to close its connection and release the
 database file.
 
-The process identity needs read, write, create, lock, and rename access to the database, WAL, and shared-memory
-files. In `ValidateOnly`, deploy the version-two schema with a controlled migration process before boot and keep the
+A writing store's process identity needs read, write, create, lock, and rename access to the database, WAL, and
+shared-memory files. A `ReadOnly` store needs read access to the database file, plus existing or creatable `-wal` and `-shm` files
+when the database is in WAL mode. In `ValidateOnly`, deploy the version-two schema with a controlled migration process before boot and keep the
 runtime directory writable for SQLite transactions. A missing, partial, older, or newer schema stops startup with
 `JournalStoreException` kind `SchemaMismatch`.
 

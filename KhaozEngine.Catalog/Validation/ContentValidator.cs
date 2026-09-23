@@ -304,19 +304,7 @@ internal sealed class ContentValidationRun
         => Registry.TryGetByKey(typeKey, out registration);
 
     /// <summary>The index of a schema field by name, which is its index in every row, or -1.</summary>
-    internal static int FieldIndex(ContentFieldSchema schema, string name)
-    {
-        IReadOnlyList<ContentFieldEntry> fields = schema.Fields;
-        for (int i = 0; i < fields.Count; i++)
-        {
-            if (string.Equals(fields[i].Name, name, StringComparison.Ordinal))
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
+    internal static int FieldIndex(ContentFieldSchema schema, string name) => schema.IndexOf(name);
 
     /// <summary>
     /// One field's value on a row, ABSENT when the row is shorter than the schema. A short row is a

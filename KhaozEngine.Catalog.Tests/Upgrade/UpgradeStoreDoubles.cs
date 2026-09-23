@@ -103,8 +103,9 @@ internal abstract class ForwardingContentAuthoringStore(IContentAuthoringStore i
     public virtual Task<ContentVersionRecord> CommitPublishAsync(
         ContentPublishPlan plan,
         ContentPublishRequest request,
+        IPackVersionPointerStore? pointers,
         CancellationToken cancellationToken = default)
-        => inner.CommitPublishAsync(plan, request, cancellationToken);
+        => inner.CommitPublishAsync(plan, request, pointers, cancellationToken);
 
     /// <inheritdoc />
     public virtual Task<ContentPublishResult> PublishAsync(
@@ -572,9 +573,10 @@ internal sealed class CrashAfterCommitStore(
     public override async Task<ContentVersionRecord> CommitPublishAsync(
         ContentPublishPlan plan,
         ContentPublishRequest request,
+        IPackVersionPointerStore? pointers,
         CancellationToken cancellationToken = default)
     {
-        ContentVersionRecord record = await Inner.CommitPublishAsync(plan, request, cancellationToken);
+        ContentVersionRecord record = await Inner.CommitPublishAsync(plan, request, pointers, cancellationToken);
         Commits++;
         if (Armed)
         {

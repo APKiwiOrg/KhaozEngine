@@ -145,6 +145,16 @@ reused and a retired row keeps the number it occupies.
 `IContentIdPersistence` is the durable half the allocator sits on, and every `Commit` member on it commits
 on its own. A backend implements it with its own transactions.
 
+**Every `Commit` member compares inside the commit that writes it**, because two hosts allocate from one
+catalog with no lock spanning either allocation, and a mark read in one call can be passed by a rival before
+the next call writes. `CommitReservedThroughAsync` raises the reservation to at least a value and leaves a
+higher one standing. `CommitIssueAsync` takes the next `count` plain ids only while the live reservation still
+covers them and answers the first, or 0. `CommitFamilyBlockAsync` inserts a block only while the type's issued
+mark is still below its base and answers null otherwise. `CommitFamilyIssueAsync` takes a block's next free id,
+or answers 0 for a full block. `CommitCarriedThroughAsync` is the publish's seeding write and raises both marks
+to at least a carried id. A 0 or a null means a rival allocation succeeded in between, so the allocator reads
+the marks again and tries once more, and the ceiling check on every pass ends it when the id space runs out.
+
 ## The publish pipeline
 
 `ContentPublisher` is publish, in order, with each step delegating to its named type. **Steps 1 to 8 write
@@ -223,6 +233,12 @@ it reserved. After every add has an id, the high-water marks are SEEDED from the
 so the first ordinary add after one of those does not allocate id 1 straight onto a row that already holds
 it. `ContentIdAllocationRecord.Seeds` is empty for an ordinary publish.
 
+The seeding raises each mark to the greater of its current value and the carried id, and the store makes that
+comparison inside the same commit as the write. Two upgrade runners seed one type without a lock spanning
+either publish, so a mark read first and written in a later call could be passed by the other runner's seed
+in between, and writing the stale lower number would take a reservation back. A mark a rival already
+raised past the carried id is left where it stands, and `Seeds` then omits that type.
+
 A carried id is checked before the candidate is built, because step 3's seeding commits on its own and a
 refusal after it would leave the marks raised for a version nobody published. The publish refuses a carried
 id that a live or retired row already holds, one a second add in the same draft names, one over the type's
@@ -293,13 +309,22 @@ ContentPublishResult published = await commit.PublishAsync(
     new ContentPublishRequest("admin-endpoint", "oid:8f2c", "autumn price pass", expectedBaseVersion: 12));
 ```
 
-**The ordering is the whole crash-safety property.** Step 9 writes every chunk file, the remap rule chunk,
-both manifest files and the version pointer to the pack store BEFORE the database transaction, at
-content-addressed names nothing references yet, so a crash there leaves inert bytes and the old version. A
-hash the store already holds is checked for with `ExistsAsync` and not rewritten, which is what makes a
-republish of an unchanged chunk free. The pointer goes last of the four, so a crash part way through leaves a
-version whose pointer is absent, which reads as a listing failure and skips the next sweep rather than
-authorising it to delete on a partial view.
+**The ordering is the whole crash-safety property.** Step 9 writes every chunk file, the remap rule chunk
+and both manifest files to the pack store BEFORE the database transaction, at content-addressed names nothing
+references yet, so a crash there leaves inert bytes and the old version. A hash the store already holds is
+checked for with `ExistsAsync` and not rewritten, which is what makes a republish of an unchanged chunk free.
+Two publishers may run step 9 at once, because every file it writes is named by its own content.
+
+**The version pointer is written inside step 10, not step 9.** `ContentPublishCommit` hands its pointer half to
+`CommitPublishAsync`, and the store writes the pointer as the last act before its transaction commits, once
+the version number is confirmed. Two publishers can prepare the same number from the same base, for example two
+replicas of different builds applying one upgrade, and a pointer written in step 9 let the one that went on to
+lose overwrite the committed version's pointer with manifests that never committed. The boot serves what that
+pointer names and the sweep keeps what it names, so that was content served that never committed and content
+deleted that did. Now a losing publisher is refused before it writes a pointer, and two publishers of one
+version never write it at once. A crash after the pointer write and before the commit leaves a pointer for a
+version that never committed, which keeps orphan files alive rather than deleting live ones, and the next
+attempt at that number overwrites it.
 
 The version POINTER at `versions/<n>` is the one object in a store not named by its own hash, and it is how a
 content-addressed store answers what a version contains once the authoring database is out of reach.
@@ -311,9 +336,10 @@ the publish rather than after the chunk files are already written.
 Step 10 is `IContentAuthoringStore.CommitPublishAsync`, ONE transaction and the only member that moves the
 active pointer. In order inside it: confirm the version number, insert the version row, apply every temporal
 row change, append every remap rule at the sequence above the highest, insert every chunk row one per side
-including the carried-forward ones, insert every audit row, delete the draft, then move the active pointer
-LAST. A reader that sees the new active version sees every row, rule, chunk and audit entry of it, because
-they committed together.
+including the carried-forward ones, insert every audit row, delete the draft, move the active pointer, then
+write the pack's version pointer through the `IPackVersionPointerStore` it was handed, or none when it was
+handed null. A reader that sees the new active version sees every row, rule, chunk and audit entry of it,
+because they committed together.
 
 The draft delete is scoped to `ContentPublishPlan.FrozenEdits`, the change set step 1 read. The freeze is
 what makes that the whole draft, so scoping it can only matter when the marker failed to hold, and that is

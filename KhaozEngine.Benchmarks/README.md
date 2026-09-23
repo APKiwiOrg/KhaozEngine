@@ -326,11 +326,16 @@ atomically. The checked-in baseline is `Baselines/items-sqlite-v1-seed915.json`.
 
 Four things about the measurements that a reader would otherwise have to reverse engineer:
 
-- **Resident memory is read as the heap size after a forced compacting collection**, not as
+- **Resident memory is read as the live bytes a forced compacting collection finds**, which is
+  `HeapSizeBytes` less `FragmentedBytes` of that full blocking collection, not as
   `GC.GetTotalMemory(true)`. Against a known live set of 27,620,000 bytes built with the churn a page
-  builder produces, `GetTotalMemory(true)` answered 61,105,168 and `GetGCMemoryInfo().HeapSizeBytes`
-  answered 27,800,304. Both are in the JSON so the difference stays visible, and the exact sum of the
-  page byte arrays is there too as a third cross-check.
+  builder produces, `GetTotalMemory(true)` answered 61,105,168 and `HeapSizeBytes` answered 27,800,304.
+  `HeapSizeBytes` alone also counts the free gaps a swept large object heap keeps, so a retention could
+  land in them without moving it, and a region handed back between two readings read as a release
+  ([#1043](https://github.com/APKiwiOrg/KhaozEngine/issues/1043),
+  [#1018](https://github.com/APKiwiOrg/KhaozEngine/issues/1018)). Both readings are in the JSON so the
+  difference stays visible, and the exact sum of the page byte arrays is there too as a third
+  cross-check.
 - **Budgets 12 and the scale test cycle a pool of 10,000 distinct generated rares** rather than
   generating three million. A page blob copies the payload bytes into itself and every slot still takes
   a fresh instance id, so the page bytes are the same either way and the run is minutes shorter.

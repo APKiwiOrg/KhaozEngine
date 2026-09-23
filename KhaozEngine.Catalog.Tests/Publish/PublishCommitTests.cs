@@ -15,8 +15,8 @@ namespace KhaozEngine.Tests.Catalog.Publish;
 /// <para>
 /// The property every test here is a face of is one sentence. Nothing observable changes until step 10 and
 /// step 10 is a single transaction, so a crash at any point leaves either the old version or the new one and
-/// never a torn one. The files land first at names nothing references, the pointer lands last of the four,
-/// and the active pointer moves as the final statement of the transaction.
+/// never a torn one. The files land first at names nothing references, the version pointer is written inside
+/// the transaction once the number is confirmed, and the active pointer moves as its final statement.
 /// </para>
 /// </summary>
 public class PublishCommitTests
@@ -24,7 +24,7 @@ public class PublishCommitTests
     static ContentTypeId Thing => new(PublishFixtures.ThingTypeId);
 
     [Fact]
-    public async Task Step9WritesEveryFileAndThePointerBeforeTheDatabaseTouchesAnything()
+    public async Task Step9WritesEveryFileBeforeTheDatabaseAndThePointerRidesTheCommit()
     {
         using var root = new TemporaryRoot();
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
@@ -38,7 +38,8 @@ public class PublishCommitTests
             ContentEdit.Add(Thing, new ContentKey("one"), PublishFixtures.Fields(1)));
 
         // The hook fires between step 9 and step 10, which is the one moment the files exist and the
-        // database does not know about them.
+        // database does not know about them. The version pointer is not among them: it names a number, and
+        // the number is only decided inside step 10.
         var atCommit = new List<string>();
         ContentPublishCommit hooked = PublishFixtures.Commit(store, pack, registry, step =>
         {
@@ -50,11 +51,16 @@ public class PublishCommitTests
             atCommit.Add(FormattableString.Invariant($"active={store.GetActiveVersionAsync().Result}"));
             atCommit.Add(FormattableString.Invariant(
                 $"pointer={pack.GetVersionPointerAsync(1).Result is not null}"));
+            atCommit.Add(FormattableString.Invariant(
+                $"files={Directory.EnumerateFiles(root.Path, "*.kec", SearchOption.AllDirectories).Count()}"));
         });
 
         ContentPublishResult published = await hooked.PublishAsync(PublishFixtures.Request(0));
 
-        Assert.Equal(["active=0", "pointer=True"], atCommit);
+        Assert.Equal(3, atCommit.Count);
+        Assert.Equal("active=0", atCommit[0]);
+        Assert.Equal("pointer=False", atCommit[1]);
+        Assert.NotEqual("files=0", atCommit[2]);
         Assert.Equal(1, published.VersionNumber);
         Assert.Empty(seen);
         Assert.NotNull(commit);
@@ -209,13 +215,13 @@ public class PublishCommitTests
         ContentPublishPlan plan = PublishFixtures.AssertValid(
             await publisher.PrepareAsync(PublishFixtures.Request(0), baseline));
 
-        await store.CommitPublishAsync(plan, PublishFixtures.Request(0));
+        await store.CommitPublishAsync(plan, PublishFixtures.Request(0), null);
 
         // The same plan a second time: its number digested into both manifest hashes at step 8 and the
         // highest published number has moved under it, so the transaction refuses rather than writing a
         // second version 1.
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => store.CommitPublishAsync(plan, PublishFixtures.Request(0)));
+            () => store.CommitPublishAsync(plan, PublishFixtures.Request(0), null));
 
         Assert.Equal(ContentAuthoringException.BaseVersionMovedReason, refused.Reason);
         Assert.Equal(1, await store.GetActiveVersionAsync());
@@ -278,7 +284,7 @@ public class PublishCommitTests
         // A payload carries a retire's policy and its destination, so a prefix check that ignored it would
         // let a plan rewrite what a published rule MEANS while keeping its identity columns.
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => store.CommitPublishAsync(plan, PublishFixtures.Request(2)));
+            () => store.CommitPublishAsync(plan, PublishFixtures.Request(2), null));
 
         Assert.Equal(ContentAuthoringException.BaseVersionMovedReason, refused.Reason);
         Assert.Equal(2, await store.GetActiveVersionAsync());
@@ -304,7 +310,7 @@ public class PublishCommitTests
         Assert.False(plan.IsValid);
 
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => store.CommitPublishAsync(plan, PublishFixtures.Request(0)));
+            () => store.CommitPublishAsync(plan, PublishFixtures.Request(0), null));
 
         Assert.Equal(ContentAuthoringException.CandidateInvalidReason, refused.Reason);
         Assert.NotEmpty(refused.Findings);

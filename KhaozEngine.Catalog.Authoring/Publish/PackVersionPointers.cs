@@ -24,10 +24,12 @@ namespace KhaozEngine.Catalog.Authoring;
 public interface IPackVersionPointerStore
 {
     /// <summary>
-    /// Writes one version's pointer. It is written at step 9, BEFORE the database commit, so a crash between
-    /// the two leaves a pointer for a version that never committed. That keeps a set of orphan files ALIVE
-    /// rather than deleting live ones, which is the safe direction, and it self repairs: version numbers are
-    /// never skipped, so the retried publish takes the same number and overwrites the pointer with its own.
+    /// Writes one version's pointer, replacing any pointer already there. A publish writes it INSIDE step
+    /// 10's transaction, after the number is confirmed and before the commit, so only the publisher winning
+    /// the version writes it and a crash before the commit leaves a pointer for a version that never
+    /// committed. That keeps a set of orphan files ALIVE rather than deleting live ones, which is the safe
+    /// direction, and it self repairs: version numbers are never skipped, so the retried publish takes the
+    /// same number and overwrites the pointer with its own.
     /// </summary>
     /// <param name="versionNumber">The version the pointer is for, from 1.</param>
     /// <param name="serverManifestHash">The version's server manifest hash, lower hex.</param>

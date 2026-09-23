@@ -16,7 +16,7 @@ namespace KhaozEngine.MapEdit.Tools;
 [McpServerToolType]
 public sealed class RenderTools(RenderService render)
 {
-    [McpServerTool(Name = "render_topdown"), Description("Renders a top-down orthographic PNG of the open map over a world rect (defaults to the document bounds). The camera looks straight down with world +X to the right and world +Z DOWN the image. Returns a text block naming the rect, image size, and meters-per-pixel, then the PNG image. Overlays (exclusion, region, and feature fills) draw by default. Renders terrain only when no asset manifests were supplied. Needs a headless GPU device.")]
+    [McpServerTool(Name = "render_topdown"), Description("Renders a top-down orthographic PNG of the open map over a world rect (defaults to the document bounds). The camera looks straight down with world +X to the right and world +Z DOWN the image. Returns a text block naming the rect, image size, and meters-per-pixel, then the PNG image. Overlays (exclusion, region, and feature fills) draw by default. Renders terrain only when no asset manifests were supplied. When the rect is wider than the streamed ring covers, the text block says so and names the covered distance. Needs a headless GPU device.")]
     public IEnumerable<ContentBlock> RenderTopDown(
         [Description("Minimum world X of the rect in meters. Null uses the document bounds.")] float? minX = null,
         [Description("Minimum world Z of the rect in meters. Null uses the document bounds.")] float? minZ = null,
@@ -45,7 +45,8 @@ public sealed class RenderTools(RenderService render)
     IEnumerable<ContentBlock> TopDownBlocks(float? minX, float? minZ, float? maxX, float? maxZ,
         int width, int height, bool includeOverlays, bool textured)
     {
-        byte[] png = render.RenderTopDown(minX, minZ, maxX, maxZ, width, height, includeOverlays, textured);
+        TopDownRender result = render.RenderTopDownWithCoverage(minX, minZ, maxX, maxZ, width, height,
+            includeOverlays, textured);
         string rect = "rect x[" + Fmt(minX) + ", " + Fmt(maxX) + "] z[" + Fmt(minZ) + ", " + Fmt(maxZ)
             + "] (null = document bounds).";
         // The orthographic view has one meters-per-pixel scale, known only when the X span is explicit. It is
@@ -55,8 +56,9 @@ public sealed class RenderTools(RenderService render)
             ? "about " + ((hi - lo) / width).ToString("0.####", CultureInfo.InvariantCulture)
                 + " meters per pixel (the rect is framed with a small margin)"
             : "meters per pixel depends on the defaulted bounds (see map_summary for the rect)";
-        string text = "top-down orthographic render. " + rect + " image " + Size(width, height) + ", " + scale + ".";
-        return Blocks(text, png);
+        string text = "top-down orthographic render. " + rect + " image " + Size(width, height) + ", " + scale + "."
+            + CoverageNote(result);
+        return Blocks(text, result.Png);
     }
 
     IEnumerable<ContentBlock> ViewBlocks(float eyeX, float eyeY, float eyeZ,
@@ -68,6 +70,14 @@ public sealed class RenderTools(RenderService render)
             + Size(width, height) + ", fov " + Fmt(fovDegrees) + " degrees.";
         return Blocks(text, png);
     }
+
+    /// <summary>The text a capped render appends so the client knows distant placements and scatter are missing.
+    /// Empty when the whole rect was covered.</summary>
+    internal static string CoverageNote(TopDownRender result) => result.Capped
+        ? " The rect is wider than the streamed ring covers (capped at " + RenderStreamPlan.MaxCoverChunks.ToString(
+            CultureInfo.InvariantCulture) + " chunks): placements and scatter show only within about "
+            + Fmt(result.CoveredReach) + " meters of the rect centre. Render smaller rects to see the rest."
+        : "";
 
     // The framing text first (so the client can map pixels to world coordinates), then the PNG image itself.
     static ContentBlock[] Blocks(string text, byte[] png) => new ContentBlock[]

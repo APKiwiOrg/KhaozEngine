@@ -122,12 +122,18 @@ to overwrite a released version unless the tree is exactly that clean tagged com
 lives in `scripts/pack-standard.sh` and is covered by `scripts/tests/pack-local-feed.test.sh`. Run
 `scripts/check-local-feed.sh` before a consumer vendors packages.
 
+The pack builds the current tree, worktree or not, and writes to the main checkout's `local-feed`,
+which is the feed consumers read. `scripts/check-local-feed.sh` reads the same feed. Setting
+`KHAOZENGINE_FEED` moves both to another directory. A relative value resolves against the root of the
+tree the script runs in. A linked worktree still keeps its own empty `local-feed`, because
+`nuget.config` names it as a restore source.
+
 A release tag is separate and user-started. Create it with `scripts/tag-release.sh`, which reads the
 version and creates the canonical annotated message. Do not hand-create a tag. The only automatic tag
 exception is when a consumer is explicitly pinned and waiting on this engine change. In that case the
 dependency is already blocked, so the engine release completes without another prompt.
 
-`local-feed/` is a gitignored development convenience. GitHub Packages is the durable release store.
+`local-feed` is a gitignored development convenience. GitHub Packages is the durable release store.
 Prune the local feed only above the lowest version still pinned by a consumer.
 
 ## Documentation governance

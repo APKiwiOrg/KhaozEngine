@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Terrain
     /// tests go through the internal CpuBuild seam with no GPU device.
     /// <para>The load-bearing test here is the NULL one. The rule is opt-in and every existing consumer passes
     /// nothing, so "null bakes what the engine baked before" is the whole compatibility story, and it is asserted by
-    /// recomputing <see cref="TerrainSplatWeights.From"/> independently over a sampled grid and comparing the five
+    /// recomputing <see cref="TerrainSplatWeights.FromBlend"/> independently over a sampled grid and comparing the five
     /// floats EXACTLY, not by leaning on a golden image that would also pass if both sides drifted together.</para></summary>
     public class TerrainSplatRuleTests
     {
@@ -35,7 +35,8 @@ namespace KhaozEngine.Tests.Terrain
         public void Null_rule_bakes_exactly_the_engine_weights_over_the_whole_grid()
         {
             // The compatibility assertion, vertex by vertex rather than in aggregate: with no rule the builder must
-            // store precisely what TerrainSplatWeights.From produces for that vertex's own inputs. Vertices are
+            // store precisely what TerrainSplatWeights.FromBlend produces for that vertex's own inputs, biome shares
+            // included (this region reaches into the Clearing preset's Meadow-to-Mountains blend window). Vertices are
             // chunk-local in X/Z, so the field is re-sampled at position + region origin (float addition commutes,
             // so this reproduces the builder's absolute coordinate bit-for-bit).
             var field = Field();
@@ -47,8 +48,8 @@ namespace KhaozEngine.Tests.Terrain
                 Vector3 p = chunk.Mesh.Vertices[i].Position;
                 float x = p.X + region.OriginX, z = p.Z + region.OriginZ;
                 float slope01 = 1f - field.SampleNormal(x, z).Y;
-                var expected = TerrainSplatWeights.From(
-                    field.SampleHeight(x, z), slope01, field.SampleBiome(x, z), field.WaterLevel, SnowLine);
+                var expected = TerrainSplatWeights.FromBlend(
+                    field.SampleHeight(x, z), slope01, field.SampleBiomeWeights(x, z), field.WaterLevel, SnowLine);
                 AssertSameWeights(expected, chunk.Splat[i], $"vertex {i}");
             }
         }
@@ -99,8 +100,8 @@ namespace KhaozEngine.Tests.Terrain
                 Assert.Equal(1f - field.SampleNormal(x, z).Y, ctx.Slope01);
                 Assert.Equal(field.SampleBiome(x, z), ctx.Biome);
 
-                var engine = TerrainSplatWeights.From(
-                    field.SampleHeight(x, z), ctx.Slope01, ctx.Biome, field.WaterLevel, SnowLine);
+                var engine = TerrainSplatWeights.FromBlend(
+                    field.SampleHeight(x, z), ctx.Slope01, field.SampleBiomeWeights(x, z), field.WaterLevel, SnowLine);
                 AssertSameWeights(engine, ctx.Default, $"Default at vertex {i}");
             }
         }

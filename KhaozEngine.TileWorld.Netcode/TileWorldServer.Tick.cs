@@ -35,6 +35,8 @@ public sealed partial class TileWorldServer
     World? filterWorld;
     HashSet<long>? filterInterest;
     int filterPlane;
+    Predicate<long>? hiddenGroundItem;
+    int groundViewerSlot;
 
     /// <summary>Buffers one command for a slot exactly as an inbound frame would, so a head or a test can drive the
     /// server with no transport. Ignored for an unknown slot, which is what a command arriving one tick after a
@@ -406,6 +408,11 @@ public sealed partial class TileWorldServer
         (World world, HashSet<long> interest) = host.HomeInterest(slot, InterestQueryRadius, serveEpoch);
         FilterToPlane(world, interest, netId);
         FilterToFootprintInterest(interest, netId);
+        if (config.GroundItemVisibleToSlot is not null)
+        {
+            groundViewerSlot = slot;
+            interest.RemoveWhere(hiddenGroundItem ??= IsHiddenGroundItem);
+        }
         return (world, interest);
     }
 
@@ -488,4 +495,7 @@ public sealed partial class TileWorldServer
     }
 
     bool IsOffViewerPlane(long netId) => planeByNetId.TryGetValue(netId, out int plane) && plane != filterPlane;
+
+    bool IsHiddenGroundItem(long netId) =>
+        TryGetGroundItem(netId, out _) && !config.GroundItemVisibleToSlot!(groundViewerSlot, netId);
 }

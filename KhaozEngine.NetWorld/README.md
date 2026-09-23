@@ -422,7 +422,16 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   - The version gate stays outermost, so a client skewed on both reads `IncompatibleVersion`.
   - Unconfigured on both sides, the Hello is byte-identical to the wire without the slot.
   - `ContentIdentity` is non-empty, pipe-free and within `HandshakeToken.MaxLabelBytes`, or the `WorldClient`
-    constructor throws. Keep the server identity pipe-free too.
+    constructor throws. The gate holds the server identity to the same rule and throws at construction.
+- **Catalog content refusals, typed.** The catalog content door (`KhaozEngine.Catalog.Netcode`) refuses with a
+  token starting `ke:content-mismatch:` or `ke:content-client-too-old:`, and `WorldClient` reads them as
+  **`DisconnectReason.ContentVersionMismatch`** and **`DisconnectReason.ContentClientTooOld`**. Both are terminal,
+  even under `RetryOnReject`, and both members were appended after every shipped value. This package does NOT
+  reference the catalog: it recognizes the two by `HandshakeToken.ContentMismatchPrefix` and
+  `ContentClientTooOldPrefix` in `KhaozEngine.Netcode`, the prefixes `ContentRefusal` builds from, and keeps the
+  whole token in `DisconnectReasonDetail`. A game that runs the content door already references
+  `KhaozEngine.Catalog.Netcode` and reads the sides with `ContentRefusal.TryParseMismatch` or
+  `TryParseClientTooOld` over that detail.
   - **Adopting it is a wire change: bump the game's own `ProtocolVersion` in the same release**, so an old peer on
     either side is turned away at the version gate before it can read the identity layer as an auth token.
   - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 12)
@@ -505,6 +514,9 @@ player slot.
 the in-memory default; `WorldStoreBanStore` persists over any `IWorldStore` keyspace (`ban:{accountId}`) with a
 synchronous in-memory cache (call `LoadAsync()` once at startup). Pass either as the trailing `banStore:` ctor
 arg on `WorldServer` or `ShardedWorldServer`. Bans key on the verified account id; guests are not bannable.
+`IBanStore`, `BanRecord` and `InMemoryBanStore` live in the `KhaozEngine.Netcode` assembly under these same
+`KhaozEngine.NetWorld` names, and this package type-forwards them, so the connect gate and a tile server take the
+same seam and existing code compiles and binds unchanged. `WorldStoreBanStore` stays here.
 
 That is the LIVE ban path: the check runs at JOIN, after the authenticator admitted the peer, and the kick is a
 typed `ServerNotice(ServerNoticeKind.Banned)`, so a ban applied mid-session lands on the next join and a game
@@ -512,10 +524,9 @@ banned-player banner has a typed notice to render. The drop that follows attribu
 `DisconnectReason.Banned` on the client, mirroring what a `Shutdown` notice does for `ServerShutdown`, so a
 consumer reading only the disconnect reason can tell a ban from an outage. It is still retried on the backoff,
 because a ban may carry an expiry. `KhaozEngine.Netcode.BanGateAuthenticator` is the other path,
-refusing a subject the head ALREADY knows is banned during AUTHENTICATION with the `ke:banned` wire reason, before
-any join happens. It takes a `Func<string,bool>` rather than this interface because `KhaozEngine.Netcode` cannot
-reference this package. A game that wants both puts the SAME store behind both, here as `banStore:` and there as
-`isBanned: store.IsBanned`, so the two can never disagree about who is banned.
+refusing a banned subject during AUTHENTICATION with the `ke:banned` wire reason, before any join happens. It
+takes the same `IBanStore`, so a game that wants both hands ONE store to both, here as `banStore:` and there as
+`new BanGateAuthenticator(tokenAuth, store)`, and the two can never disagree about who is banned.
 
 **NativeAOT.** The durable persistence DTOs (`PlayerRecord`, `WorldMetaRecord`, and the `WorldStoreBanStore` ban
 record) encode and decode through a source-generated `System.Text.Json` context, so they round-trip under

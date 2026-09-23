@@ -9,10 +9,10 @@ namespace KhaozEngine.Catalog;
 /// The version numbers an AUTHORING database holds, which is the second and third arm of boot step 2's
 /// precedence (spec 10.7): the pinned version when it is not null, otherwise the active version.
 /// <para>
-/// <b>It is optional, and that is the deployment this design recommends.</b> A version pinned in the SERVER'S
-/// OWN CONFIG wins always, so a server configured with a pin and a pack store needs no authoring database at
-/// boot at all: the authoring database is a TOOLING dependency. This interface is what a server that does read
-/// one implements, and <c>IContentAuthoringStore</c> INHERITS it, so a host that boots off its authoring
+/// <b>It is optional.</b> A version pinned in the SERVER'S OWN CONFIG wins always, so a server configured with a
+/// pin reads no version NUMBER from an authoring database. Whether it reads the version RECORD is a separate
+/// choice, <see cref="ContentBootOptions.VersionHashes"/>, which buys the stale pointer check for one read at
+/// boot. This interface is what a server that does read version numbers implements, and <c>IContentAuthoringStore</c> INHERITS it, so a host that boots off its authoring
 /// database hands the boot the store itself rather than an adapter of its own
 /// (https://github.com/APKiwiOrg/KhaozEngine/issues/1015).
 /// </para>
@@ -31,6 +31,45 @@ public interface IContentVersionDirectory
     /// </summary>
     /// <param name="cancellationToken">Cancels the read.</param>
     Task<int> GetActiveVersionAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// The two manifest hashes one published version's ROW records, which is the fact that says which manifest a
+/// version number means. It is the version record's answer and never the store's, so a pointer and this
+/// disagreeing is a stale pack root rather than a difference of opinion.
+/// </summary>
+/// <param name="ServerManifestHash">The version's server manifest digest, lower hex.</param>
+/// <param name="ClientManifestHash">The version's client manifest digest, lower hex.</param>
+public readonly record struct ContentVersionHashes(string ServerManifestHash, string ClientManifestHash);
+
+/// <summary>
+/// The optional half of <see cref="IContentVersionDirectory"/>: a directory that holds the version ROW and can
+/// therefore say which manifest a version number means, rather than only which number to load.
+/// <para>
+/// It is a SEPARATE interface because a directory is allowed to carry numbers and nothing else, and widening
+/// the seam every backend implements would make the hash a requirement for implementations that have none.
+/// <c>IContentAuthoringStore</c> IS one, out of its own version record, so a host that hands the boot the
+/// store itself as <see cref="ContentBootOptions.Directory"/> gets the comparison without writing an adapter.
+/// </para>
+/// <para>
+/// A host that hands the boot a WRAPPER around its store gets NO comparison, because the wrapper implements
+/// <see cref="IContentVersionDirectory"/> and not this. Such a host sets
+/// <see cref="ContentBootOptions.VersionHashes"/> to the store, or makes the wrapper forward this interface
+/// too. A boot with neither skips the comparison at step 3, which is exactly the boot it ran before this check
+/// existed, and <see cref="ContentBootResult.PackPointerCrossChecked"/> is false.
+/// </para>
+/// </summary>
+public interface IContentVersionHashSource
+{
+    /// <summary>
+    /// The version row's two manifest hashes, or NULL when this directory holds no such version, which is not
+    /// a refusal: a server pinned to a version its directory never published has no fact to compare against.
+    /// </summary>
+    /// <param name="versionNumber">The version the boot resolved.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    Task<ContentVersionHashes?> GetVersionHashesAsync(
+        int versionNumber,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -90,12 +129,32 @@ public sealed class ContentBootOptions
 
     /// <summary>
     /// The version pinned in the SERVER'S OWN CONFIG, which wins always. With one set, a boot needs no
-    /// <see cref="Directory"/> at all.
+    /// <see cref="Directory"/> to find its version number, and it still reads <see cref="VersionHashes"/> when
+    /// that is set.
     /// </summary>
     public int? ConfiguredVersion { get; init; }
 
     /// <summary>The authoring database's pinned and active versions, or null when the server reads neither.</summary>
     public IContentVersionDirectory? Directory { get; init; }
+
+    /// <summary>
+    /// Where step 3 reads the version RECORD's two manifest hashes, to compare with the pack store's
+    /// <c>versions/&lt;n&gt;</c> pointer before the manifest is fetched. When this is null the boot falls back to
+    /// <see cref="Directory"/>, and only when that object is itself an <see cref="IContentVersionHashSource"/>.
+    /// <para>
+    /// <b>A WRAPPER skips the check.</b> A host whose <see cref="Directory"/> is its own type around an
+    /// authoring store, implementing <see cref="IContentVersionDirectory"/> and forwarding the two number reads,
+    /// is not a hash source, and its boot compares nothing unless it sets this or the wrapper forwards
+    /// <see cref="IContentVersionHashSource"/> as well. Setting it names the source at the call site, and
+    /// <see cref="ContentBootResult.PackPointerCrossChecked"/> says afterwards whether the comparison ran.
+    /// </para>
+    /// <para>
+    /// It is read even when <see cref="ConfiguredVersion"/> is set, because the pin decides the NUMBER and this
+    /// decides which manifest that number means. A pinned server that sets it therefore reads the version
+    /// record once at boot.
+    /// </para>
+    /// </summary>
+    public IContentVersionHashSource? VersionHashes { get; init; }
 
     /// <summary>
     /// Where the version pointer is read from, or null to use <see cref="Store"/> itself when it is one.

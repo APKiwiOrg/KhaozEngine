@@ -39,8 +39,12 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// </summary>
 internal static class SqlServerCatalogSchemaValidation
 {
-    /// <summary>The resource the create takes an exclusive application lock on.</summary>
-    const string LockResource = "KhaozEngine.Catalog.SqlServer.CatalogSchema";
+    /// <summary>
+    /// The resource EVERY statement that reshapes this schema takes an exclusive application lock on. The
+    /// create, the migration and the reset all take it, on the same name, or the lock would not serialize
+    /// them against each other.
+    /// </summary>
+    internal const string LockResource = "KhaozEngine.Catalog.SqlServer.CatalogSchema";
 
     /// <summary>The seconds the application lock and the create are given.</summary>
     const int LockTimeoutSeconds = 60;
@@ -147,13 +151,7 @@ internal static class SqlServerCatalogSchemaValidation
         await using SqlTransaction transaction = (SqlTransaction)await connection
             .BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
 
-        int held = await TakeApplicationLockAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-        if (held < 0)
-        {
-            await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
-            throw Mismatch(FormattableString.Invariant(
-                $"locked by another process creating it, which returned application lock code {held}, so this start created nothing"));
-        }
+        await TakeSchemaLockAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
 
         // The other holder of the lock may have created the schema while this one waited, which is the whole
         // point of taking it. Re-read inside the lock rather than trusting the count taken outside it.
@@ -170,6 +168,56 @@ internal static class SqlServerCatalogSchemaValidation
     }
 
     /// <summary>
+    /// Takes the exclusive application lock for the given transaction, waiting up to a minute, and throws
+    /// naming the lock code if it cannot be had.
+    /// <para>
+    /// <b>Every statement that reshapes this schema takes it, on this one resource name:</b> the create, the
+    /// version 1 migration and the reset. A lock one of them holds and another does not is not a lock: the two
+    /// would interleave, and a reset that drops every catalog table while a starting host is creating or
+    /// migrating them is a database neither of them can describe.
+    /// The lock is held for the transaction and released with it, however it ends.
+    /// </para>
+    /// </summary>
+    /// <param name="connection">The connection the transaction belongs to.</param>
+    /// <param name="transaction">The transaction that will own the lock.</param>
+    /// <param name="cancellationToken">Cancels the wait.</param>
+    /// <exception cref="ContentAuthoringException">The lock could not be taken inside the timeout.</exception>
+    internal static async Task TakeSchemaLockAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(transaction);
+
+        int held;
+        await using (SqlCommand applicationLock = connection.CreateCommand())
+        {
+            applicationLock.Transaction = transaction;
+            applicationLock.CommandText = """
+                DECLARE @result int;
+                EXEC @result = sys.sp_getapplock
+                    @Resource = @resource,
+                    @LockMode = 'Exclusive',
+                    @LockOwner = 'Transaction',
+                    @LockTimeout = @timeout;
+                SELECT @result;
+                """;
+            applicationLock.Parameters.Add("@resource", SqlDbType.NVarChar, 255).Value = LockResource;
+            applicationLock.Parameters.Add("@timeout", SqlDbType.Int).Value = LockTimeoutSeconds * 1000;
+            applicationLock.CommandTimeout = LockTimeoutSeconds * 2;
+            object? raw = await applicationLock.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            held = raw is int code ? code : -999;
+        }
+
+        if (held < 0)
+        {
+            throw Mismatch(FormattableString.Invariant(
+                $"locked by another process creating, migrating or resetting it, which returned application lock code {held}, so this call changed nothing"));
+        }
+    }
+
+    /// <summary>
     /// The version 1 to version 2 migration, behind the SAME exclusive application lock the create takes and
     /// inside one transaction: the ledger table, its index, and the metadata row moved to 2. Two hosts
     /// starting at once against one database is the ordinary deployment here, so the second one waits and then
@@ -182,13 +230,7 @@ internal static class SqlServerCatalogSchemaValidation
         await using SqlTransaction transaction = (SqlTransaction)await connection
             .BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
 
-        int held = await TakeApplicationLockAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-        if (held < 0)
-        {
-            await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
-            throw Mismatch(FormattableString.Invariant(
-                $"locked by another process migrating it, which returned application lock code {held}, so this start changed nothing"));
-        }
+        await TakeSchemaLockAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
 
         if (await ReadSchemaVersionAsync(connection, transaction, cancellationToken).ConfigureAwait(false) == 1)
         {
@@ -203,35 +245,6 @@ internal static class SqlServerCatalogSchemaValidation
         }
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// The exclusive application lock, held for the transaction and released with it. Both the create and the
-    /// migration take it on the same resource, so one start cannot create while another migrates.
-    /// </summary>
-    /// <param name="connection">An open connection.</param>
-    /// <param name="transaction">The transaction the lock is held for.</param>
-    /// <param name="cancellationToken">Cancels the wait.</param>
-    static async Task<int> TakeApplicationLockAsync(
-        SqlConnection connection,
-        SqlTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        await using SqlCommand applicationLock = connection.CreateCommand();
-        applicationLock.Transaction = transaction;
-        applicationLock.CommandText = """
-            DECLARE @result int;
-            EXEC @result = sys.sp_getapplock
-                @Resource = @resource,
-                @LockMode = 'Exclusive',
-                @LockOwner = 'Transaction',
-                @LockTimeout = @timeout;
-            SELECT @result;
-            """;
-        applicationLock.Parameters.Add("@resource", SqlDbType.NVarChar, 255).Value = LockResource;
-        applicationLock.Parameters.Add("@timeout", SqlDbType.Int).Value = LockTimeoutSeconds * 1000;
-        object? raw = await applicationLock.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return raw is int code ? code : -999;
     }
 
     static Task<int> CountTablesAsync(SqlConnection connection, CancellationToken cancellationToken)

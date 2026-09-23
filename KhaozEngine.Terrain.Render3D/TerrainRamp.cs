@@ -2,9 +2,9 @@ using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Terrain
 {
-    /// <summary>Maps splat weights to a vertex colour for the current (pre-PBR) terrain slice: a weighted blend of
-    /// five greybox palette colours (matching make_clearing_greybox.py's height/slope ramp). Drop-in replaceable
-    /// by PBR splat textures later.</summary>
+    /// <summary>Maps splat weights to a vertex colour for a chunk drawn without a splat material: a weighted blend of
+    /// five greybox palette colours (matching make_clearing_greybox.py's ramp). A chunk loaded with a
+    /// <see cref="TerrainLayeredMaterial"/> blends textured layers by the same weights instead.</summary>
     public static class TerrainRamp
     {
         public static readonly Color Grass = new(0.27f, 0.42f, 0.18f);

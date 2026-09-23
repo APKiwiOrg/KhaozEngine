@@ -14,9 +14,10 @@ namespace KhaozEngine.Tests;
 /// it. Every <see cref="ProbeInterval"/> it queues one probe work item on the pool and reads how long that item
 /// has waited. A wait of <see cref="EpisodeThreshold"/> or more is a starvation episode, reported as one line when
 /// the pool recovers (or at process exit if it never does) to stderr and to a log file. The first time a still
-/// queued probe has waited <see cref="DumpThreshold"/>, or an episode has lasted that long, the watchdog launches
-/// the runtime's own <c>createdump</c> against this process, once per process, with the heap included so SOS can
-/// walk the managed stacks of the threads that were holding the pool.</para>
+/// queued probe has waited <see cref="DumpThreshold"/>, or an episode has lasted that long, the watchdog asks the
+/// runtime's diagnostic server for a dump of this process through <see cref="DiagnosticsIpcDump"/>, once per
+/// process, with the heap included so SOS can walk the managed stacks of the threads that were holding the pool.
+/// The runtime then runs its own <c>createdump</c>, which Windows refuses to run from outside against a pid.</para>
 ///
 /// <para>Output goes to the directory named by <c>KE_POOL_WATCH_DIR</c>, or <c>ke-pool-watch</c> under the temp
 /// directory when that is unset. The log file also gets one <c>pool-watch-armed</c> line per process, so an empty
@@ -33,7 +34,7 @@ public static class ThreadPoolStarvationWatchdog
     private static readonly TimeSpan ProbeInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan EpisodeThreshold = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan DumpThreshold = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan DumpBudget = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan DumpConnectBudget = TimeSpan.FromSeconds(30);
 
     private static int started;
 
@@ -163,9 +164,6 @@ public static class ThreadPoolStarvationWatchdog
         private void CaptureDump(TimeSpan latency)
         {
             string dumpPath = Path.Combine(directory, $"pool-watch-{host}-{pid}.dmp");
-            string createdump = Path.Combine(
-                Path.GetDirectoryName(typeof(object).Assembly.Location) ?? string.Empty,
-                OperatingSystem.IsWindows() ? "createdump.exe" : "createdump");
             TryWrite($"{Stamp(DateTime.UtcNow)} pool-dump-start {Identity()} latency_ms={(long)latency.TotalMilliseconds} " +
                      $"threads={ThreadPool.ThreadCount} pending={ThreadPool.PendingWorkItemCount} path={dumpPath}");
 
@@ -173,35 +171,13 @@ public static class ThreadPoolStarvationWatchdog
             string outcome;
             try
             {
-                var info = new ProcessStartInfo(createdump)
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                };
-                info.ArgumentList.Add("--withheap");
-                info.ArgumentList.Add("-f");
-                info.ArgumentList.Add(dumpPath);
-                info.ArgumentList.Add(pid.ToString(CultureInfo.InvariantCulture));
-
-                using Process dumper = Process.Start(info) ?? throw new InvalidOperationException("createdump did not start");
-                if (dumper.WaitForExit(DumpBudget))
-                {
-                    string detail = (dumper.StandardError.ReadToEnd() + " " + dumper.StandardOutput.ReadToEnd())
-                        .ReplaceLineEndings(" ").Trim();
-                    long bytes = File.Exists(dumpPath) ? new FileInfo(dumpPath).Length : 0;
-                    outcome = $"exit={dumper.ExitCode} bytes={bytes}" + (dumper.ExitCode == 0 ? string.Empty : $" detail={detail}");
-                }
-                else
-                {
-                    dumper.Kill();
-                    outcome = $"exit=timeout budget_ms={(long)DumpBudget.TotalMilliseconds}";
-                }
+                int hresult = DiagnosticsIpcDump.WriteDump(pid, dumpPath, DumpConnectBudget);
+                long bytes = File.Exists(dumpPath) ? new FileInfo(dumpPath).Length : 0;
+                outcome = $"hresult=0x{hresult:X8} bytes={bytes}";
             }
             catch (Exception ex)
             {
-                outcome = $"exit=error error={ex.GetType().Name}: {ex.Message}";
+                outcome = $"hresult=none error={ex.GetType().Name}: {ex.Message}";
             }
 
             TryWrite($"{Stamp(DateTime.UtcNow)} pool-dump {Identity()} {outcome} elapsed_ms={clock.ElapsedMilliseconds} path={dumpPath}");

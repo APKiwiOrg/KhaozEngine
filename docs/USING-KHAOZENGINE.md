@@ -8082,6 +8082,24 @@ the chunk's props instead of rebuilding it. `streamer.RefreshPlacements(coord)` 
 layers of that loaded chunk through `Scene3DChunkSink`'s `IChunkPlacementRefreshSink` and leaves its terrain mesh
 and collider alone. `Invalidate` is still the call for a field change.
 
+The same holds for a change to scatter or companion configs that leaves the field alone, such as a moved
+exclusion. Hand the sink the new layers, then refresh the props of the chunks the change can reach:
+
+```csharp
+streamer.FlushPendingBuilds();
+if (sink.KeepsLayerShape(layers))
+{
+    sink.UpdateLayers(layers);
+    streamer.RefreshProps(reach);   // every prop layer of the loaded chunks in reach, terrain untouched
+}
+```
+
+`KeepsLayerShape` is what makes refreshing only some chunks safe: it is true only when each layer differs in
+nothing but its `Scatter` and `Companions` configs, since a chunk left alone keeps state derived from the old
+list. `reach` must cover every chunk whose placements the new configs change, which for a scatter exclusion is
+its bounds padded by the layer's jitter. A layer-count, kind or companion-host change needs every loaded chunk
+rebuilt (`UpdateLayers` then `InvalidateAll`) or a new sink.
+
 **Every teleport, zone change and camera jump runs the teleport contract.** This is the step most likely to
 be missed, because without it the world looks right within a few frames and the failure only shows as a
 brief fall-through on arrival:
@@ -9387,9 +9405,11 @@ column is also wider: `OutlinePanelWidth` (260, unchanged) and `InspectorPanelWi
 shared 260) now split independently, giving the grouped companion/scatter-layer rows room to breathe.
 
 **Viewport rebuild performance.** Bounded terrain-height edits invalidate only loaded chunks overlapping
-the accumulated dirty region. Exclusion and scatter-override edits first refresh the captured generation
-configuration, then invalidate their jitter-padded shape bounds. Terrain scalars, biome bands and
-same-topology scatter or companion value edits refresh every loaded chunk without rebuilding the viewport.
+the accumulated dirty region. Exclusion and scatter-override edits leave the field alone, so they refresh the
+captured generation configuration and re-serve only the props of the loaded chunks their jitter-padded shape
+bounds overlap (`ViewportWorld.RefreshLayerProps`), with no terrain re-mesh, every drag frame. Terrain scalars,
+biome bands and same-topology scatter or companion value edits refresh every loaded chunk without rebuilding
+the viewport.
 Pending asynchronous work is flushed before field or layer snapshots change. Layer-count, layer-kind,
 placement-layer, kit and HLOD topology changes retain the full rebuild path (#14). Full rebuilds are
 throttled to at most once per

@@ -85,13 +85,18 @@ public sealed class PointLightClusterRangeTests
     }
 
     [Fact]
-    public void AHugeLightTheBruteForceAdmitsOnlyThroughSliceZeroRoundingIsDroppedAndCannotReachIt()
+    public void AHugeLightTheBruteForceCanAdmitOnlyThroughSliceZeroRoundingIsDroppedAndCannotReachIt()
     {
         // The eye sits kilometres from render-space zero, so slice-zero clusters, about a centimetre across here, are
-        // built from corners whose float rounding is about a percent of their own size. Their planes tilt, and at this huge
-        // light's lateral distance the tilt lets the brute force admit it into slice zero. In exact geometry the whole
-        // sphere lies nearer than the near plane, mostly behind the eye, so it reaches no cluster and adds no light.
-        // The range builder drops it. This is the documented difference, pinned so the guarantee stays honest.
+        // built from corners whose float rounding is one to a few percent of their own size. Their planes tilt, and at
+        // this huge light's lateral distance the tilt can let the brute force admit it into slice zero. In exact
+        // geometry the whole sphere lies nearer than the near plane, wholly behind the eye, so it reaches no cluster
+        // and adds no light. The range builder drops it. This is the documented difference, pinned so the guarantee
+        // stays honest.
+        // On the arm64 build this was measured on, the brute force admits the light into cluster (7, 6, 0). Another
+        // architecture rounds differently and may admit it nowhere, which is fine. So the brute force is held only to
+        // what rounding cannot change here: whatever it admits lies in slice zero, and it admits at least what the
+        // range builder does.
         const float near = 0.1f;
         var eye = new Vector3(1837.1f, 31.3f, -1961.9f);
         Vector3 direction = Vector3.Normalize(new Vector3(0.8f, -0.35f, -1.3f));
@@ -106,11 +111,17 @@ public sealed class PointLightClusterRangeTests
         oracle.Build(lights, viewProjection, eye, direction, projection, Vector3.Zero);
         builder.Build(lights, viewProjection, eye, direction, projection, Vector3.Zero);
 
-        Assert.Equal(1f, oracle.Depth.W);
         Assert.Equal(1f, builder.Depth.W);
-        Assert.True(oracle.LightReferenceCount > 0, "precondition: the brute force admits the light somewhere");
-        Assert.Equal(0, builder.LightReferenceCount);
         Assert.Equal(0, builder.OverflowedClusters);
+        Assert.Equal(0, builder.LightReferenceCount);
+        Assert.True(oracle.LightReferenceCount >= builder.LightReferenceCount,
+            $"the brute force holds {oracle.LightReferenceCount} references, the range builder "
+            + $"{builder.LightReferenceCount}");
+        for (int z = 0; z < PointLightClusterBuilder.ClusterCountZ; z++)
+            for (int y = 0; y < PointLightClusterBuilder.ClusterCountY; y++)
+                for (int x = 0; x < PointLightClusterBuilder.ClusterCountX; x++)
+                    Assert.False(z != 0 && PointLightClusterImage.Contains(oracle, x, y, z, 0u),
+                        $"the brute force admitted the light into cluster ({x}, {y}, {z}), beyond slice zero");
 
         // Exact geometry in double precision from the same eye, direction and near value. The far side of the sphere
         // along the normalized forward stays short of the near plane and of the nearest depth the builder slices from.

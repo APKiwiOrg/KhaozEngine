@@ -6,12 +6,13 @@ namespace KhaozEngine.Render3D.Internal;
 
 /// <summary>
 /// The conservative cluster range of every point light in one frame (issue #1112), gathered before any cluster is
-/// visited. A range holds every cluster the light's sphere reaches in exact geometry, widened by a margin, so testing
-/// only those clusters assigns what testing all of them did. The exception is the brute-force test's own float
-/// rounding in slice-zero planes. Those clusters are the frame's smallest, millimetres to centimetres across, and are
-/// built from corners whose rounding grows with the eye's distance from render-space zero, so their planes can tilt
-/// enough to admit a light that does not reach the cluster in exact geometry. Such a light is dropped here. It adds no light to that cluster, so lighting is
-/// identical. A light whose range is empty reaches no cluster in exact geometry and is culled here.
+/// visited. A range holds every cluster whose exact plane test in <see cref="PointLightClusterBuilder"/> could accept the
+/// light, so testing only those clusters assigns exactly what testing all of them did. The exception is that test's
+/// own float rounding in slice-zero planes. Those clusters are the frame's smallest, millimetres to centimetres across,
+/// and are built from corners whose rounding grows with the eye's distance from render-space zero, so their planes can
+/// tilt enough to admit a light that does not reach the cluster in exact geometry. Such a light is dropped here. It
+/// adds no light to that cluster, so lighting is identical. A light whose range is empty could pass no cluster's exact
+/// test, apart from that exception, and is culled here.
 /// </summary>
 internal sealed class PointLightClusterRanges
 {
@@ -19,9 +20,9 @@ internal sealed class PointLightClusterRanges
     /// How far every range test is widened, as a fraction of the largest of one, the frame's geometry scale, the light's
     /// largest centre coordinate and its radius. That is ten times the builder's exact-test epsilon over the same scale,
     /// so the widening covers the epsilon plus ordinary rounding between these boundary planes and the planes each
-    /// cluster builds from its own corners. It does not cover a slice-zero plane that rounding tilts far enough to admit
-    /// a light that is not there in exact geometry, and it is deliberately not raised to chase one, because such a
-    /// light adds no light.
+    /// cluster builds from its own corners. It does not cover a slice-zero plane that rounding tilts far enough to
+    /// admit a light that is not there in exact geometry, and it is deliberately not raised to chase one, because such
+    /// a light adds no light.
     /// </summary>
     internal const float MarginScale = 1e-3f;
 
@@ -91,8 +92,8 @@ internal sealed class PointLightClusterRanges
         if (!float.IsFinite(nearReach) || !float.IsFinite(farReach)) return true;
 
         // In exact geometry every cluster's near and far faces lie at constant view depth, so a light outside this
-        // widened depth span reaches no cluster. The brute force can still admit one into slice zero when rounding tilts
-        // that slice's planes, and dropping it adds no light.
+        // widened depth span reaches no cluster. The brute force can still admit one into slice zero when rounding
+        // tilts that slice's planes, and dropping it adds no light.
         if (farReach < sliceDepth[0] || nearReach > sliceDepth[CountZ]) return false;
         int minZ = 0;
         while (minZ < CountZ - 1 && sliceDepth[minZ + 1] < nearReach) minZ++;
@@ -144,8 +145,9 @@ internal sealed class PointLightClusterRanges
 
     // One plane per tile boundary, through the corner rays the builder unprojected for it, oriented so the next tile
     // along lies on its positive side. Every cluster's side plane on that boundary is built from points on the same
-    // rays, so the two agree up to rounding, which the margin covers. A failure here gives every light the full tile
-    // range, which is always safe.
+    // rays, so the two agree up to rounding. The margin covers that rounding on the seeded equivalence scenes, with the
+    // same slice-zero exception the class summary describes, rather than by proof. A failure here gives every light the
+    // full tile range, which is always safe.
     bool PrepareTilePlanes(ReadOnlySpan<Vector3> clipNear, ReadOnlySpan<Vector3> clipFar)
     {
         for (int x = 0; x <= CountX; x++)

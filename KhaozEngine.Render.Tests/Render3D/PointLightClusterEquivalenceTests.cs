@@ -8,10 +8,12 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D;
 
 /// <summary>
-/// Proves the range-limited cluster builder assigns every cluster exactly the lights, in exactly the order, that the
-/// brute-force builder assigned (issue #1112). The brute-force builder is kept verbatim as
+/// Proves on seeded scenes that the range-limited cluster builder assigns every cluster exactly the lights, in exactly
+/// the order, that the brute-force builder assigned (issue #1112). The brute-force builder is kept verbatim as
 /// <see cref="PointLightClusterOracle"/>. Scenes are seeded, so a failure names a seed that reproduces it. One builder is
-/// reused across a batch, so state left by the previous scene is exercised too.
+/// reused across a batch, so state left by the previous scene is exercised too. The one known difference, a light the
+/// brute force admits into slice zero only through its own plane rounding, adds no light and is pinned in
+/// <see cref="PointLightClusterRangeTests"/>.
 /// </summary>
 public sealed class PointLightClusterEquivalenceTests
 {

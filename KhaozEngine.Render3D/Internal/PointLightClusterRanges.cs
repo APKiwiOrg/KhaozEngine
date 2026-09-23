@@ -6,17 +6,22 @@ namespace KhaozEngine.Render3D.Internal;
 
 /// <summary>
 /// The conservative cluster range of every point light in one frame (issue #1112), gathered before any cluster is
-/// visited. A range holds every cluster whose exact plane test in <see cref="PointLightClusterBuilder"/> could accept the
-/// light, so testing only those clusters assigns exactly what testing all of them did. A light whose range is empty is
-/// culled here, which is the frustum cull: no cluster could accept it.
+/// visited. A range holds every cluster the light's sphere reaches in exact geometry, widened by a margin, so testing
+/// only those clusters assigns what testing all of them did. The exception is the brute-force test's own float
+/// rounding in slice-zero planes. Those clusters are the frame's smallest, millimetres to centimetres across, and are
+/// built from corners whose rounding grows with the eye's distance from render-space zero, so their planes can tilt
+/// enough to admit a light that does not reach the cluster in exact geometry. Such a light is dropped here. It adds no light to that cluster, so lighting is
+/// identical. A light whose range is empty reaches no cluster in exact geometry and is culled here.
 /// </summary>
 internal sealed class PointLightClusterRanges
 {
     /// <summary>
     /// How far every range test is widened, as a fraction of the largest of one, the frame's geometry scale, the light's
     /// largest centre coordinate and its radius. That is ten times the builder's exact-test epsilon over the same scale,
-    /// so the widening covers the epsilon plus the rounding between these boundary planes and the planes each cluster
-    /// builds from its own corners.
+    /// so the widening covers the epsilon plus ordinary rounding between these boundary planes and the planes each
+    /// cluster builds from its own corners. It does not cover a slice-zero plane that rounding tilts far enough to admit
+    /// a light that is not there in exact geometry, and it is deliberately not raised to chase one, because such a
+    /// light adds no light.
     /// </summary>
     internal const float MarginScale = 1e-3f;
 
@@ -85,17 +90,19 @@ internal sealed class PointLightClusterRanges
         // for every light before ranges existed.
         if (!float.IsFinite(nearReach) || !float.IsFinite(farReach)) return true;
 
-        // Every cluster's near and far faces lie at constant view depth, so this is those two faces' exact test widened
-        // by the margin, and a light outside it can pass no cluster at all.
+        // In exact geometry every cluster's near and far faces lie at constant view depth, so a light outside this
+        // widened depth span reaches no cluster. The brute force can still admit one into slice zero when rounding tilts
+        // that slice's planes, and dropping it adds no light.
         if (farReach < sliceDepth[0] || nearReach > sliceDepth[CountZ]) return false;
         int minZ = 0;
         while (minZ < CountZ - 1 && sliceDepth[minZ + 1] < nearReach) minZ++;
         int maxZ = CountZ - 1;
         while (maxZ > minZ && sliceDepth[maxZ] > farReach) maxZ--;
 
-        // A sphere that reaches the near plane takes every tile and is never culled by a side plane. Behind the eye a
-        // column's side planes cross, and the six-plane test accepts spheres there that lie wholly outside the frustum,
-        // so a side-plane cull would drop lights the exact test keeps.
+        // A sphere that reaches the near plane takes every tile. Behind the eye a column's side planes cross, and the
+        // exact test accepts some spheres there that lie wholly outside the frustum. The span below applies the same
+        // side-plane pairs as that test, but keeping every tile for these lights is the conservative choice and needs
+        // no argument about how the crossed planes behave.
         if (nearReach <= sliceDepth[0] || !_tilePlanesValid)
         {
             range = new ClusterRange(0, CountX - 1, 0, CountY - 1, minZ, maxZ);

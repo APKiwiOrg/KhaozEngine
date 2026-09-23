@@ -7,7 +7,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D;
 
 /// <summary>Pins that the cluster builder tests only the clusters a light's conservative range reaches (issue #1112).
-/// <see cref="PointLightClusterEquivalenceTests"/> proves the result did not change. These prove the work did.</summary>
+/// <see cref="PointLightClusterEquivalenceTests"/> proves on seeded scenes that the result did not change. These prove
+/// the work did, and pin the one known difference, which adds no light.</summary>
 public sealed class PointLightClusterRangeTests
 {
     static readonly Matrix4x4 Ortho = Matrix4x4.CreateOrthographic(32f, 18f, 1f, 25f);
@@ -81,6 +82,46 @@ public sealed class PointLightClusterRangeTests
 
         Assert.Equal(-1f, oracle.Depth.W);
         PointLightClusterImage.AssertSameAssignment(oracle, builder, "a light reaching the degenerate first slice");
+    }
+
+    [Fact]
+    public void AHugeLightTheBruteForceAdmitsOnlyThroughSliceZeroRoundingIsDroppedAndCannotReachIt()
+    {
+        // The eye sits kilometres from render-space zero, so slice-zero clusters, about a centimetre across here, are
+        // built from corners whose float rounding is about a percent of their own size. Their planes tilt, and at this huge
+        // light's lateral distance the tilt lets the brute force admit it into slice zero. In exact geometry the whole
+        // sphere lies nearer than the near plane, mostly behind the eye, so it reaches no cluster and adds no light.
+        // The range builder drops it. This is the documented difference, pinned so the guarantee stays honest.
+        const float near = 0.1f;
+        var eye = new Vector3(1837.1f, 31.3f, -1961.9f);
+        Vector3 direction = Vector3.Normalize(new Vector3(0.8f, -0.35f, -1.3f));
+        Matrix4x4 projection = Matrix4x4.CreatePerspectiveFieldOfView(1.1f, 1.7778f, near, 300f);
+        Matrix4x4 viewProjection = Matrix4x4.CreateLookAt(eye, eye + direction, Vector3.UnitY) * projection;
+        var center = new Vector3(1851.30615f, 6.78155136f, -1827.14478f);
+        const float radius = 96.4895401f;
+        ModelRenderer.PointLightData[] lights = [Light(center, radius)];
+        var oracle = new PointLightClusterOracle();
+        var builder = new PointLightClusterBuilder();
+
+        oracle.Build(lights, viewProjection, eye, direction, projection, Vector3.Zero);
+        builder.Build(lights, viewProjection, eye, direction, projection, Vector3.Zero);
+
+        Assert.Equal(1f, oracle.Depth.W);
+        Assert.Equal(1f, builder.Depth.W);
+        Assert.True(oracle.LightReferenceCount > 0, "precondition: the brute force admits the light somewhere");
+        Assert.Equal(0, builder.LightReferenceCount);
+        Assert.Equal(0, builder.OverflowedClusters);
+
+        // Exact geometry in double precision from the same eye, direction and near value. The far side of the sphere
+        // along the normalized forward stays short of the near plane and of the nearest depth the builder slices from.
+        double forwardX = 0.8f, forwardY = -0.35f, forwardZ = -1.3f;
+        double length = Math.Sqrt(forwardX * forwardX + forwardY * forwardY + forwardZ * forwardZ);
+        double depth = (((double)center.X - eye.X) * forwardX + ((double)center.Y - eye.Y) * forwardY
+            + ((double)center.Z - eye.Z) * forwardZ) / length;
+        double farSide = depth + radius;
+        Assert.True(farSide < near, $"the sphere reaches depth {farSide}, past the near plane at {near}");
+        Assert.True(farSide < builder.Depth.X,
+            $"the sphere reaches depth {farSide}, past the builder's nearest slice depth {builder.Depth.X}");
     }
 
     static ModelRenderer.PointLightData Light(Vector3 position, float radius) => new()

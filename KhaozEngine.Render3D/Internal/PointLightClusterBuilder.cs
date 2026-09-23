@@ -202,7 +202,8 @@ internal sealed class PointLightClusterBuilder
     }
 
     // The exact test is unchanged. Only its candidates changed: the lights whose range holds this cluster, still in
-    // ascending submitted order, so the first 64 that pass and the overflow point are the same as testing all of them.
+    // ascending submitted order, so the first 64 that pass and the overflow point are the same as testing all of them,
+    // apart from the slice-zero rounding case PointLightClusterRanges describes, which adds no light.
     // The planes are built at the first candidate, so a cluster no light's range reaches is never built.
     bool PackCluster(ReadOnlySpan<ModelRenderer.PointLightData> lights, Vector3 renderOrigin,
         ReadOnlySpan<int> survivors, ReadOnlySpan<PointLightClusterRanges.ClusterRange> ranges, int rowCount,

@@ -32,7 +32,7 @@ namespace KhaozEngine.Terrain
     /// disposes the sink if it is <see cref="IDisposable"/> - i.e. it assumes it owns the sink it was given (turn-key
     /// teardown). To rebuild streaming while REUSING the same sink, call <see cref="UnloadAll"/> and hand the same sink
     /// to the new streamer. Call <see cref="Dispose"/> only when the sink (and its GPU resources) should go too.</para></summary>
-    public sealed class TerrainStreamer : IDisposable
+    public sealed partial class TerrainStreamer : IDisposable
     {
         StreamerConfig _config;
         readonly IChunkSink _sink;

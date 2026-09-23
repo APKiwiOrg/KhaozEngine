@@ -30,7 +30,7 @@ namespace KhaozEngine.Terrain
     /// <c>ownsMaterial: true</c> to hand ownership to the sink, whose <see cref="Dispose"/> then frees it too. The
     /// material is never disposed per-chunk.</para></summary>
     public sealed class Scene3DChunkSink : IReasonedAsyncChunkSink, IChunkLodConfigSink, IChunkPlacementRefreshSink,
-        IDisposable
+        IChunkPropRefreshSink, IDisposable
     {
         readonly Scene3D _scene;
         TerrainField _field;
@@ -142,27 +142,8 @@ namespace KhaozEngine.Terrain
             // to the caller's own List<PropLayer>, which the caller could otherwise keep mutating after
             // construction and desync from what was validated and bucketed.
             PropLayer[] snapshot = layers.ToArray();
+            PropLayerTopology.Validate(snapshot, nameof(layers));
             _layers = snapshot;
-            if (snapshot.Length == 0)
-                throw new ArgumentException("At least one PropLayer is required.", nameof(layers));
-            for (int i = 0; i < snapshot.Length; i++)
-            {
-                PropLayer l = snapshot[i];
-                if (l.IsCompanion)
-                {
-                    if (l.HostLayerIndex < 0 || l.HostLayerIndex >= snapshot.Length)
-                        throw new ArgumentException(
-                            $"PropLayer {i}: companion HostLayerIndex {l.HostLayerIndex} is out of range.", nameof(layers));
-                    if (snapshot[l.HostLayerIndex].IsCompanion)
-                        throw new ArgumentException(
-                            $"PropLayer {i}: companion host {l.HostLayerIndex} must be a scatter or placement layer.",
-                            nameof(layers));
-                }
-                else if (l.Scatter == null && !l.IsPlacement)
-                {
-                    throw new ArgumentException($"PropLayer {i} has no Scatter config, Companions config, Placements, or PlacementSource.", nameof(layers));
-                }
-            }
             _chunkSize = chunkSize;
             _placementBuckets = PlacementBuckets.Build(snapshot, chunkSize);
             _material = material;
@@ -326,8 +307,14 @@ namespace KhaozEngine.Terrain
         }
 
         /// <summary>Replaces captured scatter and companion configuration without changing layer topology. Loaded
-        /// chunks keep their current placement arrays until the streamer invalidates them. Placement layer inputs,
-        /// layer kinds and HLOD presence are topology and must remain unchanged.</summary>
+        /// chunks keep their current placement arrays until the streamer invalidates or refreshes them. The list is
+        /// checked against the construction rules again, then against the current list: the same count and, per
+        /// index, the same kind and HLOD presence, with every placement layer unchanged. The placement buckets and
+        /// the HLOD gate are derived from exactly those parts, so they stay valid without being rebuilt.
+        /// <para>A companion may name a different host here, which is only safe when every loaded chunk is rebuilt
+        /// afterwards (<see cref="TerrainStreamer.InvalidateAll"/>). Before refreshing only some chunks
+        /// (<see cref="TerrainStreamer.Invalidate(RectArea)"/> or <see cref="TerrainStreamer.RefreshProps"/>), check
+        /// <see cref="KeepsLayerShape"/> first, since every chunk left alone keeps state derived from the old list.</para></summary>
         public void UpdateLayers(IReadOnlyList<PropLayer> layers)
         {
             ArgumentNullException.ThrowIfNull(layers);
@@ -337,18 +324,22 @@ namespace KhaozEngine.Terrain
                     $"UpdateLayers was called while {inFlight} chunk build(s) are still running. " +
                     "Flush the streamer before replacing captured generation config.");
             PropLayer[] next = layers.ToArray();
-            if (next.Length != _layers.Length)
-                throw new ArgumentException("Layer count is topology. Rebuild the sink to add or remove a layer.", nameof(layers));
-            for (int i = 0; i < next.Length; i++)
-            {
-                PropLayer before = _layers[i], after = next[i];
-                if (before.IsCompanion != after.IsCompanion || before.IsPlacement != after.IsPlacement
-                    || before.HasHlod != after.HasHlod)
-                    throw new ArgumentException($"Layer {i} changed topology. Rebuild the sink instead.", nameof(layers));
-                if (before.IsPlacement && !before.Equals(after))
-                    throw new ArgumentException($"Placement layer {i} is construction-only.", nameof(layers));
-            }
+            PropLayerTopology.Validate(next, nameof(layers));
+            PropLayerTopology.RequireSameTopology(_layers, next, nameof(layers));
             _layers = next;
+        }
+
+        /// <summary>True when <paramref name="layers"/> differs from the current list only in each layer's
+        /// <see cref="PropLayer.Scatter"/> and <see cref="PropLayer.Companions"/> configs, which is the condition for
+        /// passing it to <see cref="UpdateLayers"/> and then refreshing only some loaded chunks. A chunk that is not
+        /// refreshed keeps placements derived from the old companion hosts, and its prop clusters keep the old
+        /// layer's meshes, radii and identity. So count, kind, companion host, HLOD, placement data and every draw
+        /// setting must compare equal, and the caller must also guarantee that the old and new configs place the
+        /// same props in every chunk it does not refresh.</summary>
+        public bool KeepsLayerShape(IReadOnlyList<PropLayer> layers)
+        {
+            ArgumentNullException.ThrowIfNull(layers);
+            return PropLayerTopology.OnlyGenerationDiffers(_layers, layers);
         }
 
         /// <inheritdoc />
@@ -688,8 +679,26 @@ namespace KhaozEngine.Terrain
         public void RefreshPlacements(ChunkCoord coord, object handle)
         {
             var load = (ChunkLoad)handle;
-            bool colliders = ChunkPlacementRefresh.Refresh(_propClusters, _propGenerations, _chunkSize, coord, load,
-                _layers, _field);
+            RebuildStatics(load, ChunkPlacementRefresh.Refresh(_propClusters, _propGenerations, _chunkSize, coord, load,
+                _layers, _field));
+        }
+
+        /// <inheritdoc />
+        /// <remarks>Every layer is re-served from <see cref="ScatterLayersFor"/>, the same placements a fresh build of
+        /// the chunk computes, then republished through <see cref="ChunkPlacementRefresh"/> at the chunk's own
+        /// <see cref="ChunkLoad.Ring"/>. The prop statics are rebuilt from the adopted placements. A decor chunk with
+        /// no HLOD layer carries nothing a config change can alter, so it is skipped. The terrain mesh, the terrain
+        /// collider and dynamics are never touched.</remarks>
+        public void RefreshProps(ChunkCoord coord, object handle)
+        {
+            var load = (ChunkLoad)handle;
+            if (load.Ring != ChunkRing.Gameplay && _hlodGate is null) return;
+            RebuildStatics(load, ChunkPlacementRefresh.Republish(_propClusters, _propGenerations, _chunkSize, coord,
+                load, _layers, ScatterLayersFor(coord), refreshed: null));
+        }
+
+        void RebuildStatics(ChunkLoad load, bool colliders)
+        {
             if (!colliders || _physics is null || _collisionShapes is null) return;
             ChunkStatics.RemoveAll(_physics, load.Statics);
             AddStatics(load);

@@ -75,6 +75,117 @@ public sealed class ContainerOperationEventCodecTests
         Refused(ItemInstanceEvents.Crafted, 1, audit, "legacy-location-omitted");
     }
 
+    [Fact]
+    public void A_version_two_grant_carries_the_complete_item_payload()
+    {
+        ContainerOperation grant = ContainerOperation.Grant(Bag, 4, Sword, 1, Instance, Payload());
+
+        (int schema, byte[] body) = ContainerOperationEventCodec.Write(grant);
+
+        Assert.Equal(2, schema);
+        Assert.True(ContainerOperationEventCodec.TryRead(ItemInstanceEvents.Granted, schema, body,
+            out ContainerOperation read, out string? reason), reason);
+        Assert.Equal(Bag, read.Container);
+        Assert.Equal(4, read.Slot);
+        Assert.Equal(Sword, read.DefinitionId);
+        Assert.Equal(Instance, read.InstanceId);
+        Assert.Equal(grant.Payload.ToArray(), read.Payload.ToArray());
+    }
+
+    [Fact]
+    public void A_version_two_grant_records_an_explicit_empty_instance_payload()
+    {
+        ContainerOperation grant = ContainerOperation.Grant(Bag, 4, Sword, 1, Instance);
+
+        (int schema, byte[] body) = ContainerOperationEventCodec.Write(grant);
+
+        Assert.Equal(2, schema);
+        Assert.True(ContainerOperationEventCodec.TryRead(ItemInstanceEvents.Granted, schema, body,
+            out ContainerOperation read, out string? reason), reason);
+        Assert.Equal(Instance, read.InstanceId);
+        Assert.True(read.Payload.IsEmpty);
+    }
+
+    [Fact]
+    public void A_version_two_craft_carries_slots_and_its_unchanged_audit_body()
+    {
+        byte[] before = Payload();
+        byte[] after = Payload(43);
+        byte[] audit = new ItemCraftedEvent(1, Instance, 5, before, after).ToArray();
+        ContainerOperation craft = ContainerOperation.Craft(Bank, 4, Instance, after, audit,
+            currencySlot: 5, currencyDefinitionId: Currency, currencyCount: 1);
+
+        (int schema, byte[] body) = ContainerOperationEventCodec.Write(craft);
+
+        Assert.Equal(2, schema);
+        Assert.True(ContainerOperationEventCodec.TryRead(ItemInstanceEvents.Crafted, schema, body,
+            out ContainerOperation read, out string? reason), reason);
+        Assert.Equal(Bank, read.Container);
+        Assert.Equal(4, read.Slot);
+        Assert.Equal(Bank, read.DestinationContainerOrOwn);
+        Assert.Equal(5, read.DestinationSlot);
+        Assert.Equal(Currency, read.DefinitionId);
+        Assert.Equal(1, read.Count);
+        Assert.Equal(Instance, read.InstanceId);
+        Assert.Equal(after, read.Payload.ToArray());
+        Assert.Equal(audit, read.EventPayload.ToArray());
+    }
+
+    [Fact]
+    public void A_craft_audit_that_disagrees_with_the_live_after_payload_is_refused()
+    {
+        byte[] audit = new ItemCraftedEvent(1, Instance, 5, Payload(), Payload(43)).ToArray();
+        ContainerOperation craft = ContainerOperation.Craft(Bank, 4, Instance, Payload(44), audit);
+
+        Assert.Throws<ArgumentException>(() => ContainerOperationEventCodec.Write(craft));
+    }
+
+    [Fact]
+    public void A_malformed_inner_craft_audit_is_refused_by_writer_and_reader()
+    {
+        ContainerOperation malformed = ContainerOperation.Craft(Bank, 4, Instance,
+            Payload(43), new byte[] { 0xFF });
+        Assert.Throws<ArgumentException>(() => ContainerOperationEventCodec.Write(malformed));
+
+        byte[] audit = new ItemCraftedEvent(1, Instance, 5, Payload(), Payload(43)).ToArray();
+        ContainerOperation craft = ContainerOperation.Craft(Bank, 4, Instance, Payload(43), audit);
+        (int schema, byte[] body) = ContainerOperationEventCodec.Write(craft);
+        body[^audit.Length] = 0xFF;
+        Refused(ItemInstanceEvents.Crafted, schema, body, "event-craft-body");
+    }
+
+    [Fact]
+    public void Version_two_rejects_a_broken_inner_body_trailing_bytes_and_wrong_event_name()
+    {
+        ContainerOperation grant = ContainerOperation.Grant(Bag, 4, Sword, 1, Instance, Payload());
+        (int schema, byte[] body) = ContainerOperationEventCodec.Write(grant);
+        Refused(ItemInstanceEvents.Granted, schema, [.. body, 0x00], "event-trailing");
+        Refused(ItemInstanceEvents.Crafted, schema, body, "event-kind");
+
+        byte[] audit = new ItemCraftedEvent(1, Instance, 5, Payload(), Payload(43)).ToArray();
+        ContainerOperation craft = ContainerOperation.Craft(Bank, 4, Instance, Payload(43), audit);
+        (schema, body) = ContainerOperationEventCodec.Write(craft);
+        Refused(ItemInstanceEvents.Crafted, schema, body[..^1], "event-truncated");
+    }
+
+    [Fact]
+    public void Unchanged_operation_kinds_keep_version_one_event_bodies()
+    {
+        ContainerOperation[] operations =
+        [
+            ContainerOperation.Move(Bank, 2, Bag, 4, 1, Instance),
+            ContainerOperation.Split(Bank, 2, 4, 3),
+            ContainerOperation.Merge(Bank, 2, 4, Instance, Instance + 1),
+            ContainerOperation.Take(Bank, 2, 1, Instance),
+        ];
+        foreach (ContainerOperation operation in operations)
+        {
+            (int schema, byte[] body) = ContainerOperationEventCodec.Write(operation);
+            Assert.Equal(1, schema);
+            Assert.Equal(operation.ToCanonicalArray(), body);
+        }
+    }
+
     static void Refused(string eventType, int schemaVersion, byte[] body, string expectedReason)
     {
         Assert.False(ContainerOperationEventCodec.TryRead(eventType, schemaVersion, body,

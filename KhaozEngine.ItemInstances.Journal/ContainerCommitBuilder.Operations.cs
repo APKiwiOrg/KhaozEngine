@@ -27,7 +27,7 @@ public sealed partial class ContainerCommitBuilder
     /// which is the only direction a cap can be approximated in.</summary>
     const int PageGrowthSlack = 64;
 
-    byte[] ApplyToWorkingCopy(in ContainerOperation operation)
+    void ApplyToWorkingCopy(in ContainerOperation operation)
     {
         switch (operation.Kind)
         {
@@ -55,12 +55,6 @@ public sealed partial class ContainerCommitBuilder
         }
 
         if (operation.PresentAtCommit) _presentAtCommit = true;
-
-        // A craft's event body is spec 10.6's and the crafting framework encodes it. Every other kind writes
-        // its own canonical encoding, so the event and the intent agree by construction.
-        return operation.Kind == ContainerOperationKind.Craft
-            ? operation.EventPayload.ToArray()
-            : operation.ToCanonicalArray();
     }
 
     void ApplyMove(in ContainerOperation operation)
@@ -213,9 +207,7 @@ public sealed partial class ContainerCommitBuilder
         int joining = first.IsDirty ? 0 : MeasurePage(first.Container, first.Index);
         if (second is { } other && !other.Is(first) && !other.IsDirty) joining += MeasurePage(other.Container, other.Index);
 
-        int eventBytes = operation.Kind == ContainerOperationKind.Craft
-            ? operation.EventPayload.Length
-            : operation.CanonicalByteCount;
+        int eventBytes = ContainerOperationEventCodec.EncodedSize(operation);
         int growth = EntryBound(_containers[operation.Container].SlotAt(operation.Slot))
             + operation.Payload.Length
             + PageGrowthSlack;

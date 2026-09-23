@@ -14,7 +14,7 @@ lands for container sync, tile netcode and journal operator tools
 Two defaults change. The engine terrain splat now reads the biome, so a world with non-Meadow bands looks
 different at repin (an all-Meadow world bakes bit-identical weights). `Scene3D.UseGpuSkinning` is now on by
 default, which renders pixel for pixel the same as CPU skinning and only moves the work to the GPU, and a game
-keeps CPU skinning with one assignment. No call a game makes changes meaning. The one source-level note is the new `ContainerCommitBuilder.Open` overload, below.
+keeps CPU skinning with one assignment. No call a game makes changes meaning. The one source-level note is the new `ContainerCommitBuilder.Open` overload, below. The one schema change is a seconds duration in `KhaozEngine.Catalog.GameTypes`, which now keeps hundredths, and no game had adopted that unit.
 
 **The map editor streams its authored placements.**
 
@@ -227,6 +227,15 @@ keeps CPU skinning with one assignment. No call a game makes changes meaning. Th
   checked. The float heads still check at join only
   ([#1103](https://github.com/APKiwiOrg/KhaozEngine/issues/1103)). Grimhollow's adoption is
   [Grimhollow#320](https://github.com/APKiwiOrg/Grimhollow/issues/320).
+
+**A seconds duration keeps its hundredths.**
+
+- Under `ContentDurationUnit.Seconds` the four duration fields of `KhaozEngine.Catalog.GameTypes` (the food attack
+  delay, the equip profile attack, the gathering node respawn, the recipe base) are a `ScaledInt` at scale 100, so a
+  stored 233 reads back as 2.33 seconds ([#1022](https://github.com/APKiwiOrg/KhaozEngine/issues/1022)). A 6 Hz game's
+  8, 14 and 16 tick timings (1.333, 2.333 and 2.667 s) had no whole-second form, and at a 30 Hz step the hundredth
+  lands on the exact tick. Under `Ticks` every schema is byte identical to 20.0.0, so a game on ticks adopts with no
+  content change. The rule lives in one internal home beside the name rule, so a fifth duration field cannot miss it.
 
 **Tooling.**
 

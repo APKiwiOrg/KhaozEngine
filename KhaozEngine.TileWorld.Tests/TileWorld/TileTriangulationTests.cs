@@ -7,7 +7,7 @@ namespace KhaozEngine.Tests.TileWorld;
 
 /// <summary>The shared tile triangulation: how many triangles each shape cuts a tile into, which of them the
 /// overlay paints, that they all wind the same way, and that they cover the tile exactly once.</summary>
-public class TileTriangulationTests
+public sealed class TileTriangulationTests
 {
     [Theory]
     [InlineData(TileOverlayShape.Full, 0, 2, 2)]

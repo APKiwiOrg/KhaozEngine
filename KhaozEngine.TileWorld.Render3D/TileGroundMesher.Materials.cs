@@ -120,8 +120,7 @@ public static partial class TileGroundMesher
     }
 
     /// <summary>The slot the material set holds this lattice corner's material in.</summary>
-    static int SlotAt(in TileMeshContext c, int cornerX, int cornerZ) =>
-        c.Options.Slots.SlotOf(CornerMaterial(c.Doc, cornerX, cornerZ, c.Plane));
+    static int SlotAt(in TileMeshContext c, int cornerX, int cornerZ) => c.Corners.Slot(cornerX, cornerZ);
 
     // One four by four cell's compatibility and surface material. Kept pure so classification never changes
     // document state, including when the caller asks about a cell across a region boundary.

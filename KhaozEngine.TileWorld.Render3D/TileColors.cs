@@ -15,9 +15,13 @@ public static class TileColors
     public const float DefaultJitterAmplitude = 0.04f;
 
     /// <summary>Parses <c>#rrggbb</c> or <c>#rrggbbaa</c> into 0..1 RGBA, alpha 1 when the string omits it.</summary>
-    public static Vector4 Parse(string hex)
+    /// <exception cref="TileWorldException">The string is null, or is not one of those two forms. A null is bad
+    /// content like any other malformed colour (a catalog material whose colour was written as JSON null), so it
+    /// fails the same way rather than as an argument error.</exception>
+    public static Vector4 Parse(string? hex)
     {
-        ArgumentNullException.ThrowIfNull(hex);
+        if (hex is null)
+            throw new TileWorldException("a null colour is not a colour: expected #rrggbb or #rrggbbaa");
         if ((hex.Length != 7 && hex.Length != 9) || hex[0] != '#')
             throw new TileWorldException($"'{hex}' is not a colour: expected #rrggbb or #rrggbbaa");
 
@@ -29,6 +33,8 @@ public static class TileColors
     }
 
     /// <summary>Parses the material's authored colour.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="material"/> is null.</exception>
+    /// <exception cref="TileWorldException">Its colour is null or malformed, see <see cref="Parse(string)"/>.</exception>
     public static Vector4 Parse(GroundMaterial material)
     {
         ArgumentNullException.ThrowIfNull(material);

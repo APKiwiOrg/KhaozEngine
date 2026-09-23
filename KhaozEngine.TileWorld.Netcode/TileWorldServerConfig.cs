@@ -133,7 +133,7 @@ public sealed record TileWorldServerConfig
     /// none of those: an engine default here would be exactly the constant this design refuses to have.
     /// <para>While it runs, the body LINGERS: still stepped, still served to everyone in interest, still attackable,
     /// and only then persisted and drained through the ordinary leave path. That is what stops a losing fight being
-    /// escaped by pulling the plug. An operator <see cref="TileWorldServer.Kick"/> and a
+    /// escaped by pulling the plug. An operator <see cref="TileWorldServer.Kick(int, string)"/> and a
     /// <see cref="TileWorldServer.BeginDrain"/> both bypass it, because neither is the player's decision.</para>
     /// <para>A RECONNECT by the same account inside the window ends the lingering body rather than being refused or
     /// seated beside it, so one account never holds two live entities. The player comes back where they left, into
@@ -149,18 +149,25 @@ public sealed record TileWorldServerConfig
     /// it, which is what OSRS does) is a different game rule rather than a bug.</para></summary>
     public int CombatLogoutTicks { get; init; }
 
-    /// <summary>Synchronous ban check over a verified account id, consulted at the door. Null admits everyone the
-    /// authenticator admits. For a head whose ban list is not an <see cref="KhaozEngine.NetWorld.IBanStore"/>. A
-    /// head that keeps one sets <see cref="BanStore"/> instead. Setting both refuses an account either one bans.</summary>
+    /// <summary>Synchronous ban check over a verified account id, consulted everywhere <see cref="BanStore"/> is: at
+    /// the door, at the join, and once per tick over every live session, so an account it starts answering true for
+    /// is kicked with <see cref="TileServerReason.Banned"/> on the next tick. Null admits everyone the authenticator
+    /// admits. For a head whose ban list is not an <see cref="KhaozEngine.NetWorld.IBanStore"/>. A head that keeps
+    /// one sets <see cref="BanStore"/> instead. Setting both refuses an account either one bans. Called on the host
+    /// thread once per tick per player, so it must be cheap, and nothing is caught.</summary>
     public Func<string, bool>? IsBanned { get; init; }
 
-    /// <summary>The ban store consulted at the door, read live on every connect through
-    /// <see cref="BanGateAuthenticator"/>, so a ban recorded mid-session refuses that account's next connect. Null,
-    /// the default, checks no store. It is the same seam a <c>WorldServer</c> takes as <c>banStore:</c> and an
-    /// admin surface writes to, so one store serves every door a game runs. The type is named
+    /// <summary>The ban store, read live at three points. At the DOOR, through <see cref="BanGateAuthenticator"/>, a
+    /// banned account is refused with <see cref="HandshakeToken.BannedReason"/> before it joins. At the JOIN, a ban
+    /// that landed after the door admitted the connection is told <see cref="TileServerReason.Banned"/> and dropped
+    /// before anything is spawned, the check a <c>WorldServer</c> makes over its <c>banStore:</c>. And once per TICK
+    /// over every live session, so a ban recorded while the player is in world, by any writer, closes the session on
+    /// the next tick with the same token. An admin kick of a banned account carries it too, which is how
+    /// <c>ServerAdmin.BanAsync</c>'s kick arrives. A tokenless guest seat is never checked. Null, the default,
+    /// checks no store. It is the same seam a <c>WorldServer</c> takes as <c>banStore:</c> and an admin surface
+    /// writes to, so one store serves every door a game runs. The type is named
     /// <c>KhaozEngine.NetWorld.IBanStore</c> but lives in <c>KhaozEngine.Netcode</c>, so this package still never
-    /// references <c>NetWorld</c>. A live session is NOT ended when its account is banned: pair the ban with
-    /// <see cref="TileWorldServer.Kick"/> for that.</summary>
+    /// references <c>NetWorld</c>.</summary>
     public KhaozEngine.NetWorld.IBanStore? BanStore { get; init; }
 
     /// <summary>Consulted in Admit for every command whose mode is <see cref="TileMoveMode.Run"/>, over the
@@ -178,6 +185,16 @@ public sealed record TileWorldServerConfig
     /// it down for every player, which is the engine refusing to swallow a game's bug rather than an
     /// oversight.</para></summary>
     public Func<int, bool>? CanRun { get; init; }
+
+    /// <summary>The tile-to-world mapping the server speaks wherever it deals in world metres rather than tiles,
+    /// which is the admin surface: <see cref="TileWorldServer.ListOnline"/> reports a player's committed tile as
+    /// <see cref="TilePresenter.PoseAt(TileCoord, TileDirection)"/> draws it, and <see cref="TileWorldServer.Teleport"/>
+    /// snaps a position back onto a tile and plane through <see cref="TilePresenter.TryTileAt"/>. Hand it the same
+    /// presenter the client draws with (<c>new TilePresenter(document)</c>), so an operator reads and types the
+    /// positions a player sees. Null, the default, is the client's own placeholder: one metre tiles and
+    /// <see cref="TileWorldDocument.DefaultPlaneHeight"/>, with no terrain. Read on the host thread only, so a
+    /// presenter over a <see cref="TileWorldDocument"/> is safe as long as the document is only edited there too.</summary>
+    public TilePresenter? Presenter { get; init; }
 
     /// <summary>What a second live session for one account does. Kicking the older one is the default because the
     /// alternative refuses the player who is actually at the keyboard.</summary>

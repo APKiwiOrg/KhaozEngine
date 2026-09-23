@@ -10,9 +10,8 @@ namespace KhaozEngine.Tests.Gpu
 {
     // Exercises Scene3D's CPU skinning path on a live headless device: a skinned tube loads, the per-frame bone
     // palette composes, and a bent FK pose deforms the mesh (a bent capture differs from the rest-pose capture).
-    // Scene3D skins on the CPU through the rigid ModelRenderer pipeline; the dormant GPU SkinnedModelRenderer /
-    // SkinnedModelVert path was removed (the GPU bone read corrupted past element 0 on windowed Veldrid/Metal).
-    // Skipped unless KE_GPU_TESTS=1.
+    // The CPU path skins through the rigid ModelRenderer pipeline. GPU skinning is the default, so the path is
+    // pinned explicitly (Render3DGpuSkinningGpuTests covers the GPU one). Skipped unless KE_GPU_TESTS=1.
     public sealed class Render3DSkinnedGpuTests
     {
         const int W = 128, H = 128;
@@ -24,6 +23,7 @@ namespace KhaozEngine.Tests.Gpu
             IGpuDevice gd = ctx.GpuDevice;
 
             using var preview = new Render3DPreview(gd, W, H);
+            preview.Scene.UseGpuSkinning = false;
             SkinnedMeshHandle h = preview.Scene.LoadSkinnedMesh(SkinnedMeshBuilder.BuildTube(0.5f, 4f, 10, 10, 6, Axis.Z));
             // Frame the camera on the tube (it runs 0..4 along Z, centred ~ (0,0,2)).
             preview.Scene.Camera.Frame(new Vector3(0, 0, 2f), new Vector3(4f, 4f, 5f));

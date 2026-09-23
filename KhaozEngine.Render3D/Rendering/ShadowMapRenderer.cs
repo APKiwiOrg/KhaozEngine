@@ -50,6 +50,14 @@ namespace KhaozEngine.Render3D.Rendering
         internal static readonly uint SkinnedDepthSlotBytes = Align256(64);   // one mat4 -> 256
         static uint Align256(uint n) => (n + 255u) & ~255u;
 
+        // A DISSOLVING GPU-skinned caster's slot carries more of the same 256 bytes (issue #387), read only by
+        // SkinnedShadowDepthDissolveVert: { LightMvp; Model; RenderOrigin; DissolveParams }. An opaque caster's slot
+        // is still written as the matrix alone, so its packing is unchanged.
+        internal const int SkinnedDissolveModelOffset = 64;
+        internal const int SkinnedDissolveOriginOffset = 128;
+        internal const int SkinnedDissolveParamsOffset = 144;
+        internal const int SkinnedDissolvePayloadBytes = 160;
+
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;    // set 0: the per-cascade light matrix (dynamic-offset UBO, vertex only)
@@ -75,8 +83,19 @@ namespace KhaozEngine.Render3D.Rendering
         // binds it. Shares _dissolveSet (same UBO window) - only the pipeline differs.
         readonly IGpuShaderSet _dissolveInvertedShaders;
 
+        // Alpha-cutout depth pipelines (issue #15): the dissolve pipelines' vertex extended with the cutout
+        // interpolants, and a fragment that also alpha-tests the caster's albedo. Bound ONLY for the spans of a MASK
+        // mesh that has an albedo texture, so an opaque caster never samples a texture in this pass. They share
+        // _dissolveSet (same UBO window), and add a per-mesh set 1 { Albedo, Samp } built by CreateCutoutMaterialSet.
+        readonly IGpuShaderSet _cutoutShaders;
+        readonly IGpuShaderSet _cutoutInvertedShaders;
+        readonly IGpuResourceLayout _cutoutMaterialLayout;   // set 1: the caster's albedo + sampler, fragment only
+
         // GPU-skinning depth pipeline (mirrors _pipeline for skinned casters) + its light-matrix grow-with-retire buffer.
         readonly IGpuShaderSet _skinnedShaders;
+        // Its dissolve-aware sibling (issue #387): same layouts, same slot buffer, the SkinnedShadowDepthDissolveVert
+        // vertex and the rigid ShadowDepthDissolveFrag. Bound only for a skinned caster that is dissolving.
+        readonly IGpuShaderSet _skinnedDissolveShaders;
         readonly IGpuResourceLayout _skinnedLayout;   // set 0: { LightMvp } dynamic UBO, vertex only
         readonly SkinnedBonePalette _bonePalette;     // set 1: the shared per-caster palette, OWNED BY ModelRenderer
         IGpuBuffer? _skinnedUbo; uint _skinnedSlots; IGpuResourceSet? _skinnedSet;
@@ -130,9 +149,17 @@ namespace KhaozEngine.Render3D.Rendering
             _dissolveInvertedShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveInvertedFrag);
             _dissolveSet = f.CreateResourceSet(new GpuResourceSetDescription(_layout, new GpuBufferRange(_lightUbo, 0, CascadeSlotBytes)));
 
+            // Cutout depth shaders + the per-mesh albedo layout their fragment samples at set 1.
+            _cutoutShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthCutoutVert, ShaderSources.ShadowDepthCutoutFrag);
+            _cutoutInvertedShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthCutoutVert, ShaderSources.ShadowDepthCutoutInvertedFrag);
+            _cutoutMaterialLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("Albedo", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+
             // GPU-skinning depth shaders/layout (the fragment is the shared ShadowDepthFrag). Set 0 = { LightMvp }
             // dynamic UBO, vertex only, and set 1 = the shared per-caster palette. Built per shadow layout.
             _skinnedShaders = f.CreateShadersFromSpirv(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag);
+            _skinnedDissolveShaders = f.CreateShadersFromSpirv(ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag);
             _skinnedLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("VBlock", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
 
@@ -173,7 +200,10 @@ namespace KhaozEngine.Render3D.Rendering
             IGpuPipeline? pipeline = null;
             IGpuPipeline? dissolvePipeline = null;
             IGpuPipeline? dissolveInvertedPipeline = null;
+            IGpuPipeline? cutoutPipeline = null;
+            IGpuPipeline? cutoutInvertedPipeline = null;
             IGpuPipeline? skinnedPipeline = null;
+            IGpuPipeline? skinnedDissolvePipeline = null;
             try
             {
                 atlas = f.CreateTexture(GpuTextureDescription.Texture2D(
@@ -184,13 +214,20 @@ namespace KhaozEngine.Render3D.Rendering
                 pipeline = BuildPipeline(f, framebuffer.Outputs);
                 dissolvePipeline = BuildPipeline(f, framebuffer.Outputs, dissolve: true);
                 dissolveInvertedPipeline = BuildPipeline(f, framebuffer.Outputs, dissolve: true, invertedDissolve: true);
+                cutoutPipeline = BuildPipeline(f, framebuffer.Outputs, dissolve: true, cutout: true);
+                cutoutInvertedPipeline = BuildPipeline(f, framebuffer.Outputs, dissolve: true, invertedDissolve: true, cutout: true);
                 skinnedPipeline = BuildSkinnedPipeline(f, framebuffer.Outputs);
+                skinnedDissolvePipeline = BuildSkinnedPipeline(f, framebuffer.Outputs, dissolve: true);
                 return new ShadowLayoutReplacement(res, count, atlas, depthStencil, framebuffer, pipeline,
-                    dissolvePipeline, dissolveInvertedPipeline, skinnedPipeline);
+                    dissolvePipeline, dissolveInvertedPipeline, cutoutPipeline, cutoutInvertedPipeline,
+                    skinnedPipeline, skinnedDissolvePipeline);
             }
             catch
             {
+                skinnedDissolvePipeline?.Dispose();
                 skinnedPipeline?.Dispose();
+                cutoutInvertedPipeline?.Dispose();
+                cutoutPipeline?.Dispose();
                 dissolveInvertedPipeline?.Dispose();
                 dissolvePipeline?.Dispose();
                 pipeline?.Dispose();
@@ -216,8 +253,9 @@ namespace KhaozEngine.Render3D.Rendering
         // depth pass), scissor test on (per-column clip). Rebuilt with _pipeline whenever the layout reallocates.
         // depthClipEnabled stays TRUE here for the same reason as the rigid pipeline below: the NEAR plane is handled
         // in the vertex (SkinnedShadowDepthVert's pancake) and the far plane should still clip, which the flag cannot
-        // express because it turns off both planes together.
-        IGpuPipeline BuildSkinnedPipeline(IGpuResourceFactory f, GpuOutputDescription outputs)
+        // express because it turns off both planes together. <paramref name="dissolve"/> picks the issue #387
+        // dissolve-aware shader set, and nothing else differs.
+        IGpuPipeline BuildSkinnedPipeline(IGpuResourceFactory f, GpuOutputDescription outputs, bool dissolve = false)
         {
             var vertexLayout = new GpuVertexLayoutDescription(
                 new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
@@ -235,7 +273,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.Front, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _skinnedLayout, _bonePalette.Layout },
-                ShaderSet = _skinnedShaders,
+                ShaderSet = dissolve ? _skinnedDissolveShaders : _skinnedShaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = outputs,
             });
@@ -248,8 +286,11 @@ namespace KhaozEngine.Render3D.Rendering
         // stride - is identical, so a span drawn through either records the same depth when the dissolve is 0.
         // <paramref name="invertedDissolve"/> picks the issue #391 fragment that keeps what the plain dissolve
         // fragment discards (the complementary half of an HLOD crossfade); it is meaningless without dissolve.
+        // <paramref name="cutout"/> (issue #15, with dissolve) swaps in the alpha-cutout shader set, adds the
+        // per-mesh albedo layout at set 1 and turns culling OFF. The vertex and instance layouts are the dissolve
+        // variant's.
         IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription outputs, bool dissolve = false,
-            bool invertedDissolve = false)
+            bool invertedDissolve = false, bool cutout = false)
         {
             // Slot 0: per-vertex geometry (locations 0..4) - same layout the model pass uses, so the shared model
             // vertex buffer binds unchanged (only Position is read).
@@ -301,10 +342,18 @@ namespace KhaozEngine.Render3D.Rendering
                 // planes at once, so flipping it would give up the free far-plane clip to buy a near-plane clamp the
                 // vertex already provides. The flag itself is honoured everywhere now, including on both Metal paths
                 // (issue #598, 17.39.0), which it was not when this pass was written.
-                Rasterizer = new GpuRasterizerState(GpuFaceCull.Front, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
+                //
+                // The CUTOUT pipelines cull nothing. A MASK caster is usually a single-plane card that the colour pass
+                // draws two-sided (ModelRenderer's pipeline culls None). Culling here would erase the whole card from
+                // the atlas whenever its culled side points at the sun, which with this pass's clockwise front face
+                // is a card turned with its glTF back face to the light. A zero-thickness card has no far side for
+                // the second-depth trick to find anyway.
+                Rasterizer = new GpuRasterizerState(cutout ? GpuFaceCull.None : GpuFaceCull.Front, GpuPolygonFill.Solid,
+                    GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _layout },
-                ShaderSet = dissolve ? (invertedDissolve ? _dissolveInvertedShaders : _dissolveShaders) : _shaders,
+                ResourceLayouts = cutout ? new[] { _layout, _cutoutMaterialLayout } : new[] { _layout },
+                ShaderSet = cutout ? (invertedDissolve ? _cutoutInvertedShaders : _cutoutShaders)
+                    : dissolve ? (invertedDissolve ? _dissolveInvertedShaders : _dissolveShaders) : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = outputs,
             });
@@ -381,6 +430,28 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
         }
 
+        /// <summary>As <see cref="BeginCascadeRigidDissolve"/>, but binds an ALPHA-CUTOUT depth pipeline (issue #15)
+        /// for the spans of a MASK mesh: <paramref name="inverted"/> picks the fragment carrying the issue #391
+        /// inverted dither. Same cascade scissor and light slot. Each span then binds its mesh's albedo with
+        /// <see cref="BindCutoutMaterial"/> before drawing.</summary>
+        public void BeginCascadeRigidCutout(IGpuCommandList cl, int cascade, bool inverted)
+        {
+            cl.SetPipeline(inverted ? _graph.CutoutInvertedPipeline : _graph.CutoutPipeline);
+            SetCascadeScissor(cl, cascade);
+            cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
+        }
+
+        /// <summary>Bind one MASK caster's albedo set (from <see cref="CreateCutoutMaterialSet"/>) at set 1 for the
+        /// cutout pipeline bound by <see cref="BeginCascadeRigidCutout"/>.</summary>
+        public void BindCutoutMaterial(IGpuCommandList cl, IGpuResourceSet cutoutMaterial)
+            => cl.SetGraphicsResourceSet(1, cutoutMaterial);
+
+        /// <summary>Build a MASK caster's cutout set: its <paramref name="albedo"/> and the device's linear sampler,
+        /// the pair the colour pass alpha-tests. It names no shadow resource, so a shadow layout replacement never
+        /// has to rebuild it. Owned by the caller (Scene3D keeps one per MASK mesh and frees it with the mesh).</summary>
+        public IGpuResourceSet CreateCutoutMaterialSet(IGpuTexture albedo)
+            => _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_cutoutMaterialLayout, albedo, _gd.LinearSampler));
+
         void SetCascadeScissor(IGpuCommandList cl, int cascade)
         {
             uint res = (uint)Resolution;
@@ -415,7 +486,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.DrawIndexed((uint)indexCount, 1, 0, baseVertex, drawIndex);
         }
 
-        // ---- GPU-skinning shadow casters (opt-in). Each caster still gets ONE slot per cascade, because its
+        // ---- GPU-skinning shadow casters (the default). Each caster still gets ONE slot per cascade, because its
         //      LightMvp folds that cascade's own column-transformed matrix, but the slot is that matrix ALONE since
         //      #407. The bones live once per caster in the shared SkinnedBonePalette, bound at set 1. ----
 
@@ -450,17 +521,42 @@ namespace KhaozEngine.Render3D.Rendering
                 in lightMvp);
         }
 
+        /// <summary>Pack one DISSOLVING skinned caster's depth slot for one cascade (issue #387): the same folded
+        /// <c>LightMvp</c> as the overload above, then the render-relative <paramref name="model"/>, this frame's
+        /// <paramref name="renderOrigin"/> and <c>(noiseScale, dissolveThreshold)</c>, which is the block
+        /// <see cref="ShaderSources.SkinnedShadowDepthDissolveVert"/> reads (160 of the slot's 256 bytes).
+        /// <paramref name="noiseScale"/> is this cascade's dissolve noise scale, the one the rigid dissolve depth
+        /// pass reads from the light UBO for the same cascade.</summary>
+        public void PackSkinnedShadowSlot(uint slot, in Matrix4x4 model, in Matrix4x4 cascadeDepthMat,
+            Vector3 renderOrigin, float noiseScale, float dissolveThreshold)
+        {
+            PackSkinnedShadowSlot(slot, model, cascadeDepthMat);
+            Span<byte> slotBytes = _skinnedImage.AsSpan(
+                checked((int)(slot * SkinnedDepthSlotBytes)), checked((int)SkinnedDepthSlotBytes));
+            var origin = new Vector4(renderOrigin, 0f);
+            var dissolveParams = new Vector4(noiseScale, dissolveThreshold, 0f, 0f);
+            MemoryMarshal.Write(slotBytes.Slice(SkinnedDissolveModelOffset), in model);
+            MemoryMarshal.Write(slotBytes.Slice(SkinnedDissolveOriginOffset), in origin);
+            MemoryMarshal.Write(slotBytes.Slice(SkinnedDissolveParamsOffset), in dissolveParams);
+        }
+
+        /// <summary>Read back one packed skinned depth slot's bytes. Internal so the headless tests can pin the
+        /// dissolve slot layout against the shader block without a device.</summary>
+        internal ReadOnlySpan<byte> SkinnedShadowSlotBytes(uint slot) => _skinnedImage.AsSpan(
+            checked((int)(slot * SkinnedDepthSlotBytes)), checked((int)SkinnedDepthSlotBytes));
+
         /// <summary>Upload every packed GPU-skinned shadow slot in one whole-buffer write. Slots not selected by a
         /// depth draw this pass may retain old bytes because no dynamic offset binds them.</summary>
         public void UploadSkinnedShadowSlots(IGpuCommandList cl)
             => cl.UpdateBuffer(_skinnedUbo!, 0, (ReadOnlySpan<byte>)_skinnedImage);
 
         /// <summary>Bind cascade <paramref name="cascade"/> for the GPU-SKINNED caster draws: scissor to that cascade's
-        /// atlas column and switch to the skinned depth pipeline. Call after the rigid caster runs, before the skinned
+        /// atlas column and switch to the skinned depth pipeline, or to its dissolve-aware sibling when
+        /// <paramref name="dissolve"/> is set (issue #387). Call after the rigid caster runs, before the skinned
         /// casters (<see cref="BeginDepthPass"/> must be bound). Both window sets are bound per draw.</summary>
-        public void BindCascadeSkinned(IGpuCommandList cl, int cascade)
+        public void BindCascadeSkinned(IGpuCommandList cl, int cascade, bool dissolve = false)
         {
-            cl.SetPipeline(_graph.SkinnedPipeline);
+            cl.SetPipeline(dissolve ? _graph.SkinnedDissolvePipeline : _graph.SkinnedPipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _skinnedSet!, 0);   // rebound per draw with the slot's dynamic offset below
             cl.SetGraphicsResourceSet(1, _bonePalette.Set, 0);   // likewise, with the caster's palette offset
@@ -487,11 +583,15 @@ namespace KhaozEngine.Render3D.Rendering
             _dissolveSet.Dispose();
             _dissolveShaders.Dispose();
             _dissolveInvertedShaders.Dispose();
+            _cutoutShaders.Dispose();
+            _cutoutInvertedShaders.Dispose();
+            _cutoutMaterialLayout.Dispose();
             _lightUbo.Dispose();
             _layout.Dispose();
             _shaders.Dispose();
             _sampler.Dispose();
             _skinnedShaders.Dispose();
+            _skinnedDissolveShaders.Dispose();
             _skinnedLayout.Dispose();
             _skinnedUbo?.Dispose();
             _skinnedSet?.Dispose();
@@ -501,7 +601,8 @@ namespace KhaozEngine.Render3D.Rendering
         {
             internal ShadowLayoutReplacement(int resolution, int cascadeCount, IGpuTexture shadowTexture,
                 IGpuTexture depthStencil, IGpuFramebuffer framebuffer, IGpuPipeline pipeline,
-                IGpuPipeline dissolvePipeline, IGpuPipeline dissolveInvertedPipeline, IGpuPipeline skinnedPipeline)
+                IGpuPipeline dissolvePipeline, IGpuPipeline dissolveInvertedPipeline, IGpuPipeline cutoutPipeline,
+                IGpuPipeline cutoutInvertedPipeline, IGpuPipeline skinnedPipeline, IGpuPipeline skinnedDissolvePipeline)
             {
                 Resolution = resolution;
                 CascadeCount = cascadeCount;
@@ -511,7 +612,10 @@ namespace KhaozEngine.Render3D.Rendering
                 Pipeline = pipeline;
                 DissolvePipeline = dissolvePipeline;
                 DissolveInvertedPipeline = dissolveInvertedPipeline;
+                CutoutPipeline = cutoutPipeline;
+                CutoutInvertedPipeline = cutoutInvertedPipeline;
                 SkinnedPipeline = skinnedPipeline;
+                SkinnedDissolvePipeline = skinnedDissolvePipeline;
             }
 
             internal int Resolution { get; }
@@ -522,11 +626,17 @@ namespace KhaozEngine.Render3D.Rendering
             internal IGpuPipeline Pipeline { get; }
             internal IGpuPipeline DissolvePipeline { get; }
             internal IGpuPipeline DissolveInvertedPipeline { get; }
+            internal IGpuPipeline CutoutPipeline { get; }
+            internal IGpuPipeline CutoutInvertedPipeline { get; }
             internal IGpuPipeline SkinnedPipeline { get; }
+            internal IGpuPipeline SkinnedDissolvePipeline { get; }
 
             public void Dispose()
             {
+                SkinnedDissolvePipeline.Dispose();
                 SkinnedPipeline.Dispose();
+                CutoutInvertedPipeline.Dispose();
+                CutoutPipeline.Dispose();
                 DissolveInvertedPipeline.Dispose();
                 DissolvePipeline.Dispose();
                 Pipeline.Dispose();

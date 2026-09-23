@@ -140,7 +140,7 @@ namespace KhaozEngine.Tests.Gpu
         static void ShadowMapOverStarfield(Scene3D scene)
         {
             // The cascade light UBO and the starfield UBO have no other way in, and the two skinned per-draw slot
-            // buffers (the main one and the shadow one) exist only on the opt-in GPU skinning path.
+            // buffers (the main one and the shadow one) exist only on the GPU skinning path.
             scene.Post.Background = BackgroundMode.Starfield;
             scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
             scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);

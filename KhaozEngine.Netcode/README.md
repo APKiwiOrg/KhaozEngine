@@ -445,7 +445,19 @@ consumer compiles and binds unchanged and a file importing both namespaces sees 
   `ServerNotice(ServerNoticeKind.Banned)`, the notice a game banned-player banner renders. `ServerAdmin.BanAsync`
   records the ban and kicks the live session.
 - Hand the SAME instance to both, `new BanGateAuthenticator(tokenAuth, bans)` and `banStore: bans`, and the two can
-  never disagree about who is banned. A tile server takes it as `TileWorldServerConfig.BanStore`.
+  never disagree about who is banned. A tile server takes it as `TileWorldServerConfig.BanStore` and reads it at the
+  door, at the join, and once per tick over every live session, closing a banned one with the `ke:banned` notice
+  token, so a tile game never pairs a ban with its own kick.
+
+**One admin seam.** `IAdminControllable` (the live-admin surface: `ListOnline`, `Teleport`, `SetPosition`, `Kick`,
+`Broadcast` and the movement commitment pair) lives here on the same terms as the ban seam, with the three types it
+names: `PlayerRef`, `OnlinePlayer` and `MovementCommitmentRequest`. Their full names are still
+`KhaozEngine.NetWorld.*` and `KhaozEngine.NetWorld` type-forwards all four, so existing implementers and callers
+compile and bind unchanged. A head that never references `NetWorld` can implement it, which is what
+`KhaozEngine.TileWorld.Netcode`'s `TileWorldServer` does. `ServerAdmin`, the facade over it, stays in `NetWorld`.
+`MovementCommitmentRequest` validates its arguments without Locomotion, so its refusals are a restatement of
+`KhaozEngine.Locomotion.MovementCommitment`'s, held equal by `MovementCommitmentRequestParityTests` in
+`KhaozEngine.Server.Tests`.
 
 The three decorators are public and compose on their own when a head wants a different order, or only one of them.
 They forward both optional verified-claim companions. Version and world gates unwrap their own token layer before

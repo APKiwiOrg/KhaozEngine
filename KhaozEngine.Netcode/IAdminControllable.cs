@@ -1,13 +1,20 @@
 using System.Collections.Generic;
 using System.Numerics;
 
+// The namespace is NetWorld on purpose, for the reason IBanStore.cs gives. The admin seam physically lives in
+// KhaozEngine.Netcode so a head that never references NetWorld (KhaozEngine.TileWorld.Netcode's TileWorldServer) can
+// implement it, but its full type names are the ones it shipped under. KhaozEngine.NetWorld type-forwards this
+// interface and the three types it names (PlayerRef, OnlinePlayer, MovementCommitmentRequest), so a consumer that
+// names KhaozEngine.NetWorld.IAdminControllable keeps compiling and binding unchanged.
 namespace KhaozEngine.NetWorld;
 
 /// <summary>
-/// The generic live-admin surface implemented by both <see cref="WorldServer"/> and <see cref="ShardedWorldServer"/>.
-/// Reads (<see cref="ListOnline"/>) return a snapshot published once per tick (lock-free, at most one tick stale).
-/// Mutations are queued and applied on the host thread between ticks, so callers (e.g. an HTTP handler on a foreign
-/// thread) never touch the simulation directly.
+/// The generic live-admin surface, implemented by <c>WorldServer</c>, <c>ShardedWorldServer</c> and
+/// <c>KhaozEngine.TileWorld.Netcode.TileWorldServer</c>. Reads (<see cref="ListOnline"/>) return a snapshot published
+/// once per tick (lock-free, at most one tick stale). Mutations are queued and applied on the host thread between
+/// ticks, so callers (e.g. an HTTP handler on a foreign thread) never touch the simulation directly.
+/// <para>Defined in the <c>KhaozEngine.Netcode</c> assembly under this namespace, and type-forwarded from
+/// <c>KhaozEngine.NetWorld</c>, where it shipped.</para>
 /// </summary>
 public interface IAdminControllable
 {
@@ -33,7 +40,8 @@ public interface IAdminControllable
     /// the move was a cut, not a smoothing of it.</para>
     /// <para>A default interface method, so a head written before this existed keeps compiling. The default forwards
     /// to <see cref="Teleport"/>: the position is right and the cut is spurious, which is exactly the behaviour that
-    /// head had before, and never worse. Both engine heads override it.</para>
+    /// head had before, and never worse. Both float heads override it. The tile head keeps the default, so a
+    /// SetPosition there cuts exactly like a Teleport.</para>
     /// </summary>
     void SetPosition(PlayerRef target, Vector3 position) => Teleport(target, position);
 
@@ -45,9 +53,11 @@ public interface IAdminControllable
     void AbortMovementCommitment(PlayerRef target, uint expectedSequence) =>
         throw new System.NotSupportedException("This server does not support movement commitments.");
 
-    /// <summary>Queues a kick of <paramref name="target"/>; the reason is delivered to that client as a notice.</summary>
+    /// <summary>Queues a kick of <paramref name="target"/>; the reason is delivered to that client as a notice (a Custom
+    /// notice on the float heads, a reason token on the tile head).</summary>
     void Kick(PlayerRef target, string reason);
 
-    /// <summary>Queues a broadcast of <paramref name="text"/> to every client (a Custom server notice).</summary>
+    /// <summary>Queues a broadcast of <paramref name="text"/> to every client (a Custom server notice on the float heads,
+    /// a reason token on the tile head).</summary>
     void Broadcast(string text);
 }

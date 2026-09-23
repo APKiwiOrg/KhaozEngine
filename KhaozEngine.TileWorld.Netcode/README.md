@@ -698,9 +698,9 @@ delegates to it with no instance, so nothing that already compiles changes. The 
 ride a SIBLING component, `TileGroundItemInstance` (`InstanceId`, `Payload`), seated only when
 `instanceId` is non-zero: a drop with no instance carries no component and pays nothing on the wire.
 `TryGetGroundItemInstance(netId, out instance)` is the server read a claim goes through, beside
-`TryGetGroundItem`, and clients read it off `client.World` for the entity `client.View.Entities` holds
-under the drop's net id. There is no collector beside `CollectGroundItems` for the instance half yet
-([#926](https://github.com/APKiwiOrg/KhaozEngine/issues/926)).
+`TryGetGroundItem`. The client read is `TileWorldClient.CollectGroundItemInstances(buffer)` beside
+`CollectGroundItems`: every drop that carries an instance, as `(NetId, Item, Instance)`, in one walk of the
+entity set and the same cleared then filled shape. A drop with no instance is absent from it.
 
 Both halves are opaque, exactly as `TileGroundItem`'s `ItemId` is opaque. The engine never decodes a
 payload, has no way to, and never mints an instance id of its own: the same id and the same bytes come

@@ -11629,6 +11629,11 @@ if (server.TryGetGroundItem(netId, out TileGroundItem item)
     && server.TryGetGroundItemInstance(netId, out TileGroundItemInstance instance)
     && server.DespawnGroundItem(netId))
     inventory.Seat(item.ItemId, item.Count, instance.InstanceId, instance.Payload);
+
+// Client, per frame: only the drops that carry an instance, each paired with its own drop.
+client.CollectGroundItemInstances(instancedBuffer);
+foreach ((long netId, TileGroundItem item, TileGroundItemInstance instance) in instancedBuffer)
+    DrawInstanceMarker(item.Tile, instance.InstanceId);
 ```
 
 Both halves are opaque. The engine never decodes the payload, has no way to, and never mints an instance id
@@ -11638,9 +11643,8 @@ and a drop-and-claim cycle cannot launder an item into a fresh one. Three refusa
 with instance id 0 throws because the bytes would go nowhere, and the READER is total, so a declared length
 past the component's own framed payload arrives as an instance with an empty payload rather than as a dropped
 session. `TryGetGroundItemInstance` answers false for every drop spawned through the four-argument overload,
-and clients read the component off `client.World` for the entity `client.View.Entities` holds under the
-drop's net id, because there is no collector beside `CollectGroundItems` for it yet
-(https://github.com/APKiwiOrg/KhaozEngine/issues/926).
+and `CollectGroundItemInstances` leaves those drops out. It fills the caller's list in one walk of the entity
+set, cleared first and unsorted, exactly as `CollectGroundItems` fills its own.
 
 ### Object states, and drawing them (a chopped tree, 18.14.0)
 

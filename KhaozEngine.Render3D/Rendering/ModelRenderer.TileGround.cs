@@ -60,7 +60,8 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("Sampler", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("PointShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("PointShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("PointShadowTransientMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
 
             _tileGroundShaders = factory.CreateShadersFromSpirv(ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag);
         }

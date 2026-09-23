@@ -29,6 +29,8 @@ internal sealed partial class ModelRenderer
     /// (<c>PointShadowParams[MaxPointLights]</c>) plus the <c>PointShadowAtlas</c> and <c>PointShadowFilter</c>
     /// vec4s = 288 bytes.</summary>
     internal const uint PointShadowTailBytes = MaxPointLights * 16 + 32;
+    internal const uint PointShadowTransientTailOffset = PointShadowTailOffset + PointShadowTailBytes;
+    internal const uint PointShadowTransientTailBytes = 16;
 
     // The first sixteen (base row, bias, slopeBias, transient row) entries mirror the structured records.
     // Receiver shaders read the complete structured record list.
@@ -46,27 +48,30 @@ internal sealed partial class ModelRenderer
     // the atlas texel steps above, which are atlas-wide: the soft filter converts a penumbra in metres into an
     // angle and then into texels of ONE face, and the host already knows that number.
     Vector4 _pointShadowFilter;
+    // (one atlas texel X, one atlas texel Y, rows, six faces). Zero while no transient atlas is live.
+    Vector4 _pointShadowTransientAtlas;
 
     // The 1x1 R32Float white the PointShadowMap slot binds until a real atlas exists. Sampled-only on purpose:
     // the receiver's own gate means nothing ever reads it, and a render-target usage would make it look like a
     // shadow atlas to anything walking a set's resources. White is "nothing occluded" if one ever did.
     IGpuTexture _pointShadowDefault = null!;
     IGpuTexture _pointShadowTexture = null!;
+    IGpuTexture _pointShadowTransientDefault = null!;
+    IGpuTexture _pointShadowTransientTexture = null!;
 
-    // The texture whose rebind transaction threw, LATCHED. A failed rebuild leaves _pointShadowTexture where it
-    // was, so without this a caller asking for the same atlas every frame re-enters the whole transaction, and its
-    // _gd.WaitForIdle stall, once a frame forever. Cleared by a rebind that succeeds, by any request naming a
-    // different texture, and by ForgetPointShadowBindFailure when the caller frees the texture it names, so
-    // dropping the failed atlas and handing over a fresh one (or null, which is the 1x1 default) gets a real
-    // attempt. Asking again for the exact texture that failed does not. It is never the reason a DISPOSED handle
-    // stays reachable: a texture nobody can ask for again is a latch with nothing left to refuse.
-    IGpuTexture? _pointShadowBindFailure;
+    // The requested pair whose set rebuild failed. Repeating that pair avoids another WaitForIdle each frame.
+    // A changed pair gets a real attempt. ForgetPointShadowBindFailure clears the latch when either failed
+    // candidate texture is discarded by the scene.
+    IGpuTexture? _pointShadowBindFailureBase;
+    IGpuTexture? _pointShadowBindFailureTransient;
+    bool _pointShadowBindFailed;
 
     /// <summary>The texture every receiver set currently names at its <c>PointShadowMap</c> slot, which is the
     /// live atlas or the 1x1 default. A diagnostic, and the one a test asserts on after a refused rebind: the
     /// scene's own handle and this one disagreeing is the whole defect, so asserting the scene's alone would
     /// have missed it.</summary>
     internal IGpuTexture BoundPointShadowTexture => _pointShadowTexture;
+    internal IGpuTexture BoundPointShadowTransientTexture => _pointShadowTransientTexture;
 
     static Vector4[] NoPointShadowSlots()
     {
@@ -95,6 +100,10 @@ internal sealed partial class ModelRenderer
             1, 1, GpuPixelFormat.R32Float, GpuTextureUsage.Sampled));
         _gd.UpdateTexture(_pointShadowDefault, BitConverter.GetBytes(1f), 0, 0, 1, 1);
         _pointShadowTexture = _pointShadowDefault;
+        _pointShadowTransientDefault = factory.CreateTexture(GpuTextureDescription.Texture2D(
+            1, 1, GpuPixelFormat.R32Float, GpuTextureUsage.Sampled));
+        _gd.UpdateTexture(_pointShadowTransientDefault, BitConverter.GetBytes(1f), 0, 0, 1, 1);
+        _pointShadowTransientTexture = _pointShadowTransientDefault;
     }
 
     /// <summary>Set this frame's point-shadow tail. <paramref name="baseRows"/> and
@@ -138,6 +147,10 @@ internal sealed partial class ModelRenderer
             1f / (PointShadowFaceCount * faceResolution), 1f / (baseRowsCount * faceResolution),
             baseRowsCount, PointShadowFaceCount);
         _pointShadowFilter = new Vector4((float)filter, lightSizeMetres, maxPenumbraTexels, faceResolution);
+        _pointShadowTransientAtlas = transientRowsCount > 0
+            ? new Vector4(1f / (PointShadowFaceCount * faceResolution),
+                1f / (transientRowsCount * faceResolution), transientRowsCount, PointShadowFaceCount)
+            : Vector4.Zero;
         _frameImageDirty = true;
     }
 
@@ -152,6 +165,7 @@ internal sealed partial class ModelRenderer
         for (int i = 0; i < MaxPointLights; i++) _pointShadowParams[i] = new Vector4(-1f, 0f, 0f, -1f);
         _pointShadowAtlas = Vector4.Zero;
         _pointShadowFilter = Vector4.Zero;
+        _pointShadowTransientAtlas = Vector4.Zero;
         _frameImageDirty = true;
     }
 
@@ -169,50 +183,76 @@ internal sealed partial class ModelRenderer
     /// building a replacement for every set that carries it and handing the new ones back to whoever holds the
     /// old. The atlas is allocated lazily, so this fires at most once per allocation rather than per frame.
     /// <para>
-    /// A failure is LATCHED against the texture that caused it, so a caller that asks for the same atlas on every
+    /// A failure is latched against the requested pair, so a caller that asks for the same atlases on every
     /// frame pays the transaction (and the <c>WaitForIdle</c> inside it) once rather than once a frame forever.
-    /// Any other texture, including the 1x1 default a null asks for, clears the latch and is attempted for real,
-    /// and a caller freeing the texture it names says so through <see cref="ForgetPointShadowBindFailure"/>.
+    /// Any other pair, including a 1x1 default selected by null, gets a real attempt. A caller freeing either
+    /// failed candidate clears the latch through <see cref="ForgetPointShadowBindFailure"/>.
     /// </para>
     /// </remarks>
     internal PointShadowBindResult BindPointShadowAtlas(IGpuTexture? atlasOrNull,
         IReadOnlyList<IGpuResourceSet> liveMaterialSets,
         Action<Func<IGpuResourceSet, IGpuResourceSet>> commitMaterialSets)
+        => BindPointShadowAtlases(atlasOrNull, _pointShadowTransientTexture,
+            liveMaterialSets, commitMaterialSets);
+
+    /// <summary>Rebuild every receiver set against one base and transient point-atlas pair.</summary>
+    internal PointShadowBindResult BindPointShadowAtlases(IGpuTexture? baseAtlas,
+        IGpuTexture? transientAtlas, IReadOnlyList<IGpuResourceSet> liveMaterialSets,
+        Action<Func<IGpuResourceSet, IGpuResourceSet>> commitMaterialSets)
     {
-        IGpuTexture wanted = atlasOrNull ?? _pointShadowDefault;
-        if (ReferenceEquals(wanted, _pointShadowTexture)) return PointShadowBindResult.Unchanged;
-        if (ReferenceEquals(wanted, _pointShadowBindFailure)) return PointShadowBindResult.Failed;
+        IGpuTexture wantedBase = baseAtlas ?? _pointShadowDefault;
+        IGpuTexture wantedTransient = transientAtlas ?? _pointShadowTransientDefault;
+        if (ReferenceEquals(wantedBase, _pointShadowTexture)
+            && ReferenceEquals(wantedTransient, _pointShadowTransientTexture))
+            return PointShadowBindResult.Unchanged;
+        if (_pointShadowBindFailed && ReferenceEquals(wantedBase, _pointShadowBindFailureBase)
+            && ReferenceEquals(wantedTransient, _pointShadowBindFailureTransient))
+            return PointShadowBindResult.Failed;
 
         var replacements = new Dictionary<IGpuResourceSet, IGpuResourceSet>(ReferenceEqualityComparer.Instance);
         var replacementBindings = new Dictionary<IGpuResourceSet, ShadowSamplingBinding>(ReferenceEqualityComparer.Instance);
         try
         {
             _gd.WaitForIdle();
-            AddReplacement(_defaultSet, _shadowMap.ShadowTexture, wanted, replacements, replacementBindings);
-            AddReplacement(_skinnedDefaultFragSet, _shadowMap.ShadowTexture, wanted, replacements, replacementBindings);
+            AddReplacement(_defaultSet, _shadowMap.ShadowTexture, wantedBase, wantedTransient,
+                _pointLightBuffer, replacements, replacementBindings);
+            AddReplacement(_skinnedDefaultFragSet, _shadowMap.ShadowTexture, wantedBase, wantedTransient,
+                _pointLightBuffer, replacements, replacementBindings);
             foreach (IGpuResourceSet set in liveMaterialSets)
-                AddReplacement(set, _shadowMap.ShadowTexture, wanted, replacements, replacementBindings);
+                AddReplacement(set, _shadowMap.ShadowTexture, wantedBase, wantedTransient,
+                    _pointLightBuffer, replacements, replacementBindings);
         }
         catch
         {
             foreach (IGpuResourceSet set in replacements.Values) set.Dispose();
-            _pointShadowBindFailure = wanted;
+            _pointShadowBindFailureBase = wantedBase;
+            _pointShadowBindFailureTransient = wantedTransient;
+            _pointShadowBindFailed = true;
             return PointShadowBindResult.Failed;
         }
 
-        _pointShadowTexture = wanted;
-        _pointShadowBindFailure = null;
         CommitShadowSamplingSets(replacements, replacementBindings, commitMaterialSets);
+        _pointShadowTexture = wantedBase;
+        _pointShadowTransientTexture = wantedTransient;
+        _pointShadowBindFailureBase = null;
+        _pointShadowBindFailureTransient = null;
+        _pointShadowBindFailed = false;
         return PointShadowBindResult.Rebound;
     }
 
-    /// <summary>Drop the bind-failure latch if it names <paramref name="discarded"/>, which the caller is about to
+    /// <summary>Drop the bind-failure latch if either member names <paramref name="discarded"/>, which the caller is about to
     /// free. The latch exists to refuse a REPEAT of the same request cheaply, and a freed texture cannot be
     /// requested again, so keeping it would buy nothing and would hold a disposed handle reachable for the rest of
     /// the session. Any other texture leaves the latch exactly where it is.</summary>
     internal void ForgetPointShadowBindFailure(IGpuTexture discarded)
     {
-        if (ReferenceEquals(_pointShadowBindFailure, discarded)) _pointShadowBindFailure = null;
+        if (ReferenceEquals(_pointShadowBindFailureBase, discarded)
+            || ReferenceEquals(_pointShadowBindFailureTransient, discarded))
+        {
+            _pointShadowBindFailureBase = null;
+            _pointShadowBindFailureTransient = null;
+            _pointShadowBindFailed = false;
+        }
     }
 
     // Six faces to a row, the cube-map convention the pass and the receiver both bake in. Named here because the

@@ -21,7 +21,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// THE MODEL SET IS FOUR NATIVE CALLS. One constant-buffer call per stage that reads the UBO, one
-        /// shader-resource array covering the structured light buffer and all five textures, and one sampler array.
+        /// shader-resource array covering the structured light buffers and receiver textures, and one sampler array.
         /// The incumbent issued 42 for the same set before its own batching and 8 after.
         /// </summary>
         [Fact]
@@ -44,9 +44,9 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     $"VSSetConstantBuffers1(0,1,{Id(harness, set, 0)}@0+16)",
                     $"PSSetConstantBuffers1(0,1,{Id(harness, set, 0)}@0+16)",
-                    "PSSetShaderResources(0,7," + $"{Id(harness, set, 1)}|{Id(harness, set, 2)}|"
+                    "PSSetShaderResources(0,8," + $"{Id(harness, set, 1)}|{Id(harness, set, 2)}|"
                         + $"{Id(harness, set, 3)}|{Id(harness, set, 4)}|{Id(harness, set, 5)}|"
-                        + $"{Id(harness, set, 7)}|{Id(harness, set, 9)})",
+                        + $"{Id(harness, set, 7)}|{Id(harness, set, 9)}|{Id(harness, set, 10)})",
                     $"PSSetSamplers(0,2,{Id(harness, set, 6)}|{Id(harness, set, 8)})",
                 },
                 harness.BindTrace());
@@ -145,8 +145,8 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// A SET'S REGISTERS START PAST EVERY LAYOUT BEFORE IT IN THE PIPELINE'S ARRAY, per file. The model layout
-        /// consumes one constant buffer, seven shader resources and two samplers, so a water set at slot one starts
-        /// at <c>b1</c>, <c>t7</c> and <c>s2</c>. That flattening is the whole of decision S2's across-layout
+        /// consumes one constant buffer, eight shader resources and two samplers, so a water set at slot one starts
+        /// at <c>b1</c>, <c>t8</c> and <c>s2</c>. That flattening is the whole of decision S2's across-layout
         /// half, and getting it wrong compiles, draws and renders every pixel from the wrong resource.
         /// </summary>
         [Fact]
@@ -165,7 +165,7 @@ namespace KhaozEngine.Tests.Gpu
             emitter.Draw(3, 1, 0, 0);
 
             Assert.Contains($"VSSetConstantBuffers1(1,1,{Id(harness, set, 6)}@0+64)", harness.BindTrace());
-            Assert.Contains($"VSSetShaderResources(7,2,{Id(harness, set, 0)}|{Id(harness, set, 2)})",
+            Assert.Contains($"VSSetShaderResources(8,2,{Id(harness, set, 0)}|{Id(harness, set, 2)})",
                 harness.BindTrace());
             Assert.Contains($"VSSetSamplers(2,2,{Id(harness, set, 1)}|{Id(harness, set, 3)})", harness.BindTrace());
         }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Rendering;
 using KhaozEngine.Tests.Gpu;
@@ -19,6 +20,45 @@ namespace KhaozEngine.Tests.Render3D;
 /// </summary>
 public sealed class PointShadowAtlasBindTests
 {
+    [Fact]
+    public void FailedPairRebindLeavesCompleteOldPairBoundAndDisposesCandidates()
+    {
+        using var rig = new BindRig();
+        Assert.Equal(PointShadowBindResult.Rebound, rig.BindPair(rig.Atlas, rig.TransientAtlas));
+        IGpuTexture oldBase = rig.BoundBase;
+        IGpuTexture oldTransient = rig.BoundTransient;
+        int disposedBefore = rig.DisposedSetCount;
+        rig.FailTheSecondSetCreate();
+
+        Assert.Equal(PointShadowBindResult.Failed,
+            rig.BindPair(rig.SecondAtlas, rig.SecondTransientAtlas));
+
+        Assert.Same(oldBase, rig.BoundBase);
+        Assert.Same(oldTransient, rig.BoundTransient);
+        Assert.Equal(disposedBefore + 1, rig.DisposedSetCount);
+        Assert.Equal(3, rig.Factory.ResourceSets.Count(set => !set.Disposed
+            && set.Resources.Contains(oldBase) && set.Resources.Contains(oldTransient)));
+    }
+
+    [Fact]
+    public void PairFailureLatchKeysBothTexturesAndAllowsAChangedPair()
+    {
+        using var rig = new BindRig();
+        rig.FailTheSecondSetCreate();
+        Assert.Equal(PointShadowBindResult.Failed,
+            rig.BindPair(rig.Atlas, rig.TransientAtlas));
+        rig.StopFailing();
+        int waits = rig.Device.WaitForIdleCalls;
+
+        Assert.Equal(PointShadowBindResult.Failed,
+            rig.BindPair(rig.Atlas, rig.TransientAtlas));
+        Assert.Equal(waits, rig.Device.WaitForIdleCalls);
+        Assert.Equal(PointShadowBindResult.Rebound,
+            rig.BindPair(rig.Atlas, rig.SecondTransientAtlas));
+        Assert.Equal(PointShadowBindResult.Rebound,
+            rig.BindPair(rig.Atlas, rig.TransientAtlas));
+    }
+
     [Fact]
     public void BindingTheAtlasAlreadyBoundIsUnchangedAndStallsNothing()
     {
@@ -158,17 +198,26 @@ public sealed class PointShadowAtlasBindTests
             _liveSets = new List<IGpuResourceSet> { _model.CreateMaterialSet() };
             Atlas = NewAtlas();
             SecondAtlas = NewAtlas();
+            TransientAtlas = NewAtlas();
+            SecondTransientAtlas = NewAtlas();
         }
 
         internal FakeGpuDevice Device { get; }
         internal FakeGpuResourceFactory Factory { get; }
         internal IGpuTexture Atlas { get; }
         internal IGpuTexture SecondAtlas { get; }
+        internal IGpuTexture TransientAtlas { get; }
+        internal IGpuTexture SecondTransientAtlas { get; }
+        internal IGpuTexture BoundBase => _model.BoundPointShadowTexture;
+        internal IGpuTexture BoundTransient => _model.BoundPointShadowTransientTexture;
         internal int SetCount => Factory.ResourceSets.Count;
         internal int DisposedSetCount => Factory.DisposedResourceSetCount;
 
         internal PointShadowBindResult Bind(IGpuTexture? atlas) =>
             _model.BindPointShadowAtlas(atlas, _liveSets, Commit);
+
+        internal PointShadowBindResult BindPair(IGpuTexture? baseAtlas, IGpuTexture? transientAtlas) =>
+            _model.BindPointShadowAtlases(baseAtlas, transientAtlas, _liveSets, Commit);
 
         /// <summary>What a caller says as it frees an atlas whose bind was refused.</summary>
         internal void Forget(IGpuTexture atlas) => _model.ForgetPointShadowBindFailure(atlas);

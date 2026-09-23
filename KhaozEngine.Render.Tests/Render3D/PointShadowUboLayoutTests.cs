@@ -29,6 +29,15 @@ public sealed class PointShadowUboLayoutTests
     // reading ShadowMat or RenderOrigin finds them exactly where it always did.
     const uint OldUboBytes = 1008;
 
+    [Fact]
+    public void TransientShapeAppendsAfterTheCompatibilityTail()
+    {
+        Assert.Equal(1296u, ModelRenderer.PointShadowTransientTailOffset);
+        Assert.Equal(16u, ModelRenderer.PointShadowTransientTailBytes);
+        Assert.Equal(1312u, ModelRenderer.ClusterTailOffset);
+        Assert.Equal(1344u, ModelRenderer.UboBytes);
+    }
+
     static ModelRenderer NewRenderer(FakeGpuDevice device)
     {
         IGpuTexture target = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
@@ -61,14 +70,22 @@ public sealed class PointShadowUboLayoutTests
         return (f[i], f[i + 1], f[i + 2], f[i + 3]);
     }
 
+    static (float X, float Y, float Rows, float Faces) TransientAtlasParams(ModelRenderer model)
+    {
+        ReadOnlySpan<float> f = MemoryMarshal.Cast<byte, float>(model.FrameImage);
+        int i = (int)(ModelRenderer.PointShadowTransientTailOffset / 4);
+        return (f[i], f[i + 1], f[i + 2], f[i + 3]);
+    }
+
     [Fact]
     public void ThePointShadowTailKeepsItsSizeAndTheClusterTailFollowsIt()
     {
         Assert.Equal((uint)(ModelRenderer.MaxPointLights * 16 + 32), ModelRenderer.PointShadowTailBytes);
         Assert.Equal(288u, ModelRenderer.PointShadowTailBytes);
-        Assert.Equal(OldUboBytes + ModelRenderer.PointShadowTailBytes, ModelRenderer.ClusterTailOffset);
-        Assert.Equal(1296u, ModelRenderer.ClusterTailOffset);
-        Assert.Equal(1328u, ModelRenderer.UboBytes);
+        Assert.Equal(OldUboBytes + ModelRenderer.PointShadowTailBytes,
+            ModelRenderer.PointShadowTransientTailOffset);
+        Assert.Equal(1312u, ModelRenderer.ClusterTailOffset);
+        Assert.Equal(1344u, ModelRenderer.UboBytes);
     }
 
     [Fact]
@@ -95,6 +112,7 @@ public sealed class PointShadowUboLayoutTests
         }
         Assert.Equal((0f, 0f, 0f, 0f), AtlasParams(model));
         Assert.Equal((0f, 0f, 0f, 0f), FilterParams(model));
+        Assert.Equal((0f, 0f, 0f, 0f), TransientAtlasParams(model));
     }
 
     [Fact]
@@ -110,6 +128,7 @@ public sealed class PointShadowUboLayoutTests
             Assert.Equal((-1f, 0f, 0f, -1f), Slot(model, i));
         Assert.Equal((0f, 0f, 0f, 0f), AtlasParams(model));
         Assert.Equal((0f, 0f, 0f, 0f), FilterParams(model));
+        Assert.Equal((0f, 0f, 0f, 0f), TransientAtlasParams(model));
     }
 
     [Fact]
@@ -149,6 +168,7 @@ public sealed class PointShadowUboLayoutTests
         Assert.Equal((7f, 0.01f, 0.02f, 0f), Slot(model, 15));
         Assert.Equal(-1f, Slot(model, 1).W);
         Assert.Equal((1f / 1536f, 1f / 2048f, 8f, 6f), AtlasParams(model));
+        Assert.Equal((1f / 1536f, 1f / 768f, 3f, 6f), TransientAtlasParams(model));
     }
 
     [Fact]
@@ -242,19 +262,22 @@ public sealed class PointShadowUboLayoutTests
             int slots = src.IndexOf("vec4 PointShadowParams[16];", StringComparison.Ordinal);
             int atlas = src.IndexOf("vec4 PointShadowAtlas;", StringComparison.Ordinal);
             int filter = src.IndexOf("vec4 PointShadowFilter;", StringComparison.Ordinal);
+            int transient = src.IndexOf("vec4 PointShadowTransientAtlas;", StringComparison.Ordinal);
             int clusterDepth = src.IndexOf("vec4 ClusterDepth;", StringComparison.Ordinal);
             int clusterCamera = src.IndexOf("vec4 ClusterCamera;", StringComparison.Ordinal);
             Assert.True(origin >= 0, $"{name}: the frame block is missing the render origin.");
             Assert.True(slots >= 0, $"{name}: the frame block is missing PointShadowParams.");
             Assert.True(atlas >= 0, $"{name}: the frame block is missing PointShadowAtlas.");
             Assert.True(filter >= 0, $"{name}: the frame block is missing PointShadowFilter.");
+            Assert.True(transient >= 0, $"{name}: the frame block is missing PointShadowTransientAtlas.");
             Assert.True(clusterDepth >= 0, $"{name}: the frame block is missing ClusterDepth.");
             Assert.True(clusterCamera >= 0, $"{name}: the frame block is missing ClusterCamera.");
             Assert.True(origin < slots,
                 $"{name}: the point-shadow tail must follow the render origin, matching the C# offsets.");
             Assert.True(slots < atlas, $"{name}: PointShadowAtlas follows PointShadowParams.");
             Assert.True(atlas < filter, $"{name}: PointShadowFilter follows PointShadowAtlas.");
-            Assert.True(filter < clusterDepth, $"{name}: ClusterDepth follows the compatibility tails.");
+            Assert.True(filter < transient, $"{name}: PointShadowTransientAtlas follows PointShadowFilter.");
+            Assert.True(transient < clusterDepth, $"{name}: ClusterDepth follows the transient atlas shape.");
             Assert.True(clusterDepth < clusterCamera, $"{name}: ClusterCamera is the last member of the block.");
         }
     }
@@ -268,6 +291,7 @@ public sealed class PointShadowUboLayoutTests
         Assert.Contains("vec4 PointShadowParams[16];", ShaderSources.FoliageVert, StringComparison.Ordinal);
         Assert.Contains("vec4 PointShadowAtlas;", ShaderSources.FoliageVert, StringComparison.Ordinal);
         Assert.Contains("vec4 PointShadowFilter;", ShaderSources.FoliageVert, StringComparison.Ordinal);
+        Assert.Contains("vec4 PointShadowTransientAtlas;", ShaderSources.FoliageVert, StringComparison.Ordinal);
         Assert.Contains("vec4 ClusterDepth;", ShaderSources.FoliageVert, StringComparison.Ordinal);
         Assert.Contains("vec4 ClusterCamera;", ShaderSources.FoliageVert, StringComparison.Ordinal);
     }

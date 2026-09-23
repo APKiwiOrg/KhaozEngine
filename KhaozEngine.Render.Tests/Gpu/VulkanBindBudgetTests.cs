@@ -163,8 +163,8 @@ namespace KhaozEngine.Tests.Gpu
 
             VulkanResourceSet material = harness.Set("Model");
 
-            // Albedo, NormalMap, RoughnessMap, ShadowMap and, since point-light shadows, PointShadowMap.
-            Assert.Equal(5, material.Images.Length);
+            // Albedo, NormalMap, RoughnessMap, ShadowMap and both point-shadow atlas textures.
+            Assert.Equal(6, material.Images.Length);
             foreach (VulkanBoundImage image in material.Images)
             {
                 Assert.False(image.Storage);

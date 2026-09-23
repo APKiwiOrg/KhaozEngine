@@ -67,18 +67,25 @@ internal sealed partial class ModelRenderer
     void AddReplacement(IGpuResourceSet oldSet, IGpuTexture shadowTexture, IGpuTexture pointShadowTexture,
         Dictionary<IGpuResourceSet, IGpuResourceSet> replacements,
         Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings) =>
-        AddReplacement(oldSet, shadowTexture, pointShadowTexture, _pointLightBuffer,
+        AddReplacement(oldSet, shadowTexture, pointShadowTexture, _pointShadowTransientTexture, _pointLightBuffer,
             replacements, replacementBindings);
 
     void AddReplacement(IGpuResourceSet oldSet, IGpuTexture shadowTexture, IGpuTexture pointShadowTexture,
         IGpuBuffer pointLightBuffer, Dictionary<IGpuResourceSet, IGpuResourceSet> replacements,
+        Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings) =>
+        AddReplacement(oldSet, shadowTexture, pointShadowTexture, _pointShadowTransientTexture, pointLightBuffer,
+            replacements, replacementBindings);
+
+    void AddReplacement(IGpuResourceSet oldSet, IGpuTexture shadowTexture, IGpuTexture pointShadowTexture,
+        IGpuTexture pointShadowTransientTexture, IGpuBuffer pointLightBuffer,
+        Dictionary<IGpuResourceSet, IGpuResourceSet> replacements,
         Dictionary<IGpuResourceSet, ShadowSamplingBinding> replacementBindings)
     {
         if (replacements.ContainsKey(oldSet)) return;
         if (!_shadowSamplingBindings.TryGetValue(oldSet, out ShadowSamplingBinding? binding))
             throw new InvalidOperationException("a live shadow-sampling set has no rebuild description.");
         IGpuResourceSet replacement = BuildShadowSamplingSet(
-            binding, shadowTexture, pointShadowTexture, pointLightBuffer);
+            binding, shadowTexture, pointShadowTexture, pointShadowTransientTexture, pointLightBuffer);
         replacements.Add(oldSet, replacement);
         replacementBindings.Add(replacement, binding);
     }
@@ -92,7 +99,7 @@ internal sealed partial class ModelRenderer
     {
         var binding = new ShadowSamplingBinding(layout, materialResources, includesPointLights);
         IGpuResourceSet set = BuildShadowSamplingSet(
-            binding, shadowTexture, _pointShadowTexture, _pointLightBuffer);
+            binding, shadowTexture, _pointShadowTexture, _pointShadowTransientTexture, _pointLightBuffer);
         _shadowSamplingBindings.Add(set, binding);
         return set;
     }
@@ -108,13 +115,12 @@ internal sealed partial class ModelRenderer
         CreateShadowSamplingSet(_splatMaterialLayout, _shadowMap.ShadowTexture,
             paramsUbo, albedoArray, normalArray, sampler ?? _terrainSampler);
 
-    // The three trailing elements EVERY receiver family's layout ends in, in declaration order: the cascade
-    // atlas, the sampler both atlases are read through, and the point-light atlas (or its 1x1 default).
+    // Every receiver layout ends in the cascade atlas, shared sampler, base point atlas, and transient point atlas.
     IGpuResourceSet BuildShadowSamplingSet(ShadowSamplingBinding binding, IGpuTexture shadowTexture,
-        IGpuTexture pointShadowTexture, IGpuBuffer pointLightBuffer)
+        IGpuTexture pointShadowTexture, IGpuTexture pointShadowTransientTexture, IGpuBuffer pointLightBuffer)
     {
         int pointLightOffset = binding.IncludesPointLights ? 2 : 0;
-        var resources = new IGpuBindableResource[binding.MaterialResources.Length + pointLightOffset + 3];
+        var resources = new IGpuBindableResource[binding.MaterialResources.Length + pointLightOffset + 4];
         if (binding.IncludesPointLights)
         {
             resources[0] = binding.MaterialResources[0];
@@ -126,9 +132,10 @@ internal sealed partial class ModelRenderer
         {
             binding.MaterialResources.CopyTo(resources, 0);
         }
-        resources[^3] = shadowTexture;
-        resources[^2] = _shadowMap.ShadowSampler;
-        resources[^1] = pointShadowTexture;
+        resources[^4] = shadowTexture;
+        resources[^3] = _shadowMap.ShadowSampler;
+        resources[^2] = pointShadowTexture;
+        resources[^1] = pointShadowTransientTexture;
         return _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(binding.Layout, resources));
     }
 

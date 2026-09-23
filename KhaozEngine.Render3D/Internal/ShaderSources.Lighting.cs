@@ -272,7 +272,7 @@ float samplePointShadowSoft(texture2D atlas, sampler samp, vec3 toL, float dist,
 
 // One point light's shadow term: 1 = fully lit, 0 = fully occluded. toL is the fragment-to-light vector (so the
 // face select negates it), dist its length, radius the light's, ndl the already-computed N.L, and params is that
-// light's PointShadowParams entry - (slot, bias, slopeBias, 0). The caller has already checked slot >= 0.
+// light's PointShadowParams entry - (base row, bias, slopeBias, transient row). This base-only body ignores w.
 // COMPARE FIRST, FILTER AFTER, exactly as the cascade PCF does: four taps at half-texel offsets each fetch one
 // stored distance, compare it, and only the 0/1 results are averaged. Every tap is CLAMPED inside its own cell so
 // it can never bleed into the neighbouring face column or the next light's row.
@@ -311,7 +311,116 @@ float samplePointShadow(texture2D atlas, sampler samp, vec3 toL, float dist, flo
     return samplePointShadowSoft(atlas, samp, toL, dist, radius, ndlRaw, params, worldPos);
 }
 
-// pointAtlas/pointSamp are parameters for the same reason sampleKeyShadow's are: their set/binding differ per
+// The combined path maps one face-local UV into each atlas independently. Their face widths are equal, but their
+// row counts differ. The base-only path above stays untouched and returns before this helper is ever called.
+float pointShadowDepthAtFaceUv(texture2D atlas, sampler samp, float face, vec2 uv, float row, vec4 shape) {
+    vec2 cellSize = vec2(1.0 / shape.w, 1.0 / max(shape.z, 1.0));
+    vec2 cellMin = vec2(face, row) * cellSize;
+    vec2 tap = clamp(cellMin + uv * cellSize, cellMin + shape.xy * 0.5,
+                     cellMin + cellSize - shape.xy * 0.5);
+    return textureLod(sampler2D(atlas, samp), tap, 0.0).r;
+}
+
+float pointShadowCombinedDepthAt(texture2D baseAtlas, texture2D transientAtlas, sampler samp,
+                                 vec3 dir, float baseRow, float transientRow) {
+    float face; vec2 uv;
+    pointShadowFace(dir, face, uv);
+    float baseStored = pointShadowDepthAtFaceUv(baseAtlas, samp, face, uv, baseRow, PointShadowAtlas);
+    float transientStored = pointShadowDepthAtFaceUv(
+        transientAtlas, samp, face, uv, transientRow, PointShadowTransientAtlas);
+    return min(baseStored, transientStored);
+}
+
+float pointShadowBlockerSearchCombined(texture2D baseAtlas, texture2D transientAtlas, sampler samp,
+                                       vec3 dir, vec3 tx, vec3 ty, float baseRow, float transientRow,
+                                       float searchAngle, float d, float bias, float rotation) {
+    float sum = 0.0; float hits = 0.0;
+    for (int i = 0; i < 6; i++) {
+        vec3 t = dir;
+        if (i > 0) {
+            float a = rotation + float(i) * 1.2566371;
+            float r = (i % 2 == 0) ? 0.55 : 1.0;
+            t = normalize(dir + (tx * cos(a) + ty * sin(a)) * (searchAngle * r));
+        }
+        float stored = pointShadowCombinedDepthAt(baseAtlas, transientAtlas, samp, t, baseRow, transientRow);
+        if (stored + bias < d) { sum += stored; hits += 1.0; }
+    }
+    return hits > 0.0 ? sum / hits : -1.0;
+}
+
+float pointShadowFilterDiscCombined(texture2D baseAtlas, texture2D transientAtlas, sampler samp,
+                                    vec3 dir, vec3 tx, vec3 ty, float baseRow, float transientRow,
+                                    float angle, float d, float bias, float rotation) {
+    float lit = step(d, pointShadowCombinedDepthAt(baseAtlas, transientAtlas, samp, dir, baseRow, transientRow) + bias);
+    for (int i = 0; i < 8; i++) {
+        float a = rotation + float(i) * 0.7853982;
+        float r = (i % 2 == 0) ? 0.6 : 1.0;
+        vec3 t = normalize(dir + (tx * cos(a) + ty * sin(a)) * (angle * r));
+        lit += step(d, pointShadowCombinedDepthAt(baseAtlas, transientAtlas, samp, t, baseRow, transientRow) + bias);
+    }
+    return lit / 9.0;
+}
+
+float samplePointShadowHardCombined(texture2D baseAtlas, texture2D transientAtlas, sampler samp,
+                                    vec3 toL, float dist, float radius, float ndlRaw, vec4 params) {
+    float face; vec2 uv;
+    pointShadowFace(-toL, face, uv);
+    vec2 localTexel = vec2(1.0 / max(PointShadowFilter.w, 1.0));
+    float d = dist / max(radius, 1e-6);
+    float bias = params.y + params.z * (1.0 - ndlRaw);
+    float lit = 0.0;
+    for (int oy = 0; oy < 2; oy++) {
+        for (int ox = 0; ox < 2; ox++) {
+            vec2 localTap = uv + (vec2(float(ox), float(oy)) - 0.5) * localTexel;
+            float baseStored = pointShadowDepthAtFaceUv(
+                baseAtlas, samp, face, localTap, params.x, PointShadowAtlas);
+            float transientStored = pointShadowDepthAtFaceUv(
+                transientAtlas, samp, face, localTap, params.w, PointShadowTransientAtlas);
+            lit += step(d, min(baseStored, transientStored) + bias);
+        }
+    }
+    return lit * 0.25;
+}
+
+float samplePointShadowSoftCombined(texture2D baseAtlas, texture2D transientAtlas, sampler samp,
+                                    vec3 toL, float dist, float radius, float ndlRaw,
+                                    vec4 params, vec3 worldPos) {
+    if (dist <= 1e-4) return 1.0;
+    vec3 dir = -toL / max(dist, 1e-6);
+    float d = dist / max(radius, 1e-6);
+    float bias = params.y + params.z * (1.0 - ndlRaw);
+    float lightSize = PointShadowFilter.y;
+    float texelAngle = 1.5707963 / max(PointShadowFilter.w, 1.0);
+    float maxAngle = PointShadowFilter.z * texelAngle;
+
+    vec3 up = abs(dir.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tx = normalize(cross(up, dir));
+    vec3 ty = cross(dir, tx);
+    float rotation = pointShadowDither(worldPos) * 6.2831853;
+
+    float searchAngle = min(lightSize / max(dist, 1e-3), maxAngle);
+    float blocker = pointShadowBlockerSearchCombined(baseAtlas, transientAtlas, samp, dir, tx, ty,
+        params.x, params.w, searchAngle, d, bias, rotation);
+    if (blocker < 0.0) return 1.0;
+
+    float dBlocker = max(blocker * radius, 1e-3);
+    float width = lightSize * max(dist - dBlocker, 0.0) / dBlocker;
+    float angle = min(width / max(dist, 1e-3), maxAngle);
+    return pointShadowFilterDiscCombined(baseAtlas, transientAtlas, samp, dir, tx, ty,
+        params.x, params.w, angle, d, bias, rotation);
+}
+
+float samplePointShadowCombined(texture2D baseAtlas, texture2D transientAtlas, sampler samp,
+                                vec3 toL, float dist, float radius, float ndlRaw,
+                                vec4 params, vec3 worldPos) {
+    if (params.w < 0.0)
+        return samplePointShadow(baseAtlas, samp, toL, dist, radius, ndlRaw, params, worldPos);
+    if (PointShadowFilter.x < 0.5)
+        return samplePointShadowHardCombined(baseAtlas, transientAtlas, samp, toL, dist, radius, ndlRaw, params);
+    return samplePointShadowSoftCombined(baseAtlas, transientAtlas, samp, toL, dist, radius, ndlRaw, params, worldPos);
+}
+
+// The point atlases and sampler are parameters for the same reason sampleKeyShadow's are: their set/binding differ per
 // fragment and GLSL cannot reference a fragment's own bindings from a shared function.
 //
 // THE CLUSTER IMAGE (PointLightClusterBuilder, issue #1112) is one uvec4 buffer in two regions. The first 864 uvec4
@@ -355,7 +464,9 @@ bool pointLightClusterForFragment(vec3 worldPos, out uint clusterIndex) {
     return true;
 }
 
-void computeLighting(texture2D pointAtlas, sampler pointSamp, vec3 N, vec3 worldPos, float specStrength, float specExp, float keyShadow, out vec3 diffuse, out vec3 specColor) {
+void computeLighting(texture2D pointAtlas, texture2D pointTransientAtlas, sampler pointSamp,
+                     vec3 N, vec3 worldPos, float specStrength, float specExp, float keyShadow,
+                     out vec3 diffuse, out vec3 specColor) {
     float ndlKey  = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float ndlFill = max(dot(N, -normalize(FillDir.xyz)), 0.0);
     float bands = Params.x;
@@ -419,8 +530,8 @@ void computeLighting(texture2D pointAtlas, sampler pointSamp, vec3 N, vec3 world
         // of the soft filter on the one to three lights that actually reach a fragment, and it moves no picture,
         // because 0 * lit is 0 for every lit in 0..1.
         if (att > 0.0 && pointLight.ShadowParams.x >= 0.0)
-            att *= samplePointShadow(pointAtlas, pointSamp, toL, dist, radius, ndlRaw, pointLight.ShadowParams,
-                                     worldPos);
+            att *= samplePointShadowCombined(pointAtlas, pointTransientAtlas, pointSamp, toL, dist, radius,
+                                             ndlRaw, pointLight.ShadowParams, worldPos);
         vec3 lc = pointLight.ColorIntensity.rgb;
         diffuse += lc * (ndl * att);
         vec3 Hp = normalize(L + V);

@@ -79,14 +79,14 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/ModelRenderer.cs:225, :270 and :273
                 ["Model"] = L(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F), T("Albedo"),
                     T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
-                    T("PointShadowMap")),
+                    T("PointShadowMap"), T("PointShadowTransientMap")),
                 ["Foliage"] = L(U("Foliage", V, dynamic: true)),
                 // The shared frame block, fragment-only point lights and per-draw vertex block in binding order.
                 // The two uniform buffers retain their relative order from #604.
                 ["Model.skinnedMain"] = L(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F),
                     U("VBlock", V, dynamic: true)),
                 ["Model.skinnedFrag"] = L(T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"),
-                    T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap")),
+                    T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
                 // Render3D/Rendering/SkinnedBonePalette.cs:54. The one shipped layout used by TWO pipelines at
                 // DIFFERENT slots since #407: set 2 of the skinned model pair and set 1 of the skinned depth
                 // pipeline. A set layout carries no set number, so one declaration really does serve both, and it
@@ -97,13 +97,13 @@ namespace KhaozEngine.Tests.Gpu
                 // buffer in BOTH of their sets, and one of the three that spend two uniform buffers in total.
                 ["Model.splatFrame"] = L(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F)),
                 ["Model.splatMaterial"] = L(U("SplatParams", F), T("AlbedoArray"), T("NormalArray"), S("Sampler"),
-                    T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap")),
+                    T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
                 // Render3D/Rendering/ModelRenderer.TileGround.cs:47 and :55. The same two-set split since #727,
                 // which unfolded the last combined frame+params buffer in the tree. Albedo only, so one array
                 // where the splat material layout has two, and the shadow map stays last.
                 ["Model.tileGroundFrame"] = L(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F)),
                 ["Model.tileGroundMaterial"] = L(U("TileGroundParams", F), T("AlbedoArray"), S("Sampler"),
-                    T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap")),
+                    T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
 
                 // Render3D/Rendering/OceanFftProducer.cs:506 and :510, both compute
                 ["OceanFft.row"] = L(U("Params", C), Rw("H0Buf", C), Rw("WorkBuf", C)),

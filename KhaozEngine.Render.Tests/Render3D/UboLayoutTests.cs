@@ -75,6 +75,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(
                 ModelRenderer.HeaderBytes + 2 * ModelRenderer.LightArrayBytes + ModelRenderer.ShadowTailBytes
                     + ModelRenderer.RenderOriginBytes + ModelRenderer.PointShadowTailBytes
+                    + ModelRenderer.PointShadowTransientTailBytes
                     + ModelRenderer.ClusterTailBytes,
                 ModelRenderer.UboBytes);
             Assert.Equal(ModelRenderer.ShadowTailOffset + ModelRenderer.ShadowTailBytes,
@@ -105,15 +106,15 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void UboBytes_Is1328_WithTheAppendedClusterTail()
+        public void UboBytes_Is1344_WithTheAppendedTransientAndClusterTails()
         {
-            // 176 + 2*256 + 304 + 16 + 288 + 32 = 1328. The cluster tail follows every compatibility field, so
+            // 176 + 2*256 + 304 + 16 + 288 + 16 + 32 = 1344. The cluster tail follows every compatibility field, so
             // all offsets that existed before clustered lighting remain unchanged.
             Assert.Equal(992u, ModelRenderer.RenderOriginOffset);
             Assert.Equal(1008u, ModelRenderer.PointShadowTailOffset);
-            Assert.Equal(1296u, ModelRenderer.ClusterTailOffset);
+            Assert.Equal(1312u, ModelRenderer.ClusterTailOffset);
             Assert.Equal(32u, ModelRenderer.ClusterTailBytes);
-            Assert.Equal(1328u, ModelRenderer.UboBytes);
+            Assert.Equal(1344u, ModelRenderer.UboBytes);
         }
 
         [Fact]
@@ -684,7 +685,7 @@ namespace KhaozEngine.Tests.Render3D
             // ShaderSources.WaterFrag.
             foreach (var member in new[] { "mat4 ViewProj;", "mat4 InvViewProj;", "vec4 LightDir;", "vec4 LightColor;",
                 "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
-                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", 
+                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;",
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
                 "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;",
                 "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
@@ -702,7 +703,7 @@ namespace KhaozEngine.Tests.Render3D
             // (same one-UBO-per-set buffer) or the two stages disagree on the layout the driver builds.
             foreach (var member in new[] { "mat4 ViewProj;", "mat4 InvViewProj;", "vec4 LightDir;", "vec4 LightColor;",
                 "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
-                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", 
+                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;",
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
                 "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;",
                 "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",
@@ -721,7 +722,7 @@ namespace KhaozEngine.Tests.Render3D
             // in one grid mode only, which is exactly the kind of defect that survives a review.
             foreach (var member in new[] { "mat4 ViewProj;", "mat4 InvViewProj;", "vec4 LightDir;", "vec4 LightColor;",
                 "vec4 CameraPos;", "vec4 DeepColor;", "vec4 ShallowColor;", "vec4 HorizonColor;", "vec4 WaveParams;",
-                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;", 
+                "vec4 ShoreGlint;", "vec4 DetailParams;", "vec4 SkyHorizon;", "vec4 SkyZenith;",
                 "vec4 SkyParams;", "vec4 ReflectGlint;", "vec4 SwellParams;", "vec4 SwellShape;", "vec4 Absorption;",
                 "vec4 FoamColor;", "vec4 FoamParams;", "vec4 RippleSpectrum;", "vec4 FootprintParams;",
                 "vec4 FftParams;", "vec4 FftTiles;", "vec4 FftVariance;", "vec4 FftFocus;", "vec4 FftRotCos;",

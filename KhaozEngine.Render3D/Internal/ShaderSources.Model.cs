@@ -40,9 +40,10 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w = transient row or -1
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
@@ -106,9 +107,10 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;    // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets; // per-cascade normal-offset world size (texelWorld_i * ShadowNormalOffset): x=c0..w=c3
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w = transient row or -1
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
@@ -120,6 +122,7 @@ layout(set=0, binding=6) uniform sampler Samp;           // shared sampler for a
 layout(set=0, binding=7) uniform texture2D ShadowMap;    // key-light depth map (R32F); sampled LAST, after the material maps (Metal first-sample-order rule); 1x1 default when shadows off
 layout(set=0, binding=8) uniform sampler ShadowSamp;     // clamp/linear sampler for the shadow-map PCF taps
 layout(set=0, binding=9) uniform texture2D PointShadowMap;  // point-light distance atlas (R32F), read through ShadowSamp; 1x1 default when no light carries one
+layout(set=0, binding=10) uniform texture2D PointShadowTransientMap;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
@@ -188,7 +191,7 @@ void main() {
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     // Key+fill+cel+point-light accumulation is the shared block (ShaderSources.LightingCommonGlsl), spliced in above.
     vec3 diffuse; vec3 specColor;
-    computeLighting(PointShadowMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
+    computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;
     // Per-instance rigid dissolve (issue #253), gated with an if (NOT a multiply) so a draw carrying no dissolve is
     // byte-identical to the pre-dissolve path: the else branch is exactly `lit + vEmissive.rgb`, the old expression.
@@ -236,9 +239,10 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w = transient row or -1
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
@@ -250,6 +254,7 @@ layout(set=0, binding=6) uniform sampler Samp;
 layout(set=0, binding=7) uniform texture2D ShadowMap;
 layout(set=0, binding=8) uniform sampler ShadowSamp;
 layout(set=0, binding=9) uniform texture2D PointShadowMap;
+layout(set=0, binding=10) uniform texture2D PointShadowTransientMap;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
@@ -300,7 +305,7 @@ void main() {
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
-    computeLighting(PointShadowMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
+    computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;   // no base emissive: vEmissive is the edge colour here
     // Emissive edge: a bright band just above the discard threshold. step(threshold) suppresses any edge at
     // threshold 0 (a fully-solid avatar routed through this pipeline still reads clean).
@@ -348,9 +353,10 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w = transient row or -1
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
@@ -449,9 +455,10 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w = transient row or -1
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
@@ -463,6 +470,7 @@ layout(set=1, binding=3) uniform sampler Samp;
 layout(set=1, binding=4) uniform texture2D ShadowMap;
 layout(set=1, binding=5) uniform sampler ShadowSamp;
 layout(set=1, binding=6) uniform texture2D PointShadowMap;
+layout(set=1, binding=7) uniform texture2D PointShadowTransientMap;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
@@ -497,7 +505,7 @@ void main() {
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
-    computeLighting(PointShadowMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
+    computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
@@ -524,9 +532,10 @@ layout(set=0, binding=0) uniform U {
     vec4 ShadowParams2;        // x=texelStep(1/perCascadeRes), y=maxDistance, z=borderFrac, w=cascadeBlendFrac
     vec4 ShadowNormalOffsets;  // per-cascade normal-offset world size (x=c0..w=c3)
     vec4 RenderOrigin;     // camera-relative rendering: add to a render-frame position for the ABSOLUTE world one
-    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w unused
+    vec4 PointShadowParams[16];  // per point light: x = atlas row or -1 for none, y = bias, z = slope bias, w = transient row or -1
     vec4 PointShadowAtlas;       // xy = one atlas texel in UV, z = rows (lights), w = face columns (6)
     vec4 PointShadowFilter;      // x = filter mode (0 hard, 1 soft), y = light size m, z = max penumbra texels, w = face resolution
+    vec4 PointShadowTransientAtlas;
     vec4 ClusterDepth;            // x=near, y=far, z=log(far/near), w=1 perspective, 0 orthographic, -1 invalid
     vec4 ClusterCamera;           // xyz = camera forward in the render frame
 };
@@ -538,6 +547,7 @@ layout(set=1, binding=3) uniform sampler Samp;
 layout(set=1, binding=4) uniform texture2D ShadowMap;
 layout(set=1, binding=5) uniform sampler ShadowSamp;
 layout(set=1, binding=6) uniform texture2D PointShadowMap;
+layout(set=1, binding=7) uniform texture2D PointShadowTransientMap;
 layout(location=0) in vec3 vNormalW;
 layout(location=1) in vec4 vColor;
 layout(location=2) in vec3 vWorldPos;
@@ -588,7 +598,7 @@ void main() {
     float ndlKeyForShadow = max(dot(N, -normalize(LightDir.xyz)), 0.0);
     float keyShadow = sampleKeyShadow(ShadowMap, ShadowSamp, vWorldPos, Ngeo, ndlKeyForShadow);
     vec3 diffuse; vec3 specColor;
-    computeLighting(PointShadowMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
+    computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;
     float edge = (1.0 - smoothstep(threshold, threshold + edgeW, mask)) * step(0.001, threshold);
     lit += vEmissive.rgb * edge;

@@ -107,7 +107,7 @@ namespace KhaozEngine.Render3D.Rendering
         // It used to go up as five writes (header, both light arrays, shadow tail, render origin). They tile the
         // block exactly - 0..176, 176..432, 432..688, 688..992, 992..1008 - so one write of the same bytes at the
         // same base is byte-identical, and every backend records four fewer commands per destination. The
-        // point-shadow tail (1008..1296) and cluster tail (1296..1328) were appended AFTER that consolidation and
+        // point-shadow tail (1008..1296), transient atlas shape (1296..1312), and cluster tail (1312..1344) were appended AFTER that consolidation and
         // have never been writes of their own.
         //
         // On D3D11 it is not a micro-optimization, it is the difference between two code paths. Veldrid's
@@ -127,7 +127,7 @@ namespace KhaozEngine.Render3D.Rendering
         // The first five offsets are the same constants the five writes used, so those bytes are the same bytes.
         // PointShadowParams is MaxPointLights vec4s, which is LightArrayBytes by the same definition the two light
         // arrays use, so PointShadowAtlas lands one array past the tail's base and PointShadowFilter one vec4
-        // after that. ClusterDepth and ClusterCamera occupy the appended final 32 bytes.
+        // after that. The transient atlas shape follows, then ClusterDepth and ClusterCamera occupy the final 32 bytes.
         void PackFrameImage()
         {
             Span<byte> img = _frameImage;
@@ -139,6 +139,7 @@ namespace KhaozEngine.Render3D.Rendering
             MemoryMarshal.AsBytes<Vector4>(_pointShadowParams).CopyTo(img.Slice((int)PointShadowTailOffset));
             MemoryMarshal.Write(img.Slice((int)(PointShadowTailOffset + LightArrayBytes)), in _pointShadowAtlas);
             MemoryMarshal.Write(img.Slice((int)(PointShadowTailOffset + LightArrayBytes + 16)), in _pointShadowFilter);
+            MemoryMarshal.Write(img.Slice((int)PointShadowTransientTailOffset), in _pointShadowTransientAtlas);
             MemoryMarshal.Write(img.Slice((int)ClusterTailOffset), in _clusterDepth);
             MemoryMarshal.Write(img.Slice((int)(ClusterTailOffset + 16)), in _clusterCamera);
             _frameImageDirty = false;

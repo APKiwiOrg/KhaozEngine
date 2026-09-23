@@ -566,8 +566,8 @@ namespace KhaozEngine.Render3D.Rendering
             LastClipmapRebuilds = 0;
             LastFocusedGridBuilds = 0;
             EnsureUboCapacity(planes.Length);
-            // The planes arrive reduced by the render origin and so does viewProj, so both sides of the cull are
-            // in the render frame, which is what FrustumPlanes asks of its caller.
+            // FrustumPlanes needs the matrix and the boxes tested against its planes in the same frame. The planes
+            // arrive reduced by the render origin and so does viewProj, so here both are render-relative.
             int drawn = RoutePlanes(planes, settings, FrustumPlanes.Extract(viewProj));
             if (_clipCount > 0)
             {

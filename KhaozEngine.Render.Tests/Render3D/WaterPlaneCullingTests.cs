@@ -199,6 +199,56 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(0, renderer.LastClipmapRebuilds);
         }
 
+        [Fact]
+        public void ANegativeSteepnessReachesAsFarAsItsPositive()
+        {
+            // Neither WaterSettings.SwellSteepness nor WaterLook.SwellSteepness is validated, and the pinch moves a
+            // point sideways by the steepness's size whatever its sign.
+            Vector2 reach = WaterSwellReach.Of(0.45f, 42f, 0.6f);
+            Assert.True(reach.X > 0f);
+            Assert.Equal(reach, WaterSwellReach.Of(0.45f, 42f, -0.6f));
+
+            using var device = new FakeGpuDevice();
+            using var resources = new RenderResources(device, 96, 64, false);
+            using var renderer = new WaterRenderer(device, resources.ColorDepthFB.Outputs);
+            using var commands = new NullGpuCommandList();
+            var settings = new WaterSettings { WaveSource = WaterWaveSource.Procedural, SwellSteepness = -0.6f };
+            WaterPlane[] planes =
+            [
+                new WaterPlane(90f, 0f, 0f, 8f),     // outside by 2 m, less than its 4 m pinch
+                new WaterPlane(-100f, 0f, 0f, 8f),   // outside by 12 m, past it
+            ];
+
+            WaterTestFrames.Draw(renderer, commands, resources, planes, settings, new Vector3(0f, 100f, 0f));
+
+            Assert.Equal(WaterRenderer.PlaneRoute.FocusedGrid, renderer.LastRoute(0));
+            Assert.Equal(WaterRenderer.PlaneRoute.Culled, renderer.LastRoute(1));
+            Assert.Equal(1, renderer.LastCulledPlanes);
+        }
+
+        [Fact]
+        public void APlaneLooksSwellSetsItsReachOverTheScenes()
+        {
+            // The scene's 4 m swell pinches about 0.4 m and the look's 120 m swell about 11.5 m. Both planes lie
+            // outside the view by 5 m.
+            using var device = new FakeGpuDevice();
+            using var resources = new RenderResources(device, 96, 64, false);
+            using var renderer = new WaterRenderer(device, resources.ColorDepthFB.Outputs);
+            using var commands = new NullGpuCommandList();
+            var settings = new WaterSettings { WaveSource = WaterWaveSource.Procedural, SwellWavelength = 4f };
+            WaterPlane[] planes =
+            [
+                new WaterPlane(93f, 0f, 0f, 8f, look: new WaterLook { SwellWavelength = 120f }),
+                new WaterPlane(-93f, 0f, 0f, 8f),
+            ];
+
+            WaterTestFrames.Draw(renderer, commands, resources, planes, settings, new Vector3(0f, 100f, 0f));
+
+            Assert.Equal(WaterRenderer.PlaneRoute.FocusedGrid, renderer.LastRoute(0));
+            Assert.Equal(WaterRenderer.PlaneRoute.Culled, renderer.LastRoute(1));
+            Assert.Equal(1, renderer.LastCulledPlanes);
+        }
+
         static int[] Offsets(WaterRenderer renderer, RecordingGpuCommandList commands, RenderResources resources,
             WaterPlane[] planes, WaterSettings settings)
         {

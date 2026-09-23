@@ -17445,6 +17445,16 @@ GoldenResult result = GoldenImage.Check(
 // Fail with Detail when Pass is false and SkipReason is null.
 ```
 
+`Render3DSnapshot` creates and owns its device internally. Its metadata path carries the backend out of the same
+render as the pixels, so a golden caller does not resolve or guess it separately:
+
+```csharp
+Render3DCapture capture = Render3DSnapshot.CaptureWithBackend(width, height, setup, drawFrame);
+GoldenResult result = GoldenImage.Check(
+    goldenDirectory, "world", capture.Rgba, capture.Width, capture.Height, tolerance: 15,
+    captureBackend: capture.Backend);
+```
+
 Set `KE_UPDATE_GOLDENS=1` to write the canonical golden instead of comparing. Only the exact value `1` enables a
 write. Every other value follows the normal compare or missing-golden path. A read, parse or write failure returns
 `Pass = false`, leaves `SkipReason` null, and includes the path plus the concrete failure in `Detail`.
@@ -17933,6 +17943,10 @@ around each one. `SnapshotRunner` wraps the existing headless capture helpers (`
 `Render3DSnapshot.Capture`) with: capture → PNG-encode → write `<outDir>/<name>.png` → log the path, plus a final
 `done -> <dir> (N shots)` summary. Deterministic (no timestamps), window-free; the underlying capture still needs
 a GPU device, so a snapshot tool runs on a dev box / GPU CI, not the headless unit-test lane.
+
+`Render3DSnapshot.CaptureWithBackend` is the direct path when a caller also needs the exact backend that produced
+the pixels. It returns one `Render3DCapture` containing `Rgba`, `Width`, `Height` and `Backend` without a second
+render. The original `Capture` remains the byte-array convenience and uses the same implementation.
 
 ```csharp
 var runner = new SnapshotRunner("/tmp/shots");        // creates the dir; logger defaults to Console.WriteLine

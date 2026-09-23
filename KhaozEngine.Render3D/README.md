@@ -163,6 +163,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   (`PixelPostProcessSettings.TransparentBackground`) so it composites cleanly. `Resize` drains the device
   before disposing the old target/framebuffer, since the previous frame's queued render may still reference
   them.
+- `Render3DSnapshot.Capture` - headless one-shot RGBA8 capture. Existing callers still receive the byte array.
+  `CaptureWithBackend` runs the same render path once and returns `Render3DCapture`, whose `Rgba`, `Width`,
+  `Height` and `Backend` identify the pixels and the exact device that produced them. A golden caller passes
+  `capture.Backend` to `GoldenImage.Check` instead of resolving or guessing a backend separately.
 - `PixelPostProcessSettings` / `Palette` / `Palettes` - palette quantization, Bayer dither, depth/normal
   edge outline, cel bands, all independently toggleable (the smooth look is the default).
 - Anti-aliasing: `PixelPostProcessSettings.Quality.AntiAliasing` (a `RenderQuality` container) is the AA dropdown

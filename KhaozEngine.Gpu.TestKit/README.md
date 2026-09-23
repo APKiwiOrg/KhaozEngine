@@ -54,6 +54,16 @@ GoldenResult result = GoldenImage.Check(
 // Fail the test with Detail when Pass is false and SkipReason is null.
 ```
 
+`Render3DSnapshot` owns its device internally. Use its metadata capture path so the backend comes from the same
+render as the bytes:
+
+```csharp
+Render3DCapture capture = Render3DSnapshot.CaptureWithBackend(width, height, setup, drawFrame);
+GoldenResult result = GoldenImage.Check(
+    goldenDirectory, "world", capture.Rgba, capture.Width, capture.Height, tolerance: 15,
+    captureBackend: capture.Backend);
+```
+
 `GoldenResult` reports `Pass`, `Rebaked`, an optional `SkipReason`, and `Detail`. A missing backend-specific golden
 returns a skip reason that names the expected file. A mismatch returns `Pass = false` and names the worst grid
 cell, colour channel, compared values and difference. Scene names must be portable single-file names. A malformed

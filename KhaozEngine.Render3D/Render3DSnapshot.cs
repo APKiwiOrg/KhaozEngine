@@ -6,8 +6,8 @@ using KhaozEngine.Windowing;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// Headless offscreen capture: renders a scene to a CPU RGBA buffer with no window (Metal device with
-    /// no swapchain). Useful for dev-Mac smoke checks and tooling. Not for CI (needs a Metal GPU).
+    /// Headless offscreen capture: renders a scene to a CPU RGBA buffer with no window. Useful for GPU test
+    /// lanes and tooling. The capture is window-free and still requires a GPU device.
     /// </summary>
     public static class Render3DSnapshot
     {
@@ -19,6 +19,14 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public static byte[] Capture(int width, int height, Action<Scene3D> setup, Action<Scene3D> drawFrame, int frames = 1,
             ShadowSettings? shadows = null)
+            => CaptureWithBackend(width, height, setup, drawFrame, frames, shadows).Rgba;
+
+        /// <summary>
+        /// Render a multi-instance scene offscreen and return the final RGBA8 image, its dimensions, and the
+        /// backend reported by the device that rendered it.
+        /// </summary>
+        public static Render3DCapture CaptureWithBackend(int width, int height, Action<Scene3D> setup,
+            Action<Scene3D> drawFrame, int frames = 1, ShadowSettings? shadows = null)
         {
             // No-arg CreateHeadless uses the exact options the 3D snapshot needs (no depth, no sync, Improved
             // binding, depth-range 0..1, standard clip-Y) so the golden image stays pixel-identical.
@@ -56,7 +64,8 @@ namespace KhaozEngine.Render3D
             }
             gd.WaitForIdle();
 
-            return GpuReadback.ToRgba(gd, finalTex, width, height);
+            byte[] rgba = GpuReadback.ToRgba(gd, finalTex, width, height);
+            return new Render3DCapture(rgba, width, height, gd.Backend);
         }
 
         /// <summary>Single-mesh convenience: load <paramref name="mesh"/>, draw one instance at the origin each frame.</summary>

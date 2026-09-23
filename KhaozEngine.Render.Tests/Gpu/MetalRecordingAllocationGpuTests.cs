@@ -3,6 +3,7 @@ using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
+using KhaozEngine.Primitives;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -36,6 +37,8 @@ namespace KhaozEngine.Tests.Gpu
 
         // Over MetalStagingArena.DefaultRetentionBytes, so the block it takes is released at every recycle.
         const uint OverCapBytes = 9u * 1024 * 1024;
+
+        static readonly Color Blue = new(0f, 0f, 1f, 1f);
 
         readonly ITestOutputHelper _output;
 
@@ -96,6 +99,33 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Null(device.Diagnostics.DeviceLossReason);
         }
 
+        /// <summary>
+        /// A STEADY CLEAR-ONLY PASS ALLOCATES NOTHING, which is the per-pass half of #1114: every pass begin built
+        /// <c>MTLRenderPassDescriptor</c>'s class name into a fresh array, and a frame reopens passes after every
+        /// staged upload as well as at every framebuffer change.
+        /// </summary>
+        [GpuFact]
+        public void ASteadyClearOnlyPassAllocatesNothing()
+        {
+            if (!Available()) return;
+
+            using MetalGpuDevice device = CreateHeadless();
+            using IGpuTexture colour = device.Factory.CreateTexture(
+                GpuTextureDescription.Texture2D(4, 4, GpuPixelFormat.B8G8R8A8UNorm, GpuTextureUsage.RenderTarget));
+            using IGpuFramebuffer framebuffer = device.Factory.CreateFramebuffer(null, colour);
+            using MetalCommandList list = device.CreateCommandList();
+
+            ClearFrames(device, list, framebuffer, WarmFrames);
+
+            long first = ClearFrames(device, list, framebuffer, MeasuredFrames);
+            long retry = first == 0 ? 0 : ClearFrames(device, list, framebuffer, MeasuredFrames);
+
+            Assert.True(retry == 0,
+                $"{MeasuredFrames} clear-only passes allocated {first} bytes while recording on the first pass and "
+                + $"{retry} on the retry, expected zero on at least one");
+            Assert.Null(device.Diagnostics.DeviceLossReason);
+        }
+
         // Sum of the recording windows only. The submit and the drain sit outside every window.
         static long StagedFrames(MetalGpuDevice device, MetalCommandList list, IGpuBuffer buffer, byte[] payload,
             int uploads, int frames)
@@ -108,6 +138,28 @@ namespace KhaozEngine.Tests.Gpu
                 list.Begin();
                 for (int i = 0; i < uploads; i++)
                     list.UpdateBuffer(buffer, (uint)i * UploadStride, (ReadOnlySpan<byte>)payload);
+                list.End();
+
+                recorded += GC.GetAllocatedBytesForCurrentThread() - before;
+
+                device.Submit(list);
+                device.WaitForIdle();
+            }
+
+            return recorded;
+        }
+
+        static long ClearFrames(MetalGpuDevice device, MetalCommandList list, IGpuFramebuffer framebuffer,
+            int frames)
+        {
+            long recorded = 0;
+            for (int frame = 0; frame < frames; frame++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+
+                list.Begin();
+                list.SetFramebuffer(framebuffer);
+                list.ClearColorTarget(0, Blue);
                 list.End();
 
                 recorded += GC.GetAllocatedBytesForCurrentThread() - before;

@@ -28,12 +28,13 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// caller encodes ASCII itself.
     /// </para>
     /// <para>
-    /// NOTHING HERE RUNS OFF macOS apart from <see cref="ObjCAutoreleasePool"/>'s empty scope (#1114), and
-    /// nothing here runs at type load either. There is deliberately no <c>static readonly</c> selector field
-    /// anywhere in this folder: a static initializer would P/Invoke into libobjc the moment the type was touched,
-    /// including on the Linux and Windows legs where this assembly is referenced and its device-free tests run.
-    /// Selectors are fetched through <see cref="Sel"/> instead, which is only ever reached from a body already
-    /// behind the platform guard.
+    /// NOTHING HERE RUNS OFF macOS apart from <see cref="ObjCAutoreleasePool"/>'s empty scope (#1114), and nothing
+    /// here runs at type load either. No handle type carries a <c>static readonly</c> selector field of its OWN: a
+    /// static initializer would call into libobjc the moment the type was touched, including on the Linux and
+    /// Windows legs where this assembly is referenced and its device-free tests run. The hot types keep theirs in a
+    /// NESTED <c>Selectors</c> class instead (#1114), the shape <c>MetalCompletionHandler</c> already took, because
+    /// the CLR runs a type's initializer on first access to THAT type and only macOS-only members touch it.
+    /// Everything else goes through <see cref="Sel"/>, reached only from a body already behind the platform guard.
     /// </para>
     /// </summary>
     internal static unsafe partial class ObjCRuntime
@@ -56,11 +57,9 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         internal const string QuartzCoreFramework = "/System/Library/Frameworks/QuartzCore.framework/QuartzCore";
 
         // THE SELECTOR CACHE. sel_registerName is already a hash lookup inside libobjc, so this is not about
-        // saving the call: it is about what the call sites are allowed to look like. Later rows send messages on
-        // a frame path, and a managed dictionary hit is cheaper than a P/Invoke transition plus a strlen, so
-        // Sel("setVertexBuffers:offsets:withRange:") at a bind site stays honest rather than needing a hand-hoisted
-        // field. A field would be the obvious alternative and it is the one thing this file may not have: a
-        // static initializer would call into libobjc at type load, on every platform.
+        // saving the call: it is about what the call sites are allowed to look like. Sel(...) at a cold site stays
+        // honest rather than needing a field, and the per-draw sites read nested Selectors fields instead (see the
+        // class remarks).
         static readonly ConcurrentDictionary<string, IntPtr> _selectors = new(StringComparer.Ordinal);
 
         [LibraryImport(Objc, EntryPoint = "sel_registerName")]

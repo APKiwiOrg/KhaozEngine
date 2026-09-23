@@ -181,7 +181,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal IntPtr RenderCommandEncoder(IntPtr descriptor)
-            => ObjCMsgSend.SendPtr(Handle, ObjCRuntime.Sel("renderCommandEncoderWithDescriptor:"), descriptor);
+            => ObjCMsgSend.SendPtr(Handle, Selectors.RenderCommandEncoder, descriptor);
 
         /// <summary>
         /// <c>-blitCommandEncoder</c>: a new blit encoder, AUTORELEASED like the buffer that made it.
@@ -202,7 +202,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal MTLBlitCommandEncoder BlitCommandEncoder()
-            => new(ObjCMsgSend.Send(Handle, ObjCRuntime.Sel("blitCommandEncoder")));
+            => new(ObjCMsgSend.Send(Handle, Selectors.BlitCommandEncoder));
 
         /// <summary>
         /// <c>-computeCommandEncoderWithDispatchType:</c> with <see cref="MTLDispatchType.Serial"/> (M-H4).
@@ -217,8 +217,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal IntPtr ComputeCommandEncoder(MTLDispatchType dispatchType)
-            => ObjCMsgSend.SendPtrNInt(Handle, ObjCRuntime.Sel("computeCommandEncoderWithDispatchType:"),
-                (nint)dispatchType);
+            => ObjCMsgSend.SendPtrNInt(Handle, Selectors.ComputeCommandEncoder, (nint)dispatchType);
 
         /// <summary>
         /// <c>-presentDrawable:</c>: schedule <paramref name="drawable"/> to be presented when this buffer
@@ -239,5 +238,18 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void PresentDrawable(IntPtr drawable)
             => ObjCMsgSend.SendVoidPtr(Handle, ObjCRuntime.Sel("presentDrawable:"), drawable);
+
+        /// <summary>The three encoder factories' selectors, resolved once per process (#1114) because every encoder
+        /// boundary sends one. The buffer's other selectors are once per submit and stay on
+        /// <see cref="ObjCRuntime.Sel"/>.</summary>
+        [SupportedOSPlatform("macos")]
+        static class Selectors
+        {
+            internal static readonly IntPtr RenderCommandEncoder =
+                ObjCRuntime.Sel("renderCommandEncoderWithDescriptor:");
+            internal static readonly IntPtr BlitCommandEncoder = ObjCRuntime.Sel("blitCommandEncoder");
+            internal static readonly IntPtr ComputeCommandEncoder =
+                ObjCRuntime.Sel("computeCommandEncoderWithDispatchType:");
+        }
     }
 }

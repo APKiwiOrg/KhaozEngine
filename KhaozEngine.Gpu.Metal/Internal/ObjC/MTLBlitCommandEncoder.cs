@@ -77,8 +77,7 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void CopyFromBufferToBuffer(MTLBuffer source, nuint sourceOffset, MTLBuffer destination,
             nuint destinationOffset, nuint size)
-            => ObjCMsgSend.SendVoidBufferToBufferCopy(Handle,
-                ObjCRuntime.Sel("copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:"),
+            => ObjCMsgSend.SendVoidBufferToBufferCopy(Handle, Selectors.CopyBufferToBuffer,
                 source.Handle, sourceOffset, destination.Handle, destinationOffset, size);
 
         /// <summary>
@@ -170,5 +169,14 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal void EndEncoding() => ObjCMsgSend.SendVoid(Handle, ObjCRuntime.Sel("endEncoding"));
+
+        /// <summary>The staged upload's one copy selector, resolved once per process (#1114). The texture copies
+        /// are per transfer and stay on <see cref="ObjCRuntime.Sel"/>.</summary>
+        [SupportedOSPlatform("macos")]
+        static class Selectors
+        {
+            internal static readonly IntPtr CopyBufferToBuffer =
+                ObjCRuntime.Sel("copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:");
+        }
     }
 }

@@ -86,6 +86,13 @@ CatalogAdminActions.Register(admin, store, registry);
 It registers SIXTEEN action names, which is a count the spec states once and means, and a test asserts them
 literally so a rename cannot drift past review.
 
+`CatalogAdminActions.RegisterReads(admin, store, registry)` registers only the five read actions in the table
+below and none of the other eleven. It is for a game whose catalog is bundle-derived: the committed
+bundle is the only authority, so its console serves reads and must not put publish, import, pin or edit one
+admin call away from the hosted store. Call it instead of `Register`, not beside it. `Register` reaches the
+reads through the same registration, so a `Register` after `RegisterReads` is refused at the first read name,
+exactly as a second `Register` is. A test dispatches all five over a store whose every write member throws.
+
 Every handler runs on the HTTP request thread and touches only the authoring store, never the simulation, so
 the threading contract holds by construction. The read actions:
 

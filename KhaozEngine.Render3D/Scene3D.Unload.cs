@@ -50,6 +50,7 @@ namespace KhaozEngine.Render3D
                 _retired.Retire(mesh.Vb, mesh.OutlineNormalVb, mesh.Ib);
                 _retired.Retire(mesh.MaterialSet);
                 _retired.Retire(mesh.OutlineMaterialSet);
+                _retired.Retire(mesh.ShadowCutoutSet);
             }
             _meshes[h.Index] = null;
         }

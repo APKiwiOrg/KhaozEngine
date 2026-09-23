@@ -140,6 +140,9 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
         string accountId = string.IsNullOrEmpty(subject)
             ? $"{PositionHintCache.GuestAccountPrefix}{slot}"
             : subject;
+        // A ban that landed after the door admitted this connection is told and dropped here, before anything is
+        // spawned. See TileWorldServer.Bans.cs.
+        if (RefuseBannedJoin(slot, accountId)) return;
         SpawnPlayer(slot, accountId, displayName);
         // A connection that arrives DURING a drain is admitted and told, rather than refused: the grace is what a
         // player needs to finish what they are doing, and a rejoin inside it (a reconnect after a drop) is exactly
@@ -385,7 +388,7 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     /// <para>Idempotent: a second call while a drain is running is ignored rather than restarting the clock, so an
     /// operator who runs the command twice does not hand everyone a second grace period.</para>
     /// <para>When the grace is spent, the next <see cref="Tick"/> closes every remaining session through
-    /// <see cref="Kick"/>, so each player leaves by the ordinary path and a persistence layer gets the
+    /// <see cref="Kick(int, string)"/>, so each player leaves by the ordinary path and a persistence layer gets the
     /// <see cref="PlayerLeaving"/> it needs to file their final state. That close is the point
     /// <see cref="IsDrainComplete"/> turns true, and after it a new connection is told the reason and dropped
     /// rather than seated.</para>

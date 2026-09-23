@@ -250,10 +250,11 @@ public class SeamValidatorTests
     /// Every validator that touches a duration field behaves IDENTICALLY under both units.
     /// </summary>
     /// <remarks>
-    /// The unit picks the field's NAME and nothing else: order, kind, visibility and the codec are the same
-    /// either way, and the rules about a duration are about its SIGN. So the same rows under the two
-    /// spellings have to produce the same findings in the same order, which is what lets a fixed-tick world
-    /// and a wall-clock one share every one of these rules.
+    /// The unit picks the field's NAME, and under Seconds a ScaledInt of hundredths of a second in place of a
+    /// plain Int of ticks. Order, visibility and the row bytes are the same either way, and the rules about a
+    /// duration are about the stored integer's SIGN, which a positive scale never moves. So the same numbers
+    /// under the two spellings have to produce the same findings in the same order, which is what lets a
+    /// fixed-tick world and a wall-clock one share every one of these rules.
     /// </remarks>
     [Fact]
     public void EveryDurationTouchingValidatorAnswersTheSameUnderTicksAndSeconds()
@@ -276,7 +277,7 @@ public class SeamValidatorTests
 
     /// <summary>
     /// The three duration-touching validators over one candidate built under <paramref name="unit"/>, each
-    /// row filled BY THE NAME the unit selects.
+    /// row filled BY THE NAME the unit selects and each duration in the KIND it declares.
     /// </summary>
     static (int Id, string Code)[] DurationFindings(ContentDurationUnit unit)
     {
@@ -295,7 +296,7 @@ public class SeamValidatorTests
                 "cursed_tuna",
                 (FoodContentType.ItemField, Ref(11)),
                 (FoodContentType.HealsField, Int(4)),
-                (FoodContentType.AttackDelayField(unit), Int(-1))),
+                (FoodContentType.AttackDelayField(unit), Duration(unit, -1))),
             RowOf(
                 node,
                 1,
@@ -308,7 +309,7 @@ public class SeamValidatorTests
                 (GatheringNodeContentType.LifeLossBasisPointsField, Int(10_000)),
                 (GatheringNodeContentType.YieldXpField, Int(25)),
                 (GatheringNodeContentType.YieldItemField, Ref(11)),
-                (GatheringNodeContentType.RespawnField(unit), Int(10))),
+                (GatheringNodeContentType.RespawnField(unit), Duration(unit, 10))),
             RowOf(
                 recipe,
                 1,
@@ -318,7 +319,7 @@ public class SeamValidatorTests
                 (RecipeContentType.LevelRequiredField, Int(1)),
                 (RecipeContentType.PrimaryItemField, Ref(11)),
                 (RecipeContentType.StationField, Int(1)),
-                (RecipeContentType.BaseDurationField(unit), Int(0)),
+                (RecipeContentType.BaseDurationField(unit), Duration(unit, 0)),
                 (RecipeContentType.XpPerItemField, Int(10)),
                 (RecipeContentType.RepeatModeField, Int(0))));
 
@@ -352,7 +353,7 @@ public class SeamValidatorTests
             (RecipeContentType.LevelRequiredField, Int(level)),
             (RecipeContentType.PrimaryItemField, Ref(item)),
             (RecipeContentType.StationField, Int(station)),
-            (RecipeContentType.BaseDurationField(unit), Int(duration)),
+            (RecipeContentType.BaseDurationField(unit), Duration(unit, duration)),
             (RecipeContentType.XpPerItemField, Int(xp)),
             (RecipeContentType.RepeatModeField, Int(repeatMode)));
 

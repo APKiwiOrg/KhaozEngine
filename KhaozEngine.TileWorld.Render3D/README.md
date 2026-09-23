@@ -52,7 +52,8 @@ nothing in the upload path moves.
   renders black.
 - **The colour path stays, and nothing in the mesh path reads it.** `TileGroundMesher.CornerColor` still blends
   the up-to-four sharing visible underlays' jittered material colours (`TileColors.Blend`, all-void blends to
-  `TileColors.Void`), and `TileColors.Parse` still reads `#rrggbb` or `#rrggbbaa`. That pair is the GPU-free
+  `TileColors.Void`), and `TileColors.Parse` still reads `#rrggbb` or `#rrggbbaa` and throws
+  `TileWorldException` on anything else, a null colour included. That pair is the GPU-free
   colour surface, for a caller that wants a tile's colour without the textured pipeline behind it: a minimap, a
   2D painter, a tool query. The vertices do not carry it any more, and the mesher itself only calls
   `TileColors.Jitter`.
@@ -207,8 +208,8 @@ and the archetype's yaw offset folds in under the same sign. Both forward to `Ti
 walk surface) reads the same transform the prop is drawn with.
 
 `ITileMeshResolver.Resolve(archetype)` is where a game hands over its own meshes, keyed off the archetype's mesh
-reference. Returning null means "no mesh for this archetype", which the view answers with a placeholder box and
-one log line rather than a throw. `Resolve(meshRef)` is the same question for everything a game draws that is NOT
+reference. Returning null means "no mesh for this archetype", which the view answers with a placeholder box (one
+upload shared by every unresolved archetype) and one log line rather than a throw. `Resolve(meshRef)` is the same question for everything a game draws that is NOT
 a tile object (a player avatar, an NPC, a dropped item), so reaching a resolver's cache and its fallback no longer
 means synthesizing a fake archetype at the call site. It has a DEFAULT implementation that does that wrap once, so
 an existing implementer gains it without changing, and a resolver that can do better overrides it. `GreyboxMeshResolver` is the shipped stand-in: one procedural vertex-coloured
@@ -287,7 +288,9 @@ the same local-space contract `GreyboxMeshResolver.BuildMesh` builds to:
 
 - **The origin sits at the footprint CENTRE, on the piece's own floor.** `AnchorPosition` puts the placement at
   the centre of the rotated footprint at ground height, so a mesh is centred in x and z with its base at y 0. A
-  piece modelled with its origin at a corner lands half a tile off.
+  piece modelled with its origin at a corner lands half a tile off. That height is sampled once, at the centre,
+  so a piece wider than a tile sinks at its uphill corners on a slope. Give it a skirt or foundation below y 0.
+  The `KhaozEngine.TileWorld` README explains why the anchor is not the highest corner.
 - **x is east, minus z is north, and 1 unit is 1 metre.** World z is minus tile z (`TileWorldSpace`), which is
   why the north face of a footprint is at `-z`.
 - **y 0 is the floor of the piece's OWN plane, not the ground.** A wall is one plane tall (`doc.PlaneHeight`) so
@@ -349,7 +352,9 @@ catalog archetype up front, so a region load is placements alone.
 - **The ground material set is uploaded once and shared.** `TileWorldViewOptions.GroundMaterials` is the hook, and
   null builds one from the catalogs with no texture loader, which is every material as a flat colour layer. The
   view points `Options.Mesher.Slots` at whichever set it ends up with, because the slots a vertex names only mean
-  anything against the set the mesh is drawn with, and it reads back as `GroundMaterials`. Every region-plane mesh
+  anything against the set the mesh is drawn with, and it reads back as `GroundMaterials`. Every mesh is then built
+  from a copy of `Options.Mesher` taken at construction, so a later change to it reaches no mesh of that view and
+  cannot leave a seam against an older one. Build a new view to change it. Every region-plane mesh
   goes up bound to it, and `Dispose` frees it.
 - **Large-world prop layers are opt-in and disjoint.** `TileWorldViewOptions.PropLayers` defaults empty, preserving
   ordinary `PropDrawRadius` submission. Each `TilePropLayerDefinition` names a stable `Id`, a non-empty set of
@@ -385,7 +390,8 @@ catalog archetype up front, so a region load is placements alone.
 
 - `LoadRegion` / `UnloadRegion` build and free every plane of one region. Loading a region that is already loaded
   rebuilds it, so it doubles as a whole-region refresh. `LoadedRegions` is a snapshot, safe to walk while loading
-  or unloading, and `LoadedRegionCount` is the count.
+  or unloading, and `LoadedRegionCount` is the count. The snapshot allocates on every read, so a per-frame caller
+  uses `CollectLoadedRegions(into)`, which fills a reused `List` or `HashSet` and allocates nothing once warm.
 - `MarkDirty(region, plane)` queues one region-plane. `MarkDirty(worldRect, plane)` is the edit-facing overload: it
   grows the rect by `DirtyRegionMargin` (2 tiles) before turning it into region marks, because a corner height is
   shared by four tiles, a lattice normal is a central difference reading one corner further, and a corner colour
@@ -486,7 +492,8 @@ whole authored regions. These states choose only the client representation and d
 collision, navigation, simulation, replication or hashes.
 
 - `Update(observer)` drops what has fallen past `UnloadRadius`, then loads up to `MaxLoadsPerUpdate` (default 2)
-  of what is missing, nearest first with a deterministic tie-break.
+  of what is missing, nearest first with a deterministic tie-break. A settled update allocates nothing.
+  `Resident` snapshots the resident set and `CollectResident(into)` fills a reused buffer instead.
 - `PrimeAround(observer)` fills the whole legacy ring ignoring the budget. Under a three-state profile it drains
   gameplay full-ground work synchronously, while coarse ground and HLOD remain budgeted. A teleport therefore
   restores the interactive ring immediately without making the far decor horizon one blocking frame.

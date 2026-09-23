@@ -1283,11 +1283,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// Skinned PBR-lite (gap E): a bent procedural tube drawn through the CPU-skinning path with a tangent-space
-        /// normal map + roughness gradient bound via <see cref="Scene3D.LoadSkinnedMesh(SkinnedGltfMesh,Scene3D.SurfaceMaps)"/>.
-        /// The tube carries computed tangents that ride the per-frame skin deform, so the TBN tracks the bent pose
-        /// and the normal map perturbs the lit surface (vs the rest-pose albedo-only render). Locks the skinned
-        /// normal/roughness shading on Metal; D3D11 + Vulkan follow in CI.
+        /// Skinned PBR-lite (gap E): a bent procedural tube drawn through the CPU-skinning path its grid was baked on (GPU skinning is the
+        /// default, and Render3DGpuSkinningGpuTests.NormalRoughnessSkinned_CpuVsGpu_Parity holds the GPU path to this one with the same maps)
+        /// with a tangent-space normal map + roughness gradient bound via <see cref="Scene3D.LoadSkinnedMesh(SkinnedGltfMesh,Scene3D.SurfaceMaps)"/>.
+        /// The tube's computed tangents ride the skin deform, so the TBN tracks the bent pose and the normal map perturbs the lit surface.
         /// </summary>
         [GpuFact]
         public void Golden3D_SkinnedNormalRoughness()
@@ -1338,6 +1337,7 @@ namespace KhaozEngine.Tests.Gpu
                     Scene3D.TextureHandle nrm = scene.LoadTexture(normalPx, TexN, TexN);
                     Scene3D.TextureHandle rgh = scene.LoadTexture(roughPx, TexN, TexN);
                     handle = scene.LoadSkinnedMesh(tube, new Scene3D.SurfaceMaps(default, nrm, rgh));
+                    scene.UseGpuSkinning = false;   // the path this grid was baked on, see the summary
 
                     scene.Post.UseSmoothPreset();
                     // Frame the bent tube: it bows off the Z axis, centred roughly around (0, 0.8, 1.6).

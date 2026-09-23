@@ -39,7 +39,7 @@ public sealed partial class TileWorldView
                 RootOffset = layer.RootOffset,
                 Models = Models(layer.Archetypes),
             };
-            var surface = new TileFoliageSurface(_doc, _catalogs, layer, _options.Mesher.SmoothNormals);
+            var surface = new TileFoliageSurface(_doc, _catalogs, layer, _mesher.SmoothNormals);
             result.AddRange(GroundCoverDistribution.Generate(area, settings, surface.Sample));
         }
         return new GroundCoverBatch(result);

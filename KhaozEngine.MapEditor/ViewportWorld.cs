@@ -29,7 +29,7 @@ namespace KhaozEngine.MapEditor;
 /// method. It touches its <see cref="Scene3D"/> only from <see cref="Build"/> onward, so the ctor and the state
 /// guards run headless.</para>
 /// </summary>
-public sealed class ViewportWorld : IDisposable
+public sealed partial class ViewportWorld : IDisposable
 {
     /// <summary>Default horizontal cull radius (m) for streamed companion foliage. Deliberately NOT part of
     /// <see cref="RenderDistance"/>: dense understory is a near-field layer whose cost is per-instance, so a short
@@ -265,66 +265,6 @@ public sealed class ViewportWorld : IDisposable
         if (!_built) throw new InvalidOperationException("ViewportWorld has not been built; call Build first.");
         TeardownStreaming();
         BuildCore(doc, registry, FocusFor(doc));
-    }
-
-    /// <summary>Rebuilds ONLY the loaded chunks overlapping <paramref name="dirty"/> after a localized terrain edit,
-    /// instead of the whole streamed world: it swaps in the new field, tells the sink to sample from it, and asks the
-    /// streamer to re-mesh just the chunks the dirty rect touches (Task 1's <see cref="TerrainStreamer.Invalidate(RectArea)"/>).
-    /// Nothing is torn down (not the sink, streamer, ring, kit meshes, nor the splat material), so this is far cheaper
-    /// than <see cref="Rebuild"/>. The placement cache is invalidated so authored placements re-ground-snap to the new
-    /// field. The water plane needs nothing here: <see cref="Draw"/> derives it live from the document each frame.
-    /// <para>Returns false (a no-op) when the world is not built, so the caller can fall back to a full
-    /// <see cref="Rebuild"/> or skip. Throws <see cref="ObjectDisposedException"/> after <see cref="Dispose"/>, like
-    /// its siblings.</para>
-    /// <para>The four-argument overload can refresh captured scatter and companion configs before invalidation.
-    /// This makes bounded exclusion and scatter-override edits safe. Layer-count and host-topology changes still
-    /// require <see cref="Rebuild"/>.</para></summary>
-    public bool PartialRebuild(MapDocument doc, MapDocRegistry registry, RectArea dirty) =>
-        PartialRebuild(doc, registry, dirty, refreshLayers: false);
-
-    /// <summary>Partial rebuild with an optional refresh of captured scatter and companion configs.</summary>
-    public bool PartialRebuild(MapDocument doc, MapDocRegistry registry, RectArea dirty, bool refreshLayers)
-    {
-        ThrowIfDisposed();
-        if (!_built) return false;
-        TerrainField field = MapRuntime.BuildField(doc, registry);
-        IReadOnlyList<PropLayer>? layers = refreshLayers ? BuildSinkLayers(doc) : null;
-        _streamer!.FlushPendingBuilds();
-        if (layers is not null) _sink!.UpdateLayers(layers);
-        _field = field;
-        _doc = doc;
-        _sink!.UpdateField(field);         // future chunk builds sample the new field
-        // Authored placements re-ground-snap to the new field BEFORE the re-mesh, so the dirty chunks rebuild once
-        // with the new snapshot. A placement chunk outside the dirty rect keeps its terrain and gets a props-only
-        // refresh.
-        _authored.Invalidate();
-        ChunkCoord min = ChunkGrid.CoordOf(dirty.MinX, dirty.MinZ, _streamer.Config.ChunkSize);
-        ChunkCoord max = ChunkGrid.CoordOf(dirty.MaxX, dirty.MaxZ, _streamer.Config.ChunkSize);
-        _authored.Refresh(doc, field, coord =>
-        {
-            if (coord.X < min.X || coord.X > max.X || coord.Z < min.Z || coord.Z > max.Z) RefreshChunkPlacements(coord);
-        });
-        _streamer!.Invalidate(dirty);      // re-mesh the loaded chunks the dirty rect overlaps, in place
-        return true;
-    }
-
-    /// <summary>Refreshes the field and optional captured generation config, then invalidates every loaded chunk
-    /// in place. Returns false before the first build.</summary>
-    public bool RefreshLoaded(MapDocument doc, MapDocRegistry registry, bool refreshLayers)
-    {
-        ThrowIfDisposed();
-        if (!_built) return false;
-        TerrainField field = MapRuntime.BuildField(doc, registry);
-        IReadOnlyList<PropLayer>? layers = refreshLayers ? BuildSinkLayers(doc) : null;
-        _streamer!.FlushPendingBuilds();
-        if (layers is not null) _sink!.UpdateLayers(layers);
-        _sink!.UpdateField(field);
-        _field = field;
-        _doc = doc;
-        _authored.Invalidate();
-        _authored.Refresh(doc, field, invalidate: null);   // every loaded chunk rebuilds just below
-        _streamer.InvalidateAll();
-        return true;
     }
 
     /// <summary>Frees every retained kit mesh (and the cached splat material, if loaded), so the next

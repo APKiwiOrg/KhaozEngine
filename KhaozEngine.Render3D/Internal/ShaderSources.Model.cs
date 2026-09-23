@@ -308,7 +308,7 @@ void main() {
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
 }";
 
-        // ---- GPU skinning (opt-in, Scene3D.UseGpuSkinning). THREE uniform buffers, split by update frequency. The
+        // ---- GPU skinning (the default, Scene3D.UseGpuSkinning). THREE uniform buffers, split by update frequency. The
         //      SHARED per-frame block `U` is at set 0 binding 0, read by BOTH stages, and is the very same buffer
         //      (and the very same declaration) the model pass binds. The per-draw block `VBlock` follows it at set 0
         //      binding 3, VERTEX only, dynamic-offset: this draw's Model and its P column-packed Tint/Emissive/

@@ -25,6 +25,14 @@ await using var endpoint = new AdminHttpServer(admin, new AdminEndpointOptions
 await endpoint.StartAsync();
 ```
 
+`ServerAdmin` takes any `IAdminControllable` head: `WorldServer`, `ShardedWorldServer`, or a tile world's
+`TileWorldServer`, which implements the interface itself, so a tile game needs no adapter. The live routes are 202
+once the head has queued the command. `POST /teleport` and `POST /broadcast` answer 400 with `{ "error": ... }` when
+the head refuses the command on the caller's thread with an `ArgumentException`, which is how a tile head refuses a
+broadcast that is not a wire-sized reason token. A tile teleport onto a blocked or unloaded tile is refused later,
+on the host thread, and surfaces through the head's own `TileWorldServer.TeleportRefused` event rather than the
+response.
+
 `Port = 0` asks the OS for a free port instead, and `endpoint.BoundPort` reports the one Kestrel took once
 `StartAsync` has returned. Prefer that over picking a port from a throwaway probe socket: the probe has to release
 the port before Kestrel can bind it, and another listener on the host can take it in that window.

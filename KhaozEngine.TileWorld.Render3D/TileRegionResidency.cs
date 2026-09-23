@@ -145,8 +145,15 @@ public sealed class TileRegionResidency
     public TileRegionResidencyProfile? Profile => _profile;
 
     /// <summary>The resident regions, straight from the view, which is the single authority on what is loaded.
-    /// A snapshot rather than a live view, so a caller may load or unload while walking it.</summary>
+    /// A snapshot rather than a live view, so a caller may load or unload while walking it. Allocates on every
+    /// read, so a per-frame caller uses <see cref="CollectResident"/> instead.</summary>
     public IReadOnlyCollection<RegionCoord> Resident => _view.LoadedRegions;
+
+    /// <summary>Fills a caller's collection with the resident regions, cleared first, without allocating once the
+    /// buffer is warm. The same set as <see cref="Resident"/>, through
+    /// <see cref="TileWorldView.CollectLoadedRegions"/>.</summary>
+    /// <param name="into">The buffer to fill, reused across calls.</param>
+    public void CollectResident(ICollection<RegionCoord> into) => _view.CollectLoadedRegions(into);
 
     /// <summary>Moves the ring to the observer's region: drops what has fallen past <see cref="TileResidencyConfig.UnloadRadius"/>,
     /// then loads up to <see cref="TileResidencyConfig.MaxLoadsPerUpdate"/> of what is missing inside
@@ -183,8 +190,7 @@ public sealed class TileRegionResidency
     {
         RegionCoord centre = RegionCoord.Of(observer.X, observer.Z);
 
-        _loaded.Clear();
-        foreach (RegionCoord c in _view.LoadedRegions) _loaded.Add(c);
+        _view.CollectLoadedRegions(_loaded);
 
         DropDeparted(centre);
         LoadArrivals(centre, budget);
@@ -195,8 +201,7 @@ public sealed class TileRegionResidency
         TileRegionResidencyProfile profile = _profile!;
         RegionCoord centre = RegionCoord.Of(observer.X, observer.Z);
 
-        _loaded.Clear();
-        foreach (RegionCoord region in _view.LoadedRegions) _loaded.Add(region);
+        _view.CollectLoadedRegions(_loaded);
 
         DropProfileDeparted(centre, profile);
         TransitionProfileResidents(centre, profile);

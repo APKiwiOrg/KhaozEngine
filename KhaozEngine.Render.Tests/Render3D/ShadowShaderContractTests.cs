@@ -69,13 +69,17 @@ namespace KhaozEngine.Tests.Render3D
         [Theory]
         [InlineData(nameof(ShaderSources.ShadowDepthVert))]
         [InlineData(nameof(ShaderSources.ShadowDepthDissolveVert))]
+        [InlineData(nameof(ShaderSources.ShadowDepthCutoutVert))]
         [InlineData(nameof(ShaderSources.SkinnedShadowDepthVert))]
+        [InlineData(nameof(ShaderSources.SkinnedShadowDepthDissolveVert))]
         public void EveryShadowDepthVertex_PancakesTheRasterizedDepth(string which)
         {
             string src = which switch
             {
                 nameof(ShaderSources.ShadowDepthVert) => ShaderSources.ShadowDepthVert,
                 nameof(ShaderSources.ShadowDepthDissolveVert) => ShaderSources.ShadowDepthDissolveVert,
+                nameof(ShaderSources.ShadowDepthCutoutVert) => ShaderSources.ShadowDepthCutoutVert,
+                nameof(ShaderSources.SkinnedShadowDepthDissolveVert) => ShaderSources.SkinnedShadowDepthDissolveVert,
                 _ => ShaderSources.SkinnedShadowDepthVert,
             };
             Assert.Contains(VertexPancakeGlsl, src, StringComparison.Ordinal);
@@ -88,15 +92,60 @@ namespace KhaozEngine.Tests.Render3D
         [InlineData(nameof(ShaderSources.ShadowDepthFrag))]
         [InlineData(nameof(ShaderSources.ShadowDepthDissolveFrag))]
         [InlineData(nameof(ShaderSources.ShadowDepthDissolveInvertedFrag))]
+        [InlineData(nameof(ShaderSources.ShadowDepthCutoutFrag))]
+        [InlineData(nameof(ShaderSources.ShadowDepthCutoutInvertedFrag))]
         public void EveryShadowDepthFragment_ClampsTheStoredDepth(string which)
         {
             string src = which switch
             {
                 nameof(ShaderSources.ShadowDepthFrag) => ShaderSources.ShadowDepthFrag,
                 nameof(ShaderSources.ShadowDepthDissolveFrag) => ShaderSources.ShadowDepthDissolveFrag,
+                nameof(ShaderSources.ShadowDepthCutoutFrag) => ShaderSources.ShadowDepthCutoutFrag,
+                nameof(ShaderSources.ShadowDepthCutoutInvertedFrag) => ShaderSources.ShadowDepthCutoutInvertedFrag,
                 _ => ShaderSources.ShadowDepthDissolveInvertedFrag,
             };
             Assert.Contains(FragmentPancakeGlsl, src, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void TheCutoutDepthFragments_AlphaTestLikeTheColourPass()
+        {
+            // Issue #15. The shadow must cut out exactly the texels the mesh does, so both cutout fragments apply
+            // ModelFrag's own test (cutoff from ISpecParams.z, skipped at 0) to the albedo alpha, and the plain one
+            // keeps the plain dissolve's complement-aware keep set so a dissolving MASK caster still erodes.
+            Assert.Contains("if (vSpecParams.z > 0.0 && texRgba.a < vSpecParams.z) discard;", ShaderSources.ModelFrag,
+                StringComparison.Ordinal);
+            Assert.Contains("vCutoff = ISpecParams.z;", ShaderSources.ShadowDepthCutoutVert, StringComparison.Ordinal);
+            Assert.Contains("vUv = TexCoord;", ShaderSources.ShadowDepthCutoutVert, StringComparison.Ordinal);
+            Assert.Contains("if (vCutoff > 0.0 && alpha < vCutoff) discard;", ShaderSources.ShadowDepthCutoutFrag,
+                StringComparison.Ordinal);
+            Assert.Contains("if (vCutoff > 0.0 && alpha < vCutoff + vDissolveComplement * 1e-30) discard;",
+                ShaderSources.ShadowDepthCutoutInvertedFrag, StringComparison.Ordinal);
+            Assert.Contains(ComplementKeepGlsl, ShaderSources.ShadowDepthCutoutFrag, StringComparison.Ordinal);
+            Assert.Contains("if (mask >= 1.0 - threshold) discard;", ShaderSources.ShadowDepthCutoutInvertedFrag,
+                StringComparison.Ordinal);
+
+            // The cheap pipelines stay cheap: neither the plain depth fragment nor the dissolve ones sample anything.
+            Assert.DoesNotContain("texture(", ShaderSources.ShadowDepthFrag, StringComparison.Ordinal);
+            Assert.DoesNotContain("texture(", ShaderSources.ShadowDepthDissolveFrag, StringComparison.Ordinal);
+            Assert.DoesNotContain("discard", ShaderSources.ShadowDepthFrag, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void TheSkinnedDissolveDepthVertex_FeedsTheRigidDissolveFragmentThePlainKeepSet()
+        {
+            // Issue #387. The skinned dissolve vertex reuses ShadowDepthDissolveFrag unchanged, so it must emit
+            // exactly that fragment's four interpolants, with the threshold from its slot and a zero complement (a
+            // character dissolve is SkinnedModelDissolveFrag's plain `mask < threshold` discard).
+            string vert = ShaderSources.SkinnedShadowDepthDissolveVert;
+            Assert.Contains("layout(location=0) out float vLightDepth;", vert, StringComparison.Ordinal);
+            Assert.Contains("layout(location=1) out vec3 vNoisePos;", vert, StringComparison.Ordinal);
+            Assert.Contains("layout(location=2) out vec2 vDissolve;", vert, StringComparison.Ordinal);
+            Assert.Contains("layout(location=3) out float vDissolveComplement;", vert, StringComparison.Ordinal);
+            Assert.Contains("vDissolve = vec2(DissolveParams.y, 0.0);", vert, StringComparison.Ordinal);
+            Assert.Contains("vDissolveComplement = 0.0;", vert, StringComparison.Ordinal);
+            Assert.Contains("vNoisePos = (world.xyz + RenderOrigin.xyz) * DissolveParams.x;", vert, StringComparison.Ordinal);
+            Assert.Contains("if (mask < threshold) discard;", ShaderSources.SkinnedModelDissolveFrag, StringComparison.Ordinal);
         }
 
         [Theory]

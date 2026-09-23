@@ -45,7 +45,7 @@ public static class GameContentTypes
     /// go on first, because <c>equip_profile</c> closes a late binding the <c>item</c> type declares and
     /// several rules read an engine schema off this same registry.
     /// </param>
-    /// <param name="unit">The game's own time unit, which picks the four duration field names.</param>
+    /// <param name="unit">The game's own time unit, which picks the four duration fields' names, kind and scale.</param>
     /// <param name="options">Every answer the package needs from the game. Every member is required.</param>
     /// <exception cref="ArgumentNullException"><paramref name="registry"/> or <paramref name="options"/> is null.</exception>
     /// <exception cref="ContentRegistrationException">

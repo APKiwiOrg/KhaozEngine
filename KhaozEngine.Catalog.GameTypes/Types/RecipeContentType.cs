@@ -90,7 +90,7 @@ public static class RecipeContentType
             ContentVisibility.Client,
             true),
         new ContentFieldEntry(StationField, ContentFieldKind.Int, null, ContentVisibility.Client, true),
-        new ContentFieldEntry(BaseDurationField(unit), ContentFieldKind.Int, null, ContentVisibility.Client, true),
+        ContentDurationFields.Entry(unit, BaseDurationField(unit), ContentVisibility.Client, true),
         new ContentFieldEntry(XpPerItemField, ContentFieldKind.Int, null, ContentVisibility.Client, true),
         new ContentFieldEntry(RepeatModeField, ContentFieldKind.Int, null, ContentVisibility.Client, true),
     ]);
@@ -105,7 +105,7 @@ public static class RecipeContentType
     /// fails loudly.
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
-    /// <param name="unit">The game's own time unit, which picks the duration field's name.</param>
+    /// <param name="unit">The game's own time unit, which picks the duration field's name, kind and scale.</param>
     /// <param name="validator">
     /// The type's own validator, or null for none. <see cref="Validator"/> is the one this package ships
     /// for it, and a game passes that, one of its own, a wrapper over both, or null.
@@ -162,8 +162,9 @@ public static class RecipeContentType
     /// statements about a global knob or a child type, so both belong to the cross-type pass.
     /// </para>
     /// <para>
-    /// The duration rule is unit-neutral: it is about the number's SIGN, which is the same statement whether
-    /// the field is spelled for ticks or for seconds.
+    /// The duration rule holds under either unit: it is about the stored integer's SIGN. Under
+    /// <see cref="ContentDurationUnit.Seconds"/> that integer is hundredths of a second, and a positive scale
+    /// never moves a sign, so zero and below are refused and one hundredth is accepted as one tick is.
     /// </para>
     /// </remarks>
     /// <param name="options">The four game answers. Every one is required.</param>

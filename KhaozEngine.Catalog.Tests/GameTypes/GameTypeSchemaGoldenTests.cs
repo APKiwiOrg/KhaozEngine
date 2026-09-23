@@ -232,6 +232,62 @@ public class GameTypeSchemaGoldenTests
             new Field("value", ContentFieldKind.ScaledInt, null, ContentVisibility.Client, true, 100));
     }
 
+    // The four types with a duration, under Seconds. The duration is HUNDREDTHS of a second, a ScaledInt at
+    // scale 100, so 2.33 seconds is stored as 233. Every other field is its Ticks golden above, restated as
+    // literals so a change to either unit goes red on its own.
+    const ContentDurationUnit Seconds = ContentDurationUnit.Seconds;
+
+    [Fact]
+    public void FoodUnderSeconds()
+    {
+        AssertSchema(
+            FoodContentType.CreateSchema(Seconds),
+            new Field("item", ContentFieldKind.KeyReference, "item", ContentVisibility.Client, true),
+            new Field("heals", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("attack_delay_seconds", ContentFieldKind.ScaledInt, null, ContentVisibility.Client, true, 100));
+    }
+
+    [Fact]
+    public void EquipProfileUnderSeconds()
+    {
+        AssertSchema(
+            EquipProfileContentType.CreateSchema(Seconds),
+            new Field("slot", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("weapon_archetype", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("attack_seconds", ContentFieldKind.ScaledInt, null, ContentVisibility.Client, true, 100));
+    }
+
+    [Fact]
+    public void GatheringNodeUnderSeconds()
+    {
+        AssertSchema(
+            GatheringNodeContentType.CreateSchema(Seconds),
+            new Field("skill", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("tool_family", ContentFieldKind.KeyReference, "tag", ContentVisibility.Client, true),
+            new Field("level_required", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("base_chance_bp", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("lives", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("life_loss_bp", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("yield_xp", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("yield_item", ContentFieldKind.KeyReference, "item", ContentVisibility.Client, true),
+            new Field("respawn_seconds", ContentFieldKind.ScaledInt, null, ContentVisibility.Client, true, 100));
+    }
+
+    [Fact]
+    public void RecipeUnderSeconds()
+    {
+        AssertSchema(
+            RecipeContentType.CreateSchema(Seconds),
+            new Field("display_order", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("skill", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("level_required", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("primary_item", ContentFieldKind.KeyReference, "item", ContentVisibility.Client, true),
+            new Field("station", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("base_seconds", ContentFieldKind.ScaledInt, null, ContentVisibility.Client, true, 100),
+            new Field("xp_per_item", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("repeat_mode", ContentFieldKind.Int, null, ContentVisibility.Client, true));
+    }
+
     [Fact]
     public void EveryFieldIsRequiredExceptTheOneCurveKnob()
     {
@@ -245,15 +301,17 @@ public class GameTypeSchemaGoldenTests
     }
 
     [Fact]
-    public void SecondsMovesTheFourDurationNamesAndNothingElse()
+    public void SecondsMovesTheFourDurationsToHundredthsAndNothingElse()
     {
-        // The unit picks a field NAME. Order, kinds, reference targets, visibility, required flags and
-        // scales are identical under either unit, which is what lets one reader serve both.
+        // The unit picks a duration field's NAME, and under Seconds its KIND and SCALE as well: a plain Int
+        // of ticks becomes a ScaledInt at scale 100, hundredths of a second, because whole seconds cannot
+        // hold a timing between two of them. Order, reference targets, visibility and required flags are
+        // identical under either unit, and every field that is not one of the four is identical outright.
         ContentFieldSchema[] ticks = EverySchema(ContentDurationUnit.Ticks).ToArray();
         ContentFieldSchema[] seconds = EverySchema(ContentDurationUnit.Seconds).ToArray();
 
         Assert.Equal(ticks.Length, seconds.Length);
-        var moved = new List<(string Ticks, string Seconds)>();
+        var moved = new List<(string, ContentFieldKind, int, string, ContentFieldKind, int)>();
         for (int type = 0; type < ticks.Length; type++)
         {
             Assert.Equal(ticks[type].Fields.Count, seconds[type].Fields.Count);
@@ -261,10 +319,10 @@ public class GameTypeSchemaGoldenTests
             {
                 ContentFieldEntry left = ticks[type].Fields[i];
                 ContentFieldEntry right = seconds[type].Fields[i];
-                Assert.Equal(left with { Name = right.Name }, right);
-                if (!string.Equals(left.Name, right.Name, System.StringComparison.Ordinal))
+                Assert.Equal(left with { Name = right.Name, Kind = right.Kind, Scale = right.Scale }, right);
+                if (left != right)
                 {
-                    moved.Add((left.Name, right.Name));
+                    moved.Add((left.Name, left.Kind, left.Scale, right.Name, right.Kind, right.Scale));
                 }
             }
         }
@@ -272,10 +330,10 @@ public class GameTypeSchemaGoldenTests
         Assert.Equal(
             new[]
             {
-                ("attack_delay_ticks", "attack_delay_seconds"),
-                ("attack_ticks", "attack_seconds"),
-                ("respawn_ticks", "respawn_seconds"),
-                ("base_ticks", "base_seconds"),
+                ("attack_delay_ticks", ContentFieldKind.Int, 1, "attack_delay_seconds", ContentFieldKind.ScaledInt, 100),
+                ("attack_ticks", ContentFieldKind.Int, 1, "attack_seconds", ContentFieldKind.ScaledInt, 100),
+                ("respawn_ticks", ContentFieldKind.Int, 1, "respawn_seconds", ContentFieldKind.ScaledInt, 100),
+                ("base_ticks", ContentFieldKind.Int, 1, "base_seconds", ContentFieldKind.ScaledInt, 100),
             },
             moved.ToArray());
     }

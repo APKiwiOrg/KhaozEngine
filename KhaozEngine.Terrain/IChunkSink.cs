@@ -87,6 +87,20 @@ namespace KhaozEngine.Terrain
         void RefreshPlacements(ChunkCoord coord, object handle);
     }
 
+    /// <summary>Optional sink seam for a props-only refresh of EVERY prop layer of one loaded chunk, after the sink's
+    /// generation config changed and its field did not (for example a scatter exclusion moved and the sink took the
+    /// new configs). The sink re-serves each layer for the chunk exactly as a fresh build of it would (scatter
+    /// regenerated, companions re-derived, placement layers re-served) and republishes their prop instances and
+    /// static colliders. Like <see cref="IChunkPlacementRefreshSink"/> it never re-meshes the terrain, never touches
+    /// the terrain collider and never respawns dynamics. Called on the frame thread by
+    /// <see cref="TerrainStreamer.RefreshProps"/> after pending builds are flushed.</summary>
+    public interface IChunkPropRefreshSink : IChunkSink
+    {
+        /// <summary>Re-serve every prop layer of the loaded chunk behind <paramref name="handle"/> at the ring
+        /// the handle records, leaving its terrain mesh, tier and ring as they are.</summary>
+        void RefreshProps(ChunkCoord coord, object handle);
+    }
+
     /// <summary>Optional sink seam for a live terrain LOD table change.</summary>
     public interface IChunkLodConfigSink
     {

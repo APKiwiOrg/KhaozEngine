@@ -889,20 +889,40 @@ count. Biome bands themselves are edited via the Biomes outline category, not th
 Procedural setup editing below.
 
 `MapEditorScene.OnUpdate` runs, in order, `UpdateCamera` -> `UpdateTools` -> `UpdateChrome` ->
-`CheckWorldRebuild` -> `UpdateStreaming`. `CheckWorldRebuild` dispatches a pending edit to a bounded
-`ViewportWorld.PartialRebuild`, an all-loaded `ViewportWorld.RefreshLoaded`, or the full `ViewportWorld.Rebuild`.
-The first two refresh the field and any captured scatter or companion config before invalidating chunks. Full
-rebuild remains for layer-count and other unsupported topology changes. It tears down the sink + streamer, then
-rebuilds wholesale from the document, keeping the cached kit meshes and the splat material so a full rebuild
+`CheckWorldRebuild` -> `UpdateStreaming`. `CheckWorldRebuild` dispatches a pending edit to one of four paths,
+cheapest first:
+
+- **Props only** (`ViewportWorld.RefreshLayerProps`), for a bounded batch that changed captured scatter configs
+  and left the terrain field alone (`EditorDocument.PendingFieldChange` false), which is every exclusion and
+  scatter-override edit. The viewport hands the sink the document's rebuilt layer list
+  (`Scene3DChunkSink.UpdateLayers`) and re-serves every prop layer of the loaded chunks the region overlaps
+  (`TerrainStreamer.RefreshProps`). The field is not rebuilt, no terrain is re-meshed and no authored placement
+  is re-snapped, so a gizmo drag on an exclusion or override costs the scatter work of the chunks it covers every
+  frame.
+- **Bounded re-mesh** (`ViewportWorld.PartialRebuild`), for any other bounded batch: features, sculpt strokes,
+  and a batch that mixes one of those with an exclusion or override edit. It swaps the field, refreshes the
+  captured configs when the batch needs it, and re-meshes the chunks the region overlaps.
+- **All loaded** (`ViewportWorld.RefreshLoaded`), for terrain scalars, biome bands and same-topology scatter or
+  companion layer edits. It refreshes the field and captured configs, then re-meshes every loaded chunk.
+- **Full** (`ViewportWorld.Rebuild`), for layer-count and other topology changes.
+
+A bounded path refreshes only some chunks, so every chunk outside its region keeps the placement arrays, prop
+clusters and HLOD handles it has, indexed by layer. The two bounded paths therefore take a new layer list only
+when it differs from the sink's current one in nothing but each layer's scatter and companion configs
+(`Scene3DChunkSink.KeepsLayerShape`): the same count, kinds, companion hosts, HLOD, meshes, radii and identity.
+They decline anything else, touching nothing: a declined props-only refresh falls back to the bounded
+re-mesh, and a declined bounded re-mesh falls back to the full rebuild. The commands
+make the other half of the guarantee: an exclusion or override command pads its shape bounds with the document's
+largest scatter jitter, because a candidate belongs to the chunk of its un-jittered cell centre while the shape
+test reads its jittered position. After every drag frame and after the drag ends, every loaded chunk therefore
+shows exactly what a full rebuild would. The full path tears down the sink + streamer, then
+rebuilds wholesale from the document (keeping the cached kit meshes and the splat material so a full rebuild
 does not re-decode every prop glTF from disk), then calls `EditorDocument.AcknowledgeWorldRebuild()`. The
 full path is throttled while a drag or draw gesture is live (`EditorToolController.IsDragging` / `IsDrawing`):
 it runs at most once per `MapEditorOptions.GestureRebuildInterval` seconds (default 0.25, 0 disables the
 throttle), with `WorldRebuildPending` left untouched on a throttled frame so the very next check after the
-gesture ends always performs the final full rebuild. Partial and all-loaded refreshes are never throttled.
-Features and sculpt strokes report bounded regions. Exclusion and scatter-override edits report their shape
-bounds and refresh captured config first. Terrain scalars, biome bands and same-topology scatter or companion
-edits refresh every loaded chunk. Adding or removing a scatter or companion layer still changes topology and
-takes the full path.
+gesture ends always performs the final full rebuild. The props-only, bounded and all-loaded paths are never
+throttled. Adding or removing a scatter or companion layer still changes topology and takes the full path.
 
 **Same-frame inspector rebuild.** A terrain-feature parameter scrub lands through the `PropertyGrid`
 inspector, which is polled inside `UpdateChrome`, now BEFORE `CheckWorldRebuild` in the per-frame order (moved

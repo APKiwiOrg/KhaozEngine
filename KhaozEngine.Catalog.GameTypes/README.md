@@ -70,9 +70,10 @@ public enum ContentDurationUnit { Ticks, Seconds }
 ```
 
 A duration is the one fact in the package a game cannot inherit. A world stepping a fixed tick stores ticks
-and a wall-clock world stores seconds, so the game declares the unit and every schema factory takes it.
+and a wall-clock world stores seconds to the hundredth, so the game declares the unit and every schema
+factory takes it.
 
-**It picks the field NAME and nothing else.** Four fields have two spellings:
+**It picks the field NAME, and under `Seconds` the field's kind and scale.** Four fields have two spellings:
 
 | Type | `Ticks` | `Seconds` |
 | --- | --- | --- |
@@ -81,10 +82,28 @@ and a wall-clock world stores seconds, so the game declares the unit and every s
 | `gathering_node` | `respawn_ticks` | `respawn_seconds` |
 | `recipe` | `base_ticks` | `base_seconds` |
 
-Field order, kinds, reference targets, visibility, required flags, scales and the row codec are IDENTICAL
-under either unit, so the choice costs a name in the generic editor and the localization key derived from
-it, and never a byte of layout. There is no conversion anywhere here: reading a stored number as a span of
-time is the game's, because only the game knows how long its tick is.
+| Unit | Kind | Scale | The stored integer counts |
+| --- | --- | --- | --- |
+| `Ticks` | `Int` | 1 | whole ticks of the game's own clock |
+| `Seconds` | `ScaledInt` | 100 | hundredths of a second, so 2.33 seconds is stored as 233 |
+
+Whole seconds cannot hold a timing that falls between two of them, which is most timings of a world stepping
+several times a second, so a wall-clock duration is a scaled integer at scale 100, the kind and scale
+`game_tuning.value` already uses. `Ticks` is the shape the types first shipped with, unchanged. Field order,
+reference targets, visibility, required flags and the row bytes are IDENTICAL under either unit, because an
+`Int` and a `ScaledInt` go out as the same varint, so the choice costs a name in the generic editor, the
+localization key derived from it and the scale the schema declares, and never a byte of layout.
+
+There is no conversion anywhere here. The package stores the integer the game authored and the schema carries
+its scale, which a reader gets from the same lookup that finds the field:
+
+```csharp
+int baseIndex = ContentFieldLookup.IndexIn(
+    runtime, recipeType, RecipeContentType.BaseDurationField(ContentDurationUnit.Seconds), out int durationScale);
+```
+
+Turning that integer into a span of time is the game's, because only the game knows how long its tick is and
+how a hundredth of a second lands on it.
 
 ## Reaching a field
 
@@ -151,8 +170,9 @@ an item field would leave the rule silently reading its neighbour.
 widest rate that prices every item in a catalog inside the 32 bit range a price is carried in. The ceiling
 rule reads the ITEM rows because a rate alone cannot overflow.
 
-Every rule here is unit-neutral. A duration field is named for the game's own clock and the rules about one
-are about its SIGN, so the same validator serves `Ticks` and `Seconds` unchanged.
+Every rule here holds under either unit. The rules about a duration are about the stored integer's SIGN, and
+a positive scale never moves a sign, so the same validator serves `Ticks` and `Seconds` unchanged: a recipe
+refuses zero and below and accepts one hundredth of a second exactly as it accepts one tick.
 
 **`recipe_input` and `recipe_output` share one rule set read twice.** The two are separate types and carry
 separate codes so a report names which side of the recipe is wrong, but the control flow is written once and

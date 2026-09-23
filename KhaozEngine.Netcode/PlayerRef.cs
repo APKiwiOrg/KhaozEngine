@@ -1,3 +1,4 @@
+// Lives in KhaozEngine.Netcode under its shipped NetWorld name, beside IAdminControllable. See IAdminControllable.cs.
 namespace KhaozEngine.NetWorld;
 
 /// <summary>An admin command target: either a connection slot or a verified account id. Build with

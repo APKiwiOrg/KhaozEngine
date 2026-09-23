@@ -7,7 +7,7 @@ using KhaozEngine.Render3D.Rendering;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// THE GPU-SKINNING PATH'S PER-FRAME WORK (<see cref="Scene3D.UseGpuSkinning"/>, opt-in, default off): sizing
+    /// THE GPU-SKINNING PATH'S PER-FRAME WORK (<see cref="Scene3D.UseGpuSkinning"/>, the default): sizing
     /// this frame's three skinned uniform destinations, packing the ONE shared bone palette, and the main pass's
     /// own draw loop. The shadow half lives in <c>Scene3D.ShadowCasters.cs</c>, which reads the same palette.
     /// <para>

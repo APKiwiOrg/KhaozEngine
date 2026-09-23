@@ -307,12 +307,13 @@ public static class SqlServerCatalogReset
                 connection, transaction, "SELECT COUNT(*) FROM dbo.catalog_draft;", cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (SqlException exception)
+        catch (SqlException exception) when (IsMissingName(exception.Number))
         {
-            // Only the reads BEFORE the drop are folded into the schema refusal. Every table these name
-            // stands, so a failure here is a table that is not the shape its name promises, and an operator
-            // can act on being told that. A provider error after the drop is a different thing entirely and
-            // is left to speak for itself, having rolled the reset back on the way out.
+            // Only the reads BEFORE the drop are folded into the schema refusal, and only an invalid column
+            // or object name. Every table these name stands, so that failure is a table that is not the
+            // shape its name promises, and an operator can act on being told that. A deadlock victim or a
+            // timeout is not about the schema and is rethrown as itself, and so is a provider error after
+            // the drop, having rolled the reset back on the way out.
             throw Mismatch("unreadable, so what it holds could not be checked", exception);
         }
 
@@ -465,6 +466,14 @@ public static class SqlServerCatalogReset
     /// <summary>The metadata table, which is the one a partial catalog's schema version can still be read from.</summary>
     const string MetadataTable = "catalog_metadata";
 
+    /// <summary>
+    /// Whether a SQL error number says a column or an object a read named is not there, errors 207 and 208,
+    /// which is the one failure a read before the drop may blame on the schema. A deadlock victim, a timeout or
+    /// a lost connection says nothing about the schema and is rethrown as itself.
+    /// </summary>
+    /// <param name="number">The provider's error number.</param>
+    internal static bool IsMissingName(int number) => number is 207 or 208;
+
     /// <summary>Which of the schema's own tables the database holds, by the inventory the drop names.</summary>
     static async Task<IReadOnlySet<string>> ReadExistingTablesAsync(
         SqlConnection connection,
@@ -485,7 +494,8 @@ public static class SqlServerCatalogReset
 
     /// <summary>
     /// The schema version of a catalog that may be in pieces, or null when even that cannot be read. A
-    /// partial catalog is expected to fail here, and the caller treats the failure as the answer.
+    /// partial catalog is expected to fail here with an invalid column name, and the caller treats that
+    /// failure as the answer. Any other provider error is rethrown.
     /// </summary>
     static async Task<int?> TryReadSchemaVersionAsync(
         SqlConnection connection,
@@ -500,7 +510,7 @@ public static class SqlServerCatalogReset
                 "SELECT schema_version FROM dbo.catalog_metadata WHERE metadata_key = 1;");
             return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as int?;
         }
-        catch (SqlException)
+        catch (SqlException exception) when (IsMissingName(exception.Number))
         {
             return null;
         }

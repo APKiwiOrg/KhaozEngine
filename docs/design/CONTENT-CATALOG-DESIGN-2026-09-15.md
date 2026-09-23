@@ -960,10 +960,10 @@ that a content authoring store should follow the journal style because it needs 
 (`a-engine.md:741-748`), and this spec agrees: the content schema will gain tables as Scope B's types land and
 as inheritance ships, so it needs a migration path from the first release.
 
-**SQLite sits on `SqliteStoreConnection` and this is not optional.** One held connection, one
-`SemaphoreSlim(1,1)` gate, and a dispose that calls `SqliteConnection.ClearPool(connection)` BEFORE
-`connection.Dispose()` (`KhaozEngine.Sqlite/SqliteStoreConnection.cs:76-82`). The type doc says why it exists:
-the same pool-clearing line was copied wrong three times over. Every command runs under a lease from
+**SQLite sits on `SqliteStoreConnection` and this is not optional.** One held connection opened with
+`Pooling` forced off, one `SemaphoreSlim(1,1)` gate, and a dispose that closes it. The type doc says why it
+exists: the same pooled-handle leak was copied three times over, and a pooled connection can be reclaimed from
+a live store by a concurrent open or pool clear on the same file. Every command runs under a lease from
 `EnterAsync`, and a transaction takes the lease FIRST (`SqliteStoreConnection.cs:62-73`).
 
 There is no equivalent shared SQL Server connection type, and this spec does not add one. The SQL Server

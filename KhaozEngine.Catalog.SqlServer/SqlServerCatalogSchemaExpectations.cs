@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace KhaozEngine.Catalog.SqlServer;
 
@@ -50,6 +51,38 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_remap_rule",
         "catalog_chunk",
     };
+
+    /// <summary>
+    /// <see cref="Tables"/> as a T-SQL literal list for an <c>IN</c> clause, sorted so the statement reads
+    /// the same on every run.
+    /// <para>
+    /// <b>This is what a DROP names, rather than a <c>LIKE</c> pattern.</b> A host is entitled to keep its own
+    /// tables in the catalog's database, and a table it named <c>catalog_overrides_by_host</c> matches every
+    /// name rule an engine could write while belonging to nobody here. Naming the inventory means a drop
+    /// destroys exactly the tables above and cannot reach anything else, and the set is pinned against
+    /// <c>CatalogSchemaV2.sql</c> by <c>SqlServerCatalogSchemaDriftTests</c> without an instance. Version 1's
+    /// tables are a subset of it, so a version 1 catalog is dropped by the same list.
+    /// </para>
+    /// </summary>
+    internal static string TableNameList { get; } = BuildTableNameList();
+
+    static string BuildTableNameList()
+    {
+        var names = new List<string>(Tables);
+        names.Sort(StringComparer.Ordinal);
+        var builder = new StringBuilder(names.Count * 24);
+        for (int i = 0; i < names.Count; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append(", ");
+            }
+
+            builder.Append("N'").Append(names[i]).Append('\'');
+        }
+
+        return builder.ToString();
+    }
 
     /// <summary>Every named index, primary keys included, as <c>table.index</c>.</summary>
     internal static IReadOnlySet<string> Indexes { get; } = new HashSet<string>(StringComparer.Ordinal)

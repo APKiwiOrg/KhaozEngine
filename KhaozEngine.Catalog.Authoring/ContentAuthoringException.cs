@@ -107,6 +107,34 @@ public sealed class ContentAuthoringException : Exception
     public const string UnknownVersionReason = "unknown-version";
 
     /// <summary>
+    /// A provider's catalog RESET was refused because the store carries an open draft. A reset drops every
+    /// catalog object, so it would take the draft with it, and an operator who did not know the draft was
+    /// there would lose unpublished authoring with nothing to read afterwards that says what it held. The
+    /// remedy is to publish or discard the draft, and the escape hatch is the reset's own force flag.
+    /// </summary>
+    public const string DraftOpenReason = "draft-open";
+
+    /// <summary>
+    /// A provider's catalog RESET found SOME of the schema's tables standing and not the rest, which is a
+    /// half-finished deletion rather than a migration, or found tables standing with no schema version it
+    /// could read, all of them included. No store can open either and no read can describe what it holds.
+    /// The remedy is not a migration, which is why this is not <see cref="SchemaMismatchReason"/>. The reset
+    /// repairs it under its own force flag by dropping what is left and recreating the schema, and the
+    /// refusal says so.
+    /// </summary>
+    public const string CatalogPartialReason = "catalog-partial";
+
+    /// <summary>
+    /// A SQLite catalog RESET found a HOST table with a foreign key into a catalog table declared
+    /// <c>ON DELETE CASCADE</c>, <c>SET NULL</c> or <c>SET DEFAULT</c>. SQLite's <c>DROP TABLE</c> deletes every
+    /// row before it drops the table, and that delete fires the host key's action, so the reset would delete or
+    /// rewrite the host's own rows. It is refused before anything is dropped, whatever the force flag says. The
+    /// SQL Server reset needs no such check, because SQL Server refuses to drop a table any foreign key
+    /// references and the reset rolls back as a whole.
+    /// </summary>
+    public const string HostForeignKeyReason = "host-foreign-key";
+
+    /// <summary>
     /// A version's pack could not be read back: an absent manifest, a chunk the store no longer holds, or
     /// bytes that do not digest to the address they were filed under. The pack reader's own reason token is
     /// in the message.

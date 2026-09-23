@@ -4,6 +4,7 @@ using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.Sqlite;
 using KhaozEngine.Tests.Catalog.Publish;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace KhaozEngine.Tests.Catalog.Sqlite;
@@ -137,5 +138,53 @@ public class SqliteCatalogSchemaTests
         Assert.Equal("unknown-type", refused.Reason);
         Assert.Contains(PublishFixtures.ThingTypeKey, refused.Message, StringComparison.Ordinal);
         Assert.Contains("renamed_thing", refused.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A catalog another connection holds locked reports the LOCK, not a schema to migrate. The refusal names a
+    /// migration an operator would go and apply, so it is kept for a file that does not read as a catalog, and
+    /// a lock, a full disk or an I/O failure reaches the host as the provider's own error.
+    /// </summary>
+    [Fact]
+    public async Task ALockedDatabaseReportsTheLockRatherThanASchemaToMigrate()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        using (var created = new SqliteContentAuthoringStore(database.ConnectionString, Registry()))
+        {
+            await created.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        }
+
+        using var holder = new SqliteConnection(database.ConnectionString + ";Pooling=False");
+        holder.Open();
+        using (SqliteCommand begin = holder.CreateCommand())
+        {
+            begin.CommandText = "BEGIN EXCLUSIVE;";
+            begin.ExecuteNonQuery();
+        }
+
+        using var store = new SqliteContentAuthoringStore(database.ConnectionString + ";Default Timeout=1", Registry());
+        SqliteException busy = await Assert.ThrowsAsync<SqliteException>(
+            () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
+
+        Assert.Equal(SQLitePCL.raw.SQLITE_BUSY, busy.SqliteErrorCode);
+    }
+
+    /// <summary>
+    /// The other side of the line above: catalog tables with no metadata table are a file that does not read
+    /// as a catalog, and that is still refused naming the migration.
+    /// </summary>
+    [Fact]
+    public async Task ACatalogWithoutItsMetadataTableIsStillRefusedAsUnreadable()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        database.Execute("CREATE TABLE catalog_orphan (a INTEGER NOT NULL PRIMARY KEY);");
+
+        using var store = new SqliteContentAuthoringStore(database.ConnectionString, Registry());
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
+
+        Assert.Equal("schema-mismatch", refused.Reason);
+        Assert.Contains("unreadable", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v2-content-upgrade-ledger", refused.Message, StringComparison.Ordinal);
     }
 }

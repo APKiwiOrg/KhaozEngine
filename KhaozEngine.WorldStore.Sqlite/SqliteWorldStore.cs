@@ -10,8 +10,8 @@ using KhaozEngine.WorldStore;
 namespace KhaozEngine.WorldStore.Sqlite;
 
 /// <summary>Connection config for <see cref="SqliteWorldStore"/>. Inject the ADO.NET connection string
-/// (for example <c>Data Source=world.db</c>); no other knobs. Pooling stays at the provider default while the
-/// store is alive, and <see cref="SqliteWorldStore.Dispose"/> clears it so the file is not left open.</summary>
+/// (for example <c>Data Source=world.db</c>); no other knobs. The held connection is never pooled, whatever the string
+/// says, so <see cref="SqliteWorldStore.Dispose"/> closes it and the file is not left open.</summary>
 public sealed record SqliteWorldStoreOptions(string ConnectionString);
 
 /// <summary>
@@ -19,8 +19,8 @@ public sealed record SqliteWorldStoreOptions(string ConnectionString);
 /// table, bootstrapped on construction; upsert via <c>INSERT ... ON CONFLICT(key) DO UPDATE</c>; raw parameterized
 /// async ADO.NET, no EF/ORM. The embedded dev/test and single-node backend.
 /// <para>The connection, the operation gate and the dispose are <see cref="SqliteStoreConnection"/>'s, shared with
-/// every other SQLite store in the engine. That is where the pool-clearing dispose lives, and why this store no
-/// longer carries its own copy of it (#731). What stays here is the schema and the SQL.</para>
+/// every other SQLite store in the engine. That is where the unpooled open and the dispose live, and why this store no
+/// longer carries its own copy of them (#731). What stays here is the schema and the SQL.</para>
 /// </summary>
 public sealed class SqliteWorldStore : IWorldStore, IEnumerableWorldStore, IDisposable
 {
@@ -151,8 +151,8 @@ public sealed class SqliteWorldStore : IWorldStore, IEnumerableWorldStore, IDisp
     internal static string LikeEscape(string s) =>
         s.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 
-    /// <summary>Closes the database through <see cref="SqliteStoreConnection"/>, which clears the provider's
-    /// connection pool first so the OS handle on the file is genuinely released rather than parked (#713). Read that
-    /// type for what a parked handle does to a store file on each platform.</summary>
+    /// <summary>Closes the database through <see cref="SqliteStoreConnection"/>, whose connection is never pooled, so
+    /// the OS handle on the file is genuinely released rather than parked (#713). Read that type for what a pooled
+    /// handle does to a store file and to a live store.</summary>
     public void Dispose() => db.Dispose();
 }

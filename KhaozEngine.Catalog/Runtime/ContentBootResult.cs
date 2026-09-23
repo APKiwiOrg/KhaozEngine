@@ -5,8 +5,9 @@ using System.IO;
 namespace KhaozEngine.Catalog;
 
 /// <summary>
-/// Which row of spec 9.6's exit table a boot stopped at, or <see cref="None"/> when it did not. Every one of
-/// the twelve is a REFUSAL: a missing or invalid content version fails the boot, and there is no runtime
+/// Which row of spec 9.6's exit table a boot stopped at, or <see cref="None"/> when it did not. The table's
+/// twelve come first and the refusals added beside it follow in the order they shipped. Every one is a
+/// REFUSAL: a missing or invalid content version fails the boot, and there is no runtime
 /// fallback to code defaults anywhere (contracts 10.5), because a silent fallback catalog serves content no
 /// version names and an outage is at least noticed.
 /// </summary>
@@ -50,6 +51,21 @@ public enum ContentBootRefusal
 
     /// <summary>Step 11: the world names a content key that is not live in the version.</summary>
     WorldKeyUnresolved,
+
+    /// <summary>
+    /// Step 3, BEFORE the manifest is fetched: the store's <c>versions/&lt;n&gt;</c> pointer names a manifest
+    /// the version record does not. It is last rather than in step order because these values ship in a
+    /// package, and inserting one in the middle would move every value under it.
+    /// </summary>
+    PackPointerMismatch,
+
+    /// <summary>
+    /// Step 2 or step 3: a version SOURCE threw rather than answering, either the directory's pinned or active
+    /// read or the version record's hash read. The host's own provider failed, so the boot cannot say which
+    /// version or which manifest to serve and refuses rather than letting the exception escape. Last for the
+    /// same reason as <see cref="PackPointerMismatch"/>.
+    /// </summary>
+    VersionSourceUnreadable,
 }
 
 /// <summary>
@@ -78,13 +94,15 @@ public sealed class ContentBootResult
         ContentRuntime? runtime,
         ContentBootRefusal refusal,
         int step,
-        IReadOnlyList<string> standardError)
+        IReadOnlyList<string> standardError,
+        bool packPointerCrossChecked = false)
     {
         Success = success;
         Runtime = runtime;
         Refusal = refusal;
         Step = step;
         StandardError = standardError;
+        PackPointerCrossChecked = packPointerCrossChecked;
     }
 
     /// <summary>The boot that published a runtime, which the host then builds its connect door over.</summary>
@@ -124,7 +142,7 @@ public sealed class ContentBootResult
     /// <summary>The published runtime, or null on every refusal.</summary>
     public ContentRuntime? Runtime { get; }
 
-    /// <summary>Which of the twelve refusals stopped the boot, or <see cref="ContentBootRefusal.None"/>.</summary>
+    /// <summary>Which refusal stopped the boot, or <see cref="ContentBootRefusal.None"/>.</summary>
     public ContentBootRefusal Refusal { get; }
 
     /// <summary>
@@ -135,8 +153,27 @@ public sealed class ContentBootResult
     /// </summary>
     public int Step { get; }
 
+    /// <summary>This result with <see cref="PackPointerCrossChecked"/> set, which only the boot's step 3 earns.</summary>
+    internal ContentBootResult WithPackPointerCrossChecked()
+        => new(Success, Runtime, Refusal, Step, StandardError, packPointerCrossChecked: true);
+
     /// <summary>The lines to write to stderr, in order. Empty on success.</summary>
     public IReadOnlyList<string> StandardError { get; }
+
+    /// <summary>
+    /// True only when step 3 COMPARED the pack store's <c>versions/&lt;n&gt;</c> pointer with the version
+    /// record's two manifest hashes and both halves agreed. It stays true on any refusal after the comparison,
+    /// step 3's own manifest checks included, because it is a fact about the comparison and not about the boot
+    /// as a whole.
+    /// <para>
+    /// It is false when the boot had no hash source (<see cref="ContentBootOptions.VersionHashes"/> unset and a
+    /// <see cref="ContentBootOptions.Directory"/> that is not an <see cref="IContentVersionHashSource"/>, which
+    /// is what a WRAPPER around an authoring store is), when the source held no record of the version, when the
+    /// comparison refused, and when the boot stopped before step 3. A host asserts it in a wiring test, since a
+    /// boot that skipped the check and a boot that passed it otherwise look the same.
+    /// </para>
+    /// </summary>
+    public bool PackPointerCrossChecked { get; }
 
     /// <summary>3 for every refusal and 0 for a boot that published.</summary>
     public int ExitCode => Success ? 0 : ContentFailureExitCode;

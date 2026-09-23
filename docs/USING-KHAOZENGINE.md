@@ -15260,6 +15260,14 @@ all, so the reset takes the migration credential's own connection string. An ope
 `catalog_audit` declares before the transaction opens, so an argument outside them is an `ArgumentException`
 with nothing dropped rather than a provider error after the drop.
 
+Neither reset runs beside another writer. The SQL Server reset takes the schema's exclusive application lock
+as the first statement of its transaction, the same lock on the same resource name the schema create and the
+version 1 migration take, so a host starting or migrating at that moment and the reset wait for each other
+rather than interleave. A reset that cannot have the lock within a minute is refused, having changed nothing.
+SQLite takes one writer per database file, so a reset against a file another connection is writing waits for
+the busy timeout its connection string names and then fails with the provider's busy error, having changed
+nothing. Stop the writers first, and give the reset's own connection string a short `Default Timeout`.
+
 A database carrying NONE of the schema's tables is CREATED rather than refused, through the same script in the
 same transaction, with the same audit row. The scripted release path is reset then import, so the first
 release against a new database takes that branch. A database carrying SOME of them is a half-finished deletion

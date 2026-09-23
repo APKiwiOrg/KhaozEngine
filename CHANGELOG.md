@@ -171,6 +171,22 @@ keeps CPU skinning with one assignment. No call a game makes changes meaning. Th
   no longer leaves a solid shadow under an almost invisible body. A dissolving GPU-skinned caster uses 160 of its
   256-byte per-cascade slot, and a plain caster keeps the 64-byte matrix.
 
+**Tile world rendering minors.**
+
+- `TileGroundMesher` computes each lattice corner's height, normal, jitter and material slot once per region-plane
+  build rather than once per touching tile, through the new per-build `TileGroundCornerCache`
+  ([#636](https://github.com/APKiwiOrg/KhaozEngine/issues/636)). A busy 64 by 64 region builds about 2.3 times
+  faster (median 5.4 ms to 2.25 ms), with bit-identical meshes and no golden movement.
+- `TileWorldView` builds every ground mesh from a copy of `TileWorldViewOptions.Mesher` taken at construction, so
+  a later change or replacement no longer reaches only the regions rebuilt afterwards. `TileGroundMesherOptions.Copy`
+  is new. Every unresolved archetype shares one placeholder upload, freed once on dispose.
+- `TileWorldView.CollectLoadedRegions(into)` and `TileRegionResidency.CollectResident(into)` fill a reused buffer
+  without allocating, and `TileRegionResidency.Update` uses them, so a settled ring allocates nothing per frame.
+  `LoadedRegions` and `Resident` are unchanged.
+- `TileColors.Parse` throws `TileWorldException` for a null colour, like every other malformed colour. The object
+  anchor stays sampled at the footprint centre on purpose, now documented: the corner maximum would float small
+  props on steps and slopes (83 of Grimhollow's 2,463 one-tile objects would move by more than a centimetre).
+
 **Tooling.**
 
 - `scripts/pack-local-feed.sh` packs the current tree into the MAIN checkout's `local-feed` from any worktree, and

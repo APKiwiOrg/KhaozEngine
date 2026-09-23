@@ -40,6 +40,9 @@ namespace KhaozEngine.Render3D
         // the moment a DIFFERENT layout is asked for, so a game that steps down to a smaller one is attempted.
         PointShadowLayout? _failedPointShadowLayout;
         bool _pointShadowFailureLogged;
+        PointShadowLayout? _failedPointShadowTransientLayout;
+        bool _pointShadowTransientFailureLogged;
+        int _pointShadowTransientDemandRows;
 
         PointShadowResolution _resolvedPointShadows;
 
@@ -49,6 +52,13 @@ namespace KhaozEngine.Render3D
         /// the settings object is what was asked for and this is what the frame is rendering.
         /// </summary>
         public PointShadowResolution ResolvedPointShadows => _resolvedPointShadows;
+
+        /// <summary>Record this frame's transient row demand for the next frame boundary.</summary>
+        internal void RecordPointShadowTransientDemand(int requiredRows)
+        {
+            if (requiredRows < 0) throw new ArgumentOutOfRangeException(nameof(requiredRows));
+            _pointShadowTransientDemandRows = Math.Max(_pointShadowTransientDemandRows, requiredRows);
+        }
 
         /// <summary>
         /// Request a whole point-shadow budget. The settings are CLONED, so the caller may keep and reuse the
@@ -91,6 +101,8 @@ namespace KhaozEngine.Render3D
             }
 
             PointShadowSettings settings = Post.Quality.Shadows.PointShadows;
+            int transientDemand = _pointShadowTransientDemandRows;
+            _pointShadowTransientDemandRows = 0;
             if (!settings.Enabled)
             {
                 ReleasePointShadows();
@@ -109,8 +121,7 @@ namespace KhaozEngine.Render3D
             {
                 if (live.MatchesLayout(wanted.FaceResolution, wanted.Rows))
                 {
-                    _resolvedPointShadows = new PointShadowResolution(
-                        true, wanted.FaceResolution, wanted.Rows, false, null);
+                    ApplyCompatiblePointShadowTransientLayout(live, transientDemand);
                     return;
                 }
             }
@@ -118,7 +129,7 @@ namespace KhaozEngine.Render3D
             {
                 // Nothing has asked for a map yet, so there is nothing to allocate. This is the branch a game
                 // that never uses point shadows takes on every frame it ever renders.
-                _resolvedPointShadows = new PointShadowResolution(false, 0, 0, false, null);
+                PublishResolvedPointShadows(false, false, null);
                 return;
             }
 
@@ -129,7 +140,7 @@ namespace KhaozEngine.Render3D
                     + $"{PointShadowSettings.MaxLights} rows");
                 return;
             }
-            AttemptPointShadowLayout(wanted);
+            AttemptPointShadowLayout(wanted, transientDemand);
         }
 
         static PointShadowLayout ResolvePointShadowLayout(PointShadowSettings settings, int staticRequests)
@@ -140,6 +151,75 @@ namespace KhaozEngine.Render3D
             dynamicReserve = Math.Min(dynamicReserve, Math.Max(0, PointShadowSettings.MaxLights - staticRows));
             int rows = Math.Max(settings.ResolvedMaxLights, staticRows + dynamicReserve);
             return new PointShadowLayout(settings.ResolveFaceResolution(rows), rows);
+        }
+
+        static int ResolveTransientRowsForBaseReplacement(int liveTransientRows, int demandRows, int newBaseRows)
+        {
+            if (demandRows <= 0) return 0;
+            return Math.Min(newBaseRows, Math.Max(liveTransientRows, demandRows));
+        }
+
+        void ClearTransientRefusalForChangedDemand(PointShadowLayout requested)
+        {
+            if (_failedPointShadowTransientLayout is not { } failed || failed == requested) return;
+            _failedPointShadowTransientLayout = null;
+            _pointShadowTransientFailureLogged = false;
+        }
+
+        void ApplyCompatiblePointShadowTransientLayout(PointShadowAtlas baseAtlas, int demandRows)
+        {
+            int targetRows = Math.Min(baseAtlas.Rows, Math.Max(0, demandRows));
+            var requested = new PointShadowLayout(baseAtlas.FaceResolution, targetRows);
+            ClearTransientRefusalForChangedDemand(requested);
+            if (targetRows <= PointShadowTransientRows)
+            {
+                PublishResolvedPointShadows(true, false, null);
+                return;
+            }
+            if (_failedPointShadowTransientLayout == requested)
+            {
+                PublishResolvedPointShadows(true, true, TransientRefusalReason(requested));
+                return;
+            }
+
+            PointShadowAtlas? candidate = PointShadowAtlas.TryCreate(_gd, requested.FaceResolution, targetRows);
+            if (candidate is null)
+            {
+                FailPointShadowTransientLayout(requested);
+                return;
+            }
+            if (BindPointShadowAtlasesToReceivers(baseAtlas.Texture, candidate.Texture) == PointShadowBindResult.Failed)
+            {
+                _model.ForgetPointShadowBindFailure(candidate.Texture);
+                candidate.Dispose();
+                FailPointShadowTransientLayout(requested);
+                return;
+            }
+
+            _pointShadowTransientAtlas?.Dispose();
+            _pointShadowTransientAtlas = candidate;
+            PublishResolvedPointShadows(true, false, null);
+        }
+
+        static string TransientRefusalReason(PointShadowLayout requested) =>
+            $"transient point-shadow atlas at {requested.FaceResolution} by {requested.Rows} refused. "
+            + "Retaining the live compatible atlas or its white default.";
+
+        void FailPointShadowTransientLayout(PointShadowLayout requested)
+        {
+            _failedPointShadowTransientLayout = requested;
+            string reason = TransientRefusalReason(requested);
+            PublishResolvedPointShadows(true, true, reason);
+            if (_pointShadowTransientFailureLogged) return;
+            _pointShadowTransientFailureLogged = true;
+            _shadowReconfigureLogger.Error(reason);
+        }
+
+        void PublishResolvedPointShadows(bool enabled, bool degraded, string? reason)
+        {
+            _resolvedPointShadows = new PointShadowResolution(enabled, PointShadowFaceResolution, PointShadowRows,
+                degraded, reason, _pointShadowAtlas?.ByteSize ?? 0L, PointShadowTransientRows,
+                _pointShadowTransientAtlas?.ByteSize ?? 0L);
         }
 
         /// <summary>Bring up <paramref name="wanted"/> and put every receiver on it. Either the whole thing lands
@@ -153,7 +233,7 @@ namespace KhaozEngine.Render3D
         /// renderer's own handle, which the next cascade reconfigure copies into fresh sets) was naming a freed
         /// texture.
         /// </para></summary>
-        void AttemptPointShadowLayout(PointShadowLayout wanted)
+        void AttemptPointShadowLayout(PointShadowLayout wanted, int transientDemand)
         {
             if (BuildPointShadowReplacement(wanted.FaceResolution, wanted.Rows) is not { } replacement)
             {
@@ -163,7 +243,24 @@ namespace KhaozEngine.Render3D
                 return;
             }
 
-            if (BindPointShadowAtlasToReceivers(replacement.Atlas.Texture) == PointShadowBindResult.Failed)
+            int transientRows = ResolveTransientRowsForBaseReplacement(
+                PointShadowTransientRows, transientDemand, wanted.Rows);
+            var transientShape = new PointShadowLayout(wanted.FaceResolution, transientRows);
+            ClearTransientRefusalForChangedDemand(transientShape);
+            bool transientRefused = false;
+            if (transientRows > 0)
+            {
+                if (_failedPointShadowTransientLayout == transientShape)
+                    transientRefused = true;
+                else
+                {
+                    replacement.TransientAtlas = PointShadowAtlas.TryCreate(_gd, wanted.FaceResolution, transientRows);
+                    transientRefused = replacement.TransientAtlas is null;
+                }
+            }
+
+            if (BindPointShadowAtlasesToReceivers(
+                    replacement.Atlas.Texture, replacement.TransientAtlas?.Texture) == PointShadowBindResult.Failed)
             {
                 // Nothing may sample an atlas the receivers are not bound to, so the one just built goes back
                 // whole and the live one keeps its place: still allocated, still bound, still drawing the rows
@@ -171,6 +268,8 @@ namespace KhaozEngine.Render3D
                 // because a freed atlas cannot be asked for again and the latch that stops THIS layout being
                 // retried is the scene's own, below.
                 _model.ForgetPointShadowBindFailure(replacement.Atlas.Texture);
+                if (replacement.TransientAtlas is { } rejectedTransient)
+                    _model.ForgetPointShadowBindFailure(rejectedTransient.Texture);
                 replacement.Dispose();
                 FailPointShadowLayout(wanted, "the receiver sets could not be rebuilt against the atlas");
                 return;
@@ -178,7 +277,8 @@ namespace KhaozEngine.Render3D
 
             CommitPointShadowReplacement(replacement);
             AdoptPointShadowSlotCache(wanted.Rows);
-            _resolvedPointShadows = new PointShadowResolution(true, wanted.FaceResolution, wanted.Rows, false, null);
+            if (transientRefused) FailPointShadowTransientLayout(transientShape);
+            else PublishResolvedPointShadows(true, false, null);
         }
 
         /// <summary>Latch a refused layout, publish the degraded resolution over whatever is still live, and say
@@ -192,8 +292,7 @@ namespace KhaozEngine.Render3D
             string reason =
                 $"point-shadow atlas at {wanted.FaceResolution} by {wanted.Rows} refused ({what}). "
                 + $"Retaining {retained}.";
-            _resolvedPointShadows = new PointShadowResolution(
-                live, PointShadowFaceResolution, PointShadowRows, true, reason);
+            PublishResolvedPointShadows(live, true, reason);
             if (_pointShadowFailureLogged) return;
             _pointShadowFailureLogged = true;
             _shadowReconfigureLogger.Error(reason);
@@ -208,20 +307,23 @@ namespace KhaozEngine.Render3D
             _pointShadowStaticRequests = 0;
             _failedPointShadowLayout = null;
             _pointShadowFailureLogged = false;
+            _failedPointShadowTransientLayout = null;
+            _pointShadowTransientFailureLogged = false;
+            _pointShadowTransientDemandRows = 0;
             if (_pointShadowAtlas is null)
             {
                 // Nothing is allocated and the default is already bound, so the disabled path costs a compare.
-                _resolvedPointShadows = new PointShadowResolution(false, 0, 0, false, null);
+                PublishResolvedPointShadows(false, false, null);
                 return;
             }
 
-            if (BindPointShadowAtlasToReceivers(null) == PointShadowBindResult.Failed)
+            if (BindPointShadowAtlasesToReceivers(null, null) == PointShadowBindResult.Failed)
             {
                 // The receivers still hold the atlas, so it cannot be freed. Nothing samples it (the frame path
                 // clears the tail), but the memory stays until a rebind can be built.
                 _model.ClearPointShadowUniforms();
-                _resolvedPointShadows = new PointShadowResolution(false, PointShadowFaceResolution, PointShadowRows,
-                    true, "point shadows were turned off but the receiver sets could not be rebuilt, so the "
+                PublishResolvedPointShadows(false, true,
+                    "point shadows were turned off but the receiver sets could not be rebuilt, so the "
                     + "atlas is still allocated.");
                 return;
             }
@@ -229,17 +331,19 @@ namespace KhaozEngine.Render3D
             DisposePointShadows();
             DropPointShadowSlotCache();
             _model.ClearPointShadowUniforms();
-            _resolvedPointShadows = new PointShadowResolution(false, 0, 0, false, null);
+            PublishResolvedPointShadows(false, false, null);
         }
 
-        /// <summary>Rebuild every receiver set against <paramref name="atlas"/> (or the 1x1 default when null).
+        /// <summary>Rebuild every receiver set against <paramref name="baseAtlas"/> and
+        /// <paramref name="transientAtlas"/> (or their 1x1 defaults when null).
         /// The same two arguments the cascade replacement takes, for the same reason: a resource set is immutable,
         /// so one changed binding means building replacements and handing them back to their holders.</summary>
-        PointShadowBindResult BindPointShadowAtlasToReceivers(IGpuTexture? atlas)
+        PointShadowBindResult BindPointShadowAtlasesToReceivers(
+            IGpuTexture? baseAtlas, IGpuTexture? transientAtlas)
         {
             var liveSets = new List<IGpuResourceSet>();
             CollectLiveMaterialSets(liveSets);
-            return _model.BindPointShadowAtlas(atlas, liveSets, CommitMaterialSets);
+            return _model.BindPointShadowAtlases(baseAtlas, transientAtlas, liveSets, CommitMaterialSets);
         }
 
         /// <summary>Fit the slot cache to a freshly allocated atlas. A changed row count is a different cache

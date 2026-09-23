@@ -44,7 +44,6 @@ namespace KhaozEngine.Render3D.Rendering
         internal const uint FaceSlotBytes = 256;
 
         readonly IGpuDevice _gd;
-        readonly PointShadowAtlas _atlas;
         readonly IGpuShaderSet _shaders;
         readonly IGpuShaderSet _dissolveShaders;
         readonly IGpuShaderSet _dissolveInvertedShaders;
@@ -62,9 +61,6 @@ namespace KhaozEngine.Render3D.Rendering
         // Grown-out slot buffers and their window sets. A prior frame's command list may still be reading one, so
         // they are retired rather than disposed inline, exactly as the instance buffer is.
         readonly List<IDisposable> _retired = new();
-        // The whole atlas is cleared once, the first time the pass binds it, so a row nobody has ever rendered
-        // still reads 1.0. Every clear after that is per row and goes through the scissored quad (decision 7).
-        bool _cleared;
 
         /// <summary>
         /// Build the pass: four shader sets, one layout, four pipelines and the first light's slot ring.
@@ -76,12 +72,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// rethrows for <c>ModelRenderer.ReplaceShadowLayout</c> to answer false on.
         /// </para>
         /// </summary>
-        public PointShadowRenderer(IGpuDevice gd, PointShadowAtlas atlas)
+        public PointShadowRenderer(IGpuDevice gd)
         {
             ArgumentNullException.ThrowIfNull(gd);
-            ArgumentNullException.ThrowIfNull(atlas);
             _gd = gd;
-            _atlas = atlas;
             IGpuResourceFactory f = gd.Factory;
             var built = new List<IDisposable>();
             try
@@ -101,7 +95,7 @@ namespace KhaozEngine.Render3D.Rendering
                     new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer,
                         GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true))));
 
-                GpuOutputDescription outputs = atlas.Framebuffer.Outputs;
+                GpuOutputDescription outputs = new(GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R32Float);
                 _pipeline = Built(built, BuildCasterPipeline(f, outputs, _shaders, dissolve: false));
                 _dissolvePipeline = Built(built, BuildCasterPipeline(f, outputs, _dissolveShaders, dissolve: true));
                 _dissolveInvertedPipeline = Built(built,
@@ -129,9 +123,6 @@ namespace KhaozEngine.Render3D.Rendering
             built.Add(resource);
             return resource;
         }
-
-        /// <summary>The atlas this pass writes into.</summary>
-        public PointShadowAtlas Atlas => _atlas;
 
         /// <summary>Ensure the slot ring holds <paramref name="slotsThisFrame"/> lights' worth of faces, growing
         /// geometrically and retiring the replaced buffer and window set (a prior frame may still be reading
@@ -194,26 +185,28 @@ namespace KhaozEngine.Render3D.Rendering
         /// 1.0 (no caster) and depth to 1.0, by an ordinary whole-framebuffer clear with no scissor in force, so a
         /// row that is never rendered still reads as unshadowed. Every later row clear is
         /// <see cref="ClearRow"/>'s scissored quad.</summary>
-        public void BeginPass(IGpuCommandList cl)
+        public void BeginPass(IGpuCommandList cl, PointShadowAtlas atlas)
         {
             ArgumentNullException.ThrowIfNull(cl);
-            cl.SetFramebuffer(_atlas.Framebuffer);
-            if (_cleared) return;
+            ArgumentNullException.ThrowIfNull(atlas);
+            cl.SetFramebuffer(atlas.Framebuffer);
+            if (atlas.IsCleared) return;
             cl.ClearColorTarget(0, new Primitives.Color(1f, 1f, 1f, 1f));
             cl.ClearDepthStencil(1f);
-            _cleared = true;
+            atlas.IsCleared = true;
         }
 
         /// <summary>Clear one light row: scissor to the row's full width and draw the depth-ALWAYS clear quad, which
         /// writes 1.0 into every one of that row's six cells and resets their depth. Never
         /// <c>ClearColorTarget</c>: whether a clear honours the scissor differs per backend and a scissored draw
         /// does not (design decision 7). <see cref="BeginPass"/> must be bound.</summary>
-        public void ClearRow(IGpuCommandList cl, int slot)
+        public void ClearRow(IGpuCommandList cl, PointShadowAtlas atlas, int slot)
         {
             ArgumentNullException.ThrowIfNull(cl);
-            uint res = (uint)_atlas.FaceResolution;
+            ArgumentNullException.ThrowIfNull(atlas);
+            uint res = (uint)atlas.FaceResolution;
             cl.SetPipeline(_clearPipeline);
-            cl.SetScissorRect(0, 0, (uint)Math.Clamp(slot, 0, _atlas.Rows - 1) * res, _atlas.Width, res);
+            cl.SetScissorRect(0, 0, (uint)Math.Clamp(slot, 0, atlas.Rows - 1) * res, atlas.Width, res);
             cl.SetGraphicsResourceSet(0, _set, 0);
             cl.Draw(3);
         }
@@ -221,9 +214,11 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Bind one cell for the caster draws that follow: the pipeline its <paramref name="kind"/> asks
         /// for, the cell's scissor, and the slot <paramref name="packedIndex"/> named through the dynamic offset.
         /// <see cref="ShadowCastKind.None"/> is not a caster and is refused rather than silently drawn.</summary>
-        public void BeginFace(IGpuCommandList cl, int packedIndex, int face, int slot, ShadowCastKind kind)
+        public void BeginFace(IGpuCommandList cl, PointShadowAtlas atlas, int packedIndex, int face, int slot,
+            ShadowCastKind kind)
         {
             ArgumentNullException.ThrowIfNull(cl);
+            ArgumentNullException.ThrowIfNull(atlas);
             cl.SetPipeline(kind switch
             {
                 ShadowCastKind.Dissolving => _dissolvePipeline,
@@ -232,9 +227,9 @@ namespace KhaozEngine.Render3D.Rendering
                 _ => throw new ArgumentOutOfRangeException(nameof(kind), kind,
                     "ShadowCastKind.None writes no depth, so it has no point-shadow pipeline."),
             });
-            uint res = (uint)_atlas.FaceResolution;
+            uint res = (uint)atlas.FaceResolution;
             cl.SetScissorRect(0, (uint)Math.Clamp(face, 0, PointShadowMath.FaceCount - 1) * res,
-                (uint)Math.Clamp(slot, 0, _atlas.Rows - 1) * res, res, res);
+                (uint)Math.Clamp(slot, 0, atlas.Rows - 1) * res, res, res);
             cl.SetGraphicsResourceSet(0, _set, (uint)packedIndex * FaceSlotBytes);
         }
 

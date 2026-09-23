@@ -23,12 +23,24 @@ public readonly struct PointShadowResolution : IEquatable<PointShadowResolution>
 
     internal PointShadowResolution(bool enabled, int faceResolution, int maxShadowedLights, bool degraded,
         string? reason)
+        : this(enabled, faceResolution, maxShadowedLights, degraded, reason,
+            faceResolution > 0 && maxShadowedLights > 0
+                ? 6L * faceResolution * maxShadowedLights * faceResolution * 9L : 0L,
+            0, 0L)
+    {
+    }
+
+    internal PointShadowResolution(bool enabled, int faceResolution, int maxShadowedLights, bool degraded,
+        string? reason, long baseAtlasBytes, int transientAtlasRows, long transientAtlasBytes)
     {
         Enabled = enabled;
         FaceResolution = faceResolution;
         MaxShadowedLights = maxShadowedLights;
         Degraded = degraded;
         _reason = reason;
+        BaseAtlasBytes = baseAtlasBytes;
+        TransientAtlasRows = transientAtlasRows;
+        TransientAtlasBytes = transientAtlasBytes;
     }
 
     /// <summary>Whether an atlas is live, so a light that asks can actually be given a row. False when the
@@ -51,15 +63,40 @@ public readonly struct PointShadowResolution : IEquatable<PointShadowResolution>
     /// nothing was refused). A diagnostics and log string, not player-facing.</summary>
     public string Reason => _reason ?? "";
 
+    /// <summary>Bytes held by the live base point-shadow atlas.</summary>
+    public long BaseAtlasBytes { get; }
+
+    /// <summary>Rows in the live transient point-shadow atlas, or zero when none is allocated.</summary>
+    public int TransientAtlasRows { get; }
+
+    /// <summary>Bytes held by the live transient point-shadow atlas.</summary>
+    public long TransientAtlasBytes { get; }
+
+    /// <summary>Total live point-shadow atlas storage in bytes.</summary>
+    public long TotalAtlasBytes => BaseAtlasBytes + TransientAtlasBytes;
+
     public bool Equals(PointShadowResolution other) =>
         Enabled == other.Enabled && FaceResolution == other.FaceResolution
         && MaxShadowedLights == other.MaxShadowedLights && Degraded == other.Degraded
+        && BaseAtlasBytes == other.BaseAtlasBytes && TransientAtlasRows == other.TransientAtlasRows
+        && TransientAtlasBytes == other.TransientAtlasBytes
         && string.Equals(Reason, other.Reason, StringComparison.Ordinal);
 
     public override bool Equals(object? obj) => obj is PointShadowResolution other && Equals(other);
 
-    public override int GetHashCode() =>
-        HashCode.Combine(Enabled, FaceResolution, MaxShadowedLights, Degraded, Reason);
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Enabled);
+        hash.Add(FaceResolution);
+        hash.Add(MaxShadowedLights);
+        hash.Add(Degraded);
+        hash.Add(Reason, StringComparer.Ordinal);
+        hash.Add(BaseAtlasBytes);
+        hash.Add(TransientAtlasRows);
+        hash.Add(TransientAtlasBytes);
+        return hash.ToHashCode();
+    }
 
     public static bool operator ==(PointShadowResolution a, PointShadowResolution b) => a.Equals(b);
 

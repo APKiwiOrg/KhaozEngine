@@ -36,6 +36,7 @@ namespace KhaozEngine.Render3D
     public sealed partial class Scene3D
     {
         PointShadowAtlas? _pointShadowAtlas;
+        PointShadowAtlas? _pointShadowTransientAtlas;
         PointShadowRenderer? _pointShadows;
 
         // Per-render scratch, reused rather than reallocated: the caster spans one light draws.
@@ -48,18 +49,21 @@ namespace KhaozEngine.Render3D
         /// <summary>The point-shadow atlas texture, or null when no atlas has been allocated. The receivers bind
         /// this (or their 1x1 default in its place).</summary>
         internal IGpuTexture? PointShadowTexture => _pointShadowAtlas?.Texture;
+        internal IGpuTexture? PointShadowTransientTexture => _pointShadowTransientAtlas?.Texture;
 
         /// <summary>What the RECEIVERS are bound to, which is <see cref="PointShadowTexture"/> once a bind has
         /// landed and the 1x1 default before the first one. The two are separate questions and a reshape is where
         /// they can part company, so a test that only asked the first would not see a receiver left on a freed
         /// atlas.</summary>
         internal IGpuTexture BoundPointShadowTexture => _model.BoundPointShadowTexture;
+        internal IGpuTexture BoundPointShadowTransientTexture => _model.BoundPointShadowTransientTexture;
 
         /// <summary>One cell's size per axis in the live atlas, or 0 when there is none.</summary>
         internal int PointShadowFaceResolution => _pointShadowAtlas?.FaceResolution ?? 0;
 
         /// <summary>How many light rows the live atlas carries, or 0 when there is none.</summary>
         internal int PointShadowRows => _pointShadowAtlas?.Rows ?? 0;
+        internal int PointShadowTransientRows => _pointShadowTransientAtlas?.Rows ?? 0;
 
         /// <summary>
         /// Make sure an atlas of exactly this layout exists, allocating one (or replacing a differently shaped one)
@@ -94,7 +98,7 @@ namespace KhaozEngine.Render3D
             if (atlas is null) return null;
             try
             {
-                return new PointShadowReplacement(atlas, new PointShadowRenderer(_gd, atlas));
+                return new PointShadowReplacement(atlas, new PointShadowRenderer(_gd));
             }
             catch
             {
@@ -116,6 +120,7 @@ namespace KhaozEngine.Render3D
             if (_pointShadowAtlas is not null) _gd.WaitForIdle();
             DisposePointShadows();
             _pointShadowAtlas = replacement.Atlas;
+            _pointShadowTransientAtlas = replacement.TransientAtlas;
             _pointShadows = replacement.Renderer;
         }
 
@@ -152,9 +157,15 @@ namespace KhaozEngine.Render3D
         /// </para>
         /// </summary>
         internal void PackPointShadowSlot(int packedSlotIndex, int slot, Vector3 lightPosAbsolute, float radius,
-            float nearRadius = 0f, Vector3 exclusionMin = default, Vector3 exclusionMax = default)
+            float nearRadius = 0f, Vector3 exclusionMin = default, Vector3 exclusionMax = default) =>
+            PackPointShadowSlotForTarget(_pointShadowAtlas, packedSlotIndex, slot, lightPosAbsolute, radius,
+                nearRadius, exclusionMin, exclusionMax);
+
+        internal void PackPointShadowSlotForTarget(PointShadowAtlas? targetAtlas, int packedSlotIndex, int slot,
+            Vector3 lightPosAbsolute, float radius, float nearRadius = 0f,
+            Vector3 exclusionMin = default, Vector3 exclusionMax = default)
         {
-            if (_pointShadows is not { } renderer || _pointShadowAtlas is not { } atlas) return;
+            if (_pointShadows is not { } renderer || targetAtlas is not { } atlas) return;
 
             Vector3 lightRender = ToRender(lightPosAbsolute);
             bool boxed = IsExclusionBox(exclusionMin, exclusionMax);
@@ -205,14 +216,15 @@ namespace KhaozEngine.Render3D
         internal int RenderPointShadowSlots(IGpuCommandList cl)
         {
             ArgumentNullException.ThrowIfNull(cl);
-            if (_pointShadows is not { } renderer || _packedPointSlots.Count == 0) return 0;
+            if (_pointShadows is not { } renderer || _pointShadowAtlas is not { } atlas
+                || _packedPointSlots.Count == 0) return 0;
 
             int draws = 0;
             IGpuBuffer? instances = _model.InstanceBuffer;
-            renderer.BeginPass(cl);
+            renderer.BeginPass(cl, atlas);
             foreach (PackedPointShadowSlot packed in _packedPointSlots)
             {
-                renderer.ClearRow(cl, packed.Slot);
+                renderer.ClearRow(cl, atlas, packed.Slot);
                 if (instances is null) continue;
 
                 // The caster set is per LIGHT (it is a sphere cull against that light), so it is rebuilt here
@@ -229,7 +241,7 @@ namespace KhaozEngine.Render3D
                         if (m is not { } mesh) continue;   // unloaded between the span build and here: skip its slice
                         if (span.Kind != bound)
                         {
-                            renderer.BeginFace(cl, packed.PackedIndex * PointShadowMath.FaceCount + face, face,
+                            renderer.BeginFace(cl, atlas, packed.PackedIndex * PointShadowMath.FaceCount + face, face,
                                 packed.Slot, span.Kind);
                             bound = span.Kind;
                         }
@@ -351,8 +363,10 @@ namespace KhaozEngine.Render3D
         void DisposePointShadows()
         {
             _pointShadows?.Dispose();
+            _pointShadowTransientAtlas?.Dispose();
             _pointShadowAtlas?.Dispose();
             _pointShadows = null;
+            _pointShadowTransientAtlas = null;
             _pointShadowAtlas = null;
         }
 
@@ -363,19 +377,23 @@ namespace KhaozEngine.Render3D
         /// nothing to put back.</summary>
         internal sealed class PointShadowReplacement
         {
-            internal PointShadowReplacement(PointShadowAtlas atlas, PointShadowRenderer renderer)
+            internal PointShadowReplacement(PointShadowAtlas atlas, PointShadowRenderer renderer,
+                PointShadowAtlas? transientAtlas = null)
             {
                 Atlas = atlas;
                 Renderer = renderer;
+                TransientAtlas = transientAtlas;
             }
 
             internal PointShadowAtlas Atlas { get; }
             internal PointShadowRenderer Renderer { get; }
+            internal PointShadowAtlas? TransientAtlas { get; set; }
 
             /// <summary>Give the whole attempt back, for a caller that decided not to commit it.</summary>
             internal void Dispose()
             {
                 Renderer.Dispose();
+                TransientAtlas?.Dispose();
                 Atlas.Dispose();
             }
         }

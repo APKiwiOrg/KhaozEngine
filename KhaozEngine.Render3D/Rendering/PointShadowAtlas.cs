@@ -51,6 +51,12 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Atlas height in texels: one row per light slot.</summary>
         public uint Height => (uint)(FaceResolution * Rows);
 
+        /// <summary>Live colour and depth storage in bytes, with six R32F faces and a five-byte depth-stencil face.</summary>
+        public long ByteSize => 6L * FaceResolution * Rows * FaceResolution * 9L;
+
+        /// <summary>Whether the first full-atlas clear has been recorded for this atlas.</summary>
+        internal bool IsCleared { get; set; }
+
         /// <summary>The R32F distance atlas the receivers sample.</summary>
         public IGpuTexture Texture { get; }
 

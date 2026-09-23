@@ -60,7 +60,8 @@ namespace KhaozEngine.Tests.Gpu
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged { }
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height) { }
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height,
-            uint mipLevel, uint arrayLayer) { }
+            uint mipLevel, uint arrayLayer)
+        { }
 
         // Readback is the one thing a fake genuinely cannot do: there are no pixels behind it. Throwing beats
         // handing back zeros, which would let a snapshot test "pass" against a black image.
@@ -92,12 +93,14 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Absolute 1-based texture creation to fail, or zero for no injected failure.</summary>
         internal int ThrowOnTextureCreate { get; set; }
+        internal int ThrowOnFramebufferCreate { get; set; }
         internal int ThrowOnResourceSetCreate { get; set; }
         /// <summary>Absolute 1-based buffer creation to fail, or zero for no injected failure.</summary>
         internal int ThrowOnBufferCreate { get; set; }
 
         /// <summary>Every buffer this factory has handed out, in creation order. See <see cref="Textures"/>.</summary>
         internal List<FakeBuffer> Buffers { get; } = new();
+        internal List<FakeFramebuffer> Framebuffers { get; } = new();
 
         /// <summary>Every graphics pipeline request with the GLSL source carried by its real shader-set handle.</summary>
         internal List<FakeGraphicsPipelineRequest> GraphicsPipelines { get; } = new();
@@ -157,13 +160,17 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuFramebuffer CreateFramebuffer(IGpuTexture? depth, params IGpuTexture[] colour)
         {
+            if (ThrowOnFramebufferCreate == Framebuffers.Count + 1)
+                throw new InvalidOperationException("the fake refused framebuffer creation");
             var formats = new GpuPixelFormat[colour.Length];
             for (int i = 0; i < colour.Length; i++) formats[i] = colour[i].Format;
             var outputs = new GpuOutputDescription(depth?.Format, formats);
             IGpuTexture? first = colour.Length > 0 ? colour[0] : depth;
             uint w = first?.Width ?? 1, h = first?.Height ?? 1;
             uint samples = first?.SampleCount ?? 1;
-            return new FakeFramebuffer(samples > 1 ? outputs.WithSampleCount((int)samples) : outputs, w, h);
+            var framebuffer = new FakeFramebuffer(samples > 1 ? outputs.WithSampleCount((int)samples) : outputs, w, h);
+            Framebuffers.Add(framebuffer);
+            return framebuffer;
         }
 
         public IGpuSampler CreateSampler(in GpuSamplerDescription d) => new FakeSampler();
@@ -341,7 +348,8 @@ namespace KhaozEngine.Tests.Gpu
         public void CopyTexture(IGpuTexture src, IGpuTexture dst) { }
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint width, uint height) { }
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer,
-            IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height) { }
+            IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
+        { }
         public void GenerateMipmaps(IGpuTexture texture) => MipGenerations.Add(texture);
 
         /// <summary>Every texture a GenerateMipmaps call named, so a test can pin that a single-level upload

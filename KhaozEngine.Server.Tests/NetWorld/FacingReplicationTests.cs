@@ -18,7 +18,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// <para><see cref="MoveState.FacingYaw"/> is CARRIED state, not a per-tick event: a mid-turn has to survive
 /// reconciliation, which is why it rides the wire where <c>LandingImpactSpeed</c> deliberately does not. That makes
 /// this the <see cref="MovementState.HorizontalVelocityXQ"/> pattern end to end - the codec, the
-/// <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/> seed, and the sharded head's carry-in
+/// <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState, in MovementOwnerState)"/> seed, and the sharded head's carry-in
 /// AND carry-back-out, which is the half that is easy to forget because the single-<c>World</c> head keeps its whole
 /// state per slot and needs neither.</para>
 /// </summary>
@@ -104,7 +104,7 @@ public class FacingReplicationTests
         // 0 is a legal heading (-Z, the camera-yaw-0 direction), not a sentinel, so a spawn, a missed TryGet and a
         // pre-facing save all read as facing forward rather than as facing nowhere.
         Assert.Equal(0f, MovementState.DecodeFacingYaw(default(MovementState).FacingYawQ));
-        Assert.Equal(0f, PlayerMoveState.From(Vector3.Zero, default).Move.FacingYaw);
+        Assert.Equal(0f, PlayerMoveState.From(Vector3.Zero, default, default).Move.FacingYaw);
     }
 
     [Theory]
@@ -153,7 +153,7 @@ public class FacingReplicationTests
         var state = new PlayerMoveState();
         state.Move.FacingYaw = 2.25f;
         MovementState wire = MovementState.From(state);
-        PlayerMoveState back = PlayerMoveState.From(Vector3.Zero, wire);
+        PlayerMoveState back = PlayerMoveState.From(Vector3.Zero, wire, MovementOwnerState.From(state));
         Assert.Equal(0f, MathF.Abs(CharacterMovement.WrapYaw(back.Move.FacingYaw - 2.25f)), 3);
     }
 

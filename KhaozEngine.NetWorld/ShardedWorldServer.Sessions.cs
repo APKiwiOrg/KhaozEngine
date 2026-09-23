@@ -34,7 +34,7 @@ public sealed partial class ShardedWorldServer
         long netId = allocator.Next().Value;
         Entity entity = host.SpawnOwned(state.Position.X, state.Position.Z, netId, out CellSim cell);
         cell.World.Set(entity, ReplicatedPosition.FromWorld(state.Position, cell.Frame));
-        cell.World.Set(entity, MovementState.From(state));
+        MovementComponents.Set(cell.World, entity, state);
         if (!string.IsNullOrEmpty(displayName))
             cell.World.Set(entity, new PlayerIdentity { DisplayName = displayName });
         EnsureWired(cell);

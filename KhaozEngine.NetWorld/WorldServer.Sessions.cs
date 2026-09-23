@@ -36,7 +36,7 @@ public sealed partial class WorldServer
         Entity entity = world.Spawn();
         world.Set(entity, new NetId(netId));
         world.Set(entity, ReplicatedPosition.InFrame(islandFrame, state.Position));
-        world.Set(entity, MovementState.From(state));
+        MovementComponents.Set(world, entity, state);
         netIdBySlot[slot] = netId;
         entityBySlot[slot] = entity;
         stateBySlot[slot] = state;

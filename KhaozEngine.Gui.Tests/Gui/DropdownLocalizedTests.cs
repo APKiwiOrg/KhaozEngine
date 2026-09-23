@@ -71,15 +71,6 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
-        public void The_string_option_ctor_still_compiles_and_is_obsolete()
-        {
-            // Kept so an existing caller keeps building, marked so it shows up. Nothing is removed.
-            ConstructorInfo? ctor = typeof(DropdownOption).GetConstructor(new[] { typeof(string), typeof(int) });
-            Assert.NotNull(ctor);
-            Assert.NotNull(ctor!.GetCustomAttribute<System.ObsoleteAttribute>());
-        }
-
-        [Fact]
         public void ScrollablePanel_header_takes_localized_text()
         {
             MethodInfo[] headers = typeof(ScrollablePanel)
@@ -87,10 +78,6 @@ namespace KhaozEngine.Tests.Gui
                 .Where(m => m.Name == "DrawHeader").ToArray();
 
             Assert.Contains(headers, m => m.GetParameters()[^1].ParameterType == typeof(LocalizedText));
-
-            MethodInfo? raw = headers.FirstOrDefault(m => m.GetParameters()[^1].ParameterType == typeof(string));
-            Assert.NotNull(raw);   // the old signature stays, so a caller keeps compiling
-            Assert.NotNull(raw!.GetCustomAttribute<System.ObsoleteAttribute>());
         }
     }
 }

@@ -9,8 +9,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="SharpGLTF.Core" />
-    <!-- The MonoGame-free ECS, so 3D entities can render via Scene3DBinder (Transform3D + MeshInstance). -->
-    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <!-- No Ecs edge. Scene3DBinder, Transform3D and MeshInstance live in the KhaozEngine.Render3D.Ecs arm,
+         so a render-only consumer does not pull Ecs, Simulation and Serialization. -->
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="assets/testmodel.glb" Pack="true" PackagePath="assets\" CopyToOutputDirectory="PreserveNewest" />
     <None Include="assets/asteroid.glb" Pack="true" PackagePath="assets\" CopyToOutputDirectory="PreserveNewest" />

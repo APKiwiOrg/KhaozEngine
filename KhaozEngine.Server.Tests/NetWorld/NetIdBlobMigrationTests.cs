@@ -123,13 +123,12 @@ public class NetIdBlobMigrationTests
         {
             VerticalVelocity = -3.25f,
             Grounded = true,
-            TimeSinceGrounded = 1.5f,
-            JumpBufferRemaining = 0.25f,
         };
+        var owner = new MovementOwnerState { TimeSinceGrounded = 1.5f, JumpBufferRemaining = 0.25f };
         byte[] body = new CellBlobFixtures.BodyBuilder(netId32: true)
             .Entity(5,
                 (MoveProtocol.PositionTypeId, CellBlobFixtures.Position(NetIdBlobMigration.NetId32WireGeneration, FixturePos)),
-                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(NetIdBlobMigration.NetId32WireGeneration, movement)),
+                (MoveProtocol.MovementTypeId, CellBlobFixtures.Movement(NetIdBlobMigration.NetId32WireGeneration, movement, owner)),
                 (MoveProtocol.IdentityTypeId, CellBlobFixtures.Identity("Runner")))
             .ToBody();
 
@@ -153,8 +152,8 @@ public class NetIdBlobMigrationTests
         MovementState restored = cell.World.Get<MovementState>(e);
         Assert.Equal(movement.VerticalVelocity, restored.VerticalVelocity);
         Assert.True(restored.Grounded);
-        Assert.Equal(movement.TimeSinceGrounded, restored.TimeSinceGrounded);
-        Assert.Equal(movement.JumpBufferRemaining, restored.JumpBufferRemaining);
+        // The generation-1 payload carried the timers inline. They come back on the owner-only component.
+        Assert.Equal(owner, cell.World.Get<MovementOwnerState>(e));
         // Every field the codec appended after generation 1 was never on disk, so it restores at its default.
         Assert.False(restored.Swimming);
         Assert.Equal(0u, restored.TeleportEpoch);

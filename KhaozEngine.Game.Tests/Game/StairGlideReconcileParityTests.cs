@@ -103,7 +103,7 @@ public class StairGlideReconcileParityTests
                 int ackSeq = t - lag;
                 PlayerMoveState authFull = contStates[ackSeq + 1];
                 MovementState wire = MovementState.From(authFull);                 // quantizes ClimbRate, drops the EWMA
-                PlayerMoveState basis = PlayerMoveState.From(authFull.Position, wire);
+                PlayerMoveState basis = PlayerMoveState.From(authFull.Position, wire, MovementOwnerState.From(authFull));
                 pred.Reconcile(t, basis, ackSeq);
             }
             PlayerMoveState ps = pred.PredictedState;

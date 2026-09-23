@@ -15887,6 +15887,17 @@ actual base version, and a draft a publish holds frozen answers 409 naming the r
 reached by `GET` is refused 405 with `Allow: POST`. What the caller still owns is the console UI: the engine
 ships the actions and the payload shapes, not a screen.
 
+A game whose catalog is bundle-derived registers the reads alone, instead of `Register`:
+
+```csharp
+CatalogAdminActions.RegisterReads(admin, store, registry);
+```
+
+That puts `catalog-schema`, `catalog-list`, `catalog-get`, `catalog-draft` and `catalog-versions` on the
+dispatch and none of the eleven that write, so a console that serves the committed bundle cannot publish,
+import, pin or edit the hosted store. A later `Register` on the same surface is refused as a second `Register`
+is.
+
 ### The connect door, and the client's catch-up
 
 A server serves exactly ONE published content version. A client holding another is refused at the door rather

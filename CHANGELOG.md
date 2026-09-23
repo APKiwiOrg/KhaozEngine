@@ -8,8 +8,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 ## 20.3.0
 
 A minor that changes how procedural water looks: a narrower, energy-correct far glint and whitecaps evaluated
-per pixel. Nothing a game calls changes meaning, but a lake tuned against the old look may want its whitecap
-settings retuned (below).
+per pixel. It also lets a game register the catalog's admin reads without its writes. Nothing a game calls
+changes meaning, but a lake tuned against the old look may want its whitecap settings retuned (below).
 
 **Water glint and whitecaps.**
 
@@ -33,6 +33,15 @@ settings retuned (below).
   and may want its whitecap settings retuned. The attenuation is keyed on the pixel footprint, so at 1080p it starts
   about twice as far away as at the golden resolution.
 - `scene3d_water` and `scene3d_water_grid_focus` were rebaked on all three families.
+
+**Catalog admin reads.**
+
+- `CatalogAdminActions.RegisterReads(admin, store, registry)` registers the five catalog read actions
+  (`catalog-schema`, `catalog-list`, `catalog-get`, `catalog-draft` and `catalog-versions`) and none of the
+  eleven that write ([#1132](https://github.com/APKiwiOrg/KhaozEngine/issues/1132)). A game whose catalog is
+  bundle-derived serves reads from its console and must not expose publish, import, pin or edit, and until now
+  it got the reads only by registering all sixteen. `Register` is unchanged and reaches the reads through the
+  same path, so a `Register` after `RegisterReads` is refused as a second `Register` is.
 
 ## 20.2.0
 

@@ -275,8 +275,18 @@ public sealed class PointLightClusterBuilderTests
             Light(new Vector3(0f, 0f, -2f), 1f),
             Light(new Vector3(4f, 2f, -12f), 2f),
             Light(new Vector3(-3f, -1f, -6f), 1.5f),
+            // The first three store 440 indices, a whole uvec4. This one sits well inside a single cluster and leaves
+            // a three-uint pad.
+            Light(new Vector3(1f, 0.5f, -3f), 0.01f),
         ];
 
+        // A dense frame first stores indices 0 to 63 in every cluster, so index slot k of the region holds k mod 64.
+        // The pad below starts past a count that is not a multiple of four, so every slot it covers holds a non-zero
+        // stale index and only the build's own zeroing clears it.
+        builder.Build(Stack(64, new Vector3(0f, 0f, -13f), 100f), Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        Assert.Equal(0, builder.OverflowedClusters);
+        Assert.Equal(PointLightClusterBuilder.HeaderRegionUInts + PointLightClusterBuilder.ClusterCount * 64,
+            builder.UsedUIntCount);
         builder.Build(lights, Perspective, Vector3.Zero, Forward, Perspective, Vector3.Zero);
 
         int next = 0;
@@ -297,6 +307,7 @@ public sealed class PointLightClusterBuilderTests
         }
         int used = PointLightClusterBuilder.HeaderRegionUInts + next;
         Assert.True(next > 0);
+        Assert.True(next % 4 != 0, $"the frame stored {next} indices, a whole uvec4, so it leaves no pad to check");
         Assert.Equal((used + 3) & ~3, builder.UsedUIntCount);
         for (int i = used; i < builder.UsedUIntCount; i++) Assert.Equal(0u, builder.Image[i]);
     }

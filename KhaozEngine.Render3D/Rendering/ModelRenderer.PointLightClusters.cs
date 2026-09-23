@@ -5,7 +5,7 @@ using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering;
 
-/// <summary>Owns the fixed clustered-light index buffer shared by every lit receiver.</summary>
+/// <summary>Owns the fixed-size clustered-light index buffer shared by every lit receiver.</summary>
 internal sealed partial class ModelRenderer
 {
     PointLightClusterBuilder _pointLightClusters = null!;

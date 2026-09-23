@@ -32,6 +32,15 @@ public sealed class TileGroundMesherOptions
         get => _slots;
         set => _slots = value ?? throw new ArgumentNullException(nameof(value));
     }
+
+    // A detached copy, which is what a view builds every mesh from. A setting added above is added here too, beside
+    // it, so the copy cannot silently drop it.
+    internal TileGroundMesherOptions Copy() => new()
+    {
+        JitterAmplitude = JitterAmplitude,
+        SmoothNormals = SmoothNormals,
+        Slots = Slots,
+    };
 }
 
 /// <summary>Builds the ground mesh of one region-plane for the tile-ground pipeline: each drawable tile cut into

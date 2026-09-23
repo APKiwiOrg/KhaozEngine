@@ -16839,6 +16839,31 @@ when genuinely cross-cutting. This is the standard, not a nicety - it's the reas
 the `AppWindow`/`InputState` seam. See `KhaozEngine.Render.Tests/Windowing` and `KhaozEngine.Gui.Tests/Gui`
 for the `InputState` builder patterns.
 
+### GPU test gate (`KhaozEngine.Gpu.TestKit`)
+
+Reference `KhaozEngine.Gpu.TestKit` from a test project when GPU tests need the engine's standard run gate without
+taking an xUnit dependency from the helper package. `GpuTestGate.SkipReason()` returns null when the test should
+run, otherwise it returns the reason the test framework should use to skip it.
+
+- `KE_GPU_TESTS=1` is strict. The gate returns null without probing, so a missing device fails in the test body.
+- `KE_GPU_TESTS=probe` creates one headless device and caches either success or the concrete creation failure.
+- Unset, empty and other values return the setup reason without touching a device.
+
+The package registers the Direct3D 11, Vulkan and Metal native providers before any probe. Use
+`GpuTestGate.BackendName` when naming a backend-specific artifact. It reports the established golden family of the
+device the cached probe actually created, including `direct3d11-native`, `vulkan-native` or `metal-native`. It does
+not guess from the operating system, so an unpinned fallback cannot be attributed to the requested backend.
+
+```csharp
+using KhaozEngine.Gpu.TestKit;
+using Xunit;
+
+public sealed class GameGpuFactAttribute : FactAttribute
+{
+    public GameGpuFactAttribute() => Skip = GpuTestGate.SkipReason();
+}
+```
+
 ### Localization coverage (`KhaozEngine.Localization.TestKit`)
 
 If your game ships satellite `.resx` translations, guard them with one assert instead of a hand-rolled reflection

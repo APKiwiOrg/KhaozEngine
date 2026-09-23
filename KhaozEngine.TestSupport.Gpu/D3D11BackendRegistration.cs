@@ -6,28 +6,15 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// Registers the real native Direct3D 11 backend for the whole test process, once, on demand.
     /// <para>
-    /// It lives in the SHARED support project rather than in one test assembly because the gate that decides
-    /// whether a GPU test runs is not per-assembly. Every assembly with a <c>[GpuFact]</c> in it references this
-    /// project by definition (that is where the attribute lives), so putting the registration here means no test
-    /// project can be wired for GPU tests and still be missing the backend. It was in
-    /// <c>KhaozEngine.Render.Tests</c> first, and <c>KhaozEngine.MapEditor.Tests</c> paid for it: on the native leg
-    /// all four of its GPU tests threw <c>GpuBackendProviderMissingException</c>, because it takes
-    /// <c>[GpuFact]</c> from here and never had a registration line of its own. A per-project line is a line every
-    /// future test project must remember, and the failure for forgetting it is a red leg that reads as a device
-    /// problem.
+    /// It remains in the shared support project as the target of the Render.Tests module initializer belt. The
+    /// packable <c>KhaozEngine.Gpu.TestKit</c> owns registration for <c>[GpuFact]</c>, <c>[GpuTheory]</c> and
+    /// direct consumers. This helper keeps filtered plain <c>[Fact]</c> registration tests independent of the
+    /// attribute gate.
     /// </para>
     /// <para>
-    /// WHAT PULLS THE TRIGGER, and why it is not a <c>[ModuleInitializer]</c> any more. This project is a LIBRARY,
-    /// and CA2255 is an error under the repo's warnings-as-errors, correctly: a module initializer in a library
-    /// runs when the CLR happens to load the assembly, which is the same lazy, machine-dependent property that got
-    /// the mechanism rejected in the backend package itself (section 4.1 of
-    /// <c>docs/design/D3D11-NATIVE-BACKEND-DESIGN-2026-08-02.md</c>). The suppression route was available and is
-    /// the wrong trade here, because the trigger this needs is not "assembly load" at all. It is "an assembly that
-    /// runs GPU tests". So <see cref="GpuFactAttribute"/> carries a static constructor that calls
-    /// <see cref="EnsureRegistered"/>, and the CLR runs that the first time the attribute type is touched, which
-    /// is during xUnit's discovery pass in any assembly with a <c>[GpuFact]</c> or a <c>[GpuTheory]</c> in it, well
-    /// before any test body. The registration therefore follows the ATTRIBUTE rather than the assembly, which is
-    /// the property the shared home was moved here to get.
+    /// This project is a library, so it cannot carry the module initializer itself under CA2255. The test
+    /// assembly owns that initializer and calls <see cref="EnsureRegistered"/> here. Attribute construction goes
+    /// through <c>KhaozEngine.Gpu.TestKit.GpuTestGate</c>, which registers all three native backends directly.
     /// </para>
     /// <para>
     /// The one thing that hook does NOT cover is a registry test with no <c>[GpuFact]</c> anywhere near it, which

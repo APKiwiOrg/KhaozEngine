@@ -236,11 +236,10 @@ namespace KhaozEngine.Tests.Gpu
 
     /// <summary>
     /// That the test process actually has the REAL native Metal provider registered, through
-    /// <c>KhaozEngine.TestSupport.Gpu/MetalBackendRegistration.cs</c>, which every assembly taking
-    /// <c>[GpuFact]</c> reaches from that attribute's static constructor and which this assembly also calls from
-    /// the thin module initializer in <c>MetalBackendRegistrationInitializer.cs</c>. These rows are exactly why
-    /// that second one exists: they carry no <c>[GpuFact]</c>, so a filtered run of them alone would never touch
-    /// the attribute and never fire the hook.
+    /// <c>KhaozEngine.TestSupport.Gpu/MetalBackendRegistration.cs</c>, which this assembly calls from the thin
+    /// module initializer in <c>MetalBackendRegistrationInitializer.cs</c>. Attribute-gated tests register through
+    /// <c>GpuTestGate</c>. These rows are exactly why the initializer remains: they carry no <c>[GpuFact]</c>, so a
+    /// filtered run of them alone never touches that gate.
     /// <para>
     /// In the non-parallel collection because it reads the process-wide registry, which the Direct3D 11
     /// append-audit rows temporarily empty. Worth asserting at all because the registration is invisible: no GPU

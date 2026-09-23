@@ -97,20 +97,8 @@ namespace KhaozEngine.Tests.Gpu
         /// arrives from a device-free test rather than from a GPU leg.
         /// </para>
         /// </summary>
-        public static string GoldenBackendToken(KhaozEngine.Gpu.GpuBackendKind kind) => kind switch
-        {
-            KhaozEngine.Gpu.GpuBackendKind.Metal => "metal",
-            KhaozEngine.Gpu.GpuBackendKind.Vulkan => "vulkan",
-            KhaozEngine.Gpu.GpuBackendKind.Direct3D11 => "direct3d11",
-            KhaozEngine.Gpu.GpuBackendKind.Direct3D11Native => "direct3d11-native",
-            KhaozEngine.Gpu.GpuBackendKind.VulkanNative => "vulkan-native",
-            KhaozEngine.Gpu.GpuBackendKind.MetalNative => "metal-native",
-            KhaozEngine.Gpu.GpuBackendKind.OpenGL => "opengl",
-            _ => throw new NotSupportedException(
-                $"No golden family is decided for {kind}. Appending a GpuBackendKind member means deciding "
-                + "whether it owns a family or shares one, because the filename is derived from this and nothing "
-                + "else fails when it is wrong: the run just compares against a golden that does not exist."),
-        };
+        public static string GoldenBackendToken(KhaozEngine.Gpu.GpuBackendKind kind)
+            => KhaozEngine.Gpu.TestKit.GpuTestGate.BackendNameFor(kind);
 
         /// <summary>
         /// Whether <paramref name="kind"/> OWNS the family <paramref name="token"/> names, which is true exactly

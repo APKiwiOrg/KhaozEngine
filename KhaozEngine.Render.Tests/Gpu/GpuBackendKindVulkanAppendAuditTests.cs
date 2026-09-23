@@ -355,8 +355,8 @@ namespace KhaozEngine.Tests.Gpu
     /// under the real <see cref="GpuBackendKind.VulkanNative"/> kind. The full reasoning for the split, and for
     /// the collection, is on <see cref="GpuBackendKindAppendAuditRegistryTests"/> and is not repeated.
     /// <para>
-    /// The ambient state here is a REGISTERED provider, because <c>KhaozEngine.Gpu.Vulkan</c> exists and
-    /// <c>KhaozEngine.TestSupport.Gpu/VulkanBackendRegistration.cs</c> registers its real one at test discovery.
+    /// The ambient state here is a REGISTERED provider because <c>GpuTestGate</c> registers it through GPU
+    /// attribute discovery, with the Render.Tests module initializer covering filtered plain-Fact tests.
     /// So every row that means "nothing is registered" says so explicitly with a scope, which is the stronger
     /// form anyway: it asserts what the code does with no provider present rather than what it happens to do
     /// given today's ambient registration.

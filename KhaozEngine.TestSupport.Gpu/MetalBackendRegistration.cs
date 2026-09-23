@@ -8,21 +8,14 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="D3D11BackendRegistration"/> and <see cref="VulkanBackendRegistration"/>, in the SAME project
     /// and for the same reason.
     /// <para>
-    /// It lives in the shared support project rather than in one test assembly because the gate that decides
-    /// whether a GPU test runs is not per-assembly. Every assembly with a <c>[GpuFact]</c> in it references this
-    /// project by definition (that is where the attribute lives), so putting the registration here means no test
-    /// project can be wired for GPU tests and still be missing the backend. The regression evidence is the
-    /// Direct3D 11 one and it is not re-earned a third time: registration lived in
-    /// <c>KhaozEngine.Render.Tests</c> first, and all four of <c>KhaozEngine.MapEditor.Tests</c>' GPU tests threw
-    /// <c>GpuBackendProviderMissingException</c> on the native leg because that project takes <c>[GpuFact]</c>
-    /// from here and never had a registration line of its own. Work-breakdown row 2 of
-    /// <c>docs/design/METAL-NATIVE-BACKEND-DESIGN-2026-08-09.md</c> names this seat explicitly, in this project
-    /// and not in a single test assembly, in the same words phase 3's row 2 did.
+    /// It remains in the shared support project as the target of the Render.Tests module initializer belt. The
+    /// packable <c>KhaozEngine.Gpu.TestKit</c> owns registration for <c>[GpuFact]</c>, <c>[GpuTheory]</c> and
+    /// direct consumers. This helper keeps filtered plain <c>[Fact]</c> registration tests independent of the
+    /// attribute gate.
     /// </para>
     /// <para>
-    /// WHAT PULLS THE TRIGGER is <see cref="GpuFactAttribute"/>'s static constructor, which now calls all three
-    /// registrations. The full reasoning for that hook, and why it is not a <c>[ModuleInitializer]</c> in a
-    /// library, is on <see cref="D3D11BackendRegistration"/> and is not repeated here.
+    /// The test assembly module initializer calls <see cref="EnsureRegistered"/>. Attribute construction goes
+    /// through <c>KhaozEngine.Gpu.TestKit.GpuTestGate</c>, which registers all three native backends directly.
     /// </para>
     /// <para>
     /// SAFE ON EVERY OPERATING SYSTEM, and unlike the Vulkan sibling that needs saying, because this package

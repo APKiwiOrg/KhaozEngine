@@ -249,6 +249,25 @@ KhaozEngine.Localization.TestKit -> KhaozEngine.App   (reads StringId.Key to ext
 no umbrella (a runtime build never pulls it) and references `App` only to read `StringId`, so the edge is acyclic
 and carries no weight into shipped game code.
 
+The GPU test gate adds four explicit test-only edges:
+
+```
+KhaozEngine.Gpu.TestKit -> KhaozEngine.Gpu
+KhaozEngine.Gpu.TestKit -> KhaozEngine.Gpu.D3D11
+KhaozEngine.Gpu.TestKit -> KhaozEngine.Gpu.Vulkan
+KhaozEngine.Gpu.TestKit -> KhaozEngine.Gpu.Metal
+```
+
+`KhaozEngine.Gpu.TestKit` is a framework-agnostic helper a game references from its test project. It belongs to
+no umbrella and references no test framework. The backend edges let `GpuTestGate` register every native provider
+before its cached headless probe. `BackendName` is taken from the device that probe created, so a fallback is
+filed under the backend that rendered rather than the backend the OS probe first requested.
+
+`KhaozEngine.TestSupport.Gpu -> KhaozEngine.Gpu.TestKit` is the non-packable xUnit adapter edge.
+`GpuFactAttribute` and `GpuTheoryAttribute` delegate the shared environment and device gate through it. The
+support project retains direct backend edges for its uniform-ring adapters and its filtered registration-test
+module initializer belt.
+
 The file-size ratchet adds one more analyzer edge, from every umbrella:
 
 ```

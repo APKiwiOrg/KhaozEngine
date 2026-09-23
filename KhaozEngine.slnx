@@ -28,6 +28,7 @@
   <Project Path="KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
   <Project Path="KhaozEngine.Gpu.D3D11/KhaozEngine.Gpu.D3D11.csproj" />
   <Project Path="KhaozEngine.Gpu.Metal/KhaozEngine.Gpu.Metal.csproj" />
+  <Project Path="KhaozEngine.Gpu.TestKit/KhaozEngine.Gpu.TestKit.csproj" />
   <Project Path="KhaozEngine.Gpu.Vulkan/KhaozEngine.Gpu.Vulkan.csproj" />
   <Project Path="KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
   <Project Path="KhaozEngine.Identity.Discord/KhaozEngine.Identity.Discord.csproj" />

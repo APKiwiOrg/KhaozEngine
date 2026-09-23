@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Identity.Exchange</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The pure decision core of the sign-in exchange: AuthExchange trades a provider credential for a SignedToken through any IIdentityValidator, an IAccountStore and a signing key. It checks the request shape, validates under a provider deadline (a provider outage answers Unavailable, never a refused credential), finds or creates the account, refuses a subject SignedToken or the join gate would refuse, refuses a banned account before an unwhitelisted one (AuthAdmission, not pluggable), and mints v2, or v3 when the game's IAuthExchangePolicy supplies a persistence key. The AuthExchangeResult carries no HTTP type and maps to the Identity wire DTOs, with ban details off unless the game opts in. The constructor refuses a key shorter than SigningSecret.MinimumBytes. Opt-in: in NO umbrella.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Identity for IIdentityValidator and the wire DTOs, Accounts for the store and the admission record, Netcode
+         for SignedToken and SigningSecret. Nothing else, and no HTTP: the ASP.NET Core handler is a separate
+         package over this one. ArchitectureTests.IdentityExchange_ReferencesOnlyIdentityAccountsAndNetcode pins
+         the edges. -->
+    <ProjectReference Include="../KhaozEngine.Identity/KhaozEngine.Identity.csproj" />
+    <ProjectReference Include="../KhaozEngine.Accounts/KhaozEngine.Accounts.csproj" />
+    <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

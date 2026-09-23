@@ -38,6 +38,13 @@ columns, and a missing `ban_reason` or `ban_until` is added as a nullable column
 backfilled, and no column the store does not own is read or written, so a game's own column (Grimhollow's `debug`)
 keeps its values and its default. The ensure runs in one immediate transaction and is idempotent.
 
+The subject key must compare as `BINARY`. The constructor refuses, and changes nothing in, a table whose primary key
+or unique index on `subject` alone uses another collation, such as `NOCASE` or `RTRIM`. Find-or-create's
+`ON CONFLICT(subject)` matches under the key's own collation, so over a `NOCASE` key holding `oidc:Alice` a sign-in
+as `oidc:alice` would overwrite Alice's display name and return her account. A `BINARY` key over a column declared
+with another collation is adopted, because the key is what the upsert matches on. The refusal names the collation
+and no subject.
+
 ## Legacy rows
 
 - **`display_name NOT NULL`.** Grimhollow's table declares it. On such a table a sign-in with no name stores an
@@ -50,10 +57,12 @@ keeps its values and its default. The ensure runs in one immediate transaction a
 One held connection that is never pooled, through `SqliteStoreConnection`, with every operation serialized behind
 its lease. Find-or-create is one `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` statement, so concurrent first
 sign-ins produce one row in this process or across processes on one file. Every writing statement returns the
-row as it stands afterwards from the same statement.
+row as it stands afterwards from the same statement. Find-or-create runs in a transaction and checks the returned
+subject ordinally against the one it minted. A mismatch, which only a table changed after the store opened can
+produce, rolls the write back and throws `InvalidOperationException` quoting neither subject.
 
 Every comparison and ordering names `COLLATE BINARY`, which is SQLite's default, so subjects are case sensitive and
-listings run in code-point order even over a table declared with another collation. SQLite compares UTF-8 bytes,
+listings run in code-point order even over a column declared with another collation. SQLite compares UTF-8 bytes,
 which matches .NET ordinal order for every subject short of one mixing a supplementary character with a
 `U+E000` to `U+FFFF` one at the same position.
 

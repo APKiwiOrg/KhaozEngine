@@ -24,6 +24,14 @@ namespace KhaozEngine.Accounts.Sqlite;
 /// <c>debug</c>) survives untouched and keeps its default on every row this store inserts.
 /// </para>
 /// <para>
+/// <b>The subject key must be BINARY.</b> The find-or-create upsert's <c>ON CONFLICT(subject)</c> matches under the
+/// collation of the key it lands on, not the one a statement names. Over a <c>NOCASE</c> key holding
+/// <c>oidc:Alice</c>, a verified sign-in as <c>oidc:alice</c> would overwrite Alice's display name and return her
+/// account. The ensure therefore refuses a table whose primary key or unique index on <c>subject</c> alone uses
+/// another collation. A <c>BINARY</c> key over a column declared with another collation is adopted, since the key is
+/// what matches.
+/// </para>
+/// <para>
 /// SQLite's <c>TEXT</c> has no width, so the 128, 128 and 256 limits live in <see cref="AccountStoreRules"/>,
 /// which the store applies before every write.
 /// </para>
@@ -42,8 +50,8 @@ internal static class SqliteAccountSchema
     /// published, so no other operation can hold the connection.
     /// </summary>
     /// <returns>Whether <c>display_name</c> is <c>NOT NULL</c>, which only a legacy table declares.</returns>
-    /// <exception cref="InvalidOperationException">The table exists without one of the four original
-    /// columns.</exception>
+    /// <exception cref="InvalidOperationException">The table exists without one of the four original columns, or
+    /// with a subject key that is not <c>BINARY</c>. Nothing is changed either way.</exception>
     internal static bool Ensure(SqliteStoreConnection db, string table, string quoted)
     {
         using SqliteTransaction tx = db.BeginTransaction();
@@ -66,6 +74,13 @@ internal static class SqliteAccountSchema
                     "store can adopt. Name a different table in AccountTableOptions.");
         }
 
+        if (FirstNonBinarySubjectKey(db, tx, table) is { } collation)
+            throw new InvalidOperationException(
+                $"The account table's subject key compares under the {collation} collation, not BINARY. The " +
+                "find-or-create upsert matches under the key's collation, so a sign-in could land on another account " +
+                "whose subject differs only in case or padding and be handed that account. Rebuild the table with a " +
+                "BINARY subject key, or name a different table in AccountTableOptions.");
+
         if (!notNullByColumn.ContainsKey("ban_reason"))
             Execute(db, tx, $"ALTER TABLE {quoted} ADD COLUMN ban_reason TEXT NULL;");
         if (!notNullByColumn.ContainsKey("ban_until"))
@@ -87,6 +102,40 @@ internal static class SqliteAccountSchema
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read()) columns[reader.GetString(0)] = reader.GetInt64(1) != 0;
         return columns;
+    }
+
+    // The collation of the first unique key on subject alone that is not BINARY, or null when there is none. Such a
+    // key (the primary key or a unique index) is what ON CONFLICT(subject) can match on, whatever collation the
+    // conflict target spells. A key over several columns or over an expression, and a non-unique index, is never that
+    // target. The pragmas take the table and index names as values, so nothing here builds SQL from them.
+    private static string? FirstNonBinarySubjectKey(SqliteStoreConnection db, SqliteTransaction tx, string table)
+    {
+        var keyColumns = new Dictionary<string, List<(string? Column, string Collation)>>(StringComparer.Ordinal);
+        using (SqliteCommand cmd = db.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText =
+                "SELECT il.name, ix.name, ix.coll FROM pragma_index_list($table) AS il, pragma_index_xinfo(il.name) AS ix " +
+                "WHERE il.\"unique\" = 1 AND ix.key = 1;";
+            cmd.Parameters.Add("$table", SqliteType.Text).Value = table;
+            using SqliteDataReader reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                string index = reader.GetString(0);
+                if (!keyColumns.TryGetValue(index, out List<(string? Column, string Collation)>? columns))
+                    keyColumns[index] = columns = new List<(string? Column, string Collation)>();
+                columns.Add((reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetString(2)));
+            }
+        }
+
+        foreach (List<(string? Column, string Collation)> columns in keyColumns.Values)
+        {
+            if (columns is [var only]
+                && string.Equals(only.Column, "subject", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(only.Collation, "BINARY", StringComparison.OrdinalIgnoreCase))
+                return only.Collation;
+        }
+        return null;
     }
 
     private static void Execute(SqliteStoreConnection db, SqliteTransaction tx, string sql)

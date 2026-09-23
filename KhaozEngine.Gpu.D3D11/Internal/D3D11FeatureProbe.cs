@@ -52,8 +52,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             Vortice.Direct3D11.ID3D11Device? device = CreateProbeDeviceWindows();
             if (device is null)
             {
-                return "no Direct3D 11 feature level 11_0 device could be created, on the default hardware "
-                    + "adapter or on WARP";
+                return "no Direct3D 11 feature level 11_0 device could be created, on the adapter the device "
+                    + "would use, on the default hardware adapter or on WARP";
             }
 
             try
@@ -80,18 +80,51 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <summary>
-        /// A throwaway device on the default hardware adapter, falling back to WARP, or null when neither
-        /// answers. WARP counts as a yes deliberately: it is the rasterizer the committed Direct3D 11 goldens are
-        /// baked on and the one CI pins, so a Windows machine with no usable GPU can still run and verify this
-        /// backend.
+        /// A throwaway device on the adapter the device itself will be created on, then on the default hardware
+        /// adapter, then on WARP, or null when none answers. The first attempt resolves the adapter through
+        /// <see cref="D3D11AdapterResolution"/>, the policy and glue <see cref="D3D11GpuDevice"/> uses, so the probe
+        /// answers for the adapter the session will run on, <c>KE_D3D11_ADAPTER</c> and the high-performance
+        /// default included. WARP counts as a yes deliberately: it is the rasterizer the committed Direct3D 11
+        /// goldens are baked on and the one CI pins, so a Windows machine with no usable GPU can still run and
+        /// verify this backend. The two later attempts can repeat the first when the choice was DXGI's own pick or
+        /// WARP, which costs one failed creation on a machine that is already failing.
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
         static Vortice.Direct3D11.ID3D11Device? CreateProbeDeviceWindows()
         {
-            if (TryCreate(Vortice.Direct3D.DriverType.Hardware, out Vortice.Direct3D11.ID3D11Device? hardware))
+            if (TryCreateOnChosenAdapterWindows(out Vortice.Direct3D11.ID3D11Device? chosen)) return chosen;
+            if (TryCreate(IntPtr.Zero, Vortice.Direct3D.DriverType.Hardware, out Vortice.Direct3D11.ID3D11Device? hardware))
                 return hardware;
-            return TryCreate(Vortice.Direct3D.DriverType.Warp, out Vortice.Direct3D11.ID3D11Device? warp) ? warp : null;
+            return TryCreate(IntPtr.Zero, Vortice.Direct3D.DriverType.Warp, out Vortice.Direct3D11.ID3D11Device? warp)
+                ? warp
+                : null;
+        }
+
+        // The first attempt, on the adapter the device will use. Its warnings are dropped on purpose, because the
+        // device logs the same ones when it is created. Any failure here, including a factory that cannot be
+        // created, answers false and leaves the two attempts after it to run.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        [SupportedOSPlatform("windows")]
+        static bool TryCreateOnChosenAdapterWindows(out Vortice.Direct3D11.ID3D11Device? device)
+        {
+            device = null;
+            try
+            {
+                using Vortice.DXGI.IDXGIFactory1 factory =
+                    Vortice.DXGI.DXGI.CreateDXGIFactory1<Vortice.DXGI.IDXGIFactory1>();
+                D3D11AdapterChoice choice = D3D11AdapterResolution.ChooseWindows(factory, out _, out _);
+                using Vortice.DXGI.IDXGIAdapter1? adapter =
+                    D3D11AdapterResolution.AdapterForWindows(factory, choice, out _);
+                return TryCreate(adapter?.NativePointer ?? IntPtr.Zero,
+                    D3D11AdapterResolution.DriverTypeFor(choice, adapter), out device);
+            }
+            catch
+            {
+                device?.Dispose();
+                device = null;
+                return false;
+            }
         }
 
         // One creation attempt. DeviceCreationFlags.None on purpose: the debug layer is a separate, env-gated
@@ -99,10 +132,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         // graphics tools installed.
         [MethodImpl(MethodImplOptions.NoInlining)]
         [SupportedOSPlatform("windows")]
-        static bool TryCreate(Vortice.Direct3D.DriverType driverType, out Vortice.Direct3D11.ID3D11Device? device)
+        static bool TryCreate(IntPtr adapter, Vortice.Direct3D.DriverType driverType,
+            out Vortice.Direct3D11.ID3D11Device? device)
         {
             SharpGen.Runtime.Result result = Vortice.Direct3D11.D3D11.D3D11CreateDevice(
-                IntPtr.Zero, driverType, Vortice.Direct3D11.DeviceCreationFlags.None, _featureLevels, out device);
+                adapter, driverType, Vortice.Direct3D11.DeviceCreationFlags.None, _featureLevels, out device);
 
             if (result.Success && device is not null) return true;
 

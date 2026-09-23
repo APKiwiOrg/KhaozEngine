@@ -4148,7 +4148,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     is a property of legacy mode. Everything after the blit (overlay renderers, Gui, 2D) is unchanged in both modes.
   - Formats: HDR mode flips the colour targets (`ColorTex`/`MsColor`/`PingA`/`PingB`/`BloomA`/`BloomB`) to
     `R16G16B16A16Float`. The encoded-normal and linear-depth MRT targets, the swapchain, and everything post-blit
-    stay LDR. MSAA resolves the float16 target (the `scene3d_hdr_msaa` golden proves the resolve). The tonemap runs
+    stay LDR. MSAA resolves the float16 target. The `scene3d_hdr_msaa` golden sees only the final image: the golden
+    audit measured MSAA switched off moving its grid by 0.0258 at worst, which passed the old 0.06 tolerance and
+    fails the current 0.01. `MsaaSceneGpuTests` asserts that MSAA anti-aliases geometry edges through the resolve,
+    and `MsaaResolveTargetGoldenTests` reads the resolved depth and normal targets back. The tonemap runs
     on the engine's existing display-referred shading values (no separate scene-linear conversion pass), so the
     current art direction is preserved, just with headroom added.
 - **Water** (`Scene3D.DrawWater(in WaterPlane)` + `Post.Water`, a `WaterSettings`, **default off/no-op**): an opt-in

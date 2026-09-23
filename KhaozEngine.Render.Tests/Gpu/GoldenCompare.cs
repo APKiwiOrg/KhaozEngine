@@ -9,8 +9,17 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// Tolerance-based image regression: downsamples a raw RGBA buffer to a small grid of average RGB per cell
     /// and either WRITES a committed reference grid (when <c>KE_UPDATE_GOLDENS=1</c>) or COMPARES against it with
-    /// a per-channel tolerance. Robust to minor driver noise; a real shader/UBO/blend/winding regression moves a
-    /// cell well past the tolerance.
+    /// a per-channel tolerance.
+    /// <para>
+    /// WHAT IT SEES, AS MEASURED (<c>docs/design/GOLDEN-TEST-AUDIT-2026-09-23.md</c> section 3). A change that moves
+    /// a region of the frame: a pass that stops drawing, a wrong sampler address mode or texture slot, a broken water
+    /// or particle shader. Every whole-area deletion the audit tried failed with margin. What it does not see is
+    /// sparse, thin or low-contrast detail, or anything held in an intermediate target. At the old 0.06 tolerance the
+    /// starfield, debug ring, edge outline, bloom and MSAA could each be deleted with the golden still green (worst
+    /// cells 0.0258 to 0.0524, so they fail at the current <see cref="Tolerance"/>). Dropping the cascade blend band
+    /// moves its grid by only 0.0080, under even 0.01. A feature like that needs an in-session pixel A/B beside its
+    /// scene (<c>CascadeHandoffBlendGoldenTests</c>).
+    /// </para>
     /// <para>
     /// GOLDEN NAMING CONTRACT: the cross-platform GPU matrix
     /// (<c>.github/workflows/cross-platform-gpu.yml</c>) selects tests with

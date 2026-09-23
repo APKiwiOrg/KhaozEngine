@@ -6,8 +6,9 @@ namespace KhaozEngine.Tests.Render3D
     /// <summary>
     /// Pure (device-free) coverage of the bloom settings bag: defaults (off, per the byte-stable-off invariant) and
     /// the pass-decision logic the post chain reads (bloom off => zero extra passes). GPU pixel output is covered
-    /// by the scene3d_bloom golden; the separable-blur/threshold math itself is covered by
-    /// <see cref="BloomMathTests"/>.
+    /// coarsely by the scene3d_bloom golden (the golden audit measured bloom off at 0.0524 on its grid, red only
+    /// since the tolerance went to 0.01) and by <c>BloomGpuTests</c> and <c>HdrPipelineGpuTests</c>. The
+    /// separable-blur/threshold math itself is covered by <see cref="BloomMathTests"/>.
     /// </summary>
     public sealed class BloomSettingsTests
     {

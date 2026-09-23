@@ -175,8 +175,10 @@ it was on. It is a probe, not a fix: it can cost performance, so it is off by de
 `GoldenCompare.GoldenPath(name)` resolves `KhaozEngine.Render.Tests/Gpu/goldens/<name>.<backend>.txt` where
 `<backend>` = `GoldenCompare.GoldenBackendToken(GpuBackendSelector.Select())`. Each rendering API has its own
 reference grid because a software rasterizer (lavapipe, WARP) does not match Apple Metal pixel-for-pixel.
-Per-backend goldens absorb that while still catching real shader / UBO / blend / winding / orientation
-regressions (coarse 32×18 grid, per-channel tolerance of 0.01, see "Tolerance and rebakes" below).
+Per-backend goldens absorb that while still catching region-scale regressions: a pass that stops drawing, a wrong
+sampler address mode or texture slot, a broken shader (coarse 32×18 grid, per-channel tolerance of 0.01, see
+"Tolerance and rebakes" below). They do not see sparse, thin or low-contrast detail or intermediate targets, as
+measured in section 3 of [GOLDEN-TEST-AUDIT-2026-09-23.md](design/GOLDEN-TEST-AUDIT-2026-09-23.md).
 
 **THREE FAMILIES SINCE `18.0.0`.** The token is a mapping rather than the enum name, and it has been through
 two moves. Until `17.41.0` it mapped seven kinds onto four families: `GpuBackendKind.Direct3D11Native` resolved

@@ -7,9 +7,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.0.0
 
-A major, opened by a burn-down of the oldest backlog issues. Four of them break something: the raw-string Gui sinks
+A major, opened by a burn-down of the oldest backlog issues. Six changes break something: the raw-string Gui sinks
 are gone, the Render3D ECS binder lives in its own package, the save posture is a required `GameStorage` argument,
-and the movement wire moves to generation 12. The rest are additive. Every consumer is on a vendored pin, so nothing moves until a game
+the movement wire moves to generation 12, and two catalog seams (`IContentIdPersistence` and
+`IContentAuthoringStore.CommitPublishAsync`) now compare and write inside one commit. The rest are additive. Every consumer is on a vendored pin, so nothing moves until a game
 repins, and the notes below say what each game changes when it does.
 
 **Breaking, and what a consumer does about it.**
@@ -56,6 +57,25 @@ repins, and the notes below say what each game changes when it does.
   and writes them as an id-6 frame where the live writer would. `PlayerMoveState.From` takes the owner half as a
   required third argument, and `MovementState.From` no longer copies the timers (`MovementOwnerState.From` does).
   Ruinborne reads none of the moved fields, so its repin is the wire bump alone.
+- Every `IContentIdPersistence` write compares inside the transaction that writes it
+  ([#1068](https://github.com/APKiwiOrg/KhaozEngine/issues/1068),
+  [#1077](https://github.com/APKiwiOrg/KhaozEngine/issues/1077)). Two upgrade runners or two allocators on one
+  catalog read the id marks in one call and wrote them in the next, so they could take a durable reservation back,
+  hand out one id twice or open overlapping family blocks. That is the "a durable promise is never taken back" that
+  failed `ContentUpgradeConcurrencyTests` in CI. `CommitIssuedThroughAsync` becomes `CommitIssueAsync(type, count)`,
+  which answers the first id taken or 0 when the reservation no longer covers it. `CommitFamilyNextFreeIdAsync`
+  becomes `CommitFamilyIssueAsync(familyId, ordinal)`, which answers the id or 0 when the block is full.
+  `CommitFamilyBlockAsync` answers null once the issued mark has passed the block's base, and
+  `CommitReservedThroughAsync` raises to at least its value. `CommitCarriedThroughAsync` is new and is the publish's
+  seed. `ContentIdAllocator` reads again on a 0 or a null, which only follows a rival's success. The in-memory,
+  SQLite and SQL Server stores all implement it. No game implements this seam.
+- `IContentAuthoringStore.CommitPublishAsync` takes the pack's `IPackVersionPointerStore?` and writes the version
+  pointer as the last act inside its commit ([#1076](https://github.com/APKiwiOrg/KhaozEngine/issues/1076)). A
+  publisher that lost the version wrote its pointer after the winner had committed, so the committed version could
+  name manifests that never committed. Step 9 now writes only content-addressed files, and `FileSystemPackStore`
+  places them create only, keeping an object another writer placed first. That also removes the path-less "Access
+  to the path is denied" two Windows publishers hit replacing the same file. Grimhollow's and Ruinborne's
+  `ScriptedAuthoringStore` test doubles add the parameter at repin.
 
 **Save posture is now written down.**
 

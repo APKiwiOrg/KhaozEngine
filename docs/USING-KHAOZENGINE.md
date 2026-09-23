@@ -16052,9 +16052,11 @@ still kept verbatim in storage.
 `ContainerPageSyncRequest` is the other half and the ONE new client-to-server message: two bytes,
 `[ContainerId][PageIndex]`, with no field a payload could ride in. A client REFUSES a delta for a page it has
 not fully received and sends this instead, and on the last chunk of a fragmented page the assembled bytes go
-through the SAME decoder the server encoded with. **Rate limit it at one page per client per tick**, which is
-a server rule rather than engine code, because a server that serves every request it receives has handed an
-unauthenticated peer an amplifier of two bytes in and about 7 KB out.
+through the SAME decoder the server encoded with. `TileFragmentReassembler.TryComplete` hands back the
+`streamId` those chunks carried beside the bytes, so several containers fragmented under one kind are routed by
+the header rather than by a stream byte repeated inside the page. **Rate limit it at one page per client per
+tick**, which is a server rule rather than engine code, because a server that serves every request it receives
+has handed an unauthenticated peer an amplifier of two bytes in and about 7 KB out.
 
 **What is NOT here yet.** What is settled is every byte format, every id space, every ordering rule, the
 stacking test, the paging shape and the projection every replicated byte passes through, which are the

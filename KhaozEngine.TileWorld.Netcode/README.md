@@ -1192,11 +1192,16 @@ foreach (byte[] chunk in TileFragmentedMessage.Fragment(streamId: 1, sequence: p
     server.SendGameMessageTo(slot, kind: GameKinds.PageChunk, chunk);
 
 // On the client, one reassembler per connection.
-if (reassembler.TryComplete(payload, out ReadOnlyMemory<byte> assembled, out string? reason))
-    ApplyPage(assembled.Span);      // decode HERE, and quarantine what will not decode
+if (reassembler.TryComplete(payload, out byte streamId, out ReadOnlyMemory<byte> assembled, out string? reason))
+    ApplyPage(streamId, assembled.Span);   // decode HERE, and quarantine what will not decode
 else if (reason != null)
-    Telemetry.Count(reason);        // refused, and the token says why
+    Telemetry.Count(reason);               // refused, and the token says why
 ```
+
+`streamId` is the id the chunk headers carried, set whenever the answer is true, so several streams on one
+message kind (a bag, the worn slots and a bank, say) are told apart by the header rather than by a copy of the
+stream inside the payload that could disagree with it. The three-out overload without it answers identically and
+delegates to this one.
 
 **One reassembler per connection slot.** The type holds the partial assemblies of ONE peer and no connection
 table of its own, so a server keeps an array or a map of them beside its session table and forwards each peer's
@@ -1209,6 +1214,8 @@ Four rules, and none of them is a timer, because a timer on a reliable ordered c
   a new one. That is what a server restarting a page mid transmission looks like, and it is not an error.
 - At most `MaxPartialAssemblies` partial assemblies are held at once, which is four. A fifth evicts the one
   fed longest ago and increments `EvictedAssemblies`. A restart is not an eviction and is not counted as one.
+  The bound is a hard constant with no constructor knob, so a host with more concurrently fragmented streams per
+  peer evicts silently and `EvictedAssemblies` is the only reading that reports it.
 - The last chunk hands the assembled bytes BACK through `TryComplete`. Nothing here decodes them, so a payload
   that will not decode is the caller's quarantine rather than a throw from the wire. A final chunk cut in its body
   is the case that reaches the caller, because the header declares no total length.

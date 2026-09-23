@@ -51,8 +51,49 @@ public static class ContainerOperationApplier
             ContainerOperationKind.Grant => Grant(source, operation, out reason),
             ContainerOperationKind.Take => Take(source, operation, out reason),
             ContainerOperationKind.Craft => Craft(source, destination, operation, out reason),
+            ContainerOperationKind.Slide => Slide(source, operation, out reason),
             _ => Refuse("operation-kind", out reason),
         };
+    }
+
+    static bool Slide(IPagedContainerWorkingCopy container, in ContainerOperation operation,
+        out string? reason)
+    {
+        int source = operation.Slot, destination = operation.DestinationSlot;
+        if (source == destination) return Refuse("same-slot", out reason);
+        long sourceEnd = (long)source + operation.Count;
+        long destinationEnd = (long)destination + operation.Count;
+        long addressSpace = (long)container.PageCount * ItemContainerPageCodec.ContainerPageSlots;
+        if (sourceEnd > addressSpace || destinationEnd > addressSpace)
+            return Refuse("slot-range", out reason);
+
+        for (int offset = 0; offset < operation.Count; offset++)
+        {
+            if (container.SlotAt(source + offset).IsEmpty) return Refuse("empty-slot", out reason);
+            int landing = destination + offset;
+            if ((landing < source || landing >= sourceEnd) && !container.SlotAt(landing).IsEmpty)
+                return Refuse("destination-occupied", out reason);
+        }
+
+        if (destination < source)
+        {
+            for (int offset = 0; offset < operation.Count; offset++)
+            {
+                ItemSlot moving = container.TakeSlotAt(source + offset);
+                container.SetSlotAt(destination + offset, moving);
+            }
+        }
+        else
+        {
+            for (int offset = operation.Count - 1; offset >= 0; offset--)
+            {
+                ItemSlot moving = container.TakeSlotAt(source + offset);
+                container.SetSlotAt(destination + offset, moving);
+            }
+        }
+
+        reason = null;
+        return true;
     }
 
     static bool Move(IPagedContainerWorkingCopy source, IPagedContainerWorkingCopy destination,

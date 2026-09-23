@@ -38,6 +38,10 @@ public enum ContainerOperationKind
     /// spec 10.6. The PLACEHOLDER of this phase: the operation and its page write are real, and the event
     /// BODY is the crafting framework's to encode.</summary>
     Craft = 6,
+
+    /// <summary>Shift one occupied run to an empty leading or trailing fringe in the same container.
+    /// One operation moves the run regardless of how many pages it crosses.</summary>
+    Slide = 7,
 }
 
 /// <summary>Who caused an operation, which is what spec 6.5 batches on.</summary>
@@ -221,7 +225,8 @@ public readonly record struct ContainerOperation
         ContainerOperationKind kind = (ContainerOperationKind)rawKind;
         if (kind is not (ContainerOperationKind.Move or ContainerOperationKind.Split
             or ContainerOperationKind.Merge or ContainerOperationKind.Grant
-            or ContainerOperationKind.Take or ContainerOperationKind.Craft))
+            or ContainerOperationKind.Take or ContainerOperationKind.Craft
+            or ContainerOperationKind.Slide))
         {
             reason = ContainerOperationEventCodec.Kind;
             return false;
@@ -437,6 +442,18 @@ public readonly record struct ContainerOperation
             Count = count,
         };
 
+    /// <summary>Slides one occupied run within a container while preserving slot order and payloads.</summary>
+    public static ContainerOperation Slide(string container, int firstSourceSlot,
+        int firstDestinationSlot, int count)
+        => new()
+        {
+            Kind = ContainerOperationKind.Slide,
+            Container = container,
+            Slot = firstSourceSlot,
+            DestinationSlot = firstDestinationSlot,
+            Count = count,
+        };
+
     /// <summary>Folds one occupied slot into another under spec 4.6.</summary>
     /// <param name="container">The container.</param>
     /// <param name="slot">The slot merging away.</param>
@@ -551,6 +568,7 @@ public readonly record struct ContainerOperation
         ContainerOperationKind.Craft =>
             Field.Container | Field.Slot | Field.DestinationContainer | Field.DestinationSlot | Field.DefinitionId
             | Field.Count | Field.InstanceId,
+        ContainerOperationKind.Slide => Field.Container | Field.Slot | Field.DestinationSlot | Field.Count,
         _ => throw new ArgumentException(
             FormattableString.Invariant($"{kind} is not an operation this vocabulary encodes."), nameof(kind)),
     };

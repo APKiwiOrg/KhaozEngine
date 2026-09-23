@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using KhaozEngine.Gpu;
 using KhaozEngine.Imaging;
 
 namespace KhaozEngine.Gpu.TestKit
@@ -25,19 +26,21 @@ namespace KhaozEngine.Gpu.TestKit
         /// units from 0 through 255 and is converted to the normalized <see cref="GoldenGrid"/> unit by dividing
         /// by 255. Comparison adds half of one four-decimal golden-text step and a small floating-point epsilon to
         /// account for stored-reference rounding. Set <c>KE_UPDATE_GOLDENS=1</c> to write the canonical golden
-        /// instead of comparing.
+        /// instead of comparing. <paramref name="captureBackend"/> must be the backend reported by the device
+        /// that produced <paramref name="rgba"/>.
         /// </summary>
         public static GoldenResult Check(string goldenDirectory, string scene, ReadOnlySpan<byte> rgba,
-            int width, int height, int tolerance)
-            => Check(goldenDirectory, scene, rgba, width, height, tolerance, static () => GpuTestGate.BackendName);
-
-        /// <summary>Headless seam that resolves the backend only after validating the capture arguments.</summary>
-        internal static GoldenResult Check(string goldenDirectory, string scene, ReadOnlySpan<byte> rgba,
-            int width, int height, int tolerance, Func<string> backendName)
+            int width, int height, int tolerance, GpuBackendKind captureBackend)
         {
-            ArgumentNullException.ThrowIfNull(backendName);
             ValidateCaptureInput(goldenDirectory, scene, rgba, width, height, tolerance);
-            return Check(goldenDirectory, scene, rgba, width, height, tolerance, backendName());
+            return Check(
+                goldenDirectory,
+                scene,
+                rgba,
+                width,
+                height,
+                tolerance,
+                GpuTestGate.BackendNameFor(captureBackend));
         }
 
         /// <summary>Headless check seam that substitutes only the already-resolved backend family name.</summary>

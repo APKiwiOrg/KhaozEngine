@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.TestKit;
 using KhaozEngine.Imaging;
 using Xunit;
@@ -134,6 +135,54 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(File.Exists(Path.Combine(temp.Path, "suffix.vulkannative.txt")));
         }
 
+        [Fact]
+        public void Explicit_capture_backend_writes_only_its_golden_family()
+        {
+            using var temp = new TempDirectory();
+            byte[] capture = Frame(23, 45, 67);
+            WriteGolden(temp.Path, "explicit", "metal-native", Frame(200, 100, 50));
+            string metalPath = Path.Combine(temp.Path, "explicit.metal-native.txt");
+            string metalBefore = File.ReadAllText(metalPath);
+            using var update = new EnvironmentVariableScope("KE_UPDATE_GOLDENS", "1");
+
+            GoldenResult result = GoldenImage.Check(
+                temp.Path, "explicit", capture, Width, Height, 0, GpuBackendKind.VulkanNative);
+
+            Assert.True(result.Pass, result.Detail);
+            Assert.True(result.Rebaked);
+            Assert.True(File.Exists(Path.Combine(temp.Path, "explicit.vulkan-native.txt")));
+            Assert.Equal(metalBefore, File.ReadAllText(metalPath));
+        }
+
+        [Fact]
+        public void Explicit_capture_backend_compares_only_its_golden_family()
+        {
+            using var temp = new TempDirectory();
+            using var update = new EnvironmentVariableScope("KE_UPDATE_GOLDENS", null);
+            byte[] capture = Frame(23, 45, 67);
+            WriteGolden(temp.Path, "explicit", "metal-native", Frame(200, 100, 50));
+            WriteGolden(temp.Path, "explicit", "vulkan-native", capture);
+
+            GoldenResult result = GoldenImage.Check(
+                temp.Path, "explicit", capture, Width, Height, 0, GpuBackendKind.VulkanNative);
+
+            Assert.True(result.Pass, result.Detail);
+            Assert.False(result.Rebaked);
+            Assert.Null(result.SkipReason);
+        }
+
+        [Fact]
+        public void Unknown_capture_backend_is_rejected_instead_of_falling_back()
+        {
+            using var temp = new TempDirectory();
+
+            NotSupportedException error = Assert.Throws<NotSupportedException>(() =>
+                GoldenImage.Check(
+                    temp.Path, "unknown", Frame(), Width, Height, 0, (GpuBackendKind)9001));
+
+            Assert.Contains("No golden family", error.Message, StringComparison.Ordinal);
+        }
+
         [Theory]
         [InlineData(0, 1)]
         [InlineData(1, 0)]
@@ -150,19 +199,13 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
-        public void Invalid_input_is_rejected_before_backend_resolution()
+        public void Invalid_input_is_rejected_before_backend_mapping()
         {
             using var temp = new TempDirectory();
-            bool resolved = false;
 
             Assert.Throws<ArgumentOutOfRangeException>(() =>
-                GoldenImage.Check(temp.Path, "scene", Array.Empty<byte>(), 0, 1, 0, () =>
-                {
-                    resolved = true;
-                    return "metal-native";
-                }));
-
-            Assert.False(resolved);
+                GoldenImage.Check(
+                    temp.Path, "scene", Array.Empty<byte>(), 0, 1, 0, (GpuBackendKind)9001));
         }
 
         [Fact]

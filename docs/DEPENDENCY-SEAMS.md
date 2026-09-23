@@ -264,7 +264,9 @@ no umbrella and references no test framework. The backend edges let `GpuTestGate
 before its cached headless probe. `BackendName` is taken from the device that probe created, so a fallback is
 filed under the backend that rendered rather than the backend the OS probe first requested. The Imaging edge lets
 the framework-neutral `GoldenImage` helper downsample, serialize and compare through `GoldenGrid` without copying
-that algorithm into each consumer.
+that algorithm into each consumer. `GoldenImage.Check` requires the `GpuBackendKind` reported by the device that
+produced the capture and maps it through the same audited family table. It does not reuse the cached default probe,
+so a capture from an explicitly selected or fallback device cannot be filed under another backend's golden.
 
 `KhaozEngine.TestSupport.Gpu -> KhaozEngine.Gpu.TestKit` is the non-packable xUnit adapter edge.
 `GpuFactAttribute` and `GpuTheoryAttribute` delegate the shared environment and device gate through it. The

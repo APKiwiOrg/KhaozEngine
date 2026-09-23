@@ -17406,7 +17406,8 @@ run, otherwise it returns the reason the test framework should use to skip it.
 The package registers the Direct3D 11, Vulkan and Metal native providers before any probe. Use
 `GpuTestGate.BackendName` when naming a backend-specific artifact. It reports the established golden family of the
 device the cached probe actually created, including `direct3d11-native`, `vulkan-native` or `metal-native`. It does
-not guess from the operating system, so an unpinned fallback cannot be attributed to the requested backend.
+not guess from the operating system, so an unpinned fallback cannot be attributed to the requested backend. This
+property describes that cached probe only.
 
 ```csharp
 using KhaozEngine.Gpu.TestKit;
@@ -17418,10 +17419,12 @@ public sealed class GameGpuFactAttribute : FactAttribute
 }
 ```
 
-`GoldenImage.Check(goldenDirectory, scene, rgba, width, height, tolerance)` takes an RGBA8 capture and uses
-`KhaozEngine.Imaging.GoldenGrid` to compare it with
-`<goldenDirectory>/<scene>.<actual-backend>.txt`. The suffix comes from the backend the cached headless probe
-actually created, with the canonical hyphenated token such as `vulkan-native`.
+`GoldenImage.Check(goldenDirectory, scene, rgba, width, height, tolerance, captureBackend)` takes an RGBA8 capture
+and uses `KhaozEngine.Imaging.GoldenGrid` to compare it with
+`<goldenDirectory>/<scene>.<capture-backend>.txt`. Pass `ctx.GpuDevice.Backend` from the exact device that rendered
+the capture. The helper maps that enum through the audited golden-family table and produces the canonical
+hyphenated token such as `vulkan-native`. It does not use the cached default probe as capture provenance, and an
+unmapped enum value fails instead of falling back.
 
 The integer `tolerance` is in 8-bit per-channel units from 0 through 255. `GoldenImage` divides it by `255f` for
 the normalized `GoldenGrid` comparison. The fresh downsample remains unrounded while the committed grid carries
@@ -17434,7 +17437,9 @@ non-finite reference cells fail with an actionable diagnostic. The Windows super
 `COM³` and `LPT¹` through `LPT³` are rejected as reserved device stems too.
 
 ```csharp
-GoldenResult result = GoldenImage.Check(goldenDirectory, "inventory", rgba, width, height, tolerance: 15);
+GoldenResult result = GoldenImage.Check(
+    goldenDirectory, "inventory", rgba, width, height, tolerance: 15,
+    captureBackend: ctx.GpuDevice.Backend);
 
 // Send SkipReason through the test framework's skip mechanism when it is non-null.
 // Fail with Detail when Pass is false and SkipReason is null.

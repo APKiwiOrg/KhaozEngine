@@ -27,14 +27,17 @@ public sealed class GameGpuFactAttribute : FactAttribute
 
 `GpuTestGate.BackendName` returns the established golden-file family of the backend the cached headless probe
 actually created: `direct3d11-native`, `vulkan-native` or `metal-native`. It reads the created device rather than
-guessing from the operating system, so an unpinned fallback is named correctly.
+guessing from the operating system, so an unpinned fallback is named correctly. This property describes that
+cached probe only.
 
 ## Golden-image check
 
-`GoldenImage.Check(goldenDirectory, scene, rgba, width, height, tolerance)` downsamples an RGBA8 capture with
-`KhaozEngine.Imaging.GoldenGrid` and compares it with
-`<goldenDirectory>/<scene>.<actual-backend>.txt`. The actual backend is the cached device backend reported by
-`GpuTestGate.BackendName`, including canonical hyphens such as `metal-native`.
+`GoldenImage.Check(goldenDirectory, scene, rgba, width, height, tolerance, captureBackend)` downsamples an RGBA8
+capture with `KhaozEngine.Imaging.GoldenGrid` and compares it with
+`<goldenDirectory>/<scene>.<capture-backend>.txt`. Pass `ctx.GpuDevice.Backend` from the exact device that produced
+the RGBA bytes. The helper maps that value through the audited golden-family table, including canonical hyphens
+such as `metal-native`. It never substitutes the cached default probe's backend, and an unmapped enum value fails
+instead of falling back.
 
 `tolerance` is an integer in 8-bit per-channel units from 0 through 255. The helper divides it by `255f` for
 `GoldenGrid`'s normalized comparison. The fresh downsample stays unrounded while the committed grid has four
@@ -43,7 +46,9 @@ floating-point epsilon to the normalized tolerance. This keeps the integer bound
 written from a capture pass a later check of the same bytes even at tolerance zero.
 
 ```csharp
-GoldenResult result = GoldenImage.Check(goldenDirectory, "menu", rgba, width, height, tolerance: 15);
+GoldenResult result = GoldenImage.Check(
+    goldenDirectory, "menu", rgba, width, height, tolerance: 15,
+    captureBackend: ctx.GpuDevice.Backend);
 
 // Translate a non-null SkipReason through the test framework's skip mechanism.
 // Fail the test with Detail when Pass is false and SkipReason is null.

@@ -171,6 +171,23 @@ public interface ITileWorldScene
     /// <summary>Adds a part whose visible mask follows the rigid dissolve used by the ordinary model draw.</summary>
     void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world,
         float dissolve, bool dissolveComplement) => DrawMeshOutline(group, handle, world);
+
+    /// <summary>Adds one posed skinned part to a pixel-width outline group. Defaults to a no-op for an older scene.</summary>
+    void DrawSkinnedOutline(
+        MeshOutlineGroup group,
+        SkinnedMeshHandle mesh,
+        ReadOnlySpan<Matrix4x4> boneMatrices,
+        Matrix4x4 world) { }
+
+    /// <summary>Adds a posed skinned part whose visible mask follows the ordinary skinned dissolve.</summary>
+    void DrawSkinnedOutlineDissolved(
+        MeshOutlineGroup group,
+        SkinnedMeshHandle mesh,
+        ReadOnlySpan<Matrix4x4> boneMatrices,
+        Matrix4x4 world,
+        float dissolve,
+        bool dissolveComplement) =>
+        DrawSkinnedOutline(group, mesh, boneMatrices, world);
 }
 
 /// <summary>The shipped <see cref="ITileWorldScene"/>: every member forwards straight to a <see cref="Scene3D"/>
@@ -247,6 +264,20 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
     public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle handle, Matrix4x4 world,
         float dissolve, bool dissolveComplement) =>
         _scene.DrawMeshOutlineDissolved(group, handle, world, dissolve, dissolveComplement);
+
+    /// <inheritdoc />
+    public void DrawSkinnedOutline(
+        MeshOutlineGroup group, SkinnedMeshHandle mesh,
+        ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 world) =>
+        _scene.DrawSkinnedOutline(group, mesh, boneMatrices, world);
+
+    /// <inheritdoc />
+    public void DrawSkinnedOutlineDissolved(
+        MeshOutlineGroup group, SkinnedMeshHandle mesh,
+        ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 world,
+        float dissolve, bool dissolveComplement) =>
+        _scene.DrawSkinnedOutlineDissolved(
+            group, mesh, boneMatrices, world, dissolve, dissolveComplement);
 
     /// <inheritdoc />
     public TileGroundMaterialHandle LoadTileGroundMaterial(TileGroundMaterialSet set)

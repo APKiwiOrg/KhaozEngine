@@ -35,6 +35,19 @@ public sealed class TileWorldSceneSkinnedTests
     }
 
     [Fact]
+    public void Legacy_scene_ignores_skinned_outline_methods()
+    {
+        ITileWorldScene scene = new LegacyTileWorldScene();
+        var group = new MeshOutlineGroup(7);
+        var mesh = new SkinnedMeshHandle(3, 2);
+        Matrix4x4[] pose = { Matrix4x4.Identity };
+
+        scene.DrawSkinnedOutline(group, mesh, pose, Matrix4x4.Identity);
+        scene.DrawSkinnedOutlineDissolved(
+            group, mesh, pose, Matrix4x4.Identity, 0.65f, dissolveComplement: true);
+    }
+
+    [Fact]
     public void Scene3D_adapter_forwards_skinned_load_draw_and_unload()
     {
         using var h = new SceneHarness();
@@ -57,6 +70,33 @@ public sealed class TileWorldSceneSkinnedTests
         h.Adapter.UnloadSkinnedMesh(handle);
         h.Adapter.DrawSkinned(handle, mesh.RestPose, world, tint);
         Assert.Equal(0, h.Scene.SkinnedInstanceCount);
+    }
+
+    [Fact]
+    public void Scene3D_adapter_forwards_skinned_outline_and_dissolve()
+    {
+        using var h = new SceneHarness();
+        SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(0.25f, 1f, 4, 3, 2, Axis.Z);
+        SkinnedMeshHandle mesh = h.Adapter.LoadSkinnedMesh(tube);
+        Matrix4x4[] plainPose = (Matrix4x4[])tube.RestPose.Clone();
+        Matrix4x4[] dissolvedPose = (Matrix4x4[])tube.RestPose.Clone();
+        plainPose[1] = Matrix4x4.CreateRotationX(0.25f) * plainPose[1];
+        dissolvedPose[1] = Matrix4x4.CreateRotationY(0.45f) * dissolvedPose[1];
+        Matrix4x4 plainWorld = Matrix4x4.CreateTranslation(0.4f, 0.1f, 0.2f);
+        Matrix4x4 dissolvedWorld = Matrix4x4.CreateTranslation(-0.2f, 0.3f, 0.6f);
+
+        h.Scene.Begin();
+        MeshOutlineGroup group = h.Adapter.BeginMeshOutline(Color.White, 1.25f);
+        h.Adapter.DrawSkinnedOutline(group, mesh, plainPose, plainWorld);
+        h.Adapter.DrawSkinnedOutlineDissolved(
+            group, mesh, dissolvedPose, dissolvedWorld, 0.65f, dissolveComplement: true);
+
+        Assert.Equal(1, h.Scene.MeshOutlineGroupCount);
+        Assert.Equal(2, h.Scene.MeshOutlinePartCount);
+        Assert.Equal(tube.BoneCount * 2, h.Scene.OutlinePoseMatrixCount);
+        Assert.Equal(tube.InverseBind[1] * plainPose[1], h.Scene.OutlinePoseMatrixAt(1));
+        Assert.Equal(tube.InverseBind[1] * dissolvedPose[1],
+            h.Scene.OutlinePoseMatrixAt(tube.BoneCount + 1));
     }
 
     [Fact]

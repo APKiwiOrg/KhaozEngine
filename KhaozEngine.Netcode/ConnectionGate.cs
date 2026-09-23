@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.NetWorld;
 
 namespace KhaozEngine.Netcode;
 
@@ -97,18 +98,17 @@ public sealed class WorldIdentityGateAuthenticator : IConnectionAuthenticator, I
 }
 
 /// <summary>Refuses a banned account. Runs OUTSIDE-IN last, because a ban keys on the VERIFIED subject and only
-/// the token check produces one. The predicate is synchronous and called on the host thread, so it must be cheap
-/// (an in-memory view over whatever store the head keeps). An empty subject is never ban checked, because an
+/// the token check produces one. The check is synchronous and called on the host thread, so it must be cheap (an
+/// in-memory view over whatever store the head keeps). An empty subject is never ban checked, because an
 /// authenticator that admits anonymously produces no account id to key a ban on.
-/// <para>This is the AT-THE-DOOR ban path, and it is one of two. It refuses a subject the head ALREADY knows is
-/// banned, during authentication, with the <see cref="HandshakeToken.BannedReason"/> wire token
-/// (<c>ke:banned</c>), before the peer joins at all, so a client sees a refused connect rather than a kick.
-/// <c>KhaozEngine.NetWorld.IBanStore</c> is the other path: a <c>WorldServer</c> consults it at JOIN and kicks
-/// with a typed <c>ServerNotice(ServerNoticeKind.Banned)</c>, which is the route a ban applied MID-SESSION takes
-/// and the one a game banned-player banner renders. The check here is a <c>Func&lt;string,bool&gt;</c> rather than
-/// an <c>IBanStore</c> because <c>IBanStore</c> lives in <c>KhaozEngine.NetWorld</c>, which this package cannot
-/// reference. A <c>WorldServer</c> game that wants both wires the SAME store behind both, passing it as
-/// <c>banStore:</c> and handing its <c>IsBanned</c> in here, so the two can never disagree about who is banned.</para></summary>
+/// <para>This is the AT-THE-DOOR ban path. It refuses a subject already banned, during authentication, with the
+/// <see cref="HandshakeToken.BannedReason"/> wire token (<c>ke:banned</c>), before the peer joins at all, so a
+/// client sees a refused connect rather than a kick. The other path is the JOIN check a <c>WorldServer</c> or
+/// <c>ShardedWorldServer</c> runs over its <c>banStore:</c>, which kicks with a typed
+/// <c>ServerNotice(ServerNoticeKind.Banned)</c>. Both read the one <see cref="IBanStore"/> seam, so hand the SAME
+/// store to this gate and to <c>banStore:</c> and the two can never disagree about who is banned.</para>
+/// <para>The <c>Func&lt;string,bool&gt;</c> constructor predates the store one and is kept for a head whose ban
+/// list is not an <see cref="IBanStore"/>. Both constructors refuse identically.</para></summary>
 public sealed class BanGateAuthenticator : IConnectionAuthenticator, IConnectionDisplayName,
     IConnectionPersistenceKey
 {
@@ -122,6 +122,14 @@ public sealed class BanGateAuthenticator : IConnectionAuthenticator, IConnection
         this.inner = inner ?? throw new ArgumentNullException(nameof(inner));
         this.isBanned = isBanned ?? throw new ArgumentNullException(nameof(isBanned));
         this.log = log;
+    }
+
+    /// <summary>Wraps <paramref name="inner"/> with a check of <paramref name="banStore"/> over the subject it
+    /// verifies. The store is read live on every connect, so a ban recorded after construction refuses the next
+    /// attempt.</summary>
+    public BanGateAuthenticator(IConnectionAuthenticator inner, IBanStore banStore, Action<string>? log = null)
+        : this(inner, (banStore ?? throw new ArgumentNullException(nameof(banStore))).IsBanned, log)
+    {
     }
 
     /// <inheritdoc/>

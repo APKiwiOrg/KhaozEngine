@@ -163,13 +163,14 @@ public sealed partial class TileWorldServer : IDisposable
         // queue requires one, and it is the right value for a slot with no player behind it.
         commands = new RemoteCommandQueue<TileCommand>(TileCommand.None, maxSlots: Math.Max(1, config.MaxPlayers),
             catchUpThreshold: MaxInputBacklog);
-        // The ban predicate is consulted at the DOOR, wrapped around whatever authenticator the head supplied,
-        // because a ban has to be answered before a player entity exists. Checked after the join instead, it would
-        // spawn the banned account into a cell, serve it to everyone in interest, and despawn it a tick later. The
-        // refusal it produces is HandshakeToken.BannedReason, the same token a composed ConnectionGate sends, so a
-        // client cannot tell the two paths apart and needs one branch rather than two.
+        // The ban store and the ban predicate are consulted at the DOOR, wrapped around whatever authenticator the
+        // head supplied, because a ban has to be answered before a player entity exists. Checked after the join
+        // instead, it would spawn the banned account into a cell, serve it to everyone in interest, and despawn it a
+        // tick later. The refusal is HandshakeToken.BannedReason, the same token a composed ConnectionGate sends, so
+        // a client cannot tell the paths apart and needs one branch rather than two. Either one refusing refuses.
         IConnectionAuthenticator door = authenticator ?? new AllowAllAuthenticator();
         if (config.IsBanned is not null) door = new BanGateAuthenticator(door, config.IsBanned);
+        if (config.BanStore is not null) door = new BanGateAuthenticator(door, config.BanStore);
         net = new NetServer(transport, config.MaxPlayers, door, duplicateSessions: config.DuplicateSessions,
             maxPendingConnections: config.MaxPendingConnections);
         host = new ShardHost(config.CellSize, config.TickSeconds, this.registry, config.InterestRadius,

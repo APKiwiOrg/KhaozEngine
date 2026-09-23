@@ -418,17 +418,25 @@ the `IConnectionAuthenticator` the server takes. Order is load-bearing:
    only once version and world both match.
 4. `BanGateAuthenticator` WRAPS the token authenticator when `isBanned` is supplied, so its check runs last, after
    the token produced a subject (a ban keys on the VERIFIED subject and only the token check produces one). The
-   predicate is called synchronously on the host thread, so keep it an in-memory view over whatever store the head
+   check is called synchronously on the host thread, so keep it an in-memory view over whatever store the head
    owns. An empty subject is not ban checked, because an anonymous admit produces no account id to key a ban on.
 
-**There are two ban paths, and a `WorldServer` game has both.** `BanGateAuthenticator` is the AT-THE-DOOR one: it
-refuses a subject the head ALREADY knows is banned during authentication, with `ke:banned`, before any join, so the
-client reads a refused connect. `KhaozEngine.NetWorld.IBanStore` is the LIVE one: a `WorldServer` consults it at
-JOIN and kicks with a typed `ServerNotice(ServerNoticeKind.Banned)`, which is the route a ban applied mid-session
-takes and the one a game banned-player banner renders. The check here is a `Func<string,bool>` rather than an
-`IBanStore` because `IBanStore` lives in `KhaozEngine.NetWorld`, which this package cannot reference. A
-`WorldServer` game wiring both puts the SAME store behind both, as the `banStore:` ctor arg and as
-`isBanned: store.IsBanned`, so the two can never disagree about who is banned.
+**One ban seam, two ban paths.** `IBanStore` (with `BanRecord` and the dependency-free `InMemoryBanStore`) is the
+engine's account ban store. It lives in THIS assembly but keeps the full names it shipped under,
+`KhaozEngine.NetWorld.IBanStore` and friends, and `KhaozEngine.NetWorld` type-forwards them here, so an existing
+consumer compiles and binds unchanged and a file importing both namespaces sees one `IBanStore`. Reach it with
+`using KhaozEngine.NetWorld;` even from a head that never references the `NetWorld` package.
+
+- `BanGateAuthenticator(inner, IBanStore banStore, log?)` is the AT-THE-DOOR path: it refuses a banned subject
+  during authentication, with `ke:banned`, before any join, so the client reads a refused connect. It reads the
+  store live on every connect. The older `BanGateAuthenticator(inner, Func<string,bool> isBanned, log?)` stays
+  for a head whose ban list is not a store, and refuses identically.
+- The JOIN path belongs to the server that owns players. A `WorldServer` or `ShardedWorldServer` handed the store
+  as `banStore:` checks it after the authenticator admitted the peer and kicks with a typed
+  `ServerNotice(ServerNoticeKind.Banned)`, the notice a game banned-player banner renders. `ServerAdmin.BanAsync`
+  records the ban and kicks the live session.
+- Hand the SAME instance to both, `new BanGateAuthenticator(tokenAuth, bans)` and `banStore: bans`, and the two can
+  never disagree about who is banned. A tile server takes it as `TileWorldServerConfig.BanStore`.
 
 The three decorators are public and compose on their own when a head wants a different order, or only one of them.
 They forward both optional verified-claim companions. Version and world gates unwrap their own token layer before

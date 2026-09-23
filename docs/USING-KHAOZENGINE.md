@@ -10587,7 +10587,7 @@ var config = new TileWorldServerConfig
     OverlapMargin  = 26f,                                  // >= InterestRadius + (largest body - 1) * sqrt(2)
     MaxGoalRadius  = 64,                                   // farthest a single click may name
     CanRun      = slot => energy.Has(slot),                // null allows everyone. See the run gate below
-    IsBanned    = bans.IsBanned,
+    BanStore    = bans,                                    // an IBanStore, read live at the door. See the bans note below
 };
 
 var server = new TileWorldServer(
@@ -10595,8 +10595,7 @@ var server = new TileWorldServer(
     config,
     map,
     new TileDocumentTargets(document, catalogs),
-    ConnectionGate.Wrap(tokenAuth, protocolVersion: "grimhollow-1", worldHash: worldHash,
-                        log: log.Info, isBanned: bans.IsBanned),
+    ConnectionGate.Wrap(tokenAuth, protocolVersion: "grimhollow-1", worldHash: worldHash, log: log.Info),
     registry);
 
 var persistence = new TileWorldPersistence(server, store, map, new TileWorldPersistenceConfig
@@ -19391,6 +19390,26 @@ mirroring the way a `Shutdown` notice promotes the following drop to `ServerShut
 `client.DisconnectReason` can still tell a ban from a network outage. It stays retried on the reconnect backoff,
 deliberately: a ban may carry an expiry, and going terminal would sit out a five-minute ban forever. Read the
 reason and set `ReconnectBackoff.MaxAttempts` (or turn `AutoReconnect` off) if your game would rather stop asking.
+
+One store serves every ban path. `IBanStore`, `BanRecord` and `InMemoryBanStore` live in the `KhaozEngine.Netcode`
+assembly under their `KhaozEngine.NetWorld` names, forwarded from `KhaozEngine.NetWorld`, so existing code compiles
+and binds unchanged and a head without `NetWorld` can still name them. Hand the same instance to the door and to the
+server:
+
+```csharp
+var bans = new WorldStoreBanStore(store);                       // any IBanStore
+await bans.LoadAsync();
+var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning.Default,
+    authenticator: new BanGateAuthenticator(tokenAuth, bans),   // refused at the door with ke:banned
+    banStore: bans);                                             // checked again at join, kicked with a Banned notice
+var admin = new ServerAdmin(server, bans);                       // BanAsync records the ban and kicks a live session
+```
+
+`BanGateAuthenticator(inner, IBanStore, log?)` reads the store live on every connect. Its
+`BanGateAuthenticator(inner, Func<string,bool>, log?)` form stays for a ban list that is not a store. A tile server
+takes the store as `TileWorldServerConfig.BanStore`, at the door. The two paths read differently on a `WorldClient`:
+a door refusal is `DisconnectReason.RejectedToken` with `ke:banned` in `DisconnectReasonDetail`, terminal unless
+`RetryOnReject` is set, while the join kick is `DisconnectReason.Banned` and is retried.
 
 **Account enumeration.** Stores opt into `IEnumerableWorldStore` (`InMemoryWorldStore`, `SqliteWorldStore`,
 `SqlServerWorldStore` all do): `EnumerateAsync(keyPrefix?)` streams `WorldStoreEntry { Key, UpdatedAt, Size? }`.

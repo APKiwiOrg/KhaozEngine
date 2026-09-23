@@ -991,7 +991,7 @@ var server = new TileWorldServer(
         Spawn = new TileCoord(64, 64, Plane: 0),
         MaxPendingConnections = 128,
         CanRun = slot => energy.Has(slot),         // null allows everyone. The authority behind run energy
-        IsBanned = bans.IsBanned,
+        BanStore = bans,                           // an IBanStore, read live at the door
     },
     map,
     new TileDocumentTargets(document, catalogs),
@@ -999,7 +999,7 @@ var server = new TileWorldServer(
     // so two heads with independently updated catalogs would pass the gate and disagree on every wall.
     ConnectionGate.Wrap(tokenAuth, protocolVersion: "grimhollow-1",
                         worldHash: TileWorldHash.OfWorldAndCatalogs(document, catalogs),
-                        log: Console.WriteLine, isBanned: bans.IsBanned),
+                        log: Console.WriteLine),
     registry);
 
 server.OnInteract += (slot, netId, target) => game.Interact(slot, target);
@@ -1162,6 +1162,15 @@ of them carrying an engine wire token the client matches and localizes itself:
 | Banned account | `ke:banned` |
 | Bad or expired auth token | whatever the inner `IConnectionAuthenticator` returned |
 
+The ban check is `TileWorldServerConfig.BanStore`, an `IBanStore` the server wraps around the door and reads live on
+every connect, so a ban recorded mid-session refuses that account's next connect. It is the same seam a
+`WorldServer` takes as `banStore:` and a hand-built `BanGateAuthenticator` reads, so one store serves every door a
+game runs. Do not also pass its `IsBanned` to `ConnectionGate.Wrap`, which would check it twice. The type is named
+`KhaozEngine.NetWorld.IBanStore` but lives in `KhaozEngine.Netcode`, which is why a tile head can use it without the
+`NetWorld` package. `TileWorldServerConfig.IsBanned` stays for a ban list that is not a store, and setting both
+refuses an account either one bans. A banned account's LIVE session is not ended by the ban. Pair it with
+`TileWorldServer.Kick`.
+
 `TileWorldClient.RefusedReason` and the `RefusedAtDoor` event carry the token. Once joined, the server's own
 out-of-band notices carry `TileServerReason`: `ke:cannot-reach`, `ke:draining` and `ke:kicked`, all prefixed `ke:`
 so a game's own tokens can never collide with them.
@@ -1273,9 +1282,6 @@ unauthenticated peer an amplifier of two bytes in and about 7 KB out.
   full serve re-sends it for every entity in the viewer's area of interest rather than once on first sight.
   Sending it once needs a per-client already-told set the tile wire does not have, which is
   [#679](https://github.com/APKiwiOrg/KhaozEngine/issues/679).
-- **The ban check is a `Func<string,bool>` predicate, not a store.** `IBanStore` lives in `KhaozEngine.NetWorld`,
-  which this package must never reference. Unifying the two ban seams is
-  [#678](https://github.com/APKiwiOrg/KhaozEngine/issues/678).
 - **No actions beyond the seam.** `TileActionKind` distinguishes authored-object and entity interactions so their
   overlapping ids reach `OnInteract` and `OnInteractEntity` respectively. The engine knows nothing about what an
   interaction does after the callback.

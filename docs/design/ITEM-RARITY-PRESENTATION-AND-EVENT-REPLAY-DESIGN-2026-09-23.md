@@ -1,0 +1,29 @@
+# Item rarity presentation and event sourced container replay
+
+Grimhollow needs a colour for each item instance's rarity. Every current item has no rarity and must draw white. A later rare copy must keep its colour through inventory, equipment, bank, ground drop, pickup, and journal replay. The reusable data and container operations belong in KhaozEngine. Grimhollow owns its palette choices, UI placement, content rows, and gameplay admission rules.
+
+This design extends the existing item instance system. It does not create rare items, affixes, rarity weights, or new player storage columns. It completes the two open engine gaps in [the event sourced host issue](https://github.com/APKiwiOrg/KhaozEngine/issues/1046). `ContainerCommitBuilder.TryBuildParts` and its copy on write working copy already exist at the 20.2.0 staged baseline and are not rebuilt here.
+
+## Rarity colour contract
+
+Append optional `display_rgb` to `rarity_rule`, after `upgrade_from`. The value is an opaque, six digit RGB colour stored as a 24 bit integer from `0x000000` through `0xFFFFFF`. Alpha is always fully opaque. The field is client visible. A missing field is white, including a row published before this addition. A slot with no rarity property is white. A property naming a rarity absent from the loaded client pack also displays white while validation and quarantine continue to report the invalid reference through their existing paths.
+
+Keep the schema's baseline field count at the seven fields it first shipped with. The optional tail rule must decode and re-encode an old row to its original bytes and recorded manifest hash when the new field is absent. Reject out of range values on authoring, encoding, decoding, and publish. Do not infer colour from a rarity row's key or a fixed engine palette.
+
+The item payload continues to carry property kind 130, the rarity ID. It never duplicates RGB bytes in the player journal or on the item instance. A small engine read API resolves a colour from the loaded catalog and a canonical item payload. It accepts an explicit runtime and payload, so a client can read the version it actually loaded. It does not depend on ambient state or any renderer. The read includes retired rarity rows for an already owned item, as retired item rows remain present for existing ownership. The game's UI converts the resolved RGB to its drawing colour type.
+
+`InstanceContentTypes.Register` remains the composition entry point for its eighteen schemas. A consumer may register those schemas with no rarity rows and no affix content. No rarity property is minted by registration alone. A first rare item later needs an authored rarity row and an instance payload carrying its ID, which the engine's existing generator and property registry already represent.
+
+## Replayable container operations
+
+The five container operation event bodies that `ContainerCommitBuilder` writes today gain total, nonthrowing readers with closed refusal reasons. A replay apply API takes a decoded event and a caller owned paged working copy. It checks the event's slot and container references, then applies exactly the recorded operation without generating a new ID or reading mutable catalog tuning. Malformed bytes and illegal replay state fail before a partial mutation. Tests compare each operation's live working copy, serialized event, replayed working copy, and encoded page bytes.
+
+The event vocabulary gains one bulk slide operation for the bank's compacting move. It names a source run and destination offset in one event, checks bounds and overlap, and moves each complete `ItemSlot`, including instance ID, payload, and quarantine state. The content version belongs to the containing page and follows the engine's existing page write rule. A slide must not silently merge two instances. The live builder and replay use the same operation semantics. A bank with 1,000 occupied shelves can compact after one removal without exceeding the engine's 128 event limit.
+
+The new event type and operation kind are appended without reusing old identifiers. Existing events keep their bytes and readers. The replay API is available without opening a live batch, so an event sourced host can rebuild a player from snapshots and events. The existing `TryBuildParts` API supplies the composed commit's event and projection parts. Its caller remains responsible for the full journal limit check and for marking the committed batch.
+
+## Compatibility and verification
+
+An older published catalog with seven field rarity rows must load and rebuild at its recorded hash. A new catalog can store black, white, and a nonwhite colour and reject a number outside 24 bits. Unknown or malformed rarity payloads produce a safe white presentation answer without changing the stored bytes. Headless tests cover every operation reader, malformed and truncated bodies, replay equivalence, a full bank slide carrying instance payloads, and a composed multi-stream commit. No renderer or game project is added to engine test references.
+
+Build and test Release, run the applicable catalog and documentation guards, and pack the staged engine version through `scripts/pack-local-feed.sh`. Grimhollow adopts a released pin only after these engine contracts are verified. The consumer's catalog upgrade and journal migration are specified in its own repository.

@@ -11,9 +11,9 @@ namespace KhaozEngine.Tests.MapEditor;
 
 /// <summary>The viewport's authored placement layer, driven exactly as <see cref="ViewportWorld"/> drives it: the
 /// document's <see cref="EditorDocument.DocumentChanged"/> invalidates it, a per-frame refresh publishes the change
-/// and invalidates only the touched chunks on a real synchronous <see cref="TerrainStreamer"/>, and a capturing sink
-/// records what each chunk build queried from the layer. No GPU: the capturing sink stands in for
-/// <see cref="Scene3DChunkSink"/>, which queries a live placement source the same way.</summary>
+/// and refreshes only the touched chunks' props on a real synchronous <see cref="TerrainStreamer"/>, and a
+/// capturing sink records what each chunk build and refresh queried from the layer. No GPU: the capturing sink
+/// stands in for <see cref="Scene3DChunkSink"/>, which queries a live placement source the same way.</summary>
 [Collection("AllocSensitive")]
 public sealed class AuthoredPlacementLayerTests
 {
@@ -31,26 +31,26 @@ public sealed class AuthoredPlacementLayerTests
         rig.Frame();
         PropPlacement added = Assert.Single(rig.Served());
         Assert.Equal(("oak", 10f, Ground, 20f), (added.Id, added.X, added.Y, added.Z));
-        Assert.Equal(new[] { new ChunkCoord(0, 0) }, rig.Sink.TakeRebuilds());
+        Assert.Equal(new[] { new ChunkCoord(0, 0) }, rig.Sink.TakeRefreshes());
 
         rig.Editor.SealGesture();
         rig.Editor.Execute(new MovePlacementCommand("p1", 70f, 20f, null));
         rig.Frame();
         Assert.Equal(70f, Assert.Single(rig.Served()).X);
         Assert.Empty(rig.Sink.Props[new ChunkCoord(0, 0)]);
-        Assert.Equal(new[] { new ChunkCoord(0, 0), new ChunkCoord(1, 0) }, Sorted(rig.Sink.TakeRebuilds()));
+        Assert.Equal(new[] { new ChunkCoord(0, 0), new ChunkCoord(1, 0) }, Sorted(rig.Sink.TakeRefreshes()));
 
         rig.Editor.SealGesture();
         rig.Editor.Execute(new RotatePlacementCommand("p1", 1.25f));
         rig.Frame();
         Assert.Equal(1.25f, Assert.Single(rig.Served()).Yaw);
-        Assert.Equal(new[] { new ChunkCoord(1, 0) }, rig.Sink.TakeRebuilds());
+        Assert.Equal(new[] { new ChunkCoord(1, 0) }, rig.Sink.TakeRefreshes());
 
         rig.Editor.SealGesture();
         rig.Editor.Execute(new ScalePlacementCommand("p1", 2.5f));
         rig.Frame();
         Assert.Equal(2.5f, Assert.Single(rig.Served()).Scale);
-        Assert.Equal(new[] { new ChunkCoord(1, 0) }, rig.Sink.TakeRebuilds());
+        Assert.Equal(new[] { new ChunkCoord(1, 0) }, rig.Sink.TakeRefreshes());
 
         rig.Editor.SealGesture();
         rig.Editor.Execute(new RemovePlacementCommand("p1"));
@@ -82,6 +82,37 @@ public sealed class AuthoredPlacementLayerTests
     }
 
     [Fact]
+    public void SelectionChangesAndPlacementEdits_RefreshPropsOnly_AndNeverRebuildTerrain()
+    {
+        using var rig = new Rig();
+        rig.Editor.Execute(new AddPlacementCommand(Placement("a", "oak", 10f, 10f)));
+        rig.Editor.SealGesture();
+        rig.Editor.Execute(new AddPlacementCommand(Placement("b", "pine", 70f, 10f)));
+        rig.Frame();
+
+        rig.SelectedId = "a";
+        rig.Frame();
+        rig.SelectedId = "b";
+        rig.Frame();
+        rig.Editor.SealGesture();
+        rig.Editor.Execute(new RotatePlacementCommand("a", 0.75f));
+        rig.Frame();
+        rig.Editor.SealGesture();
+        rig.Editor.Execute(new MovePlacementCommand("a", 130f, 10f, null));
+        rig.Frame();
+        rig.Editor.SealGesture();
+        rig.Editor.Execute(new RemovePlacementCommand("a"));
+        rig.Frame();
+        Assert.True(rig.Editor.Undo());
+        rig.Frame();
+        rig.Visibility.SetElementHidden(SelectionKind.Placement, "a", true);
+        rig.Frame();
+
+        Assert.NotEmpty(rig.Sink.TakeRefreshes());
+        Assert.Empty(rig.Sink.TerrainRebuilds);
+    }
+
+    [Fact]
     public void UnchangedFrames_RebuildNothing_AndAnEditRebuildsOnlyItsChunk()
     {
         using var rig = new Rig();
@@ -89,15 +120,15 @@ public sealed class AuthoredPlacementLayerTests
         rig.Editor.SealGesture();
         rig.Editor.Execute(new AddPlacementCommand(Placement("b", "pine", 70f, 70f)));
         rig.Frame();
-        rig.Sink.TakeRebuilds();
+        rig.Sink.TakeRefreshes();
 
         for (int i = 0; i < 10; i++) Assert.False(rig.Frame());
-        Assert.Empty(rig.Sink.TakeRebuilds());
+        Assert.Empty(rig.Sink.TakeRefreshes());
 
         rig.Editor.SealGesture();
         rig.Editor.Execute(new RotatePlacementCommand("b", 0.5f));
         Assert.True(rig.Frame());
-        Assert.Equal(new[] { new ChunkCoord(1, 1) }, rig.Sink.TakeRebuilds());
+        Assert.Equal(new[] { new ChunkCoord(1, 1) }, rig.Sink.TakeRefreshes());
     }
 
     [Fact]
@@ -108,13 +139,13 @@ public sealed class AuthoredPlacementLayerTests
         rig.Editor.SealGesture();
         rig.Editor.Execute(new AddPlacementCommand(Placement("b", "pine", 20f, 10f)));
         rig.Frame();
-        rig.Sink.TakeRebuilds();
+        rig.Sink.TakeRefreshes();
 
         rig.SelectedId = "a";
         rig.Frame();
         Assert.Equal("pine", Assert.Single(rig.Served()).Id);
         Assert.Equal("a", rig.Layer.Selected?.Id);
-        Assert.Equal(new[] { new ChunkCoord(0, 0) }, rig.Sink.TakeRebuilds());
+        Assert.Equal(new[] { new ChunkCoord(0, 0) }, rig.Sink.TakeRefreshes());
 
         rig.Editor.SealGesture();
         for (int step = 1; step <= 20; step++)
@@ -123,13 +154,13 @@ public sealed class AuthoredPlacementLayerTests
             rig.Frame();
             Assert.Equal(10f + step * 5f, rig.Layer.Selected?.Prop.X);
         }
-        Assert.Empty(rig.Sink.TakeRebuilds());
+        Assert.Empty(rig.Sink.TakeRefreshes());
 
         rig.SelectedId = null;
         rig.Frame();
         Assert.Contains(rig.Served(), p => p.Id == "oak" && p.X == 110f);
         Assert.Null(rig.Layer.Selected);
-        Assert.Equal(new[] { new ChunkCoord(1, 0) }, rig.Sink.TakeRebuilds());
+        Assert.Equal(new[] { new ChunkCoord(1, 0) }, rig.Sink.TakeRefreshes());
     }
 
     [Fact]
@@ -145,7 +176,7 @@ public sealed class AuthoredPlacementLayerTests
         rig.Visibility.SetElementHidden(SelectionKind.Placement, "a", false);
         rig.Frame();
         Assert.Single(rig.Served());
-        rig.Sink.TakeRebuilds();
+        rig.Sink.TakeRefreshes();
 
         rig.Visibility.SetGroup(VisibilityGroup.Placements, false);
         Assert.False(rig.Frame());
@@ -153,7 +184,7 @@ public sealed class AuthoredPlacementLayerTests
         rig.Editor.Execute(new RotatePlacementCommand("a", 2f));
         Assert.False(rig.Frame());
         Assert.True(rig.Layer.IsDirty);
-        Assert.Empty(rig.Sink.TakeRebuilds());
+        Assert.Empty(rig.Sink.TakeRefreshes());
 
         rig.Visibility.SetGroup(VisibilityGroup.Placements, true);
         Assert.True(rig.Frame());
@@ -177,6 +208,41 @@ public sealed class AuthoredPlacementLayerTests
         var camera = new Vector3(1000f, 0f, 10f);
         for (int i = 0; i < 20; i++) rig.Streamer.Update(camera, 1f / 60f);
         Assert.Equal(new[] { "pine" }, rig.Served().Select(p => p.Id).ToArray());
+    }
+
+    [Fact]
+    public void SelectionOnlyChanges_ServeExactlyWhatAFullRefreshServes()
+    {
+        var doc = Doc();
+        var rng = new Random(5);
+        for (int i = 0; i < 200; i++)
+            doc.Placements.Add(Placement("p" + (i % 190), i % 2 == 0 ? "oak" : "pine",
+                rng.NextSingle() * 300f - 150f, rng.NextSingle() * 300f - 150f));
+        TerrainField field = Field(Ground);
+        var visibility = new EditorVisibility();
+        visibility.SetElementHidden(SelectionKind.Placement, "p7", true);
+        var layer = new AuthoredPlacementLayer(Chunk);
+        layer.Refresh(doc, field, visibility, null, invalidate: null);
+        var dirty = new List<ChunkCoord>();
+
+        foreach (string? selected in new[] { "p3", "p7", "p12", "p185", "missing", null, "p3", "p4" })
+        {
+            dirty.Clear();
+            layer.Refresh(doc, field, visibility, selected, dirty.Add);
+            Assert.True(dirty.Count <= 2);
+            var full = new AuthoredPlacementLayer(Chunk);
+            full.Refresh(doc, field, visibility, selected, invalidate: null);
+
+            Assert.Equal(Everything(full), Everything(layer));
+            Assert.Equal(full.Selected, layer.Selected);
+        }
+    }
+
+    static string[] Everything(AuthoredPlacementLayer layer)
+    {
+        var served = new List<PropPlacement>();
+        layer.PlacementsIn(new RectArea(-2000f, -2000f, 2000f, 2000f), served);
+        return served.Select(p => $"{p.Id}@{p.X},{p.Z}").OrderBy(k => k, StringComparer.Ordinal).ToArray();
     }
 
     [Fact]
@@ -363,7 +429,7 @@ public sealed class AuthoredPlacementLayerTests
         public readonly TerrainStreamer Streamer;
         public string? SelectedId;
         readonly TerrainField _field = Field(Ground);
-        readonly Action<ChunkCoord> _invalidate;
+        readonly Action<ChunkCoord> _refresh;
 
         public Rig()
         {
@@ -373,13 +439,13 @@ public sealed class AuthoredPlacementLayerTests
                 new StreamerConfig(LoadRadius: 2, UnloadRadius: 3, MaxLoadsPerFrame: 64, ChunkSize: Chunk,
                     Async: false),
                 Sink);
-            _invalidate = Streamer.Invalidate;
+            _refresh = coord => Streamer.RefreshPlacements(coord);
             Streamer.PrimeAround(Vector3.Zero);
-            Sink.TakeRebuilds();
+            Sink.TakeRefreshes();
         }
 
         /// <summary>One viewport frame's authored refresh, as <see cref="ViewportWorld.Draw"/> runs it.</summary>
-        public bool Frame() => Layer.Refresh(Editor.Doc, _field, Visibility, SelectedId, _invalidate);
+        public bool Frame() => Layer.Refresh(Editor.Doc, _field, Visibility, SelectedId, _refresh);
 
         /// <summary>Every placement currently held by a resident chunk.</summary>
         public List<PropPlacement> Served() => Sink.Props.Values.SelectMany(p => p).ToList();
@@ -387,31 +453,45 @@ public sealed class AuthoredPlacementLayerTests
         public void Dispose() => Streamer.Dispose();
     }
 
-    sealed class CapturingSink : IChunkSink
+    /// <summary>Records what each chunk build and each props-only refresh queried from the layer. A terrain rebuild
+    /// (<see cref="IChunkSink.ReLod"/>) is recorded apart, so a test can prove an edit never reaches it.</summary>
+    sealed class CapturingSink : IChunkPlacementRefreshSink
     {
         readonly IPlacementSource _source;
-        readonly List<ChunkCoord> _rebuilds = new();
+        readonly List<ChunkCoord> _refreshes = new();
+        public readonly List<ChunkCoord> TerrainRebuilds = new();
         public readonly Dictionary<ChunkCoord, List<PropPlacement>> Props = new();
 
         public CapturingSink(IPlacementSource source) => _source = source;
 
-        public object Load(ChunkCoord coord, int lod, ChunkRing ring) => Build(coord, rebuild: false);
-        public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring) => Build(coord, rebuild: true);
+        public object Load(ChunkCoord coord, int lod, ChunkRing ring) => Query(coord);
+
+        public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring)
+        {
+            TerrainRebuilds.Add(coord);
+            Query(coord);
+        }
+
+        public void RefreshPlacements(ChunkCoord coord, object handle, ChunkRing ring)
+        {
+            _refreshes.Add(coord);
+            Query(coord);
+        }
+
         public void Unload(ChunkCoord coord, object handle) => Props.Remove(coord);
 
-        public ChunkCoord[] TakeRebuilds()
+        public ChunkCoord[] TakeRefreshes()
         {
-            ChunkCoord[] taken = _rebuilds.ToArray();
-            _rebuilds.Clear();
+            ChunkCoord[] taken = _refreshes.ToArray();
+            _refreshes.Clear();
             return taken;
         }
 
-        object Build(ChunkCoord coord, bool rebuild)
+        object Query(ChunkCoord coord)
         {
             var into = new List<PropPlacement>();
             _source.PlacementsIn(ChunkGrid.AreaOf(coord, Chunk), into);
             Props[coord] = into;
-            if (rebuild) _rebuilds.Add(coord);
             return coord;
         }
     }

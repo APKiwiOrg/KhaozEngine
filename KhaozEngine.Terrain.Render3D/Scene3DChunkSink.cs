@@ -29,7 +29,8 @@ namespace KhaozEngine.Terrain
     /// caller must <see cref="Scene3D.UnloadSplatMaterial"/> it when done (or reuse it for the rebuilt sink). Pass
     /// <c>ownsMaterial: true</c> to hand ownership to the sink, whose <see cref="Dispose"/> then frees it too. The
     /// material is never disposed per-chunk.</para></summary>
-    public sealed class Scene3DChunkSink : IReasonedAsyncChunkSink, IChunkLodConfigSink, IDisposable
+    public sealed class Scene3DChunkSink : IReasonedAsyncChunkSink, IChunkLodConfigSink, IChunkPlacementRefreshSink,
+        IDisposable
     {
         readonly Scene3D _scene;
         TerrainField _field;
@@ -518,7 +519,7 @@ namespace KhaozEngine.Terrain
             return cpu;
         }
 
-        static PropClusterKey ClusterKey(ChunkCoord coord, int layerIndex) =>
+        internal static PropClusterKey ClusterKey(ChunkCoord coord, int layerIndex) =>
             new(layerIndex.ToString(System.Globalization.CultureInfo.InvariantCulture), coord.X, coord.Z, 0);
 
         /// <summary>Turn a completed CPU build into live GPU + physics state on the frame thread. Fresh load when
@@ -679,6 +680,19 @@ namespace KhaozEngine.Terrain
         /// <inheritdoc />
         public void ReLod(ChunkCoord coord, object handle, int lod, ChunkRing ring, ChunkBuildReason reason) =>
             Apply(coord, lod, ring, BuildCpu(coord, lod, ring, reason), handle);
+
+        /// <inheritdoc />
+        /// <remarks>Handled by <see cref="ChunkPlacementRefresh"/>. When a refreshed layer registers colliders, the
+        /// chunk's prop statics are rebuilt from the adopted placements. Nothing else on the chunk changes.</remarks>
+        public void RefreshPlacements(ChunkCoord coord, object handle, ChunkRing ring)
+        {
+            var load = (ChunkLoad)handle;
+            bool colliders = ChunkPlacementRefresh.Refresh(_propClusters, _propGenerations, _chunkSize, coord, load,
+                ring, _layers, _field);
+            if (!colliders || _physics is null || _collisionShapes is null) return;
+            ChunkStatics.RemoveAll(_physics, load.Statics);
+            AddStatics(load);
+        }
 
         public void Unload(ChunkCoord coord, object handle)
         {

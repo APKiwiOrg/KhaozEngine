@@ -19,9 +19,10 @@ namespace KhaozEngine.MapEditor;
 /// <see cref="InvalidateKitMeshes"/> before a rebuild when the cached form would otherwise go stale (e.g. the
 /// textured-props toggle, since the cache key is the entry id alone and does not encode which form was loaded).
 /// Authored placements stream through the sink as one live placement layer (<see cref="AuthoredPlacementLayer"/>),
-/// so they follow the same chunk residency and draw-radius cull as scatter. An edit rebuilds only the chunks whose
-/// placements changed. The selected placement is served outside the layer and drawn directly with the highlight
-/// tint, so a transform drag never rebuilds a chunk. Spawn markers draw outside the sink.
+/// so they follow the same chunk residency and draw-radius cull as scatter. An edit republishes only the props of
+/// the chunks whose placements changed (<see cref="TerrainStreamer.RefreshPlacements"/>), never their terrain. The
+/// selected placement is served outside the layer and drawn directly with the highlight tint, so a transform drag
+/// touches no chunk. Spawn markers draw outside the sink.
 /// <para>The class is split so the GPU-free surface (manifest parsing into <see cref="KindHeights"/>, the
 /// Build/Rebuild/Dispose state guards, the placement cache and layer source, and the selected/unselected
 /// <see cref="Partition"/>) is testable without a device. Every GPU-touching call lives behind a small private
@@ -30,10 +31,10 @@ namespace KhaozEngine.MapEditor;
 /// </summary>
 public sealed class ViewportWorld : IDisposable
 {
-    /// <summary>Horizontal cull radius (m) for streamed companion foliage. Deliberately NOT part of
+    /// <summary>Default horizontal cull radius (m) for streamed companion foliage. Deliberately NOT part of
     /// <see cref="RenderDistance"/>: dense understory is a near-field layer whose cost is per-instance, so a short
     /// radius keeps it affordable however far the horizon reaches (per the multi-layer sink design).</summary>
-    const float CompanionDrawRadius = 60f;
+    internal const float DefaultCompanionDrawRadius = 60f;
 
     /// <summary>Draw identity of the authored placement layer. The control character keeps it out of the space of
     /// authored scatter-layer names, so the draw filter
@@ -61,13 +62,14 @@ public sealed class ViewportWorld : IDisposable
     readonly Func<int, int, bool> _terrainChunkLoaded;
     readonly Dictionary<string, IReadOnlyList<MeshHandle>> _propMeshes = new();
     readonly AuthoredPlacementLayer _authored = new(TerrainChunkRegion.DefaultSize);
-    readonly Action<ChunkCoord> _invalidateChunk;
+    readonly Action<ChunkCoord> _refreshChunkPlacements;
 
     Func<string, bool> _scatterLayerVisible = static _ => true;
     Func<string, bool> _propKindVisible = static _ => true;
     Func<string, EditorPropCategory>? _propCategoryResolver;
     Func<bool> _texturedPropsEnabled = static () => true;
     RenderDistanceProfile _renderDistance = RenderDistanceProfile.Default;
+    float _companionDrawRadius = DefaultCompanionDrawRadius;
 
     bool _built;
     bool _disposed;
@@ -91,7 +93,7 @@ public sealed class ViewportWorld : IDisposable
         ArgumentNullException.ThrowIfNull(manifestPaths);
         _scene = scene;
         _terrainChunkLoaded = IsTerrainChunkLoaded;
-        _invalidateChunk = InvalidateChunk;
+        _refreshChunkPlacements = RefreshChunkPlacements;
 
         var entries = new List<AssetEntry>();
         var heights = new Dictionary<string, float>(StringComparer.Ordinal);
@@ -226,11 +228,24 @@ public sealed class ViewportWorld : IDisposable
     /// scatter/companion prop layers, splat material, sink with NO physics, streamer, and a primed ring). Throws
     /// <see cref="ObjectDisposedException"/> after <see cref="Dispose"/> and
     /// <see cref="InvalidOperationException"/> if already built (use <see cref="Rebuild"/>).</summary>
-    public void Build(MapDocument doc, MapDocRegistry registry)
+    public void Build(MapDocument doc, MapDocRegistry registry) => BuildAround(doc, registry, FocusFor(doc));
+
+    /// <summary><see cref="Build"/> with the ring primed around <paramref name="primeFocus"/> instead of the
+    /// document bounds centre. A headless render primes where it will look, so its first frame already has the ring
+    /// it draws.</summary>
+    internal void BuildAround(MapDocument doc, MapDocRegistry registry, Vector3 primeFocus)
     {
         ThrowIfDisposed();
         if (_built) throw new InvalidOperationException("ViewportWorld is already built; call Rebuild to rebuild it.");
-        BuildCore(doc, registry);
+        BuildCore(doc, registry, primeFocus);
+    }
+
+    /// <summary>Companion foliage cull radius (m) the next <see cref="Build"/> / <see cref="Rebuild"/> uses. Defaults
+    /// to <see cref="DefaultCompanionDrawRadius"/>. A top-down render raises it to cover its whole view.</summary>
+    internal float CompanionDrawRadius
+    {
+        get => _companionDrawRadius;
+        set => _companionDrawRadius = value > 0f ? value : throw new ArgumentOutOfRangeException(nameof(value));
     }
 
     /// <summary>Rebuilds the streamed world from <paramref name="doc"/>: tears down the current sink + streamer
@@ -248,7 +263,7 @@ public sealed class ViewportWorld : IDisposable
         ThrowIfDisposed();
         if (!_built) throw new InvalidOperationException("ViewportWorld has not been built; call Build first.");
         TeardownStreaming();
-        BuildCore(doc, registry);
+        BuildCore(doc, registry, FocusFor(doc));
     }
 
     /// <summary>Rebuilds ONLY the loaded chunks overlapping <paramref name="dirty"/> after a localized terrain edit,
@@ -279,13 +294,14 @@ public sealed class ViewportWorld : IDisposable
         _doc = doc;
         _sink!.UpdateField(field);         // future chunk builds sample the new field
         // Authored placements re-ground-snap to the new field BEFORE the re-mesh, so the dirty chunks rebuild once
-        // with the new snapshot. A placement chunk outside the dirty rect is invalidated on its own.
+        // with the new snapshot. A placement chunk outside the dirty rect keeps its terrain and gets a props-only
+        // refresh.
         _authored.Invalidate();
         ChunkCoord min = ChunkGrid.CoordOf(dirty.MinX, dirty.MinZ, _streamer.Config.ChunkSize);
         ChunkCoord max = ChunkGrid.CoordOf(dirty.MaxX, dirty.MaxZ, _streamer.Config.ChunkSize);
         _authored.Refresh(doc, field, coord =>
         {
-            if (coord.X < min.X || coord.X > max.X || coord.Z < min.Z || coord.Z > max.Z) InvalidateChunk(coord);
+            if (coord.X < min.X || coord.X > max.X || coord.Z < min.Z || coord.Z > max.Z) RefreshChunkPlacements(coord);
         });
         _streamer!.Invalidate(dirty);      // re-mesh the loaded chunks the dirty rect overlaps, in place
         return true;
@@ -335,17 +351,19 @@ public sealed class ViewportWorld : IDisposable
 
     /// <summary>Draws the streamed world plus the authored content, filtered by <paramref name="visibility"/>. The
     /// terrain, streamed props and authored placements go through the sink, whose retained prop batches filter at
-    /// submission. Authored placements are one placement layer: it first refreshes from the document, the
-    /// selection and the per-element hides, rebuilding only the chunks whose placements changed, so an edit shows
-    /// on this frame. The <see cref="VisibilityGroup.Placements"/> group and kit visibility gate it through the
-    /// draw filter without a rebuild. The placement whose stable id is <paramref name="selectedPlacementId"/> is
-    /// kept out of the layer and draws once with <paramref name="highlightTint"/> when it is still visible, so a
-    /// drag moves it without touching the layer. <paramref name="viewPos"/> is the editor camera and drives the
-    /// sink's draw-radius cull, as it drives streaming residency in <see cref="Update"/>. NPC spawn markers draw as
-    /// ground-height billboards under the <see cref="VisibilityGroup.Spawns"/> group and per-element hide. Player start markers draw the same
-    /// way (green when enabled) under the <see cref="VisibilityGroup.PlayerSpawns"/> group and per-element hide. The water plane draws only when
-    /// the <see cref="VisibilityGroup.Water"/> group is on. Throws <see cref="ObjectDisposedException"/> after
-    /// <see cref="Dispose"/> and <see cref="InvalidOperationException"/> before <see cref="Build"/>.</summary>
+    /// submission. Authored placements are one placement layer: it first refreshes from the document, the selection and
+    /// the per-element hides, republishing only the props of the chunks whose placements changed (their terrain is
+    /// untouched), so an edit shows on this frame. The <see cref="VisibilityGroup.Placements"/> group and kit
+    /// visibility gate it through the draw filter without a rebuild. The placement whose stable id is
+    /// <paramref name="selectedPlacementId"/> is kept out of the layer and draws once with
+    /// <paramref name="highlightTint"/> when it is still visible, so a drag moves it without touching the layer.
+    /// <paramref name="viewPos"/> is the editor camera and drives the sink's draw-radius cull, as it drives streaming
+    /// residency in <see cref="Update"/>. NPC spawn markers draw as ground-height billboards under the
+    /// <see cref="VisibilityGroup.Spawns"/> group and per-element hide. Player start markers draw the same way (green
+    /// when enabled) under the <see cref="VisibilityGroup.PlayerSpawns"/> group and per-element hide. The water plane
+    /// draws only when the <see cref="VisibilityGroup.Water"/> group is on. Throws
+    /// <see cref="ObjectDisposedException"/> after <see cref="Dispose"/> and <see cref="InvalidOperationException"/>
+    /// before <see cref="Build"/>.</summary>
     public void Draw(Vector3 viewPos, string? selectedPlacementId, Color highlightTint, EditorVisibility visibility)
     {
         ThrowIfDisposed();
@@ -363,7 +381,7 @@ public sealed class ViewportWorld : IDisposable
             _scene.DrawWater(BuildWaterPlane(viewPos, _doc!.Terrain.WaterLevel, _renderDistance.OceanHalfExtent));
 
         _authoredGroupVisible = visibility.GetGroup(VisibilityGroup.Placements);
-        _authored.Refresh(_doc!, _field!, visibility, selectedPlacementId, _invalidateChunk);
+        _authored.Refresh(_doc!, _field!, visibility, selectedPlacementId, _refreshChunkPlacements);
         _sink!.Draw(viewPos);
 
         if (_authoredGroupVisible && _authored.Selected is EditorPlacement selected
@@ -401,14 +419,14 @@ public sealed class ViewportWorld : IDisposable
     }
 
     /// <summary>Marks the authored placements dirty so the next <see cref="Draw"/> diffs them against the placement
-    /// layer and rebuilds only the chunks that changed. The editor scene wires
+    /// layer and republishes only the props of the chunks that changed. The editor scene wires
     /// <see cref="EditorDocument.DocumentChanged"/> to this, which covers every execute, undo and redo. Deliberately
     /// unguarded (a safe no-op after <see cref="Dispose"/>) so a late change event during teardown never throws.</summary>
     public void InvalidatePlacements() => _authored.Invalidate();
 
-    // Rebuilds one loaded chunk in place so it re-queries the authored placement layer. A no-op for a chunk that is
-    // not resident: it picks the placements up when it streams in.
-    void InvalidateChunk(ChunkCoord coord) => _streamer?.Invalidate(coord);
+    // Re-serves one loaded chunk's authored placements through the streamer's props-only refresh, leaving its terrain
+    // mesh alone. A no-op for a chunk that is not resident: it picks the placements up when it streams in.
+    void RefreshChunkPlacements(ChunkCoord coord) => _streamer?.RefreshPlacements(coord);
 
     /// <summary>Frees the GPU world (loaded ring, sink, splat material, kit meshes). Idempotent. A call before
     /// <see cref="Build"/> is a no-op beyond flipping the disposed flag.</summary>
@@ -426,7 +444,7 @@ public sealed class ViewportWorld : IDisposable
 
     // ---- GPU build / teardown (never exercised headless) -------------------------------------------------
 
-    void BuildCore(MapDocument doc, MapDocRegistry registry)
+    void BuildCore(MapDocument doc, MapDocRegistry registry, Vector3 primeFocus)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(registry);
@@ -455,7 +473,7 @@ public sealed class ViewportWorld : IDisposable
         // so the far horizon costs a few hundred triangles a chunk rather than a gameplay chunk's full build.
         _streamer = new TerrainStreamer(_renderDistance.ToStreamerConfig().Synchronous(), _sink);
 
-        PrimeRing(FocusFor(doc));
+        PrimeRing(primeFocus);
         _built = true;
     }
 
@@ -514,7 +532,7 @@ public sealed class ViewportWorld : IDisposable
                 throw new MapDocumentException(
                     $"companion layer '{cl.Name}' names unknown host scatter layer '{cl.HostLayer}' in map '{doc.Id}'.");
             CompanionConfig companions = MapRuntime.BuildCompanionConfig(doc, cl.Name);
-            layers.Add(PropLayer.CompanionLayer(hostIndex, companions, _propMeshes, CompanionDrawRadius)
+            layers.Add(PropLayer.CompanionLayer(hostIndex, companions, _propMeshes, _companionDrawRadius)
                 .WithIdentity(cl.HostLayer));
         }
 

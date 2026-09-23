@@ -128,6 +128,12 @@ up regardless of load order. Plain `float` math throughout.
   **`Apply(coord, lod, ring, cpuBuild, existing)`** (GPU buffers + physics on the frame thread, implemented
   by a render-side sink such as `Scene3DChunkSink` in `KhaozEngine.Terrain.Render3D`). A sink implementing
   only `IChunkSink` streams synchronously, no async split needed.
+- **`TerrainStreamer.RefreshPlacements(coord)`** / **`IChunkPlacementRefreshSink`** - a props-only refresh of
+  one loaded chunk, for a live `IPlacementSource` whose content changed while the field did not (an editor
+  placement edit). The streamer flushes pending builds, then asks a sink implementing
+  `IChunkPlacementRefreshSink` to re-serve only its live-source layers, leaving the terrain mesh, terrain
+  collider and dynamics alone. Any other sink falls back to `Invalidate(coord)`. Returns false for a chunk that
+  is not loaded, which picks the source up when it streams in. `Scene3DChunkSink` implements it.
 - **`ChunkBuildReason`** / **`IChunkBuildReasonSink`** / **`IReasonedAsyncChunkSink`** - attributed rebuilds.
   Fresh loads, tier changes, ring changes and invalidates carry their reason through the scheduler generation,
   so a sink can reuse immutable placement data on a pure tier transition and a superseded completion cannot

@@ -11,16 +11,19 @@ namespace KhaozEngine.MapEditor;
 /// <see cref="Scene3DChunkSink"/> path as scatter instead of one whole-document draw list per frame.
 /// <para>It serves the document's placements bucketed by chunk, minus the per-element hidden ones and minus the
 /// selected one, which the viewport draws directly with the highlight tint. A drag moves the selected placement,
-/// so a drag never changes what this source serves and never rebuilds a chunk. The group gate and kit visibility
-/// are NOT applied here: the sink's draw filter applies them per frame, so toggling them never rebuilds a
-/// chunk either.</para>
+/// so a drag never changes what this source serves and never refreshes a chunk. The group gate and kit visibility
+/// are NOT applied here: the sink's draw filter applies them per frame, so toggling them never refreshes a
+/// chunk either. The viewport refreshes a changed chunk through <see cref="TerrainStreamer.RefreshPlacements"/>,
+/// which republishes its props and leaves its terrain mesh alone.</para>
 /// <para><see cref="Refresh(MapDocument, TerrainField, EditorVisibility, string, Action{ChunkCoord})"/> is
 /// incremental. It diffs the current placement set against the one it last published, keyed by stable placement
 /// id, republishes only the chunk buckets whose content changed, and reports exactly those chunks so the caller
 /// invalidates them. It runs only when the document changed
 /// (<see cref="Invalidate"/>), the selection changed, or <see cref="EditorVisibility.Version"/> moved, so an idle
-/// frame costs three compares. The identification step is one pass over the document's placements, the same pass
-/// the placement cache already pays per document change.</para>
+/// frame costs three compares. A document or visibility change identifies the changed chunks with one pass over the
+/// document's placements, the same pass the placement cache already pays per document change. A selection-only
+/// change skips that pass: it moves just the old and new selected placements between the layer and the direct
+/// highlight draw.</para>
 /// <para>Threading: <see cref="PlacementsIn"/> reads one immutable bucket snapshot published with a volatile write,
 /// which satisfies the build-thread contract. Every other member is frame-thread only.</para></summary>
 internal sealed class AuthoredPlacementLayer : IPlacementSource
@@ -39,6 +42,11 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
     readonly HashSet<string> _seenIds = new(StringComparer.Ordinal);
     readonly HashSet<ChunkCoord> _dirty = new();
     readonly Dictionary<ChunkCoord, List<PropPlacement>> _rebucket = new();
+
+    // The placement list the published set was collected from, and its lazily built id-to-first-index map, which
+    // the selection-only path reads.
+    IReadOnlyList<EditorPlacement>? _collected;
+    Dictionary<string, int>? _firstIndex;
 
     EditorVisibility? _visibility;
     string? _selectedId;
@@ -125,16 +133,25 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentNullException.ThrowIfNull(field);
         if (visibility is not null && !visibility.GetGroup(VisibilityGroup.Placements)) return false;
-        bool unchanged = _synced && !_cache.IsDirty
+        bool sameInputs = _synced && !_cache.IsDirty
             && ReferenceEquals(visibility, _syncedVisibility)
-            && (visibility is null || visibility.Version == _syncedVersion)
-            && string.Equals(selectedId, _syncedSelectedId, StringComparison.Ordinal);
-        if (unchanged) return false;
+            && (visibility is null || visibility.Version == _syncedVersion);
+        bool sameSelection = string.Equals(selectedId, _syncedSelectedId, StringComparison.Ordinal);
+        if (sameInputs && sameSelection) return false;
 
-        Collect(_cache.Get(doc, field), visibility, selectedId);
-        Diff();
-        if (_dirty.Count > 0) Publish();
-        (_entries, _next) = (_next, _entries);
+        if (sameInputs)
+        {
+            SwapSelection(visibility, _syncedSelectedId, selectedId);
+        }
+        else
+        {
+            _collected = _cache.Get(doc, field);
+            _firstIndex = null;
+            Collect(_collected, visibility, selectedId);
+            Diff();
+            if (_dirty.Count > 0) Publish();
+            (_entries, _next) = (_next, _entries);
+        }
 
         _synced = true;
         _syncedVisibility = visibility;
@@ -144,6 +161,64 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
         if (invalidate is not null)
             foreach (ChunkCoord coord in _dirty) invalidate(coord);
         return true;
+    }
+
+    // The selection-only path: nothing but the selected id changed since the last refresh, so exactly two
+    // placements can change membership. The old selection rejoins the layer unless it is hidden, and the new one
+    // leaves it. Only their chunks' buckets are rewritten, so a selection click costs a dictionary copy and two
+    // small arrays instead of a pass over the document. A first-occurrence id is its own diff key (see KeyFor), which
+    // is what lets the published entries be edited by id here.
+    void SwapSelection(EditorVisibility? visibility, string? oldId, string? newId)
+    {
+        _dirty.Clear();
+        IReadOnlyList<EditorPlacement> placements = _collected!;
+        Dictionary<string, int> firstIndex = _firstIndex ??= FirstIndexOf(placements);
+        var buckets = new Dictionary<ChunkCoord, PropPlacement[]>(_buckets);
+        if (oldId is not null && firstIndex.TryGetValue(oldId, out int oldIndex)
+            && (visibility is null || !visibility.IsElementHidden(SelectionKind.Placement, oldId)))
+        {
+            PropPlacement prop = placements[oldIndex].Prop;
+            var entry = new Entry(prop, ChunkGrid.CoordOf(prop.X, prop.Z, _chunkSize));
+            _entries[oldId] = entry;
+            buckets[entry.Coord] = buckets.TryGetValue(entry.Coord, out PropPlacement[]? bucket)
+                ? [.. bucket, prop] : [prop];
+            _dirty.Add(entry.Coord);
+        }
+        Selected = null;
+        if (newId is not null && firstIndex.TryGetValue(newId, out int newIndex))
+        {
+            if (_entries.Remove(newId, out Entry left))
+            {
+                RemoveOne(buckets, left);
+                _dirty.Add(left.Coord);
+            }
+            if (visibility is null || !visibility.IsElementHidden(SelectionKind.Placement, newId))
+                Selected = placements[newIndex];
+        }
+        if (_dirty.Count > 0) Volatile.Write(ref _buckets, buckets);
+    }
+
+    static Dictionary<string, int> FirstIndexOf(IReadOnlyList<EditorPlacement> placements)
+    {
+        var index = new Dictionary<string, int>(placements.Count, StringComparer.Ordinal);
+        for (int i = 0; i < placements.Count; i++) index.TryAdd(placements[i].Id, i);
+        return index;
+    }
+
+    static void RemoveOne(Dictionary<ChunkCoord, PropPlacement[]> buckets, Entry entry)
+    {
+        if (!buckets.TryGetValue(entry.Coord, out PropPlacement[]? bucket)) return;
+        int at = Array.FindIndex(bucket, p => SameTransform(p, entry.Prop));
+        if (at < 0) return;
+        if (bucket.Length == 1)
+        {
+            buckets.Remove(entry.Coord);
+            return;
+        }
+        var trimmed = new PropPlacement[bucket.Length - 1];
+        Array.Copy(bucket, 0, trimmed, 0, at);
+        Array.Copy(bucket, at + 1, trimmed, at, bucket.Length - at - 1);
+        buckets[entry.Coord] = trimmed;
     }
 
     // Fills _next and _included (document order) with every placement this source should serve, and records the

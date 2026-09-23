@@ -842,14 +842,16 @@ not drawn, and it appears once its chunk streams in. The viewport no longer subm
 `DrawProps` list every frame.
 
 `DocumentChanged` marks the layer dirty. The next `ViewportWorld.Draw` diffs the placements against the set the
-layer last published, keyed by stable id, and rebuilds only the loaded chunks whose placements changed (one
-chunk for a rotate, scale, add or delete, two for a move across a chunk edge). Execute, undo and redo all take
-this path, so an edit shows on the next frame. An idle frame costs a few compares and allocates nothing. The
-selected placement is kept out of the layer and drawn directly with the highlight tint, so a gizmo drag
-rebuilds no chunk, and a selection change rebuilds at most the two chunks it leaves and enters. A per-element
-hide leaves the layer the same way. The **Authored props** switch, Terrain Only and prop categories gate the
-layer through the sink's draw filter without a rebuild, and the diff is deferred while the group is hidden. A
-chunk rebuild re-meshes that chunk's terrain too, since the streamer has no props-only rebuild.
+layer last published, keyed by stable id, and refreshes only the loaded chunks whose placements changed (one
+chunk for a rotate, scale, add or delete, two for a move across a chunk edge). The refresh is props-only
+(`TerrainStreamer.RefreshPlacements`): the sink re-queries the placement layer for that chunk and republishes
+its prop instances, and the chunk's terrain mesh is never rebuilt. Execute, undo and redo all take this path,
+so an edit shows on the next frame. An idle frame costs a few compares and allocates nothing. The selected
+placement is kept out of the layer and drawn directly with the highlight tint, so a gizmo drag touches no
+chunk. A selection change skips the document pass entirely: it moves only the old and new selected placements
+between the layer and the highlight draw and refreshes at most the two chunks they sit in. A per-element hide
+leaves the layer through the diff. The **Authored props** switch, Terrain Only and prop categories gate the
+layer through the sink's draw filter without a refresh, and the diff is deferred while the group is hidden.
 
 A rebuild reads the document as it stands, and mid-edit that can be invalid: `ViewportWorld`'s prop-layer
 build throws `MapDocumentException` for a companion layer naming a host scatter layer the document does not

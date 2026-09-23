@@ -74,6 +74,7 @@ public sealed class ViewportWorld : IDisposable
     bool _built;
     bool _disposed;
     bool _authoredGroupVisible = true;
+    Vector3? _lastDrawFocus;
 
     TerrainField? _field;
     MapDocument? _doc;
@@ -381,6 +382,7 @@ public sealed class ViewportWorld : IDisposable
             _scene.DrawWater(BuildWaterPlane(viewPos, _doc!.Terrain.WaterLevel, _renderDistance.OceanHalfExtent));
 
         _authoredGroupVisible = visibility.GetGroup(VisibilityGroup.Placements);
+        _lastDrawFocus = viewPos;
         _authored.Refresh(_doc!, _field!, visibility, selectedPlacementId, _refreshChunkPlacements);
         _sink!.Draw(viewPos);
 
@@ -423,6 +425,25 @@ public sealed class ViewportWorld : IDisposable
     /// <see cref="EditorDocument.DocumentChanged"/> to this, which covers every execute, undo and redo. Deliberately
     /// unguarded (a safe no-op after <see cref="Dispose"/>) so a late change event during teardown never throws.</summary>
     public void InvalidatePlacements() => _authored.Invalidate();
+
+    /// <summary>Whether the authored placement layer draws a placement at world (<paramref name="x"/>,
+    /// <paramref name="z"/>) as of the last <see cref="Draw"/>: see
+    /// <see cref="IsDrawnAt(TerrainStreamer, Vector3, float, float, float)"/>. False before the first draw. The
+    /// editor's pick filter reads it so an undrawn placement is not clickable.</summary>
+    internal bool IsPlacementDrawnAt(float x, float z) =>
+        _built && _streamer is not null && _lastDrawFocus is Vector3 focus
+        && IsDrawnAt(_streamer, focus, _renderDistance.PropDrawRadius, x, z);
+
+    /// <summary>The layer's drawn-here rule: the chunk holding (<paramref name="x"/>, <paramref name="z"/>) is
+    /// resident in <paramref name="streamer"/>'s gameplay ring (a decor chunk carries no individual props) and the
+    /// point lies within <paramref name="drawRadius"/> of <paramref name="focus"/> horizontally, inclusive, which is
+    /// the prop cull the sink applies. Pure over the streamer's residency, so it is headless-testable.</summary>
+    internal static bool IsDrawnAt(TerrainStreamer streamer, Vector3 focus, float drawRadius, float x, float z)
+    {
+        if (streamer.RingOf(ChunkGrid.CoordOf(x, z, streamer.Config.ChunkSize)) != ChunkRing.Gameplay) return false;
+        float dx = x - focus.X, dz = z - focus.Z;
+        return dx * dx + dz * dz <= drawRadius * drawRadius;
+    }
 
     // Re-serves one loaded chunk's authored placements through the streamer's props-only refresh, leaving its terrain
     // mesh alone. A no-op for a chunk that is not resident: it picks the placements up when it streams in.

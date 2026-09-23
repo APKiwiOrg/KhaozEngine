@@ -263,7 +263,8 @@ internal static class InstanceContentTypeFixtures
             Int(3),
             Int(3),
             Int(2),
-            Reference(2)),
+            Reference(2),
+            ContentFieldValue.Absent(ContentFieldKind.OpaqueBytes)),
         InstanceContentTypeIds.RarityWeightTypeKey => Row(
             registration,
             "rare_metal",

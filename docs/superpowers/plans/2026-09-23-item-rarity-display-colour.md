@@ -4,7 +4,7 @@
 
 **Goal:** Store a colour on each published rarity rule and resolve a visible item instance's rarity to RGB without adding colour to player state.
 
-**Architecture:** Append an optional 24 bit RGB field to the existing client-visible `rarity_rule` schema, retaining its seven-field wire baseline. A renderer-free read object indexes colours by rarity ID from one loaded `ContentRuntime` and reads kind 130 from a canonical instance payload. Missing data returns white.
+**Architecture:** Append an optional three-byte RGB field to the existing client-visible `rarity_rule` schema, retaining its seven-field wire baseline. The catalog bundle writes these bytes as six lower-case hex digits. A renderer-free read object indexes colours by rarity ID from one loaded `ContentRuntime` and reads kind 130 from a canonical instance payload. Missing data returns white.
 
 **Tech Stack:** .NET 10, C#, KhaozEngine.Catalog, KhaozEngine.ItemInstances, xUnit
 
@@ -16,7 +16,7 @@
 - The current staged engine version is `20.2.0` and newest release tag is `v20.1.0`. Re-read both before finishing. Ride a staged version if it remains ahead of the newest tag.
 - The engine `rarity_rule` type ID is 258, and item property kind 130 stores a one-byte rarity ID. Do not renumber either.
 - Append `display_rgb` after `upgrade_from`. Preserve `ContentFieldSchema.BaselineFieldCount == 7` and old row bytes when the tail field is absent.
-- RGB is an integer from `0x000000` to `0xFFFFFF`, with opaque alpha. Missing rarity, missing field, malformed payload, and absent catalog row display white `0xFFFFFF`. A retired row still supplies its authored colour.
+- RGB is exactly three opaque bytes, with opaque alpha at presentation. The bundle writes `000000` for black and `ffffff` for white. Missing rarity, missing field, malformed payload, and absent catalog row display white `0xFFFFFF`. A retired row still supplies its authored colour.
 - No player journal, item payload, or database table format changes in this plan. The companion event replay plan changes new journal event versions.
 - Every code task gets a focused Release test and an explicit commit. Do not raise the KESIZE baseline or bypass hooks.
 - No em dash or en dash glyphs or prose semicolons in shipped text.
@@ -50,15 +50,15 @@
 **Interfaces:**
 
 - Consumes: `ContentFieldSchema`, `ContentRowTailRule`, `ContentRowCodecBase.CheckFieldValue`
-- Produces: `RarityRuleContentType.DisplayRgbField`, `DisplayRgbIndex == 7`, `BaselineFieldCount == 7`, `MaxDisplayRgb == 0xFFFFFF`
+- Produces: `RarityRuleContentType.DisplayRgbField`, `DisplayRgbIndex == 7`, `BaselineFieldCount == 7`, `DisplayRgbBytes == 3`
 
-- [ ] **Step 1: Make the schema and old-byte tests red.** Change the field-for-field fact to expect eight fields, baseline seven, and `display_rgb` at index seven as optional `Int` with client visibility. Add a fact that encodes the seven-field `rare` row, decodes it under the new schema, and asserts byte equality after re-encode. Add bounds cases `0`, `0xFFFFFF`, `-1`, and `0x1000000` through the existing `Encode` and `TryDecode` helpers. Use `ContentFieldValue.Absent(ContentFieldKind.Int)` for an old row's tail and `Int(value)` for a colour.
+- [ ] **Step 1: Make the schema and old-byte tests red.** Change the field-for-field fact to expect eight fields, baseline seven, and `display_rgb` at index seven as optional `OpaqueBytes` with client visibility. Add a fact that encodes the seven-field `rare` row, decodes it under the new schema, and asserts byte equality after re-encode. Use `ContentFieldValue.Absent(ContentFieldKind.OpaqueBytes)` for an old row's tail. Pin explicit `000000` and `ffffff` colours, then reject present values of one, two, or four bytes through the existing `Encode` and `TryDecode` helpers.
 
 ```csharp
 ContentTypeRegistration registration = Lookup(registry, InstanceContentTypeIds.RarityRuleTypeKey);
 ContentFieldSchema rule = registration.Schema;
 Assert.Equal(7, rule.BaselineFieldCount);
-AssertField(rule, 7, "display_rgb", ContentFieldKind.Int,
+AssertField(rule, 7, "display_rgb", ContentFieldKind.OpaqueBytes,
     null, ContentVisibility.Client, false);
 byte[] oldBytes = Forge(registration, "normal", 4, 6, 3, 3, 2, 0);
 Assert.Equal(oldBytes, Encode(registration, Decode(registration, oldBytes)));
@@ -78,18 +78,18 @@ Expected: the schema count or field lookup fails before code changes.
 public const int BaselineFieldCount = 7;
 public const string DisplayRgbField = "display_rgb";
 public const int DisplayRgbIndex = 7;
-public const int MaxDisplayRgb = 0xFFFFFF;
+public const int DisplayRgbBytes = 3;
 
 // Last entry of CreateSchema, after upgrade_from.
-new ContentFieldEntry(DisplayRgbField, ContentFieldKind.Int, null,
+new ContentFieldEntry(DisplayRgbField, ContentFieldKind.OpaqueBytes, null,
     ContentVisibility.Client, false),
 ], BaselineFieldCount);
 
 // New Codec.CheckFieldValue switch arm.
-DisplayRgbField when value.Number is < 0 or > MaxDisplayRgb => ReasonFieldMalformed,
+DisplayRgbField when !value.IsAbsent && value.Bytes.Length != DisplayRgbBytes => ReasonFieldMalformed,
 ```
 
-- [ ] **Step 4: Run the focused tests green and commit.** Include old seven-field byte equality, black, white, and both out-of-range cases.
+- [ ] **Step 4: Run the focused tests green and commit.** Include old seven-field byte equality, black, white, and one, two, and four byte refusals.
 
 ```bash
 dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release --filter FullyQualifiedName~RarityFamilyTests
@@ -109,7 +109,7 @@ git commit -m "catalog(rarity): store optional display colour"
 - Consumes: `ContentRuntime.Rows`, `RarityRuleContentType.DisplayRgbIndex`, `ItemInstancePayload.TryDecode`, `InstancePropertyKind.Rarity`
 - Produces: `public sealed class RarityDisplayColors`, `public const int DefaultRgb = 0xFFFFFF`, `public static RarityDisplayColors Over(ContentRuntime runtime)`, `public int RgbOf(ReadOnlySpan<byte> payload)`
 
-- [ ] **Step 1: Add failing colour read tests.** Build a runtime from `ContentSnapshotBuilder` and `InstanceContentTypes.Register`. Author live blue (`0x75B7F0`), retired coral (`0xFF9E7A`), and absent-colour rows. Use `ItemInstancePayloadBuilder` to make a payload with kind 130 and a neighboring property, then assert the resolved RGB. Also test empty, truncated, unknown-ID, and quarantine-wrapper bytes returning `DefaultRgb`.
+- [ ] **Step 1: Add failing colour read tests.** Build a runtime from `ContentSnapshotBuilder` and `InstanceContentTypes.Register`. Author live blue (`75b7f0`), retired coral (`ff9e7a`), and absent-colour rows as three-byte fields. Use `ItemInstancePayloadBuilder` to make a payload with kind 130 and a neighboring property, then assert the resolved RGB integer. Also test empty, truncated, unknown-ID, and quarantine-wrapper bytes returning `DefaultRgb`.
 
 ```csharp
 RarityDisplayColors colours = RarityDisplayColors.Over(runtime);
@@ -124,7 +124,7 @@ Assert.Equal(0xFF9E7A, colours.RgbOf(retiredPayload));
 dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release --filter FullyQualifiedName~RarityDisplayColorsTests
 ```
 
-- [ ] **Step 3: Implement the one read object.** At construction, resolve the schema index by field name and fill a 256-element RGB array with white. Walk `runtime.Rows` without dropping retired rows, replacing an entry only when the optional field has a value. Store one `InstancePropertyRegistry.CreateV1()` in the resolver. `RgbOf` decodes into a stack span, finds kind 130, checks its one-byte body, and indexes the cached array. Return white for any decode or reference miss without mutating input.
+- [ ] **Step 3: Implement the one read object.** At construction, resolve the schema index by field name and fill a 256-element RGB array with white. Walk `runtime.Rows` without dropping retired rows, packing each present three-byte value as `(red << 16) | (green << 8) | blue`. Store one `InstancePropertyRegistry.CreateV1()` in the resolver. `RgbOf` decodes into a stack span, finds kind 130, checks its one-byte body, and indexes the cached array. Return white for any decode or reference miss without mutating input.
 
 ```csharp
 public int RgbOf(ReadOnlySpan<byte> payload)
@@ -159,7 +159,7 @@ git commit -m "items(rarity): resolve display colour from instance payload"
 - Consumes: `RarityRuleContentType.DisplayRgbField`, `RarityDisplayColors.Over`, `RgbOf`
 - Produces: one public description of the optional field, white fallback, and code sample using an explicit runtime
 
-- [ ] **Step 1: Add the exact consumer example to the package README and the matching concept to the consumer guide.** Show the field as a 24 bit integer, explain why a missing row or instance property reads white, and state that the payload stores an ID rather than colour bytes.
+- [ ] **Step 1: Add the exact consumer example to the package README and the matching concept to the consumer guide.** Show the field as three RGB bytes exported in six-digit hex, explain why a missing row or instance property reads white, and state that the payload stores an ID rather than colour bytes.
 
 ```csharp
 RarityDisplayColors colours = RarityDisplayColors.Over(runtime);

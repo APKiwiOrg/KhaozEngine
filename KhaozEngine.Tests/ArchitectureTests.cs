@@ -37,6 +37,9 @@ public partial class ArchitectureTests
         "Physics.Bepu", "WorldStore.Sqlite", "WorldStore.SqlServer",
         "Server.Admin", "Social.Discord", "Commerce.Sqlite", "Commerce.SqlServer",
         "Identity.Oidc", "Identity.Discord", "Catalog.Sqlite", "Catalog.SqlServer", "Catalog.AzureBlob",
+        // The sign-in exchange core is needed only by a dedicated auth service, which should carry neither the sim
+        // stack nor a client umbrella. IdentityExchange_ReferencesOnlyIdentityAccountsAndNetcode pins its edges.
+        "Identity.Exchange",
         // The account registry seam is opt-in on the Commerce precedent: a server-only seam stays out of the
         // Server umbrella until more than its first consumers want it. Accounts_ReferencesOnlyNetcode pins its edge.
         "Accounts",
@@ -614,6 +617,20 @@ public partial class ArchitectureTests
         string[] actual = graph["KhaozEngine.Render3D.Ecs"].ProjectRefs.Select(Short).OrderBy(a => a, StringComparer.Ordinal).ToArray();
 
         Assert.Equal(new[] { "Ecs", "Render3D" }, actual);
+    }
+
+    [Fact]
+    public void IdentityExchange_ReferencesOnlyIdentityAccountsAndNetcode()
+    {
+        // The exchange core takes Identity for the validator seam and the wire DTOs, Accounts for the store, and
+        // Netcode for SignedToken and SigningSecret, and nothing else: no HTTP stack (the ASP.NET Core handler is a
+        // package over this one) and no third-party package.
+        Project exchange = LoadGraph()["KhaozEngine.Identity.Exchange"];
+        string[] packages = exchange.PackageRefs.Where(p => !IgnoredInfraPackages.Contains(p)).ToArray();
+
+        Assert.Equal(new[] { "Accounts", "Identity", "Netcode" },
+            exchange.ProjectRefs.Select(Short).OrderBy(a => a, StringComparer.Ordinal).ToArray());
+        Assert.Empty(packages);
     }
 
     [Fact]

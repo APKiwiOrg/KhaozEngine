@@ -19,7 +19,7 @@ namespace KhaozEngine.Render3D.Internal
     /// </list>
     /// <para>
     /// Factor 0 short-circuits to the exact per-channel expression, so the default (0) output is byte-identical to the
-    /// pre-chroma tonemap on real hardware (the golden gate proves it). This is the engine's most-shipped pixel.
+    /// pre-chroma tonemap on real hardware, guaranteed by the short-circuit itself rather than by a golden. This is the engine's most-shipped pixel.
     /// </para>
     /// </summary>
     internal static class TonemapMath

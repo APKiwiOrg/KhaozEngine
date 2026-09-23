@@ -270,7 +270,7 @@ float acesFilm(float x) {
 }
 // Mirrors KhaozEngine.Render3D.Internal.TonemapMath (keep the curve dispatch, luma, rescale, mix, and the
 // factor-0 short-circuit in sync). This is the engine's most-shipped pixel: at Params.z == 0 the output must
-// stay byte-identical to the pre-chroma tonemap, which the Metal golden gate proves on real hardware.
+// stay byte-identical to the pre-chroma tonemap, which the factor-0 short-circuit guarantees by construction.
 void main() {
     vec4 s = texture(sampler2D(Src, Samp), vUv);
     vec3 c = max(s.rgb, vec3(0.0)) * Params.x;

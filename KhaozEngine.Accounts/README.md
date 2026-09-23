@@ -83,5 +83,9 @@ a second list.
 
 ## Backends and conformance
 
-`InMemoryAccountStore` ships here. Every engine backend runs the shared `AccountStoreConformance` suite in
-`KhaozEngine.Accounts.Tests` unchanged, one subclass per backend, with the in-memory store as the reference.
+`InMemoryAccountStore` ships here. The durable backend is an opt-in sibling package in no umbrella:
+`KhaozEngine.Accounts.Sqlite` (`SqliteAccountStore`), on Grimhollow's flat `accounts` layout under a configurable
+table name, so that database is adopted in place.
+
+Every engine backend runs the shared `AccountStoreConformance` suite in `KhaozEngine.Accounts.Tests` unchanged, one
+subclass per backend, with the in-memory store as the reference.

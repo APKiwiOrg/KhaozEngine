@@ -15,6 +15,9 @@
          project beside InMemoryAccountStoreConformanceTests, each adding its own backend reference, so the one
          suite runs against every store unchanged. -->
     <ProjectReference Include="../KhaozEngine.Accounts/KhaozEngine.Accounts.csproj" />
+    <!-- The SQLite backend's conformance legs and its Grimhollow layout fixtures. The fixtures build legacy
+         tables with the driver the backend already brings. -->
+    <ProjectReference Include="../KhaozEngine.Accounts.Sqlite/KhaozEngine.Accounts.Sqlite.csproj" />
     <!-- For one fact only: AccountStoreRules.ReservedSubjectPrefix restates PositionHintCache.GuestAccountPrefix,
          which Accounts cannot reference, and this is the project that sees both. WorldStore is dependency-free. -->
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />

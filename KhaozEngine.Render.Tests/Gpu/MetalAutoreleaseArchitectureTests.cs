@@ -37,6 +37,13 @@ namespace KhaozEngine.Tests.Gpu
     /// added later, which is the failure mode the class doc of <c>KhaozEngineMetal</c> already records for its
     /// own ledger paragraph.</para>
     ///
+    /// <para><b>AND THE CALL GRAPH SEES THROUGH THE PACKAGE'S OWN SEAMS (#1114).</b> The raw IL names an
+    /// interface member at a call through <c>IMetalEncoderSink</c> or <c>IMetalRenderApi</c>, and a constructed
+    /// method at a call into a generic body, so each seam implementation and each generic definition used to be a
+    /// root nothing called and had to open a pool of its own. The walk now follows both: an interface call reaches
+    /// every package implementation, and a generic call reaches its definition. That is what lets the pool sit on
+    /// the command list member that caused an emission, with no exclusion list anywhere.</para>
+    ///
     /// <para><b>THE INTEROP LAYER ITSELF IS NOT AN ENTRY POINT</b>, and that carve-out is one namespace wide.
     /// Everything under <c>KhaozEngine.Gpu.Metal.Internal.ObjC</c> IS the layer: <c>MTLDevice.Name()</c> is a
     /// message send by definition and requiring it to open its own pool would put a push and a pop around every
@@ -150,6 +157,52 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Contains("MetalBackendProvider.CreateHeadless", roots, StringComparer.Ordinal);
             Assert.Contains("MetalBackendProvider.IsSupported", roots, StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// THE WALK SEES THROUGH THE ENCODER SEAM, which is the positive control for the interface edge and the
+        /// reason the seam's own members no longer need pools of their own (#1114). The encoder scope reaches
+        /// <c>-endEncoding</c> only through <see cref="IMetalEncoderSink"/>, so a walk that stopped at the
+        /// interface would find nothing here and report every caller of the scope clean for the wrong reason.
+        /// </summary>
+        [Fact]
+        public void TheWalk_SeesThroughTheEncoderSinkToTheInteropLayer()
+        {
+            MethodBase ensure = typeof(MetalEncoderScope)
+                .GetMethod(nameof(MetalEncoderScope.EnsureBlitEncoder),
+                    BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)
+                ?? throw new InvalidOperationException("MetalEncoderScope.EnsureBlitEncoder is gone.");
+
+            var path = new List<MethodBase>();
+            bool reaches = Reaches(ensure, new HashSet<MethodBase>(), path, stopAtPools: false);
+
+            _output.WriteLine(string.Join(" -> ", path.Select(Describe)));
+            Assert.True(reaches,
+                "The IL walk found no route from MetalEncoderScope.EnsureBlitEncoder to ObjCMsgSend, which means "
+                + "it stopped at IMetalEncoderSink rather than following the call to the package's implementation. "
+                + "Every caller of the scope would then read as clean because the walk is blind, not because it "
+                + "is pooled.");
+            Assert.Contains(path, m => m.DeclaringType == typeof(MetalEncoderSink));
+        }
+
+        /// <summary>
+        /// AND THE ENTRY-POINT SET NO LONGER HOLDS WHAT THE PACKAGE CALLS THROUGH A SEAM OR A GENERIC BODY
+        /// (#1114). Before the two indirect edges, every member of both encoder seams and every generic flush body
+        /// was a root, which is what forced a pool into each seam member however its caller was covered. The
+        /// command list's own members stay roots, which is where the pools sit.
+        /// </summary>
+        [Fact]
+        public void TheEntryPoints_ExcludeWhatThePackageCallsThroughASeamOrAGenericBody()
+        {
+            string[] roots = EntryPoints().Select(Describe).ToArray();
+
+            Assert.DoesNotContain("MetalEncoderSink.SetBufferOffset", roots, StringComparer.Ordinal);
+            Assert.DoesNotContain("MetalRenderApi.SetViewport", roots, StringComparer.Ordinal);
+            Assert.DoesNotContain("MetalCommandList.DrawWith", roots, StringComparer.Ordinal);
+            Assert.DoesNotContain("MetalBindRecords.Flush", roots, StringComparer.Ordinal);
+
+            Assert.Contains("MetalCommandList.Begin", roots, StringComparer.Ordinal);
+            Assert.Contains("MetalCommandList.DrawIndexed", roots, StringComparer.Ordinal);
         }
 
         // ---- The frame capture, in the other assembly ----------------------------------------------------------
@@ -278,7 +331,7 @@ namespace KhaozEngine.Tests.Gpu
             var called = new HashSet<MethodBase>();
             foreach (MethodBase method in all)
             {
-                foreach (MethodBase callee in Callees(method)) called.Add(callee);
+                foreach (MethodBase callee in PackageCallees(method)) called.Add(callee);
             }
 
             return all
@@ -320,7 +373,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             if (!seen.Add(method)) return false;
 
-            foreach (MethodBase callee in Callees(method))
+            foreach (MethodBase callee in PackageCallees(method))
             {
                 if (IsMessageSend(callee))
                 {
@@ -362,5 +415,60 @@ namespace KhaozEngine.Tests.Gpu
         static MethodBase[] Callees(MethodBase method) => IlCallGraph.Callees(method);
 
         static string Describe(MethodBase method) => IlCallGraph.Describe(method);
+
+        // ---- The package's own call graph ----------------------------------------------------------------
+
+        static readonly Assembly Package = typeof(MetalSupportProbe).Assembly;
+
+        static readonly Dictionary<MethodBase, MethodBase[]> _packageCallees = new();
+
+        // THE IL'S EDGES PLUS THE TWO IT SPELLS INDIRECTLY, which is what the rule walks. A call through one of the
+        // package's OWN interfaces is an edge to every package implementation of that member, the conservative
+        // answer: the walk cannot know which one a field holds, so it follows all of them. A call to a constructed
+        // generic method is an edge to its DEFINITION, the method the package declares and the entry-point set
+        // holds. Interfaces from another assembly add nothing, because their implementations here are exactly the
+        // consumer-facing members the entry-point set is meant to hold.
+        static MethodBase[] PackageCallees(MethodBase method)
+        {
+            lock (_packageCallees)
+            {
+                if (_packageCallees.TryGetValue(method, out MethodBase[]? cached)) return cached;
+            }
+
+            var found = new List<MethodBase>();
+            foreach (MethodBase callee in IlCallGraph.Callees(method))
+            {
+                MethodBase target = Definition(callee);
+                found.Add(target);
+                found.AddRange(Implementations(target));
+            }
+
+            MethodBase[] result = found.ToArray();
+            lock (_packageCallees) { _packageCallees[method] = result; }
+            return result;
+        }
+
+        static MethodBase Definition(MethodBase method)
+            => method is MethodInfo { IsGenericMethod: true, IsGenericMethodDefinition: false } constructed
+                && constructed.DeclaringType?.Assembly == Package
+                    ? constructed.GetGenericMethodDefinition()
+                    : method;
+
+        static IEnumerable<MethodBase> Implementations(MethodBase member)
+        {
+            Type? contract = member.DeclaringType;
+            if (contract is not { IsInterface: true } || contract.Assembly != Package) yield break;
+
+            foreach (Type type in Package.GetTypes())
+            {
+                if (type.IsInterface || !contract.IsAssignableFrom(type)) continue;
+
+                InterfaceMapping map = type.GetInterfaceMap(contract);
+                for (int i = 0; i < map.InterfaceMethods.Length; i++)
+                {
+                    if (map.InterfaceMethods[i].Equals(member)) yield return map.TargetMethods[i];
+                }
+            }
+        }
     }
 }

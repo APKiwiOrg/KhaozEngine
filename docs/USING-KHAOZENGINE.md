@@ -18134,8 +18134,9 @@ host loss. `IWorldStore` remains checkpoint persistence. `BatchedWriter<T>` rema
 Neither is an ownership authority.
 
 The core package provides the immutable values, `IMutationJournalStore`, `IMutationJournalMaintenance`,
-`IMutationJournalAgeMaintenance`, `InMemoryMutationJournalStore`, and `MutationJournalExecutor`. The SQLite and SQL
-Server provider packages implement the same store and maintenance seams. Their package READMEs cover schema modes
+`IMutationJournalAgeMaintenance`, the optional `IMutationJournalStreamListing`, `InMemoryMutationJournalStore`, and
+`MutationJournalExecutor`. The SQLite and SQL Server provider packages implement the same store, maintenance, and
+listing seams. Their package READMEs cover schema modes
 and permissions. The complete public type and limit reference is in
 [`KhaozEngine.WorldStore/README.md`](../KhaozEngine.WorldStore/README.md).
 
@@ -18328,6 +18329,11 @@ Projection bytes are opaque game-owned server bytes. An admin endpoint must auth
 lookup, parse the bytes with bounded versioned codecs, redact fields, and return a shaped DTO. Never send raw
 projection bytes to an untrusted browser. Poll only the selected stream while its detail view is active. There is no
 all-player polling endpoint and no inventory, bank, skill, or quest snapshot on simulation ticks.
+
+An operator tool that sweeps a whole store (a copy, a release rehearsal, an audit, or a migration check) lists
+streams through `IMutationJournalStreamListing.ListStreamsAsync` instead of querying the provider's tables. Each call
+reads one bounded page in ordinal key order, optionally by key prefix, and returns a continuation key until the
+listing is complete. Load each listed stream through the ordinary snapshot, event, and projection reads.
 
 ### Persisting players so the world survives a restart (`WorldPersistence`)
 

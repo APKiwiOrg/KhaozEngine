@@ -23,11 +23,13 @@ with every other SQLite store in the engine. Only the schema and the SQL live he
 SQLite-backed store should sit it on the same type rather than reimplementing that lifecycle.
 
 `SqliteMutationJournalStore` implements `IMutationJournalStore`, `IMutationJournalMaintenance`, and the additive
-`IMutationJournalAgeMaintenance` capability on the same connection lifecycle. It stores metadata and the restore
+`IMutationJournalAgeMaintenance` and `IMutationJournalStreamListing` capabilities on the same connection lifecycle.
+It stores metadata and the restore
 epoch, stream heads, immutable events, current projection sections, snapshots, replay receipts, and receipt stream
 ranges in normalized tables. Writes use one immediate transaction under the connection lease. Auto-create enables
 WAL only for an absent journal or after validating an existing supported schema. Validate-only verifies WAL without
 changing the journal mode. Foreign keys and a configurable busy timeout are enabled for the held connection.
+`ListStreamsAsync` reads one bounded page from the `journal_stream` key range the prefix selects.
 
 ```csharp
 using KhaozEngine.WorldStore.Journal;

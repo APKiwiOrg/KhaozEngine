@@ -19,7 +19,7 @@ internal sealed class SqlServerJournalManualTimeProvider(DateTimeOffset now) : T
     internal void Advance(TimeSpan amount) => current += amount;
 }
 
-internal sealed class SqlServerJournalPrefixStore : IMutationJournalStore
+internal sealed class SqlServerJournalPrefixStore : IMutationJournalStore, IMutationJournalStreamListing
 {
     private readonly SqlServerMutationJournalStore inner;
     private readonly byte[] operationMask;
@@ -128,6 +128,18 @@ internal sealed class SqlServerJournalPrefixStore : IMutationJournalStore
             compaction.SnapshotSchemaVersion,
             compaction.SnapshotData.ToArray(),
             compaction.PruneThroughVersion), cancellationToken);
+
+    public async Task<JournalStreamPage> ListStreamsAsync(JournalStreamQuery query, CancellationToken cancellationToken = default)
+    {
+        JournalStreamPage page = await inner.ListStreamsAsync(
+            new JournalStreamQuery(
+                query.MaxStreams,
+                Map(query.KeyPrefix),
+                query.AfterStreamKey is null ? null : Map(query.AfterStreamKey)),
+            cancellationToken);
+        JournalStreamEntry[] streams = page.Streams.Select(value => new JournalStreamEntry(Unmap(value.StreamKey), value.HeadVersion)).ToArray();
+        return new JournalStreamPage(streams, page.ContinuationKey is null ? null : Unmap(page.ContinuationKey));
+    }
 
     private JournalOperationIdentity Map(JournalOperationIdentity identity)
         => new(PhysicalOperationId(identity.OperationId), identity.AuthenticatedScope, identity.ActionKind, identity.NormalizedIntent.ToArray());

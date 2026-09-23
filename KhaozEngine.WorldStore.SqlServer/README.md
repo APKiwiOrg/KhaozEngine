@@ -29,9 +29,11 @@ transaction, so it is still one connection's worth of setup instead of one per r
 ## Mutation journal
 
 `SqlServerMutationJournalStore` implements `IMutationJournalStore`, `IMutationJournalMaintenance`, and the additive
-`IMutationJournalAgeMaintenance` capability for durable player mutations. It uses serializable SQL transactions,
-binary collations for stream and section identity, checksummed event and snapshot payloads, replay receipts,
-projection cursors, compaction, operation retention, and store epoch rotation.
+`IMutationJournalAgeMaintenance` and `IMutationJournalStreamListing` capabilities for durable player mutations. It
+uses serializable SQL transactions, binary collations for stream and section identity, checksummed event and
+snapshot payloads, replay receipts, projection cursors, compaction, operation retention, and store epoch rotation.
+`ListStreamsAsync` is one `SELECT TOP` over the `journal_stream` key range the prefix selects, ordered by the
+binary stream key.
 
 ```csharp
 using KhaozEngine.WorldStore.Journal;

@@ -41,6 +41,12 @@ automatically, so this is transparent to every other package.
   rejection sampling rather than modulo, because modulo bias on a crafting roll is an edge a player can farm.
   A consumer takes one as a constructor parameter: there is no ambient instance and no default, because a
   default is how a production server ends up on the test source.
+- `RandomDraw` - a bounded draw off an `IRandomSource` that always costs exactly one draw, so a stream stays
+  position stable when a tunable bound collapses. `Below(rng, exclusiveMax)` answers `[0, exclusiveMax)`, and a
+  bound of 0 or 1 answers 0 through `Skip` rather than a one-wide `NextInt` that would consume nothing.
+  `UpTo(rng, inclusiveMax)` answers `[0, inclusiveMax]`, the form a roll ladder is quoted in, and refuses
+  `int.MaxValue`. A negative bound is refused with `ArgumentOutOfRangeException` before any draw is spent.
+  Holds no state and decides no probability: the distribution is `NextInt`'s.
 - `StableHash` (14.9.0) - stateless, allocation-free integer hashing: `Mix(uint)`, `Mix(uint, uint)`,
   `Mix(uint, uint, uint)` fixed-arity hashes (FNV-1a accumulate + a Murmur3-style avalanche finalizer) and
   `ToUnitFloat(uint)` folding bits to a float in [0, 1). A pure key-to-value map (same inputs, same hash on every

@@ -55,7 +55,7 @@ public static class EquipProfileContentType
     [
         new ContentFieldEntry(SlotField, ContentFieldKind.Int, null, ContentVisibility.Client, true),
         new ContentFieldEntry(WeaponArchetypeField, ContentFieldKind.Int, null, ContentVisibility.Client, true),
-        new ContentFieldEntry(AttackField(unit), ContentFieldKind.Int, null, ContentVisibility.Client, true),
+        ContentDurationFields.Entry(unit, AttackField(unit), ContentVisibility.Client, true),
     ]);
 
     /// <summary>
@@ -68,7 +68,7 @@ public static class EquipProfileContentType
     /// fails loudly.
     /// </remarks>
     /// <param name="registry">A registry that is not frozen and carries neither this id nor this key.</param>
-    /// <param name="unit">The game's own time unit, which picks the duration field's name.</param>
+    /// <param name="unit">The game's own time unit, which picks the duration field's name, kind and scale.</param>
     /// <param name="validator">
     /// The type's own validator, or null for none. This package ships NONE for this type: it carries no
     /// rule a schema does not already make, so <see cref="GameContentTypes.Register"/> passes null here.

@@ -245,15 +245,17 @@ public class GameTypeSchemaGoldenTests
     }
 
     [Fact]
-    public void SecondsMovesTheFourDurationNamesAndNothingElse()
+    public void SecondsMovesTheFourDurationsToHundredthsAndNothingElse()
     {
-        // The unit picks a field NAME. Order, kinds, reference targets, visibility, required flags and
-        // scales are identical under either unit, which is what lets one reader serve both.
+        // The unit picks a duration field's NAME, and under Seconds its KIND and SCALE as well: a plain Int
+        // of ticks becomes a ScaledInt at scale 100, hundredths of a second, because whole seconds cannot
+        // hold a timing between two of them. Order, reference targets, visibility and required flags are
+        // identical under either unit, and every field that is not one of the four is identical outright.
         ContentFieldSchema[] ticks = EverySchema(ContentDurationUnit.Ticks).ToArray();
         ContentFieldSchema[] seconds = EverySchema(ContentDurationUnit.Seconds).ToArray();
 
         Assert.Equal(ticks.Length, seconds.Length);
-        var moved = new List<(string Ticks, string Seconds)>();
+        var moved = new List<(string, ContentFieldKind, int, string, ContentFieldKind, int)>();
         for (int type = 0; type < ticks.Length; type++)
         {
             Assert.Equal(ticks[type].Fields.Count, seconds[type].Fields.Count);
@@ -261,10 +263,10 @@ public class GameTypeSchemaGoldenTests
             {
                 ContentFieldEntry left = ticks[type].Fields[i];
                 ContentFieldEntry right = seconds[type].Fields[i];
-                Assert.Equal(left with { Name = right.Name }, right);
-                if (!string.Equals(left.Name, right.Name, System.StringComparison.Ordinal))
+                Assert.Equal(left with { Name = right.Name, Kind = right.Kind, Scale = right.Scale }, right);
+                if (left != right)
                 {
-                    moved.Add((left.Name, right.Name));
+                    moved.Add((left.Name, left.Kind, left.Scale, right.Name, right.Kind, right.Scale));
                 }
             }
         }
@@ -272,10 +274,10 @@ public class GameTypeSchemaGoldenTests
         Assert.Equal(
             new[]
             {
-                ("attack_delay_ticks", "attack_delay_seconds"),
-                ("attack_ticks", "attack_seconds"),
-                ("respawn_ticks", "respawn_seconds"),
-                ("base_ticks", "base_seconds"),
+                ("attack_delay_ticks", ContentFieldKind.Int, 1, "attack_delay_seconds", ContentFieldKind.ScaledInt, 100),
+                ("attack_ticks", ContentFieldKind.Int, 1, "attack_seconds", ContentFieldKind.ScaledInt, 100),
+                ("respawn_ticks", ContentFieldKind.Int, 1, "respawn_seconds", ContentFieldKind.ScaledInt, 100),
+                ("base_ticks", ContentFieldKind.Int, 1, "base_seconds", ContentFieldKind.ScaledInt, 100),
             },
             moved.ToArray());
     }

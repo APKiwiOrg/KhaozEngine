@@ -202,8 +202,10 @@ public class GameTypeCodecTests
     [Fact]
     public void TheUnitChangesNoEncodedByte()
     {
-        // A field NAME is not written into a row body, so the same numbers encode to the same bytes under
-        // either unit. That is what lets a game move its unit without restating a single authored row.
+        // Neither a field NAME nor the difference between an Int and a ScaledInt is written into a row body,
+        // because both kinds go out as the same varint, so the same numbers encode to the same bytes under
+        // either unit. The bytes do not say which unit wrote them: a game moving its unit restates the
+        // NUMBERS, ticks into hundredths of a second, and never the format.
         ContentTypeRegistry other = Registered(ContentDurationUnit.Seconds);
 
         foreach (ContentTypeRegistration registration in

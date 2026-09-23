@@ -172,4 +172,16 @@ static class GameTypeValidationFixtures
 
     internal static ContentFieldValue Scaled(long value)
         => ContentFieldValue.OfNumber(ContentFieldKind.ScaledInt, value);
+
+    /// <summary>
+    /// A stored duration in the kind <paramref name="unit"/> declares it: a plain Int of ticks, or a
+    /// ScaledInt of hundredths of a second. The kinds are LITERALS rather than the package's own helper, so
+    /// a fixture cannot agree with a helper that went wrong.
+    /// </summary>
+    internal static ContentFieldValue Duration(ContentDurationUnit unit, long stored) => unit switch
+    {
+        ContentDurationUnit.Ticks => Int(stored),
+        ContentDurationUnit.Seconds => Scaled(stored),
+        _ => throw new ArgumentOutOfRangeException(nameof(unit), unit, "A fixture duration is Ticks or Seconds."),
+    };
 }

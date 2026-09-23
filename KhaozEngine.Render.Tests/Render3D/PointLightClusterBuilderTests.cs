@@ -132,7 +132,8 @@ public sealed class PointLightClusterBuilderTests
 
         Assert.Equal(atZero.Depth, shifted.Depth);
         Assert.Equal(atZero.CameraForward, shifted.CameraForward);
-        Assert.Equal(atZero.Image, shifted.Image);
+        Assert.Equal(atZero.UsedUIntCount, shifted.UsedUIntCount);
+        Assert.Equal(atZero.Image[..atZero.UsedUIntCount], shifted.Image[..shifted.UsedUIntCount]);
     }
 
     [Fact]
@@ -185,29 +186,138 @@ public sealed class PointLightClusterBuilderTests
         Assert.True(float.IsFinite(builder.Depth.Z));
         Assert.Equal(PointLightClusterBuilder.ClusterCount, builder.OverflowedClusters);
         Assert.Equal(0, builder.LightReferenceCount);
+        Assert.Equal(PointLightClusterBuilder.HeaderRegionUInts, builder.UsedUIntCount);
+        for (int cluster = 0; cluster < PointLightClusterBuilder.ClusterCount; cluster++)
+            Assert.Equal(PointLightClusterBuilder.OverflowCount, builder.Image[cluster]);
+    }
+
+    [Fact]
+    public void SixtyFifthReferenceMarksOverflowAndStoresNoIndices()
+    {
+        var builder = new PointLightClusterBuilder();
+
+        builder.Build(Stack(65, new Vector3(1f, 0f, -1.5f), 0.1f), Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+
+        Assert.Equal(PointLightClusterBuilder.OverflowCount, builder.Image[PointLightClusterImage.ClusterIndex(8, 4, 0)]);
+        Assert.Equal(1, builder.OverflowedClusters);
+        // The diagnostic keeps its meaning: the 64 references the cluster accepted before it overflowed.
+        Assert.Equal(64, builder.LightReferenceCount);
+        Assert.Equal(PointLightClusterBuilder.HeaderRegionUInts, builder.UsedUIntCount);
+    }
+
+    [Fact]
+    public void SixtyFourReferencesFillAClusterInAscendingOrderWithoutOverflow()
+    {
+        var builder = new PointLightClusterBuilder();
+
+        builder.Build(Stack(64, new Vector3(1f, 0f, -1.5f), 0.1f), Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+
+        ReadOnlySpan<uint> stored = PointLightClusterImage.Lights(builder, PointLightClusterImage.ClusterIndex(8, 4, 0),
+            out bool overflow);
+        Assert.False(overflow);
+        Assert.Equal(64, stored.Length);
+        for (int i = 0; i < stored.Length; i++) Assert.Equal((uint)i, stored[i]);
+        Assert.Equal(0, builder.OverflowedClusters);
+    }
+
+    [Fact]
+    public void TheCompactImageKeepsTheBufferSizeAndHoldsAFullGrid()
+    {
+        Assert.Equal(940_032, PointLightClusterBuilder.ImageUIntCount * sizeof(uint));
+        Assert.Equal(864, PointLightClusterBuilder.HeaderRegionUvec4s);
+        Assert.Equal(231_552, PointLightClusterBuilder.IndexRegionUInts);
+        Assert.True(PointLightClusterBuilder.IndexRegionUInts
+            >= PointLightClusterBuilder.ClusterCount * PointLightClusterBuilder.MaxLightsPerCluster);
+        Assert.True(PointLightClusterBuilder.IndexRegionUInts < 1 << (32 - PointLightClusterBuilder.CountBits));
+        Assert.True(PointLightClusterBuilder.MaxLightsPerCluster < PointLightClusterBuilder.OverflowCount);
+    }
+
+    [Fact]
+    public void SixtyFourLightsReachingEveryClusterFillTheIndexRegionWithoutRunningOut()
+    {
+        var builder = new PointLightClusterBuilder();
+
+        builder.Build(Stack(64, new Vector3(0f, 0f, -13f), 100f), Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+
+        Assert.Equal(0, builder.OverflowedClusters);
+        Assert.Equal(PointLightClusterBuilder.ClusterCount * 64, builder.LightReferenceCount);
+        Assert.Equal(PointLightClusterBuilder.HeaderRegionUInts + PointLightClusterBuilder.ClusterCount * 64,
+            builder.UsedUIntCount);
         for (int cluster = 0; cluster < PointLightClusterBuilder.ClusterCount; cluster++)
         {
-            int offset = cluster * PointLightClusterBuilder.ClusterStrideUInts;
-            Assert.Equal(0u, builder.Image[offset]);
-            Assert.Equal(1u, builder.Image[offset + 1]);
+            Assert.Equal(((uint)(cluster * 64) << PointLightClusterBuilder.CountBits) | 64u, builder.Image[cluster]);
+            ReadOnlySpan<uint> stored = PointLightClusterImage.Lights(builder, cluster, out _);
+            for (int i = 0; i < 64; i++) Assert.Equal((uint)i, stored[i]);
         }
     }
 
     [Fact]
-    public void SixtyFifthReferenceSetsOverflowAndKeepsStableSubmittedIndices()
+    public void SixtyFiveLightsReachingEveryClusterOverflowEveryHeaderAndStoreNoIndices()
     {
         var builder = new PointLightClusterBuilder();
-        var lights = new ModelRenderer.PointLightData[65];
-        for (int i = 0; i < lights.Length; i++) lights[i] = Light(new Vector3(1f, 0f, -1.5f), 0.1f);
 
-        builder.Build(lights, Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        builder.Build(Stack(65, new Vector3(0f, 0f, -13f), 100f), Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
 
-        int offset = ClusterOffset(8, 4, 0);
-        Assert.Equal(64u, builder.Image[offset]);
-        Assert.Equal(1u, builder.Image[offset + 1]);
-        for (uint i = 0; i < 64; i++) Assert.Equal(i, builder.Image[offset + 4 + i]);
-        Assert.True(builder.OverflowedClusters > 0);
-        Assert.True(builder.LightReferenceCount >= 64);
+        Assert.Equal(0f, builder.Depth.W);
+        Assert.Equal(PointLightClusterBuilder.ClusterCount, builder.OverflowedClusters);
+        Assert.Equal(PointLightClusterBuilder.ClusterCount * 64, builder.LightReferenceCount);
+        Assert.Equal(PointLightClusterBuilder.HeaderRegionUInts, builder.UsedUIntCount);
+        for (int cluster = 0; cluster < PointLightClusterBuilder.ClusterCount; cluster++)
+            Assert.Equal(PointLightClusterBuilder.OverflowCount, builder.Image[cluster]);
+    }
+
+    [Fact]
+    public void ClusterIndicesAreContiguousInClusterOrderAndThePaddingIsZero()
+    {
+        var builder = new PointLightClusterBuilder();
+        ModelRenderer.PointLightData[] lights =
+        [
+            Light(new Vector3(0f, 0f, -2f), 1f),
+            Light(new Vector3(4f, 2f, -12f), 2f),
+            Light(new Vector3(-3f, -1f, -6f), 1.5f),
+        ];
+
+        builder.Build(lights, Perspective, Vector3.Zero, Forward, Perspective, Vector3.Zero);
+
+        int next = 0;
+        for (int cluster = 0; cluster < PointLightClusterBuilder.ClusterCount; cluster++)
+        {
+            uint header = builder.Image[cluster];
+            uint count = header & PointLightClusterBuilder.CountMask;
+            if (count == 0u)
+            {
+                Assert.Equal(0u, header);
+                continue;
+            }
+            Assert.NotEqual(PointLightClusterBuilder.OverflowCount, count);
+            Assert.Equal((uint)next, header >> PointLightClusterBuilder.CountBits);
+            ReadOnlySpan<uint> stored = PointLightClusterImage.Lights(builder, cluster, out _);
+            for (int i = 1; i < stored.Length; i++) Assert.True(stored[i - 1] < stored[i]);
+            next += (int)count;
+        }
+        int used = PointLightClusterBuilder.HeaderRegionUInts + next;
+        Assert.True(next > 0);
+        Assert.Equal((used + 3) & ~3, builder.UsedUIntCount);
+        for (int i = used; i < builder.UsedUIntCount; i++) Assert.Equal(0u, builder.Image[i]);
+    }
+
+    [Fact]
+    public void ASparseFrameAfterADenseOneMatchesAFreshBuilderOverItsUsedPrefix()
+    {
+        var reused = new PointLightClusterBuilder();
+        var fresh = new PointLightClusterBuilder();
+        ModelRenderer.PointLightData[] sparse =
+        [
+            Light(new Vector3(1f, 0.5f, -1.5f), 0.6f),
+            Light(new Vector3(-6f, 3f, -12f), 3f),
+        ];
+
+        reused.Build(Stack(65, new Vector3(0f, 0f, -13f), 100f), Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        reused.Build(sparse, Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+        fresh.Build(sparse, Ortho, Vector3.Zero, Forward, Ortho, Vector3.Zero);
+
+        Assert.Equal(fresh.UsedUIntCount, reused.UsedUIntCount);
+        Assert.Equal(fresh.Image[..fresh.UsedUIntCount], reused.Image[..reused.UsedUIntCount]);
     }
 
     [Fact]
@@ -239,23 +349,15 @@ public sealed class PointLightClusterBuilderTests
         Assert.True(ClusterContains(builder, x, y, z, light),
             $"cluster ({x},{y},{z}) did not contain submitted light {light}");
 
-    static bool ClusterContains(PointLightClusterBuilder builder, int x, int y, int z, uint light)
-    {
-        foreach (uint candidate in ClusterIndices(builder, x, y, z))
-            if (candidate == light) return true;
-        return false;
-    }
+    static bool ClusterContains(PointLightClusterBuilder builder, int x, int y, int z, uint light) =>
+        PointLightClusterImage.Contains(builder, x, y, z, light);
 
-    static ReadOnlySpan<uint> ClusterIndices(PointLightClusterBuilder builder, int x, int y, int z)
+    static ModelRenderer.PointLightData[] Stack(int count, Vector3 position, float radius)
     {
-        int offset = ClusterOffset(x, y, z);
-        int count = (int)builder.Image[offset];
-        return builder.Image.AsSpan(offset + PointLightClusterBuilder.HeaderUInts, count);
+        var lights = new ModelRenderer.PointLightData[count];
+        for (int i = 0; i < count; i++) lights[i] = Light(position, radius);
+        return lights;
     }
-
-    static int ClusterOffset(int x, int y, int z) =>
-        ((z * PointLightClusterBuilder.ClusterCountY + y) * PointLightClusterBuilder.ClusterCountX + x)
-        * PointLightClusterBuilder.ClusterStrideUInts;
 
     static int PerspectiveSlice(float depth, Vector4 depthParams)
     {

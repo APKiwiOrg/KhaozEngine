@@ -4,19 +4,38 @@ using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D.Internal;
 
-/// <summary>Builds the fixed clustered point-light index image consumed by lit receiver shaders. Each light first gets
-/// a conservative cluster range from <see cref="PointLightClusterRanges"/>, and each cluster then runs the exact plane
-/// test on only the lights whose range holds it, in ascending submitted order (issue #1112).</summary>
+/// <summary>Builds the compact clustered point-light image consumed by lit receiver shaders: one header uint per
+/// cluster, then each cluster's light indices, contiguous and in ascending submitted order. Each light first gets a
+/// conservative cluster range from <see cref="PointLightClusterRanges"/>, and each cluster runs the exact plane test on
+/// only the lights whose range holds it (issue #1112).</summary>
 internal sealed class PointLightClusterBuilder
 {
     internal const int ClusterCountX = 16;
     internal const int ClusterCountY = 9;
     internal const int ClusterCountZ = 24;
     internal const int MaxLightsPerCluster = 64;
-    internal const int HeaderUInts = 4;
-    internal const int ClusterStrideUInts = HeaderUInts + MaxLightsPerCluster;
     internal const int ClusterCount = ClusterCountX * ClusterCountY * ClusterCountZ;
-    internal const int ImageUIntCount = ClusterCount * ClusterStrideUInts;
+
+    /// <summary>The image keeps the size of the fixed layout it replaced, seventeen uvec4 per cluster or 940,032 bytes,
+    /// so the buffer, its binding, its stride and every size pin stay as they were.</summary>
+    internal const int ImageUIntCount = ClusterCount * 17 * 4;
+
+    /// <summary>One header uint per cluster at the start of the image, four to a uvec4.</summary>
+    internal const int HeaderRegionUInts = ClusterCount;
+    internal const int HeaderRegionUvec4s = HeaderRegionUInts / 4;
+
+    /// <summary>Everything after the headers holds light indices, four to a uvec4. It is at least
+    /// <see cref="MaxLightsPerCluster"/> for every cluster, so a full grid can never run it out.</summary>
+    internal const int IndexRegionUInts = ImageUIntCount - HeaderRegionUInts;
+
+    /// <summary>A header's low <see cref="CountBits"/> bits hold the cluster's light count and the high bits hold the
+    /// offset of its first index in the index region.</summary>
+    internal const int CountBits = 8;
+    internal const uint CountMask = (1u << CountBits) - 1u;
+
+    /// <summary>The count of a cluster that passed more than <see cref="MaxLightsPerCluster"/> lights. It stores no
+    /// indices and its fragments walk the complete list.</summary>
+    internal const uint OverflowCount = CountMask;
 
     const int BoundaryCount = (ClusterCountX + 1) * (ClusterCountY + 1);
     const float GeometryEpsilonScale = 1e-4f;
@@ -48,11 +67,20 @@ internal sealed class PointLightClusterBuilder
     /// <summary>Exact sphere tests the latest build ran, counted for the same reason.</summary>
     internal int SphereTests { get; private set; }
 
+    /// <summary>How many uints of <see cref="Image"/> the latest build wrote, the headers plus the stored indices rounded
+    /// up to a whole uvec4. Only this prefix is uploaded.</summary>
+    internal int UsedUIntCount { get; private set; }
+
+    int _indexCursor;
+
     internal void Build(ReadOnlySpan<ModelRenderer.PointLightData> lights,
         Matrix4x4 gpuCorrectedRenderViewProjection, Vector3 eyeRender, Vector3 forward,
         Matrix4x4 projection, Vector3 renderOrigin)
     {
-        Array.Clear(Image);
+        // Only the headers are cleared. Indices are written behind a cursor and the upload stops at it, so whatever an
+        // earlier frame left past the cursor is never uploaded and never read.
+        Array.Clear(Image, 0, HeaderRegionUInts);
+        _indexCursor = 0;
         OverflowedClusters = 0;
         LightReferenceCount = 0;
         PlaneSetsBuilt = 0;
@@ -67,7 +95,16 @@ internal sealed class PointLightClusterBuilder
         CameraForward = new Vector4(cameraForward, 0f);
         _ranges.Gather(lights, renderOrigin, eyeRender, cameraForward, _clipNear, _clipFar, _sliceDepth,
             FrameGeometryScale());
-        if (!AssignClusters(lights, renderOrigin)) MarkInvalid();
+        if (!AssignClusters(lights, renderOrigin))
+        {
+            MarkInvalid();
+            return;
+        }
+
+        // Round up to a whole uvec4 and zero the pad, so the upload is whole elements and the image is deterministic.
+        int used = HeaderRegionUInts + _indexCursor;
+        while ((used & 3) != 0) Image[used++] = 0u;
+        UsedUIntCount = used;
     }
 
     // Visits clusters in index order, z then y then x, testing each against only the lights whose range holds it. The
@@ -209,10 +246,12 @@ internal sealed class PointLightClusterBuilder
         ReadOnlySpan<int> survivors, ReadOnlySpan<PointLightClusterRanges.ClusterRange> ranges, int rowCount,
         int x, int y, int z)
     {
-        int offset = ((z * ClusterCountY + y) * ClusterCountX + x) * ClusterStrideUInts;
+        int cluster = (z * ClusterCountY + y) * ClusterCountX + x;
+        int first = HeaderRegionUInts + _indexCursor;
         ClusterPlanes planes = default;
         float clusterScale = 0f;
         bool planesBuilt = false;
+        bool overflow = false;
         int count = 0;
         for (int i = 0; i < rowCount; i++)
         {
@@ -235,15 +274,27 @@ internal sealed class PointLightClusterBuilder
             if (!planes.IntersectsSphere(center, radius, epsilon)) continue;
             if (count == MaxLightsPerCluster)
             {
-                Image[offset + 1] = 1u;
-                OverflowedClusters++;
+                overflow = true;
                 break;
             }
-            Image[offset + HeaderUInts + count] = (uint)light;
+            Image[first + count] = (uint)light;
             count++;
         }
-        Image[offset] = (uint)count;
+
+        // The diagnostic keeps its meaning: an overflowed cluster still counts the 64 references it accepted first.
         LightReferenceCount += count;
+        if (overflow)
+        {
+            // An overflowed cluster stores no indices. Its tentative ones sit past the cursor and the next cluster writes
+            // over them.
+            Image[cluster] = OverflowCount;
+            OverflowedClusters++;
+        }
+        else if (count > 0)
+        {
+            Image[cluster] = ((uint)_indexCursor << CountBits) | (uint)count;
+            _indexCursor += count;
+        }
         return true;
     }
 
@@ -278,13 +329,13 @@ internal sealed class PointLightClusterBuilder
 
     void MarkInvalid()
     {
-        Array.Clear(Image);
+        Array.Fill(Image, OverflowCount, 0, HeaderRegionUInts);
+        _indexCursor = 0;
+        UsedUIntCount = HeaderRegionUInts;
         Depth = new Vector4(0f, 0f, 0f, -1f);
         CameraForward = Vector4.Zero;
         OverflowedClusters = ClusterCount;
         LightReferenceCount = 0;
-        for (int cluster = 0; cluster < ClusterCount; cluster++)
-            Image[cluster * ClusterStrideUInts + 1] = 1u;
     }
 
     static bool TryPlane(Vector3 a, Vector3 b, Vector3 c, Vector3 inside, out Plane plane)

@@ -18,12 +18,20 @@ internal static class PointLightClusterImage
         return oracle.Image.AsSpan(offset + PointLightClusterOracle.HeaderUInts, (int)oracle.Image[offset]);
     }
 
-    /// <summary>The builder's stored indices and overflow flag, in the fixed layout it still shares with the oracle.</summary>
+    /// <summary>A cluster's stored indices and overflow flag in the compact layout: one header uint per cluster, the
+    /// count in the low 8 bits and the offset into the index region in the high 24. It also asserts the run lies
+    /// inside the uploaded prefix, which is what the shader can see.</summary>
     internal static ReadOnlySpan<uint> Lights(PointLightClusterBuilder builder, int cluster, out bool overflow)
     {
-        int offset = cluster * PointLightClusterBuilder.ClusterStrideUInts;
-        overflow = builder.Image[offset + 1] != 0u;
-        return builder.Image.AsSpan(offset + PointLightClusterBuilder.HeaderUInts, (int)builder.Image[offset]);
+        uint header = builder.Image[cluster];
+        uint count = header & PointLightClusterBuilder.CountMask;
+        overflow = count == PointLightClusterBuilder.OverflowCount;
+        if (overflow || count == 0u) return ReadOnlySpan<uint>.Empty;
+        int first = PointLightClusterBuilder.HeaderRegionUInts + (int)(header >> PointLightClusterBuilder.CountBits);
+        Assert.True(first + (int)count <= builder.UsedUIntCount,
+            $"cluster {cluster} reads indices {first} to {first + (int)count} past the uploaded prefix of "
+            + $"{builder.UsedUIntCount}");
+        return builder.Image.AsSpan(first, (int)count);
     }
 
     internal static bool Contains(PointLightClusterOracle oracle, int x, int y, int z, uint light) =>
@@ -52,7 +60,5 @@ internal static class PointLightClusterImage
                     + $"{actualOverflow}, brute force [{string.Join(",", expected.ToArray())}] with overflow "
                     + $"{expectedOverflow}");
         }
-        // Same layout until the compact image lands, so the whole image must match too. B3 removes this line.
-        Assert.True(oracle.Image.AsSpan().SequenceEqual(builder.Image), $"{context}: the images differ");
     }
 }

@@ -10,7 +10,8 @@ It reads in layers, and the sections below are in that order. The RECORD is the 
 registry, the refusal sets, the `KECQ` quarantine wrapper and the instance id allocator. The CONTAINER is
 container codec version 2, the paged container and its capacity gate, the merge rule and the registry-derived
 remap pass that brings a stored page forward. The WIRE is the visibility projection every replicated byte
-passes through, the one frame page delta built on it and the two byte resync request a client answers with.
+passes through, the one frame page delta and the whole viewer page built on it, and the two byte resync
+request a client answers with.
 The validator, the player-facing strings and the one telemetry call sit under those three.
 
 Over them sit the four things that PRODUCE and CHANGE a payload, which are the last four sections. The
@@ -410,6 +411,17 @@ and an entry's payload is a WINDOW into the page buffer rather than a copy, so a
 entry. `PageSlotInput` is one entry on the way in, and its payload is borrowed rather than copied until the
 page is written.
 
+**`Encode` projects nothing, so it is for the server's own reads.** It writes every payload as handed in, which
+for a container's own entries is the durable bytes, server-only and owner-only fields and whole quarantine
+wrappers included. That is right for the journal's projection section, a store and a snapshot, and wrong for
+anything a client receives. A page going to any VIEWER, its owner included, goes through
+`EncodeProjected(registry, viewerLevel, pageIndex, firstSlot, slotCount, contentVersion, entries)`, whose
+entries are the same `ContainerPageChange` values the page delta takes. Every payload goes through
+`ContainerPageProjection.ProjectPayload`, the member the delta projects through, so a page and a delta handed
+the same entries carry the same bytes for each
+([#1049](https://github.com/APKiwiOrg/KhaozEngine/issues/1049)). The page is spec 4.4's format and decodes
+through `TryDecode` like any other: only the payloads differ from the stored page.
+
 ## Paged containers, the capacity gate and the merge rule
 
 `PagedItemContainer` is a container held as pages, which is the shape a journal commit can rewrite one page
@@ -568,7 +580,8 @@ then ChangedCount changes, strictly ascending by slot:
 changes, so a sort over a hundred slot page produces a delta many times the frame cap. That is not a
 truncated message, it is a THROW out of the per-viewer serve loop, which takes the tick down for every player
 on the server. So `TryBuild` answers the bytes written, or `-1` when the next change would not fit, and `-1`
-means the caller sends the WHOLE PAGE through the fragmenter. Never a second delta frame: two deltas for one
+means the caller sends the WHOLE PAGE, encoded for that viewer by `ItemContainerPageCodec.EncodeProjected`,
+through the fragmenter. Never a second delta frame: two deltas for one
 page would have to be applied in order by a client that may have missed the first, which is the reassembly
 problem the fragmenter already solves once.
 
@@ -592,14 +605,17 @@ else already filtered. `TryBuild` takes the viewer's level and every payload goe
 filter, which is the point: an owner-only field reaches the owner and nobody else. The same change to the
 same rare is 73 bytes to the owner and 69 to everyone else, and the four bytes are the durability field. A
 payload that does not project carries NO bytes, which is the same fail-closed direction an unregistered kind
-takes.
+takes. That projection is `ContainerPageProjection.ProjectPayload`, the one member `EncodeProjected` writes
+through as well, so the whole page a delta falls back to cannot show a viewer more than the delta would.
 
 **A QUARANTINED entry abandons the delta.** A wrapper never decodes, so the projection has nothing to hand
 back, and writing the entry anyway produced the quarantined flag over a payload of zero bytes, which is a
 shape no spec defines and which the page codec refuses at both doors. Sending the wrapper's own bytes is not
 the other option: they are unprojected by construction, so a non-owner would receive the owner-only fields of
 the item inside. `TryBuild` answers `-1` and the caller sends the whole page through the fragmenter, which is
-the same rule an oversized change set already takes.
+the same rule an oversized change set already takes. That page is `EncodeProjected`'s, and it carries the entry
+HOLLOW: a wrapper holding the stored reason and stamped version over no original bytes. It verifies and seats
+on the client, so the item is visibly broken there, and the preserved bytes never leave the server.
 
 `ContainerPageSyncRequest` is the other half and the ONE new client-to-server message: two bytes,
 `[ContainerId][PageIndex]`, carrying nothing about an item's properties. It is what the client sends when it
@@ -1249,12 +1265,11 @@ every id space, every ordering rule, the stacking test, the paging shape, the pr
 byte passes through, the eighteen content types a roll and a craft read, and the three engines over them,
 which are the expensive things to change once data exists. What is absent is breadth, which is CONTENT: this
 package names no mod, no rarity, no currency and no tier, and a game authors every one of them. Beside that
-sit four named gaps on surfaces that already exist.
+sit three named gaps on surfaces that already exist.
 
 | Not here | Where it lands |
 |---|---|
 | a READER for the page delta, which ships the encoder alone while the fragmenter ships both halves | [#933](https://github.com/APKiwiOrg/KhaozEngine/issues/933) |
-| a per-viewer projection on the FULL PAGE send, which carries the stored bytes and therefore disagrees with the delta about what a non-owner sees | [#932](https://github.com/APKiwiOrg/KhaozEngine/issues/932) |
 | the lowered `max_stack` cap on the merge path, which saturates at `int.MaxValue` here and is reported after the fact by validator check 12 | [#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924) |
 | enforcement of spec 3.3's per-kind value widths, so the revealed mask is a full `ulong` at every door here | [#917](https://github.com/APKiwiOrg/KhaozEngine/issues/917) |
 

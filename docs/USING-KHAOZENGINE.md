@@ -16019,11 +16019,20 @@ if (written < 0)
 {
     // It would not fit ONE frame, or a change carries a QUARANTINED entry, whose wrapper never projects.
     // Send the WHOLE page through the fragmenter, never a second delta: two deltas for one page would have
-    // to be applied in order by a client that may have missed the first.
-    var entries = new PageSlotInput[page.EntryCount];
-    int count = page.CopyEntriesTo(entries);
-    byte[] encodedPage = ItemContainerPageCodec.Encode(
-        page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion, entries.AsSpan(0, count));
+    // to be applied in order by a client that may have missed the first. The page goes out through the
+    // VIEWER door, which projects every entry exactly as the delta would have and carries a quarantined one
+    // hollow. ItemContainerPageCodec.Encode projects nothing and is for the journal and the store alone.
+    var stored = new PageSlotInput[page.EntryCount];
+    int count = page.CopyEntriesTo(stored);
+    var entries = new ContainerPageChange[count];
+    for (int i = 0; i < count; i++)
+        entries[i] = ContainerPageChange.Occupied(stored[i], IsIdentified(stored[i]), RevealedMask(stored[i]));
+
+    byte[] encodedPage = ItemContainerPageCodec.EncodeProjected(
+        properties,
+        PropertyVisibility.OwnerOnly,          // the same viewer level the delta was built for
+        page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion,
+        entries);
 
     foreach (byte[] chunk in TileFragmentedMessage.Fragment(streamId, sequence, encodedPage))
         server.SendGameMessageTo(slot, kind: GameKinds.PageChunk, chunk);
@@ -16033,6 +16042,14 @@ else
     server.SendGameMessageTo(slot, kind: GameKinds.PageDelta, frame.AsSpan(0, written));
 }
 ```
+
+**A page going to a viewer has ONE door too.** `ItemContainerPageCodec.EncodeProjected` takes the same
+`ContainerPageChange` values the delta takes and projects each payload through
+`ContainerPageProjection.ProjectPayload`, the member the delta projects through, so the whole page and the
+delta cannot disagree about what one viewer sees. A quarantined entry crosses HOLLOW: a wrapper carrying the
+stored reason and stamped version over no original bytes, which verifies and seats on the client while the
+preserved bytes stay on the server. The raw `Encode` projects nothing and writes the durable bytes, which is
+right for the journal's projection section and a store, and never for a client.
 
 Both projections descend into a SOCKET. Kind 132 is visible to everyone, so a filter that kept or dropped
 whole top-level fields shipped the gem inside a socket exactly as stored, and that gem's own owner-only
@@ -16063,13 +16080,11 @@ types and the item generator are spec 20 phase 4, and the crafting framework and
 are phase 5, both in `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`. `ContainerOperationKind.Craft`
 already carries the operation and its page write, and the event BODY is the crafting framework's to encode.
 
-Four named gaps sit on surfaces that DO exist. The page delta ships an encoder and no reader, while the
-fragmenter ships both halves (https://github.com/APKiwiOrg/KhaozEngine/issues/933). A full page send carries
-the STORED bytes rather than a per-viewer projection, so it and the delta disagree about what a non-owner
-sees (https://github.com/APKiwiOrg/KhaozEngine/issues/932). A lowered `max_stack` is not enforced on the
-merge path, which saturates at `int.MaxValue` and is reported after the fact by validator check 12
-(https://github.com/APKiwiOrg/KhaozEngine/issues/924). And a container operation's events are written with
-nothing able to read one back (https://github.com/APKiwiOrg/KhaozEngine/issues/941).
+Three named gaps sit on surfaces that DO exist. The page delta ships an encoder and no reader, while the
+fragmenter ships both halves (https://github.com/APKiwiOrg/KhaozEngine/issues/933). A lowered `max_stack` is
+not enforced on the merge path, which saturates at `int.MaxValue` and is reported after the fact by validator
+check 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/924). And a container operation's events are written
+with nothing able to read one back (https://github.com/APKiwiOrg/KhaozEngine/issues/941).
 
 ---
 

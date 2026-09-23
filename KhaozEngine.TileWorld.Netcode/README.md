@@ -1232,9 +1232,10 @@ fit. The split is by OWNERSHIP of the bytes: `ContainerPageDelta` builds the del
 `ContainerPageSyncRequest` is the two byte resync a client answers with, both in `KhaozEngine.ItemInstances`,
 because the entry body they carry is the container codec's, and this package fragments whatever bytes it is
 handed and gains no items dependency at all. `ContainerPageDelta.TryBuild` answers -1 when the next change
-would not fit one frame, and -1 is the caller's cue to `Fragment` the whole encoded page instead. Never a
-second delta frame: two deltas for one page would have to be applied in order by a client that may have
-missed the first, which is the reassembly problem this type already solves once.
+would not fit one frame, and -1 is the caller's cue to `Fragment` the whole page instead, encoded for that
+viewer by `ItemContainerPageCodec.EncodeProjected`, which projects every entry exactly as the delta does.
+Never a second delta frame: two deltas for one page would have to be applied in order by a client that may
+have missed the first, which is the reassembly problem this type already solves once.
 
 Two facts a server composing the two owes its own code. `TileProtocol.MaxGameMessageBytes` is COPIED into
 `ContainerPageDelta.MaxGameMessageBytes`, because that package is `Foundation` and this one is `Server`, and

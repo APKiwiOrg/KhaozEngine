@@ -17,9 +17,10 @@ namespace KhaozEngine.Identity.Exchange;
 /// <see cref="ExchangeAsync"/> runs one fixed sequence:
 /// </para>
 /// <list type="number">
-/// <item>The shape check. An unknown provider id, or a credential that is blank or longer than
-/// <see cref="AuthExchangeOptions.MaxCredentialChars"/>, answers <see cref="AuthExchangeOutcome.Malformed"/> before
-/// any provider call.</item>
+/// <item>The shape check. An unknown provider id, or a credential that is blank, longer than
+/// <see cref="AuthExchangeOptions.MaxCredentialChars"/>, or carries anything but visible ASCII (a control character,
+/// a space or a non-ASCII character), answers <see cref="AuthExchangeOutcome.Malformed"/> before any provider
+/// call.</item>
 /// <item>The provider. <see cref="IIdentityValidator.ValidateDetailedAsync"/> runs under
 /// <see cref="AuthExchangeOptions.ProviderTimeout"/>. A reported outage (a provider 5xx or 429), a validator that
 /// throws, or the deadline answers <see cref="AuthExchangeOutcome.Unavailable"/>, and a refusal answers
@@ -111,7 +112,8 @@ public sealed class AuthExchange
     {
         if (provider is null || !validators.TryGetValue(provider, out IIdentityValidator? validator))
             return new AuthExchangeResult(AuthExchangeOutcome.Malformed, Cause: AuthExchangeCause.UnknownProvider);
-        if (string.IsNullOrWhiteSpace(accessToken) || accessToken.Length > options.MaxCredentialChars)
+        if (string.IsNullOrEmpty(accessToken) || accessToken.Length > options.MaxCredentialChars
+            || !IsVisibleAscii(accessToken))
             return new AuthExchangeResult(AuthExchangeOutcome.Malformed, Cause: AuthExchangeCause.CredentialShape);
         ct.ThrowIfCancellationRequested();
 
@@ -193,17 +195,20 @@ public sealed class AuthExchange
     }
 
     // The validator under the deadline. The linked token lets a cooperative validator abort its call, and WaitAsync
-    // stops waiting at the deadline even for one that ignores the token, so no validator holds a request past it.
+    // stops waiting at the deadline even for one that ignores the token, so no validator holds a request past it. The
+    // call starts on the thread pool, because a validator that blocks before returning its task (synchronous I/O ahead
+    // of its first await) would otherwise hold this caller before there is any task to put a deadline on.
     private async Task<(IdentityValidation Validation, AuthExchangeResult? Failure)> ValidateUnderDeadlineAsync(
         string provider, IIdentityValidator validator, string accessToken, CancellationToken ct)
     {
         using var deadline = new CancellationTokenSource(options.ProviderTimeout, options.Clock);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
+        CancellationToken token = linked.Token;
         Task<IdentityValidation>? call = null;
         try
         {
-            call = validator.ValidateDetailedAsync(accessToken, linked.Token);
-            IdentityValidation validation = await call.WaitAsync(linked.Token).ConfigureAwait(false);
+            call = Task.Run(() => validator.ValidateDetailedAsync(accessToken, token), token);
+            IdentityValidation validation = await call.WaitAsync(token).ConfigureAwait(false);
             return validation.Outcome == IdentityValidationOutcome.ProviderUnavailable
                 ? (default, Unavailable(AuthExchangeCause.ProviderUnavailable, fault: null))
                 : (validation, null);
@@ -226,6 +231,18 @@ public sealed class AuthExchange
 
     private static AuthExchangeResult Unavailable(AuthExchangeCause cause, Exception? fault) =>
         new(AuthExchangeOutcome.Unavailable, Fault: fault, Cause: cause);
+
+    // Every bearer credential a provider issues (an OAuth token, a JWT) is visible ASCII, '!' to '~'. Anything else is
+    // garbage to refuse here: a control character reaching a provider's Authorization header throws inside the HTTP
+    // client, which would answer an unauthenticated caller with an outage and a logged stack trace.
+    private static bool IsVisibleAscii(string credential)
+    {
+        foreach (char c in credential)
+        {
+            if (c is < '!' or > '~') return false;
+        }
+        return true;
+    }
 
     // A validator abandoned at the deadline may still fault later. Observing it keeps that from surfacing as an
     // unobserved task exception long after the request was answered.

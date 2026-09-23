@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -67,6 +68,46 @@ public class AuthExchangeOutcomeTests
 
         AuthExchangeResult at = await exchange.ExchangeAsync("discord", atCap);
         Assert.Equal(AuthExchangeOutcome.Ok, at.Outcome);
+        Assert.Equal(1, validator.Calls);
+    }
+
+    // Code points rather than strings, so no control character lands in a test case name.
+    [Theory]
+    [InlineData(0x0D)]
+    [InlineData(0x0A)]
+    [InlineData(0x00)]
+    [InlineData(0x09)]
+    [InlineData(0x20)]
+    [InlineData(0x7F)]
+    [InlineData(0xE9)]
+    [InlineData(0x2028)]
+    public async Task ACredentialOutsideVisibleAscii_IsMalformed_BeforeAnyProviderCall(int codePoint)
+    {
+        // A CR or LF reaching a provider's Authorization header throws inside the HTTP client, which used to answer an
+        // unauthenticated caller with a 503 and a logged stack trace.
+        string credential = "tok" + (char)codePoint + "en";
+        ScriptedValidator validator = ScriptedValidator.Users((credential, "1", "Wren"));
+        var store = new CountingAccountStore(whitelistOnCreate: true);
+
+        AuthExchangeResult result = await ExchangeFixture.Build(validator, store).ExchangeAsync("discord", credential);
+
+        Assert.Equal(AuthExchangeOutcome.Malformed, result.Outcome);
+        Assert.Equal(AuthExchangeCause.CredentialShape, result.Cause);
+        Assert.Null(result.Fault);
+        Assert.Equal(0, validator.Calls);
+        Assert.Equal(0, store.Calls);
+    }
+
+    [Fact]
+    public async Task EveryVisibleAsciiCharacter_PassesTheShapeCheck()
+    {
+        string credential = new(Enumerable.Range(0x21, 0x7E - 0x21 + 1).Select(c => (char)c).ToArray());
+        ScriptedValidator validator = ScriptedValidator.Users((credential, "1", "Wren"));
+
+        AuthExchangeResult result = await ExchangeFixture.Build(validator, new CountingAccountStore(true))
+            .ExchangeAsync("discord", credential);
+
+        Assert.Equal(AuthExchangeOutcome.Ok, result.Outcome);
         Assert.Equal(1, validator.Calls);
     }
 
@@ -166,6 +207,39 @@ public class AuthExchangeOutcomeTests
         Assert.Equal(AuthExchangeCause.ProviderTimeout, result.Cause);
         // The abandoned call faulting later is observed rather than left to surface as an unobserved exception.
         never.SetException(new HttpRequestException("late"));
+    }
+
+    [Fact]
+    public async Task TheProviderDeadline_HoldsEvenForAValidatorThatBlocksBeforeReturningItsTask()
+    {
+        // A validator doing synchronous I/O before its first await never hands back a task to wait on, so a deadline
+        // applied to that task alone starts only once the block is over.
+        using var release = new ManualResetEventSlim();
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var blocking = new ScriptedValidator("discord", (_, _) =>
+        {
+            release.Wait(TimeSpan.FromSeconds(10));
+            exited.TrySetResult();
+            return Task.FromResult(IdentityValidation.Verified(
+                new VerifiedIdentity("1", "discord", "Wren", new Dictionary<string, string>())));
+        });
+        var options = new AuthExchangeOptions
+        {
+            TokenLifetime = ExchangeFixture.Lifetime,
+            ProviderTimeout = TimeSpan.FromMilliseconds(50),
+            Clock = new FixedClock(Now),
+        };
+        var store = new CountingAccountStore(whitelistOnCreate: true);
+        var exchange = new AuthExchange(new[] { blocking }, store, ExchangeFixture.Key(), options);
+
+        AuthExchangeResult result = await exchange.ExchangeAsync("discord", "tok");
+        bool answeredWhileBlocked = !exited.Task.IsCompleted;
+        release.Set();
+        await exited.Task.WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.True(answeredWhileBlocked);
+        Assert.Equal((AuthExchangeOutcome.Unavailable, AuthExchangeCause.ProviderTimeout), (result.Outcome, result.Cause));
+        Assert.Equal(0, store.Calls);
     }
 
     [Fact]

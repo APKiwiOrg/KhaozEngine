@@ -69,6 +69,10 @@ public static class AccountStoreRules
                 "ambiguous or unable to ride a SignedToken.", nameof(signIn));
         if (string.IsNullOrWhiteSpace(providerSubject))
             throw new ArgumentException("The sign-in has no provider subject.", nameof(signIn));
+        if (HasSurroundingWhitespace(providerId) || HasSurroundingWhitespace(providerSubject))
+            throw new ArgumentException(
+                "A provider id or subject may not begin or end with whitespace. SQL Server compares padded strings, so " +
+                "'x' and 'x ' would collide on one account.", nameof(signIn));
         if (providerSubject.Contains('.'))
             throw new ArgumentException(
                 "A provider subject containing '.' cannot ride a SignedToken, whose fields are split on it. The engine " +
@@ -112,6 +116,10 @@ public static class AccountStoreRules
     /// </summary>
     public static bool IsAdmissibleSubject(string? subject) =>
         !string.IsNullOrEmpty(subject)
+        && !HasSurroundingWhitespace(subject)
         && !subject.Contains('.')
         && !subject.StartsWith(ReservedSubjectPrefix, StringComparison.Ordinal);
+
+    private static bool HasSurroundingWhitespace(string value) =>
+        value.Length > 0 && (char.IsWhiteSpace(value[0]) || char.IsWhiteSpace(value[^1]));
 }

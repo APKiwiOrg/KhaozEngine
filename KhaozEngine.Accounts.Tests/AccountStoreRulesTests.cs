@@ -83,6 +83,26 @@ public class AccountStoreRulesTests
     [InlineData(null, false)]
     [InlineData("discord:1.2", false)]
     [InlineData("guest:3", false)]
+    [InlineData("discord:4 ", false)]
+    [InlineData(" discord:4", false)]
     public void IsAdmissibleSubject_IsWhatATokenCarriesAndTheJoinGateAdmits(string? subject, bool admissible) =>
         Assert.Equal(admissible, AccountStoreRules.IsAdmissibleSubject(subject));
+
+    // SQL Server compares padded strings, so a provider subject with a trailing space would collide with the same
+    // subject without it on the primary key of a legacy table. The seam refuses the shape before any store sees it.
+    [Theory]
+    [InlineData("discord", "80351110224678912 ")]
+    [InlineData("discord", " 80351110224678912")]
+    [InlineData("discord", "80351110224678912\t")]
+    [InlineData("discord ", "80351110224678912")]
+    [InlineData(" discord", "80351110224678912")]
+    public void MintSubject_RefusesSurroundingWhitespace(string provider, string providerSubject)
+    {
+        var e = Assert.Throws<ArgumentException>(() => AccountStoreRules.MintSubject(SignIn(provider, providerSubject)));
+        Assert.DoesNotContain("80351110224678912", e.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MintSubject_KeepsInnerWhitespace() =>
+        Assert.Equal("oidc:first last", AccountStoreRules.MintSubject(SignIn("oidc", "first last")));
 }

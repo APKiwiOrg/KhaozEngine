@@ -37,8 +37,10 @@ guessing from the operating system, so an unpinned fallback is named correctly.
 `GpuTestGate.BackendName`, including canonical hyphens such as `metal-native`.
 
 `tolerance` is an integer in 8-bit per-channel units from 0 through 255. The helper divides it by `255f` for
-`GoldenGrid`'s normalized comparison. It compares in the canonical serialized grid precision, so a golden written
-from a capture passes a later check of the same bytes even at tolerance zero.
+`GoldenGrid`'s normalized comparison. The fresh downsample stays unrounded while the committed grid has four
+decimal places. The comparison therefore adds `0.00005f`, half of one stored decimal step, plus a `0.0000001f`
+floating-point epsilon to the normalized tolerance. This keeps the integer boundary inclusive and lets a golden
+written from a capture pass a later check of the same bytes even at tolerance zero.
 
 ```csharp
 GoldenResult result = GoldenImage.Check(goldenDirectory, "menu", rgba, width, height, tolerance: 15);
@@ -51,6 +53,9 @@ GoldenResult result = GoldenImage.Check(goldenDirectory, "menu", rgba, width, he
 returns a skip reason that names the expected file. A mismatch returns `Pass = false` and names the worst grid
 cell, colour channel, compared values and difference. Scene names must be portable single-file names. A malformed
 grid length or non-finite reference cell returns an actionable failure instead of passing or escaping its folder.
+Windows device stems such as `CON`, `PRN`, `AUX`, `NUL`, `COM1` and `LPT1` are rejected case-insensitively, even
+when followed by an extension. The documented superscript-digit forms `COM¹` through `COM³` and `LPT¹` through
+`LPT³` are reserved too.
 
 Set `KE_UPDATE_GOLDENS=1` to create the directory and write the canonical golden instead of comparing. Only the
 exact value `1` enables writes. Unset, empty and every other value keep the normal comparison behavior. A read,

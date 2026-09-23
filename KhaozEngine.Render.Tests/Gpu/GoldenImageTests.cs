@@ -13,17 +13,33 @@ namespace KhaozEngine.Tests.Gpu
         const int Height = GoldenGrid.DefaultGridH;
 
         [Fact]
-        public void Difference_within_byte_tolerance_passes()
+        public void Exact_byte_tolerance_boundary_passes()
         {
             using var temp = new TempDirectory();
             using var update = new EnvironmentVariableScope("KE_UPDATE_GOLDENS", null);
             byte[] golden = Frame();
             WriteGolden(temp.Path, "still", "metal-native", golden);
             byte[] actual = Frame();
-            SetChannel(actual, 4, 3, 0, 7);
+            SetChannel(actual, 4, 3, 0, 8);
 
             GoldenResult result = GoldenImage.Check(
                 temp.Path, "still", actual, Width, Height, 8, "metal-native");
+
+            Assert.True(result.Pass, result.Detail);
+            Assert.False(result.Rebaked);
+            Assert.Null(result.SkipReason);
+        }
+
+        [Fact]
+        public void Same_nonzero_source_passes_at_zero_tolerance()
+        {
+            using var temp = new TempDirectory();
+            using var update = new EnvironmentVariableScope("KE_UPDATE_GOLDENS", null);
+            byte[] source = Frame(23, 45, 67);
+            WriteGolden(temp.Path, "same", "metal-native", source);
+
+            GoldenResult result = GoldenImage.Check(
+                temp.Path, "same", source, Width, Height, 0, "metal-native");
 
             Assert.True(result.Pass, result.Detail);
             Assert.False(result.Rebaked);
@@ -172,6 +188,21 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData("scene?name")]
         [InlineData("scene.")]
         [InlineData("scene ")]
+        [InlineData("CON")]
+        [InlineData("con.txt")]
+        [InlineData("PrN.snapshot")]
+        [InlineData("AUX")]
+        [InlineData("nul.anything")]
+        [InlineData("COM1")]
+        [InlineData("com9.grid")]
+        [InlineData("COM¹")]
+        [InlineData("com².txt")]
+        [InlineData("CoM³.grid")]
+        [InlineData("LPT1")]
+        [InlineData("lPt9.txt")]
+        [InlineData("LPT¹")]
+        [InlineData("lpt².txt")]
+        [InlineData("LpT³.grid")]
         public void Unsafe_scene_names_are_rejected(string scene)
         {
             using var temp = new TempDirectory();
@@ -180,6 +211,21 @@ namespace KhaozEngine.Tests.Gpu
                 GoldenImage.Check(temp.Path, scene, Frame(), Width, Height, 0, "metal-native"));
 
             Assert.Contains("file name", error.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Theory]
+        [InlineData("console")]
+        [InlineData("com10")]
+        [InlineData("lpt0")]
+        public void Device_name_prefixes_that_are_not_reserved_remain_valid(string scene)
+        {
+            using var temp = new TempDirectory();
+            using var update = new EnvironmentVariableScope("KE_UPDATE_GOLDENS", null);
+
+            GoldenResult result = GoldenImage.Check(
+                temp.Path, scene, Frame(), Width, Height, 0, "metal-native");
+
+            Assert.NotNull(result.SkipReason);
         }
 
         [Theory]

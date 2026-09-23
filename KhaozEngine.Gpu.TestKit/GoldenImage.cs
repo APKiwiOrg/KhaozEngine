@@ -16,12 +16,16 @@ namespace KhaozEngine.Gpu.TestKit
     public static class GoldenImage
     {
         const string UpdateEnvironmentVariable = "KE_UPDATE_GOLDENS";
+        const float GoldenTextHalfStep = 0.00005f;
+        const float ComparisonEpsilon = 0.0000001f;
 
         /// <summary>
         /// Downsamples an RGBA8 capture and compares it with
         /// <c>&lt;goldenDirectory&gt;/&lt;scene&gt;.&lt;actual-backend&gt;.txt</c>. The tolerance is in 8-bit channel
         /// units from 0 through 255 and is converted to the normalized <see cref="GoldenGrid"/> unit by dividing
-        /// by 255. Set <c>KE_UPDATE_GOLDENS=1</c> to write the canonical golden instead of comparing.
+        /// by 255. Comparison adds half of one four-decimal golden-text step and a small floating-point epsilon to
+        /// account for stored-reference rounding. Set <c>KE_UPDATE_GOLDENS=1</c> to write the canonical golden
+        /// instead of comparing.
         /// </summary>
         public static GoldenResult Check(string goldenDirectory, string scene, ReadOnlySpan<byte> rgba,
             int width, int height, int tolerance)
@@ -42,9 +46,8 @@ namespace KhaozEngine.Gpu.TestKit
         {
             ValidateInput(goldenDirectory, scene, rgba, width, height, tolerance, backendName);
 
-            float normalizedTolerance = tolerance / 255f;
-            float[] sampled = GoldenGrid.Downsample(rgba.ToArray(), width, height);
-            float[] actual = GoldenGrid.Deserialize(GoldenGrid.Serialize(sampled));
+            float normalizedTolerance = (tolerance / 255f) + GoldenTextHalfStep + ComparisonEpsilon;
+            float[] actual = GoldenGrid.Downsample(rgba.ToArray(), width, height);
             string path = Path.Combine(goldenDirectory, $"{scene}.{backendName}.txt");
 
             if (Environment.GetEnvironmentVariable(UpdateEnvironmentVariable) == "1")
@@ -108,7 +111,8 @@ namespace KhaozEngine.Gpu.TestKit
                     false,
                     null,
                     $"Golden '{scene}' passed on backend '{backendName}'. Worst channel difference "
-                    + $"{ByteUnits(comparison.WorstDiff)}/255 within tolerance {tolerance}/255.");
+                    + $"{ByteUnits(comparison.WorstDiff)}/255 within tolerance {tolerance}/255 plus the "
+                    + "0.00005 golden-text precision allowance.");
             }
 
             GoldenGridOffender worst = comparison.Offenders[0];
@@ -118,7 +122,8 @@ namespace KhaozEngine.Gpu.TestKit
 
             return Failure(
                 $"Golden '{scene}' regressed on backend '{backendName}': {comparison.Offenders.Count} "
-                + $"channel(s) exceeded tolerance {tolerance}/255. Worst cell ({cellX},{cellY}) {channel}: "
+                + $"channel(s) exceeded tolerance {tolerance}/255 plus the 0.00005 golden-text precision "
+                + $"allowance. Worst cell ({cellX},{cellY}) {channel}: "
                 + $"got {worst.Got.ToString("0.####", CultureInfo.InvariantCulture)}, "
                 + $"wanted {worst.Want.ToString("0.####", CultureInfo.InvariantCulture)}, "
                 + $"difference {ByteUnits(worst.Diff)}/255 normalized "
@@ -205,7 +210,8 @@ namespace KhaozEngine.Gpu.TestKit
                 || value is "." or ".."
                 || value.EndsWith(' ')
                 || value.EndsWith('.')
-                || HasPortableInvalidFileNameCharacter(value))
+                || HasPortableInvalidFileNameCharacter(value)
+                || HasWindowsReservedDeviceStem(value))
             {
                 throw new ArgumentException(
                     $"{parameterName} must be one safe portable file name without directory separators.",
@@ -223,5 +229,26 @@ namespace KhaozEngine.Gpu.TestKit
 
             return false;
         }
+
+        static bool HasWindowsReservedDeviceStem(string value)
+        {
+            int dot = value.IndexOf('.', StringComparison.Ordinal);
+            ReadOnlySpan<char> stem = value.AsSpan(0, dot < 0 ? value.Length : dot);
+            if (stem.Equals("CON", StringComparison.OrdinalIgnoreCase)
+                || stem.Equals("PRN", StringComparison.OrdinalIgnoreCase)
+                || stem.Equals("AUX", StringComparison.OrdinalIgnoreCase)
+                || stem.Equals("NUL", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (stem.Length != 4 || !IsWindowsReservedDeviceDigit(stem[3])) return false;
+            ReadOnlySpan<char> prefix = stem[..3];
+            return prefix.Equals("COM", StringComparison.OrdinalIgnoreCase)
+                || prefix.Equals("LPT", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static bool IsWindowsReservedDeviceDigit(char value)
+            => value is >= '1' and <= '9' or '¹' or '²' or '³';
     }
 }

@@ -16870,10 +16870,14 @@ public sealed class GameGpuFactAttribute : FactAttribute
 actually created, with the canonical hyphenated token such as `vulkan-native`.
 
 The integer `tolerance` is in 8-bit per-channel units from 0 through 255. `GoldenImage` divides it by `255f` for
-the normalized `GoldenGrid` comparison and compares at the canonical serialized precision. `GoldenResult`
-reports `Pass`, `Rebaked`, an optional `SkipReason`, and `Detail`. A missing backend golden supplies the skip
-reason. A mismatch names the worst cell and R, G or B channel in `Detail`. Scene names are portable single-file
-names, and malformed lengths or non-finite reference cells fail with an actionable diagnostic.
+the normalized `GoldenGrid` comparison. The fresh downsample remains unrounded while the committed grid carries
+four decimal places. Comparison adds `0.00005f`, half of one stored decimal step, plus a `0.0000001f` floating-point
+epsilon to the normalized tolerance. `GoldenResult` reports `Pass`, `Rebaked`, an optional `SkipReason`, and
+`Detail`. A missing backend golden supplies the skip reason. A mismatch names the worst cell and R, G or B
+channel in `Detail`. Scene names are portable single-file names, including rejection of Windows device stems such
+as `CON`, `PRN`, `AUX`, `NUL`, `COM1` and `LPT1` with any casing and even with an extension. Malformed lengths or
+non-finite reference cells fail with an actionable diagnostic. The Windows superscript-digit forms `COM¹` through
+`COM³` and `LPT¹` through `LPT³` are rejected as reserved device stems too.
 
 ```csharp
 GoldenResult result = GoldenImage.Check(goldenDirectory, "inventory", rgba, width, height, tolerance: 15);

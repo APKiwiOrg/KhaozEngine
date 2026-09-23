@@ -7,9 +7,13 @@
 # that version does not move until someone bumps it, so every finish between a tag and the next bump
 # re-packs an already-released number and the feed's copy stops matching the tag everybody reads.
 #
+# It also pins where the feed is (#1063): a pack from a linked worktree lands in the MAIN checkout's
+# local-feed, which is what consumers read, and KHAOZENGINE_FEED moves the pack and the report together.
+#
 # Fixture-only by construction: every repo, tag and package below is scratch, made with git init and
 # touch under mktemp. Nothing here reads or writes the real checkout, the real local-feed, or a real
-# tag, and --dry-run means dotnet is never invoked.
+# tag, and --dry-run means dotnet is never invoked. Each fixture is its own main checkout, and every run
+# clears an inherited KHAOZENGINE_FEED, so the resolved feed is always a scratch one.
 #
 # Run it from anywhere:  sh scripts/tests/pack-local-feed.test.sh
 set -eu
@@ -36,10 +40,12 @@ says() { grep -qF "$1" "$OUTFILE" && r=0 || r=1; }
 absent_says() { grep -qF "$1" "$OUTFILE" && r=1 || r=0; }
 
 # newfixture <name> <version> -> a scratch repo carrying the scripts under test and that engine
-# version, with one commit and a clean tree. Sets REPO and FEED.
+# version, with one commit and a clean tree. Sets REPO, FEED, REAL (REPO with symlinks resolved, which
+# is how the scripts print it) and AT (where packrun and feedrun run, the fixture root by default).
 newfixture() {
   REPO="$TMPROOT/$1"
   FEED="$REPO/local-feed"
+  AT=$REPO
   mkdir -p "$REPO/scripts/hooks" "$FEED"
   for _f in pack-standard.sh tag-standard.sh pack-local-feed.sh check-local-feed.sh; do
     cp "$SRC/$_f" "$REPO/scripts/$_f"
@@ -55,10 +61,20 @@ newfixture() {
   </PropertyGroup>
 </Project>
 EOF
-  # local-feed is gitignored in the real repo, and the fixture needs the same, or a packed file would
-  # make the tree dirty and turn every at-tag case into at-tag-dirty by accident.
-  echo 'local-feed/' > "$REPO/.gitignore"
+  # local-feed and .worktrees are gitignored in the real repo, and the fixture needs the same, or a
+  # packed file or a linked worktree would make the tree dirty and turn every at-tag case into
+  # at-tag-dirty by accident.
+  printf 'local-feed\n.worktrees/\n' > "$REPO/.gitignore"
   ( cd "$REPO" && $GIT init -q . >/dev/null 2>&1 && $GIT add -A && $GIT commit -q --no-verify -m "chore: fixture" )
+  REAL=$(cd "$REPO" && pwd -P)
+}
+
+# addworktree -> a linked worktree of the fixture at .worktrees/wt on a new branch, the layout the
+# contributor rules prescribe. Sets WT and points AT at it.
+addworktree() {
+  WT="$REPO/.worktrees/wt"
+  ( cd "$REPO" && $GIT worktree add -b wt "$WT" >/dev/null 2>&1 )
+  AT=$WT
 }
 
 # tagit <version> -> annotated tag v<version> at the fixture's HEAD.
@@ -67,18 +83,25 @@ tagit() { ( cd "$REPO" && $GIT tag -a "v$1" -m "release($1): fixture" ); }
 # advance -> one more commit on top, leaving the tree clean and HEAD off the tag.
 advance() { ( cd "$REPO" && echo "more" >> README.md && $GIT add -A && $GIT commit -q --no-verify -m "chore: more" ); }
 
-# packrun [VAR=VALUE ...] -> the fixture's wrapper in --dry-run, never invoking dotnet.
+# packrun [VAR=VALUE ...] -> the fixture's wrapper in --dry-run from $AT, never invoking dotnet.
 packrun() {
   set +e
-  ( cd "$REPO" && env -u PACK_RELEASED_OK "$@" sh scripts/pack-local-feed.sh --dry-run ) >"$OUTFILE" 2>&1
+  ( cd "$AT" && env -u PACK_RELEASED_OK -u KHAOZENGINE_FEED "$@" sh scripts/pack-local-feed.sh --dry-run ) >"$OUTFILE" 2>&1
   rc=$?
   set -e
 }
 
-# feedrun [args...] -> the fixture's feed report.
+# feedrun [VAR=VALUE ...] [args...] -> the fixture's feed report from $AT.
 feedrun() {
   set +e
-  ( cd "$REPO" && sh scripts/check-local-feed.sh "$@" ) >"$OUTFILE" 2>&1
+  (
+    cd "$AT" || exit 2
+    unset KHAOZENGINE_FEED
+    while [ $# -gt 0 ]; do
+      case "$1" in *=*) export "${1?}"; shift ;; *) break ;; esac
+    done
+    sh scripts/check-local-feed.sh "$@"
+  ) >"$OUTFILE" 2>&1
   rc=$?
   set -e
 }
@@ -100,8 +123,8 @@ newfixture staged 2.0.0
 packrun
 check "wrapper succeeds" 0 "$rc"
 says "2.0.0 is staged";        check "  says the version is staged" 0 "$r"
-says "dotnet pack -c Release -o ./local-feed"
-check "  prints the command it would run" 0 "$r"
+says "dotnet pack -c Release -o $REAL/local-feed"
+check "  prints the command it would run, into the checkout's own feed" 0 "$r"
 says "nothing packed";         check "  and did not run it" 0 "$r"
 
 echo "== released: the tag exists and HEAD moved past it, which is the #492 window =="
@@ -120,7 +143,7 @@ packrun PACK_RELEASED_OK=1
 check "wrapper succeeds" 0 "$rc"
 says "PACK_RELEASED_OK=1 is set, packing anyway"
 check "  says it is overriding rather than staying silent" 0 "$r"
-says "dotnet pack -c Release -o ./local-feed"
+says "dotnet pack -c Release -o $REAL/local-feed"
 check "  reaches the pack command" 0 "$r"
 
 echo "== at-tag: HEAD IS the tag with a clean tree, so a re-pack reproduces the released bytes =="
@@ -175,6 +198,85 @@ feedrun --strict
 check "no feed at all is not a failure" 0 "$rc"
 says "nothing to check";  check "  and says so" 0 "$r"
 
+echo "== worktree: a pack from a linked worktree lands in the MAIN checkout's feed (#1063) =="
+newfixture wtmain 2.0.0
+addworktree
+WTREAL=$(cd "$WT" && pwd -P)
+packrun
+check "wrapper succeeds from the worktree" 0 "$rc"
+says "feed is $REAL/local-feed";                    check "  resolves the main checkout's feed" 0 "$r"
+says "dotnet pack -c Release -o $REAL/local-feed";  check "  and packs into it" 0 "$r"
+absent_says "$WTREAL/local-feed";                   check "  never into the worktree's own feed" 0 "$r"
+absent_says "-o ./local-feed";                      check "  nor into a cwd-relative one" 0 "$r"
+[ -d "$WT/local-feed" ] && r=0 || r=1
+check "  the worktree still gets the local-feed its nuget.config source needs" 0 "$r"
+touch "$FEED/KhaozEngine.App.2.0.0.nupkg"
+feedrun
+check "report succeeds from the worktree" 0 "$rc"
+says "STAGED     2.0.0";           check "  reads the package in the main checkout's feed" 0 "$r"
+says "(feed: $REAL/local-feed)";   check "  and names that feed" 0 "$r"
+
+echo "== worktree: the released-version guard still runs in front of the resolved feed =="
+tagit 2.0.0
+( cd "$WT" && echo "more" >> README.md && $GIT add -A && $GIT commit -q --no-verify -m "chore: more" )
+packrun
+check "wrapper refuses from the worktree" 1 "$rc"
+says "feed is $REAL/local-feed";            check "  names the feed it refused to write" 0 "$r"
+says "v2.0.0 is already a released tag";    check "  names the released tag" 0 "$r"
+absent_says "dotnet pack";                  check "  and never reaches the pack command" 0 "$r"
+packrun PACK_RELEASED_OK=1
+check "  the override still gets through" 0 "$rc"
+says "dotnet pack -c Release -o $REAL/local-feed";  check "  into the main checkout's feed" 0 "$r"
+
+echo "== KHAOZENGINE_FEED: one override moves the pack and the report together =="
+newfixture wtoverride 2.0.0
+addworktree
+ALT="$TMPROOT/altfeed"
+mkdir -p "$ALT"
+touch "$ALT/KhaozEngine.App.9.9.9.nupkg"
+packrun KHAOZENGINE_FEED="$ALT"
+check "wrapper succeeds with the override" 0 "$rc"
+says "dotnet pack -c Release -o $ALT";  check "  packs into the override" 0 "$r"
+absent_says "$REAL/local-feed";         check "  instead of the main checkout's feed" 0 "$r"
+feedrun KHAOZENGINE_FEED="$ALT"
+check "report succeeds with the override" 0 "$rc"
+says "STAGED     9.9.9";   check "  reads the same override" 0 "$r"
+feedrun KHAOZENGINE_FEED="$ALT" --feed "$FEED"
+says "nothing to check";   check "  and --feed still beats it" 0 "$r"
+absent_says "9.9.9";       check "  without reading the override" 0 "$r"
+
+echo "== KHAOZENGINE_FEED: a relative override resolves against the toplevel the scripts cd to =="
+WTREAL=$(cd "$WT" && pwd -P)
+mkdir -p "$WT/relfeed"
+touch "$WT/relfeed/KhaozEngine.App.8.8.8.nupkg"
+packrun KHAOZENGINE_FEED=relfeed
+check "wrapper succeeds with a relative override" 0 "$rc"
+says "dotnet pack -c Release -o $WTREAL/relfeed";  check "  packs into it, made absolute" 0 "$r"
+feedrun KHAOZENGINE_FEED=relfeed
+says "STAGED     8.8.8";   check "  the report reads the same place" 0 "$r"
+mkdir -p "$WT/sub"
+set +e
+( cd "$WT/sub" && env -u PACK_RELEASED_OK KHAOZENGINE_FEED=relfeed sh ../scripts/pack-local-feed.sh --dry-run ) >"$OUTFILE" 2>&1
+rc=$?
+set -e
+check "  from a subdirectory too" 0 "$rc"
+says "dotnet pack -c Release -o $WTREAL/relfeed";  check "  the toplevel is the base" 0 "$r"
+absent_says "$WTREAL/sub/relfeed";                  check "  not the directory it ran from" 0 "$r"
+
+echo "== a layout with no main checkout to find refuses rather than guessing a feed =="
+newfixture sepdir 2.0.0
+( cd "$REPO" && $GIT init -q --separate-git-dir "$TMPROOT/sepdir-gitdir" . >/dev/null 2>&1 )
+packrun
+check "wrapper refuses under a separate git dir" 1 "$rc"
+says "set KHAOZENGINE_FEED";  check "  and asks for the override" 0 "$r"
+absent_says "dotnet pack";    check "  never reaching the pack command" 0 "$r"
+packrun KHAOZENGINE_FEED="$TMPROOT/sepfeed"
+check "  the override gets it through" 0 "$rc"
+feedrun
+check "report refuses the same layout as a usage error" 2 "$rc"
+feedrun KHAOZENGINE_FEED="$TMPROOT/sepfeed"
+check "  and the override gets it through" 0 "$rc"
+
 if ! command -v jq >/dev/null 2>&1; then
   echo "== hook cases SKIPPED (no jq on PATH) =="
 else
@@ -199,6 +301,14 @@ else
   allowed;  check "a quoted mention of the command is not the command" 0 "$r"
   hookrun "cd $REPO && dotnet build"
   allowed;  check "an unrelated dotnet command is untouched" 0 "$r"
+
+  echo "== hook: a raw pack from a linked worktree into the main checkout's feed is still caught =="
+  newfixture hookworktree 2.0.0
+  addworktree
+  tagit 2.0.0
+  ( cd "$WT" && echo "more" >> README.md && $GIT add -A && $GIT commit -q --no-verify -m "chore: more" )
+  hookrun "cd $WT && dotnet pack -c Release -o $REAL/local-feed"
+  denied;  check "the raw command aimed at the resolved feed is denied" 0 "$r"
 
   echo "== hook: stays silent while the version is staged =="
   newfixture hookstaged 2.0.0

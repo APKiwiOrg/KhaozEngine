@@ -4,7 +4,11 @@
 #
 #   scripts/check-local-feed.sh            # report, always exits 0 (informational, like ledger.sh)
 #   scripts/check-local-feed.sh --strict   # exit 1 when any version is RE-PACKED
-#   scripts/check-local-feed.sh --feed DIR # read DIR instead of ./local-feed (or set KHAOZENGINE_FEED)
+#   scripts/check-local-feed.sh --feed DIR # read DIR instead of the default feed
+#
+# The default feed is the one scripts/pack-local-feed.sh writes: KHAOZENGINE_FEED when set, otherwise the
+# MAIN checkout's local-feed, from a linked worktree too (pack_feed_dir in scripts/pack-standard.sh).
+# A relative DIR or KHAOZENGINE_FEED resolves against this tree's toplevel, not the directory you ran from.
 #
 # Statuses, per version present in the feed:
 #   STAGED     no v<version> tag yet. The ordinary in-flight state, nothing to see.
@@ -22,15 +26,22 @@ cd "$(git rev-parse --show-toplevel)"
 . scripts/pack-standard.sh
 
 strict=0
-feed=${KHAOZENGINE_FEED:-local-feed}
+feed=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --strict) strict=1; shift ;;
     --feed) feed=${2:-}; shift 2 2>/dev/null || { echo "check-local-feed: --feed needs a directory." >&2; exit 2; } ;;
-    --help|-h) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "check-local-feed: unknown argument '$1'." >&2; exit 2 ;;
   esac
 done
+if [ -z "$feed" ]; then
+  feed=$(pack_feed_dir) || {
+    echo "check-local-feed: cannot locate the main checkout's local-feed from this repository layout." >&2
+    echo "check-local-feed: set KHAOZENGINE_FEED or pass --feed." >&2
+    exit 2
+  }
+fi
 
 if [ ! -d "$feed" ]; then
   echo "check-local-feed: no feed at '$feed' (set KHAOZENGINE_FEED or pass --feed); nothing to check."

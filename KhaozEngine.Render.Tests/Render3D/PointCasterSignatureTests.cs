@@ -168,4 +168,29 @@ public sealed class PointCasterSignatureTests
         Assert.Equal(1, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, complement: 1f)).PointStaticRebuilds);
         Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, complement: 1f)).PointStaticRebuilds);
     }
+
+    [Fact]
+    public void NegativeThresholdsAreAllTheFirstStep()
+    {
+        // Complemented, because a caster with neither a positive threshold nor a complement is not dissolving and
+        // packs a zero threshold, so its negative value never reaches the signature. The shader clamps it to 0, so
+        // -0.3, -0.1 and 0 are one map.
+        using var rig = new PointShadowRig();
+        MeshHandle box = rig.Scene.LoadMesh(MeshPrimitives.Box(1f));
+        Warm(rig, s => QueueFadingProp(s, box, -0.3f, complement: 1f));
+        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, -0.1f, complement: 1f)).PointStaticRebuilds);
+        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 0f, complement: 1f)).PointStaticRebuilds);
+    }
+
+    [Fact]
+    public void TheComplementIsReadAboveOneHalfTheWayTheShaderReadsIt()
+    {
+        // The shaders keep the complementary set only above 0.5, so 0.4 and 0.5 are one map and 0.6 is the other.
+        using var rig = new PointShadowRig();
+        MeshHandle box = rig.Scene.LoadMesh(MeshPrimitives.Box(1f));
+        Warm(rig, s => QueueFadingProp(s, box, 0.5f, complement: 0.4f));
+        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, complement: 0.5f)).PointStaticRebuilds);
+        Assert.Equal(1, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, complement: 0.6f)).PointStaticRebuilds);
+        Assert.Equal(0, rig.RenderFrame(s => QueueFadingProp(s, box, 0.5f, complement: 0.6f)).PointStaticRebuilds);
+    }
 }

@@ -275,13 +275,13 @@ namespace KhaozEngine.Render3D
         /// that the pass would also not have drawn.
         /// </para>
         /// <para>
-        /// ONLY THE LIGHT AND THE DISSOLVE ARE QUANTISED, and that is the whole of what the millimetre rounding buys:
-        /// a light parented to a jittering transform does not rebuild its own map for a move nothing can see. A
-        /// CASTER is compared by the raw bits of its matrix, so a caster that jitters re-renders every light it
-        /// stands inside, every frame. That is accepted rather than overlooked: the cost is bounded by
+        /// ONLY THE LIGHT AND THE DISSOLVE ARE QUANTISED. The light's millimetre rounding buys one thing: a light
+        /// parented to a jittering transform does not rebuild its own map for a move nothing can see. A CASTER is
+        /// compared by the raw bits of its matrix, so a caster that jitters re-renders every light it stands
+        /// inside, every frame. That is accepted rather than overlooked: the cost is bounded by
         /// <see cref="PointShadowSettings.MaxStaticRebuildsPerFrame"/> and the oldest-first order, so a jittering
         /// caster spends the static budget and delays the other lights rather than multiplying the work. The
-        /// dissolve is quantised for a different reason, see <see cref="PointDissolveWord"/>.
+        /// dissolve's sixteen steps answer a different problem, see <see cref="PointDissolveWord"/>.
         /// </para>
         /// </summary>
         long PointCasterSignature(Vector3 lightPosAbsolute, float radius, float nearRadius,
@@ -386,9 +386,10 @@ namespace KhaozEngine.Render3D
         /// A ONE-WORD CHANGE CAN NEVER COLLIDE. For a fixed word the round is a bijection of the running value (an
         /// add, a rotate and an odd multiply), and for a fixed running value it is injective in the word (the word is
         /// multiplied by an odd prime). So a change confined to one word always changes the light's signature: a
-        /// single matrix element moving by any amount, a cast kind change, a mesh change, a dissolve step or a
-        /// complement flip. Any wider change, including a change in how many casters touch the light, is left to the
-        /// 64-bit odds.
+        /// single matrix element moving by any amount, a cast kind change, a dissolve step, a complement flip, or a
+        /// mesh change on a light's only caster. Any wider change is left to the 64-bit odds. That includes a change
+        /// in how many casters touch the light, and a mesh change among several casters, which can reorder the other
+        /// casters' words because the runs are grouped by mesh in first-seen order.
         /// </para>
         /// Internal for the mixer tests.
         /// </summary>

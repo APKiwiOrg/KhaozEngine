@@ -7020,7 +7020,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.1.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.2.0" />
 ```
 
 ```csharp
@@ -11254,9 +11254,11 @@ foreach ((long netId, TileCoord _) in remotes)
   progress cannot come from two moments). A head with its own roster passes
   `(netId, tile, stepProgress)` per actor, where the progress is 0 as the step commits and 1 once the body is at
   rest on that tile, which is also what a body that is not stepping carries. `TilePresenter.StepFraction(state)`
-  is that number for a state you hold, and it is the same fraction `TilePresenter.Pose` glides on. A FINITE value
-  outside 0 through 1 is CLAMPED into it, so a negative one reads as 0, the start of a step. Only a value that is
-  not a number reads as 1, a body at rest.
+  is that number for a state you hold, and it is the same fraction `TilePresenter.Pose` glides on. The client's
+  own reads know one thing a held state cannot say, whether a remote's step began from a standing body, and
+  re-base that first step to start at 0 (`docs/design/TILE-WORLD-NETCODE-DESIGN-2026-08-22.md` section 5.2), so a
+  hand-fed roster reads that one step a tick in. A FINITE value outside 0 through 1 is CLAMPED into it, so a
+  negative one reads as 0, the start of a step. Only a value that is not a number reads as 1, a body at rest.
 - **The overloads without a `dt` cut instead of crossing**, which is this rule exactly as it behaved before
   weights existed, for a head that cannot fade a body at all.
 - **The key is the net id, and its only job is to be STABLE.** It is arbitrary rather than meaningful: ids are
@@ -13436,7 +13438,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.2.0" />
 ```
 
 ```csharp
@@ -13472,7 +13474,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.2.0" />
 ```
 
 ```csharp
@@ -13714,7 +13716,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.2.0" />
 ```
 
 ```csharp
@@ -17370,7 +17372,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.1.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.2.0" />
 </ItemGroup>
 ```
 

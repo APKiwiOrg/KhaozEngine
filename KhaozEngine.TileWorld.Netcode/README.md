@@ -529,7 +529,10 @@ always keep the constructor map.
   `TryGetLatestRemoteFootprint` is that square off the newest applied snapshot, which is what `TileRemoteTargets`
   answers a rule with. Both refuse an unknown id and the local player, whose square is
   `Prediction.PredictedState.Footprint`. `TryGetRemoteStepProgress` and the bulk `CollectRemoteSteps` add how far through its step a remote
-  is, 0 as the step commits and 1 once the body is at rest, off the same sample the pose is drawn from. `PendingCommandCount` is how far the local prediction runs ahead of the newest basis: 0 or 1 on a loopback, the
+  is, 0 as the step commits and 1 once the body is at rest, off the same sample the pose is drawn from. A remote's
+  first step off a standing body reads one tick in on the tick it commits, so the client reads that door off the
+  sample before and re-bases the step to start at 0 and land on the committed tick, in the pose and the progress
+  alike (design section 5.2). `PendingCommandCount` is how far the local prediction runs ahead of the newest basis: 0 or 1 on a loopback, the
   round trip in ticks plus one on a real link, and a climbing-and-staying value when the server is applying this
   client's input late, which `TileWorldServer.InputDepth(slot)` reads from the server side. `NetStats` is the link readout beside the session ones, a live `NetTransportStats` forwarded from
   the transport (round trip, loss, cumulative byte counters), so a HUD does not need to keep the transport it built.
@@ -569,7 +572,9 @@ always keep the constructor map.
   magnitude to that conservative bound until it decays or a hard snap clears it.
   `StepFraction(state, extraTicks)` is the fraction that glide interpolates on, exposed so a rule that must run in
   lockstep with a body (a fade, a squash, a footfall) measures the number the body is drawn at rather than a second
-  estimate of it, and it reads 1 for a body at rest.
+  estimate of it, and it reads 1 for a body at rest. A state on its own cannot say which door its step came
+  through, so `Pose` and `StepFraction` read every step as a landing-door step, and the client's remote reads add
+  the click door re-base.
   `PoseAt(tile)` is the RULES: a whole tile's centre, with no glide, which is what a true-tile marker, a route
   highlight, a minimap or an editor draws on. The `PoseAt(planar, vertical, facing)` overload takes a smoothed
   or fractional position for the same mapping when the caller already holds one. `LocalPose(prediction)` is the body for a caller holding its own

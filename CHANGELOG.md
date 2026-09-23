@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.2.0
+
+A minor that acts on four owner calls left open by the 20.1.0 burn-down. A remote tile body no longer jumps
+at the start of a clicked route. Nothing a game calls changes meaning.
+
+**Remote tile steps.**
+
+- A remote's first step off a standing body no longer jumps
+  ([#732](https://github.com/APKiwiOrg/KhaozEngine/issues/732)). The simulator spends a click's own tick on the
+  step it starts, so that step reads one tick in when it commits, and `TileWorldClient.TryGetRemotePose` drew a
+  quarter tile walking, half a tile running and a whole tile at a one-tick cadence in a single frame. The client
+  now recognises that case from the remote's previous sample (a step leaving the tile the body stood on, in the
+  same teleport epoch) and draws the step from the tile it leaves over the ticks it actually has, landing on the
+  committed tile at the same tick. The clicked step plays at N/(N-1) of normal speed, and exactly normal speed at
+  a one-tick cadence.
+- The remote step progress reads (`TryGetRemoteStepProgress`, `CollectRemoteSteps` and the progress
+  `TileDrawPriority.Rebuild(client, dt)` uses) follow the same fix, so draw priority and the body stay in step.
+  Public `TilePresenter.Pose`, `StepFraction` and `LocalPose` are unchanged, and so are the simulator, the wire
+  and the server. `LocalPose` never had the jump, because it already draws a tick behind. A head that draws
+  remotes from its own samples through `TilePresenter.Pose(state)` rather than through `TileWorldClient` still
+  sees it. A one-tick cadence still stalls the local body for a tick after a clicked first step
+  ([#1109](https://github.com/APKiwiOrg/KhaozEngine/issues/1109)).
+
 ## 20.1.0
 
 A minor that consolidates everything since 20.0.0: the rest of the oldest-backlog burn-down and a batch of

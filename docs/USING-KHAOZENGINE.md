@@ -7040,7 +7040,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.4.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.5.0" />
 ```
 
 ```csharp
@@ -13458,7 +13458,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.4.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.5.0" />
 ```
 
 ```csharp
@@ -13494,7 +13494,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.4.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.5.0" />
 ```
 
 ```csharp
@@ -13736,7 +13736,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.4.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.5.0" />
 ```
 
 ```csharp
@@ -14729,6 +14729,44 @@ world-noise coverage used by full, LOD1 and merged-HLOD crossfades. The visible 
 kept by that phase. The full projected union ignores partial dissolve so the noise holes do not gain borders.
 An entirely hidden phase contributes neither mask.
 
+### Skinned target outlines
+
+A target outline group may mix rigid parts and posed skinned parts. All parts contribute to one outer projected
+silhouette, with the same screen-space width, colour and occlusion rules:
+
+```csharp
+MeshOutlineGroup target = scene.BeginMeshOutline(
+    new Color(1f, 0.82f, 0.1f, 1f),
+    widthPixels: 1.25f);
+
+scene.DrawSkinnedOutline(target, body, currentPose, bodyWorld);
+scene.DrawMeshOutline(target, heldItem, heldItemWorld);
+
+scene.DrawSkinnedOutlineDissolved(
+    target,
+    fadingBody,
+    currentPose,
+    bodyWorld,
+    dissolve: fade.Cover,
+    dissolveComplement: false);
+```
+
+`Scene3D` copies the composed `currentPose` during each call, so the caller may reuse or mutate the array
+afterward. Outline submission is independent of ordinary `DrawSkinned` submission. No ordinary draw is required,
+and a different ordinary pose for the same handle does not affect the outline pose. The grouped plain and
+dissolved methods accept the frame-local `MeshOutlineGroup`. The convenience overloads
+`DrawSkinnedOutline(mesh, boneMatrices, world, color, widthPixels)` and its `MeshOutlineOcclusion` overload start
+a group and submit one skinned part. `Scene3D.Begin()` clears the group and invalidates its handle.
+
+`UseGpuSkinning` is read when the frame renders, so it selects GPU palette deformation or CPU vertex deformation
+for the outline at render time. Both paths consume the same copied, composed pose. The full mask applies posed
+geometry and albedo alpha cutout while ignoring partial dissolve. The visible mask applies the ordinary dissolve
+keep rule or its complement. Fully invisible endpoint phases contribute no mask coverage.
+
+`SurfaceMaps.AlphaCutoff` is retained for skinned materials and reaches plain and dissolved ordinary colour draws
+as well as both target outline masks. The ordinary body and its outline therefore use the same albedo cutout
+coverage. Cascaded key-light skinned alpha cutout remains scoped follow-up [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097).
+
 For authored tile objects, `TileWorldView.SetOutlinedObject(objectId, color, widthPixels: 1.25f, occlusion)`
 queues all active parts in one group until `ClearOutlinedObject()`. `ITileWorldScene.BeginMeshOutline` and
 `DrawMeshOutline` default to an inert handle and a no-op so older custom scene implementations keep compiling.
@@ -14736,6 +14774,29 @@ The occlusion overload of `BeginMeshOutline` defaults to the two-argument one, s
 scene-depth border.
 An implementation that supports outlines can construct its own `MeshOutlineGroup(int index)` and interpret
 the index when parts are submitted.
+
+The tile-world seam adds the grouped skinned outline methods with the same compatibility defaults:
+
+```csharp
+void DrawSkinnedOutline(
+    MeshOutlineGroup group,
+    SkinnedMeshHandle mesh,
+    ReadOnlySpan<Matrix4x4> boneMatrices,
+    Matrix4x4 world) { }
+
+void DrawSkinnedOutlineDissolved(
+    MeshOutlineGroup group,
+    SkinnedMeshHandle mesh,
+    ReadOnlySpan<Matrix4x4> boneMatrices,
+    Matrix4x4 world,
+    float dissolve,
+    bool dissolveComplement) =>
+    DrawSkinnedOutline(group, mesh, boneMatrices, world);
+```
+
+`Scene3DTileWorldScene` forwards both methods directly to `Scene3D`. The default grouped plain method is a no-op,
+and the default dissolved method calls the plain method, so older custom scene implementations keep compiling.
+The convenience overloads remain on `Scene3D` because the tile-world seam supplies the group.
 Clustered tile objects reuse the live prop renderer's full and LOD1 dissolve decisions. Their selected HLOD
 mask is built on demand with `PropHlod.BuildPlacementMesh`, which performs the whole cluster weld before
 retaining the chosen placement's triangles, so shared-cell averages match the live merged mesh.
@@ -17631,7 +17692,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.4.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.5.0" />
 </ItemGroup>
 ```
 

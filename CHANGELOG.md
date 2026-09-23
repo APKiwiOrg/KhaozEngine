@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.5.0
+
+Skinned characters and rigid held pieces can now share one pixel-width target outline. The border follows the
+submitted pose on CPU or GPU skinning, even without an ordinary body draw. Partial dissolve and albedo cutouts
+agree with the ordinary body, and tile-world scenes forward grouped submissions
+([#1053](https://github.com/APKiwiOrg/KhaozEngine/issues/1053)).
+
 ## 20.4.1
 
 A patch that cuts per-frame CPU cost measured in Grimhollow, which is pinned and waiting on it

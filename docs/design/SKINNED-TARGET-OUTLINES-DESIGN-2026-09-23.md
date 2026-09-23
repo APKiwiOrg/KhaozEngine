@@ -1,6 +1,6 @@
 # Skinned target outlines
 
-Status: approved by the owner on 2026-09-23. Implementation pending.
+Status: implemented for staged 20.5.0. Approved by the owner on 2026-09-23.
 
 Tracking: [KhaozEngine #1053](https://github.com/APKiwiOrg/KhaozEngine/issues/1053).
 Consumer: [Grimhollow #64](https://github.com/APKiwiOrg/Grimhollow/issues/64), rigged humanoid item E3.

@@ -673,6 +673,20 @@ support grouped pixel outlines construct and track their own public `MeshOutline
 `DrawMeshOutlineDissolved(MeshOutlineGroup, MeshHandle, Matrix4x4, float, bool)` defaults to the solid grouped
 submission. The shipped adapter forwards the rigid dissolve and complement so TileWorld LOD and HLOD handoffs
 keep their current visible coverage.
+`DrawSkinnedOutline(MeshOutlineGroup, SkinnedMeshHandle, ReadOnlySpan<Matrix4x4>, Matrix4x4)` and
+`DrawSkinnedOutlineDissolved(MeshOutlineGroup, SkinnedMeshHandle, ReadOnlySpan<Matrix4x4>, Matrix4x4, float, bool)`
+add posed skinned parts to the same group. Their defaults are a no-op and a fallback to the plain grouped method,
+and `Scene3DTileWorldScene` forwards both directly to `Scene3D`. The `Scene3D` convenience overloads start a group
+and submit one skinned part, so they remain outside the tile-world seam.
+
+A group may mix rigid and skinned parts and produces one outer projected silhouette. `Scene3D` copies the composed
+pose during each skinned submission, and a group remains valid only for its scene and frame. An outline may be
+submitted without an ordinary draw, and a different ordinary pose does not change the copied outline pose.
+`UseGpuSkinning` selects GPU or CPU outline deformation when the frame renders, with both paths consuming that same
+pose. The full mask applies geometry and alpha cutout while ignoring partial dissolve. The visible mask follows
+the ordinary or complement dissolve keep rule. `SurfaceMaps.AlphaCutoff` reaches plain and dissolved ordinary
+skinned colour draws and both target outline masks. Cascaded key-light skinned alpha cutout remains follow-up
+[#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097).
 `DrawMeshDissolved(MeshHandle, Matrix4x4, float, float, Color)` defaults to the solid `DrawMesh` and forwards
 the existing noise dissolve and shadow mask when the scene supports it. `DrawGroundCover` forwards cached
 ground-cover instances to the scene and defaults to drawing none. `DrawOverlayMesh(MeshHandle, Matrix4x4)`

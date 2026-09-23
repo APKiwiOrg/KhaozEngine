@@ -793,6 +793,19 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `DrawMeshSilhouette` metre-width hull remains available for world-space expansion effects.
   `DrawMeshOutlineDissolved(group, mesh, world, dissolve, dissolveComplement)` applies the same world-anchored
   coverage split as rigid LOD handoffs. Its full union still rejects strokes around individual dissolve holes.
+- Posed skinned target outlines use the grouped `DrawSkinnedOutline(MeshOutlineGroup, SkinnedMeshHandle,
+  ReadOnlySpan<Matrix4x4>, Matrix4x4)` and `DrawSkinnedOutlineDissolved` methods. The two convenience overloads
+  start a group for one part, with the five-argument form using scene-depth occlusion and the six-argument form
+  accepting `MeshOutlineOcclusion`. A group may mix rigid and skinned parts and produces one outer projected
+  silhouette. `Scene3D` copies the composed pose during each submission, and the group is valid only for the
+  scene and frame that created it. An outline can be submitted without an ordinary `DrawSkinned`, and an ordinary
+  draw with another pose does not change the outline pose. `UseGpuSkinning` selects the outline deformation path
+  when the frame renders. The GPU and CPU paths consume the same copied pose. The full mask applies geometry and
+  alpha cutout while ignoring partial dissolve. The visible mask follows the ordinary or complement dissolve
+  keep rule. `SurfaceMaps.AlphaCutoff` reaches plain and dissolved ordinary skinned colour draws and both target
+  outline masks. `Scene3DTileWorldScene` forwards the grouped methods, while the `ITileWorldScene` defaults keep
+  older implementations compiling and make dissolved submission fall back to plain submission. Cascaded
+  key-light skinned alpha cutout remains follow-up [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097).
 - Debug wire volumes: `Scene3D.DebugWireSphere` / `DebugWireDome` (hemisphere, flat side down) /
   `DebugWireCylinder` (vertical, `radius` + `halfHeight`) / `DebugWireCircle`, each `(..., Color color, float
   opacity = 1, DebugDepthMode depth = DepthTested, int segments = DebugWireSegments)`. Immediate-mode (cleared each
@@ -858,8 +871,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   model fragment discards any texel whose sampled baseColor alpha is below it, so an alpha-cutout leaf-card
   texture renders as its silhouette instead of a solid (and, for the Quaternius kits, black-fringed) quad. An
   OPAQUE mesh (cutoff 0) is byte-identical to the pre-cutout render. The key light's cascaded shadow pass applies
-  the same test to a MASK caster that has an albedo, so the leaf card casts its silhouette. Point-light shadow maps
-  do not alpha-test yet and record the full quad. Baked kits pair this with a bake-time RGB dilation (alpha bleed)
+  the same test to a MASK caster that has an albedo, so the leaf card casts its silhouette. For skinned meshes,
+  `SurfaceMaps.AlphaCutoff` reaches plain and dissolved ordinary colour draws and both target outline masks, so
+  their albedo cutout coverage stays in parity. Point-light shadow maps do not alpha-test yet and record the full
+  quad. Baked kits pair this with a bake-time RGB dilation (alpha bleed)
   in `tools/kit-bake` so mip/bilinear averaging pulls leaf colour, not the black stored under the leaves.
   - `MeshOps.WithTangents(GltfMesh) -> GltfMesh` computes a per-vertex tangent from UV + position (Lengyel
     accumulate, then Gram-Schmidt against the normal) so a UV-mapped primitive mesh (e.g. `MeshPrimitives.Box`)

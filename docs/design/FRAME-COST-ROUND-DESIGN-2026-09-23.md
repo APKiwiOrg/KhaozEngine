@@ -1,6 +1,6 @@
 # Frame cost round
 
-Status: design approved in conversation on 2026-09-23. Spec under owner review. Implementation pending.
+Status: spec approved by the owner on 2026-09-23. Implementation plan written, two owner decisions pending (see Plan amendments).
 Date: 2026-09-23.
 Issues: [#1110](https://github.com/APKiwiOrg/KhaozEngine/issues/1110),
 [#1111](https://github.com/APKiwiOrg/KhaozEngine/issues/1111),
@@ -377,6 +377,76 @@ Measured by rerunning the Grimhollow probe as interleaved runs against 20.0.0 an
 - Steady allocation at or under 5 KiB per frame and no gen0 over 600 frames on the town path.
 - GPU median no worse than baseline.
 - Every golden within tolerance, with the River rebake reviewed.
+
+## Plan amendments
+
+Reading the code for the implementation plan (`docs/superpowers/plans/2026-09-23-frame-cost-round.md`) corrected
+the details below. Where an amendment and an earlier section disagree, the amendment wins. Two are owner decisions
+and are marked.
+
+Item 1.
+
+- The index is built lazily, once per point-shadow frame, and `PreparePointShadows` triggers it after its atlas
+  check. `DebugRenderPointShadowSlot` and tests that call `RenderPointShadowSlots` directly render rows on frames
+  that queued no request, and an index built only inside `PreparePointShadows` would be stale there.
+- A query grows the light's sphere by one cell plus a 0.25 m slack, because the float touch test can keep a centre a
+  rounding error past the grown sphere. Non-finite and out-of-range centres go to the oversize list, and a query
+  wider than the binned caster count walks every binned caster. Each of these only adds candidates.
+
+Item 3.
+
+- The cull is not a six-plane frustum test. Behind the eye a column's side planes cross, and the exact test accepts
+  some spheres that lie wholly outside the frustum. A light is culled only when its conservative range is empty, and
+  side planes never narrow the range of a light that reaches the near plane.
+- The tile range comes from signed distances to the 17 column and 10 row boundary planes, the same planes the
+  clusters test, widened by 1e-3 of the frame's geometry scale.
+- **Owner decision.** Building planes only for reached clusters means a degenerate cluster no light reaches no
+  longer forces the whole frame to the full-list fallback. That happens only for a near plane below about 1 mm.
+  Pixels are identical either way, because the fallback walks every light and a light outside its radius adds
+  zero, but the diagnostics and the buffer contents differ for those cameras.
+- An overflowed cluster still adds 64 to `LightReferenceCount`, so the diagnostic keeps its value and meaning. The
+  upload is rounded up to a whole `uvec4`.
+
+Item 4.
+
+- A plane's cull bound grows horizontally by the Gerstner pinch, `abs(steepness) * wavelength / (2 pi)`, and
+  vertically by the amplitude. Growing by the amplitude alone would cull crests the pinch carries into view. FFT
+  planes are never culled, because the CPU holds no bound on their displacement.
+- A plane does not displace when its amplitude or its wavelength is zero or less, which is the shader's own gate.
+- `scene3d_sky_two_discs` also draws a zero-swell plane and moves to the flat quad with the River golden.
+- The flat and grid buffers grow geometrically, the way `EnsureUboCapacity` grows, rather than to the exact size.
+
+Item 5.
+
+- **Owner decision.** `MetalAutoreleaseArchitectureTests` cannot pass unchanged. Its IL walk resolves a call
+  through `IMetalEncoderSink` or `IMetalRenderApi` to the bodiless interface member, so every seam member is a
+  computed entry point that must open its own pool. The walk gains two edges: an interface call reaches every
+  package implementation, and a constructed generic call reaches its definition. The rule text, its failure message
+  and its positive controls are unchanged, and there is still no exclusion list.
+- `ObjCAutoreleasePool.Enter` becomes a no-op off macOS, because device-free tests drive `MetalCommandList` on the
+  Linux and Windows legs.
+- The upload's pool sits in `MetalBufferUpload.StageAndCopy`, so the ring half of `UpdateBuffer`, which every
+  uniform write takes, stays pool-free.
+- Hot selectors live in nested `Selectors` classes, the `MetalCompletionHandler` pattern, which amends the ObjC
+  folder's rule against static selector fields. `MTLRenderPassDescriptor.Create` built its class name into a fresh
+  array on every pass, and the class is now cached once it resolves.
+
+Item 6.
+
+- A runtime without `IDXGIFactory6` logs INFO, not a warning, because nothing was asked for that could not be given.
+  A preferred adapter that cannot be fetched or refuses the device warns and lets DXGI pick.
+- Only the unset default retries on DXGI's pick when its adapter refuses a device. An explicit pin fails as it does
+  today.
+- The feature probe now honours explicit `KE_D3D11_ADAPTER` values as well as the default.
+- No CI leg runs the new default, because the Windows leg pins WARP. A run on a hybrid laptop is the only runtime
+  proof, and it is a manual validation step after release.
+
+Item 7.
+
+- The headless proof goes through an internal row sink that the real draw also uses, because a `SpriteBatch` needs
+  a GPU device.
+- One extra row is drawn past each edge of the viewport, so glyph overhang and whole-pixel scissor rounding keep
+  the frame identical to drawing every row.
 
 ## Rejected alternatives
 

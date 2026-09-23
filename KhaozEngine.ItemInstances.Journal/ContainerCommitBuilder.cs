@@ -182,8 +182,7 @@ public sealed partial class ContainerCommitBuilder
     /// it.</exception>
     public bool Apply(in ContainerOperation operation, long tick)
     {
-        if (_closed) throw new InvalidOperationException("This batch is closed.");
-        if (_faulted) throw new InvalidOperationException("This batch was abandoned when an operation threw.");
+        ThrowIfEnded();
         operation.Validate();
         if (!Window.IsOpen) return false;
 
@@ -233,7 +232,9 @@ public sealed partial class ContainerCommitBuilder
 
     /// <summary>
     /// Closes the batch and builds its commit: ONE identity, ONE event per operation in order, ONE projection
-    /// write per dirty page, ONE result.
+    /// write per dirty page, ONE result. It is the convenience over <see cref="TryBuildParts"/> for a commit
+    /// that carries this batch and nothing else: the same events and the same projection writes, under an
+    /// identity and a result, validated against <see cref="ContainerCommitOptions.Limits"/>.
     /// <para>
     /// <b>Whose identity it is decides what the intent holds</b> (spec 6.5). A SERVER minted batch carries the
     /// canonical ORDERED operation list, and its id comes from <paramref name="identityFactory"/>. A CLIENT
@@ -259,17 +260,15 @@ public sealed partial class ContainerCommitBuilder
     public JournalCommit Close(Func<Guid> identityFactory, ReadOnlyMemory<byte> result = default)
     {
         ArgumentNullException.ThrowIfNull(identityFactory);
-        if (_closed) throw new InvalidOperationException("This batch is closed.");
-        if (_faulted) throw new InvalidOperationException("This batch was abandoned when an operation threw.");
-        if (_operations.Count == 0)
+        if (!TryCollectParts(out JournalEvent[] events, out JournalProjectionWrite[] projectionWrites))
             throw new InvalidOperationException("A batch holding no operation has nothing to commit.");
 
         Guid operationId = Window.HoldsClientOperation ? _operations[0].OperationId : identityFactory();
         var identity = new JournalOperationIdentity(operationId, Scope, ActionKind, BuildIntent());
         var commit = new JournalCommit(
             identity,
-            new[] { new JournalStreamMutation(StreamKey, Options.ExpectedVersion, _events) },
-            BuildProjectionWrites(),
+            new[] { new JournalStreamMutation(StreamKey, Options.ExpectedVersion, events) },
+            projectionWrites,
             Options.ResultSchema,
             Options.ResultSchemaVersion,
             result.ToArray(),
@@ -280,8 +279,7 @@ public sealed partial class ContainerCommitBuilder
         // Recorded LAST, once there is a commit to show for it. Flagging the batch closed first left a throw
         // out of the writes holding a batch that could never be closed again, with its pages still dirty and
         // no fault flag, so the caller held something that had committed nothing and could do nothing.
-        _closed = true;
-        Window.Close(ContainerBatchCloseReason.Closed);
+        End();
         return commit;
     }
 
@@ -312,35 +310,6 @@ public sealed partial class ContainerCommitBuilder
         foreach (ContainerOperation operation in _operations)
             written += operation.WriteCanonical(intent.AsSpan(written));
         return intent;
-    }
-
-    JournalProjectionWrite[] BuildProjectionWrites()
-    {
-        var writes = new List<JournalProjectionWrite>(ProjectionWriteCount);
-        foreach (string name in _names)
-        {
-            PagedItemContainer container = _containers[name];
-            int dirty = container.CopyDirtyPagesTo(_pages);
-            for (int index = 0; index < dirty; index++)
-            {
-                ItemContainerPage page = _pages[index];
-                writes.Add(new JournalProjectionWrite(
-                    StreamKey,
-                    ContainerSectionNames.Format(name, page.PageIndex),
-                    Options.ProjectionSchema,
-                    Options.ProjectionSchemaVersion,
-                    EncodePage(page)));
-            }
-        }
-
-        return writes.ToArray();
-    }
-
-    byte[] EncodePage(ItemContainerPage page)
-    {
-        int count = page.CopyEntriesTo(_entries);
-        return ItemContainerPageCodec.Encode(
-            page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion, _entries.AsSpan(0, count));
     }
 
     int MeasureDirtyPages()

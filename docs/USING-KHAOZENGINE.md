@@ -15979,6 +15979,27 @@ client's own id, and the server work riding behind it contributes no intent byte
 resubmit after a reconnect, which omits server work the client never saw, hash identically and resolve
 replayed rather than conflicting, and a conflict there would tell a player a committed withdraw had failed.
 
+**A commit that carries more than the batch is composed from its parts.** A loot claim writes the loot
+source's stream beside the bag, and a click can carry coins or quest state, so `Close`, which answers a commit
+holding this batch alone, is the convenience over `TryBuildParts`:
+
+```csharp
+if (batch.TryBuildParts(out IReadOnlyList<JournalEvent> events, out IReadOnlyList<JournalProjectionWrite> writes))
+{
+    // events are StreamKey's, one per operation in order. The identity rules stay the batch's:
+    // batch.Window.HoldsClientOperation, batch.Operations[0].OperationId, batch.BuildIntent() and
+    // batch.PresentAtCommit are what Close itself reads.
+    JournalCommit composed = ComposeWithLoot(batch, events, writes);
+    composed.Validate(batch.Options.Limits);   // the REAL total, which no part can see
+    JournalSubmission submitted = executor.Submit(composed);
+}
+```
+
+Taking the parts closes the batch exactly as `Close` does, and a batch holding no operation answers false and
+stays open. The limits are checked on the composed commit and never on a part: the window bounds the batch's
+own share, so a host that adds to it opens the batch with `ContainerCommitOptions.Limits` lowered by what it
+adds. `KhaozEngine.ItemInstances.Journal/README.md` states the whole contract.
+
 ### What one viewer may see, and the one frame delta (19.0.0)
 
 `ItemInstanceVisibility` is the ONE function answering whether a viewer may see a field, and both the

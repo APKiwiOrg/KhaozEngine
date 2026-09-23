@@ -201,6 +201,47 @@ already queued), the `item-container` projection schema at the page codec's own 
 `item-container.result` result schema, the `JournalLimits` the batch is bounded by, and
 `QueueBehindAdmitted`, which is on by default so a click lands behind a held craft rather than being refused.
 
+### Composing a batch into a larger commit
+
+A real host's commits are rarely container only. A loot claim carries the loot source's stream beside the
+bag, and an ordinary click can carry coins, experience or quest state. `TryBuildParts` hands out what the batch
+contributes, and `Close` is the convenience over the same parts for a commit holding this batch alone
+([#1044](https://github.com/APKiwiOrg/KhaozEngine/issues/1044)).
+
+```csharp
+if (batch.TryBuildParts(out IReadOnlyList<JournalEvent> events, out IReadOnlyList<JournalProjectionWrite> writes))
+{
+    Guid operationId = batch.Window.HoldsClientOperation ? batch.Operations[0].OperationId : Guid.NewGuid();
+    var commit = new JournalCommit(
+        new JournalOperationIdentity(operationId, batch.Scope, batch.ActionKind, batch.BuildIntent()),
+        [new JournalStreamMutation(batch.StreamKey, batch.Options.ExpectedVersion, events), lootStream],
+        [.. writes, .. lootWrites],
+        batch.Options.ResultSchema,
+        batch.Options.ResultSchemaVersion,
+        result,
+        batch.PresentAtCommit || lootIsContested,
+        batch.Options.QueueBehindAdmitted);
+    commit.Validate(batch.Options.Limits);   // the REAL total, which no part can see
+}
+```
+
+- **The events are one per operation, in order, and they are the events of `StreamKey`.** Anything else the
+  composed commit writes to that same stream joins them in ONE `JournalStreamMutation`, because a commit names
+  a stream once. The projection writes are one per dirty page.
+- **Taking the parts closes the batch exactly as `Close` does**, `Closed` included, so nothing joins behind
+  them and the same work cannot be taken twice. A batch holding no operation answers false and stays open,
+  because a dirty page never causes a commit of its own. A throw while the parts are built records nothing.
+- **The identity rules are still the batch's.** A batch a client operation heads commits under that
+  operation's own id and `BuildIntent()`, so a resubmit still resolves replayed, and `PresentAtCommit` rides
+  into whatever the batch rides in.
+- **The limits are checked on the commit and never on a part.** A part cannot know what joins it, so
+  `TryBuildParts` validates no total. The window bounds this batch's SHARE as operations join, and the
+  composed commit is checked on its real total where it becomes whole: its constructor holds it to the engine
+  maxima, `commit.Validate(batch.Options.Limits)` holds it to the configured ones exactly as `Close` does, and
+  the store validates it again on submission. A host that adds to a batch reserves room for what it adds by
+  opening the batch with `ContainerCommitOptions.Limits` lowered by that much.
+- `MarkCommitted` is owed once the COMPOSED commit has landed, exactly as after `Close`.
+
 ### The window and its five closers
 
 `ContainerBatchWindow` is ONE SERVER TICK, and it closes on the FIRST of the five, first-wins. It DECIDES and

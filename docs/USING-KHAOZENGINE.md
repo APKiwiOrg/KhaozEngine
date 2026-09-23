@@ -1352,6 +1352,11 @@ Each entry in `bodyLines` carries its own `TooltipLine.Scale` (default `1f`), an
 the title row above them, so one shared font can render the whole tooltip's size hierarchy (see "Scaling
 Gui text" above).
 
+For separate bubbles that must keep one order beside the pointer, measure each with `Tooltip.ComputeBounds`,
+pass the widths and heights to `TooltipStackLayout.Place`, then show each offset-mode `Tooltip` at
+`TooltipStackLayout.AnchorFor(box, tip.Metrics)`. Use the same viewport and metrics for measurement and drawing.
+The group flips as a unit near the right or bottom edge. Keep its total height within the viewport.
+
 **`ScrollablePanel` opt-in height glide (10.121.0)** - when a caller recomputes `panel.Bounds`'s height while the
 panel stays open (content arriving async, a tab switch changing row count), `EffectiveHeight` snapping instantly
 every frame is a visible jump. Set `HeightGlideSeconds` (default 0 = off, byte-identical) and feed dt through the
@@ -7031,7 +7036,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.2.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.3.0" />
 ```
 
 ```csharp
@@ -13449,7 +13454,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.3.0" />
 ```
 
 ```csharp
@@ -13485,7 +13490,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.3.0" />
 ```
 
 ```csharp
@@ -13727,7 +13732,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.3.0" />
 ```
 
 ```csharp
@@ -17383,7 +17388,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.2.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.3.0" />
 </ItemGroup>
 ```
 

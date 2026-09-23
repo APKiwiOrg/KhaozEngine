@@ -5,11 +5,11 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.2.0
+## 20.3.0
 
-A minor that acts on four owner calls left open by the 20.1.0 burn-down. A remote tile body no longer jumps
-at the start of a clicked route, and procedural water changes how it looks: a narrower, energy-correct far glint
-and whitecaps evaluated per pixel. Nothing a game calls changes meaning.
+A minor that changes how procedural water looks: a narrower, energy-correct far glint and whitecaps evaluated
+per pixel. Nothing a game calls changes meaning, but a lake tuned against the old look may want its whitecap
+settings retuned (below).
 
 **Water glint and whitecaps.**
 
@@ -33,6 +33,19 @@ and whitecaps evaluated per pixel. Nothing a game calls changes meaning.
   and may want its whitecap settings retuned. The attenuation is keyed on the pixel footprint, so at 1080p it starts
   about twice as far away as at the golden resolution.
 - `scene3d_water` and `scene3d_water_grid_focus` were rebaked on all three families.
+
+## 20.2.0
+
+A minor that acts on four owner calls left open by the 20.1.0 burn-down. A remote tile body no longer jumps
+at the start of a clicked route. Tooltip groups can keep separate bubbles in one pointer stack. Nothing a
+game calls changes meaning.
+
+**Tooltip stacks.**
+
+- `TooltipStackLayout.Place` positions measured tooltip boxes in display order beside a pointer and flips
+  the group at viewport edges. `AnchorFor` converts each placed box to an offset-mode `Tooltip` anchor.
+  Games can keep action, item information and stat changes in separate bubbles without each tooltip
+  clamping to a different position.
 
 **Remote tile steps.**
 

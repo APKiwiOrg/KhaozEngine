@@ -261,8 +261,9 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// A 64-bit signature of everything that would be drawn into one static light's map: every rigid caster
-        /// standing inside the light sphere, by mesh identity, world matrix, cast kind and dissolve threshold,
-        /// combined with the light's own position, radius, near radius and exclusion box quantised to a millimetre.
+        /// standing inside the light sphere, by mesh identity, world matrix, cast kind and dissolve (its threshold in
+        /// sixteen steps and its complement phase), combined with the light's own position, radius, near radius and
+        /// exclusion box quantised to a millimetre.
         /// <para>
         /// THE TWO CLEARANCES BELONG HERE because they decide what the map CONTAINS: either one takes the light's
         /// own fixture out of its own shadow. A row rendered at one clearance is not the map the same key asks for
@@ -274,12 +275,13 @@ namespace KhaozEngine.Render3D
         /// that the pass would also not have drawn.
         /// </para>
         /// <para>
-        /// ONLY THE LIGHT IS QUANTISED, and that is the whole of what the millimetre rounding buys: a light
-        /// parented to a jittering transform does not rebuild its own map for a move nothing can see. A CASTER is
-        /// compared by the raw bits of its matrix, so a caster that jitters re-renders every light it stands
-        /// inside, every frame. That is accepted rather than overlooked: the cost is bounded by
+        /// ONLY THE LIGHT AND THE DISSOLVE ARE QUANTISED, and that is the whole of what the millimetre rounding buys:
+        /// a light parented to a jittering transform does not rebuild its own map for a move nothing can see. A
+        /// CASTER is compared by the raw bits of its matrix, so a caster that jitters re-renders every light it
+        /// stands inside, every frame. That is accepted rather than overlooked: the cost is bounded by
         /// <see cref="PointShadowSettings.MaxStaticRebuildsPerFrame"/> and the oldest-first order, so a jittering
-        /// caster spends the static budget and delays the other lights rather than multiplying the work.
+        /// caster spends the static budget and delays the other lights rather than multiplying the work. The
+        /// dissolve is quantised for a different reason, see <see cref="PointDissolveWord"/>.
         /// </para>
         /// </summary>
         long PointCasterSignature(Vector3 lightPosAbsolute, float radius, float nearRadius,
@@ -309,7 +311,7 @@ namespace KhaozEngine.Render3D
                 MeshHandle mesh = _runs[_pointCasterIndex.RunOf(slot)].Mesh;
                 ref ModelRenderer.InstanceData data = ref instances[slot];
                 MixPointSignature(ref hash, SignatureWord((uint)mesh.Index, (uint)mesh.Generation));
-                MixPointSignature(ref hash, SignatureWord(FloatBits(data.Dissolve.X), (uint)PointCasterKind(slot)));
+                MixPointSignature(ref hash, SignatureWord(PointDissolveWord(data), (uint)PointCasterKind(slot)));
                 MixPointSignature(ref hash, data.Model);
             }
             return unchecked((long)hash);
@@ -383,8 +385,10 @@ namespace KhaozEngine.Render3D
         /// <para>
         /// A ONE-WORD CHANGE CAN NEVER COLLIDE. For a fixed word the round is a bijection of the running value (an
         /// add, a rotate and an odd multiply), and for a fixed running value it is injective in the word (the word is
-        /// multiplied by an odd prime), so a caster that moved, changed kind or changed mesh always changes its
-        /// light's signature. A change in how many casters touch the light is left to the 64-bit odds.
+        /// multiplied by an odd prime). So a change confined to one word always changes the light's signature: a
+        /// single matrix element moving by any amount, a cast kind change, a mesh change, a dissolve step or a
+        /// complement flip. Any wider change, including a change in how many casters touch the light, is left to the
+        /// 64-bit odds.
         /// </para>
         /// Internal for the mixer tests.
         /// </summary>
@@ -412,6 +416,34 @@ namespace KhaozEngine.Render3D
         static ulong SignatureWord(uint low, uint high) => low | (ulong)high << 32;
 
         static uint FloatBits(float value) => (uint)BitConverter.SingleToInt32Bits(value);
+
+        /// <summary>
+        /// The dissolve half of one caster's signature word: its threshold in <see cref="PointDissolveSteps"/> steps,
+        /// <c>round(clamp(threshold, 0, 1) * 16)</c>, plus <see cref="PointDissolveComplementBit"/> when the caster
+        /// keeps the complementary noise set.
+        /// <para>
+        /// QUANTISED ON PURPOSE, AND ONLY HERE (issue #1111). A prop inside a distance fade or an LOD crossfade band
+        /// changes its threshold on every frame the draw focus moves, and the raw bits made every static light over
+        /// it dirty on every one of those frames, which spent the whole rebuild budget on dithers nobody could tell
+        /// apart. Sixteen steps keep a fading prop's point shadow moving in visible increments. The row itself is
+        /// still drawn with each instance's ACTUAL threshold at the moment it is rebuilt, so between steps the map
+        /// keeps the previous step's dither. That is the one intended pixel difference in the point pass.
+        /// </para>
+        /// <para>
+        /// THE COMPLEMENT FLAG IS PART OF WHAT IS DRAWN. The dissolve pipeline keeps the exact opposite noise set when
+        /// it is set, so a flip at a constant threshold is a different map, and a signature that left it out kept the
+        /// old one. It is read the way the shader reads it, above one half.
+        /// </para>
+        /// </summary>
+        static uint PointDissolveWord(in ModelRenderer.InstanceData data)
+        {
+            // A NaN threshold passes the clamp and converts to step 0, which is still one fixed answer per frame.
+            uint step = (uint)(int)MathF.Round(Math.Clamp(data.Dissolve.X, 0f, 1f) * PointDissolveSteps);
+            return data.DissolveComplement > 0.5f ? step | PointDissolveComplementBit : step;
+        }
+
+        const float PointDissolveSteps = 16f;
+        const uint PointDissolveComplementBit = 1u << 8;
 
         /// <summary>One queued light asking for a map, with everything the budget and the pass need: where it is,
         /// how far it reaches, how much of its own fixture it clears as a sphere and as a box, what kind of map it

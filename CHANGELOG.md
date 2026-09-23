@@ -12,6 +12,17 @@ submitted pose on CPU or GPU skinning, even without an ordinary body draw. Parti
 agree with the ordinary body, and tile-world scenes forward grouped submissions
 ([#1053](https://github.com/APKiwiOrg/KhaozEngine/issues/1053)).
 
+**Position-stable draws and the skills total level.**
+
+- `RandomDraw.Below(rng, exclusiveMax)` and `RandomDraw.UpTo(rng, inclusiveMax)` in `KhaozEngine.Primitives`
+  always cost the stream exactly one draw ([#1140](https://github.com/APKiwiOrg/KhaozEngine/issues/1140)). A
+  bound of 0 or 1 answers 0 through `IRandomSource.Skip`, so a tunable bound that collapses to one no longer
+  moves every seeded roll behind it. `UpTo` refuses `int.MaxValue` and both refuse a negative bound.
+- `SkillTotals.TotalLevel(book, roster, curve)` in `KhaozEngine.Skills` adds up the level of every open leaf
+  skill, never a parent and never a locked skill
+  ([#1141](https://github.com/APKiwiOrg/KhaozEngine/issues/1141)). A server rule and a skills panel read the
+  same total.
+
 ## 20.4.1
 
 A patch that cuts per-frame CPU cost measured in Grimhollow, which is pinned and waiting on it

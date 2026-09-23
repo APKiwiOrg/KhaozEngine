@@ -58,6 +58,16 @@ unsupported schemas fail startup with `SchemaMismatch` and name the required mig
 checks the complete table and index definitions before normal store mutation. Operation retention is independent
 from event retention, so purging replay receipts leaves committed events in place.
 
+`SqliteJournalSchemaMode.ReadOnly` is for operator tools that read a database which must not change, such as a copy
+of production loaded by a release rehearsal. The store opens its connection with `Mode=ReadOnly` whatever the
+connection string says, so SQLite itself rejects a write. It validates the version-two schema with no DDL. A missing
+file fails with `Unavailable` and creates no file. A missing, older, or newer schema fails with `SchemaMismatch` and
+is never created or migrated. The WAL check is skipped because only a writer depends on it, and the journal mode is
+left as it is. `InitializeAsync`, `CommitAsync`, `CompactAsync`, `PurgeOperationsAsync`, `PurgeOperationsByAgeAsync`,
+and `RotateStoreEpochAsync` throw `NotSupportedException` before touching the database. Reads, operation resolution,
+and `ListStreamsAsync` work as usual. The database file is never written. On a WAL database SQLite may create the
+`-wal` and `-shm` side files beside it, because a WAL reader needs the shared-memory index.
+
 `BusyTimeout` controls how long the held connection waits on a locked database. `MinimumRetryHorizon` prevents
 maintenance from deleting replay rows which may still be retried. `Limits` can lower any core journal maximum.
 `TimeProvider` controls public journal timestamps for deterministic hosts and tests. It does not control
@@ -65,8 +75,9 @@ maintenance from deleting replay rows which may still be retried. `Limits` can l
 clipped to SQLite UTC minus `MinimumRetryHorizon`. Dispose the journal to close its connection and release the
 database file.
 
-The process identity needs read, write, create, lock, and rename access to the database, WAL, and shared-memory
-files. In `ValidateOnly`, deploy the version-two schema with a controlled migration process before boot and keep the
+A writing store's process identity needs read, write, create, lock, and rename access to the database, WAL, and
+shared-memory files. A `ReadOnly` store needs read access to the database file, plus existing or creatable `-wal` and `-shm` files
+when the database is in WAL mode. In `ValidateOnly`, deploy the version-two schema with a controlled migration process before boot and keep the
 runtime directory writable for SQLite transactions. A missing, partial, older, or newer schema stops startup with
 `JournalStoreException` kind `SchemaMismatch`.
 

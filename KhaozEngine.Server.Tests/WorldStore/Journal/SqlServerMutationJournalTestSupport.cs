@@ -328,6 +328,6 @@ internal static class SqlServerJournalTestDatabase
         }
     }
 
-    private static string EscapeLike(string value)
+    internal static string EscapeLike(string value)
         => value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[");
 }

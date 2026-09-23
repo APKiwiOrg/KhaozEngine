@@ -59,6 +59,17 @@ two. `ValidateOnly` performs no DDL and is the production mode when
 the application principal does not have schema permissions. A partial, malformed, older, or newer journal schema
 fails with `SchemaMismatch` and names the required migration.
 
+`ReadOnly` is for operator tools that read a database which must not change, such as a copy of production loaded
+by a release rehearsal. It validates the version-two schema with catalog and metadata `SELECT`s only, inside one read
+committed transaction that is always rolled back. It takes no application lock and issues no DDL. A missing, older,
+or newer schema fails with `SchemaMismatch` and is never created or migrated. `InitializeAsync`, `CommitAsync`,
+`CompactAsync`, `PurgeOperationsAsync`, `PurgeOperationsByAgeAsync`, and `RotateStoreEpochAsync` then throw
+`NotSupportedException` before opening a connection. Reads, operation resolution, and `ListStreamsAsync` issue only
+`SELECT`. The multi-statement reads keep their serializable transactions, which take shared locks on a primary. The
+store leaves the connection string as given. Add `ApplicationIntent=ReadOnly` to route to a readable
+secondary, and for a guarantee the server enforces, connect as a principal that holds only database connect,
+`VIEW DEFINITION`, and `SELECT` on the seven journal tables.
+
 The package embeds `JournalSchemaV2.sql` for fresh deployments and retains `JournalSchemaV1.sql` for controlled
 upgrade tooling and compatibility tests. Deployments apply the version-two script before starting a validate-only
 host. Initialization is serialized with a transaction-owned SQL application lock. Normal writes share a

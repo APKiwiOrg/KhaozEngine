@@ -111,6 +111,13 @@ back as `afterStreamKey` with the same prefix. Pages are keyset continuations ra
 created ahead of the continuation key appears on a later page and one created behind it does not. A page holds at
 most `JournalStreamQuery.MaximumStreamsPerPage` (1,000) streams.
 
+A sweep usually points at a source that must not be written to. Both SQL providers open read only with
+`SchemaMode = ReadOnly` (`SqliteJournalSchemaMode.ReadOnly` or `SqlServerJournalSchemaMode.ReadOnly`). That mode
+issues no DDL, reports a missing or older schema as `SchemaMismatch` instead of creating or migrating it, and makes
+`InitializeAsync`, `CommitAsync`, `CompactAsync`, `PurgeOperationsAsync`, `PurgeOperationsByAgeAsync`, and
+`RotateStoreEpochAsync` throw `NotSupportedException` before any I/O. Reads, operation resolution, and listing work
+as usual. Do not hand a read only store to `MutationJournalExecutor`.
+
 The in-memory reference store implements the store, both maintenance interfaces, and the listing:
 
 ```csharp
@@ -217,6 +224,9 @@ Expected races use result statuses. Provider, transport, schema, and corruption 
   `SchemaMismatch`, or `ConstraintViolation`.
 - `Certainty` is `DefinitelyNotCommitted`, `Unknown`, or `CommittedDataUnreadable`.
 - `Scope` is `OperationStreams` with exact `StreamKeys`, or `WholeStore` with no stream keys.
+
+A write call on a store opened read only throws `NotSupportedException` instead. That is a caller error rather than
+a store failure, so it sits outside this contract and nothing was attempted.
 
 `DefinitelyNotCommitted` availability, timeout, deadlock, and cancellation failures can retry the identical
 frozen operation. `Unknown` means the commit may exist. Resolve the same identity, then retry the same frozen

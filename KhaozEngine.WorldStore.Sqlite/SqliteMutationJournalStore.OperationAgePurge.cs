@@ -14,6 +14,7 @@ public sealed partial class SqliteMutationJournalStore
         JournalOperationAgePurge purge,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfReadOnly(nameof(PurgeOperationsByAgeAsync));
         ArgumentNullException.ThrowIfNull(purge);
         cancellationToken.ThrowIfCancellationRequested();
         Invoke(JournalTestHookPhase.BeforeTransaction);

@@ -320,7 +320,7 @@ public sealed class ContainerCommitJournalTests : IDisposable
             Assert.True(ContainerOperationEventCodec.TryRead(stored.EventType,
                 stored.EventSchemaVersion, stored.Payload, out ContainerOperation operation,
                 out string? readReason), readReason);
-            Assert.True(ContainerOperationApplier.TryApply(copies, operation,
+            Assert.True(ContainerOperationApplier.TryReplay(copies, operation,
                 out string? applyReason), applyReason);
         }
 

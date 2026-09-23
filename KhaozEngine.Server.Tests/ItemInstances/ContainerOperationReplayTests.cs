@@ -22,7 +22,7 @@ public sealed class ContainerOperationReplayTests
         Assert.True(batch.Apply(ContainerOperation.Grant(Bank, 4, Sword, 1, Instance, payload)));
 
         ContainerOperation operation = ReadSingle(batch);
-        Assert.True(ContainerOperationApplier.TryApply(Copies((Bank, replayed)), operation,
+        Assert.True(ContainerOperationApplier.TryReplay(Copies((Bank, replayed)), operation,
             out string? reason), reason);
 
         Assert.Equal(Sword, replayed.SlotAt(4).Stack.ItemId);
@@ -44,7 +44,7 @@ public sealed class ContainerOperationReplayTests
         Assert.True(batch.Apply(ContainerOperation.Move(Bank, 2, Bag, 4, 1, Instance)));
 
         ContainerOperation operation = ReadSingle(batch);
-        Assert.True(ContainerOperationApplier.TryApply(Copies((Bank, replayBank), (Bag, replayBag)),
+        Assert.True(ContainerOperationApplier.TryReplay(Copies((Bank, replayBank), (Bag, replayBag)),
             operation, out string? reason), reason);
 
         Assert.True(replayBank.SlotAt(2).IsEmpty);
@@ -73,7 +73,7 @@ public sealed class ContainerOperationReplayTests
         {
             Assert.True(ContainerOperationEventCodec.TryRead(entry.EventType, entry.EventSchemaVersion,
                 entry.Payload, out ContainerOperation operation, out string? readReason), readReason);
-            Assert.True(ContainerOperationApplier.TryApply(Copies((Bank, replayed)), operation,
+            Assert.True(ContainerOperationApplier.TryReplay(Copies((Bank, replayed)), operation,
                 out string? applyReason), applyReason);
         }
 
@@ -81,6 +81,66 @@ public sealed class ContainerOperationReplayTests
         Assert.True(replayed.SlotAt(1).IsEmpty);
         Assert.Equal(2, replayed.SlotAt(2).Stack.Count);
         Assert.Equal(EncodePage(live, 0), EncodePage(replayed, 0));
+    }
+
+    [Fact]
+    public void Historical_merge_and_occupied_grant_replay_after_stackability_is_retuned()
+    {
+        PagedItemContainer live = Container();
+        PagedItemContainer replayed = new(2, 10_000, static _ => false,
+            static _ => true, QuarantineWrapper.Verify);
+        foreach (PagedItemContainer bank in new[] { live, replayed })
+        {
+            SeatStack(bank, 0, Potion, 4);
+            SeatStack(bank, 1, Potion, 6);
+        }
+
+        ContainerCommitBuilder batch = OpenBank(live);
+        Assert.True(batch.Apply(ContainerOperation.Merge(Bank, 1, 0)));
+        Assert.True(batch.Apply(ContainerOperation.Grant(Bank, 0, Potion, 2)));
+        JournalCommit commit = batch.Close(Mint(ServerId));
+        foreach (JournalEvent entry in Assert.Single(commit.StreamMutations).Events)
+        {
+            Assert.True(ContainerOperationEventCodec.TryRead(entry.EventType, entry.EventSchemaVersion,
+                entry.Payload, out ContainerOperation operation, out string? readReason), readReason);
+            Assert.True(ContainerOperationApplier.TryReplay(Copies((Bank, replayed)), operation,
+                out string? applyReason), applyReason);
+        }
+
+        Assert.Equal(12, replayed.SlotAt(0).Stack.Count);
+        Assert.True(replayed.SlotAt(1).IsEmpty);
+        Assert.Equal(EncodePage(live, 0), EncodePage(replayed, 0));
+
+        PagedItemContainer retunedLive = new(2, 10_000, static _ => false,
+            static _ => true, QuarantineWrapper.Verify);
+        SeatStack(retunedLive, 0, Potion, 4);
+        SeatStack(retunedLive, 1, Potion, 6);
+        ContainerCommitBuilder retunedBatch = OpenBank(retunedLive);
+        Assert.Throws<ArgumentException>(() => retunedBatch.Apply(ContainerOperation.Merge(Bank, 1, 0)));
+        ContainerCommitBuilder retunedGrant = OpenBank(retunedLive);
+        Assert.Throws<ArgumentException>(() => retunedGrant.Apply(ContainerOperation.Grant(Bank, 0, Potion, 2)));
+    }
+
+    [Fact]
+    public void Historical_grant_replays_after_container_capacity_is_reduced()
+    {
+        PagedItemContainer live = Container(capacity: 2);
+        PagedItemContainer replayed = Container(capacity: 1);
+        SeatStack(live, 0, Potion, 4);
+        SeatStack(replayed, 0, Potion, 4);
+
+        ContainerCommitBuilder batch = OpenBank(live);
+        Assert.True(batch.Apply(ContainerOperation.Grant(Bank, 1, Sword, 1, Instance, Payload())));
+        ContainerOperation operation = ReadSingle(batch);
+        Assert.True(ContainerOperationApplier.TryReplay(Copies((Bank, replayed)), operation,
+            out string? reason), reason);
+        Assert.Equal(EncodePage(live, 0), EncodePage(replayed, 0));
+
+        PagedItemContainer current = Container(capacity: 1);
+        SeatStack(current, 0, Potion, 4);
+        ContainerCommitBuilder currentBatch = OpenBank(current);
+        Assert.Throws<ArgumentException>(() => currentBatch.Apply(
+            ContainerOperation.Grant(Bank, 1, Sword, 1, Instance, Payload())));
     }
 
     [Fact]
@@ -99,7 +159,7 @@ public sealed class ContainerOperationReplayTests
             currencySlot: 5, currencyDefinitionId: Currency, currencyCount: 1)));
 
         ContainerOperation operation = ReadSingle(batch);
-        Assert.True(ContainerOperationApplier.TryApply(Copies((Bank, replayed)), operation,
+        Assert.True(ContainerOperationApplier.TryReplay(Copies((Bank, replayed)), operation,
             out string? reason), reason);
 
         Assert.Equal(after, replayed.SlotAt(4).Payload.ToArray());
@@ -119,7 +179,7 @@ public sealed class ContainerOperationReplayTests
         ContainerOperation operation = ContainerOperation.Craft(Bank, 4, Instance, after, audit,
             currencySlot: 5, currencyDefinitionId: Currency, currencyCount: 1);
 
-        Assert.False(ContainerOperationApplier.TryApply(Copies((Bank, bank)), operation,
+        Assert.False(ContainerOperationApplier.TryReplay(Copies((Bank, bank)), operation,
             out string? reason));
         Assert.Equal("before-mismatch", reason);
         Assert.Equal(beforePage, EncodePage(bank, 0));
@@ -167,7 +227,7 @@ public sealed class ContainerOperationReplayTests
         PagedItemContainer bank = Container();
         byte[] before = EncodePage(bank, 0);
 
-        Assert.False(ContainerOperationApplier.TryApply(Copies((Bank, bank)),
+        Assert.False(ContainerOperationApplier.TryReplay(Copies((Bank, bank)),
             ContainerOperation.Grant(Bank, 4, Sword, 1, payload: Payload()), out _));
         Assert.Equal(before, EncodePage(bank, 0));
     }
@@ -183,7 +243,7 @@ public sealed class ContainerOperationReplayTests
         ContainerOperation craft = ContainerOperation.Craft(Bank, 4, Instance, after, audit,
             currencySlot: 4, currencyDefinitionId: Sword, currencyCount: 1);
 
-        Assert.False(ContainerOperationApplier.TryApply(Copies((Bank, bank)), craft, out _));
+        Assert.False(ContainerOperationApplier.TryReplay(Copies((Bank, bank)), craft, out _));
         Assert.Equal(before, EncodePage(bank, 0));
     }
 

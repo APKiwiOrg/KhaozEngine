@@ -16780,16 +16780,19 @@ validates against `Options.Limits` because a batch alone adds nothing.
 
 An event sourced host starts with its prior container pages and applies stored events in stream order.
 `ContainerOperationEventCodec.TryRead` checks the event name, schema version and complete body, and returns
-the recorded operation. `ContainerOperationApplier.TryApply` checks the known slot, instance, count, payload
-and currency preconditions before writing through the host's `IPagedContainerWorkingCopy`. Its live builder
-uses the same applier. A false answer names a stored record the host must refuse or quarantine. A custom
-working-copy implementation is still responsible for accepting valid writes.
+the recorded operation. `ContainerOperationApplier.TryReplay` checks the known slot, instance, count,
+payload and currency preconditions before writing through the host's `IPagedContainerWorkingCopy`. It uses
+the historical admission of Merge and occupied Grant as proof of their former stackability, even if the
+current catalog changed. It also allows an admitted Grant after a later capacity reduction. The live builder
+uses `TryApply` and checks the current stackability and capacity. A false
+answer names a stored record the host must refuse or quarantine. A custom working-copy implementation is
+still responsible for accepting valid writes.
 
 ```csharp
 if (!ContainerOperationEventCodec.TryRead(stored.EventType, stored.EventSchemaVersion,
         stored.Payload, out ContainerOperation operation, out string? reason))
     return Refuse(reason);
-if (!ContainerOperationApplier.TryApply(containers, operation, out reason))
+if (!ContainerOperationApplier.TryReplay(containers, operation, out reason))
     return Refuse(reason);
 ```
 

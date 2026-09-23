@@ -26,7 +26,7 @@ public sealed class ContainerSlideTests
         Assert.Equal(1, stored.EventSchemaVersion);
         Assert.True(ContainerOperationEventCodec.TryRead(stored.EventType, stored.EventSchemaVersion,
             stored.Payload, out ContainerOperation decoded, out string? readReason), readReason);
-        Assert.True(ContainerOperationApplier.TryApply(Copies(replayed), decoded,
+        Assert.True(ContainerOperationApplier.TryReplay(Copies(replayed), decoded,
             out string? applyReason), applyReason);
 
         Assert.Equal(2, replayed.SlotAt(0).Stack.Count);

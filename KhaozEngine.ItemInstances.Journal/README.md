@@ -412,18 +412,21 @@ Grant naming an instance has no payload to restore and returns `legacy-payload-o
 has no target slot and returns `legacy-location-omitted` for replay, while
 `ItemCraftedEvent.TryRead` still reads its old audit body. Existing event bytes are unchanged.
 
-`ContainerOperationApplier.TryApply` takes the decoded operation and a dictionary of caller-owned
+`ContainerOperationApplier.TryReplay` takes the decoded operation and a dictionary of caller-owned
 `IPagedContainerWorkingCopy` containers. It checks known invalid slots, instance ids, counts, payloads,
-currency and craft before state before changing a slot, then applies the same rules the live builder uses.
-The caller's working-copy implementation remains responsible for accepting valid writes. No replay path
-rerolls content or mints an instance id. `ItemGeneratedEvent` remains a readable audit body, and version 2
-Craft still contains the unchanged `ItemCraftedEvent` audit body inside its envelope.
+currency and craft before state before changing a slot. A historical Merge or occupied Grant uses its
+admission as proof that the item was stackable then, so a later catalog retune cannot block replay. An
+admitted Grant also bypasses a later reduction in container capacity. The live builder uses `TryApply`,
+which still checks current stackability and capacity. The caller's working-copy
+implementation remains responsible for accepting valid writes. No replay path rerolls content or mints an
+instance id. `ItemGeneratedEvent` remains a readable audit body, and version 2 Craft still contains the
+unchanged `ItemCraftedEvent` audit body inside its envelope.
 
 ```csharp
 if (!ContainerOperationEventCodec.TryRead(stored.EventType, stored.EventSchemaVersion,
         stored.Payload, out ContainerOperation operation, out string? reason))
     return Refuse(reason);
-if (!ContainerOperationApplier.TryApply(containers, operation, out reason))
+if (!ContainerOperationApplier.TryReplay(containers, operation, out reason))
     return Refuse(reason);
 ```
 

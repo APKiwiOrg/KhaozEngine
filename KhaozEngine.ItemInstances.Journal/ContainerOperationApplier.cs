@@ -9,6 +9,8 @@ namespace KhaozEngine.ItemInstances.Journal;
 /// an event sourced reducer use the same preflight and mutation rules.</summary>
 public static class ContainerOperationApplier
 {
+    static readonly Func<int, bool> HistoricallyStackable = static _ => true;
+
     /// <summary>A craft's stored before payload does not match the item at its declared slot.</summary>
     public const string BeforeMismatch = "before-mismatch";
 
@@ -17,7 +19,19 @@ public static class ContainerOperationApplier
     public static bool TryApply(
         IReadOnlyDictionary<string, IPagedContainerWorkingCopy> containers,
         in ContainerOperation operation,
-        out string? reason)
+        out string? reason) => TryApplyCore(containers, operation, replay: false, out reason);
+
+    /// <summary>Replays an admitted operation from stored events. A historical Merge or occupied Grant
+    /// uses the recorded operation's admission as proof of the then-current stackability and capacity rules,
+    /// while still checking the slots, payloads and counts it names.</summary>
+    public static bool TryReplay(
+        IReadOnlyDictionary<string, IPagedContainerWorkingCopy> containers,
+        in ContainerOperation operation,
+        out string? reason) => TryApplyCore(containers, operation, replay: true, out reason);
+
+    static bool TryApplyCore(
+        IReadOnlyDictionary<string, IPagedContainerWorkingCopy> containers,
+        in ContainerOperation operation, bool replay, out string? reason)
     {
         ArgumentNullException.ThrowIfNull(containers);
         try
@@ -47,8 +61,8 @@ public static class ContainerOperationApplier
         {
             ContainerOperationKind.Move => Move(source, destination, operation, out reason),
             ContainerOperationKind.Split => Split(source, operation, out reason),
-            ContainerOperationKind.Merge => Merge(source, operation, out reason),
-            ContainerOperationKind.Grant => Grant(source, operation, out reason),
+            ContainerOperationKind.Merge => Merge(source, operation, replay, out reason),
+            ContainerOperationKind.Grant => Grant(source, operation, replay, out reason),
             ContainerOperationKind.Take => Take(source, operation, out reason),
             ContainerOperationKind.Craft => Craft(source, destination, operation, out reason),
             ContainerOperationKind.Slide => Slide(source, operation, out reason),
@@ -139,14 +153,15 @@ public static class ContainerOperationApplier
         return true;
     }
 
-    static bool Merge(IPagedContainerWorkingCopy container, in ContainerOperation operation,
+    static bool Merge(IPagedContainerWorkingCopy container, in ContainerOperation operation, bool replay,
         out string? reason)
     {
         if (operation.Slot == operation.DestinationSlot) return Refuse("same-slot", out reason);
         if (!TryOccupied(container, operation.Slot, operation.InstanceId, out ItemSlot source, out reason)
             || !TryOccupied(container, operation.DestinationSlot, operation.DestinationInstanceId,
                 out ItemSlot destination, out reason)) return false;
-        if (!InstanceStacking.CanMerge(destination, source, container.Stackable))
+        if (!InstanceStacking.CanMerge(destination, source,
+            replay ? HistoricallyStackable : container.Stackable))
             return Refuse("merge-refused", out reason);
 
         ItemSlot merged = InstanceStacking.Merge(destination, source, out int remainder);
@@ -157,7 +172,7 @@ public static class ContainerOperationApplier
         return true;
     }
 
-    static bool Grant(IPagedContainerWorkingCopy container, in ContainerOperation operation,
+    static bool Grant(IPagedContainerWorkingCopy container, in ContainerOperation operation, bool replay,
         out string? reason)
     {
         if (!TrySlot(container, operation.Slot, out ItemSlot seated, out reason)) return false;
@@ -170,13 +185,14 @@ public static class ContainerOperationApplier
             new ItemStack(operation.DefinitionId, operation.Count, operation.InstanceId), operation.Payload, false);
         if (seated.IsEmpty)
         {
-            if (container.IsAtCapacity) return Refuse("capacity", out reason);
+            if (!replay && container.IsAtCapacity) return Refuse("capacity", out reason);
             container.SetSlotAt(operation.Slot, arriving);
             reason = null;
             return true;
         }
 
-        if (!InstanceStacking.CanMerge(seated, arriving, container.Stackable))
+        if (!InstanceStacking.CanMerge(seated, arriving,
+            replay ? HistoricallyStackable : container.Stackable))
             return Refuse("merge-refused", out reason);
         ItemSlot merged = InstanceStacking.Merge(seated, arriving, out int remainder);
         if (remainder != 0) return Refuse("count-range", out reason);

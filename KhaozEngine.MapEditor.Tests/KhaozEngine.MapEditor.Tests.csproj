@@ -33,5 +33,7 @@
     <!-- ViewportWorldDisposeOrderGpuTests / RenderServiceTests use [GpuFact]. -->
     <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />
     <ProjectReference Include="../KhaozEngine.TestSupport.Windowing/KhaozEngine.TestSupport.Windowing.csproj" />
+    <!-- PoolWatchHook.cs arms the opt-in thread pool starvation watchdog (#553). -->
+    <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
   </ItemGroup>
 </Project>

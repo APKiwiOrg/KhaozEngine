@@ -2,8 +2,9 @@
 
 ## Status
 
-In flight under [#1055](https://github.com/APKiwiOrg/KhaozEngine/issues/1055). `PoseProbe` and the
-shared generated test rig land first. The other measures use the contracts below in later chunks.
+Implemented for staged 20.1.0 under [#1055](https://github.com/APKiwiOrg/KhaozEngine/issues/1055).
+`PoseProbe`, the four measurement and report types, `PoseBlend`, and the generated test rig are available.
+Grimhollow's authored-clip adoption is separate.
 
 ## Purpose
 

@@ -130,6 +130,24 @@ meaning. The one source-level note is the new `ContainerCommitBuilder.Open` over
   `RuinborneConnectionSignals.IsServerRefusal` checks for `RejectedToken`, so it should add the two new members,
   or a planned-update status can override the content refusal copy.
 
+**Skinned animation inspection and GPU goldens.**
+
+- `Skeleton` retains glTF node names, resolves nodes and skin bones by name, and lets `BoneMask.Subtree` use a named
+  root ([#1052](https://github.com/APKiwiOrg/KhaozEngine/issues/1052)). A glTF child socket must be a zero-weight
+  skin joint, since the loader keeps skin joints and their ancestors.
+- `BoneSocket.Compose` and `ComposeRigid` attach a rigid piece through a posed joint. The rigid variant removes
+  scale and shear, preserves reflection and refuses an invalid basis
+  ([#96](https://github.com/APKiwiOrg/KhaozEngine/issues/96)).
+- `ITileWorldScene` exposes skinned load, unload, solid draw and dissolved draw calls, with
+  `Scene3DTileWorldScene` forwarding them to `Scene3D`. Older scene fakes compile and explicitly refuse a skinned
+  call ([#1058](https://github.com/APKiwiOrg/KhaozEngine/issues/1058)).
+- `KhaozEngine.Render3D.Animation.Inspection` adds pure clip pose probing, foot-plant and segment-clearance
+  measures, deterministic hygiene findings and reports, and allocation-free masked local-pose blending
+  ([#1055](https://github.com/APKiwiOrg/KhaozEngine/issues/1055)).
+- Packable `KhaozEngine.Gpu.TestKit` supplies a framework-agnostic GPU test gate and golden-grid comparison and
+  re-bake helper. `KhaozEngine.TestSupport.Gpu` delegates its shared gate to it while keeping xUnit out of the
+  package ([#1056](https://github.com/APKiwiOrg/KhaozEngine/issues/1056)).
+
 **Tooling.**
 
 - `scripts/pack-local-feed.sh` packs the current tree into the MAIN checkout's `local-feed` from any worktree, and

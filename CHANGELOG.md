@@ -8,7 +8,15 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 ## 20.2.0
 
 A minor that acts on four owner calls left open by the 20.1.0 burn-down. A remote tile body no longer jumps
-at the start of a clicked route. Nothing a game calls changes meaning.
+at the start of a clicked route. Tooltip groups can keep separate bubbles in one pointer stack. Nothing a
+game calls changes meaning.
+
+**Tooltip stacks.**
+
+- `TooltipStackLayout.Place` positions measured tooltip boxes in display order beside a pointer and flips
+  the group at viewport edges. `AnchorFor` converts each placed box to an offset-mode `Tooltip` anchor.
+  Games can keep action, item information and stat changes in separate bubbles without each tooltip
+  clamping to a different position.
 
 **Remote tile steps.**
 

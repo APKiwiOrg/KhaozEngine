@@ -1352,6 +1352,11 @@ Each entry in `bodyLines` carries its own `TooltipLine.Scale` (default `1f`), an
 the title row above them, so one shared font can render the whole tooltip's size hierarchy (see "Scaling
 Gui text" above).
 
+For separate bubbles that must keep one order beside the pointer, measure each with `Tooltip.ComputeBounds`,
+pass the widths and heights to `TooltipStackLayout.Place`, then show each offset-mode `Tooltip` at
+`TooltipStackLayout.AnchorFor(box, tip.Metrics)`. Use the same viewport and metrics for measurement and drawing.
+The group flips as a unit near the right or bottom edge. Keep its total height within the viewport.
+
 **`ScrollablePanel` opt-in height glide (10.121.0)** - when a caller recomputes `panel.Bounds`'s height while the
 panel stays open (content arriving async, a tab switch changing row count), `EffectiveHeight` snapping instantly
 every frame is a visible jump. Set `HeightGlideSeconds` (default 0 = off, byte-identical) and feed dt through the

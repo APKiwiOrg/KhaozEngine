@@ -559,11 +559,16 @@ void main() {
             if (glintRough > 0.0) {
                 float rough = glintRoughnessAt(glintRough, glintDistantRough, camDist, detailFadeDist,
                                                footprint, max(waveScale, 1e-4) * KE_TWO_PI);
-                float a = max(rough, 1e-3);
-                a *= a;                                // alpha = roughness^2
-                // Toksvig-style transfer: detail the pixel cannot resolve becomes lobe width, not lost energy.
-                // Without it, band-limited distant water goes to glass instead of to a believable sheen.
-                a = min(sqrt(a * a + 2.0 * max(lostSlopeVariance, 0.0) * varianceGain), 1.0);
+                // Mirrors WaterMath.GlintAlpha. Toksvig-style transfer: detail the pixel cannot resolve becomes
+                // lobe width, not lost energy, so band-limited distant water goes to a sheen instead of glass. It
+                // widens the NEAR roughness, and the distance/footprint widening is a floor under the result
+                // rather than a second term added to it: both respond to the same unresolved ripple detail, and
+                // summing them counted it twice (#308).
+                float wideA = max(rough, 1e-3);
+                wideA *= wideA;                        // alpha = roughness^2
+                float nearA = max(glintRough, 1e-3);
+                nearA *= nearA;
+                float a = min(max(wideA, sqrt(nearA * nearA + 2.0 * max(lostSlopeVariance, 0.0) * varianceGain)), 1.0);
                 float a2 = a * a;
                 float denom = ndoth * ndoth * (a2 - 1.0) + 1.0;
                 float lobe = a2 / max(denom, 1e-6);

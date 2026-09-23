@@ -282,7 +282,8 @@ namespace KhaozEngine.Render3D.Internal
         /// </list>
         /// Widening the LOBE rather than fading the normals keeps the sub-pixel detail as variance instead of
         /// throwing it away, which is why the far field ends up as a soft sheen rather than either a crawling
-        /// sparkle or a dead mirror.
+        /// sparkle or a dead mirror. The result is a floor under the Toksvig lobe rather than its base (see
+        /// <see cref="GlintAlpha"/>).
         /// </summary>
         /// <param name="nearRoughness">Roughness at full sampling.</param>
         /// <param name="distantRoughness">Roughness where the surface is fully under-sampled (raised to at least
@@ -302,6 +303,35 @@ namespace KhaozEngine.Render3D.Internal
                 aliasT = Math.Clamp(pixelFootprint / (rippleWavelength * 0.5f), 0f, 1f);
             float t = MathF.Max(distanceT, aliasT);
             return nearRoughness + (far - nearRoughness) * t;
+        }
+
+        /// <summary>
+        /// Final GGX alpha of the sun glint: the wider of the <see cref="GlintRoughnessAt"/> widening and the
+        /// near-field lobe widened by the Toksvig transfer (<see cref="RippleSpectrum.AlphaFromVariance"/>), clamped to
+        /// 1. Mirrors the GLSL glint exactly.
+        /// <para>
+        /// A floor rather than a sum (#308). The widening and the transfer both respond to the same ripple detail
+        /// falling below the pixel footprint, so stacking the transfer on top of the widened alpha counted that
+        /// detail twice and put the far lobe at about twice the surface's real slope variance. Here the transfer
+        /// alone carries the removed variance, and the widening only takes over where it asks for a broader lobe,
+        /// which is what keeps <see cref="WaterSettings.GlintDistantRoughness"/> an artistic minimum. With the
+        /// transfer off (<see cref="WaterSettings.VarianceToRoughness"/> 0, or nothing removed) this is the widened
+        /// alpha exactly, the 14.24.0 lobe.
+        /// </para>
+        /// </summary>
+        /// <param name="nearRoughness">Roughness at full sampling (<see cref="WaterSettings.GlintRoughness"/>).</param>
+        /// <param name="widenedRoughness">The <see cref="GlintRoughnessAt"/> result at this point.</param>
+        /// <param name="lostSlopeVariance">Slope variance the band-limit and the detail fade removed, the ripple
+        /// half already scaled by <see cref="WaterSettings.NormalStrength"/> squared.</param>
+        /// <param name="varianceGain">How much of it to transfer (<see cref="WaterSettings.VarianceToRoughness"/>).</param>
+        public static float GlintAlpha(float nearRoughness, float widenedRoughness, float lostSlopeVariance,
+            float varianceGain)
+        {
+            float wide = MathF.Max(widenedRoughness, 1e-3f);
+            wide *= wide;
+            float near = MathF.Max(nearRoughness, 1e-3f);
+            near *= near;
+            return MathF.Min(MathF.Max(wide, RippleSpectrum.AlphaFromVariance(near, lostSlopeVariance, varianceGain)), 1f);
         }
 
         /// <summary>

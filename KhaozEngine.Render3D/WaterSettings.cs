@@ -461,11 +461,14 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public float FootprintSamples = 4f;
 
-        /// <summary>How much of the slope variance the footprint band-limit removes is transferred into the GGX
-        /// glint lobe (Toksvig-style), so the surface conserves energy as detail is band-limited away rather than
-        /// turning to glass at range. <c>0</c> disables the transfer, leaving distant water smooth and
-        /// under-lit. Only the GGX path can receive it, since the legacy Blinn-Phong lobe has no roughness.
-        /// Default <c>1</c>.</summary>
+        /// <summary>How much of the slope variance the footprint band-limit (and the
+        /// <see cref="DetailFadeDistance"/> fade) removes is transferred into the GGX glint lobe (Toksvig-style), so
+        /// the surface conserves energy as detail is band-limited away rather than turning to glass at range. The
+        /// transfer widens <see cref="GlintRoughness"/>, and the widening toward <see cref="GlintDistantRoughness"/>
+        /// is a floor under the result rather than a second widening on top of it, so the removed detail is counted
+        /// once (#308). <c>0</c> disables the transfer and leaves the lobe on that floor, which is the 14.24.0 lobe.
+        /// Only the GGX path can receive it, since the legacy Blinn-Phong lobe has no roughness. Default
+        /// <c>1</c>.</summary>
         public float VarianceToRoughness = 1f;
 
         /// <summary>Camera distance (world units) over which every ripple component ABOVE the longest fades
@@ -493,19 +496,26 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// GGX/Trowbridge-Reitz roughness of the sun glint near the camera (the usual perceptual parameterization,
         /// <c>alpha = roughness * roughness</c>). Small values give a tight highlight that the ripple field breaks
-        /// into individual glitter points, which is what a sun path on water actually is. <c>0</c> or less selects
-        /// the LEGACY Blinn-Phong lobe on <see cref="GlintExponent"/> instead. Default <c>0.22</c>, roughly a 2
-        /// degree half-width.
+        /// into individual glitter points, which is what a sun path on water actually is. It is also the lobe the
+        /// band-limited ripple detail widens (<see cref="VarianceToRoughness"/>). <c>0</c> or less selects the LEGACY
+        /// Blinn-Phong lobe on <see cref="GlintExponent"/> instead. Default <c>0.22</c>, roughly a 2 degree
+        /// half-width.
         /// </summary>
         public float GlintRoughness = 0.22f;
 
         /// <summary>
-        /// Roughness the glint widens to where the surface is under-sampled: at and beyond
+        /// The glint's MINIMUM roughness where the surface is under-sampled: at and beyond
         /// <see cref="DetailFadeDistance"/>, or wherever one pixel already covers a large fraction of a ripple
         /// wavelength, whichever is worse. Widening the LOBE is the right answer to specular aliasing (the
         /// sub-pixel normal detail becomes lobe variance instead of being thrown away), and it is what stops the
-        /// far field crawling with sparkle. Clamped up to at least <see cref="GlintRoughness"/>, and ignored
-        /// entirely in the legacy Blinn-Phong path. Default <c>0.5</c>.
+        /// far field crawling with sparkle.
+        /// <para>
+        /// A floor, not an addition (#308). The band-limited ripple detail already widens the lobe through
+        /// <see cref="VarianceToRoughness"/>, and both measures respond to the same detail falling below the pixel,
+        /// so where the transfer asks for a broader lobe it wins and this adds nothing. Where it asks for less,
+        /// this holds the lobe at this roughness as an artistic minimum. Clamped up to at least
+        /// <see cref="GlintRoughness"/>, and ignored entirely in the legacy Blinn-Phong path. Default <c>0.5</c>.
+        /// </para>
         /// </summary>
         public float GlintDistantRoughness = 0.5f;
 

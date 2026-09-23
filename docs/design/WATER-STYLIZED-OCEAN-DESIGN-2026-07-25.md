@@ -247,3 +247,18 @@ measures tonal range and the fix widened it.
 was not kept reachable: the coherence IS the defect. What is reachable is `FootprintSamples = 0` (14.24.0's
 unbounded normal oscillation), `VarianceToRoughness = 0` (its lobe behaviour) and `RippleComponents = 3` (a
 sparse spectrum, though with golden-angle headings rather than the old fixed ones).
+
+## Revision: the glint widening is a floor under the Toksvig lobe (#308)
+
+The 14.26.0 transfer was stacked on the 14.24.0 widening, `alpha = sqrt(widened^2 + 2 * lost * gain)`. Both read
+the same signal, the ripple detail below the pixel footprint, so that detail was counted twice. At the shipped
+defaults with the distance ramp off, the lobe variance came out at 1.08, 1.33, 2.12 and 2.08 times the surface's
+real slope variance at footprints of 1, 3.93, 7.85 and 31.4 m, and at about 2.1 times wherever the distance ramp had
+saturated, which is the regime a perspective player sees.
+
+Gating the widening on the resolved share, or folding it into the transfer, left every golden byte-identical,
+because each acted only where the widening outran the distance ramp. The widening is a floor instead,
+`alpha = max(widened, sqrt(near^2 + 2 * lost * gain))`. The lobe carries exactly the surface's variance until
+`GlintDistantRoughness` takes over, then 1.12 to 1.17 times it, so that knob is an artistic minimum rather than an
+additive widening. `VarianceToRoughness = 0` still gives the 14.24.0 lobe exactly. The cost is a narrower near and
+mid lobe where the distance ramp is partway, which moves the water goldens and was accepted as a look decision.

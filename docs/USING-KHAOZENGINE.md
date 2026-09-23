@@ -4407,7 +4407,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     once its wavelength drops below `FootprintSamples` pixel footprints, per component, so the long ripples
     survive where the short ones go. The slope variance that removes is transferred into the GGX lobe
     (Toksvig-style), so distant water settles into a smooth fresnel gradient with a believable sheen instead of
-    either stripes (no band-limit) or glass (band-limit without transfer). The swell's shading contrast fades on
+    either stripes (no band-limit) or glass (band-limit without transfer). The transfer widens `GlintRoughness`,
+    and the glint's distance and footprint widening (below) is a floor under it rather than a second widening, so
+    the removed detail counts once. The swell's shading contrast fades on
     the same measure, leaving its crest geometry untouched. This is the physics half of the anti-aliasing and it
     is why distance banding cannot come back through a knob: `DetailFadeDistance` is an artistic extra on top.
   - **Reflection**: the fresnel term blends the body colour toward the sky evaluated along the REFLECTED view ray
@@ -4417,12 +4419,16 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     it is actually pointing at. `SkyReflectionSunStrength` defaults below 1 because the sharp part of the reflected
     sun is already supplied by the glint lobe, and carrying both at full strength double-counts it.
   - **Glint**: a peak-normalized GGX lobe (so `GlintStrength` means the same brightness as the legacy Blinn-Phong
-    one) whose roughness widens toward `GlintDistantRoughness` wherever the surface is under-sampled - by camera
-    distance over `DetailFadeDistance`, or by the pixel's world FOOTPRINT against the ripple wavelength, whichever
-    is worse. The footprint measure is the one that is actually right (what aliases is a wave narrower than a
-    pixel; distance is a proxy that breaks under a wide FOV, under the ortho iso camera, and at a resolution other
-    than the one it was tuned at). Widening the lobe keeps sub-pixel detail as variance instead of discarding it,
-    so the far field settles into a soft sheen rather than a crawling sparkle.
+    one) whose roughness never falls below a floor that widens toward `GlintDistantRoughness` wherever the surface
+    is under-sampled - by camera distance over `DetailFadeDistance`, or by the pixel's world FOOTPRINT against the
+    ripple wavelength, whichever is worse. The footprint measure is the one that is actually right (what aliases is
+    a wave narrower than a pixel, and distance is a proxy that breaks under a wide FOV, under the ortho iso camera, and
+    at a resolution other than the one it was tuned at). Widening the lobe keeps sub-pixel detail as variance
+    instead of discarding it, so the far field settles into a soft sheen rather than a crawling sparkle. Since
+    #308 the floor sits under the Toksvig lobe from the band-limit instead of adding to it. Both respond to the
+    same unresolved ripple detail, and the sum put the far lobe at about twice the surface's slope variance. Now
+    the lobe carries exactly that variance until the floor takes over, and 1.12 to 1.17 times it on the floor.
+    `VarianceToRoughness = 0` leaves the lobe on the floor alone, the 14.24.0 lobe.
   - **Depth grading**: the reconstructed ground depth drives per-channel Beer-Lambert transmittance
     (`exp(-AbsorptionPerMetre * depth)`), blending `ShallowColor` down into `DeepColor`. Because red is absorbed
     several times faster than blue, the ramp bends through green-teal instead of running straight down the line

@@ -547,10 +547,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     toward the sky evaluated along the reflected view ray (`Internal.SkyMath.ShadeDirection`, the same gradient +
     sun the background sky pass paints, in per-direction form) using `PixelPostProcessSettings.Sky`'s palette
     whether or not the sky PASS is enabled. `SkyReflectionStrength = 0` restores the flat `HorizonColor`.
-  - **GGX sun glint** (`GlintStrength`/`GlintRoughness`/`GlintDistantRoughness`): a peak-normalized GGX lobe whose
-    roughness widens wherever the surface is under-sampled, by camera distance over `DetailFadeDistance` OR by the
-    pixel's world footprint against the ripple wavelength, whichever is worse. `GlintRoughness = 0` selects the
-    legacy Blinn-Phong lobe on `GlintExponent`.
+  - **GGX sun glint** (`GlintStrength`/`GlintRoughness`/`GlintDistantRoughness`): a peak-normalized GGX lobe held
+    at or above a roughness floor that widens toward `GlintDistantRoughness` wherever the surface is under-sampled,
+    by camera distance over `DetailFadeDistance` OR by the pixel's world footprint against the ripple wavelength,
+    whichever is worse. The floor sits under the variance transfer below rather than adding to it, so the ripple
+    detail both respond to is counted once (#308). `GlintRoughness = 0` selects the legacy Blinn-Phong lobe on
+    `GlintExponent`.
   - **Depth grading** (`AbsorptionPerMetre` over `DeepColor`/`ShallowColor`): per-channel Beer-Lambert
     transmittance, so the ramp bends through green-teal rather than running straight between two colours. All-zero
     coefficients restore the two-stop smoothstep over `ShallowDepth`.
@@ -564,7 +566,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   five octaves, amplitudes renormalized to a fixed slope variance so `NormalStrength` keeps its meaning, sampled at
   a domain-warped position (`WaveWarpStrength`). Each component is band-limited out of the normal once it falls
   below `FootprintSamples` pixel footprints, and the removed slope variance is transferred into the GGX lobe
-  (`VarianceToRoughness`, Toksvig-style) so distant water becomes a rougher surface rather than stripes or glass;
+  (`VarianceToRoughness`, Toksvig-style, widening `GlintRoughness` up to or past the glint's floor) so distant water
+  becomes a rougher surface rather than stripes or glass, and
   the swell's shading contrast fades on the same measure. `DetailFadeDistance`/`DistantDetailScale` remain as an
   artistic extra layered on top. Plus the
   depth-sampled shore fade (`ShoreFadeDistance`) and `Opacity`.

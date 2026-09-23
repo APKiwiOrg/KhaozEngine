@@ -187,6 +187,30 @@ keeps CPU skinning with one assignment. No call a game makes changes meaning. Th
   anchor stays sampled at the footprint centre on purpose, now documented: the corner maximum would float small
   props on steps and slopes (83 of Grimhollow's 2,463 one-tile objects would move by more than a centimetre).
 
+**Server admin on a tile world.**
+
+- `TileWorldServer` implements `IAdminControllable` ([#826](https://github.com/APKiwiOrg/KhaozEngine/issues/826)),
+  so `ServerAdmin` and the `KhaozEngine.Server.Admin` endpoint drive a tile world with no game-side adapter.
+  Commands queue and apply at the top of the next tick. `ListOnline` is a per-tick snapshot whose positions are
+  world metres through the new `TileWorldServerConfig.Presenter`.
+- A tile `Teleport` snaps a world position to a tile and plane with the new `TilePresenter.TryTileAt`, places the
+  player as a teleport so the client cuts, and refuses a blocked or unloaded tile through
+  `TileWorldServer.TeleportRefused` (`TileTeleportRefusal.OutsideWorld` or `Blocked`). `Kick` and `Broadcast` carry
+  reason tokens. `POST /admin/teleport` and `/admin/broadcast` answer 400 with the reason when the head refuses a
+  command on the caller's thread.
+- `IAdminControllable`, `PlayerRef`, `OnlinePlayer` and `MovementCommitmentRequest` move into the
+  `KhaozEngine.Netcode` assembly under their shipped `KhaozEngine.NetWorld` names, forwarded from NetWorld as the
+  ban seam was, so existing source and binaries bind unchanged. `MovementCommitmentRequest` now validates its own
+  arguments without the Locomotion package, and a parity test holds its exceptions and direction normalization
+  equal to `MovementCommitment`'s.
+- A ban that reaches an admitted tile player ends the session
+  ([#1104](https://github.com/APKiwiOrg/KhaozEngine/issues/1104)). `TileWorldServerConfig.BanStore` and `IsBanned`
+  are read at join and once per tick over live sessions, and an admin kick of a banned account carries
+  `TileServerReason.Banned`, the same `ke:banned` string the door refuses with. Tokenless guest seats are never
+  checked. The float heads still check at join only
+  ([#1103](https://github.com/APKiwiOrg/KhaozEngine/issues/1103)). Grimhollow's adoption is
+  [Grimhollow#320](https://github.com/APKiwiOrg/Grimhollow/issues/320).
+
 **Tooling.**
 
 - `scripts/pack-local-feed.sh` packs the current tree into the MAIN checkout's `local-feed` from any worktree, and

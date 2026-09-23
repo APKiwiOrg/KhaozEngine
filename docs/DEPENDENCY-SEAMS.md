@@ -168,7 +168,7 @@ holds the copy equal. `MovementCommitmentResult` names a Locomotion enum and sta
 The game-registered admin action registry (`ServerAdmin.RegisterAction`/`ActionNames`/`TryGetAction`, since
 10.131.0) lives on `ServerAdmin` itself, on the `NetWorld` side of this edge, not in `Server.Admin`. The
 `/actions` HTTP routes in `Server.Admin` are a thin dispatch shell over that registry, so this edge is
-unchanged: `Server.Admin` still only references `NetWorld`, `WorldStore`, and `Microsoft.AspNetCore.App`.
+unchanged: the registry adds no reference to `Server.Admin`, whose edges are `NetWorld`, `WorldStore`, `Microsoft.AspNetCore.App` and the `Catalog.Authoring` reference recorded with the catalog admin actions below.
 
 ## Automation package edge, and the one seam it adds
 

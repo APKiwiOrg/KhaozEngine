@@ -3155,7 +3155,9 @@ scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, ed
   needs nothing extra: the loaded mesh's material state carries the cutoff, and the model fragment discards any
   texel whose baseColor alpha is below it, rendering a leaf-card texture as its silhouette instead of a solid
   quad. To force a mesh opaque (ignore a MASK material's cutout) upload it via an explicit `SurfaceMaps` with
-  `alphaCutoff: 0`. Shadow casters do not alpha-test yet, so a cutout prop casts its full-quad silhouette. Kits
+  `alphaCutoff: 0`. The key light's cascaded shadow pass alpha-tests the same way, so a MASK caster loaded with an
+  albedo casts its silhouette rather than the full quad (see the caster policy under Shadows). Point-light shadow
+  maps do not alpha-test yet and still record the full quad. Kits
   baked with `tools/kit-bake` additionally dilate (alpha-bleed) leaf colour under the transparent texels so mip
   and bilinear averaging stop folding the black-under-leaf RGB into the leaves (no dark fringe, stable colour at
   distance).
@@ -3588,9 +3590,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     - Other knobs (all on `ShadowSettings`, runtime-mutable): `ShadowNearDistance` (default `16`, the near cascade's view-depth
       reach from the camera - smaller packs texels onto the near action, at the cost of handing off to a coarser
       cascade sooner). `ShadowStrength` (0..1 shadow darkness, default `0.85`).
-    - **Caster policy: opting out, fading casters, and shadow-only casters** (issues #287 and #974). Three
-      per-instance behaviours sit on top of the pass, all inert by default, so a scene that uses none renders
-      byte-identically to before.
+    - **Caster policy: opting out, fading casters, cutout casters, skinned casters and shadow-only casters**
+      (issues #287, #974, #15 and #387). These behaviours sit on top of the pass, all inert by default, so a scene
+      that uses none renders byte-identically to before.
       - `scene.Draw(handle, transform, tint, material, castsShadows: false)` (and the `castsShadows` argument on the
         dissolve overload) keeps THAT instance out of the depth pass. It still draws and still RECEIVES shadows: this
         is a shadow policy, not a cull. Reach for it on dense decorative geometry - ground cover, understory - where
@@ -3606,6 +3608,24 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         the hard cull radius, and across an HLOD crossfade band the individual props and the merged mesh both cast at
         full strength (roughly double shadow density). Nothing to opt into - a positive dissolve is the opt-in - and
         a caster at dissolve 0 still takes the plain pipeline.
+      - A MASK caster (issue #15), meaning a mesh loaded with `SurfaceMaps.AlphaCutoff` above 0 AND an albedo
+        texture, such as a leaf card, records depth only where its albedo alpha clears the cutoff, the same test the
+        colour pass applies. Its shadow is the silhouette rather than the solid quad. Only that mesh's spans take the
+        alpha-cutout depth pipeline, which samples the albedo, and a dissolving MASK caster applies both tests. The
+        cutout pipeline culls nothing, as the colour pass draws the card two-sided, so a single-sided leaf card casts
+        whichever face it turns to the sun. An
+        opaque caster keeps the depth-only pipeline with no texture sample and no discard, and a MASK mesh with no
+        albedo keeps it too, since it samples white and never cuts out in the colour pass either. Nothing to opt
+        into: the cutoff read from the glTF material is the opt-in. Skinned meshes do not carry a cutoff, so they
+        cut out in neither pass.
+      - Skinned draws (issue #387) take the same policy on both skinning paths. `scene.DrawSkinned(handle, pose,
+        world, tint, material, castsShadows: false)` (and the `castsShadows` argument on the dissolve overload)
+        keeps the character out of the depth pass while it still draws and still receives shadows. An opted-out
+        skinned draw is also no reason to keep an off-camera character alive, so it is culled with nothing uploaded,
+        and it does not count as a skinned caster for the dirty-skip below. A dissolving skinned draw (the
+        CharDissolve teleport, or a death fade) takes a dissolve-aware depth pipeline, so its shadow erodes with the
+        same world-space noise mask that erodes the body instead of staying solid under an almost invisible
+        character.
       - `scene.DrawShadowOnly(handle, transform)` (issue #974) is the opposite of the opt-out: the instance writes
         depth into the cascade atlas and never draws in the COLOUR pass, so it throws a shadow and is never seen.
         Reach for it where a view hides geometry from the eye while the world still contains it. The first consumer
@@ -3619,10 +3639,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         onscreen shadow. Shadow-only with `castsShadows: false` is a contradiction (an instance drawn in neither
         pass) and throws. `PropRenderer.DrawShadowOnlyProps` is the multi-part prop emit for it, with the
         multi-part `DrawProps` cull and transform and no fade band, LOD, blobs or tint.
-      - All three are decided per instance on the CPU, at the same point instances are grouped for upload, so none
-        adds a GPU upload and an all-plain frame issues the same depth draws in the same order as before. The
-        dissolve variant does add a depth-pass pipeline switch per contiguous fading span, which is why it is bound
-        only for the spans that carry a dissolve.
+      - All of them are decided on the CPU, per instance where instances are grouped for upload and per mesh for
+        the cutout, so none adds a GPU upload and an all-plain frame issues the same depth draws in the same order
+        as before. The dissolve and cutout variants do add a depth-pass pipeline switch per contiguous span of their
+        kind, and a cutout span binds its mesh's albedo set when the mesh changes, which is why each is bound only
+        for the spans that need it. A dissolving GPU-skinned caster packs 160 bytes of its 256-byte per-cascade
+        uniform slot rather than 64.
     - **Terrain casting: `scene.TerrainCastsShadows`** (default `false`, issue #280). Splat-terrain chunks are
       receive-only by default, which is the rule the pass shipped with: terrain self-shadowing is negligible on flat
       MMO ground with no overhangs, so only models, tile ground and characters write into the atlas. At that default
@@ -3863,14 +3885,15 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   Read the per-frame win from `Scene3D.DrawnInstances` / `Scene3D.CulledInstances` (last rendered frame; `CulledInstances`
   is always `0` when culling is off). The plane math is public and pure: `FrustumPlanes.Extract(camera.ViewProjection)`
   then `IntersectsAabb`/`IntersectsSphere` (use the CPU-authored `ViewProjection`, not a GPU-clip-corrected matrix).
-  - **Skinned draws are culled too, before the CPU skin pass runs** (not just their draw call): an off-screen
-    character queued via `DrawSkinned` skips the per-vertex `SkinningMath.SkinVertex` loop and its buffer upload
-    entirely, the actual cost the audit that motivated this flagged (a character's per-frame skin cost dwarfs one
-    draw call). The catch a naive camera cull would get wrong: an off-camera character can still need to THROW a
-    shadow. So a camera-culled skinned draw is skipped completely only when it is ALSO outside the active shadow
-    map's own light-space ortho volume (tested with the exact same `FrustumPlanes.Extract` against the shadow
-    pass's light view-projection, not an approximation) - if it is inside that volume it is still CPU-skinned and
-    uploaded (so the shadow depth pass can draw it), just not drawn in the main visible pass. Rest-pose bounds
+  - **Skinned draws are culled too, before they are recorded** (not just their draw call): an off-screen
+    character queued via `DrawSkinned` skips its palette upload on the GPU skinning path, and the per-vertex
+    `SkinningMath.SkinVertex` loop and its buffer upload on the CPU path, the actual cost the audit that motivated
+    this flagged (a character's per-frame skin cost dwarfs one draw call). The catch a naive camera cull would get
+    wrong: an off-camera character can still need to THROW a shadow. So a camera-culled skinned draw is skipped
+    completely only when it is ALSO outside the active shadow map's own light-space ortho volume (tested with the
+    exact same `FrustumPlanes.Extract` against the shadow pass's light view-projection, not an approximation), or
+    opted out of casting - if it casts and is inside that volume it is still recorded and uploaded (so the shadow
+    depth pass can draw it), just not drawn in the main visible pass. Rest-pose bounds
     (`MeshBounds`, computed once at `LoadSkinnedMesh`) are inflated by `Scene3D.SkinnedCullSafetyFactor` (1.5x)
     before either test, since a pose can carry vertices outside the mesh's static rest-pose box (a swung limb, a
     jump). Read the win from `Scene3D.DrawnSkinnedInstances` / `Scene3D.CulledSkinnedInstances`, the skinned
@@ -4284,6 +4307,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     from the same seven scalars. Wavelengths ladder down geometrically, amplitudes are proportional to wavelength,
     and each component's speed comes from the deep-water dispersion relation, so long rollers genuinely overtake
     the short chop. `SwellSteepness` is capped at 1, the point past which the surface would fold through itself.
+    The displacement is per vertex, but the swell's NORMAL is evaluated per pixel at the fragment's still-water
+    position, so a grid too coarse to carry the swell (a clipmap's 8 and 16 m outer rings under the 42 m default,
+    or the far cells of a large camera-focused plane) no longer shades it as flat triangle facets (#381). The
+    whitecap fold is still interpolated from the vertices.
   - **Surface grid** (`GridMode`, a `WaterGridMode`) - two layouts, and which one you want depends on whether the
     camera moves much. Clipmap mode uses a four-vertex, six-index quad for an effective `Procedural` source
     with zero `SwellAmplitude`. Ripples still shade it. FFT and nonzero-swell planes retain displaced
@@ -4433,8 +4460,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     reads as a soft transition instead of a hard clip. A flat, deep lakebed reads fully opaque in open water; a
     shallow shelf near the shore fades progressively.
   - The pure math (`WaterMath`, internal: the three-layer wave normal, the domain warp, the distance detail fade,
-    the shallow-blend and shore-fade curves, Schlick fresnel, Blinn-Phong glint, grid tessellation sizing) is
-    headless-tested and mirrors the GLSL `WaterFrag`/`WaterVert` exactly.
+    the shallow-blend and shore-fade curves, Schlick fresnel, Blinn-Phong glint, grid tessellation sizing, plus
+    `GerstnerWaves` for the swell, whose offset and fold `WaterVert` mirrors and whose normal `WaterFrag` mirrors)
+    is headless-tested and mirrors the GLSL `WaterFrag`/`WaterVert` exactly.
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
 - `IsoCameraController`: input-agnostic gestures driving an `IsoCamera3D` (pure `System.Numerics`, headless-testable;
@@ -4452,7 +4480,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
 
 Render3D supports bone-palette skinning for organic, code-driven deformation (tentacles,
 limbs, cables, soft-body) without authored animation tracks. One skinned draw replaces many
-rigid-segment draws. Skinning deforms on the CPU by default, with an opt-in GPU path
+rigid-segment draws. Skinning deforms on the GPU by default, with the CPU path one flag away
 (`Scene3D.UseGpuSkinning`, see below).
 
 ```csharp
@@ -4515,15 +4543,15 @@ throws on `DrawSkinned`. Many skinned meshes per frame are fine: each skinned `D
 own draw call (they are not GPU-instanced), so a creature with several tentacles costs one draw per
 tentacle, still far below the dozens of rigid-segment draws it replaces.
 
-**CPU skinning (the default) and the opt-in GPU path (`Scene3D.UseGpuSkinning`).** By default `Scene3D`
-deforms every skinned vertex on the CPU (`SkinningMath.SkinVertex`) each frame and draws the result
-through the same proven rigid, no-bone pipeline `ModelRenderer` uses for instanced meshes. Setting
-`scene.UseGpuSkinning = true` switches to GPU skinning: the vertex shader blends the bone palette, the
-rest-pose vertex buffer uploads once at load (no per-frame vertex deform), and only the per-draw palette +
-matrices upload each frame. It is **pixel-parity** with the CPU path (the shader mirrors
-`SkinningMath.SkinVertex` exactly), respects the same frustum culling and shadow pass, and is flippable per
-frame. It **ships default-OFF** and should stay off until you have done a windowed A/B (below) - the win is
-only at MMO crowd scale, where the CPU skin loop (O(vertices x characters) per frame) dominates.
+**GPU skinning (the default) and the CPU path (`Scene3D.UseGpuSkinning`).** By default `Scene3D` skins on
+the GPU: the vertex shader blends the bone palette, the rest-pose vertex buffer uploads once at load (no
+per-frame vertex deform), and only the per-draw palette + matrices upload each frame. Setting
+`scene.UseGpuSkinning = false` switches to CPU skinning, which deforms every skinned vertex on the CPU
+(`SkinningMath.SkinVertex`) each frame and draws the result through the same rigid, no-bone pipeline
+`ModelRenderer` uses for instanced meshes. The two are **pixel-parity** (the shader mirrors
+`SkinningMath.SkinVertex` exactly), respect the same frustum culling and shadow pass, and the flag is flippable
+per frame. The CPU path stays supported, but the GPU one is the faster choice from a handful of characters up,
+because the CPU skin loop costs O(vertices x characters) per frame.
 
 **How big the win is, measured.** `FrameUploadAttributionGpuTests` runs both paths over the same streamed-world
 scene (3,894 rigid instances, 24 characters at 13.6k vertices and 48 bones, four cascades at 2048) on one
@@ -4531,8 +4559,8 @@ device, and the CPU path's per-frame upload is almost entirely the skinned verte
 
 | path | frame upload | instance stream | CPU-skinned stream | skinning uniforms |
 |---|---|---|---|---|
-| CPU skinning (default) | 20,934 KB | 471 KB | 20,463 KB | 0 KB |
-| GPU skinning | 553 KB | 471 KB | 0 KB | 81 KB |
+| CPU skinning | 20,934 KB | 471 KB | 20,463 KB | 0 KB |
+| GPU skinning (default) | 553 KB | 471 KB | 0 KB | 81 KB |
 
 That is **37.9x** off the frame's upload, and on the harness it is several times off the frame's own
 milliseconds too (a machine-dependent number, so run the test rather than quoting one). The reason the upload
@@ -4541,8 +4569,7 @@ skinning uploads 64 bytes per BONE, and a character has hundreds of times more v
 skinning-uniform column shrank twice on the way here: 394 KB before #604 stopped copying the frame block into
 every draw's slot, 369 KB after it, and 81 KB once #407 made a caster's palette one upload the main pass and
 every cascade share. If your game draws more than a handful of skinned characters at once, this flag is the single
-largest per-frame upload lever the engine has, and the windowed A/B below is the only thing standing between you
-and it.
+largest per-frame upload lever the engine has, which is why it is on by default.
 
 The GPU path used to exist on a specific binding shape because the naive GPU design failed on Metal. **That
 rule is retired, and it is worth knowing it existed if you read older Render3D code.** Every pipeline was
@@ -4555,7 +4582,7 @@ custom pipeline of yours may spread its uniform buffers across bindings and sets
 combined buffer in a dated document and wonder why it was shaped like that. GPU skinning is one of the passes the
 issue unfolded: it used to fold EVERYTHING into one combined per-draw UBO,
 `{ Mvp; Model; P; <frame lighting block>; bones[128] }`. It reads three buffers now. Set 0 binding 0 is the
-SHARED frame block, the same one the model pass binds, read by both stages. Set 0 binding 1 is `VBlock`, the
+SHARED frame block, the same one the model pass binds, read by both stages. Set 0 binding 3 is `VBlock`, the
 per-draw `{ Model; P }` at that draw's dynamic offset, read by the vertex alone. Per-mesh material maps stay at
 set 1. Set 2 is `Palette`, the caster's `{ bones[128] }` at its own per-caster dynamic offset.
 
@@ -4572,13 +4599,14 @@ came from a per-instance attribute (route that through a dynamic-offset UBO slot
 does). Per-instance vertex ATTRIBUTES consumed directly (no indexed second buffer) are fine and used in
 production by the rigid instanced draws.
 
-**Windowed A/B (why the flag ships off, and how to verify it).** The offscreen parity proof is necessary
-but not sufficient: the historical corruption was a WINDOWED swapchain fault, so turning the flag on for a
-game must be gated on a windowed check. The Showcase's 3D room does this - press **F** to flip
-`UseGpuSkinning` live on the walking avatar. The HUD shows the active path (`CPU` / `GPU (vertex-shader palette)`) and
-the skinned draw/cull counts. Watch for any difference in the character between the two paths (lighting,
-silhouette, deformation, shadow). If a windowed run of your game looks identical both ways across your
-skinned content, GPU skinning is safe to leave on for that game.
+**Windowed A/B (why the flag used to ship off, and how to compare the paths).** The flag defaulted off while a
+WINDOWED swapchain corruption on the Veldrid Metal backend was open, because the offscreen parity proof could not
+rule it out. That backend was deleted in 18.0.0, and GPU skinning has since shipped on in production on
+Direct3D 11 and Metal. To compare the two paths on your own content, the Showcase's 3D room flips
+`UseGpuSkinning` live on the walking avatar with **F**. The HUD shows the active path (`CPU` / `GPU (vertex-shader
+palette)`) and the skinned draw/cull counts. Watch for any difference in the character between the two paths
+(lighting, silhouette, deformation, shadow). A game that needs the CPU path sets `scene.UseGpuSkinning = false`
+once after constructing the scene.
 
 **Determinism: presentation only.** Bone matrices and `DrawSkinned` must never feed simulation,
 RNG, or netcode. Skinning is a render-time visual; drive bones from already-computed gameplay
@@ -4766,8 +4794,10 @@ scene.DrawSkinned(handle, p.Pose, p.World, tint, Material.None, dissolve: deathT
 ```
 
 It discards per-fragment against a world-space noise mask - opaque, not alpha-blended - so overlapping
-dying/despawning characters raise no transparency-ordering concern. A `dissolve` of 0 still draws exactly like the
-plain overload, so it is safe to wire in unconditionally before the timer starts.
+dying/despawning characters raise no transparency-ordering concern. Under the shadow-map tier the character's
+shadow erodes with the same mask, on both skinning paths, so a fading body does not leave a solid shadow behind. A
+`dissolve` of 0 still draws exactly like the plain overload, so it is safe to wire in unconditionally before the
+timer starts. Add a trailing `castsShadows: false` to keep a character out of the shadow pass altogether.
 
 The bridge smooths the drawn FEET HEIGHT on stairs so a climb reads as a glide, not a per-riser bob. A paced
 stair-climb produces a deliberate per-riser vertical sawtooth (a ~120-140 mm render-Y bob at 4-9 Hz on a 0.30/0.40
@@ -7775,8 +7805,9 @@ single-material `LoadPropWithMaterial`) read that mask into `GltfMaterialMaps.Al
 `SurfaceMaps.AlphaCutoff` to the loaded mesh, and the model fragment discards texels below the cutoff - so a leaf
 card renders as its needle/leaf silhouette, not a solid quad. Nothing extra is needed at the call site: a
 `"textured": true` MASK kit picks this up through the normal load path. OPAQUE materials carry cutoff 0 and are
-byte-identical to the pre-cutout render. Two gotchas: shadow casters do not alpha-test (a cutout prop casts its
-full-quad silhouette into the shadow map), and the cutout alone does not fix the *colour* under the leaves - the
+byte-identical to the pre-cutout render. The key light's cascaded shadow pass alpha-tests the same leaf card,
+so its shadow is the silhouette too (point-light shadow maps do not yet, and record the full quad). One gotcha:
+the cutout alone does not fix the *colour* under the leaves - the
 Quaternius textures store black RGB in their transparent texels, so `tools/kit-bake` dilates (alpha-bleeds) leaf
 colour into those texels at bake time. Without that bleed, plain box-filter mip generation and bilinear sampling
 at the cutout edge fold the black in, giving dark leaf fringes and foliage that darkens with distance. With it,

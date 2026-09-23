@@ -262,6 +262,14 @@ clockwise seen from above with north up. `LocalToWorld(doc, archetype, o)` is th
 `CreateRotationY(yaw) * CreateTranslation(anchor)` at scale 1. `TileObjectProps.AnchorPosition`, `YawRadians` and
 `DegreesPerRotation` in `KhaozEngine.TileWorld.Render3D` forward here unchanged.
 
+The anchor height is ONE bilinear sample at the footprint centre, on purpose. A footprint wider than a tile on a
+slope therefore sinks at its uphill corners and stands clear at its downhill ones. The highest lattice corner under
+the footprint would stop the sinking and was rejected for what it floats. A one-tile prop on a slope would hang
+above the ground by up to half the tile's rise: reeds on a river's sloped rim by tens of centimetres, a tree on a
+2 m step by a full metre. A deck whose footprint spans a carved channel from rim to rim would rise by the whole
+carve, walk surface with it, because the deck is authored against the centre sample. A piece that has to meet
+sloped ground carries its own skirt or foundation below y 0.
+
 `TileWalkSurfaces` answers the walk surfaces two ways. `TryHeightAt(doc, catalogs, worldX, worldZ, plane, out
 height)` takes world metres, as `HeightAt` does, and reports the HIGHEST surface covering the point on that plane,
 edges inclusive, as the anchor height plus `Height`. It allocates nothing and does not consult the terrain, so a

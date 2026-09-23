@@ -20,11 +20,16 @@ namespace KhaozEngine.Render3D
             public readonly float DissolveThreshold;
             public readonly float DissolveEdgeWidth;
             public readonly Vector4 DissolveEdge;
+            // Shadow-caster opt-out (issue #387): false keeps this draw out of the key light's depth pass while it
+            // still draws and receives. CPU-side only, like SceneInstances.Instance.CastsShadows.
+            public readonly bool CastsShadows;
             public Instance(SkinnedMeshHandle mesh, Matrix4x4 world, Color tint, Material material,
-                float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default)
+                float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default,
+                bool castsShadows = true)
             {
                 Mesh = mesh; World = world; Tint = tint; Material = material;
                 DissolveThreshold = dissolveThreshold; DissolveEdgeWidth = dissolveEdgeWidth; DissolveEdge = dissolveEdge;
+                CastsShadows = castsShadows;
             }
 
             /// <summary>True when this draw should go through the dissolve pipeline variant.</summary>
@@ -41,5 +46,12 @@ namespace KhaozEngine.Render3D
         public void Add(SkinnedMeshHandle mesh, Matrix4x4 world, Color tint, Material material,
             float dissolveThreshold, float dissolveEdgeWidth, Color dissolveEdge)
             => _items.Add(new Instance(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge));
+
+        /// <summary>Queue a skinned draw with CharDissolve params and the shadow-caster opt-out (issue #387):
+        /// <paramref name="castsShadows"/> false keeps it out of the depth pass. <c>true</c> is the overload above.</summary>
+        public void Add(SkinnedMeshHandle mesh, Matrix4x4 world, Color tint, Material material,
+            float dissolveThreshold, float dissolveEdgeWidth, Color dissolveEdge, bool castsShadows)
+            => _items.Add(new Instance(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge,
+                castsShadows));
     }
 }

@@ -42,7 +42,12 @@ public sealed class TileWorldViewOptions
 
     /// <summary>The settings every region-plane ground mesh is built with. The view SETS
     /// <see cref="TileGroundMesherOptions.Slots"/> on this object when it is constructed, to the material set it
-    /// is about to upload, because the slots a vertex names only mean anything against that set.</summary>
+    /// is about to upload, because the slots a vertex names only mean anything against that set.
+    /// <para>The view then COPIES these settings and builds every mesh from its copy, on the view thread and on a
+    /// worker alike, so a later change to this object, or a replacement of it, reaches no mesh of that view. A
+    /// live read would apply a change only to the region-planes rebuilt after it, which is a seam at every border
+    /// with an older mesh, and a replaced object would carry the identity slot map rather than the uploaded set.
+    /// Build a new view to change them, the same as <see cref="GroundMaterials"/>.</para></summary>
     public TileGroundMesherOptions Mesher { get; set; } = new();
 
     /// <summary>The ground materials every region-plane mesh is drawn with. Null builds one from the catalogs
@@ -99,9 +104,9 @@ public sealed partial class TileWorldView : IDisposable
     // A flat mid grey: visibly not content, and visible against both the greybox palette and lit ground.
     static readonly Vector4 PlaceholderColor = new(0.5f, 0.5f, 0.5f, 1f);
 
-    // One shared unit box, uploaded once per view per unresolved archetype. Built here rather than asked of the
-    // greybox resolver, because the placeholder must not depend on the archetype's footprint: a missing 2x2 mesh
-    // should read as "nothing resolved this", not as a plausible 2x2 object.
+    // One shared unit box, uploaded at most once per view and shared by every unresolved archetype. Built here
+    // rather than asked of the greybox resolver, because the placeholder must not depend on the archetype's
+    // footprint: a missing 2x2 mesh should read as "nothing resolved this", not as a plausible 2x2 object.
     static readonly IReadOnlyList<GltfMeshPart> PlaceholderParts = Array.AsReadOnly(new[]
     {
         new GltfMeshPart(
@@ -119,6 +124,12 @@ public sealed partial class TileWorldView : IDisposable
     readonly Func<int, int, int, bool> _terrainPickFilter;
     readonly Func<TileObject, bool> _walkSurfacePickFilter;
     readonly Dictionary<string, IReadOnlyList<MeshHandle>> _propMeshes = new(StringComparer.Ordinal);
+    // The one upload of PlaceholderParts every unresolved archetype's _propMeshes entry points at, null until an
+    // archetype needs it. Freed once by UnloadPropMeshes, never per archetype.
+    IReadOnlyList<MeshHandle>? _placeholderMeshes;
+    // The mesher settings as they stood at construction, which every ground build reads. See
+    // TileWorldViewOptions.Mesher for why a copy rather than the caller's object.
+    readonly TileGroundMesherOptions _mesher;
     readonly TileWorldPropClusters _propClusters;
     readonly Dictionary<RegionCoord, RegionHandles> _loaded = new();
     // The rebuild queue is a pair on purpose: the set is the dedup (a stroke marks the same region-plane a
@@ -178,10 +189,11 @@ public sealed partial class TileWorldView : IDisposable
         try
         {
             _materials = _options.GroundMaterials ?? TileGroundMaterials.Build(catalogs);
-            // Written into the caller's mesher settings rather than a private copy, so a caller who reads them
-            // back sees the slot map the meshes are actually built against, and so a field added to those
-            // settings later cannot be silently dropped by a copy nobody remembered to widen.
+            // Written into the caller's mesher settings first, so a caller who reads them back sees the slot map
+            // the meshes are actually built against, then copied. The copy is what every build reads, and it is
+            // TileGroundMesherOptions.Copy, which sits beside the settings so a new one is not silently dropped.
             _options.Mesher.Slots = _materials;
+            _mesher = _options.Mesher.Copy();
             _material = scene.LoadTileGroundMaterial(_materials);
 
             foreach (KeyValuePair<string, TileObjectArchetype> entry in catalogs.Archetypes)
@@ -190,7 +202,8 @@ public sealed partial class TileWorldView : IDisposable
                 if (parts is null || parts.Count == 0)
                 {
                     _options.Log?.Invoke($"tile world: archetype '{entry.Key}' has no mesh, drawing a placeholder box.");
-                    parts = PlaceholderParts;
+                    _propMeshes[entry.Key] = _placeholderMeshes ??= scene.LoadPropMeshes(PlaceholderParts);
+                    continue;
                 }
                 _propMeshes[entry.Key] = scene.LoadPropMeshes(parts);
             }
@@ -200,8 +213,7 @@ public sealed partial class TileWorldView : IDisposable
         catch
         {
             _groundBuilds.Dispose();
-            foreach (IReadOnlyList<MeshHandle> uploaded in _propMeshes.Values) _scene.UnloadPropMeshes(uploaded);
-            _propMeshes.Clear();
+            UnloadPropMeshes();
             // The material is uploaded before the archetypes, so it is the one thing already on the device when
             // the ninth archetype of twelve throws.
             if (_material.IsValid) _scene.UnloadTileGroundMaterial(_material);
@@ -288,7 +300,8 @@ public sealed partial class TileWorldView : IDisposable
     public int PendingRebuilds => _dirtyOrder.Count;
 
     /// <summary>A snapshot of the loaded regions, in no particular order. A copy rather than a live view, so a
-    /// caller may load or unload regions while walking it, which is exactly what a residency ring does.</summary>
+    /// caller may load or unload regions while walking it, which is exactly what a residency ring does. Allocates a
+    /// fresh array on every read, so a per-frame caller uses <see cref="CollectLoadedRegions"/> instead.</summary>
     public IReadOnlyCollection<RegionCoord> LoadedRegions
     {
         get
@@ -297,6 +310,19 @@ public sealed partial class TileWorldView : IDisposable
             _loaded.Keys.CopyTo(snapshot, 0);
             return snapshot;
         }
+    }
+
+    /// <summary>Fills a caller's collection with the loaded regions, the same set <see cref="LoadedRegions"/>
+    /// snapshots, in no particular order. Cleared first. The filled collection is the caller's own, so it is as
+    /// safe to walk while loading or unloading as the snapshot is, and a warm call allocates nothing: the regions
+    /// are walked through the dictionary's struct enumerator and a reused buffer never has to grow.</summary>
+    /// <param name="into">The buffer to fill, a <see cref="List{T}"/> or a <see cref="HashSet{T}"/> reused across
+    /// calls.</param>
+    public void CollectLoadedRegions(ICollection<RegionCoord> into)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        into.Clear();
+        foreach (RegionCoord region in _loaded.Keys) into.Add(region);
     }
 
     /// <summary>Gets the immutable prop snapshot retained for one loaded region-plane.</summary>
@@ -634,10 +660,11 @@ public sealed partial class TileWorldView : IDisposable
 
         _groundBuilds.Dispose();
 
+        // The clusters hold the archetype handles and may still have builds in flight, so they drain before the
+        // handles they reference are freed.
         _propClusters.Dispose();
 
-        foreach (IReadOnlyList<MeshHandle> parts in _propMeshes.Values) _scene.UnloadPropMeshes(parts);
-        _propMeshes.Clear();
+        UnloadPropMeshes();
         _archetypeOverrides.Clear();
 
         if (_material.IsValid) _scene.UnloadTileGroundMaterial(_material);
@@ -678,8 +705,19 @@ public sealed partial class TileWorldView : IDisposable
 
     MeshHandle? BuildMesh(RegionCoord region, int plane)
     {
-        GltfMesh? mesh = TileGroundMesher.Build(_doc, _catalogs, region, plane, _options.Mesher);
+        GltfMesh? mesh = TileGroundMesher.Build(_doc, _catalogs, region, plane, _mesher);
         return mesh is null ? null : _scene.LoadMesh(mesh, _material);
+    }
+
+    // Frees every archetype's parts exactly once. The placeholder set is shared by every unresolved archetype, so
+    // the walk skips it and it is freed on its own afterwards.
+    void UnloadPropMeshes()
+    {
+        foreach (IReadOnlyList<MeshHandle> parts in _propMeshes.Values)
+            if (!ReferenceEquals(parts, _placeholderMeshes)) _scene.UnloadPropMeshes(parts);
+        _propMeshes.Clear();
+        if (_placeholderMeshes is not null) _scene.UnloadPropMeshes(_placeholderMeshes);
+        _placeholderMeshes = null;
     }
 
     void FreeMeshes(RegionHandles handles)

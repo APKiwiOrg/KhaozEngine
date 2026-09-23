@@ -1,7 +1,7 @@
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// The cascaded shadow-atlas depth passes (3 of the renderer's shader sources).
+    /// The cascaded shadow-atlas depth passes (the rigid, dissolve, cutout and skinned caster sources).
     /// Part of the <see cref="ShaderSources"/> partial: see ShaderSources.cs for the shared contract
     /// (GLSL #version 450, cross-compiled at load via the GPU seam's SPIR-V path).
     /// </summary>
@@ -26,7 +26,7 @@ namespace KhaozEngine.Render3D.Internal
         //      with a zero weight, so SPIRV-Cross keeps a CONTIGUOUS TEXCOORD0..11 signature (matching ModelVert) with
         //      no hole; gl_Position is unchanged (sink == 0). Do NOT drop the sink or reads of any input.
         //
-        //      NEAR-PLANE PANCAKE (issue #394, shared by all three depth vertices below). Each cascade puts its light
+        //      NEAR-PLANE PANCAKE (issue #394, shared by every depth vertex below). Each cascade puts its light
         //      eye 2r up-light of the slice centre with the ortho near plane AT the eye, and a caster and the ground
         //      it shades sit h / sin(elevation) apart along the light ray - so at a grazing sun a tall caster lands in
         //      FRONT of the near plane and used to be clipped away, leaving the ground it should shade reading the
@@ -217,6 +217,104 @@ void main() {
     oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0);   // near-plane pancake, as ShadowDepthFrag
 }";
 
+        // ---- Alpha-cutout depth pass (issue #15). A MASK caster (a leaf card) records depth only where its albedo
+        //      alpha clears the material cutoff, the same test ModelFrag applies, so the shadow is the silhouette
+        //      rather than the solid quad. Bound only for the spans of a mesh that carries a cutoff AND an albedo
+        //      texture (Scene3D.ShadowDepthSelection), so an opaque caster keeps the depth-only pipeline with no
+        //      texture sample and no discard.
+        //
+        //      The vertex is ShadowDepthDissolveVert plus the two cutout interpolants, because a MASK caster can
+        //      also be dissolving (foliage fading at its draw radius), so the fragment applies both tests. It reads
+        //      the SAME 0..14 instance layout, the cutoff from ISpecParams.z (where ApplyAlphaCutoffs puts it for the
+        //      colour pass) and TexCoord, and keeps the 1e-30 sink over everything else so the HLSL vertex-input
+        //      signature stays contiguous (TEXCOORD0..14). The fragment reads every interpolant it declares, so its
+        //      pixel-input signature is gap-free from location 0 as well. ----
+        public const string ShadowDepthCutoutVert = @"#version 450
+layout(set=0, binding=0) uniform U {
+    mat4 LightViewProj;
+    vec4 RenderOrigin;
+    vec4 DissolveParams;                          // x = this cascade's dissolve noise scale (1/x = cell size, world units)
+};
+layout(location=0) in vec3 Position;
+layout(location=1) in vec3 Normal;
+layout(location=2) in vec4 Color;
+layout(location=3) in vec2 TexCoord;
+layout(location=4) in vec4 Tangent;
+layout(location=5) in vec4 IModel0;
+layout(location=6) in vec4 IModel1;
+layout(location=7) in vec4 IModel2;
+layout(location=8) in vec4 IModel3;
+layout(location=9) in vec4 ITint;
+layout(location=10) in vec4 IEmissive;
+layout(location=11) in vec4 ISpecParams;          // z = alpha-cutout threshold (the mesh's MASK cutoff)
+layout(location=12) in float IDynamic;
+layout(location=13) in vec2 IDissolve;
+layout(location=14) in float IDissolveComplement;
+layout(location=0) out float vLightDepth;
+layout(location=1) out vec3 vNoisePos;
+layout(location=2) out vec2 vDissolve;
+layout(location=3) out float vDissolveComplement;
+layout(location=4) out vec2 vUv;
+layout(location=5) out float vCutoff;
+void main() {
+    mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
+    vec4 world = Model * vec4(Position, 1.0);
+    // Same negligible-but-live sink as ShadowDepthVert over the inputs this vertex does not genuinely read.
+    float sink = Normal.x + Color.x + Tangent.x + ITint.x + IEmissive.x + IDynamic;
+    world.x += sink * 1e-30;
+    vec4 lightClip = LightViewProj * world;
+    vLightDepth = lightClip.z / lightClip.w;       // TRUE light-clip depth (unclamped), clamped per fragment below
+    lightClip.z = max(lightClip.z, 0.0);           // near-plane pancake, see the note above ShadowDepthVert
+    gl_Position = lightClip;
+    vNoisePos = (world.xyz + RenderOrigin.xyz) * DissolveParams.x;
+    vDissolve = IDissolve;
+    vDissolveComplement = IDissolveComplement;
+    vUv = TexCoord;
+    vCutoff = ISpecParams.z;
+}";
+
+        // The cutout fragments' extra declarations, spliced after the dissolve prologue: the two cutout
+        // interpolants and the caster's albedo at set 1 (fragment only, one texture and its sampler).
+        const string ShadowCutoutFragDeclarations = @"
+layout(location=4) in vec2 vUv;
+layout(location=5) in float vCutoff;
+layout(set=1, binding=0) uniform texture2D Albedo;
+layout(set=1, binding=1) uniform sampler Samp;
+";
+
+        // The albedo is sampled FIRST and unconditionally, before either discard, so the implicit-LOD derivatives
+        // stay well-defined (the ordering ModelFrag keeps for the same reason). The alpha test is ModelFrag's,
+        // byte for byte, so the shadow and the mesh cut out the same texels.
+        public const string ShadowDepthCutoutFrag = ShadowDissolveFragPrologue + ShadowCutoutFragDeclarations + @"
+void main() {
+    float alpha = texture(sampler2D(Albedo, Samp), vUv).a;
+    if (vDissolve.x > 0.0 || vDissolveComplement > 0.5) {
+        float threshold = clamp(vDissolve.x, 0.0, 1.0);
+        float mask = dnoise(vNoisePos);
+        bool keep = vDissolveComplement > 0.5 ? mask < threshold : mask >= threshold;
+        if (!keep) discard;
+    }
+    if (vCutoff > 0.0 && alpha < vCutoff) discard;
+    oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0);   // near-plane pancake, as ShadowDepthFrag
+}";
+
+        // The cutout fragment for a MASK caster that is the inverted half of an HLOD crossfade (issue #391): the
+        // ShadowDepthDissolveInvertedFrag dither plus the alpha test. That fragment never reads
+        // vDissolveComplement, which is harmless there because location 3 is its LAST input. Here locations 4 and 5
+        // follow it, so dropping it would hole the D3D11 pixel-input signature, and the 1e-30 sink keeps it live
+        // without moving the test (it rounds away against any representable cutoff).
+        public const string ShadowDepthCutoutInvertedFrag = ShadowDissolveFragPrologue + ShadowCutoutFragDeclarations + @"
+void main() {
+    float alpha = texture(sampler2D(Albedo, Samp), vUv).a;
+    if (vDissolve.x > 0.0) {
+        float threshold = clamp(vDissolve.x, 0.0, 1.0);
+        float mask = dnoise(vNoisePos);
+        if (mask >= 1.0 - threshold) discard;     // keep the complement of the plain half's keep-set
+    }
+    if (vCutoff > 0.0 && alpha < vCutoff + vDissolveComplement * 1e-30) discard;
+    oDepth = vec4(max(vLightDepth, 0.0), 0.0, 0.0, 1.0);   // near-plane pancake, as ShadowDepthFrag
+}";
+
         // Skinned shadow depth vertex (GPU skinning shadow-pass mirror). TWO vertex-only dynamic-offset buffers since
         // #407: `VBlock` at set 0 holds this (caster, cascade) pair's LightMvp = Model * clip-corrected LightViewProj,
         // folded per draw, and `Palette` at set 1 holds the CASTER's composed bones. They are separate sets because a
@@ -260,6 +358,63 @@ void main() {
     vLightDepth = lightClip.z / lightClip.w;       // TRUE light-clip depth (unclamped), clamped per fragment below
     lightClip.z = max(lightClip.z, 0.0);           // near-plane pancake, see the note above ShadowDepthVert
     gl_Position = lightClip;
+}";
+
+        // ---- Dissolve-aware skinned depth vertex (issue #387). SkinnedShadowDepthVert plus the character dissolve,
+        //      so a GPU-skinned caster mid-CharDissolve sheds its shadow with its body. Paired with the rigid
+        //      ShadowDepthDissolveFrag unchanged: it emits exactly that fragment's four interpolants.
+        //
+        //      The per-(caster, cascade) slot grows from the matrix alone to { LightMvp; Model; RenderOrigin;
+        //      DissolveParams }, 160 of its 256 bytes, packed only for a dissolving caster
+        //      (ShadowMapRenderer.PackSkinnedShadowSlot). LightMvp stays the folded matrix the plain vertex uses, so
+        //      a zero threshold records identical depth. The noise needs the ABSOLUTE world position, which is
+        //      reconstructed as the rigid variant does: Model is the render-relative world transform and
+        //      RenderOrigin is added back. DissolveParams.x is this cascade's noise scale and .y the threshold, which
+        //      reaches the fragment with a zero complement, because a character dissolve is always the plain keep
+        //      set (SkinnedModelDissolveFrag's `mask < threshold` discard). ----
+        public const string SkinnedShadowDepthDissolveVert = @"#version 450
+layout(set=0, binding=0) uniform VBlock {
+    mat4 LightMvp;         // Model * clip-corrected LightViewProj (folded per draw)
+    mat4 Model;            // render-relative world transform, for the world-anchored noise
+    vec4 RenderOrigin;     // xyz = this frame's render origin
+    vec4 DissolveParams;   // x = this cascade's dissolve noise scale, y = the caster's dissolve threshold
+};
+layout(set=1, binding=0) uniform Palette {
+    mat4 bones[128];       // this CASTER's composed palette (inverseBind*jointWorld), shared with the main pass
+};
+layout(location=0) in vec3 Position;
+layout(location=1) in vec3 Normal;
+layout(location=2) in vec4 Color;
+layout(location=3) in vec2 TexCoord;
+layout(location=4) in vec4 BoneIndices;
+layout(location=5) in vec4 BoneWeights;
+layout(location=6) in vec4 Tangent;
+layout(location=0) out float vLightDepth;
+layout(location=1) out vec3 vNoisePos;
+layout(location=2) out vec2 vDissolve;
+layout(location=3) out float vDissolveComplement;
+void main() {
+    float wsum = BoneWeights.x + BoneWeights.y + BoneWeights.z + BoneWeights.w;
+    mat4 skin;
+    if (wsum < 1e-8) {
+        skin = mat4(1.0);
+    } else {
+        skin = bones[int(BoneIndices.x)] * BoneWeights.x
+             + bones[int(BoneIndices.y)] * BoneWeights.y
+             + bones[int(BoneIndices.z)] * BoneWeights.z
+             + bones[int(BoneIndices.w)] * BoneWeights.w;
+    }
+    vec4 localPos = skin * vec4(Position, 1.0);
+    float sink = Normal.x + Color.x + TexCoord.x + Tangent.x;   // keep the vertex-input signature gap-free
+    localPos.x += sink * 1e-30;
+    vec4 lightClip = LightMvp * localPos;
+    vLightDepth = lightClip.z / lightClip.w;       // TRUE light-clip depth (unclamped), clamped per fragment below
+    lightClip.z = max(lightClip.z, 0.0);           // near-plane pancake, see the note above ShadowDepthVert
+    gl_Position = lightClip;
+    vec4 world = Model * localPos;
+    vNoisePos = (world.xyz + RenderOrigin.xyz) * DissolveParams.x;
+    vDissolve = vec2(DissolveParams.y, 0.0);
+    vDissolveComplement = 0.0;
 }";
     }
 }

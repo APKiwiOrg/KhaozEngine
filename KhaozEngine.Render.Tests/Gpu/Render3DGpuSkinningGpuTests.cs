@@ -10,8 +10,8 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
 {
-    // On-device proof of the opt-in GPU skinning path (Scene3D.UseGpuSkinning). Set 0 binding 0 is the shared frame
-    // block both stages read, binding 1 the per-draw {Model;P} the vertex reads at its dynamic offset, material maps
+    // On-device proof of the GPU skinning path (Scene3D.UseGpuSkinning, the default). Set 0 binding 0 is the shared frame
+    // block both stages read, binding 3 the per-draw {Model;P} the vertex reads at its dynamic offset, material maps
     // at set 1 for the fragment, and the caster's {bones[128]} at set 2, shared with the shadow depth pass (#407).
     // That is the #604 unfold of the fold-matrix binding the spike proved (GpuSkinningReproGpuTests variant 3),
     // which folded the frame block and a CPU-computed Mvp into every draw's slot so the pipeline read one buffer,
@@ -177,6 +177,72 @@ namespace KhaozEngine.Tests.Gpu
             preview.Scene.UnloadSkinnedMesh(h);
         }
 
+        // ---- Normal + roughness skinned parity: the Golden3D_SkinnedNormalRoughness material (a tilt normal map and
+        //      a roughness ramp, no albedo) on the bent tube, so the GPU path's tangent skinning and TBN are held to
+        //      the CPU path's. That golden stays pinned to the CPU path its grid was baked on, and this row is what
+        //      covers the GPU one. The no-maps render guards against a vacuous pass: both paths ignoring the maps
+        //      would agree with each other too. ----
+        [GpuFact]
+        public void NormalRoughnessSkinned_CpuVsGpu_Parity()
+        {
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = ctx.GpuDevice;
+            using var preview = new Render3DPreview(gd, W, H);
+            var tube = Tube();
+            var (normalPx, roughPx) = NormalAndRoughnessMaps(64);
+            Scene3D.TextureHandle nrm = preview.Scene.LoadTexture(normalPx, 64, 64);
+            Scene3D.TextureHandle rgh = preview.Scene.LoadTexture(roughPx, 64, 64);
+            SkinnedMeshHandle mapped = preview.Scene.LoadSkinnedMesh(tube, new Scene3D.SurfaceMaps(default, nrm, rgh));
+            SkinnedMeshHandle plain = preview.Scene.LoadSkinnedMesh(tube);
+            FrameTube(preview);
+            Matrix4x4[] bent = BentPose(tube, 0.35f);
+            var tint = new Color(0.75f, 0.76f, 0.8f, 1f);
+            Material shiny = Material.Shiny(0.9f, 48f);
+
+            byte[] Render(SkinnedMeshHandle h, bool gpuSkinning)
+            {
+                preview.Scene.UseGpuSkinning = gpuSkinning;
+                return GpuReadback.ToRgba(gd, preview.Capture(s => s.DrawSkinned(h, bent, Matrix4x4.Identity, tint, shiny)).Handle, W, H);
+            }
+
+            byte[] cpu = Render(mapped, gpuSkinning: false);
+            byte[] gpu = Render(mapped, gpuSkinning: true);
+            byte[] gpuPlain = Render(plain, gpuSkinning: true);
+
+            Dump(cpu, "gpu-skinning-cpu-normal-roughness.png");
+            Dump(gpu, "gpu-skinning-gpu-normal-roughness.png");
+            Assert.True(OpaqueCount(gpu) > 100, "the normal-mapped GPU skinned tube should render");
+            float mapsEffect = FrameDiff(gpu, gpuPlain);
+            Assert.True(mapsEffect > ParityTol,
+                $"the normal and roughness maps barely changed the GPU render (worst cell {mapsEffect:0.###}), so parity would prove nothing");
+            AssertClose(gpu, cpu, "normal + roughness parity");
+
+            preview.Scene.UnloadSkinnedMesh(mapped);
+            preview.Scene.UnloadSkinnedMesh(plain);
+        }
+
+        // Golden3D_SkinnedNormalRoughness's maps: the normal tilts toward +x as u grows, roughness ramps 0 to 1 along u.
+        static (byte[] Normal, byte[] Roughness) NormalAndRoughnessMaps(int n)
+        {
+            var normalPx = new byte[n * n * 4];
+            var roughPx = new byte[n * n * 4];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float u = (x + 0.5f) / n;
+                    float tiltX = (u - 0.5f) * 1.4f;
+                    float nz = MathF.Sqrt(MathF.Max(0f, 1f - tiltX * tiltX));
+                    int i = (y * n + x) * 4;
+                    normalPx[i + 0] = (byte)Math.Clamp((tiltX * 0.5f + 0.5f) * 255f, 0f, 255f);
+                    normalPx[i + 1] = 128;
+                    normalPx[i + 2] = (byte)Math.Clamp((nz * 0.5f + 0.5f) * 255f, 0f, 255f);
+                    normalPx[i + 3] = 255;
+                    byte rough = (byte)Math.Clamp(u * 255f, 0f, 255f);
+                    roughPx[i + 0] = rough; roughPx[i + 1] = rough; roughPx[i + 2] = rough; roughPx[i + 3] = 255;
+                }
+            return (normalPx, roughPx);
+        }
+
         // ---- Multi-character same-mesh with the flag ON: two instances of one skinned mesh, each with its own palette
         //      (rest + bent), in one frame. Mirrors Render3DSkinnedMultiInstanceGpuTests but on the GPU path: each
         //      draw selects its own per-draw slot via a dynamic offset, so the bent instance's arc must
@@ -264,13 +330,14 @@ namespace KhaozEngine.Tests.Gpu
             scene.UnloadMesh(floor);
         }
 
-        // ---- The flag defaults OFF, so every existing golden and consumer render is byte-identical until opted in. ----
+        // ---- The flag defaults ON (issue #15): the windowed Veldrid Metal fault it used to guard is gone with that
+        //      backend, and the parity tests above hold the GPU path to the CPU one on every backend. ----
         [GpuFact]
-        public void UseGpuSkinning_DefaultsOff()
+        public void UseGpuSkinning_DefaultsOn()
         {
             using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
             using var preview = new Render3DPreview(ctx.GpuDevice, W, H);
-            Assert.False(preview.Scene.UseGpuSkinning, "GPU skinning must default OFF (byte-identical to the CPU path until opted in)");
+            Assert.True(preview.Scene.UseGpuSkinning, "GPU skinning must default ON (set it false for the CPU path)");
         }
 
         // Clearly-dark opaque pixels (a shadow proxy on the lit floor).

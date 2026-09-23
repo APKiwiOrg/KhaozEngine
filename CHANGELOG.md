@@ -11,9 +11,10 @@ The burn-down continues on a fresh minor now that 20.0.0 is released. Everything
 editor streams its authored placements and gains a props-only chunk refresh, a batch of Grimhollow parity requests
 lands for container sync, tile netcode and journal operator tools
 ([Grimhollow#246](https://github.com/APKiwiOrg/Grimhollow/issues/246)), and the F1 overlay names the running build.
-One default changes what a game sees: the engine terrain splat now reads the biome, so a world with non-Meadow
-bands looks different at repin (an all-Meadow world bakes bit-identical weights). No call a game makes changes
-meaning. The one source-level note is the new `ContainerCommitBuilder.Open` overload, below.
+Two defaults change. The engine terrain splat now reads the biome, so a world with non-Meadow bands looks
+different at repin (an all-Meadow world bakes bit-identical weights). `Scene3D.UseGpuSkinning` is now on by
+default, which renders pixel for pixel the same as CPU skinning and only moves the work to the GPU, and a game
+keeps CPU skinning with one assignment. No call a game makes changes meaning. The one source-level note is the new `ContainerCommitBuilder.Open` overload, below.
 
 **The map editor streams its authored placements.**
 
@@ -129,6 +130,62 @@ meaning. The one source-level note is the new `ContainerCommitBuilder.Open` over
 - At repin, a game that treated these refusals as `RejectedToken` sees the new reasons instead. Ruinborne's
   `RuinborneConnectionSignals.IsServerRefusal` checks for `RejectedToken`, so it should add the two new members,
   or a planned-update status can override the content refusal copy.
+
+**Water shading.**
+
+- The procedural swell's normal is evaluated per pixel rather than interpolated across the surface grid
+  ([#381](https://github.com/APKiwiOrg/KhaozEngine/issues/381)). Under `WaterGridMode.Clipmap` the 8 m and 16 m
+  outer rings undersample the default 42 m swell, and the interpolated normal shaded them as large flat facets that
+  moved with the waves (a Ruinborne lake field report). The fragment now evaluates the Gerstner normal at its
+  still-water position through one GLSL block both stages share, mirroring `GerstnerWaves.Evaluate` op for op. The
+  displacement and the whitecap fold stay per vertex. The near field does not change: at the innermost ring's 0.5 m
+  cells the interpolated normal was already within 0.03 degrees of the evaluated one. No API change, and the CPU
+  mirror math is unchanged. `WaterSwellFacetGpuTests` measures the facet signature on the Ruinborne lake setup,
+  7.3 and 6.2 before, 0.9 and 1.1 after.
+- Two water issues were closed or re-scoped by measurement rather than code. FFT foam already rides the displaced
+  surface, so the proposed foam gather would have counted the displacement twice
+  ([#324](https://github.com/APKiwiOrg/KhaozEngine/issues/324), closed). The far-field glint double smoothing in
+  [#308](https://github.com/APKiwiOrg/KhaozEngine/issues/308) is real, but only a floor-style rewrite removes it and
+  that narrows the near-field lobe, so it waits on a look decision.
+
+**Shadow casters and GPU skinning.**
+
+- `Scene3D.UseGpuSkinning` now defaults to `true` ([#15](https://github.com/APKiwiOrg/KhaozEngine/issues/15)). It
+  shipped off because of a windowed swapchain fault on the Veldrid Metal backend, which went with Veldrid in
+  18.0.0, and Ruinborne has run GPU skinning in production since its 0.16.4. The GPU path matches the CPU path
+  pixel for pixel, including normal and roughness maps (a new parity row holds it there), so the change is where
+  the deformation runs, not how a character looks. Set it `false` to keep CPU skinning, which stays supported and
+  can be flipped per frame. Ruinborne's `GpuSkinningOptIn` becomes redundant.
+- MASK casters cut out in the cascaded shadow pass ([#15](https://github.com/APKiwiOrg/KhaozEngine/issues/15)). A
+  mesh loaded with `SurfaceMaps.AlphaCutoff` and an albedo casts its silhouette rather than a solid quad, through a
+  cutout depth pipeline chosen per span by the new `ShadowDepthSelection`. That pipeline culls nothing, so a
+  single-sided leaf card casts whichever face it turns to the sun. Opaque casters keep the depth-only pipeline with
+  no texture sample and no discard, so their cost does not change. Skinned meshes carry no cutoff yet
+  ([#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097)), and point-light shadows do not alpha-test yet
+  ([#1098](https://github.com/APKiwiOrg/KhaozEngine/issues/1098)).
+- `DrawSkinned` gains `castsShadows` (default `true`) on the material and dissolve overloads
+  ([#387](https://github.com/APKiwiOrg/KhaozEngine/issues/387)). An opted-out character still draws and still
+  receives shadows, casts nothing, and is culled outright when off camera.
+- A dissolving skinned draw erodes its shadow with the same noise mask as its body, on both the GPU and CPU
+  skinning paths ([#387](https://github.com/APKiwiOrg/KhaozEngine/issues/387)), so a character mid-`CharDissolve`
+  no longer leaves a solid shadow under an almost invisible body. A dissolving GPU-skinned caster uses 160 of its
+  256-byte per-cascade slot, and a plain caster keeps the 64-byte matrix.
+
+**Tile world rendering minors.**
+
+- `TileGroundMesher` computes each lattice corner's height, normal, jitter and material slot once per region-plane
+  build rather than once per touching tile, through the new per-build `TileGroundCornerCache`
+  ([#636](https://github.com/APKiwiOrg/KhaozEngine/issues/636)). A busy 64 by 64 region builds about 2.3 times
+  faster (median 5.4 ms to 2.25 ms), with bit-identical meshes and no golden movement.
+- `TileWorldView` builds every ground mesh from a copy of `TileWorldViewOptions.Mesher` taken at construction, so
+  a later change or replacement no longer reaches only the regions rebuilt afterwards. `TileGroundMesherOptions.Copy`
+  is new. Every unresolved archetype shares one placeholder upload, freed once on dispose.
+- `TileWorldView.CollectLoadedRegions(into)` and `TileRegionResidency.CollectResident(into)` fill a reused buffer
+  without allocating, and `TileRegionResidency.Update` uses them, so a settled ring allocates nothing per frame.
+  `LoadedRegions` and `Resident` are unchanged.
+- `TileColors.Parse` throws `TileWorldException` for a null colour, like every other malformed colour. The object
+  anchor stays sampled at the footprint centre on purpose, now documented: the corner maximum would float small
+  props on steps and slopes (83 of Grimhollow's 2,463 one-tile objects would move by more than a centimetre).
 
 **Tooling.**
 

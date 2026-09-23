@@ -136,7 +136,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // A single-bone unit box (edge 1, centred at origin), all vertices weighted to bone 0 with identity bind/rest
-        // so DrawSkinned renders it undeformed - a stand-in character on the CPU-skinned path. Flat per-face normals
+        // so DrawSkinned renders it undeformed - a stand-in character on the default skinning path. Flat per-face normals
         // keep each face uniformly lit along its height, so the low-vs-high face comparison isolates the blob. Model
         // cull is None, so triangle winding is irrelevant.
         static SkinnedGltfMesh BuildSkinnedBox()

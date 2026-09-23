@@ -24,9 +24,10 @@ namespace KhaozEngine.Render3D.Rendering
     /// ARE fine on Metal (<see cref="ModelRenderer"/>'s rigid instanced path uses real ones, instanceStepRate 1,
     /// in production, proven by its multi-instance tests). The actual Metal invariant, bisected via the skinned
     /// bone palette: a vertex shader must NOT index a SEPARATE buffer BY a per-instance attribute's value - that
-    /// is what corrupted past element 0 in the windowed Veldrid/Metal swapchain context, which is why skinned
-    /// meshes are deformed on the CPU instead of reading a per-instance bone index into a GPU bone buffer (see
-    /// <see cref="ModelRenderer"/> and docs/USING-KHAOZENGINE.md's GPU-backend gotchas note).
+    /// is what corrupted past element 0 in the windowed Veldrid/Metal swapchain context, which is why GPU
+    /// skinning selects each draw's bone palette with a per-draw dynamic offset instead of reading a per-instance
+    /// bone index into a GPU bone buffer (see <see cref="ModelRenderer"/> and docs/USING-KHAOZENGINE.md's
+    /// GPU-backend gotchas note).
     /// </summary>
     internal sealed class OverlayMeshRenderer : IDisposable
     {

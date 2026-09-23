@@ -630,8 +630,8 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("const int KE_TAPS = 3;", clip);
 
             // One copy of the maths: the swell block and the sampling frame are the same text in both.
-            Assert.Contains("float lambdaSum = wavelength", plain);
-            Assert.Contains("float lambdaSum = wavelength", clip);
+            Assert.Contains("gerstnerEvaluate(aXz, time, swellOffset, swellNormal, tapFold);", plain);
+            Assert.Contains("gerstnerEvaluate(aXz, time, swellOffset, swellNormal, tapFold);", clip);
             Assert.Contains("oceanMip(bandCell", clip);
             Assert.Contains("oceanMip(bandCell", plain);
         }

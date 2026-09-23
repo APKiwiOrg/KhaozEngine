@@ -42,6 +42,18 @@ public class TileColorsTests
     }
 
     [Fact]
+    public void Parse_of_null_throws_the_same_content_error_as_any_other_bad_colour()
+    {
+        // A catalog material whose colour was written as JSON null is bad content, not a caller bug, so it fails
+        // with the tile-world error every other malformed colour raises rather than as an argument error.
+        var ex = Assert.Throws<TileWorldException>(() => TileColors.Parse((string?)null));
+        Assert.Contains("null", ex.Message, StringComparison.Ordinal);
+
+        var blank = new GroundMaterial { Id = 9, Name = "blank", Color = null! };
+        Assert.Throws<TileWorldException>(() => TileColors.Parse(blank));
+    }
+
+    [Fact]
     public void Parse_of_a_material_reads_its_color()
     {
         GroundMaterial grass = TileRenderTestData.Catalogs.Material(TileRenderTestData.Grass)!;

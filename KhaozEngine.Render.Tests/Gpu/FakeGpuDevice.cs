@@ -176,9 +176,10 @@ namespace KhaozEngine.Tests.Gpu
             => new FakeShaderSet(vertGlsl, fragGlsl);
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
         {
-            if (d.ShaderSet is FakeShaderSet shaders)
-                GraphicsPipelines.Add(new FakeGraphicsPipelineRequest(shaders.VertexGlsl, shaders.FragmentGlsl, d));
-            return new FakePipeline();
+            if (d.ShaderSet is not FakeShaderSet shaders) return new FakePipeline();
+            var request = new FakeGraphicsPipelineRequest(shaders.VertexGlsl, shaders.FragmentGlsl, d);
+            GraphicsPipelines.Add(request);
+            return new FakePipeline(request);
         }
         public IGpuCommandList CreateCommandList()
         {
@@ -299,7 +300,16 @@ namespace KhaozEngine.Tests.Gpu
 
     internal readonly record struct FakeGraphicsPipelineRequest(
         string VertexGlsl, string FragmentGlsl, GpuPipelineDescription Description);
-    internal sealed class FakePipeline : IGpuPipeline { public void Dispose() { } }
+    internal sealed class FakePipeline : IGpuPipeline
+    {
+        internal FakePipeline(FakeGraphicsPipelineRequest? request = null) => Request = request;
+
+        /// <summary>The request that built this pipeline, so a test reading which pipelines a pass BOUND can tell
+        /// them apart by their shader sources. Null for a pipeline a test made directly.</summary>
+        internal FakeGraphicsPipelineRequest? Request { get; }
+
+        public void Dispose() { }
+    }
 
     /// <summary>Drops every recorded command. The terminal sink <see cref="CommandTallyGpuCommandList"/> forwards
     /// to when there is no real device behind it.</summary>

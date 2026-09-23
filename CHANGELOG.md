@@ -105,6 +105,31 @@ meaning. The one source-level note is the new `ContainerCommitBuilder.Open` over
   can delete its stopgap Build section when it repins, since its `Product` and `InformationalVersion` already give
   the same text.
 
+**One ban seam, and a harder connect gate.**
+
+- `IBanStore`, `BanRecord` and `InMemoryBanStore` move into the `KhaozEngine.Netcode` assembly under their shipped
+  `KhaozEngine.NetWorld` names, and NetWorld type-forwards all three
+  ([#678](https://github.com/APKiwiOrg/KhaozEngine/issues/678)). Existing source and binaries bind unchanged (a
+  probe built against the released 20.0.0 NetWorld resolves them through the forwarders), and a head without
+  NetWorld can now name the seam.
+- `BanGateAuthenticator(inner, IBanStore, log?)` reads the store live at the door, and
+  `TileWorldServerConfig.BanStore` puts the same store on the tile server. One instance now serves the door
+  refusal, the join check behind `banStore:` and `ServerAdmin.BanAsync`'s kick. The `Func<string, bool>`
+  constructor stays for a head whose ban list is not a store. The tile server still checks at the door only
+  ([#1104](https://github.com/APKiwiOrg/KhaozEngine/issues/1104)).
+- `WorldIdentityGateAuthenticator` refuses an empty, piped or over-length server identity at construction, so a
+  misconfigured `ConnectionGate.Wrap` fails at boot rather than at the first connect
+  ([#1071](https://github.com/APKiwiOrg/KhaozEngine/issues/1071)). Its log line no longer says "world" and never
+  echoes the client's label. The wire token `ke:world-mismatch:` is unchanged.
+- `WorldClient` reports the content catalog door's refusals as `DisconnectReason.ContentVersionMismatch` (10) and
+  `ContentClientTooOld` (11), appended last and terminal even under `RetryOnReject`. `DisconnectReasonDetail`
+  keeps the whole token for `ContentRefusal.TryParseMismatch` and `TryParseClientTooOld`. NetWorld recognizes the
+  two by prefix and does not reference the catalog: the prefixes have one source,
+  `HandshakeToken.ContentMismatchPrefix` and `ContentClientTooOldPrefix`, which `ContentRefusal` builds from.
+- At repin, a game that treated these refusals as `RejectedToken` sees the new reasons instead. Ruinborne's
+  `RuinborneConnectionSignals.IsServerRefusal` checks for `RejectedToken`, so it should add the two new members,
+  or a planned-update status can override the content refusal copy.
+
 **Tooling.**
 
 - `scripts/pack-local-feed.sh` packs the current tree into the MAIN checkout's `local-feed` from any worktree, and

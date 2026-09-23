@@ -47,7 +47,14 @@ public sealed class RenderService(MapEditSession session)
     /// flag. Throws <see cref="InvalidOperationException"/> when no document is open or no headless GPU device
     /// exists.</summary>
     public byte[] RenderTopDown(float? minX = null, float? minZ = null, float? maxX = null, float? maxZ = null,
-        int width = 1024, int height = 1024, bool includeOverlays = true, bool textured = true)
+        int width = 1024, int height = 1024, bool includeOverlays = true, bool textured = true) =>
+        RenderTopDownWithCoverage(minX, minZ, maxX, maxZ, width, height, includeOverlays, textured).Png;
+
+    /// <summary><see cref="RenderTopDown"/> plus whether the rect was wider than the streamed ring covers
+    /// (<see cref="TopDownRender.Capped"/>), so the verb can tell its client that distant placements and scatter are
+    /// missing from the image.</summary>
+    public TopDownRender RenderTopDownWithCoverage(float? minX = null, float? minZ = null, float? maxX = null,
+        float? maxZ = null, int width = 1024, int height = 1024, bool includeOverlays = true, bool textured = true)
     {
         return session.WithDocument((doc, registry) =>
         {
@@ -70,7 +77,7 @@ public sealed class RenderService(MapEditSession session)
             Vector3 focus = plan.Focus;
 
             ViewportWorld? world = null;
-            return CaptureToPng(width, height,
+            byte[] png = CaptureToPng(width, height,
                 setup: scene =>
                 {
                     world = ConfigureWorld(scene, textured, plan);
@@ -88,6 +95,9 @@ public sealed class RenderService(MapEditSession session)
                     world.Draw(focus, selectedPlacementId: null, highlightTint: default, visibility);
                     if (includeOverlays) DrawOverlays(scene, doc, field, visibility);
                 });
+            return new TopDownRender(png, plan.Capped,
+                plan.Capped ? RenderStreamPlan.MaxCoveredReach : MathF.Sqrt(
+                    (rMaxX - rMinX) * (rMaxX - rMinX) + (rMaxZ - rMinZ) * (rMaxZ - rMinZ)) * 0.5f);
         });
     }
 

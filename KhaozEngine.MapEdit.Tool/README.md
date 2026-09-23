@@ -121,9 +121,11 @@ live editor shows from that eye: placements and scatter within about 240 m. `ren
 rect centre and widens the gameplay ring, prop cull and companion cull until they reach every corner of the
 requested rect, so a whole-document render includes the far corners. The ring is capped at 24 chunks (a 1440 m
 reach, so a square rect up to about 1.9 km on a side is fully covered). Past the cap a wider rect still renders
-its terrain, but placements and scatter appear only within that reach of the rect centre. Render the rect in
-pieces for a larger map. On an Apple GPU a covered 1200 m square took 0.2 to 1.4 s (the higher figure
-includes first device start-up) and a capped 2 km square about 0.9 s.
+its terrain, but placements and scatter appear only within about 1350 m of the rect centre, and the render's
+text block says so, naming the covered distance. Render the rect in pieces for a larger map. Measured on an Apple
+GPU with a scatter-free document (flat terrain and a single marker placement), a covered 1200 m square took 0.2
+to 1.4 s (the higher figure includes first device start-up) and a capped 2 km square about 0.9 s. A document with
+dense scatter layers pays for every scattered prop inside the widened ring as well, so expect longer renders.
 
 ## Verb surface (78 tools)
 

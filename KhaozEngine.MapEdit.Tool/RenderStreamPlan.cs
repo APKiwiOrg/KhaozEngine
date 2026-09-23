@@ -26,6 +26,10 @@ internal readonly record struct RenderStreamPlan(
     // which is the distance the streamer's gameplay test measures. Rounded up with a little slack.
     const float ChunkReachSlack = 1.5f;
 
+    /// <summary>The distance from the rect centre a capped top-down render still fully covers: the widest ring
+    /// less the chunk-edge slack, 1350 m.</summary>
+    internal const float MaxCoveredReach = (MaxCoverChunks - ChunkReachSlack) * ChunkMeters;
+
     /// <summary>A perspective render: stream around <paramref name="eye"/> with the default profile.</summary>
     internal static RenderStreamPlan ForView(Vector3 eye) =>
         new(eye, RenderDistanceProfile.Default, ViewportWorld.DefaultCompanionDrawRadius, Capped: false);
@@ -44,7 +48,8 @@ internal readonly record struct RenderStreamPlan(
         int gameplay = Math.Clamp(needed, standard.GameplayLoadRadiusChunks, MaxCoverChunks);
         float covered = MathF.Min(reach, gameplay * ChunkMeters);
         float companions = MathF.Max(ViewportWorld.DefaultCompanionDrawRadius, covered);
-        if (needed <= standard.GameplayLoadRadiusChunks && reach <= standard.PropDrawRadius)
+        // needed <= 4 already bounds reach to (4 - 1.5) * 60 = 150 m, well inside the default 500 m prop cull.
+        if (needed <= standard.GameplayLoadRadiusChunks)
             return new(focus, standard, companions, Capped: false);
 
         float cull = MathF.Max(standard.PropDrawRadius, covered);

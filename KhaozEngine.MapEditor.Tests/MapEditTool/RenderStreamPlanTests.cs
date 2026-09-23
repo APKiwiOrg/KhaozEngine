@@ -6,6 +6,7 @@ using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapEdit;
+using KhaozEngine.MapEdit.Tools;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Terrain;
 using KhaozEngine.Tests.Gpu;
@@ -85,6 +86,28 @@ namespace KhaozEngine.Tests.MapEditTool
         }
 
         [Fact]
+        public void CappedReach_MatchesWhereThePlanStartsCapping()
+        {
+            Assert.Equal(1350f, RenderStreamPlan.MaxCoveredReach);
+            float inside = (RenderStreamPlan.MaxCoveredReach - 1f) / MathF.Sqrt(2f);
+            float outside = (RenderStreamPlan.MaxCoveredReach + 1f) / MathF.Sqrt(2f);
+
+            Assert.False(RenderStreamPlan.ForTopDown(Vector3.Zero, -inside, -inside, inside, inside).Capped);
+            Assert.True(RenderStreamPlan.ForTopDown(Vector3.Zero, -outside, -outside, outside, outside).Capped);
+        }
+
+        [Fact]
+        public void CoverageNote_TellsTheClientOnlyWhenTheRenderWasCapped()
+        {
+            string capped = RenderTools.CoverageNote(new TopDownRender(Array.Empty<byte>(), Capped: true, 1350f));
+            string covered = RenderTools.CoverageNote(new TopDownRender(Array.Empty<byte>(), Capped: false, 400f));
+
+            Assert.Contains("24 chunks", capped, StringComparison.Ordinal);
+            Assert.Contains("1350 meters", capped, StringComparison.Ordinal);
+            Assert.Equal("", covered);
+        }
+
+        [Fact]
         public void ConfigureWorld_AppliesThePlanBeforeBuild()
         {
             var render = new RenderService(new MapEditSession());
@@ -122,11 +145,23 @@ namespace KhaozEngine.Tests.MapEditTool
                 includeOverlays: false));
             doc.Placements.Add(Marker("corner", 560f, 560f, scale: 30f));
             var clock = Stopwatch.StartNew();
-            byte[] with = WithSession(doc, render => render.RenderTopDown(width: 256, height: 256,
-                includeOverlays: false));
+            TopDownRender with = WithSession(doc, render => render.RenderTopDownWithCoverage(width: 256,
+                height: 256, includeOverlays: false));
             _output.WriteLine($"render_topdown over 1200 m x 1200 m: {clock.Elapsed.TotalMilliseconds:F0} ms");
 
-            Assert.False(without.AsSpan().SequenceEqual(with), "the far-corner marker did not change the top-down.");
+            Assert.False(with.Capped);
+            Assert.False(without.AsSpan().SequenceEqual(with.Png),
+                "the far-corner marker did not change the top-down.");
+        }
+
+        [GpuFact]
+        public void RenderTopDown_OverAHugeDocument_ReportsThatItWasCapped()
+        {
+            TopDownRender render = WithSession(FlatDoc(4000f), r => r.RenderTopDownWithCoverage(width: 64,
+                height: 64, includeOverlays: false));
+
+            Assert.True(render.Capped);
+            Assert.Equal(RenderStreamPlan.MaxCoveredReach, render.CoveredReach);
         }
 
         const float Ground = 5f;
@@ -166,7 +201,7 @@ namespace KhaozEngine.Tests.MapEditTool
         static MapPlacement Marker(string id, float x, float z, float scale = 1f) =>
             new() { Id = id, Kind = "marker", X = x, Z = z, Y = Ground + 0.5f, Scale = scale };
 
-        static byte[] WithSession(MapDocument doc, Func<RenderService, byte[]> render)
+        static T WithSession<T>(MapDocument doc, Func<RenderService, T> render)
         {
             string dir = Path.Combine(Path.GetTempPath(), "ke-render-plan-tests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(dir);

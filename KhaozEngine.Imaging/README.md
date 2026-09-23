@@ -38,8 +38,9 @@ The reusable core of tolerance-based image regression: downsample a raw RGBA8 ca
 of average RGB per cell, compare two grids per channel, and serialize/deserialize a grid to the
 committed golden text format. It knows nothing about files, GPU backends, or test frameworks, so games
 can golden-test their own scenes and the `SnapshotTool` can diff images without pulling in xUnit. The
-defaults (`DefaultGridW` 32, `DefaultGridH` 18, `DefaultTolerance` 0.06) match the committed engine
-goldens, and `Serialize` output is byte-identical to those committed files.
+grid defaults (`DefaultGridW` 32, `DefaultGridH` 18) match the committed engine goldens, and `Serialize`
+output is byte-identical to those committed files. `DefaultTolerance` 0.06 is the consumer default. The
+engine's own goldens compare at a tighter 0.01 (see `docs/CROSS-PLATFORM.md`, "Tolerance and rebakes").
 
 - `GoldenGrid.Downsample(rgba, w, h, gridW=32, gridH=18)` - average RGB per cell, `float[]` row-major,
   3 floats/cell (0..1), alpha ignored.

@@ -17788,8 +17788,10 @@ Console.WriteLine(path);
 **Golden-grid regression: `KhaozEngine.Imaging.GoldenGrid`.** The reusable core behind the engine's golden-image
 tests (`GoldenCompare` in the test project delegates to it) and the `SnapshotTool diff`/`score` commands: BCL-only,
 no files/backends/xUnit, so a game can golden-test its own scenes the same way. A "grid" is a `float[]`, row-major,
-3 floats/cell (R,G,B in 0..1). Defaults `DefaultGridW` 32, `DefaultGridH` 18, `DefaultTolerance` 0.06 match the
-committed engine goldens, and `Serialize` is byte-identical to those committed `.txt` files.
+3 floats/cell (R,G,B in 0..1). Grid defaults `DefaultGridW` 32 and `DefaultGridH` 18 match the committed engine
+goldens, and `Serialize` is byte-identical to those committed `.txt` files. `DefaultTolerance` 0.06 is the consumer
+default. The engine's own goldens compare at a tighter 0.01 (`GoldenCompare.Tolerance`, see
+[CROSS-PLATFORM.md](CROSS-PLATFORM.md#tolerance-and-rebakes)), because their captures reproduce within 0.0005.
 
 ```csharp
 float[] got  = GoldenGrid.Downsample(capture, 480, 320);            // average RGB per cell (alpha ignored)

@@ -19,7 +19,7 @@ namespace KhaozEngine.Tests.Gpu
     /// the backends that have one, and fails if any pair diverges beyond a GENEROUS threshold. Backends really do
     /// differ a little (software rasterizers like WARP / lavapipe do not match Apple Metal pixel-for-pixel), so
     /// the threshold is deliberately loose - far above the observed legitimate divergence (~0.04 Metal-vs-WARP)
-    /// and the 0.06 per-backend verify tolerance, but well below a gross bad-bake (the 0.58 case). It catches
+    /// and the 0.01 per-backend verify tolerance, but well below a gross bad-bake (the 0.58 case). It catches
     /// "one backend's reference is wrong", not normal filtering noise.
     /// </summary>
     public class CrossBackendGoldenTests

@@ -14,7 +14,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// It carries "Golden" in the name so the cross-platform GPU matrix runs it on every backend, but it commits NO
     /// reference grid: it is the property flavour of golden (see <see cref="GoldenCompare"/>'s naming contract),
-    /// comparing two grids IT rendered against each other under the same per-channel tolerance. That is deliberate
+    /// comparing two grids IT rendered against each other under <see cref="GoldenCompare.InSessionTolerance"/>, per
+    /// channel, rather than the committed grids' <see cref="GoldenCompare.Tolerance"/>. That is deliberate
     /// and it is the stronger form here. A committed grid would need a three-backend bake to land, would drift with
     /// every unrelated lighting change, and would only ever assert that this scene still looks like itself. The
     /// self-comparison asserts the thing the release actually claims, which is that distance from the origin stops
@@ -93,9 +94,9 @@ namespace KhaozEngine.Tests.Gpu
         public void Golden3D_FarFromOrigin_MatchesTheSameSceneAtTheOrigin()
         {
             // Test 19. Both renders take the camera-relative path by default (the far one latches a non-zero origin,
-            // the origin one latches zero), and the images must agree within the same per-channel tolerance the
-            // committed goldens are held to. Before this release the far image was visibly wrong: the matrix
-            // concatenation ran on two ~1e5 operands, so geometry swam and shadow edges crawled.
+            // the origin one latches zero), and the images must agree within GoldenCompare.InSessionTolerance, the
+            // bar for two grids rendered in one session. Before this release the far image was visibly wrong: the
+            // matrix concatenation ran on two ~1e5 operands, so geometry swam and shadow edges crawled.
             // What this one really guards is COMPLETENESS of the reduction sites rather than precision: a payload
             // that missed its subtraction is displaced by the whole render origin, so it leaves the frustum and the
             // image loses it entirely. The precision half is the close-up below.
@@ -108,9 +109,9 @@ namespace KhaozEngine.Tests.Gpu
                 "the broad scene rendered nothing bright enough to be meaningful: the comparison below is vacuous");
 
             float worst = WorstCellDelta(origin, far);
-            Assert.True(worst <= GoldenCompare.Tolerance,
+            Assert.True(worst <= GoldenCompare.InSessionTolerance,
                 $"the scene at {Far} differs from the same scene at the origin by {worst} " +
-                $"(tolerance {GoldenCompare.Tolerance}): camera-relative rendering is not holding at range.");
+                $"(tolerance {GoldenCompare.InSessionTolerance}): camera-relative rendering is not holding at range.");
         }
 
         static byte[] RenderSparklingDecal(Vector3 renderOrigin)
@@ -208,7 +209,7 @@ namespace KhaozEngine.Tests.Gpu
             // Both halves, because the first half alone would pass on a harness that cannot see the failure it
             // claims to prevent (the broad scene above is exactly that: at its zoom, a 7.8 mm quantum is a tenth of
             // a pixel and BOTH paths pass). Half one: camera-relative rendering at 100 km reproduces the origin
-            // image within the committed goldens' own tolerance. Half two, the known-failing baseline: the SAME
+            // image within GoldenCompare.InSessionTolerance. Half two, the known-failing baseline: the SAME
             // scene at 100 km with the origin opted out of does not, which is what makes half one mean something.
             float[] origin = GoldenCompare.Downsample(RenderCloseUp(Vector3.Zero), W, H);
             float[] relative = GoldenCompare.Downsample(RenderCloseUp(Far), W, H);
@@ -220,13 +221,13 @@ namespace KhaozEngine.Tests.Gpu
 
             float relativeWorst = WorstCellDelta(origin, relative);
             float absoluteWorst = WorstCellDelta(origin, absolute);
-            Assert.True(relativeWorst <= GoldenCompare.Tolerance,
+            Assert.True(relativeWorst <= GoldenCompare.InSessionTolerance,
                 $"the camera-relative close-up at {Far} differs from the origin one by {relativeWorst} " +
-                $"(tolerance {GoldenCompare.Tolerance})");
-            Assert.True(absoluteWorst > GoldenCompare.Tolerance,
+                $"(tolerance {GoldenCompare.InSessionTolerance})");
+            Assert.True(absoluteWorst > GoldenCompare.InSessionTolerance,
                 $"the ABSOLUTE close-up at {Far} differs from the origin one by only {absoluteWorst}, inside the " +
-                $"{GoldenCompare.Tolerance} tolerance: this scene no longer distinguishes the two paths, so the " +
-                "assertion above proves nothing. Zoom in further or move further out.");
+                $"{GoldenCompare.InSessionTolerance} tolerance: this scene no longer distinguishes the two paths, so " +
+                "the assertion above proves nothing. Zoom in further or move further out.");
         }
 
         [GpuFact]
@@ -357,9 +358,9 @@ namespace KhaozEngine.Tests.Gpu
                 "the terrain rendered nothing bright enough to be meaningful: the comparison below is vacuous");
 
             float worst = WorstCellDelta(origin, far);
-            Assert.True(worst <= GoldenCompare.Tolerance,
+            Assert.True(worst <= GoldenCompare.InSessionTolerance,
                 $"the terrain chunk at {Far} differs from the same chunk at the origin by {worst} " +
-                $"(tolerance {GoldenCompare.Tolerance}): the chunk-local bake is not holding at range.");
+                $"(tolerance {GoldenCompare.InSessionTolerance}): the chunk-local bake is not holding at range.");
         }
 
         [GpuFact]
@@ -372,7 +373,7 @@ namespace KhaozEngine.Tests.Gpu
             // instead, adding the origin back so the fallback sees absolute geometry again, exactly what its own
             // view-projection expects. Swapping CameraOverride to a non-aware camera strictly BETWEEN Begin (which
             // latches the origin while scene.Camera, still aware, is active) and the render call is what reaches
-            // this branch, and it must project the same point to (within the committed goldens' own tolerance)
+            // this branch, and it must project the same point to (within GoldenCompare.InSessionTolerance)
             // the same pixel as the same camera set from the very start (the pure absolute path, never touched by
             // the origin machinery at all). Tolerance, not byte-exact: the fixed fallback composes an extra
             // T(+origin) * VP matrix multiply the pure absolute path never does, so a few ULPs of edge/AA noise
@@ -411,9 +412,9 @@ namespace KhaozEngine.Tests.Gpu
                 "the reference render was nothing bright enough to be the box: the comparison below is vacuous");
 
             float worst = WorstCellDelta(swapped, absolute);
-            Assert.True(worst <= GoldenCompare.Tolerance,
+            Assert.True(worst <= GoldenCompare.InSessionTolerance,
                 $"the mid-frame camera swap differs from the same camera active from Begin by {worst} " +
-                $"(tolerance {GoldenCompare.Tolerance}): the non-aware fallback is not projecting absolute " +
+                $"(tolerance {GoldenCompare.InSessionTolerance}): the non-aware fallback is not projecting absolute " +
                 "geometry correctly.");
         }
 

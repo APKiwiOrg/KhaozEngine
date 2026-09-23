@@ -92,6 +92,9 @@ namespace KhaozEngine.Render3D
             // Whatever the settings now say, this frame renders into the atlas that EXISTS. A layout the boundary
             // has not brought up yet (or refused outright) leaves the previous one live, and a frame that
             // second-guessed it here would throw away a working map over a number nothing has acted on.
+            // THE CASTERS ARE INDEXED ONCE, here, where a request and a live atlas both exist. Every static
+            // signature and every row the pass draws below asks this one index rather than walking every instance.
+            EnsurePointCasterIndex();
             AcquirePointShadowSlots(cache, frame);
             ChoosePointShadowRebuilds(cache, settings);
             int draws = RenderChosenPointShadowRows(cl, cache, frame);
@@ -267,8 +270,8 @@ namespace KhaozEngine.Render3D
         /// ever.
         /// </para>
         /// <para>
-        /// It walks the instances in exactly the order <c>BuildPointCasterSpans</c> does and applies exactly the
-        /// same three rejections, so a signature can only miss a change that the pass would also not have drawn.
+        /// It reads the same index query <c>BuildPointCasterSpans</c> reads, so a signature can only miss a change
+        /// that the pass would also not have drawn.
         /// </para>
         /// <para>
         /// ONLY THE LIGHT IS QUANTISED, and that is the whole of what the millimetre rounding buys: a light
@@ -295,35 +298,21 @@ namespace KhaozEngine.Render3D
             MixPointSignature(ref hash, Quantise(exclusionMax.Y));
             MixPointSignature(ref hash, Quantise(exclusionMax.Z));
 
-            // Read by reference: an InstanceData is 128 bytes and this runs once per instance per static request
-            // per frame, so copying one out of the list to reach two of its fields is the one thing here worth
-            // avoiding.
+            // The casters come from the frame's index (Scene3D.PointCasters.cs): exactly the ones the pass will draw
+            // for this light, in ascending slot order, which is the order the walk over every run visited them in.
+            // Read by reference: an InstanceData is 128 bytes and this runs once per touching caster per static
+            // request per frame.
+            QueryPointCasters(lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
             Span<ModelRenderer.InstanceData> instances = CollectionsMarshal.AsSpan(_instanceData);
-            foreach (MeshRun run in _runs)
+            foreach (int slot in _pointCasterHits)
             {
-                if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
-                var m = _meshes[run.Mesh.Index];
-                if (m is not { } mesh) continue;
-                if (!MeshCastsShadows(mesh.SplatMaterial, TerrainCastsShadows)) continue;
-                for (uint s = 0; s < run.Count; s++)
-                {
-                    int slot = (int)(run.Start + s);
-                    if (slot >= instances.Length) break;
-                    ShadowCastKind kind = slot < _instanceCastKinds.Count
-                        ? _instanceCastKinds[slot]
-                        : ShadowCastKind.Opaque;
-                    if (kind == ShadowCastKind.None) continue;
-                    ref ModelRenderer.InstanceData data = ref instances[slot];
-                    if (!InstanceTouchesLight(mesh.Bounds, data.Model, lightPosAbsolute, radius, nearRadius,
-                        exclusionMin, exclusionMax))
-                        continue;
-
-                    MixPointSignature(ref hash, (ulong)(uint)run.Mesh.Index);
-                    MixPointSignature(ref hash, (ulong)(uint)run.Mesh.Generation);
-                    MixPointSignature(ref hash, (ulong)(uint)kind);
-                    MixPointSignature(ref hash, MatrixBits(data.Model));
-                    MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(data.Dissolve.X));
-                }
+                MeshHandle mesh = _runs[_pointCasterIndex.RunOf(slot)].Mesh;
+                ref ModelRenderer.InstanceData data = ref instances[slot];
+                MixPointSignature(ref hash, (ulong)(uint)mesh.Index);
+                MixPointSignature(ref hash, (ulong)(uint)mesh.Generation);
+                MixPointSignature(ref hash, (ulong)(uint)PointCasterKind(slot));
+                MixPointSignature(ref hash, MatrixBits(data.Model));
+                MixPointSignature(ref hash, (ulong)(uint)BitConverter.SingleToInt32Bits(data.Dissolve.X));
             }
             return unchecked((long)hash);
         }

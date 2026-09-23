@@ -15,11 +15,11 @@ namespace KhaozEngine.Render3D
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The caster walk is <see cref="BuildShadowCasterSpans"/>'s walk with one predicate added: an instance takes
-    /// part only when its world bounding sphere intersects the light sphere (design decision 8). It reuses
-    /// <see cref="AppendCasterSpans"/> for the grouping rather than repeating it, by writing
-    /// <see cref="ShadowCastKind.None"/> into a scratch classification for everything the sphere test rejected, so
-    /// the one definition of "what a caster span is" still has exactly one implementation.
+    /// The casters come from the frame's <see cref="PointCasterIndex"/>, which holds every instance the cascade walk
+    /// (<see cref="BuildShadowCasterSpans"/>) would draw, binned by where it stands, and answers a light with the ones
+    /// whose world bounding sphere intersects the light sphere (design decision 8). They are grouped into spans
+    /// exactly as <see cref="AppendCasterSpans"/> groups the cascade pass's, so "what a caster span is" still reads
+    /// the same for both passes.
     /// </para>
     /// <para>
     /// SPACE. The cull runs in ABSOLUTE space against <c>_instanceData</c>, which stays absolute for its whole CPU
@@ -38,9 +38,7 @@ namespace KhaozEngine.Render3D
         PointShadowAtlas? _pointShadowAtlas;
         PointShadowRenderer? _pointShadows;
 
-        // Per-render scratch, reused rather than reallocated: the per-instance classification the sphere cull
-        // rewrites, and the caster spans it groups into.
-        readonly List<ShadowCastKind> _pointCasterKinds = new();
+        // Per-render scratch, reused rather than reallocated: the caster spans one light draws.
         readonly List<ShadowCasterSpan> _pointCasterSpans = new();
 
         // The lights packed into this frame's slot ring, in the order they were packed. Cleared by
@@ -253,40 +251,18 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Build <see cref="_pointCasterSpans"/>: this light's caster draw list, in the exact order
-        /// <see cref="RenderPointShadowSlots"/> draws it. Same rules as the cascade walk (a stale handle, a
-        /// receive-only splat mesh and anything the consumer opted out of casting all drop out), plus the light
-        /// sphere test, the near-radius test inside it and the exclusion box.
+        /// <see cref="RenderPointShadowSlots"/> draws it, for a static rebuild and a dynamic light alike. The casters
+        /// are the frame's <see cref="PointCasterIndex"/> answer for this light. A stale handle, a receive-only splat
+        /// mesh and anything the consumer opted out of casting are never in the index, and the light sphere, the
+        /// near radius and the exclusion box are its exact test.
         /// </summary>
         void BuildPointCasterSpans(Vector3 lightPosAbsolute, float radius, float nearRadius,
             Vector3 exclusionMin, Vector3 exclusionMax)
         {
             _pointCasterSpans.Clear();
-            _pointCasterKinds.Clear();
             if (_instanceData.Count == 0) return;
-
-            // A scratch classification the whole instance array long, so AppendCasterSpans can group it exactly as
-            // it groups the cascade pass's: everything the sphere rejected reads as None, which it already skips.
-            for (int i = 0; i < _instanceData.Count; i++)
-                _pointCasterKinds.Add(i < _instanceCastKinds.Count ? _instanceCastKinds[i] : ShadowCastKind.Opaque);
-
-            foreach (MeshRun run in _runs)
-            {
-                if (!_slots.IsValid(run.Mesh.Index, run.Mesh.Generation)) continue;
-                var m = _meshes[run.Mesh.Index];
-                if (m is not { } mesh) continue;
-                if (!MeshCastsShadows(mesh.SplatMaterial, TerrainCastsShadows)) continue;
-                for (uint s = 0; s < run.Count; s++)
-                {
-                    int slot = (int)(run.Start + s);
-                    if (slot >= _pointCasterKinds.Count) break;
-                    if (_pointCasterKinds[slot] == ShadowCastKind.None) continue;
-                    if (!InstanceTouchesLight(mesh.Bounds, _instanceData[slot].Model, lightPosAbsolute, radius,
-                        nearRadius, exclusionMin, exclusionMax))
-                        _pointCasterKinds[slot] = ShadowCastKind.None;
-                }
-                AppendCasterSpans(run.Mesh.Index, run.Mesh.Generation, run.Start, run.Count,
-                    _pointCasterKinds, _pointCasterSpans);
-            }
+            QueryPointCasters(lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
+            AppendPointCasterSpans(_pointCasterSpans);
         }
 
         /// <summary>

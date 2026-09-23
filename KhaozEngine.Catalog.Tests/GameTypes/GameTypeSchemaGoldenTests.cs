@@ -232,6 +232,62 @@ public class GameTypeSchemaGoldenTests
             new Field("value", ContentFieldKind.ScaledInt, null, ContentVisibility.Client, true, 100));
     }
 
+    // The four types with a duration, under Seconds. The duration is HUNDREDTHS of a second, a ScaledInt at
+    // scale 100, so 2.33 seconds is stored as 233. Every other field is its Ticks golden above, restated as
+    // literals so a change to either unit goes red on its own.
+    const ContentDurationUnit Seconds = ContentDurationUnit.Seconds;
+
+    [Fact]
+    public void FoodUnderSeconds()
+    {
+        AssertSchema(
+            FoodContentType.CreateSchema(Seconds),
+            new Field("item", ContentFieldKind.KeyReference, "item", ContentVisibility.Client, true),
+            new Field("heals", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("attack_delay_seconds", ContentFieldKind.ScaledInt, null, ContentVisibility.Client, true, 100));
+    }
+
+    [Fact]
+    public void EquipProfileUnderSeconds()
+    {
+        AssertSchema(
+            EquipProfileContentType.CreateSchema(Seconds),
+            new Field("slot", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("weapon_archetype", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("attack_seconds", ContentFieldKind.ScaledInt, null, ContentVisibility.Client, true, 100));
+    }
+
+    [Fact]
+    public void GatheringNodeUnderSeconds()
+    {
+        AssertSchema(
+            GatheringNodeContentType.CreateSchema(Seconds),
+            new Field("skill", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("tool_family", ContentFieldKind.KeyReference, "tag", ContentVisibility.Client, true),
+            new Field("level_required", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("base_chance_bp", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("lives", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("life_loss_bp", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("yield_xp", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("yield_item", ContentFieldKind.KeyReference, "item", ContentVisibility.Client, true),
+            new Field("respawn_seconds", ContentFieldKind.ScaledInt, null, ContentVisibility.Client, true, 100));
+    }
+
+    [Fact]
+    public void RecipeUnderSeconds()
+    {
+        AssertSchema(
+            RecipeContentType.CreateSchema(Seconds),
+            new Field("display_order", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("skill", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("level_required", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("primary_item", ContentFieldKind.KeyReference, "item", ContentVisibility.Client, true),
+            new Field("station", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("base_seconds", ContentFieldKind.ScaledInt, null, ContentVisibility.Client, true, 100),
+            new Field("xp_per_item", ContentFieldKind.Int, null, ContentVisibility.Client, true),
+            new Field("repeat_mode", ContentFieldKind.Int, null, ContentVisibility.Client, true));
+    }
+
     [Fact]
     public void EveryFieldIsRequiredExceptTheOneCurveKnob()
     {

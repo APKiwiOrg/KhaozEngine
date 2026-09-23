@@ -8,9 +8,9 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// THE ONE PROMISE THE RECEIVER HALF MAKES: a scene that asks for no point-light shadow renders exactly as it
-    /// did before point-light shadows existed. Every receiver family now declares the atlas, carries the frame
-    /// block's 272-byte point tail and calls <c>samplePointShadow</c>, so the compiled shaders all moved, and this
-    /// is what says the PIXELS did not.
+    /// did before point-light shadows existed. Every receiver family declares both atlas bindings, carries the
+    /// point compatibility tail and transient shape, and calls <c>samplePointShadowCombined</c>. The compiled
+    /// shaders moved, and these tests say the base-only PIXELS did not.
     /// <para>
     /// The gate being asserted is one branch: <c>pointLight.ShadowParams.x >= 0.0</c>. Every light without a slot
     /// reads -1 there, so the sample, the texture read and the multiply are all skipped and the accumulation is
@@ -24,6 +24,30 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class PointShadowByteIdentityGpuTests
     {
+        [GpuFact]
+        public void LiveButUnmappedTransientAtlasMatchesBaseOnlyPixelsByteForByte()
+        {
+            using var fixture = new SkinnedPointShadowScene();
+            SkinnedPointShadowScene.ByteIdentityPair pair = fixture.DynamicSkinnedWithIdleTransient();
+
+            Assert.True(pair.TransientRows > 0);
+            Assert.True(pair.DynamicSkinnedDrawCalls > 0);
+            Assert.Equal(-1, pair.TransientRow);
+            Assert.Equal(pair.BaseOnly, pair.Candidate);
+        }
+
+        [GpuFact]
+        public void FreshSceneWithNoSkinnedCasterMatchesBaseOnlyPixelsByteForByte()
+        {
+            using var fixture = new SkinnedPointShadowScene();
+            SkinnedPointShadowScene.ByteIdentityPair pair = fixture.NoSkinnedColdScene();
+
+            Assert.Equal(0, pair.TransientRows);
+            Assert.Equal(0, pair.DynamicSkinnedDrawCalls);
+            Assert.Equal(-1, pair.TransientRow);
+            Assert.Equal(pair.BaseOnly, pair.Candidate);
+        }
+
         const int W = 128, H = 128;
 
         // Dim the globals so the point lights dominate the lit term. A frame whose colour came from the key light

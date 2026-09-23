@@ -16,7 +16,7 @@ else. A dedicated auth service references it. A game server and a game client ne
 | `AuthExchangeResult` | `Outcome`, `SessionToken`, `ExpiresAtUtc`, `Subject`, `DisplayName`, `Ban`, and for the host's log only `Fault` and `Cause`. `ToResponse(includeBanDetails = false)` builds the wire body. |
 | `AuthExchangeOutcome` | `Ok`, `NotWhitelisted`, `Banned`, `InvalidCredential`, `Unavailable`, `Malformed`. |
 | `AuthExchangeCause` | Why it ended so, for the log line: `UnknownProvider`, `CredentialShape`, `CredentialRefused`, `ProviderUnavailable`, `ProviderTimeout`, `StoreFault`, `InadmissibleSubject`, `PolicyFault`, or `None` for a decision. Never sent. |
-| `AuthExchangeOptions` | `TokenLifetime` (required), `RequireWhitelist` (true), `MaxCredentialChars` (4096), `MaxDisplayNameChars` (64, at most the store limit of 128), `ProviderTimeout` (10 s), `Clock`. |
+| `AuthExchangeOptions` | `TokenLifetime` (required, at most `MaxTokenLifetime` of 365 days), `RequireWhitelist` (true), `MaxCredentialChars` (4096), `MaxDisplayNameChars` (64, at most the store limit of 128), `ProviderTimeout` (10 s), `Clock`. |
 | `IAuthExchangePolicy` | The game's display name and claims hooks, both with defaults. |
 | `SessionClaims` | The token's display name and optional persistence key. |
 | `AuthAdmission` | `Decide(account, now, requireWhitelist)`: the fixed ban-then-whitelist gate, public for a game's own issuer. |

@@ -111,6 +111,8 @@ public class AuthExchangeConstructionTests
     [Theory]
     [InlineData("zero lifetime", nameof(AuthExchangeOptions.TokenLifetime))]
     [InlineData("negative lifetime", nameof(AuthExchangeOptions.TokenLifetime))]
+    [InlineData("lifetime past the maximum", nameof(AuthExchangeOptions.TokenLifetime))]
+    [InlineData("lifetime past the calendar", nameof(AuthExchangeOptions.TokenLifetime))]
     [InlineData("zero credential cap", nameof(AuthExchangeOptions.MaxCredentialChars))]
     [InlineData("zero deadline", nameof(AuthExchangeOptions.ProviderTimeout))]
     [InlineData("infinite deadline", nameof(AuthExchangeOptions.ProviderTimeout))]
@@ -123,6 +125,12 @@ public class AuthExchangeConstructionTests
         {
             "zero lifetime" => new AuthExchangeOptions { TokenLifetime = TimeSpan.Zero },
             "negative lifetime" => new AuthExchangeOptions { TokenLifetime = TimeSpan.FromDays(-1) },
+            "lifetime past the maximum" => new AuthExchangeOptions
+            {
+                TokenLifetime = AuthExchangeOptions.MaxTokenLifetime + TimeSpan.FromSeconds(1),
+            },
+            // The value that would overflow the expiry inside every request if it were taken.
+            "lifetime past the calendar" => new AuthExchangeOptions { TokenLifetime = TimeSpan.MaxValue },
             "zero credential cap" => new AuthExchangeOptions { TokenLifetime = lifetime, MaxCredentialChars = 0 },
             "zero deadline" => new AuthExchangeOptions { TokenLifetime = lifetime, ProviderTimeout = TimeSpan.Zero },
             "infinite deadline" => new AuthExchangeOptions { TokenLifetime = lifetime, ProviderTimeout = Timeout.InfiniteTimeSpan },
@@ -134,6 +142,19 @@ public class AuthExchangeConstructionTests
         ArgumentException refused = Assert.ThrowsAny<ArgumentException>(() => new AuthExchange(
             new[] { Validator }, new InMemoryAccountStore(true), ExchangeFixture.Key(), options));
         Assert.Equal(option, refused.ParamName);
+    }
+
+    [Fact]
+    public async Task TheLongestLifetime_IsTaken_AndExpiresAtTheClockPlusIt()
+    {
+        var options = new AuthExchangeOptions { TokenLifetime = AuthExchangeOptions.MaxTokenLifetime, Clock = Clock };
+        var exchange = new AuthExchange(new[] { Validator }, new InMemoryAccountStore(true), ExchangeFixture.Key(), options);
+
+        AuthExchangeResult result = await exchange.ExchangeAsync("discord", "tok");
+
+        Assert.Equal(TimeSpan.FromDays(365), AuthExchangeOptions.MaxTokenLifetime);
+        Assert.Equal(AuthExchangeOutcome.Ok, result.Outcome);
+        Assert.Equal(ExchangeFixture.Now + AuthExchangeOptions.MaxTokenLifetime, result.ExpiresAtUtc);
     }
 
     [Fact]

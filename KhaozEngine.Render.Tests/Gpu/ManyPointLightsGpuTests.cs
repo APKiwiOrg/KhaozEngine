@@ -134,6 +134,8 @@ public sealed class ManyPointLightsGpuTests(ManyPointLightsScene scene) : IClass
             ? PointLightClusterProjection.Perspective
             : PointLightClusterProjection.Orthographic;
         AssertMatchesAlone(alone, crowded, $"model behind an in-view crowd, perspective {perspective}", projection);
+        // The patch above covers only a few receiver clusters. The whole image covers every one of them.
+        Assert.Equal(alone.Rgba, crowded.Rgba);
         Assert.True(crowded.Clusters.LightReferenceCount >= alone.Clusters.LightReferenceCount + 48,
             $"the crowd added {crowded.Clusters.LightReferenceCount - alone.Clusters.LightReferenceCount} cluster "
             + "references, fewer than one per crowd light, so the receiver may never read past offset zero");

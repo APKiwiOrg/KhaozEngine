@@ -11639,6 +11639,11 @@ if (server.TryGetGroundItem(netId, out TileGroundItem item)
     && server.TryGetGroundItemInstance(netId, out TileGroundItemInstance instance)
     && server.DespawnGroundItem(netId))
     inventory.Seat(item.ItemId, item.Count, instance.InstanceId, instance.Payload);
+
+// Client, per frame: only the drops that carry an instance, each paired with its own drop.
+client.CollectGroundItemInstances(instancedBuffer);
+foreach ((long netId, TileGroundItem item, TileGroundItemInstance instance) in instancedBuffer)
+    DrawInstanceMarker(item.Tile, instance.InstanceId);
 ```
 
 Both halves are opaque. The engine never decodes the payload, has no way to, and never mints an instance id
@@ -11648,9 +11653,8 @@ and a drop-and-claim cycle cannot launder an item into a fresh one. Three refusa
 with instance id 0 throws because the bytes would go nowhere, and the READER is total, so a declared length
 past the component's own framed payload arrives as an instance with an empty payload rather than as a dropped
 session. `TryGetGroundItemInstance` answers false for every drop spawned through the four-argument overload,
-and clients read the component off `client.World` for the entity `client.View.Entities` holds under the
-drop's net id, because there is no collector beside `CollectGroundItems` for it yet
-(https://github.com/APKiwiOrg/KhaozEngine/issues/926).
+and `CollectGroundItemInstances` leaves those drops out. It fills the caller's list in one walk of the entity
+set, cleared first and unsorted, exactly as `CollectGroundItems` fills its own.
 
 ### Object states, and drawing them (a chopped tree, 18.14.0)
 
@@ -16423,9 +16427,11 @@ still kept verbatim in storage.
 `ContainerPageSyncRequest` is the other half and the ONE new client-to-server message: two bytes,
 `[ContainerId][PageIndex]`, with no field a payload could ride in. A client REFUSES a delta for a page it has
 not fully received and sends this instead, and on the last chunk of a fragmented page the assembled bytes go
-through the SAME decoder the server encoded with. **Rate limit it at one page per client per tick**, which is
-a server rule rather than engine code, because a server that serves every request it receives has handed an
-unauthenticated peer an amplifier of two bytes in and about 7 KB out.
+through the SAME decoder the server encoded with. `TileFragmentReassembler.TryComplete` hands back the
+`streamId` those chunks carried beside the bytes, so several containers fragmented under one kind are routed by
+the header rather than by a stream byte repeated inside the page. **Rate limit it at one page per client per
+tick**, which is a server rule rather than engine code, because a server that serves every request it receives
+has handed an unauthenticated peer an amplifier of two bytes in and about 7 KB out.
 
 **What is NOT here yet.** What is settled is every byte format, every id space, every ordering rule, the
 stacking test, the paging shape and the projection every replicated byte passes through, which are the

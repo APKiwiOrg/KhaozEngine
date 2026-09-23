@@ -34,7 +34,9 @@ app.Run();
 
 `UseAuthExchangeHosting` throws when `AddAuthExchangeHosting` was not called. `MapAuthExchange` works without either,
 because the endpoint carries its own bounds, but it then logs a warning at mapping time that the per-client window
-keys on the connection's peer address.
+keys on the connection's peer address. Once `AddAuthExchangeHosting` is called, `MapAuthExchange` throws until
+`UseAuthExchangeHosting` has run, because without the middleware the named proxies are ignored and every caller
+behind them shares one bucket.
 
 ## Public API
 
@@ -44,7 +46,7 @@ keys on the connection's peer address.
 | `AuthExchangeEndpointOptions` | `Pattern` (`/auth/exchange`), `MaxRequestBodyBytes` (8 KiB, at most 1 MiB), `PermitsPerClientPerMinute` (5), `Ipv6PartitionPrefixLength` (64), `MaxConcurrentExchanges` (20), `MaxQueuedExchanges` (20), `IncludeBanDetails` (false). Validated when the endpoint is mapped. |
 | `AuthExchangeHosting` | `AddAuthExchangeHosting(builder, options?)` and `UseAuthExchangeHosting(app)`. |
 | `AuthExchangeHostingOptions` | `TrustedProxies` (empty, which turns forwarded headers off) and `MaxRequestBodyBytes` (null, which leaves Kestrel's default). |
-| `TrustedProxyNetworks` | `PrivateRanges` (RFC 1918 in both families), `Loopback` (a same-host proxy), and `WithBothFamilies(networks)`, the rule the hosting applies to any list. |
+| `TrustedProxyNetworks` | `PrivateRanges` (RFC 1918 in both families), `Loopback` (a same-host proxy), and `WithBothFamilies(networks)`, the rule the hosting applies to any list, which refuses a catch-all. |
 | `AuthExchangeClientKey` | `For(peer, ipv6PrefixLength)`, the per-client partition key: the IPv4 address, a mapped address folded to IPv4, the IPv6 /64, or one shared key for a connection with no address. |
 
 ## The answers
@@ -80,8 +82,8 @@ host calling `UseRateLimiter` or leaving its global limiter alone. Per request, 
 4. **Parse, then the exchange** under the caller's cancellation. A caller who disconnects cancels the provider call and
    the store call through the core, and no outage is logged for it.
 
-A flood is refused before any JSON is parsed. The 4096 character credential cap and the 10 s provider deadline are the
-core's (`AuthExchangeOptions`).
+A flood is refused before any JSON is parsed. The core adds its own bounds before any provider cost: a credential of at
+most 4096 characters, all visible ASCII, and a 10 s provider deadline (`AuthExchangeOptions`).
 
 ## Forwarded headers
 
@@ -96,6 +98,9 @@ one bucket and the limiter becomes a self-inflicted outage. `TrustedProxies` nam
   typed in either form trusts the proxy in both.
 - **Last hop only.** The forward limit is one, so only the address the trusted proxy appended is read, and a client
   cannot choose its bucket by prepending addresses of its own.
+- **No catch-all.** A /0 in either family, which is what an unset `IPNetwork` is, or an IPv6 network holding the whole
+  IPv4-mapped block would let every caller name its own bucket. `AddAuthExchangeHosting` and `WithBothFamilies` refuse
+  one, naming its position in the list and not its value.
 - **`PrivateRanges` trusts every private host.** Any machine that can reach the service over RFC 1918 can name its own
   client address. Name the proxy's own subnet when the private network is shared with anything you do not control.
 

@@ -100,9 +100,49 @@ public class ExchangeHostingPrimitiveTests
         Assert.Equal(new[] { mapped, v4 }, TrustedProxyNetworks.WithBothFamilies(new[] { mapped }).ToArray());
         Assert.Equal(new[] { v6 }, TrustedProxyNetworks.WithBothFamilies(new[] { v6 }).ToArray());
         Assert.Equal(new[] { v4, mapped }, TrustedProxyNetworks.WithBothFamilies(new[] { v4, mapped, v4 }).ToArray());
-        // The whole mapped block is every IPv4 address, and its twin says exactly that.
-        Assert.Equal(new[] { IPNetwork.Parse("::ffff:0:0/96"), IPNetwork.Parse("0.0.0.0/0") },
-            TrustedProxyNetworks.WithBothFamilies(new[] { IPNetwork.Parse("::ffff:0:0/96") }).ToArray());
+    }
+
+    [Theory]
+    [InlineData("default")]
+    [InlineData("0.0.0.0/0")]
+    [InlineData("::/0")]
+    [InlineData("::ffff:0:0/96")]
+    [InlineData("::/80")]
+    public void ACatchAllNetwork_IsRefused_ByTheHelperAndAtAdd_NamingTheRuleAndNotTheValue(string scenario)
+    {
+        // default(IPNetwork) is 0.0.0.0/0: an unfilled array slot or a failed parse used anyway. ::/80 holds the whole
+        // mapped block, so on a dual-mode socket it trusts every IPv4 caller just as ::ffff:0:0/96 does.
+        IPNetwork catchAll = scenario == "default" ? default : IPNetwork.Parse(scenario);
+        IPNetwork[] trusted = { IPNetwork.Parse("10.0.0.0/8"), catchAll };
+
+        ArgumentException helper = Assert.Throws<ArgumentException>(() => TrustedProxyNetworks.WithBothFamilies(trusted));
+        ArgumentException atAdd = Assert.Throws<ArgumentException>(() =>
+            Microsoft.AspNetCore.Builder.WebApplication.CreateSlimBuilder().AddAuthExchangeHosting(
+                new AuthExchangeHostingOptions { TrustedProxies = trusted }));
+
+        Assert.Equal("networks", helper.ParamName);
+        Assert.Equal(nameof(AuthExchangeHostingOptions.TrustedProxies), atAdd.ParamName);
+        foreach (ArgumentException refusal in new[] { helper, atAdd })
+        {
+            Assert.Contains("[1]", refusal.Message, StringComparison.Ordinal);
+            Assert.Contains("every", refusal.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(catchAll.ToString(), refusal.Message, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void OneBitInsideTheCatchAll_StillPairs_AndThePresetsPass()
+    {
+        // The rule refuses a catch-all and nothing narrower: a /97 in the mapped block is half of IPv4, not all of it.
+        IPNetwork mapped = IPNetwork.Parse("::ffff:0:0/97");
+
+        Assert.Equal(new[] { mapped, IPNetwork.Parse("0.0.0.0/1") }, TrustedProxyNetworks.WithBothFamilies(new[] { mapped }).ToArray());
+        // Wide IPv6 networks that do not hold the mapped block pass. IPNetwork.Contains misjudges ::ffff:0.x.x.x
+        // addresses against networks like fd00::/8, so the rule must not lean on it.
+        IPNetwork[] wide = { IPNetwork.Parse("fd00::/8"), IPNetwork.Parse("fe80::/10"), IPNetwork.Parse("::/81") };
+        Assert.Equal(wide, TrustedProxyNetworks.WithBothFamilies(wide).ToArray());
+        Assert.Equal(6, TrustedProxyNetworks.WithBothFamilies(TrustedProxyNetworks.PrivateRanges).Count);
+        Assert.Equal(3, TrustedProxyNetworks.WithBothFamilies(TrustedProxyNetworks.Loopback).Count);
     }
 
     [Fact]

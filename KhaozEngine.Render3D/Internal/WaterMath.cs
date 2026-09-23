@@ -9,8 +9,8 @@ namespace KhaozEngine.Render3D.Internal
     /// specular glint, foam, and shore-fade math, plus the CPU-side surface-grid layout (<c>WaterFrag</c> in
     /// <see cref="ShaderSources"/> MUST mirror this exactly, like
     /// <see cref="SkyMath"/> mirrors <c>SkyFrag</c> and <see cref="SurfaceShading"/> mirrors <c>ModelFrag</c>).
-    /// The Gerstner swell is the sibling mirror <see cref="GerstnerWaves"/> (its offset and fold per vertex, its
-    /// normal per pixel), and the ripple slope spectrum is <see cref="RippleSpectrum"/>.
+    /// The Gerstner swell is the sibling mirror <see cref="GerstnerWaves"/> (its offset per vertex, its normal and fold
+    /// per pixel), and the ripple slope spectrum is <see cref="RippleSpectrum"/>.
     /// Documents the intended math and makes it headless-unit-testable. No GPU state, no allocations.
     /// </summary>
     internal static class WaterMath
@@ -282,7 +282,8 @@ namespace KhaozEngine.Render3D.Internal
         /// </list>
         /// Widening the LOBE rather than fading the normals keeps the sub-pixel detail as variance instead of
         /// throwing it away, which is why the far field ends up as a soft sheen rather than either a crawling
-        /// sparkle or a dead mirror.
+        /// sparkle or a dead mirror. The result is a floor under the Toksvig lobe rather than its base (see
+        /// <see cref="GlintAlpha"/>).
         /// </summary>
         /// <param name="nearRoughness">Roughness at full sampling.</param>
         /// <param name="distantRoughness">Roughness where the surface is fully under-sampled (raised to at least
@@ -302,6 +303,35 @@ namespace KhaozEngine.Render3D.Internal
                 aliasT = Math.Clamp(pixelFootprint / (rippleWavelength * 0.5f), 0f, 1f);
             float t = MathF.Max(distanceT, aliasT);
             return nearRoughness + (far - nearRoughness) * t;
+        }
+
+        /// <summary>
+        /// Final GGX alpha of the sun glint: the wider of the <see cref="GlintRoughnessAt"/> widening and the
+        /// near-field lobe widened by the Toksvig transfer (<see cref="RippleSpectrum.AlphaFromVariance"/>), clamped to
+        /// 1. Mirrors the GLSL glint exactly.
+        /// <para>
+        /// A floor rather than a sum (#308). The widening and the transfer both respond to the same ripple detail
+        /// falling below the pixel footprint, so stacking the transfer on top of the widened alpha counted that
+        /// detail twice and put the far lobe at about twice the surface's real slope variance. Here the transfer
+        /// alone carries the removed variance, and the widening only takes over where it asks for a broader lobe,
+        /// which is what keeps <see cref="WaterSettings.GlintDistantRoughness"/> an artistic minimum. With the
+        /// transfer off (<see cref="WaterSettings.VarianceToRoughness"/> 0, or nothing removed) this is the widened
+        /// alpha exactly, the 14.24.0 lobe.
+        /// </para>
+        /// </summary>
+        /// <param name="nearRoughness">Roughness at full sampling (<see cref="WaterSettings.GlintRoughness"/>).</param>
+        /// <param name="widenedRoughness">The <see cref="GlintRoughnessAt"/> result at this point.</param>
+        /// <param name="lostSlopeVariance">Slope variance the band-limit and the detail fade removed, the ripple
+        /// half already scaled by <see cref="WaterSettings.NormalStrength"/> squared.</param>
+        /// <param name="varianceGain">How much of it to transfer (<see cref="WaterSettings.VarianceToRoughness"/>).</param>
+        public static float GlintAlpha(float nearRoughness, float widenedRoughness, float lostSlopeVariance,
+            float varianceGain)
+        {
+            float wide = MathF.Max(widenedRoughness, 1e-3f);
+            wide *= wide;
+            float near = MathF.Max(nearRoughness, 1e-3f);
+            near *= near;
+            return MathF.Min(MathF.Max(wide, RippleSpectrum.AlphaFromVariance(near, lostSlopeVariance, varianceGain)), 1f);
         }
 
         /// <summary>
@@ -376,7 +406,8 @@ namespace KhaozEngine.Render3D.Internal
         /// is already normalized by the swell's steepness, a given coverage means the same fraction of the sea at
         /// any steepness. <paramref name="coverage"/> 0 puts the threshold at a fold the field never reaches (no
         /// whitecaps); 1 puts it at 0, so anything compressed at all foams. Troughs have a fold of 0 and never
-        /// foam at any coverage, which is correct: a wave breaks at its crest.
+        /// foam at any coverage, which is correct: a wave breaks at its crest. The fragment evaluates the fold per
+        /// pixel and scales it by <see cref="WhitecapFoldAttenuation"/> before it arrives here.
         /// </summary>
         public static float Whitecap(float fold, float coverage)
         {
@@ -395,6 +426,61 @@ namespace KhaozEngine.Render3D.Internal
             if (width <= 0f) return 0f;
             float t = Math.Clamp(depthBelowSurface / width, 0f, 1f);
             return 1f - Smoothstep(0f, 1f, t);
+        }
+
+        /// <summary>Where the whitecap fold's far-field attenuation settles: the fraction of the fold left once every
+        /// swell component is far below <see cref="WhitecapFoldSamples"/> footprints. Calibrated, together with that
+        /// constant, so distant water keeps about the whitecap coverage the per-vertex fold gave it (#1100).</summary>
+        public const float WhitecapFoldFloor = 0.73f;
+
+        /// <summary>Still-water pixel footprints per swell wavelength below which the whitecap fold starts easing
+        /// toward <see cref="WhitecapFoldFloor"/>. Far above the Nyquist figure the ripple band-limit uses, because
+        /// this is not an anti-aliasing limit: it stands in for the grid averaging that used to lower distant
+        /// crests, which began where the cells were still many times finer than a wavelength.</summary>
+        public const float WhitecapFoldSamples = 80f;
+
+        /// <summary>
+        /// Far-field attenuation of the whitecap fold, 1 near the camera easing to <see cref="WhitecapFoldFloor"/>:
+        /// the mean over the swell's component ladder of <see cref="RippleSpectrum.Resolve"/> at
+        /// <see cref="WhitecapFoldSamples"/>, mapped onto that range. Mirrors the fragment exactly.
+        /// <para>
+        /// The fold used to be evaluated per vertex and interpolated. On a coarse grid that averaged it over cells
+        /// several metres wide, which lowered the crests under the threshold, so distant water carried a third or
+        /// less of the near field's whitecaps. It also drew them as triangles, and evaluating the fold per pixel
+        /// fixes that, but on its own it raises the far field to near-field coverage. This keeps the distant
+        /// coverage where the grid used to leave it without bringing the triangles back.
+        /// </para>
+        /// </summary>
+        /// <param name="wavelength">Longest swell component (<see cref="WaterSettings.SwellWavelength"/>).</param>
+        /// <param name="count">Swell component count.</param>
+        /// <param name="stillFootprint">World units this pixel spans on the still-water plane (the shader's
+        /// <c>fwidth</c> of <see cref="StillWaterPoint"/>).</param>
+        public static float WhitecapFoldAttenuation(float wavelength, int count, float stillFootprint)
+        {
+            int n = Math.Clamp(count, 1, GerstnerWaves.MaxComponents);
+            float keepSum = 0f;
+            for (int i = 0; i < n; i++)
+                keepSum += RippleSpectrum.Resolve(wavelength * MathF.Pow(GerstnerWaves.LambdaDecay, i), stillFootprint,
+                    WhitecapFoldSamples);
+            return WhitecapFoldFloor + (1f - WhitecapFoldFloor) * (keepSum / n);
+        }
+
+        /// <summary>
+        /// Where the view ray through <paramref name="fragment"/> meets the still-water plane at
+        /// <paramref name="surfaceY"/>, as world XZ. Mirrors the fragment exactly. The result depends on the ray's
+        /// direction alone, not on how far along it the displaced surface was hit, which is what keeps its screen
+        /// derivative continuous across the displaced triangles' edges (#1101). With the eye at or below the plane
+        /// there is no such point and it returns the fragment's own XZ. Near the horizon the ray is taken no
+        /// further than a thousand eye heights.
+        /// </summary>
+        /// <param name="eye">Camera position.</param>
+        /// <param name="fragment">The shaded point on the displaced surface.</param>
+        /// <param name="surfaceY">The plane's still-water height.</param>
+        public static Vector2 StillWaterPoint(Vector3 eye, Vector3 fragment, float surfaceY)
+        {
+            float eyeHeight = eye.Y - surfaceY;
+            float toStill = eyeHeight > 1e-4f ? eyeHeight / MathF.Max(eye.Y - fragment.Y, eyeHeight * 1e-3f) : 1f;
+            return new Vector2(eye.X + (fragment.X - eye.X) * toStill, eye.Z + (fragment.Z - eye.Z) * toStill);
         }
 
         /// <summary>Combine both foam sources with the break-up mask and the overall strength, clamped to 0..1.

@@ -39,6 +39,17 @@ namespace KhaozEngine.Tests.Gpu
     /// Measured on Metal: with the normal interpolated from the vertices the subject read 7.3 on the 8 m ring and
     /// 6.2 on the 16 m ring, and evaluated per pixel it reads 0.9 and 1.1. The control reads 3.7 and 3.4 either way.
     /// </para>
+    /// <para>
+    /// <b>The whitecap fold is the same measurement</b>
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1100">#1100</see>). A fold interpolated from the
+    /// vertices is linear inside each triangle too, so the foam it thresholds bends at every edge and a whitecap on a
+    /// coarse ring comes out as a triangle. The foam subject renders the crest term alone, white on black, with the
+    /// coverage raised so most of a crest's flank sits inside the whitecap ramp rather than clipped at 0 or 1, and
+    /// with the break-up pattern stretched flat so it multiplies every pixel by the same value. Only samples whose
+    /// probe pixels are all inside the ramp are counted, since a clipped pixel has no gradient to jump, and the
+    /// samples are pooled over several frozen times. Measured on Metal: with the fold interpolated from the vertices
+    /// the foam read 10.2 on the 8 m ring and 11.4 on the 16 m ring, and evaluated per pixel it reads 0.9 and 1.0.
+    /// </para>
     /// </summary>
     [Collection("HdrGpu")]
     public sealed class WaterSwellFacetGpuTests
@@ -54,6 +65,11 @@ namespace KhaozEngine.Tests.Gpu
         const float FrozenTime = 3.7f;
         /// <summary>Pixels either side over which each one-sided gradient is taken.</summary>
         const int Probe = 4;
+        /// <summary>The same for the foam subject, whose whitecap ramp is only about ten pixels wide, so a sample
+        /// that has to sit wholly inside it cannot reach as far.</summary>
+        const int FoamProbe = 2;
+        /// <summary>The frozen times the foam subject pools.</summary>
+        static readonly float[] FoamTimes = { FrozenTime, 5.2f, 6.9f, 8.3f };
 
         /// <summary>The Ruinborne 0.16.2 lake: the scene-wide clipmap at its defaults and the sea's swell, which the
         /// lake inherited before the game muted it.</summary>
@@ -90,8 +106,8 @@ namespace KhaozEngine.Tests.Gpu
             ApplyLake(probe);
             List<Quad> quads = DrawnQuads(plane, probe, camera);
 
-            byte[] control = Render(plane, camera, control: true);
-            byte[] subject = Render(plane, camera, control: false);
+            byte[] control = Render(plane, camera, Subject.Control);
+            byte[] subject = Render(plane, camera, Subject.Glint);
 
             // The subject must carry a real swell glint, or a low ratio would only mean a flat image.
             float spread = LumaSpread(subject);
@@ -123,7 +139,58 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        static byte[] Render(WaterPlane plane, TopDownCamera camera, bool control)
+        [GpuFact]
+        public void ACoarseClipmapRingDrawsWhitecapsWithoutTriangleEdges()
+        {
+            var plane = new WaterPlane(0f, 0f, 0f, LakeHalfExtent);
+            var camera = new TopDownCamera();
+            var probe = new WaterSettings();
+            ApplyLake(probe);
+            byte[] control = Render(plane, camera, Subject.Control);
+            List<Quad> controlQuads = DrawnQuads(plane, probe, camera);
+
+            // A whitecap covers a few percent of the frame and only its flanks are inside the ramp, so the samples
+            // are pooled over several frozen times, each measured against the triangles drawn at that time.
+            var frames = new List<(byte[] Foam, List<Quad> Quads, float Top)>();
+            foreach (float time in FoamTimes)
+            {
+                byte[] foam = Render(plane, camera, Subject.Foam, time);
+                // The crest term's ceiling: the flat break-up pattern scales every pixel by one value, whatever it is.
+                float top = 0f;
+                for (int i = 0; i < foam.Length; i += 4) top = MathF.Max(top, Luma(foam, (i / 4) % Size, (i / 4) / Size));
+                _out.WriteLine($"t={time}: foam ceiling {top:F1}");
+                Assert.True(top >= 120f, $"the foam subject peaks at only {top:F1} at t={time}, so the whitecaps are not reaching the frame");
+                frames.Add((foam, DrawnQuads(plane, probe, camera, time), top));
+            }
+
+            var results = new List<(int Level, Signature Control, Signature Foam)>();
+            foreach (int level in new[] { 4, 5 })
+            {
+                Signature c = Measure(control, controlQuads, level);
+                Signature f = default;
+                foreach ((byte[] foam, List<Quad> quads, float top) in frames)
+                    f = f.Merge(Measure(foam, quads, level, luma => luma > 3f && luma < top - 3f, FoamProbe));
+                results.Add((level, c, f));
+                _out.WriteLine($"level {level}: control ratio {c.Ratio:F2}; foam edge {f.Edge:F3} mid {f.Mid:F3} " +
+                               $"ratio {f.Ratio:F2} ({f.EdgeSamples}/{f.MidSamples} samples)");
+            }
+
+            foreach ((int level, Signature c, Signature f) in results)
+            {
+                Assert.True(c.Ratio >= 2.5f,
+                    $"level {level}'s CONTROL reads an edge ratio of only {c.Ratio:F2}, so the instrument cannot see " +
+                    "a real per-vertex kink and the foam number below means nothing. Check the edge mask.");
+                Assert.True(f.EdgeSamples >= 100 && f.MidSamples >= 60,
+                    $"level {level} has only {f.EdgeSamples}/{f.MidSamples} in-ramp foam samples; the crests left the frame");
+                Assert.True(f.Ratio <= 1.5f,
+                    $"level {level} draws whitecaps with an edge-to-interior gradient jump ratio of {f.Ratio:F2}: the " +
+                    "whitecap fold is being interpolated across the coarse triangles again (#1100)");
+            }
+        }
+
+        enum Subject { Control, Glint, Foam }
+
+        static byte[] Render(WaterPlane plane, TopDownCamera camera, Subject subject, float time = FrozenTime)
         {
             MeshHandle seabed = default;
             return Render3DSnapshot.Capture(Size, Size,
@@ -131,7 +198,7 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     seabed = scene.LoadMesh(MeshPrimitives.Tile(400f, 0.1f));
                     scene.CameraOverride = camera;
-                    scene.EffectTimeSeconds = FrozenTime;
+                    scene.EffectTimeSeconds = time;
                     scene.Post.RenderScale = RenderScale.MatchViewport;
                     scene.Post.Hdr.Enabled = false;
                     scene.Post.Starfield = false;
@@ -144,7 +211,22 @@ namespace KhaozEngine.Tests.Gpu
 
                     WaterSettings w = scene.Post.Water;
                     ApplyLake(w);
-                    if (control)
+                    if (subject == Subject.Foam)
+                    {
+                        // The crest term alone: black body, no glint, no reflection, white foam. Coverage 0.9 puts
+                        // the whitecap threshold at a fold of 0.1, so the ramp spans a crest's flank, and a pattern
+                        // scale this large leaves every pixel at the same break-up value.
+                        w.GlintStrength = 0f;
+                        w.DeepColor = new Color(0f, 0f, 0f, 1f);
+                        w.ShallowColor = new Color(0f, 0f, 0f, 1f);
+                        w.HorizonColor = new Color(0f, 0f, 0f, 1f);
+                        w.FoamColor = new Color(1f, 1f, 1f, 1f);
+                        w.FoamStrength = 1f;
+                        w.FoamCrestCoverage = 1f;
+                        w.FoamPatternScale = 1e6f;
+                        w.FoamShoreWidth = 0f;
+                    }
+                    else if (subject == Subject.Control)
                     {
                         // Height alone: a steep absorption ramp between black and white over a shallow bed.
                         w.GlintStrength = 0f;
@@ -164,7 +246,7 @@ namespace KhaozEngine.Tests.Gpu
                 },
                 drawFrame: scene =>
                 {
-                    float bedTop = control ? -0.6f : -40f;
+                    float bedTop = subject == Subject.Control ? -0.6f : -40f;
                     scene.Draw(seabed, Matrix4x4.CreateTranslation(0f, bedTop - 0.1f, 0f), new Color(0.2f, 0.2f, 0.2f, 1f));
                     scene.DrawWater(plane);
                 },
@@ -176,7 +258,7 @@ namespace KhaozEngine.Tests.Gpu
         /// level and cell size, which the edge measurement needs because its left samples land there.</summary>
         readonly record struct Quad(int Level, Vector2 P0, Vector2 P1, Vector2 P2, Vector2 P3, bool LeftNeighbourUsable);
 
-        static List<Quad> DrawnQuads(WaterPlane plane, WaterSettings s, TopDownCamera camera)
+        static List<Quad> DrawnQuads(WaterPlane plane, WaterSettings s, TopDownCamera camera, float time = FrozenTime)
         {
             float cell = s.ClipmapCellSize;
             int ring = WaterClipmap.ClampRingCells(s.ClipmapRingCells);
@@ -204,11 +286,11 @@ namespace KhaozEngine.Tests.Gpu
                 var at = new Vector2(v.Position.X, v.Position.Z);
                 bool offLattice = v.Coarse.LengthSquared() > 0f;
                 float w0 = offLattice ? 1f - v.Morph : 1f, w1 = offLattice ? 0.5f * v.Morph : 0f;
-                Vector3 p = w0 * Displaced(at, stack, s.SwellSteepness, v.Position.Y);
+                Vector3 p = w0 * Displaced(at, stack, s.SwellSteepness, v.Position.Y, time);
                 if (w1 > 0f)
                 {
-                    p += w1 * Displaced(at - v.Coarse, stack, s.SwellSteepness, v.Position.Y);
-                    p += w1 * Displaced(at + v.Coarse, stack, s.SwellSteepness, v.Position.Y);
+                    p += w1 * Displaced(at - v.Coarse, stack, s.SwellSteepness, v.Position.Y, time);
+                    p += w1 * Displaced(at + v.Coarse, stack, s.SwellSteepness, v.Position.Y, time);
                 }
                 usable[i] = camera.WorldToScreen(p, Size, Size, out pixel[i]);
             }
@@ -240,22 +322,30 @@ namespace KhaozEngine.Tests.Gpu
             return quads;
         }
 
-        static Vector3 Displaced(Vector2 xz, ReadOnlySpan<GerstnerWaves.Component> stack, float steepness, float y)
+        static Vector3 Displaced(Vector2 xz, ReadOnlySpan<GerstnerWaves.Component> stack, float steepness, float y,
+            float time)
         {
-            GerstnerWaves.Sample sample = GerstnerWaves.Evaluate(xz.X, xz.Y, FrozenTime, steepness, stack);
+            GerstnerWaves.Sample sample = GerstnerWaves.Evaluate(xz.X, xz.Y, time, steepness, stack);
             return new Vector3(xz.X, y, xz.Y) + sample.Offset;
         }
 
         readonly record struct Signature(float Edge, float Mid, int EdgeSamples, int MidSamples)
         {
             public float Ratio => Edge / MathF.Max(Mid, 1e-6f);
+
+            /// <summary>Pool two measurements, each mean weighted by its own sample count.</summary>
+            public Signature Merge(Signature o) => new(
+                (Edge * EdgeSamples + o.Edge * o.EdgeSamples) / Math.Max(EdgeSamples + o.EdgeSamples, 1),
+                (Mid * MidSamples + o.Mid * o.MidSamples) / Math.Max(MidSamples + o.MidSamples, 1),
+                EdgeSamples + o.EdgeSamples, MidSamples + o.MidSamples);
         }
 
         /// <summary>The mean jump in the horizontal luminance gradient across each quad's left edge, and across its
         /// midline. Rows are kept away from the corners and from the quad's own diagonal (the triangulation runs it
         /// from the top-right corner to the bottom-left one) so every sample straddles exactly the line it is meant
         /// to.</summary>
-        static Signature Measure(byte[] rgba, List<Quad> quads, int level)
+        static Signature Measure(byte[] rgba, List<Quad> quads, int level, Func<float, bool>? inRamp = null,
+            int probe = Probe)
         {
             double edge = 0, mid = 0;
             int ne = 0, nm = 0;
@@ -269,13 +359,13 @@ namespace KhaozEngine.Tests.Gpu
                     if (q.LeftNeighbourUsable && t >= 0.22f && t <= 0.78f)
                     {
                         float x = q.P0.X + t * (q.P2.X - q.P0.X);
-                        if (Jump(rgba, x, y, out float j)) { edge += j; ne++; }
+                        if (Jump(rgba, x, y, inRamp, probe, out float j)) { edge += j; ne++; }
                     }
                     if ((t >= 0.15f && t <= 0.30f) || (t >= 0.70f && t <= 0.85f))
                     {
                         Vector2 a = (q.P0 + q.P1) * 0.5f, b = (q.P2 + q.P3) * 0.5f;
                         float x = a.X + t * (b.X - a.X);
-                        if (Jump(rgba, x, y, out float j)) { mid += j; nm++; }
+                        if (Jump(rgba, x, y, inRamp, probe, out float j)) { mid += j; nm++; }
                     }
                 }
             }
@@ -284,14 +374,18 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>|right gradient - left gradient| across the vertical line at pixel x-coordinate
         /// <paramref name="x"/> in row <paramref name="y"/>. Each side's gradient comes from pixels whose centres lie
-        /// strictly on that side, which with no MSAA are shaded wholly by that side's triangle.</summary>
-        static bool Jump(byte[] rgba, float x, int y, out float jump)
+        /// strictly on that side, which with no MSAA are shaded wholly by that side's triangle. With
+        /// <paramref name="inRamp"/> the sample only counts when every pixel it reads passes it.</summary>
+        static bool Jump(byte[] rgba, float x, int y, Func<float, bool>? inRamp, int probe, out float jump)
         {
             jump = 0f;
             int left = (int)MathF.Ceiling(x - 0.5f) - 1, right = left + 1;
-            if (y < 0 || y >= Size || left - Probe < 0 || right + Probe >= Size) return false;
-            float gl = (Luma(rgba, left, y) - Luma(rgba, left - Probe, y)) / Probe;
-            float gr = (Luma(rgba, right + Probe, y) - Luma(rgba, right, y)) / Probe;
+            if (y < 0 || y >= Size || left - probe < 0 || right + probe >= Size) return false;
+            if (inRamp != null)
+                for (int px = left - probe; px <= right + probe; px++)
+                    if (!inRamp(Luma(rgba, px, y))) return false;
+            float gl = (Luma(rgba, left, y) - Luma(rgba, left - probe, y)) / probe;
+            float gr = (Luma(rgba, right + probe, y) - Luma(rgba, right, y)) / probe;
             jump = MathF.Abs(gr - gl);
             return true;
         }

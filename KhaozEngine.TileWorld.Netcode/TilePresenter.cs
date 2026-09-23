@@ -142,7 +142,13 @@ public sealed class TilePresenter
     /// <param name="extraTicks">Ticks elapsed since the state was sampled. Negative is treated as zero.</param>
     /// <returns>The world position and yaw to draw at.</returns>
     public TilePose Pose(in TileMoveState state, float extraTicks = 0f) =>
-        PoseAt(BodyCentre(state, extraTicks), state.Tile.Plane, state.Facing);
+        Pose(state, extraTicks, clickDoor: false);
+
+    // The REMOTE client's form, which knows one thing a state cannot say about itself: whether its step came
+    // through the click door (see TileStepDoor). The client holds that on its sample and hands it in, so this stays
+    // a function of its arguments and the public overload above is this with the flag down, bit for bit.
+    internal TilePose Pose(in TileMoveState state, float extraTicks, bool clickDoor) =>
+        PoseAt(BodyCentre(state, StepFraction(state, extraTicks, clickDoor)), state.Tile.Plane, state.Facing);
 
     /// <summary>
     /// The same body, drawn in the same place, LOOKING at <paramref name="aimTilePlanar"/> instead of along
@@ -160,26 +166,30 @@ public sealed class TilePresenter
     /// <see cref="ITileTargets.TryGetAimPoint"/> answers.</param>
     /// <param name="extraTicks">Ticks elapsed since the state was sampled. Negative is treated as zero.</param>
     /// <returns>The world position and the aimed yaw to draw at.</returns>
-    public TilePose Pose(in TileMoveState state, Vector2 aimTilePlanar, float extraTicks = 0f)
+    public TilePose Pose(in TileMoveState state, Vector2 aimTilePlanar, float extraTicks = 0f) =>
+        Pose(state, aimTilePlanar, extraTicks, clickDoor: false);
+
+    // The aimed body for the remote client, with the door it knows. See the facing form above.
+    internal TilePose Pose(in TileMoveState state, Vector2 aimTilePlanar, float extraTicks, bool clickDoor)
     {
-        Vector2 centre = BodyCentre(state, extraTicks);
+        Vector2 centre = BodyCentre(state, StepFraction(state, extraTicks, clickDoor));
         return new TilePose(Centre(centre.X, state.Tile.Plane, centre.Y),
             centre == aimTilePlanar ? Yaw(state.Facing) : Yaw(centre, aimTilePlanar));
     }
 
-    // Where the body's CENTRE is, in tile units: the glide from StepFrom into Tile, plus the offset that centres a
-    // large body on its footprint. Shared by both Pose overloads so an aimed body and a facing one are drawn at the
-    // same point by construction rather than by two copies of the same arithmetic.
-    Vector2 BodyCentre(in TileMoveState state, float extraTicks)
+    // Where the body's CENTRE is, in tile units: the glide from StepFrom into Tile by the fraction handed in, plus
+    // the offset that centres a large body on its footprint. Shared by every Pose overload so an aimed body and a
+    // facing one are drawn at the same point by construction rather than by two copies of the same arithmetic.
+    // The fraction is read only while a step is in flight.
+    Vector2 BodyCentre(in TileMoveState state, float fraction)
     {
         float tileX = state.Tile.X, tileZ = state.Tile.Z;
         if (state.IsStepping && state.StepTotal > 0)
         {
-            float f = StepFraction(state, extraTicks);
             // In FLOAT, for the reason TileMoveState.Position differences in float: the fields are public, and two
             // hand-written coordinates a world apart would overflow an int subtraction.
-            tileX = state.StepFrom.X + ((float)state.Tile.X - state.StepFrom.X) * f;
-            tileZ = state.StepFrom.Z + ((float)state.Tile.Z - state.StepFrom.Z) * f;
+            tileX = state.StepFrom.X + ((float)state.Tile.X - state.StepFrom.X) * fraction;
+            tileZ = state.StepFrom.Z + ((float)state.Tile.Z - state.StepFrom.Z) * fraction;
         }
         // A footprint's centre is half its edge in from the anchor corner. PoseAt already adds the half tile a one-tile
         // body wants, so a large body adds the rest, and the offset is constant through a glide because the size is.
@@ -197,14 +207,33 @@ public sealed class TilePresenter
     /// committed to. That is the same answer a body that has just landed gives, so a reader cannot see a
     /// discontinuity at the landing, and it is why the value is a fraction of the step INTO
     /// <see cref="TileMoveState.Tile"/> rather than a distance from anywhere.</para>
+    /// <para>A state on its own cannot say which door its step came through, so this reads every step as a landing
+    /// door step. <see cref="TileWorldClient.TryGetRemotePose"/> and the client's step progress reads know more: a
+    /// remote's step that begins from a standing body reads one tick in on the tick it commits, and the client
+    /// spreads that tick across the step instead (see the design doc's section 5.2).</para>
     /// </summary>
     /// <param name="state">The state to measure.</param>
     /// <param name="extraTicks">Ticks elapsed since the state was sampled. Negative is treated as zero.</param>
     /// <returns>The fraction of the step already spent, clamped to 0 through 1.</returns>
     public static float StepFraction(in TileMoveState state, float extraTicks = 0f)
-        => state.IsStepping && state.StepTotal > 0
-            ? Math.Clamp((state.StepTicks + Math.Max(0f, extraTicks)) / state.StepTotal, 0f, 1f)
-            : 1f;
+        => StepFraction(state, extraTicks, clickDoor: false);
+
+    // THE fraction, both doors. A landing door step is StepTicks over StepTotal, carried forward, exactly as it has
+    // always been. A CLICK door step (see TileStepDoor) spent its first tick on the commit, so it reads one tick in
+    // on the sample that commits it. It is re-based to start at zero there and spread over the ticks it actually
+    // has, one fewer than its total and never fewer than one. Above a one-tick cadence that reaches 1 at the same
+    // StepTicks plus carry as the landing door form does, so the body starts on the tile it leaves, plays that one
+    // step a little faster, and lands on the committed tile at the committed tick. A one-tick cadence has a whole
+    // tick for it, because the click door never lands the step it starts on the same tick, so there it plays at
+    // the ordinary pace and lands as the next sample takes over, where the landing door form had already arrived.
+    internal static float StepFraction(in TileMoveState state, float extraTicks, bool clickDoor)
+    {
+        if (!state.IsStepping || state.StepTotal == 0) return 1f;
+        float extra = Math.Max(0f, extraTicks);
+        return clickDoor
+            ? Math.Clamp((state.StepTicks - 1 + extra) / Math.Max(1, state.StepTotal - 1), 0f, 1f)
+            : Math.Clamp((state.StepTicks + extra) / state.StepTotal, 0f, 1f);
+    }
 
     /// <summary>
     /// Where the LOCAL player's BODY draws: <see cref="ClientPrediction{TState,TCommand}.RenderedState"/>, which

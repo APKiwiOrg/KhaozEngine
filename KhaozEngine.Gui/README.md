@@ -683,6 +683,9 @@ chat.Draw(batch, white);
     `Offset` for cursor-style placement: the bubble's left edge sits at `anchor.X + Metrics.AnchorOffsetX`,
     so it lands beside a pointer instead of under it (a negative offset places it to the left). The vertical
     rule and the viewport clamp are shared by both modes.
+    `TooltipStackLayout.Place` arranges several measured bubbles beside one pointer, flipping the whole group
+    at viewport edges. Use `AnchorFor` with each result and the same `TooltipMetrics` to show offset-mode
+    tooltips in their assigned boxes. Keep the total group within the viewport.
   - `ContextMenu` (18.2.0) - a right-click option menu anchored at a screen point: a title band over a stack of
     selectable rows, the OSRS-style option list. `Open(title, entries, screenPoint)` shows it (reopening while
     open just replaces the content and the anchor), `Update(Pointer)` drives one frame, and `Draw(batch, white)`

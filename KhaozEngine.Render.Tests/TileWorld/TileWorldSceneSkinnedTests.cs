@@ -119,6 +119,8 @@ public sealed class TileWorldSceneSkinnedTests
                 32, 24, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             _target = Factory.CreateFramebuffer(null, _targetTexture);
             Scene = new Scene3D(device, _target.Outputs);
+            // These seam tests inspect the CPU-skinned model instance upload. The live default uses GPU skinning.
+            Scene.UseGpuSkinning = false;
             Scene.Post.Starfield = false;
             Scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
             Scene.Camera.Frame(Vector3.Zero, new Vector3(4f, 3f, 4f));

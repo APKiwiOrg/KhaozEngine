@@ -119,6 +119,8 @@ internal sealed partial class TargetOutlineRenderer : IDisposable
         _drawImage = freshImage;
     }
 
+    public void BeginFrame() => BeginSkinnedFrame();
+
     public void BeginGroup(Matrix4x4 clipViewProjection)
     {
         _viewProj = clipViewProjection;

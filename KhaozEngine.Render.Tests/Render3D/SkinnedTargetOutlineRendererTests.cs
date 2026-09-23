@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -47,6 +48,41 @@ public sealed class SkinnedTargetOutlineRendererTests
 
         uint slot = TargetOutlineSkinningStore.PaletteSlotBytes;
         Assert.Equal(new uint[] { 0, slot, 0, slot }, frame.SkinnedPaletteOffsets);
+    }
+
+    [Fact]
+    public void Two_groups_bind_and_upload_disjoint_palette_slots_before_submission()
+    {
+        using var h = new Harness();
+        SkinnedGltfMesh tube = Tube();
+        SkinnedMeshHandle mesh = h.Scene.LoadSkinnedMesh(tube);
+        Matrix4x4[] bent = (Matrix4x4[])tube.RestPose.Clone();
+        bent[1] = Matrix4x4.CreateRotationX(0.35f) * bent[1];
+        FrameRecord frame = h.Record(scene =>
+        {
+            MeshOutlineGroup first = scene.BeginMeshOutline(Color.White, 1.25f);
+            scene.DrawSkinnedOutline(first, mesh, tube.RestPose, Matrix4x4.Identity);
+            MeshOutlineGroup second = scene.BeginMeshOutline(new Color(1f, 0f, 0f, 1f), 1.25f);
+            scene.DrawSkinnedOutline(second, mesh, bent, Matrix4x4.Identity);
+        });
+
+        uint slot = TargetOutlineSkinningStore.PaletteSlotBytes;
+        Assert.Equal(new uint[] { 0, 0, slot, slot }, frame.SkinnedPaletteOffsets);
+        RecordingGpuCommandList.Upload[] paletteUploads = frame.Uploads
+            .Where(upload => upload.Bytes == slot)
+            .ToArray();
+        Assert.Collection(paletteUploads,
+            first => Assert.Equal((0u, slot), (first.Offset, first.Bytes)),
+            second => Assert.Equal((slot, slot), (second.Offset, second.Bytes)));
+        ReadOnlySpan<Matrix4x4> firstPalette = MemoryMarshal.Cast<byte, Matrix4x4>(paletteUploads[0].Data!);
+        ReadOnlySpan<Matrix4x4> secondPalette = MemoryMarshal.Cast<byte, Matrix4x4>(paletteUploads[1].Data!);
+        Assert.NotEqual(firstPalette[1], secondPalette[1]);
+        IGpuBuffer paletteBuffer = paletteUploads[0].Buffer;
+        RecordingGpuCommandList.BoundRead[] paletteReads = frame.Reads
+            .Where(read => ReferenceEquals(read.Buffer, paletteBuffer))
+            .ToArray();
+        Assert.NotEmpty(paletteReads);
+        Assert.Empty(UniformRewriteAudit.Scan(paletteUploads, h.IsUniform, paletteReads));
     }
 
     [Fact]
@@ -204,6 +240,7 @@ public sealed class SkinnedTargetOutlineRendererTests
     sealed class Harness : IDisposable
     {
         readonly FakeGpuDevice _device = new();
+        readonly UniformBufferTrackingGpuDevice _tracker;
         readonly FakeGpuResourceFactory _factory;
         readonly IGpuTexture _targetTexture;
         readonly IGpuFramebuffer _target;
@@ -212,12 +249,13 @@ public sealed class SkinnedTargetOutlineRendererTests
 
         public Harness()
         {
+            _tracker = new UniformBufferTrackingGpuDevice(_device);
             _factory = (FakeGpuResourceFactory)_device.Factory;
-            _targetTexture = _factory.CreateTexture(GpuTextureDescription.Texture2D(
+            _targetTexture = _tracker.Factory.CreateTexture(GpuTextureDescription.Texture2D(
                 32, 24, GpuPixelFormat.R8G8B8A8UNorm,
                 GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-            _target = _factory.CreateFramebuffer(null, _targetTexture);
-            Scene = new Scene3D(_device, _target.Outputs) { UseGpuSkinning = true };
+            _target = _tracker.Factory.CreateFramebuffer(null, _targetTexture);
+            Scene = new Scene3D(_tracker, _target.Outputs) { UseGpuSkinning = true };
             Scene.Post.Starfield = false;
             Scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
             Scene.Camera.Frame(Vector3.Zero, new Vector3(4f, 3f, 4f));
@@ -234,7 +272,11 @@ public sealed class SkinnedTargetOutlineRendererTests
             int bufferStart = _factory.Buffers.Count;
             Scene.Begin();
             submit?.Invoke(Scene);
-            using var recording = new RecordingGpuCommandList(new NullGpuCommandList());
+            using var recording = new RecordingGpuCommandList(new NullGpuCommandList())
+            {
+                CapturePayloads = true,
+                UniformWindowsOfSet = _tracker.WindowsOf,
+            };
             using var tally = new CommandTallyGpuCommandList(recording);
             using var binds = new ResourceSetCaptureCommandList(tally);
             Scene.PrepareFrame();
@@ -246,16 +288,19 @@ public sealed class SkinnedTargetOutlineRendererTests
             } && request.VertexGlsl == ShaderSources.TargetOutlineSkinnedMaskVert)
                 .Select(bind => bind.DynamicOffset).ToArray();
             return new FrameRecord(tally.Tally, baseline?.Tally ?? new GpuCommandTally(),
-                recording.Uploads.ToArray(), maskDraws, paletteOffsets,
+                recording.Uploads.ToArray(), recording.Reads.ToArray(), maskDraws, paletteOffsets,
                 _factory.Buffers.Skip(bufferStart).ToArray(), Scene.LastFrameStats.DrawCalls,
                 baseline?.DrawCalls ?? 0);
         }
+
+        public bool IsUniform(IGpuBuffer buffer) => _tracker.IsUniform(buffer);
 
         public void Dispose()
         {
             Scene.Dispose();
             _target.Dispose();
             _targetTexture.Dispose();
+            _tracker.Dispose();
             _device.Dispose();
         }
     }
@@ -264,6 +309,7 @@ public sealed class SkinnedTargetOutlineRendererTests
         GpuCommandTally Tally,
         GpuCommandTally BaselineTally,
         RecordingGpuCommandList.Upload[] Uploads,
+        RecordingGpuCommandList.BoundRead[] Reads,
         IReadOnlyList<RecordingGpuCommandList.IndexedDraw> OutlineMaskDraws,
         uint[] SkinnedPaletteOffsets,
         FakeBuffer[] NewBuffers,

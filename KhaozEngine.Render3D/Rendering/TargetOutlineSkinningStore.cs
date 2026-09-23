@@ -73,9 +73,17 @@ internal sealed class TargetOutlineSkinningStore : IDisposable
     }
 
     internal void UploadPalette(IGpuCommandList commands)
+        => UploadPalette(commands, 0, _paletteCapacity);
+
+    internal void UploadPalette(IGpuCommandList commands, int slotStart, int slotCount)
     {
-        if (_paletteBuffer is null) return;
-        commands.UpdateBuffer(_paletteBuffer, 0, (ReadOnlySpan<byte>)_paletteImage);
+        if (_paletteBuffer is null || slotCount == 0) return;
+        if (slotStart < 0 || slotCount < 0 || slotStart + slotCount > _paletteCapacity)
+            throw new ArgumentOutOfRangeException(nameof(slotCount));
+        int byteOffset = checked(slotStart * (int)PaletteSlotBytes);
+        int byteCount = checked(slotCount * (int)PaletteSlotBytes);
+        commands.UpdateBuffer(_paletteBuffer, (uint)byteOffset,
+            (ReadOnlySpan<byte>)_paletteImage.AsSpan(byteOffset, byteCount));
     }
 
     internal IGpuBuffer EnsureCpuVertexCapacity(int vertexCount)

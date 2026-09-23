@@ -12,7 +12,8 @@ internal sealed partial class TargetOutlineRenderer
     readonly IGpuShaderSet _skinnedVisibleShaders;
     readonly TargetOutlineSkinningStore _skinning;
     readonly List<Matrix4x4> _gpuPaletteBones = new();
-    int _gpuPaletteSlotCount;
+    int _nextGpuPaletteSlot;
+    int _groupPaletteSlotStart;
 
     public void EnqueueSkinnedGpu(
         IGpuBuffer restVertexBuffer,
@@ -30,30 +31,38 @@ internal sealed partial class TargetOutlineRenderer
     {
         int poseStart = _gpuPaletteBones.Count;
         for (int i = 0; i < composedBones.Length; i++) _gpuPaletteBones.Add(composedBones[i]);
-        int paletteSlot = _gpuPaletteSlotCount++;
+        int paletteSlot = _nextGpuPaletteSlot++;
         WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, dissolveComplement, renderOrigin);
         _queue.Add(new QueuedDraw(QueuedGeometry.GpuSkinned, restVertexBuffer, indexBuffer, indexCount,
             indexFormat, materialSet ?? _defaultMaterialSet, drawIndex, paletteSlot, 0,
             poseStart, composedBones.Length));
     }
 
+    void BeginSkinnedFrame()
+    {
+        _nextGpuPaletteSlot = 0;
+        _groupPaletteSlotStart = 0;
+        _gpuPaletteBones.Clear();
+    }
+
     void BeginSkinnedGroup()
     {
         _gpuPaletteBones.Clear();
-        _gpuPaletteSlotCount = 0;
+        _groupPaletteSlotStart = _nextGpuPaletteSlot;
     }
 
     void PrepareGpuPalette(IGpuCommandList commands)
     {
-        if (_gpuPaletteSlotCount == 0) return;
-        _skinning.EnsurePaletteCapacity(_gpuPaletteSlotCount);
+        int groupPaletteSlotCount = _nextGpuPaletteSlot - _groupPaletteSlotStart;
+        if (groupPaletteSlotCount == 0) return;
+        _skinning.EnsurePaletteCapacity(_nextGpuPaletteSlot);
         Span<Matrix4x4> bones = CollectionsMarshal.AsSpan(_gpuPaletteBones);
         foreach (QueuedDraw draw in _queue)
         {
             if (draw.Geometry != QueuedGeometry.GpuSkinned) continue;
             _skinning.PackPalette(draw.PaletteSlot, bones.Slice(draw.PoseStart, draw.PoseCount));
         }
-        _skinning.UploadPalette(commands);
+        _skinning.UploadPalette(commands, _groupPaletteSlotStart, groupPaletteSlotCount);
     }
 
     void WriteDrawPayload(int drawIndex, Matrix4x4 world, float alphaCutoff,

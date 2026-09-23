@@ -97,6 +97,7 @@ public sealed partial class Scene3D
 
     void BeginMeshOutlineFrame()
     {
+        _targetOutlines.BeginFrame();
         _outlineFrame = _outlineFrame == int.MaxValue ? 1 : _outlineFrame + 1;
         _meshOutlineGroups.Clear();
         _outlineBoneMatrices.Clear();

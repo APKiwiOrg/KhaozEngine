@@ -7,7 +7,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.WorldStore.Journal;
 
-public sealed class InMemoryMutationJournalStoreTests : MutationJournalStoreConformance
+public sealed class InMemoryMutationJournalStoreTests : MutationJournalStreamListingConformance
 {
     protected override MutationJournalStoreHarness CreateStore(TimeSpan? minimumRetryHorizon = null)
     {

@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace KhaozEngine.WorldStore.Journal;
 
-public sealed class InMemoryMutationJournalStore : IMutationJournalStore, IMutationJournalAgeMaintenance
+public sealed partial class InMemoryMutationJournalStore : IMutationJournalStore, IMutationJournalAgeMaintenance
 {
     private static readonly TimeSpan DefaultMinimumRetryHorizon = TimeSpan.FromHours(24);
     private readonly object gate = new();

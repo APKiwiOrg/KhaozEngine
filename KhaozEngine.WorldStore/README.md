@@ -85,7 +85,40 @@ their own authoritative clock also implement the additive `IMutationJournalAgeMa
 | `IMutationJournalAgeMaintenance.PurgeOperationsByAgeAsync(purge, ct)` | Deletes an oldest-first bounded batch by age. SQL Server and SQLite derive the cutoff from their database UTC clock and enforce the longer of the requested age or configured minimum retry horizon. Events remain. |
 | `RotateStoreEpochAsync(ct)` | Replaces the store epoch while writers are quiesced. Every cursor from the prior history then requires reset. |
 
-The in-memory reference store implements the store and both maintenance interfaces:
+`IMutationJournalStreamListing` is an optional capability for operator tools that sweep a whole store, such as
+a copy, a rehearsal, an audit, or a migration check. It keeps such a tool on the interface instead of on the
+provider's tables. The in-memory, SQLite, and SQL Server stores implement it. Feature-detect it with
+`store is IMutationJournalStreamListing`:
+
+| Method | Contract |
+|---|---|
+| `ListStreamsAsync(query, ct)` | Reads one bounded page of stream keys and head versions in ordinal key order, optionally restricted to an ordinal, case-sensitive key prefix. Listing never writes. |
+
+```csharp
+var query = new JournalStreamQuery(maxStreams: 500, keyPrefix: "player/");
+while (true)
+{
+    JournalStreamPage page = await listing.ListStreamsAsync(query);
+    foreach (JournalStreamEntry stream in page.Streams)
+        await RehearseAsync(stream.StreamKey, stream.HeadVersion);
+    if (page.ContinuationKey is null) break;
+    query = new JournalStreamQuery(500, "player/", page.ContinuationKey);
+}
+```
+
+`ContinuationKey` is the last key on a page when more streams follow and null when the listing is complete. Pass it
+back as `afterStreamKey` with the same prefix. Pages are keyset continuations rather than one snapshot, so a stream
+created ahead of the continuation key appears on a later page and one created behind it does not. A page holds at
+most `JournalStreamQuery.MaximumStreamsPerPage` (1,000) streams.
+
+A sweep usually points at a source that must not be written to. Both SQL providers open read only with
+`SchemaMode = ReadOnly` (`SqliteJournalSchemaMode.ReadOnly` or `SqlServerJournalSchemaMode.ReadOnly`). That mode
+issues no DDL, reports a missing or older schema as `SchemaMismatch` instead of creating or migrating it, and makes
+`InitializeAsync`, `CommitAsync`, `CompactAsync`, `PurgeOperationsAsync`, `PurgeOperationsByAgeAsync`, and
+`RotateStoreEpochAsync` throw `NotSupportedException` before any I/O. Reads, operation resolution, and listing work
+as usual. Do not hand a read only store to `MutationJournalExecutor`.
+
+The in-memory reference store implements the store, both maintenance interfaces, and the listing:
 
 ```csharp
 using KhaozEngine.WorldStore.Journal;
@@ -143,6 +176,9 @@ uses the `KJIF`, `KJEF`, and `KJNF` tagged binary envelopes. A game should not i
 | `JournalOperationPurge` | UTC cutoff and positive batch limit. |
 | `JournalOperationAgePurge` | Minimum receipt age and positive batch limit. |
 | `JournalOperationPurgeResult` | Scanned, deleted, ineligible, oldest-retained, evaluation-time, and effective-cutoff readings. The two clock readings are populated by the age API. |
+| `JournalStreamQuery` | Page size from 1 through 1,000, optional key prefix, and optional exclusive `afterStreamKey` continuation. |
+| `JournalStreamPage` | Streams in ordinal key order and a continuation key, which is null when the listing is complete. |
+| `JournalStreamEntry` | Stream key and current head version. |
 
 Recovery loads the latest snapshot, verifies it, then reads events in bounded pages. The first page captures a
 fixed `ThroughVersion`. Every continuation repeats that value. A sequence gap, checksum failure, or unsupported
@@ -188,6 +224,9 @@ Expected races use result statuses. Provider, transport, schema, and corruption 
   `SchemaMismatch`, or `ConstraintViolation`.
 - `Certainty` is `DefinitelyNotCommitted`, `Unknown`, or `CommittedDataUnreadable`.
 - `Scope` is `OperationStreams` with exact `StreamKeys`, or `WholeStore` with no stream keys.
+
+A write call on a store opened read only throws `NotSupportedException` instead. That is a caller error rather than
+a store failure, so it sits outside this contract and nothing was attempted.
 
 `DefinitelyNotCommitted` availability, timeout, deadlock, and cancellation failures can retry the identical
 frozen operation. `Unknown` means the commit may exist. Resolve the same identity, then retry the same frozen

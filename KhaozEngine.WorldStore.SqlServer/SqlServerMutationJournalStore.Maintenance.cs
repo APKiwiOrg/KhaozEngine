@@ -11,6 +11,7 @@ public sealed partial class SqlServerMutationJournalStore
 {
     public async Task<JournalCompactionResult> CompactAsync(JournalCompaction compaction, CancellationToken cancellationToken = default)
     {
+        ThrowIfReadOnly(nameof(CompactAsync));
         ArgumentNullException.ThrowIfNull(compaction);
         cancellationToken.ThrowIfCancellationRequested();
         compaction.Validate(limits);
@@ -86,6 +87,7 @@ public sealed partial class SqlServerMutationJournalStore
         JournalOperationPurge purge,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfReadOnly(nameof(PurgeOperationsAsync));
         ArgumentNullException.ThrowIfNull(purge);
         cancellationToken.ThrowIfCancellationRequested();
         Invoke(JournalTestHookPhase.BeforeTransaction);
@@ -160,6 +162,7 @@ public sealed partial class SqlServerMutationJournalStore
 
     public async Task<Guid> RotateStoreEpochAsync(CancellationToken cancellationToken = default)
     {
+        ThrowIfReadOnly(nameof(RotateStoreEpochAsync));
         cancellationToken.ThrowIfCancellationRequested();
         Invoke(JournalTestHookPhase.BeforeTransaction);
         await using SqlConnection connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);

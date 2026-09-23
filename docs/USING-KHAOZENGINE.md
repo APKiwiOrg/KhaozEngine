@@ -16765,6 +16765,31 @@ Validating against `batch.Options.Limits` refuses the very commit the reservatio
 validates against `Options.Limits` because a batch alone adds nothing.
 `KhaozEngine.ItemInstances.Journal/README.md` states the whole contract.
 
+### Replaying item operations from a journal
+
+An event sourced host starts with its prior container pages and applies stored events in stream order.
+`ContainerOperationEventCodec.TryRead` checks the event name, schema version and complete body, and returns
+the recorded operation. `ContainerOperationApplier.TryApply` checks the known slot, instance, count, payload
+and currency preconditions before writing through the host's `IPagedContainerWorkingCopy`. Its live builder
+uses the same applier. A false answer names a stored record the host must refuse or quarantine. A custom
+working-copy implementation is still responsible for accepting valid writes.
+
+```csharp
+if (!ContainerOperationEventCodec.TryRead(stored.EventType, stored.EventSchemaVersion,
+        stored.Payload, out ContainerOperation operation, out string? reason))
+    return Refuse(reason);
+if (!ContainerOperationApplier.TryApply(containers, operation, out reason))
+    return Refuse(reason);
+```
+
+Move, Split, Merge, Take and Slide keep version 1 canonical event bodies. A new Grant uses version 2 to
+include the complete item payload, and a new Craft uses version 2 to include its target and currency slots
+beside the unchanged `ItemCraftedEvent` audit body. A version 1 plain Grant replays. A version 1 instance
+Grant and Craft have missing data and return explicit replay refusals. The old crafted body is still readable
+by `ItemCraftedEvent.TryRead` for audit. A bank compaction can use
+`ContainerOperation.Slide("bank", firstSourceSlot: 1, firstDestinationSlot: 0, count: 999)`. It moves the
+occupied run in one event, with all ten affected pages budgeted before admission.
+
 ### What one viewer may see, and the one frame delta (19.0.0)
 
 `ItemInstanceVisibility` is the ONE function answering whether a viewer may see a field, and both the

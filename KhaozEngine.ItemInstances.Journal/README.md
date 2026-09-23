@@ -326,7 +326,7 @@ share one.**
 
 ### The operation vocabulary
 
-`ContainerOperationKind` is the six kinds and a `None` that is refused, each with a durable varint that is
+`ContainerOperationKind` is the seven kinds and a `None` that is refused, each with a durable varint that is
 never renumbered and never reordered, because the number is written into a normalized intent and into an
 event payload. `ContainerOperationOrigin` is who caused one: `Server`, which has no id of its own to lose and
 may ride any batch, or `Client`, which carries the operation id it will resubmit after a reconnect and
@@ -344,6 +344,7 @@ land where the original did rather than wherever a free-slot search would put it
 | `Grant` | seats an arriving entry at a named slot, merging into it or opening it under the capacity gate | container, slot, definition id, count, instance id | `item-granted` |
 | `Take` | removes units from a slot | container, slot, count, instance id | `item-taken` |
 | `Craft` | rewrites an owned item's payload in place and consumes the currency that paid for it | container, slot, currency container, currency slot, currency definition, count, instance id | `item-crafted` |
+| `Slide` | shifts a contiguous occupied run within one container, preserving every whole slot | container, first source slot, first destination slot, count | `item-slid` |
 
 Every varint is unsigned and minimal, a container name is `[Length: varint][UTF8]`, and an instance id goes
 through `InstanceIdAllocator.WriteId` so the high node's sign bit cannot make two encodings of one id.
@@ -354,9 +355,13 @@ leaves, and not the origin or the present-at-commit flag, which are routing rath
 replayed operation whose slot has been refilled by a different item would hash identically and apply to the
 wrong one.
 
-**A craft carries its event body and every other kind writes its own canonical encoding as one.** The
-`item-crafted` body is `ItemCraftedEvent` below, so a craft operation carries those bytes rather than
-re-deriving the body from its own parameters.
+**Intent and event have different duties.** The canonical parameters above stay free of outcomes. Move,
+Split, Merge, Take and Slide write those bytes directly as version 1 events. Grant and Craft write version 2
+event envelopes, because a grant's canonical parameters omit its payload and a craft's audit body omits the
+target and currency slots. Each envelope writes a minimal varint length and the canonical parameters, then
+a minimal length and the extra bytes. Grant's extra bytes are the complete item payload. Craft's are the
+unchanged version 1 `ItemCraftedEvent` audit body, including before and after payloads. A generated-item
+audit event may repeat grant payload bytes so the grant can still replay independently.
 
 **A craft that consumes NO currency carries no currency fields**, and `Validate` refuses one that does. The
 intent writes all four whether or not the craft reads them, and a craft with a currency definition id of 0
@@ -373,9 +378,10 @@ there is no id-based intent anywhere in the tree to disagree with it
 ## Event names
 
 `ItemInstanceEvents` carries the durable strings an item operation writes into the journal: the `item-craft`
-action kind (`CraftActionKind`), the `item-generated` and `item-crafted` event types, and the five a
-container operation writes (`item-moved`, `stack-split`, `stack-merged`, `item-granted`, `item-taken`).
-`All` is the seven event types in spec order. A durable string is never renamed and never switched on, which
+action kind (`CraftActionKind`), the `item-generated` and `item-crafted` event types, and the six other
+container operation types (`item-moved`, `stack-split`, `stack-merged`, `item-granted`, `item-taken`,
+`item-slid`).
+`All` is the eight event types in assignment order. A durable string is never renamed and never switched on, which
 is why they are constants rather than an enum, and `EventTypeOf` switches on the operation KIND rather than
 on a stored string: the number is this build's and the string is the durable one.
 
@@ -399,14 +405,34 @@ it changed from. **A REFUSED craft writes nothing durable and never reaches the 
 refusal field in the body and never will be: the client is answered with the `CraftRefusal` naming the guard
 or the primitive that refused, and the journal hears nothing at all.
 
-**Two of the seven bodies read back and five do not.** `ItemGeneratedEvent` and `ItemCraftedEvent` each ship
-a `TryRead` beside their `Write`, total, answering false plus a reason from a closed set on the type rather
-than throwing, because the bytes arrive from a store. Those two are the bodies that carry PAYLOADS, so a
-record nothing could read back would not be a record at all: the page is rewritten whole on every later
-commit, so the event is the only durable answer to what an item looked like when it dropped and to what a
-craft changed. The five container-operation bodies are still write only, which is fine while the only
-consumer is the intent hash and stops being fine the moment anything audits what a batch did
-([#941](https://github.com/APKiwiOrg/KhaozEngine/issues/941)).
+**Stored operation events read back for replay.** `ContainerOperationEventCodec.TryRead` checks the durable
+event name, schema version, canonical parameters, exact body length and the extra payload where version 2
+requires it. Invalid bytes return false with a reason. A version 1 plain Grant can replay. A version 1
+Grant naming an instance has no payload to restore and returns `legacy-payload-omitted`. A version 1 Craft
+has no target slot and returns `legacy-location-omitted` for replay, while
+`ItemCraftedEvent.TryRead` still reads its old audit body. Existing event bytes are unchanged.
+
+`ContainerOperationApplier.TryApply` takes the decoded operation and a dictionary of caller-owned
+`IPagedContainerWorkingCopy` containers. It checks known invalid slots, instance ids, counts, payloads,
+currency and craft before state before changing a slot, then applies the same rules the live builder uses.
+The caller's working-copy implementation remains responsible for accepting valid writes. No replay path
+rerolls content or mints an instance id. `ItemGeneratedEvent` remains a readable audit body, and version 2
+Craft still contains the unchanged `ItemCraftedEvent` audit body inside its envelope.
+
+```csharp
+if (!ContainerOperationEventCodec.TryRead(stored.EventType, stored.EventSchemaVersion,
+        stored.Payload, out ContainerOperation operation, out string? reason))
+    return Refuse(reason);
+if (!ContainerOperationApplier.TryApply(containers, operation, out reason))
+    return Refuse(reason);
+```
+
+**Slide has one event and may write many pages.** Its source run is occupied and the destination fringe is
+empty. Left overlap moves low to high, right overlap high to low, with every `ItemSlot` payload and quarantine
+flag kept intact. The builder counts all pages intersecting either run once before admission and conservatively
+bounds their byte growth. A 1,000-shelf bank can shift 999 shelves in one `item-slid` event and ten page writes,
+below the journal's 128-event and 64-write maxima. A source hole, occupied fringe or out-of-range end is
+refused before a known slot changes.
 
 ## Design
 

@@ -7,9 +7,24 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.3.0
 
-A minor that changes how procedural water looks: a narrower, energy-correct far glint and whitecaps evaluated
-per pixel. Nothing a game calls changes meaning, but a lake tuned against the old look may want its whitecap
-settings retuned (below).
+A minor that adds published item rarity colours and replayable container operations for event sourced game
+hosts. Grant and Craft now write self-contained version 2 events. Procedural water also gains a narrower,
+energy-correct far glint and whitecaps evaluated per pixel. A lake tuned against the old look may want its
+whitecap settings retuned (below).
+
+**Item rarity display and event sourced containers.**
+
+- `rarity_rule.display_rgb` is an optional, client-visible three-byte RGB field. Old seven-field rows keep
+  their bytes. A missing rarity or colour reads white, and `RarityDisplayColors.Over(runtime)` resolves the
+  published colour from an item's kind 130 rarity ID without adding colour to player storage.
+- `ContainerOperationEventCodec` reads existing Move, Split, Merge, Take and plain Grant events, while new
+  Grant and Craft events carry the payload and location data an event sourced host needs to replay them
+  ([#1046](https://github.com/APKiwiOrg/KhaozEngine/issues/1046)). Old instance Grant and Craft events
+  still read for their available audit facts but explicitly refuse standalone container replay.
+- `ContainerOperationApplier.TryApply` shares one preflight and mutation path with the live builder. A new
+  `Slide` operation compacts a contiguous bank run in one `item-slid` event, preserving complete item slots.
+  The builder budgets every affected page and its byte growth before it admits the operation. A 999-shelf
+  shift takes one event and ten page writes.
 
 **Water glint and whitecaps.**
 

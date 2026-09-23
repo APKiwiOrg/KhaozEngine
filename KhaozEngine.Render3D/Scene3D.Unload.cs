@@ -120,7 +120,7 @@ namespace KhaozEngine.Render3D
         /// <summary>Free a skinned mesh's GPU buffers and release its slot. A <c>default</c> handle is a no-op. A
         /// stale handle throws.
         /// <para>Does not drain. This is the unload an MMO client runs constantly, one per avatar or corpse leaving
-        /// interest range, so the buffers and both material sets are retired and destroyed at a later frame
+        /// interest range, so the buffers and all material sets are retired and destroyed at a later frame
         /// boundary instead of stalling the frame thread on every despawn.</para></summary>
         public void UnloadSkinnedMesh(SkinnedMeshHandle h)
         {
@@ -128,11 +128,9 @@ namespace KhaozEngine.Render3D
             _skinnedSlots.Free(h.Index, h.Generation);
             if (_skinnedMeshes[h.Index] is { } e)
             {
-                // Four resources, and the three-argument overload takes three: the second call is the GPU-skinning
-                // material set, which LoadSkinnedInternal builds alongside the CPU-path one so UseGpuSkinning can
-                // flip live. Both land in the same batch, since a batch is one frame's retirements.
+                // All five resources land in the same batch because a batch is one frame's retirements.
                 _retired.Retire(e.Vb, e.Ib, e.MaterialSet);
-                _retired.Retire(e.SkinnedMaterialSet);
+                _retired.Retire(e.SkinnedMaterialSet, e.OutlineMaterialSet, null);
             }
             _skinnedMeshes[h.Index] = null;
             _skinnedCpuVerts[h.Index] = null;

@@ -752,56 +752,6 @@ namespace KhaozEngine.Render3D
             get { int n = 0; foreach (var m in _meshes) if (m != null) n++; return n; }
         }
 
-        /// <summary>Upload a skinned mesh to the GPU once; returns a handle to draw it with
-        /// <see cref="DrawSkinned(KhaozEngine.Render3D.SkinnedMeshHandle, System.ReadOnlySpan{System.Numerics.Matrix4x4}, System.Numerics.Matrix4x4, KhaozEngine.Primitives.Color)"/>. Untextured (samples the 1x1 white default, so colour is the baked vertex
-        /// colour times any per-instance tint).</summary>
-        public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) => LoadSkinnedInternal(mesh, null, null, null);
-
-        /// <summary>Upload a skinned mesh and bind <paramref name="texture"/> as its albedo
-        /// (<c>texRgb * vColor * vTint</c>). An invalid handle falls back to untextured.</summary>
-        public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, TextureHandle texture)
-        {
-            IGpuTexture? a = texture.IsValid ? _textures[texture.ListIndex] : null;
-            return LoadSkinnedInternal(mesh, a, null, null);
-        }
-
-        /// <summary>Upload a skinned mesh and bind a full PBR-lite material (<paramref name="maps"/>): albedo +
-        /// optional normal + optional roughness, mirroring <see cref="LoadMesh(GltfMesh,SurfaceMaps)"/>. Invalid
-        /// handles fall back to the renderer defaults (white albedo / flat normal / zero roughness). Normal
-        /// perturbation requires the mesh to carry tangents - skinned glTF via <see cref="GltfLoader.LoadSkinned"/>
-        /// or <see cref="SkinnedMeshBuilder"/> output both compute them; a tangent-less skinned vertex is lit by its
-        /// geometric normal. The tangent rides the skin deform on either skinning path, so the TBN tracks the pose.</summary>
-        public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, SurfaceMaps maps)
-        {
-            IGpuTexture? a = maps.Albedo.IsValid ? _textures[maps.Albedo.ListIndex] : null;
-            IGpuTexture? n = maps.Normal.IsValid ? _textures[maps.Normal.ListIndex] : null;
-            IGpuTexture? r = maps.Roughness.IsValid ? _textures[maps.Roughness.ListIndex] : null;
-            return LoadSkinnedInternal(mesh, a, n, r);
-        }
-
-        // Builds BOTH the set-0 CPU-path material set and the set-1 GPU-skinning material set from the same textures,
-        // so UseGpuSkinning can flip live (windowed A/B) without reloading meshes. Untextured (all null) leaves both
-        // null and each path falls back to its renderer default set (white/flat/zero).
-        SkinnedMeshHandle LoadSkinnedInternal(SkinnedGltfMesh mesh, IGpuTexture? albedo, IGpuTexture? normal, IGpuTexture? roughness)
-        {
-            var f = _gd.Factory;
-            var vb = f.CreateBuffer(new GpuBufferDescription((uint)(mesh.Vertices.Length * SkinnedVertex.SizeInBytes), GpuBufferUsage.VertexBuffer));
-            _gd.UpdateBuffer(vb, 0, mesh.Vertices);
-            var ib = CreateIndexBuffer(mesh.Indices32, mesh.IndexFormat);
-
-            bool textured = albedo != null || normal != null || roughness != null;
-            IGpuResourceSet? material = textured ? _model.CreateMaterialSet(albedo, normal, roughness) : null;
-            IGpuResourceSet? skinnedMaterial = textured ? _model.CreateSkinnedMaterialSet(albedo, normal, roughness) : null;
-
-            MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
-            int index = _skinnedSlots.Alloc(out int generation);
-            var entry = new SkinnedMeshEntry(vb, ib, mesh.Indices32.Length, mesh.IndexFormat, material, skinnedMaterial, mesh.InverseBind, in bounds);
-            // Cache the source vertices (parallel to _skinnedMeshes) for per-frame CPU skinning - no GPU readback.
-            if (index < _skinnedMeshes.Count) { _skinnedMeshes[index] = entry; _skinnedCpuVerts[index] = mesh.Vertices; }
-            else { _skinnedMeshes.Add(entry); _skinnedCpuVerts.Add(mesh.Vertices); }
-            return new SkinnedMeshHandle(index, generation);
-        }
-
         /// <summary>Queue one skinned draw. <paramref name="boneMatrices"/> are this frame's joint world
         /// transforms (model space), one per bone in the mesh's skin; the engine composes them with the mesh's
         /// inverse-bind. Passing the mesh's <see cref="SkinnedGltfMesh.RestPose"/> yields no deformation.
@@ -2349,34 +2299,20 @@ namespace KhaozEngine.Render3D
                     mesh.ShadowCutoutSet?.Dispose();
                 }
             foreach (var m in _skinnedMeshes)
-                if (m is { } e) { e.Vb.Dispose(); e.Ib.Dispose(); e.MaterialSet?.Dispose(); e.SkinnedMaterialSet?.Dispose(); }
+                if (m is { } e)
+                {
+                    e.Vb.Dispose();
+                    e.Ib.Dispose();
+                    e.MaterialSet?.Dispose();
+                    e.SkinnedMaterialSet?.Dispose();
+                    e.OutlineMaterialSet?.Dispose();
+                }
             foreach (var s in _texBillboardSets) s?.Dispose();
             _texBillboardSets.Clear();
             foreach (var t in _textures) t?.Dispose();
             _textures.Clear();
             DisposeSplatMaterials();
             DisposeTileGroundAndPointShadowResources();
-        }
-
-        /// <summary>A GPU-resident skinned mesh: its vertex/index buffers, index count, optional material set, the
-        /// CPU-side inverse-bind matrices needed to compose per-frame bone palettes at DrawSkinned time, and its
-        /// rest-pose local <see cref="Bounds"/> (used to frustum-cull queued draws before they are recorded -
-        /// see <see cref="ClassifySkinnedVisibility"/>).</summary>
-        sealed class SkinnedMeshEntry
-        {
-            public readonly IGpuBuffer Vb, Ib;
-            public readonly int IndexCount;
-            public readonly GpuIndexFormat IndexFormat;
-            public readonly IGpuResourceSet? MaterialSet;          // set-0 CPU-path material (frame UBO vertex|fragment)
-            public readonly IGpuResourceSet? SkinnedMaterialSet;   // set-1 GPU-skinning material (fragment-only frame UBO)
-            public readonly Matrix4x4[] InverseBind;
-            public readonly MeshBounds Bounds;
-            public SkinnedMeshEntry(IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
-                IGpuResourceSet? materialSet, IGpuResourceSet? skinnedMaterialSet, Matrix4x4[] inverseBind, in MeshBounds bounds)
-            {
-                Vb = vb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat;
-                MaterialSet = materialSet; SkinnedMaterialSet = skinnedMaterialSet; InverseBind = inverseBind; Bounds = bounds;
-            }
         }
 
         /// <summary>One GPU-skinned draw (built per frame in RenderInternal when <see cref="UseGpuSkinning"/> is on).

@@ -93,6 +93,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Absolute 1-based texture creation to fail, or zero for no injected failure.</summary>
         internal int ThrowOnTextureCreate { get; set; }
         internal int ThrowOnResourceSetCreate { get; set; }
+        /// <summary>Absolute 1-based buffer creation to fail, or zero for no injected failure.</summary>
+        internal int ThrowOnBufferCreate { get; set; }
 
         /// <summary>Every buffer this factory has handed out, in creation order. See <see cref="Textures"/>.</summary>
         internal List<FakeBuffer> Buffers { get; } = new();
@@ -136,6 +138,8 @@ namespace KhaozEngine.Tests.Gpu
 
         public IGpuBuffer CreateBuffer(in GpuBufferDescription d)
         {
+            if (ThrowOnBufferCreate == Buffers.Count + 1)
+                throw new InvalidOperationException("planned buffer creation failure");
             var b = new FakeBuffer(d.SizeInBytes);
             Buffers.Add(b);
             return b;

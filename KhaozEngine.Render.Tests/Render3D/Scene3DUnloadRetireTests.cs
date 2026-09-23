@@ -90,7 +90,7 @@ namespace KhaozEngine.Tests.Render3D
             => new() { new TileGroundLayerImage { AlbedoRgba = Pixel } };
 
         [Fact]
-        public void UnloadSkinnedMesh_does_not_drain_and_frees_both_material_sets_at_a_later_frame()
+        public void UnloadSkinnedMesh_does_not_drain_and_frees_all_material_sets_at_a_later_frame()
         {
             // The high-value one. An MMO client despawns avatars and corpses continuously as they leave interest
             // range, and every one of those used to stall the frame thread on a full-device drain.
@@ -103,7 +103,8 @@ namespace KhaozEngine.Tests.Render3D
             List<FakeBuffer> buffers = BuffersSince(h.Factory, bufFrom);
             List<FakeResourceSet> sets = SetsSince(h.Factory, setFrom);
             Assert.Equal(2, buffers.Count);   // vertex + index
-            Assert.Equal(2, sets.Count);      // the CPU-path material set and the GPU-skinning one
+            Assert.Equal(3, sets.Count);      // CPU, GPU skinning, and albedo-only outline material sets
+            FakeResourceSet outlineSet = sets[2];
             int before = h.Spy.WaitForIdleCalls;
 
             h.Scene.UnloadSkinnedMesh(mesh);
@@ -115,11 +116,13 @@ namespace KhaozEngine.Tests.Render3D
             h.Scene.Begin();
             foreach (FakeBuffer b in buffers)
                 Assert.False(b.Disposed);   // never destroyed in the frame it was retired in
+            Assert.False(outlineSet.Disposed);
 
             for (int i = 1; i < GpuRetireQueue.DefaultFrameDelay; i++) h.Scene.Begin();
 
             foreach (FakeBuffer b in buffers) Assert.True(b.Disposed);
             foreach (FakeResourceSet s in sets) Assert.True(s.Disposed);
+            Assert.True(outlineSet.Disposed);
             Assert.Equal(before + 1, h.Spy.WaitForIdleCalls);   // one drain for the batch, not one per unload
         }
 
@@ -288,12 +291,10 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void Dispose_frees_both_of_a_skinned_mesh_s_material_sets()
+        public void Dispose_frees_all_of_a_skinned_mesh_s_material_sets()
         {
-            // Teardown rather than an unload, and the same pair of sets. Dispose freed the set-0 CPU-path set and
-            // walked past the set-1 GPU-skinning one that LoadSkinnedMesh builds alongside it whenever the mesh is
-            // textured, so a textured skinned mesh still loaded at teardown leaked one resource set. The native
-            // Vulkan backend reports that class of leak as a VUID-vkDestroyDevice-device-05137 object leak.
+            // Teardown rather than an unload, and the same three sets. The native Vulkan backend reports a missed
+            // material as a VUID-vkDestroyDevice-device-05137 object leak.
             Harness h = NewHarness();
             Scene3D.TextureHandle albedo = h.Scene.LoadTexture(Pixel, 1, 1);
             int setFrom = h.Factory.ResourceSets.Count;
@@ -301,7 +302,7 @@ namespace KhaozEngine.Tests.Render3D
             h.Scene.LoadSkinnedMesh(tube, albedo);
 
             List<FakeResourceSet> sets = SetsSince(h.Factory, setFrom);
-            Assert.Equal(2, sets.Count);   // set 0 (CPU path) and set 1 (GPU skinning), the leak was the second
+            Assert.Equal(3, sets.Count);   // CPU path, GPU skinning, and albedo-only outline
 
             h.Scene.Dispose();
 

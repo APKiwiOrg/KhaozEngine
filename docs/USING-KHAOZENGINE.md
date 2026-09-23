@@ -14836,9 +14836,9 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Catalog.GameTypes`**: the thirteen game-shaped content types over that catalog, the shapes a
   world with food, equipment, shops, drops, gathering, crafting, tools and tuning knobs authors anyway, as
   stable ids in the game band, stable keys, ordered schemas and row codecs. A game declares its time unit
-  through `ContentDurationUnit` and the four duration fields take the matching name, with identical order,
-  kinds and codecs either way. No enum, no name, no roster and no balance number in it (see "Shared game
-  content types" below).
+  through `ContentDurationUnit` and the four duration fields take the matching name, whole ticks as an `Int`
+  or hundredths of a second as a `ScaledInt` at scale 100, with identical order and row bytes either way. No
+  enum, no name, no roster and no balance number in it (see "Shared game content types" below).
 - **`KhaozEngine.Commerce`**: server-authoritative currency wallet (`IWalletStore`, `Wallet`, entitlement
   redemption, `PeriodicGrant` built on `Progression`). Not in any umbrella; add explicitly. SQL backends are
   the opt-in `Commerce.Sqlite`/`Commerce.SqlServer` siblings (see "Commerce / wallet" below).
@@ -15809,13 +15809,18 @@ writes the key down and registers no type under it. A type under any other key i
 and every item's `equip_profile` would have to stay 0.
 
 **A game declares its time unit.** A world stepping a fixed tick stores ticks and a wall-clock world stores
-seconds, so `ContentDurationUnit` goes to each schema factory and picks the NAME of the four duration fields:
-`attack_delay_ticks` or `attack_delay_seconds` on `food`, `attack_ticks` or `attack_seconds` on
-`equip_profile`, `respawn_ticks` or `respawn_seconds` on `gathering_node`, and `base_ticks` or `base_seconds`
-on `recipe`. Field order, kinds, reference targets, visibility, required flags, scales and the row codecs are
-IDENTICAL under either unit, so the choice costs a name in the generic editor and the localization key derived
-from it, and never a byte of layout. The package converts nothing, because only the game knows how long its
-tick is.
+seconds to the hundredth, so `ContentDurationUnit` goes to each schema factory and picks the NAME of the four
+duration fields: `attack_delay_ticks` or `attack_delay_seconds` on `food`, `attack_ticks` or `attack_seconds`
+on `equip_profile`, `respawn_ticks` or `respawn_seconds` on `gathering_node`, and `base_ticks` or
+`base_seconds` on `recipe`. Under `Ticks` a duration is a plain `Int` of whole ticks, the shape the types
+first shipped with. Under `Seconds` it is a `ScaledInt` at scale 100, HUNDREDTHS of a second, because whole
+seconds cannot hold a timing between two of them: 2.33 seconds is stored as 233. Field order, reference
+targets, visibility, required flags and the row bytes are IDENTICAL under either unit, because both kinds go
+out as the same varint, so the choice costs a name, the localization key derived from it and the scale the
+schema declares, and never a byte of layout. The package converts nothing. It stores the integer the game
+authored, the schema carries its scale for `ContentFieldLookup.IndexIn(runtime, type, field, out int scale)`
+to hand a reader, and turning it into a span of time is the game's, because only the game knows how long
+its tick is.
 
 ```csharp
 using KhaozEngine.Catalog;
@@ -15866,8 +15871,9 @@ Eight take nothing at all. `StoreContentType.Validator` takes the registry, beca
 the dearest item the candidate carries and so needs where the engine `item` type keeps its `value`. **That
 index is read off the live registration at validation time and never off a schema the validator built at
 type load**, which is this build's idea of the item type rather than the one the candidate was registered
-against. Every rule is unit-neutral: a duration rule is about the number's SIGN, so one validator serves
-both spellings.
+against. Every rule holds under either unit: a duration rule is about the stored integer's SIGN, and a
+positive scale never moves a sign, so one validator serves both spellings and one hundredth of a second
+passes where one tick does.
 
 **Two validators need an answer only a game has, and both take it as a predicate over the raw stored
 number** rather than as an enum, a roster or a list. `RecipeValidatorOptions` carries four, every one

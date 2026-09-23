@@ -107,9 +107,47 @@ public class SigningSecretTests
 
         foreach (string raw in inputs)
         {
-            byte[] expected = Convert.FromBase64String(raw.Trim());
+            byte[] expected = GamesLoader(raw);
             Assert.Equal(expected, SigningSecret.Decode(raw, Variable));
         }
+    }
+
+    /// <summary>
+    /// The other half of the compatibility: what the games' loaders refused as base64 is refused here too, for the same
+    /// reason. The whitespace the decoder skips (space, tab, CR, LF) is accepted above. Any other whitespace inside the
+    /// value is not base64 to either loader.
+    /// </summary>
+    [Theory]
+    [InlineData("padding only")]
+    [InlineData("data after padding")]
+    [InlineData("one character short of a quantum")]
+    [InlineData("one character past a quantum")]
+    [InlineData("no-break space inside")]
+    [InlineData("form feed inside")]
+    [InlineData("vertical tab inside")]
+    public void Decode_RefusesWhatTheGamesLoadersRefused(string scenario)
+    {
+        byte[] key = Enumerable.Range(0, 48).Select(i => (byte)(i * 37)).ToArray();
+        string b64 = Convert.ToBase64String(key);
+        string padded = Convert.ToBase64String(key[..47]);
+        Assert.EndsWith("=", padded, StringComparison.Ordinal);
+        string raw = scenario switch
+        {
+            "padding only" => "====",
+            "data after padding" => padded + "AAAA",
+            "one character short of a quantum" => b64[..^1],
+            "one character past a quantum" => b64 + "A",
+            "no-break space inside" => b64[..20] + " " + b64[20..],
+            "form feed inside" => b64[..20] + "\f" + b64[20..],
+            "vertical tab inside" => b64[..20] + "\v" + b64[20..],
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario)),
+        };
+
+        Assert.Throws<FormatException>(() => GamesLoader(raw));
+        InvalidOperationException thrown =
+            Assert.Throws<InvalidOperationException>(() => SigningSecret.Decode(raw, Variable));
+        Assert.Contains("base64", thrown.Message, StringComparison.Ordinal);
+        AssertCarriesNoPartOf(raw, thrown);
     }
 
     [Fact]
@@ -193,6 +231,15 @@ public class SigningSecretTests
         Assert.Equal("discord:1", subject);
         Assert.False(SignedToken.TryVerify(token, ephemeral, Now, out _, out string reason));
         Assert.Equal("bad signature", reason);
+    }
+
+    // Both games' loader: Convert.FromBase64String of the trimmed value, behind the same length floor.
+    private static byte[] GamesLoader(string raw)
+    {
+        byte[] key = Convert.FromBase64String(raw.Trim());
+        return key.Length >= SigningSecret.MinimumBytes
+            ? key
+            : throw new InvalidOperationException("The key is under the length floor.");
     }
 
     // The message and every inner exception are checked, since a host logs the whole chain.

@@ -24,8 +24,8 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuBuffer? _vb;
         IGpuBuffer? _ib;
         int _gridSlices;   // slices the vertex buffer holds
-        // Heap-allocated once, not stackalloc'd per draw: at GridResolution 97 the position scratch is 113 KB and
-        // the index scratch 216 KB, both far past what belongs on the stack. One plane's worth, reused per slice.
+        // Heap-allocated once, not stackalloc'd per draw: at GridResolution 97 the position scratch is 113 KB, far
+        // past what belongs on the stack, and the axis scratch sits beside it. One plane's worth, reused per slice.
         readonly Vector3[] _gridScratch = new Vector3[GridSliceVertices];
         readonly float[] _axisScratch = new float[2 * WaterMath.GridResolution];
 

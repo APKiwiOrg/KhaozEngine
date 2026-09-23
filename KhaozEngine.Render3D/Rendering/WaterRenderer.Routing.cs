@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 
@@ -34,8 +35,11 @@ namespace KhaozEngine.Render3D.Rendering
         /// tests that pin the routing without reading pixels.</summary>
         internal PlaneRoute LastRoute(int index) => _routes[index];
 
+        /// <summary>Planes the last <see cref="Draw"/> skipped because the view could not reach them. Internal, for tests.</summary>
+        internal int LastCulledPlanes { get; private set; }
+
         /// <summary>Route every queued plane and count each route. Returns how many planes will draw.</summary>
-        int RoutePlanes(ReadOnlySpan<WaterPlane> planes, WaterSettings settings)
+        int RoutePlanes(ReadOnlySpan<WaterPlane> planes, WaterSettings settings, in FrustumPlanes frustum)
         {
             if (_routes.Length < planes.Length)
             {
@@ -45,16 +49,24 @@ namespace KhaozEngine.Render3D.Rendering
             }
             bool clipmap = settings.GridMode == WaterGridMode.Clipmap;
             _flatCount = _gridCount = _clipCount = 0;
+            LastCulledPlanes = 0;
             for (int i = 0; i < planes.Length; i++)
             {
-                if (UsesFlatQuad(planes[i], settings))
+                if (!MayBeVisible(planes[i], settings, frustum))
+                {
+                    _routes[i] = PlaneRoute.Culled;
+                    _routeSlots[i] = -1;
+                    LastCulledPlanes++;
+                }
+                else if (UsesFlatQuad(planes[i], settings))
                 {
                     _routes[i] = PlaneRoute.FlatQuad;
                     _routeSlots[i] = _flatCount++;
                 }
                 else if (clipmap)
                 {
-                    // The clipmap's slices and their cache are keyed by queue index, so the slot is the index.
+                    // The clipmap's slices and their cache are keyed by queue index, so a culled plane keeps its
+                    // slice and comes back without a rebuild when nothing it depends on moved.
                     _routes[i] = PlaneRoute.Clipmap;
                     _routeSlots[i] = i;
                     _clipCount++;
@@ -66,6 +78,20 @@ namespace KhaozEngine.Render3D.Rendering
                 }
             }
             return _flatCount + _gridCount + _clipCount;
+        }
+
+        /// <summary>
+        /// Whether a plane may reach the view: its rectangle grown by how far its surface can move. A procedural
+        /// plane's reach is its effective swell's (<see cref="WaterSwellReach.Of"/>). An ocean plane is never culled,
+        /// because its displacement comes from the cascade maps and the CPU holds no bound on it.
+        /// </summary>
+        static bool MayBeVisible(in WaterPlane plane, WaterSettings settings, in FrustumPlanes frustum)
+        {
+            if (EffectiveWaveSource(plane, settings) != WaterWaveSource.Procedural) return true;
+            WaterLook? look = plane.Look;
+            Vector2 reach = WaterSwellReach.Of(look?.SwellAmplitude ?? settings.SwellAmplitude,
+                look?.SwellWavelength ?? settings.SwellWavelength, look?.SwellSteepness ?? settings.SwellSteepness);
+            return WaterSwellReach.MayBeVisible(plane, reach, frustum);
         }
 
         /// <summary>Bind what a route draws through. Called only when the route differs from the previous draw's,

@@ -15,9 +15,9 @@ namespace KhaozEngine.Render3D.Rendering
     /// passes and BEFORE <see cref="RenderResources.ResolveColor"/>,
     /// so it is occluded by geometry above it (depth test ON) but never corrupts the normal/linear-depth MRT the
     /// outline pass reads (depth WRITE off - see the in-source note on <see cref="ShaderSources.WaterVert"/>). One
-    /// draw per queued plane (its own dynamic-offset UBO slot, mirroring <see cref="GroundDecalRenderer"/>'s
-    /// per-decal slot pattern so multiple planes never share/overwrite one slot regardless of backend buffer-write
-    /// ordering).
+    /// draw per queued plane the view can reach (its own dynamic-offset UBO slot, mirroring
+    /// <see cref="GroundDecalRenderer"/>'s per-decal slot pattern so multiple planes never share/overwrite one slot
+    /// regardless of backend buffer-write ordering).
     /// </summary>
     internal sealed partial class WaterRenderer : IDisposable, IFramePreparer
     {
@@ -133,8 +133,8 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuTexture? _boundBathy;
 
         // ---- Clipmap grid state ------------------------------------------------------------------------------
-        // Its own buffers, because their SIZE depends on the ring settings rather than being the one fixed budget
-        // the camera-focused grid has. Allocated on first clipmap use and regrown only when those settings move.
+        // Its own buffers, because their SIZE depends on the ring settings rather than being the fixed per-plane
+        // budget the camera-focused grid has. Allocated on first clipmap use and regrown only when those settings move.
         //
         // ONE buffer pair holding a per-plane SLICE each, rather than a shared scratch every plane overwrites.
         // That is what makes the cache below work at all with more than one plane: a cached "nothing moved" is a
@@ -566,7 +566,9 @@ namespace KhaozEngine.Render3D.Rendering
             LastClipmapRebuilds = 0;
             LastFocusedGridBuilds = 0;
             EnsureUboCapacity(planes.Length);
-            RoutePlanes(planes, settings);
+            // The planes arrive reduced by the render origin and so does viewProj, so both sides of the cull are
+            // in the render frame, which is what FrustumPlanes asks of its caller.
+            int drawn = RoutePlanes(planes, settings, FrustumPlanes.Extract(viewProj));
             if (_clipCount > 0)
             {
                 EnsureClipPipeline();
@@ -595,11 +597,15 @@ namespace KhaozEngine.Render3D.Rendering
             // itself or its revision changed (#645), so the steady state is a compare and nothing else.
             _bathymetry.Update(settings.Bathymetry);
             ShoreMaps shore = _bathymetry.Snapshot();
+            // Nothing the view can reach: no slots, no geometry and no pass. The ocean demand compare and its record
+            // above still ran over the whole queue, because PrepareFrame planned against the whole queue.
+            if (drawn == 0) return;
             BindTargets(res);
 
             Matrix4x4 clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
             for (int i = 0; i < planes.Length; i++)
             {
+                if (_routes[i] == PlaneRoute.Culled) continue;   // its slot is never bound this frame
                 // Per plane now, not once: the surf band measures the crest's height above THIS plane's still
                 // water, a scene may queue several planes at different levels, and each may carry its own look.
                 WaterLook? look = planes[i].Look;

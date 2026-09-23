@@ -9,6 +9,14 @@ public sealed class SkinnedPointShadowGoldenTests(SkinnedPointShadowScene fixtur
     : IClassFixture<SkinnedPointShadowScene>
 {
     [GpuFact]
+    public void StaticBentCasterGoldenMatchesCommittedGrid()
+    {
+        SkinnedPointShadowScene.Shot shot = fixture.StaticRigidAndBentSkinned()[2];
+        GoldenCompare.AssertOrUpdate("scene3d_skinned_point_shadow_static", shot.Rgba,
+            SkinnedPointShadowScene.Width, SkinnedPointShadowScene.Height);
+    }
+
+    [GpuFact]
     public void StaticPixelsShowRigidAndBentSkinnedShadowsWhileRigidBaseStaysCached()
     {
         IReadOnlyList<SkinnedPointShadowScene.Shot> shots = fixture.StaticRigidAndBentSkinned();

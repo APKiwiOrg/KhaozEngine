@@ -5,6 +5,7 @@ using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.Sqlite;
 using KhaozEngine.Tests.Catalog.Publish;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace KhaozEngine.Tests.Catalog.Sqlite;
@@ -449,6 +450,36 @@ public class SqliteCatalogSchemaMigrationTests
 
             await Task.WhenAll(opens);
         }
+    }
+
+    /// <summary>
+    /// A migration that cannot take the write lock reports the LOCK, not a schema to migrate. A second writer
+    /// holding the file is transient, and "apply migration" is advice to an operator about a migration this
+    /// open was already running.
+    /// </summary>
+    [Fact]
+    public async Task AMigrationThatCannotTakeTheWriteLockReportsTheLockRatherThanASchemaToMigrate()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        WriteVersionOne(database);
+
+        using (var holder = new SqliteConnection(database.ConnectionString + ";Pooling=False"))
+        {
+            holder.Open();
+            using (SqliteCommand begin = holder.CreateCommand())
+            {
+                begin.CommandText = "BEGIN IMMEDIATE;";
+                begin.ExecuteNonQuery();
+            }
+
+            using var store = new SqliteContentAuthoringStore(database.ConnectionString + ";Default Timeout=1", Registry());
+            SqliteException busy = await Assert.ThrowsAsync<SqliteException>(
+                () => store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate));
+
+            Assert.Equal(SQLitePCL.raw.SQLITE_BUSY, busy.SqliteErrorCode);
+        }
+
+        Assert.Equal(1L, database.Scalar("SELECT schema_version FROM catalog_metadata WHERE metadata_key = 1;"));
     }
 
     /// <summary>The frozen version 1 schema, then the content, into the test's own temporary file.</summary>

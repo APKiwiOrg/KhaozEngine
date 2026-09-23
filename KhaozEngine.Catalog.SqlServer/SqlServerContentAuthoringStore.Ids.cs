@@ -8,8 +8,9 @@ using Microsoft.Data.SqlClient;
 namespace KhaozEngine.Catalog.SqlServer;
 
 /// <summary>
-/// The id half: the two high-water marks per type, the families and their aligned blocks, and the four
-/// durable writes the reserve-before-issue rule spends (spec 4.7, contracts 5.2 and 6.2).
+/// The id half: the two high-water marks per type, the families and their aligned blocks, the four durable
+/// writes the reserve-before-issue rule spends (spec 4.7, contracts 5.2 and 6.2), and the seeding raise a
+/// carried id needs.
 /// <para>
 /// <b>Every <c>Commit</c> member here commits ON ITS OWN</b>, in its own transaction, and that is the whole
 /// of the rule rather than an implementation detail. The allocator waits for
@@ -172,35 +173,88 @@ public sealed partial class SqlServerContentAuthoringStore
         ContentTypeId type,
         int reservedThrough,
         CancellationToken cancellationToken = default)
-        => WriteAsync(
-            async (scope, token) =>
-            {
-                ContentIdHighWater mark = await ReadHighWaterAsync(scope, type, token).ConfigureAwait(false);
-                if (reservedThrough < mark.ReservedThrough)
-                {
-                    throw new ArgumentOutOfRangeException(
-                        nameof(reservedThrough),
-                        reservedThrough,
-                        FormattableString.Invariant(
-                            $"Content type {type.Value} has reserved through {mark.ReservedThrough}, and a durable promise is never taken back."));
-                }
-
-                await WriteHighWaterAsync(
-                    scope, type, mark with { ReservedThrough = reservedThrough }, token).ConfigureAwait(false);
-            },
-            cancellationToken);
+        => RaiseMarkAsync(type, reservedThrough, issued: false, cancellationToken);
 
     /// <inheritdoc />
-    public Task CommitIssuedThroughAsync(
+    /// <remarks>ONE statement that compares and advances, so two takes on one type queue on the row rather
+    /// than each reading it and then deadlocking on the upgrade to a write.</remarks>
+    public Task<int> CommitIssueAsync(
         ContentTypeId type,
-        int issuedThrough,
+        int count,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
+        return WriteAsync(
+            async (scope, token) =>
+            {
+                await using SqlCommand take = Command(
+                    scope,
+                    """
+                    UPDATE dbo.catalog_id_high_water
+                    SET issued_through = issued_through + @count
+                    OUTPUT deleted.issued_through
+                    WHERE type_id = @type AND reserved_through - issued_through >= @count;
+                    """);
+                BindInt(take, "@type", (int)type.Value);
+                BindInt(take, "@count", count);
+                object? before = await take.ExecuteScalarAsync(token).ConfigureAwait(false);
+                return before is int issued ? issued + 1 : 0;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> CommitCarriedThroughAsync(
+        ContentTypeId type,
+        int carriedThrough,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(carriedThrough);
+        bool reserved = await RaiseMarkAsync(type, carriedThrough, issued: false, cancellationToken)
+            .ConfigureAwait(false);
+        bool issued = await RaiseMarkAsync(type, carriedThrough, issued: true, cancellationToken)
+            .ConfigureAwait(false);
+        return reserved || issued;
+    }
+
+    /// <summary>
+    /// One mark raised to at least a value in ONE statement, which compares and writes under the key lock
+    /// <c>HOLDLOCK</c> takes, so two raises of one type queue rather than deadlock. The seeding write raises
+    /// the issued mark only after the reserved one covers the same id, and the reserved mark never falls, so
+    /// the issued mark cannot pass it here.
+    /// </summary>
+    Task<bool> RaiseMarkAsync(
+        ContentTypeId type,
+        int value,
+        bool issued,
+        CancellationToken cancellationToken)
         => WriteAsync(
             async (scope, token) =>
             {
-                ContentIdHighWater mark = await ReadHighWaterAsync(scope, type, token).ConfigureAwait(false);
-                await WriteHighWaterAsync(scope, type, WithIssued(type, mark, issuedThrough), token)
-                    .ConfigureAwait(false);
+                await using SqlCommand raise = Command(
+                    scope,
+                    issued
+                        ? """
+                          MERGE dbo.catalog_id_high_water WITH (HOLDLOCK) AS target
+                          USING (SELECT @type AS type_id) AS source ON target.type_id = source.type_id
+                          WHEN MATCHED AND target.issued_through < @value THEN
+                              UPDATE SET issued_through = @value
+                          WHEN NOT MATCHED THEN INSERT (type_id, reserved_through, issued_through)
+                              VALUES (@type, @value, @value)
+                          OUTPUT $action;
+                          """
+                        : """
+                          MERGE dbo.catalog_id_high_water WITH (HOLDLOCK) AS target
+                          USING (SELECT @type AS type_id) AS source ON target.type_id = source.type_id
+                          WHEN MATCHED AND target.reserved_through < @value THEN
+                              UPDATE SET reserved_through = @value
+                          WHEN NOT MATCHED THEN INSERT (type_id, reserved_through, issued_through)
+                              VALUES (@type, @value, 0)
+                          OUTPUT $action;
+                          """);
+                BindInt(raise, "@type", (int)type.Value);
+                BindInt(raise, "@value", value);
+                return await raise.ExecuteScalarAsync(token).ConfigureAwait(false) is not null;
             },
             cancellationToken);
 
@@ -211,15 +265,28 @@ public sealed partial class SqlServerContentAuthoringStore
         => ReadAsync((scope, token) => ReadFamilyAsync(scope, familyId, token), cancellationToken);
 
     /// <inheritdoc />
-    public Task<ContentFamilyBlock> CommitFamilyBlockAsync(
+    public Task<ContentFamilyBlock?> CommitFamilyBlockAsync(
         long familyId,
         int baseId,
         int issuedThrough,
         CancellationToken cancellationToken = default)
-        => WriteAsync(
+        => WriteAsync<ContentFamilyBlock?>(
             async (scope, token) =>
             {
+                // The range is free only while nothing has been issued at or above its base. The mark is read
+                // under an update lock BEFORE the family's blocks are, so a second block reservation or a take
+                // on this type waits here rather than reading the same mark, and no reservation holds a read of
+                // the block table while it waits for the mark.
+                ContentTypeId type = await ReadFamilyTypeAsync(scope, familyId, token).ConfigureAwait(false);
+                ContentIdHighWater mark = await ReadHighWaterForUpdateAsync(scope, type, token)
+                    .ConfigureAwait(false);
+                if (mark.IssuedThrough >= baseId)
+                {
+                    return null;
+                }
+
                 ContentFamily family = await RequireFamilyAsync(scope, familyId, token).ConfigureAwait(false);
+
                 int active = await ReadActiveVersionAsync(scope, token).ConfigureAwait(false);
 
                 var block = new ContentFamilyBlock(
@@ -244,8 +311,6 @@ public sealed partial class SqlServerContentAuthoringStore
 
                 // The advance rides with the insert, because a block row written without it leaves the plain
                 // counter walking into the new block.
-                ContentIdHighWater mark = await ReadHighWaterAsync(scope, family.Type, token)
-                    .ConfigureAwait(false);
                 await WriteHighWaterAsync(
                     scope, family.Type, WithIssued(family.Type, mark, issuedThrough), token)
                     .ConfigureAwait(false);
@@ -255,35 +320,35 @@ public sealed partial class SqlServerContentAuthoringStore
             cancellationToken);
 
     /// <inheritdoc />
-    public Task CommitFamilyNextFreeIdAsync(
+    /// <remarks>ONE statement that compares and advances, so two takes on one block queue on the row.</remarks>
+    public Task<int> CommitFamilyIssueAsync(
         long familyId,
         int blockOrdinal,
-        int nextFreeId,
         CancellationToken cancellationToken = default)
         => WriteAsync(
             async (scope, token) =>
             {
-                ContentFamily family = await RequireFamilyAsync(scope, familyId, token).ConfigureAwait(false);
-                ContentFamilyBlock block = family.Blocks[blockOrdinal];
-                if (nextFreeId < block.NextFreeId || nextFreeId > block.TopExclusive)
-                {
-                    throw new ArgumentOutOfRangeException(
-                        nameof(nextFreeId),
-                        nextFreeId,
-                        FormattableString.Invariant(
-                            $"Block {blockOrdinal} of family {familyId} spans [{block.BaseId}, {block.TopExclusive}) and stands at {block.NextFreeId}."));
-                }
-
-                await using SqlCommand update = Command(
+                await using (SqlCommand take = Command(
                     scope,
                     """
-                    UPDATE dbo.catalog_family_block SET next_free_id = @next
-                    WHERE family_id = @family AND block_ordinal = @blockOrdinal;
-                    """);
-                BindInt(update, "@next", nextFreeId);
-                BindBigInt(update, "@family", familyId);
-                BindInt(update, "@blockOrdinal", blockOrdinal);
-                await update.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                    UPDATE dbo.catalog_family_block
+                    SET next_free_id = next_free_id + 1
+                    OUTPUT deleted.next_free_id
+                    WHERE family_id = @family AND block_ordinal = @blockOrdinal
+                      AND next_free_id < base_id + block_size;
+                    """))
+                {
+                    BindBigInt(take, "@family", familyId);
+                    BindInt(take, "@blockOrdinal", blockOrdinal);
+                    if (await take.ExecuteScalarAsync(token).ConfigureAwait(false) is int id)
+                    {
+                        return id;
+                    }
+                }
+
+                // Nothing taken: a full block answers 0, and a family that is not there is refused by name.
+                await RequireFamilyAsync(scope, familyId, token).ConfigureAwait(false);
+                return 0;
             },
             cancellationToken);
 
@@ -422,6 +487,47 @@ public sealed partial class SqlServerContentAuthoringStore
         await using SqlCommand command = Command(
             scope,
             "SELECT reserved_through, issued_through FROM dbo.catalog_id_high_water WHERE type_id = @type;");
+        BindInt(command, "@type", (int)type.Value);
+        await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            ? new ContentIdHighWater(reader.GetInt32(0), reader.GetInt32(1))
+            : default;
+    }
+
+    /// <summary>The type a family belongs to, refusing a family that is not in the store. Scope held.</summary>
+    static async Task<ContentTypeId> ReadFamilyTypeAsync(
+        SqlServerCatalogScope scope,
+        long familyId,
+        CancellationToken cancellationToken)
+    {
+        await using SqlCommand command = Command(
+            scope, "SELECT type_id FROM dbo.catalog_family WHERE family_id = @family;");
+        BindBigInt(command, "@family", familyId);
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is int type
+            ? new ContentTypeId((ushort)type)
+            : throw new ContentAuthoringException(
+                FormattableString.Invariant($"Family {familyId} is not in the store."),
+                default,
+                0,
+                ContentAuthoringException.UnknownFamilyReason);
+    }
+
+    /// <summary>
+    /// The type's two marks read under an update lock held to the end of the transaction, so a second writer
+    /// of the same mark waits for this one instead of reading the same value. Scope held.
+    /// </summary>
+    static async Task<ContentIdHighWater> ReadHighWaterForUpdateAsync(
+        SqlServerCatalogScope scope,
+        ContentTypeId type,
+        CancellationToken cancellationToken)
+    {
+        await using SqlCommand command = Command(
+            scope,
+            """
+            SELECT reserved_through, issued_through FROM dbo.catalog_id_high_water WITH (UPDLOCK, HOLDLOCK)
+            WHERE type_id = @type;
+            """);
         BindInt(command, "@type", (int)type.Value);
         await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken)
             .ConfigureAwait(false);

@@ -13,8 +13,8 @@ namespace KhaozEngine.Commerce.Sqlite;
 /// same key used for a different account, or a different currency on the same account, is a distinct operation, not
 /// a replay.
 /// <para>The connection, the gate and the dispose are <see cref="SqliteStoreConnection"/>'s, shared with every other
-/// SQLite store in the engine. That is where the pool-clearing dispose lives, and why this store no longer carries
-/// its own copy of it (#731). What stays here is the schema and the SQL.</para></summary>
+/// SQLite store in the engine. That is where the unpooled open and the dispose live, and why this store no longer
+/// carries its own copy of them (#731). What stays here is the schema and the SQL.</para></summary>
 public sealed class SqliteWalletStore : IWalletStore, IGrantScheduleStore, IDisposable
 {
     private const string Bootstrap = @"CREATE TABLE IF NOT EXISTS wallet_ledger (
@@ -159,9 +159,9 @@ public sealed class SqliteWalletStore : IWalletStore, IGrantScheduleStore, IDisp
         foreach ((string name, object value) in p) cmd.Parameters.AddWithValue(name, value);
     }
 
-    /// <summary>Closes the database through <see cref="SqliteStoreConnection"/>, which clears the provider's
-    /// connection pool first so the OS handle on the file is genuinely released rather than parked (#715, the same
-    /// defect fixed in <c>SqliteWorldStore</c> as #713). Read that type for what a parked handle does to a store
-    /// file on each platform.</summary>
+    /// <summary>Closes the database through <see cref="SqliteStoreConnection"/>, whose connection is never pooled, so
+    /// the OS handle on the file is genuinely released rather than parked (#715, the same defect fixed in
+    /// <c>SqliteWorldStore</c> as #713). Read that type for what a pooled handle does to a store file and to a live
+    /// store.</summary>
     public void Dispose() => db.Dispose();
 }

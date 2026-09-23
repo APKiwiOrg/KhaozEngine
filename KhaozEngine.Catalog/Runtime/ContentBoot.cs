@@ -14,7 +14,8 @@ namespace KhaozEngine.Catalog;
 /// <para>
 /// <b>It fails CLOSED and it never exits the process.</b> Each of the twelve rows of spec 9.6's table comes
 /// back as a <see cref="ContentBootResult"/> carrying exit code 3 and the operator's exact lines, and the
-/// HOST writes them and exits. There is no fallback to code defaults anywhere on this path (contracts 10.5),
+/// HOST writes them and exits. So do the refusals beside the table: a stale pack pointer, and a version
+/// source that THROWS rather than answering. There is no fallback to code defaults anywhere on this path (contracts 10.5),
 /// because a silent fallback catalog serves content no version names and an outage is at least noticed.
 /// </para>
 /// <para>
@@ -35,15 +36,32 @@ public static class ContentBoot
     /// </summary>
     /// <param name="options">Everything the boot needs, handed in rather than reached for.</param>
     /// <param name="cancellationToken">Cancels the fetches.</param>
+    /// <returns>
+    /// The published runtime or a refusal. A version directory or hash source that throws is the refusal
+    /// <see cref="ContentBootRefusal.VersionSourceUnreadable"/>, not an exception.
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="OperationCanceledException">
+    /// <paramref name="cancellationToken"/> was cancelled, which propagates rather than refusing.
+    /// </exception>
     public static async Task<ContentBootResult> RunAsync(
         ContentBootOptions options,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        // Step 2: the version, from exactly one place.
-        int version = await ResolveVersionAsync(options, cancellationToken).ConfigureAwait(false);
+        // Step 2: the version, from exactly one place, and a directory that throws is a refusal like the rest.
+        int version;
+        try
+        {
+            version = await ResolveVersionAsync(options, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception fault)
+        {
+            ContentBootSourceFault.ThrowIfCallerCancelled(fault, cancellationToken);
+            return ContentBootSourceFault.Refuse(2, "version directory", fault);
+        }
+
         if (version <= 0)
         {
             return ContentBootResult.Refuse(
@@ -59,6 +77,17 @@ public static class ContentBoot
             return step3.Refusal;
         }
 
+        ContentBootResult rest = await ContinueAsync(options, step3, version, cancellationToken).ConfigureAwait(false);
+        return step3.PointerCrossChecked ? rest.WithPackPointerCrossChecked() : rest;
+    }
+
+    /// <summary>Steps 4 to 11, once step 3 handed back a verified manifest.</summary>
+    static async Task<ContentBootResult> ContinueAsync(
+        ContentBootOptions options,
+        ManifestStep step3,
+        int version,
+        CancellationToken cancellationToken)
+    {
         ContentManifest manifest = step3.Manifest!;
 
         // Step 4 and step 5: a pack this build cannot read, and a build the pack will not be served by.
@@ -93,9 +122,12 @@ public static class ContentBoot
     /// <summary>
     /// Step 2's precedence, one order and no other (spec 10.7): a version pinned in the SERVER'S OWN CONFIG
     /// wins always, otherwise the authoring database's pinned version when it is not null, otherwise its
-    /// active version. A server configured with a pin and a pack store therefore reads no authoring database
-    /// at boot at all, which is the deployment this design recommends: the authoring database is a TOOLING
-    /// dependency.
+    /// active version. A server configured with a pin reads no version NUMBER from an authoring database. It
+    /// still reads that version's RECORD once at step 3 when the boot has a hash source
+    /// (<see cref="ContentBootOptions.VersionHashes"/>, or a <see cref="ContentBootOptions.Directory"/> that is
+    /// an <see cref="IContentVersionHashSource"/>), because the pin says which number to load and only the
+    /// record says which manifest that number means. With a pin, a pack store and no hash source the boot
+    /// reads no authoring database at all and the pointer is taken on trust.
     /// <para>
     /// This is the version <see cref="RunAsync"/> will LOAD out of these same options, and 0 is the answer
     /// when nothing named one, which is step 2's refusal. It is public because a caller that PREPARES the
@@ -107,6 +139,10 @@ public static class ContentBoot
     /// <param name="options">The same options the boot will be handed, since the answer is theirs.</param>
     /// <param name="cancellationToken">Cancels the directory reads.</param>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <remarks>
+    /// Whatever the directory throws propagates from here unchanged, because this answers a number and has
+    /// no refusal to put it in. <see cref="RunAsync"/> is the member that turns it into one.
+    /// </remarks>
     public static async Task<int> ResolveVersionAsync(
         ContentBootOptions options,
         CancellationToken cancellationToken = default)
@@ -131,10 +167,11 @@ public static class ContentBoot
     }
 
     /// <summary>
-    /// Step 3: the <c>versions/&lt;n&gt;</c> pointer, the server manifest it names, and the cross-check that
-    /// the manifest's own embedded <c>versionNumber</c> is the version the boot resolved. Without that last
-    /// one the server would announce one version number at the door while serving another version's chunks,
-    /// and every client would compare hashes correctly against the wrong number.
+    /// Step 3: the <c>versions/&lt;n&gt;</c> pointer, the cross-check that the pointer names the manifest the
+    /// VERSION RECORD names, the server manifest it names, and the cross-check that the manifest's own
+    /// embedded <c>versionNumber</c> is the version the boot resolved. Without that last one the server would
+    /// announce one version number at the door while serving another version's chunks, and every client would
+    /// compare hashes correctly against the wrong number.
     /// </summary>
     static async Task<ManifestStep> ReadManifestAsync(
         ContentBootOptions options,
@@ -156,6 +193,14 @@ public static class ContentBoot
                     $"{LinePrefix}manifest for version {version} absent from {options.StoreName}.")));
         }
 
+        ContentBootPointerCheck.Outcome check = await ContentBootPointerCheck
+            .RunAsync(options, version, pointer, cancellationToken)
+            .ConfigureAwait(false);
+        if (check.Refusal is not null)
+        {
+            return new ManifestStep(check.Refusal);
+        }
+
         ContentManifestRead read = await ContentPackReader.ReadManifestAsync(
             options.Store,
             pointer.ServerManifestHash,
@@ -174,11 +219,11 @@ public static class ContentBoot
                     .ConfigureAwait(false);
                 if (generation > ContentPackFormat.Generation)
                 {
-                    return new ManifestStep(GenerationRefusal(generation));
+                    return AfterCheck(GenerationRefusal(generation));
                 }
             }
 
-            return new ManifestStep(ContentBootResult.Refuse(
+            return AfterCheck(ContentBootResult.Refuse(
                 ContentBootRefusal.ManifestUnreadable,
                 3,
                 FormattableString.Invariant(
@@ -188,14 +233,19 @@ public static class ContentBoot
         ContentManifest manifest = read.Manifest!;
         if (manifest.VersionNumber != (uint)version)
         {
-            return new ManifestStep(ContentBootResult.Refuse(
+            return AfterCheck(ContentBootResult.Refuse(
                 ContentBootRefusal.ManifestVersionMismatch,
                 3,
                 FormattableString.Invariant(
                     $"{LinePrefix}manifest {read.Hash} declares version {manifest.VersionNumber}, expected {version}.")));
         }
 
-        return new ManifestStep(manifest, read.Hash);
+        return new ManifestStep(manifest, read.Hash, check.CrossChecked);
+
+        // A refusal AFTER the pointer check still carries what the check found, because the flag is a fact
+        // about the comparison and not about whether the boot went on to succeed.
+        ManifestStep AfterCheck(ContentBootResult refusal)
+            => new(check.CrossChecked ? refusal.WithPackPointerCrossChecked() : refusal);
     }
 
     /// <summary>Step 3's outcome: the verified manifest and the address it was fetched under, or a refusal.</summary>
@@ -206,13 +256,15 @@ public static class ContentBoot
             Refusal = refusal;
             Manifest = null;
             Hash = string.Empty;
+            PointerCrossChecked = false;
         }
 
-        public ManifestStep(ContentManifest manifest, string hash)
+        public ManifestStep(ContentManifest manifest, string hash, bool pointerCrossChecked)
         {
             Refusal = null;
             Manifest = manifest;
             Hash = hash;
+            PointerCrossChecked = pointerCrossChecked;
         }
 
         public ContentBootResult? Refusal { get; }
@@ -220,6 +272,8 @@ public static class ContentBoot
         public ContentManifest? Manifest { get; }
 
         public string Hash { get; }
+
+        public bool PointerCrossChecked { get; }
     }
 
     /// <summary>Spec 9.6's row 4, wherever the generation was read.</summary>

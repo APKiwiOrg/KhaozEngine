@@ -73,7 +73,7 @@ public class TeleportEpochTests
         MovementState ms = MovementState.From(pms);
         Assert.Equal(9u, ms.TeleportEpoch);
 
-        PlayerMoveState rebuilt = PlayerMoveState.From(new Vector3(1, 2, 3), ms);
+        PlayerMoveState rebuilt = PlayerMoveState.From(new Vector3(1, 2, 3), ms, MovementOwnerState.From(pms));
         Assert.Equal(9u, rebuilt.TeleportEpoch);
     }
 

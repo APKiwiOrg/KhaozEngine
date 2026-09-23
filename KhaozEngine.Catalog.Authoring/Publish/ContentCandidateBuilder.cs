@@ -478,18 +478,7 @@ static class ContentCandidateBuilder
     }
 
     static int FieldIndex(ContentTypeRegistration registration, string name)
-    {
-        IReadOnlyList<ContentFieldEntry> fields = registration.Schema.Fields;
-        for (int i = 0; i < fields.Count; i++)
-        {
-            if (string.Equals(fields[i].Name, name, StringComparison.Ordinal))
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
+        => registration.Schema.IndexOf(name);
 
     static byte[] RetirePayload(ContentEdit edit)
     {

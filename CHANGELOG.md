@@ -7,9 +7,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.0.0
 
-A major, opened by a burn-down of the oldest backlog issues. Three of them remove or move public API: the raw-string
-Gui sinks are gone, the Render3D ECS binder lives in its own package, and the save posture is a required
-`GameStorage` argument. The rest are additive. Every consumer is on a vendored pin, so nothing moves until a game
+A major, opened by a burn-down of the oldest backlog issues. Six changes break something: the raw-string Gui sinks
+are gone, the Render3D ECS binder lives in its own package, the save posture is a required `GameStorage` argument,
+the movement wire moves to generation 12, and two catalog seams (`IContentIdPersistence` and
+`IContentAuthoringStore.CommitPublishAsync`) now compare and write inside one commit. The rest are additive. Every consumer is on a vendored pin, so nothing moves until a game
 repins, and the notes below say what each game changes when it does.
 
 **Breaking, and what a consumer does about it.**
@@ -44,6 +45,38 @@ repins, and the notes below say what each game changes when it does.
   encoder. At repin, Hardpoint, Nullwake and SpaceGame move their encoder out of the options object into
   `SaveEncoding.Encoded(...)`, and Ruinborne's settings-only storage passes `SaveEncoding.Plaintext`.
 
+- The two movement feel timers, `TimeSinceGrounded` and `JumpBufferRemaining`, move off `MovementState` onto a
+  new built-in component `MovementOwnerState` (id 6, `MoveProtocol.MovementOwnerTypeId`) registered
+  `Default | OwnerOnly` ([#136](https://github.com/APKiwiOrg/KhaozEngine/issues/136)). They exist only for the owning
+  client's reconciliation replay, yet every AoI observer was sent them on every move. An observer's movement payload
+  shrinks from 64 to 56 bytes (66 to 58 with its type id), and a change confined to the timers no longer reaches observers at all. The owning
+  client, cell persistence and cell handoff still carry both, so replay, restores and handoffs behave exactly as
+  before, and border ghosts, which are never simulated, stop carrying them. This is wire generation 12, so client and
+  server ship together, and the automatic `WireGenerationAuthenticator` refuses a mixed pair at connect. A stored cell
+  blob from any older generation still loads: the bring-forward pass cuts the timers out of the old movement payload
+  and writes them as an id-6 frame where the live writer would. `PlayerMoveState.From` takes the owner half as a
+  required third argument, and `MovementState.From` no longer copies the timers (`MovementOwnerState.From` does).
+  Ruinborne reads none of the moved fields, so its repin is the wire bump alone.
+- Every `IContentIdPersistence` write compares inside the transaction that writes it
+  ([#1068](https://github.com/APKiwiOrg/KhaozEngine/issues/1068),
+  [#1077](https://github.com/APKiwiOrg/KhaozEngine/issues/1077)). Two upgrade runners or two allocators on one
+  catalog read the id marks in one call and wrote them in the next, so they could take a durable reservation back,
+  hand out one id twice or open overlapping family blocks. That is the "a durable promise is never taken back" that
+  failed `ContentUpgradeConcurrencyTests` in CI. `CommitIssuedThroughAsync` becomes `CommitIssueAsync(type, count)`,
+  which answers the first id taken or 0 when the reservation no longer covers it. `CommitFamilyNextFreeIdAsync`
+  becomes `CommitFamilyIssueAsync(familyId, ordinal)`, which answers the id or 0 when the block is full.
+  `CommitFamilyBlockAsync` answers null once the issued mark has passed the block's base, and
+  `CommitReservedThroughAsync` raises to at least its value. `CommitCarriedThroughAsync` is new and is the publish's
+  seed. `ContentIdAllocator` reads again on a 0 or a null, which only follows a rival's success. The in-memory,
+  SQLite and SQL Server stores all implement it. No game implements this seam.
+- `IContentAuthoringStore.CommitPublishAsync` takes the pack's `IPackVersionPointerStore?` and writes the version
+  pointer as the last act inside its commit ([#1076](https://github.com/APKiwiOrg/KhaozEngine/issues/1076)). A
+  publisher that lost the version wrote its pointer after the winner had committed, so the committed version could
+  name manifests that never committed. Step 9 now writes only content-addressed files, and `FileSystemPackStore`
+  places them create only, keeping an object another writer placed first. That also removes the path-less "Access
+  to the path is denied" two Windows publishers hit replacing the same file. Grimhollow's and Ruinborne's
+  `ScriptedAuthoringStore` test doubles add the parameter at repin.
+
 **Save posture is now written down.**
 
 - Settings stay plaintext under either posture. `GameStorage.Settings` and `CreateSettingsManager` never encode,
@@ -51,6 +84,15 @@ repins, and the notes below say what each game changes when it does.
   section of `docs/USING-KHAOZENGINE.md` state the fleet policy: game saves encoded, settings plaintext.
 - The map editor's own `EditorRecentFiles` and `EditorSettingsStore` build their storage with
   `SaveEncoding.Plaintext`. Their public constructors are unchanged.
+
+**Owner-only built-ins.**
+
+- `ReplicationRegistry` lets a built-in id carry `OwnerOnly` on top of `Default`
+  (`ReplicationRegistry.BuiltinChannelsAllowed`) and still refuses every other channel set on a built-in. Dropping a
+  whole unframed built-in frame for a non-owner keeps that client's stream aligned, because there is nothing left in
+  it to skip. `PlayerMovementSystem` adds a missing `MovementOwnerState` after an entity's first step.
+- Owner scoping now builds one shared public view per observed entity per capture rather than one filtered copy per
+  client, since every movement server now has an owner-only codec.
 
 **Content identity at connect.**
 
@@ -70,8 +112,102 @@ repins, and the notes below say what each game changes when it does.
   bespoke world-identity client half is the first adopter ([#677](https://github.com/APKiwiOrg/KhaozEngine/issues/677)).
   Server-side hardening of the gate is [#1071](https://github.com/APKiwiOrg/KhaozEngine/issues/1071).
 
+**Ground item visibility.**
+
+- `TileWorldServerConfig.GroundItemVisibleToSlot` lets a game omit a ground entity from a viewer's
+  snapshot using the authenticated slot and ground net ID. A null callback keeps all drops public.
+  Interest deltas add or remove the entity when visibility changes. The game remains responsible for
+  durable owner identity and pickup authorization. Grimhollow uses this for owner-only book drops.
+
+**A content catalog can be reset.**
+
+- `SqliteCatalogReset` and `SqlServerCatalogReset` drop and recreate the whole content catalog in one transaction
+  and file one audit row for it ([#1035](https://github.com/APKiwiOrg/KhaozEngine/issues/1035)). It is for a game
+  whose committed bundle is the authority and whose store is replaced from it rather than published forward. The
+  drop set is the schema's own inventory intersected with what stands, never a name pattern, so a host's own
+  tables in the same database survive. An empty database is created, a catalog at an older schema version comes
+  back at this build's, a newer one is refused with nothing dropped, an open draft is refused unless forced, and a
+  partial or unreadable catalog is refused unless forced and then repaired.
+- `ContentCatalogResetResult` says what stood (the active version, its two manifest hashes, the rows dropped, the
+  prior and new schema versions) and cannot be built into a state that says two things. The same hashes are filed
+  in the audit row's `before_value`.
+- SQL Server takes the schema's application lock as the first statement, the lock the create and the version 1
+  migration take. SQLite refuses while another writer holds the file. SQLite also refuses a reset while a host table
+  holds a foreign key into the catalog declared `ON DELETE CASCADE`, `SET NULL` or `SET DEFAULT`, because its
+  `DROP TABLE` deletes the rows first and would fire that action on the host's own rows (reason
+  `host-foreign-key`). SQL Server refuses the same shape itself.
+- The pack store is not touched. A caller replacing content at the same version number clears or rebuilds its pack
+  root, which the next item makes the boot notice.
+
+**The content boot cross-checks the pack pointer.**
+
+- `ContentBoot` step 3 compares the pack store's `versions/<n>` pointer with the version record's two manifest
+  hashes and refuses a disagreement as `ContentBootRefusal.PackPointerMismatch` with an operator line naming both
+  ([#1039](https://github.com/APKiwiOrg/KhaozEngine/issues/1039)). A catalog replaced at the same version number
+  with different content no longer serves the old pack as current.
+- The hashes come from `ContentBootOptions.VersionHashes`, falling back to `Directory` when that is itself an
+  `IContentVersionHashSource`. `IContentAuthoringStore` is one, out of its own version record. A host that hands
+  the boot a WRAPPER around its store skips the check unless it sets `VersionHashes` or the wrapper forwards the
+  interface, and `ContentBootResult.PackPointerCrossChecked` says whether the comparison ran and agreed, so a
+  wiring test can assert it.
+- A version source that throws (the pinned or active read, or the hash read) is now a refusal,
+  `ContentBootRefusal.VersionSourceUnreadable`, rather than an exception out of `RunAsync`, which promises a result.
+  The caller's own cancellation still propagates, whatever exception type the driver reports it as. Both refusal
+  values are appended last, so no existing value moves, and a host with an exhaustive switch over the enum gains
+  two arms.
+
+**Shared game content types.**
+
+- New package `KhaozEngine.Catalog.GameTypes` in the `Foundation` umbrella
+  ([#1022](https://github.com/APKiwiOrg/KhaozEngine/issues/1022)): thirteen game-shaped content types (food,
+  equipment profiles and their stat lines, stores and shelves, monster drops, gathering nodes, recipes with their
+  inputs and outputs, tool tiers, skill curves, tuning knobs) with stable ids 1024 to 1036, stable keys, ordered
+  schemas, row codecs, per-type validators and a cross-type sweep. A game registers all thirteen with one call.
+- A game declares its duration unit, `ContentDurationUnit.Ticks` or `Seconds`, which picks each timing field's
+  NAME (`base_ticks` or `base_seconds`) with ids and codecs unchanged, so two games with different clocks share
+  the types. Field names are public and reads resolve by name, and field positions stay internal.
+- The sweep includes the loot number rules, `KGT1309` to `KGT1317`: numbers no roll ever reads, and a monster
+  whose drop tree can leave more lines than a game-named `max_drops_per_kill` knob allows. A game adds its own
+  whole-catalog rules through `GameContentSweepOptions.GameRules`, which run after the package's in the same slot.
+
+**Flaky tests fixed at the cause.**
+
+- `SqliteStoreConnection` opens its held connection with pooling off and no longer clears the pool on dispose
+  ([#1069](https://github.com/APKiwiOrg/KhaozEngine/issues/1069)). Microsoft.Data.Sqlite 10.0.9 marks a pooled
+  connection active before it records the owner, so a concurrent open or pool clear on the same file can reclaim a
+  live store's connection as leaked ([dotnet/efcore#39008](https://github.com/dotnet/efcore/issues/39008)). The
+  reclaim either lent one native handle to two stores or disposed it under one. That is the "cannot start a
+  transaction within a transaction" that failed the 19.15.0 tag build before its publish, the rollback hook crash in
+  [#1047](https://github.com/APKiwiOrg/KhaozEngine/issues/1047) and Grimhollow's disposed handle in
+  [Grimhollow#309](https://github.com/APKiwiOrg/Grimhollow/issues/309). Every `KhaozEngine.*.Sqlite` store inherits
+  it, so a consumer changes nothing. A `Pooling` keyword in a store's connection string is now overridden. A game's
+  own pooled Microsoft.Data.Sqlite connections stay exposed until the provider ships the upstream fix.
+- The SQLite catalog reports a schema as "unreadable, apply migration" only when a schema read fails with
+  `SQLITE_ERROR`, `SQLITE_CORRUPT` or `SQLITE_NOTADB`. A lock, an I/O error, or a failed create or migration now
+  surfaces as the provider's own `SqliteException`, so an operator is not sent to migrate a healthy database.
+- `ResidentMemory.Read` in the unpacked `KhaozEngine.Benchmarks` reports live bytes, the heap size less its
+  fragmentation, from the forced full blocking collection. The heap size counted the free gaps a swept large
+  object heap keeps, so inside a full suite a retention read as zero or as a release
+  ([#1043](https://github.com/APKiwiOrg/KhaozEngine/issues/1043),
+  [#1018](https://github.com/APKiwiOrg/KhaozEngine/issues/1018),
+  [#1032](https://github.com/APKiwiOrg/KhaozEngine/issues/1032),
+  [#1017](https://github.com/APKiwiOrg/KhaozEngine/issues/1017)).
+- `KhaozEngine.MapEditor.Tests` raises the same thread pool floor `KhaozEngine.Server.Tests` does, now shared from
+  `KhaozEngine.TestSupport`. The Windows full tier caught the map editor host starving for 8.3 s at startup with the
+  pool at its default four workers, and that host runs the MCP rows that cancel on a loaded runner
+  ([#553](https://github.com/APKiwiOrg/KhaozEngine/issues/553)).
+- The Windows `direct3d11-native` full tier arms a thread pool starvation watchdog (`KE_POOL_WATCH=1`) in both hosts
+  and uploads its log, a heap dump per host on the first long episode, and trx timings as the
+  `pool-watch-direct3d11-native` artifact. The loopback listener timeouts in
+  [#720](https://github.com/APKiwiOrg/KhaozEngine/issues/720) happen only when a host drops into a mode several
+  times slower than normal, which no local run reproduces, so the next one records the stacks that held the pool.
+
 **Tooling.**
 
+- `KhaozEngine.Showcase` has a "Drag & drop" tab in the 2D & GUI tour
+  ([#378](https://github.com/APKiwiOrg/KhaozEngine/issues/378)). Two `SlotGrid`s share one default `GuiDragContext`,
+  with a slot that refuses, a destroy bin and painterless items, so the ghost, the `RejectTint` wash, the placeholder
+  frame and the 0.12 s fly-home can be judged by eye. The tour's tab bar draws at `TextScale` 0.85 to fit six tabs.
 - The cross-platform GPU workflow's path filter watches `KhaozEngine.Render3D.Ecs/**`, which the moved binder
   files would otherwise have left unwatched.
 

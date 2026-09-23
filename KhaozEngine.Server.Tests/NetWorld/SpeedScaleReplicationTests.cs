@@ -16,7 +16,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// the anti-cheat correction check. Two cases decide whether the feature works at all.
 /// <see cref="A_correction_mid_boost_replays_the_pending_window_at_the_boosted_speed"/> is why the scale rides
 /// <see cref="MovementState"/> instead of living only on the sim-local <see cref="MoveState"/>:
-/// <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState)"/> rebuilds the client's basis from the replicated components ALONE, so a
+/// <see cref="PlayerMoveState.From(System.Numerics.Vector3, in MovementState, in MovementOwnerState)"/> rebuilds the client's basis from the replicated components ALONE, so a
 /// sim-local scale would reset on every correction. <see cref="The_anomaly_check_does_not_flag_a_boosted_player"/>
 /// is why <see cref="MovementAnomaly"/> had to learn about it: an intended-target calculation blind to the boost
 /// reports a legitimately hasted player as a speed hacker within a few ticks.
@@ -85,7 +85,7 @@ public class SpeedScaleReplicationTests
         var state = new PlayerMoveState();
         state.Move.SpeedScale = 2.5f;
         MovementState wire = MovementState.From(state);
-        PlayerMoveState back = PlayerMoveState.From(Vector3.Zero, wire);
+        PlayerMoveState back = PlayerMoveState.From(Vector3.Zero, wire, MovementOwnerState.From(state));
         Assert.Equal(2.5f, back.Move.SpeedScale);
     }
 
@@ -233,7 +233,7 @@ public class SpeedScaleReplicationTests
         // The server has hasted this player. The client learns it the only way it can: through the replicated
         // MovementState it rebuilds its basis from.
         var hasted = new MovementState { Grounded = true, SpeedScaleQ = MovementState.QuantizeSpeedScale(4f) };
-        PlayerMoveState basis = PlayerMoveState.From(Vector3.Zero, hasted);
+        PlayerMoveState basis = PlayerMoveState.From(Vector3.Zero, hasted, default);
         pred.Reset(basis);
 
         const int Pending = 3;
@@ -252,7 +252,7 @@ public class SpeedScaleReplicationTests
     {
         // WorldClient reads `world.TryGet(local, out MovementState ms)` and uses the default on a miss (before the
         // first replicated snapshot lands). That path must yield a normal-speed player, not a frozen one.
-        Assert.Equal(1f, PlayerMoveState.From(Vector3.Zero, default).Move.SpeedScale);
+        Assert.Equal(1f, PlayerMoveState.From(Vector3.Zero, default, default).Move.SpeedScale);
     }
 
     // ---- Anti-cheat: the boost must not read as a correction, and must not become an exemption ----

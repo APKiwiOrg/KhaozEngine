@@ -12,10 +12,10 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// The SQLite <see cref="IContentAuthoringStore"/> (spec 4.1 to 4.4): the fifteen catalog tables behind one
 /// held connection, with a versioned schema that either auto-creates or validates.
 /// <para>
-/// <b>It sits on <see cref="SqliteStoreConnection"/> and that is not optional.</b> One held connection, one
-/// semaphore gate, and a dispose that clears the provider's connection pool BEFORE closing so the file is
-/// genuinely released. Every command runs under a lease from <c>EnterAsync</c>, and a transaction takes the
-/// lease FIRST, because the gate is what keeps a second operation off the connection while one is open.
+/// <b>It sits on <see cref="SqliteStoreConnection"/> and that is not optional.</b> One held connection that is
+/// never pooled, one semaphore gate, and a dispose that closes it so the file is genuinely released. Every
+/// command runs under a lease from <c>EnterAsync</c>, and a transaction takes the lease FIRST, because the gate
+/// is what keeps a second operation off the connection while one is open.
 /// </para>
 /// <para>
 /// <b>The lease is not re-entrant, so no member holds one across a call back into this store.</b> Creating a
@@ -208,7 +208,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
         return found.Count == 0 ? null : found[0];
     }
 
-    /// <summary>Closes the database, releasing the OS handle rather than parking it in the provider's pool.</summary>
+    /// <summary>Closes the database. The connection is not pooled, so this releases the OS handle.</summary>
     public void Dispose() => _connection.Dispose();
 
     /// <summary>

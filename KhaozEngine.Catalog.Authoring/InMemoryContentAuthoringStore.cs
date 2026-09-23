@@ -529,30 +529,49 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
         lock (_gate)
         {
             ContentIdHighWater mark = Mark(type);
-            if (reservedThrough < mark.ReservedThrough)
+            if (reservedThrough > mark.ReservedThrough)
             {
-                throw new ArgumentOutOfRangeException(
-                    nameof(reservedThrough),
-                    reservedThrough,
-                    FormattableString.Invariant(
-                        $"Content type {type.Value} has reserved through {mark.ReservedThrough}, and a durable promise is never taken back."));
+                _highWater[type.Value] = mark with { ReservedThrough = reservedThrough };
             }
 
-            _highWater[type.Value] = mark with { ReservedThrough = reservedThrough };
             return Task.CompletedTask;
         }
     }
 
     /// <inheritdoc />
-    public Task CommitIssuedThroughAsync(
+    public Task<int> CommitIssueAsync(
         ContentTypeId type,
-        int issuedThrough,
+        int count,
         CancellationToken cancellationToken = default)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
         lock (_gate)
         {
-            _highWater[type.Value] = WithIssued(type, Mark(type), issuedThrough);
-            return Task.CompletedTask;
+            ContentIdHighWater mark = Mark(type);
+            if (mark.IssuedThrough + (long)count > mark.ReservedThrough)
+            {
+                return Task.FromResult(0);
+            }
+
+            _highWater[type.Value] = mark with { IssuedThrough = mark.IssuedThrough + count };
+            return Task.FromResult(mark.IssuedThrough + 1);
+        }
+    }
+
+    /// <inheritdoc />
+    public Task<bool> CommitCarriedThroughAsync(
+        ContentTypeId type,
+        int carriedThrough,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(carriedThrough);
+        lock (_gate)
+        {
+            ContentIdHighWater mark = Mark(type);
+            var raised = new ContentIdHighWater(
+                Math.Max(mark.ReservedThrough, carriedThrough), Math.Max(mark.IssuedThrough, carriedThrough));
+            _highWater[type.Value] = raised;
+            return Task.FromResult(raised != mark);
         }
     }
 
@@ -569,7 +588,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
     }
 
     /// <inheritdoc />
-    public Task<ContentFamilyBlock> CommitFamilyBlockAsync(
+    public Task<ContentFamilyBlock?> CommitFamilyBlockAsync(
         long familyId,
         int baseId,
         int issuedThrough,
@@ -578,6 +597,11 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
         lock (_gate)
         {
             FamilyRecord family = RequireFamily(familyId);
+            if (Mark(family.Type).IssuedThrough >= baseId)
+            {
+                return Task.FromResult<ContentFamilyBlock?>(null);
+            }
+
             var block = new ContentFamilyBlock(
                 familyId,
                 family.Blocks.Count,
@@ -590,32 +614,27 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
             // without the advance would leave the plain counter walking into the new block.
             family.Blocks.Add(block);
             _highWater[family.Type.Value] = WithIssued(family.Type, Mark(family.Type), issuedThrough);
-            return Task.FromResult(block);
+            return Task.FromResult<ContentFamilyBlock?>(block);
         }
     }
 
     /// <inheritdoc />
-    public Task CommitFamilyNextFreeIdAsync(
+    public Task<int> CommitFamilyIssueAsync(
         long familyId,
         int blockOrdinal,
-        int nextFreeId,
         CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
             FamilyRecord family = RequireFamily(familyId);
             ContentFamilyBlock block = family.Blocks[blockOrdinal];
-            if (nextFreeId < block.NextFreeId || nextFreeId > block.TopExclusive)
+            if (block.IsFull)
             {
-                throw new ArgumentOutOfRangeException(
-                    nameof(nextFreeId),
-                    nextFreeId,
-                    FormattableString.Invariant(
-                        $"Block {blockOrdinal} of family {familyId} spans [{block.BaseId}, {block.TopExclusive}) and stands at {block.NextFreeId}."));
+                return Task.FromResult(0);
             }
 
-            family.Blocks[blockOrdinal] = block with { NextFreeId = nextFreeId };
-            return Task.CompletedTask;
+            family.Blocks[blockOrdinal] = block with { NextFreeId = block.NextFreeId + 1 };
+            return Task.FromResult(block.NextFreeId);
         }
     }
 

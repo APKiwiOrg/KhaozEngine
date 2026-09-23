@@ -18,7 +18,8 @@ public readonly record struct ContentIdHighWater(int ReservedThrough, int Issued
 
 /// <summary>
 /// The DURABLE half the allocator sits on: the two high-water numbers per type, the per-type id ceiling, a
-/// family with its ordered blocks, and the four writes the order rule spends.
+/// family with its ordered blocks, the four writes the order rule spends, and the seeding write a carried id
+/// needs.
 /// <para>
 /// <b>Every <c>Commit</c> member COMMITS ON ITS OWN</b>, and that is the whole of contracts 6.2. The
 /// allocator calls <see cref="CommitReservedThroughAsync"/> and waits for it before any id below the new
@@ -28,8 +29,17 @@ public readonly record struct ContentIdHighWater(int ReservedThrough, int Issued
 /// same two numbers behind afterwards.
 /// </para>
 /// <para>
-/// It is a separate seam from <see cref="IContentAuthoringStore"/> because the allocator needs FIVE reads
-/// and four writes rather than a whole store, and because a backend implements it with its own transactions.
+/// <b>Every <c>Commit</c> member COMPARES INSIDE its own commit</b> rather than writing a number its caller
+/// computed from an earlier read. Two hosts allocate from one catalog with no lock spanning either
+/// allocation, so a mark read in one call can be passed by a rival before the next call writes. A write that
+/// trusted the read would hand out an id twice or refuse a promise the rival already made. The members
+/// therefore raise a mark to at least a value, or take the next ids only when the live reservation still
+/// covers them, and answer when it does not, so the allocator can read again.
+/// </para>
+/// <para>
+/// It is a separate seam from <see cref="IContentAuthoringStore"/> because the allocator and the seeding step
+/// need three reads and five writes rather than a whole store, and because a backend implements it with its
+/// own transactions.
 /// </para>
 /// </summary>
 public interface IContentIdPersistence
@@ -48,24 +58,52 @@ public interface IContentIdPersistence
     Task<int?> ReadMaxDefinitionIdAsync(ContentTypeId type, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Writes the new reservation AND COMMITS IT ON ITS OWN. This is the write the order rule is about: it
-    /// returns only once the promise is durable.
+    /// Raises the reservation to at least <paramref name="reservedThrough"/> AND COMMITS IT ON ITS OWN. This is
+    /// the write the order rule is about: it returns only once the promise is durable. A reservation already
+    /// at or above it is left where it stands, because a rival that reserved further first has already made
+    /// the promise this call asks for, and a promise is never taken back.
     /// </summary>
     /// <param name="type">The content type.</param>
-    /// <param name="reservedThrough">The new reserved mark, never below the current one.</param>
+    /// <param name="reservedThrough">The mark the reservation must reach.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     Task CommitReservedThroughAsync(
         ContentTypeId type,
         int reservedThrough,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Writes the new issued mark, which is only ever raised and never lowered.</summary>
+    /// <summary>
+    /// Issues the next <paramref name="count"/> plain ids above the issued mark, in one commit that reads the
+    /// mark it advances, and answers the first of them. When the live reservation does not cover all of them,
+    /// because a rival issued ids since the caller last read, nothing is written and the answer is 0, which is
+    /// never an id.
+    /// </summary>
     /// <param name="type">The content type.</param>
-    /// <param name="issuedThrough">The new issued mark, at most the reserved mark.</param>
+    /// <param name="count">How many ids, at least 1.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
-    Task CommitIssuedThroughAsync(
+    /// <returns>The first id issued, or 0 when the reservation no longer covers the range.</returns>
+    Task<int> CommitIssueAsync(
         ContentTypeId type,
-        int issuedThrough,
+        int count,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Raises BOTH marks to at least an id an edit CARRIED, which is the publish's seeding step, and leaves a
+    /// mark that already covers it where it stands. The reserved mark commits on its own first and the issued
+    /// mark second, the same order as every other write here.
+    /// <para>
+    /// <b>Each comparison happens INSIDE the commit that writes it</b>, and that is the reason this member
+    /// exists. Two publishers seed one type without a lock spanning either publish, so a mark read in one call
+    /// and written in the next can be passed by a rival in between, and writing the stale number would take a
+    /// durable reservation back.
+    /// </para>
+    /// </summary>
+    /// <param name="type">The content type.</param>
+    /// <param name="carriedThrough">The largest id an edit of that type carried, at least 1.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <returns>True when either mark moved, false when both already covered the carried id.</returns>
+    Task<bool> CommitCarriedThroughAsync(
+        ContentTypeId type,
+        int carriedThrough,
         CancellationToken cancellationToken = default);
 
     /// <summary>One family with its blocks in ORDINAL order, or null when the store holds no such family.</summary>
@@ -78,27 +116,36 @@ public interface IContentIdPersistence
     /// the block's top, in one commit. The advance is what keeps the plain counter out of the block, so it
     /// may not be split from the insert: a store that wrote the block row and crashed before the advance
     /// would hand the next plain allocation an id inside the new block.
+    /// <para>
+    /// <b>The block is still free only while the type's issued mark is below its base</b>, because every id
+    /// already issued, carried or promised to another block sits at or below that mark. The commit checks that
+    /// against the mark it reads itself, and when a rival has moved the mark to the base or past it, nothing
+    /// is written and the answer is null, so the caller reads again and opens a block further up.
+    /// </para>
     /// </summary>
     /// <param name="familyId">The family the block belongs to.</param>
     /// <param name="baseId">The block's aligned base id, already reserved by the caller.</param>
     /// <param name="issuedThrough">The block's highest id, which the type's issued mark moves to.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
-    /// <returns>The inserted block, carrying the ordinal and version the store stamped it with.</returns>
-    Task<ContentFamilyBlock> CommitFamilyBlockAsync(
+    /// <returns>The inserted block, carrying the ordinal and version the store stamped it with, or null when the range is no longer free.</returns>
+    Task<ContentFamilyBlock?> CommitFamilyBlockAsync(
         long familyId,
         int baseId,
         int issuedThrough,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Advances one block's next free id, which is how an id inside a block is issued.</summary>
+    /// <summary>
+    /// Issues the next free id of one block, in one commit that reads the next free id it advances, which is
+    /// how an id inside a block is issued. A block a rival filled since the caller read it answers 0, which is
+    /// never an id.
+    /// </summary>
     /// <param name="familyId">The family the block belongs to.</param>
     /// <param name="blockOrdinal">The block's position in the family's ordered list.</param>
-    /// <param name="nextFreeId">The new next free id, at most the block's top exclusive.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
-    Task CommitFamilyNextFreeIdAsync(
+    /// <returns>The id issued, or 0 when the block is full.</returns>
+    Task<int> CommitFamilyIssueAsync(
         long familyId,
         int blockOrdinal,
-        int nextFreeId,
         CancellationToken cancellationToken = default);
 }
 
@@ -120,6 +167,13 @@ public interface IContentIdPersistence
 /// time, to a row that is not in the family. The alternative, teaching the plain path to read the block list
 /// and skip past it, was weighed and refused in spec 4.7: the plain path stays one comparison against one
 /// durable number, and a skip would have to define what a multi-id range straddling a block means.
+/// </para>
+/// <para>
+/// <b>Two allocators on one catalog are safe because every write compares inside its own commit.</b> A take
+/// that a rival got to first answers that it did not happen, and the allocator reads the marks again and
+/// tries once more. That is not a retry on a timer: an attempt only fails because another allocation on the
+/// same type SUCCEEDED in between, so the loop cannot turn without the catalog moving, and the ceiling check
+/// on every pass ends it when the id space runs out.
 /// </para>
 /// <para>
 /// It holds no ambient state and no connection. Everything durable arrives through
@@ -162,29 +216,38 @@ public sealed class ContentIdAllocator
         CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
-
-        ContentIdHighWater mark = await _persistence
-            .ReadHighWaterAsync(type, cancellationToken).ConfigureAwait(false);
         long ceiling = await ReadCeilingAsync(type, cancellationToken).ConfigureAwait(false);
 
-        long top = mark.IssuedThrough + (long)count;
-        if (top > ceiling)
+        while (true)
         {
-            throw CeilingRefusal(type, ceiling, mark, count);
-        }
+            ContentIdHighWater mark = await _persistence
+                .ReadHighWaterAsync(type, cancellationToken).ConfigureAwait(false);
 
-        if (top > mark.ReservedThrough)
-        {
-            // Step 2 of spec 4.7. The reservation commits ON ITS OWN, and nothing below it is issued until
-            // this await has returned. It stops at the ceiling rather than overrunning it.
-            long target = mark.IssuedThrough + Math.Max(count, (long)ReserveBatch);
-            await _persistence
-                .CommitReservedThroughAsync(type, (int)Math.Min(target, ceiling), cancellationToken)
-                .ConfigureAwait(false);
-        }
+            long top = mark.IssuedThrough + (long)count;
+            if (top > ceiling)
+            {
+                throw CeilingRefusal(type, ceiling, mark, count);
+            }
 
-        await _persistence.CommitIssuedThroughAsync(type, (int)top, cancellationToken).ConfigureAwait(false);
-        return mark.IssuedThrough + 1;
+            if (top > mark.ReservedThrough)
+            {
+                // Step 2 of spec 4.7. The reservation commits ON ITS OWN, and nothing below it is issued until
+                // this await has returned. It stops at the ceiling rather than overrunning it.
+                long target = mark.IssuedThrough + Math.Max(count, (long)ReserveBatch);
+                await _persistence
+                    .CommitReservedThroughAsync(type, (int)Math.Min(target, ceiling), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            // The take reads the issued mark inside its own commit, so the ids it answers are ones no rival
+            // holds. A zero means a rival issued past the reservation this pass saw, and the next pass reads
+            // the marks it left.
+            int first = await _persistence.CommitIssueAsync(type, count, cancellationToken).ConfigureAwait(false);
+            if (first != 0)
+            {
+                return first;
+            }
+        }
     }
 
     /// <summary>
@@ -196,19 +259,40 @@ public sealed class ContentIdAllocator
     /// <exception cref="ContentAuthoringException">The family is not in the store, or a new block's top would cross the type's ceiling.</exception>
     public async Task<int> AllocateInFamilyAsync(long familyId, CancellationToken cancellationToken = default)
     {
-        ContentFamily family = await RequireFamilyAsync(familyId, cancellationToken).ConfigureAwait(false);
-
-        for (int i = 0; i < family.Blocks.Count; i++)
+        while (true)
         {
-            ContentFamilyBlock block = family.Blocks[i];
-            if (!block.IsFull)
+            ContentFamily family = await RequireFamilyAsync(familyId, cancellationToken).ConfigureAwait(false);
+
+            // The whole block is already reserved AND marked issued on the type, so the durable promise is
+            // made. The take moves the block's next free id before the id is handed back, so a crash skips it
+            // rather than handing the same id to the next caller, and a block a rival filled answers 0.
+            for (int i = 0; i < family.Blocks.Count; i++)
             {
-                return await IssueFromBlockAsync(familyId, block, cancellationToken).ConfigureAwait(false);
+                if (!family.Blocks[i].IsFull)
+                {
+                    int id = await _persistence
+                        .CommitFamilyIssueAsync(familyId, family.Blocks[i].BlockOrdinal, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (id != 0)
+                    {
+                        return id;
+                    }
+                }
+            }
+
+            ContentFamilyBlock? reserved = await TryReserveBlockAsync(family, cancellationToken)
+                .ConfigureAwait(false);
+            if (reserved is ContentFamilyBlock opened)
+            {
+                int id = await _persistence
+                    .CommitFamilyIssueAsync(familyId, opened.BlockOrdinal, cancellationToken)
+                    .ConfigureAwait(false);
+                if (id != 0)
+                {
+                    return id;
+                }
             }
         }
-
-        ContentFamilyBlock reserved = await ReserveBlockAsync(family, cancellationToken).ConfigureAwait(false);
-        return await IssueFromBlockAsync(familyId, reserved, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -222,8 +306,16 @@ public sealed class ContentIdAllocator
         long familyId,
         CancellationToken cancellationToken = default)
     {
-        ContentFamily family = await RequireFamilyAsync(familyId, cancellationToken).ConfigureAwait(false);
-        return await ReserveBlockAsync(family, cancellationToken).ConfigureAwait(false);
+        while (true)
+        {
+            ContentFamily family = await RequireFamilyAsync(familyId, cancellationToken).ConfigureAwait(false);
+            ContentFamilyBlock? reserved = await TryReserveBlockAsync(family, cancellationToken)
+                .ConfigureAwait(false);
+            if (reserved is ContentFamilyBlock opened)
+            {
+                return opened;
+            }
+        }
     }
 
     /// <summary>
@@ -247,7 +339,11 @@ public sealed class ContentIdAllocator
         return remainder == 0 ? floor : floor + (blockSize - remainder);
     }
 
-    async Task<ContentFamilyBlock> ReserveBlockAsync(ContentFamily family, CancellationToken cancellationToken)
+    /// <summary>
+    /// One attempt at the next block: the block the marks just read say is free, reserved through its top and
+    /// then inserted, or null when a rival moved the issued mark to its base or past it in between.
+    /// </summary>
+    async Task<ContentFamilyBlock?> TryReserveBlockAsync(ContentFamily family, CancellationToken cancellationToken)
     {
         ContentIdHighWater mark = await _persistence
             .ReadHighWaterAsync(family.Type, cancellationToken).ConfigureAwait(false);
@@ -268,21 +364,6 @@ public sealed class ContentIdAllocator
         return await _persistence
             .CommitFamilyBlockAsync(family.FamilyId, (int)baseId, (int)topId, cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    async Task<int> IssueFromBlockAsync(
-        long familyId,
-        ContentFamilyBlock block,
-        CancellationToken cancellationToken)
-    {
-        // The whole block is already reserved AND marked issued on the type, so the durable promise is made.
-        // The next free id still moves before the id is handed back, so a crash skips it rather than
-        // handing the same id to the next caller.
-        int id = block.NextFreeId;
-        await _persistence
-            .CommitFamilyNextFreeIdAsync(familyId, block.BlockOrdinal, id + 1, cancellationToken)
-            .ConfigureAwait(false);
-        return id;
     }
 
     async Task<ContentFamily> RequireFamilyAsync(long familyId, CancellationToken cancellationToken)

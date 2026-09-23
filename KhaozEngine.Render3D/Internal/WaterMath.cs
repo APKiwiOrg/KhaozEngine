@@ -9,8 +9,8 @@ namespace KhaozEngine.Render3D.Internal
     /// specular glint, foam, and shore-fade math, plus the CPU-side surface-grid layout (<c>WaterFrag</c> in
     /// <see cref="ShaderSources"/> MUST mirror this exactly, like
     /// <see cref="SkyMath"/> mirrors <c>SkyFrag</c> and <see cref="SurfaceShading"/> mirrors <c>ModelFrag</c>).
-    /// The VERTEX shader's Gerstner swell is the sibling mirror <see cref="GerstnerWaves"/>, and the ripple slope
-    /// spectrum is <see cref="RippleSpectrum"/>.
+    /// The Gerstner swell is the sibling mirror <see cref="GerstnerWaves"/> (its offset and fold per vertex, its
+    /// normal per pixel), and the ripple slope spectrum is <see cref="RippleSpectrum"/>.
     /// Documents the intended math and makes it headless-unit-testable. No GPU state, no allocations.
     /// </summary>
     internal static class WaterMath

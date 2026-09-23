@@ -4283,6 +4283,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     from the same seven scalars. Wavelengths ladder down geometrically, amplitudes are proportional to wavelength,
     and each component's speed comes from the deep-water dispersion relation, so long rollers genuinely overtake
     the short chop. `SwellSteepness` is capped at 1, the point past which the surface would fold through itself.
+    The displacement is per vertex, but the swell's NORMAL is evaluated per pixel at the fragment's still-water
+    position, so a grid too coarse to carry the swell (a clipmap's 8 and 16 m outer rings under the 42 m default,
+    or the far cells of a large camera-focused plane) no longer shades it as flat triangle facets (#381). The
+    whitecap fold is still interpolated from the vertices.
   - **Surface grid** (`GridMode`, a `WaterGridMode`) - two layouts, and which one you want depends on whether the
     camera moves much. Clipmap mode uses a four-vertex, six-index quad for an effective `Procedural` source
     with zero `SwellAmplitude`. Ripples still shade it. FFT and nonzero-swell planes retain displaced
@@ -4432,8 +4436,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     reads as a soft transition instead of a hard clip. A flat, deep lakebed reads fully opaque in open water; a
     shallow shelf near the shore fades progressively.
   - The pure math (`WaterMath`, internal: the three-layer wave normal, the domain warp, the distance detail fade,
-    the shallow-blend and shore-fade curves, Schlick fresnel, Blinn-Phong glint, grid tessellation sizing) is
-    headless-tested and mirrors the GLSL `WaterFrag`/`WaterVert` exactly.
+    the shallow-blend and shore-fade curves, Schlick fresnel, Blinn-Phong glint, grid tessellation sizing, plus
+    `GerstnerWaves` for the swell, whose offset and fold `WaterVert` mirrors and whose normal `WaterFrag` mirrors)
+    is headless-tested and mirrors the GLSL `WaterFrag`/`WaterVert` exactly.
 - `IsoCamera3D`: `Azimuth`/`Elevation`/`Target`/`OrthoSize`/`Zoom`, `Frame(target, azimuth, size)`,
   `ScreenToRay`, `ScreenToGround`, and the `View`/`Projection`/`ViewProjection` matrices.
 - `IsoCameraController`: input-agnostic gestures driving an `IsoCamera3D` (pure `System.Numerics`, headless-testable;

@@ -396,9 +396,12 @@ if (!roller.TryRoll(tableId, drops, out int written))
   `PackVersionPointer.TryRead` is the pointer file's one parser, because both providers read the same two
   lines, the local one off disk and the HTTP one off a `versions/<n>` GET.
 - `FileSystemPackStore` - the local provider: one file per hash under a two-level shard derived from the
-  hash itself, written to a temporary name in the same directory and then moved. The version pointer lives
-  outside the shard tree under `versions/`, because a shard name is derived from a hash and a version number
-  is not one. `FileSystemPackStore.RelativeKeyFor(hash)` is the ONE statement of that layout,
+  hash itself, written to a temporary name in the same directory and then moved. A content-addressed object
+  is moved into place CREATE ONLY: one that another writer already placed holds the same bytes and is kept
+  rather than replaced, because a replace over a file another writer is replacing, or that a reader has
+  open, fails on Windows. The version pointer lives outside the shard tree under `versions/`, because a
+  shard name is derived from a hash and a version number is not one, and it is the one file that is
+  replaced. `FileSystemPackStore.RelativeKeyFor(hash)` is the ONE statement of that layout,
   `<hash[0..2]>/<hash[2..4]>/<hash>.kec`, lower case with forward slashes and no leading slash, and it
   throws on a name that is not a content address rather than turning it into a path segment. Every provider
   that derives a name from a hash goes through it, the local path, the HTTP URI and the blob key alike, so

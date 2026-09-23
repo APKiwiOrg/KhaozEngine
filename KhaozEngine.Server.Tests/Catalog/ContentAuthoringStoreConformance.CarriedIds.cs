@@ -184,6 +184,36 @@ public abstract partial class ContentAuthoringStoreConformance
     }
 
     /// <summary>
+    /// The seeding write raises each mark only as far as the carried id and NEVER lowers one, so a rival that
+    /// seeded the same type from a higher id first leaves nothing to write and nothing to refuse. It answers
+    /// whether either mark moved.
+    /// </summary>
+    [Fact]
+    public virtual async Task TheSeedingWriteRaisesAMarkToTheCarriedIdAndNeverLowersOne()
+    {
+        IContentAuthoringStore store = await OpenAsync();
+        IContentIdPersistence ids = Ids(store);
+
+        Assert.True(await ids.CommitCarriedThroughAsync(Thing, 5));
+        Assert.Equal(new ContentIdHighWater(5, 5), await ids.ReadHighWaterAsync(Thing));
+
+        // A lower carried id is covered already, so nothing moves and nothing is refused.
+        Assert.False(await ids.CommitCarriedThroughAsync(Thing, 3));
+        Assert.Equal(new ContentIdHighWater(5, 5), await ids.ReadHighWaterAsync(Thing));
+
+        // Each mark is compared on its own: a live reservation above the carried id stays where it is while
+        // the issued mark below it rises.
+        await store.AllocateAsync(Thing, 1);
+        ContentIdHighWater allocated = await ids.ReadHighWaterAsync(Thing);
+        Assert.True(allocated.ReservedThrough > 100, Describe(allocated));
+        Assert.True(await ids.CommitCarriedThroughAsync(Thing, 100));
+        Assert.Equal(
+            new ContentIdHighWater(allocated.ReservedThrough, 100), await ids.ReadHighWaterAsync(Thing));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => ids.CommitCarriedThroughAsync(Thing, 0));
+    }
+
+    /// <summary>
     /// Applies the edits, publishes, and asserts the publish was REFUSED under the code with the catalog
     /// exactly where it was: the active version, the version list, the live rows and both id marks.
     /// </summary>

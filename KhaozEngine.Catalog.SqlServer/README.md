@@ -198,8 +198,9 @@ every write runs in an `IsolationLevel.Serializable` transaction.
 
 A publish writes every pack file first, at content-addressed names nothing references yet, and then commits ONE
 transaction: the version row, every row close and insert, every appended rule, every chunk row, every audit
-row, the draft delete, and the active pointer LAST. A crash at any moment leaves either the old version or the
-new one and never a torn one. Inside that transaction the commit RE-READS the highest published version and
+row, the draft delete, and the active pointer LAST. The pack's version pointer is written after those
+statements and before the commit, so only the publisher that won the version writes it. A crash at any moment
+leaves either the old version or the new one and never a torn one. Inside that transaction the commit RE-READS the highest published version and
 refuses a plan whose base moved, with reason `base-version-moved`.
 
 Serializable covers step 10 alone, so what holds the DRAFT across steps 1 to 10 is a durable marker instead:

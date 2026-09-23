@@ -247,9 +247,20 @@ public interface IContentAuthoringStore : IContentVersionDirectory, IContentVers
     /// of it, because they committed together. The pointer moves for the NEXT boot: a running server keeps
     /// serving the version it loaded.
     /// </para>
+    /// <para>
+    /// <b>The pack's <c>versions/&lt;n&gt;</c> pointer is written HERE, as the last act before the
+    /// transaction commits</b>, when <paramref name="pointers"/> is given. By then the number is confirmed and
+    /// every other write of the commit has landed, so only the publisher that is winning the version writes
+    /// its pointer. A publisher that lost the version is refused before the write and never names its own
+    /// uncommitted manifests under the committed number, and two publishers of one version never write that
+    /// pointer at once. A failure after the write and before the commit leaves a pointer for a version that
+    /// never committed, which keeps orphan files alive rather than deleting live ones, and the next attempt
+    /// at that number overwrites it inside its own transaction.
+    /// </para>
     /// </summary>
     /// <param name="plan">The plan steps 1 to 8 produced, whose pack files step 9 has already written.</param>
     /// <param name="request">The publish request, whose actor, operator and note the version row and the audit carry.</param>
+    /// <param name="pointers">Where the version's pointer is written inside the commit, or null to write none.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     /// <returns>The version row the transaction inserted.</returns>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
@@ -257,6 +268,7 @@ public interface IContentAuthoringStore : IContentVersionDirectory, IContentVers
     Task<ContentVersionRecord> CommitPublishAsync(
         ContentPublishPlan plan,
         ContentPublishRequest request,
+        IPackVersionPointerStore? pointers,
         CancellationToken cancellationToken = default);
 
     /// <summary>

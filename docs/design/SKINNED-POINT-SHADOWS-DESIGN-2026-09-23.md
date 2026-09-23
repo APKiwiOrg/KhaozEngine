@@ -1,6 +1,6 @@
 # Skinned point-light shadow casters
 
-Status: proposed for owner review. Issue [#1054](https://github.com/APKiwiOrg/KhaozEngine/issues/1054).
+Status: approved by the owner on 2026-09-23. Implementation pending. Issue [#1054](https://github.com/APKiwiOrg/KhaozEngine/issues/1054).
 Date: 2026-09-23.
 
 ## Outcome
@@ -341,10 +341,11 @@ avatar and the skinned tube casting lantern shadows. The live skinned avatar swi
 
 ## Scope boundary
 
-E4 does not add skinned alpha-cutout materials (tracked by
-[#1108](https://github.com/APKiwiOrg/KhaozEngine/issues/1108)), posed bounds, a transient row quality control,
-or tile-world shadow opt-out forwarding. It does not change static rigid cache identity, base row ownership,
-point filter settings, or the key-light shadow policy.
+E4 does not add skinned alpha-cutout materials or point-light MASK alpha testing. Skinned colour and key-light
+cutout are tracked by [#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097), and point-light MASK
+cutout by [#1098](https://github.com/APKiwiOrg/KhaozEngine/issues/1098). E4 also does not add posed bounds,
+a transient row quality control, or tile-world shadow opt-out forwarding. It does not change static rigid cache
+identity, base row ownership, point filter settings, or the key-light shadow policy.
 
 ## Owner decision
 

@@ -1,6 +1,6 @@
 # Skinned target outlines
 
-Status: proposed for owner review.
+Status: approved by the owner on 2026-09-23. Implementation pending.
 
 Tracking: [KhaozEngine #1053](https://github.com/APKiwiOrg/KhaozEngine/issues/1053).
 Consumer: [Grimhollow #64](https://github.com/APKiwiOrg/Grimhollow/issues/64), rigged humanoid item E3.
@@ -33,7 +33,7 @@ world object selection policy keep their current contracts. This work does not m
 animation, choose a pose, or retain caller memory after submission.
 
 Skinned alpha cutout in shadow maps is outside this target outline change and tracked by
-[#1108](https://github.com/APKiwiOrg/KhaozEngine/issues/1108). The current key light skinned path has no cutout
+[#1097](https://github.com/APKiwiOrg/KhaozEngine/issues/1097). The current key light skinned path has no cutout
 variant, and the point shadow path has no skinned caster path. Those paths do not share the target outline
 resources or acceptance proof and need a separate renderer decision.
 

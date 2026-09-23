@@ -28,8 +28,9 @@ namespace KhaozEngine.Accounts;
 /// </para>
 /// <para>
 /// <b>An unknown subject is the operator's mistake.</b> A ban or an unban naming a subject no account has throws
-/// <see cref="ArgumentException"/>, which the admin endpoint renders as a 400 carrying the message, and the message
-/// does not echo the subject.
+/// <see cref="ArgumentException"/>. On the admin endpoint (<c>AdminHttpServer</c> in <c>KhaozEngine.Server.Admin</c>)
+/// <c>POST /ban</c> and <c>POST /unban</c> each answer it with a 400 whose JSON body is <c>{ "error": message }</c>,
+/// and nothing is filed or lifted. The message does not echo the subject.
 /// </para>
 /// </remarks>
 public sealed class AccountBanStore : IBanStore

@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using KhaozEngine.Accounts;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
@@ -218,6 +219,50 @@ public class AdminHttpServerTests
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         Assert.Contains("seat", await resp.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Empty(admin.ListBans());
+
+        await http.StopAsync();
+    }
+
+    /// <summary>
+    /// AccountBanStore refuses a subject no account has on an unban as on a ban. Both routes answer 400 with the
+    /// store's reason, and neither echoes the subject the operator typed. /unban used to let the exception escape as
+    /// a 500.
+    /// </summary>
+    [Fact]
+    public async Task PostBanAndUnban_OfAnUnknownSubject_AreBadRequestsThatDoNotEchoIt()
+    {
+        var (st, _) = LoopbackTransport.CreatePair();
+        var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
+        var bans = new AccountBanStore(new InMemoryAccountStore(whitelistOnCreate: true), TimeProvider.System);
+        var server = new WorldServer(st, config, Flat, MoveTuning.Default, banStore: bans);
+        var admin = new ServerAdmin(server, bans);
+
+        var opts = new AdminEndpointOptions
+        {
+            Port = 0,
+            BearerToken = "secret",
+            Certificate = AdminTlsCertificate.CreateSelfSigned("localhost"),
+        };
+        await using var http = new AdminHttpServer(admin, opts);
+        await http.StartAsync();
+
+        using var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
+        using var hc = new HttpClient(handler) { Timeout = RequestTimeout };
+        hc.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
+
+        const string unknown = "discord:no-such-player";
+        foreach (string route in new[] { "ban", "unban" })
+        {
+            using var body = new StringContent(
+                $$"""{"accountId":"{{unknown}}","reason":"griefing"}""", Encoding.UTF8, "application/json");
+            HttpResponseMessage resp = await hc.PostAsync($"https://127.0.0.1:{http.BoundPort}/admin/{route}", body);
+
+            string text = await resp.Content.ReadAsStringAsync();
+            Assert.True(resp.StatusCode == HttpStatusCode.BadRequest, $"/{route} answered {(int)resp.StatusCode}.");
+            Assert.Contains("No account has that subject", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("no-such-player", text, StringComparison.Ordinal);
+        }
         Assert.Empty(admin.ListBans());
 
         await http.StopAsync();

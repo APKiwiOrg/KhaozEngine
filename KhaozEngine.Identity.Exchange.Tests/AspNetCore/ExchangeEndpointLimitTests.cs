@@ -38,8 +38,8 @@ public class ExchangeEndpointLimitTests
         Assert.Equal(HttpStatusCode.TooManyRequests, refused.Status);
         Assert.Empty(refused.Body);
         Assert.True(refused.NoStore);
-        Assert.NotNull(refused.RetryAfter);
-        Assert.InRange(refused.RetryAfter!.Value, TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(1));
+        // The fixed window reports the whole window on a refusal, not the time left in it, so this is exactly 60.
+        Assert.Equal(TimeSpan.FromMinutes(1), refused.RetryAfter);
         // Refused before the body was read, so the provider never saw the sixth credential.
         Assert.Equal(5, validator.Calls);
         Assert.Equal(HttpStatusCode.OK, (await host.Client.GetAsync("/healthz")).StatusCode);

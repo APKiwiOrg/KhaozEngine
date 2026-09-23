@@ -38,6 +38,7 @@
   <Project Path="KhaozEngine.Identity.Discord/KhaozEngine.Identity.Discord.csproj" />
   <Project Path="KhaozEngine.Identity.Oidc/KhaozEngine.Identity.Oidc.csproj" />
   <Project Path="KhaozEngine.Identity/KhaozEngine.Identity.csproj" />
+  <Project Path="KhaozEngine.Identity.Exchange/KhaozEngine.Identity.Exchange.csproj" />
   <Project Path="KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
   <Project Path="KhaozEngine.CodeHealth.Analyzers/KhaozEngine.CodeHealth.Analyzers.csproj" />
   <Project Path="KhaozEngine.CodeHealth.Analyzers.Tests/KhaozEngine.CodeHealth.Analyzers.Tests.csproj" />
@@ -111,6 +112,7 @@
   <Project Path="KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj" />
   <Project Path="KhaozEngine.Simulation.Tests/KhaozEngine.Simulation.Tests.csproj" />
   <Project Path="KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj" />
+  <Project Path="KhaozEngine.Identity.Exchange.Tests/KhaozEngine.Identity.Exchange.Tests.csproj" />
   <Project Path="KhaozEngine.Audio.Tests/KhaozEngine.Audio.Tests.csproj" />
   <Project Path="KhaozEngine.Automation.Tests/KhaozEngine.Automation.Tests.csproj" />
   <Project Path="KhaozEngine.Particles.Tests/KhaozEngine.Particles.Tests.csproj" />

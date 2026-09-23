@@ -1676,6 +1676,10 @@ cursor crosses the slot edge, which takes a drag's origin with it.
 geometry and a same-parent constraint this primitive deliberately does not model. Same-widget ordinal reorder
 is `TreeView`, cross-widget payload transfer is `GuiDragContext`.
 
+`KhaozEngine.Showcase`'s drag-and-drop page (`DragDropPage.cs`) is the runnable reference: enter the "2D & GUI"
+room and open the "Drag & drop" tab to see the ghost, the reject wash on a refused slot, a destroy bin and the
+fly-home of a cancelled drop, all at the context's defaults.
+
 ### Right-click hit-testing (17.9.0)
 
 `Pointer` has the right-button twins of the left-button bounds helpers, carrying the same press-origin
@@ -2271,13 +2275,13 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
    `.editorconfig`:
 
    ```ini
-   dotnet_diagnostic.KELOC001.severity = error   # raw string at a player-facing Gui sink
+   dotnet_diagnostic.KELOC001.severity = error   # raw string at a [LocalizationStringSink] member
    dotnet_diagnostic.KELOC002.severity = error   # LocalizedText.Raw outside exempt/debug code
    dotnet_diagnostic.KELOC003.severity = error   # raw string literal drawn via SpriteBatch.DrawString
    ```
 
-The migration is warning-not-break: the old `string` Gui overloads remain `[Obsolete]`, so a game builds (with
-warnings) before any text is migrated. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
+The Gui sinks carry no `string` overload, so every player-facing call site must be migrated before a game
+builds against them. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
 `ShowcaseStrings` constants + `LocalizationContext` wiring).
 
 **A widget with no sink is invisible to the analyzer, which is the failure mode to watch for.** KELOC001 and
@@ -2298,8 +2302,8 @@ string shown = difficulty.SelectedLabel;               // resolved against the a
 LocalizedText raw = difficulty.SelectedContent;        // the unresolved value, to forward to another sink
 ```
 
-The `(string, int)` option ctor and the `DropdownOption.Label` member both remain, `[Obsolete]`, so an existing
-caller keeps building. Same for `DrawHeader`'s `string` title overload.
+`DropdownOption` has no `(string, int)` ctor and no `Label` member, and `DrawHeader` has no `string` title
+overload, so a bare literal at either sink does not compile.
 
 ### The low-level `SpriteBatch.DrawString` sink (`KELOC003`)
 
@@ -2349,9 +2353,8 @@ popup.SetRows(new[]
 });
 ```
 
-The former `Title` / `DismissText` / `PrimaryActionText` string members and the `PopupRow.Header(string)` /
-`Stat(string, ...)` factories remain as `[Obsolete]` shims (the string factories are `[LocalizationStringSink]`,
-so the analyzer flags a raw literal passed to them).
+`PopupPanel` has no `string` title or footer members and `PopupRow` has no `string` factories, so a raw literal
+at any of them is a compile error.
 
 Content that overflows the auto-sized panel scrolls: call `popup.Update(pointer, frame.Input.ScrollDelta)` (the
 wheel overload) to enable wheel + drag-to-scroll (scissor-clipped; `ScrollOffset` reads back, `ScrollWheelSpeed`
@@ -3409,9 +3412,31 @@ scene.Draw(tower, Matrix4x4.CreateTranslation(100_000f, 0f, 100_000f));   // sti
   unrelated. Nothing about simulation changes here - the simulation side is the island frame below. Terrain chunk
   VERTICES were the other half and are fixed separately, by the chunk-local bake (also below).
 
-If you write your own renderer against `Transform3D`, `ToMatrix(Vector3 renderOrigin)` builds the reduced matrix
-directly. You do not need it for `Scene3D`, which reduces the absolute matrix you hand it. Calling both
-double-subtracts.
+If you write your own renderer against `Transform3D` (from `KhaozEngine.Render3D.Ecs`, below),
+`ToMatrix(Vector3 renderOrigin)` builds the reduced matrix directly. You do not need it for `Scene3D`, which
+reduces the absolute matrix you hand it. Calling both double-subtracts.
+
+### ECS entities (`KhaozEngine.Render3D.Ecs`)
+
+`Scene3DBinder.Submit(world, scene)` draws every `KhaozEngine.Ecs` entity carrying both a `Transform3D` and a
+`MeshInstance`, carrying the instance `Material` through. A zero `Transform3D.Scale` is treated as one, a zero
+`Rotation` as identity, and a zero `MeshInstance.Tint` as white. The delegate overloads
+`Submit(world, draw)` are the pure core for a headless test with a recording delegate.
+
+```csharp
+world.Set(e, new Transform3D { Position = new Vector3(4f, 0f, 2f) });
+world.Set(e, new MeshInstance { Mesh = tower, Material = Material.Shiny });
+
+// per frame, inside OnDraw3D:
+scene.Begin();
+Scene3DBinder.Submit(world, scene);
+```
+
+The three types live in the `KhaozEngine.Render3D.Ecs` package, not in `KhaozEngine.Render3D`, so a render-only
+consumer (a bake tool, a snapshot CLI) never pulls `Ecs`, `Simulation` and `Serialization`. The namespace is still
+`KhaozEngine.Render3D`. A `Game3D` consumer gets the package through the umbrella and changes nothing. A consumer
+that references `KhaozEngine.Render3D` directly and uses any of the three types adds a
+`KhaozEngine.Render3D.Ecs` reference when it repins to 20.0.0. No source edit is needed.
 
 ### Transparency ordering
 
@@ -6812,7 +6837,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="19.15.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.0.0" />
 ```
 
 ```csharp
@@ -13105,7 +13130,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="19.15.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.0.0" />
 ```
 
 ```csharp
@@ -13141,7 +13166,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="19.15.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.0.0" />
 ```
 
 ```csharp
@@ -13383,7 +13408,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="19.15.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.0.0" />
 ```
 
 ```csharp
@@ -14654,11 +14679,11 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
 - **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async
   writes, optional numbered backup-generation rotation), `SettingsManager<T>` + `FileSettingsStorage`,
   `SaveEncoder` (Base64 + HMAC, a versioned envelope carrying tamper-protected `SaveMetadata`), the
-  `GameStorage` facade (paths + queue + settings + encoder, default-on encoding, an outcome-reporting
-  recovery ladder, generation restore - see "Save data" below), the `SettingsManager<T>.StampInstall(...)`
-  convenience, versioned schema migration via `MigrationChain<T>` (see "Versioned save migrations"
-  below), and `BatchedWriter<T>` (a bounded async batch-write queue for a server-side append-only log -
-  see "Batched async writes" below).
+  `GameStorage` facade (paths + queue + settings + a required `SaveEncoding` save posture, an
+  outcome-reporting recovery ladder, generation restore - see "Save data" below), the
+  `SettingsManager<T>.StampInstall(...)` convenience, versioned schema migration via `MigrationChain<T>`
+  (see "Versioned save migrations" below), and `BatchedWriter<T>` (a bounded async batch-write queue for a
+  server-side append-only log - see "Batched async writes" below).
 - **`KhaozEngine.Content`**: config loading + JSON-schema validation: `ConfigLoader` (disk-then-embedded),
   `JsonSchemaValidator`, build-time schema enforcement via the bundled `Content.Validator` tool.
 - **`KhaozEngine.Serialization`**: shared `System.Text.Json` baselines. **JSONC (JSON with `//` / `/* */`
@@ -15191,11 +15216,134 @@ rewrote one chunk and reused the rest. `ContentRollback` builds a reviewable dra
 version's field values, `ContentDiff` is the field-level comparison, and `ContentBundle` is the lossless
 seeding document, imported into an EMPTY database only.
 
+### Replacing a catalog from its bundle
+
+A game that ships its client content pack inside the client build cuts that pack from a fresh store, so the
+pack is always content version 1. The connect door compares the version NUMBER as well as the manifest hash,
+and the number is inside the hashed manifest, so such a game cannot publish its server store forward to
+version 2. It REPLACES the store from its committed bundle on every content release, and `ImportBundleAsync`
+refuses a store that has published anything. The way back to an importable store is a RESET, one per durable
+provider, `SqliteCatalogReset.ResetAsync` and `SqlServerCatalogReset.ResetAsync`.
+
+```csharp
+ContentCatalogResetResult reset = await SqliteCatalogReset.ResetAsync(
+    migrationConnectionString,                      // DDL rights, not the application role's
+    actor: "release-runner",
+    operatorId: "oid:8f2c",
+    note: "autumn pass",
+    force: false,                                   // true destroys an open draft
+    ct);
+
+logger.Info(reset.Summary);                         // also filed in the new store's catalog_audit
+
+using var store = new SqliteContentAuthoringStore(connectionString, registry, packStore);
+await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate, ct);
+await store.ImportBundleAsync(bundle, "release-runner", "oid:8f2c", "autumn pass", ct);   // version 1 again
+```
+
+Both drop every catalog object and recreate the schema from the same script the initializer creates from, in
+ONE transaction, so either the catalog is replaced or it is exactly as it stood. That is not a nicety: a
+half-dropped catalog refuses the next open outright, because the initializer creates only when it counts zero
+catalog tables and validates every object by name otherwise. Drop and recreate rather than `DELETE`, because a
+delete leaves the identity state on `catalog_family`, `catalog_draft_edit` and `catalog_audit` where it stood
+and the next family id after a reimport would land above the bundle's.
+
+The drop names the schema's own INVENTORY intersected with what the database holds, rather than a name
+pattern, so a table added to the schema goes with the rest and a table the build does not declare is never
+touched. A host may keep its own tables in the catalog's database or SQLite file, including one whose name a
+`catalog_` pattern would match, and a reset never drops one or changes a row in one. The store's own open still
+refuses a host table whose name starts with `catalog_` as an object the schema does not declare, so keep host
+tables outside that prefix.
+
+A host FOREIGN KEY into a catalog table is where that could break, so both providers refuse instead. SQLite's
+`DROP TABLE` deletes every row before it drops the table, and that delete fires the host key's delete action,
+so the SQLite reset reads every host key first and refuses one declared `ON DELETE CASCADE`, `SET NULL` or
+`SET DEFAULT` with reason `host-foreign-key`, before anything is dropped and whatever `force` says. A
+`NO ACTION` or `RESTRICT` host key with a row still referencing the catalog fails the SQLite reset at its
+commit instead. SQL Server refuses to drop a table any foreign key references, whatever its action, so there
+every such key fails the reset with SQL error 3726. A failed reset rolls back as a whole on both providers,
+catalog and host alike. A host that resets its catalog keeps its references to it out of foreign keys.
+
+It is a separate type per provider rather than a member on `IContentAuthoringStore`, because a reset is DDL
+and the everyday authoring path is DML: a production deployment should not give its application role DDL at
+all, so the reset takes the migration credential's own connection string. An open draft is refused with reason
+`draft-open` unless `force` is set. `actor`, `operatorId` and `note` are checked against the caps
+`catalog_audit` declares before the transaction opens, so an argument outside them is an `ArgumentException`
+with nothing dropped rather than a provider error after the drop.
+
+Neither reset runs beside another writer. The SQL Server reset takes the schema's exclusive application lock
+as the first statement of its transaction, the same lock on the same resource name the schema create and the
+version 1 migration take, so a host starting or migrating at that moment and the reset wait for each other
+rather than interleave. A reset that cannot have the lock within a minute is refused, having changed nothing.
+SQLite takes one writer per database file, so a reset against a file another connection is writing waits for
+the busy timeout its connection string names and then fails with the provider's busy error, having changed
+nothing. Stop the writers first, and give the reset's own connection string a short `Default Timeout`.
+
+A database carrying NONE of the schema's tables is CREATED rather than refused, through the same script in the
+same transaction, with the same audit row. The scripted release path is reset then import, so the first
+release against a new database takes that branch. A database carrying SOME of them is a half-finished deletion
+that no store can open: without `force` it is refused with reason `catalog-partial` and a sentence naming the
+remedy, and with `force` the reset drops what is left and recreates the schema. A catalog whose schema version
+cannot be read, because its metadata row is gone, is the same case whatever stands, every table included.
+
+The schema version decides the rest whenever it can be read. A catalog at an OLDER schema version than the
+build writes is reset like any other and comes back at the build's version, because the recreate runs the
+build's script. A whole version 1 catalog, without the `catalog_content_upgrade` table version 2 added, is a
+whole catalog and needs no `force`. A catalog at a NEWER schema version is refused with `schema-mismatch`
+before anything is dropped, `force` or not, because recreating an older schema over it would move the database
+backwards.
+
+`ContentCatalogResetResult` carries what stood (the active version number, its server and client manifest
+hashes, the counts of versions and row revisions dropped, and `PriorSchemaVersion`) plus the recreated
+`SchemaVersion` and the NEW `store_epoch`. The version is the ACTIVE one, `catalog_metadata.active_version`,
+and the summary says "active version" because that is what was read. A boot serves `pinned_version` when one
+is set, so a store pinned below its active version served the pin, which the result does not report. The epoch
+is fresh on purpose: a reset store shares no history with the one it replaced. `catalog_version` goes with
+everything else, so no version row holds those two hashes afterwards. The result carries them, and so does the
+reset's own audit row in the new store, which files `reset.Summary` in `catalog_audit.before_value`.
+
+`PriorState` says which of the three a run was, and the record refuses to be built into a state that says two
+things: a version number with no row behind it reads as that number and the words "whose version row was
+MISSING" rather than as "nothing published", a version row's hashes beside no version dropped are refused, a
+reset that read no catalog cannot report a version, a hash, a prior schema version or anything dropped, and a
+prior schema version newer than the recreated one is refused.
+Every property is get-only, so a `with` expression cannot move one value past those rules.
+
+**The pack store is NOT touched by a reset.** A pack root left standing under a replaced catalog still holds a
+`versions/<n>` pointer naming the manifest of the content that was there before, so a caller that replaces
+content at the same version number must CLEAR its pack root or REBUILD it with `ContentPackRebuild.RunAsync`,
+which writes one published version's whole pack out of the store's own rows and rules and verifies it against
+the manifest digests the version row records. The import after a reset overwrites the pointer only in the pack
+store it was handed. Do not leave that to the boot to notice. The two hashes on the result, also filed in
+the reset's audit row, are what the pack root should have been holding, and are what a caller compares
+against it.
+
 ### The server boot
 
-`ContentBoot.RunAsync` is the whole boot in one call, and it FAILS CLOSED. Each of its twelve refusals comes
-back as a result carrying exit code 3 and the operator's exact lines, and there is no fallback to code
-defaults anywhere on the path, because a silent fallback catalog serves content no version names.
+`ContentBoot.RunAsync` is the whole boot in one call, and it FAILS CLOSED. Each of its refusals comes back as
+a result carrying exit code 3 and the operator's exact lines, and there is no fallback to code defaults
+anywhere on the path, because a silent fallback catalog serves content no version names. A `Directory` or
+`VersionHashes` provider that THROWS is a refusal too, `VersionSourceUnreadable` naming the read and the
+fault, so a host's database outage reaches the operator as a line rather than an unhandled exception. Only
+the caller's own cancellation propagates.
+
+Step 3 checks the `versions/<n>` POINTER before it fetches anything, because the pointer is the one object in
+a content-addressed store that is not named by its own hash. A catalog replaced at the same version number,
+with the old pack root still on disk, passes every later check: the old manifest digests to its own name,
+declares the right number, decodes, and every chunk verifies, while the connect door advertises the new row's
+client hash over the old rows. The boot compares both halves of the pointer ordinally with the version record
+and a disagreement refuses as `PackPointerMismatch` naming the version, the store, the side and both hashes,
+which is the operator's cue to rebuild the root.
+
+The record comes from `VersionHashes` when it is set, otherwise from `Directory` only when that object is
+itself an `IContentVersionHashSource`, which every `IContentAuthoringStore` is out of its own version record.
+**A host that hands the boot a WRAPPER around its store skips the check.** A type of its own that implements
+`IContentVersionDirectory` and forwards the two number reads is not a hash source, so set `VersionHashes` to
+the store, or make the wrapper forward `IContentVersionHashSource` as well. `VersionHashes` is read under a
+config pin too, so a pinned server that sets it reads that one version record at boot. A source with no
+record of the version, or no source at all, has no fact to compare against and skips the check.
+`boot.PackPointerCrossChecked` is true only when the comparison ran and agreed, which is what a host's wiring
+test asserts, because a boot that skipped the check succeeds just the same.
 
 ```csharp
 var holder = new ContentRuntimeHolder();
@@ -15207,6 +15355,8 @@ ContentBootResult boot = await ContentBoot.RunAsync(
         Holder = holder,
         ServerBuild = buildOrdinal,                 // required: a default of 0 refuses every pack with a minimum
         ConfiguredVersion = config.ContentVersion,  // config wins over the operator's pin, always
+        Directory = catalogDatabase,                // a wrapper of the host's own around its authoring store
+        VersionHashes = authoringStore,             // so step 3 still checks the pointer against the record
         WorldKeys = world.ContentKeys,
     },
     ct);
@@ -15233,7 +15383,9 @@ The authoring store keeps rows, rules and hashes and never the pack BYTES, so a 
 outlive its process comes back to an empty store while the database still names an active version, and the
 boot above refuses at step 3 with `manifest for version N absent`. `ContentPackRebuild.RunAsync` writes that
 version's whole pack again out of the authoring store: check the pointer first, rebuild when it is missing,
-then boot exactly as before.
+then boot exactly as before. A root that is STALE rather than empty, a pack the version number no longer
+means, is the same repair reached through a different line: the boot refuses with `PackPointerMismatch` and
+the rebuild overwrites the pointer and writes whatever the record's manifests name.
 
 The version to rebuild is the one the BOOT will load, which is what `ContentBoot.ResolveVersionAsync` answers
 out of the same options, and it is not in general the store's active version: a config pin wins over
@@ -16576,29 +16728,39 @@ those files ambiguous.
 ## Save data (`GameStorage`)
 
 `KhaozEngine.Persistence.GameStorage` is the one-call facade over the save/settings stack: publisher-rooted
-`AppDataPaths`, a coalesced atomic `PersistenceQueue`, a `FileSettingsStorage`, and an optional
-`SaveEncoder`. See the package README for the full API. This section covers the consumer-facing decisions.
+`AppDataPaths`, a coalesced atomic `PersistenceQueue`, a `FileSettingsStorage`, and the save posture chosen at
+construction. See the package README for the full API. This section covers the consumer-facing decisions.
 
-For an isolated run or a test, pass `AppDataPaths.FromDirectory(absoluteRoot)` to the existing
-`GameStorage(AppDataPaths, GameStorageOptions?)` constructor. The same resolver works with
+**The save posture: saves encoded, settings plaintext.** Fleet policy is that game saves (progress, unlocks,
+campaign state) are tamper-encoded in every KhaozEngine game, and settings and user-set config (window
+position, preferences) stay plaintext because they are the player's to hand-edit. `GameStorage` makes the save
+half a required constructor argument, a `SaveEncoding`, the same way `LocalizedText` makes raw text a
+deliberate act. `SaveEncoding.Encoded(encoder)` is what a game passes for its saves. `SaveEncoding.Plaintext`
+is the explicit, greppable opt-out for a storage that holds no saves (the map editor's own stores use it) or
+a game that has decided on hand-editable saves. There is no constructor without the posture, and
+`GameStorageOptions` no longer carries an encoder, so a game cannot ship plaintext saves by leaving a field
+unset. The settings half needs no choice: `GameStorage.Settings` and `CreateSettingsManager` write plaintext
+JSON under either posture.
+
+For an isolated run or a test, pass `AppDataPaths.FromDirectory(absoluteRoot)` to the
+`GameStorage(AppDataPaths, SaveEncoding, GameStorageOptions?)` constructor. The same resolver works with
 `FileSettingsStorage`. It uses exactly that root and creates it lazily, without probing the OS application
 data directory. Relative paths are rejected.
 
 ```csharp
 using KhaozEngine.Persistence;
 
-var storage = new GameStorage("MyStudio", "MyGame", new GameStorageOptions
-{
-    Encoder = new SaveEncoder(hmacKey, "MGSV1"),   // configuring an encoder makes encoding the default
-    GameVersion = "1.4.2",                         // stamped into every encoded save's SaveMetadata.GameVersion
-});
+var storage = new GameStorage(
+    "MyStudio", "MyGame",
+    SaveEncoding.Encoded(new SaveEncoder(hmacKey, "MGSV1")),   // the save posture, required
+    new GameStorageOptions { GameVersion = "1.4.2" });          // stamped into every encoded save's SaveMetadata
 
-storage.Save("save.json", campaign);                // encoded (Base64 + HMAC) because Encoder is configured
+storage.Save("save.json", campaign);                // encoded (Base64 + HMAC) because the posture is Encoded
 storage.Flush();                                     // writes are queued: flush before reading the same file back
 SaveLoadResult<CampaignSaveData> result = storage.LoadWithOutcome<CampaignSaveData>("save.json");
 ```
 
-**Encoding is default-on, per-call opt-out.** Once `GameStorageOptions.Encoder` is configured, every `Save`
+**Encoding is default-on, per-call opt-out.** Under `SaveEncoding.Encoded`, every `Save`
 encodes unless a call opts out - the reverse of the old "opt in per call" behavior, so a forgotten flag can
 no longer ship an unprotected save. Force plaintext for a deliberately hand-editable file (or force encoding
 without changing the facade default) with `SaveWriteOptions`:
@@ -16614,8 +16776,8 @@ save editor and detects corruption. It does not stop a player willing to read th
 **Recovery ladder outcomes.** `Load<T>` never throws on a bad save. It probes the primary file, then each
 backup generation in order, and returns the first valid candidate, or a fresh default if none are.
 `LoadWithOutcome<T>` reports which path was taken via `SaveLoadOutcome`: `Loaded` (clean primary),
-`FreshDefault` (nothing on disk), `LoadedLegacyPlaintext` (a plaintext save read under a configured
-encoder - a subsequent default-on save re-encodes it, though a file the game keeps writing with
+`FreshDefault` (nothing on disk), `LoadedLegacyPlaintext` (a plaintext save read under
+`SaveEncoding.Encoded` - a subsequent default-on save re-encodes it, though a file the game keeps writing with
 `Encode = false` stays plaintext deliberately and is never re-encoded this way), `RecoveredFromBackup`
 (the primary failed but a backup loaded, and `SaveLoadResult<T>.RecoveredGeneration` names which one), and
 `RejectedAndDefaulted` (something was on disk but every candidate was invalid). A save whose HMAC does not
@@ -16802,7 +16964,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="19.15.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.0.0" />
 </ItemGroup>
 ```
 
@@ -18109,9 +18271,12 @@ r.Register<PrivateStats>(MoveProtocol.FirstConsumerTypeId + 2,
 net id automatically, so `OwnerOnly` "just works" (an observer's snapshot and delta both lack another player's
 owner-only component, including across a cell handoff). The flags gate the **server (write) side** only - build the
 client with the same registry to decode the bytes, but its channel flags are ignored (the read side decodes whatever
-is on the wire). Rules enforced at registration: a built-in id (`< FirstConsumerTypeId`) must keep `Default` (its
-unframed encoding is the core protocol), and `OwnerOnly` requires `Replicate` - either throws. A registry using only
-`Default` writes byte-identically to before channels existed. `MmoServerSample` demonstrates both shapes (`AggroCounter`
+is on the wire). Rules enforced at registration: a built-in id (`< FirstConsumerTypeId`) must keep `Default`,
+optionally with `OwnerOnly` (`ReplicationRegistry.BuiltinChannelsAllowed`), because its unframed encoding is the
+core protocol. `OwnerOnly` is allowed there because it drops the whole frame for a non-owner and never changes a
+frame's bytes, which is how the engine's own `MovementOwnerState` reaches the owner alone. `OwnerOnly` also requires
+`Replicate`. Anything else throws. A registry using only `Default` writes byte-identically to before channels existed.
+Owner scoping costs at most one filtered copy per observed entity per tick, shared by every non-owning client. `MmoServerSample` demonstrates both shapes (`AggroCounter`
 + `PrivateStats`). Every client-serving encoder honours these channels, including the whole-world
 `ServerReplicator` (`Capture` takes the `Replicate` channel, `WriteFor(slot, ownerNetId)` scopes `OwnerOnly`).
 
@@ -18175,7 +18340,9 @@ persistence.Issue += issue => log.Info(issue.ToString());   // migrated / skippe
   longer needs a schema bump**: the driver reads the stored generation and brings the body forward itself, reports it
   as a `Migrated` issue carrying `wire generation N -> M`, and rewrites the blob once. A blob stamped at a generation
   NEWER than the running build is `SkippedTooNew` (quarantined, never misread), which is the downgrade direction that
-  used to be a silent misparse.
+  used to be a silent misparse. Bringing a body forward zero-pads each built-in's appended fields, except at the two
+  generations that were not appends: 9 restructured the position, and 12 cut the two feel timers out of the movement
+  payload, which the pass writes into a `MovementOwnerState` frame so a restored entity keeps them.
 - **Blobs written before the stamp are inferred, and an inference that is not unique is REFUSED.** The migration
   walks the body at every candidate generation and discards the ones that recovered something no build writes:
   built-in ids ascend within an entity and none follows an extension frame, no id repeats, a movement payload's bool
@@ -19017,7 +19184,7 @@ client.AdvancePresentation(dt);
 EntityRenderState[] snapshot = client.Snapshot();
 ```
 
-`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), and `Banned` (the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), and `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below). The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
 
 **One account, one live session (17.38.0).** The join gate keys a live session by the SUBJECT the authenticator verified, so two clients presenting one account's connect token cannot become two live sessions. Above the session layer that shape is unrepresentable: `WorldPersistence` keys one record per account, so the two shared it and the later join left the earlier session unrestored, then let its default-spawn state overwrite the record once the winner left (#662). Set the policy on either head:
 
@@ -19075,9 +19242,37 @@ var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning
 
 A mismatch surfaces on the client as `DisconnectReason.IncompatibleVersion` with the server's required version in `DisconnectReasonDetail`; the client never proceeds to receive snapshots. A version-less client (one that did not set `ProtocolVersion`, e.g. an old build) presents version `""`, so the rule can reject it too. On a compatible version the inner token is delegated to the inner authenticator unchanged.
 
+*Content identity (opt-in, `KhaozEngine.NetWorld`).* Two builds can share a protocol version and still load different content, and a client on the wrong content that joins anyway renders its own local map against the server's authoritative positions. Set `WorldClientConfig.ContentIdentity` to an opaque string your game computes for the content it loaded (a map or data hash, say). The engine attaches no meaning to it and only compares it ordinally. The server half is the existing `KhaozEngine.Netcode.WorldIdentityGateAuthenticator`, composed just INSIDE the version gate:
+
+```csharp
+// client: the identity rides as its own layer, just inside the ProtocolVersion layer
+var client = new WorldClient(transport, terrain.SampleHeight, MoveTuning.Default,
+    new WorldClientConfig { ProtocolVersion = MyGame.ProtocolVersion, ContentIdentity = MyGame.ContentHash },
+    token: myAccountTokenBytes);
+
+// server: version gate outermost, content gate next, the game's own authenticator innermost
+var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning.Default,
+    authenticator: new VersionCheckingAuthenticator(
+        serverVersion: MyGame.ProtocolVersion,
+        isCompatible: v => v == MyGame.ProtocolVersion,
+        inner: new WorldIdentityGateAuthenticator(MyGame.ContentHash,
+            inner: new HmacTokenAuthenticator(secret, () => DateTimeOffset.UtcNow),
+            log: Console.WriteLine)));
+```
+
+`ConnectionGate.Wrap(tokenAuth, protocolVersion, worldHash, ...)` builds the same version-then-identity door with exact version equality, and a `WorldClient` with `ContentIdentity = worldHash` presents exactly the token it expects.
+
+- A mismatch surfaces as `DisconnectReason.ContentMismatch`, terminal and not retried. `WorldClient.ContentMismatch` is a `ContentMismatchDetail(ServerIdentity, ClientIdentity)` carrying both identities, and `DisconnectReasonDetail` carries the server's. Map the reason to your own localized line. The wire token is `ke:world-mismatch:<server>|<client>`, and `ContentMismatchDetail.TryParse` reads it for a head that is not a `WorldClient`.
+- A server that requires an identity refuses a client that sent none as `ContentMismatch` with an empty `ClientIdentity`. If that client's auth token is itself a labelled handshake layer, `ClientIdentity` is that layer's label instead, because the gate peels whatever sits in the identity position.
+- Ordering is load-bearing. The version gate is outermost, so a client that is skewed on both reads `IncompatibleVersion` and never reaches the content check.
+- With neither side configured the Hello is byte-identical to the wire without the slot.
+- `ContentIdentity` must be non-empty, must not contain `|` (the refusal token's separator) and must fit `HandshakeToken.MaxLabelBytes` UTF-8 bytes, or the `WorldClient` constructor throws `ArgumentException`. The server identity is yours to keep pipe-free as well, since the gate itself does not check it.
+- **Adopting the slot is a wire change, so bump your own `ProtocolVersion` in the same release.** An older server reads the identity layer as the auth token, and an older client sends no identity layer. The version bump turns both away at the version gate with the ordinary out-of-date refusal before either can misread the other.
+- A bare `NetClient` builds the same token with `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, ProtocolHandshake.WrapContentIdentity(contentIdentity, innerToken))`.
+
 3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
 
-**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 10 as of authoritative facing, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, and 10 the move frame's flags byte plus `MovementState.FacingYawQ` together) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
+**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 12 as of the owner-only movement timers, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, 10 the move frame's flags byte plus `MovementState.FacingYawQ` together, 11 `MovementState.Commitment`, and 12 moving the two feel timers into the owner-only `MovementOwnerState` built-in) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
 
 ```csharp
 client.SnapshotDecodeFailed += err => ShowOutOfDateUI(err);   // "client out of date, please update"
@@ -19647,6 +19842,41 @@ so an old client is rejected at connect by the always-on `WireGenerationAuthenti
 ship together.**
 
 Full rationale and the phase plan: `docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
+
+### Owner-only movement timers: coyote time and jump buffer (`MovementOwnerState`, wire generation 12)
+
+`MoveState.TimeSinceGrounded` and `MoveState.JumpBufferRemaining` feed only the owning client's reconciliation
+replay. No remote reads them, so they ride their own built-in, `MovementOwnerState`
+(`MoveProtocol.MovementOwnerTypeId` = 6), registered `ReplicationChannels.Default | ReplicationChannels.OwnerOnly`,
+and `MovementState` no longer carries them.
+
+```csharp
+// Server side: the engine writes both halves at every spawn, teleport and tick. A game writing a movable entity's
+// components itself writes both too.
+world.Set(entity, MovementState.From(state));        // every observer in AoI
+world.Set(entity, MovementOwnerState.From(state));   // the owning client only, plus persistence and handoff
+
+// Rebuilding a full state: the owner half is a required argument. Pass default for an entity you do not own.
+world.TryGet(entity, out MovementState movement);
+world.TryGet(entity, out MovementOwnerState owner);
+PlayerMoveState full = PlayerMoveState.From(position, movement, owner);
+```
+
+- **Who receives it.** Both serve paths (full snapshot and AoI delta) on both heads write it only on the receiving
+  client's own player, so `WorldClient.TryGetComponent<MovementOwnerState>` answers `false` for any other player.
+  Cell persistence and cell handoff write it for every entity that has it, so a restored or handed-off player keeps
+  its coyote and jump-buffer windows. A border ghost does not carry it, and is never simulated.
+- **What it saves.** The movement payload drops from 64 to 56 bytes, 8 bytes less per moving player per observer per
+  snapshot, and on the delta path a change confined to the timers no longer resends the movement frame to observers
+  at all. The owner pays 2 bytes more, the owner frame's type id.
+- **Remotes are unaffected.** `VerticalVelocity`, `Grounded`, `Swimming`, `TeleportEpoch`, `ClimbRateQ`,
+  `SpeedScaleQ`, the carried arc, `FacingYawQ` and `Commitment` keep their meaning and their order.
+- **A missing owner component heals.** `PlayerMovementSystem` adds `MovementOwnerState` at the end of an entity's
+  first step when it has none, so its coyote clock carries from then on instead of restarting every tick.
+- **This is a wire break: generation 11 to 12.** Both built-ins changed shape, so mixed-generation peers are
+  rejected at connect by the always-on `WireGenerationAuthenticator`. **Client and server must ship together.** A
+  stored cell blob from an older generation still loads, and the bring-forward pass moves its timers from the
+  movement payload into an owner frame, so a restored entity has exactly the timers it was saved with.
 
 ### World pickups (walk-over collectibles)
 

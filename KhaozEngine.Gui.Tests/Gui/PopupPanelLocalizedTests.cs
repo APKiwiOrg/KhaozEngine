@@ -97,25 +97,5 @@ namespace KhaozEngine.Tests.Gui
             }
             finally { LocalizationContext.Catalog = prev; }
         }
-
-        [Fact]
-        public void ObsoleteStringShims_RoundTripAsRaw()
-        {
-#pragma warning disable CS0618 // exercising the back-compat string shims on purpose
-            var panel = new PopupPanel
-            {
-                Title = "Raw title",
-                DismissText = "No",
-                PrimaryActionText = "Yes",
-            };
-            Assert.Equal("Raw title", panel.Title);
-            Assert.Equal("No", panel.DismissText);
-            Assert.Equal("Yes", panel.PrimaryActionText);
-            // The shims store into the LocalizedText members as raw literals.
-            Assert.Equal("Raw title", panel.TitleContent.Resolve());
-            Assert.Equal("No", panel.DismissContent.Resolve());
-            Assert.Equal("Yes", panel.PrimaryActionContent.Resolve());
-#pragma warning restore CS0618
-        }
     }
 }

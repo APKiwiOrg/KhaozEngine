@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Render3D.Ecs</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The ECS arm of KhaozEngine.Render3D: the render components Transform3D (position/scale/rotation, zero scale or rotation treated as identity, plus a camera-relative ToMatrix(renderOrigin)) and MeshInstance (MeshHandle + tint + Material, zero tint treated as white), and Scene3DBinder.Submit, which draws every KhaozEngine.Ecs entity carrying both into a Scene3D. Kept separate from KhaozEngine.Render3D so a render-only consumer (a bake tool, a snapshot CLI) never drags in Ecs, Simulation and Serialization. Base namespace KhaozEngine.Render3D. Presentation only, holds no sim state. MonoGame-free.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.Ecs/KhaozEngine.Ecs.csproj" />
+    <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

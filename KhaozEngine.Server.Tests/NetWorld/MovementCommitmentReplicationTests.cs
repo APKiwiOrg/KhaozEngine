@@ -35,7 +35,7 @@ public class MovementCommitmentReplicationTests
 
         MovementState encoded = MovementState.From(source);
         MovementState decoded = RoundTrip(encoded);
-        PlayerMoveState result = PlayerMoveState.From(Vector3.Zero, decoded);
+        PlayerMoveState result = PlayerMoveState.From(Vector3.Zero, decoded, MovementOwnerState.From(source));
 
         Assert.Equal(91u, result.Move.Commitment.Sequence);
         Assert.Equal(MovementCommitmentPhase.Airborne, result.Move.Commitment.Phase);
@@ -62,7 +62,7 @@ public class MovementCommitmentReplicationTests
             },
         };
         MovementState wire = RoundTrip(MovementState.From(authoritative));
-        PlayerMoveState basis = PlayerMoveState.From(authoritative.Position, wire);
+        PlayerMoveState basis = PlayerMoveState.From(authoritative.Position, wire, MovementOwnerState.From(authoritative));
         MoveCommand hostile = new(-Vector2.UnitX, run: true, cameraYaw: -2f, jump: true, faceCamera: true);
 
         PlayerMoveState replayed = basis;

@@ -32,6 +32,7 @@ public sealed partial class WorldClient : IDisposable
     private WorldConnectionState state = WorldConnectionState.Connecting;
     private DisconnectReason disconnectReason = DisconnectReason.None;
     private string disconnectReasonDetail = string.Empty;
+    private ContentMismatchDetail contentMismatch;
     private readonly float disconnectTimeout;
     private float secondsSinceServerFrame;
     private bool sawShutdownNotice;
@@ -118,8 +119,9 @@ public sealed partial class WorldClient : IDisposable
         // Always fold this build's engine wire generation into the Hello (even with no consumer ProtocolVersion), so a
         // wire-skewed server rejects us cleanly at connect rather than admitting a client that would then misparse its
         // snapshots. The opt-in consumer ProtocolVersion, when set, rides as an inner layer checked on top by a
-        // VersionCheckingAuthenticator. Store the wrapped form so each reconnect attempt resends it.
-        this.token = ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, config.ProtocolVersion, token);
+        // VersionCheckingAuthenticator, the opt-in ContentIdentity just inside it. Stored wrapped for each reconnect.
+        this.token = ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, config.ProtocolVersion,
+            ProtocolHandshake.WrapContentIdentity(config.ContentIdentity, token));
         ownedTransport = connectFactory is not null ? transport : null;   // we dispose only what we built
         net = new NetClient(transport, this.token);
         view = new ClientReplicationView(this.registry);
@@ -163,9 +165,12 @@ public sealed partial class WorldClient : IDisposable
     /// <summary>Why the session was lost (or could not be established); <see cref="DisconnectReason.None"/> while healthy.</summary>
     public DisconnectReason DisconnectReason => disconnectReason;
 
-    /// <summary>Extra detail for the reason (the authenticator's reject string for
-    /// <see cref="DisconnectReason.RejectedToken"/>); empty otherwise.</summary>
+    /// <summary>Extra detail: the reject string for <see cref="DisconnectReason.RejectedToken"/>, the server's required
+    /// version or content identity for <c>IncompatibleVersion</c> and <c>ContentMismatch</c>. Empty otherwise.</summary>
     public string DisconnectReasonDetail => disconnectReasonDetail;
+
+    /// <summary>Both identities while the reason is <see cref="DisconnectReason.ContentMismatch"/>, else null.</summary>
+    public ContentMismatchDetail? ContentMismatch => disconnectReason == DisconnectReason.ContentMismatch ? contentMismatch : null;
 
     /// <summary>Number of the in-flight reconnect attempt (0 while connected or on the initial connect). Render
     /// "reconnecting (attempt N)..." from this and <see cref="SecondsUntilNextRetry"/>.</summary>
@@ -304,6 +309,13 @@ public sealed partial class WorldClient : IDisposable
                         // Version handshake rejected us: terminal (retrying the same build will keep failing).
                         disconnectReason = DisconnectReason.IncompatibleVersion;
                         disconnectReasonDetail = requiredVersion;
+                        FailAttempt(allowReconnect: false);
+                    }
+                    else if (ContentMismatchDetail.TryParse(ev.RejectReason, out contentMismatch))
+                    {
+                        // Built against other content than the server: terminal, the same build keeps failing.
+                        disconnectReason = DisconnectReason.ContentMismatch;
+                        disconnectReasonDetail = contentMismatch.ServerIdentity;
                         FailAttempt(allowReconnect: false);
                     }
                     else if (ev.RejectReason == SessionRejectReason.SignedInElsewhere)
@@ -699,12 +711,14 @@ public sealed partial class WorldClient : IDisposable
         // so the local prediction basis is the true authoritative value, never an interpolated one.
         if (view.TryGetEntity(localNetId, out Entity local) && world.TryGet(local, out ReplicatedPosition p))
         {
-            // Build the full authoritative basis from BOTH replicated components - position and the vertical axis
-            // (MovementState) - so prediction replay reproduces the jump/fall, not just the XZ plane. The basis KEEPS
+            // Build the full authoritative basis from the replicated components - position, the vertical axis
+            // (MovementState) and the feel timers (MovementOwnerState) - so prediction replay reproduces the jump/fall,
+            // coyote window and jump buffer, not just the XZ plane. The basis KEEPS
             // the server's frame stamp, and the client adopts that frame (rebasing its own physics world with it)
             // before the replay runs, so replayed commands step in the space the basis is expressed in.
             world.TryGet(local, out MovementState ms);           // default (grounded, 0) until first replicated
-            PlayerMoveState basis = PlayerMoveState.From(p, ms);
+            world.TryGet(local, out MovementOwnerState owner);    // the owner-only feel timers (served to us alone)
+            PlayerMoveState basis = PlayerMoveState.From(p, ms, owner);
             AdoptIslandFrame(p.Frame);
             if (first)
             {

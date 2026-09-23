@@ -24,8 +24,11 @@ namespace KhaozEngine.Replication;
 /// </para>
 /// <para>
 /// Built-in component ids (below <see cref="ReplicationRegistry.FirstExtensionTypeId"/>) MUST keep
-/// <see cref="Default"/>: their exact unframed wire encoding is the core protocol, so
-/// <see cref="ReplicationRegistry.Register{T}"/> throws if a built-in is registered with any other channel set.
+/// <see cref="Default"/>, optionally with <see cref="OwnerOnly"/>: their exact unframed wire encoding is the core
+/// protocol, so <see cref="ReplicationRegistry.Register{T}"/> throws if a built-in is registered with any other
+/// channel set. <see cref="OwnerOnly"/> is the one modifier a built-in may carry, because it decides only whether the
+/// whole frame reaches a viewer and never changes the frame's bytes
+/// (<see cref="ReplicationRegistry.BuiltinChannelsAllowed"/>).
 /// </para>
 /// </remarks>
 [Flags]
@@ -53,7 +56,8 @@ public enum ReplicationChannels
     OwnerOnly = 1 << 3,
 
     /// <summary>The pre-9.28.0 default: replicated, persisted, and migrated (persisted == replicated == migrated).
-    /// Every engine built-in and every registration that omits the channels argument uses this, so the wire is
-    /// byte-identical to before channels existed.</summary>
+    /// Every engine built-in carries this (a built-in may add <see cref="OwnerOnly"/> on top, see
+    /// <see cref="ReplicationRegistry.BuiltinChannelsAllowed"/>), and so does every registration that omits the
+    /// channels argument.</summary>
     Default = Replicate | Persist | Migrate,
 }

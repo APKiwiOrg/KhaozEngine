@@ -509,7 +509,7 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>
-        /// The single source of truth for button visuals, shared by the immediate <see cref="GuiSurface.Button(SpriteFont, Rect, string, GuiStyle, bool, bool)"/>
+        /// The single source of truth for button visuals, shared by the immediate <see cref="GuiSurface.Button(SpriteFont, Rect, LocalizedText, GuiStyle, bool, bool, float)"/>
         /// and the retained <see cref="Button"/>. Draws the fill (priority: <c>!enabled</c>→DisabledFill,
         /// <paramref name="selected"/>→SelectedFill, <paramref name="press"/>→Press, <paramref name="hover"/>→Hover,
         /// else Fill), the border (<see cref="GuiStyle.ResolveBorder"/>), and the centred <paramref name="label"/>

@@ -3,7 +3,8 @@
 Roslyn analyzer enforcing KhaozEngine's `LocalizedText` localization contract.
 
 - **KELOC001** (Warning): player-facing text passed as a raw string to a `[LocalizationStringSink]`-marked
-  method or constructor (the engine's obsolete `string` Gui overloads, or a sink a game marks itself). Pass a
+  method or constructor (a sink a game marks itself). The engine's Gui sinks take only `LocalizedText`, so a
+  raw string there is a compile error rather than a diagnostic. Pass a
   `StringId` (localizable) or `LocalizedText.Raw(...)` (non-localizable) instead.
 - **KELOC002** (Warning): `LocalizedText.Raw(...)` used outside code marked `[LocalizationExempt]` or DEBUG
   conditional (`[Conditional("DEBUG")]` member/type, or inside a `#if DEBUG` region). Confirm the text is

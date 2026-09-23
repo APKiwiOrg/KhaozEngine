@@ -38,7 +38,7 @@ These graph rules are not just prose. Headless architecture tests in `KhaozEngin
   (`Primitives` is the zero-dependency leaf, `Simulation` may reference `Determinism` and nothing else, the
   Foundation umbrella stays GPU-free, `App` never references `Gui`), the locked ProjectReference membership of the four umbrellas, opt-in backends staying out of
   every umbrella's transitive closure, the INVERSE rule for the three native GPU backends (every umbrella that
-  carries `Gpu` must carry all three, since 18.0.0), `Render3D` staying seams-only, and the repository-wide
+  carries `Gpu` must carry all three, since 18.0.0), `Render3D` staying seams-only and ECS-free, and the repository-wide
   one-shader-toolchain rule (`NoTwoShaderToolchains`, which since 18.0.0 subsumes the narrower per-backend
   no-`Veldrid`-package guard it replaced).
 - `GpuPublicApiTests.cs` - reflection guards that walk the public and protected surface of `KhaozEngine.Gpu` and
@@ -382,6 +382,26 @@ any renderer. The edge was already reachable transitively (`Game` pulls `Ecs` vi
 exposes the property. `World.DefaultScheduler` itself is the per-world seam in `KhaozEngine.Ecs`: it defaults to a
 `SingleThreadedJobScheduler`, so a world stays byte-identical until a game opts in, and an explicit per-call
 scheduler still wins over it.
+
+## Render3D ECS arm: the renderer carries no Ecs edge
+
+`KhaozEngine.Render3D` references no ECS. Entity rendering is its own arm, split off exactly as
+`Particles.Render3D`, `Telegraphs.Render3D`, `Snapshot.Render3D` and `Terrain.Render3D` are from their base
+packages:
+
+```
+KhaozEngine.Render3D.Ecs -> KhaozEngine.Ecs        (IComponent and World, for Transform3D, MeshInstance and Scene3DBinder)
+KhaozEngine.Render3D.Ecs -> KhaozEngine.Render3D   (Scene3D, MeshHandle, Material)
+KhaozEngine.Game3D -> KhaozEngine.Render3D.Ecs     (umbrella ProjectReference, like every other Game3D package)
+```
+
+Before the split, `Render3D` referenced `Ecs` directly for those three types, and `Ecs` pulls `Simulation` and
+`Serialization`. Every render-only consumer paid for all three: `ke-propbake` bakes collision and surface binaries
+from a kit manifest, and `SnapshotTool` compares rendered PNGs, and neither touches an entity. The arm keeps the
+base namespace `KhaozEngine.Render3D`, so source compiles unchanged once the package is referenced. It uses only
+public `Render3D` surface and needs no `InternalsVisibleTo`. `Render3D_StaysSeamsOnly` no longer allows `Ecs`,
+`Render3D_ClosureStaysEcsFree` refuses `Ecs`, `Simulation` and `Serialization` anywhere in the `Render3D` closure,
+and `Render3DEcs_ReferencesOnlyEcsAndRender3D` pins the arm's two edges.
 
 ## Determinism at the scheduling boundary: Simulation references Determinism
 

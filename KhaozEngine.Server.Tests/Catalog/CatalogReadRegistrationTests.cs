@@ -47,10 +47,10 @@ public sealed class CatalogReadRegistrationTests : IDisposable
         Assert.All(registered, name => Assert.False(
             reads.IsMutatingAction(name), name + " is a read and was registered mutating."));
 
-        string[] writes = CatalogAdminActions.ActionNames.Except(TheFive).ToArray();
-        Assert.Equal(11, writes.Length);
-        Assert.All(writes, name => Assert.False(
-            reads.TryGetAction(name, out _), name + " writes and the read door registered it."));
+        string[] others = CatalogAdminActions.ActionNames.Except(TheFive).ToArray();
+        Assert.Equal(11, others.Length);
+        Assert.All(others, name => Assert.False(
+            reads.TryGetAction(name, out _), name + " is not a read and the read door registered it."));
     }
 
     /// <summary>

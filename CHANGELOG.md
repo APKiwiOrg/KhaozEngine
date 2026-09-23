@@ -38,7 +38,7 @@ changes meaning, but a lake tuned against the old look may want its whitecap set
 
 - `CatalogAdminActions.RegisterReads(admin, store, registry)` registers the five catalog read actions
   (`catalog-schema`, `catalog-list`, `catalog-get`, `catalog-draft` and `catalog-versions`) and none of the
-  eleven that write ([#1132](https://github.com/APKiwiOrg/KhaozEngine/issues/1132)). A game whose catalog is
+  other eleven ([#1132](https://github.com/APKiwiOrg/KhaozEngine/issues/1132)). A game whose catalog is
   bundle-derived serves reads from its console and must not expose publish, import, pin or edit, and until now
   it got the reads only by registering all sixteen. `Register` is unchanged and reaches the reads through the
   same path, so a `Register` after `RegisterReads` is refused as a second `Register` is.

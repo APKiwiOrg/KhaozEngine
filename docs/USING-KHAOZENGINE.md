@@ -15894,7 +15894,7 @@ CatalogAdminActions.RegisterReads(admin, store, registry);
 ```
 
 That puts `catalog-schema`, `catalog-list`, `catalog-get`, `catalog-draft` and `catalog-versions` on the
-dispatch and none of the eleven that write, so a console that serves the committed bundle cannot publish,
+dispatch and none of the other eleven, so a console that serves the committed bundle cannot publish,
 import, pin or edit the hosted store. A later `Register` on the same surface is refused as a second `Register`
 is.
 

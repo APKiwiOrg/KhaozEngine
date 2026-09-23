@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
@@ -160,13 +161,27 @@ public sealed partial class Scene3D
             {
                 if ((!part.DissolveComplement && part.Dissolve >= 1f)
                     || (part.DissolveComplement && part.Dissolve <= 0f)) continue;
-                if (!_slots.IsValid(part.Mesh.Index, part.Mesh.Generation)) continue;
-                if (_meshes[part.Mesh.Index] is not { } mesh) continue;
-                _targetOutlines.Enqueue(mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
-                    mesh.OutlineMaterialSet, drawIndex++, ToRender(part.World), mesh.AlphaCutoff,
-                    part.Dissolve, part.DissolveComplement, _frameOrigin);
+                if (part.Kind == MeshOutlinePartKind.Rigid)
+                {
+                    if (!_slots.IsValid(part.Mesh.Index, part.Mesh.Generation)) continue;
+                    if (_meshes[part.Mesh.Index] is not { } mesh) continue;
+                    _targetOutlines.EnqueueRigid(mesh.Vb, mesh.Ib, mesh.IndexCount, mesh.IndexFormat,
+                        mesh.OutlineMaterialSet, drawIndex++, ToRender(part.World), mesh.AlphaCutoff,
+                        part.Dissolve, part.DissolveComplement, _frameOrigin);
+                    groupDraws++;
+                    continue;
+                }
+                if (!UseGpuSkinning) continue;
+                if (!_skinnedSlots.IsValid(part.SkinnedMesh.Index, part.SkinnedMesh.Generation)) continue;
+                if (_skinnedMeshes[part.SkinnedMesh.Index] is not { } skinned) continue;
+                ReadOnlySpan<Matrix4x4> pose = CollectionsMarshal.AsSpan(_outlineBoneMatrices)
+                    .Slice(part.BoneStart, part.BoneCount);
+                _targetOutlines.EnqueueSkinnedGpu(skinned.Vb, skinned.Ib, skinned.IndexCount,
+                    skinned.IndexFormat, skinned.OutlineMaterialSet, pose, drawIndex++, ToRender(part.World),
+                    skinned.AlphaCutoff, part.Dissolve, part.DissolveComplement, _frameOrigin);
                 groupDraws++;
             }
+            if (!_targetOutlines.HasQueuedDraws) continue;
             bool occluded = group.Occlusion == MeshOutlineOcclusion.SceneDepth;
             _targetOutlines.Render(cl, _res, target, group.Color, group.WidthPixels, Post.BackgroundColor.R,
                 Post.Pixelated, groupIndex, occluded);

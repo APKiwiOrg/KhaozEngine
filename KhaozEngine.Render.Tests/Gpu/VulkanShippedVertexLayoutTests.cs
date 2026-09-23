@@ -42,6 +42,7 @@ namespace KhaozEngine.Tests.Gpu
             // The point-shadow pass is allocated lazily, so a scene that is never asked for one builds none of its
             // four pipelines and the three caster programs would read here as uncaptured.
             Assert.True(scene.EnsurePointShadowAtlas(PointShadowAtlas.MinFaceResolution, 1));
+            CaptureTargetOutlinePipelines(scene, framebuffer, commands);
 
             ShippedGraphicsProgram[] expectedPrograms = ShippedShaderPrograms.GraphicsPrograms()
                 .Where(program => Parse(program.VertexGlsl).Count > 0)
@@ -131,6 +132,22 @@ namespace KhaozEngine.Tests.Gpu
             water.PrepareFrame(new FramePrepare(settings, planes, 0f));
             water.Draw(commands, resources, planes, Matrix4x4.Identity, -Vector3.UnitY, Color.White,
                 new Vector3(0f, 4f, 0f), settings, new SkySettings(), 0f);
+        }
+
+        static void CaptureTargetOutlinePipelines(Scene3D scene, IGpuFramebuffer framebuffer,
+            IGpuCommandList commands)
+        {
+            MeshHandle rigid = scene.LoadMesh(MeshPrimitives.Box(1f));
+            SkinnedGltfMesh tube = SkinnedMeshBuilder.BuildTube(0.25f, 2f, 4, 6, 3, Axis.Z);
+            SkinnedMeshHandle skinned = scene.LoadSkinnedMesh(tube);
+            scene.Post.Starfield = false;
+            scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
+            scene.Begin();
+            MeshOutlineGroup group = scene.BeginMeshOutline(Color.White, 1.25f);
+            scene.DrawMeshOutline(group, rigid, Matrix4x4.Identity);
+            scene.DrawSkinnedOutline(group, skinned, tube.RestPose, Matrix4x4.Identity);
+            scene.PrepareFrame();
+            scene.RenderInternal(commands, 64, 64, framebuffer);
         }
 
         static IReadOnlyList<VertexDeclaration> Parse(string glsl)

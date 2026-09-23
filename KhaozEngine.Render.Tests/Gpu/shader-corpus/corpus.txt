@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 384
+# Rows: 424
 Beam.fragment.hlsl 763e8e2481a2a78f468f6d62ed5e3a24df6ffd7ad4d0e8c280ac5ad953b177fe 1809
 Beam.fragment.msl f8bb4e895ae8c1794baa7115089311abef23c86d22b47d85f68e225dae39ad99 1493
 Beam.fragment.spirv 7023f2b860be99c43999b4be78b8fe5cbdba1e201d451dd77c137a80224eba79 2724
@@ -338,6 +338,46 @@ Starfield.layout.msl 1b5785191158b63346b254efec47babd1a2da88b3b32db89b767a362ee9
 Starfield.vertex.hlsl f00a67b684d1571a1be5b93c36fea2090a987e03c10383c1105e3926cc202189 578
 Starfield.vertex.msl ffb54cdefc5e03b1c0ec1e6adf8dcb14e9a57212a893cb756193ca5c6578bfb1 376
 Starfield.vertex.spirv 114915494661fee562b61ff0c53c208aaff496da7a665ab56956556b68d6cd24 836
+TargetOutlineComposite.fragment.hlsl e94e676902088c9ce829b3849f64238d2031824f71f0b673fe1e6db7837fe243 4045
+TargetOutlineComposite.fragment.msl 0ce7996ec6deca7a9f1e94a4e60aec81e0bd7f04b58d6c850e313f57fdfcb54d 3944
+TargetOutlineComposite.fragment.spirv c44f29873f1a362ae1fefb296685be910c83e732111dd7d671cd5aeaa61d0756 4740
+TargetOutlineComposite.layout.hlsl 6b730a29e62d69bf85247f8888d427d517ab8bf0256a8900d7c770a54849e5dc 7 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+TargetOutlineComposite.layout.msl 6b730a29e62d69bf85247f8888d427d517ab8bf0256a8900d7c770a54849e5dc 7 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+TargetOutlineComposite.vertex.hlsl a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23 691
+TargetOutlineComposite.vertex.msl 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1 451
+TargetOutlineComposite.vertex.spirv 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4 916
+TargetOutlineRigidFull.fragment.hlsl 01a22ff979493a9e5ceb4dfaae586da9bd8dce15949321d2f05eed6c142a0282 866
+TargetOutlineRigidFull.fragment.msl 359e25dee9c39c117d8c148197d6cb822a16a3bf62b71609bca40381fc195493 696
+TargetOutlineRigidFull.fragment.spirv 28db6681ff8216b9f3046de161447f9c8ba368e1c8fd095aec61ce8eacc09c88 1200
+TargetOutlineRigidFull.layout.hlsl 34498c0865ec1fecb0abd71886c6dde450ec573e598e7c6f6b60fafae4a8cbee 7 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+TargetOutlineRigidFull.layout.msl 34498c0865ec1fecb0abd71886c6dde450ec573e598e7c6f6b60fafae4a8cbee 7 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+TargetOutlineRigidFull.vertex.hlsl 7770b6087c9341e1f020c060e67783b4892c096d289f834bea11a194c4453ed8 1190
+TargetOutlineRigidFull.vertex.msl 8d5573396d606588f935fdc0014aaaea2b98313e304df7d9fd8c7c80976e3985 800
+TargetOutlineRigidFull.vertex.spirv a5db5cb074af4fe6d7b73869ba43586835693da30542cd12dd3fac3582f1db17 1716
+TargetOutlineRigidVisible.fragment.hlsl cae54e486a1c266b21c764e5e6fcb2ae4bb43a641c642744e623828737ce3059 3310
+TargetOutlineRigidVisible.fragment.msl 169c4c859df647521745b2e356fd9519bbfa6faa572a583180af306a6bb11aa6 2828
+TargetOutlineRigidVisible.fragment.spirv 601ca32d5ac387182ff33b4cde6dd66adcb44afedf9ee304b4fececc7baaf5cf 3784
+TargetOutlineRigidVisible.layout.hlsl 34498c0865ec1fecb0abd71886c6dde450ec573e598e7c6f6b60fafae4a8cbee 7 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+TargetOutlineRigidVisible.layout.msl 34498c0865ec1fecb0abd71886c6dde450ec573e598e7c6f6b60fafae4a8cbee 7 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+TargetOutlineRigidVisible.vertex.hlsl 7770b6087c9341e1f020c060e67783b4892c096d289f834bea11a194c4453ed8 1190
+TargetOutlineRigidVisible.vertex.msl 8d5573396d606588f935fdc0014aaaea2b98313e304df7d9fd8c7c80976e3985 800
+TargetOutlineRigidVisible.vertex.spirv a5db5cb074af4fe6d7b73869ba43586835693da30542cd12dd3fac3582f1db17 1716
+TargetOutlineSkinnedFull.fragment.hlsl 01a22ff979493a9e5ceb4dfaae586da9bd8dce15949321d2f05eed6c142a0282 866
+TargetOutlineSkinnedFull.fragment.msl 359e25dee9c39c117d8c148197d6cb822a16a3bf62b71609bca40381fc195493 696
+TargetOutlineSkinnedFull.fragment.spirv 28db6681ff8216b9f3046de161447f9c8ba368e1c8fd095aec61ce8eacc09c88 1200
+TargetOutlineSkinnedFull.layout.hlsl 1a4db88758db3bd5a52fa88946c81962787eafd115185a40671dc14d2b92946c 11 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set2[<unnamed>:UniformBuffer:V]
+TargetOutlineSkinnedFull.layout.msl 1a4db88758db3bd5a52fa88946c81962787eafd115185a40671dc14d2b92946c 11 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set2[<unnamed>:UniformBuffer:V]
+TargetOutlineSkinnedFull.vertex.hlsl f052d7a95ba2dff1fd1809c6a3c6bd1015b270977bc9878bc0ffa1a3e7f1a2f5 2267
+TargetOutlineSkinnedFull.vertex.msl 2dc8a76160ae28ed32ff7329ed124ddc4257634a155db19891f6953387682aec 1755
+TargetOutlineSkinnedFull.vertex.spirv e774c3416ea2e186112c647fd8c6d994d79607ae1b254a3d236b956ec64de667 3716
+TargetOutlineSkinnedVisible.fragment.hlsl cae54e486a1c266b21c764e5e6fcb2ae4bb43a641c642744e623828737ce3059 3310
+TargetOutlineSkinnedVisible.fragment.msl 169c4c859df647521745b2e356fd9519bbfa6faa572a583180af306a6bb11aa6 2828
+TargetOutlineSkinnedVisible.fragment.spirv 601ca32d5ac387182ff33b4cde6dd66adcb44afedf9ee304b4fececc7baaf5cf 3784
+TargetOutlineSkinnedVisible.layout.hlsl 1a4db88758db3bd5a52fa88946c81962787eafd115185a40671dc14d2b92946c 11 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set2[<unnamed>:UniformBuffer:V]
+TargetOutlineSkinnedVisible.layout.msl 1a4db88758db3bd5a52fa88946c81962787eafd115185a40671dc14d2b92946c 11 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set2[<unnamed>:UniformBuffer:V]
+TargetOutlineSkinnedVisible.vertex.hlsl f052d7a95ba2dff1fd1809c6a3c6bd1015b270977bc9878bc0ffa1a3e7f1a2f5 2267
+TargetOutlineSkinnedVisible.vertex.msl 2dc8a76160ae28ed32ff7329ed124ddc4257634a155db19891f6953387682aec 1755
+TargetOutlineSkinnedVisible.vertex.spirv e774c3416ea2e186112c647fd8c6d994d79607ae1b254a3d236b956ec64de667 3716
 TexturedBillboard.fragment.hlsl eb7792edc3383375eea6e4fffafc1645b17120042fc7a2b532004c349fbe4397 805
 TexturedBillboard.fragment.msl fc4ca607294372c4d59fc55c3763a7f232fdc34c6a09ad8543feb22a63bee054 598
 TexturedBillboard.fragment.spirv fb16c3b710f3f0b5d4b08e1e209be2b6430646dc923bb6b471ebc0938832ba42 1104

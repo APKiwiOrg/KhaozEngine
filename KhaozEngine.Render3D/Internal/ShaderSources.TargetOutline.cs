@@ -19,6 +19,42 @@ void main() {
     gl_Position = ViewProj * world;
 }";
 
+    public const string TargetOutlineSkinnedMaskVert = @"#version 450
+layout(set=0, binding=0) uniform Draw {
+    mat4 ViewProj; mat4 World; vec4 Params; vec4 RenderOrigin;
+};
+layout(set=2, binding=0) uniform Palette {
+    mat4 bones[128];
+};
+layout(location=0) in vec3 Position;
+layout(location=1) in vec3 Normal;
+layout(location=2) in vec4 Color;
+layout(location=3) in vec2 TexCoord;
+layout(location=4) in vec4 BoneIndices;
+layout(location=5) in vec4 BoneWeights;
+layout(location=6) in vec4 Tangent;
+layout(location=0) out vec2 vUv;
+layout(location=1) out vec3 vWorldPos;
+void main() {
+    float wsum = BoneWeights.x + BoneWeights.y + BoneWeights.z + BoneWeights.w;
+    mat4 skin;
+    if (wsum < 1e-8) {
+        skin = mat4(1.0);
+    } else {
+        skin = bones[int(BoneIndices.x)] * BoneWeights.x
+             + bones[int(BoneIndices.y)] * BoneWeights.y
+             + bones[int(BoneIndices.z)] * BoneWeights.z
+             + bones[int(BoneIndices.w)] * BoneWeights.w;
+    }
+    vec4 localPos = skin * vec4(Position, 1.0);
+    vec4 world = World * localPos;
+    float sink = Normal.x + Color.x + BoneIndices.x + Tangent.x;
+    world.x += sink * 1e-30;
+    vUv = TexCoord;
+    vWorldPos = world.xyz + RenderOrigin.xyz;
+    gl_Position = ViewProj * world;
+}";
+
     public const string TargetOutlineFullMaskFrag = @"#version 450
 layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; vec4 Params; vec4 RenderOrigin; };
 layout(set=1, binding=0) uniform texture2D Albedo;

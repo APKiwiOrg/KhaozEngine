@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -16,6 +17,35 @@ namespace KhaozEngine.Tests.Render3D
     /// </summary>
     public class UboLayoutTests
     {
+        [Fact]
+        public void Skinned_target_outline_vertex_has_contiguous_inputs_outputs_and_palette()
+        {
+            string source = ShaderSources.TargetOutlineSkinnedMaskVert;
+            Assert.Contains("layout(set=2, binding=0) uniform Palette", source);
+            Assert.Contains("mat4 bones[128];", source);
+            for (int location = 0; location <= 6; location++)
+                Assert.Contains($"layout(location={location}) in", source);
+            Assert.Contains("layout(location=0) out vec2 vUv;", source);
+            Assert.Contains("layout(location=1) out vec3 vWorldPos;", source);
+            Assert.Contains("wsum < 1e-8", source);
+            Assert.Contains("vWorldPos = world.xyz + RenderOrigin.xyz;", source);
+        }
+
+        [Fact]
+        public void Target_outline_masks_cut_out_before_coverage_and_only_visible_mask_dissolves()
+        {
+            string full = ShaderSources.TargetOutlineFullMaskFrag;
+            string visible = ShaderSources.TargetOutlineVisibleMaskFrag;
+
+            Assert.True(full.IndexOf("texture(sampler2D(Albedo, Samp), vUv).a < Params.x",
+                    StringComparison.Ordinal) < full.IndexOf("oCoverage = 1.0", StringComparison.Ordinal));
+            Assert.True(visible.IndexOf("texture(sampler2D(Albedo, Samp), vUv).a < Params.x",
+                    StringComparison.Ordinal) < visible.IndexOf("oCoverage = vec2(1.0, 0.0)",
+                    StringComparison.Ordinal));
+            Assert.DoesNotContain("dnoise(", full);
+            Assert.Contains("float mask = dnoise(vWorldPos * 6.0);", visible);
+        }
+
         // ---- Model pass: FrameUbo header + point-light tail = the combined UBO size ----
 
         [Fact]

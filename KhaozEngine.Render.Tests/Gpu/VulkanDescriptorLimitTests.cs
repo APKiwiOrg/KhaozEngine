@@ -117,6 +117,13 @@ namespace KhaozEngine.Tests.Gpu
                 ["Particle"] = L(U("Frame", VF), T("DepthTex"), S("Samp"), T("MotionTex"), T("AtlasTex"),
                     S("AtlasSamp")),
 
+                // Render3D/Rendering/TargetOutlineRenderer.cs and TargetOutlineSkinningStore.cs.
+                ["TargetOutline.draw"] = L(U("Draw", VF, dynamic: true)),
+                ["TargetOutline.material"] = L(T("Albedo"), S("Samp")),
+                ["TargetOutline.palette"] = L(U("Palette", V, dynamic: true)),
+                ["TargetOutline.composite"] = L(T("FullCoverage"), T("VisibleCoverage"), T("VisibleDepth"),
+                    T("SceneDepth"), S("PointSamp"), S("LinearSamp"), U("Composite", F)),
+
                 // Render3D/Rendering/PixelPostProcess.cs:125 to :141, the nine fullscreen passes. Their T, S and
                 // U helpers at :160-162 are all fragment-stage and none is dynamic.
                 ["Pixel.pal"] = L(T("Src"), S("Samp"), U("Pal", F)),
@@ -199,6 +206,13 @@ namespace KhaozEngine.Tests.Gpu
             ("OverlayMeshRenderer", ["OverlayMesh"]),
             ("OverlayRenderer", ["Overlay"]),
             ("ParticleRenderer", ["Particle"]),
+            ("TargetOutlineRenderer rigid full", ["TargetOutline.draw", "TargetOutline.material"]),
+            ("TargetOutlineRenderer rigid visible", ["TargetOutline.draw", "TargetOutline.material"]),
+            ("TargetOutlineRenderer composite", ["TargetOutline.composite"]),
+            ("TargetOutlineRenderer skinned full",
+                ["TargetOutline.draw", "TargetOutline.material", "TargetOutline.palette"]),
+            ("TargetOutlineRenderer skinned visible",
+                ["TargetOutline.draw", "TargetOutline.material", "TargetOutline.palette"]),
             ("PixelPostProcess pal", ["Pixel.pal"]),
             ("PixelPostProcess edge", ["Pixel.edge"]),
             ("PixelPostProcess blit", ["Pixel.blit"]),
@@ -234,8 +248,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(40, ShippedLayouts.Count);
-            Assert.Equal(37, ShippedPipelines.Count);
+            Assert.Equal(44, ShippedLayouts.Count);
+            Assert.Equal(42, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

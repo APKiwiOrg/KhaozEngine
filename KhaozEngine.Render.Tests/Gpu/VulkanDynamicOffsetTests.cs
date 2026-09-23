@@ -53,8 +53,8 @@ namespace KhaozEngine.Tests.Gpu
                 shapes.Add((name, harness.Set(name)));
             }
 
-            // Includes the retained foliage parameter layout and the cascade cutout albedo layout.
-            Assert.Equal(40, shapes.Count);
+            // Includes the four target-outline layouts.
+            Assert.Equal(44, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

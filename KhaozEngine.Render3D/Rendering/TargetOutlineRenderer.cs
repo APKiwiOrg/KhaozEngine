@@ -8,7 +8,7 @@ using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering;
 
-internal sealed class TargetOutlineRenderer : IDisposable
+internal sealed partial class TargetOutlineRenderer : IDisposable
 {
     const int DrawPayloadBytes = 160;
     const int DrawSlotBytes = 256;
@@ -46,6 +46,8 @@ internal sealed class TargetOutlineRenderer : IDisposable
     IGpuFramebuffer? _visibleFramebuffer;
     IGpuPipeline? _fullPipeline;
     IGpuPipeline? _visiblePipeline;
+    IGpuPipeline? _skinnedFullPipeline;
+    IGpuPipeline? _skinnedVisiblePipeline;
     IGpuPipeline _compositePipeline;
     int _resourceGeneration = -1;
 
@@ -57,6 +59,10 @@ internal sealed class TargetOutlineRenderer : IDisposable
         _fullShaders = f.CreateShadersFromSpirv(ShaderSources.TargetOutlineMaskVert,
             ShaderSources.TargetOutlineFullMaskFrag);
         _visibleShaders = f.CreateShadersFromSpirv(ShaderSources.TargetOutlineMaskVert,
+            ShaderSources.TargetOutlineVisibleMaskFrag);
+        _skinnedFullShaders = f.CreateShadersFromSpirv(ShaderSources.TargetOutlineSkinnedMaskVert,
+            ShaderSources.TargetOutlineFullMaskFrag);
+        _skinnedVisibleShaders = f.CreateShadersFromSpirv(ShaderSources.TargetOutlineSkinnedMaskVert,
             ShaderSources.TargetOutlineVisibleMaskFrag);
         _compositeShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
             ShaderSources.TargetOutlineCompositeFrag);
@@ -78,6 +84,7 @@ internal sealed class TargetOutlineRenderer : IDisposable
             GpuTextureUsage.Sampled));
         gd.UpdateTexture(_white, new byte[] { 255, 255, 255, 255 }, 0, 0, 1, 1);
         _defaultMaterialSet = CreateMaterialSet(_white);
+        _skinning = new TargetOutlineSkinningStore(gd);
         _compositePipeline = BuildCompositePipeline(f);
     }
 
@@ -116,35 +123,32 @@ internal sealed class TargetOutlineRenderer : IDisposable
     {
         _viewProj = clipViewProjection;
         _queue.Clear();
+        BeginSkinnedGroup();
     }
 
-    public void Enqueue(IGpuBuffer vertexBuffer, IGpuBuffer indexBuffer, int indexCount,
+    public void EnqueueRigid(IGpuBuffer vertexBuffer, IGpuBuffer indexBuffer, int indexCount,
         GpuIndexFormat indexFormat, IGpuResourceSet? materialSet, int drawIndex, Matrix4x4 world,
         float alphaCutoff, float dissolve, bool dissolveComplement, Vector3 renderOrigin)
     {
-        var payload = new DrawUbo
-        {
-            ViewProj = _viewProj,
-            World = world,
-            Params = new Vector4(alphaCutoff, dissolve, dissolveComplement ? 1f : 0f, 0f),
-            RenderOrigin = new Vector4(renderOrigin, 0f),
-        };
-        MemoryMarshal.Write(_drawImage.AsSpan(drawIndex * DrawSlotBytes, DrawSlotBytes), in payload);
-        _queue.Add(new QueuedDraw(vertexBuffer, indexBuffer, indexCount, indexFormat,
-            materialSet ?? _defaultMaterialSet, drawIndex));
+        WriteDrawPayload(drawIndex, world, alphaCutoff, dissolve, dissolveComplement, renderOrigin);
+        _queue.Add(new QueuedDraw(QueuedGeometry.Rigid, vertexBuffer, indexBuffer, indexCount, indexFormat,
+            materialSet ?? _defaultMaterialSet, drawIndex, -1, 0, 0, 0));
     }
+
+    public bool HasQueuedDraws => _queue.Count > 0;
 
     public void Render(IGpuCommandList cl, RenderResources resources, IGpuFramebuffer target,
         Color color, float widthPixels, float backgroundDepth, bool pixelated, int styleIndex, bool occluded)
     {
         if (_queue.Count == 0) return;
+        PrepareGpuPalette(cl);
         BindTargets(resources);
         cl.UpdateBuffer(_drawUbo!, 0, (ReadOnlySpan<byte>)_drawImage);
 
         cl.SetFramebuffer(_fullFramebuffer!);
         cl.ClearColorTarget(0, Color.Transparent);
         cl.ClearDepthStencil(1f);
-        DrawQueue(cl, _fullPipeline!);
+        DrawQueue(cl, full: true);
         if (resources.Msaa)
             cl.ResolveTexture(_msFullCoverage!, _fullCoverage!);
         if (_fullCoverage!.MipLevels > 1) cl.GenerateMipmaps(_fullCoverage);
@@ -155,7 +159,7 @@ internal sealed class TargetOutlineRenderer : IDisposable
             cl.SetFramebuffer(_visibleFramebuffer!);
             cl.ClearColorTarget(0, Color.Transparent);
             cl.ClearColorTarget(1, new Color(backgroundDepth, 0f, 0f, 0f));
-            DrawQueue(cl, _visiblePipeline!);
+            DrawQueue(cl, full: false);
             if (resources.Msaa)
             {
                 cl.ResolveTexture(_msVisibleCoverage!, _visibleCoverage!);
@@ -184,16 +188,22 @@ internal sealed class TargetOutlineRenderer : IDisposable
         cl.Draw(3);
     }
 
-    void DrawQueue(IGpuCommandList cl, IGpuPipeline pipeline)
+    void DrawQueue(IGpuCommandList cl, bool full)
     {
         foreach (QueuedDraw draw in _queue)
         {
+            IGpuPipeline pipeline = draw.Geometry == QueuedGeometry.GpuSkinned
+                ? full ? _skinnedFullPipeline! : _skinnedVisiblePipeline!
+                : full ? _fullPipeline! : _visiblePipeline!;
             cl.SetPipeline(pipeline);
             cl.SetGraphicsResourceSet(0, _drawSet!, (uint)(draw.DrawIndex * DrawSlotBytes));
             cl.SetGraphicsResourceSet(1, draw.MaterialSet);
+            if (draw.Geometry == QueuedGeometry.GpuSkinned)
+                cl.SetGraphicsResourceSet(2, _skinning.PaletteSet,
+                    (uint)draw.PaletteSlot * TargetOutlineSkinningStore.PaletteSlotBytes);
             cl.SetVertexBuffer(0, draw.VertexBuffer);
             cl.SetIndexBuffer(draw.IndexBuffer, draw.IndexFormat);
-            cl.DrawIndexed((uint)draw.IndexCount, 1, 0, 0, 0);
+            cl.DrawIndexed((uint)draw.IndexCount, 1, 0, draw.BaseVertex, 0);
         }
     }
 
@@ -254,6 +264,10 @@ internal sealed class TargetOutlineRenderer : IDisposable
         _boundSceneDepth = resources.DepthColorTex;
         _fullPipeline = BuildMaskPipeline(f, _fullShaders, _fullFramebuffer.Outputs, full: true);
         _visiblePipeline = BuildMaskPipeline(f, _visibleShaders, _visibleFramebuffer.Outputs, full: false);
+        _skinnedFullPipeline = BuildSkinnedMaskPipeline(f, _skinnedFullShaders,
+            _fullFramebuffer.Outputs, full: true);
+        _skinnedVisiblePipeline = BuildSkinnedMaskPipeline(f, _skinnedVisibleShaders,
+            _visibleFramebuffer.Outputs, full: false);
     }
 
     void EnsureCompositeSlot(int styleIndex)
@@ -320,6 +334,8 @@ internal sealed class TargetOutlineRenderer : IDisposable
         _compositeSets.Clear();
         _fullPipeline?.Dispose();
         _visiblePipeline?.Dispose();
+        _skinnedFullPipeline?.Dispose();
+        _skinnedVisiblePipeline?.Dispose();
         _fullFramebuffer?.Dispose();
         _visibleFramebuffer?.Dispose();
         _fullCoverage?.Dispose();
@@ -331,6 +347,8 @@ internal sealed class TargetOutlineRenderer : IDisposable
         _privateDepth?.Dispose();
         _fullPipeline = null;
         _visiblePipeline = null;
+        _skinnedFullPipeline = null;
+        _skinnedVisiblePipeline = null;
         _fullFramebuffer = null;
         _visibleFramebuffer = null;
         _fullCoverage = null;
@@ -359,8 +377,25 @@ internal sealed class TargetOutlineRenderer : IDisposable
         public Vector4 Mode;
     }
 
-    readonly record struct QueuedDraw(IGpuBuffer VertexBuffer, IGpuBuffer IndexBuffer, int IndexCount,
-        GpuIndexFormat IndexFormat, IGpuResourceSet MaterialSet, int DrawIndex);
+    enum QueuedGeometry
+    {
+        Rigid,
+        GpuSkinned,
+        CpuSkinned,
+    }
+
+    readonly record struct QueuedDraw(
+        QueuedGeometry Geometry,
+        IGpuBuffer VertexBuffer,
+        IGpuBuffer IndexBuffer,
+        int IndexCount,
+        GpuIndexFormat IndexFormat,
+        IGpuResourceSet MaterialSet,
+        int DrawIndex,
+        int PaletteSlot,
+        int BaseVertex,
+        int PoseStart,
+        int PoseCount);
 
     public void Dispose()
     {
@@ -371,12 +406,15 @@ internal sealed class TargetOutlineRenderer : IDisposable
         _drawUbo?.Dispose();
         foreach (IDisposable resource in _retired) resource.Dispose();
         _compositePipeline.Dispose();
+        _skinning.Dispose();
         foreach (IGpuBuffer buffer in _compositeUbos) buffer.Dispose();
         _drawLayout.Dispose();
         _materialLayout.Dispose();
         _compositeLayout.Dispose();
         _fullShaders.Dispose();
         _visibleShaders.Dispose();
+        _skinnedFullShaders.Dispose();
+        _skinnedVisibleShaders.Dispose();
         _compositeShaders.Dispose();
     }
 }

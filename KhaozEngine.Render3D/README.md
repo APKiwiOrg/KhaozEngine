@@ -934,6 +934,14 @@ Stylized 3D on a custom MonoGame-free foundation (the `KhaozEngine.Gpu` seam, `S
     a caller-supplied local pose. Composition covers every node in the supplied `Skeleton`, including non-palette
     nodes in a code-built skeleton. A glTF-loaded child socket survives only when it is a zero-weight skin joint,
     which places it in the bone palette. The loader otherwise retains only skin joints and their ancestors.
+  - `Animation.Inspection.FootPlant.Measure` samples one or more named feet over looping phases and returns the
+    lowest sole height, its first phase, and the largest horizontal slide within a circular stance run. Supply the
+    clip's forward `+Z` stride in metres so an in-place backward-moving foot is inspected in travel space. All-stance
+    clips anchor their single run at phase `0`.
+  - `Animation.Inspection.SegmentClearance.Min` samples a node-mounted segment against named-node `Capsule` axes
+    over the closed phase range. Its signed result is positive for separation, zero for contact, and negative for
+    penetration. Segment endpoints, capsule radii, and results are model-space metres. Both measurements require
+    finite geometry and at least two samples, and run without a mesh, graphics device, or test framework.
   - `LayeredAnimator` / `AnimationLayer` / `BoneMask` / `LayerMode` - N animation layers composited into one final
     skeleton pose: a base locomotion layer below, masked `Override` / `Additive` action layers above (attack while
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +

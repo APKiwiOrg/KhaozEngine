@@ -4663,6 +4663,52 @@ may expose named nodes outside its skin palette. `GltfLoader.LoadSkinned` retain
 ancestors, so an authored child socket that needs lookup must be a zero-weight entry in `skin.joints` and is then
 part of the bone palette.
 
+Use `FootPlant.Measure` to inspect sole height and stance stability over a looping clip. Samples use phases
+`i / samples`, so the duplicate loop endpoint is excluded. A sole at or below `groundHeight` is in stance. Stance
+runs join across the loop boundary, and an all-stance foot anchors its one run at phase `0`. `strideMetres` is the
+forward `+Z` distance covered by one clip cycle. It moves each sampled sole into distance-driven travel space before
+measuring horizontal slide.
+
+```csharp
+FootPlantReport feet = FootPlant.Measure(
+    byName["Walk"],
+    skeleton,
+    new[] { "Foot.L", "Foot.R" },
+    soleOffset: new Vector3(0f, -0.04f, 0f),
+    groundHeight: 0f,
+    strideMetres: 1.8f,
+    samples: 120);
+
+if (feet.MinSoleHeight < -0.01f || feet.MaxStanceSlide > 0.02f)
+    throw new InvalidOperationException("Walk clip failed foot-plant inspection.");
+```
+
+Use `SegmentClearance.Min` for an attached blade, tool, or other line segment that must stay clear of limb
+capsules. The segment transform is `segmentLocal * ridingNodeModel`. Sampling uses the closed phases
+`i / (samples - 1)`, including the authored end key. The returned metres are signed, with a negative value meaning
+the segment penetrated a capsule.
+
+```csharp
+Matrix4x4 bladeLocal = Matrix4x4.CreateTranslation(0.08f, 0f, 0.12f);
+var bodyCapsules = new[]
+{
+    new Capsule("Forearm.R", "Hand.R", 0.06f),
+};
+
+float bladeClearance = SegmentClearance.Min(
+    byName["Attack"],
+    skeleton,
+    "weapon_socket",
+    in bladeLocal,
+    segmentStart: Vector3.Zero,
+    segmentEnd: new Vector3(0f, 0f, 0.9f),
+    bodyCapsules,
+    samples: 120);
+```
+
+Both measurements require finite model-space geometry, one or more named targets, and at least two samples. They
+use `PoseProbe` internally and need no mesh, inverse-bind matrices, object world transform, or graphics device.
+
 Each frame, feed it the movement state your controller already computes, then draw with its pose
 (the bone palette `DrawSkinned` consumes - it is joint-WORLD, the loader-attached skeleton composes it):
 

@@ -173,33 +173,42 @@ public sealed class ChatBox
         {
             RefreshLayout(font, TimeZoneInfo.Local);
             _scroll.BeginClip(batch);
-            for (int i = 0; i < _rows.Count; i++)
-                DrawRow(batch, font, i, _rows[i]);
+            var sink = new SpriteBatchChatRowSink(batch, font);
+            DrawHistoryRows(ref sink);
             _scroll.EndClip(batch);
         }
 
         Composer.Draw(batch, white);
     }
 
-    void DrawRow(SpriteBatch batch, SpriteFont font, int index, CachedRow row)
+    // The history rows of this frame, run by run, into sink. Draw passes the sprite batch and tests pass a
+    // recorder, because a sprite batch needs a GPU device. The layout must already be refreshed with the draw font.
+    internal void DrawHistoryRows<TSink>(ref TSink sink) where TSink : IChatRowSink
+    {
+        for (int i = 0; i < _rows.Count; i++)
+            DrawRow(ref sink, i, _rows[i]);
+    }
+
+    void DrawRow<TSink>(ref TSink sink, int index, CachedRow row) where TSink : IChatRowSink
     {
         Rect bounds = RowBounds(index);
         var position = new Vector2(MathF.Floor(bounds.X), MathF.Floor(bounds.Y));
-        Vector4 messageColor = SelectColor(row.Entry, Theme);
+        var messageColor = (Color)SelectColor(row.Entry, Theme);
 
         if (row.TimestampLength <= 0)
         {
-            batch.DrawString(font, row.Text, position, (Color)messageColor);
+            sink.DrawText(row.Text, position, messageColor);
             return;
         }
 
         string timestamp = row.Text[..row.TimestampLength];
-        batch.DrawString(font, timestamp, position, (Color)Theme.TimestampText);
+        sink.DrawText(timestamp, position, (Color)Theme.TimestampText);
         if (row.TimestampLength == row.Text.Length) return;
 
-        string message = row.Text[row.TimestampLength..];
-        position.X += font.Measure(timestamp).X;
-        batch.DrawString(font, message, position, (Color)messageColor);
+        // Rows exist only after RefreshLayout, and Draw refreshes with the draw font first, so the cached
+        // measurer is the font the stamp is drawn in.
+        position.X += _cachedMeasurer!.Measure(timestamp).X;
+        sink.DrawText(row.Text[row.TimestampLength..], position, messageColor);
     }
 
     internal Rect RowBounds(int index)

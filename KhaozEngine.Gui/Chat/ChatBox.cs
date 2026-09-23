@@ -20,6 +20,9 @@ public sealed class ChatBox
     const float ComposerGap = 6f;
     const float RowSpacing = 2f;
 
+    // Rows drawn past each end of the history viewport. VisibleRows says why the draw keeps one.
+    const int VisibleRowMargin = 1;
+
     readonly ChatHistory _history;
     readonly Panel _frame;
     readonly ScrollablePanel _scroll;
@@ -181,11 +184,14 @@ public sealed class ChatBox
         Composer.Draw(batch, white);
     }
 
-    // The history rows of this frame, run by run, into sink. Draw passes the sprite batch and tests pass a
-    // recorder, because a sprite batch needs a GPU device. The layout must already be refreshed with the draw font.
+    // The history rows of this frame, run by run, into sink. Only rows whose bounds meet the history viewport are
+    // sent, plus VisibleRowMargin rows past each end, so a full scrollback costs the rows on screen rather than
+    // every row the scissor would discard. Draw passes the sprite batch and tests pass a recorder, because a
+    // sprite batch needs a GPU device. The layout must already be refreshed with the draw font.
     internal void DrawHistoryRows<TSink>(ref TSink sink) where TSink : IChatRowSink
     {
-        for (int i = 0; i < _rows.Count; i++)
+        VisibleRows(out int first, out int end);
+        for (int i = first; i < end; i++)
             DrawRow(ref sink, i, _rows[i]);
     }
 
@@ -193,34 +199,67 @@ public sealed class ChatBox
     {
         Rect bounds = RowBounds(index);
         var position = new Vector2(MathF.Floor(bounds.X), MathF.Floor(bounds.Y));
-        var messageColor = (Color)SelectColor(row.Entry, Theme);
 
-        if (row.TimestampLength <= 0)
+        // Both runs were split and measured when the layout was refreshed, so a steady frame slices and measures
+        // nothing. The colours are read here because a theme change takes effect on the next draw. An empty run
+        // is skipped, which paints exactly what drawing it did, nothing.
+        if (row.TimestampText.Length > 0)
+            sink.DrawText(row.TimestampText, position, (Color)Theme.TimestampText);
+        if (row.MessageText.Length == 0) return;
+
+        position.X += row.MessageX;
+        sink.DrawText(row.MessageText, position, (Color)SelectColor(row.Entry, Theme));
+    }
+
+    // The half-open range of rows whose bounds meet the history viewport, grown by VisibleRowMargin at each end
+    // and clamped to the history. The margin keeps the frame identical to drawing every row: a glyph can reach
+    // past its row box (an accent above the ascent, a descender below the line) and the scissor rounds to whole
+    // pixels, so the row just outside the viewport can still put pixels inside it.
+    void VisibleRows(out int first, out int end)
+    {
+        int count = _rows.Count;
+        float stride = _scroll.Stride;
+        if (count == 0 || !(stride > 0f))
         {
-            sink.DrawText(row.Text, position, messageColor);
+            // No rows, or no stride to divide by. A zero stride stacks every row on one line, so every row is
+            // drawn, which is what the draw did before it culled.
+            first = 0;
+            end = count;
             return;
         }
 
-        string timestamp = row.Text[..row.TimestampLength];
-        sink.DrawText(timestamp, position, (Color)Theme.TimestampText);
-        if (row.TimestampLength == row.Text.Length) return;
+        // Row i's top is originY + i * stride, with the sparse-space offset RowBounds applies. A bottom-aligned
+        // sparse history cancels the scroll offset there, so it is cancelled here too.
+        Rect content = _scroll.ContentBounds;
+        float sparseSpace = SparseSpace();
+        float originY = sparseSpace > 0f ? content.Y + sparseSpace : content.Y - _scroll.ScrollOffset;
 
-        // Rows exist only after RefreshLayout, and Draw refreshes with the draw font first, so the cached
-        // measurer is the font the stamp is drawn in.
-        position.X += _cachedMeasurer!.Measure(timestamp).X;
-        sink.DrawText(row.Text[row.TimestampLength..], position, messageColor);
+        // Row i meets the viewport when its bottom is below the viewport top and its top is above the viewport
+        // bottom. The first such row is the smallest i past the top bound, and the end is the first i at or past
+        // the bottom bound.
+        float firstMeeting = MathF.Floor((content.Y - originY - _scroll.ItemHeight) / stride) + 1f;
+        float endMeeting = MathF.Ceiling((content.Bottom - originY) / stride);
+
+        first = (int)Math.Clamp(firstMeeting - VisibleRowMargin, 0f, count);
+        end = (int)Math.Clamp(endMeeting + VisibleRowMargin, first, count);
     }
 
     internal Rect RowBounds(int index)
     {
         Rect bounds = _scroll.ItemBounds(index);
-        if (HistoryAlignment != ChatHistoryAlignment.Bottom || _rows.Count == 0)
-            return bounds;
-
-        float rowsHeight = _rows.Count * _scroll.Stride - _scroll.ItemSpacing;
-        float sparseSpace = _scroll.ContentBounds.Height - rowsHeight;
+        float sparseSpace = SparseSpace();
         if (sparseSpace <= 0f) return bounds;
         return bounds with { Y = bounds.Y + sparseSpace + _scroll.ScrollOffset };
+    }
+
+    // The space above a bottom-aligned history too short to fill the viewport, zero or less when there is none.
+    // RowBounds and VisibleRows share it so the cull and the placement cannot disagree.
+    float SparseSpace()
+    {
+        if (HistoryAlignment != ChatHistoryAlignment.Bottom || _rows.Count == 0) return 0f;
+
+        float rowsHeight = _rows.Count * _scroll.Stride - _scroll.ItemSpacing;
+        return _scroll.ContentBounds.Height - rowsHeight;
     }
 
     void SyncGeometry()
@@ -283,10 +322,11 @@ public sealed class ChatBox
             for (int i = 0; i < lines.Count; i++)
             {
                 string line = lines[i];
-                int timestampLength = i == 0 && line.StartsWith(prefix, StringComparison.Ordinal)
-                    ? Math.Min(prefix.Length, line.Length)
-                    : 0;
-                _rows.Add(new CachedRow(line, entry, timestampLength));
+                // The stamp is split off and measured once here rather than on every draw. A first line the wrap
+                // broke inside the stamp does not start with it, so it draws whole in the message colour, as before.
+                _rows.Add(i == 0 && prefix.Length > 0 && line.StartsWith(prefix, StringComparison.Ordinal)
+                    ? new CachedRow(entry, prefix, line[prefix.Length..], measurer.Measure(prefix).X)
+                    : new CachedRow(entry, "", line, 0f));
                 _cachedLines.Add(line);
             }
         }
@@ -332,5 +372,7 @@ public sealed class ChatBox
         return entry.IsOwn ? theme.OwnText : theme.OrdinaryText;
     }
 
-    readonly record struct CachedRow(string Text, ChatEntry Entry, int TimestampLength);
+    // One wrapped line, split and measured at layout time: the stamp run (empty when the line carries none), the
+    // message run (empty when the line is only the stamp), and where the message run starts after the stamp.
+    readonly record struct CachedRow(ChatEntry Entry, string TimestampText, string MessageText, float MessageX);
 }

@@ -148,6 +148,23 @@ meaning. The one source-level note is the new `ContainerCommitBuilder.Open` over
   re-bake helper. `KhaozEngine.TestSupport.Gpu` delegates its shared gate to it while keeping xUnit out of the
   package ([#1056](https://github.com/APKiwiOrg/KhaozEngine/issues/1056)).
 
+**Water shading.**
+
+- The procedural swell's normal is evaluated per pixel rather than interpolated across the surface grid
+  ([#381](https://github.com/APKiwiOrg/KhaozEngine/issues/381)). Under `WaterGridMode.Clipmap` the 8 m and 16 m
+  outer rings undersample the default 42 m swell, and the interpolated normal shaded them as large flat facets that
+  moved with the waves (a Ruinborne lake field report). The fragment now evaluates the Gerstner normal at its
+  still-water position through one GLSL block both stages share, mirroring `GerstnerWaves.Evaluate` op for op. The
+  displacement and the whitecap fold stay per vertex. The near field does not change: at the innermost ring's 0.5 m
+  cells the interpolated normal was already within 0.03 degrees of the evaluated one. No API change, and the CPU
+  mirror math is unchanged. `WaterSwellFacetGpuTests` measures the facet signature on the Ruinborne lake setup,
+  7.3 and 6.2 before, 0.9 and 1.1 after.
+- Two water issues were closed or re-scoped by measurement rather than code. FFT foam already rides the displaced
+  surface, so the proposed foam gather would have counted the displacement twice
+  ([#324](https://github.com/APKiwiOrg/KhaozEngine/issues/324), closed). The far-field glint double smoothing in
+  [#308](https://github.com/APKiwiOrg/KhaozEngine/issues/308) is real, but only a floor-style rewrite removes it and
+  that narrows the near-field lobe, so it waits on a look decision.
+
 **Tooling.**
 
 - `scripts/pack-local-feed.sh` packs the current tree into the MAIN checkout's `local-feed` from any worktree, and

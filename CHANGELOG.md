@@ -11,8 +11,9 @@ The burn-down continues on a fresh minor now that 20.0.0 is released. Everything
 editor streams its authored placements and gains a props-only chunk refresh, a batch of Grimhollow parity requests
 lands for container sync, tile netcode and journal operator tools
 ([Grimhollow#246](https://github.com/APKiwiOrg/Grimhollow/issues/246)), and the F1 overlay names the running build.
-Nothing a game calls changes behaviour. The one source-level note is the new `ContainerCommitBuilder.Open` overload,
-below.
+One default changes what a game sees: the engine terrain splat now reads the biome, so a world with non-Meadow
+bands looks different at repin (an all-Meadow world bakes bit-identical weights). No call a game makes changes
+meaning. The one source-level note is the new `ContainerCommitBuilder.Open` overload, below.
 
 **The map editor streams its authored placements.**
 
@@ -36,6 +37,23 @@ below.
   ring, prop cull and companion cull to cover the requested rect, capped at 24 chunks (a square up to about 1.9 km
   is fully covered), and says in its reply when the cap cut placements and scatter beyond 1350 m.
   `RenderService.RenderTopDownWithCoverage` and `TopDownRender` are new.
+
+**The default terrain splat reads the biome.**
+
+- `TerrainSplatWeights.From` now uses the `BiomeId` it has always taken and ignored
+  ([#376](https://github.com/APKiwiOrg/KhaozEngine/issues/376)). Steep rock, shore sand and the snow line still come
+  first. The biome then moves part of the grass share those rules leave: Forest 0.30 and Marsh 0.50 to dirt,
+  Mountains 0.30 to rock and 0.15 to dirt, Desert 0.80 to sand and 0.15 to dirt, Snow 0.85 to snow. It never takes
+  weight from rock, sand, snow or slope dirt. Meadow is untilted, so an all-Meadow world, Ruinborne's island
+  included, bakes bit-identical weights.
+- `TerrainField.SampleBiomeWeights` and `BiomeWeights` are new: each biome's share of the same blend that shapes the
+  height, summing to 1, with `Dominant` always equal to `SampleBiome`. `TerrainSplatWeights.FromBlend` bakes over
+  those shares, and `TerrainChunkBuilder` uses it, so a tilt fades across the `BiomeBlend` window instead of drawing
+  a line along one triangle row. `From(..., BiomeId, ...)` keeps its signature and matches `FromBlend` wherever one
+  biome holds the whole share.
+- A splat rule's `ctx.Default` carries the tilted mix and `ctx.Biome` is unchanged. A rule that ignores `Default`
+  bakes exactly what it returns, and `From(..., BiomeId.Meadow, ...)` gives the untilted mix.
+- The map editor's biome band inspector no longer says ground tinting by biome is unwired.
 
 **Container sync and the commit builder.**
 

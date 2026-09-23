@@ -52,23 +52,26 @@ namespace KhaozEngine.Render3D
         public int PointShadowedLights { get; private set; }
 
         /// <summary>
-        /// This frame's whole point-shadow decision: gather the requests, budget them, render the rows that need
-        /// it and publish the receiver's slot table. Called once per frame from <c>RenderInternal</c>, after the
-        /// instances are grouped and uploaded (the pass reuses that buffer) and after the key light's depth pass,
-        /// and before the model pass binds its material sets, because a first allocation rebuilds every one of
-        /// them and because <c>SetFrameUniforms</c> uploads the tail written here.
+        /// Compatibility entry point for the steady-state allocation test. Production prepares requests before
+        /// skinned compaction, then consumes them after the key-light pass through the overload below.
         /// </summary>
         /// <param name="cl">This frame's open command list. The pass is recorded into it, not submitted.</param>
         /// <param name="eyeAbsolute">The camera in absolute space, which the budget ranks requests by.</param>
-        /// <remarks>Internal rather than private only so the allocation test can measure this one method on a
-        /// steady-state frame. Nothing outside <c>RenderInternal</c> calls it in a real frame.</remarks>
+        /// <remarks>Internal rather than private only so the allocation test can measure the whole operation.</remarks>
         internal void PreparePointShadows(IGpuCommandList cl, Vector3 eyeAbsolute)
+        {
+            PreparePointShadowRequests(eyeAbsolute);
+            PreparePointShadows(cl);
+        }
+
+        /// <summary>Budget and render the prepared requests, then publish the receiver slot table.</summary>
+        void PreparePointShadows(IGpuCommandList cl)
         {
             PointShadowedLights = 0;
             int frame = ++_pointShadowFrame;
             PointShadowSettings settings = Post.Quality.Shadows.PointShadows;
 
-            if (!GatherPointShadowRequests(settings, eyeAbsolute))
+            if (_pointRequests.Count == 0)
             {
                 // NOTHING ASKED, so nothing is allocated. Releasing the unrequested rows keeps a cache built by an
                 // earlier frame from holding rows for lights that have stopped being queued.

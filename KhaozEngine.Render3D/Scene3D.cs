@@ -1270,7 +1270,9 @@ namespace KhaozEngine.Render3D
             Vector4 glow = s.GlowColor is Color g ? g : new Vector4(core.X, core.Y, core.Z, core.W * 0.4f);
             _beamItems.Add(new BeamItem
             {
-                A = a, B = b, Width = width,
+                A = a,
+                B = b,
+                Width = width,
                 CoreColor = core,
                 GlowColor = glow,
                 Shape = new Vector4(s.CoreFraction, s.GlowSoftness, s.Taper, 0f),
@@ -1611,13 +1613,7 @@ namespace KhaozEngine.Render3D
                     _shadowFrustums[i] = FrustumPlanes.Extract(_cascadeCpuVpsAbsolute[i]);
             }
 
-            // Record each queued skinned draw before both passes, so the shadow depth pass and the model pass share
-            // what it uploads. UseGpuSkinning (the default) records the GPU palette path: no per-frame vertex skin or
-            // upload, only the per-draw UBO slots. With it off each draw is CPU-skinned into one concatenated stream
-            // plus per-draw instance data (SkinningMath.SkinVertex mirrors the shader blend exactly). A draw that is
-            // camera-culled AND (shadows off, opted out of casting, or outside the shadow volume) is skipped entirely:
-            // no skin, no upload, no draw in either pass (see ClassifySkinnedVisibility). Both paths share that
-            // classification and its counters, so DrawnSkinnedInstances / CulledSkinnedInstances match.
+            bool hasPointShadowRequests = PreparePointShadowRequests(ActiveCamera.Eye);
             var skinnedItems = _skinnedInstances.Items;
             _cpuSkinnedVerts.Clear();
             _cpuSkinnedInstances.Clear();
@@ -1640,7 +1636,11 @@ namespace KhaozEngine.Render3D
 
                     var (visibleMain, visibleShadow) = ClassifySkinnedVisibility(entry.Bounds, it.World, FrustumCulling,
                         camFrustum, shadowMapActive && it.CastsShadows, _shadowFrustums.AsSpan(0, shadowCascadeCount));
-                    if (!visibleMain && !visibleShadow) { _culledSkinnedInstances++; continue; }
+                    PointShadowCasterSphere pointSphere = PointShadowCasterSphere.FromRestBounds(
+                        entry.Bounds, it.World, SkinnedCullSafetyFactor);
+                    bool visiblePointShadow = hasPointShadowRequests && it.CastsShadows
+                        && PointRequestCanRetainSkinned(pointSphere, Post.Quality.Shadows.PointShadows);
+                    if (!visibleMain && !visibleShadow && !visiblePointShadow) { _culledSkinnedInstances++; continue; }
                     if (visibleMain) _drawnSkinnedInstances++; else _culledSkinnedInstances++;
 
                     bool dissolving = it.Dissolving;
@@ -1757,7 +1757,7 @@ namespace KhaozEngine.Render3D
             // Point-light shadow maps (Scene3D.PointShadows.cs): after the key light's pass, because it reuses the
             // same uploaded instances, and before the model pass, which binds the material sets a first atlas
             // allocation rebuilds and uploads the receiver tail written here.
-            PreparePointShadows(cl, ActiveCamera.Eye);
+            PreparePointShadows(cl);
 
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             BuildAndUploadPointLightClusters(cl, vp, eye);
@@ -2512,9 +2512,9 @@ namespace KhaozEngine.Render3D
         /// caster when its inflated sphere intersects every lateral and far plane of ANY cascade in
         /// <paramref name="shadowFrustums"/>. The near plane is excluded because depth clamping pancakes closer
         /// casters onto it. Under the frustum-slice fit the cascades do not nest, so their union is tested. Returns
-        /// (VisibleMain, VisibleShadow) - a draw is recorded and uploaded iff either is true. Pure
-        /// <see cref="MeshBounds"/> + <see cref="FrustumPlanes"/> arithmetic (both already unit-tested), no GPU,
-        /// headless-testable.
+        /// (VisibleMain, VisibleShadow), the camera and key-light classification. <c>RenderInternal</c> also tests
+        /// eligible point-shadow requests before it decides whether to record and upload the draw. Pure
+        /// <see cref="MeshBounds"/> + <see cref="FrustumPlanes"/> arithmetic, no GPU, headless-testable.
         /// </summary>
         internal static (bool VisibleMain, bool VisibleShadow) ClassifySkinnedVisibility(
             in MeshBounds restBounds, in Matrix4x4 world,

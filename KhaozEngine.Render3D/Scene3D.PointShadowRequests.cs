@@ -1,11 +1,39 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D;
 
 /// <summary>Request collection and ordering for point-shadow residency.</summary>
 public sealed partial class Scene3D
 {
+    internal bool PreparePointShadowRequests(Vector3 eyeAbsolute) =>
+        GatherPointShadowRequests(Post.Quality.Shadows.PointShadows, eyeAbsolute);
+
+    internal bool PointRequestCanRetainSkinned(
+        in PointShadowCasterSphere caster, PointShadowSettings settings)
+    {
+        bool staticAtlasLive = _pointShadowAtlas is not null;
+        int dynamicRequestsRemaining = Math.Max(0, settings.MaxDynamicLightsPerFrame);
+        for (int i = 0; i < _pointRequests.Count; i++)
+        {
+            PointShadowRequest request = _pointRequests[i];
+            if (request.Mode == LightShadowMode.Static)
+            {
+                if (!staticAtlasLive) continue;
+            }
+            else if (dynamicRequestsRemaining-- <= 0)
+            {
+                continue;
+            }
+
+            if (caster.TouchesShadowingShell(request.Position, request.Radius, request.NearRadius,
+                request.ExclusionMin, request.ExclusionMax))
+                return true;
+        }
+        return false;
+    }
+
     /// <summary>Collect every submitted request. Keyed statics sort first by stable key, independent of the eye,
     /// and dynamic effects use their traditional nearest-first order after them.</summary>
     bool GatherPointShadowRequests(PointShadowSettings settings, Vector3 eyeAbsolute)

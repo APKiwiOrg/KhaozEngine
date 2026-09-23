@@ -225,9 +225,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   erodes the mesh: a prop fading out at its draw radius no longer casts a fully solid shadow under an almost-invisible
   caster, and across an HLOD crossfade the props' shadow thins out as the merged mesh's thins in rather than both
   casting at full strength. A MASK caster (a mesh loaded with an alpha cutoff and an albedo, such as a leaf card)
-  is drawn through an alpha-cutout depth pipeline, so its shadow is its silhouette rather than the solid quad. Only
-  those spans sample the albedo: an opaque caster keeps the depth-only pipeline with no texture sample and no
-  discard. Skinned draws follow the same policy: `DrawSkinned(..., material, castsShadows: false)` (and the
+  is drawn through an alpha-cutout depth pipeline, so its shadow is its silhouette rather than the solid quad. That
+  pipeline culls nothing, so a single-sided card casts whichever face it turns to the sun. Only those spans sample
+  the albedo: an opaque caster keeps the depth-only pipeline with no texture sample and no discard. Skinned draws follow the same policy: `DrawSkinned(..., material, castsShadows: false)` (and the
   dissolve overload's `castsShadows` argument) keeps a character out of the depth pass, and a dissolving skinned
   draw sheds its shadow with its body on both skinning paths. `DrawShadowOnly(handle, transform)` is the opposite
   of the opt-out: the instance records depth for the key light and never draws in the COLOUR pass, so a view can

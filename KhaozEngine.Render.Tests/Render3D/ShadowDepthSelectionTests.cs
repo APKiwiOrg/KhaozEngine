@@ -102,6 +102,28 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void The_cutout_depth_pipelines_cull_nothing_and_the_rest_keep_front_culling()
+        {
+            // A MASK caster is usually a single-plane card the colour pass draws two-sided, so a culled cutout
+            // pipeline would erase it from the atlas whenever its culled side faces the sun. The opaque and dissolve
+            // depth pipelines keep the second-depth trick.
+            var gd = new FakeGpuDevice();
+            var factory = (FakeGpuResourceFactory)gd.Factory;
+            using IGpuFramebuffer fb = NewTarget(gd.Factory);
+            using var scene = new Scene3D(gd, fb.Outputs);
+
+            var cutout = factory.GraphicsPipelines
+                .Where(r => string.Equals(r.VertexGlsl, ShaderSources.ShadowDepthCutoutVert, StringComparison.Ordinal)).ToList();
+            var rigid = factory.GraphicsPipelines
+                .Where(r => string.Equals(r.VertexGlsl, ShaderSources.ShadowDepthVert, StringComparison.Ordinal)
+                    || string.Equals(r.VertexGlsl, ShaderSources.ShadowDepthDissolveVert, StringComparison.Ordinal)).ToList();
+            Assert.Equal(2, cutout.Count);   // the plain and the inverted-dither cutout pipelines
+            Assert.All(cutout, r => Assert.Equal(GpuFaceCull.None, r.Description.Rasterizer.CullMode));
+            Assert.Equal(3, rigid.Count);    // opaque, dissolve, inverted dissolve
+            Assert.All(rigid, r => Assert.Equal(GpuFaceCull.Front, r.Description.Rasterizer.CullMode));
+        }
+
+        [Fact]
         public void A_dissolving_skinned_depth_slot_carries_the_block_the_dissolve_vertex_reads()
         {
             // The slot the SkinnedShadowDepthDissolveVert block is read from, packed by the C# side: the std140

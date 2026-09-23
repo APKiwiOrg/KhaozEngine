@@ -3606,7 +3606,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       - A MASK caster (issue #15), meaning a mesh loaded with `SurfaceMaps.AlphaCutoff` above 0 AND an albedo
         texture, such as a leaf card, records depth only where its albedo alpha clears the cutoff, the same test the
         colour pass applies. Its shadow is the silhouette rather than the solid quad. Only that mesh's spans take the
-        alpha-cutout depth pipeline, which samples the albedo, and a dissolving MASK caster applies both tests. An
+        alpha-cutout depth pipeline, which samples the albedo, and a dissolving MASK caster applies both tests. The
+        cutout pipeline culls nothing, as the colour pass draws the card two-sided, so a single-sided leaf card casts
+        whichever face it turns to the sun. An
         opaque caster keeps the depth-only pipeline with no texture sample and no discard, and a MASK mesh with no
         albedo keeps it too, since it samples white and never cuts out in the colour pass either. Nothing to opt
         into: the cutoff read from the glTF material is the opt-in. Skinned meshes do not carry a cutoff, so they

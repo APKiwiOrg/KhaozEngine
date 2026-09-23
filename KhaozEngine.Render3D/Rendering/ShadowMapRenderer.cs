@@ -286,8 +286,9 @@ namespace KhaozEngine.Render3D.Rendering
         // stride - is identical, so a span drawn through either records the same depth when the dissolve is 0.
         // <paramref name="invertedDissolve"/> picks the issue #391 fragment that keeps what the plain dissolve
         // fragment discards (the complementary half of an HLOD crossfade); it is meaningless without dissolve.
-        // <paramref name="cutout"/> (issue #15, with dissolve) swaps in the alpha-cutout shader set and adds the
-        // per-mesh albedo layout at set 1. The vertex and instance layouts are the dissolve variant's.
+        // <paramref name="cutout"/> (issue #15, with dissolve) swaps in the alpha-cutout shader set, adds the
+        // per-mesh albedo layout at set 1 and turns culling OFF. The vertex and instance layouts are the dissolve
+        // variant's.
         IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription outputs, bool dissolve = false,
             bool invertedDissolve = false, bool cutout = false)
         {
@@ -341,7 +342,14 @@ namespace KhaozEngine.Render3D.Rendering
                 // planes at once, so flipping it would give up the free far-plane clip to buy a near-plane clamp the
                 // vertex already provides. The flag itself is honoured everywhere now, including on both Metal paths
                 // (issue #598, 17.39.0), which it was not when this pass was written.
-                Rasterizer = new GpuRasterizerState(GpuFaceCull.Front, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
+                //
+                // The CUTOUT pipelines cull nothing. A MASK caster is usually a single-plane card that the colour pass
+                // draws two-sided (ModelRenderer's pipeline culls None). Culling here would erase the whole card from
+                // the atlas whenever its culled side points at the sun, which with this pass's clockwise front face
+                // is a card turned with its glTF back face to the light. A zero-thickness card has no far side for
+                // the second-depth trick to find anyway.
+                Rasterizer = new GpuRasterizerState(cutout ? GpuFaceCull.None : GpuFaceCull.Front, GpuPolygonFill.Solid,
+                    GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = cutout ? new[] { _layout, _cutoutMaterialLayout } : new[] { _layout },
                 ShaderSet = cutout ? (invertedDissolve ? _cutoutInvertedShaders : _cutoutShaders)

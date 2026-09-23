@@ -323,6 +323,25 @@ public sealed partial class TileWorldClient : IDisposable
             if (World.TryGet(pair.Value, out TileGroundItem item)) into.Add((pair.Key, item));
     }
 
+    /// <summary>Fills a caller's buffer with every ground item this client holds that carries a
+    /// <see cref="TileGroundItemInstance"/>, each with its net id and the drop it sits on, in ONE walk of the
+    /// entity set. The client half of the server's <see cref="TileWorldServer.TryGetGroundItem"/> and
+    /// <see cref="TileWorldServer.TryGetGroundItemInstance"/> pair, and <see cref="CollectGroundItems"/>'s shape
+    /// otherwise: cleared first, unsorted, complete. A drop with no instance is absent, which is every drop
+    /// spawned through the four-argument overload.</summary>
+    /// <param name="into">The buffer to fill. Reused by the caller, allocated by nobody here. Each
+    /// <c>Instance.Payload</c> is the client world's own array: read it, do not mutate it.</param>
+    public void CollectGroundItemInstances(
+        List<(long NetId, TileGroundItem Item, TileGroundItemInstance Instance)> into)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        into.Clear();
+        foreach (KeyValuePair<long, Ecs.Entity> pair in View.Entities)
+            if (World.TryGet(pair.Value, out TileGroundItem item)
+                && World.TryGet(pair.Value, out TileGroundItemInstance instance))
+                into.Add((pair.Key, item, instance));
+    }
+
     /// <summary>
     /// Latest-wins intent for the NEXT command tick, called from a click handler. A second click before the tick
     /// replaces the first, which is what makes a rapid double click feel like one decision rather than two.

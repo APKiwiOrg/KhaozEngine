@@ -16,6 +16,12 @@ public enum SqlServerJournalSchemaMode
 {
     AutoCreate,
     ValidateOnly,
+
+    /// <summary>Validates the version-two schema with catalog <c>SELECT</c>s only, in one read committed
+    /// transaction that is rolled back, with no DDL and no application lock. The store then refuses every write
+    /// path with <see cref="System.NotSupportedException"/>. A missing or older schema is refused with
+    /// <c>SchemaMismatch</c>, never created or migrated.</summary>
+    ReadOnly,
 }
 
 public sealed record SqlServerMutationJournalStoreOptions(string ConnectionString)
@@ -69,13 +75,12 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         timeProvider = options.TimeProvider ?? throw new ArgumentNullException(nameof(options), "Time provider cannot be null.");
         minimumRetryHorizon = options.MinimumRetryHorizon;
         this.testHook = testHook;
+        openedReadOnly = options.SchemaMode == SqlServerJournalSchemaMode.ReadOnly;
 
-        SqlServerJournalSchema.InitializeAsync(
-            connectionString,
-            options.SchemaMode,
-            commandTimeoutSeconds,
-            CancellationToken.None,
-            schemaTestHook).GetAwaiter().GetResult();
+        Task schema = openedReadOnly
+            ? SqlServerJournalSchema.ValidateReadOnlyAsync(connectionString, commandTimeoutSeconds, CancellationToken.None, schemaTestHook)
+            : SqlServerJournalSchema.InitializeAsync(connectionString, options.SchemaMode, commandTimeoutSeconds, CancellationToken.None, schemaTestHook);
+        schema.GetAwaiter().GetResult();
     }
 
     public async Task<JournalOperationResolution> ResolveOperationAsync(

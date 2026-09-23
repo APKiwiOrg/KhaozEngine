@@ -8,7 +8,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 ## 20.1.0
 
 The burn-down continues on a fresh minor now that 20.0.0 is released. Everything here is additive: the map
-editor streams its authored placements and gains a props-only chunk refresh, and nothing a game calls changes.
+editor streams its authored placements and gains a props-only chunk refresh, a batch of Grimhollow parity requests
+lands for container sync, tile netcode and journal operator tools
+([Grimhollow#246](https://github.com/APKiwiOrg/Grimhollow/issues/246)), and the F1 overlay names the running build.
+Nothing a game calls changes behaviour. The one source-level note is the new `ContainerCommitBuilder.Open` overload,
+below.
 
 **The map editor streams its authored placements.**
 
@@ -32,6 +36,63 @@ editor streams its authored placements and gains a props-only chunk refresh, and
   ring, prop cull and companion cull to cover the requested rect, capped at 24 chunks (a square up to about 1.9 km
   is fully covered), and says in its reply when the cap cut placements and scatter beyond 1350 m.
   `RenderService.RenderTopDownWithCoverage` and `TopDownRender` are new.
+
+**Container sync and the commit builder.**
+
+- `ItemContainerPageCodec.EncodeProjected(registry, viewerLevel, pageIndex, firstSlot, slotCount, contentVersion,
+  entries)` encodes a whole container page for a viewer through `ContainerPageProjection.ProjectPayload`, the same
+  projection `ContainerPageDelta.TryBuild` now calls, so there is one projection and a page can no longer carry
+  bytes the delta would strip ([#1049](https://github.com/APKiwiOrg/KhaozEngine/issues/1049), [#932](https://github.com/APKiwiOrg/KhaozEngine/issues/932)). A quarantined entry crosses as a hollow wrapper, its reason and
+  stamp over an empty original, and seats on the client as a quarantined item. The raw `Encode` projects nothing
+  and is for bytes only the server reads back. Delta bytes are unchanged.
+- `ContainerCommitBuilder.TryBuildParts(out events, out projectionWrites)` hands a batch's parts to a host that
+  composes a cross-stream commit, with `Close` kept as the convenience over it, and `PresentAtCommit` is public
+  ([#1044](https://github.com/APKiwiOrg/KhaozEngine/issues/1044)). Taking the parts closes the batch exactly as `Close` does. A host that adds to a batch opens it on
+  the store's limits lowered by its own share and validates the composed commit against the full limits.
+- `ContainerCommitBuilder.Open` takes `IPagedContainerWorkingCopy` containers, a ten-member door that
+  `PagedItemContainer` implements, so a host's copy-on-write wrapper keeps ownership of its containers
+  ([#1045](https://github.com/APKiwiOrg/KhaozEngine/issues/1045)). `MarkCommitted` calls `MarkClean` only on a container holding a dirty page, so a container the batch
+  never touched is never copied. The `PagedItemContainer` overload stays and forwards. Source note: an untyped
+  `null` or `default` containers argument, or `var open = ContainerCommitBuilder.Open;`, is now ambiguous and needs
+  a cast.
+
+**Tile netcode.**
+
+- `TileFragmentReassembler.TryComplete(chunk, out byte streamId, out assembled, out reason)` hands back the stream
+  id the chunk headers carried, so several fragmented streams on one message kind are routed by the header rather
+  than by a copy inside the payload ([#1048](https://github.com/APKiwiOrg/KhaozEngine/issues/1048)). The three-out overload delegates to it. The type doc now says
+  `MaxPartialAssemblies` is a hard constant, and eviction past it shows only in `EvictedAssemblies`.
+- `TileWorldClient.CollectGroundItemInstances(List<(long NetId, TileGroundItem Item, TileGroundItemInstance
+  Instance)>)` collects every drop that carries an instance, paired with its drop, in one walk of the entity set
+  ([#1060](https://github.com/APKiwiOrg/KhaozEngine/issues/1060), [#926](https://github.com/APKiwiOrg/KhaozEngine/issues/926)).
+
+**Journal operator access.**
+
+- `IMutationJournalStreamListing.ListStreamsAsync(JournalStreamQuery)` pages stream keys in ordinal order with an
+  optional key prefix and a continuation key, on the in-memory, SQLite and SQL Server stores ([#1061](https://github.com/APKiwiOrg/KhaozEngine/issues/1061)). It is an
+  opt-in interface, so other `IMutationJournalStore` implementations compile unchanged.
+- `SqliteJournalSchemaMode.ReadOnly` and `SqlServerJournalSchemaMode.ReadOnly` open a store that runs no DDL,
+  refuses every write path with `NotSupportedException` before any I/O, and refuses a missing or older schema
+  rather than creating or migrating it. SQLite opens its connection with `Mode=ReadOnly`. SQL Server checks the
+  schema with catalog reads in a rolled-back read committed transaction and takes no application lock. A consumer
+  that switches exhaustively over either enum sees one new case. The SQL Server facts ran against a local
+  container, 64 of 64 executed.
+
+**Diagnostics overlay.**
+
+- The F1 HUD has a built-in Build section, after Network and before any game section, showing the entry
+  assembly's product name and informational version with a `+<sha>` suffix dropped ([#1066](https://github.com/APKiwiOrg/KhaozEngine/issues/1066)). It is read once,
+  never per frame. `DiagnosticsHud.SetBuildIdentity(name, version)` replaces it with a game's own strings. The title
+  resolves through `DiagnosticsOverlayStrings.BuildTitle` (`diagnostics.overlay.build.title`, "Build"). Grimhollow
+  can delete its stopgap Build section when it repins, since its `Product` and `InformationalVersion` already give
+  the same text.
+
+**Tooling.**
+
+- `scripts/pack-local-feed.sh` packs the current tree into the MAIN checkout's `local-feed` from any worktree, and
+  `scripts/check-local-feed.sh` reads the same feed, both through `pack_feed_dir` in `scripts/pack-standard.sh`
+  ([#1063](https://github.com/APKiwiOrg/KhaozEngine/issues/1063)). `KHAOZENGINE_FEED` overrides both. `.gitignore` also ignores a `local-feed` symlink.
+- `docs/CROSS-PLATFORM.md` names `push` as the default `workflow_dispatch` tier ([#1074](https://github.com/APKiwiOrg/KhaozEngine/issues/1074)).
 
 ## 20.0.0
 

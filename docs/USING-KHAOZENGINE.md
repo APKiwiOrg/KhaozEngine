@@ -8581,6 +8581,16 @@ Other fade and shadow policies keep the existing CPU path. `LastDrawnCover` on t
 conservative candidate count, including placements rejected by the shader. `Scene3D.LastFoliageStats`
 separates instance upload bytes, uniform bytes and submitted patch counts.
 
+`WindFadeBladePixels` on `GroundCoverRenderOptions` and `FoliageRenderSettings` stops wind on blades that
+are only a few pixels tall on screen. It is a blade height in internal render target pixels. Wind is off
+below it, fades in over the next equal span and runs fully at twice the value. The vertex shader measures
+each blade from its root depth, the final camera projection and the internal target height, so the fade
+follows camera zoom and render resolution rather than distance from the draw focus. Far blades are often
+narrower than one pixel, so their sway moves the tip a small fraction of a pixel per frame and only flips
+each pixel's sample between blade and ground, which reads as shimmer. Interactor bending is never faded.
+The default of zero keeps wind at every size and leaves existing output unchanged. Selected animated
+foliage props read the value from `TileWorldViewOptions.GroundCover` with the other wind fields.
+
 For a non-tile game, create `FoliageBatch` through `Scene3D.CreateFoliageBatch` once from authored
 `FoliageInstance` values and call `DrawFoliage` each frame with `FoliageRenderSettings`. Dispose the batch
 on unload. A terrain caller using `DrawGroundCover` instead releases its source with

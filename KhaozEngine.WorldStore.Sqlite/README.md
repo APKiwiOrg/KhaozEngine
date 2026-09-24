@@ -90,6 +90,29 @@ policy and proof that every durable external consumer has passed the boundary. R
 batches with `PurgeOperationsByAgeAsync` and never shorten `MinimumRetryHorizon` below the longest client or
 server-cause retry window.
 
+`SqliteJournalReset` empties the journal for a release that wipes all game data. It deletes every row of the six
+data tables in one immediate transaction and leaves `journal_metadata`, including the store epoch, exactly as it
+was. It answers a `JournalResetResult` naming the rows each table held.
+
+```csharp
+using KhaozEngine.WorldStore.Journal;
+using KhaozEngine.WorldStore.Sqlite;
+
+JournalResetResult reset = await SqliteJournalReset.ResetAsync(
+    "Data Source=journal.db",
+    lockTimeout: TimeSpan.FromSeconds(5));
+```
+
+The reset opens its own connection and validates the version-two schema first, as `ValidateOnly` does. A missing
+file fails with `Unavailable` and no file is created. A file with no journal, or an older one, fails with
+`SchemaMismatch` and is never created or migrated. A plain `Data Source=:memory:` database belongs to the connection
+that opened it, so the reset finds no journal there. The reset takes the file's write lock, the lock every journal
+writer holds for its own transaction, and waits up to the lock timeout (`SqliteJournalReset.DefaultLockTimeout`, five
+seconds, when none is given). It is then refused with a whole-store `Timeout` that deleted nothing. It opens the
+store's own operation delete guard for its transaction and closes it however the transaction ends. Stop every
+journal host first, because an idle host holds no lock. The `KhaozEngine.WorldStore` README describes what a
+projection cursor means after a reset.
+
 `SqliteWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.2): `EnumerateAsync(keyPrefix?)` streams
 `WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQLite cursor, optionally filtered by key
 prefix. Used by `ServerAdmin` for account enumeration and ban persistence.

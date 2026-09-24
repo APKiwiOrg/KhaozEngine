@@ -132,7 +132,34 @@ policy and proof that every durable external consumer has passed the boundary. P
 with `PurgeOperationsByAgeAsync` and keep `MinimumRetryHorizon` at least as long as the maximum retry window for
 clients and durable server causes.
 
+`SqlServerJournalReset` empties the journal for a release that wipes all game data. It deletes every row of the six
+data tables in one serializable transaction and leaves `dbo.journal_metadata`, including the store epoch, exactly as
+it was. It answers a `JournalResetResult` naming the rows each table held.
+
+```csharp
+using KhaozEngine.WorldStore.Journal;
+using KhaozEngine.WorldStore.SqlServer;
+
+JournalResetResult reset = await SqlServerJournalReset.ResetAsync(
+    connectionString,
+    lockTimeout: TimeSpan.FromSeconds(30));
+```
+
+The reset validates the version-two schema first under the schema application lock, as `ValidateOnly` does, so a
+missing, older, or malformed journal fails with `SchemaMismatch` and is never created or migrated. Its transaction
+then takes the exclusive side of the maintenance application lock, the gate every commit holds shared and
+compaction, purge, and epoch rotation hold exclusive. It waits up to the lock timeout
+(`SqlServerJournalReset.DefaultLockTimeout`, thirty seconds, when none is given) and is then refused with a
+whole-store `Timeout` that deleted nothing. It opens the store's own transaction-local operation delete guard and
+drops it before the commit, so the trigger still refuses every other delete. Each table is counted under an
+exclusive table lock and then deleted, children before parents, and every statement is given the lock timeout plus
+ten minutes. The credential needs what a `ValidateOnly` runtime identity already holds: `VIEW DEFINITION`, `SELECT`,
+and `DELETE` on the journal tables and the `public` role. Stop every journal host first, because an idle host holds
+no lock. The `KhaozEngine.WorldStore` README describes what a projection cursor means after a reset.
+
 Live provider tests require `KE_SQLSERVER_TEST_CONNSTRING`. Each test owns a unique stream prefix and cleanup
-removes only rows under that prefix. Because cursor epoch rotation and operation retention are database-global,
-the test fixture requires the connection string's `Initial Catalog` to contain the literal `-journal-test-` marker.
-The guard runs before provider construction, schema validation, maintenance, or mutation.
+removes only rows under that prefix. The reset facts are the exception: they wipe the whole test journal, inside the
+same serialized test collection, so no other journal fact runs beside them. Because cursor epoch rotation,
+operation retention, and the reset are database-global, the test fixture requires the connection string's
+`Initial Catalog` to contain the literal `-journal-test-` marker. The guard runs before provider construction,
+schema validation, maintenance, reset, or mutation.

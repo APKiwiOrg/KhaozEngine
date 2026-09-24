@@ -91,6 +91,7 @@ public sealed class FoliageUniformsTests
     [InlineData(1f, 0)]
     [InlineData(float.NaN, 900)]
     [InlineData(float.PositiveInfinity, 900)]
+    [InlineData(1e-45f, 1)]
     public void DegenerateProjectionsOrTargetsYieldNoScale(float m22, int height)
     {
         Matrix4x4 projection = Matrix4x4.Identity;

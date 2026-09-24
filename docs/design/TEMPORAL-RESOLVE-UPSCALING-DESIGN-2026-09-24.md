@@ -187,4 +187,28 @@ rounds 1 and 2 serve it.
 
 ## Plan amendments
 
-None yet.
+The implementation plan, [`2026-09-24-temporal-aa.md`](../superpowers/plans/2026-09-24-temporal-aa.md), read the code
+and changed these details. Each group's "Contract amendments" block carries the evidence.
+
+1. A fifth preset, `UltraPerformance` at 1/3 per axis (72 jitter phases), and `UpscaleRatio` from 0.33 to 1.0. At a
+   3456x2234 display even `Performance` shades more pixels than a fixed 1600x900 target, so the frame-time line needs a
+   cheaper preset (group E).
+2. History colour is RGBA16F with RG16F confidence and stability, not R11G11B10, which is not a seam format, is not a
+   guaranteed Vulkan render target, and whose mantissa stalls a 1/16 blend. At a 3456x2234 display on `Quality` the
+   history holds about 213 MB, plus about 155 MB of display-size post targets, against risk 2's estimate (group E).
+3. Previous depth is two linear view depth targets written by `TemporalDepthStoreFrag`, not a copy of the depth target
+   (group E).
+4. `PixelPostProcess` takes an `IPostChainTargets` interface so the chain runs at display size (group E).
+5. In temporal mode the background draws before the transparents that render into the model target. With temporal off
+   the order is unchanged, and its existing sky-over-transparents bug is
+   [#1153](https://github.com/APKiwiOrg/KhaozEngine/issues/1153) (group E).
+6. History targets survive `Invalidate` and are released only when the resolve stops (group E).
+7. The mip bias rides the free `Params.z` and `Params.w` lanes of the frame block, and the explicit-gradient ground taps
+   scale their gradients by the bias instead of taking a bias argument (group F).
+8. Temporal counts are sampled on request through `Scene3D.RequestTemporalCounts()`, because every backend's readback
+   drains the device (group F).
+9. A screen-fixed starfield background takes zero motion instead of the sky's rotation reprojection (Task F16a).
+10. In temporal mode the toon edge outline runs on the internal images before the resolve, so its lines are
+    accumulated rather than jittered. A non-black outline colour mixes before the tonemap there (Task F16b).
+11. Round 3 keys carcasses, which move through their 0.9 s collapse (group I).
+12. The release version is chosen at release time by the ride rule: an untagged staged minor is ridden (Task H5).

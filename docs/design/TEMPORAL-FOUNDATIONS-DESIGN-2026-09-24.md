@@ -236,4 +236,29 @@ follow the dynamic-offset rules the slot already obeys.
 
 ## Plan amendments
 
-None yet. The implementation plan records here every place its reading of the code changes a detail above.
+The implementation plan, [`2026-09-24-temporal-aa.md`](../superpowers/plans/2026-09-24-temporal-aa.md), read the code
+and changed these details. Each group's "Contract amendments" block carries the evidence.
+
+1. The point-light cluster grid is built on the jittered view-projection, not the unjittered one. A lit fragment finds
+   its cluster through the raster matrix, so the grid has to match it or lights flicker at tile edges. The grid has no
+   dirty-skip, so jitter costs it nothing (group A).
+2. A render origin rebase is exact in its step and bounded in its product, at most 1e-5 UV of motion for a still scene
+   across a 128 m step, a third of the acceptance line (group B).
+3. `DeviceReset` means the colour-format rebuild `EnsureSize` performs, the one backend reset a live scene has (group B).
+4. A second render in one frame keeps the frame's temporal identity and re-latches the matrices, because it may target
+   another viewport (group B).
+5. The distortion offset field reads the unjittered matrix (group B).
+6. Skinned motion records carry the previous model matrix as well as the palette. `MotionHistory.Reset()` runs on
+   temporal-off frames, and a shadow-only draw ignores its key (group C).
+7. `ITileWorldScene` gains `DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw, bones)` with
+   defaults, forwarded by `Scene3DTileWorldScene`, so a tile-world game can key its bodies (Task C9).
+8. `SkinnedLimb` keys its own draw, as `CharacterAvatar` does (Task C11).
+9. Each rigid instance carries a per-instance motion slot into a compact previous-transform buffer, because
+   `gl_InstanceIndex` omits the base instance on D3D11 under the pinned cross-compile options (Task D1).
+10. The motion matrices live in their own `MotionFrame` block, so no existing program's hash changes (group D).
+11. CPU-skinned previous positions are re-skinned from the remembered palette rather than stored per key (group D).
+12. An MSAA request while temporal is active falls back to FXAA (group D).
+13. The foliage uniform slot keeps its 256 bytes, with last frame's state in its padding (group D).
+14. Five transparent passes that draw into the model target get variants that leave the motion target untouched
+    (group D).
+15. There are seven hand-maintained shader lists, not six. `VulkanShippedVertexLayoutTests` is the seventh.

@@ -24,6 +24,7 @@ layout(set=1, binding=0) uniform Foliage {
     vec4 WindTime;
     vec4 Interactors[4];
     vec4 Strengths;
+    vec4 WindFade;
 };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
@@ -69,8 +70,15 @@ void main() {
     float rootWeight = clamp((Position.y - FoliageParameters.y) * invHeight, 0.0, 1.0);
     rootWeight *= rootWeight;
     float phase = dot(IModel3.xz, WindTime.xy) * FadeWind.w - WindTime.z * FadeWind.z;
-    vec2 bend = WindTime.xy * (sin(phase) * 0.7 + sin(phase * 0.43 + 1.7) * 0.3) * FadeWind.y * bladeHeight;
     vec3 root = (Model * vec4(0.0, FoliageParameters.y, 0.0, 1.0)).xyz;
+    vec2 bend = WindTime.xy * (sin(phase) * 0.7 + sin(phase * 0.43 + 1.7) * 0.3) * FadeWind.y * bladeHeight;
+    if (WindFade.x > 0.0) {
+        // Sway on a blade a few pixels tall is sub-pixel and only flips samples between blade and ground.
+        // Foliage draws only in the camera pass, so ViewProj is the camera's and w is the root's view depth.
+        float metresPerPixel = max((ViewProj * vec4(root, 1.0)).w, 0.0) * WindFade.y;
+        float bladePixels = metresPerPixel > 0.0 ? bladeHeight / metresPerPixel : 2.0 * WindFade.x;
+        bend *= smoothstep(WindFade.x, 2.0 * WindFade.x, bladePixels);
+    }
     for (int i = 0; i < 4; i++) {
         if (Interactors[i].w <= 0.0 || Strengths[i] <= 0.0) continue;
         vec3 delta = root - (Interactors[i].xyz - RenderOrigin.xyz);

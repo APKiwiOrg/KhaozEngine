@@ -125,7 +125,14 @@ public sealed partial class Scene3D
             batch.Pending = null;
             uploaded += bytes;
         }
-        long uniforms = kept == 0 ? 0 : _model.UploadFoliageUniforms(cl, CollectionsMarshal.AsSpan(_foliageUniforms));
+        long uniforms = 0;
+        if (kept > 0)
+        {
+            Span<ModelRenderer.FoliageUniforms> slots = CollectionsMarshal.AsSpan(_foliageUniforms);
+            ModelRenderer.FoliageUniforms.ApplyPixelScale(slots,
+                ModelRenderer.FoliageUniforms.MetresPerPixel(ActiveCamera.Projection, _res.Height));
+            uniforms = _model.UploadFoliageUniforms(cl, slots);
+        }
         _frameStats.AddInstanceUpload(uploaded);
         LastFoliageStats = new FoliageFrameStats(_foliagePatchTests, 0, 0, uploaded, uniforms);
     }

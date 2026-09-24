@@ -24,6 +24,7 @@ public sealed class FoliageSettingsTests
         Assert.Equal(0f, settings.WindStrength);
         Assert.Equal(1.8f, settings.WindSpeed);
         Assert.Equal(.35f, settings.WindSpatialFrequency);
+        Assert.Equal(0f, settings.WindFadeBladePixels);
     }
 
     [Theory]
@@ -41,6 +42,7 @@ public sealed class FoliageSettingsTests
             new() { InstanceFadeBandWidth = value },
             new() { WindSpeed = value },
             new() { WindSpatialFrequency = value },
+            new() { WindFadeBladePixels = value },
         ];
 
         foreach (FoliageRenderSettings settings in invalid)
@@ -83,8 +85,20 @@ public sealed class FoliageSettingsTests
             WindStrength = 1f,
             WindSpeed = 0f,
             WindSpatialFrequency = 0f,
+            WindFadeBladePixels = 0f,
         }.Validate();
     }
+
+    [Theory]
+    [InlineData(.5f)]
+    [InlineData(4f)]
+    [InlineData(4096f)]
+    public void PositiveWindFadeBladeHeightsAreValid(float pixels) =>
+        new FoliageRenderSettings { WindStrength = .5f, WindFadeBladePixels = pixels }.Validate();
+
+    [Fact]
+    public void WindFadeRejectsASmallNegativeHeight() =>
+        Assert.ThrowsAny<ArgumentException>(new FoliageRenderSettings { WindFadeBladePixels = -.01f }.Validate);
 
     [Fact]
     public void InteractorsRejectNonFiniteOrOutOfRangeInputs()

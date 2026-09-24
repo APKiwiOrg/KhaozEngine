@@ -165,6 +165,38 @@ public sealed class FoliageGpuTests(FoliageGpuScene fixture) : IClassFixture<Fol
         Assert.Equal(expected, reused);
     }
 
+    [GpuFact]
+    public void WindStopsOnBladesThatAreOnlyAFewPixelsTall()
+    {
+        Scene3D scene = fixture.Scene;
+        // Perspective looking down -Z, so world -X is the left half of the image and +X the right half.
+        var camera = new FlyCamera3D { Position = new Vector3(0f, 1f, 0f), Yaw = MathF.PI, AspectRatio = 16f / 9f };
+        var placements = new List<FoliageInstance>();
+        foreach (float x in new[] { -4.2f, -3.2f, -2.2f }) placements.Add(Blade(x, -5f));
+        foreach (float x in new[] { 14f, 18f, 22f, 26f, 30f }) placements.Add(Blade(x, -60f));
+        using FoliageBatch batch = scene.CreateFoliageBatch(placements.ToArray());
+        var wind = new FoliageRenderSettings { DrawRadius = 200f, DistantDensity = 1f, WindStrength = .8f };
+        var faded = wind with { WindFadeBladePixels = 60f };
+        float metresPerPixel = 2f / (camera.Projection.M22 * scene.Post.RenderHeight);
+        // Two metre blades cover about 312 internal pixels at 5 m and about 26 at 60 m.
+        Assert.InRange(2f / (5f * metresPerPixel), 2f * faded.WindFadeBladePixels * 1.5f, float.MaxValue);
+        Assert.InRange(2f / (60f * metresPerPixel), 0f, faded.WindFadeBladePixels / 1.5f);
+
+        byte[] fadedFirst = fixture.Capture(s => s.DrawFoliage(batch, Vector3.Zero, faded), time: 1f, camera: camera);
+        byte[] fadedSecond = fixture.Capture(s => s.DrawFoliage(batch, Vector3.Zero, faded), time: 2.5f, camera: camera);
+        byte[] windFirst = fixture.Capture(s => s.DrawFoliage(batch, Vector3.Zero, wind), time: 1f, camera: camera);
+        byte[] windSecond = fixture.Capture(s => s.DrawFoliage(batch, Vector3.Zero, wind), time: 2.5f, camera: camera);
+
+        Assert.True(GreenPixels(RightHalf(fadedFirst)) > 0, "The far blades must reach the image.");
+        Assert.Equal(RightHalf(fadedFirst), RightHalf(fadedSecond));
+        Assert.NotEqual(LeftHalf(fadedFirst), LeftHalf(fadedSecond));
+        Assert.NotEqual(RightHalf(windFirst), RightHalf(windSecond));
+        Assert.Equal(LeftHalf(windFirst), LeftHalf(fadedFirst));
+    }
+
+    FoliageInstance Blade(float x, float z) =>
+        new(fixture.Blade, Matrix4x4.CreateScale(4f, 1f, 4f) * Matrix4x4.CreateTranslation(x, 0f, z), .1f);
+
     [Fact]
     public void FoliageShaderCompilesThroughThePortableShaderValidator() =>
         ShaderValidation.ValidatePair(KhaozEngine.Render3D.Internal.ShaderSources.FoliageVert,
@@ -195,6 +227,23 @@ public sealed class FoliageGpuTests(FoliageGpuScene fixture) : IClassFixture<Fol
             pixels.AsSpan(y * FoliageGpuScene.Width * 4, FoliageGpuScene.Width * 2)
                 .CopyTo(half.AsSpan(y * FoliageGpuScene.Width * 2));
         return half;
+    }
+
+    static byte[] RightHalf(byte[] pixels)
+    {
+        var half = new byte[pixels.Length / 2];
+        for (int y = 0; y < FoliageGpuScene.Height; y++)
+            pixels.AsSpan(y * FoliageGpuScene.Width * 4 + FoliageGpuScene.Width * 2, FoliageGpuScene.Width * 2)
+                .CopyTo(half.AsSpan(y * FoliageGpuScene.Width * 2));
+        return half;
+    }
+
+    static int GreenPixels(byte[] pixels)
+    {
+        int count = 0;
+        for (int p = 0; p + 3 < pixels.Length; p += 4)
+            if (pixels[p + 1] > pixels[p] * 1.3f && pixels[p + 1] > pixels[p + 2] * 1.3f) count++;
+        return count;
     }
 
     static void AssertRootPixelsMatch(byte[] still, byte[] bent)
@@ -240,9 +289,11 @@ public sealed class FoliageGpuScene : IDisposable
         }
     }
 
-    public byte[] Capture(Action<Scene3D> draw, float time = 0f, Vector3 center = default, Vector3? origin = null)
+    public byte[] Capture(Action<Scene3D> draw, float time = 0f, Vector3 center = default, Vector3? origin = null,
+        IIsoCamera3D? camera = null)
     {
         Scene3D scene = Scene;
+        scene.CameraOverride = camera;
         scene.Post.TransparentBackground = false;
         scene.Post.Starfield = false;
         scene.Post.BackgroundColor = new Color(.08f, .1f, .14f, 1f);

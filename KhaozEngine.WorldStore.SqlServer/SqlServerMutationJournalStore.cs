@@ -53,10 +53,20 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
     {
     }
 
+    /// <param name="options">The store's options.</param>
+    /// <param name="testHook">The commit phase hook, for tests.</param>
+    /// <param name="schemaTestHook">The schema step hook, for tests.</param>
+    /// <param name="schemaTimeoutSeconds">
+    /// The schema step's own lock wait and command timeout, in place of the options' command timeout. The journal
+    /// reset bounds its validation by its lock timeout this way while its own statements keep a longer allowance.
+    /// </param>
+    /// <param name="schemaCancellation">Cancels the schema step, which otherwise runs to its timeout.</param>
     internal SqlServerMutationJournalStore(
         SqlServerMutationJournalStoreOptions options,
         SqlServerJournalTestHook? testHook,
-        SqlServerJournalSchemaTestHook? schemaTestHook = null)
+        SqlServerJournalSchemaTestHook? schemaTestHook = null,
+        int? schemaTimeoutSeconds = null,
+        CancellationToken schemaCancellation = default)
     {
         ArgumentNullException.ThrowIfNull(options);
         connectionString = options.ConnectionString
@@ -77,9 +87,10 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         this.testHook = testHook;
         openedReadOnly = options.SchemaMode == SqlServerJournalSchemaMode.ReadOnly;
 
+        int schemaTimeout = schemaTimeoutSeconds ?? commandTimeoutSeconds;
         Task schema = openedReadOnly
-            ? SqlServerJournalSchema.ValidateReadOnlyAsync(connectionString, commandTimeoutSeconds, CancellationToken.None, schemaTestHook)
-            : SqlServerJournalSchema.InitializeAsync(connectionString, options.SchemaMode, commandTimeoutSeconds, CancellationToken.None, schemaTestHook);
+            ? SqlServerJournalSchema.ValidateReadOnlyAsync(connectionString, schemaTimeout, schemaCancellation, schemaTestHook)
+            : SqlServerJournalSchema.InitializeAsync(connectionString, options.SchemaMode, schemaTimeout, schemaCancellation, schemaTestHook);
         schema.GetAwaiter().GetResult();
     }
 

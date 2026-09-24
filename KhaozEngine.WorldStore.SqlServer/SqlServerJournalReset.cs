@@ -36,15 +36,15 @@ public static class SqlServerJournalReset
     /// <summary>How long a reset waits for the maintenance lock before refusing, the store's own default command timeout.</summary>
     public static readonly TimeSpan DefaultLockTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>What every statement is given beyond the lock timeout. A whole-table delete of a large journal is slow.</summary>
+    /// <summary>What the reset transaction's statements are given beyond the lock timeout. A whole-table delete of a large journal is slow.</summary>
     private static readonly TimeSpan StatementAllowance = TimeSpan.FromMinutes(10);
 
-    /// <summary>Resets the journal, waiting up to <see cref="DefaultLockTimeout"/> for the maintenance lock.</summary>
+    /// <summary>Resets the journal, waiting up to <see cref="DefaultLockTimeout"/> for the schema and maintenance locks.</summary>
     /// <param name="connectionString">The ADO.NET connection string for the journal's database.</param>
     /// <param name="cancellationToken">Cancels the work. Nothing is committed on the way out.</param>
     /// <returns>The rows deleted from each data table, and the store epoch that was kept.</returns>
     /// <exception cref="ArgumentException"><paramref name="connectionString"/> is null, empty or whitespace.</exception>
-    /// <exception cref="JournalStoreException">The database carries no journal or not the version-two journal, or a host key the deletes would fire (<c>SchemaMismatch</c>), a journal writer or maintenance call held the lock past the timeout (<c>Timeout</c>), a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>), or the server failed.</exception>
+    /// <exception cref="JournalStoreException">The database carries no journal or not the version-two journal, or a host key the deletes would fire (<c>SchemaMismatch</c>), schema initialization, a journal writer or a maintenance call held its lock past the timeout (<c>Timeout</c>), a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>), or the server failed.</exception>
     public static Task<JournalResetResult> ResetAsync(string connectionString, CancellationToken cancellationToken = default)
         => ResetAsync(connectionString, DefaultLockTimeout, cancellationToken);
 
@@ -74,19 +74,22 @@ public static class SqlServerJournalReset
     /// table that is not the journal's own is already a <c>SchemaMismatch</c> of the validation above.
     /// </para>
     /// <para>
-    /// Every statement, the deletes included, is given the lock timeout plus ten minutes. The credential needs what a
-    /// <c>ValidateOnly</c> runtime identity already holds: <c>VIEW DEFINITION</c>, <c>SELECT</c> and <c>DELETE</c> on
-    /// the journal tables and the <c>public</c> role behind <c>sys.sp_getapplock</c>. It needs no DDL right beyond
-    /// creating the session's own temporary guard table, which every login may do.
+    /// The validation is bounded by the lock timeout, rounded up to whole seconds, for both its wait on the schema
+    /// application lock and each of its statements, and it observes <paramref name="cancellationToken"/>. A host stuck
+    /// in schema initialization therefore refuses the reset with <c>Timeout</c> once the lock timeout runs out. The
+    /// statements of the reset's own transaction, the deletes included, are given the lock timeout plus ten minutes.
+    /// The credential needs what a <c>ValidateOnly</c> runtime identity already holds: <c>VIEW DEFINITION</c>,
+    /// <c>SELECT</c> and <c>DELETE</c> on the journal tables and the <c>public</c> role behind <c>sys.sp_getapplock</c>.
+    /// It needs no DDL right beyond creating the session's own temporary guard table, which every login may do.
     /// </para>
     /// </summary>
     /// <param name="connectionString">The ADO.NET connection string for the journal's database.</param>
-    /// <param name="lockTimeout">How long to wait for the maintenance lock. Positive, and waited in whole milliseconds.</param>
+    /// <param name="lockTimeout">How long to wait for the maintenance lock, in whole milliseconds, and for the schema lock during validation, rounded up to whole seconds. Positive.</param>
     /// <param name="cancellationToken">Cancels the work. Nothing is committed on the way out.</param>
     /// <returns>The rows deleted from each data table, and the store epoch that was kept.</returns>
     /// <exception cref="ArgumentException"><paramref name="connectionString"/> is null, empty or whitespace.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="lockTimeout"/> is not positive or does not fit SQL Server's millisecond lock timeout.</exception>
-    /// <exception cref="JournalStoreException">The database carries no journal or not the version-two journal, or a host key the deletes would fire (<c>SchemaMismatch</c>), a journal writer or maintenance call held the lock past the timeout (<c>Timeout</c>), a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>), or the server failed.</exception>
+    /// <exception cref="JournalStoreException">The database carries no journal or not the version-two journal, or a host key the deletes would fire (<c>SchemaMismatch</c>), schema initialization, a journal writer or a maintenance call held its lock past the timeout (<c>Timeout</c>), a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>), or the server failed.</exception>
     public static async Task<JournalResetResult> ResetAsync(
         string connectionString,
         TimeSpan lockTimeout,
@@ -97,11 +100,17 @@ public static class SqlServerJournalReset
             throw new ArgumentOutOfRangeException(nameof(lockTimeout), lockTimeout, "A reset's lock timeout must be positive and fit SQL Server's millisecond lock timeout.");
         cancellationToken.ThrowIfCancellationRequested();
 
-        var store = new SqlServerMutationJournalStore(new SqlServerMutationJournalStoreOptions(connectionString)
-        {
-            SchemaMode = SqlServerJournalSchemaMode.ValidateOnly,
-            CommandTimeout = lockTimeout + StatementAllowance,
-        });
+        // The validation waits on the schema application lock, so it gets the lock timeout and the caller's token.
+        // Only the reset's own transaction gets the longer statement allowance.
+        var store = new SqlServerMutationJournalStore(
+            new SqlServerMutationJournalStoreOptions(connectionString)
+            {
+                SchemaMode = SqlServerJournalSchemaMode.ValidateOnly,
+                CommandTimeout = lockTimeout + StatementAllowance,
+            },
+            testHook: null,
+            schemaTimeoutSeconds: checked((int)Math.Ceiling(lockTimeout.TotalSeconds)),
+            schemaCancellation: cancellationToken);
         return await store.ResetJournalAsync(lockTimeout, cancellationToken).ConfigureAwait(false);
     }
 }

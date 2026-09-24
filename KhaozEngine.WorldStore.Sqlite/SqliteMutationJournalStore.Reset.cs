@@ -39,7 +39,7 @@ public sealed partial class SqliteMutationJournalStore
         bool committed = false;
         try
         {
-            transaction = db.Connection.BeginTransaction(deferred: false);
+            transaction = BeginResetTransaction();
             OpenOperationDeleteGuard();
             Guid epoch = await ReadEpochAsync(transaction, cancellationToken).ConfigureAwait(false);
             long operationStreams = await DeleteEveryRowAsync(transaction, DeleteOperationStreamsSql, cancellationToken).ConfigureAwait(false);
@@ -63,6 +63,28 @@ public sealed partial class SqliteMutationJournalStore
         {
             CloseOperationDeleteGuard();
             transaction?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// The immediate transaction, with a busy or locked file answered as the reset's own refusal rather than a bare
+    /// provider failure. The provider error stays the inner exception.
+    /// </summary>
+    private SqliteTransaction BeginResetTransaction()
+    {
+        try
+        {
+            return db.Connection.BeginTransaction(deferred: false);
+        }
+        catch (SqliteException busy) when (busy.SqliteErrorCode is 5 or 6)
+        {
+            throw new JournalStoreException(
+                JournalStoreFailureKind.Timeout,
+                JournalStoreFailureCertainty.DefinitelyNotCommitted,
+                JournalStoreFailureScope.WholeStore,
+                null,
+                "The journal reset could not take the SQLite write lock before its lock timeout, because another journal writer held it. Nothing was deleted. Stop every journal host and retry.",
+                busy);
         }
     }
 

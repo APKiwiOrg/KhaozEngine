@@ -52,6 +52,7 @@ public sealed partial class TileWorldView
         _animatedFoliageOptions.WindStrength = source.WindStrength;
         _animatedFoliageOptions.WindSpeed = source.WindSpeed;
         _animatedFoliageOptions.WindSpatialFrequency = source.WindSpatialFrequency;
+        _animatedFoliageOptions.WindFadeBladePixels = source.WindFadeBladePixels;
         _animatedFoliageOptions.Interactors = source.Interactors;
         return drawn + _scene.DrawGroundCover(split.Foliage, _propMeshes, focus, _animatedFoliageOptions);
     }

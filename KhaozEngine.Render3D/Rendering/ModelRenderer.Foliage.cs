@@ -22,8 +22,25 @@ internal sealed partial class ModelRenderer
     {
         public Vector4 FocusRadius, Density, FadeWind, WindTime;
         public Vector4 Interactor0, Interactor1, Interactor2, Interactor3, Strengths;
-        public const uint SizeInBytes = 144;
+        public Vector4 WindFade; // blade pixels where wind stops, metres per internal pixel at clip w of 1
+        public const uint SizeInBytes = 160;
         public const uint SlotBytes = 256;
+
+        /// <summary>Metres one internal pixel covers vertically at clip w of 1. Perspective clip w is view depth.
+        /// Orthographic clip w is 1, which gives view height over render height. Zero when degenerate.</summary>
+        public static float MetresPerPixel(in Matrix4x4 projection, int renderHeight)
+        {
+            float pixelsPerUnit = MathF.Abs(projection.M22) * renderHeight;
+            float scale = pixelsPerUnit > 0f ? 2f / pixelsPerUnit : 0f;
+            return float.IsFinite(scale) ? scale : 0f;
+        }
+
+        /// <summary>Writes the frame's pixel scale into every slot. Submission can precede the final camera
+        /// and render size, so the scale is applied when the slots upload.</summary>
+        public static void ApplyPixelScale(Span<FoliageUniforms> uniforms, float metresPerPixel)
+        {
+            foreach (ref FoliageUniforms slot in uniforms) slot.WindFade.Y = metresPerPixel;
+        }
 
         public static FoliageUniforms Build(Vector3 focus, in FoliageRenderSettings settings,
             ReadOnlySpan<FoliageInteractor> interactors, float time)
@@ -39,6 +56,7 @@ internal sealed partial class ModelRenderer
                 FadeWind = new Vector4(settings.InstanceFadeBandWidth, settings.WindStrength,
                     settings.WindSpeed, settings.WindSpatialFrequency),
                 WindTime = new Vector4(direction, float.IsFinite(time) ? time : 0f, settings.FadeBandWidth),
+                WindFade = new Vector4(settings.WindFadeBladePixels, 0f, 0f, 0f),
             };
             Span<Vector4> locations = MemoryMarshal.CreateSpan(ref data.Interactor0, 4);
             Span<float> strengths = MemoryMarshal.CreateSpan(ref data.Strengths.X, 4);

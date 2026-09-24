@@ -29,8 +29,16 @@ public readonly record struct FoliageRenderSettings
     public float WindSpeed { get; init; } = 1.8f;
     /// <summary>Non-negative world-space wind wave frequency.</summary>
     public float WindSpatialFrequency { get; init; } = .35f;
+    /// <summary>Blade height on screen, in internal render target pixels, below which wind stops. Wind fades in
+    /// over the next equal span, so a blade twice this tall sways fully. It keys on projected size, not focus
+    /// distance, so zooming out calms blades too small for their sway to show. A perspective camera calms distant
+    /// blades first. An orthographic camera gives every blade the same pixel size, view height over render height,
+    /// so equal blades calm together at one zoom threshold. The height is world height over the pixel size at the
+    /// root and ignores view pitch, so the true on-screen height is lower by about the cosine of the view
+    /// elevation. Zero keeps wind at every size.</summary>
+    public float WindFadeBladePixels { get; init; }
 
-    /// <summary>Rejects non-finite values, negative distances or rates and fractions outside 0 through 1.</summary>
+    /// <summary>Rejects non-finite values, negative distances, rates or pixel heights and fractions outside 0 through 1.</summary>
     public void Validate()
     {
         NonNegative(DrawRadius, nameof(DrawRadius));
@@ -42,6 +50,9 @@ public readonly record struct FoliageRenderSettings
         Unit(WindStrength, nameof(WindStrength));
         NonNegative(WindSpeed, nameof(WindSpeed));
         NonNegative(WindSpatialFrequency, nameof(WindSpatialFrequency));
+        if (!float.IsFinite(WindFadeBladePixels) || WindFadeBladePixels < 0f)
+            throw new ArgumentOutOfRangeException(nameof(WindFadeBladePixels),
+                "Foliage wind fade blade height must be finite and non-negative.");
         if (!float.IsFinite(WindDirection.X) || !float.IsFinite(WindDirection.Y))
             throw new ArgumentException("Foliage wind direction must be finite.", nameof(WindDirection));
     }

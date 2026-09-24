@@ -16,6 +16,13 @@ Skinned characters now cast placed and dynamic point-light shadows. Placed light
 poses animate in a compact transient atlas, and CPU and GPU skinning agree. The live point-shadow report includes
 the transient memory cost ([#1054](https://github.com/APKiwiOrg/KhaozEngine/issues/1054)).
 
+Foliage wind can stop on blades too small for their sway to show. `FoliageRenderSettings.WindFadeBladePixels` and
+`GroundCoverRenderOptions.WindFadeBladePixels` name a blade height on screen, in internal render pixels, below
+which wind fades out, reaching full sway at twice that height. A perspective camera calms distant blades first and
+an orthographic camera calms equal blades together at one zoom. Sway that small only flipped each pixel between
+blade and ground, which read as shimmer on distant grass. Interactor bending is unchanged, and the default of zero
+keeps today's output ([#1146](https://github.com/APKiwiOrg/KhaozEngine/issues/1146)).
+
 **Position-stable draws and the skills total level.**
 
 - `RandomDraw.Below(rng, exclusiveMax)` and `RandomDraw.UpTo(rng, inclusiveMax)` in `KhaozEngine.Primitives`

@@ -5,6 +5,12 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.5.1
+
+`TooltipLine.OfSegments` preserves individual `LabelSegment` colours in a tooltip body line. Long lines
+still wrap to the tooltip width cap, including hard breaks inside a coloured item name. Existing uniform
+`TooltipLine` calls keep their layout and rendering.
+
 ## 20.5.0
 
 Skinned characters and rigid held pieces can now share one pixel-width target outline. The border follows the

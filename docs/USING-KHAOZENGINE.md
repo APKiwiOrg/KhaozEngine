@@ -1352,6 +1352,16 @@ Each entry in `bodyLines` carries its own `TooltipLine.Scale` (default `1f`), an
 the title row above them, so one shared font can render the whole tooltip's size hierarchy (see "Scaling
 Gui text" above).
 
+Use `TooltipLine.OfSegments` when one localized body line has differently coloured parts. It resolves
+the `LabelSegment` text when built and retains each colour when the tooltip wraps the line to its width cap.
+For example, an action hint can keep its verb colour while an item name uses its rarity colour:
+
+```csharp
+// The caller's localized formatter supplied verb, item and any suffix segments in display order.
+TooltipLine action = TooltipLine.OfSegments(localizedActionSegments, actionColor);
+tip.Show(default, new[] { action }, anchor);
+```
+
 For separate bubbles that must keep one order beside the pointer, measure each with `Tooltip.ComputeBounds`,
 pass the widths and heights to `TooltipStackLayout.Place`, then show each offset-mode `Tooltip` at
 `TooltipStackLayout.AnchorFor(box, tip.Metrics)`. Use the same viewport and metrics for measurement and drawing.
@@ -7051,7 +7061,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.5.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.5.1" />
 ```
 
 ```csharp
@@ -13487,7 +13497,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.5.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.5.1" />
 ```
 
 ```csharp
@@ -13523,7 +13533,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.5.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.5.1" />
 ```
 
 ```csharp
@@ -13765,7 +13775,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.5.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.5.1" />
 ```
 
 ```csharp
@@ -17730,7 +17740,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.5.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.5.1" />
 </ItemGroup>
 ```
 

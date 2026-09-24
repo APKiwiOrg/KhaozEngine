@@ -677,6 +677,8 @@ chat.Draw(batch, white);
     `Scale` (default `1f`, a third optional positional field), and `Tooltip.TitleScale` (default `1f`) scales the
     title row, so one shared font can render a size hierarchy (e.g. a bright 1.0 title over 0.84/0.42 body lines).
     A scaled line still wraps within `MaxWidth` (the word-wrap budget divides by the line's own scale).
+    `TooltipLine.OfSegments` resolves `LabelSegment`s into one body line and keeps each segment's colour
+    through word wrapping and hard breaks. Its fallback colour applies when a segment has none.
     `Opacity` (default `1f`) fades the whole bubble for a host transition, and covers every colour it paints
     (background, border, title row, separator, each body line), so `0` draws nothing.
     `AnchorMode` (default `TooltipAnchorMode.Centered`, the bubble straddling the anchor) switches to

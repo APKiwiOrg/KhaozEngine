@@ -12,10 +12,19 @@ namespace KhaozEngine.Gui
     /// <paramref name="Scale"/> (default <c>1f</c>) so one font can render a size hierarchy.</summary>
     public readonly record struct TooltipLine(string Text, Vector4 Color, float Scale = 1f)
     {
+        /// <summary>Resolved coloured runs for this line. Empty keeps the original uniform colour.</summary>
+        public ReadOnlyMemory<TooltipTextRun> Runs { get; internal init; }
+
         /// <summary>Build a line from localized text (resolved now against the ambient catalog),
         /// optionally at <paramref name="scale"/>.</summary>
         public static TooltipLine Of(LocalizedText text, Vector4 color, float scale = 1f) =>
             new(text.Resolve(), color, scale);
+
+        /// <summary>Build a line from localized segments, retaining each segment's colour through wrapping.
+        /// A segment without a colour uses <paramref name="defaultColor"/>.</summary>
+        public static TooltipLine OfSegments(IReadOnlyList<LabelSegment> segments,
+            Vector4 defaultColor, float scale = 1f) =>
+            TooltipColoredLines.FromSegments(segments, defaultColor, scale);
     }
 
     /// <summary>
@@ -322,11 +331,16 @@ namespace KhaozEngine.Gui
             {
                 TooltipLine line = lines[i];
                 string text = line.Text ?? "";
-                line = new TooltipLine(text, line.Color, line.Scale);
+                line = line with { Text = text };
                 float budget = bounded ? maxContentWidth / (line.Scale > 0f ? line.Scale : 1f) : maxContentWidth;
                 if (!bounded || bodyFont.Measure(text).X <= budget)
                 {
                     outLines.Add(line);
+                    continue;
+                }
+                if (!line.Runs.IsEmpty)
+                {
+                    outLines.AddRange(TooltipColoredLines.Wrap(bodyFont, line, budget));
                     continue;
                 }
                 foreach (string wrapped in TextLayout.Wrap(bodyFont, text, budget, hardBreak: true))
@@ -384,8 +398,19 @@ namespace KhaozEngine.Gui
             }
             for (int i = 0; i < visual.Count; i++)
             {
-                batch.DrawString(_bodyFont, visual[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)),
-                    (Color)GuiDraw.WithOpacity(visual[i].Color, Opacity), visual[i].Scale);
+                if (visual[i].Runs.IsEmpty)
+                    batch.DrawString(_bodyFont, visual[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)),
+                        (Color)GuiDraw.WithOpacity(visual[i].Color, Opacity), visual[i].Scale);
+                else
+                {
+                    float runX = x;
+                    foreach (TooltipTextRun run in visual[i].Runs.Span)
+                    {
+                        batch.DrawString(_bodyFont, run.Text, new Vector2(MathF.Floor(runX), MathF.Floor(y)),
+                            (Color)GuiDraw.WithOpacity(run.Color, Opacity), visual[i].Scale);
+                        runX += _bodyFont.Measure(run.Text).X * visual[i].Scale;
+                    }
+                }
                 y += _bodyFont.LineHeight * visual[i].Scale + Metrics.LineSpacing;
             }
         }

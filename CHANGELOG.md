@@ -22,6 +22,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - The reset takes the lock every journal writer holds for its own transaction, the SQLite write lock or the
   exclusive side of the SQL Server maintenance application lock. Once its lock timeout runs out it is refused with a
   whole-store `Timeout` that deleted nothing. An idle host holds no lock, so the caller stops every host first.
+- The reset refuses a game table's foreign key into a journal data table declared `CASCADE`, `SET NULL` or
+  `SET DEFAULT`, and a game trigger on one, because its deletes would fire them against the game's own rows. The
+  refusal is a whole-store `SchemaMismatch` that names each one and deleted nothing. A game row behind a `NO ACTION`
+  key fails the delete instead, and the whole reset rolls back with `ConstraintViolation`.
 - Because the epoch is kept, a projection cursor from before the reset is not told apart by epoch. Consumers drop
   their cursors, or the caller rotates the epoch afterwards. The in-memory store has no reset, as the content
   catalog's in-memory store has none.

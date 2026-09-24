@@ -434,6 +434,12 @@ whole-store `Timeout` that deleted nothing. An idle host holds no lock, so drain
 every client that may retry an operation, before a reset. Every replay receipt goes, so a retry of an operation
 committed before the reset resolves `NotFound` and is not recognized as a replay.
 
+The reset refuses to reach outside the journal. A game table's foreign key into a journal data table declared
+`CASCADE`, `SET NULL`, or `SET DEFAULT` would fire on the deletes and delete or rewrite the game's own rows, and so
+would a game trigger on a journal data table. The reset refuses either with a whole-store `SchemaMismatch` that names
+it and deleted nothing. A `NO ACTION` key fires nothing: a game row that still references a stream fails the delete
+instead, and the whole reset rolls back with `ConstraintViolation`. Clear those rows, or drop the key, first.
+
 A projection cursor binds the store epoch, the stream key, and its captured head. The reset keeps the epoch, so
 the store cannot tell a cursor taken before it from one taken after it. A read of a deleted stream returns
 `NotFound`. After a stream is initialized again under the same key, an old cursor ahead of the new head returns

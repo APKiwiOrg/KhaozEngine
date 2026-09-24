@@ -146,11 +146,15 @@ JournalResetResult reset = await SqlServerJournalReset.ResetAsync(
 ```
 
 The reset validates the version-two schema first under the schema application lock, as `ValidateOnly` does, so a
-missing, older, or malformed journal fails with `SchemaMismatch` and is never created or migrated. Its transaction
-then takes the exclusive side of the maintenance application lock, the gate every commit holds shared and
+missing, older, or malformed journal fails with `SchemaMismatch` and is never created or migrated. That check
+compares every trigger on a journal table, so a game trigger on one is refused there. Its transaction then takes the exclusive side of the maintenance application lock, the gate every commit holds shared and
 compaction, purge, and epoch rotation hold exclusive. It waits up to the lock timeout
 (`SqlServerJournalReset.DefaultLockTimeout`, thirty seconds, when none is given) and is then refused with a
-whole-store `Timeout` that deleted nothing. It opens the store's own transaction-local operation delete guard and
+whole-store `Timeout` that deleted nothing. Under the lock and before the first delete it refuses a game table's
+foreign key into a journal data table declared `CASCADE`, `SET NULL`, or `SET DEFAULT` with a whole-store
+`SchemaMismatch` that names the key and deleted nothing. A `NO ACTION` key fires nothing, so a game row that still
+references a stream fails the delete instead and the whole reset rolls back with `ConstraintViolation`. It opens the
+store's own transaction-local operation delete guard and
 drops it before the commit, so the trigger still refuses every other delete. Each table is counted under an
 exclusive table lock and then deleted, children before parents, and every statement is given the lock timeout plus
 ten minutes. The credential needs what a `ValidateOnly` runtime identity already holds: `VIEW DEFINITION`, `SELECT`,

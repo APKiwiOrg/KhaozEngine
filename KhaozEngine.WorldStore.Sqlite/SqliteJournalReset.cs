@@ -42,7 +42,7 @@ public static class SqliteJournalReset
     /// <param name="cancellationToken">Cancels the work. Nothing is committed on the way out.</param>
     /// <returns>The rows deleted from each data table, and the store epoch that was kept.</returns>
     /// <exception cref="ArgumentException"><paramref name="connectionString"/> is null, empty or whitespace.</exception>
-    /// <exception cref="JournalStoreException">The file is missing (<c>Unavailable</c>), carries no journal or not the version-two journal (<c>SchemaMismatch</c>), or another connection held the write lock past the timeout (<c>Timeout</c>).</exception>
+    /// <exception cref="JournalStoreException">The file is missing (<c>Unavailable</c>), carries no journal or not the version-two journal, or a host key or trigger the deletes would fire (<c>SchemaMismatch</c>), another connection held the write lock past the timeout (<c>Timeout</c>), or a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>).</exception>
     public static Task<JournalResetResult> ResetAsync(string connectionString, CancellationToken cancellationToken = default)
         => ResetAsync(connectionString, DefaultLockTimeout, cancellationToken);
 
@@ -63,6 +63,14 @@ public static class SqliteJournalReset
     /// holds no lock, so the lock is not proof that every host has stopped. Stopping them is the caller's job.
     /// </para>
     /// <para>
+    /// <b>It refuses to fire anything outside the journal.</b> Under the lock and before the first delete it reads
+    /// every foreign key a non-journal table declares into a journal data table, and every trigger on one that is not
+    /// the journal's own. A key declared <c>CASCADE</c>, <c>SET NULL</c> or <c>SET DEFAULT</c>, or such a trigger, is
+    /// refused with a whole-store <c>SchemaMismatch</c> naming it, having deleted nothing. A <c>NO ACTION</c> or
+    /// <c>RESTRICT</c> key fires nothing: a host row that still references the journal fails the delete instead, and
+    /// the whole reset rolls back with <c>ConstraintViolation</c>.
+    /// </para>
+    /// <para>
     /// It opens its OWN connection, so the connection string has to name a durable database. A plain
     /// <c>Data Source=:memory:</c> database belongs to the connection that opened it, so the reset would find no
     /// journal there and refuse.
@@ -74,7 +82,7 @@ public static class SqliteJournalReset
     /// <returns>The rows deleted from each data table, and the store epoch that was kept.</returns>
     /// <exception cref="ArgumentException"><paramref name="connectionString"/> is null, empty or whitespace.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="lockTimeout"/> is not positive or does not fit SQLite's millisecond timeout.</exception>
-    /// <exception cref="JournalStoreException">The file is missing (<c>Unavailable</c>), carries no journal or not the version-two journal (<c>SchemaMismatch</c>), or another connection held the write lock past the timeout (<c>Timeout</c>).</exception>
+    /// <exception cref="JournalStoreException">The file is missing (<c>Unavailable</c>), carries no journal or not the version-two journal, or a host key or trigger the deletes would fire (<c>SchemaMismatch</c>), another connection held the write lock past the timeout (<c>Timeout</c>), or a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>).</exception>
     public static async Task<JournalResetResult> ResetAsync(
         string connectionString,
         TimeSpan lockTimeout,

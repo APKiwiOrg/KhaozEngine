@@ -58,6 +58,10 @@ public sealed partial class SqlServerMutationJournalStore
     /// nothing. The operation delete guard is this store's own, opened inside the transaction and dropped before the
     /// commit, exactly as the purge opens it.
     /// </para>
+    /// <para>
+    /// Under the lock and before the first delete it refuses a host foreign key whose delete action the deletes would
+    /// fire, through <see cref="SqlServerJournalHostKeys"/>, so that refusal also changes nothing.
+    /// </para>
     /// </summary>
     internal async Task<JournalResetResult> ResetJournalAsync(TimeSpan lockTimeout, CancellationToken cancellationToken)
     {
@@ -72,6 +76,7 @@ public sealed partial class SqlServerMutationJournalStore
         {
             transaction = await BeginTransactionAsync(connection, cancellationToken).ConfigureAwait(false);
             await AcquireResetLockAsync(transaction, lockTimeout, lockTimeoutMilliseconds, cancellationToken).ConfigureAwait(false);
+            await SqlServerJournalHostKeys.RefuseFiringKeysAsync(transaction, commandTimeoutSeconds, cancellationToken).ConfigureAwait(false);
             await OpenOperationDeleteGuardAsync(transaction, cancellationToken).ConfigureAwait(false);
             Guid epoch = await ReadEpochAsync(transaction, cancellationToken).ConfigureAwait(false);
             long operationStreams = await DeleteEveryRowAsync(transaction, DeleteOperationStreamsSql, cancellationToken).ConfigureAwait(false);

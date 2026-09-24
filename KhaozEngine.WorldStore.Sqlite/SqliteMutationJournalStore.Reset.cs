@@ -28,6 +28,10 @@ public sealed partial class SqliteMutationJournalStore
     /// store's own, opened after the lock is held and closed however the transaction ends, exactly as the purge
     /// opens it.
     /// </para>
+    /// <para>
+    /// Under the lock and before the first delete it refuses a host foreign key or a host trigger the deletes would
+    /// fire, through <see cref="SqliteJournalHostObjects"/>, so that refusal also changes nothing.
+    /// </para>
     /// </summary>
     internal async Task<JournalResetResult> ResetJournalAsync(CancellationToken cancellationToken)
     {
@@ -40,6 +44,7 @@ public sealed partial class SqliteMutationJournalStore
         try
         {
             transaction = BeginResetTransaction();
+            await SqliteJournalHostObjects.RefuseFiringObjectsAsync(db.Connection, transaction, cancellationToken).ConfigureAwait(false);
             OpenOperationDeleteGuard();
             Guid epoch = await ReadEpochAsync(transaction, cancellationToken).ConfigureAwait(false);
             long operationStreams = await DeleteEveryRowAsync(transaction, DeleteOperationStreamsSql, cancellationToken).ConfigureAwait(false);

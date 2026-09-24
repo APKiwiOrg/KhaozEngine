@@ -44,7 +44,7 @@ public static class SqlServerJournalReset
     /// <param name="cancellationToken">Cancels the work. Nothing is committed on the way out.</param>
     /// <returns>The rows deleted from each data table, and the store epoch that was kept.</returns>
     /// <exception cref="ArgumentException"><paramref name="connectionString"/> is null, empty or whitespace.</exception>
-    /// <exception cref="JournalStoreException">The database carries no journal or not the version-two journal (<c>SchemaMismatch</c>), a journal writer or maintenance call held the lock past the timeout (<c>Timeout</c>), or the server failed.</exception>
+    /// <exception cref="JournalStoreException">The database carries no journal or not the version-two journal, or a host key the deletes would fire (<c>SchemaMismatch</c>), a journal writer or maintenance call held the lock past the timeout (<c>Timeout</c>), a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>), or the server failed.</exception>
     public static Task<JournalResetResult> ResetAsync(string connectionString, CancellationToken cancellationToken = default)
         => ResetAsync(connectionString, DefaultLockTimeout, cancellationToken);
 
@@ -66,6 +66,14 @@ public static class SqlServerJournalReset
     /// no lock, so the lock is not proof that every host has stopped. Stopping them is the caller's job.
     /// </para>
     /// <para>
+    /// <b>It refuses to fire anything outside the journal.</b> Under the lock and before the first delete it reads
+    /// every foreign key a table outside the journal declares into a journal data table. A key declared
+    /// <c>CASCADE</c>, <c>SET NULL</c> or <c>SET DEFAULT</c> is refused with a whole-store <c>SchemaMismatch</c> naming
+    /// it, having deleted nothing. A <c>NO ACTION</c> key fires nothing: a host row that still references the journal
+    /// fails the delete instead, and the whole reset rolls back with <c>ConstraintViolation</c>. A trigger on a journal
+    /// table that is not the journal's own is already a <c>SchemaMismatch</c> of the validation above.
+    /// </para>
+    /// <para>
     /// Every statement, the deletes included, is given the lock timeout plus ten minutes. The credential needs what a
     /// <c>ValidateOnly</c> runtime identity already holds: <c>VIEW DEFINITION</c>, <c>SELECT</c> and <c>DELETE</c> on
     /// the journal tables and the <c>public</c> role behind <c>sys.sp_getapplock</c>. It needs no DDL right beyond
@@ -78,7 +86,7 @@ public static class SqlServerJournalReset
     /// <returns>The rows deleted from each data table, and the store epoch that was kept.</returns>
     /// <exception cref="ArgumentException"><paramref name="connectionString"/> is null, empty or whitespace.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="lockTimeout"/> is not positive or does not fit SQL Server's millisecond lock timeout.</exception>
-    /// <exception cref="JournalStoreException">The database carries no journal or not the version-two journal (<c>SchemaMismatch</c>), a journal writer or maintenance call held the lock past the timeout (<c>Timeout</c>), or the server failed.</exception>
+    /// <exception cref="JournalStoreException">The database carries no journal or not the version-two journal, or a host key the deletes would fire (<c>SchemaMismatch</c>), a journal writer or maintenance call held the lock past the timeout (<c>Timeout</c>), a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>), or the server failed.</exception>
     public static async Task<JournalResetResult> ResetAsync(
         string connectionString,
         TimeSpan lockTimeout,

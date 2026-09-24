@@ -97,8 +97,15 @@ public sealed class FoliageSettingsTests
         new FoliageRenderSettings { WindStrength = .5f, WindFadeBladePixels = pixels }.Validate();
 
     [Fact]
-    public void WindFadeRejectsASmallNegativeHeight() =>
-        Assert.ThrowsAny<ArgumentException>(new FoliageRenderSettings { WindFadeBladePixels = -.01f }.Validate);
+    public void WindFadeRejectsASmallNegativeHeight()
+    {
+        var error = Assert.Throws<ArgumentOutOfRangeException>(
+            new FoliageRenderSettings { WindFadeBladePixels = -.01f }.Validate);
+
+        Assert.Equal(nameof(FoliageRenderSettings.WindFadeBladePixels), error.ParamName);
+        Assert.StartsWith("Foliage wind fade blade height must be finite and non-negative.", error.Message,
+            StringComparison.Ordinal);
+    }
 
     [Fact]
     public void InteractorsRejectNonFiniteOrOutOfRangeInputs()

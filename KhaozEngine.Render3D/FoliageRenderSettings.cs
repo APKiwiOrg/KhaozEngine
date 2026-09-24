@@ -46,7 +46,9 @@ public readonly record struct FoliageRenderSettings
         Unit(WindStrength, nameof(WindStrength));
         NonNegative(WindSpeed, nameof(WindSpeed));
         NonNegative(WindSpatialFrequency, nameof(WindSpatialFrequency));
-        NonNegative(WindFadeBladePixels, nameof(WindFadeBladePixels));
+        if (!float.IsFinite(WindFadeBladePixels) || WindFadeBladePixels < 0f)
+            throw new ArgumentOutOfRangeException(nameof(WindFadeBladePixels),
+                "Foliage wind fade blade height must be finite and non-negative.");
         if (!float.IsFinite(WindDirection.X) || !float.IsFinite(WindDirection.Y))
             throw new ArgumentException("Foliage wind direction must be finite.", nameof(WindDirection));
     }

@@ -8583,13 +8583,21 @@ separates instance upload bytes, uniform bytes and submitted patch counts.
 
 `WindFadeBladePixels` on `GroundCoverRenderOptions` and `FoliageRenderSettings` stops wind on blades that
 are only a few pixels tall on screen. It is a blade height in internal render target pixels. Wind is off
-below it, fades in over the next equal span and runs fully at twice the value. The vertex shader measures
-each blade from its root depth, the final camera projection and the internal target height, so the fade
-follows camera zoom and render resolution rather than distance from the draw focus. Far blades are often
+below it, fades in over the next equal span and runs fully at twice the value. Far blades are often
 narrower than one pixel, so their sway moves the tip a small fraction of a pixel per frame and only flips
 each pixel's sample between blade and ground, which reads as shimmer. Interactor bending is never faded.
 The default of zero keeps wind at every size and leaves existing output unchanged. Selected animated
 foliage props read the value from `TileWorldViewOptions.GroundCover` with the other wind fields.
+
+The vertex shader divides each blade's world height by the size of one internal pixel at its root, taken
+from the final camera projection and the internal target height. The fade therefore follows camera zoom
+and render resolution rather than distance from the draw focus. Under a perspective camera the pixel size
+grows with root depth, so distant blades calm first. `Scene3D.Camera` defaults to an orthographic
+`IsoCamera3D`, where every blade gets the same pixel size, the view height `OrthoSize / Zoom` over the
+render height. There the fade depends only on zoom, view height and render height, and equal blades calm
+together at one zoom threshold across the whole field. The measure ignores view pitch. A blade's true
+on-screen height is lower by about the cosine of the view elevation, roughly 11% at the default iso
+elevation.
 
 For a non-tile game, create `FoliageBatch` through `Scene3D.CreateFoliageBatch` once from authored
 `FoliageInstance` values and call `DrawFoliage` each frame with `FoliageRenderSettings`. Dispose the batch

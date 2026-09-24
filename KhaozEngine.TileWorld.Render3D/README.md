@@ -471,8 +471,9 @@ no-shadow drawing are selected. The view releases retained batches on rebuild, u
 `AnimatedFoliageArchetypes` selects placed ground-prop model IDs for the same wind and bending shader.
 Selected props keep their authored transforms, ordinary prop draw radius and full density. Turning short
 cover off does not hide them. Wind settings, including `WindFadeBladePixels`, and up to four
-`GroundCover.Interactors` are shared with short cover. The host advances `Scene3D.EffectTimeSeconds`. Selection, overrides and dirty rebuilds invalidate
-only affected cached splits. This changes presentation only, with picking and collision left to world data.
+`GroundCover.Interactors` are shared with short cover. The host advances `Scene3D.EffectTimeSeconds`.
+Selection, overrides and dirty rebuilds invalidate only affected cached splits. This changes presentation
+only, with picking and collision left to world data.
 
 ## Streaming (`TileRegionResidency`, `TileResidencyConfig`)
 

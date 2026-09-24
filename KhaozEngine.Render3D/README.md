@@ -1057,11 +1057,14 @@ The vertex shader performs exact fading, wind and nearby actor bending with root
 Wind strength is a fraction of blade height. Direction, speed and spatial frequency are configurable per
 submission. `WindFadeBladePixels` stops wind on blades shorter than that many internal render target
 pixels on screen and restores it fully at twice the value. It keys on projected size from the final camera
-and render size, not on focus distance. Zero, the default, keeps wind at every size.
-Advance `Scene3D.EffectTimeSeconds` from the render clock. Supply up to four `FoliageInteractor`
-positions, radii and strengths for cosmetic bending. Vertical separation prevents a different floor from
-pushing the grass. All inputs are copied at submission. Grass is lit, supports material alpha masks and
-casts no dynamic shadow. It adds no collision or world state.
+and render size, not on focus distance. A perspective camera calms distant blades first. The default
+orthographic `IsoCamera3D` gives every blade the same pixel size, view height over render height, so equal
+blades calm together at one zoom threshold. The height is world height over the pixel size at the root and
+ignores view pitch, so the true on-screen height is about 11% lower at the default iso elevation. Zero, the
+default, keeps wind at every size. Advance `Scene3D.EffectTimeSeconds` from the render clock. Supply up to
+four `FoliageInteractor` positions, radii and strengths for cosmetic bending. Vertical separation prevents
+a different floor from pushing the grass. All inputs are copied at submission. Grass is lit, supports
+material alpha masks and casts no dynamic shadow. It adds no collision or world state.
 
 Dispose the batch when placements change or unload. The scene owns GPU buffers and retires them safely.
 Mesh handles remain caller-owned and must belong to that scene. `LastFoliageStats` reports workload and

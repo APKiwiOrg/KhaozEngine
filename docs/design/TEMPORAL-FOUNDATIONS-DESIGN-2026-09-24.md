@@ -1,6 +1,6 @@
 # Temporal foundations
 
-Status: design, awaiting owner review.
+Status: design, approved by the owner on 2026-09-24. Ships with rounds 2 and 3 as one program.
 Date: 2026-09-24.
 Issue: [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149), round 1 of 3.
 Consumer: Grimhollow, through round 3 of the same program.

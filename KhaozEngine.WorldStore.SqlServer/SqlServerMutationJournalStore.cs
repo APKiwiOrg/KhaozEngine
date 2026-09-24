@@ -160,9 +160,16 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         }
     }
 
+    private Task AcquireMaintenanceLockAsync(
+        SqlTransaction transaction,
+        bool exclusive,
+        CancellationToken cancellationToken)
+        => AcquireMaintenanceLockAsync(transaction, exclusive, MaintenanceLockTimeoutMilliseconds, cancellationToken);
+
     private async Task AcquireMaintenanceLockAsync(
         SqlTransaction transaction,
         bool exclusive,
+        int lockTimeoutMilliseconds,
         CancellationToken cancellationToken)
     {
         using SqlCommand command = CreateCommand(transaction, """
@@ -175,7 +182,7 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
             SELECT @result;
             """);
         Add(command, "@mode", exclusive ? "Exclusive" : "Shared");
-        Add(command, "@timeout", (int)Math.Min((long)commandTimeoutSeconds * 1000L, int.MaxValue));
+        Add(command, "@timeout", lockTimeoutMilliseconds);
         int result = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
         if (result < 0) throw SqlServerJournalSchema.ApplicationLockFailure(result);
     }

@@ -9,7 +9,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 `TooltipLine.OfSegments` preserves individual `LabelSegment` colours in a tooltip body line. Long lines
 still wrap to the tooltip width cap, including hard breaks inside a coloured item name. Existing uniform
-`TooltipLine` calls keep their layout and rendering.
+`TooltipLine` calls keep their layout and rendering. `SpriteBatch.DrawStringRuns` draws the wrapped pieces
+with one snapped origin, so colour boundaries keep the same glyph spacing as a uniform line.
 
 ## 20.5.0
 

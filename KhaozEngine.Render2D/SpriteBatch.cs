@@ -565,22 +565,7 @@ void main() {
             // per-glyph baseline wave - whenever the effective scale was fractional, e.g. a DpiFont drawn at a Theme
             // scale below 1.) Snapping is disarmed (a no-op) outside a point-space UiViewport.
             (float penX, float baseline) = SnapTextOrigin(position.X, position.Y + font.Ascent * scale);
-            for (int i = 0; i < text.Length; i++)
-            {
-                // Shared resolution with SpriteFont.Measure: unbaked codepoints draw as the visible
-                // SpriteFont.FallbackChar glyph (control chars stay zero-width), so metrics match rendering.
-                GlyphInfo? g = SpriteFont.ResolveGlyph(font.Glyphs, text, ref i);
-                if (g == null) continue;
-                if (g.W > 0 && g.H > 0)
-                {
-                    // Placement mirrored by DebugGlyphDests (test seam) - keep the two in lockstep.
-                    var dest = new Vector4(penX + g.XOff * k, baseline + g.YOff * k, g.W * k, g.H * k);
-                    var uv = new Vector4((float)g.Ax / font.AtlasW, (float)g.Ay / font.AtlasH,
-                                         (float)(g.Ax + g.W) / font.AtlasW, (float)(g.Ay + g.H) / font.AtlasH);
-                    Draw(font.Atlas, dest, uv, color);
-                }
-                penX += g.Advance * scale;
-            }
+            DrawGlyphRun(font, text, color, k, scale, ref penX, baseline);
         }
 
         // Snap a text block's origin (pen X + ascent baseline Y) to whole device pixels for a point-space UI pass,

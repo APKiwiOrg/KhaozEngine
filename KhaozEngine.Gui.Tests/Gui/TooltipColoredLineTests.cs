@@ -76,4 +76,22 @@ public sealed class TooltipColoredLineTests
             .Where(run => run.Text.Any(char.IsLetter) && !run.Text.Contains("Equip", StringComparison.Ordinal)),
             run => Assert.Equal(Rare, run.Color));
     }
+
+    [Fact]
+    public void ReplacingThePublicTextClearsStaleColouredRuns()
+    {
+        TooltipLine original = TooltipLine.OfSegments([
+            new LabelSegment(LocalizedText.Raw("Equip "), Yellow),
+            new LabelSegment(LocalizedText.Raw("Stone pickaxe"), Rare),
+        ], Yellow);
+
+        TooltipLine changed = original with { Text = "New action" };
+
+        Assert.True(changed.Runs.IsEmpty);
+        Assert.Equal("New action", changed.Text);
+        _ = Tooltip.ComputeBounds(Font, "", "", Font, Font, [changed],
+            new Vector2(200, 200), new Vector2(600, 400), TooltipMetrics.Default,
+            100f, 1f, TooltipAnchorMode.Offset, out var visual);
+        Assert.All(visual, line => Assert.True(line.Runs.IsEmpty));
+    }
 }

@@ -12,8 +12,21 @@ namespace KhaozEngine.Gui
     /// <paramref name="Scale"/> (default <c>1f</c>) so one font can render a size hierarchy.</summary>
     public readonly record struct TooltipLine(string Text, Vector4 Color, float Scale = 1f)
     {
+        readonly string _text = Text;
+
+        /// <summary>The resolved line text. Replacing it clears any runs tied to the previous text.</summary>
+        public string Text
+        {
+            get => _text;
+            init
+            {
+                _text = value;
+                Runs = default;
+            }
+        }
+
         /// <summary>Resolved coloured runs for this line. Empty keeps the original uniform colour.</summary>
-        public ReadOnlyMemory<TooltipTextRun> Runs { get; internal init; }
+        public ReadOnlyMemory<ColoredTextRun> Runs { get; internal init; }
 
         /// <summary>Build a line from localized text (resolved now against the ambient catalog),
         /// optionally at <paramref name="scale"/>.</summary>
@@ -331,7 +344,7 @@ namespace KhaozEngine.Gui
             {
                 TooltipLine line = lines[i];
                 string text = line.Text ?? "";
-                line = line with { Text = text };
+                if (line.Text is null) line = line with { Text = text };
                 float budget = bounded ? maxContentWidth / (line.Scale > 0f ? line.Scale : 1f) : maxContentWidth;
                 if (!bounded || bodyFont.Measure(text).X <= budget)
                 {
@@ -402,15 +415,8 @@ namespace KhaozEngine.Gui
                     batch.DrawString(_bodyFont, visual[i].Text, new Vector2(MathF.Floor(x), MathF.Floor(y)),
                         (Color)GuiDraw.WithOpacity(visual[i].Color, Opacity), visual[i].Scale);
                 else
-                {
-                    float runX = x;
-                    foreach (TooltipTextRun run in visual[i].Runs.Span)
-                    {
-                        batch.DrawString(_bodyFont, run.Text, new Vector2(MathF.Floor(runX), MathF.Floor(y)),
-                            (Color)GuiDraw.WithOpacity(run.Color, Opacity), visual[i].Scale);
-                        runX += _bodyFont.Measure(run.Text).X * visual[i].Scale;
-                    }
-                }
+                    batch.DrawStringRuns(_bodyFont, visual[i].Runs.Span,
+                        new Vector2(MathF.Floor(x), MathF.Floor(y)), visual[i].Scale, Opacity);
                 y += _bodyFont.LineHeight * visual[i].Scale + Metrics.LineSpacing;
             }
         }

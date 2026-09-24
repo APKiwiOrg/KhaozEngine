@@ -6,9 +6,6 @@ using KhaozEngine.Render2D;
 
 namespace KhaozEngine.Gui;
 
-/// <summary>One resolved piece of a tooltip body line. Its colour stays with its text when the line wraps.</summary>
-public readonly record struct TooltipTextRun(string Text, Vector4 Color);
-
 /// <summary>Resolves localized label segments once and maps wrapped text back to their source colours.</summary>
 internal static class TooltipColoredLines
 {
@@ -16,14 +13,14 @@ internal static class TooltipColoredLines
         Vector4 defaultColor, float scale)
     {
         ArgumentNullException.ThrowIfNull(segments);
-        var runs = new List<TooltipTextRun>(segments.Count);
+        var runs = new List<ColoredTextRun>(segments.Count);
         var text = new StringBuilder();
         foreach (LabelSegment segment in segments)
         {
             string piece = segment.Content.Resolve() ?? "";
             if (piece.Length == 0) continue;
             text.Append(piece);
-            runs.Add(new TooltipTextRun(piece, segment.Color ?? defaultColor));
+            runs.Add(new ColoredTextRun(piece, segment.Color ?? defaultColor));
         }
         return new TooltipLine(text.ToString(), defaultColor, scale) { Runs = runs.ToArray() };
     }
@@ -42,15 +39,15 @@ internal static class TooltipColoredLines
             if (start < 0)
                 throw new InvalidOperationException("A wrapped tooltip line is not a source text slice.");
             int end = start + text.Length;
-            var runs = new List<TooltipTextRun>();
+            var runs = new List<ColoredTextRun>();
             int sourceAt = 0;
-            foreach (TooltipTextRun run in source.Runs.Span)
+            foreach (ColoredTextRun run in source.Runs.Span)
             {
                 int runEnd = sourceAt + run.Text.Length;
                 int from = Math.Max(start, sourceAt);
                 int through = Math.Min(end, runEnd);
                 if (from < through)
-                    runs.Add(new TooltipTextRun(source.Text[from..through], run.Color));
+                    runs.Add(new ColoredTextRun(source.Text[from..through], run.Color));
                 sourceAt = runEnd;
             }
             visual.Add(new TooltipLine(text, source.Color, source.Scale) { Runs = runs.ToArray() });

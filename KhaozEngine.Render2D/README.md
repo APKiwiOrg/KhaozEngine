@@ -48,6 +48,9 @@ flushes are safe. Calling it before `Begin` or after `End` throws `InvalidOperat
   method, so any existing measurer implementation keeps compiling unchanged) - `SpriteFont`'s override measures
   the span directly with no intermediate string allocation, for a caller (e.g. word-wrap) measuring a candidate
   that may be thrown away. `DrawString` has a `float scale` overload (uniform scale about the top-left).
+  `SpriteBatch.DrawStringRuns` accepts resolved `ColoredTextRun`s and advances one glyph pen across them,
+  snapping the text block only once so a colour change cannot shift letter spacing. Its `opacity` scales
+  each run's alpha without changing RGB.
   `TextLayout.AlignedX`/`DrawAligned`/`DrawWrapped` take an optional `scale` so aligned/wrapped text stays
   correct when drawn scaled (`scale = 1` is unchanged). `TextLayout.Wrap(font, text, maxWidth, hardBreak)`
   word-wraps on spaces and is memoized (a bounded LRU cache PER MEASURER, keyed on text + maxWidth + hardBreak +
@@ -212,7 +215,7 @@ For DPI-aware UI, `SpriteBatch` exposes device-pixel snapping:
 These are non-zero / active ONLY inside a point-space `UiViewport` `Begin`. A fractional design viewport,
 world/camera space, screen space, or a transformed pass leaves `DeviceScale` at `Vector2.Zero`, so snapping is
 a no-op there. Inside a point-space pass `SpriteBatch` also snaps each text block's origin (its ascent baseline)
-to device pixels - once per `DrawString`, not per glyph - so text drawn with a `DpiFont` is crisp AND every glyph
+to device pixels - once per `DrawString` or `DrawStringRuns` call, not per glyph - so text drawn with a `DpiFont` is crisp AND every glyph
 of a word stays on one baseline (snapping each glyph independently used to wave the baseline at fractional scales).
 
 ## `SpriteBatch.DrawQuad`

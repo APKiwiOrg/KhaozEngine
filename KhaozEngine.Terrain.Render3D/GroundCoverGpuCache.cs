@@ -59,6 +59,7 @@ internal sealed class GroundCoverGpuCache
             WindStrength = options.WindStrength,
             WindSpeed = options.WindSpeed,
             WindSpatialFrequency = options.WindSpatialFrequency,
+            WindFadeBladePixels = options.WindFadeBladePixels,
         };
         settings.Validate();
         ArgumentNullException.ThrowIfNull(options.Interactors);

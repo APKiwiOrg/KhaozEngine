@@ -61,7 +61,8 @@ public sealed class GroundCoverGpuOptionsTests
         {
             DrawRadius = 88f, DensityRadius = 40f, FadeBandWidth = 13f, InstanceFadeBandWidth = 2f,
             QualityDensity = .8f, DistantDensity = .2f, WindDirection = new Vector2(.3f, -.8f),
-            WindStrength = .5f, WindSpeed = 3f, WindSpatialFrequency = .75f, Interactors = actors,
+            WindStrength = .5f, WindSpeed = 3f, WindSpatialFrequency = .75f, WindFadeBladePixels = 5f,
+            Interactors = actors,
         };
         Span<FoliageInteractor> interactors = stackalloc FoliageInteractor[4];
 
@@ -79,6 +80,7 @@ public sealed class GroundCoverGpuOptionsTests
         Assert.Equal(.5f, settings.WindStrength);
         Assert.Equal(3f, settings.WindSpeed);
         Assert.Equal(.75f, settings.WindSpatialFrequency);
+        Assert.Equal(5f, settings.WindFadeBladePixels);
         Assert.Equal(1, count);
         Assert.Equal(new FoliageInteractor(new Vector3(1f, 2f, 3f), 4f, .5f), interactors[0]);
     }
@@ -94,6 +96,7 @@ public sealed class GroundCoverGpuOptionsTests
     [InlineData("wind strength")]
     [InlineData("wind speed")]
     [InlineData("wind frequency")]
+    [InlineData("wind fade")]
     public void RetainedOptionsRejectInvalidSettingsBeforeCreatingResources(string setting)
     {
         var options = new GroundCoverRenderOptions();
@@ -109,6 +112,7 @@ public sealed class GroundCoverGpuOptionsTests
             case "wind strength": options.WindStrength = 2f; break;
             case "wind speed": options.WindSpeed = -1f; break;
             case "wind frequency": options.WindSpatialFrequency = float.NaN; break;
+            case "wind fade": options.WindFadeBladePixels = -1f; break;
         }
 
         Assert.ThrowsAny<ArgumentException>(() => Read(options));
@@ -129,6 +133,13 @@ public sealed class GroundCoverGpuOptionsTests
         Assert.ThrowsAny<ArgumentException>(() => Read(options));
         options.Interactors = [new FoliageInteractor(Vector3.Zero, 1f, 2f)];
         Assert.ThrowsAny<ArgumentException>(() => Read(options));
+    }
+
+    [Fact]
+    public void WindFadeDefaultsToZeroSoWindKeepsEverySize()
+    {
+        Assert.Equal(0f, new GroundCoverRenderOptions().WindFadeBladePixels);
+        Assert.Equal(0f, Read(new GroundCoverRenderOptions()).WindFadeBladePixels);
     }
 
     static FoliageRenderSettings Read(GroundCoverRenderOptions options, Vector3 focus = default) =>

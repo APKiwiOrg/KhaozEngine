@@ -93,6 +93,7 @@ public sealed class TileWorldViewAnimatedFoliageTests
         options.GroundCover.WindStrength = .6f;
         options.GroundCover.WindSpeed = 3f;
         options.GroundCover.WindSpatialFrequency = .7f;
+        options.GroundCover.WindFadeBladePixels = 4.5f;
         options.GroundCover.Interactors = [new FoliageInteractor(new Vector3(2f, 0f, -2f), 1.5f)];
         options.PropDrawRadius = 48f;
         scene.ClearFrame();
@@ -105,6 +106,7 @@ public sealed class TileWorldViewAnimatedFoliageTests
         Assert.Equal(.6f, after.Options.WindStrength);
         Assert.Equal(3f, after.Options.WindSpeed);
         Assert.Equal(.7f, after.Options.WindSpatialFrequency);
+        Assert.Equal(4.5f, after.Options.WindFadeBladePixels);
         Assert.Equal(new FoliageInteractor(new Vector3(2f, 0f, -2f), 1.5f), Assert.Single(after.Options.Interactors));
         Assert.Equal(48f, after.Options.DrawRadius);
         Assert.Empty(scene.FoliageReleases);

@@ -39,6 +39,9 @@ public sealed class GroundCoverRenderOptions
     public float WindStrength { get; set; }
     public float WindSpeed { get; set; } = 1.8f;
     public float WindSpatialFrequency { get; set; } = .35f;
+    /// <summary>Blade height on screen, in internal render target pixels, below which wind stops. Twice this
+    /// height sways fully. Zero keeps wind at every size. GPU batches only.</summary>
+    public float WindFadeBladePixels { get; set; }
     /// <summary>Up to four cosmetic influences, sampled by value for each GPU submission.</summary>
     public IReadOnlyList<FoliageInteractor> Interactors { get; set; } = Array.Empty<FoliageInteractor>();
 }

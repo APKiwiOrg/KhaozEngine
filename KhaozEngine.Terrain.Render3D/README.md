@@ -231,7 +231,9 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
 - **Retained GPU cover** - set `GroundCoverRenderOptions.UseGpuBatches = true` on an immutable
   `GroundCoverBatch`, with `FadeMode = HeightScale` and `CastsShadows = false`. Transforms upload once,
   patch selection stays on the CPU, and the GPU handles exact rooted fading, wind and `Interactors`.
-  Wind strength is relative to mesh height. Advance `Scene3D.EffectTimeSeconds` each frame. Other cover
+  Wind strength is relative to mesh height. `WindFadeBladePixels` stops wind on blades only a few
+  internal pixels tall on screen, where sway reads as shimmer. Zero, the default, keeps wind at every size.
+  Advance `Scene3D.EffectTimeSeconds` each frame. Other cover
   policies keep the CPU path described above. `scene.ReleaseGroundCover(batch)` retires retained data
   when that source is no longer needed. Changed model bindings recreate the buffer automatically.
 - **`PropClusterRenderer`** - the shared runtime owner for terrain and TileWorld prop clusters.

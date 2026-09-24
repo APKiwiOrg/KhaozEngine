@@ -75,9 +75,10 @@ void main() {
     if (WindFade.x > 0.0) {
         // Sway on a blade a few pixels tall is sub-pixel and only flips samples between blade and ground.
         // Foliage draws only in the camera pass, so ViewProj is the camera's and w is the root's view depth.
-        float metresPerPixel = max((ViewProj * vec4(root, 1.0)).w, 0.0) * WindFade.y;
-        float bladePixels = metresPerPixel > 0.0 ? bladeHeight / metresPerPixel : 2.0 * WindFade.x;
-        bend *= smoothstep(WindFade.x, 2.0 * WindFade.x, bladePixels);
+        // fadeHeight is the world height of WindFade.x pixels at the root. A zero or undefined scale keeps full
+        // wind. Dividing by it instead of doubling WindFade.x keeps any finite setting clear of inf over inf.
+        float fadeHeight = max((ViewProj * vec4(root, 1.0)).w, 0.0) * WindFade.y * WindFade.x;
+        bend *= fadeHeight > 0.0 ? smoothstep(1.0, 2.0, bladeHeight / fadeHeight) : 1.0;
     }
     for (int i = 0; i < 4; i++) {
         if (Interactors[i].w <= 0.0 || Strengths[i] <= 0.0) continue;

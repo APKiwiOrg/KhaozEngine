@@ -7061,7 +7061,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.5.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.6.0" />
 ```
 
 ```csharp
@@ -13497,7 +13497,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.5.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.6.0" />
 ```
 
 ```csharp
@@ -13533,7 +13533,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.5.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.6.0" />
 ```
 
 ```csharp
@@ -13775,7 +13775,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.5.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.6.0" />
 ```
 
 ```csharp
@@ -17740,7 +17740,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.5.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.6.0" />
 </ItemGroup>
 ```
 
@@ -19549,6 +19549,27 @@ listing is complete. Load each listed stream through the ordinary snapshot, even
 SQLite or SQL Server store with `SchemaMode = ReadOnly` when the source must not be written to. That mode issues no
 DDL, reports a missing or older schema as `SchemaMismatch` instead of repairing it, and makes every write path throw
 `NotSupportedException`. Do not hand a read only store to `MutationJournalExecutor`.
+
+A release that wipes all game data empties the journal with `SqliteJournalReset.ResetAsync` or
+`SqlServerJournalReset.ResetAsync`. Each deletes every stream, event, snapshot, projection section, replay receipt,
+and receipt stream range in one transaction, keeps `journal_metadata` and its store epoch exactly as they were, and
+answers a `JournalResetResult` naming the rows each table held. A second reset answers zero. The reset opens the
+provider's operation delete guard itself, so a game never names it, and it refuses with a whole-store `Timeout` while
+a journal writer or maintenance call holds the provider's lock past the lock timeout. It refuses a game table's
+foreign key into the journal declared `CASCADE`, `SET NULL`, or `SET DEFAULT`, and a game trigger on a journal table,
+with a whole-store `SchemaMismatch` that deleted nothing. A game row behind a `NO ACTION` key fails the delete, and
+the whole reset rolls back with `ConstraintViolation`.
+
+```csharp
+JournalResetResult reset = await SqlServerJournalReset.ResetAsync(connectionString, TimeSpan.FromSeconds(30));
+```
+
+An idle host holds no lock, so drain and stop every journal host, and every client that may retry, before a reset.
+Every replay receipt goes with it. Because the epoch is kept, a projection cursor from before the reset is not told
+apart by epoch: a deleted stream returns `NotFound`, and after a stream is initialized again an old cursor at or
+below the new head reads as valid and skips sections. Drop every cursor held before the reset, or call
+`RotateStoreEpochAsync` afterwards so every old cursor returns `ResetRequired`. The in-memory store has no reset,
+because a new instance is already an empty journal.
 
 ### Persisting players so the world survives a restart (`WorldPersistence`)
 

@@ -176,6 +176,7 @@ uses the `KJIF`, `KJEF`, and `KJNF` tagged binary envelopes. A game should not i
 | `JournalOperationPurge` | UTC cutoff and positive batch limit. |
 | `JournalOperationAgePurge` | Minimum receipt age and positive batch limit. |
 | `JournalOperationPurgeResult` | Scanned, deleted, ineligible, oldest-retained, evaluation-time, and effective-cutoff readings. The two clock readings are populated by the age API. |
+| `JournalResetResult` | The store epoch a journal reset kept, and the rows it deleted from each of the six data tables. `RowsDeleted` totals them and `Summary` is one operator line. |
 | `JournalStreamQuery` | Page size from 1 through 1,000, optional key prefix, and optional exclusive `afterStreamKey` continuation. |
 | `JournalStreamPage` | Streams in ordinal key order and a continuation key, which is null when the listing is complete. |
 | `JournalStreamEntry` | Stream key and current head version. |
@@ -409,6 +410,45 @@ version-one maintenance host roll back its child and parent deletes after migrat
 After a point-in-time restore, quiesce all journal hosts, rotate the store epoch, verify snapshots and stream
 continuity, reconcile external consumers, then reopen writers. This makes every old admin cursor return
 `ResetRequired` instead of silently skipping restored history.
+
+### Journal reset
+
+A release that wipes all game data empties the journal with `SqliteJournalReset.ResetAsync` or
+`SqlServerJournalReset.ResetAsync`. Each takes a connection string, validates the version-two schema without creating
+or migrating it, and deletes every row of `journal_stream`, `journal_event`, `journal_snapshot`,
+`journal_projection`, `journal_operation`, and `journal_operation_stream` in one transaction. `journal_metadata` is
+left exactly as it was, so the schema version, the store epoch, and the metadata timestamp survive.
+
+```csharp
+JournalResetResult reset = await SqlServerJournalReset.ResetAsync(connectionString);
+Console.WriteLine(reset.Summary);
+```
+
+The result names the rows deleted from each table and the epoch that was kept. A second reset answers zero for every
+table. The reset opens the provider's operation delete guard itself, the way the purge does, and closes it again.
+A game never names the guard.
+
+The reset refuses contention. It takes the lock every journal writer holds for its own transaction, the SQLite
+write lock or the SQL Server maintenance application lock, waits up to a lock timeout, and is then refused with a
+whole-store `Timeout` that deleted nothing. An idle host holds no lock, so drain and stop every journal host, and
+every client that may retry an operation, before a reset. Every replay receipt goes, so a retry of an operation
+committed before the reset resolves `NotFound` and is not recognized as a replay.
+
+The reset refuses to reach outside the journal. A game table's foreign key into a journal data table declared
+`CASCADE`, `SET NULL`, or `SET DEFAULT` would fire on the deletes and delete or rewrite the game's own rows, and so
+would a game trigger on a journal data table. The reset refuses either with a whole-store `SchemaMismatch` that names
+it and deleted nothing. A `NO ACTION` key fires nothing: a game row that still references a stream fails the delete
+instead, and the whole reset rolls back with `ConstraintViolation`. Clear those rows, or drop the key, first.
+
+A projection cursor binds the store epoch, the stream key, and its captured head. The reset keeps the epoch, so
+the store cannot tell a cursor taken before it from one taken after it. A read of a deleted stream returns
+`NotFound`. After a stream is initialized again under the same key, an old cursor ahead of the new head returns
+`ResetRequired`, but one at or below it reads as valid and skips every section at or below its captured head. Drop
+every cursor held before the reset and read again with none. When a consumer cannot be reached, call
+`RotateStoreEpochAsync` after the reset, and every old cursor then returns `ResetRequired`.
+
+`InMemoryMutationJournalStore` has no reset, as the content catalog's in-memory store has none. Its journal lives as
+long as the instance, so a new instance is the wipe, and it carries a new epoch.
 
 ### Operations
 

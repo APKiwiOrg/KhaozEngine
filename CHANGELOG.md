@@ -5,6 +5,31 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.6.0
+
+**A journal can be reset** ([#1150](https://github.com/APKiwiOrg/KhaozEngine/issues/1150)).
+
+- `SqliteJournalReset` and `SqlServerJournalReset` delete every row of the journal's six data tables in one
+  transaction: streams, events, snapshots, projection sections, replay receipts and their stream ranges.
+  `journal_metadata` is left exactly as it was, so the schema version and the store epoch survive. It is for a
+  release that wipes all game data and keeps the store's identity.
+- `JournalResetResult` names the rows each table held and the epoch that was kept. A second reset answers zero for
+  every table.
+- The reset validates the version-two schema before it deletes and never creates or migrates one. SQLite refuses a
+  missing file without creating it.
+- The reset opens the provider's own operation delete guard for its transaction and closes it again, so no game
+  names the guard's temporary table or function.
+- The reset takes the lock every journal writer holds for its own transaction, the SQLite write lock or the
+  exclusive side of the SQL Server maintenance application lock. Once its lock timeout runs out it is refused with a
+  whole-store `Timeout` that deleted nothing. An idle host holds no lock, so the caller stops every host first.
+- The reset refuses a game table's foreign key into a journal data table declared `CASCADE`, `SET NULL` or
+  `SET DEFAULT`, and a game trigger on one, because its deletes would fire them against the game's own rows. The
+  refusal is a whole-store `SchemaMismatch` that names each one and deleted nothing. A game row behind a `NO ACTION`
+  key fails the delete instead, and the whole reset rolls back with `ConstraintViolation`.
+- Because the epoch is kept, a projection cursor from before the reset is not told apart by epoch. Consumers drop
+  their cursors, or the caller rotates the epoch afterwards. The in-memory store has no reset, as the content
+  catalog's in-memory store has none.
+
 ## 20.5.1
 
 `TooltipLine.OfSegments` preserves individual `LabelSegment` colours in a tooltip body line. Long lines

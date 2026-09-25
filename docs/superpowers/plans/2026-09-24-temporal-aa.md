@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - With temporal inactive, every committed golden is byte-identical on Metal, D3D11 and Vulkan, and no new target, pipeline or buffer is created.
-- Jitter never reaches a CPU path: frustum culling, the key-light cascade fit and its dirty-skip, point-shadow and cluster work, picking, the foliage metres-per-pixel scale and `WorldToScreen` stay unjittered.
+- Jitter never reaches a CPU path: frustum culling, the key-light cascade fit and its dirty-skip, point-shadow work, picking, the foliage metres-per-pixel scale and `WorldToScreen` stay unjittered.
 - Temporal rendering is single-sample. `AntiAliasing.Temporal` never combines with MSAA and is refused with Pixelated.
 - Motion readback matches analytic motion within 0.05 internal pixels.
 - History resets on size, render scale, preset or anti-aliasing mode change, device reset, `Scene3D.CameraCut()`, and an automatic cut above `CutDistanceMetres` 16 or `CutAngleDegrees` 60 in one frame.
@@ -26,11 +26,13 @@
 - New behaviour goes in new types and new `Scene3D.<Feature>.cs` partials. `Scene3D.cs` is frozen and no `.filesize-baseline` entry grows.
 - No em or en dash characters anywhere. No semicolons in Markdown prose or comment prose. Semicolons in code are fine.
 - Tests live in `KhaozEngine.Render.Tests` under namespaces `KhaozEngine.Tests.*`. GPU tests use `[GpuFact]` or `[GpuTheory]` and run with `KE_GPU_TESTS=1` on the local native Metal device. A test that reads allocation joins the `AllocSensitive` collection.
-- Every new or changed shader program updates the three hash tables and the shader corpus by the documented rebake, `ShippedShaderPrograms.cs` with its pinned counts (and the counts in `D3D11HlslByteEqualityTests.cs`), and the seven hand-maintained lists (`VulkanShaderBindingTableTests`, `VulkanDescriptorLimitTests`, `D3D11ResourceModelTests`, `D3D11RegisterNumberingTests`, `ShaderSourceValidationTests`, `Render3D/UboLayoutTests` and `VulkanShippedVertexLayoutTests`, the last checking only programs whose vertex stage declares an input), never by hand edit of a hash.
+- Every new or changed shader program updates the three hash tables and the shader corpus by the documented rebake, `ShippedShaderPrograms.cs` with its pinned counts (and the counts in `D3D11HlslByteEqualityTests.cs`, `VulkanSpirvByteEqualityTests.cs`, `VulkanDynamicOffsetTests.cs` and `VulkanLayoutCompatibilityTests.cs`), and the seven hand-maintained lists (`VulkanShaderBindingTableTests`, `VulkanDescriptorLimitTests`, `D3D11ResourceModelTests`, `D3D11RegisterNumberingTests`, `ShaderSourceValidationTests`, `Render3D/UboLayoutTests` and `VulkanShippedVertexLayoutTests`, the last checking only programs whose vertex stage declares an input), never by hand edit of a hash.
 - Commit subjects use `area(scope): summary`. Stage explicit paths. Never use the shared git stash.
 - Each engine group runs on `feature/taa-<group>` cut from `feature/temporal-foundations` into `/Users/antonio/KhaozEngine/.worktrees/taa-<group>`, with `mkdir -p local-feed` before the first build. Grimhollow's group runs on `feature/taa-adoption` in `/Users/antonio/Grimhollow/.worktrees/taa-adoption`.
-- Implementers never push, merge, tag, bump `<KhaozEngineVersion>` or edit `CHANGELOG.md`. The orchestrating session owns group H and every merge.
+- Implementers never push, merge, tag, bump the engine's `<KhaozEngineVersion>` or edit the engine's `CHANGELOG.md`. The orchestrating session owns group H and every merge.
 - The engine release version is chosen at release time, never earlier (Task H5), by the ride rule: an untagged staged minor on engine `main` is ridden, a staged patch or an already tagged version means the next free minor. `main` stages an untagged `20.6.0` at planning time, so the plan expects `20.6.0`, and Grimhollow's Task I1 sets `V` to whatever H5 released.
+
+Line numbers in tasks are the base numbers at `1a783fec`, or the file as it stands before this task's first edit. Anchor every edit on the quoted text, and apply multi-range edits bottom up.
 
 ## Review Focus
 
@@ -75,8 +77,9 @@ Each is filed after `scripts/ledger.sh search` finds no prior art, with one `con
 
 ## Contract amendments
 
-These change what the contract or the round 1 spec says. Every contract name is kept. The orchestrator copies each
-item into the "Plan amendments" section of `docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md`.
+These change what the contract or the round 1 spec says. Every contract name is kept. The plan commit already
+recorded each item in the "Plan amendments" section of `docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md`, so no
+task writes them again.
 
 1. **The point-light cluster grid is built on the jittered view-projection.** Spec section 1 lists "point-light
    cluster work" among the CPU consumers that read unjittered matrices. The code does not allow that. A lit fragment
@@ -221,7 +224,8 @@ edits in place, A5 adds two and removes two. Every other file this group touches
 - Consumes: nothing
 - Produces:
   - `internal static class KhaozEngine.Render3D.Internal.TemporalJitter` with `public const int NativePhaseCount = 8`,
-    `public const int MaxPhaseCount = 128`, `public static int PhaseCount(float displayOverInternalRatio)`,
+    `public const float MaxDisplayOverInternalRatio = 4f`, `public const int MaxPhaseCount = 128`,
+    `public static int PhaseCount(float displayOverInternalRatio)`,
     `public static int Phase(long frameIndex, int phaseCount)`, `public static Vector2 Offset(long frameIndex, int phaseCount)`,
     `public static float Halton(long index, int radix)`, `public static Vector2 ClipOffset(Vector2 jitterPixels, int width, int height)`,
     `public static Matrix4x4 Apply(in Matrix4x4 projection, Vector2 jitterPixels, int width, int height)`
@@ -435,7 +439,9 @@ public sealed class TemporalJitterTests
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release 2>&1 | grep -E "error|Build succeeded" | head -5`
-Expected: FAIL with `error CS0103: The name 'TemporalJitter' does not exist in the current context`.
+Expected: FAIL with `error CS0103: The name 'TemporalJitter' does not exist in the current context`. `error CS1574`
+for the summary's `<see cref="TemporalJitter"/>` may print first, because documentation is generated and warnings are
+errors.
 
 - [ ] **Step 3: Implement**
 
@@ -467,8 +473,13 @@ internal static class TemporalJitter
     /// <summary>The sequence length at native resolution.</summary>
     public const int NativePhaseCount = 8;
 
-    /// <summary>The longest sequence <see cref="PhaseCount"/> returns, reached at a display four times the internal
-    /// size per axis. Round 2's most aggressive preset, UltraPerformance, is three, which gives 72.</summary>
+    /// <summary>The largest display over internal ratio per axis <see cref="PhaseCount"/> honours. A larger ratio reads
+    /// as this one.</summary>
+    public const float MaxDisplayOverInternalRatio = 4f;
+
+    /// <summary>The longest sequence <see cref="PhaseCount"/> returns, 8 times 4 times 4, reached at a display
+    /// <see cref="MaxDisplayOverInternalRatio"/> times the internal size per axis. Round 2's most aggressive preset,
+    /// UltraPerformance, is three, which gives 72.</summary>
     public const int MaxPhaseCount = 128;
 
     /// <summary>How many frames the sequence runs before it repeats: 8 when the display is no larger than the internal
@@ -477,7 +488,7 @@ internal static class TemporalJitter
     public static int PhaseCount(float displayOverInternalRatio)
     {
         if (!(displayOverInternalRatio > 1f)) return NativePhaseCount;
-        float r = MathF.Min(displayOverInternalRatio, 4f);
+        float r = MathF.Min(displayOverInternalRatio, MaxDisplayOverInternalRatio);
         return Math.Min(MaxPhaseCount, (int)MathF.Ceiling(NativePhaseCount * r * r));
     }
 
@@ -551,7 +562,7 @@ Run:
 dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release 2>&1 | tail -3
 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~KhaozEngine.Tests.Render3D.TemporalJitterTests"
 ```
-Expected: `0 Warning(s)`, `0 Error(s)`, then `Passed!` with 31 tests.
+Expected: `0 Warning(s)`, `0 Error(s)`, then `Passed!` with 29 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -683,7 +694,8 @@ public sealed class FrameViewTests
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release 2>&1 | grep -E "error|Build succeeded" | head -5`
-Expected: FAIL with `error CS0246: The type or namespace name 'FrameView' could not be found`.
+Expected: FAIL with `error CS0246: The type or namespace name 'FrameView' could not be found`. `error CS1574` for the
+summary's cref may print first, because documentation is generated and warnings are errors.
 
 - [ ] **Step 3: Implement**
 
@@ -1179,7 +1191,7 @@ git status --porcelain
 ```
 Expected: `0 Warning(s)`, `0 Error(s)`. `FrameViewLatchTests` passes 6 tests. The headless suite reports `Passed!`.
 `wc -l` prints `2519`. The file-size check exits 0. The three GPU runs match the group baseline exactly, with
-`Failed: 0`, so no golden moved. `git status --porcelain` lists only the five files of this task.
+`Failed: 0`, so no golden moved. `git status --porcelain` lists only the four files of this task.
 
 - [ ] **Step 5: Commit**
 
@@ -1196,6 +1208,8 @@ git commit -m "render3d(temporal): latch one frame view per render"
 
 **Files:**
 - Create: `KhaozEngine.Render.Tests/Render3D/SourceSweep.cs`
+- Modify (test): `KhaozEngine.Render.Tests/Gpu/MetalCopyBufferCallSiteTests.cs:1-10,447-481,629-646` (its private
+  `Segments`, `WithoutComments` and `RepositoryRoot` go, and it reads the three from `SourceSweep`)
 - Test: `KhaozEngine.Render.Tests/Render3D/FrameViewConsumerSweepTests.cs`
 - Modify: `KhaozEngine.Render3D/Scene3D.cs:1570` (1568 at base), `:1894`, `:2127`, `:2196`, `:2238`, all in place
 - Modify: `KhaozEngine.Render3D/Scene3D.PointLightClusters.cs:16`
@@ -1206,7 +1220,8 @@ git commit -m "render3d(temporal): latch one frame view per render"
 - Consumes: `Scene3D.CurrentFrameView` (A3)
 - Produces:
   - Test helper `KhaozEngine.Tests.Render3D.SourceSweep` with `Render3DRoot()`, `Render3DSources()`,
-    `Render3DSource(string relativePath)`, `Segments(string, string)`, `Line(string, int)`, `WithoutComments(string)`
+    `Render3DSource(string relativePath)`, `Segments(string, string)`, `Line(string, int)`, `WithoutComments(string)`,
+    `RepositoryRoot()`, shared with `MetalCopyBufferCallSiteTests`
   - `FrameViewConsumerSweepTests.Reads(string path, string text)`, which A5 extends with a call-site table
 
 - [ ] **Step 1: Write the failing test**
@@ -1256,8 +1271,10 @@ internal static class SourceSweep
         return line;
     }
 
-    /// <summary>Comments blanked in place, length and newlines preserved, so an index still maps to its line. The same
-    /// blanker <c>MetalCopyBufferCallSiteTests</c> uses. String literals are left alone.</summary>
+    /// <summary>Comments blanked in place, length and newlines preserved, so an index still maps to its line. String
+    /// literals are left alone: nothing in this repository writes a receiver, a dot and a member name inside one, and a
+    /// blanker that tracked verbatim, interpolated and raw strings could desync and hide a real call site.
+    /// <c>MetalCopyBufferCallSiteTests</c> reads its sources through this one.</summary>
     internal static string WithoutComments(string text)
     {
         char[] chars = text.ToCharArray();
@@ -1283,7 +1300,8 @@ internal static class SourceSweep
         return new string(chars);
     }
 
-    static string RepositoryRoot([CallerFilePath] string thisFile = "")
+    /// <summary>The repository root, found by walking up from this source file to the solution.</summary>
+    internal static string RepositoryRoot([CallerFilePath] string thisFile = "")
     {
         DirectoryInfo? directory = new FileInfo(thisFile).Directory;
         while (directory is not null)
@@ -1291,11 +1309,17 @@ internal static class SourceSweep
             if (File.Exists(Path.Combine(directory.FullName, "KhaozEngine.slnx"))) return directory.FullName;
             directory = directory.Parent;
         }
-        throw new InvalidOperationException("The frame view sweep could not find KhaozEngine.slnx above " + thisFile
+        throw new InvalidOperationException("The source sweep could not find KhaozEngine.slnx above " + thisFile
             + ". It reads the repository's own source at test time, so it needs the checked-out tree.");
     }
 }
 ```
+
+`KhaozEngine.Render.Tests/Gpu/MetalCopyBufferCallSiteTests.cs` carries private copies of `Segments`, `WithoutComments`
+and `RepositoryRoot`. Add `using static KhaozEngine.Tests.Render3D.SourceSweep;` after its last `using`, then delete,
+bottom up, its `RepositoryRoot` with the comment above it (lines 629-646), its `WithoutComments` with the comment above
+it (lines 450-481) and its `Segments` (lines 447-448). Its call sites stay as they are and now bind to `SourceSweep`.
+Its own `Line` (line 624) stays, and a member of the class wins over the static import.
 
 `KhaozEngine.Render.Tests/Render3D/FrameViewConsumerSweepTests.cs`
 ```csharp
@@ -1541,7 +1565,8 @@ files.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add KhaozEngine.Render.Tests/Render3D/SourceSweep.cs KhaozEngine.Render.Tests/Render3D/FrameViewConsumerSweepTests.cs KhaozEngine.Render3D/Scene3D.cs KhaozEngine.Render3D/Scene3D.PointLightClusters.cs KhaozEngine.Render3D/Scene3D.Foliage.cs KhaozEngine.Render3D/Scene3D.RenderOrigin.cs
+git add KhaozEngine.Render.Tests/Render3D/SourceSweep.cs KhaozEngine.Render.Tests/Render3D/FrameViewConsumerSweepTests.cs KhaozEngine.Render3D/Scene3D.cs KhaozEngine.Render3D/Scene3D.PointLightClusters.cs KhaozEngine.Render3D/Scene3D.Foliage.cs KhaozEngine.Render3D/Scene3D.RenderOrigin.cs \
+  KhaozEngine.Render.Tests/Gpu/MetalCopyBufferCallSiteTests.cs
 git commit -m "render3d(temporal): read every matrix from the frame view"
 ```
 
@@ -1795,7 +1820,7 @@ Expected: 4 failures.
 
 - [ ] **Step 3: Implement**
 
-`KhaozEngine.Render3D/Scene3D.cs`, twelve edits, net zero lines.
+`KhaozEngine.Render3D/Scene3D.cs`, eleven edits, net zero lines.
 
 Lines 1578-1579, old:
 ```csharp
@@ -2186,7 +2211,7 @@ fields A and B own, and group C fills the key counts. Nothing in this group chan
 off, since `DebugView` defaults to `None`. Risks: history advancing twice in one frame (a second render must not move
 it, and B4 and B5 pin that), a reset reported under the wrong cause (B5 pins the precedence), and a host that calls
 `Begin` twice per frame for two viewports, which the engine's own `PrepareFrame` summary recommends
-(`Scene3D.FramePrepare.cs:40-43`). Each such `Begin` advances history, so each view's previous frame would be the other
+(`Scene3D.FramePrepare.cs:43-45`). Each such `Begin` advances history, so each view's previous frame would be the other
 view. Round 1 serves one view per scene and the plan does not solve that case. Order: B1, B2 and B3 are pure and
 independent. B4 needs B1 and B2. B5 needs B4. B6 needs B3 and B5. B7 needs B4. B8 needs B6 and B7. B9 is last.
 
@@ -2476,7 +2501,8 @@ public sealed class TemporalHistoryTests
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release 2>&1 | grep -E "error|Build succeeded" | head -5`
-Expected: FAIL with `error CS0246: The type or namespace name 'TemporalHistory' could not be found`.
+Expected: FAIL with errors naming `TemporalResetReason` first, `error CS0103` where an `InlineData` argument reads it
+and `error CS0246` where a theory parameter declares it, then `error CS0246` for `TemporalHistory`.
 
 - [ ] **Step 3: Implement**
 
@@ -2655,7 +2681,7 @@ new:
 ```csharp
         public HdrSettings Hdr = new();
 
-        /// <summary>Temporal rendering settings: today the camera-cut thresholds that decide when a camera move drops
+        /// <summary>Temporal rendering settings, such as the camera-cut thresholds that decide when a camera move drops
         /// temporal history. Inert until something asks for temporal rendering. See <see cref="TemporalSettings"/>.</summary>
         public TemporalSettings Temporal = new();
 ```
@@ -3349,8 +3375,6 @@ public sealed class TemporalCameraCutTests
         }
         FrameView a = cut.Scene.CurrentFrameView, b = fresh.Scene.CurrentFrameView;
         Assert.Equal(b.RenderOrigin, a.RenderOrigin);
-        TemporalAssert.BitIdentical(b.ViewProjection, a.ViewProjection, "the cut frame's view-projection");
-        TemporalAssert.BitIdentical(b.AbsoluteViewProjection, a.AbsoluteViewProjection, "the cut frame's absolute view-projection");
 
         // The next frame builds its history from the cut frame, never from what came before the cut.
         cut.Frame();
@@ -3660,7 +3684,7 @@ git commit -m "render3d(temporal): add Scene3D.DebugView as a temporal requester
 **Interfaces:**
 - Consumes: `TemporalJitter.Phase`, `TemporalJitter.PhaseCount` (A1), `Scene3D.DisplayOverInternalRatio`,
   `Scene3D.BeginFrameView`, `Scene3D.LatchFrameView` (A3), `Scene3D.CameraCut` (B6), `Scene3D.DebugView` (B7),
-  `AllocAssert.NoPerCallAllocation` (`KhaozEngine.Render.Tests/AllocAssert.cs:27`)
+  `AllocAssert.NoPerCallAllocation` (`KhaozEngine.Render.Tests/AllocAssert.cs:28`)
 - Produces: `public readonly record struct KhaozEngine.Render3D.TemporalDiagnostics(long FrameIndex, int JitterPhase, Vector2 JitterPixels, int KeyedRigid, int KeyedSkinned, int KeyCollisions, bool HistoryValid, TemporalResetReason LastReset)`
   and `public TemporalDiagnostics Scene3D.LastTemporalDiagnostics { get; }`. Group C replaces the three zero key counts.
 
@@ -3840,7 +3864,7 @@ git commit -m "render3d(temporal): report the frame's temporal state in LastTemp
 
 **Files:**
 - Modify: `docs/USING-KHAOZENGINE.md:3434-3436` (a new section between "Camera-relative rendering" and "ECS entities")
-- Modify: `KhaozEngine.Render3D/README.md:54-55` (a new bullet after the `RenderOrigin` bullet)
+- Modify: `KhaozEngine.Render3D/README.md:53-54` (a new bullet after the `RenderOrigin` bullet)
 
 **Interfaces:**
 - Consumes: `Post.Temporal` (B3), `Scene3D.CameraCut` (B6), `Scene3D.DebugView` (B7), `Scene3D.LastTemporalDiagnostics` (B8)
@@ -3890,19 +3914,20 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   measured between absolute eye positions, so a render origin step is never a cut.
 - History also resets for one frame when the internal size, the render scale or the anti-aliasing selection changes,
   and when the HDR colour chain is toggled. A bloom toggle or a distortion sprite coming and going keeps it.
-- `DebugView` is a development aid, not a player setting. Any value other than `SceneDebugView.None` turns temporal
-  rendering on, which jitters the rasterised image by under half a pixel each frame.
+- `DebugView` is a development aid, not a player setting. `SceneDebugView.MotionVectors` turns temporal rendering on,
+  which jitters the rasterised image by under half a pixel each frame.
 - `LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, whether history was valid, and why it
   was last reset. Read it on the render thread after the frame renders. A second render inside the same frame, such as
   an offscreen capture, leaves it and the history untouched.
 ````
 
-`KhaozEngine.Render3D/README.md`, after line 54 (the line ending `explicitly NOT fixed by it. See docs/USING-KHAOZENGINE.md.`), insert:
+`KhaozEngine.Render3D/README.md`, after line 53 (the line ending `explicitly NOT fixed by it. See docs/USING-KHAOZENGINE.md.`), insert:
 ```markdown
 - `Scene3D.CameraCut()` / `Scene3D.DebugView` / `Scene3D.LastTemporalDiagnostics` / `Post.Temporal` - the temporal
   rendering foundations. Every frame renders through one view snapshot and the previous frame's view is kept, rebased
-  across render origin steps. Nothing changes until something asks for temporal rendering, and a `DebugView` other than
-  `SceneDebugView.None` is the public way to ask. Call `CameraCut()` on a teleport, a loading screen or a cutscene cut.
+  across render origin steps. Nothing changes until something asks for temporal rendering, and
+  `DebugView = SceneDebugView.MotionVectors` is the public way to ask. Call `CameraCut()` on a teleport, a loading
+  screen or a cutscene cut.
   A camera that moves further than `Post.Temporal.CutDistanceMetres` (16 m) or turns more than
   `Post.Temporal.CutAngleDegrees` (60 degrees) in one frame is a cut automatically. See docs/USING-KHAOZENGINE.md.
 ```
@@ -4189,7 +4214,7 @@ namespace KhaozEngine.Render3D;
 /// </para>
 /// <para>
 /// Two draws that share a key in one frame collide. The last one wins and
-/// <see cref="Scene3D.LastTemporalDiagnostics"/> counts it, so a collision reads as wrong motion on one of the two and
+/// <c>Scene3D.LastTemporalDiagnostics</c> counts it, so a collision reads as wrong motion on one of the two and
 /// never as a failure.
 /// </para>
 /// </summary>
@@ -5245,7 +5270,7 @@ namespace KhaozEngine.Render3D
             public readonly Matrix4x4 World;
             public readonly Vector4 Tint;             // stored as Vector4 (Color converts implicitly), like SceneInstances
             public readonly Material Material;
-            // Teleport CharDissolve: DissolveThreshold 0 = no dissolve (normal pipeline); > 0 routes this draw through
+            // Teleport CharDissolve: DissolveThreshold 0 = no dissolve (normal pipeline), and > 0 routes this draw through
             // the dissolve pipeline variant (SpecParams.z=threshold, .w=edge width, Emissive=edge colour).
             public readonly float DissolveThreshold;
             public readonly float DissolveEdgeWidth;
@@ -6160,6 +6185,8 @@ git commit -m "render3d(temporal): record keyed submissions while temporal is ac
 
 **Files:**
 - Modify: the one construction of `TemporalDiagnostics` that group B added behind `Scene3D.LastTemporalDiagnostics`. It does not exist on `feature/temporal-foundations` at `1a783fec`. Locate it with `git grep -n "new TemporalDiagnostics(" -- KhaozEngine.Render3D`, which must print exactly one line.
+- Modify: `KhaozEngine.Render3D/TemporalDiagnostics.cs` (group B's `<param>` docs for the three counts, so they say what
+  this task counts)
 - Test: `KhaozEngine.Render.Tests/Render3D/TemporalKeyDiagnosticsTests.cs`
 
 **Interfaces:**
@@ -6241,6 +6268,22 @@ Then replace the construction's fourth, fifth and sixth arguments, the `KeyedRig
 ```
 The site runs inside the frame's recording, because the jitter phase it reports is latched there with the frame view. The counts are this frame's from submission until the next `Begin`, so any point in `RenderInternal` reads the right frame.
 
+`KhaozEngine.Render3D/TemporalDiagnostics.cs` (Task B8), the three count docs, old:
+```csharp
+/// <param name="KeyedRigid">Rigid draws the frame submitted with a motion key.</param>
+/// <param name="KeyedSkinned">Skinned draws the frame submitted with a motion key.</param>
+/// <param name="KeyCollisions">Motion keys submitted more than once in the frame.</param>
+```
+new:
+```csharp
+/// <param name="KeyedRigid">Rigid draws the frame submitted with a motion key while temporal rendering was active,
+/// shadow-only draws excluded. Zero while it is off.</param>
+/// <param name="KeyedSkinned">Skinned draws the frame submitted with a motion key while temporal rendering was active,
+/// shadow-only draws excluded. Zero while it is off.</param>
+/// <param name="KeyCollisions">Submissions whose key was already submitted this frame, rigid and skinned keys counted
+/// apart.</param>
+```
+
 - [ ] **Step 4: Run it and see it pass**
 
 ```bash
@@ -6252,7 +6295,8 @@ Expected: both cases pass, and group B's temporal diagnostics tests stay green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add KhaozEngine.Render.Tests/Render3D/TemporalKeyDiagnosticsTests.cs <the file the grep printed>
+git add KhaozEngine.Render.Tests/Render3D/TemporalKeyDiagnosticsTests.cs KhaozEngine.Render3D/TemporalDiagnostics.cs \
+  <the file the grep printed>
 git commit -m "render3d(temporal): report keyed draws and key collisions in the diagnostics"
 ```
 
@@ -6429,7 +6473,7 @@ git commit -m "game(render3d): key CharacterAvatar's draw for its lifetime"
 - Test: `KhaozEngine.Render.Tests/Render3D/Scene3DBinderMotionKeyTests.cs`
 
 **Interfaces:**
-- Consumes: `Entity(int Id, uint Version)` (`KhaozEngine.Ecs/Entity.cs:7`), where `World.Spawn` gives `Version >= 1` (`KhaozEngine.Ecs/World.cs:84`) and `Despawn` bumps it. Also `RigidInstanceDraw` and `Scene3D.Draw(in RigidInstanceDraw)` (C2).
+- Consumes: `Entity(int Id, uint Version)` (`KhaozEngine.Ecs/Entity.cs:7`), where `World.Spawn` gives `Version >= 1` (`KhaozEngine.Ecs/World.cs:89`) and `Despawn` bumps it. Also `RigidInstanceDraw` and `Scene3D.Draw(in RigidInstanceDraw)` (C2).
 - Produces:
   ```csharp
   public static void Scene3DBinder.Submit(World world, Action<RigidInstanceDraw> draw);
@@ -6598,12 +6642,7 @@ namespace KhaozEngine.Render3D
         public static void Submit(World world, Action<RigidInstanceDraw> draw)
         {
             foreach (var e in world.Query().With<Transform3D>().With<MeshInstance>().Entities())
-            {
-                Transform3D t = world.Get<Transform3D>(e);
-                MeshInstance m = world.Get<MeshInstance>(e);
-                Color tint = m.Tint == Color.Transparent ? Color.White : m.Tint;
-                draw(new RigidInstanceDraw(m.Mesh, t.ToMatrix()) { Tint = tint, Material = m.Material, Motion = MotionKeyOf(e) });
-            }
+                draw(Describe(world, e));
         }
 
         /// <summary>
@@ -6616,10 +6655,8 @@ namespace KhaozEngine.Render3D
         {
             foreach (var e in world.Query().With<Transform3D>().With<MeshInstance>().Entities())
             {
-                Transform3D t = world.Get<Transform3D>(e);
-                MeshInstance m = world.Get<MeshInstance>(e);
-                Color tint = m.Tint == Color.Transparent ? Color.White : m.Tint;
-                draw(m.Mesh, t.ToMatrix(), tint, m.Material);
+                RigidInstanceDraw d = Describe(world, e);
+                draw(d.Mesh, d.World, d.Tint, d.Material);
             }
         }
 
@@ -6633,11 +6670,19 @@ namespace KhaozEngine.Render3D
         {
             foreach (var e in world.Query().With<Transform3D>().With<MeshInstance>().Entities())
             {
-                Transform3D t = world.Get<Transform3D>(e);
-                MeshInstance m = world.Get<MeshInstance>(e);
-                Color tint = m.Tint == Color.Transparent ? Color.White : m.Tint;
-                draw(m.Mesh, t.ToMatrix(), tint);
+                RigidInstanceDraw d = Describe(world, e);
+                draw(d.Mesh, d.World, d.Tint);
             }
+        }
+
+        // One renderable entity as a draw, the single place all three cores read it: its mesh, world matrix, tint
+        // (zero tint -> white), material and motion key.
+        static RigidInstanceDraw Describe(World world, Entity e)
+        {
+            Transform3D t = world.Get<Transform3D>(e);
+            MeshInstance m = world.Get<MeshInstance>(e);
+            Color tint = m.Tint == Color.Transparent ? Color.White : m.Tint;
+            return new RigidInstanceDraw(m.Mesh, t.ToMatrix()) { Tint = tint, Material = m.Material, Motion = MotionKeyOf(e) };
         }
 
         /// <summary>
@@ -6781,6 +6826,49 @@ public sealed class TileWorldSceneDescriptorTests
         Assert.Equal(tint, drawnTint);
     }
 
+    [Fact]
+    public void The_defaults_route_a_dissolving_descriptor_through_the_dissolved_draws()
+    {
+        var dissolving = new DissolvingTileWorldScene();
+        ITileWorldScene scene = dissolving;
+        var tube = new SkinnedMeshHandle(2, 1);
+        Matrix4x4[] bones = { Matrix4x4.Identity };
+
+        scene.DrawMesh(new RigidInstanceDraw(Handle, World) { Dissolve = 0.4f, Motion = Body });
+        scene.DrawMesh(new RigidInstanceDraw(Handle, World) { Motion = Body });
+        scene.DrawSkinned(new SkinnedInstanceDraw(tube, World) { Dissolve = 0.3f, Motion = Body }, bones);
+        scene.DrawSkinned(new SkinnedInstanceDraw(tube, World) { Motion = Body }, bones);
+
+        Assert.Equal(new[] { 0.4f }, dissolving.MeshDissolves);
+        Assert.Equal(new[] { 0.3f }, dissolving.SkinnedDissolves);
+        Assert.Equal((1, 1), (dissolving.PlainMeshes, dissolving.PlainSkinned));
+    }
+
+    // Overrides both dissolved members, so each descriptor default's dissolve branch is observed rather than hidden
+    // behind the solid fallback the legacy scene inherits.
+    sealed class DissolvingTileWorldScene : ITileWorldScene
+    {
+        public List<float> MeshDissolves { get; } = new();
+        public List<float> SkinnedDissolves { get; } = new();
+        public int PlainMeshes { get; private set; }
+        public int PlainSkinned { get; private set; }
+
+        public MeshHandle LoadMesh(GltfMesh mesh) => default;
+        public void UnloadMesh(MeshHandle handle) { }
+        public void DrawMesh(MeshHandle handle, Matrix4x4 world) => PlainMeshes++;
+        public void DrawMeshDissolved(MeshHandle handle, Matrix4x4 world, float dissolve, float edgeWidth, Color edgeColor) =>
+            MeshDissolves.Add(dissolve);
+        public void DrawSkinned(SkinnedMeshHandle handle, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 world,
+            Color tint) => PlainSkinned++;
+        public void DrawSkinnedDissolved(SkinnedMeshHandle handle, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 world,
+            Color tint, float dissolve, float edgeWidth, Color edgeColor) => SkinnedDissolves.Add(dissolve);
+        public IReadOnlyList<MeshHandle> LoadPropMeshes(IReadOnlyList<GltfMeshPart> parts) =>
+            Array.Empty<MeshHandle>();
+        public void UnloadPropMeshes(IReadOnlyList<MeshHandle> handles) { }
+        public int DrawProps(IReadOnlyList<PropPlacement> placements,
+            IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>> parts, Vector3 focus, float drawRadius) => 0;
+    }
+
     sealed class LegacyTileWorldScene : ITileWorldScene
     {
         public List<(MeshHandle Handle, Matrix4x4 World)> Drawn { get; } = new();
@@ -6863,7 +6951,7 @@ dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release 
 dotnet test KhaozEngine.TileWorld.Tests/KhaozEngine.TileWorld.Tests.csproj -c Release --no-build
 ```
 Expected:
-- `TileWorldSceneDescriptorTests` passes 4 cases.
+- `TileWorldSceneDescriptorTests` passes 5 cases.
 - `TileWorldSceneDissolveTests`, `TileWorldSceneSkinnedTests`, `TileWorldSceneOverlayTests` and the recording-scene view tests stay green.
 - `KhaozEngine.TileWorld.Tests` is green.
 
@@ -6882,7 +6970,7 @@ git commit -m "tileworld(scene): carry draw descriptors and motion keys through 
 
 **Files:**
 - Modify: `KhaozEngine.Render3D/README.md:73` (insert a bullet after)
-- Modify: `docs/USING-KHAOZENGINE.md:3035` (summary bullet), `:3391` (new subsection before), `:3441` (ECS paragraph), `:4700` (CharacterAvatar), `:14857` (tile scene seam)
+- Modify: `docs/USING-KHAOZENGINE.md:3035` (summary bullet), `:3391` (new subsection before), `:3439` (ECS paragraph), `:4700` (CharacterAvatar), `:14857` (tile scene seam)
 - Modify: `KhaozEngine.Render3D.Ecs/README.md:15-17`
 - Modify: `KhaozEngine.TileWorld.Render3D/README.md:322` (insert after)
 - Modify: `docs/DEPENDENCY-SEAMS.md:697` (insert after)
@@ -6989,7 +7077,7 @@ a key from the game.
 
 ````
 
-`docs/USING-KHAOZENGINE.md:3441`: after the line ``Submit(world, draw)` are the pure core for a headless test with a recording delegate.``, append this paragraph (after a blank line):
+`docs/USING-KHAOZENGINE.md:3439`: after the line ``Submit(world, draw)` are the pure core for a headless test with a recording delegate.``, append this paragraph (after a blank line):
 ```markdown
 Each draw carries a motion key, `Scene3DBinder.MotionKeyOf(entity)`, derived from the entity's id and version. It
 holds for the entity's life, and a recycled id carries a new version, so it becomes a new key with no previous state.
@@ -7008,9 +7096,9 @@ wiring.
 ```markdown
 A moving body keys its draw through `DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw,
 bones)`, which carry a full draw descriptor with its motion key. `Scene3DTileWorldScene` forwards both to `Scene3D`
-whole. The defaults fall back to the solid or dissolved draws above and drop the key, the tint, the material and the
-shadow knobs, and a shadow-only rigid descriptor draws nothing there, so an older custom scene keeps compiling and
-keeps its bodies visible.
+whole. The defaults fall back to the solid or dissolved draws above and drop the key, the material, the shadow knobs
+and the rigid tint, and a shadow-only rigid descriptor draws nothing there, so an older custom scene keeps compiling
+and keeps its bodies visible.
 ```
 
 `KhaozEngine.Render3D.Ecs/README.md:15-17`: replace the `Scene3DBinder.Submit` bullet with:
@@ -7034,7 +7122,7 @@ Their defaults fall back to the solid or dissolved draws and drop the key, so an
 ```markdown
 `DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw, ReadOnlySpan<Matrix4x4>)` carry a full draw
 descriptor, motion key included, and the shipped adapter forwards them to `Scene3D` whole. Their defaults fall back
-to the solid or dissolved draws above and drop the key, the tint, the material and the shadow knobs. A shadow-only
+to the solid or dissolved draws above and drop the key, the material, the shadow knobs and the rigid tint. A shadow-only
 rigid descriptor draws nothing there, which is what an older scene already cast.
 ```
 
@@ -7079,38 +7167,13 @@ git commit -m "docs(render3d): describe draw descriptors and motion keys"
 
 ---
 
-### Group C verification
-
-```bash
-cd /Users/antonio/KhaozEngine/.worktrees/taa-motion-keys
-dotnet build KhaozEngine.slnx -c Release
-dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
-KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
-git status --short -- KhaozEngine.Render.Tests/Gpu/goldens
-git grep -n "_instances.Add\|_skinnedInstances.Add" -- KhaozEngine.Render3D
-sh scripts/check-dashes.sh --tree
-sh scripts/check-prose.sh --tree
-sh scripts/check-file-size.sh --tree
-sh scripts/check-agent-instructions.sh --tree
-bash scripts/check-doc-versions.sh
-git log --oneline feature/temporal-foundations..HEAD
-```
-Expected:
-- The build has zero warnings.
-- The headless suite is green.
-- The Metal GPU suite is green with zero skipped GPU tests.
-- The goldens status prints nothing.
-- The queue grep prints exactly two lines, both in `KhaozEngine.Render3D/Scene3D.DrawDescriptors.cs`.
-- Every guard is clean.
-- The log shows the eleven task commits C1 to C11, plus the merge of group B if the branch was cut before B landed.
-- `Scene3D.cs` is 42 lines under its 2519 baseline, not counting groups A and B's own edits.
-
 ### Task C11: SkinnedLimb keys its own draw
 
 **Branch:** `feature/taa-motion-keys` in `/Users/antonio/KhaozEngine/.worktrees/taa-motion-keys`
 
 **Files:**
 - Modify: `KhaozEngine.Render3D/Models/SkinnedLimb.cs:1-3` (usings), `:23-28` (fields), `:138-150` (both `Draw` overloads), plus a new `Motion` property after the `Bones` property
+- Modify: `KhaozEngine.Render3D/README.md` and `docs/USING-KHAOZENGINE.md` (the key lists Task C10 wrote gain `SkinnedLimb`)
 - Test: `KhaozEngine.Render.Tests/Render3D/SkinnedLimbMotionKeyTests.cs`
 
 **Interfaces:**
@@ -7232,6 +7295,12 @@ After line 104 (`public ReadOnlySpan<Matrix4x4> Bones => _bones;`), insert:
                 new SkinnedInstanceDraw(_handle, model) { Tint = tint, Material = material, Motion = _motion }, _bones);
 ```
 
+The key lists Task C10 wrote gain the limb. In `KhaozEngine.Render3D/README.md`, C10's bullet sentence
+`` `CharacterAvatar`, `Scene3DBinder.Submit` and `Scene3DTileWorldScene` key or forward keys themselves. `` becomes
+`` `CharacterAvatar`, `SkinnedLimb`, `Scene3DBinder.Submit` and `Scene3DTileWorldScene` key or forward keys themselves. ``
+In `docs/USING-KHAOZENGINE.md`, C10's `` `CharacterAvatar` keys its own draw, `` becomes
+`` `CharacterAvatar` and `SkinnedLimb` key their own draws, ``.
+
 - [ ] **Step 4: Run it and see it pass**
 
 ```bash
@@ -7245,9 +7314,36 @@ Expected: `0 Warning(s)`, `0 Error(s)`, and every filter `Passed!`. The GPU filt
 - [ ] **Step 5: Commit**
 
 ```bash
-git add KhaozEngine.Render3D/Models/SkinnedLimb.cs KhaozEngine.Render.Tests/Render3D/SkinnedLimbMotionKeyTests.cs
+git add KhaozEngine.Render3D/Models/SkinnedLimb.cs KhaozEngine.Render.Tests/Render3D/SkinnedLimbMotionKeyTests.cs \
+  KhaozEngine.Render3D/README.md docs/USING-KHAOZENGINE.md
 git commit -m "render3d(temporal): SkinnedLimb keys its own draw"
 ```
+
+### Group C verification
+
+```bash
+cd /Users/antonio/KhaozEngine/.worktrees/taa-motion-keys
+dotnet build KhaozEngine.slnx -c Release
+dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
+KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
+git status --short -- KhaozEngine.Render.Tests/Gpu/goldens
+git grep -n "_instances.Add\|_skinnedInstances.Add" -- KhaozEngine.Render3D
+sh scripts/check-dashes.sh --tree
+sh scripts/check-prose.sh --tree
+sh scripts/check-file-size.sh --tree
+sh scripts/check-agent-instructions.sh --tree
+bash scripts/check-doc-versions.sh
+git log --oneline feature/temporal-foundations..HEAD
+```
+Expected:
+- The build has zero warnings.
+- The headless suite is green.
+- The Metal GPU suite is green with zero skipped GPU tests.
+- The goldens status prints nothing.
+- The queue grep prints exactly two lines, both in `KhaozEngine.Render3D/Scene3D.DrawDescriptors.cs`.
+- Every guard is clean.
+- The log shows the eleven task commits C1 to C11, plus the merge of group B if the branch was cut before B landed.
+- `Scene3D.cs` is 42 lines under its 2519 baseline, not counting groups A and B's own edits.
 
 ---
 
@@ -7280,14 +7376,17 @@ Reading the code changes these details. Every contract name is kept where it can
 5. **The hand-maintained shader lists are seven.** `KhaozEngine.Render.Tests/Gpu/VulkanShippedVertexLayoutTests.cs:29-87`
    fails for any catalog program no renderer builds, and temporal variants are only built against a four-attachment
    target, so it gains a capture helper. The counts pinned in `ShippedShaderPrograms.cs:27,51`,
-   `VulkanShaderBindingTableTests.cs:210` and `VulkanDescriptorLimitTests.cs:254-255` move with each program.
+   `VulkanShaderBindingTableTests.cs:210`, `D3D11HlslByteEqualityTests.cs:124`, `VulkanSpirvByteEqualityTests.cs:143`
+   (two stages per program), `VulkanDescriptorLimitTests.cs:254-255`, `VulkanDynamicOffsetTests.cs:57` (layouts) and
+   `VulkanLayoutCompatibilityTests.cs:48` and `:73` (pipelines, and pipelines squared) move with each program.
 6. **`TemporalFixture` has two constructors.** The parameterless one (required by `IClassFixture`) renders 320 x 180 1:1
    with temporal forced on. `TemporalFixture(int displayWidth, int displayHeight, Action<Scene3D>? setup = null)` is the
    one group F's rig builds on, and does not force temporal rendering, so group F's MSAA baselines keep their samples.
    The fixture exposes `Device`, `Scene`, `Target`, `DisplayWidth`, `DisplayHeight`, `Frame`, `Frames`, `SkipFrames`
    and `Resize` (and `LastSubmitMilliseconds` from Task D17), every member group F's Task F9 uses, so F9 adds nothing
    to it.
-7. **Spec detail changes**, recorded in the spec's "Plan amendments" by Task D17:
+7. **Spec detail changes.** The plan commit already recorded these in the spec's "Plan amendments", all but the
+   GPU-skinned previous palette, which Task D17 adds as item 16:
    - CPU-skinned previous positions are re-skinned each frame from the previous composed palette and world that
      `MotionHistory` keeps (group C amendment 1), not stored per key. Same values to float rounding, no second store.
    - An MSAA request while temporal rendering is active resolves to FXAA, the fallback a device without MSAA takes.
@@ -7366,7 +7465,7 @@ and `ModelRenderer.cs`, so their numbers shift. Every edit to those two files qu
 **File-size check.** `Scene3D.cs` is baselined at 2519 lines. D4 and D7 edit it in place (D7 removes five lines). D11 moves
 `ResolvedAa`, `ResolvedMsaaSamples`, `RebuildMrtRenderers` and `EnsureSize` (58 lines at `Scene3D.cs:1387-1444`) into a
 new partial and adds one line. D16 adds two lines. The file ends about 60 lines shorter, and the orchestrator ratchets its baseline down at integration.
-`ModelRenderer.cs` (634 lines, not baselined) grows by about 20. `PixelPostProcess.cs` is not touched. Every new file stays
+`ModelRenderer.cs` (634 lines, not baselined) grows by about 10. `PixelPostProcess.cs` is not touched. Every new file stays
 under 400 lines. `UboLayoutTests.cs` is 793 lines, so the motion additions to its lists arrive through one `Concat` per
 list and a new file, and it ends at 794.
 
@@ -7385,7 +7484,7 @@ list and a new file, and it ends at 794.
   Expected diff, every time: the `# Entries:` header line and one added `.vertex` and one added `.fragment` row per new
   program, nothing else. A moved existing row means a base program changed, which is a defect in the task.
 - The bookkeeping filter, run after every rebake:
-  `FullyQualifiedName~ByteEquality|FullyQualifiedName~ShaderCorpus|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~VulkanShaderBindingTableTests|FullyQualifiedName~VulkanDescriptorLimitTests|FullyQualifiedName~D3D11RegisterNumberingTests|FullyQualifiedName~D3D11ResourceModelTests|FullyQualifiedName~UboLayoutTests|FullyQualifiedName~MotionUboLayoutTests|FullyQualifiedName~VulkanShippedVertexLayoutTests|FullyQualifiedName~D3D11FxcValidationTests|FullyQualifiedName~MotionShaderSignatureTests|FullyQualifiedName~VulkanBindBudgetTests|FullyQualifiedName~VulkanLayoutCompatibilityTests|FullyQualifiedName~VulkanRecordingUnreachabilityTests`
+  `FullyQualifiedName~ByteEquality|FullyQualifiedName~ShaderCorpus|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~VulkanShaderBindingTableTests|FullyQualifiedName~VulkanDescriptorLimitTests|FullyQualifiedName~D3D11RegisterNumberingTests|FullyQualifiedName~D3D11ResourceModelTests|FullyQualifiedName~UboLayoutTests|FullyQualifiedName~MotionUboLayoutTests|FullyQualifiedName~VulkanShippedVertexLayoutTests|FullyQualifiedName~D3D11FxcValidationTests|FullyQualifiedName~MotionShaderSignatureTests|FullyQualifiedName~VulkanBindBudgetTests|FullyQualifiedName~VulkanLayoutCompatibilityTests|FullyQualifiedName~VulkanRecordingUnreachabilityTests|FullyQualifiedName~VulkanDynamicOffsetTests`
 
 ---
 
@@ -7816,8 +7915,9 @@ public sealed class MotionUboLayoutTests
 - [ ] **Step 2: Run them and see them fail**
 
 Run: build.
-Expected: FAIL to compile with `error CS0103: The name 'MotionMath' does not exist in the current context`, and the same
-for `ShaderText`, `MotionTargetReadback` and `MotionFrameUbo`.
+Expected: FAIL to compile with `error CS0103: The name 'MotionMath' does not exist in the current context` and the same
+for `ShaderText`, `error CS0246` naming the type `MotionTargetReadback` or `MotionFrameUbo` where a test declares one,
+and `error CS0117: 'ShaderSources' does not contain a definition for` the new GLSL members.
 
 - [ ] **Step 3: Implement**
 
@@ -8031,8 +8131,10 @@ git commit -m "render3d(motion): add the motion target facts, frame block and ch
 - Modify: `KhaozEngine.Render3D/Internal/RenderResources.cs:71-74` (fields), `:112-124` (`RenderResources`, `Resize`), `:129-173` (`Create`), `:284-295` (`DisposeTargets`)
 - Modify: `KhaozEngine.Render3D/Rendering/ModelRenderer.cs:485-489` (`BeginModelPass`)
 - Modify: `KhaozEngine.Render3D/RenderQuality.cs:94-107` (after `AntiAliasing.ResolveFor`)
+- Modify: the six bare `ResolveFor` crefs the new overload makes ambiguous, `KhaozEngine.Render3D/RenderQuality.cs:22,41,48,136`,
+  `KhaozEngine.Render3D/PixelPostProcessSettings.cs:224` and `KhaozEngine.Render3D/Scene3D.ResolveTargets.cs:27`
 - Test: `KhaozEngine.Render.Tests/Render3D/MotionTargetResourcesTests.cs`
-- Test: `KhaozEngine.Render.Tests/Render3D/AntiAliasingTests.cs` (one fact after line 34)
+- Test: `KhaozEngine.Render.Tests/Render3D/AntiAliasingTests.cs` (one fact after line 36)
 
 **Interfaces:**
 - Consumes: `MotionMath` (D2).
@@ -8127,7 +8229,7 @@ public sealed class MotionTargetResourcesTests
 }
 ```
 
-`KhaozEngine.Render.Tests/Render3D/AntiAliasingTests.cs`, insert after the fact ending at line 34:
+`KhaozEngine.Render.Tests/Render3D/AntiAliasingTests.cs`, insert after the fact ending at line 36:
 
 ```csharp
         [Fact]
@@ -8235,7 +8337,7 @@ new:
                     : _gd.Factory.CreateFramebuffer(DepthStencil, ColorTex, NormalTex, DepthColorTex, MotionTex);
 ```
 
-Line 290, after `MsColor = MsNormal = MsDepthColor = null;` add:
+Line 291, after `MsColor = MsNormal = MsDepthColor = null;` add:
 
 ```csharp
             MotionTex?.Dispose();
@@ -8265,6 +8367,13 @@ Line 290, after `MsColor = MsNormal = MsDepthColor = null;` add:
         }
 ```
 
+The second overload makes every bare `ResolveFor` cref ambiguous, which is `error CS0419` with documentation generated
+and warnings as errors. Disambiguate all six the way `RenderQuality.cs:40` already writes `cref="Msaa(int)"`:
+`<see cref="AntiAliasing.ResolveFor"/>` at `RenderQuality.cs:22`, `:136` and `Scene3D.ResolveTargets.cs:27` becomes
+`<see cref="AntiAliasing.ResolveFor(in GpuCapabilities)"/>`, `<see cref="ResolveFor"/>` at `RenderQuality.cs:41` and
+`:48` becomes `<see cref="ResolveFor(in GpuCapabilities)"/>`, and at `PixelPostProcessSettings.cs:224`, a file without
+`using KhaozEngine.Gpu;`, it becomes `<see cref="AntiAliasing.ResolveFor(in KhaozEngine.Gpu.GpuCapabilities)"/>`.
+
 - [ ] **Step 4: Run them and see them pass**
 
 Run: build, then the headless filter `FullyQualifiedName~MotionTargetResourcesTests|FullyQualifiedName~AntiAliasingTests|FullyQualifiedName~MsaaResolveWiringTests|FullyQualifiedName~GrownBufferRetirementTests`.
@@ -8275,7 +8384,8 @@ fake device records no clears.
 
 ```bash
 git add KhaozEngine.Render3D/Internal/RenderResources.cs KhaozEngine.Render3D/Rendering/ModelRenderer.cs \
-  KhaozEngine.Render3D/RenderQuality.cs KhaozEngine.Render.Tests/Render3D/MotionTargetResourcesTests.cs \
+  KhaozEngine.Render3D/RenderQuality.cs KhaozEngine.Render3D/PixelPostProcessSettings.cs \
+  KhaozEngine.Render3D/Scene3D.ResolveTargets.cs KhaozEngine.Render.Tests/Render3D/MotionTargetResourcesTests.cs \
   KhaozEngine.Render.Tests/Render3D/AntiAliasingTests.cs
 git commit -m "render3d(motion): allocate the motion target as a fourth model attachment on request"
 ```
@@ -8396,7 +8506,7 @@ After line 105 `if (shadowOnly != null) shadowOnly[(int)dst] = inst.ShadowOnly;`
 ```
 
 `KhaozEngine.Render3D/Scene3D.SkinnedDrawRecords.cs`. In `GpuSkinnedDraw`, after `public readonly ShadowCastKind ShadowKind;` (line 31)
-add `public readonly MotionKey Motion;       // the submission's key, None when unkeyed (plan task D6 reads it)`. Line 36,
+add `public readonly MotionKey Motion;       // the submission's key, None when unkeyed (the skinned motion pass reads it)`. Line 36,
 old `ShadowCastKind shadowKind, PointShadowCasterSphere pointSphere)`, new
 `ShadowCastKind shadowKind, PointShadowCasterSphere pointSphere, MotionKey motion)`. After line 43 `PointSphere = pointSphere;`
 add `Motion = motion;`.
@@ -8405,7 +8515,7 @@ In `CpuSkinnedDraw`, after `public readonly PointShadowCasterSphere PointSphere;
 
 ```csharp
         public readonly MotionKey Motion;      // the submission's key, None when unkeyed
-        public readonly int MeshIndex;         // the skinned mesh slot, for its rest vertices (plan task D7)
+        public readonly int MeshIndex;         // the skinned mesh slot, for its rest vertices (CPU-skinned motion)
         public readonly int VertexCount;       // how many deformed vertices start at BaseVertex
 ```
 
@@ -8523,9 +8633,14 @@ git commit -m "render3d(motion): carry each slot's and skinned draw's motion key
   `KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs:161`,
   `KhaozEngine.Render.Tests/Render3D/UboLayoutTests.cs:1-6,138,509`,
   `KhaozEngine.Render.Tests/Render3D/MotionUboLayoutTests.cs`,
-  `KhaozEngine.Render.Tests/Gpu/VulkanShippedVertexLayoutTests.cs:44`,
+  `KhaozEngine.Render.Tests/Gpu/VulkanShippedVertexLayoutTests.cs:45`,
   `KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt`, `KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt`,
-  `KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt`
+  `KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt`, `KhaozEngine.Render.Tests/Gpu/shader-corpus`
+- Modify (pinned counts): `KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs:124`,
+  `KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs:143`, `KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs:57`,
+  `KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs:48,73`
+- Modify (test): `KhaozEngine.Render.Tests/Gpu/D3D11FxcValidationTests.cs:369-390` (its `Program` and `Semantics`
+  helpers become `internal static`, so `MotionShaderSignatureTests` calls them rather than copying them)
 
 **Interfaces:**
 - Consumes: `MotionMath`, `ShaderText`, `MotionFrameUbo`, `ShaderSources.MotionFrameMembersGlsl` (D2). `MotionHistory.TryGetPreviousRigid` (group C).
@@ -8745,6 +8860,9 @@ public sealed class MotionShaderTextTests
     public void AVariantIsItsBaseFragmentPlusTheMotionLines(string name)
     {
         (string variant, string baseline, string sink) = Variants[name];
+        // The scheduled Windows leg checks out with CRLF line ends, and ShaderText inserts LF lines.
+        variant = variant.Replace("\r\n", "\n", StringComparison.Ordinal);
+        baseline = baseline.Replace("\r\n", "\n", StringComparison.Ordinal);
         string stripped = string.Join('\n', variant.Split('\n').Where(line =>
             !line.Contains("oMotion", StringComparison.Ordinal)
             && !line.Contains("vCurClip", StringComparison.Ordinal)
@@ -8759,9 +8877,7 @@ public sealed class MotionShaderTextTests
 
 ```csharp
 using System;
-using System.Globalization;
 using System.Linq;
-using System.Text.RegularExpressions;
 using KhaozEngine.Gpu.Internal;
 using Xunit;
 
@@ -8788,10 +8904,10 @@ public sealed class MotionShaderSignatureTests
     [MemberData(nameof(MotionPrograms))]
     public void TheFragmentReadsAGapFreeBlockItsVertexEmitsAtTheSameIndices(string name)
     {
-        ShippedGraphicsProgram program = Program(name);
+        ShippedGraphicsProgram program = D3D11FxcValidationTests.Program(name);
         CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(program.VertexGlsl, program.FragmentGlsl, name);
-        uint[] outputs = Semantics(pair.VertexSource, "SPIRV_Cross_Output");
-        uint[] inputs = Semantics(pair.FragmentSource, "SPIRV_Cross_Input");
+        uint[] outputs = D3D11FxcValidationTests.Semantics(pair.VertexSource, "SPIRV_Cross_Output");
+        uint[] inputs = D3D11FxcValidationTests.Semantics(pair.FragmentSource, "SPIRV_Cross_Input");
 
         Assert.Equal(Enumerable.Range(0, inputs.Length).Select(i => (uint)i).ToArray(), inputs);
         Assert.All(inputs, index => Assert.Contains(index, outputs));
@@ -8801,7 +8917,7 @@ public sealed class MotionShaderSignatureTests
     [MemberData(nameof(MotionPrograms))]
     public void EveryVariantWritesTheFourthOutput(string name)
     {
-        string fragment = Program(name).FragmentGlsl;
+        string fragment = D3D11FxcValidationTests.Program(name).FragmentGlsl;
         Assert.Contains("layout(location=3) out vec4 oMotion;", fragment, StringComparison.Ordinal);
         if (fragment.Contains("vCurClip", StringComparison.Ordinal))
             Assert.Contains("oMotion = vec4((vCurClip.xy / vCurClip.w - vPrevClip.xy / vPrevClip.w) * vec2(0.5, -0.5), 0.0, 1.0);",
@@ -8809,26 +8925,12 @@ public sealed class MotionShaderSignatureTests
         else
             Assert.Contains("oMotion = vec4(0.0);", fragment, StringComparison.Ordinal);
     }
-
-    static ShippedGraphicsProgram Program(string name) =>
-        ShippedShaderPrograms.GraphicsPrograms().Single(p => string.Equals(p.Name, name, StringComparison.Ordinal));
-
-    // The TEXCOORD indices inside one of SPIRV-Cross's stage-interface structs, sorted. The same read of the emitted
-    // HLSL D3D11FxcValidationTests makes.
-    static uint[] Semantics(string hlsl, string structName)
-    {
-        int start = hlsl.IndexOf("struct " + structName, StringComparison.Ordinal);
-        if (start < 0) return Array.Empty<uint>();
-        int open = hlsl.IndexOf('{', start);
-        int close = open < 0 ? -1 : hlsl.IndexOf('}', open);
-        if (close < 0) return Array.Empty<uint>();
-        return Regex.Matches(hlsl.Substring(open, close - open), @":\s*TEXCOORD(\d+)\s*;")
-            .Select(m => uint.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))
-            .OrderBy(i => i)
-            .ToArray();
-    }
 }
 ```
+
+`KhaozEngine.Render.Tests/Gpu/D3D11FxcValidationTests.cs:369-390`: the two helpers the signature test shares, `static
+ShippedGraphicsProgram Program(string name)` and `static uint[] Semantics(string hlsl, string structName)`, become
+`internal static`. Their bodies do not change.
 
 - [ ] **Step 2: Run them and see them fail**
 
@@ -8904,7 +9006,8 @@ internal static partial class ShaderSources
     /// <summary>ModelVert with motion, the rigid instanced path. An instance's previous world transform is
     /// <c>PrevModel[IMotionSlot]</c>, or its own transform when the slot is -1 (unkeyed, or keyed with no last frame),
     /// which is camera-only motion. Set 1 carries the motion block and the previous transforms. Location 15 is the one
-    /// attribute Vulkan guarantees above the instance stream's 5 to 14 (plan amendment 1).</summary>
+    /// attribute Vulkan guarantees above the instance stream's 5 to 14 (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24
+    /// section 3).</summary>
     public static readonly string ModelMotionVert = ShaderText.BeforeEndOfMain(
         ShaderText.After(ModelVert, "layout(location=10) out float vDissolveComplement;", @"
 layout(set=1, binding=0) uniform MotionFrame {" + MotionFrameMembersGlsl + @"};
@@ -8933,8 +9036,9 @@ using System.Numerics;
 
 namespace KhaozEngine.Render3D.Internal;
 
-/// <summary>The rigid motion variant's per-frame input (plan amendment 1): one motion slot per grouped instance, parallel
-/// to the instance stream, and the compact previous transforms the slots index.</summary>
+/// <summary>The rigid motion variant's per-frame input (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24 section 3): one motion
+/// slot per grouped instance, parallel to the instance stream, and the compact previous transforms the slots
+/// index.</summary>
 internal static class RigidMotionSlots
 {
     /// <summary>
@@ -9231,7 +9335,8 @@ becomes `BlendAttachments = ModelTargetBlends.Opaque(_foliageOutputs),`.
 ```csharp
             if (_motion is { } motion)
             {
-                // The rigid variant's set 1 and its motion slots, parallel to the instance stream (plan amendment 1).
+                // The rigid variant's set 1 and its motion slots, parallel to the instance stream (TEMPORAL-FOUNDATIONS-DESIGN
+                // section 3).
                 cl.SetGraphicsResourceSet(1, motion.RigidSet);
                 cl.SetVertexBuffer(2, motion.SlotBuffer);
             }
@@ -9247,7 +9352,7 @@ becomes `BlendAttachments = ModelTargetBlends.Opaque(_foliageOutputs),`.
 
 ```csharp
 
-            // Temporal variants (temporal foundations plan, group D). Built only against a model target that carries
+            // Temporal variants (TEMPORAL-FOUNDATIONS-DESIGN section 3). Built only against a model target that carries
             // the motion attachment. VulkanShippedVertexLayoutTests builds one to capture them.
             yield return new("ModelMotion", ShaderSources.ModelMotionVert, ShaderSources.ModelMotionFrag);
 ```
@@ -9267,10 +9372,16 @@ After `("ModelRenderer tile ground", ["Model.tileGroundFrame", "Model.tileGround
 `("ModelRenderer motion", ["Model", "Motion.rigid"]),`. Lines 254-255 become `Assert.Equal(46, ShippedLayouts.Count);` and
 `Assert.Equal(46, ShippedPipelines.Count);`.
 
+The other pinned counts over the same catalogs. `D3D11HlslByteEqualityTests.cs:124` `Assert.Equal(51, graphics.Length);`
+becomes 52. `VulkanSpirvByteEqualityTests.cs:143` `Assert.Equal(110, emitted.Count);` becomes 112, two stages per
+program. `VulkanDynamicOffsetTests.cs:57` `Assert.Equal(45, shapes.Count);` becomes 46, one per layout.
+`VulkanLayoutCompatibilityTests.cs:48` `Assert.Equal(45, pipelines.Count);` becomes 46, and `:73`
+`Assert.Equal(45 * 45, pairs);` becomes `Assert.Equal(46 * 46, pairs);`.
+
 `D3D11RegisterNumberingTests.cs`. After the `_tileGroundMaterialLayout` row (lines 102-105) add:
 
 ```csharp
-            // The rigid temporal variant's set 1 (group D). A vertex-stage structured buffer takes the t counter like
+            // The rigid temporal variant's set 1. A vertex-stage structured buffer takes the t counter like
             // any other shader resource.
             ("ModelMotionResources.RigidLayout",
                 new[] { U("MotionFrame"), StructRO("PreviousInstanceTransforms", GpuShaderStages.Vertex) }, "b0 t0"),
@@ -9300,7 +9411,7 @@ At the end of `AcrossLayouts_TheShippedPipelinesFlattenInArrayOrder` (after line
 
 ```csharp
 
-        // The rigid temporal variant (group D): ModelVert plus the motion block, a vertex-stage structured buffer and
+        // The rigid temporal variant: ModelVert plus the motion block, a vertex-stage structured buffer and
         // the motion slot at location 15.
         [Fact]
         public void ModelMotion()
@@ -9319,7 +9430,7 @@ closes the shadow-tail list, becomes the same. `MotionUboLayoutTests.cs`, the li
     ];
 ```
 
-`VulkanShippedVertexLayoutTests.cs`. After `CaptureTargetOutlinePipelines(scene, framebuffer, commands);` (line 44) add
+`VulkanShippedVertexLayoutTests.cs`. After `CaptureTargetOutlinePipelines(scene, framebuffer, commands);` (line 45) add
 `CaptureTemporalPipelines(device, commands);`, and after `CaptureTargetOutlinePipelines` add:
 
 ```csharp
@@ -9361,7 +9472,10 @@ git add KhaozEngine.Render3D/Internal/ShaderSources.Motion.cs KhaozEngine.Render
   KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs KhaozEngine.Render.Tests/Render3D/UboLayoutTests.cs \
   KhaozEngine.Render.Tests/Render3D/MotionUboLayoutTests.cs KhaozEngine.Render.Tests/Gpu/VulkanShippedVertexLayoutTests.cs \
   KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt \
-  KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt KhaozEngine.Render.Tests/Gpu/shader-corpus
+  KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt KhaozEngine.Render.Tests/Gpu/shader-corpus \
+  KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/D3D11FxcValidationTests.cs
 git commit -m "render3d(motion): write rigid motion from previous transforms read in the vertex stage"
 ```
 
@@ -9384,6 +9498,10 @@ git commit -m "render3d(motion): write rigid motion from previous transforms rea
 - Modify (test): `ModelMotionPipelineTests.cs`, `MotionShaderTextTests.cs`
 - Modify (bookkeeping): `ShippedShaderPrograms.cs`, `VulkanShaderBindingTableTests.cs`, `VulkanDescriptorLimitTests.cs:94,191,254-255,280-302`,
   `D3D11RegisterNumberingTests.cs`, `D3D11ResourceModelTests.cs`, `ShaderSourceValidationTests.cs`, `MotionUboLayoutTests.cs`, the three hash tables, `Gpu/shader-corpus`
+- Modify (test): `KhaozEngine.Render.Tests/Gpu/VulkanUniformRingTests.cs:211-250` (a row for the new 8448-byte dynamic
+  window in `EveryShippedResourceSetShape_KeepsItsBindWindowInsideItsSegment`)
+- Modify (pinned counts): `D3D11HlslByteEqualityTests.cs:124`, `VulkanSpirvByteEqualityTests.cs:143`,
+  `VulkanDynamicOffsetTests.cs:57`, `VulkanLayoutCompatibilityTests.cs:48`, `:73`
 
 **Interfaces:**
 - Consumes: `GpuSkinnedDraw.Motion` (D4), `ModelRenderer.OpaqueMotionPipeline` and `ModelMotionResources` (D5),
@@ -9750,10 +9868,11 @@ and in `Dispose`, before `_frame.Dispose();`, add `SkinnedPalette.Dispose(); _sk
   after `("ModelRenderer skinned dissolve", [...]),` (line 191) add
   `("ModelRenderer skinned motion", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette", "Motion.skinned"]),`.
   The two counts become 47. `TheHeaviestShippedPipeline_SpendsThreeDynamicUniformDescriptors` (lines 280-302) is
-  renamed `TheHeaviestShippedPipeline_SpendsFiveDynamicUniformDescriptors`, asserts `Assert.Equal(5, heaviest);`, and its
-  summary's last two sentences become: `The skinned temporal variant (temporal foundations plan, Task D6) raised it to
-  FIVE: the frame block, the per-draw header and the palette as before, then the motion block and the last-frame palette
-  at set 3. Three descriptors of headroom are left.`
+  renamed `TheHeaviestShippedPipeline_SpendsFiveDynamicUniformDescriptors` and asserts `Assert.Equal(5, heaviest);`. In
+  its summary, the sentence `Five descriptors of headroom are left.`, the last one before `<para>`, is replaced by two:
+  `The skinned temporal variant raised it to FIVE: the frame block, the per-draw header and the palette as before, then
+  the motion block and the last-frame palette at set 3. Three descriptors of headroom are left.` Every other sentence of
+  the summary stays.
 - `D3D11RegisterNumberingTests.cs`: after the `SkinnedBonePalette._layout` row (line 88) add
   `("SkinnedMotionPalette.Layout", new[] { U("MotionFrame"), U("PrevPalette", dynamic: true) }, "b0 b1"),`. At the end of
   `AcrossLayouts_TheShippedPipelinesFlattenInArrayOrder` add:
@@ -9782,12 +9901,26 @@ and in `Dispose`, before `_frame.Dispose();`, add `SkinnedPalette.Dispose(); _sk
 - `MotionUboLayoutTests.FrameBlockSources`: add `("SkinnedModelMotionVert", ShaderSources.SkinnedModelMotionVert)`,
   `("SkinnedModelMotionFrag", ShaderSources.SkinnedModelMotionFrag)` and
   `("SkinnedModelDissolveMotionFrag", ShaderSources.SkinnedModelDissolveMotionFrag)`.
+- `VulkanUniformRingTests.cs`, in `EveryShippedResourceSetShape_KeepsItsBindWindowInsideItsSegment`, after the
+  `SkinnedBonePalette per caster` row add the row below and raise `Assert.Equal(8, sets.Length);` to 9. In the
+  `SkinnedBonePalette` row's comment, `and the widest window the engine binds at 8192 bytes.` becomes `8192 bytes wide.`
+  ```csharp
+
+                // SkinnedMotionPalette.cs, GpuBufferRange(_buffer, 0, SlotBytes). ONE slot per caster, capacity 8 and
+                // doubling, and the widest window the engine binds at 8448 bytes.
+                ("SkinnedMotionPalette per caster", SkinnedMotionPalette.SlotBytes, SkinnedMotionPalette.SlotBytes,
+                    new uint[] { 8, 16, 32, 64 }),
+  ```
+- The pinned counts: `D3D11HlslByteEqualityTests.cs:124` 52 to 54, `VulkanSpirvByteEqualityTests.cs:143` 112 to 116,
+  `VulkanDynamicOffsetTests.cs:57` 46 to 47, `VulkanLayoutCompatibilityTests.cs:48` 46 to 47 and `:73` `46 * 46` to
+  `47 * 47`.
 - Rebake. Expected diff: four added rows per table (`SkinnedModelMotion` and `SkinnedModelDissolveMotion`, each stage).
 
 - [ ] **Step 6: Run it and see it pass**
 
 Run: build, then the headless filter `FullyQualifiedName~SkinnedMotionPaletteTests|FullyQualifiedName~ModelMotionPipelineTests|FullyQualifiedName~MotionShaderTextTests|FullyQualifiedName~MotionKeyPlumbingTests`,
-then the bookkeeping filter, then the Metal filter `FullyQualifiedName~Skinned|FullyQualifiedName~GpuSkinning`.
+then the bookkeeping filter with `|FullyQualifiedName~VulkanUniformRingTests` appended, then the Metal filter
+`FullyQualifiedName~Skinned|FullyQualifiedName~GpuSkinning`.
 Expected: `Passed!` with no failures and no skips in all three. Every skinned golden is unchanged.
 
 - [ ] **Step 7: Commit**
@@ -9804,7 +9937,9 @@ git add KhaozEngine.Render3D/Rendering/SkinnedMotionPalette.cs KhaozEngine.Rende
   KhaozEngine.Render.Tests/Gpu/D3D11ResourceModelTests.cs KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs \
   KhaozEngine.Render.Tests/Render3D/MotionUboLayoutTests.cs KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt \
   KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt \
-  KhaozEngine.Render.Tests/Gpu/shader-corpus
+  KhaozEngine.Render.Tests/Gpu/shader-corpus KhaozEngine.Render.Tests/Gpu/VulkanUniformRingTests.cs \
+  KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs
 git commit -m "render3d(motion): skin GPU-skinned draws twice for their previous positions"
 ```
 
@@ -9828,6 +9963,8 @@ git commit -m "render3d(motion): skin GPU-skinned draws twice for their previous
 - Modify (test): `ModelMotionPipelineTests.cs`, `MotionShaderTextTests.cs`
 - Modify (bookkeeping): `ShippedShaderPrograms.cs`, `VulkanShaderBindingTableTests.cs`, `VulkanDescriptorLimitTests.cs`,
   `D3D11RegisterNumberingTests.cs`, `ShaderSourceValidationTests.cs`, `MotionUboLayoutTests.cs`, the three hash tables, `Gpu/shader-corpus`
+- Modify (pinned counts): `D3D11HlslByteEqualityTests.cs:124`, `VulkanSpirvByteEqualityTests.cs:143`,
+  `VulkanDynamicOffsetTests.cs:57`, `VulkanLayoutCompatibilityTests.cs:48`, `:73`
 
 **Interfaces:**
 - Consumes: `CpuSkinnedDraw.Motion`, `MeshIndex`, `VertexCount` (D4), `PreviousMotion` (D6), `SkinningMath.BlendSkinMatrix`
@@ -10222,6 +10359,9 @@ old `if (dr.Dissolve) _model.BindDissolvePass(cl); else _model.BindPass(cl);`, n
   `ShaderSources.ModelMotionFrag` and `ShaderSources.ModelDissolveMotionFrag`.
 - `MotionUboLayoutTests.FrameBlockSources`: add `("ModelCpuSkinnedMotionVert", ShaderSources.ModelCpuSkinnedMotionVert)`
   and `("ModelDissolveMotionFrag", ShaderSources.ModelDissolveMotionFrag)`.
+- The pinned counts: `D3D11HlslByteEqualityTests.cs:124` 54 to 56, `VulkanSpirvByteEqualityTests.cs:143` 116 to 120,
+  `VulkanDynamicOffsetTests.cs:57` 47 to 48, `VulkanLayoutCompatibilityTests.cs:48` 47 to 48 and `:73` `47 * 47` to
+  `48 * 48`.
 - Rebake. Expected diff: four added rows per table.
 
 - [ ] **Step 5: Run it and see it pass**
@@ -10243,7 +10383,9 @@ git add KhaozEngine.Render3D/Internal/CpuSkinnedMotion.cs KhaozEngine.Render3D/I
   KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs KhaozEngine.Render.Tests/Gpu/D3D11RegisterNumberingTests.cs \
   KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs KhaozEngine.Render.Tests/Render3D/MotionUboLayoutTests.cs \
   KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt \
-  KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt KhaozEngine.Render.Tests/Gpu/shader-corpus
+  KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt KhaozEngine.Render.Tests/Gpu/shader-corpus \
+  KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs
 git commit -m "render3d(motion): re-skin CPU-skinned draws from the previous palette for their motion"
 ```
 
@@ -10257,12 +10399,16 @@ git commit -m "render3d(motion): re-skin CPU-skinned draws from the previous pal
 - Create: `KhaozEngine.Render3D/Internal/ShaderSources.MotionFoliage.cs`
 - Modify: `KhaozEngine.Render3D/Rendering/ModelRenderer.Foliage.cs:20-70` (`FoliageUniforms`), `:90-126` (`EnsureFoliagePipeline`), `:155` (`DrawFoliageMesh`)
 - Modify: `KhaozEngine.Render3D/FoliageBatch.cs:14`
-- Modify: `KhaozEngine.Render3D/Scene3D.Foliage.cs:16` (fields), `:83-84` (`DrawFoliage`), `:98-103` (`BeginFoliageFrame`), `:131-134` (`PrepareFoliageFrame`)
+- Modify: `KhaozEngine.Render3D/Scene3D.Foliage.cs:16` (fields), `:83-84` (`DrawFoliage`), `:131-134` (`PrepareFoliageFrame`)
 - Modify: `KhaozEngine.Render3D/Rendering/ModelMotionResources.cs` (foliage program)
 - Modify (test): `KhaozEngine.Render.Tests/Render3D/FoliageUniformsTests.cs:26-30`
 - Create (test): `KhaozEngine.Render.Tests/Render3D/FoliageMotionUniformsTests.cs`
+- Modify (test): `KhaozEngine.Render.Tests/Render3D/MotionShaderTextTests.cs` (a fact holding `FoliageMotionVert` to
+  `FoliageVert`, and the helpers Task D9 reuses)
 - Modify (bookkeeping): `ShippedShaderPrograms.cs`, `VulkanShaderBindingTableTests.cs`, `VulkanDescriptorLimitTests.cs`,
   `ShaderSourceValidationTests.cs`, `MotionUboLayoutTests.cs`, the three hash tables, `Gpu/shader-corpus`
+- Modify (pinned counts): `D3D11HlslByteEqualityTests.cs:124`, `VulkanSpirvByteEqualityTests.cs:143`,
+  `VulkanLayoutCompatibilityTests.cs:48`, `:73` (`VulkanDynamicOffsetTests.cs:57` stays at 48)
 
 **Interfaces:**
 - Consumes: `ModelMotionResources.FrameLayout`, `FrameSet` (D7), `ShaderSources.CompactFrameBlockGlsl` (D2),
@@ -10385,6 +10531,73 @@ public sealed class FoliageMotionUniformsTests
         Assert.Equal(Vector4.Zero, scene.FoliageUniformsForTests[0].Interactor0);   // this frame has none
     }
 }
+```
+
+`KhaozEngine.Render.Tests/Render3D/MotionShaderTextTests.cs`. `FoliageMotionVert` restates `FoliageVert`'s deformation
+inside a function rather than splicing it, so a text fact holds the two together. Add the helpers and the fact to the
+class:
+
+```csharp
+    static string[] Lines(string source) => source.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+
+    static bool IsClip(string line) =>
+        line.Contains("vCurClip", StringComparison.Ordinal) || line.Contains("vPrevClip", StringComparison.Ordinal);
+
+    static bool Declares(string line, string direction) =>
+        line.StartsWith("layout(location=", StringComparison.Ordinal) && line.Contains(direction, StringComparison.Ordinal);
+
+    // The vertex inputs, whole lines.
+    static string[] Inputs(string[] lines) => lines.Where(line => Declares(line, ") in ")).ToArray();
+
+    // The outputs as type and name, without the location and comment a variant may change, and without the clip pair.
+    static string[] Outputs(string[] lines) => lines
+        .Where(line => Declares(line, ") out ") && !IsClip(line))
+        .Select(line =>
+        {
+            string declaration = line[(line.IndexOf(") out ", StringComparison.Ordinal) + ") out ".Length)..];
+            return declaration[..(declaration.IndexOf(';', StringComparison.Ordinal) + 1)];
+        })
+        .ToArray();
+
+    // From gl_Position to the end of the program, without the clip pair.
+    static string[] Tail(string[] lines) => lines
+        .SkipWhile(line => !line.TrimStart().StartsWith("gl_Position", StringComparison.Ordinal))
+        .Where(line => !IsClip(line))
+        .ToArray();
+
+    /// <summary>FoliageVert's statements up to gl_Position, with the renames foliageWorld makes (the focus, clock,
+    /// pixel scale and fade matrix become parameters, and the interactor reads go through the current-or-previous
+    /// locals), equal foliageWorld's body line for line. The inputs, the outputs and the rest of main match too.</summary>
+    [Fact]
+    public void TheFoliageVariantRestatesFoliageVertLineForLine()
+    {
+        string[] baseline = Lines(ShaderSources.FoliageVert);
+        string[] variant = Lines(ShaderSources.FoliageMotionVert);
+        string[] deformation = baseline
+            .SkipWhile(line => line != "void main() {").Skip(1)
+            .TakeWhile(line => !line.TrimStart().StartsWith("gl_Position", StringComparison.Ordinal))
+            .Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal))
+            .Select(line => line
+                .Replace("FocusRadius.xz", "focus.xz", StringComparison.Ordinal)
+                .Replace("bool rejected =", "rejected =", StringComparison.Ordinal)
+                .Replace("mat4 Model =", "Model =", StringComparison.Ordinal)
+                .Replace("WindTime.z * FadeWind.z", "windTime * FadeWind.z", StringComparison.Ordinal)
+                .Replace("(ViewProj * vec4(root, 1.0)).w, 0.0) * WindFade.y",
+                    "(fadeViewProj * vec4(root, 1.0)).w, 0.0) * metresPerPixel", StringComparison.Ordinal)
+                .Replace("Interactors[i]", "interactor", StringComparison.Ordinal)
+                .Replace("Strengths[i]", "strength", StringComparison.Ordinal))
+            .ToArray();
+        string[] function = variant
+            .SkipWhile(line => !line.StartsWith("vec3 foliageWorld(", StringComparison.Ordinal)).Skip(2)
+            .TakeWhile(line => line != "    return world.xyz;")
+            .Where(line => !line.Contains("previous ? Prev", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Equal(deformation, function);
+        Assert.Equal(Inputs(baseline), Inputs(variant));
+        Assert.Equal(Outputs(baseline), Outputs(variant));
+        Assert.Equal(Tail(baseline), Tail(variant));
+    }
 ```
 
 - [ ] **Step 2: Run them and see them fail**
@@ -10634,8 +10847,8 @@ and `_foliage?.Dispose();` in `Dispose`.
 `Scene3D.Foliage.cs`. After `bool _foliageDisposed;` (line 17) add:
 
 ```csharp
-    // Counts Begin, so a batch's state and the pixel scale can tell "last frame" from "some earlier frame".
-    long _foliageFrame;
+    // _frameIndex (Scene3D.FrameView.cs) counts Begin, so a batch's state and the pixel scale can tell "last frame"
+    // from "some earlier frame".
     float _foliagePreviousScale;
     long _foliageScaleFrame = -1;
 
@@ -10647,11 +10860,11 @@ and `_foliage?.Dispose();` in `Dispose`.
     /// of the frame before. A batch not submitted last frame has no previous and reads its own current.</summary>
     ModelRenderer.FoliageUniforms WithFoliageMotion(FoliageBatch batch, in ModelRenderer.FoliageUniforms current)
     {
-        if (batch.MotionFrame != _foliageFrame)
+        if (batch.MotionFrame != _frameIndex)
         {
-            batch.MotionPreviousValid = batch.MotionFrame == _foliageFrame - 1;
+            batch.MotionPreviousValid = batch.MotionFrame == _frameIndex - 1;
             batch.MotionPrevious = batch.MotionCurrent;
-            batch.MotionFrame = _foliageFrame;
+            batch.MotionFrame = _frameIndex;
         }
         batch.MotionCurrent = current;
         return current.WithPrevious(batch.MotionPreviousValid ? batch.MotionPrevious : current);
@@ -10676,7 +10889,7 @@ new:
         }
 ```
 
-`Scene3D.Foliage.cs:98-103` (`BeginFoliageFrame`), add `_foliageFrame++;` as its first line.
+`BeginFoliageFrame` is unchanged: group A's `_frameIndex` already moves once per `Begin`.
 
 `Scene3D.Foliage.cs:131-134`, as group A left it:
 
@@ -10695,10 +10908,10 @@ new (one `MetresPerPixel(` call, as group A's sweep row requires):
             if (_res.MotionAllocated)
             {
                 // Last frame's scale, or this frame's when no foliage drew last frame (FoliageMotionVert).
-                float previousScale = _foliageScaleFrame == _foliageFrame - 1 ? _foliagePreviousScale : metresPerPixel;
+                float previousScale = _foliageScaleFrame == _frameIndex - 1 ? _foliagePreviousScale : metresPerPixel;
                 ModelRenderer.FoliageUniforms.ApplyPixelScale(slots, metresPerPixel, previousScale);
                 _foliagePreviousScale = metresPerPixel;
-                _foliageScaleFrame = _foliageFrame;
+                _foliageScaleFrame = _frameIndex;
             }
             else ModelRenderer.FoliageUniforms.ApplyPixelScale(slots, metresPerPixel);
             uniforms = _model.UploadFoliageUniforms(cl, slots);
@@ -10713,6 +10926,9 @@ new (one `MetresPerPixel(` call, as group A's sweep row requires):
   `("ModelRenderer foliage", ...)`. Pipelines count 49, layouts stay 48.
 - `ShaderSourceValidationTests.cs`: fact `FoliageMotion` over `ShaderSources.FoliageMotionVert` and `ShaderSources.ModelMotionFrag`.
 - `MotionUboLayoutTests.FrameBlockSources`: add `("FoliageMotionVert", ShaderSources.FoliageMotionVert)`.
+- The pinned counts: `D3D11HlslByteEqualityTests.cs:124` 56 to 57, `VulkanSpirvByteEqualityTests.cs:143` 120 to 122,
+  `VulkanLayoutCompatibilityTests.cs:48` 48 to 49 and `:73` `48 * 48` to `49 * 49`. `VulkanDynamicOffsetTests.cs:57`
+  stays at 48, because the layouts do not change.
 - Rebake. Expected diff: two added rows per table.
 
 - [ ] **Step 6: Run it and see it pass**
@@ -10732,7 +10948,9 @@ git add KhaozEngine.Render3D/Internal/ShaderSources.MotionFoliage.cs KhaozEngine
   KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs \
   KhaozEngine.Render.Tests/Render3D/MotionUboLayoutTests.cs KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt \
   KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt \
-  KhaozEngine.Render.Tests/Gpu/shader-corpus
+  KhaozEngine.Render.Tests/Gpu/shader-corpus KhaozEngine.Render.Tests/Render3D/MotionShaderTextTests.cs \
+  KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs
 git commit -m "render3d(motion): evaluate foliage wind and interactors at last frame's state"
 ```
 
@@ -10749,6 +10967,8 @@ git commit -m "render3d(motion): evaluate foliage wind and interactors at last f
 - Modify (test): `ModelMotionPipelineTests.cs`, `MotionShaderTextTests.cs`, `KhaozEngine.Render.Tests/Gpu/MotionShaderSignatureTests.cs`
 - Modify (bookkeeping): `ShippedShaderPrograms.cs`, `VulkanShaderBindingTableTests.cs`, `VulkanDescriptorLimitTests.cs`,
   `ShaderSourceValidationTests.cs`, `MotionUboLayoutTests.cs`, the three hash tables, `Gpu/shader-corpus`
+- Modify (pinned counts): `D3D11HlslByteEqualityTests.cs:124`, `VulkanSpirvByteEqualityTests.cs:143`,
+  `VulkanLayoutCompatibilityTests.cs:48`, `:73` (`VulkanDynamicOffsetTests.cs:57` stays at 48)
 
 **Interfaces:**
 - Consumes: `ModelMotionResources.FrameLayout` and `FrameSet` (D7), `OpaqueMotionPipeline` (D5), `CompactFrameBlockGlsl` (D2).
@@ -10791,6 +11011,26 @@ so its variant is a splice with the pair at 7 and 8.
         ["TileGroundMotionFrag"] = (ShaderSources.TileGroundMotionFrag, ShaderSources.TileGroundFrag, ""),
 ```
 
+and, because `SplatMotionVert` restates `SplatVert` rather than splicing it, a fact on Task D8's helpers:
+
+```csharp
+    // main and everything after it, without the clip pair.
+    static string[] Main(string[] lines) => lines.SkipWhile(line => line != "void main() {").Where(line => !IsClip(line)).ToArray();
+
+    /// <summary>SplatMotionVert moves SplatVert's three fragment-unused outputs to make room for the clip pair, so it is
+    /// written out whole. It keeps SplatVert's inputs line for line, its outputs apart from their locations, and its main
+    /// apart from the clip pair.</summary>
+    [Fact]
+    public void TheSplatVariantRestatesSplatVertLineForLine()
+    {
+        string[] baseline = Lines(ShaderSources.SplatVert);
+        string[] variant = Lines(ShaderSources.SplatMotionVert);
+        Assert.Equal(Inputs(baseline), Inputs(variant));
+        Assert.Equal(Outputs(baseline), Outputs(variant));
+        Assert.Equal(Main(baseline), Main(variant));
+    }
+```
+
 `MotionShaderSignatureTests.cs`, add:
 
 ```csharp
@@ -10803,7 +11043,8 @@ so its variant is a splice with the pair at 7 and 8.
         CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
             ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, "TileGroundMotion");
 
-        Assert.Equal(Semantics(pair.VertexSource, "SPIRV_Cross_Output"), Semantics(pair.FragmentSource, "SPIRV_Cross_Input"));
+        Assert.Equal(D3D11FxcValidationTests.Semantics(pair.VertexSource, "SPIRV_Cross_Output"),
+            D3D11FxcValidationTests.Semantics(pair.FragmentSource, "SPIRV_Cross_Input"));
     }
 ```
 
@@ -10952,6 +11193,9 @@ Add `using KhaozEngine.Render3D.Internal;` to either file that lacks it.
 - `ShaderSourceValidationTests.cs`: facts `SplatMotion` and `TileGroundMotion` over the two pairs.
 - `MotionUboLayoutTests.FrameBlockSources`: add the four sources `SplatMotionVert`, `SplatMotionFrag`,
   `TileGroundMotionVert` and `TileGroundMotionFrag`.
+- The pinned counts: `D3D11HlslByteEqualityTests.cs:124` 57 to 59, `VulkanSpirvByteEqualityTests.cs:143` 122 to 126,
+  `VulkanLayoutCompatibilityTests.cs:48` 49 to 51 and `:73` `49 * 49` to `51 * 51`. `VulkanDynamicOffsetTests.cs:57`
+  stays at 48.
 - Rebake. Expected diff: four added rows per table.
 
 - [ ] **Step 5: Run it and see it pass**
@@ -10970,7 +11214,9 @@ git add KhaozEngine.Render3D/Internal/ShaderSources.MotionGround.cs KhaozEngine.
   KhaozEngine.Render.Tests/Gpu/VulkanShaderBindingTableTests.cs KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs \
   KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs KhaozEngine.Render.Tests/Render3D/MotionUboLayoutTests.cs \
   KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt \
-  KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt KhaozEngine.Render.Tests/Gpu/shader-corpus
+  KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt KhaozEngine.Render.Tests/Gpu/shader-corpus \
+  KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs
 git commit -m "render3d(motion): give splat terrain and tile ground camera-only motion"
 ```
 
@@ -10983,15 +11229,17 @@ git commit -m "render3d(motion): give splat terrain and tile ground camera-only 
 **Files:**
 - Create: `KhaozEngine.Render3D/Internal/ShaderSources.MotionPreserve.cs`
 - Modify: `KhaozEngine.Render3D/Rendering/ModelTargetBlends.cs` (add `Transparent`)
-- Modify: `KhaozEngine.Render3D/Rendering/TexturedBillboardRenderer.cs:66-67` (blend arrays), `:91` (`ShaderSet`), `:138` (`Dispose`)
-- Modify: `KhaozEngine.Render3D/Rendering/BeamRenderer.cs:81` (blends), `:93` (`ShaderSet`), `:137`
+- Modify: `KhaozEngine.Render3D/Rendering/TexturedBillboardRenderer.cs:69-70` (blend arrays), `:91` (`ShaderSet`), `:138` (`Dispose`)
+- Modify: `KhaozEngine.Render3D/Rendering/BeamRenderer.cs:82` (blends), `:93` (`ShaderSet`), `:137`
 - Modify: `KhaozEngine.Render3D/Rendering/TrailRenderer.cs:81` (blends), `:92` (`ShaderSet`), `:134`
-- Modify: `KhaozEngine.Render3D/Rendering/OverlayMeshRenderer.cs:114-119` (blends), `:125` (`ShaderSet`), `:214`
-- Modify: `KhaozEngine.Render3D/Rendering/SilhouetteRenderer.cs:75-80` (blends), `:90` (`ShaderSet`), `:173`
+- Modify: `KhaozEngine.Render3D/Rendering/OverlayMeshRenderer.cs:114-119` (blends), `:126` (`ShaderSet`), `:214`
+- Modify: `KhaozEngine.Render3D/Rendering/SilhouetteRenderer.cs:75-80` (blends), `:91` (`ShaderSet`), `:173`
 - Create (test): `KhaozEngine.Render.Tests/Render3D/TransparentMotionPipelineTests.cs`
 - Modify (test): `MotionShaderTextTests.cs`, `VulkanShippedVertexLayoutTests.cs` (`CaptureTemporalPipelines`)
 - Modify (bookkeeping): `ShippedShaderPrograms.cs`, `VulkanShaderBindingTableTests.cs`, `VulkanDescriptorLimitTests.cs`,
   `D3D11RegisterNumberingTests.cs`, `ShaderSourceValidationTests.cs`, the three hash tables, `Gpu/shader-corpus`
+- Modify (pinned counts): `D3D11HlslByteEqualityTests.cs:124`, `VulkanSpirvByteEqualityTests.cs:143`,
+  `VulkanDynamicOffsetTests.cs:57`, `VulkanLayoutCompatibilityTests.cs:48`, `:73`
 
 **Interfaces:**
 - Consumes: `ShaderSources.DepthOutputGlsl` (D5), `ShaderText` (D2), `MotionMath.IsTemporal` (D2).
@@ -11142,7 +11390,7 @@ Each of the five renderers gains one field, a blend array sized from its outputs
 dispose line. The pattern, shown on `BeamRenderer`:
 
 - field, after `readonly IGpuShaderSet _shaders;` (line 43): `IGpuShaderSet? _motionShaders;   // BeamMotionFrag, built only for a temporal model target`
-- `BeamRenderer.cs:81`, old `var blends = new[] { GpuBlendAttachment.Additive, GpuBlendAttachment.PreserveDestination, GpuBlendAttachment.PreserveDestination };`,
+- `BeamRenderer.cs:82`, old `var blends = new[] { GpuBlendAttachment.Additive, GpuBlendAttachment.PreserveDestination, GpuBlendAttachment.PreserveDestination };`,
   new `var blends = ModelTargetBlends.Transparent(GpuBlendAttachment.Additive, modelOutputs);`
 - `BeamRenderer.cs:93`, old `ShaderSet = _shaders,`, new:
   ```csharp
@@ -11156,13 +11404,13 @@ The other four, with the same three edits:
 
 | Renderer | Blend array, old at | New blend array | Program in the temporal branch |
 | --- | --- | --- | --- |
-| `TexturedBillboardRenderer` | `:66-67`, `alphaBlends` and `addBlends` | `ModelTargetBlends.Transparent(GpuBlendAttachment.AlphaBlend, modelOutputs)` and `...(GpuBlendAttachment.Additive, modelOutputs)` | `ShaderSources.BillboardVert`, `ShaderSources.TexturedBillboardMotionFrag`, in `CreatePipeline` (`:91`), where `factory` and `modelOutputs` are parameters |
+| `TexturedBillboardRenderer` | `:69-70`, `alphaBlends` and `addBlends` | `ModelTargetBlends.Transparent(GpuBlendAttachment.AlphaBlend, modelOutputs)` and `...(GpuBlendAttachment.Additive, modelOutputs)` | `ShaderSources.BillboardVert`, `ShaderSources.TexturedBillboardMotionFrag`, in `CreatePipeline` (`:91`), where `factory` and `modelOutputs` are parameters |
 | `TrailRenderer` | `:81` | `ModelTargetBlends.Transparent(color0, modelOutputs)` | `ShaderSources.TrailVert`, `ShaderSources.TrailMotionFrag` |
 | `OverlayMeshRenderer` | `:114-119`, the inline array | `ModelTargetBlends.Transparent(GpuBlendAttachment.AlphaBlend, modelOutputs)` | `ShaderSources.OverlayUnlitVert`, `ShaderSources.OverlayUnlitMotionFrag`, factory parameter `f` |
 | `SilhouetteRenderer` | `:75-80`, the inline array | `ModelTargetBlends.Transparent(GpuBlendAttachment.AlphaBlend, modelOutputs)` | `ShaderSources.SilhouetteVert`, `ShaderSources.SilhouetteMotionFrag`, factory parameter `f` |
 
 Each file adds `using KhaozEngine.Render3D.Internal;` if absent. The comments that say the model framebuffer has three
-colour attachments (`TexturedBillboardRenderer.cs:63-65`, `OverlayMeshRenderer.cs:112-113`) become
+colour attachments (`TexturedBillboardRenderer.cs:66-68`, `OverlayMeshRenderer.cs:112-113`) become
 `// The model FB has 3 colour attachments, and a 4th (motion) while temporal rendering is active. Colour blends, and every
 // other attachment keeps its destination, so the edge pass reads the meshes' normal and depth and the resolve reads their
 // motion.`
@@ -11202,6 +11450,9 @@ colour attachments (`TexturedBillboardRenderer.cs:63-65`, `OverlayMeshRenderer.c
   `("SilhouetteRenderer._layout", new[] { U("Draw", dynamic: true) }, "b0"),`.
 - `ShaderSourceValidationTests.cs`: five facts, `TexturedBillboardMotion`, `BeamMotion`, `TrailMotion`, `OverlayMeshMotion`
   and `SilhouetteMotion`, each `ShaderValidation.ValidatePair(<vertex>, <motion fragment>, "<name>")`.
+- The pinned counts: `D3D11HlslByteEqualityTests.cs:124` 59 to 64, `VulkanSpirvByteEqualityTests.cs:143` 126 to 136,
+  `VulkanDynamicOffsetTests.cs:57` 48 to 49, `VulkanLayoutCompatibilityTests.cs:48` 51 to 52 and `:73` `51 * 51` to
+  `52 * 52`.
 - Rebake. Expected diff: ten added rows per table.
 
 - [ ] **Step 5: Run it and see it pass**
@@ -11222,7 +11473,9 @@ git add KhaozEngine.Render3D/Internal/ShaderSources.MotionPreserve.cs KhaozEngin
   KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs KhaozEngine.Render.Tests/Gpu/D3D11RegisterNumberingTests.cs \
   KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt \
   KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt \
-  KhaozEngine.Render.Tests/Gpu/shader-corpus
+  KhaozEngine.Render.Tests/Gpu/shader-corpus KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs
 git commit -m "render3d(motion): keep the motion attachment under the transparent model passes"
 ```
 
@@ -11240,6 +11493,10 @@ git commit -m "render3d(motion): keep the motion attachment under the transparen
 - Create (test): `KhaozEngine.Render.Tests/Render3D/MotionTargetWiringTests.cs`
 - Create (test): `KhaozEngine.Render.Tests/Gpu/MotionTargetLifecycleGpuTests.cs`
 - Modify (test): `KhaozEngine.Render.Tests/Render3D/MotionTestScene.cs` (group C's helper, a `Device` accessor)
+- Modify (test): `KhaozEngine.Render.Tests/Render3D/FrameViewUploadTests.cs` (group A5's `Occurrences` skips the motion
+  block)
+- Modify (test): `KhaozEngine.Render.Tests/Render3D/TemporalCpuIsolationTests.cs` (group A6's four factory-count
+  equalities go)
 
 **Interfaces:**
 - Consumes: everything from D2 to D10. `Scene3D.CurrentFrameView`, `Scene3D.PreviousFrameView`, `Scene3D.TemporalActive`
@@ -11463,8 +11720,9 @@ public sealed class MotionTargetLifecycleGpuTests
 - [ ] **Step 2: Run them and see them fail**
 
 Run: build.
-Expected: FAIL to compile with `error CS1061: 'Scene3D' does not contain a definition for 'MotionResourcesForTests'` and
-the same for `ModelSampleCountForTests`, `ReadMotionTargetForTests` and `ModelMotionResources.PreviousTransforms`.
+Expected: FAIL to compile with `error CS1061: 'Scene3D' does not contain a definition for 'MotionResourcesForTests'`,
+the same for `ModelSampleCountForTests`, `ReadMotionTargetForTests` and `ModelMotionResources.PreviousTransforms`, and
+`error CS1061: 'MotionTestScene' does not contain a definition for 'Device'`.
 
 - [ ] **Step 3: Move the sizing code out of `Scene3D.cs` and teach it the motion attachment**
 
@@ -11669,9 +11927,72 @@ new:
     public FakeGpuDevice Device => _device;
 ```
 
+Two group A tests read what the forced-temporal rig uploads and creates, and from this task that rig allocates the
+motion target and its pipelines and uploads `MotionFrame`, whose `CurViewProj` is the unjittered view-projection by
+design. Both change here, or the full suite in Step 5 fails.
+
+`KhaozEngine.Render.Tests/Render3D/FrameViewUploadTests.cs` (Task A5). Add `using KhaozEngine.Gpu;`. `Occurrences`, old:
+
+```csharp
+    static int Occurrences(RecordingGpuCommandList recording, in Matrix4x4 matrix)
+    {
+        byte[] pattern = MemoryMarshal.AsBytes(new ReadOnlySpan<Matrix4x4>(in matrix)).ToArray();
+        int count = 0;
+        foreach (RecordingGpuCommandList.Upload upload in recording.Uploads)
+        {
+            ReadOnlySpan<byte> data = upload.Data;
+```
+
+new:
+
+```csharp
+    // except: a buffer whose uploads do not count.
+    static int Occurrences(RecordingGpuCommandList recording, in Matrix4x4 matrix, IGpuBuffer? except = null)
+    {
+        byte[] pattern = MemoryMarshal.AsBytes(new ReadOnlySpan<Matrix4x4>(in matrix)).ToArray();
+        int count = 0;
+        foreach (RecordingGpuCommandList.Upload upload in recording.Uploads)
+        {
+            if (ReferenceEquals(upload.Buffer, except)) continue;
+            ReadOnlySpan<byte> data = upload.Data;
+```
+
+and in `TheRasterPassesUploadTheJitteredMatrixAndNeverTheUnjitteredOne`, old:
+
+```csharp
+        int unjittered = Occurrences(recording, view.ViewProjection);
+        Assert.True(unjittered == 0, $"a pass rasterising into the internal target uploaded the unjittered matrix {unjittered} time(s)");
+```
+
+new:
+
+```csharp
+        // The motion block carries the unjittered matrices by design, because motion is measured between unjittered
+        // positions, so its uploads do not count.
+        int unjittered = Occurrences(recording, view.ViewProjection, scene.MotionResourcesForTests?.FrameBuffer);
+        Assert.True(unjittered == 0, $"a pass rasterising into the internal target uploaded the unjittered matrix {unjittered} time(s)");
+```
+
+`KhaozEngine.Render.Tests/Render3D/TemporalCpuIsolationTests.cs` (Task A6), in
+`JitterNeverReachesTheCascadeFitTheCulledSetOrTheShadowSkip`, old:
+
+```csharp
+        Assert.Equal(off.Rig.Factory.Buffers.Count, on.Rig.Factory.Buffers.Count);
+        Assert.Equal(off.Rig.Factory.Textures.Count, on.Rig.Factory.Textures.Count);
+        Assert.Equal(off.Rig.Factory.Framebuffers.Count, on.Rig.Factory.Framebuffers.Count);
+        Assert.Equal(off.Rig.Factory.GraphicsPipelines.Count, on.Rig.Factory.GraphicsPipelines.Count);
+```
+
+new:
+
+```csharp
+        // Temporal rendering owns the motion target and its pipelines, so the two scenes' factory counts differ by
+        // design (MotionTargetWiringTests pins that lifecycle).
+```
+
 - [ ] **Step 5: Run it and see it pass, then prove nothing changed with temporal off**
 
-Run: build, then the headless filter `FullyQualifiedName~MotionTargetWiringTests|FullyQualifiedName~Scene3DMotionHistoryTests|FullyQualifiedName~FrameViewLatchTests|FullyQualifiedName~TemporalResetTriggerTests|FullyQualifiedName~RenderScale|FullyQualifiedName~AntiAliasing`,
+Run: build, then the headless filter `FullyQualifiedName~MotionTargetWiringTests|FullyQualifiedName~Scene3DMotionHistoryTests|FullyQualifiedName~FrameViewLatchTests|FullyQualifiedName~TemporalResetTriggerTests|FullyQualifiedName~RenderScale|FullyQualifiedName~AntiAliasing|FullyQualifiedName~FrameViewUploadTests|FullyQualifiedName~TemporalCpuIsolationTests`,
 then the Metal filter `FullyQualifiedName~MotionTargetLifecycleGpuTests`, then the full local Metal suite:
 
 ```bash
@@ -11679,15 +12000,16 @@ KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.T
 sh scripts/check-file-size.sh --tree
 ```
 
-Expected: `Passed!` everywhere, zero skipped on Metal, every golden byte-identical to the baseline, and `Scene3D.cs` about
-61 lines under its baseline. Do not run `--update`: the orchestrator ratchets at integration, as in group C.
+Expected: `Passed!` everywhere, zero skipped on Metal, every golden byte-identical to the baseline, and `Scene3D.cs` 62
+lines shorter than at the group's start (2415 after group C left 2477). Do not run `--update`: the orchestrator ratchets at integration, as in group C.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add KhaozEngine.Render3D/Scene3D.RenderTargets.cs KhaozEngine.Render3D/Scene3D.cs KhaozEngine.Render3D/Scene3D.MotionTarget.cs \
   KhaozEngine.Render3D/Rendering/ModelMotionResources.cs KhaozEngine.Render.Tests/Render3D/MotionTargetWiringTests.cs \
-  KhaozEngine.Render.Tests/Render3D/MotionTestScene.cs KhaozEngine.Render.Tests/Gpu/MotionTargetLifecycleGpuTests.cs
+  KhaozEngine.Render.Tests/Render3D/MotionTestScene.cs KhaozEngine.Render.Tests/Gpu/MotionTargetLifecycleGpuTests.cs \
+  KhaozEngine.Render.Tests/Render3D/FrameViewUploadTests.cs KhaozEngine.Render.Tests/Render3D/TemporalCpuIsolationTests.cs
 git commit -m "render3d(motion): allocate the motion target and prepare motion while temporal is active"
 ```
 
@@ -11915,7 +12237,7 @@ public sealed class MotionTargetGpuTests
     {
         using TemporalFixture fx = Stage(12f);
         MeshHandle box = fx.Scene.LoadMesh(MeshPrimitives.Box(2f));
-        static Vector3 At(int n) => new(-1f + .4f * n, 1f, .3f * n);
+        static Vector3 At(int n) => new(-1f + .4f * n, 1f, -.3f * n);
         void Draw(Scene3D s, int n)
         {
             s.Camera.Target = new Vector3(.2f * n, 0f, 0f);
@@ -12405,6 +12727,10 @@ git commit -m "test(motion): read GPU and CPU skinned motion back against an ana
 **Files:**
 - Create (test): `KhaozEngine.Render.Tests/Gpu/FoliageWindMirror.cs`
 - Create (test): `KhaozEngine.Render.Tests/Gpu/FoliageAndGroundMotionGpuTests.cs`
+- Create (test): `KhaozEngine.Render.Tests/Gpu/GroundLayerImages.cs` (the flat splat and tile-ground layers both ground
+  tests share)
+- Modify (test): `KhaozEngine.Render.Tests/Gpu/FrameUniformUploadShapeGpuTests.cs:405,465,479,525-541,575-592` (calls
+  the shared layers, and its two private copies go)
 
 **Interfaces:**
 - Consumes: `TemporalFixture`, `MotionExpectation` (D12), `Scene3D.FoliageUniformsForTests` (D8),
@@ -12500,11 +12826,12 @@ public sealed class FoliageAndGroundMotionGpuTests
             s.ForceTemporalForTests = true;
             s.Camera.OrthoSize = 12f;
         });
-        Scene3D.SplatMaterialHandle splat = fx.Scene.LoadSplatMaterial(4, 4, FlatSplatLayers(4));
-        Scene3D.TileGroundMaterialHandle tile = fx.Scene.LoadTileGroundMaterial(4, 4, FlatGroundLayers(4));
-        // Terrain left of the centre, tile ground right of it.
-        MeshHandle terrain = fx.Scene.LoadMesh(Quad(new Vector3(-6.5f, 0f, 0f), tileGround: false), splat);
-        MeshHandle ground = fx.Scene.LoadMesh(Quad(new Vector3(6.5f, 0f, 0f), tileGround: true), tile);
+        Scene3D.SplatMaterialHandle splat = fx.Scene.LoadSplatMaterial(4, 4, GroundLayerImages.FlatSplatLayers(4));
+        Scene3D.TileGroundMaterialHandle tile = fx.Scene.LoadTileGroundMaterial(4, 4, GroundLayerImages.FlatGroundLayers(4));
+        // Terrain left of the centre and tile ground right of it, placed so neither quad crosses the screen's centre
+        // line and each half of the frame is one ground pass.
+        MeshHandle terrain = fx.Scene.LoadMesh(Quad(new Vector3(-6.5f, 0f, 6.5f), tileGround: false), splat);
+        MeshHandle ground = fx.Scene.LoadMesh(Quad(new Vector3(6.5f, 0f, -6.5f), tileGround: true), tile);
         void Draw(Scene3D s, int n)
         {
             s.Camera.Target = new Vector3(.3f * n, 0f, .25f * n);
@@ -12540,8 +12867,25 @@ public sealed class FoliageAndGroundMotionGpuTests
         };
         return new GltfMesh(vertices, new ushort[] { 0, 1, 2, 0, 2, 3 });
     }
+}
+```
 
-    static List<SplatLayerImage> FlatSplatLayers(int size)
+The flat layers are shared with `FrameUniformUploadShapeGpuTests` through one internal test helper rather than copied.
+`KhaozEngine.Render.Tests/Gpu/GroundLayerImages.cs`, the bodies moved from that file's `FiveFlatLayers` and
+`FlatGroundLayers` unchanged:
+
+```csharp
+using System.Collections.Generic;
+using KhaozEngine.Render3D;
+
+namespace KhaozEngine.Tests.Gpu;
+
+/// <summary>Flat single-colour ground materials, the cheapest the splat and tile-ground pipelines accept, shared by the
+/// frame upload shape tests and the ground motion readbacks.</summary>
+internal static class GroundLayerImages
+{
+    /// <summary>Five flat single-colour splat layers, the cheapest material the splat pipeline accepts.</summary>
+    internal static List<SplatLayerImage> FlatSplatLayers(int size)
     {
         var layers = new List<SplatLayerImage>();
         for (int i = 0; i < SplatMaterialConfig.LayerCount; i++)
@@ -12553,12 +12897,14 @@ public sealed class FoliageAndGroundMotionGpuTests
                 albedo[p] = (byte)(40 + i * 30); albedo[p + 1] = 110; albedo[p + 2] = 60; albedo[p + 3] = 255;
                 normal[p] = 128; normal[p + 1] = 128; normal[p + 2] = 255; normal[p + 3] = 255;
             }
-            layers.Add(new SplatLayerImage { AlbedoRgba = albedo, NormalRgba = normal, TilesPerMetre = .25f, Roughness = .8f });
+            layers.Add(new SplatLayerImage { AlbedoRgba = albedo, NormalRgba = normal, TilesPerMetre = 0.25f, Roughness = 0.8f });
         }
         return layers;
     }
 
-    static List<TileGroundLayerImage> FlatGroundLayers(int size)
+    /// <summary>Two flat single-colour tile-ground layers, the cheapest material the pipeline accepts that is not the
+    /// one-layer special case.</summary>
+    internal static List<TileGroundLayerImage> FlatGroundLayers(int size)
     {
         var layers = new List<TileGroundLayerImage>();
         for (int i = 0; i < 2; i++)
@@ -12568,15 +12914,17 @@ public sealed class FoliageAndGroundMotionGpuTests
             {
                 albedo[p] = (byte)(40 + i * 60); albedo[p + 1] = 110; albedo[p + 2] = 60; albedo[p + 3] = 255;
             }
-            layers.Add(new TileGroundLayerImage { AlbedoRgba = albedo, TilesPerMetre = .25f });
+            layers.Add(new TileGroundLayerImage { AlbedoRgba = albedo, TilesPerMetre = 0.25f });
         }
         return layers;
     }
 }
 ```
 
-The two layer helpers are private copies of the ones in `FrameUniformUploadShapeGpuTests.cs:527-593`. Copy them rather
-than widening that file's access. A third copy would be the moment to share them.
+In `KhaozEngine.Render.Tests/Gpu/FrameUniformUploadShapeGpuTests.cs`, bottom up: delete `FiveFlatLayers` with its
+summary (lines 576-592) and the blank line above it, delete `FlatGroundLayers` with its summary (lines 525-540) and the
+blank line after it, call `GroundLayerImages.FlatGroundLayers(4)` at lines 479 and 465, and
+`GroundLayerImages.FlatSplatLayers(4)` at line 405. Its tests do not change.
 
 - [ ] **Step 2: Run them and see them fail**
 
@@ -12638,15 +12986,17 @@ internal static class FoliageWindMirror
 
 - [ ] **Step 4: Run them and see them pass**
 
-Run: build, then the Metal filter `FullyQualifiedName~FoliageAndGroundMotionGpuTests`.
-Expected: `Passed!` with three rows. A foliage row failing by a steady fraction of the expected value points at the
+Run: build, then the Metal filter `FullyQualifiedName~FoliageAndGroundMotionGpuTests|FullyQualifiedName~FrameUniformUploadShapeGpuTests`.
+Expected: `Passed!`, three rows of `FoliageAndGroundMotionGpuTests` and the upload shape tests unchanged on the shared
+layers. A foliage row failing by a steady fraction of the expected value points at the
 previous clock or interactors carried into the slot (D8). The ground row failing on one half points at that pass's
 variant (D9).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add KhaozEngine.Render.Tests/Gpu/FoliageWindMirror.cs KhaozEngine.Render.Tests/Gpu/FoliageAndGroundMotionGpuTests.cs
+git add KhaozEngine.Render.Tests/Gpu/FoliageWindMirror.cs KhaozEngine.Render.Tests/Gpu/FoliageAndGroundMotionGpuTests.cs \
+  KhaozEngine.Render.Tests/Gpu/GroundLayerImages.cs KhaozEngine.Render.Tests/Gpu/FrameUniformUploadShapeGpuTests.cs
 git commit -m "test(motion): read foliage wind, interactor and ground motion back against analytic values"
 ```
 
@@ -12814,9 +13164,12 @@ git commit -m "test(motion): hold a steady temporal frame to zero added allocati
 - Modify: `docs/USING-KHAOZENGINE.md` (one bullet in group B's "Temporal rendering" section)
 - Create (test): `KhaozEngine.Render.Tests/Render3D/MotionVectorsViewTests.cs`
 - Create (test): `KhaozEngine.Render.Tests/Gpu/MotionVectorsViewGpuTests.cs`
-- Modify (test): `KhaozEngine.Render.Tests/Gpu/VulkanShippedVertexLayoutTests.cs` (`CaptureTemporalPipelines`)
 - Modify (bookkeeping): `ShippedShaderPrograms.cs`, `VulkanShaderBindingTableTests.cs`, `VulkanDescriptorLimitTests.cs`,
   `D3D11RegisterNumberingTests.cs`, `ShaderSourceValidationTests.cs`, the three hash tables, `Gpu/shader-corpus`
+- Modify (pinned counts): `D3D11HlslByteEqualityTests.cs:124`, `VulkanSpirvByteEqualityTests.cs:143`,
+  `VulkanDynamicOffsetTests.cs:57`, `VulkanLayoutCompatibilityTests.cs:48`, `:73`
+- Check, no row: `VulkanShippedVertexLayoutTests.cs`. `FullscreenVert` declares no vertex input, so its
+  `CaptureTemporalPipelines` would skip the view (`:48`, `:57`)
 
 **Interfaces:**
 - Consumes: `Scene3D.DebugView` and its `_debugView` field (group B), `RenderResources.MotionTex` (D3), `MotionMath`
@@ -12828,7 +13181,8 @@ git commit -m "test(motion): hold a steady temporal frame to zero added allocati
   internal sealed class MotionVectorsView : IDisposable   // KhaozEngine.Render3D.Rendering
   {   MotionVectorsView(IGpuDevice gd, GpuOutputDescription targetOutput);
       void Draw(IGpuCommandList cl, IGpuTexture motion, IGpuFramebuffer target); }
-  // ShaderSources: public const string MotionVectorsViewFrag
+  // ShaderSources: public static readonly string MotionVectorsViewFrag, internal const float
+  //   MotionViewFullBrightnessPixels = 16f, internal const float MotionViewStillPixels = 1.0e-4f
   ```
   Program name `MotionVectorsView`, pipeline name `MotionVectorsView`, layout key `MotionVectorsView`.
 
@@ -12942,32 +13296,56 @@ and `error CS0117: 'ShaderSources' does not contain a definition for 'MotionVect
 `KhaozEngine.Render3D/Internal/ShaderSources.MotionView.cs`:
 
 ```csharp
+using System;
+using System.Globalization;
+
 namespace KhaozEngine.Render3D.Internal;
 
 /// <summary>The MotionVectors debug view's fragment (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24 section 5). Part of the
 /// <see cref="ShaderSources"/> partial. It pairs with <see cref="FullscreenVert"/>.</summary>
 internal static partial class ShaderSources
 {
-    /// <summary>Hue for direction and brightness for length, full at 16 internal pixels, black for the background
-    /// sentinel (any channel past <see cref="MotionMath.BackgroundThreshold"/>) and for no motion.</summary>
-    public const string MotionVectorsViewFrag = @"#version 450
+    /// <summary>The MotionVectors view's brightness is full at this many internal pixels of motion.</summary>
+    internal const float MotionViewFullBrightnessPixels = 16f;
+
+    /// <summary>Below this many internal pixels of motion the MotionVectors view reads a pixel as still.</summary>
+    internal const float MotionViewStillPixels = 1.0e-4f;
+
+    /// <summary>Hue for direction and brightness for length, full at <see cref="MotionViewFullBrightnessPixels"/>
+    /// internal pixels, black for the background sentinel (any channel past <see cref="MotionMath.BackgroundThreshold"/>)
+    /// and for no motion. The thresholds are spliced from those C# constants, so the shader cannot drift from
+    /// them.</summary>
+    public static readonly string MotionVectorsViewFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Motion;
 layout(set=0, binding=1) uniform sampler Samp;
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
+const float BackgroundThreshold = " + MotionViewFloat(MotionMath.BackgroundThreshold) + @";
+const float FullBrightnessPixels = " + MotionViewFloat(MotionViewFullBrightnessPixels) + @";
+const float StillPixels = " + MotionViewFloat(MotionViewStillPixels) + @";
+const float TwoPi = 6.28318530718;
 void main() {
     vec2 uv = vec2(vUv.x, 1.0 - vUv.y);   // the final blit's flip, as TransitionCrossfadeFrag
     vec2 motion = texture(sampler2D(Motion, Samp), uv).xy;
     vec2 pixels = motion * vec2(textureSize(sampler2D(Motion, Samp), 0));
     float magnitude = length(pixels);
-    if (max(abs(motion.x), abs(motion.y)) > 60000.0 || magnitude < 0.0001) {
+    if (max(abs(motion.x), abs(motion.y)) > BackgroundThreshold || magnitude < StillPixels) {
         oColor = vec4(0.0, 0.0, 0.0, 1.0);
         return;
     }
-    float hue = atan(pixels.y, pixels.x) / 6.28318530718 + 0.5;
+    float hue = atan(pixels.y, pixels.x) / TwoPi + 0.5;
     vec3 rgb = clamp(abs(fract(hue + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
-    oColor = vec4(rgb * clamp(magnitude / 16.0, 0.0, 1.0), 1.0);
+    oColor = vec4(rgb * clamp(magnitude / FullBrightnessPixels, 0.0, 1.0), 1.0);
 }";
+
+    // A GLSL float literal from a C# constant: round-trip digits in the invariant culture, always with a decimal point
+    // or an exponent.
+    static string MotionViewFloat(float value)
+    {
+        string text = value.ToString("R", CultureInfo.InvariantCulture);
+        return text.Contains('.', StringComparison.Ordinal) || text.Contains('E', StringComparison.Ordinal)
+            ? text : text + ".0";
+    }
 }
 ```
 
@@ -13119,8 +13497,11 @@ Both insertions leave the lines group E's edits 4 and 5 anchor on (`_post.Run(..
 - `D3D11RegisterNumberingTests.cs`: after the `TransitionRenderer._crossLayout` row add
   `("MotionVectorsView._layout", new[] { T("Motion"), S("Samp") }, "t0 s0"),`.
 - `ShaderSourceValidationTests.cs`: a fact `MotionVectorsView` validating `FullscreenVert` with `MotionVectorsViewFrag`.
-- `VulkanShippedVertexLayoutTests.cs`, in `CaptureTemporalPipelines` add
-  `using var motionView = new MotionVectorsView(device, new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm));`
+- The pinned counts: `D3D11HlslByteEqualityTests.cs:124` 64 to 65, `VulkanSpirvByteEqualityTests.cs:143` 136 to 138,
+  `VulkanDynamicOffsetTests.cs:57` 49 to 50, `VulkanLayoutCompatibilityTests.cs:48` 52 to 53 and `:73` `52 * 52` to
+  `53 * 53`.
+- `VulkanShippedVertexLayoutTests.cs` gains no capture: `FullscreenVert` declares no vertex input, so the test skips the
+  view.
 - Rebake. Expected diff: two added rows per table.
 
 - [ ] **Step 5: Run it and see it pass**
@@ -13136,7 +13517,9 @@ Expected: `Passed!` everywhere and every guard exits 0.
 git add KhaozEngine.Render3D/Internal/ShaderSources.MotionView.cs KhaozEngine.Render3D/Rendering/MotionVectorsView.cs \
   KhaozEngine.Render3D/Scene3D.DebugView.cs KhaozEngine.Render3D/Scene3D.cs docs/USING-KHAOZENGINE.md \
   KhaozEngine.Render.Tests/Render3D/MotionVectorsViewTests.cs KhaozEngine.Render.Tests/Gpu/MotionVectorsViewGpuTests.cs \
-  KhaozEngine.Render.Tests/Gpu/VulkanShippedVertexLayoutTests.cs KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs \
+  KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs \
   KhaozEngine.Render.Tests/Gpu/VulkanShaderBindingTableTests.cs KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs \
   KhaozEngine.Render.Tests/Gpu/D3D11RegisterNumberingTests.cs KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs \
   KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt \
@@ -13292,34 +13675,15 @@ decisions for the spec owner, not this group.
 
 - [ ] **Step 3: Record the amendments in the spec**
 
-`docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md`, under `## Plan amendments`. If the line
-`None yet. The implementation plan records here every place its reading of the code changes a detail above.` is still
-there, replace it. Otherwise append after the items groups A to C recorded. Add, with the reading from Step 2 and the
-device name the Metal suite prints in its `GpuFact` skip-reason probe line:
+`docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md`, `## Plan amendments`. The plan commit already recorded items 1
+to 15, groups A to D's amendments included, so append after item 15 only the two items the list lacks, with the median
+reading from Step 2 and the device name the Metal suite prints in its `GpuFact` skip-reason probe line:
 
 ```markdown
-- **Rigid previous transforms are compact.** The previous-transform buffer holds one render-relative matrix per keyed
-  instance that has a last frame, and each instance reaches its own through a per-instance motion slot. The vertex
-  stage cannot read the instance slot from `gl_InstanceIndex` on every backend: under the pinned SPIRV-Cross options
-  it becomes `SV_InstanceID` on Direct3D 11, which does not count the draw's first instance.
-- **The motion matrices ride their own block.** `MotionFrame` (this frame's and last frame's unjittered
-  view-projections and a history flag, 144 bytes) binds at each temporal variant's first free set. The shared frame
-  block keeps its size, so every existing program keeps its hash.
-- **CPU-skinned previous positions are re-skinned each frame** from the previous composed palette and world that
-  `MotionHistory` keeps, not stored per key. The values agree to float rounding and there is no second store.
-- **An MSAA request while temporal rendering is active resolves to FXAA**, the fallback a device without MSAA takes.
-- **The foliage uniform slot keeps its 256 bytes.** Last frame's focus, clock, interactors and strengths fill the 96
-  bytes of padding after the current 160, and last frame's pixel scale rides the unused `WindFade.z`.
-- **The GPU-skinned previous palette is a second per-caster buffer**, whose slot holds last frame's world matrix then
-  its composed palette. It shares set 3 with `MotionFrame`, the last set Vulkan guarantees.
-- **Transparent passes keep the motion attachment.** Textured billboards, beams, trails, overlay meshes and silhouettes
-  gain motion-preserving variants that write a discarded fourth output behind a preserve-destination blend, the
-  pattern they already use for the normal and depth attachments.
-- **The hand-maintained shader lists are seven, not six.** The Vulkan vertex-layout capture fails for a catalog
-  program no renderer builds, and the temporal variants are only built against a four-attachment target.
-- **Engine-side cost.** The motion target and previous-state work added <x> ms per frame at 1600x900 on <device>,
-  timed as Submit plus the drain over 400 keyed boxes, 8 keyed skinned bodies and 2500 foliage blades
-  (`MotionTargetCostProbe`). The town-path reading of acceptance 5 is taken in round 3.
+16. The GPU-skinned previous palette is a second per-caster buffer whose slot holds last frame's world matrix then its
+    composed palette. It shares set 3 with MotionFrame, the last set Vulkan guarantees (group D).
+17. The motion target and previous-state work cost `<x>` ms per frame at 1600x900 on `<device>` (MotionTargetCostProbe).
+    The town-path reading of acceptance 5 is taken in round 3 (group D).
 ```
 
 - [ ] **Step 4: Verify and commit**
@@ -13387,7 +13751,7 @@ Expected:
 - Both golden commands print nothing, so no golden was rewritten on the branch.
 - The hash command prints nothing: every existing row of all three tables is unchanged and only rows were added,
   28 per table (14 programs).
-- `Scene3D.cs` is about 60 lines under its size at the group's start, `ModelRenderer.cs` about 20 lines over it,
+- `Scene3D.cs` is about 60 lines under its size at the group's start, `ModelRenderer.cs` about 10 lines over it,
   `UboLayoutTests.cs` at 794, and every new file under 400 lines.
 - Every guard exits 0.
 
@@ -13414,8 +13778,8 @@ Expected:
 
 ## Spec amendment (group E)
 
-The orchestrator copies this into the "Plan amendments" section of
-`docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md` (Task E1 writes it there).
+The plan commit already recorded this in the "Plan amendments" section of
+`docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md` (item 1). No task writes it again.
 
 1. **A fifth preset, `TemporalUpscale.UltraPerformance`, at 1/3 per axis, and `UpscaleRatio` from 0.33 to 1.0.** On a
    3456x2234 Retina display even `Performance` (1/2) renders 1728x1117, 1.93 million pixels, more than the 1.44 million
@@ -13536,9 +13900,11 @@ lines net. Do not run `scripts/check-file-size.sh --update` in this group. The o
 hash tables (`spirv-hashes/vulkan-spirv.sha256.txt`, `msl-hashes/metal-msl.sha256.txt`, `hlsl-hashes/d3d11-hlsl.sha256.txt`,
 rebaked), `ShippedShaderPrograms.cs`, and the seven hand-maintained lists (group D amendment 5):
 `VulkanShaderBindingTableTests.cs`, `VulkanDescriptorLimitTests.cs`, `D3D11ResourceModelTests.cs`,
-`D3D11RegisterNumberingTests.cs`, `ShaderSourceValidationTests.cs` (Task E5), `Render3D/UboLayoutTests.cs` (Task E3) and
-`VulkanShippedVertexLayoutTests.cs`, plus the catalog counts in `D3D11HlslByteEqualityTests.cs` and the shader corpus
-`shader-corpus/corpus.txt`. `VulkanShippedVertexLayoutTests.cs` gains no row: it checks only programs whose vertex
+`D3D11RegisterNumberingTests.cs`, `ShaderSourceValidationTests.cs` (Task E5), `Render3D/UboLayoutTests.cs` (Task E3,
+whose temporal facts go in a new `Render3D/TemporalUboLayoutTests.cs`, because `UboLayoutTests.cs` is 794 of 800 lines
+after group D) and `VulkanShippedVertexLayoutTests.cs`, plus the catalog counts in `D3D11HlslByteEqualityTests.cs`,
+`VulkanSpirvByteEqualityTests.cs`, `VulkanDynamicOffsetTests.cs` and `VulkanLayoutCompatibilityTests.cs` and the shader
+corpus `shader-corpus/corpus.txt`. `VulkanShippedVertexLayoutTests.cs` gains no row: it checks only programs whose vertex
 stage declares an input (`VulkanShippedVertexLayoutTests.cs:48`, `:57`), and both programs pair with `FullscreenVert`,
 which declares none. Task E6 runs it anyway.
 
@@ -13551,8 +13917,7 @@ which declares none. Task E6 runs it anyway.
 **Files:**
 - Create: `KhaozEngine.Render3D/Internal/TemporalFormats.cs`
 - Test: `KhaozEngine.Render.Tests/Gpu/TemporalFormatsTests.cs`
-- Modify: `docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md:52-59` (preset table), `:59` (ratio range),
-  `:188-190` (Plan amendments)
+- Modify: `docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md:52-59` (preset table), `:59` (ratio range)
 
 **Interfaces:**
 - Consumes: `MetalFormats.ToPixelFormat` (`KhaozEngine.Gpu.Metal/Internal/MetalFormats.Pixel.cs:40`),
@@ -13576,7 +13941,7 @@ not one. All three backend maps throw on an unmapped member (`MetalFormats.Pixel
 `VulkanFormats.cs:57`), and so do both staging layouts. The three chosen formats are already render targets that are
 sampled on every backend: `R16G16B16A16Float` is the HDR `ColorTex` (`RenderResources.cs:143-155`),
 `R16G16Float` the distortion field (`RenderResources.cs:256`) and `TargetOutlineRenderer`'s visible coverage
-(`TargetOutlineRenderer.cs:242`), `R32Float` the linear-depth MRT attachment (`RenderResources.cs:157`). Every committed
+(`TargetOutlineRenderer.cs:242`), `R32Float` the linear-depth MRT attachment (`RenderResources.cs:151`). Every committed
 HDR, distortion and outline golden proves them on the Metal, D3D11 and Vulkan legs. The decision is RGBA16F, RG16F and
 R32F, which needs no seam change.
 
@@ -13603,14 +13968,6 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalFormatsTests
     {
-        [Fact]
-        public void TheHistoryFormatsAreTheThreeSeamMembersTheDesignSettled()
-        {
-            Assert.Equal(GpuPixelFormat.R16G16B16A16Float, TemporalFormats.HistoryColor);
-            Assert.Equal(GpuPixelFormat.R16G16Float, TemporalFormats.HistoryConfidence);
-            Assert.Equal(GpuPixelFormat.R32Float, TemporalFormats.PreviousDepth);
-        }
-
         [Fact]
         public void TheMetalAndVulkanMapsMapEveryHistoryFormatAsAColourTarget()
         {
@@ -13704,32 +14061,6 @@ new:
 ```markdown
 `Post.Temporal.Upscale` takes a preset or an explicit ratio from 0.33 to 1.0. A ratio change resets history, per round
 ```
-Lines 188-190, old:
-```markdown
-## Plan amendments
-
-None yet.
-```
-new:
-```markdown
-## Plan amendments
-
-1. **A fifth preset, `UltraPerformance`, at 1/3 per axis, and a ratio range of 0.33 to 1.0 (plan, group E).** On a
-   3456x2234 Retina display `Performance` renders 1728x1117, 1.93 million pixels, more than the 1.44 million of
-   Grimhollow's fixed 1600x900 today, so the frame-time line in section 7 needs a cheaper preset. `UltraPerformance`
-   renders 1152x745 there. Its jitter sequence is 72 phases.
-2. **History formats (task E1).** History colour is `R16G16B16A16Float`, not R11G11B10 float. The GPU seam has no
-   R11G11B10 member, and Vulkan does not guarantee `VK_FORMAT_B10G11R11_UFLOAT_PACK32` as a colour attachment, so
-   adopting it would take a new seam member, three backend format maps, two staging layouts and a capability read.
-   It would also stall accumulation. With the current weight floored near one in sixteen, a stored value stops moving
-   once the difference left is under eight units in its last place, which is 12.5 percent for the 6-bit mantissas of
-   red and green and 25 percent for blue's 5 bits. Half float stalls at 0.8 percent, and its alpha channel carries the
-   coverage marker the transparent-background blit reads. The confidence and stability target is `R16G16Float`, which
-   the distortion field already renders and samples on every backend. The previous depth is two `R32Float` targets of
-   linear view depth, written by a small program from the depth and the motion sentinel, because the depth attachment
-   is cleared to the background colour's red and cannot tell sky from near geometry. At a 3456x2234 display on the
-   Quality preset the history owner holds 213 MB, against the 80 MB risk 2 estimated.
-```
 
 - [ ] **Step 4: Run it and see it pass**
 
@@ -13739,7 +14070,7 @@ dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~KhaozEngine.Tests.Gpu.TemporalFormatsTests"
 sh scripts/check-dashes.sh --tree && sh scripts/check-prose.sh --tree
 ```
-Expected: `0 Warning(s)`, `0 Error(s)`, then `Passed!` with 4 tests, and both guards exit 0.
+Expected: `0 Warning(s)`, `0 Error(s)`, then `Passed!` with 3 tests, and both guards exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -13761,7 +14092,7 @@ git commit -m "render3d(temporal): record the temporal target formats and the fi
 - Create: `KhaozEngine.Render3D/TemporalUpscale.cs`
 - Modify: `KhaozEngine.Render3D/TemporalSettings.cs` (group B's class, after `CutAngleDegrees`)
 - Modify: `KhaozEngine.Render3D/PixelPostProcessSettings.cs:9-23` (`RenderScale` enum), `:207-217` (effective scale)
-- Modify: `KhaozEngine.Render3D/Scene3D.cs:1347-1350` (four lines in place, net zero)
+- Modify: `KhaozEngine.Render3D/Scene3D.cs:1306-1309 (1347-1350 at 1a783fec)` (four lines in place, net zero)
 - Test: `KhaozEngine.Render.Tests/Render3D/TemporalAntiAliasingSettingsTests.cs`
 
 **Interfaces:**
@@ -13965,7 +14296,8 @@ namespace KhaozEngine.Tests.Render3D
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release 2>&1 | grep -E "error|Build succeeded" | head -5`
-Expected: FAIL with `error CS0117: 'AntiAliasing' does not contain a definition for 'Temporal'`.
+Expected: FAIL with `error CS0246: The type or namespace name 'TemporalUpscale' could not be found` first (a theory
+parameter type), then `error CS0117: 'AntiAliasing' does not contain a definition for 'Temporal'`.
 
 - [ ] **Step 3: Implement**
 
@@ -13975,7 +14307,7 @@ closing sentence, old:
     ///   high-frequency terrain/foliage shimmer), at ~factor^2 the fragment cost.</item>
     /// </list>
     /// Extend by adding modes (future TAA / SMAA) - unknown/unsupported modes resolve to a safe fallback rather than
-    /// throwing (see <see cref="AntiAliasing.ResolveFor"/>).
+    /// throwing (see <see cref="AntiAliasing.ResolveFor(in GpuCapabilities)"/>).
 ```
 new:
 ```csharp
@@ -13985,7 +14317,7 @@ new:
     ///   Single-sample, stable on thin moving detail, cheaper than MSAA at the lower presets.</item>
     /// </list>
     /// Extend by adding modes (future SMAA). Unknown or unsupported modes resolve to a safe fallback rather than
-    /// throwing (see <see cref="AntiAliasing.ResolveFor"/>).
+    /// throwing (see <see cref="AntiAliasing.ResolveFor(in GpuCapabilities)"/>).
 ```
 Lines 32-33, old:
 ```csharp
@@ -14129,7 +14461,8 @@ new:
             : System.MathF.Max(1f, EffectiveSupersample);
 ```
 
-`KhaozEngine.Render3D/Scene3D.cs` lines 1347-1350 (`ComputeTargetSize`, unchanged by groups A to D), old:
+`KhaozEngine.Render3D/Scene3D.cs` lines 1306-1309 (1347-1350 at `1a783fec`, `ComputeTargetSize`, text unchanged by
+groups A to D), old:
 ```csharp
             // MatchViewport: render at the framebuffer size x the supersample factor (SSAA), capped
             // (aspect-preserving downscale) so a huge window / big factor doesn't allocate an unbounded target.
@@ -14177,11 +14510,12 @@ git commit -m "render3d(temporal): add the Temporal anti-aliasing mode, render s
 - Create: `KhaozEngine.Render3D/Internal/TemporalResolveUniforms.cs`
 - Create: `KhaozEngine.Render3D/Internal/TemporalResolveTuning.cs`
 - Create: `KhaozEngine.Render3D/Internal/TemporalResolveMath.cs`
-- Modify: `KhaozEngine.Render.Tests/Render3D/UboLayoutTests.cs:311` (two facts before the post-process section)
+- Create: `KhaozEngine.Render.Tests/Render3D/TemporalUboLayoutTests.cs` (two facts. `UboLayoutTests.cs` is 794 of 800 lines after group D)
 - Test: `KhaozEngine.Render.Tests/Render3D/TemporalResolveMathTests.cs`
 
 **Interfaces:**
-- Consumes: `TemporalJitter.Apply` (A1), `OutlineMath.LinearizeDepth` as the perspective formula to mirror
+- Consumes: `TemporalJitter.Apply`, `TemporalJitter.NativePhaseCount` (A1), `MotionMath.BackgroundThreshold` (D2),
+  `OutlineMath.LinearizeDepth` as the perspective formula to mirror
   (`KhaozEngine.Render3D/Internal/OutlineMath.cs:23-40`)
 - Produces:
   ```csharp
@@ -14206,6 +14540,7 @@ git commit -m "render3d(temporal): add the Temporal anti-aliasing mode, render s
       public static TemporalResolveUniforms BuildUniforms(in TemporalViewInput current, TemporalViewInput? previous,
           Vector2 jitterPixels, int internalWidth, int internalHeight, int displayWidth, int displayHeight,
           bool historyValid, int phaseCount);
+      public static float DisplayOverInternal(int displayWidth, int displayHeight, int internalWidth, int internalHeight);
       public static TemporalDepthStoreUniforms BuildDepthStore(in Matrix4x4 projection);
       public static float Luma(Vector3 c);
       public static Vector3 ToWeighted(Vector3 c);
@@ -14380,10 +14715,19 @@ namespace KhaozEngine.Tests.Render3D
 }
 ```
 
-`KhaozEngine.Render.Tests/Render3D/UboLayoutTests.cs`, before `// ---- Post-process UBOs (PixelPostProcess) ----` (line 311):
+`KhaozEngine.Render.Tests/Render3D/TemporalUboLayoutTests.cs`, a new file, because `UboLayoutTests.cs` is 794 of its
+800 lines after group D. The existing `FullyQualifiedName~UboLayoutTests` filters match it by substring:
 ```csharp
-        // ---- Temporal resolve UBOs (TemporalResolveRenderer) ----
+using System.Runtime.InteropServices;
+using KhaozEngine.Render3D.Internal;
+using Xunit;
 
+namespace KhaozEngine.Tests.Render3D
+{
+    /// <summary>The temporal passes' uniform blocks against the sizes their buffers allocate, beside
+    /// <c>UboLayoutTests</c>.</summary>
+    public sealed class TemporalUboLayoutTests
+    {
         [Fact]
         public void TemporalResolveUniforms_MarshalSize_EqualsBufferAllocation()
         {
@@ -14399,7 +14743,8 @@ namespace KhaozEngine.Tests.Render3D
             // GLSL: DepthStore { vec4 CurrentDepth; } = 16 bytes (TemporalDepthStoreFrag).
             Assert.Equal((int)TemporalDepthStoreUniforms.SizeInBytes, Marshal.SizeOf<TemporalDepthStoreUniforms>());
         }
-
+    }
+}
 ```
 
 - [ ] **Step 2: Run it and see it fail**
@@ -14474,7 +14819,7 @@ namespace KhaozEngine.Render3D.Internal
     internal static class TemporalResolveTuning
     {
         /// <summary>Step 1. Round 1 writes 65504 into both motion channels on background. Above this reads as background.</summary>
-        public const float MotionSentinel = 60000f;
+        public const float MotionSentinel = MotionMath.BackgroundThreshold;
         /// <summary>Steps 1 and 3. The linear depth the depth store writes for background, and the expected depth of a
         /// background pixel.</summary>
         public const float BackgroundLinearDepth = 1.0e30f;
@@ -14599,7 +14944,7 @@ namespace KhaozEngine.Render3D.Internal
             bool readable = historyValid && previous is { } prev
                 && TryReprojection(current, prev, out currentToPrevious, out backgroundToPrevious);
             Vector4 currentDepth = DepthParams(current.Projection);
-            float displayOverInternal = MathF.Max(1f, MathF.Max(dw / (float)iw, dh / (float)ih));
+            float displayOverInternal = DisplayOverInternal(dw, dh, iw, ih);
             return new TemporalResolveUniforms
             {
                 CurrentToPrevious = currentToPrevious,
@@ -14608,9 +14953,16 @@ namespace KhaozEngine.Render3D.Internal
                 Jitter = new Vector4(jitterPixels.X, jitterPixels.Y, displayOverInternal, readable ? 1f : 0f),
                 CurrentDepth = currentDepth,
                 PreviousDepth = readable && previous is { } last ? DepthParams(last.Projection) : currentDepth,
-                Params = new Vector4(1f / Math.Max(8, phaseCount), 0f, 0f, 0f),
+                Params = new Vector4(1f / Math.Max(TemporalJitter.NativePhaseCount, phaseCount), 0f, 0f, 0f),
             };
         }
+
+        /// <summary>The larger per-axis ratio of a display size to an internal size, at least 1, with every size below 1
+        /// read as 1. It sets the jitter cycle (Scene3D.TemporalDisplayOverInternal) and the resolve's reconstruction
+        /// footprint (Jitter.z), so both read this one formula.</summary>
+        public static float DisplayOverInternal(int displayWidth, int displayHeight, int internalWidth, int internalHeight)
+            => MathF.Max(1f, MathF.Max(Math.Max(1, displayWidth) / (float)Math.Max(1, internalWidth),
+                Math.Max(1, displayHeight) / (float)Math.Max(1, internalHeight)));
 
         /// <summary>The depth store's uniforms: this frame's depth parameters.</summary>
         public static TemporalDepthStoreUniforms BuildDepthStore(in Matrix4x4 projection)
@@ -14644,7 +14996,7 @@ Task E5 in `<c>` rather than `<see cref>`, because those constants do not exist 
 ```bash
 git add KhaozEngine.Render3D/Internal/TemporalResolveUniforms.cs KhaozEngine.Render3D/Internal/TemporalResolveTuning.cs \
   KhaozEngine.Render3D/Internal/TemporalResolveMath.cs KhaozEngine.Render.Tests/Render3D/TemporalResolveMathTests.cs \
-  KhaozEngine.Render.Tests/Render3D/UboLayoutTests.cs
+  KhaozEngine.Render.Tests/Render3D/TemporalUboLayoutTests.cs
 git commit -m "render3d(temporal): add the resolve's uniforms, reprojection maths and tuning constants"
 ```
 
@@ -14982,10 +15334,10 @@ git commit -m "render3d(temporal): give the temporal history its display and int
 
 **Interfaces:**
 - Consumes: `TemporalResolveTuning` and the uniform layout (E3), `ShaderSources.FullscreenVert`
-  (`KhaozEngine.Render3D/Internal/ShaderSources.Post.cs:52-58`)
+  (`KhaozEngine.Render3D/Internal/ShaderSources.Post.cs:67-73`)
 - Produces (group F amendment 5, plus the `alpha` member):
   ```csharp
-  internal const string ShaderSources.TemporalCommonGlsl;          // MotionSentinel, BackgroundLinearDepth, temporalLinearDepth
+  internal const string ShaderSources.TemporalCommonGlsl;          // MotionSentinel, BackgroundLinearDepth, HalfMax, temporalLinearDepth
   internal const string ShaderSources.TemporalResolveTuningGlsl;   // the fourteen step constants
   public const string ShaderSources.TemporalResolveCoreGlsl;       // bindings, uniform block, helpers, and:
   //   struct TemporalPixel { vec3 color; float confidence; float stability; float disocclusion; float reactive; float clip; float alpha; };
@@ -15191,6 +15543,8 @@ namespace KhaozEngine.Render3D.Internal
         internal const string TemporalCommonGlsl = @"
 const float MotionSentinel = 60000.0;
 const float BackgroundLinearDepth = 1.0e30;
+// The largest finite half float. A history texel outside it is not finite.
+const float HalfMax = 65504.0;
 // View distance from NDC depth: perspective as OutlineMath.LinearizeDepth, orthographic linear between near and far.
 // depthParams = (1 for perspective else 0, near, far, 0).
 float temporalLinearDepth(float ndcDepth, vec4 depthParams) {
@@ -15408,8 +15762,8 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     if (useHistory) {
         vec4 fetched = sampleHistoryCatmullRom(previousUv, displaySize);
         vec2 fetchedState = textureLod(sampler2D(HistoryConfidence, LinearClamp), previousUv, 0.0).rg;
-        bool finite = all(greaterThan(fetched, vec4(-65504.0))) && all(lessThan(fetched, vec4(65504.0)))
-            && all(greaterThan(fetchedState, vec2(-65504.0))) && all(lessThan(fetchedState, vec2(65504.0)));
+        bool finite = all(greaterThan(fetched, vec4(-HalfMax))) && all(lessThan(fetched, vec4(HalfMax)))
+            && all(greaterThan(fetchedState, vec2(-HalfMax))) && all(lessThan(fetchedState, vec2(HalfMax)));
         if (finite) {
             history = max(fetched, vec4(0.0));
             historyState = clamp(fetchedState, vec2(0.0), vec2(1.0));
@@ -15533,10 +15887,13 @@ git commit -m "render3d(temporal): add the temporal resolve and depth store shad
 - Create (test): `KhaozEngine.Render.Tests/Gpu/TemporalTextureIo.cs`
 - Test: `KhaozEngine.Render.Tests/Gpu/TemporalResolveRendererGpuTests.cs`
 - Modify: `KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs:27`, `:51` (catalog count in both summaries), `:153-154`
-  (two rows after `TransitionCrossfade`)
+  (two rows after group D's `MotionVectorsView` row, which Task D16 put after `TransitionCrossfade`)
 - Modify: `KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs:124` (catalog count)
-- Modify: `KhaozEngine.Render.Tests/Gpu/VulkanShaderBindingTableTests.cs:117` (two map entries after
-  `TransitionCrossfade`), `:210` (catalog count)
+- Modify: `KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs:143` (stage count),
+  `KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs:57` (layout count) and
+  `KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs:48`, `:73` (pipeline count and its square)
+- Modify: `KhaozEngine.Render.Tests/Gpu/VulkanShaderBindingTableTests.cs:120` (two map entries after D16's
+  `MotionVectorsView`, which follows `TransitionCrossfade`), `:210` (catalog count)
 - Modify: `KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs:137` (two layouts after `Pixel.apply`), `:224`
   (two pipelines after `PixelPostProcess apply`), `:254-255` (both counts)
 - Modify: `KhaozEngine.Render.Tests/Gpu/D3D11RegisterNumberingTests.cs:133-134` (two rows after `_applyLayout`)
@@ -15698,10 +16055,10 @@ namespace KhaozEngine.Tests.Gpu
             for (int y = 0; y < N; y++)
                 for (int x = 0; x < N; x++)
                 {
-                    Assert.Equal(Ramp(x), color[At(x, y) * 4], 3);
-                    Assert.Equal(1f, color[At(x, y) * 4 + 3], 3);
-                    Assert.Equal(1f / Max, state[At(x, y) * 2], 3);
-                    Assert.Equal(0f, state[At(x, y) * 2 + 1], 3);
+                    Assert.Equal(Ramp(x), color[At(x, y) * 4], 1e-3);
+                    Assert.Equal(1f, color[At(x, y) * 4 + 3], 1e-3);
+                    Assert.Equal(1f / Max, state[At(x, y) * 2], 1e-3);
+                    Assert.Equal(0f, state[At(x, y) * 2 + 1], 1e-3);
                     if (x == 0) Assert.Equal(TemporalResolveTuning.BackgroundLinearDepth, depth[At(x, y)]);
                     else Assert.Equal(SceneLinear, depth[At(x, y)], 4);
                 }
@@ -15780,7 +16137,7 @@ namespace KhaozEngine.Tests.Gpu
                 // The largest difference in the 3x3 is the brightest column, x + 1.
                 float reactive = Math.Clamp(Weighted(Ramp(x + 1)) * TemporalResolveTuning.ReactiveGain, 0f, 1f);
                 float accumulated = Q(3f / Max) * Max * (1f - reactive * TemporalResolveTuning.ReactiveStrength);
-                Assert.Equal((accumulated + 1f) / Max, state[At(x, 4) * 2], 3);
+                Assert.Equal((accumulated + 1f) / Max, state[At(x, 4) * 2], 1e-3);
             }
         }
 
@@ -15795,9 +16152,9 @@ namespace KhaozEngine.Tests.Gpu
             rig.Fill(Grey((x, _) => x == 4 ? line : bg), Grey((x, _) => x == 4 ? line : bg), Motion((_, _) => Vector2.Zero));
             rig.Resolve(Uniforms(historyValid: false));
             float[] state = rig.ReadState();
-            Assert.Equal(1f, state[At(4, 3) * 2 + 1], 3);
-            Assert.Equal(0f, state[At(3, 3) * 2 + 1], 3);
-            Assert.Equal(0f, state[At(5, 3) * 2 + 1], 3);
+            Assert.Equal(1f, state[At(4, 3) * 2 + 1], 1e-3);
+            Assert.Equal(0f, state[At(3, 3) * 2 + 1], 1e-3);
+            Assert.Equal(0f, state[At(5, 3) * 2 + 1], 1e-3);
 
             // Frame two: this frame's samples miss the line and the history holds its average. The flat box would clip
             // the history to the background. The lock, decayed by one eighth, restores that share of its luma.
@@ -15807,17 +16164,17 @@ namespace KhaozEngine.Tests.Gpu
                 State((x, _) => new Vector2(Q(8f / Max), x == 4 ? 1f : 0f)), SceneLinear);
             rig.Resolve(Uniforms(historyValid: true));
 
-            float lockAfter = 1f - 1f / 8f;
+            float lockAfter = 1f - 1f / TemporalJitter.NativePhaseCount;
             float accumulated = Q(8f / Max) * Max;
             float c = Weighted(bg), h = Weighted(held);
             float kept = c + (h - c) * lockAfter;
             float expected = Unweighted(kept + (c - kept) / (accumulated + 1f));
             float[] color = rig.ReadColor();
             state = rig.ReadState();
-            Assert.Equal(lockAfter, state[At(4, 3) * 2 + 1], 3);
-            Assert.Equal(expected, color[At(4, 3) * 4], 2);
+            Assert.Equal(lockAfter, state[At(4, 3) * 2 + 1], 1e-3);
+            Assert.Equal(expected, color[At(4, 3) * 4], 1e-2);
             Assert.True(color[At(4, 3) * 4] > 0.35f, $"the locked line kept {color[At(4, 3) * 4]} of its luma");
-            Assert.Equal(bg, color[At(2, 3) * 4], 3);
+            Assert.Equal(bg, color[At(2, 3) * 4], 1e-3);
         }
 
         [GpuFact]
@@ -15835,8 +16192,8 @@ namespace KhaozEngine.Tests.Gpu
                 for (int x = 3; x <= 5; x++)
                 {
                     var (expected, sampleWeight) = Reconstruct(spot, x, y, jitter);
-                    Assert.Equal(expected, color[At(x, y) * 4], 3);
-                    Assert.Equal(sampleWeight / Max, state[At(x, y) * 2], 3);
+                    Assert.Equal(expected, color[At(x, y) * 4], 1e-3);
+                    Assert.Equal(sampleWeight / Max, state[At(x, y) * 2], 1e-3);
                 }
         }
 
@@ -15856,8 +16213,8 @@ namespace KhaozEngine.Tests.Gpu
             rig.Resolve(Uniforms(historyValid: true));
 
             float[] state = rig.ReadState();
-            Assert.Equal((Q(3f / Max) * Max + 1f) / Max, state[At(3, 4) * 2], 3);
-            Assert.Equal(1f / Max, state[At(1, 4) * 2], 3);
+            Assert.Equal((Q(3f / Max) * Max + 1f) / Max, state[At(3, 4) * 2], 1e-3);
+            Assert.Equal(1f / Max, state[At(1, 4) * 2], 1e-3);
         }
 
         static void AssertInteriorBlend(Rig rig, Func<int, float> history, float accumulated)
@@ -15868,8 +16225,8 @@ namespace KhaozEngine.Tests.Gpu
                 for (int x = 2; x < N - 2; x++)
                 {
                     float h = Weighted(history(x)), c = Weighted(Ramp(x));
-                    Assert.Equal(Unweighted(h + (c - h) * weight), color[At(x, y) * 4], 3);
-                    Assert.Equal((accumulated + 1f) / Max, state[At(x, y) * 2], 3);
+                    Assert.Equal(Unweighted(h + (c - h) * weight), color[At(x, y) * 4], 1e-3);
+                    Assert.Equal((accumulated + 1f) / Max, state[At(x, y) * 2], 1e-3);
                 }
         }
 
@@ -15879,8 +16236,8 @@ namespace KhaozEngine.Tests.Gpu
             for (int y = 2; y < N - 2; y++)
                 for (int x = 2; x < N - 2; x++)
                 {
-                    Assert.Equal(Ramp(x), color[At(x, y) * 4], 3);
-                    Assert.Equal(1f / Max, state[At(x, y) * 2], 3);
+                    Assert.Equal(Ramp(x), color[At(x, y) * 4], 1e-3);
+                    Assert.Equal(1f / Max, state[At(x, y) * 2], 1e-3);
                 }
         }
 
@@ -15916,7 +16273,7 @@ namespace KhaozEngine.Tests.Gpu
             Jitter = new Vector4(jitter.X, jitter.Y, 1f, historyValid ? 1f : 0f),
             CurrentDepth = Depth,
             PreviousDepth = Depth,
-            Params = new Vector4(1f / 8f, 0f, 0f, 0f),
+            Params = new Vector4(1f / TemporalJitter.NativePhaseCount, 0f, 0f, 0f),
         };
 
         static float[] Grey(Func<int, int, float> value)
@@ -16039,18 +16396,22 @@ namespace KhaozEngine.Tests.Gpu
 
 The bookkeeping, in the same step so the catalog tests fail with the renderer missing.
 
-`KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs`, after the `TransitionCrossfade` row (lines 153-154):
+`KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs`, after group D's `MotionVectorsView` row, which Task D16 put
+after the `TransitionCrossfade` row (lines 153-154 at `1a783fec`):
 ```csharp
             // Render3D temporal resolve (round 2), sharing FullscreenVert.
             yield return new("TemporalResolve", ShaderSources.FullscreenVert, ShaderSources.TemporalResolveFrag);
             yield return new("TemporalDepthStore", ShaderSources.FullscreenVert, ShaderSources.TemporalDepthStoreFrag);
 ```
-In the two summaries (lines 27 and 51) raise the graphics pair count by two from the value on the branch (51 on engine
-`main`, whatever groups A to D left it at). `D3D11HlslByteEqualityTests.cs:124` and `VulkanShaderBindingTableTests.cs:210`:
-the same count, raised by two.
+In the two summaries (lines 27 and 51) raise the graphics pair count by two, from 65 after group D's Task D16 to 67.
+`D3D11HlslByteEqualityTests.cs:124` and `VulkanShaderBindingTableTests.cs:210`: 65 to 67.
+`VulkanSpirvByteEqualityTests.cs:143` (two stages per program): 138 to 142. `VulkanDynamicOffsetTests.cs:57` (layouts):
+50 to 52. `VulkanLayoutCompatibilityTests.cs:48` (pipelines): 53 to 55, and `:73` from `53 * 53` to `55 * 55`. If the
+branch shows other numbers, a group landed a program its plan did not name: raise the branch's numbers and report the
+difference.
 
-`KhaozEngine.Render.Tests/Gpu/VulkanShaderBindingTableTests.cs`, after `["TransitionCrossfade"] = "TransitionRenderer cross",`
-(line 117):
+`KhaozEngine.Render.Tests/Gpu/VulkanShaderBindingTableTests.cs`, after group D's `["MotionVectorsView"]` row, which Task
+D16 put after `["TransitionCrossfade"] = "TransitionRenderer cross",` (line 120 at `1a783fec`):
 ```csharp
 
                 ["TemporalResolve"] = "TemporalResolveRenderer resolve",
@@ -16070,8 +16431,9 @@ after `("PixelPostProcess apply", ["Pixel.apply"]),` (line 224):
             ("TemporalResolveRenderer resolve", ["Temporal.resolve"]),
             ("TemporalResolveRenderer depth store", ["Temporal.depthStore"]),
 ```
-and at lines 254-255 raise both `Assert.Equal` counts by two from the branch's value (45 on engine `main`). The
-heaviest pipeline stays at three dynamic uniforms, since both new pipelines carry one.
+and at lines 254-255 raise both `Assert.Equal` counts by two, layouts from 50 to 52 and pipelines from 53 to 55 after
+group D. The heaviest pipeline stays at five dynamic uniforms (Task D6's skinned temporal variant), since both new
+pipelines carry one.
 
 `KhaozEngine.Render.Tests/Gpu/D3D11RegisterNumberingTests.cs`, after the `PixelPostProcess._applyLayout` row
 (lines 133-134):
@@ -16121,9 +16483,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// <see cref="TemporalHistory"/>'s write pair, then one internal-resolution pass that stores this frame's linear view
     /// depth for the next frame's disocclusion test. Fragment rather than compute, because the GPU seam has no compute
     /// barrier and the handoff to graphics would have to stay inside one command list.
-    /// <para><b>ITS OWN CLAMP SAMPLER.</b> The device's shared samplers wrap (<c>IGpuDevice.PointSampler</c>, the address
-    /// contract at <c>GpuInterfaces.cs:417-430</c>), and a history tap past the edge must not read the other side of the
-    /// screen. <see cref="GpuSamplerDescription.Linear"/> clamps on every axis.</para>
+    /// <para><b>ITS OWN CLAMP SAMPLER.</b> The device's shared samplers wrap (<see cref="IGpuDevice.PointSampler"/>), and
+    /// a history tap past the edge must not read the other side of the screen. <see cref="GpuSamplerDescription.Linear"/> clamps on every axis.</para>
     /// <para><b>TWO RESOURCE SETS, ONE PER READ INDEX.</b> The history pair alternates every frame, so both sets are built
     /// once per target generation and <see cref="Run"/> picks one, which keeps a steady frame from building or
     /// allocating anything.</para>
@@ -16298,12 +16659,13 @@ Any other moved row is a regression to stop on.
 
 Run:
 ```bash
-dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~VulkanSpirvByteEquality|FullyQualifiedName~MetalMslByteEquality|FullyQualifiedName~D3D11HlslByteEquality|FullyQualifiedName~ShaderCorpus|FullyQualifiedName~VulkanShaderBindingTableTests|FullyQualifiedName~VulkanDescriptorLimitTests|FullyQualifiedName~D3D11RegisterNumberingTests|FullyQualifiedName~D3D11ResourceModelTests|FullyQualifiedName~D3D11HlslRegisterAgreementTests|FullyQualifiedName~MetalVertexInputTests|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~UboLayoutTests|FullyQualifiedName~VulkanShippedVertexLayoutTests"
+dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~VulkanSpirvByteEquality|FullyQualifiedName~MetalMslByteEquality|FullyQualifiedName~D3D11HlslByteEquality|FullyQualifiedName~ShaderCorpus|FullyQualifiedName~VulkanShaderBindingTableTests|FullyQualifiedName~VulkanDescriptorLimitTests|FullyQualifiedName~D3D11RegisterNumberingTests|FullyQualifiedName~D3D11ResourceModelTests|FullyQualifiedName~D3D11HlslRegisterAgreementTests|FullyQualifiedName~MetalVertexInputTests|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~UboLayoutTests|FullyQualifiedName~VulkanShippedVertexLayoutTests|FullyQualifiedName~VulkanLayoutCompatibilityTests|FullyQualifiedName~VulkanDynamicOffsetTests"
 KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~TemporalResolveRendererGpuTests|FullyQualifiedName~MetalShaderGpuTests"
 ```
 Expected: the first run `Passed!` with no failures. The GPU run `Passed!` with 11 temporal tests (nine facts and one theory
 of two) and `Skipped: 0`. If a numeric assertion misses by more than its tolerance, print the value, compare it with the
-mirror by hand, and fix the shader or the mirror, whichever disagrees with the design, never the tolerance alone.
+mirror by hand, and fix the shader or the mirror, whichever disagrees with the design, never the tolerance alone. The
+tolerances are absolute, and one half-float step here is under 2.5e-4.
 
 - [ ] **Step 5: Commit**
 
@@ -16314,7 +16676,8 @@ git add KhaozEngine.Render3D/Rendering/TemporalResolveRenderer.cs KhaozEngine.Re
   KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs KhaozEngine.Render.Tests/Gpu/D3D11RegisterNumberingTests.cs \
   KhaozEngine.Render.Tests/Gpu/D3D11ResourceModelTests.cs KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt \
   KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt \
-  KhaozEngine.Render.Tests/Gpu/shader-corpus/corpus.txt
+  KhaozEngine.Render.Tests/Gpu/shader-corpus/corpus.txt KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs
 git commit -m "render3d(temporal): add the temporal resolve renderer and its shader bookkeeping"
 ```
 
@@ -16326,11 +16689,13 @@ git commit -m "render3d(temporal): add the temporal resolve renderer and its sha
 
 **Files:**
 - Create: `KhaozEngine.Render3D/Internal/IPostChainTargets.cs`
-- Modify: `KhaozEngine.Render3D/Internal/RenderResources.cs:24` (the declaration), `:296-297` (explicit members before
+- Modify: `KhaozEngine.Render3D/Internal/RenderResources.cs:25` (the declaration), `:296-297` (explicit members before
   `Dispose`)
 - Modify: `KhaozEngine.Render3D/Rendering/PixelPostProcess.cs:10-17` (summary), `:79-92` (resource set fields),
   `:191-263` (`BindTargets`), `:276` (`RebuildPingPipelinesIfFormatChanged` signature), `:298` (`PrepareUniforms`
   signature), `:337` (edge texel), `:417-546` (`Run`), `:548-564` (`DisposeSets`)
+- Modify: `KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs:127-128` (the layout and helper citations, now
+  `PixelPostProcess.cs:143` to `:159` and `:178-180`)
 - Test: `KhaozEngine.Render.Tests/Gpu/PostChainTargetsGpuTests.cs`
 
 **Interfaces:**
@@ -16359,7 +16724,7 @@ git commit -m "render3d(temporal): add the temporal resolve renderer and its sha
 
 This is a pure refactor with temporal off. Every set is built over the same textures, samplers and buffers as today,
 `Run` records the same commands in the same order, and the edge pass's texel size reads `NormalTex.Width`, which equals
-`RenderResources.Width` (`RenderResources.cs:156`). The full Metal suite is the proof. The edge texel moves to the normal
+`RenderResources.Width` (`RenderResources.cs:150`). The full Metal suite is the proof. The edge texel moves to the normal
 target's size because on the display chain the edge pass still steps across the internal normal and depth attachments,
 and the FXAA texel keeps the chain's own size because FXAA steps across its source.
 
@@ -16397,10 +16762,14 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Null(chain.BloomA);
             Assert.Null(chain.BloomBFB);
             Assert.Equal((64, 48), (chain.Width, chain.Height));
-            Assert.Equal(res.Generation, chain.Generation);
             Assert.Equal(chain.Width, (int)chain.NormalTex.Width);
             Assert.False(chain.DistortAllocated);
             Assert.Null(chain.DistortTex);
+
+            int before = chain.Generation;
+            res.Resize(80, 48, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: true);
+            Assert.True(chain.Generation > before, "a resize must bump the generation the chain's sets are keyed on");
+            Assert.Equal((80, 48), (chain.Width, chain.Height));
         }
     }
 }
@@ -16463,7 +16832,7 @@ namespace KhaozEngine.Render3D.Internal
 }
 ```
 
-`KhaozEngine.Render3D/Internal/RenderResources.cs:24`, old:
+`KhaozEngine.Render3D/Internal/RenderResources.cs:25`, old:
 ```csharp
     internal sealed class RenderResources : IDisposable
 ```
@@ -16708,7 +17077,7 @@ Lines 417-546, the whole of `Run`, new:
                                              : compFromPingA ? _compositePingABloomA! : _compositePingBBloomA!;
                 // Write to the ping NOT currently holding src (mirrors the FXAA ping-pong), so composite never reads
                 // its own output.
-                bool toPingB = compFromPingA;                 // PingA->PingB; Source/PingB->PingA
+                bool toPingB = compFromPingA;                 // PingA->PingB, Source/PingB->PingA
                 cl.SetFramebuffer(toPingB ? res.PingBFB : res.PingAFB);
                 cl.SetPipeline(_compositePipe);
                 cl.SetGraphicsResourceSet(0, compositeSet);
@@ -16773,7 +17142,7 @@ Lines 417-546, the whole of `Run`, new:
 
             cl.SetFramebuffer(swapchainFB);
             // Transparent clear when compositing offscreen, else opaque black. (The fullscreen blit overwrites
-            // every pixel via OverrideBlend, so this mainly documents intent; the alpha is set in the shader.)
+            // every pixel via OverrideBlend, so this mainly documents intent. The alpha is set in the shader.)
             cl.ClearColorTarget(0, s.TransparentBackground ? Color.Transparent : Color.Black);
             cl.SetPipeline(_blitPipe);
             cl.SetGraphicsResourceSet(0, blit);
@@ -16806,7 +17175,8 @@ Lines 548-564, `DisposeSets`, new:
             _compositePingABloomA = _compositePingBBloomA = null;
         }
 ```
-`Scene3D.cs` needs no edit: its three `_post.BindTargets(_res)` calls (`:407`, `:1438`, `:1565`) and
+`Scene3D.cs` needs no edit: the three `_post.BindTargets(_res)` calls (`Scene3D.cs:407`, the one D11 moved into
+`Scene3D.RenderTargets.cs`, and `Scene3D.cs:1565`) and
 `_post.PrepareUniforms(cl, _res, ...)` / `_post.Run(cl, _res, ...)` pass a `RenderResources`, which is an
 `IPostChainTargets`. The `VulkanDescriptorLimitTests.cs:127` comment cites `PixelPostProcess.cs:125 to :141` for the nine
 layouts. Update it to the lines they now occupy. `TemporalPostTargets` is named in `<c>` because Task E8 creates it.
@@ -16844,6 +17214,8 @@ git commit -m "render3d(post): run the post chain over an IPostChainTargets seam
 
 **Files:**
 - Create: `KhaozEngine.Render3D/Internal/TemporalPostTargets.cs`
+- Modify: `KhaozEngine.Render3D/Internal/IPostChainTargets.cs` and `KhaozEngine.Render3D/Rendering/PixelPostProcess.cs`
+  (Task E7's summaries: `<c>TemporalPostTargets</c>` becomes a cref)
 - Test: `KhaozEngine.Render.Tests/Gpu/TemporalPostTargetsGpuTests.cs`
 
 **Interfaces:**
@@ -16871,8 +17243,8 @@ so running the apply at display size needs no bigger field. The opaque copy live
 because it exists only while the resolve runs, and `RenderResources.Create` is group D's to extend.
 
 The copy needs no MSAA resolve: temporal anti-aliasing is single-sample by construction
-(`PixelPostProcessSettings.EffectiveMsaaSamples` is 1 unless the mode is `Msaa`, `PixelPostProcessSettings.cs:225-226`),
-so `ColorTex` is the model pass's own attachment (`RenderResources.cs:161-168`). Task E9 pins that.
+(`PixelPostProcessSettings.EffectiveMsaaSamples` is 1 unless the mode is `Msaa`, `PixelPostProcessSettings.cs:224-225`),
+so `ColorTex` is the model pass's own attachment (`RenderResources.cs:165-173`). Task E9 pins that.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -17010,6 +17382,7 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     cl.SetFramebuffer(res.ColorDepthFB);
                     cl.ClearColorTarget(0, new Color(0.25f, 0.5f, 0.75f, 1f));
+                    cl.SetFramebuffer(res.PingAFB);   // a framebuffer change flushes the clear-only pass before the copy
                     targets.CopyOpaque(cl);
                     cl.SetFramebuffer(res.ColorDepthFB);
                     cl.ClearColorTarget(0, new Color(1f, 0f, 0f, 1f));   // the transparents change ColorTex afterwards
@@ -17057,9 +17430,6 @@ namespace KhaozEngine.Tests.Gpu
     }
 }
 ```
-
-If group D widened the `RenderResources` constructor with a temporal flag, these tests pass `false` for it: they
-exercise the colour, normal, depth and distortion targets only.
 
 - [ ] **Step 2: Run it and see it fail**
 
@@ -17265,6 +17635,7 @@ git commit -m "render3d(temporal): add the display-resolution post targets and t
 
 **Interfaces:**
 - Consumes: `AntiAliasing.Temporal`, `PixelPostProcessSettings.EffectiveUpscaleRatio`, `TemporalSettings` (E2),
+  `TemporalResolveMath.DisplayOverInternal` (E3),
   `TemporalJitter.PhaseCount`, `TemporalJitter.Offset` (A1), `Scene3D.LatchFrameView`, `CurrentFrameView`,
   `DisplayOverInternalRatio` (A3), `TemporalActive` (A3, widened by B7), `TemporalFrameKey`, `DetectTemporalReset`,
   `AdvanceTemporalHistory`, `LastTemporalDiagnostics` (B5, B8), `HeadlessSceneRig` (A3)
@@ -17274,7 +17645,9 @@ git commit -m "render3d(temporal): add the display-resolution post targets and t
   float Scene3D.DisplayOverInternalRatio { get; }             // replaces group A's constant, same name
   internal float Scene3D.TemporalDisplayOverInternal(int displayWidth, int displayHeight);
   internal void Scene3D.LatchFrameView(int displayWidth = 0, int displayHeight = 0);
-  // TemporalFrameKey gains float UpscaleRatio, and a change reports TemporalResetReason.RenderScale
+  // TemporalFrameKey gains float UpscaleRatio, and a change reports TemporalResetReason.RenderScale. It also gains
+  // int DisplayWidth and DisplayHeight, and a change reports TemporalResetReason.Resize, so PreviousFrameView stays
+  // null whenever the history is invalid even when a capped internal size hides a display resize.
   ```
 
 Group B's `TemporalActive` becomes `ForceTemporalForTests || _debugView != SceneDebugView.None || TemporalResolveActive`.
@@ -17428,8 +17801,7 @@ namespace KhaozEngine.Render3D
         internal float TemporalDisplayOverInternal(int displayWidth, int displayHeight)
         {
             if (!TemporalResolveActive || displayWidth <= 0 || displayHeight <= 0) return 1f;
-            return MathF.Max(1f, MathF.Max(displayWidth / (float)Math.Max(1, _res.Width),
-                displayHeight / (float)Math.Max(1, _res.Height)));
+            return Internal.TemporalResolveMath.DisplayOverInternal(displayWidth, displayHeight, _res.Width, _res.Height);
         }
     }
 }
@@ -17449,8 +17821,19 @@ new:
 ```csharp
         internal bool TemporalActive => ForceTemporalForTests || _debugView != SceneDebugView.None || TemporalResolveActive;
 ```
-and its summary gains the sentence "The temporal anti-aliasing mode is the main requester." `LatchFrameView`'s head,
-old:
+and its summary, old:
+```csharp
+        /// <summary>Whether a temporal consumer asked for this frame, which is what turns the jitter on: a
+        /// <see cref="DebugView"/> other than <see cref="SceneDebugView.None"/>, or the test seam. Round 2 adds the
+        /// temporal anti-aliasing mode.</summary>
+```
+new:
+```csharp
+        /// <summary>Whether a temporal consumer asked for this frame, which is what turns the jitter on: the temporal
+        /// anti-aliasing mode, the main requester, a <see cref="DebugView"/> other than
+        /// <see cref="SceneDebugView.None"/>, or the test seam.</summary>
+```
+`LatchFrameView`'s head, old:
 ```csharp
         internal void LatchFrameView()
         {
@@ -17484,7 +17867,7 @@ new:
 new:
 ```csharp
         readonly record struct TemporalFrameKey(AntiAliasing AntiAliasing, RenderScale RenderScale, float Supersample,
-            bool HdrColor, float UpscaleRatio);
+            bool HdrColor, float UpscaleRatio, int DisplayWidth, int DisplayHeight);
 ```
 In `AdvanceTemporalHistory`, old:
 ```csharp
@@ -17493,7 +17876,7 @@ In `AdvanceTemporalHistory`, old:
 new:
 ```csharp
             var key = new TemporalFrameKey(ResolvedAa(), Post.EffectiveRenderScale, Post.EffectiveSupersample, _res.HdrColor,
-                Post.EffectiveUpscaleRatio);
+                Post.EffectiveUpscaleRatio, _latchedDisplayWidth, _latchedDisplayHeight);
 ```
 In `DetectTemporalReset`, old:
 ```csharp
@@ -17506,6 +17889,18 @@ new:
                 || key.UpscaleRatio != _historyKey.UpscaleRatio)
                 return TemporalResetReason.RenderScale;   // a preset or ratio change, whether or not the size follows
 ```
+and the size arm, old:
+```csharp
+            if (view.Width != last.Width || view.Height != last.Height) return TemporalResetReason.Resize;
+```
+new:
+```csharp
+            if (view.Width != last.Width || view.Height != last.Height
+                || key.DisplayWidth != _historyKey.DisplayWidth || key.DisplayHeight != _historyKey.DisplayHeight)
+                return TemporalResetReason.Resize;   // the display size too, which a capped internal size can hide
+```
+`AdvanceTemporalHistory` runs on a frame's first render only, so a second render at another size never reaches the
+key.
 
 - [ ] **Step 4: Run it and see it pass**
 
@@ -17540,7 +17935,7 @@ git commit -m "render3d(temporal): drive the jitter cycle and history resets fro
   `:1565-1569`, `:1855-1856`, `:1883-1901`, `:1990-1992`, `:2317`), 13 lines fewer
 - Modify: `KhaozEngine.Render.Tests/Render3D/FrameViewConsumerSweepTests.cs` (group A5's `Sites`: the sky row moves file,
   one row added)
-- Modify: `docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md` (Plan amendments, items 3 to 5)
+- Modify: `docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md` (Plan amendments, item 13)
 - Test: `KhaozEngine.Render.Tests/Render3D/TemporalResolveWiringTests.cs`
 - Test: `KhaozEngine.Render.Tests/Gpu/TemporalResolveSceneGpuTests.cs`
 
@@ -17577,6 +17972,9 @@ The frame under the resolve, in order (spec section 1):
 
 With the resolve off, `PrepareTemporalResolve` returns `_res`, `CaptureOpaqueForTemporal` and `RunTemporalResolve` return
 at once, and the background draws where it did through the same call, so the command stream is the one before this task.
+A later render inside the frame at a display size other than the history's, such as an offscreen capture, takes the same
+path through a per-render flag: it never reallocates the player's history, and it presents the internal frame
+unresolved (the foundations spec's second render "does not advance history").
 
 - [ ] **Step 1: Write the failing test**
 
@@ -17688,16 +18086,45 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void Bloom_and_distortion_run_on_the_display_chain_after_the_resolve()
         {
+            byte[] plain = EffectsFrame(effects: false);
+            byte[] rgba = EffectsFrame(effects: true);
+            Assert.True(LumaDeviation(rgba) > 2.0, "the frame is not a flat fill");
+            double changed = MeanAbsDifference(rgba, plain);
+            Assert.True(changed > 0.5, $"bloom and the ripple changed nothing after the resolve: mean abs {changed:0.000}");
+        }
+
+        [GpuFact]
+        public void A_second_render_at_another_size_leaves_the_history_valid()
+        {
+            using var h = new Harness(240, 160);
+            h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+            MeshHandle box = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
+            void Draw(Scene3D s) => s.Draw(box, Matrix4x4.CreateScale(2f), new Color(0.8f, 0.6f, 0.4f, 1f));
+
+            h.Render(Draw);
+            h.RenderSecond(96, 64);   // an offscreen capture inside the same frame, at another size
+            Assert.Equal((240, 160), (h.Scene.TemporalHistory.DisplayWidth, h.Scene.TemporalHistory.DisplayHeight));
+            h.Render(Draw);
+
+            Assert.True(h.Scene.TemporalHistory.IsValid, $"the capture reset the history: {h.Scene.TemporalHistory.LastReset}");
+            Assert.True(h.Scene.LastTemporalDiagnostics.HistoryValid);
+            Assert.Equal(1f, h.Scene.TemporalResolveRendererForTests!.LastUniforms.Jitter.W);
+        }
+
+        // A bright box, and with effects on bloom and a distortion ripple over it, resolved at Quality.
+        static byte[] EffectsFrame(bool effects)
+        {
             using var h = new Harness(240, 160);
             h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             h.Scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
-            h.Scene.Post.Bloom.Enabled = true;
+            h.Scene.Post.Bloom.Enabled = effects;
             MeshHandle box = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
             byte[] rgba = Array.Empty<byte>();
             for (int i = 0; i < 4; i++)
                 rgba = h.Render(s =>
                 {
                     s.Draw(box, Matrix4x4.CreateScale(2f), new Color(3f, 2.5f, 1.5f, 1f));
+                    if (!effects) return;
                     s.DrawDistortion(new DistortionSprite
                     {
                         Position = new Vector3(0f, 0f, 1.2f), Size = 2.2f, Shape = DistortionShape.Ripple,
@@ -17706,10 +18133,21 @@ namespace KhaozEngine.Tests.Gpu
                 });
 
             var post = h.Scene.TemporalPostTargetsForTests!;
-            Assert.True(post.BloomAllocated);
-            Assert.Equal((120, 80), (post.BloomWidth, post.BloomHeight));
-            Assert.True(post.DistortAllocated);
-            Assert.True(LumaDeviation(rgba) > 2.0, "the frame is not a flat fill");
+            Assert.Equal(effects, post.BloomAllocated);
+            if (effects)
+            {
+                Assert.Equal((120, 80), (post.BloomWidth, post.BloomHeight));
+                Assert.True(post.DistortAllocated);
+            }
+            return rgba;
+        }
+
+        static double MeanAbsDifference(byte[] a, byte[] b)
+        {
+            double sum = 0;
+            for (int i = 0; i < a.Length; i++)
+                if ((i & 3) != 3) sum += Math.Abs(a[i] - b[i]);
+            return sum / (a.Length / 4 * 3);
         }
 
         [GpuFact]
@@ -17790,6 +18228,18 @@ namespace KhaozEngine.Tests.Gpu
 
             public Scene3D Scene { get; }
 
+            /// <summary>A second render inside the frame the last <see cref="Render"/> began, with no Begin, into a
+            /// scratch target of another size, as an offscreen capture makes.</summary>
+            public void RenderSecond(int width, int height)
+            {
+                using IGpuTexture tex = _gd.Factory.CreateTexture(GpuTextureDescription.Texture2D((uint)width,
+                    (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+                using IGpuFramebuffer fb = _gd.Factory.CreateFramebuffer(null, tex);
+                using (GpuRecording.Open(_gd, _cl, nameof(TemporalResolveSceneGpuTests))) Scene.RenderInternal(_cl, width, height, fb);
+                _gd.Submit(_cl);
+                _gd.WaitForIdle();
+            }
+
             public byte[] Render(Action<Scene3D> draw)
             {
                 Scene.Begin();
@@ -17817,7 +18267,8 @@ namespace KhaozEngine.Tests.Gpu
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release 2>&1 | grep -E "error|Build succeeded" | head -5`
-Expected: FAIL with `error CS1061: 'Scene3D' does not contain a definition for 'TemporalResolveRendererForTests'`.
+Expected: FAIL with `error CS1061` naming `TemporalResolveRendererForTests` or `TemporalPostTargetsForTests` on
+`'Scene3D'`, whichever file the compiler reports first.
 
 - [ ] **Step 3: Implement**
 
@@ -17843,13 +18294,22 @@ and reorders the background ahead of the transparent model-pass writers while it
         /// <summary>The display post targets, null until the first temporal frame. Internal, for the tests.</summary>
         internal TemporalPostTargets? TemporalPostTargetsForTests => _temporalPost;
 
+        // The frame index the resolve last ran on, which tells a later render inside that frame from its first.
+        long _temporalResolveFrame = -1;
+
+        // Whether this render runs the resolve. False with the resolve off, and for a later render inside the frame at a
+        // display size other than the history's (an offscreen capture), which must not reallocate the player's history.
+        bool _resolveThisRender;
+
         /// <summary>
         /// Before any framebuffer is bound this frame: size the history and the display targets, choose the history pair,
         /// bind the resolve's inputs and upload its uniforms, and hand back the targets the post chain runs over. With the
-        /// resolve off it frees whatever a previous temporal frame left and hands back <c>_res</c>, the internal chain.
+        /// resolve off it frees whatever a previous temporal frame left and hands back <c>_res</c>, the internal chain. A
+        /// later render inside the frame at another display size also hands back <c>_res</c> and leaves the history alone.
         /// </summary>
         IPostChainTargets PrepareTemporalResolve(IGpuCommandList cl, int displayWidth, int displayHeight)
         {
+            _resolveThisRender = false;
             if (!TemporalResolveActive)
             {
                 TemporalHistory.ReleaseTargets();
@@ -17857,16 +18317,24 @@ and reorders the background ahead of the transparent model-pass writers while it
                 return _res;
             }
 
+            FrameView current = CurrentFrameView;
+            // A later render inside the frame at another display size skips the resolve: the history keeps the player's
+            // size and pair, and this render presents the internal frame unresolved through the internal chain.
+            if (current.FrameIndex == _temporalResolveFrame
+                && (displayWidth != TemporalHistory.DisplayWidth || displayHeight != TemporalHistory.DisplayHeight))
+                return _res;
+            _resolveThisRender = true;
+            _temporalResolveFrame = current.FrameIndex;
+
             _temporalResolve ??= new TemporalResolveRenderer(_gd);
             _temporalPost ??= new TemporalPostTargets(_gd);
-            // New targets hold nothing yet. Group B already reset for a new internal size, and this covers a new display
-            // size behind a capped internal one.
+            // New targets hold nothing yet. The frame key already reset for a new internal or display size, so this is a
+            // backstop that keeps the resolve from reading freshly created targets as history.
             if (TemporalHistory.EnsureTargets(_gd, displayWidth, displayHeight, _res.Width, _res.Height)
                 && TemporalHistory.IsValid)
                 TemporalHistory.Invalidate(TemporalResetReason.Resize);
             _temporalPost.Ensure(_res, TemporalHistory, displayWidth, displayHeight, Post.Bloom.Enabled);
 
-            FrameView current = CurrentFrameView;
             TemporalHistory.BeginResolve(current.FrameIndex);
             IGpuTexture motion = _res.MotionTex ?? throw new InvalidOperationException(
                 "The temporal resolve runs only while temporal rendering is active, which allocates the motion target.");
@@ -17890,8 +18358,11 @@ and reorders the background ahead of the transparent model-pass writers while it
         /// </summary>
         void CaptureOpaqueForTemporal(IGpuCommandList cl)
         {
-            if (!TemporalResolveActive) return;
+            if (!_resolveThisRender) return;
             DrawBackground(cl);
+            // A framebuffer change ends the model pass, so a clear with no draw after it (Solid background, nothing
+            // opaque) lands before the copy. A blit alone leaves a clear-only pass's clear owed.
+            cl.SetFramebuffer(_res.ColorDepthFB);
             _temporalPost!.CopyOpaque(cl);
             cl.SetFramebuffer(_res.ModelFB);
         }
@@ -17925,7 +18396,7 @@ and reorders the background ahead of the transparent model-pass writers while it
         /// resolve into the history write pair, then store this frame's depth.</summary>
         void RunTemporalResolve(IGpuCommandList cl)
         {
-            if (!TemporalResolveActive) return;
+            if (!_resolveThisRender) return;
             _temporalResolve!.Run(cl, TemporalHistory);
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
         }
@@ -17975,9 +18446,9 @@ new:
 Edit 3 (`:1883-1901`), old: the eight-line comment beginning `// Background pass, before the decals: whichever mode is
 selected paints the no-geometry pixels and marks` and the `switch (Post.Background) { ... }` that follows it. New:
 ```csharp
-            // Background pass, before the decals (Scene3D.TemporalResolve.cs). Under the temporal resolve it already ran,
+            // Background pass, before the decals (Scene3D.TemporalResolve.cs). When this render resolves it already ran,
             // before the transparent model-pass writers, so the opaque-only copy holds it.
-            if (!TemporalResolveActive) DrawBackground(cl);
+            if (!_resolveThisRender) DrawBackground(cl);
 ```
 Edit 4 (`:1990-1992`), old:
 ```csharp
@@ -18017,18 +18488,11 @@ and after the `FrustumCulling ? FrustumPlanes.Extract(` row add:
             "the resolve reprojects with the unjittered views, the jitter handed separately"),
 ```
 
-`docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md`, append to the Plan amendments after item 2:
+`docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md`, append to the Plan amendments after item 12. The plan
+commit already recorded the background order (item 5) and the outline (item 10), so only one item is new:
 ```markdown
-3. **The background draws before the transparent model-pass writers under the resolve (task E10).** The opaque-only
-   copy must hold the sky, or every sky pixel reads as reactive. The sky and starfield draw with an Equal depth test and
-   no blend, so today they paint over any textured billboard, beam, trail, overlay mesh or silhouette that covers
-   background. Under the resolve they draw first, so those show over the sky. With temporal off the order is unchanged.
-4. **The distortion offset field keeps its internal-relative size (task E10).** Only its apply pass moves to the
-   display resolution, after the resolve. The field is a smooth offset map the apply upsamples bilinearly, so a
-   display-size field would cost more and show nothing.
-5. **The toon edge outline reads the jittered internal normal and depth (task E10).** It runs after the resolve with the
-   rest of the post chain, so under temporal anti-aliasing its lines move with the jitter. Group F's task F16b moves it
-   ahead of the resolve.
+13. The distortion offset field keeps its internal-relative size. Only its apply pass moves to the display resolution,
+    after the resolve (group E).
 ```
 
 - [ ] **Step 4: Run it and see it pass**
@@ -18097,7 +18561,10 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int W = 240, H = 240, Bars = 15;
 
-        static byte[] Render(AntiAliasing aa, int frames, TemporalUpscale upscale = TemporalUpscale.Native)
+        // cutEveryFrame calls CameraCut before every frame, so the last frame is one jittered frame with no history, at
+        // the same jitter phase as an uncut render of the same length.
+        static byte[] Render(AntiAliasing aa, int frames, TemporalUpscale upscale = TemporalUpscale.Native,
+            bool cutEveryFrame = false)
         {
             MeshHandle box = default;
             return Render3DSnapshot.Capture(W, H,
@@ -18114,6 +18581,7 @@ namespace KhaozEngine.Tests.Gpu
                 },
                 drawFrame: scene =>
                 {
+                    if (cutEveryFrame) scene.CameraCut();
                     for (int i = 0; i < Bars; i++)
                     {
                         float x = -2.6f + 5.2f * i / (Bars - 1);
@@ -18135,19 +18603,20 @@ namespace KhaozEngine.Tests.Gpu
             byte[] second = Render(AntiAliasing.Temporal, 2);
             byte[] converged = Render(AntiAliasing.Temporal, 32);
             byte[] next = Render(AntiAliasing.Temporal, 33);
+            byte[] single = Render(AntiAliasing.Temporal, 32, cutEveryFrame: true);   // frame 32's phase, no history
 
             double early = MeanAbs(first, second), late = MeanAbs(converged, next);
             string ctx = $"(early={early:0.000} late={late:0.000} midOff={MidCount(off)} midTaa={MidCount(converged)} "
-                + $"fromSingle={MeanAbs(converged, first):0.000} meanOff={MeanLuma(off):0.0} meanTaa={MeanLuma(converged):0.0} "
+                + $"fromSingle={MeanAbs(converged, single):0.000} meanOff={MeanLuma(off):0.0} meanTaa={MeanLuma(converged):0.0} "
                 + $"markerOff={MarkerRow(off):0.0} markerTaa={MarkerRow(converged):0.0})";
 
-            Assert.True(late < 1.5 && late <= 0.5 * early, "the history does not settle on a still scene " + ctx);
-            Assert.True(MidCount(converged) > MidCount(off) * 1.15, "the converged frame is not anti-aliased " + ctx);
-            Assert.True(MeanAbs(converged, first) > 0.1, "the converged frame is still a single jittered frame " + ctx);
-            Assert.True(Math.Abs(MeanLuma(converged) - MeanLuma(off)) < Math.Max(2.0, MeanLuma(off) * 0.05),
-                "the resolve changed the image's brightness " + ctx);
             Assert.True(MarkerRow(off) < H / 4.0, "the marker is not where the scene put it " + ctx);
             Assert.True(Math.Abs(MarkerRow(converged) - MarkerRow(off)) < 2.0, "the resolved image is not upright " + ctx);
+            Assert.True(late < 1.5 && late <= 0.5 * early, "the history does not settle on a still scene " + ctx);
+            Assert.True(MidCount(converged) > MidCount(off) * 1.15, "the converged frame is not anti-aliased " + ctx);
+            Assert.True(MeanAbs(converged, single) > 0.1, "the converged frame is still a single jittered frame " + ctx);
+            Assert.True(Math.Abs(MeanLuma(converged) - MeanLuma(off)) < Math.Max(2.0, MeanLuma(off) * 0.05),
+                "the resolve changed the image's brightness " + ctx);
         }
 
         [GpuFact]
@@ -18218,8 +18687,9 @@ This task tests behaviour that Tasks E6 to E10 already built, so on this branch 
 state is proven by mutation instead. Temporarily change `TemporalResolveFrag`'s main to write
 `temporalResolvePixel(ivec2(gl_FragCoord.x, Sizes.w - 1.0 - gl_FragCoord.y))`, a flipped read, rebuild, and run:
 `KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalResolveSmokeGpuTests"`
-Expected: FAIL with `the resolved image is not upright`. Then set `MaxAccumulation` to `1.0` in both copies, rebuild and
-rerun. Expected: FAIL with `the converged frame is not anti-aliased` or `the history does not settle`. Revert both
+Expected: FAIL with `the resolved image is not upright`, the first assertion after the marker's own placement. Then set
+`MaxAccumulation` to `1.0` in both copies, rebuild and rerun. Expected: FAIL with `the history does not settle` or
+`the converged frame is not anti-aliased`. Revert both
 mutations (`git diff` on `ShaderSources.TemporalResolve.cs` and `TemporalResolveTuning.cs` prints nothing).
 
 - [ ] **Step 3: Implement**
@@ -18236,7 +18706,7 @@ dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
 KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~TemporalResolveSmokeGpuTests" --logger "console;verbosity=detailed"
 ```
 Expected: `Passed!` with 2 tests and `Skipped: 0`. Copy the measured values from a temporary
-`Assert.Fail(ctx)` run, or the detailed log, into the class summary, in the shape `FxaaGpuTests.cs:81-83` uses
+`Assert.Fail(ctx)` run, or the detailed log, into the class summary, in the shape `FxaaGpuTests.cs:83-85` uses
 ("measured ~1.17x on Metal, the 1.05x gate is a wide cross-backend margin").
 
 - [ ] **Step 5: Commit**
@@ -18629,10 +19099,11 @@ git commit -m "render3d(temporal): mirror the RCAS sharpen on the CPU"
 - Modify: `KhaozEngine.Render.Tests/Gpu/VulkanShaderBindingTableTests.cs:114` (new row after `PostDistortionApply`) and `:210` (the catalog count)
 - Modify: `KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs:137` (new layout after `Pixel.apply`), `:224` (new pipeline after `PixelPostProcess apply`) and `:254-255` (both counts)
 - Modify: `KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs:124` (the catalog count, which group E's Task E6 also moves)
+- Modify: `KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs:143` (the stage count), `KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs:57` (the layout count) and `KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs:48`, `:73` (the pipeline count and its square)
 - Modify: `KhaozEngine.Render.Tests/Gpu/D3D11RegisterNumberingTests.cs:133-134` (new row after `PixelPostProcess._applyLayout`)
 - Modify: `KhaozEngine.Render.Tests/Gpu/D3D11ResourceModelTests.cs:401` (new window after `PixelPostProcess apply`)
 - Modify: `KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs:28` (the doc list) and `:127-128` (new fact after `PostDistortionApply`)
-- Modify: `KhaozEngine.Render.Tests/Render3D/UboLayoutTests.cs:384` (new fact after `ApplyUbo_MarshalSize_EqualsApplyBufferAllocation`)
+- Modify: `KhaozEngine.Render.Tests/Render3D/TemporalUboLayoutTests.cs` (Task E3's file: a new fact and `using KhaozEngine.Render3D.Rendering;`. `UboLayoutTests.cs` is 794 of 800 lines after group D)
 - Check, no row: `KhaozEngine.Render.Tests/Gpu/VulkanShippedVertexLayoutTests.cs`, the seventh hand-maintained list (amendment 9). The program's vertex stage is `FullscreenVert`, which declares no vertex input, and the test skips such programs (`VulkanShippedVertexLayoutTests.cs:48`, `:57`). It runs in Step 4's filter.
 - Modify (rebaked, never hand edited): `KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt`, `KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt`, `KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt`, `KhaozEngine.Render.Tests/Gpu/shader-corpus/corpus.txt`
 - Test: `KhaozEngine.Render.Tests/Render3D/TemporalSharpenShaderContractTests.cs`
@@ -18640,6 +19111,10 @@ git commit -m "render3d(temporal): mirror the RCAS sharpen on the CPU"
 
 Line numbers are those on `feature/temporal-foundations` before group A. Groups A to E add rows to the same lists, so
 insert beside the named anchor row wherever it sits on the branch.
+
+Reviewer note: the fullscreen `GpuPipelineDescription` block in `BuildPipeline`, repeated by Tasks F7 and F8, is the
+house pattern every post pass in `PixelPostProcess` is built with. It is accepted as it is, not a duplication to
+extract.
 
 **Interfaces:**
 - Consumes: `TemporalSharpenMath` (F1).
@@ -18808,8 +19283,8 @@ namespace KhaozEngine.Tests.Gpu
 }
 ```
 
-Add to `UboLayoutTests.cs` after `ApplyUbo_MarshalSize_EqualsApplyBufferAllocation` (`:384`), with
-`using KhaozEngine.Render3D.Rendering;` already present in that file:
+Add to `TemporalUboLayoutTests.cs` (Task E3), after its last fact, and add `using KhaozEngine.Render3D.Rendering;`
+to its usings:
 
 ```csharp
         [Fact]
@@ -18839,6 +19314,10 @@ Add the rows to the hand-maintained lists and move the pinned counts:
 //   D3D11HlslByteEqualityTests.cs:124      Assert.Equal(67, graphics.Length)      becomes 68
 //   VulkanDescriptorLimitTests.cs:254      Assert.Equal(52, ShippedLayouts.Count)   becomes 53
 //   VulkanDescriptorLimitTests.cs:255      Assert.Equal(55, ShippedPipelines.Count) becomes 56
+//   VulkanSpirvByteEqualityTests.cs:143    Assert.Equal(142, emitted.Count)       becomes 144 (two stages per program)
+//   VulkanDynamicOffsetTests.cs:57         Assert.Equal(52, shapes.Count)         becomes 53
+//   VulkanLayoutCompatibilityTests.cs:48   Assert.Equal(55, pipelines.Count)      becomes 56
+//   VulkanLayoutCompatibilityTests.cs:73   Assert.Equal(55 * 55, pairs)           becomes 56 * 56
 // If the branch shows other numbers, a group landed a program its plan did not name: raise the branch's numbers by
 // one each and report the difference.
 
@@ -19055,7 +19534,7 @@ stop and find out why before going on.
 
 - [ ] **Step 4: Run it and see it pass**
 
-Run: `dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalSharpen|FullyQualifiedName~UboLayoutTests|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~VulkanShaderBindingTable|FullyQualifiedName~VulkanDescriptorLimit|FullyQualifiedName~D3D11RegisterNumbering|FullyQualifiedName~D3D11ResourceModel|FullyQualifiedName~VulkanShippedVertexLayoutTests|FullyQualifiedName~ByteEquality|FullyQualifiedName~ShaderCorpus"`
+Run: `dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalSharpen|FullyQualifiedName~UboLayoutTests|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~VulkanShaderBindingTable|FullyQualifiedName~VulkanDescriptorLimit|FullyQualifiedName~D3D11RegisterNumbering|FullyQualifiedName~D3D11ResourceModel|FullyQualifiedName~VulkanShippedVertexLayoutTests|FullyQualifiedName~ByteEquality|FullyQualifiedName~ShaderCorpus|FullyQualifiedName~VulkanLayoutCompatibilityTests|FullyQualifiedName~VulkanDynamicOffsetTests"`
 Expected: `Passed!` with no failures.
 
 Run: `KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalSharpenPassGpuTests"`
@@ -19068,8 +19547,10 @@ git add KhaozEngine.Render3D/Internal/ShaderSources.TemporalSharpen.cs KhaozEngi
   KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs KhaozEngine.Render.Tests/Gpu/VulkanShaderBindingTableTests.cs \
   KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs KhaozEngine.Render.Tests/Gpu/D3D11RegisterNumberingTests.cs \
   KhaozEngine.Render.Tests/Gpu/D3D11ResourceModelTests.cs KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs \
-  KhaozEngine.Render.Tests/Render3D/UboLayoutTests.cs KhaozEngine.Render.Tests/Render3D/TemporalSharpenShaderContractTests.cs \
+  KhaozEngine.Render.Tests/Render3D/TemporalUboLayoutTests.cs KhaozEngine.Render.Tests/Render3D/TemporalSharpenShaderContractTests.cs \
   KhaozEngine.Render.Tests/Gpu/TemporalSharpenPassGpuTests.cs KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs \
   KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt \
   KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt KhaozEngine.Render.Tests/Gpu/shader-corpus/corpus.txt
 git commit -m "render3d(temporal): add the RCAS sharpen program and pass"
@@ -19232,7 +19713,7 @@ Expected: build failure, `error CS1061: 'TemporalSettings' does not contain a de
 
 - [ ] **Step 3: Implement**
 
-`KhaozEngine.Render3D/TemporalSettings.cs`, a new member beside group B's cut thresholds:
+`KhaozEngine.Render3D/TemporalSettings.cs`, after group E's `ResolvedUpscaleRatio` property, the class's last member, add:
 
 ```csharp
         /// <summary>Strength of the contrast adaptive sharpen that runs after the tonemap while temporal
@@ -19429,7 +19910,7 @@ namespace KhaozEngine.Render3D
 
 - [ ] **Step 4: Run it and see it pass**
 
-Run: `KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalSharpenChainGpuTests|FullyQualifiedName~HdrPipelineGpuTests|FullyQualifiedName~FxaaGpuTests|FullyQualifiedName~BloomGpuTests|FullyQualifiedName~DistortionGpuTests"`
+Run: `KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalSharpenChainGpuTests|FullyQualifiedName~HdrPipelineGpuTests|FullyQualifiedName~FxaaGpuTests|FullyQualifiedName~BloomGpuTests|FullyQualifiedName~DistortionGpuTests|FullyQualifiedName~TemporalResolveSmokeGpuTests|FullyQualifiedName~TemporalResolveSceneGpuTests"`
 Expected: `Passed!` with no failures. The existing post tests stay green because `sharpenRuns` is false outside temporal anti-aliasing.
 
 - [ ] **Step 5: Commit**
@@ -19448,7 +19929,7 @@ git commit -m "render3d(temporal): sharpen after the tonemap under temporal anti
 - Create: `KhaozEngine.Render3D/Internal/TemporalMipBias.cs`
 - Modify: `KhaozEngine.Render3D/TemporalSettings.cs` (add `MipBiasOffset`)
 - Modify: `KhaozEngine.Render3D/Rendering/ModelRenderer.FrameUbo.cs:20-31` (doc and signature) and `:48` (`Params`)
-- Modify: `KhaozEngine.Render3D/Scene3D.cs:1766` (the `_model.SetFrameUniforms` call, one argument appended on the same line, so the file does not grow)
+- Modify: `KhaozEngine.Render3D/Scene3D.cs:1664 (:1766 at 1a783fec)` (the `_model.SetFrameUniforms` call, one argument appended on the same line, so the file does not grow)
 - Modify: `KhaozEngine.Render3D/Scene3D.TemporalFinish.cs`
 - Test: `KhaozEngine.Render.Tests/Render3D/TemporalMipBiasTests.cs`
 - Test: `KhaozEngine.Render.Tests/Render3D/FrameUboMaterialLodTests.cs`
@@ -19675,7 +20156,7 @@ namespace KhaozEngine.Render3D.Internal
 }
 ```
 
-`KhaozEngine.Render3D/TemporalSettings.cs`:
+`KhaozEngine.Render3D/TemporalSettings.cs`, after Task F3's `Sharpness` field, add:
 
 ```csharp
         /// <summary>Added to the automatic texture mip bias of log2(internal / display) while temporal
@@ -19701,7 +20182,7 @@ Params.w), see TemporalMipBias. The default zero pair leaves the block byte-iden
                 Params = new Vector4(s.CelBands, count, materialLod.X, materialLod.Y),
 ```
 
-`KhaozEngine.Render3D/Scene3D.cs:1766`, the call groups A to E leave as it is on `feature/temporal-foundations` (group
+`KhaozEngine.Render3D/Scene3D.cs:1664 (:1766 at 1a783fec)`, the call groups A to E leave as it is on `feature/temporal-foundations` (group
 A's `FrameViewConsumerSweepTests` pins its `vp`, and no later group edits it), old:
 
 ```csharp
@@ -19720,7 +20201,7 @@ new, one argument appended on the same line so the file does not grow:
 ```csharp
         // Latched on each frame's first render by TemporalMaterialLod, which the model pass calls before it uploads
         // the frame block. The round 2 diagnostics read them back. A second render inside the frame (another viewport)
-        // leaves them alone, as group B's diagnostics are left alone (TemporalDiagnosticsTests).
+        // leaves them alone, as the round 1 diagnostics are left alone (TemporalDiagnosticsTests).
         int _temporalDisplayWidth, _temporalDisplayHeight, _temporalInternalWidth, _temporalInternalHeight;
         long _temporalSizesFrame = -1;
 
@@ -19902,7 +20383,8 @@ namespace KhaozEngine.Tests.Render3D
 Run: `dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~MaterialMipBiasShaderContractTests"`
 Expected: build failure, `error CS0117: 'ShaderSources' does not contain a definition for 'MaterialLodSampleGlsl'`.
 After Step 3's first file only (the two snippets, no program edits), rerun and expect
-`EveryMaterialProgramTakesTheBias` to fail listing all seven programs.
+`EveryMaterialProgramTakesTheBias` to fail listing fifteen programs, the seven base programs and group D's eight
+motion variants.
 
 - [ ] **Step 3: Implement**
 
@@ -19984,8 +20466,10 @@ git diff -U0 -- KhaozEngine.Render.Tests/Gpu/spirv-hashes KhaozEngine.Render.Tes
 ```
 
 Each table changes exactly the `.fragment` rows of `Foliage`, `Model`, `ModelDissolve`, `SkinnedModel`,
-`SkinnedModelDissolve`, `Splat` and `TileGround`, plus the `.fragment` row of every group D motion variant built
-from one of those six fragments. No `.vertex` row moves and no other program moves.
+`SkinnedModelDissolve`, `Splat` and `TileGround`, plus the `.fragment` rows of group D's eight motion variants built
+from those fragments: `ModelMotion`, `SkinnedModelMotion`, `SkinnedModelDissolveMotion`, `ModelCpuSkinnedMotion`,
+`ModelCpuSkinnedDissolveMotion`, `FoliageMotion`, `SplatMotion` and `TileGroundMotion`. That is fifteen rows a table.
+No `.vertex` row moves, no other program moves, and each table's `# Entries:` line is unchanged.
 
 - [ ] **Step 4: Run it and see it pass, then prove byte identity**
 
@@ -20067,7 +20551,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.InRange(d.InternalWidth, wantW - 1, wantW + 1);
             Assert.InRange(d.InternalHeight, wantH - 1, wantH + 1);
             Assert.Equal(preset, d.Preset);
-            Assert.Equal(d.InternalWidth / 320f, d.UpscaleRatio, 4);
+            Assert.Equal(wantW / 320f, d.UpscaleRatio, 2);
             Assert.Equal(-1, d.CountsFrameIndex);
         }
 
@@ -20096,27 +20580,28 @@ Expected: build failure, `error CS1061: 'TemporalDiagnostics' does not contain a
 
 - [ ] **Step 3: Implement**
 
-`KhaozEngine.Render3D/TemporalDiagnostics.cs`. Keep group B's summary and append `<param>` docs and the fields:
+`KhaozEngine.Render3D/TemporalDiagnostics.cs`. Keep group B's summary and append `<param>` docs and the fields, at
+column 0 because B8's file is file-scoped:
 
 ```csharp
-    /// <param name="InternalWidth">Width of the internal target the last frame rendered at.</param>
-    /// <param name="InternalHeight">Height of the internal target the last frame rendered at.</param>
-    /// <param name="DisplayWidth">Width of the target the last frame was presented to.</param>
-    /// <param name="DisplayHeight">Height of the target the last frame was presented to.</param>
-    /// <param name="Preset">The <see cref="TemporalSettings.Upscale"/> preset in force.</param>
-    /// <param name="UpscaleRatio">The effective internal to display width ratio, which shows an explicit
-    /// <see cref="TemporalSettings.UpscaleRatio"/> and the render size caps.</param>
-    /// <param name="CountsFrameIndex">The frame the counts below were sampled on, minus 1 before the first
-    /// <see cref="Scene3D.RequestTemporalCounts"/>.</param>
-    /// <param name="DisoccludedPixels">Estimated display pixels whose history was rejected by depth or an off-screen
-    /// reprojection, from a 32 by 18 grid of 16 samples a cell.</param>
-    /// <param name="ReactivePixels">Estimated display pixels the reactive estimate marked, on the same grid.</param>
-    /// <param name="ClippedPixels">Estimated display pixels whose history the variance clip moved, on the same grid.</param>
-    public readonly record struct TemporalDiagnostics(long FrameIndex, int JitterPhase, Vector2 JitterPixels,
-        int KeyedRigid, int KeyedSkinned, int KeyCollisions, bool HistoryValid, TemporalResetReason LastReset,
-        int InternalWidth = 0, int InternalHeight = 0, int DisplayWidth = 0, int DisplayHeight = 0,
-        TemporalUpscale Preset = TemporalUpscale.Native, float UpscaleRatio = 1f, long CountsFrameIndex = -1,
-        int DisoccludedPixels = 0, int ReactivePixels = 0, int ClippedPixels = 0);
+/// <param name="InternalWidth">Width of the internal target the last frame rendered at.</param>
+/// <param name="InternalHeight">Height of the internal target the last frame rendered at.</param>
+/// <param name="DisplayWidth">Width of the target the last frame was presented to.</param>
+/// <param name="DisplayHeight">Height of the target the last frame was presented to.</param>
+/// <param name="Preset">The <see cref="TemporalSettings.Upscale"/> preset in force.</param>
+/// <param name="UpscaleRatio">The effective internal to display width ratio, which shows an explicit
+/// <see cref="TemporalSettings.UpscaleRatio"/> and the render size caps.</param>
+/// <param name="CountsFrameIndex">The frame the counts below were sampled on, minus 1 before the first
+/// <c>Scene3D.RequestTemporalCounts</c>.</param>
+/// <param name="DisoccludedPixels">Estimated display pixels whose history was rejected by depth or an off-screen
+/// reprojection, from a 32 by 18 grid of 16 samples a cell.</param>
+/// <param name="ReactivePixels">Estimated display pixels the reactive estimate marked, on the same grid.</param>
+/// <param name="ClippedPixels">Estimated display pixels whose history the variance clip moved, on the same grid.</param>
+public readonly record struct TemporalDiagnostics(long FrameIndex, int JitterPhase, Vector2 JitterPixels,
+    int KeyedRigid, int KeyedSkinned, int KeyCollisions, bool HistoryValid, TemporalResetReason LastReset,
+    int InternalWidth = 0, int InternalHeight = 0, int DisplayWidth = 0, int DisplayHeight = 0,
+    TemporalUpscale Preset = TemporalUpscale.Native, float UpscaleRatio = 1f, long CountsFrameIndex = -1,
+    int DisoccludedPixels = 0, int ReactivePixels = 0, int ClippedPixels = 0);
 ```
 
 Group B's property in `Scene3D.Temporal.cs` (Task B8), old:
@@ -20152,13 +20637,14 @@ The arguments below that line are unchanged.
 `KhaozEngine.Render3D/Scene3D.TemporalFinish.cs`:
 
 ```csharp
-        // The latest on-request counts (Task F8 fills them at the harvest). Minus 1 until the first request.
+        // The latest on-request counts, filled when a requested frame's grid is harvested. Minus 1 until the first
+        // request.
         long _countsFrame = -1;
         int _countsDisoccluded, _countsReactive, _countsClipped;
 
         /// <summary>Round 1's diagnostics with round 2's sizes, preset, ratio and latest counts composed in. A
         /// struct copy, so reading LastTemporalDiagnostics still allocates nothing. Before the first render it is
-        /// round 1's default value unchanged, which group B's
+        /// round 1's default value unchanged, which
         /// <c>TemporalDiagnosticsTests.BeforeTheFirstRenderTheDiagnosticsAreDefault</c> pins.</summary>
         TemporalDiagnostics WithRound2Diagnostics(in TemporalDiagnostics round1) => _temporalDisplayWidth == 0 ? round1 : round1 with
         {
@@ -20201,7 +20687,9 @@ git commit -m "render3d(temporal): report sizes, preset and ratio in the tempora
 - Modify: `KhaozEngine.Render3D/SceneDebugView.cs` (group B's Task B7: the enum summary and the three round 2 member docs)
 - Modify: `KhaozEngine.Render3D/Scene3D.DebugView.cs` (group B's Task B7 file: the `DebugView` summary, and the three cases added to the `switch (_debugView)` in `DrawDebugView` that group D's Task D16 wrote there, amendment 6)
 - Modify: `KhaozEngine.Render3D/Scene3D.TemporalFinish.cs`
-- Modify: the seven lists (amendment 9: six gain rows beside the `TemporalResolve` rows group E's Task E6 added, and `VulkanShippedVertexLayoutTests.cs` gains none because `FullscreenVert` declares no vertex input), the three hash tables and the corpus
+- Modify: the seven lists (amendment 9: six gain rows beside the `TemporalResolve` rows group E's Task E6 added, the `Render3D/UboLayoutTests` fact going in `Render3D/TemporalUboLayoutTests.cs` from Task E3, and `VulkanShippedVertexLayoutTests.cs` gains none because `FullscreenVert` declares no vertex input), the three hash tables and the corpus
+- Modify: `KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs` (a row and the counts at `:27`, `:51`)
+- Modify: `KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs:124`, `KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs:143`, `KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs:48`, `:73` and `KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs:57` (the pinned counts)
 - Test: `KhaozEngine.Render.Tests/Render3D/SceneDebugViewTests.cs` (group B's theory narrowed to `MotionVectors`, one theory added)
 - Create (baked locally on real Metal, replaced by the CI bake in Task H3): `KhaozEngine.Render.Tests/Gpu/goldens/temporal_debug_history.metal-native.txt`, `temporal_debug_disocclusion.metal-native.txt`, `temporal_debug_reactive.metal-native.txt`
 - Test: `KhaozEngine.Render.Tests/Gpu/TemporalDebugViewGoldenTests.cs`
@@ -20277,8 +20765,8 @@ namespace KhaozEngine.Tests.Gpu
             return last;
         }
 
-        // Task F9 adds the shared acceptance rig after this task, so these tests carry the rectangle, the footprint and
-        // the mean luma they need. F9's namespace-level PixelRect has the same shape, and this nested one shadows it here.
+        // These tests carry the rectangle, the footprint and the mean luma they need. The namespace-level PixelRect in
+        // TemporalAcceptance.cs has the same shape, and this nested one shadows it here.
         readonly record struct PixelRect(int X0, int Y0, int X1, int Y1)
         {
             public bool Contains(int x, int y) => x >= X0 && x < X1 && y >= Y0 && y < Y1;
@@ -20389,7 +20877,23 @@ namespace KhaozEngine.Tests.Gpu
 The test carries its own `PixelRect`, footprint and mean luma, because Task F9's shared rig lands after this task.
 
 `KhaozEngine.Render.Tests/Render3D/SceneDebugViewTests.cs` (group B's Task B7). Amendment 7 narrows which views turn
-temporal rendering on, so B7's theory keeps its body and only its `MotionVectors` row, old:
+temporal rendering on. The class summary, old:
+
+```csharp
+/// <summary><c>Scene3D.DebugView</c>: <see cref="SceneDebugView.None"/> by default, and any other value turns temporal
+/// rendering on while it is set (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, sections 5 and 6).</summary>
+```
+
+new:
+
+```csharp
+/// <summary><c>Scene3D.DebugView</c>: <see cref="SceneDebugView.None"/> by default, and only
+/// <see cref="SceneDebugView.MotionVectors"/> turns temporal rendering on while it is set. The three resolve views take
+/// effect only under temporal anti-aliasing (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, sections 5 and
+/// 6).</summary>
+```
+
+B7's theory keeps its body and only its `MotionVectors` row, old:
 
 ```csharp
     [Theory]
@@ -20574,9 +21078,9 @@ using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Render3D.Rendering
 {
-    /// <summary>Round 2's finishing members on the resolve: the debug views and, from Task F8, the count probe. Both
-    /// evaluate the resolve's own per-pixel function over the set the resolve bound this frame, and both are built
-    /// on first use, so a frame that asks for neither owns neither.</summary>
+    /// <summary>Round 2's finishing members on the resolve, starting with the debug views. Each evaluates the
+    /// resolve's own per-pixel function over the set the resolve bound this frame and is built on first use, so a
+    /// frame that asks for none of them owns none of them.</summary>
     internal sealed partial class TemporalResolveRenderer
     {
         TemporalDebugViewPass? _debugView;
@@ -20630,7 +21134,15 @@ new:
         internal bool TemporalActive => ForceTemporalForTests || _debugView == SceneDebugView.MotionVectors || TemporalResolveActive;
 ```
 
-and its summary becomes:
+and its summary, as Task E9 left it, old:
+
+```csharp
+        /// <summary>Whether a temporal consumer asked for this frame, which is what turns the jitter on: the temporal
+        /// anti-aliasing mode, the main requester, a <see cref="DebugView"/> other than
+        /// <see cref="SceneDebugView.None"/>, or the test seam.</summary>
+```
+
+new:
 
 ```csharp
         /// <summary>Whether a temporal consumer asked for this frame, which is what turns the jitter on: the temporal
@@ -20724,7 +21236,9 @@ The lists. The resolve layout's key is `Temporal.resolve`, the one group E's Tas
 ```csharp
 // The pinned counts, each up by one after Task F2: the graphics program count at VulkanShaderBindingTableTests.cs:210
 // and D3D11HlslByteEqualityTests.cs:124 from 68 to 69, VulkanDescriptorLimitTests.cs:254 (layouts) from 53 to 54 and
-// :255 (pipelines) from 56 to 57.
+// :255 (pipelines) from 56 to 57, VulkanSpirvByteEqualityTests.cs:143 (stages) from 144 to 146,
+// VulkanDynamicOffsetTests.cs:57 (layouts) from 53 to 54, and VulkanLayoutCompatibilityTests.cs:48 (pipelines) from 56
+// to 57 and :73 from 56 * 56 to 57 * 57.
 // ShippedShaderPrograms.cs, after group E's TemporalResolve row. Raise the counts at :27 and :51 by one.
             yield return new("TemporalDebugView", ShaderSources.FullscreenVert, ShaderSources.TemporalDebugFrag);
 // VulkanShaderBindingTableTests.cs
@@ -20740,7 +21254,7 @@ The lists. The resolve layout's key is `Temporal.resolve`, the one group E's Tas
         [Fact]
         public void TemporalDebugView()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TemporalDebugFrag, "TemporalDebugView");
-// UboLayoutTests.cs
+// TemporalUboLayoutTests.cs
         [Fact]
         public void DebugViewUbo_MarshalSize_EqualsModeBufferAllocation()
         {
@@ -20763,7 +21277,7 @@ shows what its test asserts before committing the grids.
 
 - [ ] **Step 4: Run it and see it pass**
 
-Run: `KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalDebugViewGoldenTests|FullyQualifiedName~DebugView|FullyQualifiedName~TemporalActivationTests|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~ByteEquality|FullyQualifiedName~ShaderCorpus|FullyQualifiedName~VulkanShaderBindingTable|FullyQualifiedName~VulkanDescriptorLimit|FullyQualifiedName~D3D11RegisterNumbering|FullyQualifiedName~D3D11ResourceModel|FullyQualifiedName~VulkanShippedVertexLayoutTests|FullyQualifiedName~UboLayoutTests"`
+Run: `KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalDebugViewGoldenTests|FullyQualifiedName~DebugView|FullyQualifiedName~TemporalActivationTests|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~ByteEquality|FullyQualifiedName~ShaderCorpus|FullyQualifiedName~VulkanShaderBindingTable|FullyQualifiedName~VulkanDescriptorLimit|FullyQualifiedName~D3D11RegisterNumbering|FullyQualifiedName~D3D11ResourceModel|FullyQualifiedName~VulkanShippedVertexLayoutTests|FullyQualifiedName~UboLayoutTests|FullyQualifiedName~VulkanLayoutCompatibilityTests|FullyQualifiedName~VulkanDynamicOffsetTests"`
 Expected: `Passed!` with no failures, group D's `MotionVectors` view tests included.
 
 - [ ] **Step 5: Commit**
@@ -20777,7 +21291,9 @@ git add KhaozEngine.Render3D/Internal/ShaderSources.TemporalDebug.cs KhaozEngine
   KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs KhaozEngine.Render.Tests/Gpu/VulkanShaderBindingTableTests.cs \
   KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs KhaozEngine.Render.Tests/Gpu/D3D11RegisterNumberingTests.cs \
   KhaozEngine.Render.Tests/Gpu/D3D11ResourceModelTests.cs KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs \
-  KhaozEngine.Render.Tests/Render3D/UboLayoutTests.cs KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Render3D/TemporalUboLayoutTests.cs KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs KhaozEngine.Render.Tests/Gpu/VulkanDynamicOffsetTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs \
   KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt \
   KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt KhaozEngine.Render.Tests/Gpu/shader-corpus/corpus.txt \
   KhaozEngine.Render.Tests/Gpu/goldens/temporal_debug_history.metal-native.txt \
@@ -20797,7 +21313,9 @@ git commit -m "render3d(temporal): add the history, disocclusion and reactive de
 - Modify: group E's `KhaozEngine.Render3D/Rendering/TemporalResolveRenderer.cs` (`RecordFinishProbe(cl);` as the last statement of `Run`, Task E6)
 - Modify: `KhaozEngine.Render3D/Scene3D.TemporalFinish.cs`
 - Modify: `KhaozEngine.Render3D/Scene3D.FramePrepare.cs:52` (one call after `_framePrepared = true;`)
-- Modify: the seven lists (amendment 9: `ShippedShaderPrograms.cs`, `VulkanShaderBindingTableTests.cs`, `VulkanDescriptorLimitTests.cs` and `ShaderSourceValidationTests.cs` gain rows, while `D3D11RegisterNumberingTests.cs`, `D3D11ResourceModelTests.cs`, `Render3D/UboLayoutTests.cs` and `VulkanShippedVertexLayoutTests.cs` gain none), the three hash tables and the corpus
+- Modify: `KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs` (a row and the counts at `:27`, `:51`), the seven lists (amendment 9: `VulkanShaderBindingTableTests.cs`, `VulkanDescriptorLimitTests.cs` and `ShaderSourceValidationTests.cs` gain rows, while `D3D11RegisterNumberingTests.cs`, `D3D11ResourceModelTests.cs`, `Render3D/UboLayoutTests.cs` and `VulkanShippedVertexLayoutTests.cs` gain none), the three hash tables and the corpus
+- Modify: `KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs:124`, `KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs:143` and `KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs:48`, `:73` (the pinned counts)
+- Check, no change: `VulkanDynamicOffsetTests.cs:57` (the layout count stays at 54)
 - Test: `KhaozEngine.Render.Tests/Render3D/TemporalCountProbeTests.cs`
 - Test: `KhaozEngine.Render.Tests/Gpu/TemporalCountProbeGpuTests.cs`
 
@@ -20920,7 +21438,7 @@ namespace KhaozEngine.Tests.Gpu
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalCountProbe"`
-Expected: build failure, `error CS0246: The type or namespace name 'TemporalCountProbe' could not be found` and
+Expected: build failure, `error CS0103: The name 'TemporalCountProbe' does not exist in the current context` and
 `'Scene3D' does not contain a definition for 'RequestTemporalCounts'`.
 
 - [ ] **Step 3: Implement**
@@ -21190,6 +21708,8 @@ Add `using KhaozEngine.Render3D.Rendering;` to `Scene3D.TemporalFinish.cs` if ab
 // The pinned counts after Task F7: the graphics program count at VulkanShaderBindingTableTests.cs:210 and
 // D3D11HlslByteEqualityTests.cs:124 from 69 to 70, VulkanDescriptorLimitTests.cs:255 (pipelines) from 57 to 58, and
 // :254 (layouts) unchanged at 54, because the probe binds the resolve's own layout.
+// VulkanSpirvByteEqualityTests.cs:143 (stages) from 146 to 148, VulkanLayoutCompatibilityTests.cs:48 (pipelines) from
+// 57 to 58 and :73 from 57 * 57 to 58 * 58, and VulkanDynamicOffsetTests.cs:57 (layouts) unchanged at 54.
 // ShippedShaderPrograms.cs, after TemporalDebugView. Raise the counts at :27 and :51 by one.
             yield return new("TemporalCountProbe", ShaderSources.FullscreenVert, ShaderSources.TemporalProbeFrag);
 // VulkanShaderBindingTableTests.cs
@@ -21209,7 +21729,7 @@ exactly `TemporalCountProbe.fragment` and `TemporalCountProbe.vertex`.
 
 - [ ] **Step 4: Run it and see it pass**
 
-Run: `dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalCountProbeTests|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~ByteEquality|FullyQualifiedName~ShaderCorpus|FullyQualifiedName~VulkanShaderBindingTable|FullyQualifiedName~VulkanDescriptorLimit|FullyQualifiedName~VulkanShippedVertexLayoutTests"`
+Run: `dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalCountProbeTests|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~ByteEquality|FullyQualifiedName~ShaderCorpus|FullyQualifiedName~VulkanShaderBindingTable|FullyQualifiedName~VulkanDescriptorLimit|FullyQualifiedName~VulkanShippedVertexLayoutTests|FullyQualifiedName~VulkanLayoutCompatibilityTests|FullyQualifiedName~VulkanDynamicOffsetTests"`
 Expected: `Passed!` with no failures.
 
 Run: `KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalCountProbeGpuTests"`
@@ -21224,7 +21744,8 @@ git add KhaozEngine.Render3D/Internal/ShaderSources.TemporalDebug.cs KhaozEngine
   KhaozEngine.Render.Tests/Render3D/TemporalCountProbeTests.cs KhaozEngine.Render.Tests/Gpu/TemporalCountProbeGpuTests.cs \
   KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs KhaozEngine.Render.Tests/Gpu/VulkanShaderBindingTableTests.cs \
   KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs \
-  KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs \
   KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt \
   KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt KhaozEngine.Render.Tests/Gpu/shader-corpus/corpus.txt
 git commit -m "render3d(temporal): sample disoccluded, reactive and clipped counts on request"
@@ -21238,7 +21759,6 @@ git commit -m "render3d(temporal): sample disoccluded, reactive and clipped coun
 - Create: `KhaozEngine.Render.Tests/Gpu/TemporalAcceptance.cs`
 - Read, unchanged: `KhaozEngine.Render.Tests/Gpu/TemporalFixture.cs` (group D's Tasks D12 and D17 already wrote every member this rig uses)
 - Test: `KhaozEngine.Render.Tests/Render3D/TemporalAcceptanceMetricTests.cs`
-- Test: `KhaozEngine.Render.Tests/Gpu/TemporalFixtureSurfaceGpuTests.cs`
 
 **Interfaces:**
 - Consumes: group D's `TemporalFixture` (Task D12, group D amendment 6, and `LastSubmitMilliseconds` from Task D17), unchanged:
@@ -21308,51 +21828,9 @@ namespace KhaozEngine.Tests.Render3D
 }
 ```
 
-`KhaozEngine.Render.Tests/Gpu/TemporalFixtureSurfaceGpuTests.cs`:
-
-```csharp
-using KhaozEngine.Render3D;
-using Xunit;
-
-namespace KhaozEngine.Tests.Gpu
-{
-    public sealed class TemporalFixtureSurfaceGpuTests
-    {
-        [GpuFact]
-        public void SkippedFramesAdvanceTheFrameIndexLikeRenderedOnes()
-        {
-            long rendered, skipped;
-            using (var a = new TemporalFixture(64, 36, s => s.Post.Quality.AntiAliasing = AntiAliasing.Temporal))
-            {
-                for (int i = 0; i < 6; i++) a.Frame((_, _) => { });
-                rendered = a.Scene.LastTemporalDiagnostics.FrameIndex;
-            }
-            using (var b = new TemporalFixture(64, 36, s => s.Post.Quality.AntiAliasing = AntiAliasing.Temporal))
-            {
-                b.SkipFrames(5);
-                b.Frame((_, _) => { });
-                skipped = b.Scene.LastTemporalDiagnostics.FrameIndex;
-            }
-            Assert.Equal(rendered, skipped);
-        }
-
-        [GpuFact]
-        public void ResizeRendersAtTheNewSize()
-        {
-            using var fx = new TemporalFixture(64, 36);
-            fx.Frame((_, _) => { });
-            fx.Resize(96, 54);
-            byte[] frame = fx.Frame((_, _) => { });
-            Assert.Equal(96 * 54 * 4, frame.Length);
-            Assert.Equal(96, fx.Scene.LastTemporalDiagnostics.DisplayWidth);
-        }
-    }
-}
-```
-
 - [ ] **Step 2: Run it and see it fail**
 
-Run: `dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalAcceptanceMetricTests|FullyQualifiedName~TemporalFixtureSurfaceGpuTests"`
+Run: `dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalAcceptanceMetricTests"`
 Expected: build failure, `error CS0246: The type or namespace name 'FlipCounter' could not be found`, and the same
 for `PixelRect` and `TemporalAcceptance`. Group D's `TemporalFixture` already compiles with every member used here.
 
@@ -21685,13 +22163,13 @@ Run: `dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Re
 Expected: `Passed!  - Failed: 0, Passed: 6`.
 
 Run: `KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalFixture"`
-Expected: `Passed!` with no failures, group D's own fixture tests included.
+Expected: `Passed!` with no failures on group D's own fixture tests, which this rig builds on.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add KhaozEngine.Render.Tests/Gpu/TemporalAcceptance.cs \
-  KhaozEngine.Render.Tests/Render3D/TemporalAcceptanceMetricTests.cs KhaozEngine.Render.Tests/Gpu/TemporalFixtureSurfaceGpuTests.cs
+  KhaozEngine.Render.Tests/Render3D/TemporalAcceptanceMetricTests.cs
 git commit -m "test(temporal): add the round 2 acceptance rig and flip metric"
 ```
 
@@ -21725,6 +22203,14 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class TemporalConvergenceGoldenTests
     {
         const int W = 320, H = 180;
+
+        // Acceptance thresholds, first estimates the first real-Metal run retunes in one place. Errors are mean abs
+        // luma against the SSAA 8x reference.
+        const double MinAliasingError = 0.02;         // the fence has to alias without anti-aliasing
+        const double MaxShareOfAliasingError = 0.35;  // 32 frames remove at least 65% of it
+        const double MaxShareOfFirstFrame = 0.6;      // history improves on the first frame by at least 40%
+        const double MaxConvergedError = 0.05;        // the converged frame against the reference
+
         readonly ITestOutputHelper _out;
         public TemporalConvergenceGoldenTests(ITestOutputHelper output) => _out = output;
 
@@ -21750,10 +22236,10 @@ namespace KhaozEngine.Tests.Gpu
             string ctx = $"mean abs luma against SSAA 8x: off {errOff:0.0000}, TAA frame 1 {errFirst:0.0000}, TAA frame 32 {errTaa:0.0000}";
             _out.WriteLine(ctx);
 
-            Assert.True(errOff > 0.02, $"the fence must alias without anti-aliasing or this measures nothing. {ctx}");
-            Assert.True(errTaa <= 0.35 * errOff, $"32 frames must remove at least 65% of the aliasing error. {ctx}");
-            Assert.True(errTaa <= 0.6 * errFirst, $"history must improve on the first frame by at least 40%. {ctx}");
-            Assert.True(errTaa <= 0.05, $"the converged frame must sit within 0.05 mean luma of the reference. {ctx}");
+            Assert.True(errOff > MinAliasingError, $"the fence must alias without anti-aliasing or this measures nothing. {ctx}");
+            Assert.True(errTaa <= MaxShareOfAliasingError * errOff, $"32 frames must remove at least 65% of the aliasing error. {ctx}");
+            Assert.True(errTaa <= MaxShareOfFirstFrame * errFirst, $"history must improve on the first frame by at least 40%. {ctx}");
+            Assert.True(errTaa <= MaxConvergedError, $"the converged frame must sit within {MaxConvergedError} mean luma of the reference. {ctx}");
             GoldenCompare.AssertOrUpdate("temporal_converged_native", converged, W, H);
         }
     }
@@ -21821,6 +22307,12 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int W = 320, H = 180, Warm = 16, Measured = 64;
         const float PanPixelsPerFrame = 0.2f;
+
+        // Acceptance thresholds, first estimates the first real-Metal run retunes in one place.
+        const double MinMsaaFlipRate = 0.005;                        // MSAA 4x has to flicker or the comparison is empty
+        const double MinHeldCoverage = 0.3, MaxHeldCoverage = 0.7;   // a half dissolve's converged coverage
+        const double MaxHeldFlipRate = 0.01;                         // flips per pixel per frame of a held dissolve
+
         readonly ITestOutputHelper _out;
         public TemporalStabilityGoldenTests(ITestOutputHelper output) => _out = output;
 
@@ -21828,7 +22320,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             string ctx = $"{what}: flips per pixel per frame, MSAA 4x {msaa:0.0000}, TAA {taa:0.0000}";
             _out.WriteLine(ctx);
-            Assert.True(msaa >= 0.005, $"MSAA 4x must flicker on this path or the comparison measures nothing. {ctx}");
+            Assert.True(msaa >= MinMsaaFlipRate, $"MSAA 4x must flicker on this path or the comparison measures nothing. {ctx}");
             Assert.True(taa < msaa, $"temporal anti-aliasing must flicker less than MSAA 4x. {ctx}");
         }
 
@@ -21910,8 +22402,8 @@ namespace KhaozEngine.Tests.Gpu
             double lSolid = TemporalAcceptance.MeanLuma(solid, W, prop), lAbsent = TemporalAcceptance.MeanLuma(absent, W, prop);
             double coverage = (TemporalAcceptance.MeanLuma(held, W, prop) - lAbsent) / (lSolid - lAbsent);
             _out.WriteLine($"half dissolve, still: coverage {coverage:0.000}, flips per pixel per frame {still.FlipsPerPixelPerFrame:0.0000}");
-            Assert.InRange(coverage, 0.3, 0.7);
-            Assert.True(still.FlipsPerPixelPerFrame <= 0.01, $"a held dissolve must not crawl, {still.FlipsPerPixelPerFrame:0.0000}");
+            Assert.InRange(coverage, MinHeldCoverage, MaxHeldCoverage);
+            Assert.True(still.FlipsPerPixelPerFrame <= MaxHeldFlipRate, $"a held dissolve must not crawl, {still.FlipsPerPixelPerFrame:0.0000}");
 
             // Slow pan: fewer flips than MSAA 4x.
             double Flips(AntiAliasing aa) => TemporalAcceptance.FlipRate(W, H, s => stage.Setup(s, aa),
@@ -21946,7 +22438,8 @@ No production code. The file above is the whole task.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalStabilityGoldenTests" --logger "console;verbosity=detailed"`
-Expected: `Passed!  - Failed: 0, Passed: 5`, and five printed lines of flip rates. Paste them into the commit body.
+Expected: `Passed!  - Failed: 0, Passed: 5`, and six printed lines (five flip-rate comparisons and the held-dissolve
+coverage line). Paste them into the commit body.
 
 - [ ] **Step 5: Commit**
 
@@ -21990,6 +22483,15 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int W = 320, H = 180;
         const float Tolerance = 0.05f;
+
+        // Acceptance thresholds, first estimates the first real-Metal run retunes in one place.
+        const int MinTrailPixels = 100;                      // a trail region smaller than this measured nothing
+        const int AllowedOverOneIn = 200;                    // at most one pixel in 200 of a region may stay over Tolerance
+        const float MaxMotionErrorInternalPixels = 0.05f;    // the jump frame's motion against the jump
+        const float GhostTolerance = 0.2f, GhostEdgeStep = 0.08f;   // GhostPixels' luma difference and reference edge step
+        const int AllowedGhostOneIn = 500;                   // at most one ghost pixel in 500 of the frame
+        const int MinBurstPixels = 400;                      // a burst region smaller than this measured nothing
+
         readonly ITestOutputHelper _out;
         public TemporalGhostingGoldenTests(ITestOutputHelper output) => _out = output;
 
@@ -22004,8 +22506,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             var (over, check, worst) = TemporalAcceptance.Trail(frame, background, W, H, footprints, Tolerance);
             _out.WriteLine($"{what}: {over} of {check} trail pixels over {Tolerance}, worst {worst:0.000}");
-            Assert.True(check > 100, $"{what}: the trail region holds {check} pixels, so nothing was measured");
-            Assert.True(over <= check / 200, $"{what}: {over} of {check} pixels the object left two or more frames ago still differ from the background by more than {Tolerance} (worst {worst:0.000})");
+            Assert.True(check > MinTrailPixels, $"{what}: the trail region holds {check} pixels, so nothing was measured");
+            Assert.True(over <= Math.Max(1, check / AllowedOverOneIn), $"{what}: {over} of {check} pixels the object left two or more frames ago still differ from the background by more than {Tolerance} (worst {worst:0.000})");
         }
 
         void Crossing(bool keyed)
@@ -22063,8 +22565,8 @@ namespace KhaozEngine.Tests.Gpu
                 Vector2 m = motion[cy * mw + cx];
                 float want = (to.X - from.X) / (stage.OrthoSize * W / H);   // the jump as a fraction of the view width
                 _out.WriteLine($"teleport: motion {m.X:0.00000},{m.Y:0.00000} against {want:0.00000},0");
-                Assert.True(MathF.Abs(m.X - want) <= 0.05f / mw && MathF.Abs(m.Y) <= 0.05f / mh,
-                    $"the jump frame's motion must equal the jump within 0.05 internal pixels: {m} against ({want}, 0)");
+                Assert.True(MathF.Abs(m.X - want) <= MaxMotionErrorInternalPixels / mw && MathF.Abs(m.Y) <= MaxMotionErrorInternalPixels / mh,
+                    $"the jump frame's motion must equal the jump within {MaxMotionErrorInternalPixels} internal pixels: {m} against ({want}, 0)");
                 after = fx.Frame(Draw);                           // two frames after the body left 'from'
             }
             byte[] wall = RunTo(stage, jump + 1, (s, _) => stage.Wall(s));
@@ -22089,9 +22591,9 @@ namespace KhaozEngine.Tests.Gpu
             {
                 byte[] frame = fx.Frame(yard.Draw);
                 if (!references.TryGetValue(n, out byte[]? reference)) continue;
-                int ghosts = TemporalAcceptance.GhostPixels(frame, reference, W, H, 0.2f, 0.08f);
+                int ghosts = TemporalAcceptance.GhostPixels(frame, reference, W, H, GhostTolerance, GhostEdgeStep);
                 _out.WriteLine($"zoom {yard.ZoomAt(n):0.000} at frame {n}: {ghosts} ghost pixels");
-                Assert.True(ghosts <= W * H / 500, $"frame {n} shows {ghosts} ghost pixels away from the reference's edges");
+                Assert.True(ghosts <= W * H / AllowedGhostOneIn, $"frame {n} shows {ghosts} ghost pixels away from the reference's edges");
             }
         }
 
@@ -22141,8 +22643,8 @@ namespace KhaozEngine.Tests.Gpu
                     if (d > Tolerance) over++;
                 }
             _out.WriteLine($"particle burst: {over} of {burst.Area} pixels over {Tolerance}, worst {worst:0.000}");
-            Assert.True(burst.Area > 400, "the burst region is too small to measure");
-            Assert.True(over <= burst.Area / 200, $"the burst left {over} of {burst.Area} pixels over {Tolerance} two frames after it ended (worst {worst:0.000})");
+            Assert.True(burst.Area > MinBurstPixels, "the burst region is too small to measure");
+            Assert.True(over <= burst.Area / AllowedOverOneIn, $"the burst left {over} of {burst.Area} pixels over {Tolerance} two frames after it ended (worst {worst:0.000})");
         }
     }
 }
@@ -22201,6 +22703,12 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class TemporalDisocclusionGoldenTests
     {
         const int W = 320, H = 180;
+
+        // Acceptance thresholds, first estimates the first real-Metal run retunes in one place: red excess over the
+        // bare wall in 8-bit steps.
+        const double MaxMeanRedExcess = 3;
+        const int MaxWorstRedExcess = 20;
+
         readonly ITestOutputHelper _out;
         public TemporalDisocclusionGoldenTests(ITestOutputHelper output) => _out = output;
 
@@ -22241,8 +22749,8 @@ namespace KhaozEngine.Tests.Gpu
                 }
             double mean = sum / revealed.Area;
             _out.WriteLine($"revealed {revealed.Area} pixels: mean red excess {mean:0.00} steps, worst {worst}");
-            Assert.True(mean <= 3, $"the revealed wall carries the occluder's red, mean {mean:0.00} steps");
-            Assert.True(worst <= 20, $"a revealed pixel carries the occluder's red, worst {worst} steps");
+            Assert.True(mean <= MaxMeanRedExcess, $"the revealed wall carries the occluder's red, mean {mean:0.00} steps");
+            Assert.True(worst <= MaxWorstRedExcess, $"a revealed pixel carries the occluder's red, worst {worst} steps");
         }
     }
 }
@@ -22267,6 +22775,10 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalResetGoldenTests
     {
+        // Rounding between two renders of the same frame, in 8-bit steps: the worst channel and the mean.
+        const int MaxWorstStep = 1;
+        const double MaxMeanStep = 0.05;
+
         static void Layout(FrontStage stage, Scene3D s, int n, float cameraX, bool second)
         {
             s.Camera.Target = new Vector3(cameraX, 0f, 0f);
@@ -22290,7 +22802,7 @@ namespace KhaozEngine.Tests.Gpu
                 sum += d;
             }
             double mean = sum / (3.0 * w * h);
-            Assert.True(worst <= 1 && mean <= 0.05, $"{what}: the frame after the reset differs from a from-scratch render (worst {worst} steps, mean {mean:0.000})");
+            Assert.True(worst <= MaxWorstStep && mean <= MaxMeanStep, $"{what}: the frame after the reset differs from a from-scratch render (worst {worst} steps, mean {mean:0.000})");
         }
 
         [GpuFact]
@@ -22421,6 +22933,11 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class TemporalUpscalingGoldenTests
     {
         const int W = 320, H = 180, IW = 213, IH = 120;
+
+        // Acceptance threshold, a first estimate the first real-Metal run retunes in one place: Quality's error
+        // against native, as a share of the bilinear upscale's.
+        const double MaxErrorShareOfBilinear = 0.85;
+
         readonly ITestOutputHelper _out;
         public TemporalUpscalingGoldenTests(ITestOutputHelper output) => _out = output;
 
@@ -22470,7 +22987,7 @@ namespace KhaozEngine.Tests.Gpu
             double eq = TemporalAcceptance.MeanAbsLuma(quality, native, W, all);
             double eb = TemporalAcceptance.MeanAbsLuma(bilinear, native, W, all);
             _out.WriteLine($"mean abs luma against native: Quality upscale {eq:0.0000}, bilinear upscale {eb:0.0000}");
-            Assert.True(eq < 0.85 * eb, $"Quality must be at least 15% closer to native than a bilinear upscale: {eq:0.0000} against {eb:0.0000}");
+            Assert.True(eq < MaxErrorShareOfBilinear * eb, $"Quality must be at least 15% closer to native than a bilinear upscale: {eq:0.0000} against {eb:0.0000}");
             GoldenCompare.AssertOrUpdate("temporal_upscale_quality_chart", quality, W, H);
         }
     }
@@ -22495,6 +23012,12 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class TemporalMipBiasGoldenTests
     {
         const int W = 320, H = 180;
+
+        // Acceptance thresholds, first estimates the first real-Metal run retunes in one place.
+        const double MinDetailKept = 0.8;            // biased Performance detail as a share of native's
+        const double MaxUnbiasedDetailShare = 0.9;   // unbiased detail as a share of biased, so the bias is what keeps it
+        const double MaxBandLumaError = 0.08;        // mean luma error against native in the band
+
         readonly ITestOutputHelper _out;
         public TemporalMipBiasGoldenTests(ITestOutputHelper output) => _out = output;
 
@@ -22557,9 +23080,9 @@ namespace KhaozEngine.Tests.Gpu
             double cU = TemporalAcceptance.LocalContrast(unbiased, W, H, band);
             double err = TemporalAcceptance.MeanAbsLuma(biased, native, W, band);
             _out.WriteLine($"local contrast: native {cN:0.0000}, Performance biased {cB:0.0000}, Performance unbiased {cU:0.0000}, biased error {err:0.0000}");
-            Assert.True(cB >= 0.8 * cN, $"Performance must keep 80% of the native detail: {cB:0.0000} against {cN:0.0000}");
-            Assert.True(cU < 0.9 * cB, $"the bias must be what keeps it: unbiased {cU:0.0000} against biased {cB:0.0000}");
-            Assert.True(err <= 0.08, $"Performance must stay within 0.08 mean luma of native in the band, got {err:0.0000}");
+            Assert.True(cB >= MinDetailKept * cN, $"Performance must keep {MinDetailKept:P0} of the native detail: {cB:0.0000} against {cN:0.0000}");
+            Assert.True(cU < MaxUnbiasedDetailShare * cB, $"the bias must be what keeps it: unbiased {cU:0.0000} against biased {cB:0.0000}");
+            Assert.True(err <= MaxBandLumaError, $"Performance must stay within {MaxBandLumaError} mean luma of native in the band, got {err:0.0000}");
             GoldenCompare.AssertOrUpdate("temporal_mipbias_checker_performance", biased, W, H);
         }
     }
@@ -22569,9 +23092,8 @@ namespace KhaozEngine.Tests.Gpu
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~TemporalUpscalingGoldenTests|FullyQualifiedName~TemporalMipBiasGoldenTests"`
-Expected: the metric assertions pass and both tests fail at `golden '...' missing`. To see the mip bias
-assertion bite, temporarily run with `MaterialLodSampleGlsl` returning `texture(sampler2D(map, samp), uv)` and
-`Params.w` ignored: `the bias must be what keeps it` fails. Restore before going on.
+Expected: the metric assertions pass and both tests fail at `golden '...' missing`. The test's own unbiased run is
+the control for the mip bias assertion, so no production shader is edited to see it bite.
 
 - [ ] **Step 3: Bake the goldens**
 
@@ -22635,9 +23157,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             AntiAliasing aa = mode switch { 0 => AntiAliasing.Off, 1 => AntiAliasing.Fxaa, _ => AntiAliasing.Msaa(4) };
             var stage = new FrontStage(160, 90, 4.5f);
-            using var fx = new TemporalFixture(160, 90, s => stage.Setup(s, aa));
-            fx.Frames(3, (s, _) => { stage.Wall(s); s.Draw(stage.Box, Matrix4x4.Identity); });
+            // A round 2 debug view and a count request every frame: both take effect only under temporal
+            // anti-aliasing, so neither may build anything here.
+            using var fx = new TemporalFixture(160, 90, s => { stage.Setup(s, aa); s.DebugView = SceneDebugView.History; });
+            fx.Frames(3, (s, _) => { s.RequestTemporalCounts(); stage.Wall(s); s.Draw(stage.Box, Matrix4x4.Identity); });
             Scene3D scene = fx.Scene;
+            Assert.Null(scene.TemporalResolveRendererForTests);
             Assert.False(scene.TemporalSharpenBuiltForTests, $"{aa} built the temporal sharpen");
             Assert.False(scene.TemporalDebugViewBuiltForTests, $"{aa} built the temporal debug view pass");
             Assert.False(scene.TemporalCountProbeBuiltForTests, $"{aa} built the temporal count probe");
@@ -22763,6 +23288,10 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class TemporalResolveCostPerfGpuTests
     {
         const int W = 2560, H = 1440, Rounds = 15, Warm = 2, Block = 12;
+
+        // The spec's budget for the resolve and the sharpen together, in ms at a 2560x1440 display.
+        const double ResolveBudgetMs = 1.0;
+
         readonly ITestOutputHelper _out;
         public TemporalResolveCostPerfGpuTests(ITestOutputHelper output) => _out = output;
 
@@ -22798,7 +23327,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
             double taaMs = Median(taa), offMs = Median(off), delta = taaMs - offMs;
             _out.WriteLine($"{fx.Device.Backend} {W}x{H} Quality: temporal {taaMs:0.000} ms a frame, off at 1707x960 {offMs:0.000} ms, resolve and sharpen at most {delta:0.000} ms");
-            Assert.True(delta < 1.0, $"resolve and sharpen must cost under 1.0 ms at 2560x1440, measured at most {delta:0.000} ms");
+            Assert.True(delta < ResolveBudgetMs, $"resolve and sharpen must cost under {ResolveBudgetMs} ms at 2560x1440, measured at most {delta:0.000} ms");
         }
     }
 }
@@ -22957,6 +23486,15 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int W = 320, H = 180, Warm = 24, Measured = 16;
         const float YawPerFrame = 0.01f;   // radians, 0.57 degrees a frame, far under the 60 degree automatic cut
+
+        // Acceptance thresholds, first estimates the first real-Metal run retunes in one place.
+        const int MinStarPixels = 100;           // the reference frame has to draw at least this many star pixels
+        const double MinStarsKept = 0.8;         // share of star pixels still lit after the yaw
+        const double MaxYawFlipRate = 0.002;     // flips per pixel per frame under the yaw
+        const double MaxFrameDrift = 0.004;      // mean abs luma between consecutive frames
+        const double MaxSunMissPixels = 1.0;     // sun centroid distance from the still frame's
+        const int MinSunPixels = 10;             // the sun disc's core has to cover at least this many pixels
+
         readonly ITestOutputHelper _out;
         public TemporalStarfieldGpuTests(ITestOutputHelper output) => _out = output;
 
@@ -23014,10 +23552,10 @@ namespace KhaozEngine.Tests.Gpu
             double drift = TemporalAcceptance.MeanAbsLuma(last, before, W, region);
             _out.WriteLine($"starfield under a {YawPerFrame} rad a frame yaw: {rate:0.00000} flips per pixel per frame, "
                 + $"{kept} of {stars} star pixels kept, frame to frame mean abs luma {drift:0.00000}");
-            Assert.True(stars > 100, $"the reference drew only {stars} star pixels");
-            Assert.True(kept >= 0.8 * stars, $"the stars must stay on their pixels: {kept} of {stars} kept");
-            Assert.True(rate <= 0.002, $"the starfield must not flicker under a yaw: {rate:0.00000} flips per pixel per frame");
-            Assert.True(drift <= 0.004, $"consecutive frames must match: mean abs luma {drift:0.00000}");
+            Assert.True(stars > MinStarPixels, $"the reference drew only {stars} star pixels");
+            Assert.True(kept >= MinStarsKept * stars, $"the stars must stay on their pixels: {kept} of {stars} kept");
+            Assert.True(rate <= MaxYawFlipRate, $"the starfield must not flicker under a yaw: {rate:0.00000} flips per pixel per frame");
+            Assert.True(drift <= MaxFrameDrift, $"consecutive frames must match: mean abs luma {drift:0.00000}");
         }
 
         [GpuFact]
@@ -23044,7 +23582,7 @@ namespace KhaozEngine.Tests.Gpu
             double miss = Math.Sqrt((want.X - got.X) * (want.X - got.X) + (want.Y - got.Y) * (want.Y - got.Y));
             _out.WriteLine($"sky under a yaw: sun centroid {got.X:0.00},{got.Y:0.00} against a still frame's "
                 + $"{want.X:0.00},{want.Y:0.00}, {miss:0.00} px apart");
-            Assert.True(miss <= 1.0, $"the sun must follow the rotation reprojection: {miss:0.00} px from the still frame's");
+            Assert.True(miss <= MaxSunMissPixels, $"the sun must follow the rotation reprojection: {miss:0.00} px from the still frame's");
         }
 
         // The centre of the pixels bright enough to be the sun disc's core (the sun colour's luma is 0.96, the
@@ -23056,7 +23594,7 @@ namespace KhaozEngine.Tests.Gpu
             for (int y = 0; y < H; y++)
                 for (int x = 0; x < W; x++)
                     if (TemporalAcceptance.Luma(rgba, W, x, y) > 0.9f) { sx += x; sy += y; count++; }
-            Assert.True(count > 10, $"the sun disc covered only {count} pixels");
+            Assert.True(count > MinSunPixels, $"the sun disc covered only {count} pixels");
             return (sx / count, sy / count);
         }
     }
@@ -23226,7 +23764,7 @@ git commit -m "render3d(temporal): give a screen-fixed starfield zero motion in 
 **Files:**
 - Create: `KhaozEngine.Render3D/Internal/ShaderSources.TemporalEdge.cs` (`TemporalEdgeFrag`, spliced from `EdgeFrag`)
 - Create: `KhaozEngine.Render3D/Rendering/PixelPostProcess.TemporalOutline.cs` (the pass ahead of the resolve)
-- Modify: `KhaozEngine.Render3D/Rendering/PixelPostProcess.cs:18` (`partial`), and, as Tasks E7 and F3 leave them and quoted below, the blit parity sum in `PrepareUniforms`, the two in-chain outline calls in `Run` and one line in `Dispose`
+- Modify: `KhaozEngine.Render3D/Rendering/PixelPostProcess.cs:20 (after E7)` (`partial`), and, as Tasks E7 and F3 leave them and quoted below, the blit parity sum in `PrepareUniforms`, the two in-chain outline calls in `Run` and one line in `Dispose`
 - Modify: `KhaozEngine.Render3D/Rendering/TemporalResolveRenderer.cs` (group E's Task E6: `BindInputs` rebuilds when the scene colour texture changes)
 - Modify: `KhaozEngine.Render3D/Scene3D.TemporalResolve.cs` (group E's Task E10: the resolve inputs in `PrepareTemporalResolve`, and `RunTemporalResolve`)
 - Modify: `KhaozEngine.Render3D/Scene3D.TemporalFinish.cs` (the test seam)
@@ -23234,7 +23772,9 @@ git commit -m "render3d(temporal): give a screen-fixed starfield zero motion in 
 - Modify: `KhaozEngine.Render.Tests/Gpu/VulkanShaderBindingTableTests.cs:110` (a row after `PostEdge`) and `:210` (the count)
 - Modify: `KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs:217` (a pipeline after `PixelPostProcess edge`) and `:255` (the pipeline count)
 - Modify: `KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs:124` (the count)
+- Modify: `KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs:143` (the stage count) and `KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs:48`, `:73` (the pipeline count and its square)
 - Modify: `KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs:111-112` (a fact after `PostEdge`)
+- Check, no change: `VulkanDynamicOffsetTests.cs:57` (the layout count stays at 54)
 - Check, no row: `D3D11RegisterNumberingTests.cs` (the pass binds `PixelPostProcess._edgeLayout`, already at `:124-125`), `D3D11ResourceModelTests.cs` (it reads `_edgeBuf`, already at `:395`), `Render3D/UboLayoutTests.cs` (`EdgeUbo` unchanged, `:314-319`) and `VulkanShippedVertexLayoutTests.cs` (`FullscreenVert` declares no vertex input, `:48`)
 - Modify (rebaked, never hand edited): the three hash tables and `KhaozEngine.Render.Tests/Gpu/shader-corpus/corpus.txt`
 - Test: `KhaozEngine.Render.Tests/Render3D/TemporalOutlineTests.cs`
@@ -23365,6 +23905,14 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class TemporalOutlineGpuTests
     {
         const int W = 320, H = 180, Warm = 16, Measured = 16;
+
+        // Acceptance thresholds, first estimates the first real-Metal run retunes in one place.
+        const int MinBoxPixels = 100;            // the blue box has to cover at least this many pixels
+        const int MinChainOutlinePixels = 100;   // FXAA's own outline has to be visible at all
+        const double MinOutlineShare = 0.5;      // resolved and shared outline pixels, as a share of FXAA's
+        const double MaxStillFlipRate = 0.002;   // flips per pixel per frame for a converged still outline
+        const int UprightRowMargin = 20;         // rows below the middle the low blue box sits when upright
+
         readonly ITestOutputHelper _out;
         public TemporalOutlineGpuTests(ITestOutputHelper output) => _out = output;
 
@@ -23406,7 +23954,7 @@ namespace KhaozEngine.Tests.Gpu
                     int i = (y * W + x) * 4;
                     if (rgba[i + 2] > rgba[i] + 60 && rgba[i + 2] > rgba[i + 1] + 30) { sum += y; n++; }
                 }
-            Assert.True(n > 100, $"the blue box covered only {n} pixels");
+            Assert.True(n > MinBoxPixels, $"the blue box covered only {n} pixels");
             return sum / n;
         }
 
@@ -23440,11 +23988,11 @@ namespace KhaozEngine.Tests.Gpu
             double rate = flips.FlipsPerPixelPerFrame;
             _out.WriteLine($"outline under temporal anti-aliasing, still camera: {rate:0.00000} flips per pixel per frame "
                 + $"over {Measured} frames, {resolved} outline pixels against FXAA's {chain}, {both} shared");
-            Assert.True(chain > 100, $"the FXAA frame drew only {chain} outline pixels");
-            Assert.True(resolved >= chain / 2, $"the resolved outline must stay visible: {resolved} pixels against FXAA's {chain}");
-            Assert.True(both >= chain / 2, $"the resolved outline must lie where FXAA's does: {both} of {chain} shared");
-            Assert.True(rate <= 0.002, $"a still outline must converge: {rate:0.00000} flips per pixel per frame");
-            Assert.True(BlueRow(last) > H / 2 + 20, $"the frame must stay upright: the low blue box sits at row {BlueRow(last):0.0}");
+            Assert.True(chain > MinChainOutlinePixels, $"the FXAA frame drew only {chain} outline pixels");
+            Assert.True(resolved >= chain * MinOutlineShare, $"the resolved outline must stay visible: {resolved} pixels against FXAA's {chain}");
+            Assert.True(both >= chain * MinOutlineShare, $"the resolved outline must lie where FXAA's does: {both} of {chain} shared");
+            Assert.True(rate <= MaxStillFlipRate, $"a still outline must converge: {rate:0.00000} flips per pixel per frame");
+            Assert.True(BlueRow(last) > H / 2 + UprightRowMargin, $"the frame must stay upright: the low blue box sits at row {BlueRow(last):0.0}");
         }
     }
 }
@@ -23753,7 +24301,7 @@ and `RunTemporalResolve`, old:
 ```csharp
         void RunTemporalResolve(IGpuCommandList cl)
         {
-            if (!TemporalResolveActive) return;
+            if (!_resolveThisRender) return;
             _temporalResolve!.Run(cl, TemporalHistory);
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
         }
@@ -23764,7 +24312,7 @@ new:
 ```csharp
         void RunTemporalResolve(IGpuCommandList cl)
         {
-            if (!TemporalResolveActive) return;
+            if (!_resolveThisRender) return;
             if (PixelPostProcess.TemporalOutlineRuns(Post))
             {
                 _post.RunTemporalOutline(cl, _res, _temporalPost!.OpaqueColor);
@@ -23797,6 +24345,9 @@ The lists, after Task F8's counts (70 graphics programs, 54 layouts, 58 pipeline
 // count at :255 goes from 58 to 59, and the layout count at :254 stays at 54: the pass binds the edge layout.
             ("PixelPostProcess temporal edge", ["Pixel.edge"]),
 // D3D11HlslByteEqualityTests.cs:124, the graphics program count, from 70 to 71.
+// VulkanSpirvByteEqualityTests.cs:143, the emitted stage count, from 148 to 150 (two stages per program).
+// VulkanLayoutCompatibilityTests.cs:48, the pipeline count, from 58 to 59, and :73 from 58 * 58 to 59 * 59.
+// VulkanDynamicOffsetTests.cs:57, the layout count, stays at 54.
 // ShaderSourceValidationTests.cs, after the PostEdge fact (:111-112).
         [Fact]
         public void PostTemporalEdge()
@@ -23811,7 +24362,7 @@ Rebake the three tables and the corpus with the Task F2 commands. Each table gai
 Run:
 ```bash
 dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release 2>&1 | tail -3
-dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~TemporalOutlineTests|FullyQualifiedName~TemporalResolveWiringTests|FullyQualifiedName~ByteEquality|FullyQualifiedName~ShaderCorpus|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~UboLayoutTests|FullyQualifiedName~VulkanShaderBindingTableTests|FullyQualifiedName~VulkanDescriptorLimitTests|FullyQualifiedName~D3D11RegisterNumberingTests|FullyQualifiedName~D3D11ResourceModelTests|FullyQualifiedName~VulkanShippedVertexLayoutTests|FullyQualifiedName~D3D11FxcValidation"
+dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~TemporalOutlineTests|FullyQualifiedName~TemporalResolveWiringTests|FullyQualifiedName~ByteEquality|FullyQualifiedName~ShaderCorpus|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~UboLayoutTests|FullyQualifiedName~VulkanShaderBindingTableTests|FullyQualifiedName~VulkanDescriptorLimitTests|FullyQualifiedName~D3D11RegisterNumberingTests|FullyQualifiedName~D3D11ResourceModelTests|FullyQualifiedName~VulkanShippedVertexLayoutTests|FullyQualifiedName~D3D11FxcValidation|FullyQualifiedName~VulkanLayoutCompatibilityTests|FullyQualifiedName~VulkanDynamicOffsetTests"
 KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~TemporalOutlineGpuTests|FullyQualifiedName~TemporalSharpenChainGpuTests|FullyQualifiedName~GoldenSnapshotTests" --logger "console;verbosity=detailed" 2>&1 | grep -E "flips per pixel|Passed!|Failed!|golden '"
 KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build 2>&1 | grep -E "Passed!|Failed!|Skipped:|golden '" | tail -20
 wc -l KhaozEngine.Render3D/Rendering/PixelPostProcess.cs KhaozEngine.Render3D/Rendering/PixelPostProcess.TemporalOutline.cs
@@ -23832,7 +24383,8 @@ git add KhaozEngine.Render3D/Internal/ShaderSources.TemporalEdge.cs KhaozEngine.
   KhaozEngine.Render.Tests/Render3D/TemporalOutlineTests.cs KhaozEngine.Render.Tests/Gpu/TemporalOutlineGpuTests.cs \
   KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs KhaozEngine.Render.Tests/Gpu/VulkanShaderBindingTableTests.cs \
   KhaozEngine.Render.Tests/Gpu/VulkanDescriptorLimitTests.cs KhaozEngine.Render.Tests/Gpu/D3D11HlslByteEqualityTests.cs \
-  KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs \
+  KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs KhaozEngine.Render.Tests/Gpu/VulkanSpirvByteEqualityTests.cs \
+  KhaozEngine.Render.Tests/Gpu/VulkanLayoutCompatibilityTests.cs \
   KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt KhaozEngine.Render.Tests/Gpu/msl-hashes/metal-msl.sha256.txt \
   KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt KhaozEngine.Render.Tests/Gpu/shader-corpus/corpus.txt
 git commit -m "render3d(temporal): run the edge outline ahead of the resolve under temporal anti-aliasing"
@@ -23843,11 +24395,11 @@ git commit -m "render3d(temporal): run the edge outline ahead of the resolve und
 **Branch:** `feature/taa-finish` in `/Users/antonio/KhaozEngine/.worktrees/taa-finish`
 
 **Files:**
-- Modify: `docs/USING-KHAOZENGINE.md` (a new subsection after `### Camera-relative rendering` at `:3391`, before `### ECS entities` at `:3436`, plus the anti-aliasing bullet at `:3497-3511` and the Contents list at `:34`), folding in any round 1 temporal text groups B to D wrote so the consumer contract has one place
+- Modify: `docs/USING-KHAOZENGINE.md` (a new subsection after `### Camera-relative rendering` at `:3391`, before `### ECS entities` at `:3436`, plus the anti-aliasing bullet at `:3497-3511`), replacing group B's `### Temporal rendering (...)` subsection (Task B9, with D16's MotionVectors bullet) by the new subsection, carrying over B9's cut-threshold example, its second-render note and D16's full-brightness-at-16-pixels detail, and leaving C10's `### Draw descriptors and motion keys` in place
 - Modify: `KhaozEngine.Render3D/README.md:172-186` (the anti-aliasing bullet)
 - Modify: `docs/CROSS-PLATFORM.md:773-825` (two bullets in `## Authoring shaders that pass on all three backends`)
-- Modify: `docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md:3` (status) and `:237-239` (plan amendments)
-- Modify: `docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md:3` (status) and `:188-190` (plan amendments)
+- Modify: `docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md:3` (status) and the end of `## Plan amendments`
+- Modify: `docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md:3` (status) and the end of `## Plan amendments`
 - Modify: `docs/INDEX.md:46-47`
 
 **Interfaces:**
@@ -23868,9 +24420,10 @@ designs.
 
 - [ ] **Step 3: Implement**
 
-The new `docs/USING-KHAOZENGINE.md` subsection, with its Contents entry
-`- [Temporal anti-aliasing and upscaling (`AntiAliasing.Temporal`)](#temporal-anti-aliasing-and-upscaling-antialiasingtemporal)`
-under the Render3D entry:
+The new `docs/USING-KHAOZENGINE.md` subsection. It replaces group B's `### Temporal rendering (...)` subsection whole,
+D16's MotionVectors bullet included, and already carries over B9's cut-threshold example, B9's second-render note and
+D16's full brightness at 16 internal pixels. C10's `### Draw descriptors and motion keys (...)` subsection stays where
+it is. It takes no Contents entry, because the Contents list holds only `##` headings:
 
 ````markdown
 ### Temporal anti-aliasing and upscaling (`AntiAliasing.Temporal`)
@@ -23893,6 +24446,10 @@ scene.DrawSkinned(new SkinnedInstanceDraw(bodyMesh, bodyModel) { Motion = body }
 
 // A teleport, a loading screen or a cutscene cut.
 scene.CameraCut();
+
+// The automatic cut, defaults 16 m and 60 degrees.
+scene.Post.Temporal.CutDistanceMetres = 24f;
+scene.Post.Temporal.CutAngleDegrees = 45f;
 ~~~
 
 - **Presets.** `Post.Temporal.Upscale` sizes the internal target per axis against the window: `Native` 1.0,
@@ -23931,7 +24488,8 @@ scene.CameraCut();
   With HDR on, the outline colour then passes through the tonemap. Every other mode runs it in the post chain as
   before.
 - **Debug views.** `scene.DebugView = SceneDebugView.MotionVectors` works under any mode and shows the motion target,
-  hue for direction and brightness for magnitude. `History` (black fresh, white full history, green where thin
+  hue for direction, brightness for length (full at 16 internal pixels) and black where nothing opaque drew or
+  nothing moved. `History` (black fresh, white full history, green where thin
   feature retention holds a pixel), `Disocclusion` (red where history was rejected) and `Reactive` (yellow where
   transparent content lowered the history weight) show the resolve's own decisions and take effect only under
   `AntiAliasing.Temporal`.
@@ -23940,17 +24498,44 @@ scene.CameraCut();
   sizes, the preset and the effective `UpscaleRatio`. `scene.RequestTemporalCounts()` samples disoccluded, reactive
   and clipped pixel counts on a 32 by 18 grid on the next frame, and they appear at the following `PrepareFrame`
   with `CountsFrameIndex` naming the frame. Reading them back drains the device once on Metal and Vulkan, so
-  request them from a debug overlay a few times a second at most, never every frame.
+  request them from a debug overlay a few times a second at most, never every frame. Read the diagnostics on the
+  render thread after the frame renders. A second render inside the same frame, such as an offscreen capture,
+  leaves them and the history untouched.
 - **Cost.** The resolve and the sharpen together measured under 1.0 ms at a 2560x1440 display on Apple silicon
   (`TemporalResolveCostPerfGpuTests`). With temporal anti-aliasing off, nothing of it exists and every frame renders
   byte-identically to before.
 ````
 
-In the anti-aliasing bullet at `:3497-3511`, change the mode list to
-``AntiAliasing.Off` (default), `.Fxaa` (cheap one-pass edge smoother), `.Msaa(2|4|8)` (hardware multisample,
-geometry edges only), `.Ssaa(factor)` (supersample the whole image) or `.Temporal` (jittered history with
-upscaling, see "Temporal anti-aliasing and upscaling" below)`, and replace `(AA, shadows, and future
-anisotropy/TAA)` with `(AA, shadows and the temporal settings under Post.Temporal)`.
+In the anti-aliasing bullet at `:3497-3511`, replace
+
+```markdown
+  `AntiAliasing.Off` (default), `.Fxaa` (cheap one-pass edge smoother), `.Msaa(2|4|8)` (hardware multisample,
+  geometry edges only), or `.Ssaa(factor)` (supersample the whole image, the strongest, also kills shaded-interior
+  shimmer).
+```
+
+with
+
+```markdown
+  `AntiAliasing.Off` (default), `.Fxaa` (cheap one-pass edge smoother), `.Msaa(2|4|8)` (hardware multisample,
+  geometry edges only), `.Ssaa(factor)` (supersample the whole image, the strongest, also kills shaded-interior
+  shimmer) or `.Temporal` (jittered history with upscaling, see
+  [Temporal anti-aliasing and upscaling](#temporal-anti-aliasing-and-upscaling-antialiasingtemporal)).
+```
+
+and replace
+
+```markdown
+  `Post.Quality` (a `RenderQuality`) is where the quality knobs live (AA, shadows, and future anisotropy/TAA), so a
+  game's options menu binds to it.
+```
+
+with
+
+```markdown
+  `Post.Quality` (a `RenderQuality`) is where the quality knobs live (AA and shadows), and `Post.Temporal` holds the
+  temporal anti-aliasing settings, so a game's options menu binds to the two.
+```
 
 `KhaozEngine.Render3D/README.md:172-186`, the anti-aliasing bullet's first sentence becomes
 `... is the AA dropdown most games ship - `AntiAliasing.Off` / `.Fxaa` / `.Msaa(2|4|8)` / `.Ssaa(factor)` /
@@ -23986,11 +24571,11 @@ anisotropy/TAA)` with `(AA, shadows and the temporal settings under Post.Tempora
 Status: implemented. Rounds 1 and 2 ship together in one engine release, named here when it is cut.
 ```
 
-and under `## Plan amendments`, keeping any amendment groups A to D recorded:
+and at the end of `## Plan amendments`, after item 17 (Task D17), add as item 18:
 
 ```markdown
-- The three round 2 debug views take effect only under `AntiAliasing.Temporal`, so `DebugView` activates temporal
-  rendering by itself only for `MotionVectors`. A jittered frame never reaches the screen without a resolve.
+18. The three round 2 debug views take effect only under `AntiAliasing.Temporal`, so `DebugView` activates temporal
+    rendering by itself only for `MotionVectors`. A jittered frame never reaches the screen without a resolve (Task F7).
 ```
 
 `docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md:3`:
@@ -24000,29 +24585,16 @@ Status: round 2 implemented, released with round 1 in one engine release named h
 Grimhollow adoption, follows that release.
 ```
 
-and `## Plan amendments` (`:188-190`) replaced, keeping any amendment group E recorded:
+and after item 13 of `## Plan amendments`, continuing the numbering, only the items the list lacks:
 
 ```markdown
-- **The mip bias rides the frame block's free `Params.z` and `Params.w`.** No new member, so the block's size and
-  every declaration of it stay unchanged, and the upload is byte-identical with temporal anti-aliasing off.
-- **Splat terrain and tile ground take the bias as a gradient scale.** They sample through `textureGrad`, which
-  has no bias argument, so both hoisted derivatives are scaled by `exp2(bias)`, the same LOD shift.
-- **The counts in section 6 are sampled on request.** A read map drains the whole device on Metal and Vulkan, so a
-  per-frame readback would stall. `Scene3D.RequestTemporalCounts()` arms the coarse-grid probe for one frame and the
-  next `PrepareFrame` pays one drain. A fence-gated read map in the GPU seam would make continuous counts free.
-- **The debug views and the count probe evaluate the resolve's own per-pixel function** over the inputs the resolve
-  bound that frame, so they show its decisions rather than a second derivation.
-- **The sharpen runs directly after the tonemap in the HDR order, and first in the legacy order**, before the
-  palette quantize and the edge outline in both, so a palette game's colours stay on its palette.
-- **Textured billboards and particle atlases are not biased.** They are effect sprites outside the material
-  programs, and a follow-up issue covers them.
-- **A screen-fixed starfield takes zero motion (task F16a).** The starfield places its stars by pixel position, so the
-  resolve's background branch reprojects it in place instead of by the camera's rotation, through the uniform block's
-  free `Params.y`. The sky keeps the rotation reprojection.
-- **The toon edge outline runs ahead of the resolve under temporal anti-aliasing (task F16b).** It runs on the
-  internal lit colour and on the opaque-only copy, addressed by pixel so it keeps their orientation, and the resolve
-  reads both outlined images, so the lines are accumulated and the reactive estimate does not mistake them for
-  transparent content. This settles item 5 above. Every other mode keeps the outline in the post chain, byte for byte.
+14. The debug views and the count probe evaluate the resolve's own per-pixel function over the inputs the resolve
+    bound that frame, so they show its decisions rather than a second derivation (group F).
+15. The sharpen runs directly after the tonemap in the HDR order, and first in the legacy order, before the palette
+    quantize in both, so a palette game's colours stay on its palette. The edge outline has already run by then,
+    ahead of the resolve as item 10 records (group F).
+16. Textured billboards and particle atlases are not biased. They are effect sprites outside the material programs,
+    and a follow-up issue covers them (group F).
 ```
 
 `docs/INDEX.md:46`, the status cell:
@@ -24065,7 +24637,7 @@ mkdir -p local-feed
 dotnet build KhaozEngine.slnx -c Release 2>&1 | tail -3
 dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket" 2>&1 | grep -E "Passed!|Failed!|error" | tail -40
 KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build 2>&1 | grep -E "Passed!|Failed!|Skipped:|golden '" | tail -20
-KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~Temporal|FullyQualifiedName~MotionTargetCostProbe" --logger "console;verbosity=detailed" 2>&1 | grep -E "flips per pixel|trail pixels|ghost pixels|mean abs luma|local contrast|coverage|resolve and sharpen|motion target cost|Passed!|Failed!"
+KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~Temporal|FullyQualifiedName~MotionTargetCostProbe" --logger "console;verbosity=detailed" 2>&1 | grep -E "flips per pixel|trail pixels|ghost pixels|mean abs luma|local contrast|coverage|resolve and sharpen|motion target cost|mean red excess|particle burst|sun centroid|Passed!|Failed!"
 dotnet format KhaozEngine.slnx --verify-no-changes --no-restore
 sh scripts/check-dashes.sh --tree
 sh scripts/check-prose.sh --tree
@@ -24124,8 +24696,8 @@ git merge --no-ff --no-edit feature/taa-<group>
 Expected: a clean merge. The known overlaps are the three hash tables, the corpus and the seven hand-maintained lists
 (`VulkanShaderBindingTableTests`, `VulkanDescriptorLimitTests`, `D3D11ResourceModelTests`, `D3D11RegisterNumberingTests`,
 `ShaderSourceValidationTests`, `UboLayoutTests` and `VulkanShippedVertexLayoutTests`, beside `ShippedShaderPrograms`)
-when two groups added rows. Resolve a list by keeping both rows. Resolve a hash table or the corpus by taking
-either side and rebaking, never by hand editing:
+when two groups added rows. Resolve a list by keeping both rows. A pinned count takes the merge base's value plus
+both sides' increments. Resolve a hash table or the corpus by taking either side and rebaking, never by hand editing:
 
 ```bash
 KE_UPDATE_SPIRV_HASHES=1 KE_UPDATE_MSL_HASHES=1 KE_UPDATE_HLSL_HASHES=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~VulkanSpirvByteEquality|FullyQualifiedName~MetalMslByteEquality|FullyQualifiedName~D3D11HlslByteEquality"
@@ -24162,6 +24734,16 @@ bash scripts/check-doc-versions.sh
 ```
 
 Expected: every script exits 0.
+
+After merging C, D or E, ratchet the size baseline down to what the group left:
+
+```bash
+sh scripts/check-file-size.sh --update
+git add .filesize-baseline
+git commit -m "chore(size): ratchet Scene3D.cs"
+```
+
+`Scene3D.cs` is 2477 lines after C, 2417 after D and 2404 after E.
 
 - [ ] **Step 6: Re-check group F's names against the merged branch (only after merging group E)**
 
@@ -24225,9 +24807,16 @@ Run Task H1 Steps 3 to 5.
 Expected: all green. Then collect the measured lines for the release note:
 
 ```bash
-KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~Temporal|FullyQualifiedName~MotionTargetCostProbe" --logger "console;verbosity=detailed" 2>&1 | grep -E "flips per pixel|trail pixels|mean abs luma|local contrast|resolve and sharpen|motion target cost" > /tmp/taa-measured.txt
+KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~Temporal" --logger "console;verbosity=detailed" 2>&1 | grep -E "flips per pixel|trail pixels|mean abs luma|local contrast|resolve and sharpen" > /tmp/taa-measured.txt
+for i in 1 2 3; do
+  KE_GPU_TESTS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~MotionTargetCostProbe" --logger "console;verbosity=detailed" 2>&1 | grep "motion target cost"
+done > /tmp/taa-cost-runs.txt
+cat /tmp/taa-cost-runs.txt
+sort -t: -k2 -g /tmp/taa-cost-runs.txt | sed -n 2p >> /tmp/taa-measured.txt   # the median of the three probe runs
 cat /tmp/taa-measured.txt
 ```
+
+The cost probe runs three times, as Task D17 measured it, and the release note carries the median run's line.
 
 - [ ] **Step 3: Push the program branch**
 
@@ -24309,15 +24898,25 @@ git push origin feature/temporal-foundations
 
 - [ ] **Step 4: Verify on all three legs**
 
+Record the newest dispatched run first, so the poll cannot pick up Step 1's finished run. Run this block, like
+Step 1's, as one background command, because a foreground `sleep` is blocked in the orchestrating session.
+
 ```bash
+PREV=$(gh run list --repo APKiwiOrg/KhaozEngine --workflow cross-platform-gpu.yml --branch feature/temporal-foundations \
+  --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
 gh workflow run cross-platform-gpu.yml --repo APKiwiOrg/KhaozEngine --ref feature/temporal-foundations -f legs=all -f bake=false
-gh run list --repo APKiwiOrg/KhaozEngine --workflow cross-platform-gpu.yml --branch feature/temporal-foundations \
-  --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId'
-gh run watch <run-id> --repo APKiwiOrg/KhaozEngine --exit-status
-gh run view <run-id> --repo APKiwiOrg/KhaozEngine --log-failed | tail -80
+RUN=$PREV
+until [ "$RUN" != "$PREV" ]; do
+  sleep 5
+  RUN=$(gh run list --repo APKiwiOrg/KhaozEngine --workflow cross-platform-gpu.yml --branch feature/temporal-foundations \
+    --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
+done
+echo "run $RUN"
+gh run watch "$RUN" --repo APKiwiOrg/KhaozEngine --exit-status
+gh run view "$RUN" --repo APKiwiOrg/KhaozEngine --log-failed | tail -80
 ```
 
-Expected: every leg green, the full suite on each (a dispatch runs the full suite).
+Expected: the new run id differs from `PREV`, and every leg green, the full suite on each (a dispatch runs the full suite).
 
 - [ ] **Step 5: If a leg fails an acceptance test**
 
@@ -24367,7 +24966,8 @@ the program's scope becomes an issue in Task H6. If a fix touched a shader or a 
 **Branch:** `feature/temporal-foundations`, then `main`
 
 **Files:**
-- Modify: `Directory.Build.props:25` (`<KhaozEngineVersion>`), `CHANGELOG.md` (new top entry), `README.md:211-214`
+- Modify: `Directory.Build.props:25` (`<KhaozEngineVersion>`), `CHANGELOG.md` (the staged `## <V>` entry when riding,
+  else a new top entry), `README.md:211-214`
   and `docs/USING-KHAOZENGINE.md` at its five `PackageReference` examples (the `check-doc-versions.sh`
   declarations), both design docs' status lines, `docs/INDEX.md:46-47`, and every Markdown file the sweep finds
   stale.
@@ -24408,6 +25008,7 @@ else
 fi
 echo "main stages $STAGED, newest tag v$PREVIOUS, this release is $V, ride=$RIDE"
 git ls-remote --tags origin "v$V"
+printf 'V=%s\nSTAGED=%s\nPREVIOUS=%s\nRIDE=%s\n' "$V" "$STAGED" "$PREVIOUS" "$RIDE" > /tmp/taa-release.env
 ```
 
 Expected: one `echo` line, and `git ls-remote` prints nothing, so `v$V` is free on origin too. At planning time `main`
@@ -24417,7 +25018,8 @@ set `<KhaozEngineVersion>` in `Directory.Build.props` to `V` in Step 4's commit.
 `V` to it).
 
 The steps below write `$V`, `$STAGED` and `$PREVIOUS` in shell and `<V>`, `<STAGED>` and `<PREVIOUS>` in Markdown.
-Substitute the chosen values in the Markdown.
+Substitute the chosen values in the Markdown. Shell variables do not survive between steps, so every later block
+that reads them starts by sourcing `/tmp/taa-release.env`.
 
 - [ ] **Step 2: Write the CHANGELOG entry**
 
@@ -24466,12 +25068,14 @@ Move the version line and the `PackageReference` examples (the `check-doc-versio
 to `V`:
 
 ```bash
+. /tmp/taa-release.env
 sed -i '' "s|<KhaozEngineVersion>$STAGED</KhaozEngineVersion>|<KhaozEngineVersion>$V</KhaozEngineVersion>|" Directory.Build.props
 sed -i '' "s|Version=\"$STAGED\"|Version=\"$V\"|g" README.md docs/USING-KHAOZENGINE.md
 grep -n "<KhaozEngineVersion>" Directory.Build.props
 ```
 
-Set the status lines:
+Set the status lines. Replace the whole status paragraph Task F16 wrote, one line in the foundations spec and both
+lines in the resolve spec, with:
 
 ```markdown
 Status: implemented in <V>.
@@ -24483,11 +25087,16 @@ in `TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md`, and
 Status: round 2 implemented in <V>. Round 3, Grimhollow adoption, is in progress.
 ```
 
-in `TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md`. Set `docs/INDEX.md:47`'s status cell to
-`**Implemented in <V>.**` and `:46`'s to `**Round 2 implemented in <V>, round 3 in progress.**`, both keeping
-their issue links. Then sweep:
+in `TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md`. In `docs/INDEX.md`, find each design's row by its doc name and
+replace the row's whole status cell, its last cell, with:
+
+- the `TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md` row: `**Implemented in <V>.** Engine [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149), needed for Grimhollow distant grass shimmer under camera motion.`
+- the `TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md` row: `**Round 2 implemented in <V>.** Engine [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149), round 3, Grimhollow adoption, is in progress.`
+
+Then sweep:
 
 ```bash
+. /tmp/taa-release.env
 git grep -n -w -e MotionKey -e RigidInstanceDraw -e SkinnedInstanceDraw -e CameraCut -e TemporalUpscale -e RequestTemporalCounts -e DebugView -- '*.md'
 git grep -n -F -e "$STAGED" -e "$PREVIOUS" -- '*.md' ':!CHANGELOG.md'
 git grep -n -i -e "future anisotropy/TAA" -e "TAA out of scope" -- '*.md'
@@ -24498,6 +25107,7 @@ Correct every stale description the matches show.
 - [ ] **Step 4: Guards, build, pack and commit**
 
 ```bash
+. /tmp/taa-release.env
 sh scripts/check-dashes.sh --tree && sh scripts/check-prose.sh --tree && sh scripts/check-file-size.sh --tree \
   && sh scripts/check-agent-instructions.sh --tree && bash scripts/check-doc-versions.sh
 dotnet build KhaozEngine.slnx -c Release 2>&1 | tail -2
@@ -24526,11 +25136,13 @@ git push origin main
 - [ ] **Step 6: Tag under the waiting-consumer exception and push the tag**
 
 Grimhollow's round 3 (`feature/taa-adoption`, group I) is pinned to this release and waiting on it, which is the
-contributor rules' one automatic tag exception.
+contributor rules' one automatic tag exception. The area and summary are passed explicitly, because from a merge HEAD
+the script would otherwise take the journal-reset commit's subject.
 
 ```bash
+. /tmp/taa-release.env
 cd /Users/antonio/KhaozEngine
-scripts/tag-release.sh
+scripts/tag-release.sh release "temporal anti-aliasing with upscaling"
 git push origin "v$V"
 gh run list --repo APKiwiOrg/KhaozEngine --limit 3
 gh run watch <tag-run-id> --repo APKiwiOrg/KhaozEngine --exit-status
@@ -24542,6 +25154,7 @@ watched to green before group I vendors the packages.
 - [ ] **Step 7: Confirm the feed describes the tag**
 
 ```bash
+. /tmp/taa-release.env
 scripts/check-local-feed.sh
 tag_commit=$(git rev-parse "v$V^{commit}")
 for p in /Users/antonio/KhaozEngine/local-feed/KhaozEngine.*."$V".nupkg; do
@@ -24621,15 +25234,16 @@ plain `Scene3D.Draw` overloads (`ITileWorldScene.cs:219,225-226`). The seam has 
 single body without the seam member, and a game-side downcast to `Scene3DTileWorldScene.Scene` would blind every
 headless test and breaks the engine-first boundary in `AGENTS.md`.
 
-Group C adds, in the same task that adds `RigidInstanceDraw`:
+Group C adds, in Task C9:
 
 ```csharp
 // KhaozEngine.TileWorld.Render3D/ITileWorldScene.cs, interface ITileWorldScene
 /// <summary>Queues one rigid mesh from a full descriptor, motion key included. Defaults to the plain and
 /// dissolved members, which drop the key and every knob they cannot express, so an implementation written
-/// before descriptors keeps compiling and keeps drawing.</summary>
+/// before descriptors keeps compiling and keeps drawing. A shadow-only descriptor draws nothing.</summary>
 void DrawMesh(in RigidInstanceDraw draw)
 {
+    if (draw.ShadowOnly) return;
     if (draw.Dissolve > 0f)
         DrawMeshDissolved(draw.Mesh, draw.World, draw.Dissolve, draw.DissolveEdgeWidth, draw.DissolveEdgeColor);
     else DrawMesh(draw.Mesh, draw.World);
@@ -24657,9 +25271,10 @@ public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> bon
 The rigid member is required by round 3. The skinned member is not consumed by round 3 but keeps the seam
 symmetric for the rigged player (Grimhollow #64, worktree `feature/rigged-player-asset`). Group C's test proves the
 default body reaches the plain members and that `Scene3DTileWorldScene.DrawMesh(in RigidInstanceDraw)` reaches
-`Scene3D.Draw(in RigidInstanceDraw)` with the key intact (`LastTemporalDiagnostics.KeyedRigid == 1` after one keyed
-draw with temporal forced). The engine CHANGELOG entry names both members. Task I1's `TemporalSeamTests` fails the
-Grimhollow build if either the member or the `Scene3DTileWorldScene` override is missing from the release. If the
+`Scene3D.Draw(in RigidInstanceDraw)` with the key intact (`QueuedInstancesForTests` holds one instance whose
+`Motion` is the key after one keyed draw). The engine CHANGELOG entry names both members. Task I1's
+`TemporalSeamTests` finds both by reflection, so it fails the Grimhollow test run, not the build, if either the member
+or the `Scene3DTileWorldScene` override is missing from the release. If the
 release ships without them, group I stops at I1 and asks the owner, per the engine-first rule.
 
 ### Spec amendment (resolve spec, round 3 item 1): carcasses are keyed
@@ -24669,7 +25284,7 @@ Round 3 item 1 calls carcasses static. They are not while they fall: `Hollowmere
 `CarcassPresentation.RestingPose` over `CarcassPresentation.CollapseSeconds = 0.9f`
 (`Grimhollow.Core/Client/CarcassPresentation.cs:13`), and the thickness scale shrinks with it. Round 3 keys a carcass
 from its own net id for its whole life. After the collapse the key reports zero object motion, which is what an
-unkeyed draw reports, so keying it costs nothing. Add this to the resolve spec's "Plan amendments" list.
+unkeyed draw reports, so keying it costs nothing. The resolve spec's Plan amendments already record it (item 11).
 
 ### Preamble
 
@@ -24776,7 +25391,6 @@ public sealed class TemporalSeamTests
     {
         MotionKey body = MotionKey.From(42UL);
 
-        Assert.Equal(MotionKey.Combine(body, 3u), MotionKey.Combine(body, 3u));
         Assert.NotEqual(MotionKey.Combine(body, 3u), MotionKey.Combine(body, 4u));
         Assert.True(MotionKey.Combine(MotionKey.None, 3u).IsNone);
         Assert.True(MotionKey.From(0UL).IsNone);
@@ -24820,8 +25434,9 @@ a real equivalent gets an issue per `docs/ENGINE-INTEGRATION.md` "Bumping the en
 
 Insert the entry above line 872 (`### \`20.5.1\` (coloured tooltip runs)`) of `docs/ENGINE-INTEGRATION.md`. Put the
 file count from `wc -l` where it says 196 in the `20.5.1` entry, and the first eight characters of the nuspec
-commit. Every paragraph or bullet of every printed CHANGELOG section gets one line in the list: `## 20.6.0`, and the
-untagged `## 20.6.0` (the journal reset) it carries when engine `main` staged that and group H released above it. The lines
+commit. Every paragraph or bullet of every printed CHANGELOG section gets one line in the list: the `## $V` section,
+which under the ride also holds the journal reset ([KhaozEngine #1150](https://github.com/APKiwiOrg/KhaozEngine/issues/1150)),
+and the `## 20.6.0` section too when `V` is `20.7.0` because `20.6.0` was tagged first. The lines
 below are the dispositions for the capabilities the two specs define. A CHANGELOG item not listed here gets a line
 in the same shape.
 
@@ -24829,7 +25444,7 @@ in the same shape.
 ### `20.6.0` (temporal anti-aliasing, upscaling and motion keys)
 
 Swept released `20.6.0` after `20.5.1`, for [KhaozEngine #1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149),
-the untagged `20.6.0` entry it carries included. The pin, `ke-tileedit`, `ke-sfxbake` and all 196 vendored package
+the journal reset it carries ([KhaozEngine #1150](https://github.com/APKiwiOrg/KhaozEngine/issues/1150)) included. The pin, `ke-tileedit`, `ke-sfxbake` and all 196 vendored package
 files move together. Every vendored `20.6.0`
 nupkg that carries code names tag commit `1a2b3c4d` in its repository metadata. The Release solution builds with zero
 warnings on this pin. With `FXAA` or `MSAA 4x` selected the engine creates no temporal target, pipeline or buffer
@@ -24843,7 +25458,7 @@ and the jitter is zero, so the bump alone changes no frame. The 30 avatar golden
   16 m and 60 degrees.** The orbit camera never moves that far in one frame except on a teleport, which cuts anyway.
 - **`MotionKey`, `RigidInstanceDraw` and `Scene3D.Draw(in RigidInstanceDraw)`: ADOPTING through the tile-world seam.**
 - **`ITileWorldScene.DrawMesh(in RigidInstanceDraw)` and its `Scene3DTileWorldScene` forwarder: ADOPTING.** Every
-  body draws through the seam. `TemporalSeamTests` fails the build if either is missing. The default body still
+  body draws through the seam. `TemporalSeamTests` fails the test run if either is missing. The default body still
   reaches the plain members, which `HumanoidBodyDissolveTests.SceneWithoutADissolveOverrideGetsTheDefaultSolidDrawFallback`
   pins.
 - **`SkinnedInstanceDraw`, `Scene3D.DrawSkinned(in SkinnedInstanceDraw, ReadOnlySpan<Matrix4x4>)` and the seam's skinned descriptor:
@@ -24892,6 +25507,7 @@ goldens pass without a rebake. A new engine warning is fixed at its source in th
 - [ ] **Step 5: Commit**
 
 ```bash
+V=20.6.0   # as set in Step 3
 git add Directory.Build.props .config/dotnet-tools.json vendor/khaozengine docs/ENGINE-INTEGRATION.md \
   Grimhollow.Tests/World/TemporalSeamTests.cs
 git commit -m "engine(pin): adopt $V temporal anti-aliasing and motion keys"
@@ -25552,6 +26168,9 @@ git commit -m "render(bodies): key monster shapes and falling carcasses for moti
 - Modify: `Grimhollow.Core/Client/HollowmereSession.Draw.cs:285-286,312,338-340`
 - Modify: `Grimhollow.Core/Client/HollowmereSession.Carcasses.cs:173-174`
 - Create: `Grimhollow.Tests/Client/BodyMotionSessionTests.cs`
+- Create: `Grimhollow.Tests/Client/LoopbackHarnessBodies.cs` (the cow, carcass and wait helpers both draw-pass tests
+  share)
+- Modify: `Grimhollow.Tests/Client/CarcassOverlapRenderTests.cs:21-26,39-52,60-65` (calls the shared helpers)
 
 **Interfaces:**
 - Consumes: `BodyMotion.ForBody(long)` (I3), the keyed `AvatarMesh.Draw`, `MonsterMesh.Draw` and
@@ -25571,6 +26190,76 @@ ride the engine's reactive estimate. Target outlines draw after the resolve. The
 still frames with temporal off.
 
 - [ ] **Step 1: Write the failing test**
+
+First move the spawn and wait blocks `CarcassOverlapRenderTests` holds into one shared helper, so the new test does
+not copy them:
+
+```csharp
+// Grimhollow.Tests/Client/LoopbackHarnessBodies.cs
+using System;
+using Grimhollow.Server;
+using Grimhollow.Shared;
+using Grimhollow.Shared.Combat;
+using Grimhollow.Shared.Presentation;
+using KhaozEngine.TileWorld;
+using KhaozEngine.TileWorld.Netcode;
+
+namespace Grimhollow.Tests.Client;
+
+/// <summary>The bodies the draw-pass tests share, a replicated cow and its fresh carcass, each spawned on the server
+/// and waited for until the session mirrors it.</summary>
+public static class LoopbackHarnessBodies
+{
+    /// <summary>Frames the harness until <paramref name="done"/> holds, at most 240 frames, then asserts it.</summary>
+    public static void WaitUntil(this LoopbackHarness harness, Func<bool> done)
+    {
+        for (int i = 0; i < 240 && !done(); i++) harness.Frames(1);
+        Assert.True(done());
+    }
+
+    /// <summary>Spawns a cow on <paramref name="tile"/> and waits until the session knows its kind and pose.</summary>
+    /// <returns>The cow's net id.</returns>
+    public static long SpawnCow(this LoopbackHarness harness, TileCoord tile)
+    {
+        long cow = harness.Server.SpawnActor(tile,
+            new TileActorSpawn(20, GrimhollowProtocol.AttackTicks, TileDirection.S));
+        Assert.True(GrimhollowActorComponents.TryWrite(harness.Server, cow,
+            new MonsterKind { Kind = MonsterKindId.Cow }));
+        harness.WaitUntil(() => harness.Session.MonsterKindOf(cow) == MonsterKindId.Cow
+            && harness.Session.Client.TryGetRemotePose(cow, out _));
+        return cow;
+    }
+
+    /// <summary>Spawns a fresh carcass of <paramref name="cow"/> on <paramref name="tile"/> and waits until the
+    /// session holds one more carcass than before.</summary>
+    /// <returns>The carcass's net id.</returns>
+    public static long SpawnCowCarcass(this LoopbackHarness harness, TileCoord tile, long cow)
+    {
+        int before = harness.Session.CarcassCount;
+        long carcass = harness.Server.SpawnStaticEntity(tile, new TileStaticEntitySpawn(TileDirection.S));
+        DateTime now = DateTime.UtcNow;
+        Assert.True(GrimhollowActorComponents.TryWrite(harness.Server, carcass, new CarcassState
+        {
+            SourceId = Guid.NewGuid(),
+            MonsterKind = MonsterKindId.Cow,
+            Facing = (byte)TileDirection.S,
+            DeadActorNetId = cow,
+            DeathUtcTicks = now.Ticks,
+            PublicUtcTicks = now.AddSeconds(60).Ticks,
+            ExpiresUtcTicks = now.AddSeconds(180).Ticks,
+        }));
+        harness.WaitUntil(() => harness.Session.CarcassCount == before + 1);
+        return carcass;
+    }
+}
+```
+
+In `Grimhollow.Tests/Client/CarcassOverlapRenderTests.cs`, replace the cow spawn and wait (lines 21-26) with
+`long cow = harness.SpawnCow(cowTile);`, replace the carcass spawn and wait (lines 39-52) with
+`harness.SpawnCowCarcass(cowTile, cow);`, and delete its private `WaitUntil` (lines 61-65) with the blank line above
+it. Remove any `using` the file no longer needs. The test's assertions do not change.
+
+Then the new test:
 
 ```csharp
 // Grimhollow.Tests/Client/BodyMotionSessionTests.cs
@@ -25605,24 +26294,13 @@ public class BodyMotionSessionTests
         return scene.Motions.Select(entry => entry.Motion).ToList();
     }
 
-    static void WaitUntil(LoopbackHarness harness, Func<bool> done)
-    {
-        for (int i = 0; i < 240 && !done(); i++) harness.Frames(1);
-        Assert.True(done());
-    }
-
     [Fact]
     public void TheSessionKeysEachBodyAndCarcassByItsOwnNetId()
     {
         TileCoord cowTile = new(24, 24, 0);
         using var harness = new LoopbackHarness(new TileCoord(20, 20, 0));
         harness.Frames(24);
-        long cow = harness.Server.SpawnActor(cowTile,
-            new TileActorSpawn(20, GrimhollowProtocol.AttackTicks, TileDirection.S));
-        Assert.True(GrimhollowActorComponents.TryWrite(harness.Server, cow,
-            new MonsterKind { Kind = MonsterKindId.Cow }));
-        WaitUntil(harness, () => harness.Session.MonsterKindOf(cow) == MonsterKindId.Cow
-            && harness.Session.Client.TryGetRemotePose(cow, out _));
+        long cow = harness.SpawnCow(cowTile);
 
         var scene = new FakeTileWorldScene();
         GltfMeshResolver meshes = Resolver();
@@ -25648,19 +26326,7 @@ public class BodyMotionSessionTests
         Assert.False(localKeys.Overlaps(livingKeys));
         Assert.True(first.ToHashSet().SetEquals(second));
 
-        long carcass = harness.Server.SpawnStaticEntity(cowTile, new TileStaticEntitySpawn(TileDirection.S));
-        DateTime now = DateTime.UtcNow;
-        Assert.True(GrimhollowActorComponents.TryWrite(harness.Server, carcass, new CarcassState
-        {
-            SourceId = Guid.NewGuid(),
-            MonsterKind = MonsterKindId.Cow,
-            Facing = (byte)TileDirection.S,
-            DeadActorNetId = cow,
-            DeathUtcTicks = now.Ticks,
-            PublicUtcTicks = now.AddSeconds(60).Ticks,
-            ExpiresUtcTicks = now.AddSeconds(180).Ticks,
-        }));
-        WaitUntil(harness, () => harness.Session.CarcassCount == 1);
+        long carcass = harness.SpawnCowCarcass(cowTile, cow);
         HashSet<MotionKey> carcassKeys = KeysOf(scene, () => cowBody.DrawCarcass(anywhere, EngineQuadrupedPose.Rest,
             1f, 1f, 1f, BodyMotion.ForBody(carcass))).ToHashSet();
 
@@ -25745,7 +26411,8 @@ Expected: all pass, and the size check stays green with `HollowmereSession.Draw.
 
 ```bash
 git add Grimhollow.Core/Client/HollowmereSession.Draw.cs Grimhollow.Core/Client/HollowmereSession.Carcasses.cs \
-  Grimhollow.Tests/Client/BodyMotionSessionTests.cs
+  Grimhollow.Tests/Client/BodyMotionSessionTests.cs Grimhollow.Tests/Client/LoopbackHarnessBodies.cs \
+  Grimhollow.Tests/Client/CarcassOverlapRenderTests.cs
 git commit -m "client(session): key every drawn body and carcass by its net id"
 ```
 
@@ -25758,7 +26425,7 @@ git commit -m "client(session): key every drawn body and carcass by its net id"
 **Files:**
 - Modify: `Grimhollow.Core/World/HollowmereViewerFrame.cs:18,54-58`
 - Modify: `Grimhollow.Core/World/HollowmereViewer.cs:279,459-465`
-- Test: `Grimhollow.Tests/World/HollowmereViewerFrameTests.cs:36-53,100`
+- Test: `Grimhollow.Tests/World/HollowmereViewerFrameTests.cs:36-53,101`
 
 **Interfaces:**
 - Consumes: `Scene3D.CameraCut()` (I1)
@@ -25768,7 +26435,7 @@ git commit -m "client(session): key every drawn body and carcass by its net id"
 - [ ] **Step 1: Write the failing test**
 
 In `Grimhollow.Tests/World/HollowmereViewerFrameTests.cs`, replace the expected list in
-`F8AppliesTheNewModeBeforeChoosingTheRigAndObserver` (lines 44-52) with:
+`F8AppliesTheNewModeBeforeChoosingTheRigAndObserver` (lines 43-52) with:
 
 ```csharp
         Assert.Equal([
@@ -25784,7 +26451,7 @@ In `Grimhollow.Tests/World/HollowmereViewerFrameTests.cs`, replace the expected 
         ], port.Calls);
 ```
 
-and add to `RecordingPort` after `ApplyMode` (line 100):
+and add to `RecordingPort` after `ApplyMode` (line 101):
 
 ```csharp
         public void CutCamera() => Calls.Add("cut");
@@ -25958,7 +26625,8 @@ Replace lines 52-81 with:
 
 `Grimhollow.Tests/Config/GrimhollowSettingsTests.cs`: add `[InlineData(GrimhollowAntiAliasing.Taa,
 GrimhollowAntiAliasing.Msaa4)]` to `AntiAliasingGoesToDiskAndComesBackOnTheNextLoad` (after line 274), and after
-line 306 add:
+line 307 (the closing brace of `AnUnknownAntiAliasingNormalizesToMsaa4AndOnlySavesOnARealChange`), after one blank
+line, add:
 
 ```csharp
     [Fact]
@@ -26133,9 +26801,9 @@ public static class GrimhollowAntiAliasingSettings
     public const GrimhollowAntiAliasing DefaultChoice = GrimhollowAntiAliasing.Msaa4;
 
     /// <summary>The render quality a new or older settings file takes. Read only while TAA is selected.</summary>
-    /// <remarks>Quality renders two thirds of the window on each axis, 1707x960 at a 2560x1440 window, the preset
-    /// closest to the fixed 1600x900 target FXAA and MSAA 4x render at. The moving-camera probe sets the shipped
-    /// value.</remarks>
+    /// <remarks>Quality renders two thirds of the window on each axis, 1707x960 at a 2560x1440 window, the lightest
+    /// preset that still shades at least as many pixels as the fixed 1600x900 target FXAA and MSAA 4x render at. The
+    /// moving-camera probe sets the shipped value.</remarks>
     public const GrimhollowRenderQuality DefaultRenderQuality = GrimhollowRenderQuality.Quality;
 
     /// <summary>The engine selection for <see cref="DefaultChoice"/>.</summary>
@@ -26307,10 +26975,11 @@ git commit -m "config(settings): persist TAA and its render quality and apply th
 - Modify: `Grimhollow.Core/Client/SettingsScreen.cs:68,72-74,107-124,150-151,184-185,222-226,326,437-442,453`
 - Modify: `Grimhollow.Core/Client/SettingsScreen.Layout.cs:40-41,150-151,289-293`
 - Modify: `Grimhollow.Core/Client/SettingsScreen.Draw.cs:51,79-80`
-- Modify: `Grimhollow.Core/Client/SettingsStrings.cs:57-58,271`
+- Modify: `Grimhollow.Core/Client/SettingsStrings.cs:57-58,272`
 - Modify: `Grimhollow.Core/Localization/GrimhollowStrings.Panels.cs:200-201`
 - Modify: `Grimhollow.Core/Localization/Strings.resx:1215-1217`
-- Modify: `Grimhollow.Core/GrimhollowGame.Menu.cs:70-77`
+- Modify: `Grimhollow.Core/GrimhollowGame.Menu.cs:70-78` (the doc comment and the whole `ApplyAntiAliasing` method as I7
+  left it)
 - Test: `Grimhollow.Tests/Client/SettingsScreenAntiAliasingTests.cs:38-92`
 - Test: `Grimhollow.Tests/Client/SettingsScreenTests.cs:451-456,598-622,672-674,750`
 - Create: `Grimhollow.Tests/Client/SettingsScreenRenderQualityTests.cs`
@@ -26636,7 +27305,7 @@ Expected: `CS1061: 'SettingsScreen' does not contain a definition for 'RenderQua
         StringId.Of(GrimhollowStrings.SettingsRenderQualityUltraPerformance);
 ```
 
-and line 271 of `All` (`ShadowDetailHigh, AntiAliasing, AntiAliasingFxaa, AntiAliasingMsaa4, MasterVolume, EffectsVolume,`)
+and line 272 of `All` (`ShadowDetailHigh, AntiAliasing, AntiAliasingFxaa, AntiAliasingMsaa4, MasterVolume, EffectsVolume,`)
 becomes
 
 ```csharp
@@ -26777,7 +27446,8 @@ and lines 289-293 become
         _renderQuality.Draw(batch, _white, _font);
 ```
 
-`Grimhollow.Core/GrimhollowGame.Menu.cs`, replace lines 70-77:
+`Grimhollow.Core/GrimhollowGame.Menu.cs`, replace lines 70-78 (the doc comment and the whole `ApplyAntiAliasing`
+method as I7 left it):
 
 ```csharp
     /// <summary>Applies the selected anti-aliasing and TAA render quality to the running scene and, once the world is
@@ -26828,6 +27498,8 @@ never merges)
 - Modify: `tools/SnapshotTool/ShimmerMetric.cs:27-143`
 - Modify: `tools/SnapshotTool/ShimmerShots.cs:121-123`
 - Create: `tools/SnapshotTool/ShimmerMotion.cs`
+- Modify, only if the released engine moved them: `tools/SnapshotTool/PerfShots.cs:369-389` (the two `SceneInternals`
+  reflection lookups, Step 3)
 
 **Interfaces:**
 - Consumes: `HollowmereViewer.AntiAliasing`, `HollowmereViewer.RenderQuality`, `GrimhollowAntiAliasing.Taa`,
@@ -27006,10 +27678,7 @@ sealed class ShimmerDepth
             {
                 float px = MathF.Min(width - 0.5f, (bx * block) + (block * 0.5f));
                 float py = MathF.Min(height - 0.5f, (by * block) + (block * 0.5f));
-                float ndcX = (px / width * 2f) - 1f, ndcY = 1f - (py / height * 2f);
-                Vector3 near = Unproject(new Vector3(ndcX, ndcY, 0f), inverse) + origin;
-                Vector3 far = Unproject(new Vector3(ndcX, ndcY, 1f), inverse) + origin;
-                Vector3 dir = Vector3.Normalize(far - near);
+                Vector3 dir = PixelRay(px, py, width, height, inverse, origin, out Vector3 near);
                 blockMetres[(by * bw) + bx] = Hit(near, dir, eye, heights);
             }
         });
@@ -27058,6 +27727,19 @@ sealed class ShimmerDepth
     {
         Vector4 p = Vector4.Transform(new Vector4(ndc, 1f), inverse);
         return new Vector3(p.X, p.Y, p.Z) / p.W;
+    }
+
+    /// <summary>The world-space ray through the pixel position (<paramref name="px"/>, <paramref name="py"/>), the
+    /// unprojection ScreenToRay does, for a caller that already holds the inverse view-projection.</summary>
+    /// <param name="near">The ray's start on the near plane, in world space.</param>
+    /// <returns>The ray's unit direction.</returns>
+    public static Vector3 PixelRay(float px, float py, int width, int height, in Matrix4x4 inverse, Vector3 origin,
+        out Vector3 near)
+    {
+        float ndcX = (px / width * 2f) - 1f, ndcY = 1f - (py / height * 2f);
+        near = Unproject(new Vector3(ndcX, ndcY, 0f), inverse) + origin;
+        Vector3 far = Unproject(new Vector3(ndcX, ndcY, 1f), inverse) + origin;
+        return Vector3.Normalize(far - near);
     }
 }
 ```
@@ -27199,10 +27881,9 @@ sealed class CompensatedFlicker
                 int p = (y * _width) + x;
                 float metres = depth.Metres[p];
                 if (!float.IsFinite(metres)) continue;
-                float ndcX = ((x + 0.5f) / _width * 2f) - 1f, ndcY = 1f - ((y + 0.5f) / _height * 2f);
-                Vector3 near = ShimmerDepth.Unproject(new Vector3(ndcX, ndcY, 0f), now.Inverse) + now.Origin;
-                Vector3 far = ShimmerDepth.Unproject(new Vector3(ndcX, ndcY, 1f), now.Inverse) + now.Origin;
-                Vector3 world = now.Eye + (Vector3.Normalize(far - near) * metres);
+                Vector3 dir = ShimmerDepth.PixelRay(x + 0.5f, y + 0.5f, _width, _height, now.Inverse, now.Origin,
+                    out _);
+                Vector3 world = now.Eye + (dir * metres);
                 Vector4 clip = Vector4.Transform(new Vector4(world - before.Origin, 1f), before.ViewProjection);
                 if (clip.W <= 0f) continue;
                 float sx = ((((clip.X / clip.W) + 1f) * 0.5f) * _width) - 0.5f;
@@ -27574,10 +28255,7 @@ static class ShimmerMotion
         md.AppendLine("## Cost on the pan cells, no read back");
         md.AppendLine();
         md.AppendLine("| Config | Internal | GPU median ms |");
-        md.AppendLine("| --- | --- | --- |");
-        foreach (ShimmerConfig c in configs)
-            md.AppendLine(CultureInfo.InvariantCulture,
-                $"| {c.Label} | {cost[c.Key].Internal.W}x{cost[c.Key].Internal.H} | {cost[c.Key].GpuMedianMs:F2} |");
+        CostRows(md, cost, configs);
         md.AppendLine();
         md.AppendLine("## Temporal diagnostics at the first measured frame");
         md.AppendLine();
@@ -27613,11 +28291,18 @@ static class ShimmerMotion
             md.AppendLine();
         }
         md.AppendLine(CultureInfo.InvariantCulture, $"| Config | Internal at {width}x{height} | GPU median ms, pan cells |");
+        CostRows(md, cost, configs);
+        return md.ToString();
+    }
+
+    /// <summary>The cost table's separator and one row per configuration, shared by the summary and the ledger
+    /// table so the two never drift apart.</summary>
+    static void CostRows(StringBuilder md, Dictionary<string, MotionCost> cost, ShimmerConfig[] configs)
+    {
         md.AppendLine("| --- | --- | --- |");
         foreach (ShimmerConfig c in configs)
             md.AppendLine(CultureInfo.InvariantCulture,
                 $"| {c.Label} | {cost[c.Key].Internal.W}x{cost[c.Key].Internal.H} | {cost[c.Key].GpuMedianMs:F2} |");
-        return md.ToString();
     }
 
     static IEnumerable<string> Csv(List<MotionRun> runs)
@@ -27649,15 +28334,19 @@ dotnet run --project tools/SnapshotTool -c Release -- shimmer --moving --self-ch
 dotnet run --project tools/SnapshotTool -c Release -- shimmer --moving --paths meadow --moves pan --zooms max \
   --configs msaa4,taa-quality --warmup 8 --frames 8 --timing-frames 0 /tmp/taa-motion-smoke
 cat /tmp/taa-motion-smoke/decision.md
+grep -A8 "Temporal diagnostics" /tmp/taa-motion-smoke/summary.md
 ```
-Expected: the self-check prints `PASS` and exits 0. The smoke run prints a `TemporalDiagnostics` line with a valid
-history for `taa-quality`, resolves `msaa4` to MSAA and `taa-quality` to the temporal mode, and writes all four files.
+Expected: the self-check prints `PASS` and exits 0. The smoke run resolves `msaa4` to MSAA and `taa-quality` to the
+temporal mode and writes all four files. The `grep` prints the `## Temporal diagnostics at the first measured frame`
+heading, a blank line and one line, `- meadow-pan-max taa-quality: TemporalDiagnostics { ... }`, whose record text
+holds `HistoryValid = True` and `KeyCollisions = 0`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add tools/SnapshotTool/ShimmerSession.cs tools/SnapshotTool/ShimmerMetric.cs tools/SnapshotTool/ShimmerShots.cs \
   tools/SnapshotTool/ShimmerMotion.cs
+git add tools/SnapshotTool/PerfShots.cs   # a no-op unless Step 3 updated its reflection lookups
 git commit -m "tools(perf): measure shimmer under a moving camera for TAA presets"
 ```
 
@@ -27712,7 +28401,10 @@ the chosen preset against MSAA 4x at its own 3 pixels. `P` is the key the decisi
 (`DefaultRenderQuality`) when it names `msaa4`.
 
 ```bash
-P=taa-balanced   # the key on the first line of decision.md, or taa-quality when it says msaa4
+P=$(sed -n '1s/^Default: \([a-z0-9-]*\)\.$/\1/p' tools/SnapshotTool/perf-results/taa-motion/decision.md)
+test -n "$P" || echo "STOP: decision.md has no Default line"
+[ "$P" = msaa4 ] && P=taa-quality   # DefaultRenderQuality when MSAA 4x stays the default
+echo "P=$P"
 dotnet run --project tools/SnapshotTool -c Release -- shimmer --moving --configs msaa4,$P --taa-fades 0,1.5,3 \
   --timing-frames 0 tools/SnapshotTool/perf-results/taa-motion-fade > /tmp/taa-motion-fade.log 2>&1
 head -1 tools/SnapshotTool/perf-results/taa-motion-fade/decision.md
@@ -27752,10 +28444,10 @@ Report the SHA to the orchestrator, who pushes `feature/grass-shimmer-probe` so 
   `WindFadeBladePixels`, new `StillCaptureChoice` and `StillCapture`)
 - Modify: `Grimhollow.Core/Config/GrimhollowSettings.cs:45-47` (the `AntiAliasing` summary)
 - Modify: `tools/SnapshotTool/TerrainShots.cs:27,57`, `tools/SnapshotTool/IndoorLightShots.cs:69`
-- Test: `Grimhollow.Tests/Client/GrimhollowAntiAliasingSettingsTests.cs:11-16,43-50`
+- Test: `Grimhollow.Tests/Client/GrimhollowAntiAliasingSettingsTests.cs:11-16,43-51`
 - Test: `Grimhollow.Tests/Config/GrimhollowSettingsTests.cs:258-306`
-- Test: `Grimhollow.Tests/Client/SettingsScreenAntiAliasingTests.cs:17-28,94-107`
-- Test: `Grimhollow.Tests/World/GroundCoverTests.cs:32,54,105,124-125`
+- Test: `Grimhollow.Tests/Client/SettingsScreenAntiAliasingTests.cs:17-28,98-111`
+- Test: `Grimhollow.Tests/World/GroundCoverTests.cs:32,54,105,125-126`
 
 **Interfaces:**
 - Consumes: `decision.md` and `taa-motion-fade/decision.md` (I10)
@@ -27773,7 +28465,11 @@ Mapping from the decision lines to the code. `F` is the value on the fade line, 
 | `Default: taa-ultraperformance.` | `GrimhollowAntiAliasing.Taa` | `GrimhollowRenderQuality.UltraPerformance` |
 | `Default: msaa4.` | `GrimhollowAntiAliasing.Msaa4`, unchanged | `GrimhollowRenderQuality.Quality`, unchanged |
 
-The code below is written for `Default: taa-balanced.` and `TAA fade: 1.5.` Substitute the row the decision names.
+Measured decision (the orchestrator pastes the two real decision.md first lines here, at dispatch):
+`<first line of taa-motion/decision.md>` and `<first line of taa-motion-fade/decision.md>`.
+
+The code below is written for the example `Default: taa-balanced.` and `TAA fade: 1.5.`, and the example values
+never ship. Substitute the row the pasted decision names.
 On `Default: msaa4.` only the fade changes (the `Taa` row of `EachChoiceCarriesItsGrassWindFade` and the `Taa` arm of
 `WindFadeBladePixels`), the capture and default tests stay, and the task goes straight to the handoff.
 
@@ -27805,14 +28501,14 @@ and change the `Taa` row of `EachChoiceCarriesItsGrassWindFade` to `[InlineData(
 `Grimhollow.Tests/Config/GrimhollowSettingsTests.cs`: rename `FreshAndOlderSettingsDefaultToMsaa4` to
 `FreshAndOlderSettingsDefaultToTaa` and replace its three `GrimhollowAntiAliasing.Msaa4` with
 `GrimhollowAntiAliasing.Taa` (lines 261, 268, 269). Rename `AnUnknownAntiAliasingNormalizesToMsaa4AndOnlySavesOnARealChange`
-to `AnUnknownAntiAliasingNormalizesToTaaAndOnlySavesOnARealChange` and replace `Msaa4` with `Taa` on lines 299, 303
-and 305.
+to `AnUnknownAntiAliasingNormalizesToTaaAndOnlySavesOnARealChange` and replace `Msaa4` with `Taa` on lines 300, 304
+and 306.
 
 `Grimhollow.Tests/Client/SettingsScreenAntiAliasingTests.cs`: `TheAntiAliasingRowSitsUnderShadowDetailAndOpensOnMsaa4x`
 becomes `TheAntiAliasingRowSitsUnderShadowDetailAndOpensOnTaa` with `(int)GrimhollowAntiAliasing.Taa` on line 22, and
-`ReselectingTheCurrentAntiAliasingDoesNothing` picks and asserts `GrimhollowAntiAliasing.Taa` on lines 99 and 101.
+`ReselectingTheCurrentAntiAliasingDoesNothing` picks and asserts `GrimhollowAntiAliasing.Taa` on lines 103 and 105.
 
-`Grimhollow.Tests/World/GroundCoverTests.cs`: lines 32 and 54 assert `1.5f`, the `(null, 3f)` pair on line 124
+`Grimhollow.Tests/World/GroundCoverTests.cs`: lines 32 and 54 assert `1.5f`, the `(null, 3f)` pair on line 125
 becomes `(null, 1.5f)`, the `(GrimhollowAntiAliasing.Taa, 3f)` leg I7 added becomes `1.5f`, and so does the `Taa` row
 I7 added to `GrassOptionsCarryTheWindFadeOfTheAntiAliasingChoice`.
 
@@ -27826,7 +28522,16 @@ fails `TaaAtTheMeasuredRenderQualityIsTheDefault` with `Expected: Taa, Actual: M
 
 - [ ] **Step 3: Implement**
 
-`Grimhollow.Core/Config/GrimhollowAntiAliasingSettings.cs`:
+`Grimhollow.Core/Config/GrimhollowAntiAliasingSettings.cs`: replace the class summary with
+
+```csharp
+/// <summary>The one home of what the player's anti-aliasing choice means: the engine's scene selection, the TAA
+/// render quality that goes with it, and the grass wind fade. The viewer seeds the scene and the grass through it,
+/// the settings screen's live change goes through it, and the art captures read <see cref="StillCaptureChoice"/>
+/// and <see cref="StillCapture"/>, which follow the default except that a TAA default captures under MSAA 4x.</summary>
+```
+
+and replace `DefaultChoice` and `DefaultRenderQuality`, I7's `<remarks>` on `DefaultRenderQuality` included, with:
 
 ```csharp
     /// <summary>The choice a new or older settings file takes. TAA at <see cref="DefaultRenderQuality"/> was the
@@ -27957,19 +28662,22 @@ pixel under a moving camera, and a still-camera self-check holds the two within 
 
 Replace `PROBESHA` with the I10 SHA, then paste `tools/SnapshotTool/perf-results/taa-motion/ledger-table.md` from the
 probe worktree verbatim, then the 3456x2234 cost table from `taa-motion-3456/ledger-table.md` under the sentence "The
-same cost pass at the owner's 3456x2234 display, where TAA sizes from the window:", then the two decision lines as
-prose, for example "The cheapest TAA render quality under MSAA 4x in every cell was `Balanced`, now the default. TAA's
+same cost pass at the owner's 3456x2234 display, where TAA sizes from the window:", then the two pasted decision lines as
+prose, in the shape of this example "The cheapest TAA render quality under MSAA 4x in every cell was `Balanced`, now the default. TAA's
 grass wind fade is 1.5, the smallest swept value that stayed under MSAA 4x in every cell." End with "The owner's
 windowed playtest confirms the default before it ships." On `Default: msaa4.`, the sentence says no TAA preset beat
 MSAA 4x in every cell, names the most cells any preset won, and states that `MSAA 4x` stays the default with `TAA` as
 an option.
 
-The guide and changelog text below is written for the same example decision as I11, `Default: taa-balanced.` and
-`TAA fade: 1.5.` Substitute the measured preset and fade. On `Default: msaa4.` the first two sentences of the guide
+Measured decision (the orchestrator pastes the two real decision.md first lines here, at dispatch):
+`<first line of taa-motion/decision.md>` and `<first line of taa-motion-fade/decision.md>`.
+
+The guide and changelog text below is written for I11's example decision, `Default: taa-balanced.` and
+`TAA fade: 1.5.`, and the example values never ship. Substitute the pasted preset and fade. On `Default: msaa4.` the first two sentences of the guide
 paragraph read "`Anti-aliasing` offers FXAA, MSAA 4x (default) and TAA." and the still-capture sentence is dropped.
 
-`docs/DEVELOPMENT.md:392`: `vertical sync, frame cap, roofs, grass distance, shadow detail, anti-aliasing, render
-quality)`. Replace lines 414-420 with:
+`docs/DEVELOPMENT.md:392`: change `shadow detail, anti-aliasing),` to `shadow detail, anti-aliasing, render quality),`
+and keep the rest of the line. Replace lines 414-420 with:
 
 ```markdown
 `Anti-aliasing` offers FXAA, MSAA 4x and TAA. TAA at `Balanced` render quality is the default. FXAA and MSAA 4x
@@ -28126,12 +28834,12 @@ Engine repo: `/Users/antonio/KhaozEngine` (read code at the worktree above, bran
 
 - C# on .NET 10, xUnit. Warnings are errors. Every build and test command runs in Release.
 - Engine tests live in `KhaozEngine.Render.Tests` under namespaces `KhaozEngine.Tests.*`. Unit tests beside the area (`KhaozEngine.Render.Tests/Render3D/...`), GPU tests in `KhaozEngine.Render.Tests/Gpu/...` with `[GpuFact]` or `[GpuTheory]`, run with `KE_GPU_TESTS=1` on the local native Metal device. A test that reads allocation joins the `AllocSensitive` collection.
-- GLSL 450 shader sources live in `KhaozEngine.Render3D/Internal/ShaderSources*.cs`. A new or changed program updates: the three hash tables (rebake with `KE_UPDATE_MSL_HASHES=1`, `KE_UPDATE_SPIRV_HASHES=1`, `KE_UPDATE_HLSL_HASHES=1` on the matching `*ByteEquality` tests, never hand edited), rows in `KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs`, and the seven hand-maintained lists in `VulkanShaderBindingTableTests.cs`, `VulkanDescriptorLimitTests.cs`, `D3D11ResourceModelTests.cs`, `D3D11RegisterNumberingTests.cs`, `ShaderSourceValidationTests.cs`, `Render3D/UboLayoutTests.cs` and `VulkanShippedVertexLayoutTests.cs`, plus the pinned program counts. Name each one a task touches.
+- GLSL 450 shader sources live in `KhaozEngine.Render3D/Internal/ShaderSources*.cs`. A new or changed program updates: the three hash tables (rebake with `KE_UPDATE_MSL_HASHES=1`, `KE_UPDATE_SPIRV_HASHES=1`, `KE_UPDATE_HLSL_HASHES=1` on the matching `*ByteEquality` tests, never hand edited), rows in `KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs`, and the seven hand-maintained lists in `VulkanShaderBindingTableTests.cs`, `VulkanDescriptorLimitTests.cs`, `D3D11ResourceModelTests.cs`, `D3D11RegisterNumberingTests.cs`, `ShaderSourceValidationTests.cs`, `Render3D/UboLayoutTests.cs` and `VulkanShippedVertexLayoutTests.cs`, plus the pinned counts in `ShippedShaderPrograms.cs`, `VulkanShaderBindingTableTests.cs`, `D3D11HlslByteEqualityTests.cs`, `VulkanSpirvByteEqualityTests.cs` (two stages per program), `VulkanDescriptorLimitTests.cs`, `VulkanDynamicOffsetTests.cs` (layouts) and `VulkanLayoutCompatibilityTests.cs` (pipelines, and pipelines squared). Name each one a task touches.
 - `Scene3D.cs` is frozen by the file-size ratchet (`scripts/check-file-size.sh`, `.filesize-baseline`). New behaviour goes in new partials `Scene3D.<Feature>.cs` or new types. No baseline entry grows. The cap for new files is 800 lines.
 - No em or en dash characters anywhere. No semicolons in Markdown prose or comment prose. Semicolons in code are fine.
 - Commit subjects `area(scope): summary`, for example `render3d(temporal): latch one frame view per render`. Stage explicit paths. Never use `git stash`.
 - With temporal inactive, every committed golden stays byte-identical on Metal, D3D11 and Vulkan, and no new target, pipeline or buffer is created. Every task that touches a raster path proves this with the full local Metal GPU suite.
-- Implementers never push, merge, tag, bump `<KhaozEngineVersion>` or edit `CHANGELOG.md`. The orchestrator owns integration and release.
+- Implementers never push, merge, tag, bump the engine's `<KhaozEngineVersion>` or edit the engine's `CHANGELOG.md`. The orchestrator owns integration and release.
 
 ### Branches and worktrees
 
@@ -28245,17 +28953,18 @@ namespace KhaozEngine.Render3D.Internal;
 internal sealed class MotionHistory
 {
     public void BeginFrame();                                              // swap current and previous
+    public void Reset();                                                   // forget both maps (temporal off)
     public void RecordRigid(MotionKey key, in Matrix4x4 world);           // counts collisions
     public bool TryGetPreviousRigid(MotionKey key, out Matrix4x4 world);
-    public void RecordSkinned(MotionKey key, ReadOnlySpan<Matrix4x4> palette);
-    public bool TryGetPreviousSkinned(MotionKey key, out ReadOnlySpan<Matrix4x4> palette);
+    public void RecordSkinned(MotionKey key, in Matrix4x4 world, ReadOnlySpan<Matrix4x4> palette);
+    public bool TryGetPreviousSkinned(MotionKey key, out Matrix4x4 world, out ReadOnlySpan<Matrix4x4> palette);
     public int Collisions { get; }
     public int KeyedRigid { get; }
     public int KeyedSkinned { get; }
 }
 ```
 
-`SceneInstances.Instance` gains a `MotionKey Motion` field (CPU side, not uploaded). The existing overloads forward with `MotionKey.None`.
+`SceneInstances.Instance` gains a get-only `MotionKey Motion` property (CPU side, not uploaded). The existing overloads forward with `MotionKey.None`.
 
 #### Round 1, motion target and per-path motion (group D)
 

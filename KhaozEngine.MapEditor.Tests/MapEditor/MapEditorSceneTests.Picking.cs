@@ -53,7 +53,7 @@ public partial class MapEditorSceneTests
     }
 
     [Fact]
-    public void HiddenPlacementCategory_StillSuppressesPickAfterReload()
+    public void Reload_keeps_hidden_prop_category_out_of_draw_and_picking()
     {
         string path = Path.Combine(Path.GetTempPath(), $"ke-reload-pick-{Guid.NewGuid():N}.json");
         try
@@ -76,6 +76,9 @@ public partial class MapEditorSceneTests
             scene.Visibility.SetCategory(EditorPropCategory.Trees, false);
 
             Assert.True(scene.ReloadDocument());
+            ViewportWorld viewport = Assert.IsType<ViewportWorld>(scene.ReloadViewport);
+            Assert.Equal(EditorPropCategory.Trees, viewport.PropCategoryOf("oak"));
+            Assert.False(viewport.PropKindVisible("oak"));
             scene.Controller.Field = new TerrainField(new TerrainConfig { GentleAmplitude = 0f });
             scene.Controller.Update(DownwardPress(0f, 0f));
 

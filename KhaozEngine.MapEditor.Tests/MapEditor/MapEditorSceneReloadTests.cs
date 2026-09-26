@@ -13,6 +13,7 @@ public partial class MapEditorSceneTests
     {
         public bool FailReloadBuild;
         public int ReloadBuilds;
+        public ViewportWorld? ReloadViewport { get; private set; }
 
         protected override void BuildWorld() { }
         protected override void TeardownWorld() { }
@@ -22,7 +23,7 @@ public partial class MapEditorSceneTests
             ReloadBuilds++;
             if (FailReloadBuild)
                 throw new MapDocumentException("scripted reload build failure");
-            return null;
+            return ReloadViewport = CreateReloadViewport();
         }
     }
 

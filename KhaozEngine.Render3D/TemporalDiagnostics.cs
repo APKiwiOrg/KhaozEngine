@@ -8,7 +8,8 @@ namespace KhaozEngine.Render3D;
 /// render, and written once per frame on the frame's first render. Read it on the render thread after the frame renders.
 /// </summary>
 /// <param name="FrameIndex">The frame's index, advanced once per <see cref="Scene3D.Begin"/>.</param>
-/// <param name="JitterPhase">Where the frame index falls in the jitter sequence, from 0.</param>
+/// <param name="JitterPhase">Where the frame index falls in the jitter sequence, from 0, reported whether or not the
+/// jitter is applied, see <see cref="JitterPixels"/>.</param>
 /// <param name="JitterPixels">The sub-pixel jitter the frame rasterised with, in internal pixels, x right and y down,
 /// each in [-0.5, 0.5). Zero while temporal rendering is inactive.</param>
 /// <param name="KeyedRigid">Rigid draws the frame submitted with a motion key.</param>

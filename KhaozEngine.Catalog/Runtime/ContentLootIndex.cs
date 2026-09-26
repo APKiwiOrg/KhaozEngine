@@ -54,15 +54,14 @@ public readonly record struct ContentLootEntry(
 /// therefore the weighted pool's total and the exclusive bound of a pick, not the sum of every authored
 /// weight. A weight below zero is CLAMPED to zero
 /// rather than refused, because a negative weight would make the prefix array non-monotonic and unsearchable,
-/// and a load failure is the wrong answer for a number a publish accepted. The running total saturates at
+/// and a load failure is the wrong answer for a pack that bypassed validation. The running total saturates at
 /// <see cref="int.MaxValue"/> for the same reason.
 /// </para>
 /// <para>
-/// <b>The clamp and the saturation are the ONLY defence a weight has today.</b> No validator check reads a
-/// weight at all: spec 3.5 declares it a bare <c>int</c>, so a negative or an overflowing one publishes clean
-/// and arrives here. That is filed as a spec change,
-/// https://github.com/APKiwiOrg/KhaozEngine/issues/944, and until it lands nothing upstream of this line
-/// bounds the number.
+/// <b>The clamp and saturation are defence in depth.</b> <c>KEC0043</c> refuses a live entry weight outside
+/// zero to <see cref="LootEntryContentType.MaxWeight"/> and a live table whose non-guaranteed pool exceeds
+/// <see cref="LootEntryContentType.MaxWeightedPoolTotal"/>. These runtime guards keep a pack that bypassed
+/// the validator searchable without silently widening the accepted authoring contract.
 /// </para>
 /// <para>
 /// A <c>required_tags</c> entry resolves at load into a candidate array (spec 3.5): every LIVE item carrying

@@ -9,7 +9,7 @@ namespace KhaozEngine.ItemInstances;
 /// told apart by an operator reading a code rather than by reading a message.
 /// <para>
 /// <b>A code is a STABLE token.</b> A counter, a test and an operator runbook all key on it, so a code is
-/// never renumbered and a withdrawn one is never reissued, exactly as <c>KEC0001</c> to <c>KEC0042</c> are
+/// never renumbered and a withdrawn one is never reissued, exactly as <c>KEC0001</c> to <c>KEC0043</c> are
 /// treated. That is why <see cref="All"/> is a pinned list rather than a generated range.
 /// </para>
 /// <para>

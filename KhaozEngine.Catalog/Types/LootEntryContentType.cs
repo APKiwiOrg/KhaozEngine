@@ -31,6 +31,12 @@ public static class LootEntryContentType
     /// <summary>This type's own row cap, which its slot count requires.</summary>
     public const int MaxRowBytes = 512;
 
+    /// <summary>The largest weight one entry can contribute to a weighted pool.</summary>
+    public const int MaxWeight = int.MaxValue;
+
+    /// <summary>The largest total the non-guaranteed entries of one table can carry.</summary>
+    public const int MaxWeightedPoolTotal = int.MaxValue;
+
     /// <summary>The table this entry belongs to.</summary>
     public const string TableField = "table";
 

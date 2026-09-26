@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.6.2
+
+- A catalog type validator that throws now keeps the findings it emitted first and adds the `KEC0040`
+  throw finding. Authors can see the earlier defects while publish remains refused
+  ([#1075](https://github.com/APKiwiOrg/KhaozEngine/issues/1075)).
+- `FileSystemPackStore` refuses an oversized or growing cache file before it can allocate an unbounded
+  object. The object byte ceiling is shared across file, HTTP and Azure Blob stores
+  ([#957](https://github.com/APKiwiOrg/KhaozEngine/issues/957)).
+- Split and Merge operations reject a destination container, matching their same-container write path
+  and page accounting ([#1096](https://github.com/APKiwiOrg/KhaozEngine/issues/1096)).
+- The pack hook recognizes bare packs targeting `KHAOZENGINE_FEED`, including quoted and expanded paths,
+  and applies the released-version and shared-feed guards
+  ([#1090](https://github.com/APKiwiOrg/KhaozEngine/issues/1090)).
+- Render3D documentation now calls `Material.Shiny` with a specular strength in its examples
+  ([#1155](https://github.com/APKiwiOrg/KhaozEngine/issues/1155)).
+
 ## 20.6.1
 
 `KhaozEngine.Platform` now keeps the macOS pasteboard implementation in one internal

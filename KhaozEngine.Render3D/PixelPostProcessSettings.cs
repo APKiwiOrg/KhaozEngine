@@ -72,6 +72,10 @@ namespace KhaozEngine.Render3D
         /// <see cref="HdrSettings"/> for exposure, the operator choices, and the unclamped-Color authoring note.</summary>
         public HdrSettings Hdr = new();
 
+        /// <summary>Temporal rendering settings, such as the camera-cut thresholds that decide when a camera move drops
+        /// temporal history. Inert until something asks for temporal rendering. See <see cref="TemporalSettings"/>.</summary>
+        public TemporalSettings Temporal = new();
+
         /// <summary>Internal render width (used only when <see cref="RenderScale"/> is
         /// <see cref="Render3D.RenderScale.FixedInternal"/>). High = smooth; small + Pixelated = chunky retro pixels.</summary>
         public int RenderWidth = 1600;

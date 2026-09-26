@@ -19,7 +19,8 @@ namespace KhaozEngine.Render3D.Internal
     /// <see cref="TemporalResolveTuning.MovingSurfaceMotionFraction"/> of that motion, of that sample's static previous
     /// UV. The motion target wrote the motion for exactly that surface point, so a static surface agrees up to float
     /// precision and the target's half-float rounding. Elsewhere the surface moved and neighbourhood clipping handles
-    /// it. The motion target never reads as background off screen: an x channel past
+    /// it. At a moving edge the stored depths are still read, and there they decide only whether the thin-feature lock
+    /// is kept. The motion target never reads as background off screen: an x channel past
     /// <see cref="TemporalResolveTuning.MotionSentinel"/> is background, and a previous UV outside [0, 1], which every
     /// clamped or behind-the-camera motion gives, rejects history as off screen.</para>
     /// <para><b>D3D11 SIGNATURE.</b> Each <c>main</c> reads <c>vUv</c> with a <c>1e-30</c> weight, which changes no
@@ -67,6 +68,7 @@ const float LockReactiveRelease = 2.0;
 const float LockDecay = 0.125;
 const float LockHoldGain = 2.0;
 const float LockEdgeRelease = 1.0;
+const float LockEdgeMotionFraction = 0.001953125;
 ";
 
         // ---- The resolve's core: bindings, uniforms and the per-pixel resolve, no stage inputs or outputs ----
@@ -288,21 +290,49 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     bool onScreen = all(greaterThanEqual(previousUv, vec2(0.0))) && all(lessThanEqual(previousUv, vec2(1.0)));
     float motionPixels = onScreen ? length((uv - previousUv) * displaySize) : 0.0;
 
+    // Step 6's edge signal, which step 3 below also reads: where the centre texel moves otherwise than the dilated
+    // nearest surface, a moving feature is passing over a background, and the pixel reads history along that feature's
+    // motion rather than its own. A surface moving as a whole, a swaying blade or an avatar the camera follows, has no
+    // such edge. A background centre moves by the camera's rotation alone. An edge counts once the two motions differ
+    // by more than LockEdgeMotionFraction of the dilated motion, past the motion target's rounding.
+    float edgeMotion = 0.0;
+    if (!closestIsBackground) {
+        vec2 centreOwn = centreMotion;
+        if (centreIsBackground) {
+            vec2 centreUv = (vec2(centreTexel) + 0.5 - jitter) / internalSize;
+            vec4 centrePrevious = BackgroundToPrevious * vec4(centreUv.x * 2.0 - 1.0, 1.0 - centreUv.y * 2.0, 1.0, 1.0);
+            centreOwn = centrePrevious.w > 1.0e-6
+                ? centreUv - vec2(centrePrevious.x / centrePrevious.w * 0.5 + 0.5, 0.5 - centrePrevious.y / centrePrevious.w * 0.5)
+                : vec2(2.0);   // behind last frame's camera: as far apart as motion goes
+        }
+        edgeMotion = length((closestMotion - centreOwn) * internalSize);
+    }
+    bool movingEdge = edgeMotion > length(closestMotion * internalSize) * LockEdgeMotionFraction;
+
     // Step 3: disocclusion, one-sided. The farthest of the four stored depths around the reprojected position keeps a
     // sub-pixel edge from reading as revealed. A background pixel expects BackgroundLinearDepth, so anything stored
     // nearer there was covering it. A static surface on or behind last frame's camera had no history there. The
     // footprint sits at the display pixel's previous position, where history is read, while the expected depth comes
     // from the dilated texel's own point. That is safe: the dilated texel carries the nearest depth in the 3x3, and the
     // test fires only on a stored depth nearer than expected, so the nearest expectation can only make it fire less.
+    // The same four depths tell step 6 whether a pixel at a moving edge reads history a farther surface left: every
+    // one of them farther than the moving surface's expected depth. That runs for a moving surface too, whose depth
+    // test is skipped, and costs no fetch beyond the four a depth-tested pixel already takes.
     bool disoccluded = false;
-    if (historyValid && onScreen && depthTested) {
+    bool heldFromFarther = false;
+    if (historyValid && onScreen && (depthTested || movingEdge)) {
         ivec2 baseTexel = ivec2(floor(previousUv * internalSize - 0.5));
         float farthest = 0.0;
+        float nearest = 2.0 * BackgroundLinearDepth;
         for (int corner = 0; corner < 4; corner++) {
             ivec2 texel = clamp(baseTexel + ivec2(corner & 1, corner >> 1), ivec2(0), maxTexel);
-            farthest = max(farthest, texelFetch(sampler2D(PrevDepth, LinearClamp), texel, 0).r);
+            float stored = texelFetch(sampler2D(PrevDepth, LinearClamp), texel, 0).r;
+            farthest = max(farthest, stored);
+            nearest = min(nearest, stored);
         }
-        disoccluded = !(expectedDepth > 1.0e-6) || farthest < expectedDepth * (1.0 - DisocclusionTolerance);
+        disoccluded = depthTested
+            && (!(expectedDepth > 1.0e-6) || farthest < expectedDepth * (1.0 - DisocclusionTolerance));
+        heldFromFarther = movingEdge && expectedDepth < nearest * (1.0 - DisocclusionTolerance);
     }
 
     // Step 2: Catmull-Rom history at the reprojected position. A NaN or an infinity never reaches the output, because
@@ -346,31 +376,20 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         : 0.0;
 
     // Step 6: thin features. A ridge through the centre texel refreshes the lock, which decays by LockDecay a frame
-    // whatever the preset. Large motion and reactive content release it, and so does motion at an edge: where the
-    // centre texel moves otherwise than the dilated nearest surface, a moving feature is passing over a background, and
-    // what the pixel holds is that feature's history, not its own. A surface moving as a whole, a swaying blade or an
-    // avatar the camera follows, has no such edge and keeps its lock. A background centre moves by the camera's rotation
-    // alone. The hold on the clip stays whole while the lock is at least 1 / LockHoldGain, so a sub-texel feature missed
-    // for a few frames keeps its luma, and it lets go over the rest of the lock.
-    float edgeMotion = 0.0;
-    if (!closestIsBackground) {
-        vec2 centreOwn = centreMotion;
-        if (centreIsBackground) {
-            vec2 centreUv = (vec2(centreTexel) + 0.5 - jitter) / internalSize;
-            vec4 centrePrevious = BackgroundToPrevious * vec4(centreUv.x * 2.0 - 1.0, 1.0 - centreUv.y * 2.0, 1.0, 1.0);
-            centreOwn = centrePrevious.w > 1.0e-6
-                ? centreUv - vec2(centrePrevious.x / centrePrevious.w * 0.5 + 0.5, 0.5 - centrePrevious.y / centrePrevious.w * 0.5)
-                : vec2(2.0);   // behind last frame's camera: as far apart as motion goes
-        }
-        edgeMotion = length((closestMotion - centreOwn) * internalSize);
-    }
+    // whatever the preset. Large motion and reactive content release it, and so does motion at an edge, where the pixel
+    // holds a moving feature's history, not its own. At a moving edge whose history a farther surface left, the lock
+    // read with that history belongs to that surface, and a nearer surface crossing a held thin feature would carry it
+    // onward, so it is dropped before a ridge can refresh it. A thin feature taking a ridge keeps its own lock, and so
+    // does one beside a still nearer surface, which is no moving edge. The hold on the clip stays whole while the lock
+    // is at least 1 / LockHoldGain, so a sub-texel feature missed for a few frames keeps its luma, and it lets go over
+    // the rest of the lock.
     float centreLuma = lumas[4];
     float ridgeThreshold = max(LockRidgeAbsolute, LockRidgeRelative * centreLuma);
     bool ridge = isRidge(centreLuma, lumas[3], lumas[5], ridgeThreshold)
         || isRidge(centreLuma, lumas[1], lumas[7], ridgeThreshold)
         || isRidge(centreLuma, lumas[0], lumas[8], ridgeThreshold)
         || isRidge(centreLuma, lumas[2], lumas[6], ridgeThreshold);
-    float lockValue = useHistory ? max(historyState.y - LockDecay, 0.0) : 0.0;
+    float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;
     if (ridge) lockValue = 1.0;
     float motionRelease = clamp((motionPixels - LockMotionStartPixels) / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
     lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))

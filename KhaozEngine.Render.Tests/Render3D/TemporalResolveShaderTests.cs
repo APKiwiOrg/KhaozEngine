@@ -40,6 +40,7 @@ namespace KhaozEngine.Tests.Render3D
             { "const float LockDecay = 0.125;", TemporalResolveTuning.LockDecay, 0.125f },
             { "const float LockHoldGain = 2.0;", TemporalResolveTuning.LockHoldGain, 2f },
             { "const float LockEdgeRelease = 1.0;", TemporalResolveTuning.LockEdgeRelease, 1f },
+            { "const float LockEdgeMotionFraction = 0.001953125;", TemporalResolveTuning.LockEdgeMotionFraction, 1f / 512f },
         };
 
         [Theory]
@@ -155,10 +156,26 @@ namespace KhaozEngine.Tests.Render3D
             // trail, so the decay is a constant and Params.x is reserved. The lock is the largest of the state texels
             // that carry bilinear weight, because a bilinear lock under motion ran out early. The release is the centre
             // texel's motion against the dilated one, which is zero for a surface moving as a whole, not the surface's
-            // own travel, which released a swaying blade and an avatar the camera follows.
+            // own travel, which released a swaying blade and an avatar the camera follows. At a moving edge whose four
+            // stored depths all lie farther than the moving surface, the lock read with that history is dropped before a
+            // ridge can refresh it, so a nearer surface crossing a held line cannot carry it. The stored depths are read
+            // there even where the depth test is skipped, and never drop a lock where nothing moves.
             string core = ShaderSources.TemporalResolveCoreGlsl;
-            Assert.Contains("float lockValue = useHistory ? max(historyState.y - LockDecay, 0.0) : 0.0;", core,
+            Assert.Contains("float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;",
+                core, StringComparison.Ordinal);
+            Assert.Contains("bool movingEdge = edgeMotion > length(closestMotion * internalSize) * LockEdgeMotionFraction;",
+                core, StringComparison.Ordinal);
+            Assert.Contains("if (historyValid && onScreen && (depthTested || movingEdge)) {", core, StringComparison.Ordinal);
+            Assert.Contains("heldFromFarther = movingEdge && expectedDepth < nearest * (1.0 - DisocclusionTolerance);", core,
                 StringComparison.Ordinal);
+            Assert.Contains("disoccluded = depthTested", core, StringComparison.Ordinal);
+            Assert.Contains("&& (!(expectedDepth > 1.0e-6) || farthest < expectedDepth * (1.0 - DisocclusionTolerance));", core,
+                StringComparison.Ordinal);
+            int edge = core.IndexOf("bool movingEdge = ", StringComparison.Ordinal);
+            int fetch = core.IndexOf("texelFetch(sampler2D(PrevDepth, LinearClamp)", StringComparison.Ordinal);
+            int refresh = core.IndexOf("if (ridge) lockValue = 1.0;", StringComparison.Ordinal);
+            Assert.True(edge >= 0 && fetch > edge && refresh > fetch,
+                "the edge signal must come before the stored depths it gates, and the drop before the ridge refresh");
             Assert.DoesNotMatch(@"\bParams\.x", core);
             Assert.Contains("vec4 carried = step(vec4(1.0e-3), bilinear);", core, StringComparison.Ordinal);
             Assert.Contains("max(max(carried.x * s00.y, carried.y * s10.y), max(carried.z * s01.y, carried.w * s11.y)));", core,

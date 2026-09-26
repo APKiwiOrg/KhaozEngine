@@ -18,7 +18,9 @@ namespace KhaozEngine.Render3D.Internal
         /// background pixel.</summary>
         public const float BackgroundLinearDepth = 1.0e30f;
         /// <summary>Step 3. A previous surface nearer than the expected depth by more than this share of it means the
-        /// pixel was hidden last frame, and its history is rejected.</summary>
+        /// pixel was hidden last frame, and its history is rejected. Step 6 takes the same share the other way: at a
+        /// moving edge (<see cref="LockEdgeMotionFraction"/>) where all four stored depths lie farther than the expected
+        /// depth by more than it, the history there is a farther surface's, and the lock read with it is dropped.</summary>
         public const float DisocclusionTolerance = 0.02f;
         /// <summary>Step 3. <see cref="TemporalResolveUniforms.CurrentToPrevious"/> assumes a static point, so the depth
         /// test runs only where the dilated texel's motion carries its own unjittered sample within this many internal
@@ -84,10 +86,23 @@ namespace KhaozEngine.Render3D.Internal
         /// surface this frame. Where they differ, a moving feature is passing over a background, and the pixel holds the
         /// history that feature carried there, not a sub-texel feature of its own. A surface moving as a whole, a swaying
         /// blade or an avatar the camera follows, differs nowhere and keeps its lock, where a release on the surface's
-        /// own travel left a line on it no brighter than with the lock off. Without it a keyed line at 0.9 display pixels
-        /// a frame on Quality trails 2 display pixels at 18 percent of its contrast. At 1 it trails 1 at 17 percent, and
-        /// every factor from 0.5 to 4 leaves that pixel, the one a ridge refreshes on the frame the line skips a texel.
-        /// 1 is the gentlest of them.</summary>
+        /// own travel left a line on it no brighter than with the lock off. A keyed line at 0.9 display pixels a frame
+        /// on Quality trails 1 display pixel at 18 percent of its contrast and 2 at 5 percent at 0 and 0.5, and 1 at
+        /// both from 1 up, at 17 percent at 1 and 15 at 2 and 4. 2 and 4 cost a blade swaying at 0.1 internal pixels a
+        /// frame over still ground on Quality, whose summed coverage falls from 22.1 percent to 20.8 and 13.1, where 0
+        /// to 1 all keep 22.1. So 1 is the smallest factor that leaves one trailing pixel at 5 percent, and the largest
+        /// measured that costs that blade nothing.</summary>
         public const float LockEdgeRelease = 1f;
+        /// <summary>Step 6. A centre texel whose motion differs from the dilated motion by more than this share of the
+        /// dilated motion's length sits at a moving edge. Both come from the RG16F motion target, which rounds each
+        /// channel by up to 1/2048 of its magnitude, so two equal motions can read up to about 1.41/1024 of their length
+        /// apart, and 1/512 is above that. At a moving edge whose history a farther surface left
+        /// (<see cref="DisocclusionTolerance"/>), the lock read with it is dropped. Without that, a nearer surface
+        /// crossing a held sub-texel line at 0.1 internal pixels a frame on UltraPerformance carries the line onto the 2
+        /// display pixels ahead of it at up to 26 percent of its contrast, and with it at most 3 percent shows. Where
+        /// nothing moves the stored depths never drop a lock: releasing wherever the history lay farther than the
+        /// dilated surface took a still line beside a still nearer surface from 40.4 to 5.9 percent at Native. A
+        /// threshold of 0 measures the same as 1/512 on every thin-feature fact.</summary>
+        public const float LockEdgeMotionFraction = 1f / 512f;
     }
 }

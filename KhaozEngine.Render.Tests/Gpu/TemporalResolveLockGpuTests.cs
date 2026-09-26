@@ -270,9 +270,7 @@ namespace KhaozEngine.Tests.Gpu
         [GpuTheory]
         [InlineData(TemporalUpscale.Native)]
         [InlineData(TemporalUpscale.Quality)]
-        [InlineData(TemporalUpscale.UltraPerformance, Skip = "The lock carries the held line onto the 2 pixels ahead of a "
-            + "surface crossing at 0.1 internal pixels a frame, at up to 26 percent of the contrast, until it drops a lock "
-            + "read with a farther surface's history at a moving edge")]
+        [InlineData(TemporalUpscale.UltraPerformance)]
         public void A_nearer_surface_crossing_a_held_line_carries_no_ghost_of_it(TemporalUpscale preset)
         {
             // Design section 7 acceptance 3 from the lock's side. The still line of the facts above holds its lock, and a

@@ -66,6 +66,19 @@ public interface ITileWorldScene
     void DrawMeshDissolved(MeshHandle handle, Matrix4x4 world, float dissolve, float edgeWidth, Color edgeColor) =>
         DrawMesh(handle, world);
 
+    /// <summary>Queues one rigid mesh from a full draw descriptor, its motion key included, so a moving body reports
+    /// its own motion to temporal rendering. Defaults to the solid or dissolved mesh draw, which keeps an
+    /// implementation written before descriptors compiling and keeps the body visible. That fallback keeps only the
+    /// mesh, the transform and the dissolve, drops the key, tint, material and shadow knobs, and draws nothing for a
+    /// shadow-only descriptor, which an older scene never cast anyway.</summary>
+    void DrawMesh(in RigidInstanceDraw draw)
+    {
+        if (draw.ShadowOnly) return;
+        if (draw.Dissolve > 0f)
+            DrawMeshDissolved(draw.Mesh, draw.World, draw.Dissolve, draw.DissolveEdgeWidth, draw.DissolveEdgeColor);
+        else DrawMesh(draw.Mesh, draw.World);
+    }
+
     /// <summary>Uploads one skinned mesh. An implementation that cannot preserve its skin refuses the call.</summary>
     /// <exception cref="NotSupportedException">This scene implementation has no skinned-mesh pass.</exception>
     SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) =>
@@ -94,6 +107,18 @@ public interface ITileWorldScene
     void DrawSkinnedDissolved(SkinnedMeshHandle handle, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 world,
         Color tint, float dissolve, float edgeWidth, Color edgeColor) =>
         throw new NotSupportedException("This tile-world scene does not support skinned meshes.");
+
+    /// <summary>Queues one skinned mesh from a full draw descriptor, its motion key included. Defaults to the plain or
+    /// dissolved skinned draw, dropping the key, the material and the shadow opt-out, so an implementation that
+    /// supports skinned meshes keeps drawing and one that does not still refuses the call.</summary>
+    /// <exception cref="NotSupportedException">This scene implementation has no skinned-mesh pass.</exception>
+    void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices)
+    {
+        if (draw.Dissolve > 0f)
+            DrawSkinnedDissolved(draw.Mesh, boneMatrices, draw.Model, draw.Tint, draw.Dissolve, draw.DissolveEdgeWidth,
+                draw.DissolveEdgeColor);
+        else DrawSkinned(draw.Mesh, boneMatrices, draw.Model, draw.Tint);
+    }
 
     /// <summary>Uploads the ground material set every region-plane mesh of this world is drawn with, once per
     /// view, and returns its handle. Defaults to an invalid handle so an implementation written before textured
@@ -226,6 +251,9 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
         _scene.Draw(handle, world, Color.White, Material.None, dissolve, edgeWidth, edgeColor);
 
     /// <inheritdoc />
+    public void DrawMesh(in RigidInstanceDraw draw) => _scene.Draw(in draw);
+
+    /// <inheritdoc />
     public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) => _scene.LoadSkinnedMesh(mesh);
 
     /// <inheritdoc />
@@ -243,6 +271,10 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
     public void DrawSkinnedDissolved(SkinnedMeshHandle handle, ReadOnlySpan<Matrix4x4> boneMatrices,
         Matrix4x4 world, Color tint, float dissolve, float edgeWidth, Color edgeColor) =>
         _scene.DrawSkinned(handle, boneMatrices, world, tint, Material.None, dissolve, edgeWidth, edgeColor);
+
+    /// <inheritdoc />
+    public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices) =>
+        _scene.DrawSkinned(in draw, boneMatrices);
 
     /// <inheritdoc />
     public void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, Color color, float widthMetres) =>

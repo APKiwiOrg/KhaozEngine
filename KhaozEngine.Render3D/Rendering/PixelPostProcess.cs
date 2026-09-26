@@ -8,14 +8,14 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>
-    /// The toggleable fullscreen post chain on the low-res target. Two orders, selected by <see cref="HdrSettings"/>:
+    /// The toggleable fullscreen post chain at the size of its targets. Two orders, selected by <see cref="HdrSettings"/>:
     /// HDR (the default) runs bloom (over-range, pre-tonemap) -> ACES tonemap -> palette quantize -> edge outline ->
     /// FXAA -> point-upscale to the swapchain, so the float16 scene is compressed to LDR after the highlights have
     /// bloomed. Legacy (<c>Hdr.Enabled = false</c>) keeps the historical quantize -> outline -> bloom -> FXAA ->
     /// upscale order, byte-identical to the pre-HDR output. Stages ping-pong between PingA/PingB (and, for bloom, the
     /// half-res BloomA/BloomB pair) so no pass reads its own output. The targets arrive as an
     /// <see cref="IPostChainTargets"/>: the internal <see cref="RenderResources"/>, or the display-resolution
-    /// <c>TemporalPostTargets</c> after the temporal resolve, whose source alternates between two history targets.
+    /// <see cref="TemporalPostTargets"/> after the temporal resolve, whose source alternates between two history targets.
     /// </summary>
     internal sealed partial class PixelPostProcess : IDisposable
     {
@@ -225,7 +225,7 @@ namespace KhaozEngine.Render3D.Rendering
             };
             cl.UpdateBuffer(_edgeBuf, 0, in edge);
 
-            // FXAA reads the internal target's texel size (1/size) to place its neighbourhood taps.
+            // FXAA reads the chain's own texel size (1/size) to place its neighbourhood taps.
             var rcp = new Vector4(1f / res.Width, 1f / res.Height, 0f, 0f);
             cl.UpdateBuffer(_fxaaBuf, 0, in rcp);
 
@@ -297,6 +297,11 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Run(IGpuCommandList cl, IPostChainTargets res, IGpuFramebuffer swapchainFB, PixelPostProcessSettings s, bool runFxaa, bool distortionActive)
         {
+            // Every set belongs to the targets BindTargets last bound, at the generation it bound them.
+            if (!ReferenceEquals(res, _bound) || res.Generation != _boundGen)
+                throw new InvalidOperationException(
+                    "PixelPostProcess.Run was handed post chain targets BindTargets has not bound at their current "
+                    + "generation. Call BindTargets with the targets this run reads first.");
             // The chain source this frame and the sets built over it (IPostChainTargets explains the slot).
             int slot = res.SourceSlot;
             IGpuTexture color = res.Source(slot);

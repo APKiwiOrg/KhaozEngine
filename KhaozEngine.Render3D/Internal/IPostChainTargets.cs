@@ -4,7 +4,7 @@ namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
     /// THE TARGETS ONE RUN OF THE POST CHAIN READS AND WRITES. <see cref="RenderResources"/> is the internal-resolution
-    /// chain every frame without the temporal resolve runs. <c>TemporalPostTargets</c> is the display-resolution
+    /// chain every frame without the temporal resolve runs. <see cref="TemporalPostTargets"/> is the display-resolution
     /// chain after the resolve (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 1). <see cref="Rendering.PixelPostProcess"/>
     /// builds its resource sets over whichever it is handed.
     /// <para><b>THE SOURCE IS A SLOT, NOT A TEXTURE.</b> The temporal chain's source is the history target the resolve

@@ -23,7 +23,7 @@ public partial class MapEditorScene
         FillPanel(batch, L.Inspector, PanelBackground);
         FillPanel(batch, L.Status, StatusBackground);
 
-        (Rect tabsRect, Rect viewRect, Rect saveRect) = SplitToolbar(L.Toolbar);
+        (Rect tabsRect, Rect viewRect, Rect generateRect, Rect saveRect) = SplitToolbar(L.Toolbar);
         _toolbar.Bounds = tabsRect;
         _toolbar.Font = font;
         _toolbar.Draw(batch, _white);
@@ -31,6 +31,7 @@ public partial class MapEditorScene
         _saveButton.Bounds = saveRect;
         _saveButton.Font = font;
         _saveButton.Draw(batch, _white);
+        DrawDungeonButton(batch, font, generateRect);
 
         _outline.Bounds = L.Outline;
         _outline.Draw(batch, _white, font);
@@ -58,5 +59,6 @@ public partial class MapEditorScene
         }
 
         DrawSettingsDialog(batch, font, ui);
+        DrawDungeonDialog(batch, font, ui);
     }
 }

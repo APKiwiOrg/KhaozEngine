@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Dungeon;
 using KhaozEngine.Game;
 using KhaozEngine.MapDoc;
 using KhaozEngine.Render3D;
@@ -38,6 +39,14 @@ public sealed class MapEditorOptions
 
     /// <summary>Spawn archetype ids the game offers in the spawn tool (dropdown content).</summary>
     public List<string> SpawnArchetypes = new();
+
+    /// <summary>Game-owned dungeon piece ids for the editor's Generate dungeon action. Null hides the action,
+    /// since the editor cannot assume the game's kit contains the greybox ids.</summary>
+    public DungeonKitMap? DungeonKit;
+
+    /// <summary>Advanced generator settings copied when the Generate dungeon panel opens. Null uses
+    /// <see cref="DungeonConfig"/>'s defaults. The panel edits only the common layout controls.</summary>
+    public DungeonConfig? DungeonPreset;
 
     /// <summary>Points of extra clearance reserved at the bottom of the window for a host-drawn overlay (for
     /// example the Showcase's F7-F10 display readout line): the status strip and the editor body above it shift

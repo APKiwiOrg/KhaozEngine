@@ -305,6 +305,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         RebuildInspector();
         _exitDialog = null;   // a re-entered scene starts with no open exit dialog
         _settingsDialog = null;   // and with no open settings menu
+        _dungeonDialog = null;
         _built = true;
     }
 
@@ -359,6 +360,7 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         // The settings menu owns the frame the same way, one gate below the exit dialog: Shift+Escape's dialog
         // still wins when both would apply, and neither opens while the other is up.
         if (_settingsDialog is not null) { CancelNavigation(); UpdateSettingsDialog(dt); return; }
+        if (_dungeonDialog is not null) { CancelNavigation(); UpdateDungeonDialog(dt); return; }
         // Sampled HERE, before the tool step, because the tool step is what consumes an Escape-cancellable
         // gesture: by the time HandleShortcuts runs (inside UpdateChrome) the drag is already cancelled and the
         // mode is back to Select, so asking then would always read "nothing was active" and the same keypress
@@ -571,84 +573,6 @@ public partial class MapEditorScene : GameScene, IGameScene3D
             _paletteTree.Bounds = bodyRect;
             _paletteTree.Draw(batch, _white, font);
         }
-    }
-
-    // ---- chrome wiring -----------------------------------------------------------------------------------
-
-    void BuildChrome()
-    {
-        _toolbar = new TabBar(ToolLabels);
-        _outline = new TreeView(default) { RowHeight = 22f, Style = GuiStyle.Modern };
-        _inspector = new PropertyGrid(default) { EditorStyle = GuiStyle.Modern };
-        _outline.OnSelected = OnOutlineSelected;
-        _outline.OnReordered = OnOutlineReordered;
-        _outline.CanReorder = OutlineNodeIsReorderable;
-
-        _paletteFilter = new TextInput(default) { PlaceholderContent = LocalizedText.Raw("Filter kits...") };
-        _paletteTree = new TreeView(default) { RowHeight = 22f, Style = GuiStyle.Modern };
-        _paletteTree.OnSelected = OnPaletteSelected;
-
-        _spawnFilter = new TextInput(default) { PlaceholderContent = LocalizedText.Raw("Filter spawns...") };
-        _spawnList = new TreeView(default) { RowHeight = 22f, Style = GuiStyle.Modern };
-        _spawnList.OnSelected = OnSpawnSelected;
-
-        _featureList = new TreeView(default) { RowHeight = 22f, Style = GuiStyle.Modern };
-        _featureList.OnSelected = OnFeatureTypeSelected;
-
-        // The toolbar Save button (decision 4). Font and Bounds are set per frame (no SpriteFont resolves at
-        // chrome-build time, the TabBar pattern). The label is re-synced each chrome step in UpdateChrome.
-        _saveButton = new Button(default, LocalizedText.Raw("Save"), null!, () => SaveDocument())
-        {
-            Style = GuiStyle.Modern,
-        };
-        _viewPanel = new EditorViewPanel(_visibility, ScatterLayerNames);
-    }
-
-    void UpdateWidgets(float dt)
-    {
-        UiViewport? ui = Manager!.UiViewport;
-        if (ui is null) return;
-        UpdateGuiInput(ui);
-        ChromeLayout L = ComputeLayout(ui.Width, ui.Height);
-
-        (Rect tabsRect, Rect viewRect, Rect saveRect) = SplitToolbar(L.Toolbar);
-        _toolbar.Bounds = tabsRect;
-        if (_toolbar.Update(_ui.Pointer)) _controller.Mode = (EditorToolMode)_toolbar.ActiveIndex;
-
-        _saveButton.Bounds = saveRect;
-        _saveButton.Update(_ui.Pointer);
-        UpdateViewPanel(dt, L, viewRect);
-
-        _outline.Bounds = L.Outline;
-        _outline.Update(_ui);
-
-        _inspector.Bounds = L.Inspector;
-        _inspector.Update(_ui, dt);
-
-        if (FeatureMode)
-        {
-            _featureList.Bounds = L.Palette;
-            _featureList.Update(_ui);
-        }
-        else if (BottomPanelVisible)
-        {
-            (Rect filterRect, Rect bodyRect) = SplitPaletteRegion(L.Palette);
-            if (SpawnMode)
-            {
-                _spawnFilter.Bounds = filterRect;
-                _spawnFilter.Update(_ui.Pointer, Manager.Input, dt);
-                _spawnList.Bounds = bodyRect;
-                _spawnList.Update(_ui);
-            }
-            else
-            {
-                _paletteFilter.Bounds = filterRect;
-                _paletteFilter.Update(_ui.Pointer, Manager.Input, dt);
-                _paletteTree.Bounds = bodyRect;
-                _paletteTree.Update(_ui);
-            }
-        }
-        RefreshPalettes();
     }
 
     // The bottom-left panel hosts a tool-scoped picker: the spawn tool shows the spawn-archetype list, the
@@ -2996,21 +2920,6 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         var status = new Rect(0f, bodyBottom, w, StatusHeight);
         var viewport = new Rect(OutlinePanelWidth, bodyTop, MathF.Max(0f, w - OutlinePanelWidth - InspectorPanelWidth), bodyH);
         return new ChromeLayout(toolbar, outline, inspector, palette, status, viewport);
-    }
-
-    // Splits the full toolbar strip into the tab-bar region (left) and the Save button rect at the right end
-    // (decision 4): the button reserves SaveButtonWidth plus gaps, and the tab bar takes the rest, so the tabs
-    // shrink to leave room instead of overlapping the button. The button is inset vertically within the strip.
-    // Pure math, so the split is asserted headless.
-    (Rect Tabs, Rect View, Rect Save) SplitToolbar(Rect toolbar)
-    {
-        float saveW = MathF.Min(SaveButtonWidth, MathF.Max(0f, toolbar.Width - ToolbarGap * 2f));
-        var save = new Rect(toolbar.Right - saveW - ToolbarGap,
-            toolbar.Y + (toolbar.Height - SaveButtonHeight) * 0.5f, saveW, SaveButtonHeight);
-        float viewW = MathF.Min(ViewButtonWidth, MathF.Max(0f, save.X - toolbar.X - ToolbarGap * 2f));
-        var view = new Rect(save.X - viewW - ToolbarGap, save.Y, viewW, save.Height);
-        var tabs = new Rect(toolbar.X, toolbar.Y, MathF.Max(0f, view.X - toolbar.X - ToolbarGap), toolbar.Height);
-        return (tabs, view, save);
     }
 
     // Identity payload on an outline row: which document element the row selects. Internal (not private) so

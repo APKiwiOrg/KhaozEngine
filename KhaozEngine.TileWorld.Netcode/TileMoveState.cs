@@ -33,9 +33,11 @@ public enum TileInteractionDomain : byte
 /// grid step behind the answer. The local client's render pose adds inter-tick prediction and active
 /// reconciliation-offset terms outside this state, documented on <c>TileWorldClient.LocalPose</c>.</para>
 /// <para><see cref="Position"/> is DERIVED: the glide from <see cref="StepFrom"/> to <see cref="Tile"/> by the
-/// fraction of the current step already spent, in TILE units. <see cref="Vertical"/> is the PLANE INDEX as a float
-/// rather than a height in metres, so the state stays document-free and the simulator can produce it without loading
-/// a world. <c>TilePresenter</c> multiplies by the document's plane height on the way to the view.</para>
+/// fraction of the current step already spent, in TILE units. At a one-tick cadence the local prediction target
+/// names <see cref="Tile"/> even when a landing-door step is still at zero, so the inter-tick render glide keeps
+/// moving while this deterministic position keeps its ordinary meaning. <see cref="Vertical"/> is the PLANE INDEX
+/// as a float rather than a height in metres, so the state stays document-free and the simulator can produce it
+/// without loading a world. <c>TilePresenter</c> multiplies by the document's plane height on the way to the view.</para>
 /// <para>Those units are the LATTICE's, not the world's, which matters one level out. Reconciliation measures its
 /// position error as a single magnitude over both, so a one-plane difference reads as exactly one tile of error,
 /// while <see cref="PredictionSettings.HardSnapDistance"/> defaults to 100 (documented in WORLD units). A tile
@@ -226,6 +228,12 @@ public struct TileMoveState : IPredictedState<TileMoveState>, IComponent, IEquat
                 StepFrom.Z + ((float)Tile.Z - StepFrom.Z) * f);
         }
     }
+
+    /// <summary>The local prediction endpoint. At a one-tick cadence a landing-door step has committed its next tile
+    /// at zero progress, while <see cref="Position"/> still names the tile it leaves. Target the committed tile so
+    /// inter-tick presentation crosses that step during this tick instead of repeating the previous endpoint.</summary>
+    public readonly Vector2 PredictionTarget =>
+        IsStepping && StepTotal == 1 ? new Vector2(Tile.X, Tile.Z) : Position;
 
     /// <inheritdoc/>
     public readonly float Vertical => Tile.Plane;

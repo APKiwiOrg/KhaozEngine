@@ -13,6 +13,13 @@ public interface IPredictedState<TSelf>
     Vector2 Position { get; }
 
     /// <summary>
+    /// The planar endpoint inter-tick presentation eases toward after this prediction tick. Defaults to
+    /// <see cref="Position"/>. A discrete state whose simulation position deliberately trails a newly committed
+    /// presentation path can override this without changing the position used for reconciliation error or speed.
+    /// </summary>
+    Vector2 PredictionTarget => Position;
+
+    /// <summary>
     /// Vertical axis (height) carried through render smoothing alongside the planar <see cref="Position"/>, so a
     /// jump/fall eases instead of stair-stepping or popping. Defaults to 0 for purely planar states that have no
     /// vertical axis - those keep their old behaviour with no change required.

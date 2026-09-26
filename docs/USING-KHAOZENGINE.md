@@ -3029,7 +3029,7 @@ Vector3 ground = scene.Camera.ScreenToGround(pointer.Position, w, h, 0f); // pic
 // per frame, inside OnDraw3D:
 scene.Begin();
 scene.Draw(board, Matrix4x4.Identity);
-scene.Draw(tower, transform, tint, Material.Shiny);
+scene.Draw(tower, transform, tint, Material.Shiny(0.6f));
 scene.AddLight(muzzlePos, new Color(1f, 0.6f, 0.2f, 1f), radius: 6f, intensity: 3f); // point light
 scene.DrawBillboard(pos, size, color, BillboardBlend.Additive);
 scene.DebugCircle(center, up, radius, color);                        // immediate-mode debug overlay
@@ -3446,7 +3446,7 @@ reduces the absolute matrix you hand it. Calling both double-subtracts.
 
 ```csharp
 world.Set(e, new Transform3D { Position = new Vector3(4f, 0f, 2f) });
-world.Set(e, new MeshInstance { Mesh = tower, Material = Material.Shiny });
+world.Set(e, new MeshInstance { Mesh = tower, Material = Material.Shiny(0.6f) });
 
 // per frame, inside OnDraw3D:
 scene.Begin();

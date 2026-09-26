@@ -20610,7 +20610,9 @@ consumed while grounded.
 over the direction of travel rather than a speed scale. `1` is still full control (an instant 180 mid-flight, still
 at the carried speed), and `0` is now a true ballistic arc rather than "frozen horizontally in mid-air". If your
 game runs a partial `AirControl` and opts in, re-check the feel: the value now bends the arc over several ticks
-instead of scaling it.
+instead of scaling it. That blend is applied once per simulation tick with no `dt` factor, so changing the tick
+rate changes airborne steering over the same airtime. Keep prediction and authority at the same fixed rate.
+`AirBrakeAccel` is separate and remains measured per second.
 
 **`AirBrakeAccel`** (m/s^2, default `0`) bleeds a conserved speed down toward a STRICTLY SLOWER commanded speed and
 stops there, never below it. `0` is pure conservation. It is for a root or a snare landing mid-flight, and it is

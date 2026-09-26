@@ -28,11 +28,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// type that STORED either sink would box it, which is the one way to spend the cost that seam was shaped to
     /// avoid, so the sinks are parameters and the row that owns the real ones calls in with its own.</para>
     ///
-    /// <para><b>THE COPY SINK WAS ONCE THE INTERFACE ITSELF, AND THAT BOXED EVERY UPLOAD.</b> The real
-    /// <see cref="VulkanCopySink"/> is a readonly struct, so handing it to an <see cref="IVulkanUploadSink"/>
-    /// parameter allocated a 32-byte box per staged upload. A temporal frame stages two or three more uploads than
-    /// the same frame without it, which is exactly the per-frame growth the cross-backend allocation reading caught
-    /// on the native Vulkan leg alone.</para>
+    /// <para>The real <see cref="VulkanCopySink"/> is a readonly struct, so an <see cref="IVulkanUploadSink"/>
+    /// parameter would allocate a 32-byte box per staged upload. <c>VulkanStagingAllocationTests</c> pins that the
+    /// generic form allocates nothing.</para>
     ///
     /// <para><b>BOTH BARRIERS ARE OVER THE WRITTEN RANGE.</b> The incumbent emitted a GLOBAL
     /// <c>VkMemoryBarrier</c> instead, one of them, which makes every access of its class wait rather than the one

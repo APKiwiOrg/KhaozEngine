@@ -161,6 +161,9 @@ The spans must have equal length. A mask must contain that node count. A non-fin
 rejected. Weight zero leaves the destination unchanged. Weight one with no mask copies the source
 values. The method allocates no managed memory in steady state.
 
+Later addition: 20.6.0 adds `PoseBlend.AddInto`, the additive counterpart that `LayeredAnimator`'s
+additive layers share. `docs/USING-KHAOZENGINE.md` holds its contract.
+
 ## Test asset
 
 Tests generate a named two-legged skeleton and a walk clip in memory. The code-built hierarchy

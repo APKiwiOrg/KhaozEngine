@@ -4866,6 +4866,24 @@ weights interpolate translation and scale componentwise and use normalized short
 for rotation. Reusing the buffers and mask keeps warmed steady-state calls free of managed allocation. The helper
 is pure and needs no mesh, graphics device, or test framework.
 
+Use `PoseBlend.AddInto` to layer an additive clip over locals you sampled into your own buffers. It adds each
+sample's offset from its reference onto the destination, in the joint's local frame, with the same weight and
+mask rules as `BlendInto`. An additive clip's reference is usually its own first frame.
+
+```csharp
+AnimationSampler.SampleInto(breatheClip, skeleton, 0f, breatheReference);   // once per clip
+AnimationSampler.SampleInto(breatheClip, skeleton, breatheTime, breatheSample);
+
+PoseBlend.AddInto(bodyLocals, breatheSample, breatheReference, weight: 0.6f, mask: upperBody);
+```
+
+Rotation composes `destination * slerp(identity, inverse(reference) * sample, w)` along the shortest arc and is
+normalized. Translation and scale add `(sample - reference) * w`, so scale is an offset and unit scale stays a
+no-op. A destination equal to the reference at unit weight reproduces the sample. The sample and reference spans
+must match the destination length, and zero effective weight leaves a node exactly unchanged. This is the
+composition an `Additive` layer applies in `LayeredAnimator`, from one implementation. Layered / masked
+animation below states the convention in full. Warmed calls allocate no managed memory.
+
 Each frame, feed it the movement state your controller already computes, then draw with its pose
 (the bone palette `DrawSkinned` consumes - it is joint-WORLD, the loader-attached skeleton composes it):
 
@@ -5249,7 +5267,8 @@ componentwise (`base + (sample - reference) * w`, scale as an OFFSET so unit sca
 side to get wrong. Extracting the rotation delta as `sample * inverse(reference)` instead is the PARENT-frame delta
 and gives the sample conjugated by the reference, which matches only when the reference is identity. That was the
 shipped behaviour through 17.36.1 (fixed in 17.37.0): a clip whose t=0 pose is rotated, which is every glTF humanoid
-shoulder and spine, came out wrong.
+shoulder and spine, came out wrong. `PoseBlend.AddInto` applies this same composition, from the same code, to
+local pose buffers a caller samples itself.
 
 **Byte-stable:** zero layers is the rest pose and a single full-weight, unmasked `Override`
 layer is bit-identical to the single-clip path, so a character that never adds a layer renders exactly as before.

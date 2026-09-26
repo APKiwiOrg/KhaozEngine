@@ -40,6 +40,13 @@ generation and plots outside a loaded tiled window leave the map and history unc
 depends on `KhaozEngine.Dungeon`, while remaining outside every umbrella. The Showcase Map editor room
 loads its dungeon kit and exposes the action for visual validation.
 
+`PoseBlend.AddInto` in `KhaozEngine.Render3D` layers an additive pose onto a caller-owned local pose buffer, so a
+game that samples clips into its own buffers can add an additive clip without copying the math. Each node adds its
+sample's offset from its reference in the joint's local frame, scaled by a finite weight and an optional `BoneMask`
+and clamped to `[0, 1]` as `BlendInto` is. A destination equal to the reference at unit weight reproduces the
+sample. `LayeredAnimator`'s additive layers now call the same code, so their output is unchanged. Warmed calls
+allocate nothing.
+
 ## 20.5.1
 
 `TooltipLine.OfSegments` preserves individual `LabelSegment` colours in a tooltip body line. Long lines

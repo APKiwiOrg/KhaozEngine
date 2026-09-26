@@ -1017,6 +1017,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     leaves the destination exactly unchanged, unit effective weight copies the source exactly, and intermediate
     weights lerp translation and scale while rotation follows the normalized shortest spherical arc. Warmed calls
     allocate no managed memory and need no mesh, graphics device, or test framework.
+  - `Animation.Inspection.PoseBlend.AddInto` layers an additive pose onto a caller-owned local pose buffer. Each
+    node adds its sample's offset from its reference in the joint's local frame. Rotation composes
+    `destination * slerp(identity, inverse(reference) * sample, w)` along the shortest arc, and translation and
+    scale add `(sample - reference) * w`. The finite weight, optional `BoneMask`, and `[0, 1]` clamp follow
+    `BlendInto`. A destination equal to the reference at unit weight reproduces the sample. `LayeredAnimator`'s
+    additive layers run the same code. Warmed calls allocate no managed memory.
   - `LayeredAnimator` / `AnimationLayer` / `BoneMask` / `LayerMode` - N animation layers composited into one final
     skeleton pose: a base locomotion layer below, masked `Override` / `Additive` action layers above (attack while
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +

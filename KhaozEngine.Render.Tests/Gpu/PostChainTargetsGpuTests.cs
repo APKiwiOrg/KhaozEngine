@@ -76,7 +76,7 @@ namespace KhaozEngine.Tests.Gpu
             IGpuDevice gd = gpu.GpuDevice;
             using var bound = new RenderResources(gd, 16, 8, hdrColor: false);
             using var other = new RenderResources(gd, 16, 8, hdrColor: false);
-            using var output = new Output(gd, 16, 8);
+            using var output = new PostChainRig.Output(gd, 16, 8);
             using var post = new PixelPostProcess(gd, bound.PingAFB.Outputs, output.Framebuffer.Outputs);
             post.BindTargets(bound);
             FillColour(gd, bound, Bound);
@@ -87,7 +87,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Contains("source slot", refused.Message);
 
             post.BindTargets(bound);
-            AssertEveryPixel(RunChain(gd, post, bound, output, LegacyPlain(), runFxaa: false), Bound);
+            PostChainRig.AssertEveryPixel(PostChainRig.RunChain(gd, post, bound, output, PostChainRig.LegacyPlain(), runFxaa: false), Bound);
         }
 
         [GpuFact]
@@ -97,37 +97,24 @@ namespace KhaozEngine.Tests.Gpu
             IGpuDevice gd = gpu.GpuDevice;
             using var bound = new RenderResources(gd, 16, 8, hdrColor: false);
             using var other = new RenderResources(gd, 16, 8, hdrColor: false);
-            using var output = new Output(gd, 16, 8);
+            using var output = new PostChainRig.Output(gd, 16, 8);
             using var post = new PixelPostProcess(gd, bound.PingAFB.Outputs, output.Framebuffer.Outputs);
-            PixelPostProcessSettings s = LegacyPlain();
+            PixelPostProcessSettings s = PostChainRig.LegacyPlain();
             post.BindTargets(bound);
 
-            InvalidOperationException another = RunRefused(gd, post, other, output, s);
+            InvalidOperationException another = PostChainRig.RunRefused(gd, post, other, output, s);
             Assert.Contains("BindTargets", another.Message);
 
             bound.Resize(20, 8, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: false);
-            InvalidOperationException stale = RunRefused(gd, post, bound, output, s);
+            InvalidOperationException stale = PostChainRig.RunRefused(gd, post, bound, output, s);
             Assert.Contains("BindTargets", stale.Message);
 
             post.BindTargets(bound);   // rebinding at the new generation is accepted again
-            RunChain(gd, post, bound, output, s, runFxaa: false);
+            PostChainRig.RunChain(gd, post, bound, output, s, runFxaa: false);
         }
 
         static readonly Color Bound = new(0.25f, 0.5f, 0.75f, 1f);
         static readonly Color Other = new(0.75f, 0.25f, 0.5f, 1f);
-
-        static InvalidOperationException RunRefused(IGpuDevice gd, PixelPostProcess post, IPostChainTargets res, Output output,
-            PixelPostProcessSettings s)
-        {
-            InvalidOperationException refused;
-            using IGpuCommandList cl = gd.Factory.CreateCommandList();
-            using (GpuRecording.Open(gd, cl, nameof(PostChainTargetsGpuTests)))
-                refused = Assert.Throws<InvalidOperationException>(
-                    () => post.Run(cl, res, output.Framebuffer, s, runFxaa: false, distortionActive: false));
-            gd.Submit(cl);
-            gd.WaitForIdle();
-            return refused;
-        }
 
         static void FillColour(IGpuDevice gd, RenderResources res, Color c)
         {
@@ -139,64 +126,6 @@ namespace KhaozEngine.Tests.Gpu
             }
             gd.Submit(cl);
             gd.WaitForIdle();
-        }
-
-        /// <summary>The legacy order with every optional pass off, so the chain is the blit alone, plus FXAA when asked.</summary>
-        internal static PixelPostProcessSettings LegacyPlain()
-        {
-            var s = new PixelPostProcessSettings();
-            s.Hdr.Enabled = false;
-            return s;
-        }
-
-        /// <summary>Record one run of the chain into <paramref name="output"/> and read it back as RGBA8.</summary>
-        internal static byte[] RunChain(IGpuDevice gd, PixelPostProcess post, IPostChainTargets res, Output output,
-            PixelPostProcessSettings s, bool runFxaa)
-        {
-            using (IGpuCommandList cl = gd.Factory.CreateCommandList())
-            {
-                using (GpuRecording.Open(gd, cl, nameof(PostChainTargetsGpuTests)))
-                {
-                    post.PrepareUniforms(cl, res, s, new CameraDepth(true, 0.1f, 100f), runFxaa, distortionActive: false);
-                    post.Run(cl, res, output.Framebuffer, s, runFxaa, distortionActive: false);
-                }
-                gd.Submit(cl);
-                gd.WaitForIdle();
-            }
-            return GpuReadback.ToRgba(gd, output.Texture, (int)output.Texture.Width, (int)output.Texture.Height);
-        }
-
-        /// <summary>Every pixel's colour within one RGBA8 step of <paramref name="expected"/>.</summary>
-        internal static void AssertEveryPixel(byte[] rgba, Color expected)
-        {
-            for (int i = 0; i < rgba.Length; i += 4)
-            {
-                Assert.InRange(rgba[i + 0], Byte(expected.R) - 1, Byte(expected.R) + 1);
-                Assert.InRange(rgba[i + 1], Byte(expected.G) - 1, Byte(expected.G) + 1);
-                Assert.InRange(rgba[i + 2], Byte(expected.B) - 1, Byte(expected.B) + 1);
-            }
-        }
-
-        static int Byte(float c) => (int)MathF.Round(c * 255f);
-
-        /// <summary>An RGBA8 target standing in for the swapchain the chain's blit writes.</summary>
-        internal sealed class Output : IDisposable
-        {
-            public Output(IGpuDevice gd, uint width, uint height)
-            {
-                Texture = gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(width, height, GpuPixelFormat.R8G8B8A8UNorm,
-                    GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-                Framebuffer = gd.Factory.CreateFramebuffer(null, Texture);
-            }
-
-            public IGpuTexture Texture { get; }
-            public IGpuFramebuffer Framebuffer { get; }
-
-            public void Dispose()
-            {
-                Framebuffer.Dispose();
-                Texture.Dispose();
-            }
         }
 
         /// <summary>Another target set's textures under a source slot count of its own.</summary>

@@ -248,7 +248,7 @@ namespace KhaozEngine.Tests.Gpu
             using var res = new RenderResources(gd, 16, 8, hdrColor: false);
             var history = new TemporalHistory();
             using var targets = new TemporalPostTargets(gd);
-            using var output = new PostChainTargetsGpuTests.Output(gd, W, H);
+            using var output = new PostChainRig.Output(gd, W, H);
             try
             {
                 history.EnsureTargets(gd, W, H, 16, 8);
@@ -257,16 +257,15 @@ namespace KhaozEngine.Tests.Gpu
                 targets.Ensure(res, history, W, H, bloomEnabled: false);
                 using var post = new PixelPostProcess(gd, targets.PingAFB.Outputs, output.Framebuffer.Outputs);
                 post.BindTargets(targets);
-                var settings = new PixelPostProcessSettings();
-                settings.Hdr.Enabled = false;
+                PixelPostProcessSettings settings = PostChainRig.LegacyPlain();
 
                 history.BeginResolve(0);   // the first frame writes target 1
                 Assert.Equal(1, targets.SourceSlot);
-                PostChainTargetsGpuTests.AssertEveryPixel(PostChainTargetsGpuTests.RunChain(gd, post, targets, output, settings, runFxaa), Slot1);
+                PostChainRig.AssertEveryPixel(PostChainRig.RunChain(gd, post, targets, output, settings, runFxaa), Slot1);
 
                 history.BeginResolve(1);   // the next frame writes target 0
                 Assert.Equal(0, targets.SourceSlot);
-                PostChainTargetsGpuTests.AssertEveryPixel(PostChainTargetsGpuTests.RunChain(gd, post, targets, output, settings, runFxaa), Slot0);
+                PostChainRig.AssertEveryPixel(PostChainRig.RunChain(gd, post, targets, output, settings, runFxaa), Slot0);
             }
             finally
             {

@@ -29,7 +29,7 @@ namespace KhaozEngine.Tests.Gpu
             res.EnsureDistortion(true, 2);
             var history = new TemporalHistory();
             using var targets = new TemporalPostTargets(gd);
-            using var swapchain = new PostChainTargetsGpuTests.Output(gd, DisplayW, DisplayH);
+            using var swapchain = new PostChainRig.Output(gd, DisplayW, DisplayH);
             using IGpuCommandList cl = gd.Factory.CreateCommandList();
             try
             {
@@ -39,15 +39,17 @@ namespace KhaozEngine.Tests.Gpu
                 var s = new PixelPostProcessSettings { Outline = true };
                 var cam = new CameraDepth(true, 0.1f, 100f);
                 long frame = 0;
+                int slotsRead = 0;   // one bit per source slot a frame's chain read
 
                 Frames(WarmFrames);
+                slotsRead = 0;
                 long first = Frames(MeasuredFrames);
+                Assert.Equal(0b11, slotsRead);   // both history targets were the source inside the measured window
                 long retry = first == 0 ? 0 : Frames(MeasuredFrames);
 
                 output.WriteLine($"{MeasuredFrames} steady display chain frames: {first} bytes, retry {retry}");
                 Assert.True(retry == 0,
                     $"{MeasuredFrames} steady display chain frames allocated {first} bytes and {retry} on the retry");
-                Assert.True(frame > 1, "the history pair never flipped, so the second source slot was never read");
 
                 long Frames(int count)
                 {
@@ -58,6 +60,7 @@ namespace KhaozEngine.Tests.Gpu
                         targets.Ensure(res, history, DisplayW, DisplayH, bloomEnabled: false);
                         history.BeginResolve(frame++);
                         post.BindTargets(targets);
+                        slotsRead |= 1 << targets.SourceSlot;
                         using (GpuRecording.Open(gd, cl, nameof(TemporalPostTargetsAllocationGpuTests)))
                         {
                             post.PrepareUniforms(cl, targets, s, cam, runFxaa: true, distortionActive: true);

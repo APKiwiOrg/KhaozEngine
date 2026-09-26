@@ -139,6 +139,14 @@ hookrun() {
   rc=$?
   set -e
 }
+# hookrun_feed <feed> <command-string> -> hookrun with the configured feed visible to the hook.
+hookrun_feed() {
+  set +e
+  printf '%s' "$2" | jq -Rs '{tool_input: {command: .}}' \
+    | ( cd "$REPO" && KHAOZENGINE_FEED=$1 sh scripts/hooks/pack-release-guard.sh ) >"$OUTFILE" 2>&1
+  rc=$?
+  set -e
+}
 denied() { grep -q '"permissionDecision":"deny"' "$OUTFILE" && r=0 || r=1; }
 allowed() { [ -s "$OUTFILE" ] && r=1 || r=0; }
 
@@ -402,6 +410,16 @@ else
   says "already a released tag";   check "  the deny reason carries the explanation" 0 "$r"
   says "pack-local-feed.sh";       check "  and points at the wrapper" 0 "$r"
 
+  PRIVATE_FEED="$TMPROOT/hook-private"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && dotnet pack -c Release -o \"\$KHAOZENGINE_FEED\""
+  denied;  check "  a literal KHAOZENGINE_FEED output is denied" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && dotnet pack -c Release --output=\"\$KHAOZENGINE_FEED\""
+  denied;  check "  the long output form with a literal KHAOZENGINE_FEED is denied" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && dotnet pack -c Release -o $PRIVATE_FEED"
+  denied;  check "  an expanded KHAOZENGINE_FEED output is denied" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && dotnet pack -c Release -o \"$PRIVATE_FEED\""
+  denied;  check "  a quoted expanded KHAOZENGINE_FEED output is denied" 0 "$r"
+
   echo "== hook: the allow paths =="
   hookrun "cd $REPO && PACK_RELEASED_OK=1 dotnet pack -c Release -o ./local-feed"
   allowed;  check "an inline override is allowed through" 0 "$r"
@@ -411,6 +429,12 @@ else
   allowed;  check "the wrapper is left to speak for itself" 0 "$r"
   hookrun "cd $REPO && git commit -m 'chore: dotnet pack into local-feed later'"
   allowed;  check "a quoted mention of the command is not the command" 0 "$r"
+  hookrun_feed "$REAL/local-feed" "cd $REPO && git commit -m 'chore: dotnet pack -o \"\$KHAOZENGINE_FEED\" later'"
+  allowed;  check "a quoted KHAOZENGINE_FEED mention is not the command" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && git commit -m 'chore: dotnet pack -o \"$PRIVATE_FEED\" later'"
+  allowed;  check "a quoted expanded feed mention is not the command" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && PACK_RELEASED_OK=1 dotnet pack -c Release -o \"\$KHAOZENGINE_FEED\""
+  allowed;  check "the release override allows a configured private feed" 0 "$r"
   hookrun "cd $REPO && dotnet build"
   allowed;  check "an unrelated dotnet command is untouched" 0 "$r"
 
@@ -431,6 +455,11 @@ else
   says "not an ancestor of origin/main";  check "  the deny names the ancestry failure" 0 "$r"
   hookrun "cd $WT && PACK_RELEASED_OK=1 dotnet pack -c Release -o $REAL/local-feed"
   denied;  check "  PACK_RELEASED_OK does not bypass the shared-feed boundary" 0 "$r"
+  hookrun_feed "$REAL/local-feed" "cd $WT && dotnet pack -c Release -o \"\$KHAOZENGINE_FEED\""
+  denied;  check "  a configured shared feed keeps the ancestry guard" 0 "$r"
+  UNMERGED_PRIVATE="$TMPROOT/hook-unmerged-private"
+  hookrun_feed "$UNMERGED_PRIVATE" "cd $WT && dotnet pack -c Release -o \"\$KHAOZENGINE_FEED\""
+  allowed;  check "  a configured private feed allows the unmerged HEAD" 0 "$r"
 
   echo "== hook: an untagged dirty tree cannot write the shared feed =="
   newfixture hookdirty 2.0.0
@@ -438,6 +467,11 @@ else
   hookrun "cd $REPO && dotnet pack -c Release -o $REAL/local-feed"
   denied;  check "the raw staged pack from a dirty tree is denied" 0 "$r"
   says "the worktree is not clean";  check "  the deny names uncommitted package bytes" 0 "$r"
+  hookrun_feed "$REAL/local-feed" "cd $REPO && dotnet pack -c Release -o \"\$KHAOZENGINE_FEED\""
+  denied;  check "  a configured shared feed keeps the cleanliness guard" 0 "$r"
+  DIRTY_HOOK_PRIVATE="$TMPROOT/hook-dirty-private"
+  hookrun_feed "$DIRTY_HOOK_PRIVATE" "cd $REPO && dotnet pack -c Release -o \"\$KHAOZENGINE_FEED\""
+  allowed;  check "  a configured private feed allows the dirty tree" 0 "$r"
 
   echo "== hook: stays silent while the version is staged =="
   newfixture hookstaged 2.0.0

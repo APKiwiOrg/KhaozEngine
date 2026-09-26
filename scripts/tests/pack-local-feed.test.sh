@@ -150,6 +150,21 @@ hookrun_feed() {
 denied() { grep -q '"permissionDecision":"deny"' "$OUTFILE" && r=0 || r=1; }
 allowed() { [ -s "$OUTFILE" ] && r=1 || r=0; }
 
+echo "== help: both scripts print help through relative and absolute paths from a subdirectory =="
+newfixture help 2.0.0
+mkdir -p "$REPO/sub"
+for script in pack-local-feed.sh check-local-feed.sh; do
+  for path in "../scripts/$script" "$REPO/scripts/$script"; do
+    case "$path" in ../*) form="a relative" ;; *) form="an absolute" ;; esac
+    set +e
+    ( cd "$REPO/sub" && sh "$path" --help ) >"$OUTFILE" 2>&1
+    rc=$?
+    set -e
+    check "$script help succeeds through $form path" 0 "$rc"
+    says "$script - ";  check "  and prints its header" 0 "$r"
+  done
+done
+
 echo "== staged: the version carries no tag, so the ritual pack is the ordinary case =="
 newfixture staged 2.0.0
 packrun

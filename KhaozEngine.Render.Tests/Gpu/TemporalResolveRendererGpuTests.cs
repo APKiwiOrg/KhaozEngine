@@ -1,10 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
-using KhaozEngine.Gpu;
-using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
-using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -13,7 +9,8 @@ namespace KhaozEngine.Tests.Gpu
     /// The temporal resolve against synthetic inputs, one fact per step of TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3,
     /// on an 8 by 8 target at native resolution unless a fact says otherwise. Grey inputs keep YCoCg chroma at zero, so
     /// the expected output follows from the mirrors in <see cref="TemporalResolveMath"/>. The confidence target stores
-    /// accumulated weight over <see cref="TemporalResolveTuning.MaxAccumulation"/>.
+    /// accumulated weight over <see cref="TemporalResolveTuning.MaxAccumulation"/>. Step 6, the thin feature lock, has its
+    /// facts in <see cref="TemporalResolveLockGpuTests"/>.
     /// <para>The uniforms come from <see cref="TemporalResolveMath.BuildUniforms"/> over a real perspective camera, and
     /// the scene depth is the NDC depth that camera gives a wall <see cref="SceneMetres"/> ahead. A surface whose motion
     /// disagrees with the camera's own reprojection of it reads as moving and skips the depth test, so under a still
@@ -135,42 +132,6 @@ namespace KhaozEngine.Tests.Gpu
                 float accumulated = Q(3f / Max) * Max * (1f - reactive * TemporalResolveTuning.ReactiveStrength);
                 Assert.Equal((accumulated + 1f) / Max, state[At(x, 4) * 2], 1e-3);
             }
-        }
-
-        [GpuFact]
-        public void A_thin_ridge_takes_a_lock_and_the_lock_holds_its_luma_against_the_clip()
-        {
-            using var rig = new Rig();
-            float bg = Q(0.1f), line = Q(1f), held = Q(0.55f);
-
-            // Frame one: the line is in the current samples. The ridge takes a lock on its own column only.
-            rig.BeginFrame();
-            rig.Fill(Grey((x, _) => x == 4 ? line : bg), Grey((x, _) => x == 4 ? line : bg), Motion((_, _) => Vector2.Zero));
-            rig.Resolve(Uniforms(historyValid: false));
-            float[] state = rig.ReadState();
-            Assert.Equal(1f, state[At(4, 3) * 2 + 1], 1e-3);
-            Assert.Equal(0f, state[At(3, 3) * 2 + 1], 1e-3);
-            Assert.Equal(0f, state[At(5, 3) * 2 + 1], 1e-3);
-
-            // Frame two: this frame's samples miss the line and the history holds its average. The flat box would clip
-            // the history to the background. The lock, decayed by one eighth, restores that share of its luma.
-            rig.BeginFrame();
-            rig.Fill(Grey((_, _) => bg), Grey((_, _) => bg), Motion((_, _) => Vector2.Zero));
-            rig.FillHistory(Grey((x, _) => x == 4 ? held : bg),
-                State((x, _) => new Vector2(Q(8f / Max), x == 4 ? 1f : 0f)), SceneLinear);
-            rig.Resolve(Uniforms(historyValid: true));
-
-            float lockAfter = 1f - 1f / TemporalJitter.NativePhaseCount;
-            float accumulated = Q(8f / Max) * Max;
-            float c = Weighted(bg), h = Weighted(held);
-            float kept = c + (h - c) * lockAfter;
-            float expected = Unweighted(kept + (c - kept) / (accumulated + 1f));
-            float[] color = rig.ReadColor();
-            state = rig.ReadState();
-            Assert.Equal(lockAfter, state[At(4, 3) * 2 + 1], 1e-3);
-            Assert.Equal(expected, color[At(4, 3) * 4], 1e-2);
-            Assert.True(color[At(4, 3) * 4] > 0.35f, $"the locked line kept {color[At(4, 3) * 4]} of its luma");
-            Assert.Equal(bg, color[At(2, 3) * 4], 1e-3);
         }
 
         [GpuFact]
@@ -337,83 +298,6 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        /// <summary>The share of a feature's contrast above the background at which a pixel it left counts as trail.</summary>
-        const float TrailContrast = 0.1f;
-
-        [GpuFact(Skip = "The committed resolve leaves a trail past the one display pixel allowance: 1 px at 0.3, 2 px at "
-            + "0.6 and 2 px at 0.9 display px per frame, peaking at 28% of the contrast. With the thin feature lock off "
-            + "it passes. Skipped until the lock is tuned.")]
-        public void A_thin_feature_moving_without_motion_leaves_no_trail_two_frames_after_it_passes()
-        {
-            // Design section 7 acceptance 3 and risk 1, at the preset whose lock decays slowest: UltraPerformance, a
-            // third of the display per axis and 72 jitter phases. A bright line one internal pixel wide crosses a still
-            // wall at 0.3 to 0.9 display pixels a frame with zero motion, as a moving feature with no motion of its own
-            // renders. It sits at the wall's depth, so the depth test cannot help and the clip and the lock decide
-            // alone. Each frame lights the texel whose jittered sample falls inside the line, as a rasteriser does. One
-            // frame lights display pixels only within one internal pixel of the line, so a display pixel wholly left of
-            // that reach two frames ago shows history alone. More than one such pixel brighter than TrailContrast of
-            // the line's contrast above the wall is a trail.
-            float factor = TemporalSettings.DisplayOverInternal(TemporalUpscale.UltraPerformance);
-            const int DisplayW = 96, DisplayH = 12, Row = DisplayH / 2, Frames = 64, Settled = 16;
-            const float Start = 4f;
-            int iw = (int)(DisplayW / factor), ih = (int)(DisplayH / factor), phases = TemporalJitter.PhaseCount(factor);
-            Matrix4x4 projection = Perspective((float)DisplayW / DisplayH);
-            TemporalViewInput still = View(Eye, projection);
-            float bg = Q(0.1f), line = Q(1f), threshold = bg + TrailContrast * (line - bg);
-            float[] zero = Pairs(iw, ih, (_, _) => Vector2.Zero);
-
-            using var rig = new Rig(iw, ih, DisplayW, DisplayH, NdcDepth(projection, SceneMetres));
-            var report = new List<string>();
-            int worst = 0;
-            foreach (float speed in new[] { 0.3f, 0.6f, 0.9f })
-            {
-                int trail = 0, trailFrame = 0;
-                float peak = 0f, dimmest = float.MaxValue;
-                for (int n = 0; n < Frames; n++)
-                {
-                    Vector2 jitter = TemporalJitter.Offset(n, phases);
-                    float left = Start + n * speed / factor;
-                    float[] feature = Grey(iw, ih, (x, _) =>
-                    {
-                        float sample = x + 0.5f - jitter.X;
-                        return sample >= left && sample < left + 1f ? line : bg;
-                    });
-                    rig.BeginFrame();
-                    rig.Fill(feature, feature, zero);
-                    rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, jitter, iw, ih, DisplayW, DisplayH,
-                        historyValid: n > 0, phases));
-                    if (n > 0 && n < Settled) continue;
-
-                    // How bright the line shows where it is now. The reset frame must show it, or the rig renders
-                    // nothing and the measure proves nothing. Later frames report how far it has faded.
-                    float[] color = rig.ReadColor();
-                    float shown = 0f;
-                    for (int c = (int)(factor * left); c < (int)MathF.Ceiling(factor * (left + 1f)); c++)
-                        shown = MathF.Max(shown, color[(Row * DisplayW + c) * 4]);
-                    if (n == 0)
-                    {
-                        Assert.True(shown > threshold, $"{speed} px/frame: the reset frame shows the line at {shown}");
-                        continue;
-                    }
-                    dimmest = MathF.Min(dimmest, (shown - bg) / (line - bg));
-
-                    float passed = factor * (Start + (n - 2) * speed / factor - 1f);
-                    int count = 0;
-                    for (int c = 0; c + 1 <= passed; c++)
-                    {
-                        float value = color[(Row * DisplayW + c) * 4];
-                        peak = MathF.Max(peak, (value - bg) / (line - bg));
-                        if (value > threshold) count++;
-                    }
-                    if (count > trail) (trail, trailFrame) = (count, n);
-                }
-                worst = Math.Max(worst, trail);
-                report.Add($"{speed} px/frame: {trail} px at frame {trailFrame}, trail peak {peak:P0} and line at "
-                    + $"least {dimmest:P0} of the contrast");
-            }
-            Assert.True(worst <= 1, "Trail two frames after the line passed. " + string.Join(", ", report));
-        }
-
         static void AssertInteriorBlend(Rig rig, Func<int, float> history, float accumulated)
         {
             float[] color = rig.ReadColor(), state = rig.ReadState();
@@ -545,94 +429,14 @@ namespace KhaozEngine.Tests.Gpu
             return v;
         }
 
-        sealed class Rig : IDisposable
+        /// <summary>The shared rig on the 8 by 8 native target, the wall <see cref="SceneMetres"/> ahead in every texel,
+        /// unless a fact gives other sizes.</summary>
+        sealed class Rig : TemporalResolveRig
         {
-            readonly GpuDeviceContext _gpu;
-            readonly IGpuDevice _gd;
-            readonly TemporalResolveRenderer _renderer;
-            readonly TemporalHistory _history = new();
-            readonly IGpuTexture _scene, _opaque, _depth, _motion;
-            readonly int _width, _height;
-            long _frame;
-
-            /// <summary>The 8 by 8 native rig, the wall <see cref="SceneMetres"/> ahead in every texel.</summary>
-            public Rig() : this(N, N, N, N, SceneNdc) { }
+            public Rig() : base(N, N, N, N, SceneNdc) { }
 
             public Rig(int internalWidth, int internalHeight, int displayWidth, int displayHeight, float sceneNdc)
-            {
-                _width = internalWidth;
-                _height = internalHeight;
-                _gpu = GpuDeviceContext.CreateHeadless();
-                _gd = _gpu.GpuDevice;
-                _renderer = new TemporalResolveRenderer(_gd);
-                _history.EnsureTargets(_gd, displayWidth, displayHeight, internalWidth, internalHeight);
-                _scene = Input(GpuPixelFormat.R16G16B16A16Float);
-                _opaque = Input(GpuPixelFormat.R16G16B16A16Float);
-                _depth = Input(GpuPixelFormat.R32Float);
-                _motion = Input(GpuPixelFormat.R16G16Float);
-                var ndc = new float[internalWidth * internalHeight];
-                Array.Fill(ndc, sceneNdc);
-                TemporalTextureIo.Upload(_gd, _depth, ndc);
-            }
-
-            IGpuTexture Input(GpuPixelFormat format) => _gd.Factory.CreateTexture(
-                GpuTextureDescription.Texture2D((uint)_width, (uint)_height, format, GpuTextureUsage.Sampled));
-
-            /// <summary>Choose this frame's pair, as the scene does once per frame index.</summary>
-            public void BeginFrame() => _history.BeginResolve(_frame++);
-
-            public void Fill(float[] scene, float[] opaque, float[] motion)
-            {
-                TemporalTextureIo.Upload(_gd, _scene, scene);
-                TemporalTextureIo.Upload(_gd, _opaque, opaque);
-                TemporalTextureIo.Upload(_gd, _motion, motion);
-            }
-
-            public void FillHistory(float[] color, float[] state, float previousDepth)
-                => FillHistory(color, state, (_, _) => previousDepth);
-
-            public void FillHistory(float[] color, float[] state, Func<int, int, float> previousDepth)
-            {
-                TemporalTextureIo.Upload(_gd, _history.Color(_history.ReadIndex), color);
-                TemporalTextureIo.Upload(_gd, _history.Confidence(_history.ReadIndex), state);
-                var depth = new float[_width * _height];
-                for (int y = 0; y < _height; y++)
-                    for (int x = 0; x < _width; x++)
-                        depth[y * _width + x] = previousDepth(x, y);
-                TemporalTextureIo.Upload(_gd, _history.PreviousDepth(_history.ReadIndex), depth);
-            }
-
-            /// <summary>Record and run one resolve and depth store. The store takes the resolve's own depth
-            /// parameters, which is what <see cref="TemporalResolveMath.BuildDepthStore"/> gives for the same
-            /// projection.</summary>
-            public void Resolve(in TemporalResolveUniforms uniforms)
-            {
-                _renderer.BindInputs(new TemporalResolveInputs(_scene, _opaque, _depth, _motion, 1), _history);
-                using IGpuCommandList cl = _gd.Factory.CreateCommandList();
-                using (GpuRecording.Open(_gd, cl, nameof(TemporalResolveRendererGpuTests)))
-                {
-                    _renderer.PrepareUniforms(cl, uniforms, new TemporalDepthStoreUniforms { CurrentDepth = uniforms.CurrentDepth });
-                    _renderer.Run(cl, _history);
-                }
-                _gd.Submit(cl);
-                _gd.WaitForIdle();
-                Assert.NotNull(_renderer.CurrentSet);
-            }
-
-            public float[] ReadColor() => TemporalTextureIo.Read(_gd, _history.Color(_history.WriteIndex));
-            public float[] ReadState() => TemporalTextureIo.Read(_gd, _history.Confidence(_history.WriteIndex));
-            public float[] ReadPreviousDepth() => TemporalTextureIo.Read(_gd, _history.PreviousDepth(_history.WriteIndex));
-
-            public void Dispose()
-            {
-                _renderer.Dispose();
-                _history.ReleaseTargets();
-                _scene.Dispose();
-                _opaque.Dispose();
-                _depth.Dispose();
-                _motion.Dispose();
-                _gpu.Dispose();
-            }
+                : base(internalWidth, internalHeight, displayWidth, displayHeight, sceneNdc) { }
         }
     }
 }

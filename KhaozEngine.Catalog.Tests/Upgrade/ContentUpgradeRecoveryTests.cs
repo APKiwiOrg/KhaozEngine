@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -105,19 +104,16 @@ public sealed class ContentUpgradeRecoveryTests
             UpgradeFixtures.Actor,
             UpgradeFixtures.Operator,
             ContentUpgradeRunner.NoteFor(UpgradeHarness.SecondId));
-        var clock = Stopwatch.StartNew();
+        var counting = new CountingContentAuthoringStore(harness.Store);
 
         ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
-            harness.Store, harness.Registry, harness.Set, UpgradeFixtures.Apply());
+            counting, harness.Registry, harness.Set, UpgradeFixtures.Apply());
 
-        clock.Stop();
         Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
 
-        // A stand-off against a catalog that cannot move costs a whole attempt budget, so anything near it
-        // means the run waited rather than recognising its own draft.
-        Assert.True(
-            clock.Elapsed < TimeSpan.FromSeconds(5),
-            FormattableString.Invariant($"the run took {clock.Elapsed}, so it stood off."));
+        // The gate and both publish attempts each read the draft, and both publishes read it again while
+        // frozen. A stand-off adds a progress read and another attempt, so exactly five means none occurred.
+        Assert.Equal(5, counting.OpenDraftReads);
         Assert.Equal(3, (await harness.Store.ListVersionsAsync()).Count);
         Assert.Null(await harness.Store.GetOpenDraftAsync());
 
@@ -356,7 +352,10 @@ public sealed class ContentUpgradeRecoveryTests
             appearing, harness.Registry, harness.Set, UpgradeFixtures.Apply());
 
         Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
-        Assert.True(appearing.Looks >= 4, "the run stood off rather than refusing at the first look.");
+
+        // An ordinary two-upgrade run reads the draft five times. The rival adds one progress read and one
+        // retry pre-flight before withdrawing on the fourth look, so seven proves the stand-off occurred.
+        Assert.Equal(7, appearing.Looks);
         await AssertRecoveredAsync(harness, report);
     }
 

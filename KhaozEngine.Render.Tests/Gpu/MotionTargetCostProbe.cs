@@ -25,7 +25,11 @@ public sealed class MotionTargetCostProbe(ITestOutputHelper output)
     [GpuFact(RequiresRealGpu = true)]
     public void TheMotionTargetCostIsMeasuredAt1600x900()
     {
-        using var fx = new TemporalFixture(W, H, s => s.Camera.OrthoSize = 30f);
+        using var fx = new TemporalFixture(W, H, s =>
+        {
+            s.Camera.OrthoSize = 30f;
+            s.UseGpuSkinning = true;   // the recorded figure names GPU-skinned bodies, so the probe does not ride a default
+        });
         Scene3D scene = fx.Scene;
         MeshHandle floor = scene.LoadMesh(MeshPrimitives.Plane(80f, 80f));
         MeshHandle box = scene.LoadMesh(MeshPrimitives.Box(1f));

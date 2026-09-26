@@ -15,7 +15,7 @@ namespace KhaozEngine.Render3D.Animation.Inspection
             Span<JointPose> into,
             ReadOnlySpan<JointPose> from,
             float weight,
-            BoneMask? mask)
+            BoneMask? mask = null)
         {
             if (from.Length != into.Length)
             {

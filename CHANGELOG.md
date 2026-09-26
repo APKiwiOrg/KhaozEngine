@@ -7,7 +7,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.6.0
 
-**A journal can be reset, and MapEditor can generate undoable dungeons**
+**A journal can be reset, MapEditor can generate undoable dungeons, and an additive pose can be layered onto
+caller-owned buffers**
 ([#1150](https://github.com/APKiwiOrg/KhaozEngine/issues/1150),
 [#74](https://github.com/APKiwiOrg/KhaozEngine/issues/74)).
 
@@ -45,7 +46,7 @@ game that samples clips into its own buffers can add an additive clip without co
 sample's offset from its reference in the joint's local frame, scaled by a finite weight and an optional `BoneMask`
 and clamped to `[0, 1]` as `BlendInto` is. A destination equal to the reference at unit weight reproduces the
 sample. `LayeredAnimator`'s additive layers now call the same code, so their output is unchanged. Warmed calls
-allocate nothing.
+allocate nothing. `BlendInto`'s mask now defaults to `null` as well.
 
 ## 20.5.1
 

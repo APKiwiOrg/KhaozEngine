@@ -14,8 +14,10 @@ namespace KhaozEngine.Tests.Render3D;
 /// <summary>
 /// <see cref="RigidInstanceDraw"/> and <see cref="Scene3D.Draw(in RigidInstanceDraw)"/> (TEMPORAL-FOUNDATIONS-DESIGN
 /// section 3). Every public rigid overload forwards to the descriptor path with no key. What it queues, and the
-/// instance stream grouping packs from that queue, must match the hand-built descriptor byte for byte. The coverage
-/// test holds the case list to the real overload set, so an overload added later without a case fails here.
+/// instance stream grouping packs from that queue, must match the hand-built descriptor byte for byte. Each case also
+/// queues through the <see cref="SceneInstances"/> call the overload made before it forwarded, so a misreading shared
+/// by the overload and its descriptor row cannot pass. The coverage test holds the case list to the real overload set,
+/// so an overload added later without a case fails here.
 /// </summary>
 public sealed class RigidInstanceDrawTests
 {
@@ -29,16 +31,22 @@ public sealed class RigidInstanceDrawTests
 
     // One row per public rigid overload: the call through its own signature, and the descriptors that must queue
     // exactly the same. Signature spells the CLR parameter types, matching Every_public_rigid_overload_has_a_case.
-    sealed record Case(string Signature, Action<Scene3D> Old, RigidInstanceDraw[] Descriptors);
+    // Legacy is the SceneInstances call the overload's body made before the descriptor path, with the values that
+    // body passed.
+    sealed record Case(string Signature, Action<Scene3D> Old, RigidInstanceDraw[] Descriptors,
+        Action<SceneInstances> Legacy);
 
     static readonly Case[] Cases =
     {
         new("Draw(MeshHandle,Matrix4x4)", s => s.Draw(Mesh, World),
-            new[] { new RigidInstanceDraw(Mesh, World) }),
+            new[] { new RigidInstanceDraw(Mesh, World) },
+            q => q.Add(Mesh, World, Color.White)),
         new("Draw(MeshHandle,Matrix4x4,Color)", s => s.Draw(Mesh, World, Tint),
-            new[] { new RigidInstanceDraw(Mesh, World) { Tint = Tint } }),
+            new[] { new RigidInstanceDraw(Mesh, World) { Tint = Tint } },
+            q => q.Add(Mesh, World, Tint)),
         new("Draw(MeshHandle,Matrix4x4,Color,Material)", s => s.Draw(Mesh, World, Tint, Shiny),
-            new[] { new RigidInstanceDraw(Mesh, World) { Tint = Tint, Material = Shiny } }),
+            new[] { new RigidInstanceDraw(Mesh, World) { Tint = Tint, Material = Shiny } },
+            q => q.Add(Mesh, World, Tint, Shiny)),
         new("Draw(MeshHandle,Matrix4x4,Color,Material,Single,Single,Color)",
             s => s.Draw(Mesh, World, Tint, Shiny, 0.4f, 0.1f, Edge),
             new[]
@@ -47,9 +55,11 @@ public sealed class RigidInstanceDrawTests
                 {
                     Tint = Tint, Material = Shiny, Dissolve = 0.4f, DissolveEdgeWidth = 0.1f, DissolveEdgeColor = Edge,
                 },
-            }),
+            },
+            q => q.Add(Mesh, World, Tint, Shiny, 0.4f, 0.1f, Edge)),
         new("Draw(MeshHandle,Matrix4x4,Color,Material,Boolean)", s => s.Draw(Mesh, World, Tint, Shiny, false),
-            new[] { new RigidInstanceDraw(Mesh, World) { Tint = Tint, Material = Shiny, CastsShadows = false } }),
+            new[] { new RigidInstanceDraw(Mesh, World) { Tint = Tint, Material = Shiny, CastsShadows = false } },
+            q => q.Add(Mesh, World, Tint, Shiny, 0f, 0f, default, false)),
         new("Draw(MeshHandle,Matrix4x4,Color,Material,Single,Single,Color,Boolean)",
             s => s.Draw(Mesh, World, Tint, Shiny, 0.4f, 0.1f, Edge, false),
             new[]
@@ -59,7 +69,8 @@ public sealed class RigidInstanceDrawTests
                     Tint = Tint, Material = Shiny, Dissolve = 0.4f, DissolveEdgeWidth = 0.1f, DissolveEdgeColor = Edge,
                     CastsShadows = false,
                 },
-            }),
+            },
+            q => q.Add(Mesh, World, Tint, Shiny, 0.4f, 0.1f, Edge, false)),
         new("Draw(MeshHandle,Matrix4x4,Color,Material,Single,Single,Color,Boolean,Boolean)",
             s => s.Draw(Mesh, World, Tint, Shiny, 0.4f, 0.1f, Edge, true, true),
             new[]
@@ -69,7 +80,8 @@ public sealed class RigidInstanceDrawTests
                     Tint = Tint, Material = Shiny, Dissolve = 0.4f, DissolveEdgeWidth = 0.1f, DissolveEdgeColor = Edge,
                     InvertShadowDissolve = true,
                 },
-            }),
+            },
+            q => q.Add(Mesh, World, Tint, Shiny, 0.4f, 0.1f, Edge, true, true)),
         new("Draw(MeshHandle,Matrix4x4,Color,Material,Single,Single,Color,Boolean,Boolean,Single)",
             s => s.Draw(Mesh, World, Tint, Shiny, 0.4f, 0.1f, Edge, true, false, 1f),
             new[]
@@ -79,14 +91,26 @@ public sealed class RigidInstanceDrawTests
                     Tint = Tint, Material = Shiny, Dissolve = 0.4f, DissolveEdgeWidth = 0.1f, DissolveEdgeColor = Edge,
                     DissolveComplement = 1f,
                 },
-            }),
+            },
+            q => q.Add(Mesh, World, Tint, Shiny, 0.4f, 0.1f, Edge, true, false, 1f)),
         new("DrawShadowOnly(MeshHandle,Matrix4x4)", s => s.DrawShadowOnly(Mesh, World),
-            new[] { new RigidInstanceDraw(Mesh, World) { ShadowOnly = true } }),
+            new[] { new RigidInstanceDraw(Mesh, World) { ShadowOnly = true } },
+            q => q.AddShadowOnly(Mesh, World)),
         new("Draw(PropHandle,Matrix4x4)", s => s.Draw(new Scene3D.PropHandle(new[] { Mesh, Other }), World),
-            new[] { new RigidInstanceDraw(Mesh, World), new RigidInstanceDraw(Other, World) }),
+            new[] { new RigidInstanceDraw(Mesh, World), new RigidInstanceDraw(Other, World) },
+            q =>
+            {
+                q.Add(Mesh, World, Color.White);
+                q.Add(Other, World, Color.White);
+            }),
         new("Draw(PropHandle,Matrix4x4,Color)",
             s => s.Draw(new Scene3D.PropHandle(new[] { Mesh, Other }), World, Tint),
-            new[] { new RigidInstanceDraw(Mesh, World) { Tint = Tint }, new RigidInstanceDraw(Other, World) { Tint = Tint } }),
+            new[] { new RigidInstanceDraw(Mesh, World) { Tint = Tint }, new RigidInstanceDraw(Other, World) { Tint = Tint } },
+            q =>
+            {
+                q.Add(Mesh, World, Tint);
+                q.Add(Other, World, Tint);
+            }),
     };
 
     public static TheoryData<string> Signatures()
@@ -112,10 +136,16 @@ public sealed class RigidInstanceDrawTests
         foreach (RigidInstanceDraw d in c.Descriptors) scene.Draw(d);
         SceneInstances.Instance[] viaDescriptor = scene.QueuedInstancesForTests.ToArray();
 
+        var legacyQueue = new SceneInstances();
+        c.Legacy(legacyQueue);
+        SceneInstances.Instance[] viaLegacy = legacyQueue.Items.ToArray();
+
         Assert.NotEmpty(viaOverload);
         Assert.All(viaOverload, i => Assert.True(i.Motion.IsNone));
-        AssertSameInstances(viaOverload, viaDescriptor);
-        AssertSamePacking(viaOverload, viaDescriptor);
+        AssertSameInstances(viaLegacy, viaOverload);
+        AssertSameInstances(viaLegacy, viaDescriptor);
+        AssertSamePacking(viaLegacy, viaOverload);
+        AssertSamePacking(viaLegacy, viaDescriptor);
     }
 
     [Fact]

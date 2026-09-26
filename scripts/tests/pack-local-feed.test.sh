@@ -83,6 +83,25 @@ tagit() { ( cd "$REPO" && $GIT tag -a "v$1" -m "release($1): fixture" ); }
 # advance -> one more commit on top, leaving the tree clean and HEAD off the tag.
 advance() { ( cd "$REPO" && echo "more" >> README.md && $GIT add -A && $GIT commit -q --no-verify -m "chore: more" ); }
 
+# package <id> <version> <commit> -> a minimal nupkg carrying the same repository commit metadata the
+# .NET SDK writes into real packages.
+package() {
+  _id=$1; _version=$2; _commit=$3
+  _pkgdir="$TMPROOT/package-$_id-$_version"
+  mkdir -p "$_pkgdir"
+  cat > "$_pkgdir/$_id.nuspec" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<package>
+  <metadata>
+    <id>$_id</id>
+    <version>$_version</version>
+    <repository type="git" url="https://example.invalid/repo" commit="$_commit" />
+  </metadata>
+</package>
+EOF
+  ( cd "$_pkgdir" && zip -q "$FEED/$_id.$_version.nupkg" "$_id.nuspec" )
+}
+
 # packrun [VAR=VALUE ...] -> the fixture's wrapper in --dry-run from $AT, never invoking dotnet.
 packrun() {
   set +e
@@ -162,37 +181,40 @@ says "the tree is not clean";  check "  names the dirty tree as the reason" 0 "$
 packrun PACK_RELEASED_OK=1
 check "  and the override still gets through" 0 "$rc"
 
-echo "== check-local-feed: classifies staged, released and re-packed versions =="
+echo "== check-local-feed: tagged versions are classified by their nuspec commit stamps =="
 newfixture feed 3.0.0
 tagit 1.0.0
 tagit 1.1.0
-touch "$FEED/KhaozEngine.App.1.0.0.nupkg" "$FEED/KhaozEngine.Gui.1.0.0.nupkg"
-touch "$FEED/KhaozEngine.App.1.1.0.nupkg"
+TAG_COMMIT=$(cd "$REPO" && git rev-parse 'refs/tags/v1.0.0^{commit}')
+advance
+WRONG_COMMIT=$(cd "$REPO" && git rev-parse HEAD)
+package KhaozEngine.App 1.0.0 "$TAG_COMMIT"
+package KhaozEngine.Gui 1.0.0 "$TAG_COMMIT"
+package KhaozEngine.App 1.1.0 "$TAG_COMMIT"
+package KhaozEngine.Gui 1.1.0 "$WRONG_COMMIT"
 touch "$FEED/KhaozEngine.Gpu.D3D11.3.0.0.nupkg" "$FEED/KhaozEngine.Gpu.D3D11.3.0.0.snupkg"
-# The two tags were just created, so a package stamped in 2000 predates its release and one stamped in
-# 2099 was written after it. Absolute stamps rather than relative ones, so the case does not depend on
-# clock resolution.
-touch -t 200001010000 "$FEED/KhaozEngine.App.1.0.0.nupkg" "$FEED/KhaozEngine.Gui.1.0.0.nupkg"
-touch -t 209901010000 "$FEED/KhaozEngine.App.1.1.0.nupkg"
+# Times deliberately contradict the commit stamps. The matching 1.0.0 files look newer than the tag,
+# while the mismatched 1.1.0 files look older. Commit identity must decide both classifications.
+touch -t 209901010000 "$FEED/KhaozEngine.App.1.0.0.nupkg" "$FEED/KhaozEngine.Gui.1.0.0.nupkg"
+touch -t 200001010000 "$FEED/KhaozEngine.App.1.1.0.nupkg" "$FEED/KhaozEngine.Gui.1.1.0.nupkg"
 feedrun
 check "report succeeds without --strict" 0 "$rc"
-says "RELEASED   1.0.0";   check "  a version packed before its tag is RELEASED" 0 "$r"
-says "RE-PACKED  1.1.0";   check "  a version packed after its tag is RE-PACKED" 0 "$r"
+says "RELEASED   1.0.0  commit $TAG_COMMIT";  check "  matching package commits are RELEASED" 0 "$r"
+says "DRIFTED    1.1.0  tag commit $TAG_COMMIT";  check "  any wrong package commit is DRIFTED" 0 "$r"
+says "KhaozEngine.Gui.1.1.0.nupkg: commit $WRONG_COMMIT";  check "  names the wrong package and stamp" 0 "$r"
 says "STAGED     3.0.0";   check "  an untagged version is STAGED" 0 "$r"
-says "1 staged, 1 released, 1 re-packed"
+says "1 staged, 1 released, 1 drifted"
 check "  the summary counts all three" 0 "$r"
-says "KhaozEngine.App.1.1.0.nupkg"
-check "  and names the offending file" 0 "$r"
 feedrun --strict
-check "--strict fails on a re-packed version" 1 "$rc"
+check "--strict fails on a drifted version" 1 "$rc"
 
 echo "== check-local-feed: a clean feed and a missing feed are both quiet successes =="
 newfixture cleanfeed 3.0.0
 tagit 1.0.0
-touch "$FEED/KhaozEngine.App.1.0.0.nupkg"
-touch -t 200001010000 "$FEED/KhaozEngine.App.1.0.0.nupkg"
+CLEAN_TAG_COMMIT=$(cd "$REPO" && git rev-parse 'refs/tags/v1.0.0^{commit}')
+package KhaozEngine.App 1.0.0 "$CLEAN_TAG_COMMIT"
 feedrun --strict
-check "--strict passes when nothing was re-packed" 0 "$rc"
+check "--strict passes when every released package matches its tag" 0 "$rc"
 rm -rf "$FEED"
 feedrun --strict
 check "no feed at all is not a failure" 0 "$rc"

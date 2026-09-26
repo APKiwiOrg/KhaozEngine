@@ -140,8 +140,9 @@ backlog here: a follow-up recorded only in a design doc is invisible to the ledg
   already tagged unless HEAD is that tag with a clean tree, so a finish landing after a release cannot overwrite
   the released bytes in the feed with a bigger build of the same number ([#492](https://github.com/APKiwiOrg/KhaozEngine/issues/492)).
   `PACK_RELEASED_OK=1` is the deliberate exception, `scripts/hooks/pack-release-guard.sh` catches the bare
-  `dotnet pack` an agent types from memory, and `scripts/check-local-feed.sh` reports a feed that already
-  carries a re-packed release, which is the thing to run before vendoring the feed into a game.
+  `dotnet pack` an agent types from memory, and `scripts/check-local-feed.sh` compares each tagged package's
+  nuspec commit with the tag commit before vendoring the feed into a game
+  ([#1136](https://github.com/APKiwiOrg/KhaozEngine/issues/1136)).
 - The same window is refused at push time. `.githooks/pre-push` rejects a push of `main` whose
   `<KhaozEngineVersion>` names a version already tagged at another commit, when the commits past that tag
   carry changes that ship inside a package

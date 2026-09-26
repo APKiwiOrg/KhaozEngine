@@ -98,15 +98,26 @@ for stmt in $norm; do
   # (what ci.yml does) or a bare pack to bin/ overwrites nothing anybody vendors from.
   feedhit=0
   configured_hit=0
+  output_next=0
   for a in "$@"; do
-    case "$a" in
+    if [ "$output_next" = 1 ]; then
+      output=$a
+      output_next=0
+    else
+      case "$a" in
+        -o|--output) output_next=1; continue ;;
+        -o=*|--output=*) output=${a#*=} ;;
+        *) continue ;;
+      esac
+    fi
+    case "$output" in
       *local-feed*) feedhit=1 ;;
       *__KHAOZENGINE_FEED__*|*'$KHAOZENGINE_FEED'*|*'${KHAOZENGINE_FEED}'*)
         if [ -n "$configured_feed" ]; then feedhit=1; configured_hit=1; fi
         ;;
       *)
         if [ -n "$configured_feed" ]; then
-          case "$a" in "$configured_feed"|*="$configured_feed") feedhit=1; configured_hit=1 ;; esac
+          case "$output" in "$configured_feed") feedhit=1; configured_hit=1 ;; esac
         fi
         ;;
     esac

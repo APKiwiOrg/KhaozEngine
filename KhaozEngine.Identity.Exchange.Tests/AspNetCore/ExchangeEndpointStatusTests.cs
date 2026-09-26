@@ -200,19 +200,14 @@ public class ExchangeEndpointStatusTests
     {
         await using ExchangeHttpHost host = await StartAsync();
         string json = JsonSerializer.Serialize(new AuthExchangeRequest("discord", new string('x', 9 * 1024)));
+        byte[] body = Encoding.UTF8.GetBytes(json);
 
-        // Declared: refused on the Content-Length before a byte is read.
-        AssertBare(await host.PostAsync(json), HttpStatusCode.RequestEntityTooLarge);
-
-        // Chunked, so no length is declared and the bounded read is what refuses it.
-        var chunked = new StreamContent(new MemoryStream(Encoding.UTF8.GetBytes(json)));
-        chunked.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/auth/exchange") { Content = chunked };
-        request.Headers.TransferEncodingChunked = true;
-        using HttpResponseMessage response = await host.Client.SendAsync(request);
-        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
-        Assert.Empty(await response.Content.ReadAsByteArrayAsync());
-        Assert.True(response.Headers.CacheControl?.NoStore);
+        // Each request is sent completely before its response is parsed. HttpClient can otherwise report an upload
+        // failure instead of a valid early response when Kestrel closes an oversized request's connection.
+        AssertBare(await ExchangeWireClient.PostAsync(host.Client.BaseAddress!, body, chunked: false),
+            HttpStatusCode.RequestEntityTooLarge);
+        AssertBare(await ExchangeWireClient.PostAsync(host.Client.BaseAddress!, body, chunked: true),
+            HttpStatusCode.RequestEntityTooLarge);
     }
 
     [Fact]

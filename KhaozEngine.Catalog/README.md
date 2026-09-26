@@ -655,8 +655,9 @@ reports every defect rather than the earliest.
 - A per-type `IContentValidator` runs LAST, one per registered type outside that band, and may only ADD a
   constraint. Its findings come back as `KEC0040` with its type key on the message, so the token stays stable.
   A per-type validator is untrusted code, so a throw from one is caught and reported as `KEC0040` rather than
-  taking a publish down with a stack trace where a finding was expected, and it is never handed the previous
-  version: that is the one thing pass 6 does that this loop deliberately does not.
+  taking a publish down with a stack trace where a finding was expected. Findings it added before throwing
+  are wrapped and kept before that throw finding, and it is never handed the previous version: that is the
+  one thing pass 6 does that this loop deliberately does not.
 - **What it deliberately does NOT check**: whether a value is sensible, whether a client has the art,
   whether a localization key resolves, and whether a remap rule is a good idea. The owner owns the numbers.
 

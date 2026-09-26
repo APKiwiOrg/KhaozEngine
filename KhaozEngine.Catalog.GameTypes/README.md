@@ -333,9 +333,10 @@ A game finding reaches the report the way a package finding does, folded into `K
 key with the game's own code in the message. Empty, which is the default, changes nothing. **The hook rides
 the sweep and cannot run without it**, which is why it is not a second slot: a game rule mounted on a type of
 its own would run once per mounting, and one mounted on `food` in place of `GameContentChecks` would drop the
-package's sweep. A rule that throws is the slot's throw, reported as one `KEC0040` with none of the slot's
-findings kept, so a rule that can fail on content adds a finding instead. A null list or a null member is
-refused when `GameContentChecks` is built.
+package's sweep. A rule that throws is the slot's throw. Findings the package or an earlier game rule already
+added are kept and folded into `KEC0040`, then the throw is reported as another `KEC0040` naming the slot's
+type. A rule that can fail on content adds a finding instead. A null list or a null member is refused when
+`GameContentChecks` is built.
 
 ## Registering by hand
 

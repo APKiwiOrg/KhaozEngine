@@ -109,9 +109,9 @@ public sealed class GameContentSweepOptions
     /// </para>
     /// <para>
     /// The rules run in list order, each once per validation, and every one of them reports AFTER the package's
-    /// last rule, the required knob check. A rule that THROWS is the slot's throw: the
-    /// engine reports one <c>KEC0040</c> naming the slot's type and keeps none of the slot's findings, the
-    /// same as for any per-type validator, so a rule that can fail on content reports a finding instead.
+    /// last rule, the required knob check. A rule that THROWS is the slot's throw. Findings the package or an
+    /// earlier game rule already added are kept and folded into <c>KEC0040</c>, then the engine reports another
+    /// <c>KEC0040</c> naming the slot's type for the throw. A rule that can fail on content reports a finding.
     /// </para>
     /// </remarks>
     public IReadOnlyList<IContentValidator> GameRules { get; init; } = [];

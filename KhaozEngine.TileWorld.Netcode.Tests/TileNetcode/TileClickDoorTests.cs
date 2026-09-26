@@ -13,9 +13,9 @@ namespace KhaozEngine.Tests.TileNetcode;
 /// chain here is the simulator's state after every tick, each drawn for fifteen frames of a quarter second tick,
 /// with the door read off the sample before it exactly as <see cref="TileWorldClient"/> reads it. The real wiring
 /// is pinned in <see cref="TileClickDoorLoopTests"/>.
-/// <para>WHY the local player has no counterpart here: <c>ClientPrediction.RenderedState</c> eases from the
-/// previous predicted position, which on the click tick is the standing tile, so that path already starts the step
-/// at zero. It is pinned below against its own old arithmetic and left exactly as it was.</para>
+/// <para>The local counterpart pins the click tick, the first following tick and route continuation. The ordinary
+/// cadence stays on the old prediction arithmetic bit for bit. At a one-tick cadence the state supplies the next
+/// committed tile as its prediction target so each inter-tick segment keeps moving.</para>
 /// </summary>
 public class TileClickDoorTests
 {
@@ -200,8 +200,7 @@ public class TileClickDoorTests
     [Theory]
     [InlineData(4, 2, TileMoveMode.Walk)]
     [InlineData(4, 2, TileMoveMode.Run)]
-    [InlineData(1, 1, TileMoveMode.Walk)]
-    public void The_local_body_is_the_prediction_layers_ease_bit_for_bit_and_starts_a_click_at_zero(
+    public void The_ordinary_local_body_is_the_prediction_layers_ease_bit_for_bit_and_starts_a_click_at_zero(
         byte walk, byte run, TileMoveMode mode)
     {
         var cadence = new TileStepTicks(walk, run);
@@ -235,6 +234,52 @@ public class TileClickDoorTests
         Assert.Equal(drawn[first - 1], drawn[first]);
         for (int i = first + 1; i < first + FramesPerTick; i++)
             Assert.Equal(Frame / Tick / n, Vector3.Distance(drawn[i - 1], drawn[i]), 5);
+    }
+
+    [Fact]
+    public void A_one_tick_local_route_moves_on_the_click_following_tick_and_continuation_without_a_jump_or_hold()
+    {
+        var cadence = new TileStepTicks(1, 1);
+        var prediction = new ClientPrediction<TileMoveState, TileCommand>(new TileMoveSimulator(Map, cadence),
+            new PredictionSettings(Tick, MaxPendingCommands: 64, HardSnapDistance: 3f, CorrectionRate: 8f,
+                CorrectionDeadZone: 0.01f));
+        prediction.Reset(TileMoveState.At(Start, TileDirection.N));
+
+        TileCoord[] tiles =
+        {
+            Start,
+            new(Start.X, Start.Z + 1, Start.Plane),
+            new(Start.X, Start.Z + 2, Start.Plane),
+            new(Start.X, Start.Z + 3, Start.Plane),
+        };
+        Vector3[] points = new Vector3[tiles.Length];
+        for (int i = 0; i < tiles.Length; i++) points[i] = P.PoseAt(tiles[i]).Position;
+
+        for (int tick = 0; tick < 3; tick++)
+        {
+            prediction.Predict(tick == 0
+                ? TileCommand.WalkTo(new TileCoord(Start.X, Start.Z + 6, Start.Plane), TileMoveMode.Walk)
+                : TileCommand.Continue(TileMoveMode.Walk));
+
+            TilePose start = P.LocalPose(prediction);
+            Assert.Equal(points[tick], start.Position);
+            Assert.InRange(Vector3.Distance(start.Position,
+                P.PoseAt(prediction.PredictedState.Tile).Position), 0f, 2f);
+
+            prediction.AdvancePresentation(Tick * 0.5f);
+            TilePose halfway = P.LocalPose(prediction);
+            Assert.Equal(Vector3.Lerp(points[tick], points[tick + 1], 0.5f), halfway.Position);
+            Assert.Equal(0.5f, Vector3.Distance(start.Position, halfway.Position), 5);
+            Assert.InRange(Vector3.Distance(halfway.Position,
+                P.PoseAt(prediction.PredictedState.Tile).Position), 0f, 2f);
+
+            prediction.AdvancePresentation(Tick * 0.5f);
+            TilePose end = P.LocalPose(prediction);
+            Assert.Equal(points[tick + 1], end.Position);
+            Assert.Equal(0.5f, Vector3.Distance(halfway.Position, end.Position), 5);
+            Assert.InRange(Vector3.Distance(end.Position,
+                P.PoseAt(prediction.PredictedState.Tile).Position), 0f, 2f);
+        }
     }
 
     // ---------------------------------------------------------------------------------------------------------

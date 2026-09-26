@@ -112,7 +112,10 @@ hidden.
   facing, mode, step progress (a tick COUNT out of a tick TOTAL), route, teleport epoch and interaction target.
   Both an `IPredictedState<TileMoveState>` and an ECS `IComponent`, so `ClientPrediction` and
   `ReplicationRegistry` carry the same type verbatim. `Position` is DERIVED in TILE units, the glide from
-  `StepFrom` into `Tile`, and `Vertical` is the plane INDEX, so the state needs no world document. It also carries
+  `StepFrom` into `Tile`. At a one-tick cadence its `PredictionTarget` is the committed tile, so local inter-tick
+  presentation crosses a landing-door step while the deterministic `Position` stays at zero progress. At every
+  other cadence the target is `Position` bit for bit. `Vertical` is the plane INDEX, so the state needs no world
+  document. It also carries
   `CombatTarget`, the NET ID this entity is locked onto and the reason the chase lives inside the one stepper both
   heads run rather than in a second movement authority a client cannot predict. `CombatTarget` and
   `InteractTarget` are mutually exclusive, each clearing the other, and a `WalkTo` clears both, which is how
@@ -567,7 +570,9 @@ always keep the constructor map.
   plus half its edge on each axis, and the glide runs anchor to anchor so that offset is constant through a step.
   `TryGetRemotePose` goes through `Pose`, so a consumer's large remote is centred with no change on its side.
   `LocalPose(prediction)` adds no footprint offset, because the local player is always one tile, and additionally carries the
-  prediction layer's inter-tick easing. With no active reconciliation offset, its bound against
+  prediction layer's inter-tick easing. A one-tick route targets each committed tile in turn, including the
+  landing-door tick after the first clicked step, so it moves continuously instead of repeating an endpoint.
+  With no active reconciliation offset, its bound against
   `PredictedState.Tile` is one grid step plus one local command tick of travel. An active offset adds its current
   magnitude to that conservative bound until it decays or a hard snap clears it.
   `StepFraction(state, extraTicks)` is the fraction that glide interpolates on, exposed so a rule that must run in

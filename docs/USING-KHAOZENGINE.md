@@ -11211,7 +11211,9 @@ client.TryGetRemotePose(netId, out TilePose them);              // everybody els
   construction and a game with a body of its own draws it the same way (`presenter.Pose(state, extraTicks)`).
 - **Frame-rate independent by construction.** The fraction is an integer tick count over an integer total, and
   the local player's inter-tick easing is a plain lerp of it, so nothing accumulates per frame and 30 fps and
-  144 fps draw the same body at the same wall-clock instants.
+  144 fps draw the same body at the same wall-clock instants. At a one-tick cadence `TileMoveState.PredictionTarget`
+  names the committed tile for each landing-door step, so the lerp crosses one tile on the click tick and every
+  following route tick instead of repeating the first endpoint.
 - **Discontinuities cut.** A teleport, a hard snap, the first snapshot, and a remote seen more than one step
   from where it was all place the body outright on the frame the snapshot lands. Nothing slides across the tiles
   in between. For the local player that is entirely `ClientPrediction`'s doing (an epoch advance and a hard snap

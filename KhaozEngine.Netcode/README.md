@@ -54,6 +54,12 @@ prediction.AdvancePresentation(elapsedSeconds);                                 
 Draw(prediction.RenderedState);
 ```
 
+`IPredictedState.PredictionTarget` is the planar endpoint the inter-tick render ease reaches. It defaults to
+`Position`, so ordinary continuous and discrete states need no extra member. A state whose deterministic
+`Position` deliberately remains at the start of a newly committed presentation path can override the target.
+Reconciliation error and `PredictedHorizontalSpeed` still read `Position`, so the override changes presentation
+only.
+
 Tune via `PredictionSettings` (tick rate, buffer cap, hard-snap distance, correction rate, dead-zone,
 correction-speed cap). `PendingCommandCount` is how many predicted commands the host has not yet acknowledged, the
 round trip in ticks plus one on a healthy link and a climbing-and-staying value when the host is applying this
@@ -72,7 +78,7 @@ pre-9.23.0 collapse pinned the inter-tick contribution at zero each tick, leavin
 motion for the rest of the tick: a per-tick velocity dip that read as a 30 Hz camera sawtooth. A hard snap still
 collapses (an intentional teleport).
 
-Since 10.7.0 the C1 rebase **translates the whole inter-tick segment** (`previous -> predicted`) by the rebase
+Since 10.7.0 the C1 rebase **translates the whole inter-tick segment** (`previous target -> current target`) by the rebase
 delta, so its VELOCITY is preserved rather than just leaving `previous` pinned. This makes it C1 across ANY rebase,
 not only a steady/matching one (whose delta is zero, so behaviour there is unchanged). It fixes the decel-to-stop
 shake: when the local player stops, the authority is an input-RTT behind and its basis dips backward for a tick or

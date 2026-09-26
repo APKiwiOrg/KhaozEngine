@@ -67,8 +67,9 @@ Tick rate is a per-config float, never a constant: `WorldServerConfig.TickSecond
 (`WorldServer.Tick`, `:470-500`), which at 4 Hz is exactly the cadence wanted.
 
 Prediction is pluggable at `Netcode`: `ITickSimulator<TState,TCommand>.Step(in state, in command, float dt)`
-(`ITickSimulator.cs:8`), `IPredictedState<TSelf>` (`IPredictedState.cs:10`, a `Vector2 Position`, `float Vertical`,
-`uint TeleportEpoch`, `Vector2 FrameAnchor`, `WithPosition`, `WithRenderState`), `ClientPrediction<TState,TCommand>`
+(`ITickSimulator.cs:8`), `IPredictedState<TSelf>` (`IPredictedState.cs:10`, a `Vector2 Position`, a defaulted
+`Vector2 PredictionTarget`, `float Vertical`, `uint TeleportEpoch`, `Vector2 FrameAnchor`, `WithPosition`,
+`WithRenderState`), `ClientPrediction<TState,TCommand>`
 (`ClientPrediction.cs:24`, `Predict` `:259`, `Reconcile` `:292` replaying the unacked window through the same
 simulator `:331`). `RenderedState` (`:132-144`) already lerps the previous tick to the current one over
 `TickSeconds`, which is the tile glide. `RemoteCommandQueue<T>` (`RemoteCommandQueue.cs:18`) is generic and drains
@@ -323,7 +324,7 @@ the offset decays off it, which is the whole reason a misprediction does not pop
 lands, with nothing here to reset. A remote first seen, or seen more than one Chebyshev step from where it was, is
 stamped afresh and drawn on its new tile. Nothing slides across the tiles in between.
 
-**A remote's clicked first step starts at zero, and only a remote needs that done.** The simulator spends a
+**A remote's clicked first step starts at zero, and only a remote needs the door recorded.** The simulator spends a
 click's own tick on the step it starts, so a step begun from a STANDING body reads `StepTicks = 1` on the tick it
 commits, where a step begun on landing reads zero. Drawn at `StepTicks / StepTotal`, a remote's first step jumped
 `1 / StepTotal` of a tile in the frame it committed: a quarter tile walking and half a tile running at the default
@@ -337,10 +338,13 @@ while moving, an epoch advance and a remote first seen already stepping all read
 one step over the ticks it actually has, N/(N-1) of the ordinary pace and the ordinary pace at one tick, and lands
 on the committed tile at the committed tick. Every other step, `Pose(state, extraTicks)` and `StepFraction` read
 bit for bit as before, the simulation, the wire and the server are untouched, and the presenter still holds
-nothing because the door is an argument. The LOCAL body needs none of it. `ClientPrediction.RenderedState` eases
-from the previous predicted position, which on the click tick is the standing tile, so the local body already
-starts a clicked step at zero and moves at the ordinary pace. That easing is the extra local tick the bound above
-already counts.
+nothing because the door is an argument. The LOCAL body does not record the door. `ClientPrediction.RenderedState`
+eases from the previous prediction target, which on the click tick is the standing tile, so the local body starts
+that step at zero. At a one-tick cadence the next landing-door state has zero progress and its deterministic
+`Position` repeats the previous target. `TileMoveState.PredictionTarget` names the newly committed tile for that
+cadence, so the next inter-tick segment and every route continuation cross one tile instead of holding or jumping.
+Longer cadences target `Position` bit for bit as before. Reconciliation error and predicted speed still read
+`Position`, and the local bound above is unchanged.
 
 **`StepFrom` is what the body is drawn between.** It rides the state and the wire because the simulator and the
 reconcile need it, and because it is what makes a remote's snapshot say where that body is going rather than where

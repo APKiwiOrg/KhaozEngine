@@ -237,13 +237,13 @@ public sealed class TilePresenter
 
     /// <summary>
     /// Where the LOCAL player's BODY draws: <see cref="ClientPrediction{TState,TCommand}.RenderedState"/>, which
-    /// already carries the inter-tick easing of the same <see cref="TileMoveState.Position"/> glide plus whatever
-    /// is left of a decaying correction offset. Read from the render override rather than from the tile, because
+    /// already carries the inter-tick easing of the state's prediction target plus whatever is left of a decaying
+    /// correction offset. Read from the render override rather than from the tile, because
     /// that override is the whole point of the prediction layer: it is a continuous position over a discrete
     /// lattice, and rounding it back to a tile here would throw away every frame of smoothing the layer just
     /// computed.
     /// <para>The zero-correction local motion bound has one term beyond <see cref="Pose(in TileMoveState, float)"/>. At the instant a new step commits,
-    /// <c>RenderedState</c> still starts from the previous predicted position, so the body may trail
+    /// <c>RenderedState</c> still starts from the previous prediction target, so the body may trail
     /// <c>PredictedState.Tile</c> by one grid step plus one local command tick of travel. With a step cadence of N
     /// ticks the bound is <c>1 + 1/N</c> grid steps. The default walk and run cadences therefore bound at 1.25 and
     /// 1.5. Multiply by <c>sqrt(2) * TileSize</c> for the Euclidean world-space bound of diagonal travel. An active

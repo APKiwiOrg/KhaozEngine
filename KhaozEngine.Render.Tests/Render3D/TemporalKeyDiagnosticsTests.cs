@@ -16,20 +16,42 @@ public sealed class TemporalKeyDiagnosticsTests
         scene.ForceTemporalForTests = true;
         MeshHandle box = scene.LoadMesh(MeshPrimitives.Box(1f));
         SkinnedMeshHandle tube = harness.LoadTube(out SkinnedGltfMesh mesh);
-        MotionKey a = MotionKey.From(1), b = MotionKey.From(2), c = MotionKey.From(3);
+        MotionKey a = MotionKey.From(1), b = MotionKey.From(2);
 
         scene.Begin();
         scene.Draw(new RigidInstanceDraw(box, Matrix4x4.Identity) { Motion = a });
         scene.Draw(new RigidInstanceDraw(box, Matrix4x4.CreateTranslation(1f, 0f, 0f)) { Motion = b });
         scene.Draw(new RigidInstanceDraw(box, Matrix4x4.CreateTranslation(2f, 0f, 0f)) { Motion = a });   // collides
         scene.Draw(box, Matrix4x4.CreateTranslation(3f, 0f, 0f));                                          // unkeyed
-        scene.DrawSkinned(new SkinnedInstanceDraw(tube, Matrix4x4.Identity) { Motion = c }, mesh.RestPose);
+        // Rigid and skinned keys are counted in separate maps, so reusing a rigid key here is not a collision.
+        scene.DrawSkinned(new SkinnedInstanceDraw(tube, Matrix4x4.Identity) { Motion = a }, mesh.RestPose);
         harness.Render();
 
         TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
         Assert.Equal(3, diagnostics.KeyedRigid);
         Assert.Equal(1, diagnostics.KeyedSkinned);
         Assert.Equal(1, diagnostics.KeyCollisions);
+    }
+
+    [Fact]
+    public void A_second_render_in_the_frame_leaves_the_counts_of_the_first()
+    {
+        using var harness = new MotionTestScene();
+        Scene3D scene = harness.Scene;
+        scene.ForceTemporalForTests = true;
+        MeshHandle box = scene.LoadMesh(MeshPrimitives.Box(1f));
+        MotionKey a = MotionKey.From(1), b = MotionKey.From(2);
+
+        scene.Begin();
+        scene.Draw(new RigidInstanceDraw(box, Matrix4x4.Identity) { Motion = a });
+        scene.Draw(new RigidInstanceDraw(box, Matrix4x4.CreateTranslation(1f, 0f, 0f)) { Motion = b });
+        harness.Render();
+        TemporalDiagnostics first = scene.LastTemporalDiagnostics;
+        Assert.Equal(2, first.KeyedRigid);
+
+        scene.Draw(new RigidInstanceDraw(box, Matrix4x4.CreateTranslation(2f, 0f, 0f)) { Motion = a });   // collides
+        harness.Render();   // a second render in the same frame, such as an offscreen capture
+        Assert.Equal(first, scene.LastTemporalDiagnostics);
     }
 
     [Fact]

@@ -14,7 +14,8 @@ namespace KhaozEngine.Render3D;
 /// drawn in several parts derives one key per part with <see cref="Combine"/>.
 /// </para>
 /// <para>
-/// Two draws that share a key in one frame collide. The last one wins and
+/// Two draws of the same kind that share a key in one frame collide. A rigid and a skinned draw never collide with each
+/// other, and a shadow-only rigid draw is never recorded. The last one wins and
 /// <see cref="Scene3D.LastTemporalDiagnostics"/> counts it, so a collision reads as wrong motion on one of the two and
 /// never as a failure.
 /// </para>

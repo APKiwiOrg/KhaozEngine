@@ -3445,7 +3445,9 @@ the renderer. Whether a draw is recorded is decided when it is submitted. Before
 follows whatever asks for temporal rendering at that moment, and after it, the frame's fixed state. At `Begin`, while
 temporal rendering is active, the records of the frame that just ended become last frame's. While it is off, `Begin`
 forgets them all, so a scene that turns temporal rendering off and on again starts with no previous state rather
-than a stale one.
+than a stale one. Only `Scene3D.Draw(in RigidInstanceDraw)` and `Scene3D.DrawSkinned(in SkinnedInstanceDraw, ...)`
+record. `SceneInstances.Add(in RigidInstanceDraw)` and `SkinnedSceneInstances.Add(in SkinnedInstanceDraw)` carry the
+key as data only, so a key queued on a standalone queue is never recorded.
 
 A key seen for the first time has no previous state and gets camera-only motion, and so does a key that skipped the
 last frame. Two draws of the same kind with one key in a frame collide: the last one wins, so one of the two gets
@@ -3544,9 +3546,10 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   `SceneDebugView.MotionVectors`, turns temporal rendering on, which jitters the rasterised image by under half an
   internal pixel on each axis each frame. A change takes effect at the frame's first render. One made after that
   render waits for the next frame.
-- `LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, whether history was valid, and why it
-  was last reset. Read it on the render thread after the frame renders. A second render inside the same frame, such as
-  an offscreen capture, leaves it and the history untouched.
+- `LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed draws and key collisions
+  (see "Draw descriptors and motion keys"), whether history was valid, and why it was last reset. Read it on the render
+  thread after the frame renders. A second render inside the same frame, such as an offscreen capture, leaves it and the
+  history untouched.
 
 ### ECS entities (`KhaozEngine.Render3D.Ecs`)
 
@@ -4697,6 +4700,9 @@ limb.Draw(scene, model: Matrix4x4.Identity, tint: Color.White);   // + a Materia
 with no GPU via `SkinnedLimb.CreateHeadless(boneCount, config, axis)` (a limb with no GPU mesh; its
 `Draw` is a no-op). Reach for the manual `BuildTube` + `ProceduralChainSolver` + `PolylineFrames` calls
 only when you need to deviate from this orchestration.
+
+Each limb carries its own `Motion` key for temporal rendering, so draw each limb once per frame. A second draw of
+the same limb in one frame collides with the first, so give each on-screen tentacle its own limb.
 
 The bone matrices are joint **world** transforms (model space); the engine composes them with the
 mesh's inverse-bind. Skinning rewrites position and normal only, so the lit colour path

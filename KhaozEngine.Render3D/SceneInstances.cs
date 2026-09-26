@@ -20,7 +20,9 @@ namespace KhaozEngine.Render3D
         public void Add(MeshHandle mesh, Matrix4x4 world, Color tint, Material material) => _items.Add(new Instance(mesh, world, tint, material));
 
         /// <summary>Queue one instance from its descriptor: every knob plus the motion key. The shadow-only and
-        /// opt-out pair is refused exactly as the <see cref="Instance"/> constructor refuses it.</summary>
+        /// opt-out pair is refused exactly as the <see cref="Instance"/> constructor refuses it. The key rides as data
+        /// only: motion history is recorded by <see cref="Scene3D.Draw(in RigidInstanceDraw)"/>, so a key queued on a
+        /// standalone queue is never recorded.</summary>
         public void Add(in RigidInstanceDraw draw) => _items.Add(new Instance(in draw));
 
         /// <summary>Queue one instance with rigid-dissolve params (issue #253). Mirrors the
@@ -105,7 +107,8 @@ namespace KhaozEngine.Render3D
             /// frames, so temporal effects can find where it was last frame. CPU-side only, exactly like
             /// <see cref="CastsShadows"/>. It never reaches the GPU instance stream, so the uploaded bytes are
             /// identical keyed or not. <see cref="MotionKey.None"/> from every constructor except the
-            /// descriptor's.</summary>
+            /// descriptor's. Only <see cref="Scene3D.Draw(in RigidInstanceDraw)"/> records it into motion history.
+            /// </summary>
             public MotionKey Motion { get; }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint) : this(mesh, world, tint, Material.None) { }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,

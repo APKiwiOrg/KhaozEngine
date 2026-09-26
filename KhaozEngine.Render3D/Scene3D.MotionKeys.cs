@@ -13,8 +13,8 @@ namespace KhaozEngine.Render3D;
 /// Only while temporal rendering is active. Recording is decided per submission through <see cref="TemporalActive"/>,
 /// which is the live requesters before the frame's first render and the frame's fixed value after it. The history
 /// swaps at <see cref="Begin"/> when temporal rendering is active then, and is forgotten when it is not. With temporal
-/// off the history is never created, or is emptied once and then left alone, so keys cost nothing and a later active
-/// frame starts with no previous state instead of a stale one.
+/// off the history is never created, or is emptied at each <see cref="Begin"/>, so keys cost nothing and a later
+/// active frame starts with no previous state instead of a stale one.
 /// </para>
 /// </summary>
 public sealed partial class Scene3D

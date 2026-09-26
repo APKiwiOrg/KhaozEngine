@@ -270,7 +270,10 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
     public void DrawMeshDissolved(MeshHandle handle, Matrix4x4 world, float dissolve, float edgeWidth, Color edgeColor) =>
         _scene.Draw(handle, world, Color.White, Material.None, dissolve, edgeWidth, edgeColor);
 
-    /// <inheritdoc />
+    /// <summary>Forwards the whole descriptor, motion key included, to
+    /// <see cref="Scene3D.Draw(in RigidInstanceDraw)"/>. Nothing is dropped, unlike the interface's fallback.</summary>
+    /// <exception cref="ArgumentException">The descriptor is shadow-only and casts no shadow, which the scene's
+    /// instance queue refuses.</exception>
     public void DrawMesh(in RigidInstanceDraw draw) => _scene.Draw(in draw);
 
     /// <inheritdoc />
@@ -292,7 +295,9 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
         Matrix4x4 world, Color tint, float dissolve, float edgeWidth, Color edgeColor) =>
         _scene.DrawSkinned(handle, boneMatrices, world, tint, Material.None, dissolve, edgeWidth, edgeColor);
 
-    /// <inheritdoc />
+    /// <summary>Forwards the whole descriptor, motion key included, to
+    /// <see cref="Scene3D.DrawSkinned(in SkinnedInstanceDraw, ReadOnlySpan{Matrix4x4})"/>. Nothing is dropped, unlike
+    /// the interface's fallback.</summary>
     public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices) =>
         _scene.DrawSkinned(in draw, boneMatrices);
 

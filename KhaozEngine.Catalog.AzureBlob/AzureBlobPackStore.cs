@@ -93,12 +93,11 @@ public sealed class AzureBlobPackStore : IPackStore, IPackStorePruning
             return Task.FromResult<ReadOnlyMemory<byte>?>(null);
         }
 
-        // The ceiling is the fetch path's own, from HttpPackStore, because the client reading this container
-        // applies exactly that number and a writer's store that would hand back more is a store the client
-        // could not read.
+        // The format owns the ceiling because the client reading this container applies exactly that number
+        // and a writer's store that would hand back more is a store the client could not read.
         return _container.DownloadAsync(
             FileSystemPackStore.RelativeKeyFor(hash),
-            HttpPackStore.MaxObjectBytes,
+            ContentPackFormat.MaxObjectBytes,
             cancellationToken);
     }
 

@@ -16088,7 +16088,7 @@ if (ContentRefusal.TryParseMismatch(refusedReason, out ContentVersionIdentity se
 The refusal token carries both sides and NO URL, because a URL in a refusal token is a redirect an
 unauthenticated party controls: the client already knows its own pack origin. The fetch reads the missing
 hashes off the manifest the refusal named, pulls them through `CachingPackStore` (local cache in front,
-`HttpPackStore` behind, every body bounded by `HttpPackStore.MaxObjectBytes` and verified against its content
+`HttpPackStore` behind, every body bounded by `ContentPackFormat.MaxObjectBytes` and verified against its content
 address before it is kept), retries with capped jittered exponential backoff, and reports through
 `IProgress<ContentFetchProgress>`. Cancellation is its one throwing exit, and it leaves no partial file: a
 chunk is written to a temporary name and moved. What the caller still owns is the pack HOSTING and the build

@@ -47,6 +47,22 @@ public class FileSystemPackStoreTests
     }
 
     [Fact]
+    public async Task GetAsync_answers_null_for_a_sparse_file_above_the_object_ceiling()
+    {
+        using var root = new TemporaryRoot();
+        var store = new FileSystemPackStore(root.Path);
+        string hash = new('a', 64);
+        string path = store.PathFor(hash);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using (FileStream sparse = File.Create(path))
+        {
+            sparse.SetLength((long)ContentPackFormat.MaxObjectBytes + 1);
+        }
+
+        Assert.Null(await store.GetAsync(hash));
+    }
+
+    [Fact]
     public async Task PutAsync_lands_the_file_in_the_two_level_shard_and_leaves_no_temporary()
     {
         using var root = new TemporaryRoot();

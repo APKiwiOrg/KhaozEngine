@@ -199,10 +199,12 @@ public sealed class AzureBlobPackStoreTests
         var container = new InMemoryBlobContainer();
         var store = new AzureBlobPackStore(container);
         string hash = new('a', 64);
-        container.PlanOversize(FileSystemPackStore.RelativeKeyFor(hash), HttpPackStore.MaxObjectBytes + 1L);
+        container.PlanOversize(
+            FileSystemPackStore.RelativeKeyFor(hash),
+            ContentPackFormat.MaxObjectBytes + 1L);
 
         Assert.Null(await store.GetAsync(hash));
-        Assert.Equal(HttpPackStore.MaxObjectBytes, container.CeilingAsked);
+        Assert.Equal(ContentPackFormat.MaxObjectBytes, container.CeilingAsked);
         Assert.Equal(0, container.BodiesMaterialized);
         Assert.True(await store.ExistsAsync(hash));
     }

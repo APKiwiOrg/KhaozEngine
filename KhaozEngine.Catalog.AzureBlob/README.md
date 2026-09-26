@@ -93,7 +93,7 @@ expired signature, a throttle and a body that died mid transfer are the same ans
 because the caller's next move is the same for all of them, and `IPackStore.GetAsync` promises null so a
 sweep or a validation pass is never taken down by one lookup. The two WRITES stay loud, deliberately, because
 an origin that silently did not write is an origin a client is about to be sent to. `GetAsync` also refuses an
-object larger than `HttpPackStore.MaxObjectBytes` from its DECLARED length, before a body is buffered.
+object larger than `ContentPackFormat.MaxObjectBytes` from its DECLARED length, before a body is buffered.
 
 ## The identity a host needs
 

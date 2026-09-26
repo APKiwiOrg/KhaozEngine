@@ -124,7 +124,14 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         catch (SqlException exception)
         {
             bool rolledBack = await TryRollbackAsync(transaction).ConfigureAwait(false);
-            throw MapProviderFailure(exception.Number, exception, Array.Empty<string>(), false, false, rolledBack);
+            throw MapCommandFailure(
+                exception.Number,
+                exception,
+                cancellationToken,
+                Array.Empty<string>(),
+                false,
+                false,
+                rolledBack);
         }
         catch (OperationCanceledException exception)
         {

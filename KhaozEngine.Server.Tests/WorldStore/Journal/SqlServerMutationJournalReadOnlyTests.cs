@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Tests.WorldStore;
 using KhaozEngine.WorldStore.Journal;
@@ -15,6 +17,8 @@ namespace KhaozEngine.Tests.WorldStore.Journal;
 [Collection("SQL Server mutation journal")]
 public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
 {
+    private const string CancellationLock = "KhaozEngine.WorldStore.SqlServer.ReadOnlyCancellationTest";
+    private static readonly TimeSpan WaiterBound = TimeSpan.FromSeconds(30);
     private static readonly string? ConnectionString = Environment.GetEnvironmentVariable("KE_SQLSERVER_TEST_CONNSTRING");
     private static string DedicatedConnectionString =>
         SqlServerJournalTestDatabase.RequireDedicatedTestDatabase(ConnectionString);
@@ -120,11 +124,103 @@ public sealed class SqlServerMutationJournalReadOnlyTests : IDisposable
         Assert.Equal(before, await SqlServerJournalFingerprint.CaptureAsync(DedicatedConnectionString, "journal-test/none/"));
     }
 
+    [SqlServerFact]
+    public async Task Read_only_schema_command_cancelled_by_the_caller_is_cancelled()
+    {
+        _ = new SqlServerMutationJournalStore(DedicatedConnectionString);
+        await using var holder = new SqlConnection(DedicatedConnectionString);
+        await holder.OpenAsync();
+        await using SqlTransaction held = (SqlTransaction)await holder.BeginTransactionAsync();
+        Assert.True(await TakeCancellationLockAsync(holder, held) >= 0, "The holder must get the lock before validation runs.");
+
+        using var cancellation = new CancellationTokenSource();
+        var hook = new SqlServerJournalSchemaTestHook(async (connection, transaction, cancellationToken) =>
+        {
+            await using SqlCommand command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandTimeout = 300;
+            command.CommandText = """
+                DECLARE @result int;
+                EXEC @result = sys.sp_getapplock
+                    @Resource = @resource,
+                    @LockMode = 'Exclusive',
+                    @LockOwner = 'Transaction',
+                    @LockTimeout = 300000;
+                SELECT @result;
+                """;
+            command.Parameters.Add("@resource", SqlDbType.NVarChar, 255).Value = CancellationLock;
+            await command.ExecuteScalarAsync(cancellationToken);
+        });
+        Task<SqlServerMutationJournalStore> opening = Task.Run(() => new SqlServerMutationJournalStore(
+            new SqlServerMutationJournalStoreOptions(DedicatedConnectionString)
+            {
+                SchemaMode = SqlServerJournalSchemaMode.ReadOnly,
+            },
+            testHook: null,
+            schemaTestHook: hook,
+            schemaCancellation: cancellation.Token));
+
+        try
+        {
+            Assert.True(await WaitForCancellationLockAsync(opening), "Validation never showed up waiting on its command.");
+            await cancellation.CancelAsync();
+            Assert.True(
+                await Task.WhenAny(opening, Task.Delay(WaiterBound)) == opening,
+                "The cancelled read only validation kept waiting on its command.");
+            JournalStoreException exception = await Assert.ThrowsAsync<JournalStoreException>(() => opening);
+            Assert.Equal(JournalStoreFailureKind.Cancelled, exception.Kind);
+            Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, exception.Certainty);
+            Assert.Equal(JournalStoreFailureScope.WholeStore, exception.Scope);
+        }
+        finally
+        {
+            await held.RollbackAsync();
+            await Task.WhenAny(opening, Task.Delay(WaiterBound));
+        }
+    }
+
     private static SqlServerMutationJournalStore OpenReadOnly(SqlServerJournalSchemaTestHook hook)
         => new(
             new SqlServerMutationJournalStoreOptions(DedicatedConnectionString) { SchemaMode = SqlServerJournalSchemaMode.ReadOnly },
             testHook: null,
             schemaTestHook: hook);
+
+    private static async Task<int> TakeCancellationLockAsync(SqlConnection connection, SqlTransaction transaction)
+    {
+        await using SqlCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            DECLARE @result int;
+            EXEC @result = sys.sp_getapplock
+                @Resource = @resource,
+                @LockMode = 'Exclusive',
+                @LockOwner = 'Transaction',
+                @LockTimeout = 0;
+            SELECT @result;
+            """;
+        command.Parameters.Add("@resource", SqlDbType.NVarChar, 255).Value = CancellationLock;
+        return await command.ExecuteScalarAsync() is int code ? code : -999;
+    }
+
+    private static async Task<bool> WaitForCancellationLockAsync(Task opening)
+    {
+        var bound = Stopwatch.StartNew();
+        await using var connection = new SqlConnection(DedicatedConnectionString);
+        await connection.OpenAsync();
+        while (bound.Elapsed < WaiterBound && !opening.IsCompleted)
+        {
+            await using SqlCommand command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT COUNT(*) FROM sys.dm_tran_locks
+                WHERE resource_type = N'APPLICATION' AND request_mode = N'X' AND request_status = N'WAIT'
+                  AND resource_database_id = DB_ID();
+                """;
+            if ((int)(await command.ExecuteScalarAsync())! > 0) return true;
+            await Task.Delay(20);
+        }
+
+        return false;
+    }
 
     private SqlServerJournalPrefixStore CreatePrefixedStore()
     {

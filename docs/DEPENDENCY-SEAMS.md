@@ -325,15 +325,17 @@ Compile-time localization enforcement adds two edges, both acyclic:
 ```
 KhaozEngine.Gui -> KhaozEngine.App           (the LocalizedText sink type + StringId + LocalizationContext)
 KhaozEngine.Game2D/Game3D -> KhaozEngine.Localization.Analyzers   (packed dependency, include="All", so the
-                                                                   analyzer is applied in the consumer's build)
+                                                                   analyzer and generator run in the consumer build)
 ```
 
 `App` is a pure-BCL foundation package (it references only `Diagnostics` and `Platform`, both GPU-free leaves)
-and never references `Gui`, so the new `Gui -> App` edge introduces no cycle. `KhaozEngine.Localization.Analyzers` is a `netstandard2.0` Roslyn
-analyzer with no runtime dependency; it ships its assembly under `analyzers/dotnet/cs` and flows to a game only
-through the `Game2D`/`Game3D` umbrellas (a project that references neither never sees it). The marker attributes
-it reads (`LocalizationExemptAttribute`, `LocalizationStringSinkAttribute`) live in `App`, so the analyzer keys
-off fully-qualified names, not a hard reference.
+and never references `Gui`, so the new `Gui -> App` edge introduces no cycle. `KhaozEngine.Localization.Analyzers`
+is a `netstandard2.0` Roslyn analyzer and source generator with no runtime dependency. It ships its assembly
+under `analyzers/dotnet/cs` plus compiler-visible AdditionalFiles metadata under `buildTransitive`, and flows to
+a game only through the `Game2D` and `Game3D` umbrellas. A project that references neither never sees it. The
+marker attributes it reads (`LocalizationExemptAttribute`, `LocalizationStringSinkAttribute`) live in `App`, so
+the analyzer keys off fully qualified names rather than a hard reference. Generated code names `StringId` but
+the analyzer assembly still does not reference `App` at runtime.
 
 A third edge is test-only:
 

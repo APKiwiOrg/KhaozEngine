@@ -2251,17 +2251,22 @@ conversion into `LocalizedText` is from `StringId`, so **a bare string literal a
 you either localize it (a `StringId`) or opt out explicitly (`LocalizedText.Raw`). The `KhaozEngine.Localization.Analyzers`
 analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adopting it on a bump:
 
-1. **Author a `.resx` + `StringId` constants.** One satellite `.resx` per culture (the base file is the default
-   language), and a constants class of keys (a `.resx` -> `StringId` source generator is on the roadmap):
+1. **Author a neutral `.resx` and generate its `StringId` keys.** Keep one satellite `.resx` per culture, with
+   the base file as the default language. Add only that neutral file as an opted AdditionalFile:
 
-   ```csharp
-   internal static class Strings
-   {
-       public static readonly StringId Pause  = new("Menu.Pause");
-       public static readonly StringId Resume = new("Menu.Resume");
-       public static readonly StringId Score  = new("Hud.Score");   // "Score: {0}"
-   }
+   ```xml
+   <ItemGroup>
+     <AdditionalFiles Include="Strings.resx"
+                      KhaozStringIdType="MyGame.Strings" />
+   </ItemGroup>
    ```
+
+   The class is internal by default and contains one public static readonly `StringId` per string key. Set
+   `KhaozStringIdAccessibility="public"` when another assembly needs the class. Member names join key runs with
+   invariant uppercase starts, so `Menu.Pause` becomes `MenuPause` and `fly_speed` becomes `FlySpeed`. A key
+   rename or removal then breaks stale call sites at compile time. Name collisions and invalid resx inputs are
+   build errors. Do not opt satellite files in. Use `KhaozEngine.Localization.TestKit` for their coverage and
+   placeholder parity.
 
 2. **Wire the catalog once at startup** so every `LocalizedText` resolves against it. `LocalizationContext.WireResx`
    is the one-liner (no per-game bridge class needed - it builds the `ResourceStringCatalog`, installs it as the
@@ -2279,8 +2284,8 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
 3. **Pass a `StringId` (or `LocalizedText.Of` with format args) at the sinks:**
 
    ```csharp
-   gui.Button(font, rect, Strings.Resume);                 // StringId -> LocalizedText implicitly
-   label.Content = LocalizedText.Of(Strings.Score, score); // format args -> catalog.Format
+   gui.Button(font, rect, Strings.MenuResume);                // StringId -> LocalizedText implicitly
+   label.Content = LocalizedText.Of(Strings.HudScore, score); // format args -> catalog.Format
    ```
 
    `LocalizedText` re-resolves on every draw, so `LocalizationManager.SetCulture(...)` at runtime updates the UI
@@ -2300,8 +2305,8 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
    ```
 
 The Gui sinks carry no `string` overload, so every player-facing call site must be migrated before a game
-builds against them. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
-`ShowcaseStrings` constants + `LocalizationContext` wiring).
+builds against them. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` generates the
+`ShowcaseStrings` key class, with `LocalizationContext` wiring at startup).
 
 **A widget with no sink is invisible to the analyzer, which is the failure mode to watch for.** KELOC001 and
 KELOC003 flag a literal passed into a parameter that is typed or marked as a sink, so a widget holding a plain

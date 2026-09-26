@@ -24,6 +24,8 @@ Pulls in:
 - `KhaozEngine.Foundation` - the GPU-free foundation umbrella (ECS, persistence, content,
   diagnostics, collision, physics seam, terrain, determinism and friends), including its
   buildTransitive game-head build defaults.
+- `KhaozEngine.Localization.Analyzers` - the KELOC raw-text diagnostics and the opt-in neutral-resx to
+  `StringId` source generator. Both run in the consuming project's build and add no runtime dependency.
 
 The old Effects package was absorbed into `Particles` in 9.0.0, so it no longer appears as a
 separate reference.

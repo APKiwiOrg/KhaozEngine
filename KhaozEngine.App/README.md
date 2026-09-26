@@ -225,24 +225,26 @@ only implicit conversion into it is from `StringId` (never from `string`), so a 
 a compile error. `KhaozEngine.Localization.Analyzers` (in the `Game2D`/`Game3D` umbrellas) enforces the rest.
 
 - **`StringId`** - a typed localization key (`new StringId("Menu.Play")` or `StringId.Of(...)`). No implicit
-  conversion from `string`, so authoring one is a deliberate act. Author them as constants (a source generator
-  from `.resx` is on the roadmap):
+  conversion from `string`, so authoring one is a deliberate act. The `KhaozEngine.Localization.Analyzers`
+  package can generate the keys from a neutral resx. Add the file as an opted AdditionalFile and name the exact
+  target class:
 
-  ```csharp
-  internal static class Strings
-  {
-      public static readonly StringId Play = new("Menu.Play");
-      public static readonly StringId Score = new("Hud.Score");   // "Score: {0}"
-  }
+  ```xml
+  <AdditionalFiles Include="Strings.resx"
+                   KhaozStringIdType="MyGame.Strings" />
   ```
+
+  The generated class is internal by default, with one public static readonly `StringId` per string key. Set
+  `KhaozStringIdAccessibility="public"` when another assembly needs the class. Add only the neutral resx.
+  Satellite completeness stays with `KhaozEngine.Localization.TestKit`.
 
 - **`LocalizedText`** - what a sink takes. Either a localizable `StringId` (+ optional format args) or a raw
   literal. It stores the id/args and **re-resolves on every access**, so a runtime locale switch takes effect on
   the next draw with nothing to invalidate.
 
   ```csharp
-  LocalizedText a = Strings.Play;                       // implicit from StringId
-  LocalizedText b = LocalizedText.Of(Strings.Score, 42); // format args -> catalog.Format
+  LocalizedText a = Strings.MenuPlay;                       // implicit from StringId
+  LocalizedText b = LocalizedText.Of(Strings.HudScore, 42); // format args -> catalog.Format
   LocalizedText c = LocalizedText.Raw("v1.2.0");        // non-localizable escape hatch (greppable)
   string shown = a.Resolve();                            // resolves against the ambient catalog
   ```

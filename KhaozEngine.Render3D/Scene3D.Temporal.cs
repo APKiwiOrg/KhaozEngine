@@ -20,6 +20,12 @@ namespace KhaozEngine.Render3D
         FrameView? _previousFrameView;
         // Whether the last rendered frame had temporal rendering active, so its snapshot can seed this frame's history.
         bool _historyActive;
+        // The reset-relevant settings the last frame rendered with.
+        TemporalFrameKey _historyKey;
+
+        /// <summary>The settings whose change resets history, as one frame saw them.</summary>
+        readonly record struct TemporalFrameKey(AntiAliasing AntiAliasing, RenderScale RenderScale, float Supersample,
+            bool HdrColor);
 
         /// <summary>Whether this frame's history can be read, and why it was last reset.</summary>
         internal TemporalHistory TemporalHistory { get; } = new();
@@ -35,16 +41,39 @@ namespace KhaozEngine.Render3D
         {
             FrameView view = _currentFrameView;
             bool active = TemporalActive;
+            var key = new TemporalFrameKey(ResolvedAa(), Post.EffectiveRenderScale, Post.EffectiveSupersample, _res.HdrColor);
             _previousFrameView = null;
             if (active && _historyActive && _historyView is FrameView last)
             {
                 TemporalHistory.MarkValidAfterFrame();   // the last frame rendered, so the history now holds it
-                _previousFrameView = last.RebasedTo(view.RenderOrigin);
+                TemporalResetReason reason = DetectTemporalReset(last, view, key);
+                if (reason == TemporalResetReason.None) _previousFrameView = last.RebasedTo(view.RenderOrigin);
+                else TemporalHistory.Invalidate(reason);
             }
             else
-                TemporalHistory.Invalidate(TemporalResetReason.FirstFrame);
+                TemporalHistory.Invalidate(TemporalResetReason.FirstFrame);   // outranks every trigger, so none is compared
             _historyActive = active;
             _historyView = view;
+            _historyKey = key;
+        }
+
+        /// <summary>
+        /// The reason this frame cannot continue the last one, or <see cref="TemporalResetReason.None"/>. Every trigger
+        /// is checked and folded through <see cref="TemporalResetPrecedence.Higher"/>, so one reason is reported, the
+        /// root cause over the size change it brings, whatever order the checks run in.
+        /// </summary>
+        TemporalResetReason DetectTemporalReset(in FrameView last, in FrameView view, in TemporalFrameKey key)
+        {
+            TemporalResetReason reason = TemporalResetReason.None;
+            if (key.HdrColor != _historyKey.HdrColor)
+                reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.DeviceReset);
+            if (key.AntiAliasing != _historyKey.AntiAliasing)
+                reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.AntiAliasing);
+            if (key.RenderScale != _historyKey.RenderScale || key.Supersample != _historyKey.Supersample)
+                reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.RenderScale);
+            if (view.Width != last.Width || view.Height != last.Height)
+                reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.Resize);
+            return reason;
         }
     }
 }

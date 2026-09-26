@@ -97,13 +97,16 @@ every existing golden stays byte-identical.
 
 ## 2. Previous frame state and history lifetime
 
-At the end of each rendered frame the snapshot becomes `PreviousFrameView`. Motion is always the difference between
-this frame's unjittered projection of a point and last frame's unjittered projection of the same point, so jitter
-never reads as motion.
+The previous view is taken at the next frame's first render, where `AdvanceTemporalHistory` runs once per frame from
+`LatchFrameView`. The first render of a frame keeps its snapshot, and the next frame's first render rebases that
+snapshot onto its own render origin and exposes it as `PreviousFrameView`, or null while the history is invalid.
+Motion is always the difference between this frame's unjittered projection of a point and last frame's unjittered
+projection of the same point, so jitter never reads as motion.
 
 The render origin steps in exact 128 m multiples on X and Z (`WorldFrame`). When it moved by `d` between frames,
-the previous render-relative view-projection is rebased as `T(d) * PreviousViewProjection` before use. Float32
-represents the step exactly, so a rebase adds no error. A static scene read across a step shows zero motion.
+the previous render-relative view-projection is rebased as `T(d) * PreviousViewProjection` at that first render,
+before any pass reads it. Float32 represents the step exactly, so a rebase adds no error. A static scene read across
+a step shows zero motion.
 
 The frame index advances once per `Begin`. A second render in the same frame, such as an offscreen capture, reuses
 the frame's snapshot and does not advance history.

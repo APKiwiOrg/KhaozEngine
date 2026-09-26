@@ -698,7 +698,7 @@ namespace KhaozEngine.Render3D
         public void Draw(PropHandle prop, Matrix4x4 world, Color tint)
         {
             if (prop.Parts == null) return;
-            foreach (MeshHandle part in prop.Parts) _instances.Add(part, world, tint);
+            foreach (MeshHandle part in prop.Parts) Draw(new RigidInstanceDraw(part, world) { Tint = tint });
         }
 
         /// <summary>Diagnostic: read the key-light shadow depth map (R32F light-space depth) back to the CPU as a
@@ -811,27 +811,6 @@ namespace KhaozEngine.Render3D
             _trailSamples.Clear();
             _billboardBasisValid = false; _framePrepared = false;   // per-frame latches (see PrepareFrame)
         }
-
-        /// <summary>Queue one instance: draw <paramref name="mesh"/> at world transform <paramref name="world"/> (no tint).</summary>
-        public void Draw(MeshHandle mesh, Matrix4x4 world) => _instances.Add(mesh, world, Color.White);
-
-        /// <summary>Queue one instance with a per-instance RGBA <paramref name="tint"/> that multiplies the lit color.</summary>
-        public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint) => _instances.Add(mesh, world, tint);
-
-        /// <summary>Queue one instance with a per-instance <paramref name="tint"/> and <paramref name="material"/>
-        /// (emissive glow + specular).</summary>
-        public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material) => _instances.Add(mesh, world, tint, material);
-
-        /// <summary>As the material overload, but dissolves this rigid instance (issue #253): <paramref name="dissolve"/>
-        /// is the 0..1 threshold (0 = solid, 1 = fully gone), with a glowing emissive edge of <paramref name="edgeColor"/>
-        /// and width <paramref name="edgeWidth"/> (a fraction of the noise range). Mirrors the <see cref="DrawSkinned(SkinnedMeshHandle,ReadOnlySpan{Matrix4x4},Matrix4x4,Color,Material,float,float,Color)"/>
-        /// dissolve overload but on the instanced path: no pipeline switch and no batching change (the discard folds
-        /// into the shared ModelFrag), so it stays one instanced draw per mesh. A <paramref name="dissolve"/> of 0
-        /// draws exactly like the material overload, so it is safe to call unconditionally while gating the value on a
-        /// fade. Presentation only - never feed sim/RNG/netcode from the dissolve value.</summary>
-        public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
-            float dissolve, float edgeWidth, Color edgeColor)
-            => _instances.Add(mesh, world, tint, material, dissolve, edgeWidth, edgeColor);
 
         // ---- Dynamic point/effect lights (muzzle flashes, explosions, thrusters, key projectiles). ----
 

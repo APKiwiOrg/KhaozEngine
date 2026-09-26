@@ -81,7 +81,7 @@ namespace KhaozEngine.Render3D
         /// per-instance and CPU-side: no pipeline switch, no change to the uploaded instance bytes, and a
         /// <c>true</c> value is byte-identical to the material overload.</summary>
         public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material, bool castsShadows)
-            => _instances.Add(mesh, world, tint, material, 0f, 0f, default, castsShadows);
+            => Draw(new RigidInstanceDraw(mesh, world) { Tint = tint, Material = material, CastsShadows = castsShadows });
 
         /// <summary>The dissolve overload plus the shadow-caster opt-out: as
         /// <see cref="Draw(MeshHandle, Matrix4x4, Color, Material, float, float, Color)"/>, but
@@ -91,7 +91,11 @@ namespace KhaozEngine.Render3D
         /// caster.</summary>
         public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
             float dissolve, float edgeWidth, Color edgeColor, bool castsShadows)
-            => _instances.Add(mesh, world, tint, material, dissolve, edgeWidth, edgeColor, castsShadows);
+            => Draw(new RigidInstanceDraw(mesh, world)
+            {
+                Tint = tint, Material = material, Dissolve = dissolve, DissolveEdgeWidth = edgeWidth,
+                DissolveEdgeColor = edgeColor, CastsShadows = castsShadows,
+            });
 
         /// <summary>The dissolve + opt-out overload plus the inverted SHADOW dither (issue #391):
         /// <paramref name="invertShadowDissolve"/> true records this instance's depth through the inverted dissolve
@@ -102,7 +106,12 @@ namespace KhaozEngine.Render3D
         /// byte-identical to the overload above.</summary>
         public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
             float dissolve, float edgeWidth, Color edgeColor, bool castsShadows, bool invertShadowDissolve)
-            => _instances.Add(mesh, world, tint, material, dissolve, edgeWidth, edgeColor, castsShadows, invertShadowDissolve);
+            => Draw(new RigidInstanceDraw(mesh, world)
+            {
+                Tint = tint, Material = material, Dissolve = dissolve, DissolveEdgeWidth = edgeWidth,
+                DissolveEdgeColor = edgeColor, CastsShadows = castsShadows,
+                InvertShadowDissolve = invertShadowDissolve,
+            });
 
         /// <summary>
         /// Whether splat-terrain chunks write into the key light's cascade atlas (issue #280). Default <c>false</c>,

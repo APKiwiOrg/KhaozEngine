@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
+using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
 
@@ -20,8 +24,63 @@ public sealed class MotionTargetResourcesTests
 
         Assert.False(res.MotionAllocated);
         Assert.Null(res.MotionTex);
-        Assert.Equal(3, res.ModelFB.Outputs.Colour.Length);
+        Assert.Equal(new[] { GpuPixelFormat.R16G16B16A16Float, GpuPixelFormat.R8G8B8A8UNorm, GpuPixelFormat.R32Float },
+            res.ModelFB.Outputs.Colour);
         Assert.DoesNotContain(factory.Textures, t => t.Format == GpuPixelFormat.R16G16Float);
+    }
+
+    [Fact]
+    public void ResizingWithMotionOnRecreatesTheTargetAtTheNewSize()
+    {
+        using var device = new FakeGpuDevice();
+        using var res = new RenderResources(device, 64, 32, hdrColor: true);
+        res.Resize(96, 48, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: true, motion: true);
+        var before = (FakeTexture)res.MotionTex!;
+
+        res.Resize(128, 72, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: true, motion: true);
+
+        var after = Assert.IsType<FakeTexture>(res.MotionTex);
+        Assert.True(before.Disposed);
+        Assert.Equal((128u, 72u), (after.Width, after.Height));
+        Assert.Equal(4, res.ModelFB.Outputs.Colour.Length);
+    }
+
+    [Fact]
+    public void TurningMotionOnAtTheSameSizeRebuildsTheTargets()
+    {
+        using var device = new FakeGpuDevice();
+        using var res = new RenderResources(device, 64, 32, hdrColor: true);
+        res.Resize(96, 48, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: true);
+        int generation = res.Generation;
+
+        res.Resize(96, 48, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: true, motion: true);
+
+        Assert.True(res.MotionAllocated);
+        Assert.True(res.Generation > generation);
+        Assert.Equal(4, res.ModelFB.Outputs.Colour.Length);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheModelPassClearsTheMotionTargetToTheSentinelOnlyWhileItExists(bool motion)
+    {
+        using var device = new FakeGpuDevice();
+        using var res = new RenderResources(device, 64, 32, hdrColor: true);
+        res.Resize(96, 48, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: true, motion: motion);
+        using var model = new ModelRenderer(device, res.ModelFB.Outputs, 64, 1);
+        var settings = new PixelPostProcessSettings();
+        var commands = new RecordingGpuCommandList(new NullGpuCommandList());
+
+        model.BeginModelPass(commands, res, settings);
+
+        Color background = settings.BackgroundColor.WithAlpha(0f);
+        var expected = new List<RecordingGpuCommandList.ColourClear>
+        {
+            new(0, background), new(1, background), new(2, background),
+        };
+        if (motion) expected.Add(new(MotionMath.Attachment, MotionMath.SentinelColor));
+        Assert.Equal(expected, commands.ColourClears);
     }
 
     [Fact]

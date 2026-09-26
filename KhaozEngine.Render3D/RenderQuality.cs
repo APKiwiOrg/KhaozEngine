@@ -38,7 +38,8 @@ namespace KhaozEngine.Render3D
     /// (<see cref="MsaaSamples"/> for <see cref="AntiAliasingMode.Msaa"/>, <see cref="SsaaFactor"/> for
     /// <see cref="AntiAliasingMode.Ssaa"/>). Build one with the factories (<see cref="Off"/> / <see cref="Fxaa"/> /
     /// <see cref="Msaa(int)"/> / <see cref="Ssaa"/>) and assign it to <see cref="RenderQuality.AntiAliasing"/>. Immutable
-    /// value; <see cref="ResolveFor(in GpuCapabilities)"/> clamps a request to what the device can actually do (never throws).
+    /// value. <see cref="ResolveFor(in GpuCapabilities)"/> clamps a request to what the device can actually do (never
+    /// throws).
     /// </summary>
     public readonly struct AntiAliasing : IEquatable<AntiAliasing>
     {

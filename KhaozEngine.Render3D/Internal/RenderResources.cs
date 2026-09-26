@@ -6,8 +6,10 @@ namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
     /// Owns the low-res GPU targets for one resolution: a 3-attachment MRT (lit color, encoded normal,
-    /// linear depth) plus a depth-stencil for the model pass, and two single-target ping-pong buffers for
-    /// the post chain. Recreated on resolution / mip-mode / MSAA-sample-count / bloom-enabled / HDR-format change.
+    /// linear depth), or a 4-attachment one with the RG16F motion target while temporal rendering asks for it
+    /// (<see cref="MotionAllocated"/>), plus a depth-stencil for the model pass, and two single-target ping-pong
+    /// buffers for the post chain. Recreated on resolution / mip-mode / MSAA-sample-count / bloom-enabled /
+    /// HDR-format / motion change.
     /// Also owns an optional half-resolution ping-pong pair (<see cref="BloomA"/>/<see cref="BloomB"/>) for the
     /// bloom bright-pass + separable blur, allocated only while bloom is enabled (see <see cref="BloomAllocated"/>).
     /// The colour-carrying targets (lit colour + both ping-pong pairs) render at <c>R16G16B16A16Float</c> when

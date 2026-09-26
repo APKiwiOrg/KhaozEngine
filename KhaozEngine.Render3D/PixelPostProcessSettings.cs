@@ -225,7 +225,8 @@ namespace KhaozEngine.Render3D
         internal bool EffectiveFxaa => EffectiveAaMode != AntiAliasingMode.None && Quality.AntiAliasing.UsesFxaa;
 
         /// <summary>Requested MSAA sample count after the AA selection (1 = off). Still clamped to the device maximum
-        /// at pipeline-build time via <see cref="AntiAliasing.ResolveFor(in KhaozEngine.Gpu.GpuCapabilities)"/>; this is only the requested value.</summary>
+        /// at pipeline-build time via <see cref="AntiAliasing.ResolveFor(in KhaozEngine.Gpu.GpuCapabilities)"/>. This is
+        /// only the requested value.</summary>
         internal int EffectiveMsaaSamples =>
             EffectiveAaMode == AntiAliasingMode.Msaa ? System.Math.Max(1, Quality.AntiAliasing.MsaaSamples) : 1;
 

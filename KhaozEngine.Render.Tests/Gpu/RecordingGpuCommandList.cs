@@ -43,6 +43,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>One recorded multisample resolve: which texture was averaged into which.</summary>
         internal readonly record struct Resolve(IGpuTexture Source, IGpuTexture Destination);
 
+        /// <summary>One <see cref="ClearColorTarget"/>: the attachment index and the colour it was cleared to.</summary>
+        internal readonly record struct ColourClear(uint Index, Color Rgba);
+
         /// <summary>One recorded texture copy, and WHICH FORM of it. <see cref="WholeResource"/> is the
         /// <c>CopyTexture</c> overload, which names every mip level and array layer on both sides and so demands
         /// the two textures agree on shape (the native Metal and Vulkan backends refuse a mismatch outright, and
@@ -57,6 +60,7 @@ namespace KhaozEngine.Tests.Gpu
         readonly List<Upload> _uploads = new();
         readonly List<Resolve> _resolves = new();
         readonly List<TextureCopy> _textureCopies = new();
+        readonly List<ColourClear> _colourClears = new();
         int _draws;
         int _framebufferBinds;
 
@@ -79,6 +83,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Uploads recorded since the last <see cref="Clear"/>, in the order they were recorded.</summary>
         public IReadOnlyList<Upload> Uploads => _uploads;
 
+        /// <summary>Colour-target clears recorded since the last <see cref="Clear"/>, in order.</summary>
+        public IReadOnlyList<ColourClear> ColourClears => _colourClears;
+
         /// <summary>Resolves recorded since the last <see cref="Clear"/>, IN THE ORDER THEY WERE RECORDED. The
         /// order is part of what a test asserts: a resolve issued before the pass that writes its source publishes
         /// the previous frame, which is a defect the destination's contents show and a count never would.</summary>
@@ -94,6 +101,7 @@ namespace KhaozEngine.Tests.Gpu
             _uploads.Clear();
             _resolves.Clear();
             _textureCopies.Clear();
+            _colourClears.Clear();
             ClearDraws();
             _draws = 0;
             _framebufferBinds = 0;
@@ -135,7 +143,11 @@ namespace KhaozEngine.Tests.Gpu
             _framebufferBinds++;
             Inner.SetFramebuffer(fb);
         }
-        public void ClearColorTarget(uint index, Color rgba) => Inner.ClearColorTarget(index, rgba);
+        public void ClearColorTarget(uint index, Color rgba)
+        {
+            _colourClears.Add(new ColourClear(index, rgba));
+            Inner.ClearColorTarget(index, rgba);
+        }
         public void ClearDepthStencil(float depth) => Inner.ClearDepthStencil(depth);
         public void SetPipeline(IGpuPipeline p) { NotePipeline(p); Inner.SetPipeline(p); }
         public void SetGraphicsResourceSet(uint slot, IGpuResourceSet set)

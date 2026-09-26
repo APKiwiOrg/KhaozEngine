@@ -58,6 +58,20 @@ public sealed class MotionMathTests
     }
 
     [Fact]
+    public void AMotionPastTwoScreensIsClampedToTwoScreensOnEachAxis()
+    {
+        // Just past the guard the divide is finite but vast: a w of 2e-6 carries clip x and y near 1 to hundreds of
+        // thousands of UV, past the background threshold and past half precision. Two screens is already off the screen.
+        Vector2 clamped = MotionMath.UvMotion(new Vector4(.1f, -.2f, .3f, 1f), new Vector4(-.9f, -.7f, .2f, 2e-6f));
+        Assert.Equal(new Vector2(2f, -2f), clamped);
+        Assert.False(MotionMath.IsBackground(clamped));
+        // A motion inside two screens is written as it is, including one that already leaves the screen.
+        Assert.Equal(new Vector2(.5f, 0f), MotionMath.UvMotion(new Vector4(.5f, 0f, 0f, 1f), new Vector4(-.5f, 0f, 0f, 1f)));
+        Assert.Equal(new Vector2(1.5f, -.75f), MotionMath.UvMotion(new Vector4(1f, .5f, 0f, 1f), new Vector4(-2f, -1f, 0f, 1f)));
+        Assert.Equal(new Vector2(-2f, -2f), MotionMath.UvMotion(new Vector4(-1f, 1f, 0f, 1f), new Vector4(3f, -3f, 0f, 1f)));
+    }
+
+    [Fact]
     public void OnlyTheSentinelBandReadsAsBackground()
     {
         Assert.False(MotionMath.IsBackground(new Vector2(MotionMath.BackgroundThreshold, 0f)));

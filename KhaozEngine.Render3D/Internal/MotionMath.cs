@@ -45,14 +45,22 @@ internal static class MotionMath
     /// previous position.</summary>
     public static Vector2 OffScreenMotion => new(2f, 2f);
 
+    /// <summary>The largest motion written on either axis, in UV: two screens. The current UV lies in [0, 1], so a motion
+    /// past 1 on an axis already puts the previous position off the screen, and one held at 2 keeps it there. No motion
+    /// that stays on the screen is changed.</summary>
+    public const float MaxMotionUv = 2f;
+
     /// <summary>The value a motion fragment writes for one surface point, <c>(ndcNow - ndcThen) * (0.5, -0.5)</c>: the
-    /// difference of the two UVs, whose 0.5 offsets cancel, with V running down the image. A last-frame w at or below
-    /// <see cref="MinPreviousClipW"/> writes <see cref="OffScreenMotion"/> instead, because dividing by it would
-    /// overflow RG16F to an infinity, or give NaN for 0/0, and every reader takes a value past the threshold for
-    /// sky.</summary>
+    /// difference of the two UVs, whose 0.5 offsets cancel, with V running down the image, clamped to
+    /// <see cref="MaxMotionUv"/> on each axis. A last-frame w at or below <see cref="MinPreviousClipW"/> writes
+    /// <see cref="OffScreenMotion"/> instead, because dividing by it would overflow RG16F to an infinity, or give NaN for
+    /// 0/0, and every reader takes a value past the threshold for sky. The clamp covers a w just past that guard, where
+    /// the divide is finite but can still pass the threshold or half precision. Clip x and y are finite and the only
+    /// divisor below the guard is guarded, so the clamp never sees NaN.</summary>
     public static Vector2 UvMotion(Vector4 currentClip, Vector4 previousClip) =>
         previousClip.W <= MinPreviousClipW
             ? OffScreenMotion
-            : (new Vector2(currentClip.X, currentClip.Y) / currentClip.W
-                - new Vector2(previousClip.X, previousClip.Y) / previousClip.W) * new Vector2(0.5f, -0.5f);
+            : Vector2.Clamp((new Vector2(currentClip.X, currentClip.Y) / currentClip.W
+                - new Vector2(previousClip.X, previousClip.Y) / previousClip.W) * new Vector2(0.5f, -0.5f),
+                new Vector2(-MaxMotionUv), new Vector2(MaxMotionUv));
 }

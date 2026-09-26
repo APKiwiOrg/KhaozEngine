@@ -13,7 +13,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// <see cref="PerspectiveExpectation"/> at every pixel opaque geometry drew, within 0.05 internal pixels
 /// (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24, acceptance 2). The orthographic readbacks see a clip w of 1 everywhere. These
 /// prove what only a perspective camera exercises: last frame's clip position interpolated against a varying w, the
-/// foliage wind fade's clip w, and the write's guard for a last-frame w at or below zero.
+/// foliage wind fade's clip w, the write's guard for a last-frame w at or below zero, and its clamp to two screens for a
+/// last-frame w just past the guard.
 /// </summary>
 public sealed class PerspectiveMotionGpuTests(ITestOutputHelper output)
 {
@@ -183,7 +184,8 @@ public sealed class PerspectiveMotionGpuTests(ITestOutputHelper output)
         Assert.True(then.Depth(At(0) + Vector3.UnitZ) <= -2f);
 
         Vector2 Expected(int x, int y) => PerspectiveExpectation.MovedBox(now, then, x, y, W, H, jitter, At(1), At(0), Vector3.One);
-        AssertGuarded(fx.Scene.ReadMotionTargetForTests(), now, Expected, At(1) - Vector3.UnitZ, "box from behind");
+        AssertFace(fx.Scene.ReadMotionTargetForTests(), now, Expected, At(1) - Vector3.UnitZ, 1f,
+            PerspectiveExpectation.OffScreen(W, H), "box from behind");
     }
 
     [GpuFact]
@@ -206,19 +208,49 @@ public sealed class PerspectiveMotionGpuTests(ITestOutputHelper output)
 
         Vector2 Expected(int x, int y) => PerspectiveExpectation.Surface(now, then, x, y, W, H, jitter,
             (eye, ray) => PerspectiveExpectation.PlaneHit(eye, ray, Vector3.UnitZ, At(1).Z), p => p - At(1) + At(0));
-        AssertGuarded(fx.Scene.ReadMotionTargetForTests(), now, Expected, At(1), "quad from the eye plane");
+        AssertFace(fx.Scene.ReadMotionTargetForTests(), now, Expected, At(1), 1f,
+            PerspectiveExpectation.OffScreen(W, H), "quad from the eye plane");
     }
 
-    // Every pixel inside the square face of side 2 m centred on faceCentre, facing the camera, two pixels in from its
-    // edges, drew, and every drawn pixel reads the guarded motion.
-    void AssertGuarded(MotionTargetReadback motion, Pinhole now, Func<int, int, Vector2> expected, Vector3 faceCentre, string name)
+    [GpuFact]
+    public void AQuadJustInFrontOfTheEyeLastFrameReadsTheClampedMotionNotTheSentinel()
     {
-        Vector2 a = now.Project(faceCentre - new Vector3(1f, 1f, 0f), W, H), b = now.Project(faceCentre + new Vector3(1f, 1f, 0f), W, H);
+        FlyCamera3D camera = Fly();
+        using TemporalFixture fx = Stage(camera);
+        MeshHandle quad = fx.Scene.LoadMesh(Upright());
+        // Last frame the 1.2 m quad lay 10 micrometres in front of the eye, clip w 1e-5, just past the guard. Its clip x
+        // of 0.88 to 2.05 and y of 0.52 to 2.6 divide to UV motion of 2.6e4 to 1.3e5, which unclamped reads as sky past
+        // the background threshold or as an infinity past half precision. Now it faces the camera 3 m ahead, up and to the
+        // right, and every pixel reads the clamp, two screens on each axis: UV (-2, 2).
+        static Vector3 At(int n) => new(-1.5f, .9f, n == 0 ? 1e-5f : 3f);
+        void Draw(Scene3D s, int n) =>
+            s.Draw(new RigidInstanceDraw(quad, Matrix4x4.CreateScale(.6f) * Matrix4x4.CreateTranslation(At(n))) { Motion = Key });
+
+        fx.Frame(Draw);
+        Pinhole then = Pinhole.Of(camera);
+        fx.Frame(Draw);
+        Pinhole now = Pinhole.Of(camera);
+        Vector2 jitter = fx.Scene.CurrentFrameView.JitterPixels;
+        Assert.InRange(then.Depth(At(0)), 5e-6f, 2e-5f);
+
+        Vector2 Expected(int x, int y) => PerspectiveExpectation.Surface(now, then, x, y, W, H, jitter,
+            (eye, ray) => PerspectiveExpectation.PlaneHit(eye, ray, Vector3.UnitZ, At(1).Z), p => p - At(1) + At(0));
+        AssertFace(fx.Scene.ReadMotionTargetForTests(), now, Expected, At(1), .6f, new Vector2(-2f * W, 2f * H),
+            "quad just in front of the eye");
+    }
+
+    // Every pixel inside the square face of half-side half centred on faceCentre, facing the camera, two pixels in from
+    // its edges, drew, and every drawn pixel reads the expectation, which at the face's centre is want.
+    void AssertFace(MotionTargetReadback motion, Pinhole now, Func<int, int, Vector2> expected, Vector3 faceCentre, float half,
+        Vector2 want, string name)
+    {
+        var corner = new Vector3(half, half, 0f);
+        Vector2 a = now.Project(faceCentre - corner, W, H), b = now.Project(faceCentre + corner, W, H);
         Vector2 min = Vector2.Min(a, b) + new Vector2(2f), max = Vector2.Max(a, b) - new Vector2(2f);
         int inside = MotionExpectation.AssertCovered(motion, (x, y) => x >= min.X && x <= max.X && y >= min.Y && y <= max.Y);
         Assert.True(inside > 2000, $"only {inside} pixels inside the face");
         Vector2 centre = (a + b) / 2f;
-        Assert.Equal(PerspectiveExpectation.OffScreen(W, H), expected((int)centre.X, (int)centre.Y));
+        Assert.Equal(want, expected((int)centre.X, (int)centre.Y));
         MotionScan scan = Hold(name, motion, expected, ((int)centre.X, (int)centre.Y));
         Assert.True(scan.Count >= inside, $"{scan.Count} drawn pixels, {inside} inside the face");
     }

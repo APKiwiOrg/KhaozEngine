@@ -118,6 +118,26 @@ public sealed class PerspectiveExpectationTests
     }
 
     [Fact]
+    public void APointJustInFrontOfLastFramesEyeExpectsTheClampedMotion()
+    {
+        // Last frame the wall point sat 10 micrometres in front of the eye, past the guard. Up and right of the centre, it
+        // projected a vast distance up and right, so the motion is clamped to two screens left and down: (-640, 360) px.
+        Pinhole camera = Square(Vector3.Zero);
+        var shift = new Vector3(0f, 0f, 3f - 1e-5f);
+
+        Vector2 motion = PerspectiveExpectation.Surface(camera, camera, 200, 30, W, H, Vector2.Zero,
+            (eye, ray) => PerspectiveExpectation.PlaneHit(eye, ray, Vector3.UnitZ, 3f), p => p - shift);
+
+        Assert.Equal(new Vector2(-640f, 360f), motion);
+        // A motion inside two screens is not clamped, even one that already leaves the screen: a turn of 1.35 rad
+        // carries the centre tan(1.35) of 90 px, about 401 px, right.
+        Vector2 wide = PerspectiveExpectation.StaticPlane(Square(Vector3.Zero, 1.35f), camera, 159, 89,
+            W, H, new Vector2(-.5f, -.5f), Vector3.UnitZ, 5f);
+        Assert.Equal(90f * MathF.Tan(1.35f), wide.X, .05f);
+        Assert.InRange(wide.X, 320f, 639f);
+    }
+
+    [Fact]
     public void AHoldReportsTheWorstPixelAndHowManyDrew()
     {
         var sentinel = new Vector2(MotionMath.Sentinel);

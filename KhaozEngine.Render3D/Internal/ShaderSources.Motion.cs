@@ -14,12 +14,13 @@ internal static partial class ShaderSources
     const string DepthOutputGlsl = "layout(location=2) out vec4 oDepth;";
 
     /// <summary>The motion write every opaque variant ends main with, <see cref="MotionMath.UvMotion"/> in GLSL,
-    /// including its guard: a last-frame w at or below <see cref="MotionMath.MinPreviousClipW"/> writes
-    /// <see cref="MotionMath.OffScreenMotion"/>. One line with no comment, so <c>MotionShaderTextTests</c> can strip it
-    /// and get the base program back.</summary>
+    /// including its guard and its clamp: a last-frame w at or below <see cref="MotionMath.MinPreviousClipW"/> writes
+    /// <see cref="MotionMath.OffScreenMotion"/>, and any other motion is held to <see cref="MotionMath.MaxMotionUv"/> on
+    /// each axis. One line with no comment, so <c>MotionShaderTextTests</c> can strip it and get the base program
+    /// back.</summary>
     const string MotionWriteGlsl =
         "    oMotion = vec4(vPrevClip.w <= 1e-6 ? vec2(2.0, 2.0) : "
-        + "(vCurClip.xy / vCurClip.w - vPrevClip.xy / vPrevClip.w) * vec2(0.5, -0.5), 0.0, 1.0);\n";
+        + "clamp((vCurClip.xy / vCurClip.w - vPrevClip.xy / vPrevClip.w) * vec2(0.5, -0.5), -2.0, 2.0), 0.0, 1.0);\n";
 
     /// <summary>
     /// The temporal variant of an opaque model-pass fragment. <paramref name="firstLocation"/> is where the paired motion

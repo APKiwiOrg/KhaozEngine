@@ -54,7 +54,8 @@ internal readonly record struct Pinhole(Vector3 Eye, Vector3 Forward, Vector3 Ri
 /// <summary>
 /// Analytic screen motion under two <see cref="Pinhole"/> cameras, this frame's and last frame's. A pixel's ray is cast
 /// through this frame's camera, meets the surface, and the point it meets is carried back to where it was last frame and
-/// projected through last frame's camera. Motion is this frame's position minus last frame's, in internal pixels.
+/// projected through last frame's camera. Motion is this frame's position minus last frame's, in internal pixels, held
+/// to two screens on each axis as the write holds it.
 /// </summary>
 internal static class PerspectiveExpectation
 {
@@ -62,14 +63,16 @@ internal static class PerspectiveExpectation
     /// the write's guard.</summary>
     public const float MinPreviousDepth = 1e-6f;
 
-    /// <summary>The guarded motion, UV (2, 2), in internal pixels.</summary>
+    /// <summary>The guarded motion, UV (2, 2), in internal pixels. It is also the clamp's bound: the write holds every
+    /// motion to two screens on each axis.</summary>
     public static Vector2 OffScreen(int width, int height) => new(2f * width, 2f * height);
 
     /// <summary>The motion under pixel (<paramref name="x"/>, <paramref name="y"/>) of a jittered image of the surface
     /// <paramref name="hit"/> finds. The rasteriser sampled the pixel's centre, which is <paramref name="jitter"/> away
     /// from the unjittered point the motion is measured at. <paramref name="hit"/> takes the eye and the ray and returns
     /// the ray parameter of the surface, or NaN for a miss, and <paramref name="pointThen"/> takes the point the ray meets
-    /// and returns where it was last frame. A miss expects NaN, which fails the readback at that pixel.</summary>
+    /// and returns where it was last frame. A miss expects NaN, which fails the readback at that pixel. Past the guard the
+    /// motion is clamped to <see cref="OffScreen"/> on each axis, restated from the write.</summary>
     public static Vector2 Surface(Pinhole now, Pinhole then, int x, int y, int width, int height, Vector2 jitter,
         Func<Vector3, Vector3, float> hit, Func<Vector3, Vector3> pointThen)
     {
@@ -78,7 +81,10 @@ internal static class PerspectiveExpectation
         float t = hit(now.Eye, ray);
         if (!(t > 0f)) return new Vector2(float.NaN, float.NaN);
         Vector3 before = pointThen(now.Eye + ray * t);
-        return then.Depth(before) <= MinPreviousDepth ? OffScreen(width, height) : at - then.Project(before, width, height);
+        Vector2 bound = OffScreen(width, height);
+        return then.Depth(before) <= MinPreviousDepth
+            ? bound
+            : Vector2.Clamp(at - then.Project(before, width, height), -bound, bound);
     }
 
     /// <summary>The motion of a still plane, the points <c>p</c> with <c>dot(normal, p) = offset</c>.</summary>

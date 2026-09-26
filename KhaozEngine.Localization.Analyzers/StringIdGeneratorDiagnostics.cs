@@ -20,7 +20,7 @@ internal static class StringIdGeneratorDiagnostics
         category: LocalizationDiagnostics.Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "An opted resx file must be well-formed XML before StringId keys can be generated.");
+        description: "An opted resx file must be well-formed and its string keys must produce usable StringId members.");
 
     public static readonly DiagnosticDescriptor MemberCollision = new(
         id: "KELOC006",

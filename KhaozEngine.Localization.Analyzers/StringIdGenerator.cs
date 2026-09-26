@@ -46,7 +46,8 @@ public sealed class StringIdGenerator : IIncrementalGenerator
             return InvalidConfiguration(file, "the opted AdditionalFile must use the .resx extension");
 
         string[] targetParts = targetType.Split('.');
-        if (targetParts.Any(static part => !SyntaxFacts.IsValidIdentifier(part)))
+        if (targetParts.Any(static part => !SyntaxFacts.IsValidIdentifier(part) ||
+            SyntaxFacts.GetKeywordKind(part) != SyntaxKind.None))
             return InvalidConfiguration(file, $"'{targetType}' is not a valid fully qualified C# type name");
 
         optionsProvider.GetOptions(file).TryGetValue(AccessibilityKey, out string? configuredAccessibility);
@@ -91,6 +92,8 @@ public sealed class StringIdGenerator : IIncrementalGenerator
             string memberName = ToMemberName(key);
             if (memberName.Length == 0)
                 return InvalidResx(file, $"resource key '{key}' cannot produce a C# member name");
+            if (string.Equals(memberName, targetName, StringComparison.Ordinal))
+                return InvalidResx(file, $"resource key '{key}' produces member '{memberName}', which matches the target type name");
 
             keysBuilder.Add(new ResourceKey(key, memberName));
         }

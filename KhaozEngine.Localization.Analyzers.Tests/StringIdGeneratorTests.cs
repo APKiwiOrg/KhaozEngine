@@ -157,6 +157,8 @@ namespace KhaozEngine.Localization.Analyzers.Tests
 
         [Theory]
         [InlineData("MyGame.123Strings", "internal")]
+        [InlineData("MyGame.class", "internal")]
+        [InlineData("namespace.Strings", "internal")]
         [InlineData("MyGame.Strings", "protected")]
         public void InvalidTargetConfiguration_ReportsErrorWithoutSource(string targetType, string accessibility)
         {
@@ -285,6 +287,30 @@ namespace KhaozEngine.Localization.Analyzers.Tests
             Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
             Assert.Contains("empty resource key", diagnostic.GetMessage());
             Assert.Empty(result.Sources);
+        }
+
+        [Fact]
+        public void MemberMatchingTargetType_ReportsInvalidResxWithoutGeneratedSource()
+        {
+            const string resx = """
+                <root>
+                  <data name="Strings"><value>Text</value></data>
+                </root>
+                """;
+
+            GeneratorHarnessResult result = GeneratorHarness.Run(
+                "/repo/Strings.resx",
+                resx,
+                new Dictionary<string, string>
+                {
+                    [TargetTypeKey] = "MyGame.Strings",
+                });
+
+            Diagnostic diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "KELOC005");
+            Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
+            Assert.Contains("Strings", diagnostic.GetMessage());
+            Assert.Empty(result.Sources);
+            Assert.Empty(result.CompilationErrors);
         }
     }
 }

@@ -21,6 +21,13 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   ([#1090](https://github.com/APKiwiOrg/KhaozEngine/issues/1090)).
 - Render3D documentation now calls `Material.Shiny` with a specular strength in its examples
   ([#1155](https://github.com/APKiwiOrg/KhaozEngine/issues/1155)).
+- `CharacterPose` now composes an attachment from its current bone palette and draw transform, with a rigid
+  option for held equipment. The pose type has its own file ([#96](https://github.com/APKiwiOrg/KhaozEngine/issues/96)).
+- The `AirControl` contract now states that momentum steering blends once per simulation tick, while
+  `AirBrakeAccel` remains a rate per second. Movement behavior is unchanged
+  ([#471](https://github.com/APKiwiOrg/KhaozEngine/issues/471)).
+- The Stats facts now run from `KhaozEngine.Foundation.Tests`, so a Stats change no longer pulls the broad
+  Game test project through selective CI ([#890](https://github.com/APKiwiOrg/KhaozEngine/issues/890)).
 
 ## 20.6.1
 

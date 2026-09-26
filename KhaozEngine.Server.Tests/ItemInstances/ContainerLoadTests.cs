@@ -142,6 +142,46 @@ public class ContainerLoadTests
         Assert.Single(counted);
         Assert.Equal((EngineContentTypes.ItemTypeId, InstanceQuarantineReason.UnknownContentReference), counted[0]);
         Assert.Single(logger.Entries);
+        Assert.Contains(StreamKey, logger.Entries[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_telemetry_key_redacts_the_line_without_changing_section_filtering_or_counters()
+    {
+        const string accountId = "account-4815162342";
+        const string realStreamKey = "grimhollow/player/account-4815162342";
+        const string telemetryKey = "grimhollow/player/redacted";
+        ContentTypeRegistry types = Types();
+        ContentSnapshot snapshot = Snapshot(types);
+        var counted = new List<(int Type, string Reason)>();
+        var logger = new RecordingLogger();
+        byte[] page = ItemContainerPageCodec.Encode(
+            0,
+            0,
+            PageSlots,
+            ActiveVersion,
+            [Slot(0, Sword, payload: AffixPayload(MissingId), instanceId: Instance)]);
+        JournalProjectionSection section = Section(0, page, streamKey: realStreamKey);
+
+        ContainerLoadResult result = ContainerLoad.Load(
+            [section],
+            snapshot,
+            Context(
+                types,
+                Properties(),
+                logger: logger,
+                counter: (type, reason) => counted.Add((type, reason)),
+                streamKey: realStreamKey,
+                telemetryKey: telemetryKey));
+
+        ItemContainerPage loaded = Assert.Single(result.Pages);
+        Assert.True(loaded.SlotAt(0).Quarantined, Describe(result));
+        Assert.Equal(
+            [(EngineContentTypes.ItemTypeId, InstanceQuarantineReason.UnknownContentReference)],
+            counted);
+        string message = Assert.Single(logger.Entries).Message;
+        Assert.Contains(telemetryKey, message, StringComparison.Ordinal);
+        Assert.DoesNotContain(accountId, message, StringComparison.Ordinal);
     }
 
     [Fact]

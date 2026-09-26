@@ -28,7 +28,9 @@ namespace KhaozEngine.Render3D
         /// -> white), <see cref="MeshInstance.Material"/> and <see cref="MotionKeyOf"/> key. Every other knob keeps the
         /// descriptor's default. Headless-testable with a recording delegate, and the place to re-key a second world
         /// drawn into the same scene: <c>Submit(preview, d =&gt; scene.Draw(d with { Motion =
-        /// MotionKey.Combine(d.Motion, 1) }))</c>.
+        /// MotionKey.Combine(d.Motion, 0x5052_5657) }))</c>, a four-character part ("PRVW") that small attachment
+        /// parts such as <c>Combine(body, 1)</c> never reach. A re-keyed world derives its attachment keys from the
+        /// re-keyed key, not from <see cref="MotionKeyOf"/>.
         /// </summary>
         public static void Submit(World world, Action<RigidInstanceDraw> draw)
         {
@@ -80,8 +82,9 @@ namespace KhaozEngine.Render3D
         /// The motion key <see cref="Submit(World, Scene3D)"/> gives <paramref name="entity"/>, from its id and
         /// version. It holds for the entity's whole life. A recycled id carries a new version, so it is a new key with
         /// no previous state. Keys of one world never collide. Two worlds drawn into one scene share entity ids, so
-        /// their keys collide (the scene counts it in <see cref="Scene3D.LastTemporalDiagnostics"/>), and one of them
-        /// should be re-keyed through <see cref="Submit(World, Action{RigidInstanceDraw})"/>. A game derives an
+        /// their keys collide: the last draw of each shared key wins, so one of the pair gets wrong motion, never a
+        /// failure, and the scene counts it in <see cref="Scene3D.LastTemporalDiagnostics"/>. Re-key one of the worlds
+        /// through <see cref="Submit(World, Action{RigidInstanceDraw})"/>. A game derives an
         /// attachment's key from this with <see cref="MotionKey.Combine"/>. <see cref="MotionKey.None"/> for a
         /// default handle, which is no entity.
         /// </summary>

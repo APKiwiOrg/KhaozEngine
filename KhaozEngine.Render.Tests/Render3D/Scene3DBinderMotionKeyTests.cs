@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
 using KhaozEngine.Ecs;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -81,6 +82,7 @@ public sealed class Scene3DBinderMotionKeyTests
     [Theory]
     [InlineData(0, 1u, 0xB4BCD51E446A76ACUL)]
     [InlineData(7, 3u, 0x6535DBAF466A9CE6UL)]
+    [InlineData(-1, 1u, 0x839BC53833007692UL)]   // a negative id zero-extends, it never reaches the version bits
     public void Entity_keys_are_pinned_across_runs_and_platforms(int id, uint version, ulong expected)
         => Assert.Equal(expected, Scene3DBinder.MotionKeyOf(new Entity(id, version)).Value);
 
@@ -95,15 +97,37 @@ public sealed class Scene3DBinderMotionKeyTests
     }
 
     [Fact]
-    public void Submitting_into_a_scene_queues_each_entitys_key()
+    public void Submitting_into_a_scene_queues_each_entitys_draw_with_its_key()
     {
         var world = new World();
+        var material = new Material(new Color(200, 40, 40, 255), 0.5f, 16f);
         Entity a = Spawn(world, new Vector3(1f, 0f, 0f), new MeshHandle(5));
+        Entity b = Spawn(world, new Vector3(0f, 2f, 3f), new MeshHandle(6), new Color(10, 20, 30, 255), material);
         using var harness = new MotionTestScene();
 
         harness.Scene.Begin();
         Scene3DBinder.Submit(world, harness.Scene);
 
-        Assert.Equal(Scene3DBinder.MotionKeyOf(a), Assert.Single(harness.Scene.QueuedInstancesForTests).Motion);
+        SceneInstances.Instance[] expected =
+        [
+            // The binder queues the entity's own MeshInstance.Material, which is default here, not Material.None.
+            new(new RigidInstanceDraw(new MeshHandle(5), WorldAt(1f, 0f, 0f))
+                { Tint = Color.White, Material = default, Motion = Scene3DBinder.MotionKeyOf(a) }),
+            new(new RigidInstanceDraw(new MeshHandle(6), WorldAt(0f, 2f, 3f))
+                {
+                    Tint = new Color(10, 20, 30, 255), Material = material, Motion = Scene3DBinder.MotionKeyOf(b),
+                }),
+        ];
+        IReadOnlyList<SceneInstances.Instance> queued = harness.Scene.QueuedInstancesForTests;
+        Assert.Equal(expected.Length, queued.Count);
+        PropertyInfo[] properties =
+            typeof(SceneInstances.Instance).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        for (int i = 0; i < expected.Length; i++)
+            foreach (PropertyInfo property in properties)
+                Assert.True(Equals(property.GetValue(expected[i]), property.GetValue(queued[i])),
+                    $"entity {i}: {property.Name} differs");
     }
+
+    static Matrix4x4 WorldAt(float x, float y, float z)
+        => new Transform3D { Position = new Vector3(x, y, z) }.ToMatrix();
 }

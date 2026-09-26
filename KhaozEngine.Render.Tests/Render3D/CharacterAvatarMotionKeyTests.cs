@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Game;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D
@@ -72,11 +73,15 @@ namespace KhaozEngine.Tests.Render3D
 
             scene.Begin();
             avatar.Draw(scene);
+            Matrix4x4 drawnModel = Assert.Single(scene.QueuedSkinnedInstancesForTests).World;
             scene.Begin();
             avatar.Draw(scene);
 
-            Assert.True(scene.ActiveMotionHistory!.TryGetPreviousSkinned(avatar.Motion, out _,
+            MotionHistory? history = scene.ActiveMotionHistory;
+            Assert.NotNull(history);
+            Assert.True(history.TryGetPreviousSkinned(avatar.Motion, out Matrix4x4 previousModel,
                 out ReadOnlySpan<Matrix4x4> palette));
+            Assert.Equal(drawnModel, previousModel);
             Assert.Equal(mesh.InverseBind.Length, palette.Length);
         }
     }

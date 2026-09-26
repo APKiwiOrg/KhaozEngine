@@ -60,7 +60,7 @@ namespace KhaozEngine.Game
         // avatar holds identifies it: the controller and the animation have no id, the mesh handle can be shared
         // between avatars, and it is client-cosmetic, so no replicated id reaches it. A process-wide serial does,
         // the way Scene3D takes its outline owner (Scene3D.TargetOutlinePass.cs), mixed into a key space of the
-        // avatar's own ("KEAVATAR") so it cannot meet a key a game derives from its own ids.
+        // avatar's own ("KEAVATAR") so in practice it does not meet a key a game derives from its own ids.
         static readonly MotionKey AvatarKeySpace = MotionKey.From(0x4B45_4156_4154_4152UL);
         static int s_nextMotionSerial;
         readonly MotionKey _motion =

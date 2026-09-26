@@ -1,6 +1,6 @@
 #!/bin/sh
 # pack-release-guard.sh - PreToolUse Bash guard. Reads the hook JSON on stdin, looks for a proposed
-# `dotnet pack` whose output lands in local-feed, and denies it when <KhaozEngineVersion> names a
+# `dotnet pack` whose output lands in the engine feed, and denies it when <KhaozEngineVersion> names a
 # version that is already released (issue #492) or HEAD is not on origin/main (issue #1135). Silent
 # (exit 0, no output) for everything else, which is the allow path. Same shape and the same stdin
 # contract as scripts/hooks/tag-collision-guard.sh, which both agent hook configs already invoke.
@@ -15,10 +15,18 @@
 # so all three cannot drift apart on what a safe pack is.
 data=$(cat)
 cmd=$(printf '%s' "$data" | jq -r '.tool_input.command // ""')
+configured_feed=${KHAOZENGINE_FEED:-}
 
 # Cheap rejections first: this hook runs on every Bash call.
 case "$cmd" in *pack*) ;; *) exit 0 ;; esac
-case "$cmd" in *local-feed*) ;; *) exit 0 ;; esac
+feed_text_hit=0
+case "$cmd" in
+  *local-feed*|*'$KHAOZENGINE_FEED'*|*'${KHAOZENGINE_FEED}'*) feed_text_hit=1 ;;
+esac
+if [ "$feed_text_hit" = 0 ] && [ -n "$configured_feed" ]; then
+  case "$cmd" in *"$configured_feed"*) feed_text_hit=1 ;; esac
+fi
+[ "$feed_text_hit" = 1 ] || exit 0
 # The wrapper carries the same guard, so let it speak for itself rather than denying it from out here.
 case "$cmd" in *pack-local-feed.sh*) exit 0 ;; esac
 # An inline PACK_RELEASED_OK=1 bypasses only the released-version guard. The shared-feed ancestry
@@ -30,7 +38,26 @@ printf '%s' "$cmd" | grep -q 'PACK_RELEASED_OK=1' && release_override=1
 # (a commit message, an echo, a doc edit) cannot be read as one. Lifted from tag-collision-guard.sh,
 # which needs the identical treatment for the identical reason.
 nohd=$(printf '%s\n' "$cmd" | awk 'skip==1 { t=$0; sub(/^[ \t]*/,"",t); if (t==term) skip=0; next } { line=$0; p=index(line,"<<"); if (p>0) { rest=substr(line,p+2); sub(/^-?[ \t]*/,"",rest); q=sprintf("%c",39); f=substr(rest,1,1); if (f=="\"" || f==q) rest=substr(rest,2); if (match(rest,/^[A-Za-z_][A-Za-z0-9_]*/)) { term=substr(rest,RSTART,RLENGTH); skip=1 } } print line }')
-stripped=$(printf '%s\n' "$nohd" | sed -e 's/"[^"]*"//g' -e "s/'[^']*'//g")
+# Preserve a quoted feed variable or its exact expanded value before removing quoted prose. The marker
+# is resolved only after a real dotnet pack statement is found.
+protected=$(printf '%s\n' "$nohd" | awk '
+  function replace_literal(line, needle, replacement, at, result) {
+    if (needle == "") return line
+    result = ""
+    while ((at = index(line, needle)) > 0) {
+      result = result substr(line, 1, at - 1) replacement
+      line = substr(line, at + length(needle))
+    }
+    return result line
+  }
+  {
+    line = replace_literal($0, "\"$KHAOZENGINE_FEED\"", "__KHAOZENGINE_FEED__")
+    line = replace_literal(line, "\"${KHAOZENGINE_FEED}\"", "__KHAOZENGINE_FEED__")
+    feed = ENVIRON["KHAOZENGINE_FEED"]
+    if (feed != "") line = replace_literal(line, "\"" feed "\"", "__KHAOZENGINE_FEED__")
+    print line
+  }')
+stripped=$(printf '%s\n' "$protected" | sed -e 's/"[^"]*"//g' -e "s/'[^']*'//g")
 norm=$(printf '%s\n' "$stripped" | tr ';&|(){}`' '\n')
 NL='
 '
@@ -67,11 +94,22 @@ for stmt in $norm; do
   [ "$1" = dotnet ] || continue
   shift
   [ "${1:-}" = pack ] || continue
-  # Only a pack whose output actually lands in local-feed is this hook's business. A pack to ./artifacts
+  # Only a pack whose output targets the engine feed is this hook's business. A pack to ./artifacts
   # (what ci.yml does) or a bare pack to bin/ overwrites nothing anybody vendors from.
   feedhit=0
+  configured_hit=0
   for a in "$@"; do
-    case "$a" in *local-feed*) feedhit=1 ;; esac
+    case "$a" in
+      *local-feed*) feedhit=1 ;;
+      *__KHAOZENGINE_FEED__*|*'$KHAOZENGINE_FEED'*|*'${KHAOZENGINE_FEED}'*)
+        if [ -n "$configured_feed" ]; then feedhit=1; configured_hit=1; fi
+        ;;
+      *)
+        if [ -n "$configured_feed" ]; then
+          case "$a" in "$configured_feed"|*="$configured_feed") feedhit=1; configured_hit=1 ;; esac
+        fi
+        ;;
+    esac
   done
   [ "$feedhit" = 1 ] || continue
 
@@ -89,11 +127,17 @@ for stmt in $norm; do
     . ./scripts/pack-standard.sh
     v=$(tag_props_version < Directory.Build.props 2>/dev/null || true)
     [ -n "${v:-}" ] || exit 0
+    feed_scope=shared
+    if [ "$configured_hit" = 1 ]; then
+      feed=$(pack_feed_dir) || exit 0
+      feed_scope=$(pack_feed_scope "$feed")
+    fi
     s=$(pack_release_state "$v")
     if ! pack_state_allows "$s" && [ "$release_override" != 1 ]; then
       pack_refusal_lines "$v" "$s"
       exit 0
     fi
+    [ "$feed_scope" = shared ] || exit 0
     h=$(git rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null || true)
     m=$(pack_origin_main_commit)
     if [ -z "${h:-}" ] || [ -z "${m:-}" ] || ! pack_commit_on_origin_main "$h"; then

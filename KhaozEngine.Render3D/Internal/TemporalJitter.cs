@@ -35,7 +35,14 @@ internal static class TemporalJitter
 
     /// <summary>How many frames the sequence runs before it repeats: 8 when the display is no larger than the internal
     /// target, else <c>ceil(8 * r * r)</c> for a display <paramref name="displayOverInternalRatio"/> times the internal
-    /// size per axis. A ratio that is not a number reads as native, and a ratio above 4 reads as 4.</summary>
+    /// size per axis. A ratio that is not a number reads as native, and a ratio above 4 reads as 4.
+    /// <para>The ratio is the unrounded display over internal scale with the render cap included,
+    /// <c>1 / (EffectiveUpscaleRatio * capScale)</c>, where <c>capScale</c> is the
+    /// <see cref="KhaozEngine.Primitives.ViewportMath.Fit"/> scale <see cref="Scene3D.ComputeTargetSize"/> applies before
+    /// rounding to whole pixels (1 when the cap does not bite). Never
+    /// <see cref="TemporalResolveMath.DisplayOverInternal"/>, which reads the rounded sizes and can overshoot by a phase,
+    /// and never the bare preset ratio, which under-covers when the cap bites. Native on a 5120x2880 display renders
+    /// 3840x2160, a scale of 1.333, and needs 15 phases, not 8.</para></summary>
     public static int PhaseCount(float displayOverInternalRatio)
     {
         if (!(displayOverInternalRatio > 1f)) return NativePhaseCount;

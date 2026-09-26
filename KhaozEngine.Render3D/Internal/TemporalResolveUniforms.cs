@@ -56,7 +56,8 @@ namespace KhaozEngine.Render3D.Internal
         /// needs no depth parameters. It is kept so the block layout stays fixed, and for a later reader of the stored
         /// depth, such as a debug view, that needs last frame's near and far.</summary>
         public Vector4 PreviousDepth;
-        /// <summary>x: the thin feature lock's decay per frame. yzw reserved.</summary>
+        /// <summary>x: reserved, written as 0. The thin feature lock decays by
+        /// <see cref="TemporalResolveTuning.LockDecay"/> at every preset, so it reads no per-frame decay. yzw reserved.</summary>
         public Vector4 Params;
     }
 

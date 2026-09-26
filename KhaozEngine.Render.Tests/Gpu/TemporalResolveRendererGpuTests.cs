@@ -190,7 +190,7 @@ namespace KhaozEngine.Tests.Gpu
             Matrix4x4 projection = Perspective((float)W / H);
             TemporalViewInput now = View(Eye, projection), then = View(Eye - new Vector3(1.5f, 0f, 0f), projection);
             TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(now, then, Vector2.Zero, W, H, W, H,
-                historyValid: true, TemporalJitter.NativePhaseCount);
+                historyValid: true);
             float ndc = NdcDepth(projection, SceneMetres);
             float wall = TemporalResolveMath.LinearDepth(ndc, u.CurrentDepth);
             Vector2[] motion = CameraMotion(u, now, then, W, H, wall);
@@ -247,7 +247,7 @@ namespace KhaozEngine.Tests.Gpu
             float step = 2f * (1f / (3f * N)) * SceneMetres / Projection.M11;
             TemporalViewInput then = View(Eye - new Vector3(step, 0f, 0f), Projection);
             TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(Still, then, Vector2.Zero, N, N, N, N,
-                historyValid: true, TemporalJitter.NativePhaseCount);
+                historyValid: true);
             Vector2[] motion = CameraMotion(u, Still, then, N, N, SceneLinear);
             Assert.InRange(-motion[At(G, G)].X * N, 0.32f, 0.35f);
 
@@ -346,10 +346,10 @@ namespace KhaozEngine.Tests.Gpu
             return (Unweighted(Math.Clamp(sum / MathF.Max(weight, 1e-4f), min, max)), best);
         }
 
-        // The still camera's uniforms: Params.x one over the native jitter cycle, jitter in internal pixels as
-        // TemporalJitter.Apply receives it, and a reprojection that returns every static point to itself.
+        // The still camera's uniforms: jitter in internal pixels as TemporalJitter.Apply receives it, and a
+        // reprojection that returns every static point to itself.
         static TemporalResolveUniforms Uniforms(bool historyValid, Vector2 jitter = default) => TemporalResolveMath.BuildUniforms(
-            Still, Still, jitter, N, N, N, N, historyValid, TemporalJitter.NativePhaseCount);
+            Still, Still, jitter, N, N, N, N, historyValid);
 
         static Matrix4x4 Perspective(float aspect) => Matrix4x4.CreatePerspectiveFieldOfView(1f, aspect, 0.1f, 100f);
 

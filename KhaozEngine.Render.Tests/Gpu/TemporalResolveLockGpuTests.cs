@@ -43,7 +43,7 @@ namespace KhaozEngine.Tests.Gpu
             float ndc = NdcDepth(projection, SceneMetres);
             float sceneLinear = TemporalResolveMath.LinearDepth(ndc, TemporalResolveMath.DepthParams(projection));
             TemporalResolveUniforms Uniforms(bool historyValid) => TemporalResolveMath.BuildUniforms(still, still,
-                Vector2.Zero, N, N, N, N, historyValid, TemporalJitter.NativePhaseCount);
+                Vector2.Zero, N, N, N, N, historyValid);
             int At(int x, int y) => y * N + x;
             float[] zero = Pairs(N, N, (_, _) => Vector2.Zero);
             using var rig = new TemporalResolveRig(N, N, N, N, ndc);
@@ -58,25 +58,32 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0f, state[At(3, 3) * 2 + 1], 1e-3);
             Assert.Equal(0f, state[At(5, 3) * 2 + 1], 1e-3);
 
-            // Frame two: this frame's samples miss the line and the history holds its average. The flat box would clip
-            // the history to the background. The lock, decayed by one eighth, restores that share of its luma.
-            rig.BeginFrame();
-            rig.Fill(Grey(N, N, (_, _) => bg), Grey(N, N, (_, _) => bg), zero);
-            rig.FillHistory(Grey(N, N, (x, _) => x == 4 ? held : bg),
-                Pairs(N, N, (x, _) => new Vector2(Q(8f / Max), x == 4 ? 1f : 0f)), sceneLinear);
-            rig.Resolve(Uniforms(historyValid: true));
-
-            float lockAfter = 1f - 1f / TemporalJitter.NativePhaseCount;
+            // Frames two and three: this frame's samples miss the line and the history holds its average. The flat box
+            // would clip the history to the background. A lock one decay below a refresh is still at least
+            // 1 / LockHoldGain, so its hold is whole and the history keeps all its luma. A lock that has run down below
+            // that holds only its share.
             float accumulated = Q(8f / Max) * Max;
             float c = Weighted(bg), h = Weighted(held);
-            float kept = c + (h - c) * lockAfter;
-            float expected = Unweighted(kept + (c - kept) / (accumulated + 1f));
-            float[] color = rig.ReadColor();
-            state = rig.ReadState();
-            Assert.Equal(lockAfter, state[At(4, 3) * 2 + 1], 1e-3);
-            Assert.Equal(expected, color[At(4, 3) * 4], 1e-2);
-            Assert.True(color[At(4, 3) * 4] > 0.35f, $"the locked line kept {color[At(4, 3) * 4]} of its luma");
-            Assert.Equal(bg, color[At(2, 3) * 4], 1e-3);
+            foreach (float stored in new[] { 1f, Q(0.3f) })
+            {
+                rig.BeginFrame();
+                rig.Fill(Grey(N, N, (_, _) => bg), Grey(N, N, (_, _) => bg), zero);
+                rig.FillHistory(Grey(N, N, (x, _) => x == 4 ? held : bg),
+                    Pairs(N, N, (x, _) => new Vector2(Q(8f / Max), x == 4 ? stored : 0f)), sceneLinear);
+                rig.Resolve(Uniforms(historyValid: true));
+
+                float lockAfter = stored - TemporalResolveTuning.LockDecay;
+                float hold = MathF.Min(1f, lockAfter * TemporalResolveTuning.LockHoldGain);
+                float kept = c + (h - c) * hold;
+                float expected = Unweighted(kept + (c - kept) / (accumulated + 1f));
+                float[] color = rig.ReadColor();
+                state = rig.ReadState();
+                Assert.Equal(lockAfter, state[At(4, 3) * 2 + 1], 1e-3);
+                Assert.Equal(expected, color[At(4, 3) * 4], 1e-2);
+                Assert.Equal(bg, color[At(2, 3) * 4], 1e-3);
+                if (stored == 1f)
+                    Assert.True(color[At(4, 3) * 4] > 0.35f, $"the locked line kept {color[At(4, 3) * 4]} of its luma");
+            }
         }
 
         [GpuTheory]
@@ -96,9 +103,9 @@ namespace KhaozEngine.Tests.Gpu
         [GpuTheory]
         [InlineData(TemporalUpscale.UltraPerformance)]
         [InlineData(TemporalUpscale.Quality, Skip = "The history fetch clamps to the range of its bilinear taps (step 2), "
-            + "which flattens a thin peak on every fractional resample. At Quality the keyed line keeps at least 32, 30 "
+            + "which flattens a thin peak on every fractional resample. At Quality the keyed line keeps at least 32, 27 "
             + "and 49 percent at 0.3, 0.6 and 0.9 display px per frame, and the same with the lock off. Clamped only "
-            + "below, it keeps 56, 51 and 61 percent. Skipped until the fetch is decided.")]
+            + "below, it keeps 55, 51 and 63 percent. Skipped until the fetch is decided.")]
         public void A_keyed_thin_feature_keeps_half_its_still_contrast_while_it_moves(TemporalUpscale preset)
         {
             // The other side of risk 1 for the same keyed line: the history follows it, so from the eighth frame of
@@ -159,12 +166,8 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, Skip = "The committed lock decays by one over the jitter cycle and holds the "
-            + "luma only in proportion to it, so every missed frame clips a share of the line. At Native it averages 10.4 "
-            + "percent of its contrast against a coverage of 37.5. Skipped until the lock is tuned.")]
-        [InlineData(TemporalUpscale.Quality, Skip = "The committed lock decays by one over the jitter cycle and holds the "
-            + "luma only in proportion to it, so every missed frame clips a share of the line. At Quality it averages "
-            + "10.5 percent of its contrast against a floor of 28.1. Skipped until the lock is tuned.")]
+        [InlineData(TemporalUpscale.Native)]
+        [InlineData(TemporalUpscale.Quality)]
         [InlineData(TemporalUpscale.UltraPerformance)]
         public void A_still_line_narrower_than_a_texel_holds_steady_at_its_coverage(TemporalUpscale preset)
         {
@@ -205,7 +208,7 @@ namespace KhaozEngine.Tests.Gpu
                 rig.BeginFrame();
                 rig.Fill(hit ? lit : missed, hit ? lit : missed, zero);
                 rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, jitter, iw, ih, DisplayW, DisplayH,
-                    historyValid: n > 0, phases));
+                    historyValid: n > 0));
                 if (n < Converge - 1) continue;
                 float[] color = rig.ReadColor();
                 foreach (int c in pixels)
@@ -271,7 +274,7 @@ namespace KhaozEngine.Tests.Gpu
                 rig.Fill(feature, feature, Pairs(iw, ih, (x, _) => carries && InLine(x) ? motion : Vector2.Zero));
                 rig.FillDepth(Grey(iw, ih, 1, (x, _) => InLine(x) ? lineNdc : wallNdc));
                 rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, jitter, iw, ih, LineW, LineH,
-                    historyValid: n > 0, phases));
+                    historyValid: n > 0));
 
                 float[] color = rig.ReadColor();
                 float shown = 0f;

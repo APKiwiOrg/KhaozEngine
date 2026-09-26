@@ -64,6 +64,9 @@ const float LockRidgeRelative = 0.1;
 const float LockMotionStartPixels = 1.0;
 const float LockMotionEndPixels = 4.0;
 const float LockReactiveRelease = 2.0;
+const float LockDecay = 0.125;
+const float LockHoldGain = 2.0;
+const float LockTravelRelease = 1.0;
 ";
 
         // ---- The resolve's core: bindings, uniforms and the per-pixel resolve, no stage inputs or outputs ----
@@ -245,6 +248,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     vec2 previousUv = vec2(-1.0);
     float expectedDepth = BackgroundLinearDepth;
     bool depthTested = true;
+    float surfaceTravel = 0.0;   // the surface's own motion in internal pixels, which step 6 releases the lock by
     if (closestIsBackground) {
         vec4 previousClip = BackgroundToPrevious * vec4(ndcXY, 1.0, 1.0);
         if (previousClip.w > 1.0e-6)
@@ -263,6 +267,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             vec2 surfaceMotion = (staticUv - (closestUv - closestMotion)) * internalSize;
             float movingThreshold = MovingSurfaceInternalPixels + length(closestMotion * internalSize) * MovingSurfaceMotionFraction;
             depthTested = length(surfaceMotion) <= movingThreshold;
+            surfaceTravel = length(surfaceMotion);
         }
     }
     // Motion is clamped to two screens and a point behind last frame's camera is written two screens away, so any
@@ -311,22 +316,27 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         ? min(historyState.x * MaxAccumulation, motionCap) * (1.0 - reactive * ReactiveStrength)
         : 0.0;
 
-    // Step 6: thin features. A ridge through the centre texel refreshes the lock, which decays over one jitter cycle
-    // (Params.x) and is released by motion and reactive content.
+    // Step 6: thin features. A ridge through the centre texel refreshes the lock, which decays by LockDecay a frame
+    // whatever the preset, and is released by motion, by reactive content and by the surface's own travel, so a ridge
+    // on a surface crossing texels cannot hold what it leaves behind. The hold on the clip stays whole while the lock is
+    // at least 1 / LockHoldGain, so a sub-texel feature missed for a few frames keeps its luma, and it lets go over the
+    // rest of the lock.
     float centreLuma = lumas[4];
     float ridgeThreshold = max(LockRidgeAbsolute, LockRidgeRelative * centreLuma);
     bool ridge = isRidge(centreLuma, lumas[3], lumas[5], ridgeThreshold)
         || isRidge(centreLuma, lumas[1], lumas[7], ridgeThreshold)
         || isRidge(centreLuma, lumas[0], lumas[8], ridgeThreshold)
         || isRidge(centreLuma, lumas[2], lumas[6], ridgeThreshold);
-    float lockValue = useHistory ? max(historyState.y - Params.x, 0.0) : 0.0;
+    float lockValue = useHistory ? max(historyState.y - LockDecay, 0.0) : 0.0;
     if (ridge) lockValue = 1.0;
     float motionRelease = clamp((motionPixels - LockMotionStartPixels) / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
-    lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0));
+    lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))
+        * (1.0 - clamp(surfaceTravel * LockTravelRelease, 0.0, 1.0));
+    float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 
     // Step 5: variance clipping in luma-weighted YCoCg, from the box centre towards the history, which keeps its hue.
     // Gamma is wide for a still pixel and narrows as it moves. A locked thin feature's luma neither drives the clip
-    // nor loses its share of it.
+    // nor loses its share of it, in proportion to its hold.
     float gamma = mix(GammaStill, GammaMoving, clamp(motionPixels / GammaMotionPixels, 0.0, 1.0));
     vec3 boxMin = mean - gamma * deviation;
     vec3 boxMax = mean + gamma * deviation;
@@ -335,10 +345,10 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     vec3 boxExtent = 0.5 * (boxMax - boxMin) + vec3(1.0e-5);
     vec3 fromCentre = historyYcc - boxCentre;
     vec3 excess = abs(fromCentre) / boxExtent;
-    excess.x *= 1.0 - lockValue;
+    excess.x *= 1.0 - hold;
     float clipScale = max(excess.x, max(excess.y, excess.z));
     vec3 clipped = clipScale > 1.0 ? boxCentre + fromCentre / clipScale : historyYcc;
-    clipped.x = mix(clipped.x, historyYcc.x, lockValue);
+    clipped.x = mix(clipped.x, historyYcc.x, hold);
     float historyAlpha = clamp(history.a, alphaMin, alphaMax);
 
     // Step 8, second half: blend in the weighted space. The current weight is 1 on a reset and falls to

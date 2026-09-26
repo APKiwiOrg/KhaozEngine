@@ -4,8 +4,8 @@ using System.Numerics;
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// The CPU half of the temporal resolve (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3): the reprojection matrices, the
-    /// depth parameters and the lock decay the shader reads, and C# mirrors of the kernel, the depth linearisation, the
+    /// The CPU half of the temporal resolve (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3): the reprojection matrices and
+    /// the depth parameters the shader reads, and C# mirrors of the kernel, the depth linearisation, the
     /// static reprojection and the luma weighting it applies, kept in sync with
     /// <c>ShaderSources.TemporalResolveCoreGlsl</c> so the tests can compute what the shader must output. Pure and
     /// allocation-free.
@@ -140,17 +140,10 @@ namespace KhaozEngine.Render3D.Internal
         /// this frame's origin, or null when there is none. Both views are unjittered, as the motion target's clip
         /// positions are, so the static previous UV and the motion agree. History is readable only when it is valid and a
         /// previous view exists and both reprojections invert. The previous projection and depth parameters are the
-        /// current ones when it is not. <paramref name="phaseCount"/> is the jitter cycle the caller
-        /// already runs, <see cref="TemporalJitter.PhaseCount"/> of the unrounded display over internal scale with the
-        /// render cap included, <c>1 / (EffectiveUpscaleRatio * capScale)</c>, where <c>capScale</c> is the
-        /// <see cref="KhaozEngine.Primitives.ViewportMath.Fit"/> scale <see cref="Scene3D.ComputeTargetSize"/> applies
-        /// before rounding to whole pixels (1 when the cap does not bite). Never
-        /// <see cref="DisplayOverInternal"/>, which reads the rounded sizes and can overshoot by a phase, and never the
-        /// bare preset ratio, which under-covers when the cap bites. Native on a 5120x2880 display renders 3840x2160, a
-        /// scale of 1.333, and needs 15 phases, not 8.</summary>
+        /// current ones when it is not. <see cref="TemporalResolveUniforms.Params"/> is reserved and written as 0.</summary>
         public static TemporalResolveUniforms BuildUniforms(in TemporalViewInput current, TemporalViewInput? previous,
             Vector2 jitterPixels, int internalWidth, int internalHeight, int displayWidth, int displayHeight,
-            bool historyValid, int phaseCount)
+            bool historyValid)
         {
             int iw = Math.Max(1, internalWidth), ih = Math.Max(1, internalHeight);
             int dw = Math.Max(1, displayWidth), dh = Math.Max(1, displayHeight);
@@ -169,7 +162,7 @@ namespace KhaozEngine.Render3D.Internal
                 Jitter = new Vector4(jitterPixels.X, jitterPixels.Y, displayOverInternal, readable ? 1f : 0f),
                 CurrentDepth = currentDepth,
                 PreviousDepth = DepthParams(previousProjection),
-                Params = new Vector4(1f / Math.Max(TemporalJitter.NativePhaseCount, phaseCount), 0f, 0f, 0f),
+                Params = Vector4.Zero,
             };
         }
 
@@ -179,7 +172,7 @@ namespace KhaozEngine.Render3D.Internal
         /// <see cref="PixelPostProcessSettings.MaxRenderWidth"/> by <see cref="PixelPostProcessSettings.MaxRenderHeight"/>,
         /// and is rounded to whole pixels, so this can land just above the unrounded scale, and <c>ceil(8 * r * r)</c>
         /// then takes one phase more, 19 instead of 18 for a 3456x2234 display on Quality. The jitter cycle reads the
-        /// unrounded scale described on <see cref="BuildUniforms"/>.</summary>
+        /// unrounded scale described on <see cref="TemporalJitter.PhaseCount"/>.</summary>
         public static float DisplayOverInternal(int displayWidth, int displayHeight, int internalWidth, int internalHeight)
             => MathF.Max(1f, MathF.Max(Math.Max(1, displayWidth) / (float)Math.Max(1, internalWidth),
                 Math.Max(1, displayHeight) / (float)Math.Max(1, internalHeight)));

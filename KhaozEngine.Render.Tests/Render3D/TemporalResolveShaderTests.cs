@@ -37,6 +37,9 @@ namespace KhaozEngine.Tests.Render3D
             { "const float LockMotionStartPixels = 1.0;", TemporalResolveTuning.LockMotionStartPixels, 1f },
             { "const float LockMotionEndPixels = 4.0;", TemporalResolveTuning.LockMotionEndPixels, 4f },
             { "const float LockReactiveRelease = 2.0;", TemporalResolveTuning.LockReactiveRelease, 2f },
+            { "const float LockDecay = 0.125;", TemporalResolveTuning.LockDecay, 0.125f },
+            { "const float LockHoldGain = 2.0;", TemporalResolveTuning.LockHoldGain, 2f },
+            { "const float LockTravelRelease = 1.0;", TemporalResolveTuning.LockTravelRelease, 1f },
         };
 
         [Theory]
@@ -136,6 +139,23 @@ namespace KhaozEngine.Tests.Render3D
             int fetch = core.IndexOf("vec4 fetched = sampleHistoryCatmullRom(previousUv, displaySize);", StringComparison.Ordinal);
             int finite = core.IndexOf("bool finite = ", StringComparison.Ordinal);
             Assert.True(fetch >= 0 && finite > fetch, "the clamped fetch must come before the finite check");
+        }
+
+        [Fact]
+        public void The_thin_feature_lock_decays_the_same_at_every_preset_and_releases_on_the_surface_s_own_travel()
+        {
+            // A lock that decayed by one over the jitter cycle, 72 frames at UltraPerformance, held a moving line's
+            // trail, so the decay is a constant and Params.x is reserved. The surface's own travel is the motion the
+            // camera does not explain, measured where the moving-surface test measures it.
+            string core = ShaderSources.TemporalResolveCoreGlsl;
+            Assert.Contains("float lockValue = useHistory ? max(historyState.y - LockDecay, 0.0) : 0.0;", core,
+                StringComparison.Ordinal);
+            Assert.DoesNotMatch(@"\bParams\.x", core);
+            Assert.Contains("surfaceTravel = length(surfaceMotion);", core, StringComparison.Ordinal);
+            Assert.Contains("* (1.0 - clamp(surfaceTravel * LockTravelRelease, 0.0, 1.0));", core, StringComparison.Ordinal);
+            Assert.Contains("float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);", core, StringComparison.Ordinal);
+            Assert.Contains("excess.x *= 1.0 - hold;", core, StringComparison.Ordinal);
+            Assert.Contains("clipped.x = mix(clipped.x, historyYcc.x, hold);", core, StringComparison.Ordinal);
         }
 
         [Fact]

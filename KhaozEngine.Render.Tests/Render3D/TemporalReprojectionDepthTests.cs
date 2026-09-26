@@ -40,7 +40,7 @@ namespace KhaozEngine.Tests.Render3D
                 TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(
                     new TemporalViewInput(viewNow, TownPerspective, viewNow * TownPerspective),
                     new TemporalViewInput(viewThen, TownPerspective, viewThen * TownPerspective),
-                    Vector2.Zero, 1600, 900, 1600, 900, historyValid: true, phaseCount: 8);
+                    Vector2.Zero, 1600, 900, 1600, 900, historyValid: true);
                 Assert.Equal(1f, u.Jitter.W);
 
                 for (int d = 0; d < distances.Length; d++)

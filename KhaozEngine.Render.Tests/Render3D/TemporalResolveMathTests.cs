@@ -109,33 +109,31 @@ namespace KhaozEngine.Tests.Render3D
         {
             TemporalViewInput current = View(new Vector3(0f, 2f, 10f), Vector3.Zero);
             Assert.Equal(0f, TemporalResolveMath.BuildUniforms(current, null, Vector2.Zero, 1280, 720, 1920, 1080,
-                historyValid: true, phaseCount: 18).Jitter.W);
+                historyValid: true).Jitter.W);
             Assert.Equal(0f, TemporalResolveMath.BuildUniforms(current, current, Vector2.Zero, 1280, 720, 1920, 1080,
-                historyValid: false, phaseCount: 18).Jitter.W);
+                historyValid: false).Jitter.W);
 
             // The previous projection falls back to the current one, so the block stays well defined.
             Matrix4x4 zoomed = Matrix4x4.CreatePerspectiveFieldOfView(0.6f, 16f / 9f, 0.1f, 500f);
             var previous = new TemporalViewInput(current.View, zoomed, current.View * zoomed);
             Assert.Equal(Perspective, TemporalResolveMath.BuildUniforms(current, previous, Vector2.Zero, 1280, 720, 1920, 1080,
-                historyValid: false, phaseCount: 18).PreviousProjection);
+                historyValid: false).PreviousProjection);
             Assert.Equal(Perspective, TemporalResolveMath.BuildUniforms(current, null, Vector2.Zero, 1280, 720, 1920, 1080,
-                historyValid: true, phaseCount: 18).PreviousProjection);
+                historyValid: true).PreviousProjection);
         }
 
         [Fact]
-        public void The_uniforms_carry_the_sizes_jitter_ratio_depth_and_lock_decay()
+        public void The_uniforms_carry_the_sizes_jitter_ratio_and_depth_and_leave_params_reserved()
         {
             TemporalViewInput current = View(new Vector3(0f, 2f, 10f), Vector3.Zero);
             TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(current, current, new Vector2(0.25f, -0.125f),
-                1280, 720, 1920, 1080, historyValid: true, phaseCount: 18);
+                1280, 720, 1920, 1080, historyValid: true);
             Assert.Equal(new Vector4(1280f, 720f, 1920f, 1080f), u.Sizes);
             Assert.Equal(new Vector4(0.25f, -0.125f, 1.5f, 1f), u.Jitter);
-            Assert.Equal(1f / 18f, u.Params.X);
+            Assert.Equal(Vector4.Zero, u.Params);
             Assert.Equal(TemporalResolveMath.DepthParams(current.Projection), u.CurrentDepth);
             Assert.Equal(u.CurrentDepth, u.PreviousDepth);
             Assert.Equal(current.Projection, u.PreviousProjection);
-            Assert.Equal(1f / 8f, TemporalResolveMath.BuildUniforms(current, current, Vector2.Zero, 64, 64, 64, 64,
-                historyValid: true, phaseCount: 4).Params.X);
             Assert.Equal(u.CurrentDepth, TemporalResolveMath.BuildDepthStore(current.Projection).CurrentDepth);
         }
 
@@ -153,7 +151,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.False(TemporalResolveMath.TryReprojection(flatProjection, good, out _, out _));
 
             TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(flatView, good, Vector2.Zero, 64, 64, 64, 64,
-                historyValid: true, phaseCount: 8);
+                historyValid: true);
             Assert.Equal(0f, u.Jitter.W);
             Assert.Equal(Matrix4x4.Identity, u.CurrentToPrevious);
             Assert.Equal(Matrix4x4.Identity, u.BackgroundToPrevious);
@@ -167,7 +165,7 @@ namespace KhaozEngine.Tests.Render3D
             Matrix4x4 viewThen = Matrix4x4.CreateLookAt(new Vector3(0.4f, 30.2f, 29.7f), new Vector3(0.4f, 0f, 0.3f), Vector3.UnitY);
             TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(new TemporalViewInput(viewNow, ortho, viewNow * ortho),
                 new TemporalViewInput(viewThen, ortho, viewThen * ortho), Vector2.Zero, 1280, 720, 1280, 720,
-                historyValid: true, phaseCount: 8);
+                historyValid: true);
             Assert.Equal(1f, u.Jitter.W);
             Assert.Equal(0f, u.CurrentDepth.X);
             Assert.Equal(0.5, u.CurrentDepth.Y, 4);
@@ -292,6 +290,6 @@ namespace KhaozEngine.Tests.Render3D
 
         static TemporalResolveUniforms Build(in TemporalViewInput current, in TemporalViewInput previous)
             => TemporalResolveMath.BuildUniforms(current, previous, Vector2.Zero, 1280, 720, 1280, 720,
-                historyValid: true, phaseCount: 8);
+                historyValid: true);
     }
 }

@@ -64,5 +64,27 @@ namespace KhaozEngine.Render3D.Internal
         public const float LockMotionEndPixels = 4f;
         /// <summary>Step 6. Lock lost per unit of reactive estimate.</summary>
         public const float LockReactiveRelease = 2f;
+        /// <summary>Step 6. Lock lost per frame, the same at every preset. A thin feature shows when a jittered sample
+        /// lands on it, and the Halton x offsets visit every eighth of a texel about once in eight frames at any display
+        /// ratio, so how often it shows follows its internal texel coverage, not the jitter cycle. One over the cycle
+        /// held a lock for 72 frames at UltraPerformance, and an unkeyed line crossing at 0.6 display pixels a frame
+        /// trailed 2 display pixels at 28 percent of its contrast. One eighth, with <see cref="LockHoldGain"/>, trails
+        /// at most 1 at 11 percent.</summary>
+        public const float LockDecay = 1f / TemporalJitter.NativePhaseCount;
+        /// <summary>Step 6. The hold on the luma clip is the lock times this, at most 1. With <see cref="LockDecay"/> of
+        /// an eighth it stays whole through four frames without a ridge, then lets go over four more. A still line three
+        /// eighths of a texel wide goes up to three frames unseen. A hold equal to the lock clipped a share of it on each
+        /// of them, and at Native the line averaged 10 percent of its contrast against a coverage of 37.5. At 2 it
+        /// averages 42 percent and changes by under 4 percent a frame at Native, Quality and UltraPerformance. 3 and 4
+        /// raised the unkeyed trail's peak from 11 to 22 and 31 percent.</summary>
+        public const float LockHoldGain = 2f;
+        /// <summary>Step 6. Lock lost per internal pixel the dilated surface moved on its own this frame, the motion the
+        /// camera does not explain, so the lock holds only while the reprojected history stays consistent (design
+        /// section 3 step 6). A ridge refreshed on a surface crossing texels would leave the pixel it just crossed
+        /// locked on the history that surface carried there, held after the surface has gone. At 1, a surface moving a
+        /// texel a frame keeps no lock. A keyed line at 0.9 display pixels a frame on Quality trailed 1 display pixel at
+        /// 14 percent of its contrast without it, and none with it. 2 cost the same line at 0.6 display pixels a frame 2
+        /// to 4 points of the contrast it keeps.</summary>
+        public const float LockTravelRelease = 1f;
     }
 }

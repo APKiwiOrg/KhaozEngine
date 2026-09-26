@@ -79,7 +79,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             TemporalViewInput current = View(eyeNow), previous = View(eyeThen);
             return TemporalResolveMath.BuildUniforms(current, previous, Jitter, (int)size.X, (int)size.Y, (int)size.X,
-                (int)size.Y, historyValid: true, phaseCount: 8);
+                (int)size.Y, historyValid: true);
         }
 
         // The static world point a sample shows at a view depth, the linear depth the depth target gives back for it, and

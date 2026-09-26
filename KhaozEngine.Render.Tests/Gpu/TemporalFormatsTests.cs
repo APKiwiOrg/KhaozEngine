@@ -1,4 +1,6 @@
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
@@ -22,7 +24,15 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TheDirect3D11MapMapsEveryHistoryFormatAsAColourTarget()
         {
-            if (!OperatingSystem.IsWindows()) return;   // the map is a Windows-only type
+            // The map is a Windows-only type. Its body lives in a method this one never JIT-compiles off Windows, so the
+            // Vortice assemblies stay unloaded there, which the off-Windows Direct3D 11 tests rely on.
+            if (OperatingSystem.IsWindows()) AssertDirect3D11Maps();
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        [SupportedOSPlatform("windows")]
+        static void AssertDirect3D11Maps()
+        {
             Assert.Equal(Vortice.DXGI.Format.R16G16B16A16_Float,
                 D3D11Formats.ToDxgiFormat(TemporalFormats.HistoryColor, false));
             Assert.Equal(Vortice.DXGI.Format.R16G16_Float,

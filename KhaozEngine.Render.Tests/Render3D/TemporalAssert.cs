@@ -1,7 +1,10 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
+using Xunit.Sdk;
 
 namespace KhaozEngine.Tests.Render3D;
 
@@ -46,4 +49,8 @@ internal static class TemporalAssert
     /// origin and y down, the convention of <c>CameraProjection.WorldToScreen</c>.</summary>
     internal static Vector2 Pixel(Vector3 point, in Matrix4x4 viewProjection, int width, int height)
         => Uv(point, viewProjection) * new Vector2(width, height);
+
+    /// <summary>The scene's previous frame view, failing the test when the history is invalid.</summary>
+    internal static FrameView Previous(Scene3D scene)
+        => scene.PreviousFrameView ?? throw new XunitException("expected a previous frame view, but the history is invalid");
 }

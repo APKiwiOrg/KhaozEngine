@@ -18,6 +18,7 @@ namespace KhaozEngine.Render3D
     {
         FrameView _currentFrameView;
         long _frameIndex;
+        bool _frameViewLatchedThisFrame;
 
         /// <summary>The display size over the internal size per axis, which sets the jitter sequence length. Native
         /// in round 1. Round 2's upscaler replaces this with its ratio.</summary>
@@ -33,15 +34,20 @@ namespace KhaozEngine.Render3D
         /// <summary>Whether a temporal consumer asked for this frame, which is what turns the jitter on.</summary>
         internal bool TemporalActive => ForceTemporalForTests;
 
-        /// <summary>Called from <see cref="Begin"/>: one frame index per Begin, however many renders follow.</summary>
-        internal void BeginFrameView() => _frameIndex++;
+        /// <summary>Called from <see cref="Begin"/>: one frame index per Begin, however many renders follow, and the
+        /// next render is the frame's first.</summary>
+        internal void BeginFrameView()
+        {
+            _frameIndex++;
+            _frameViewLatchedThisFrame = false;
+        }
 
         /// <summary>
         /// Latch this render's snapshot. Runs after <c>EnsureSize</c>, so the internal size and the built-in camera's
         /// aspect are final, and before any pass reads a matrix. <see cref="FrameViewProjection"/> re-asserts the
         /// latched origin on an origin-aware camera first, so the <c>View</c> read after it is in the same render
         /// frame. A camera that cannot take an origin but was swapped in after <see cref="Begin"/> latched one gets the
-        /// translation composed onto its view, the fallback <see cref="FrameViewProjection"/> applies to its
+        /// translation composed onto its view, as the fallback in <see cref="FrameViewProjection"/> does for its
         /// view-projection.
         /// </summary>
         internal void LatchFrameView()
@@ -55,6 +61,12 @@ namespace KhaozEngine.Render3D
             Vector2 jitter = TemporalActive ? TemporalJitter.Offset(_frameIndex, phaseCount) : Vector2.Zero;
             _currentFrameView = new FrameView(view, cam.Projection, viewProjection, FrameAbsoluteViewProjection(),
                 _frameOrigin, _res.Width, _res.Height, _frameIndex, jitter);
+            // History moves on a frame's first render only. A second render inside the same frame (an offscreen
+            // capture, possibly at another size) latches matrices for its own viewport but keeps the frame's index,
+            // jitter, previous view and history state (Scene3D.Temporal.cs).
+            if (_frameViewLatchedThisFrame) return;
+            _frameViewLatchedThisFrame = true;
+            AdvanceTemporalHistory();
         }
     }
 }

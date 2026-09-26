@@ -39,10 +39,10 @@
          private here, they travel on their own include="All" dependencies below. -->
     <ProjectReference Include="../KhaozEngine.Foundation/KhaozEngine.Foundation.csproj"
                       PrivateAssets="contentfiles;analyzers" />
-    <!-- Localization analyzer: packs as a dependency so it flows to any consumer of this umbrella (and,
-         transitively, of Game3D, which references Game2D). PrivateAssets="none" keeps the Analyzers+Build
-         assets in the packed dependency (the ProjectReference default excludes them), so the analyzer is
-         actually applied in the consumer's build. -->
+    <!-- Localization analyzer and StringId generator: pack as a dependency so both flow to any consumer of
+         this umbrella and transitively to Game3D. PrivateAssets="none" keeps the Analyzers+Build assets in the
+         packed dependency (the ProjectReference default excludes them), so the analyzer assembly and its
+         buildTransitive AdditionalFiles metadata are applied in the consumer's build. -->
     <ProjectReference Include="../KhaozEngine.Localization.Analyzers/KhaozEngine.Localization.Analyzers.csproj"
                       PrivateAssets="none" />
     <!-- File-size ratchet analyzer: packs as a dependency so it flows to any consumer of this umbrella.

@@ -19,7 +19,8 @@ namespace KhaozEngine.Render3D
     {
         // The last frame's first-render snapshot, in the origin it was latched against.
         FrameView? _historyView;
-        // That snapshot rebased onto this frame's origin, or null while the history is invalid.
+        // That snapshot rebased onto this frame's origin, or null when the advance reset the history. Read it through
+        // PreviousFrameView, which also hides it after a later reset inside the frame.
         FrameView? _previousFrameView;
         // Whether the last rendered frame had temporal rendering active, so its snapshot can seed this frame's history.
         bool _historyActive;
@@ -56,10 +57,11 @@ namespace KhaozEngine.Render3D
         internal TemporalHistory TemporalHistory { get; } = new();
 
         /// <summary>The previous frame's view rebased to this frame's render origin (<c>T(d) * M</c>, see
-        /// <see cref="FrameView.RebasedTo"/>), or null when the history is invalid: the first temporal frame, every frame
-        /// a reset fired on, and every frame with temporal rendering off. A consumer reads null as no previous state,
-        /// which for motion means zero motion.</summary>
-        internal FrameView? PreviousFrameView => _previousFrameView;
+        /// <see cref="FrameView.RebasedTo"/>), or null whenever <see cref="TemporalHistory"/> is invalid: the first
+        /// temporal frame, every frame a reset fired on, every frame with temporal rendering off, and the rest of a
+        /// frame once a later <see cref="TemporalHistory.Invalidate"/> inside it drops the history after the advance.
+        /// A consumer reads null as no previous state, which for motion means zero motion.</summary>
+        internal FrameView? PreviousFrameView => TemporalHistory.IsValid ? _previousFrameView : null;
 
         /// <summary>The last rendered frame's temporal state: its index, jitter phase and offset, the keyed draws, and
         /// whether history was valid with the reason it was last reset. Default-valued before the first render. See

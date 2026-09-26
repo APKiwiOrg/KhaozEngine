@@ -63,6 +63,21 @@ public sealed class TemporalHistoryWiringTests
     }
 
     [Fact]
+    public void AnInvalidationAfterTheAdvanceDropsThePreviousView()
+    {
+        using var rig = new HeadlessSceneRig();
+        Scene3D scene = rig.Scene;
+        scene.ForceTemporalForTests = true;
+        rig.Frame();
+        rig.Frame();
+        Assert.NotNull(scene.PreviousFrameView);
+
+        // A history owner may drop the history later in the frame, after the advance set the previous view.
+        scene.TemporalHistory.Invalidate(TemporalResetReason.Resize);
+        Assert.Null(scene.PreviousFrameView);
+    }
+
+    [Fact]
     public void ABeginWithNoRenderKeepsTheLastRenderedFrameAsPrevious()
     {
         using var rig = new HeadlessSceneRig();

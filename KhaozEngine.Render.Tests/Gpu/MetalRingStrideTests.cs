@@ -41,7 +41,7 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(256u, 256u)]
         [InlineData(257u, 512u)]
         [InlineData(768u, 768u)]
-        [InlineData(8192u, 8192u)]     // SkinnedBonePalette.SlotBytes, the largest slot the engine binds
+        [InlineData(8192u, 8192u)]     // SkinnedBonePalette.SlotBytes, the widest before SkinnedMotionPalette's 8448
         [InlineData(8448u, 8448u)]     // both skinned slots between #604 and #407, when each still carried a palette
         [InlineData(9472u, 9472u)]     // the skinned main slot before #604 took the folded frame block out of it
         public void TheStrideIsTheSizeRoundedUpTo256(uint sizeInBytes, uint expected)

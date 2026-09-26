@@ -102,6 +102,13 @@ public sealed class MotionShaderTextTests
             .ToArray();
 
         Assert.Equal(deformation, function);
+        // The lines that give the variant its last-frame meaning, which the comparison above leaves out.
+        Assert.Contains("        vec4 interactor = previous ? PrevInteractors[i] : Interactors[i];", variant);
+        Assert.Contains("        float strength = previous ? PrevStrengths[i] : Strengths[i];", variant);
+        Assert.Contains("    vec4 world = vec4(foliageWorld(FocusRadius.xyz, WindTime.z, WindFade.y, ViewProj, false, Model, "
+            + "rejected), 1.0);", variant);
+        Assert.Contains("    vec3 lastWorld = foliageWorld(PrevFocus.xyz, PrevFocus.w, WindFade.z, PrevViewProj, true, lastModel, "
+            + "lastRejected);", variant);
         Assert.Equal(Inputs(baseline), Inputs(variant));
         Assert.Equal(Outputs(baseline), Outputs(variant));
         Assert.Equal(Tail(baseline), Tail(variant));

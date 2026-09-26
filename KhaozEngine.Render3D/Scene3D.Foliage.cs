@@ -21,6 +21,9 @@ public sealed partial class Scene3D
     float _foliageScale, _foliagePreviousScale;
     long _foliageScaleFrame = long.MinValue;
     bool _foliagePreviousScaleValid;
+    // Set when a batch was submitted while temporal rendering was off, so its slot holds no last frame. A frame that
+    // then turns temporal on before its render must not read those zeros as last frame's state.
+    bool _foliageDrawnWithoutMotion;
 
     /// <summary>This frame's foliage uniform slots. For tests.</summary>
     internal ReadOnlySpan<ModelRenderer.FoliageUniforms> FoliageUniformsForTests => CollectionsMarshal.AsSpan(_foliageUniforms);
@@ -109,7 +112,9 @@ public sealed partial class Scene3D
         {
             ModelRenderer.FoliageUniforms uniforms =
                 ModelRenderer.FoliageUniforms.Build(focus, settings, interactors, EffectTimeSeconds);
-            _foliageUniforms.Add(TemporalActive ? WithFoliageMotion(batch, uniforms) : uniforms);
+            bool motion = TemporalActive;
+            _foliageDrawnWithoutMotion |= !motion;
+            _foliageUniforms.Add(motion ? WithFoliageMotion(batch, uniforms) : uniforms);
         }
         return candidates;
     }
@@ -129,6 +134,7 @@ public sealed partial class Scene3D
         _foliageDraws.Clear();
         _foliageUniforms.Clear();
         _foliagePatchTests = 0;
+        _foliageDrawnWithoutMotion = false;
     }
 
     void PrepareFoliageFrame(IGpuCommandList cl, in FrustumPlanes frustum)
@@ -169,7 +175,8 @@ public sealed partial class Scene3D
 
     /// <summary>FoliageMotionVert's last frame, once the frame's history is known. With valid history
     /// (<see cref="MotionHistoryValid"/>) each slot keeps the state its submission folded in and takes last frame's
-    /// pixel scale, or this frame's when no foliage uploaded last frame. Without it every slot's last frame is its own,
+    /// pixel scale, or this frame's when no foliage uploaded last frame. Without it, or when a batch was submitted before
+    /// temporal rendering turned on this frame, every slot's last frame is its own,
     /// scale included, so the recomputed displacement cancels and the variant writes the motion the other paths write
     /// with no previous state.</summary>
     void PrepareFoliageMotion(Span<ModelRenderer.FoliageUniforms> slots, float metresPerPixel)
@@ -181,7 +188,7 @@ public sealed partial class Scene3D
             _foliageScale = metresPerPixel;
             _foliageScaleFrame = _frameIndex;
         }
-        bool history = MotionHistoryValid;
+        bool history = MotionHistoryValid && !_foliageDrawnWithoutMotion;
         if (!history)
             foreach (ref ModelRenderer.FoliageUniforms slot in slots) slot = slot.WithPrevious(slot);
         ModelRenderer.FoliageUniforms.ApplyPixelScale(slots, metresPerPixel,

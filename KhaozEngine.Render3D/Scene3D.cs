@@ -777,13 +777,14 @@ namespace KhaozEngine.Render3D
         /// <summary>Skinned draws queued this frame. Internal: lets tests assert Begin clears the queue.</summary>
         internal int SkinnedInstanceCount => _skinnedInstances.Items.Count;
 
-        /// <summary>Start a frame: apply pending scene changes, latch <see cref="RenderOrigin"/>, and clear the per-frame draw queues.</summary>
+        /// <summary>Start a frame: apply pending scene changes, latch <see cref="RenderOrigin"/>, take the next frame index, and clear the per-frame draw queues.</summary>
         public void Begin()
         {
             ApplyPendingShadowLayout();
             ApplyPendingPointShadowLayout();
             _retired.BeginFrame();   // frees mid-life mesh buffers whose retirement fence has signaled (no stall)
             LatchRenderOrigin();
+            BeginFrameView();   // one frame index per Begin (Scene3D.FrameView.cs)
             _instances.Begin();
             BeginFoliageFrame();
             _skinnedInstances.Begin();
@@ -1463,7 +1464,7 @@ namespace KhaozEngine.Render3D
         {
             var shadows = Post.Quality.Shadows;
             // ABSOLUTE: the fit, the radii and the caster classification stay byte-identical at any render origin.
-            if (!Internal.ShadowMapMath.FrustumCornersWorld(FrameAbsoluteViewProjection(), _frustumCornersScratch))
+            if (!Internal.ShadowMapMath.FrustumCornersWorld(CurrentFrameView.AbsoluteViewProjection, _frustumCornersScratch))
             {
                 _cascadeCount = 0;
                 return 0;
@@ -1552,6 +1553,7 @@ namespace KhaozEngine.Render3D
             // and a re-render never double-counts.
             _frameStats.Reset();
             EnsureSize(viewportW, viewportH);
+            LatchFrameView();   // the frame's one view snapshot, now that the size and the camera are final
             // The caps-resolved FXAA decision (FXAA alone, opted in after MSAA, or an unsupported MSAA request
             // falling back to FXAA). Must be the same value for PrepareUniforms (flip parity) and Run.
             bool runFxaa = ResolvedAa().UsesFxaa;
@@ -1573,10 +1575,8 @@ namespace KhaozEngine.Render3D
             // unless a FrozenCrossfade transition just went active. See TransitionRenderer.BeginFrame.
             _transitions.BeginFrame(cl, _res, ScreenTransition);
 
-            // Relative for the GPU, absolute for every CPU-side spatial computation, and the eye converted with the
-            // geometry (the water/particle/distortion shaders difference it against a render-frame world position).
-            Matrix4x4 vp = FrameViewProjection();
-            Matrix4x4 absVp = FrameAbsoluteViewProjection();
+            // The snapshot's matrices (relative for the GPU, absolute for the CPU), and the eye in the render frame.
+            Matrix4x4 vp = CurrentFrameView.ViewProjection, absVp = CurrentFrameView.AbsoluteViewProjection;
             Vector3 eye = ToRender(ActiveCamera.Eye);
             FrustumPlanes camFrustum = FrustumCulling ? FrustumPlanes.Extract(absVp) : default;
 

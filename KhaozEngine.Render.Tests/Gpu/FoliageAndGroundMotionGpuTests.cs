@@ -71,9 +71,11 @@ public sealed class FoliageAndGroundMotionGpuTests
     public void WindReportsTheBladesOwnMotion()
         => AssertPlateMotion(Still with { WindStrength = .5f, WindDirection = Vector2.UnitX }, _ => [], clockStep: .3f);
 
+    // The strength changes with the position, so last frame's evaluation reading this frame's strengths fails too.
     [GpuFact]
     public void AMovingInteractorReportsTheBendItCauses()
-        => AssertPlateMotion(Still, n => [new FoliageInteractor(new Vector3(-.9f + .25f * n, 0f, .2f), 1.6f, .6f)], clockStep: 0f);
+        => AssertPlateMotion(Still,
+            n => [new FoliageInteractor(new Vector3(-.9f + .25f * n, 0f, .2f), 1.6f, .4f + .2f * n)], clockStep: 0f);
 
     // The wind clock stands still, so the plate's own motion is the wind fade alone: a 1 m blade is 1.5 fade heights
     // tall at zoom 1 and 1.8 at zoom 1.2. Last frame's evaluation that took this frame's pixel scale would report none.
@@ -120,8 +122,8 @@ public sealed class FoliageAndGroundMotionGpuTests
         Assert.True(left > 1000 && right > 1000, $"{left} terrain and {right} tile-ground pixels drew");
     }
 
-    // The quads FrameUniformUploadShapeGpuTests draws through each ground pipeline, 5 m half-width, around the mesh
-    // origin.
+    // One quad per ground pipeline, 5 m half-width around the mesh origin, on the same vertex contract as the quads
+    // FrameUniformUploadShapeGpuTests draws.
     static GltfMesh Quad(bool tileGround)
     {
         const float E = 5f;

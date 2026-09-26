@@ -35,6 +35,81 @@ public sealed partial class Scene3D
     /// <summary>The history previous object state is read from this frame, or null when there is none to read.</summary>
     MotionHistory? PreviousMotion => MotionHistoryValid ? ActiveMotionHistory : null;
 
+    // One motion key per grouped rigid slot, filled by GroupInstances while the target is temporal.
+    readonly List<MotionKey> _instanceMotionKeys = new();
+    // One motion slot per grouped rigid slot, and the compact previous transforms they index. Grow-only.
+    float[] _motionSlots = Array.Empty<float>();
+    readonly List<Matrix4x4> _previousInstanceTransforms = new();
+
+    /// <summary>The model renderer's temporal resources, null while the model framebuffer has no motion attachment.
+    /// For tests.</summary>
+    internal ModelMotionResources? MotionResourcesForTests => _model.Motion;
+
+    /// <summary>The model framebuffer's sample count this frame. For tests.</summary>
+    internal int ModelSampleCountForTests => _res.SampleCount;
+
+    /// <summary>Upload this frame's motion block and the rigid motion slots, before the model pass. The block carries
+    /// this frame's unjittered view-projection and last frame's, which group B has already rebased to this frame's
+    /// origin, or this frame's again with the flag at zero when there is no valid history, which makes every variant
+    /// write exactly zero.</summary>
+    internal void PrepareMotionFrame(IGpuCommandList cl)
+    {
+        if (!_res.MotionAllocated) return;
+        FrameView current = CurrentFrameView;
+        FrameView? previous = PreviousFrameView;
+        _model.UploadMotionFrame(cl, new MotionFrameUbo
+        {
+            CurViewProj = current.ViewProjection,
+            PrevViewProj = previous?.ViewProjection ?? current.ViewProjection,
+            Params = new Vector4(previous is null ? 0f : 1f, 0f, 0f, 0f),
+        });
+
+        int count = _instanceData.Count;
+        if (count == 0) return;
+        if (_instanceMotionKeys.Count != count)
+            throw new InvalidOperationException("The motion keys were not grouped with this frame's instances.");
+        if (_motionSlots.Length < count) _motionSlots = new float[Math.Max(count, _motionSlots.Length * 2)];
+        Span<float> slots = _motionSlots.AsSpan(0, count);
+        RigidMotionSlots.Build(CollectionsMarshal.AsSpan(_instanceMotionKeys), PreviousMotion, current.RenderOrigin,
+            slots, _previousInstanceTransforms);
+        _model.UploadRigidMotion(cl, slots, CollectionsMarshal.AsSpan(_previousInstanceTransforms));
+    }
+
+    /// <summary>Read the motion target back: one UV motion per internal pixel, row 0 at the top, the sentinel where no
+    /// opaque geometry drew. Drains the device. For tests.</summary>
+    /// <exception cref="InvalidOperationException">No motion target exists, because temporal rendering was off for the
+    /// last rendered frame.</exception>
+    internal MotionTargetReadback ReadMotionTargetForTests()
+    {
+        IGpuTexture target = _res.MotionTex ?? throw new InvalidOperationException(
+            "No motion target is allocated. Temporal rendering must be active for the frame that is read.");
+        int width = (int)target.Width, height = (int)target.Height;
+        IGpuResourceFactory f = _gd.Factory;
+        using IGpuTexture staging = f.CreateTexture(GpuTextureDescription.Texture2D(
+            target.Width, target.Height, MotionMath.Format, GpuTextureUsage.Staging));
+        using (IGpuCommandList cl = f.CreateCommandList())
+        {
+            using (GpuRecording.Open(_gd, cl, "Scene3D.ReadMotionTargetForTests")) cl.CopyTexture(target, staging);
+            _gd.Submit(cl);
+            _gd.WaitForIdle();
+        }
+        var motion = new Vector2[width * height];
+        var map = _gd.Map(staging, GpuMapMode.Read);
+        unsafe
+        {
+            byte* data = (byte*)map.Data;
+            for (int y = 0; y < height; y++)
+            {
+                ushort* row = (ushort*)(data + y * (int)map.RowPitch);
+                for (int x = 0; x < width; x++)
+                    motion[y * width + x] = new Vector2((float)BitConverter.UInt16BitsToHalf(row[2 * x]),
+                        (float)BitConverter.UInt16BitsToHalf(row[2 * x + 1]));
+            }
+        }
+        _gd.Unmap(staging);
+        return new MotionTargetReadback(motion, width, height);
+    }
+
     /// <summary>Pack every GPU-skinned caster's last frame into its <c>SkinnedMotionPalette</c> slot and upload them in
     /// one write. A draw with no key, a key with no last frame, a previous palette of another length (the key moved to
     /// another mesh, group C amendment 1) or a frame with no valid history packs this frame's own, which is camera-only

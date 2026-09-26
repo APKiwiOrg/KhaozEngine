@@ -77,6 +77,9 @@ internal sealed class ModelMotionResources : IDisposable
     internal IGpuBuffer SlotBuffer => _slots ?? throw new InvalidOperationException(
         "No motion slots were uploaded this frame, so a rigid motion draw has nothing to read.");
 
+    /// <summary>This frame's previous transforms. For tests.</summary>
+    internal IGpuBuffer PreviousTransforms => _previous;
+
     /// <summary>ModelMotionVert with ModelMotionFrag.</summary>
     internal IGpuShaderSet RigidShaders =>
         _rigid ??= _gd.Factory.CreateShadersFromSpirv(ShaderSources.ModelMotionVert, ShaderSources.ModelMotionFrag);

@@ -1343,65 +1343,6 @@ namespace KhaozEngine.Render3D
             return tw > Math.Max(1, viewportW) || th > Math.Max(1, viewportH);
         }
 
-        /// <summary>The anti-aliasing selection resolved against THIS device's capabilities (never throws): an MSAA
-        /// request is clamped to a member of <see cref="GpuCapabilities.SupportedMsaaSampleCounts"/> or falls back
-        /// to FXAA if the device cannot satisfy it; SSAA/FXAA/None pass through. Read fresh each frame (Post is mutable).</summary>
-        AntiAliasing ResolvedAa() => Post.EffectiveAaMode == AntiAliasingMode.None
-            ? AntiAliasing.Off
-            : Post.Quality.AntiAliasing.ResolveFor(_gd.Capabilities);
-
-        /// <summary>The MSAA sample count actually used this frame (1 = off), after device clamping.</summary>
-        int ResolvedMsaaSamples()
-        {
-            AntiAliasing aa = ResolvedAa();
-            return aa.Mode == AntiAliasingMode.Msaa ? aa.MsaaSamples : 1;
-        }
-
-        // Rebuild the pipelines of every renderer that draws into the model MRT, so their sample count matches the
-        // (possibly now multisampled) framebuffer. Called only when the MSAA sample count changes (rare - a menu
-        // apply), never per frame. Material sets bind to each renderer's layout (not the pipeline), so loaded meshes
-        // survive the rebuild.
-        void RebuildMrtRenderers()
-        {
-            var modelOut = _res.ModelFB.Outputs;
-            _model.SetOutputs(modelOut);
-            _texBillboards.SetOutputs(modelOut);
-            _beams.SetOutputs(modelOut);
-            _trails.SetOutputs(modelOut);
-            _overlayMeshes.SetOutputs(modelOut);
-            _silhouettes.SetOutputs(modelOut);
-            _decalRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
-            _particleRenderer.SetOutputs(_res.ColorDepthFB.Outputs);
-            _sky.SetOutputs(_res.ColorDepthFB.Outputs);
-            _starfield.SetOutputs(_res.ColorDepthFB.Outputs);
-            _water.SetOutputs(_res.ColorDepthFB.Outputs);
-            _depthLines.SetOutputs(_res.ColorDepthFB.Outputs);
-        }
-
-        void EnsureSize(int viewportW, int viewportH)
-        {
-            var (tw, th) = ComputeTargetSize(Post, viewportW, viewportH);
-            bool wantMips = WantsMipDownsample(Post, viewportW, viewportH);
-            int samples = ResolvedMsaaSamples();
-            bool sampleChanged = _res.SampleCount != samples;
-            bool bloomChanged = _res.BloomAllocated != Post.Bloom.Enabled;
-            bool hdrChanged = _res.HdrColor != Post.Hdr.Enabled;
-            if (_res.Width != tw || _res.Height != th || _res.Mipped != wantMips || sampleChanged || bloomChanged || hdrChanged)
-            {
-                // A pipeline in flight may reference the old sample count / colour format / targets. A MSAA or HDR
-                // toggle is rare, so idling before recreating the MRT + rebuilding pipelines is cheap insurance. An
-                // HDR toggle changes the MRT colour attachment format, so every MRT-writing renderer's pipeline must
-                // be rebuilt too (RebuildMrtRenderers), exactly like a sample-count change.
-                if (sampleChanged || hdrChanged) _gd.WaitForIdle();
-                _res.Resize(tw, th, wantMips, samples, Post.Bloom.Enabled, Post.Hdr.Enabled);
-                _post.BindTargets(_res);
-                _transitions.BindTargets(_res);
-                if (sampleChanged || hdrChanged) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT sample count / colour format
-            }
-            // Aspect uses the true viewport (the post target is blit-stretched to fill it), not the clamped target.
-            Camera.AspectRatio = viewportH > 0 ? (float)viewportW / viewportH : Camera.AspectRatio;
-        }
-
         /// <summary>
         /// Fit this frame's <see cref="ShadowSettings.ResolvedCascadeCount"/> cascades (CPU-authored, NOT
         /// GPU-clip-corrected) into <see cref="_cascadeCpuVps"/> (render-relative) and
@@ -1543,14 +1484,15 @@ namespace KhaozEngine.Render3D
             // GPU instancing: group queued instances by mesh into a flat instance array (ordered by mesh) + a
             // run per unique mesh. Reuses member buffers (cleared, not realloc) to stay per-frame alloc-free. Done
             // BEFORE the model pass so the (optional) shadow depth pass can reuse the same uploaded instance buffer.
-            GroupInstances(_instances.Items, _instanceData, _runs, _meshRunIndex, _instanceCastKinds,
-                CullOptedOutInstances(camFrustum), _groupWriteCursors, _instanceShadowOnly);
+            GroupInstances(_instances.Items, _instanceData, _runs, _meshRunIndex, _instanceCastKinds, CullOptedOutInstances(camFrustum),
+                _groupWriteCursors, _instanceShadowOnly, _res.MotionAllocated ? _instanceMotionKeys : null);
             // Fold each mesh's alpha-cutout threshold into its instances' SpecParams.z (the model fragment discards
             // texels below it, so MASK foliage renders as its silhouette). A mesh with cutoff 0 (OPAQUE, the default)
             // is untouched, so the instance data - and the render - stays byte-identical to the pre-cutout path.
             ApplyAlphaCutoffs(_instanceData, _runs);
             // Reduced into a staging copy, so _instanceData stays absolute for the culling + caster reads below.
             UploadInstancesRelative(cl);
+            PrepareMotionFrame(cl);   // the motion block and the rigid slots, before any pass (Scene3D.MotionTarget.cs)
             PrepareFoliageFrame(cl, camFrustum);
 
             // Main-pass visibility is aligned to the grouped stream. Shadows retain offscreen casters.

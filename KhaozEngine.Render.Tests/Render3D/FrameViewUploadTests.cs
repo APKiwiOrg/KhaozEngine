@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -49,7 +50,9 @@ public sealed class FrameViewUploadTests
         FrameView view = scene.CurrentFrameView;
         Assert.NotEqual(Vector2.Zero, view.JitterPixels);
         int jittered = Occurrences(recording, view.JitteredViewProjection);
-        int unjittered = Occurrences(recording, view.ViewProjection);
+        // The motion block carries the unjittered matrices by design, because motion is measured between unjittered
+        // positions, so its uploads do not count.
+        int unjittered = Occurrences(recording, view.ViewProjection, scene.MotionResourcesForTests?.FrameBuffer);
         Assert.True(unjittered == 0, $"a pass rasterising into the internal target uploaded the unjittered matrix {unjittered} time(s)");
         Assert.True(jittered >= 6, $"the jittered matrix reached {jittered} upload(s), expected one per raster pass drawn (6)");
     }
@@ -75,17 +78,20 @@ public sealed class FrameViewUploadTests
 
         FrameView view = scene.CurrentFrameView;
         Assert.NotEqual(Vector2.Zero, view.JitterPixels);
-        int unjittered = Occurrences(recording, view.ViewProjection);
+        // The motion block's two unjittered matrices would stand in for two overlay passes, so they do not count.
+        int unjittered = Occurrences(recording, view.ViewProjection, scene.MotionResourcesForTests?.FrameBuffer);
         Assert.True(unjittered >= 4, $"the unjittered matrix reached {unjittered} upload(s), expected one per overlay pass (4)");
         Assert.True(Occurrences(recording, view.JitteredViewProjection) >= 1, "the model frame block lost the jittered matrix");
     }
 
-    static int Occurrences(RecordingGpuCommandList recording, in Matrix4x4 matrix)
+    // except: a buffer whose uploads do not count.
+    static int Occurrences(RecordingGpuCommandList recording, in Matrix4x4 matrix, IGpuBuffer? except = null)
     {
         byte[] pattern = MemoryMarshal.AsBytes(new ReadOnlySpan<Matrix4x4>(in matrix)).ToArray();
         int count = 0;
         foreach (RecordingGpuCommandList.Upload upload in recording.Uploads)
         {
+            if (ReferenceEquals(upload.Buffer, except)) continue;
             ReadOnlySpan<byte> data = upload.Data;
             for (int at = data.IndexOf(pattern); at >= 0; at = data.IndexOf(pattern))
             {

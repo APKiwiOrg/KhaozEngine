@@ -110,10 +110,8 @@ public sealed class TemporalCpuIsolationTests
             $"the forced scene took {jitters.Count} distinct jitters over {Frames} frames, so the jitter did not move");
         Assert.True(off.Scene.CulledInstances > 0, "nothing was culled, so the culled-set comparison proves nothing");
         Assert.True(off.Scene.CascadeFitAbsoluteForTests.Length > 0, "no cascade was fitted, so the fit comparison proves nothing");
-        Assert.Equal(off.Rig.Factory.Buffers.Count, on.Rig.Factory.Buffers.Count);
-        Assert.Equal(off.Rig.Factory.Textures.Count, on.Rig.Factory.Textures.Count);
-        Assert.Equal(off.Rig.Factory.Framebuffers.Count, on.Rig.Factory.Framebuffers.Count);
-        Assert.Equal(off.Rig.Factory.GraphicsPipelines.Count, on.Rig.Factory.GraphicsPipelines.Count);
+        // Temporal rendering owns the motion target and its pipelines, so the two scenes' factory counts differ by
+        // design (MotionTargetWiringTests pins that lifecycle).
     }
 
     static void AssertSameFit(ReadOnlySpan<Matrix4x4> expected, ReadOnlySpan<Matrix4x4> actual, string what)

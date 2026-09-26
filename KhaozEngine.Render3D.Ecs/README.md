@@ -19,7 +19,7 @@ The ECS arm of `KhaozEngine.Render3D`. Three types, kept in their own package (i
 ```csharp
 var e = world.Spawn();
 world.Set(e, new Transform3D { Position = new Vector3(4f, 0f, 2f) });
-world.Set(e, new MeshInstance { Mesh = tower, Material = Material.Shiny });
+world.Set(e, new MeshInstance { Mesh = tower, Material = Material.Shiny(0.6f) });
 
 // per frame, inside OnDraw3D:
 scene.Begin();

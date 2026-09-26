@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
@@ -48,6 +49,32 @@ public sealed class ModelMotionPipelineTests
             Assert.All(p.Description.BlendAttachments, b => Assert.False(b.BlendEnabled));
         });
     }
+
+    [Fact]
+    public void TheRigidVariantKeepsTheBasePipelinesFixedState()
+    {
+        using var baseDevice = new FakeGpuDevice();
+        using var baseModel = new ModelRenderer(baseDevice, ModelTargets.Base, 64, 1);
+        var baseFactory = (FakeGpuResourceFactory)baseDevice.Factory;
+        GpuPipelineDescription basePipeline = Assert.Single(baseFactory.GraphicsPipelines,
+            p => p.VertexGlsl == ShaderSources.ModelVert && p.FragmentGlsl == ShaderSources.ModelFrag).Description;
+        using var device = new FakeGpuDevice();
+        using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
+        GpuPipelineDescription rigid = Assert.Single(((FakeGpuResourceFactory)device.Factory).GraphicsPipelines,
+            p => p.VertexGlsl == ShaderSources.ModelMotionVert).Description;
+
+        Assert.Equal(basePipeline.DepthStencil, rigid.DepthStencil);
+        Assert.Equal(basePipeline.Rasterizer, rigid.Rasterizer);
+        Assert.Equal(basePipeline.Topology, rigid.Topology);
+        Assert.Equal(basePipeline.BlendFactor, rigid.BlendFactor);
+        Assert.Equal(Shape(basePipeline.VertexLayouts.Take(2)), Shape(rigid.VertexLayouts.Take(2)));   // mesh, instance
+    }
+
+    // A vertex layout by value: its stride, step rate and every element's name and format.
+    static string[] Shape(IEnumerable<GpuVertexLayoutDescription> layouts) => layouts
+        .Select(l => $"{l.Stride}/{l.InstanceStepRate}: "
+            + string.Join(", ", l.Elements.Select(e => $"{e.Name} {e.Format}")))
+        .ToArray();
 
     [Fact]
     public void TheTemporalTargetBuildsBothGpuSkinnedVariantsOnFourSets()

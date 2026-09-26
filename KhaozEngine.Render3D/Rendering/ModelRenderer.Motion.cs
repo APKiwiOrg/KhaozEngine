@@ -19,6 +19,12 @@ internal sealed partial class ModelRenderer
     /// <summary>The temporal resources, null while the model framebuffer has no motion attachment.</summary>
     internal ModelMotionResources? Motion => _motion;
 
+    // The temporal members exist only while the model target carries the motion attachment. A call without it is a
+    // wiring error in the frame, so it says so instead of failing on a null.
+    ModelMotionResources RequireMotion() => _motion ?? throw new InvalidOperationException(
+        "The model renderer has no motion resources: it was built against a target without the motion attachment, so "
+        + "temporal rendering is off for this frame.");
+
     /// <summary>Create the temporal resources on the first build against a temporal target and retire them when the
     /// target loses its motion attachment.</summary>
     void EnsureMotionResources(bool temporal)
@@ -52,7 +58,7 @@ internal sealed partial class ModelRenderer
     IGpuPipeline CreateRigidMotionPipeline(IGpuResourceFactory factory, GpuOutputDescription outputs,
         GpuVertexLayoutDescription vertexLayout, GpuVertexLayoutDescription instanceLayout)
     {
-        ModelMotionResources motion = _motion!;
+        ModelMotionResources motion = RequireMotion();
         return OpaqueMotionPipeline(factory, outputs, motion.RigidShaders, new[] { _layout, motion.RigidLayout },
             new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout, ModelMotionResources.SlotLayout });
     }
@@ -62,29 +68,29 @@ internal sealed partial class ModelRenderer
     IGpuPipeline CreateSkinnedMotionPipeline(IGpuResourceFactory factory, GpuOutputDescription outputs,
         GpuVertexLayoutDescription skinnedVertexLayout, bool dissolve)
     {
-        ModelMotionResources motion = _motion!;
+        ModelMotionResources motion = RequireMotion();
         return OpaqueMotionPipeline(factory, outputs, dissolve ? motion.SkinnedDissolveShaders : motion.SkinnedShaders,
             new[] { _skinnedMainLayout, _skinnedFragLayout, _bonePalette.Layout, motion.SkinnedPalette.Layout },
             new List<GpuVertexLayoutDescription> { skinnedVertexLayout });
     }
 
     /// <summary>Hold a last-frame slot per GPU-skinned caster.</summary>
-    internal void EnsureSkinnedMotionCapacity(uint slotCount) => _motion!.SkinnedPalette.EnsureCapacity(slotCount);
+    internal void EnsureSkinnedMotionCapacity(uint slotCount) => RequireMotion().SkinnedPalette.EnsureCapacity(slotCount);
 
     /// <summary>Pack one caster's last frame into its slot.</summary>
     internal void PackSkinnedMotion(uint slot, in Matrix4x4 previousWorld, ReadOnlySpan<Matrix4x4> previousBones)
-        => _motion!.SkinnedPalette.Pack(slot, previousWorld, previousBones);
+        => RequireMotion().SkinnedPalette.Pack(slot, previousWorld, previousBones);
 
     /// <summary>Upload every packed last-frame slot, before any skinned draw.</summary>
-    internal void UploadSkinnedMotion(IGpuCommandList cl) => _motion!.SkinnedPalette.Upload(cl);
+    internal void UploadSkinnedMotion(IGpuCommandList cl) => RequireMotion().SkinnedPalette.Upload(cl);
 
     /// <summary>Upload this frame's motion block. Once per temporal frame, before the model pass.</summary>
-    internal void UploadMotionFrame(IGpuCommandList cl, in MotionFrameUbo frame) => _motion!.UploadFrame(cl, frame);
+    internal void UploadMotionFrame(IGpuCommandList cl, in MotionFrameUbo frame) => RequireMotion().UploadFrame(cl, frame);
 
     /// <summary>Upload one motion slot per grouped instance and the previous transforms they index, before the model
     /// pass.</summary>
     internal void UploadRigidMotion(IGpuCommandList cl, ReadOnlySpan<float> slots, ReadOnlySpan<Matrix4x4> previous)
-        => _motion!.UploadRigid(cl, slots, previous);
+        => RequireMotion().UploadRigid(cl, slots, previous);
 
     void DisposeMotionResources()
     {

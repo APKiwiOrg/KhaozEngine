@@ -8,7 +8,8 @@ namespace KhaozEngine.Render3D.Rendering;
 /// <summary>
 /// What the model pass's temporal variants read (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24 section 4). Created on the first
 /// build against a model target that carries the motion attachment and retired when the target loses it, so with
-/// temporal rendering off none of it exists. Programs compile on first use, so a scene pays only for the paths it draws.
+/// temporal rendering off none of it exists. The temporal programs compile when the renderer builds against that
+/// target, whether or not a scene draws every path.
 /// Later tasks add the CPU-skinned, foliage and ground members.
 /// </summary>
 internal sealed class ModelMotionResources : IDisposable

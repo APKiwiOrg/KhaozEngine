@@ -36,6 +36,20 @@ public sealed class RigidMotionSlotsTests
     }
 
     [Fact]
+    public void EachDuplicateOfAKeyGetsItsOwnSlotHoldingTheKeysOnePreviousTransform()
+    {
+        // Two submissions sharing a key this frame collide (the last recorded one is what the history keeps), and each
+        // still reads that one previous transform rather than sharing a slot.
+        MotionHistory history = HistoryWith(Mover, Matrix4x4.CreateTranslation(130f, 0f, 0f));
+        var slots = new float[2];
+        var previous = new List<Matrix4x4>();
+
+        Assert.Equal(2, RigidMotionSlots.Build(new[] { Mover, Mover }, history, Origin, slots, previous));
+        Assert.Equal(new[] { 0f, 1f }, slots);
+        Assert.Equal(new[] { Matrix4x4.CreateTranslation(2f, 0f, 0f), Matrix4x4.CreateTranslation(2f, 0f, 0f) }, previous);
+    }
+
+    [Fact]
     public void NoHistoryMeansNoSlotAtAll()
     {
         var slots = new float[2];

@@ -169,6 +169,24 @@ public sealed class Scene3DMotionHistoryTests
     }
 
     [Fact]
+    public void A_requester_cleared_before_the_frames_first_render_stops_recording_and_hides_the_history()
+    {
+        using var harness = new MotionTestScene();
+        Scene3D scene = harness.Scene;
+        scene.ForceTemporalForTests = true;
+
+        scene.Begin();                         // temporal on at Begin: the history swaps
+        scene.Draw(new RigidInstanceDraw(Box, Matrix4x4.Identity) { Motion = Sword });
+        scene.ForceTemporalForTests = false;   // before the frame's first render, so this frame is not temporal
+        Assert.Null(scene.ActiveMotionHistory);
+        Assert.Equal((0, 0, 0), scene.MotionKeyCounts);
+
+        scene.Draw(new RigidInstanceDraw(Box, Matrix4x4.CreateTranslation(1f, 0f, 0f)) { Motion = Sword });
+        Assert.Equal(1, scene.MotionHistoryForTests!.KeyedRigid);   // only the draw made while temporal was on
+        Assert.Equal(0, scene.MotionHistoryForTests.Collisions);
+    }
+
+    [Fact]
     public void A_steady_temporal_frame_of_keyed_submissions_allocates_nothing()
     {
         using var harness = new MotionTestScene();

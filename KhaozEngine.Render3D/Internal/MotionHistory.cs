@@ -11,8 +11,8 @@ namespace KhaozEngine.Render3D.Internal;
 /// reads. <see cref="BeginFrame"/> swaps them and empties the new current, so a key that was not drawn last frame has
 /// no previous state and a first sighting reports camera-only motion.
 /// <para>
-/// <see cref="Scene3D"/> swaps once per <see cref="Scene3D.Begin"/> while temporal rendering is active and calls
-/// <see cref="Reset"/> on a frame with it off. The swap counts Begin calls, not rendered frames.
+/// <see cref="Scene3D"/> swaps once per <see cref="Scene3D.Begin"/> when temporal rendering is active at that Begin and
+/// calls <see cref="Reset"/> when it is not. The swap counts Begin calls, not rendered frames.
 /// </para>
 /// <para>
 /// Transforms are ABSOLUTE, exactly as submitted, so a render origin step between the two frames adds no error. The

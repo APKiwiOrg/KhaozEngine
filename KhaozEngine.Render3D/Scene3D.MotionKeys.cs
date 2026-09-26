@@ -22,8 +22,12 @@ public sealed partial class Scene3D
     // Created on the first frame temporal rendering is active, so a scene that never asks for it never allocates it.
     MotionHistory? _motionHistory;
 
-    /// <summary>The history this frame's temporal consumers read, or null when temporal rendering is off this frame.
-    /// Its previous generation is last frame's keyed submissions.</summary>
+    /// <summary>The history this frame's temporal consumers read, or null when no key has previous state: temporal
+    /// rendering is off this frame, or it turned on after <see cref="Begin"/> on the scene's first temporal frame and
+    /// no keyed draw has created the history yet. Its previous generation is the keyed submissions made between the last
+    /// two <see cref="Begin"/> calls, and it is empty after a <see cref="Begin"/> with temporal rendering off. A frame
+    /// that turns temporal rendering on after such a <see cref="Begin"/> therefore reads no previous transform for any
+    /// key, which a consumer treats as a first sighting.</summary>
     internal MotionHistory? ActiveMotionHistory => TemporalActive ? _motionHistory : null;
 
     /// <summary>The history whether or not it is active this frame, null until temporal rendering first runs. For
@@ -36,7 +40,7 @@ public sealed partial class Scene3D
             ? (history.KeyedRigid, history.KeyedSkinned, history.Collisions)
             : (0, 0, 0);
 
-    // Called from Begin: swap generations on an active frame, forget everything on an inactive one.
+    // Called from Begin: swap generations when temporal rendering is active at Begin, forget everything when it is not.
     void BeginMotionFrame()
     {
         if (!TemporalActive)

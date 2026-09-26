@@ -139,6 +139,7 @@ public sealed class SyntheticContentSet
         row.DurabilityMax = row.Stackable ? 0 : rng.Next(0, 4_000);
         row.SocketMax = row.Stackable ? 0 : rng.Next(0, 4);
         row.EquipProfile = HasEquipProfileType && !row.Stackable ? 1 + rng.Next(Config.GameTypeRowCount) : 0;
+        row.Category = 0;
     }
 
     public void Tag(int id, ref TagRowData row)

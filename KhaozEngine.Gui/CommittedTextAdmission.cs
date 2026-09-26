@@ -16,13 +16,14 @@ namespace KhaozEngine.Gui
             return current[..^1];
         }
 
-        internal static string Append(string current, string text, int maxLength, Func<string, char, bool>? filter)
+        internal static string Append(string current, string text, int maxLength, Func<string, char, bool>? filter,
+            bool allowControls = false)
         {
             if (text.Length == 0) return current;
             var result = new StringBuilder(current);
             foreach (Rune rune in text.EnumerateRunes())
             {
-                if (rune.Value <= char.MaxValue && char.IsControl((char)rune.Value)) continue;
+                if (!allowControls && rune.Value <= char.MaxValue && char.IsControl((char)rune.Value)) continue;
 
                 string scalar = rune.ToString();
                 if (result.Length + scalar.Length > maxLength) continue;

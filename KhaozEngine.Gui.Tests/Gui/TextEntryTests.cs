@@ -395,5 +395,32 @@ namespace KhaozEngine.Tests.Gui
         {
             Assert.Equal("a", TextEntry.Apply("a🙂", Frame(new[] { Key.Backspace }, committedText: "")));
         }
+
+        [Fact]
+        public void Pasted_non_BMP_text_never_exceeds_max_length_with_half_a_scalar()
+        {
+            using var _ = new FakeClipboard("🙂");
+            InputState paste = Frame(new[] { Key.V }, held: new[] { Key.LeftControl });
+
+            Assert.Equal("", TextEntry.Apply("", paste, maxLength: 1));
+            Assert.Equal("🙂", TextEntry.Apply("", paste, maxLength: 2));
+        }
+
+        [Fact]
+        public void Pasted_non_BMP_text_is_rejected_whole_when_filter_rejects_its_low_unit()
+        {
+            using var _ = new FakeClipboard("🙂");
+            InputState paste = Frame(new[] { Key.V }, held: new[] { Key.LeftControl });
+
+            Assert.Equal("", TextEntry.Apply("", paste, filter: (_, c) => !char.IsLowSurrogate(c)));
+        }
+
+        [Fact]
+        public void Clipboard_paste_keeps_its_existing_control_character_behavior()
+        {
+            using var _ = new FakeClipboard("a\nb");
+            Assert.Equal("a\nb", TextEntry.Apply("", Frame(new[] { Key.V },
+                held: new[] { Key.LeftControl })));
+        }
     }
 }

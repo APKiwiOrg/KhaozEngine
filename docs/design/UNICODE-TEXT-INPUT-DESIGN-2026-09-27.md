@@ -24,7 +24,7 @@ string is empty. A dead key must not fall through to the old US key map in that 
 `TextEntry` consumes committed text when the source is available and uses its current key map only
 when it is unavailable, including headless snapshots. Backspace and paste remain key actions.
 MaxLength continues to count UTF-16 units. A non-BMP scalar is admitted or rejected as a pair,
-including when a filter is supplied, so editing never creates a lone surrogate. Backspace removes
+including when a filter is supplied, for both OS text and clipboard paste. Backspace removes
 one scalar. The existing `Func<string, char, bool>` filter API remains intact. Right Alt with Ctrl
 may represent AltGr, so committed text from that chord is allowed while ordinary Ctrl and Super
 shortcuts stay suppressed.

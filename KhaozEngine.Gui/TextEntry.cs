@@ -1,5 +1,4 @@
 using System;
-using System.Text;
 using KhaozEngine.Platform;
 using KhaozEngine.Windowing;
 
@@ -84,24 +83,13 @@ namespace KhaozEngine.Gui
         public static string Apply(string current, InputManager input, int maxLength = int.MaxValue, Func<string, char, bool>? filter = null, bool allowPaste = true)
             => Apply(current, input.State, maxLength, filter, allowPaste);
 
-        // Appends the system clipboard text to the buffer, each char gated by the same filter + maxLength as typed
-        // input, against the buffer as accumulated so far in this paste (not a pre-paste snapshot), so a second dot
-        // later in the same clipboard text is rejected the same way a second dot in one typed frame is. StringBuilder
-        // keeps the append itself from being O(n^2) on the string. maxLength bounds the buffer, so re-stringifying
-        // it once per admitted char stays cheap in every real caller (single-line fields with a small maxLength).
+        // Clipboard text uses the same scalar-safe filter and cap as OS committed text. It retains the old paste
+        // allowance for control characters, which are suppressed only for OS character callbacks.
         static string AppendClipboard(string current, int maxLength, Func<string, char, bool>? filter)
         {
             string clip = Clipboard.TryGetClipboardText();
-            if (string.IsNullOrEmpty(clip)) return current;
-
-            var sb = new StringBuilder(current);
-            foreach (char c in clip)
-            {
-                if (sb.Length >= maxLength) break;
-                if (filter != null && !filter(sb.ToString(), c)) continue;
-                sb.Append(c);
-            }
-            return sb.ToString();
+            return string.IsNullOrEmpty(clip) ? current
+                : CommittedTextAdmission.Append(current, clip, maxLength, filter, allowControls: true);
         }
 
         static bool TryMapChar(Key k, bool shift, out char c)

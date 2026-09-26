@@ -138,6 +138,27 @@ public sealed class ModelMotionPipelineTests
     }
 
     [Fact]
+    public void TheTemporalTargetBuildsTheGroundVariantsOnThreeSets()
+    {
+        using var device = new FakeGpuDevice();
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
+
+        FakeGraphicsPipelineRequest splat = Assert.Single(factory.GraphicsPipelines,
+            p => p.VertexGlsl == ShaderSources.SplatMotionVert);
+        FakeGraphicsPipelineRequest ground = Assert.Single(factory.GraphicsPipelines,
+            p => p.VertexGlsl == ShaderSources.TileGroundMotionVert);
+        Assert.Equal(ShaderSources.SplatMotionFrag, splat.FragmentGlsl);
+        Assert.Equal(ShaderSources.TileGroundMotionFrag, ground.FragmentGlsl);
+        Assert.Equal(3, splat.Description.ResourceLayouts.Length);
+        Assert.Equal(3, ground.Description.ResourceLayouts.Length);
+        Assert.Same(model.Motion!.FrameLayout, splat.Description.ResourceLayouts[2]);
+        Assert.Same(model.Motion!.FrameLayout, ground.Description.ResourceLayouts[2]);
+        Assert.DoesNotContain(factory.GraphicsPipelines, p => p.VertexGlsl == ShaderSources.SplatVert);
+        Assert.DoesNotContain(factory.GraphicsPipelines, p => p.VertexGlsl == ShaderSources.TileGroundVert);
+    }
+
+    [Fact]
     public void EveryPipelineATemporalRendererBuildsBindsAtMostVulkansFourGuaranteedSets()
     {
         // maxBoundDescriptorSets is only guaranteed to be 4, so a fifth set would fail pipeline creation on a

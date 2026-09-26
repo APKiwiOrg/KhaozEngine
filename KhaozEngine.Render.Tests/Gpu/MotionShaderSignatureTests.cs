@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
@@ -46,5 +47,36 @@ public sealed class MotionShaderSignatureTests
                 fragment, StringComparison.Ordinal);
         else
             Assert.Contains("oMotion = vec4(0.0);", fragment, StringComparison.Ordinal);
+    }
+
+    /// <summary>The tile-ground pair reads every interpolant its vertex emits, so its variant must too: the two
+    /// signatures are the same set, as <c>D3D11FxcValidationTests.TheTileGroundInterpolants_AreGapFreeAndEntirelyRead</c>
+    /// holds for the base pair.</summary>
+    [Fact]
+    public void TheTileGroundVariantReadsEveryInterpolantItsVertexEmits()
+    {
+        CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
+            ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, "TileGroundMotion");
+
+        Assert.Equal(D3D11FxcValidationTests.Semantics(pair.VertexSource, "SPIRV_Cross_Output"),
+            D3D11FxcValidationTests.Semantics(pair.FragmentSource, "SPIRV_Cross_Input"));
+    }
+
+    /// <summary>The splat variant is the one that moves interpolants. SplatFrag reads 0 to 4 and SplatVert parks three
+    /// outputs it never reads at 5 to 7, so the variant moves those three to 7 to 9 and the pair joins the read block at
+    /// 5 and 6. Its fragment reads exactly 0 to 6 and its vertex emits exactly 0 to 9, so every parked interpolant sits
+    /// above everything the fragment reads, as
+    /// <c>D3D11FxcValidationTests.TheTerrainInterpolantOrdering_KeepsTheFragmentInputsAGapFreePrefix</c> holds for the
+    /// base pair.</summary>
+    [Fact]
+    public void TheSplatVariantParksItsThreeUnreadInterpolantsAboveThePair()
+    {
+        CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(
+            ShaderSources.SplatMotionVert, ShaderSources.SplatMotionFrag, "SplatMotion");
+
+        Assert.Equal(Enumerable.Range(0, 10).Select(i => (uint)i).ToArray(),
+            D3D11FxcValidationTests.Semantics(pair.VertexSource, "SPIRV_Cross_Output"));
+        Assert.Equal(Enumerable.Range(0, 7).Select(i => (uint)i).ToArray(),
+            D3D11FxcValidationTests.Semantics(pair.FragmentSource, "SPIRV_Cross_Input"));
     }
 }

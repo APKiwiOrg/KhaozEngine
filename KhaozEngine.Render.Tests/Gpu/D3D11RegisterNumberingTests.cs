@@ -266,11 +266,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on eight of the shipped
+        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on ten of the shipped
         /// multi-layout pipelines: <c>SpriteBatch</c>, the skinned model pass, the skinned depth pass, the splat
-        /// pass, the tile-ground pass, and the rigid, skinned and foliage temporal variants. The skinned model and
-        /// depth passes share one palette layout OBJECT at different slots, which is the case that proves the base
-        /// comes from the array rather than from the layout.
+        /// pass, the tile-ground pass, and the rigid, skinned, foliage, splat and tile-ground temporal variants. The
+        /// skinned model and depth passes share one palette layout OBJECT at different slots, which is the case that
+        /// proves the base comes from the array rather than from the layout.
         /// </summary>
         [Fact]
         public void AcrossLayouts_TheShippedPipelinesFlattenInArrayOrder()
@@ -368,6 +368,18 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal("b1", Absolute(foliageTemporal, 1));
             Assert.Equal("b2", Absolute(foliageTemporal, 2));
+
+            // The two ground temporal variants: each ground pass's frame and material sets, then the motion block alone
+            // at set 2, so it continues the b file after the material's params block and the two sets keep the base
+            // pass's registers. Read off the emitted HLSL: both vertex stages name the frame block b0 and the motion
+            // block b2, and both fragment stages name exactly the registers of their base program.
+            D3D11ResourceLayout[] splatTemporal = { splatFrame, splatMaterial, motionFrame };
+            D3D11ResourceLayout[] groundTemporal = { groundFrame, groundMaterial, motionFrame };
+
+            Assert.Equal("b1 t2 t3 s0 t4 s1 t5 t6", Absolute(splatTemporal, 1));
+            Assert.Equal("b2", Absolute(splatTemporal, 2));
+            Assert.Equal("b1 t2 s0 t3 s1 t4 t5", Absolute(groundTemporal, 1));
+            Assert.Equal("b2", Absolute(groundTemporal, 2));
         }
 
         /// <summary>

@@ -73,6 +73,14 @@ namespace KhaozEngine.Render3D.Rendering
         void BuildTileGroundPipeline(IGpuResourceFactory factory, GpuOutputDescription modelOutputs,
             GpuVertexLayoutDescription vertexLayout, GpuVertexLayoutDescription instanceLayout)
         {
+            if (_motion is { } motion && MotionMath.IsTemporal(modelOutputs))
+            {
+                // The temporal variant: the ground's two sets, then the motion block at set 2.
+                _tileGroundPipeline = OpaqueMotionPipeline(factory, modelOutputs, motion.TileGroundShaders,
+                    new[] { _tileGroundFrameLayout, _tileGroundMaterialLayout, motion.FrameLayout },
+                    new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout });
+                return;
+            }
             _tileGroundPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
@@ -132,6 +140,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             cl.SetGraphicsResourceSet(0, _tileGroundFrameSet);
             cl.SetGraphicsResourceSet(1, groundSet);
+            if (_motion is { } motion) cl.SetGraphicsResourceSet(2, motion.FrameSet);   // the ground variant's motion block
             cl.SetVertexBuffer(0, vb);
             cl.SetVertexBuffer(1, _instanceBuffer!);
             cl.SetIndexBuffer(ib, indexFormat);

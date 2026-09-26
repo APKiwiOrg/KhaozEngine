@@ -212,6 +212,8 @@ namespace KhaozEngine.Tests.Gpu
             ("ModelRenderer dissolve", ["Model"]),
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
             ("ModelRenderer tile ground", ["Model.tileGroundFrame", "Model.tileGroundMaterial"]),
+            ("ModelRenderer splat motion", ["Model.splatFrame", "Model.splatMaterial", "Motion.frame"]),
+            ("ModelRenderer tile ground motion", ["Model.tileGroundFrame", "Model.tileGroundMaterial", "Motion.frame"]),
             ("ModelRenderer motion", ["Model", "Motion.rigid"]),
             ("ModelRenderer cpu skinned motion", ["Model", "Motion.frame"]),
             ("OceanFftProducer row", ["OceanFft.row"]),
@@ -265,7 +267,7 @@ namespace KhaozEngine.Tests.Gpu
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
             Assert.Equal(48, ShippedLayouts.Count);
-            Assert.Equal(49, ShippedPipelines.Count);
+            Assert.Equal(51, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

@@ -21,6 +21,8 @@ public sealed class MotionShaderTextTests
             ShaderSources.SkinnedModelDissolveFrag, ""),
         ["ModelDissolveMotionFrag"] = (ShaderSources.ModelDissolveMotionFrag, ShaderSources.ModelDissolveFrag,
             "layout(location=10) in float vDissolveComplement;"),
+        ["SplatMotionFrag"] = (ShaderSources.SplatMotionFrag, ShaderSources.SplatFrag, ""),
+        ["TileGroundMotionFrag"] = (ShaderSources.TileGroundMotionFrag, ShaderSources.TileGroundFrag, ""),
     };
 
     public static TheoryData<string> Names()
@@ -112,5 +114,48 @@ public sealed class MotionShaderTextTests
         Assert.Equal(Inputs(baseline), Inputs(variant));
         Assert.Equal(Outputs(baseline), Outputs(variant));
         Assert.Equal(Tail(baseline), Tail(variant));
+    }
+
+    // main and everything after it, without the clip pair. Not named Main, which C# reads as a bad entry point (CS0028).
+    static string[] FromMain(string[] lines) => lines.SkipWhile(line => line != "void main() {").Where(line => !IsClip(line)).ToArray();
+
+    // The name an interpolant declaration declares.
+    static string Name(string line) => line[..line.IndexOf(';', StringComparison.Ordinal)].Split(' ')[^1];
+
+    // The lines outside the block that opens on the line containing open, through its closing brace line.
+    static IEnumerable<string> WithoutBlock(IEnumerable<string> lines, string open)
+    {
+        bool inside = false;
+        foreach (string line in lines)
+        {
+            if (!inside && line.Contains(open, StringComparison.Ordinal)) inside = true;
+            if (!inside) yield return line;
+            else if (line == "};") inside = false;
+        }
+    }
+
+    /// <summary>SplatMotionVert moves SplatVert's three fragment-unused outputs to make room for the clip pair, so it is
+    /// written out whole. It keeps SplatVert's inputs line for line, its outputs apart from their locations, and its main
+    /// apart from the clip pair. Every other line of SplatVert is held too: the frame block by its members in order,
+    /// because the variant spells it compactly, and the rest whole, which pins the five outputs SplatFrag reads to their
+    /// locations. Only the comment on the old layout and the three moved outputs are free to differ.</summary>
+    [Fact]
+    public void TheSplatVariantRestatesSplatVertLineForLine()
+    {
+        string[] baseline = Lines(ShaderSources.SplatVert);
+        string[] variant = Lines(ShaderSources.SplatMotionVert);
+        Assert.Equal(Inputs(baseline), Inputs(variant));
+        Assert.Equal(Outputs(baseline), Outputs(variant));
+        Assert.Equal(FromMain(baseline), FromMain(variant));
+
+        string[] read = Inputs(Lines(ShaderSources.SplatFrag)).Select(Name).ToArray();
+        string[] Rest(string[] lines) => WithoutBlock(WithoutBlock(lines, "uniform U {"), "uniform MotionFrame {")
+            .Where(line => !line.StartsWith("//", StringComparison.Ordinal) && !IsClip(line)
+                && !(Declares(line, ") out ") && !read.Contains(Name(line))))
+            .ToArray();
+        Assert.Equal(5, read.Length);
+        Assert.Equal(MotionUboLayoutTests.Members(ShaderSources.SplatVert, "uniform U {"),
+            MotionUboLayoutTests.Members(ShaderSources.SplatMotionVert, "uniform U {"));
+        Assert.Equal(Rest(baseline), Rest(variant));
     }
 }

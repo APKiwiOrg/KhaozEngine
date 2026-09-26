@@ -11,10 +11,10 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
-/// <summary>What the model renderer's skinned draw paths bind under the base and the temporal model target, read off a
-/// recording list over a fake device. The CPU-skinned facts pin the fix for the defect D5 left behind: a temporal
-/// target made the rigid pipeline the rigid motion variant, and CPU-skinned draws kept binding it with neither its set
-/// 1 nor its vertex slot 2.</summary>
+/// <summary>What the model renderer's skinned and ground draw paths bind under the base and the temporal model target,
+/// read off a recording list over a fake device. The CPU-skinned facts pin the fix for the defect D5 left behind: a
+/// temporal target made the rigid pipeline the rigid motion variant, and CPU-skinned draws kept binding it with neither
+/// its set 1 nor its vertex slot 2.</summary>
 public sealed class ModelMotionBindTests
 {
     // The model-pass sources these facts can meet, by name, so a failure reads as a program name and not as GLSL.
@@ -29,6 +29,14 @@ public sealed class ModelMotionBindTests
         [ShaderSources.ModelDissolveMotionFrag] = nameof(ShaderSources.ModelDissolveMotionFrag),
         [ShaderSources.SkinnedModelMotionVert] = nameof(ShaderSources.SkinnedModelMotionVert),
         [ShaderSources.SkinnedModelMotionFrag] = nameof(ShaderSources.SkinnedModelMotionFrag),
+        [ShaderSources.SplatVert] = nameof(ShaderSources.SplatVert),
+        [ShaderSources.SplatFrag] = nameof(ShaderSources.SplatFrag),
+        [ShaderSources.SplatMotionVert] = nameof(ShaderSources.SplatMotionVert),
+        [ShaderSources.SplatMotionFrag] = nameof(ShaderSources.SplatMotionFrag),
+        [ShaderSources.TileGroundVert] = nameof(ShaderSources.TileGroundVert),
+        [ShaderSources.TileGroundFrag] = nameof(ShaderSources.TileGroundFrag),
+        [ShaderSources.TileGroundMotionVert] = nameof(ShaderSources.TileGroundMotionVert),
+        [ShaderSources.TileGroundMotionFrag] = nameof(ShaderSources.TileGroundMotionFrag),
     };
 
     // The program a recorded draw's pipeline was built from, as "vertex + fragment".
@@ -123,5 +131,93 @@ public sealed class ModelMotionBindTests
         Assert.Same(motion.SkinnedPalette.Set, draw.Sets[3].Set);
         Assert.Equal(SkinnedMotionPalette.OffsetFor(2), draw.Sets[3].DynamicOffset);
         Assert.Equal(2u * 8448u, draw.Sets[3].DynamicOffset);
+    }
+
+    // One ground draw on its own list, after its pass bind, the way Scene3D records the splat and tile-ground passes.
+    static RecordingGpuCommandList.DrawBindings RecordGroundDraw(FakeGpuDevice device, ModelRenderer model,
+        IGpuResourceSet material, bool splat)
+    {
+        model.UploadInstances(new NullGpuCommandList(), new ModelRenderer.InstanceData[1]);
+        using IGpuBuffer vb = device.Factory.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.VertexBuffer));
+        using IGpuBuffer ib = device.Factory.CreateBuffer(new GpuBufferDescription(6, GpuBufferUsage.IndexBuffer));
+        var cl = new RecordingGpuCommandList(new NullGpuCommandList()) { CaptureBindings = true };
+
+        if (splat)
+        {
+            model.BindSplatPass(cl);
+            model.DrawSplatMeshInstanced(cl, vb, ib, 3, GpuIndexFormat.UInt16, 0, 1, material);
+        }
+        else
+        {
+            model.BindTileGroundPass(cl);
+            model.DrawTileGroundMeshInstanced(cl, vb, ib, 3, GpuIndexFormat.UInt16, 0, 1, material);
+        }
+        return Assert.Single(cl.Bindings);
+    }
+
+    [Fact]
+    public void UnderTheBaseTargetASplatDrawBindsThePreTemporalPipelineAndNothingAboveSetOne()
+    {
+        using var device = new FakeGpuDevice();
+        using var model = new ModelRenderer(device, ModelTargets.Base, 64, 1);
+        var material = new FakeResourceSet();
+
+        RecordingGpuCommandList.DrawBindings draw = RecordGroundDraw(device, model, material, splat: true);
+
+        Assert.Equal("SplatVert + SplatFrag", Program(draw.Pipeline));
+        Assert.Equal(new uint[] { 0, 1 }, draw.Sets.Keys.Order().ToArray());
+        Assert.Same(material, draw.Sets[1].Set);
+        Assert.Equal(new uint[] { 0, 1 }, draw.VertexBuffers.Keys.Order().ToArray());
+        Assert.Same(model.InstanceBuffer, draw.VertexBuffers[1]);
+    }
+
+    [Fact]
+    public void UnderTheTemporalTargetASplatDrawBindsItsVariantAndTheMotionBlockAtSetTwo()
+    {
+        using var device = new FakeGpuDevice();
+        using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
+        var material = new FakeResourceSet();
+
+        RecordingGpuCommandList.DrawBindings draw = RecordGroundDraw(device, model, material, splat: true);
+
+        Assert.Equal("SplatMotionVert + SplatMotionFrag", Program(draw.Pipeline));
+        Assert.Equal(new uint[] { 0, 1, 2 }, draw.Sets.Keys.Order().ToArray());
+        Assert.Same(material, draw.Sets[1].Set);
+        Assert.Same(model.Motion!.FrameSet, draw.Sets[2].Set);
+        Assert.Equal(new uint[] { 0, 1 }, draw.VertexBuffers.Keys.Order().ToArray());
+        Assert.Same(model.InstanceBuffer, draw.VertexBuffers[1]);
+    }
+
+    [Fact]
+    public void UnderTheBaseTargetATileGroundDrawBindsThePreTemporalPipelineAndNothingAboveSetOne()
+    {
+        using var device = new FakeGpuDevice();
+        using var model = new ModelRenderer(device, ModelTargets.Base, 64, 1);
+        var material = new FakeResourceSet();
+
+        RecordingGpuCommandList.DrawBindings draw = RecordGroundDraw(device, model, material, splat: false);
+
+        Assert.Equal("TileGroundVert + TileGroundFrag", Program(draw.Pipeline));
+        Assert.Equal(new uint[] { 0, 1 }, draw.Sets.Keys.Order().ToArray());
+        Assert.Same(material, draw.Sets[1].Set);
+        Assert.Equal(new uint[] { 0, 1 }, draw.VertexBuffers.Keys.Order().ToArray());
+        Assert.Same(model.InstanceBuffer, draw.VertexBuffers[1]);
+    }
+
+    [Fact]
+    public void UnderTheTemporalTargetATileGroundDrawBindsItsVariantAndTheMotionBlockAtSetTwo()
+    {
+        using var device = new FakeGpuDevice();
+        using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
+        var material = new FakeResourceSet();
+
+        RecordingGpuCommandList.DrawBindings draw = RecordGroundDraw(device, model, material, splat: false);
+
+        Assert.Equal("TileGroundMotionVert + TileGroundMotionFrag", Program(draw.Pipeline));
+        Assert.Equal(new uint[] { 0, 1, 2 }, draw.Sets.Keys.Order().ToArray());
+        Assert.Same(material, draw.Sets[1].Set);
+        Assert.Same(model.Motion!.FrameSet, draw.Sets[2].Set);
+        Assert.Equal(new uint[] { 0, 1 }, draw.VertexBuffers.Keys.Order().ToArray());
+        Assert.Same(model.InstanceBuffer, draw.VertexBuffers[1]);
     }
 }

@@ -186,6 +186,14 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.FoliageMotionVert, ShaderSources.ModelMotionFrag, "FoliageMotion");
 
         [Fact]
+        public void SplatMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.SplatMotionVert, ShaderSources.SplatMotionFrag, "SplatMotion");
+
+        [Fact]
+        public void TileGroundMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, "TileGroundMotion");
+
+        [Fact]
         public void SkinnedShadowDepth()
             => ShaderValidation.ValidatePair(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag, "SkinnedShadowDepth");
 

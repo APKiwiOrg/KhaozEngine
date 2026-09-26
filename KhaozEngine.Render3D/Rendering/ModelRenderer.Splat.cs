@@ -68,6 +68,14 @@ namespace KhaozEngine.Render3D.Rendering
         void BuildSplatPipeline(IGpuResourceFactory factory, GpuOutputDescription modelOutputs,
             GpuVertexLayoutDescription vertexLayout, GpuVertexLayoutDescription instanceLayout)
         {
+            if (_motion is { } motion && MotionMath.IsTemporal(modelOutputs))
+            {
+                // The temporal variant: the terrain's two sets, then the motion block at set 2.
+                _splatPipeline = OpaqueMotionPipeline(factory, modelOutputs, motion.SplatShaders,
+                    new[] { _splatFrameLayout, _splatMaterialLayout, motion.FrameLayout },
+                    new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout });
+                return;
+            }
             _splatPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
@@ -115,6 +123,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             cl.SetGraphicsResourceSet(0, _splatFrameSet);
             cl.SetGraphicsResourceSet(1, splatSet);
+            if (_motion is { } motion) cl.SetGraphicsResourceSet(2, motion.FrameSet);   // the terrain variant's motion block
             cl.SetVertexBuffer(0, vb);
             cl.SetVertexBuffer(1, _instanceBuffer!);
             cl.SetIndexBuffer(ib, indexFormat);

@@ -64,6 +64,8 @@ namespace KhaozEngine.Tests.Gpu
                 ["ModelCpuSkinnedMotion"] = "ModelRenderer cpu skinned motion",
                 ["ModelCpuSkinnedDissolveMotion"] = "ModelRenderer cpu skinned motion",
                 ["FoliageMotion"] = "ModelRenderer foliage motion",
+                ["SplatMotion"] = "ModelRenderer splat motion",
+                ["TileGroundMotion"] = "ModelRenderer tile ground motion",
 
                 // All three depth variants are built into the same single-set pipeline: the dissolve fragment
                 // shaders read the instance's dissolve amount out of the SAME uniform block rather than adding a
@@ -213,7 +215,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(57, catalog.Length);
+            Assert.Equal(59, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

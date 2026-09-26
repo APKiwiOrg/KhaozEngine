@@ -13,6 +13,10 @@ overload, so a bare literal is a compile error. The `KhaozEngine.Localization.An
 icon-atlas key, not player text, so it is unchanged. See the App package for
 `StringId` / `LocalizedText` / `LocalizationContext`.
 
+The opt-in rich-text adapters take `MarkupText`, built only from a `StringId`. It has no raw root factory.
+Non-localizable names, numbers and input labels enter as `MarkupText.Of` arguments, which are formatted and
+markup-escaped before insertion into the trusted catalog template.
+
 ## Radial menu and source-target use
 
 `RadialMenu` is a retained interaction menu anchored to a pointer or projected world position. It accepts one
@@ -345,6 +349,13 @@ source key and collapse key match. The latest entry supplies the timestamp, auth
 while `RepeatCount` records how many were collapsed. Author and content use `LocalizedText`, so catalog text
 and explicit raw player names or messages stay distinguishable.
 
+An entry can opt into trusted localized semantic colour markup by passing `MarkupText` instead of
+`LocalizedText` to the additive constructor. Catalog templates use `[name]...[/]`, may nest spans, and write
+`[[` for a literal `[`. `MarkupText.Of` culture-formats and escapes every argument before insertion, so player
+names and other caller values cannot introduce tags. `ChatBoxTheme.InlineStyles` maps names to colours. A missing
+mapping inherits the entry colour, and malformed markup is drawn literally. Ordinary entries stay on the plain
+text path.
+
 `ChatBox` draws that history with wrapping and scrollback, optional local timestamps, own and system message
 colours, and a single-line composer. Enter opens the composer, a later Enter submits trimmed non-empty text,
 and Escape clears and closes it. `Update` reserves the full `Bounds` through `Pointer`, including movement and
@@ -371,6 +382,7 @@ text immediately through the normal `TextInput.SetText` path.
 ```csharp
 using System;
 using KhaozEngine.App;
+using KhaozEngine.Gui;
 using KhaozEngine.Gui.Chat;
 using KhaozEngine.Primitives;
 
@@ -393,6 +405,18 @@ history.Add(new ChatEntry(
     CollapseKey: message,
     Kind: ChatEntryKind.Ordinary,
     IsOwn: senderId == localPlayerId));
+
+chat.Theme.InlineStyles = new InlineTextStyles(
+    new InlineTextStyle("emphasis", chat.Theme.OwnText),
+    new InlineTextStyle("key", GuiTheme.Default.AccentBright));
+history.Add(new ChatEntry(
+    DateTimeOffset.UtcNow,
+    SourceKey: "loot",
+    Author: null,
+    Content: MarkupText.Of(Strings.ChatLootFound, itemName, bindingName),
+    CollapseKey: itemId,
+    Kind: ChatEntryKind.System,
+    IsOwn: false));
 
 chat.Update(pointer, input, dt);
 chat.Draw(batch, white);
@@ -679,6 +703,8 @@ chat.Draw(batch, white);
     A scaled line still wraps within `MaxWidth` (the word-wrap budget divides by the line's own scale).
     `TooltipLine.OfSegments` resolves `LabelSegment`s into one body line and keeps each segment's colour
     through word wrapping and hard breaks. Its fallback colour applies when a segment has none.
+    `TooltipLine.OfMarkup` is the localized one-template alternative. It resolves `MarkupText` through an
+    `InlineTextStyles` map and keeps the resulting colours through the same wrapping path.
     `Opacity` (default `1f`) fades the whole bubble for a host transition, and covers every colour it paints
     (background, border, title row, separator, each body line), so `0` draws nothing.
     `AnchorMode` (default `TooltipAnchorMode.Centered`, the bubble straddling the anchor) switches to
@@ -1118,8 +1144,9 @@ borderless style stays borderless. Text drawn through the batch in that pass als
 block's ascent baseline, once per `DrawString`, so every glyph of a word stays on one baseline - pair with a
 `DpiFont` from `KhaozEngine.Render2D` for a crisp atlas).
 
-Text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout` (over the `ITextMeasurer` seam, so the layout
-math is headless-testable). Clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware, and
+Plain text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout`. Resolved coloured runs use
+`ColoredTextLayout.Wrap`. Both operate over the `ITextMeasurer` seam, so the layout math is headless-testable.
+Clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware, and
 nesting: a clipping widget drawn inside another clipping widget is bounded by both). Ported
 from `KhaozEngine.Screens`/`UI` (game-specific layout coupling dropped). Built on `KhaozEngine.Windowing`
 (Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D). Part of the MonoGame-free engine.

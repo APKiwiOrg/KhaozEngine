@@ -4,10 +4,12 @@ using System.Numerics;
 using KhaozEngine.App;
 using KhaozEngine.Gui;
 using KhaozEngine.Render2D;
+using KhaozEngine.Tests.App;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gui;
 
+[Collection("AmbientLocalization")]
 public sealed class TooltipColoredLineTests
 {
     sealed class FixedFont : ITextMeasurer
@@ -93,5 +95,36 @@ public sealed class TooltipColoredLineTests
             new Vector2(200, 200), new Vector2(600, 400), TooltipMetrics.Default,
             100f, 1f, TooltipAnchorMode.Offset, out var visual);
         Assert.All(visual, line => Assert.True(line.Runs.IsEmpty));
+    }
+
+    [Fact]
+    public void Localized_markup_maps_semantic_styles_and_keeps_them_through_wrapping()
+    {
+        IStringCatalog? previous = LocalizationContext.Catalog;
+        try
+        {
+            LocalizationContext.Catalog = new DictionaryCatalog()
+                .Add("Tip.Action", "Buy [rare]Stone pickaxe[/] [key]E[/]");
+            var styles = new InlineTextStyles(
+                new InlineTextStyle("rare", Rare),
+                new InlineTextStyle("key", Yellow));
+
+            TooltipLine source = TooltipLine.OfMarkup(
+                MarkupText.Of(new StringId("Tip.Action")), styles, Yellow);
+            _ = Tooltip.ComputeBounds(Font, "", "", Font, Font, [source],
+                new Vector2(200, 200), new Vector2(600, 400), TooltipMetrics.Default,
+                100f, 1f, TooltipAnchorMode.Offset, out var visual);
+
+            Assert.Equal("Buy Stone pickaxe E", source.Text);
+            Assert.True(visual.Count > 1);
+            Assert.Contains(visual.SelectMany(line => line.Runs.ToArray()), run =>
+                run.Text.Contains("Stone", StringComparison.Ordinal) && run.Color == Rare);
+            Assert.Contains(visual.SelectMany(line => line.Runs.ToArray()), run =>
+                run.Text == "E" && run.Color == Yellow);
+        }
+        finally
+        {
+            LocalizationContext.Catalog = previous;
+        }
     }
 }

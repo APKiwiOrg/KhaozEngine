@@ -32,6 +32,9 @@ public sealed class ChatBoxTheme
     /// <summary>Timestamp prefix text.</summary>
     public Vector4 TimestampText = GuiTheme.Default.TextMuted;
 
+    /// <summary>Semantic inline-text colours. Empty by default, so every markup span inherits its entry colour.</summary>
+    public InlineTextStyles InlineStyles = InlineTextStyles.Empty;
+
     /// <summary>A fresh theme derived from the current ambient GUI palette.</summary>
     public static ChatBoxTheme Default => new();
 }

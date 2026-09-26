@@ -3393,8 +3393,9 @@ scene.DrawTrail(strip, TrailStyle.Default with { Color = new Color(0.8f, 0.9f, 1
 
 A draw descriptor holds every knob of one draw in one value. `Scene3D.Draw(in RigidInstanceDraw)` queues a rigid
 instance and `Scene3D.DrawSkinned(in SkinnedInstanceDraw, ReadOnlySpan<Matrix4x4> boneMatrices)` queues a skinned
-one. The constructor takes the mesh and the absolute transform and sets the plain overload's defaults: a white tint,
-`Material.None`, no dissolve, casting shadows and no key. Everything else is an object initializer.
+one. The constructor takes the mesh and the absolute transform and sets the defaults: a white tint, `Material.None`,
+no dissolve, casting shadows and no key, which are the plain rigid overload's. Everything else is an object
+initializer.
 
 ```csharp
 // crateId and sessionId are ulong ids the game already owns.
@@ -3440,8 +3441,8 @@ shadow), so build one with the constructor.
 
 Keep a key for the object's whole life. While temporal rendering is active, the scene records each keyed draw's
 world transform at submission, and for a skinned draw its composed bone palette as well, and keeps last frame's for
-the renderer. Whether a draw is recorded is decided when it is submitted: before the frame's first render that
-follows whatever asks for temporal rendering at that moment, and after it the frame's fixed state. At `Begin`, while
+the renderer. Whether a draw is recorded is decided when it is submitted. Before the frame's first render, recording
+follows whatever asks for temporal rendering at that moment, and after it, the frame's fixed state. At `Begin`, while
 temporal rendering is active, the records of the frame that just ended become last frame's. While it is off, `Begin`
 forgets them all, so a scene that turns temporal rendering off and on again starts with no previous state rather
 than a stale one.
@@ -3458,7 +3459,8 @@ nothing: nothing is recorded and nothing is allocated.
 ECS entities below), and `Scene3DTileWorldScene` forwards the tile-world seam's descriptor draws whole
 (`ITileWorldScene.DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw, boneMatrices)`).
 Everything else a game draws that moves, such as remote players, monsters and held items, takes a key from the
-game.
+game. `Draw(PropHandle, ...)` takes no key, so a moving multi-part body is loaded and drawn as individual
+`MeshHandle`s, each through `Draw(in RigidInstanceDraw)` with its own key.
 
 ### Camera-relative rendering (`Scene3D.RenderOrigin`)
 
@@ -3551,7 +3553,7 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
 `Scene3DBinder.Submit(world, scene)` draws every `KhaozEngine.Ecs` entity carrying both a `Transform3D` and a
 `MeshInstance`, carrying the instance `Material` through. A zero `Transform3D.Scale` is treated as one, a zero
 `Rotation` as identity, and a zero `MeshInstance.Tint` as white. The delegate overloads
-`Submit(world, draw)` are the pure core for a headless test with a recording delegate.
+`Submit(world, draw)` are the pure cores for a headless test with a recording delegate.
 
 `Submit(world, scene)` keys each draw with `Scene3DBinder.MotionKeyOf(entity)`, derived from the entity's id and
 version. The key holds for the entity's life, and a recycled id carries a new version, so it becomes a new key with
@@ -14987,13 +14989,13 @@ skinned body, so unsupported use fails at the call instead of dropping or misdra
 A moving body keys its draw through `DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw,
 boneMatrices)`, which carry a full draw descriptor with its motion key (see "Draw descriptors and motion keys").
 `Scene3DTileWorldScene` forwards both to `Scene3D` whole. Their defaults fall back to the draws above, so an older
-custom scene keeps compiling. The rigid default keeps the mesh, the transform and the dissolve with its edge, and
-routes a dissolving descriptor through `DrawMeshDissolved`. It draws nothing for a shadow-only descriptor, and
+custom scene keeps compiling. The rigid default keeps the mesh, the transform and the dissolve with its edge, and routes
+a descriptor whose `Dissolve` is above 0 through `DrawMeshDissolved`. It draws nothing for a shadow-only descriptor, and
 nothing for a complement phase with no dissolve, which `Scene3D` draws in neither pass. A shadow-only descriptor with
 `CastsShadows = false` throws the same `ArgumentException` the scene's instance queue throws. The rigid default drops
 the key, the tint, the material, `CastsShadows`, `InvertShadowDissolve` and `DissolveComplement`. The skinned default
-keeps the tint as well and drops the key, the material and `CastsShadows`. On a scene that does not implement the
-older skinned draws it still throws `NotSupportedException`.
+keeps the tint as well and drops the key, the material and `CastsShadows`. On a scene that does not implement the older
+skinned draws it still throws `NotSupportedException`.
 
 **Build the static list.** The game collects the shapes it wants outlined as a flat
 `IReadOnlyList<CollisionStatic>` (`readonly record struct CollisionStatic(PhysicsShape Shape, Pose Pose)`) -

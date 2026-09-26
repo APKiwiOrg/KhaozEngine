@@ -85,7 +85,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `Scene3D.Draw(in RigidInstanceDraw)` and `Scene3D.DrawSkinned(in SkinnedInstanceDraw, boneMatrices)` queue one.
   Every older `Draw`, `DrawShadowOnly` and `DrawSkinned` overload builds a descriptor with no key and forwards, so
   existing callers queue exactly what they did, and a new draw knob becomes a descriptor property rather than another
-  overload. The constructor sets the plain overload's defaults (white tint, `Material.None`, casting shadows), and
+  overload. The constructor sets a white tint, `Material.None` and casting shadows (the plain rigid overload's), and
   shadow-only without casting is refused as before. `MotionKey` is a stable 64-bit identity for a draw that moves:
   `MotionKey.From(id)` wraps an id the game owns and `MotionKey.Combine(key, part)` derives one key per part of a
   multi-part body. While temporal rendering is active (see the `Scene3D.CameraCut()` bullet above) the scene

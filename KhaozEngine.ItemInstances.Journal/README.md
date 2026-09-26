@@ -70,10 +70,10 @@ file read, no ambient static. The order is the design:
    order, in one pass. A rule that changed something marks the page DIRTY and moves its in-memory stamp. The
    page is not written: the rewrite is lazy and rides the next ordinary commit.
 4. **Unwrap and re-offer every quarantined entry**, at the WRAPPER's own stamped version.
-5. **Validate** the page's LIVE entries, then wrap what the validator quarantined, then emit one log line and
-   one counter increment per record for the whole container. A quarantined entry is not swept again: its
-   verdict is already stored, and the validator would read its wrapper as a payload and report the wrong
-   reason ([#936](https://github.com/APKiwiOrg/KhaozEngine/issues/936)).
+5. **Validate** every page entry, then wrap what the validator newly quarantined, then emit one log line and
+   one counter increment per record for the whole container. An already quarantined entry is reported from
+   its wrapper's stored reason and stamp without decoding the wrapper as a payload. It stays in the page-wide
+   instance id uniqueness check ([#936](https://github.com/APKiwiOrg/KhaozEngine/issues/936)).
 
 **Rules run BEFORE the validator and that is what gives a drift finding its meaning:** a
 `unknown-definition` or `unknown-content-reference` finding means NO RULE COVERED IT.
@@ -88,7 +88,7 @@ should have refused.
 |---|---|
 | `Pages` | every page that decoded, ascending by page index. A page that failed whole is not here |
 | `Reports` | one `InstanceValidationReport` per page, the validator's own accumulated findings |
-| `Findings` | everything the validator cannot say, because it never saw it |
+| `Findings` | page and load lifecycle facts beside the validator reports |
 | `Dirty` | the pages that owe the next ordinary commit a rewrite |
 | `QuarantinedRecords` | how many records are out of play |
 
@@ -101,7 +101,8 @@ the second one it would meet. `EntryRescued` is an entry that came back. `RemapA
 is a record the validator quarantined that the page cannot hold the wrapper for. Each one carries the section
 name an operator greps for, the page index taken from that NAME rather than from the header, the absolute
 slot (or `ContainerLoadFinding.NoSlot` on a whole-page finding), a reason token and the version the record
-stands at.
+stands at. An `EntryQuarantined` finding records that the wrapper remained, while its quarantine counter
+increment comes from the validator report so the record is counted once.
 
 `ContainerLoadReason` is the load path's own two tokens, beside the page tokens of `ItemContainerPageReason`
 and the quarantine tokens of `InstanceQuarantineReason`. `page-section-mismatch` is a page whose header names

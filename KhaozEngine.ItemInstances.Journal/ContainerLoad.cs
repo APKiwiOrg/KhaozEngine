@@ -67,7 +67,7 @@ public static partial class ContainerLoad
         }
 
         // ONE line per container and one counter increment per record, spec 12.6 over contracts 10.2. The
-        // load's own findings ride in beside the sweeps because they are records the sweeps never saw.
+        // load's own findings ride beside the sweeps for page failures, rescues and remap facts.
         InstanceValidationTelemetry.Report(
             load.Reports, load.Reasons, context.StreamKey, snapshot.VersionNumber, context.Logger, context.Counter);
         return new ContainerLoadResult(context.Container, load.Pages, load.Reports, load.Findings);
@@ -279,11 +279,12 @@ public static partial class ContainerLoad
             }
         }
 
-        /// <summary>Records one finding and, when it names a record no sweep will, its reason.</summary>
+        /// <summary>Records one load finding and, when no report counts it, its reason.</summary>
         public void Add(ContainerLoadFinding finding)
         {
             Findings.Add(finding);
             bool counted = finding.Kind != ContainerLoadFindingKind.EntryRescued
+                && finding.Kind != ContainerLoadFindingKind.EntryQuarantined
                 && finding.Kind != ContainerLoadFindingKind.EntryUnwrappable
                 && finding.Reason is not null;
             if (counted) Reasons.Add(finding.Reason!);

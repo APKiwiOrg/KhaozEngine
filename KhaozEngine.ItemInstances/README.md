@@ -693,7 +693,9 @@ Four of those rows deserve their reason spelled out.
 The two POLICY tokens of rows 12 and 13 live in `InstanceValidationReason` rather than beside the quarantine
 ones, exactly because neither has a durable ordinal and neither ever writes a wrapper.
 
-**An entry whose quarantined flag is set carries a WRAPPER rather than a payload.** A caller re-validating one
+**An entry whose quarantined flag is set carries a WRAPPER rather than a payload.** The whole-page `Validate`
+door reports it from the wrapper's stored reason and stamp without decoding the wrapper as a payload. The
+entry stays in the page-wide instance id uniqueness check. A caller using `ValidateEntry` to attempt a rescue
 unwraps it through `QuarantineWrapper.TryUnwrap` first and hands the ORIGINAL bytes in. That is how the first
 load after a missing remap rule lands restores the item exactly.
 

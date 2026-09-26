@@ -66,13 +66,9 @@ public static partial class ContainerLoad
     }
 
     /// <summary>
-    /// Step 4, and the wrappers it earns. The sweep is handed the page's LIVE entries only: a quarantined
-    /// entry carries a wrapper rather than a payload, nothing in the validator sniffs for the <c>KECQ</c>
-    /// magic, and its verdict is already stored, so sweeping it would re-decode a wrapper as a payload and
-    /// report whatever that failed as instead of what the record actually failed
-    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/936">#936</see>, which would let this stop
-    /// filtering). The cost of filtering is check 10: instance id uniqueness is container wide and now only
-    /// sees the live entries.
+    /// Step 4, and the wrappers it earns. The sweep is handed every entry, because the validator reads an
+    /// already quarantined entry's stored reason and stamp without decoding its <c>KECQ</c> wrapper as a
+    /// payload. Keeping the whole page in the span also keeps check 10 container wide.
     /// <para>
     /// <b>The sweep reads a payload ARENA rather than the stored page.</b> It takes one contiguous buffer plus
     /// windows into it, and after the rules have run the page's payloads live in the page's own slots, so the
@@ -84,33 +80,26 @@ public static partial class ContainerLoad
     static void Sweep(Loading load, JournalProjectionSection section, ItemContainerPage page)
     {
         int count = page.CopyEntriesTo(load.Slots);
-        int live = 0;
         int bytes = 0;
         for (int index = 0; index < count; index++)
         {
-            if (load.Slots[index].Quarantined) continue;
-
             bytes += load.Slots[index].Payload.Length;
-            live++;
         }
 
         byte[] arena = new byte[bytes];
         int written = 0;
-        live = 0;
         for (int index = 0; index < count; index++)
         {
             PageSlotInput entry = load.Slots[index];
-            if (entry.Quarantined) continue;
-
             entry.Payload.Span.CopyTo(arena.AsSpan(written));
-            load.Entries[live++] = new PageEntry(
+            load.Entries[index] = new PageEntry(
                 entry.Slot, entry.Flags, entry.DefinitionId, entry.Count, entry.InstanceId, written, entry.Payload.Length);
             written += entry.Payload.Length;
         }
 
-        var header = new PageHeader(page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion, live);
+        var header = new PageHeader(page.PageIndex, page.FirstSlot, page.SlotCount, page.ContentVersion, count);
         InstanceValidationReport report = InstanceValidator.Validate(
-            arena, header, load.Entries.AsSpan(0, live), load.Context.Properties, load.Context.Types, load.Snapshot);
+            arena, header, load.Entries.AsSpan(0, count), load.Context.Properties, load.Context.Types, load.Snapshot);
         load.Reports.Add(report);
         Quarantine(load, section, page, report);
     }

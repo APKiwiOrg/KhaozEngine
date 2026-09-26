@@ -105,6 +105,40 @@ public class ContainerLoadRescueTests
     }
 
     [Fact]
+    public void Check_10_sees_a_live_entry_sharing_an_id_with_a_quarantined_entry()
+    {
+        ContentTypeRegistry types = Types();
+        ContentSnapshot snapshot = Snapshot(types);
+
+        ContainerLoadResult result = ContainerLoad.Load(
+            [
+                Page(
+                    0,
+                    PageStamp,
+                    Wrapped(
+                        2,
+                        Sword,
+                        InstanceQuarantineReason.UnknownContentReference,
+                        WrapperStamp,
+                        AffixPayload(MissingId)),
+                    Slot(3, Sword, instanceId: Instance, payload: AffixPayload())),
+            ],
+            snapshot,
+            Context(types, Properties()));
+
+        InstanceValidationReport report = Assert.Single(result.Reports);
+        Assert.True(report.TryGetQuarantine(2, out InstanceValidationFinding stored), Describe(result));
+        Assert.Equal(InstanceQuarantineReason.UnknownContentReference, stored.Reason);
+        Assert.Equal(WrapperStamp, stored.StampedVersion);
+
+        Assert.True(report.TryGetQuarantine(3, out InstanceValidationFinding duplicate), Describe(result));
+        Assert.Equal(10, duplicate.Check);
+        Assert.Equal(InstanceQuarantineReason.InstanceIdDuplicate, duplicate.Reason);
+        Assert.Equal(2, report.QuarantinedRecords);
+        Assert.Equal(2, result.QuarantinedRecords);
+    }
+
+    [Fact]
     public void Rescuing_one_entry_does_not_touch_the_others()
     {
         ContentTypeRegistry types = Types();

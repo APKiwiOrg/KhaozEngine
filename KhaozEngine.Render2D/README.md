@@ -50,7 +50,9 @@ flushes are safe. Calling it before `Begin` or after `End` throws `InvalidOperat
   that may be thrown away. `DrawString` has a `float scale` overload (uniform scale about the top-left).
   `SpriteBatch.DrawStringRuns` accepts resolved `ColoredTextRun`s and advances one glyph pen across them,
   snapping the text block only once so a colour change cannot shift letter spacing. Its `opacity` scales
-  each run's alpha without changing RGB.
+  each run's alpha without changing RGB. `ColoredTextLayout.Wrap` wraps those runs as one block, preserves
+  interior space runs, and returns `ColoredTextLine` values whose run colours survive word and hard breaks.
+  It is device-free over `ITextMeasurer`, so game-owned dialogue layout can be tested headlessly.
   `TextLayout.AlignedX`/`DrawAligned`/`DrawWrapped` take an optional `scale` so aligned/wrapped text stays
   correct when drawn scaled (`scale = 1` is unchanged). `TextLayout.Wrap(font, text, maxWidth, hardBreak)`
   word-wraps on spaces and is memoized (a bounded LRU cache PER MEASURER, keyed on text + maxWidth + hardBreak +

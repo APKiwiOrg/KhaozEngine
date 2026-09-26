@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.App;
+using KhaozEngine.Gui;
 using KhaozEngine.Gui.Chat;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
+using KhaozEngine.Tests.App;
 using KhaozEngine.Windowing;
 using Xunit;
 
@@ -13,8 +16,9 @@ namespace KhaozEngine.Tests.Gui;
 /// <summary>
 /// What the chat history sends to the sprite batch, run by run. A <see cref="SpriteBatch"/> needs a GPU device, so
 /// the rows reach it through the internal <see cref="IChatRowSink"/> the real draw also uses, and a recording sink
-/// stands in for the batch here. Raw text only, so no ambient catalog is read or written.
+/// stands in for the batch here.
 /// </summary>
+[Collection("AmbientLocalization")]
 public sealed class ChatBoxRowDrawTests
 {
     const string Stamp = "[11:07] ";
@@ -95,6 +99,69 @@ public sealed class ChatBoxRowDrawTests
         Assert.All(sink.Runs.GetRange(2, sink.Runs.Count - 2),
             run => Assert.Equal((Color)Theme.OrdinaryText, run.Color));
         Assert.Equal(ExpectedRuns(box), Texts(sink));
+    }
+
+    [Fact]
+    public void A_markup_entry_draws_timestamp_author_and_semantic_colours_as_one_run_block()
+    {
+        IStringCatalog? previous = LocalizationContext.Catalog;
+        try
+        {
+            LocalizationContext.Catalog = new DictionaryCatalog()
+                .Add("Chat.Rich", "[emphasis]rare [key]E[/] item[/]");
+            Vector4 emphasis = new(1f, 0.6f, 0.2f, 1f);
+            Vector4 key = new(0.4f, 0.8f, 1f, 1f);
+            ChatBoxTheme theme = RichTheme(emphasis, key);
+            var history = new ChatHistory(8);
+            history.Add(new ChatEntry(At(7), "rich", LocalizedText.Raw("Alice"),
+                MarkupText.Of(new StringId("Chat.Rich")), "rich", ChatEntryKind.Ordinary, false));
+            ChatBox box = Box(history, theme: theme);
+            box.RefreshLayout(Narrow, Sydney);
+
+            var sink = new RecordingSink();
+            box.DrawHistoryRows(ref sink);
+
+            ColoredTextRun[] line = Assert.Single(sink.RichLines);
+            Assert.Equal("[11:07] Alice: rare E item", string.Concat(line.Select(run => run.Text)));
+            Assert.Equal(
+                [theme.TimestampText, theme.OrdinaryText, emphasis, key, emphasis],
+                line.Select(run => run.Color));
+            Assert.Empty(sink.Runs);
+        }
+        finally
+        {
+            LocalizationContext.Catalog = previous;
+        }
+    }
+
+    [Fact]
+    public void Wrapped_markup_keeps_the_semantic_colour_on_every_visible_line()
+    {
+        IStringCatalog? previous = LocalizationContext.Catalog;
+        try
+        {
+            LocalizationContext.Catalog = new DictionaryCatalog()
+                .Add("Chat.Rich", "[emphasis]hi " + new string('x', 40) + "[/]");
+            Vector4 emphasis = new(1f, 0.6f, 0.2f, 1f);
+            ChatBoxTheme theme = RichTheme(emphasis, Vector4.One);
+            var history = new ChatHistory(8);
+            history.Add(new ChatEntry(At(7), "rich", null,
+                MarkupText.Of(new StringId("Chat.Rich")), "rich", ChatEntryKind.Ordinary, false));
+            ChatBox box = Box(history, theme: theme);
+            box.ShowTimestamps = false;
+            box.RefreshLayout(Narrow, Sydney);
+
+            var sink = new RecordingSink();
+            box.DrawHistoryRows(ref sink);
+
+            Assert.True(sink.RichLines.Count > 1);
+            Assert.All(sink.RichLines.SelectMany(line => line), run => Assert.Equal(emphasis, run.Color));
+            Assert.Equal(box.CachedLines, sink.RichLines.Select(line => string.Concat(line.Select(run => run.Text))));
+        }
+        finally
+        {
+            LocalizationContext.Catalog = previous;
+        }
     }
 
     // The history viewport of BoxBounds: inset by the 8 px padding, less the 30 px composer and its 6 px gap.
@@ -299,9 +366,20 @@ public sealed class ChatBoxRowDrawTests
 
     static DateTimeOffset At(int minute) => new(2026, 9, 6, 1, minute, 0, TimeSpan.Zero);
 
-    static ChatBox Box(ChatHistory history, Rect? bounds = null) => new(history, bounds ?? BoxBounds)
+    static ChatBox Box(ChatHistory history, Rect? bounds = null, ChatBoxTheme? theme = null) => new(history, bounds ?? BoxBounds)
     {
-        Theme = Theme,
+        Theme = theme ?? Theme,
+    };
+
+    static ChatBoxTheme RichTheme(Vector4 emphasis, Vector4 key) => new()
+    {
+        OrdinaryText = Theme.OrdinaryText,
+        OwnText = Theme.OwnText,
+        SystemText = Theme.SystemText,
+        TimestampText = Theme.TimestampText,
+        InlineStyles = new InlineTextStyles(
+            new InlineTextStyle("emphasis", emphasis),
+            new InlineTextStyle("key", key)),
     };
 
     static ChatEntry Entry(
@@ -324,8 +402,11 @@ public sealed class ChatBoxRowDrawTests
     sealed class RecordingSink : IChatRowSink
     {
         public List<Drawn> Runs { get; } = new();
+        public List<ColoredTextRun[]> RichLines { get; } = new();
 
         public void DrawText(string text, Vector2 position, Color color) => Runs.Add(new Drawn(text, position, color));
+
+        public void DrawTextRuns(ReadOnlySpan<ColoredTextRun> runs, Vector2 position) => RichLines.Add(runs.ToArray());
     }
 
     sealed class FixedMeasurer : ITextMeasurer

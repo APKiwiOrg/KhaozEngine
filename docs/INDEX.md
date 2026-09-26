@@ -43,6 +43,7 @@ not deleted: the reasoning behind a shipped decision is the thing that is expens
 
 | Doc | The program | Status |
 |---|---|---|
+| [INLINE-RICH-TEXT-DESIGN-2026-09-27.md](design/INLINE-RICH-TEXT-DESIGN-2026-09-27.md) | Opt-in semantic colour markup for localized chat, tooltips and game-owned dialogue over the existing coloured-run renderer. Engine [#65](https://github.com/APKiwiOrg/KhaozEngine/issues/65). | **Implemented for staged 20.6.2.** |
 | [CHARACTER-POSE-SOCKET-DESIGN-2026-09-27.md](design/CHARACTER-POSE-SOCKET-DESIGN-2026-09-27.md) | Compose equipment and effect anchors directly from a transient `CharacterPose`. Engine [#96](https://github.com/APKiwiOrg/KhaozEngine/issues/96). | **Implemented for staged 20.6.2.** |
 | [UNICODE-TEXT-INPUT-DESIGN-2026-09-27.md](design/UNICODE-TEXT-INPUT-DESIGN-2026-09-27.md) | Capture committed Unicode text from the OS while keeping the headless key-map fallback. Engine [#61](https://github.com/APKiwiOrg/KhaozEngine/issues/61). | **Implemented for staged 20.6.1.** |
 | [CLIPBOARD-INTEROP-PAYDOWN-DESIGN-2026-09-26.md](design/CLIPBOARD-INTEROP-PAYDOWN-DESIGN-2026-09-26.md) | Move macOS pasteboard interop behind one internal type while preserving the clipboard dispatch contract. Engine [#259](https://github.com/APKiwiOrg/KhaozEngine/issues/259). | **Implemented for staged 20.6.1.** |

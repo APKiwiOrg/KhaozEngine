@@ -1366,6 +1366,23 @@ TooltipLine action = TooltipLine.OfSegments(localizedActionSegments, actionColor
 tip.Show(default, new[] { action }, anchor);
 ```
 
+Use one trusted localized template when the translator must control the whole sentence. Semantic tags map
+through the caller's current palette, and formatted arguments are escaped automatically:
+
+```csharp
+var inlineStyles = new InlineTextStyles(
+    new InlineTextStyle("emphasis", rarityColor),
+    new InlineTextStyle("key", keyColor));
+// Catalog value: "Equip [emphasis]{0}[/] with [key]{1}[/]"
+TooltipLine action = TooltipLine.OfMarkup(
+    MarkupText.Of(Strings.EquipHint, itemName, bindingName), inlineStyles, actionColor);
+```
+
+Tags use `[name]...[/]`, may nest, and use `[[` for a literal `[`. Missing names inherit the enclosing colour.
+Names begin with an ASCII letter, continue with ASCII letters, digits, dot, underscore or hyphen, and match
+ordinally. Malformed markup renders literally rather than throwing or dropping text. Styles are semantic colours
+only. Translations do not contain raw palette values, font names, links or actions.
+
 For separate bubbles that must keep one order beside the pointer, measure each with `Tooltip.ComputeBounds`,
 pass the widths and heights to `TooltipStackLayout.Place`, then show each offset-mode `Tooltip` at
 `TooltipStackLayout.AnchorFor(box, tip.Metrics)`. Use the same viewport and metrics for measurement and drawing.
@@ -1552,6 +1569,11 @@ latest entry supplies the timestamp, author, content and ownership, while `Repea
 into it. Author and content use `LocalizedText`, so catalog-backed system copy and explicit raw player names or
 messages keep the same localization boundary as the rest of Gui.
 
+Localized system entries may instead use the additive `MarkupText` constructor. The catalog owns the trusted
+markup and `MarkupText.Of` escapes every formatted argument before it is inserted. Map the semantic names on
+`ChatBoxTheme.InlineStyles`. A style missing from the map inherits the ordinary, own or system entry colour.
+Plain `LocalizedText` entries retain their existing layout and draw path.
+
 `ChatBox` owns wrapped scrollback and a single-line composer inside caller-selected design-space bounds. Enter
 opens the composer. A later Enter submits trimmed non-empty text and leaves it open. Escape clears and closes it.
 `ShowTimestamps` converts each UTC timestamp to local time for presentation only. `ChatBoxTheme` carries the frame,
@@ -1579,6 +1601,7 @@ string placeholder or prefix overload on `ChatBox`.
 ```csharp
 using System;
 using KhaozEngine.App;
+using KhaozEngine.Gui;
 using KhaozEngine.Gui.Chat;
 using KhaozEngine.Primitives;
 
@@ -1601,6 +1624,19 @@ history.Add(new ChatEntry(
     CollapseKey: message,
     Kind: ChatEntryKind.Ordinary,
     IsOwn: senderId == localPlayerId));
+
+chat.Theme.InlineStyles = new InlineTextStyles(
+    new InlineTextStyle("emphasis", chat.Theme.OwnText),
+    new InlineTextStyle("key", GuiTheme.Default.AccentBright));
+// Catalog value: "[emphasis]{0}[/] found. Press [key]{1}[/] to inspect."
+history.Add(new ChatEntry(
+    DateTimeOffset.UtcNow,
+    SourceKey: "loot",
+    Author: null,
+    Content: MarkupText.Of(Strings.ChatLootFound, itemName, bindingName),
+    CollapseKey: itemId,
+    Kind: ChatEntryKind.System,
+    IsOwn: false));
 ```
 
 Update the chatbox before world picking. It blocks its complete bounds through `Pointer`, including pointer
@@ -2251,6 +2287,10 @@ conversion into `LocalizedText` is from `StringId`, so **a bare string literal a
 you either localize it (a `StringId`) or opt out explicitly (`LocalizedText.Raw`). The `KhaozEngine.Localization.Analyzers`
 analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adopting it on a bump:
 
+Rich-text adapters take `MarkupText`, which is built only from a `StringId` and has no raw root factory.
+Non-localizable values enter through `MarkupText.Of` format arguments, where they are escaped before insertion
+into the catalog's trusted semantic markup.
+
 1. **Author a neutral `.resx` and generate its `StringId` keys.** Keep one satellite `.resx` per culture, with
    the base file as the default language. Add only that neutral file as an opted AdditionalFile:
 
@@ -2780,6 +2820,19 @@ inside the callback: the command list it is recording into still names them unti
   string body = "Line one.\n\nLine two, which is long enough to wrap.";
   float height = TextLayout.MeasureWrappedHeight(font, body, boxWidth);
   TextLayout.DrawWrapped(batch, font, body, topLeft, boxWidth, TextAlign.Left, color);
+  ```
+
+- `ColoredTextLayout.Wrap` - device-free wrapping for adjacent `ColoredTextRun` values. It preserves interior
+  spaces and returns `ColoredTextLine` values whose runs concatenate to the visible line and retain colour through
+  word and hard breaks. This is the layout seam for a game-owned dialogue view:
+
+  ```csharp
+  ColoredTextRun[] runs = InlineMarkup.Resolve(dialogue, inlineStyles, bodyColor);
+  foreach (ColoredTextLine line in ColoredTextLayout.Wrap(font, runs, boxWidth, hardBreak: true))
+  {
+      batch.DrawStringRuns(font, line.Runs.Span, topLeft);
+      topLeft.Y += font.LineHeight;
+  }
   ```
 
 ### 2D VFX (`KhaozEngine.Render2D.Vfx`)

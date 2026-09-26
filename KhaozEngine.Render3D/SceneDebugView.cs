@@ -9,8 +9,9 @@ namespace KhaozEngine.Render3D
     {
         /// <summary>The normal image. The default.</summary>
         None,
-        /// <summary>The screen-space motion vectors in place of the final image: hue for direction, brightness for
-        /// magnitude, black for the background and for no motion.</summary>
+        /// <summary>The screen-space motion vectors in place of the final image: hue for direction (rightward cyan,
+        /// leftward red, downward violet, upward yellow-green), brightness for magnitude, black for the background
+        /// and for no motion. Screen overlays drawn after the post chain still draw over it.</summary>
         MotionVectors,
         /// <summary>The temporal history in place of the final image.</summary>
         History,

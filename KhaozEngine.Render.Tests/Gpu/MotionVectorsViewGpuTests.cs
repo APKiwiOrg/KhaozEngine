@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -20,8 +21,10 @@ public sealed class MotionVectorsViewGpuTests
         });
         MeshHandle box = fx.Scene.LoadMesh(MeshPrimitives.Box(2f));
         Vector3 right = Vector3.Normalize(Vector3.Cross(fx.Scene.Camera.Forward, Vector3.UnitY));
+        Vector3 up = Vector3.Normalize(Vector3.Cross(right, fx.Scene.Camera.Forward));
         const float PixelsPerMetre = H / 12f;
-        Vector3 At(int n) => right * (8f / PixelsPerMetre * n);
+        // Off the middle row, so a view that dropped the final blit's flip would read the box's mirror image.
+        Vector3 At(int n) => up * 3f + right * (8f / PixelsPerMetre * n);
         void Draw(Scene3D s, int n) =>
             s.Draw(new RigidInstanceDraw(box, Matrix4x4.CreateTranslation(At(n))) { Motion = MotionKey.From(3) });
 
@@ -34,5 +37,8 @@ public sealed class MotionVectorsViewGpuTests
         Assert.InRange(image[i], 0, 2);
         Assert.InRange(image[i + 1], 125, 130);
         Assert.InRange(image[i + 2], 125, 130);
+        Assert.True(MathF.Abs(centre.Y - H / 2f) > 30f, $"the box centre sits at row {centre.Y}, too near the middle");
+        int mirror = ((H - 1 - (int)centre.Y) * W + (int)centre.X) * 4;
+        Assert.Equal(new byte[] { 0, 0, 0, 255 }, image[mirror..(mirror + 4)]);   // its mirror row is background
     }
 }

@@ -3548,8 +3548,10 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   internal pixel on each axis each frame. A change takes effect at the frame's first render. One made after that
   render waits for the next frame.
 - `SceneDebugView.MotionVectors` replaces the final image with each pixel's screen motion since the last frame: hue
-  for direction, brightness for length (full at 16 internal pixels), and black where nothing opaque drew or nothing
-  moved. A moving object painted with the camera's motion instead of its own is missing its `MotionKey`.
+  for direction (rightward cyan, leftward red, downward violet, upward yellow-green), brightness for length (full at
+  16 internal pixels), and black where nothing opaque drew or nothing moved. A moving object painted with the camera's
+  motion instead of its own is missing its `MotionKey`. The screen overlays drawn after the post chain (target
+  outlines, fills, lines, billboards and the screen transition) still draw over the view.
 - `LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed draws and key collisions
   (see "Draw descriptors and motion keys"), whether history was valid, and why it was last reset. Read it on the render
   thread after the frame renders. A second render inside the same frame, such as an offscreen capture, leaves it and the

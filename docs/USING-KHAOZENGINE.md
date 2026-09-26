@@ -16519,15 +16519,15 @@ InstanceValidationReport report = InstanceValidator.Validate(
 foreach (PageEntry entry in decoded[..entryCount])
 {
     var stack = new ItemStack(entry.DefinitionId, entry.Count, entry.InstanceId);
+    ReadOnlySpan<byte> payload = page.AsSpan(entry.PayloadStart, entry.PayloadLength);
 
     if (report.TryGetQuarantine(entry.Slot, out InstanceValidationFinding finding))
     {
-        // Keep the bytes VERBATIM under the reason's durable ordinal. The item is unusable,
-        // untradeable and undroppable, and it can still be moved between slots.
-        byte[] wrapper = QuarantineWrapper.Wrap(
-            finding.Reason!,
-            finding.StampedVersion,
-            page.AsSpan(entry.PayloadStart, entry.PayloadLength));
+        // Keep a stored wrapper exactly. For a newly quarantined entry, keep its payload VERBATIM
+        // under the reason's durable ordinal. The item remains movable but unusable.
+        byte[] wrapper = entry.Quarantined && QuarantineWrapper.Verify(payload)
+            ? payload.ToArray()
+            : QuarantineWrapper.Wrap(finding.Reason!, finding.StampedVersion, payload);
         bank.SetSlotAt(entry.Slot, new ItemSlot(stack, wrapper, Quarantined: true));
         continue;
     }
@@ -16829,7 +16829,7 @@ var context = new ContainerLoadContext(
 
 // ONE pass over the whole projection read: decode, check each page against the SECTION it arrived in,
 // apply every remap rule newer than the page stamp, unwrap and re-offer every quarantined entry at the
-// WRAPPER's own stamp, then validate the live entries. No store read and no ambient static inside it.
+// WRAPPER's own stamp, then validate every page entry. No store read and no ambient static inside it.
 ContainerLoadResult loaded = ContainerLoad.Load(read.Sections, content, context);
 
 foreach (ContainerLoadFinding finding in loaded.Findings)

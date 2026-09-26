@@ -190,6 +190,35 @@ public class InstanceValidatorTests
     }
 
     [Fact]
+    public void A_quarantined_entry_reports_its_stored_reason_and_stamp()
+    {
+        const int wrapperStamp = 3;
+        ContentTypeRegistry types = InstanceValidationFixtures.Types();
+        ContentSnapshot snapshot = InstanceValidationFixtures.Snapshot(types);
+        byte[] wrapper = QuarantineWrapper.Wrap(
+            InstanceQuarantineReason.UnknownContentReference,
+            wrapperStamp,
+            InstanceValidationFixtures.AffixPayload(InstanceValidationFixtures.MissingId));
+
+        InstanceValidationReport report = InstanceValidationFixtures.Sweep(
+            [
+                InstanceValidationFixtures.Slot(
+                    0,
+                    InstanceValidationFixtures.LiveItem,
+                    instanceId: 5,
+                    payload: wrapper,
+                    flags: ItemContainerPageCodec.EntryFlagQuarantined),
+            ],
+            types,
+            snapshot);
+
+        InstanceValidationFinding finding = report.At(0);
+        Assert.Equal(InstanceQuarantineReason.UnknownContentReference, finding.Reason);
+        Assert.Equal(wrapperStamp, finding.StampedVersion);
+        Assert.Equal(InstanceValidationOutcome.Quarantined, finding.Outcome);
+    }
+
+    [Fact]
     public void The_validator_never_throws_never_logs_never_counts_and_never_mutates_its_input()
     {
         ContentTypeRegistry types = InstanceValidationFixtures.Types();

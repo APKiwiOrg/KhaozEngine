@@ -39,6 +39,21 @@ public sealed class MotionExpectationTests
     }
 
     [Fact]
+    public void ACameraSteppingOneMetreAwayOverTheGroundMovesTheSceneDownTheImage()
+    {
+        IsoCamera3D then = Camera(Vector3.Zero, 1f);
+        Vector3 away = Vector3.Normalize(new Vector3(then.Forward.X, 0f, then.Forward.Z));
+        IsoCamera3D now = Camera(away, 1f);
+        const float PixelsPerMetre = H / 12f;
+
+        // The step raises the view by sin(elevation) metres, so the ground slides down the image: positive y.
+        Vector2 motion = MotionExpectation.StaticSurface(now, then, 250, 30, W, H, new Vector2(-.2f, .4f));
+
+        Assert.Equal(0f, motion.X, 3);
+        Assert.Equal(PixelsPerMetre * MathF.Sin(then.Elevation), motion.Y, 3);
+    }
+
+    [Fact]
     public void AZoomMovesEachPixelAwayFromTheCentreInProportion()
     {
         IsoCamera3D then = Camera(Vector3.Zero, 1f);

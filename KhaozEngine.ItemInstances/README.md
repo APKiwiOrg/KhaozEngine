@@ -376,6 +376,13 @@ path, which seats every entry with instance id 0, an empty payload and the quara
 page stamp 0, which is older than every published version. Anything else is a `ushort` version, which must be
 2.
 
+The version 1 bridge accepts a stored slot count from 1 through the caller's `expectedPageSlots`. It validates
+and decodes against that stored count, then returns page 0 with first slot 0 and `SlotCount` equal to the
+caller's full page geometry. Slot indexes do not move, so a 2 or 11 slot worn set, a 28 or 30 slot bag, and a
+56 slot bank can load into the 100 slot page without being re-encoded first. A stored count above the page
+geometry is refused whole. This widening belongs to `ItemContainerPageCodec` only.
+`ItemContainerCodec.TryDecode` still requires its caller's slot count to equal the stored count.
+
 - `ContainerPageSlots` is 100 rather than 128, so slot 743 is page 7 slot 43 and an operator reading a
   section name can do the arithmetic in their head.
 - `FirstSlot` is redundant against `PageIndex` ON PURPOSE. It costs two bytes per page and it is what catches

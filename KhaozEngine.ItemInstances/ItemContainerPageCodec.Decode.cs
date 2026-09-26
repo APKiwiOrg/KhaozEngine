@@ -19,8 +19,8 @@ public static partial class ItemContainerPageCodec
     /// </summary>
     /// <param name="page">The stored bytes.</param>
     /// <param name="expectedPageSlots">The page geometry this consumer runs. <c>FirstSlot</c> must be
-    /// <c>PageIndex</c> times this number, <c>SlotCount</c> may not exceed it, and a version 1 blob must
-    /// declare exactly this many slots.</param>
+    /// <c>PageIndex</c> times this number, <c>SlotCount</c> may not exceed it, and a version 1 blob may
+    /// declare fewer slots but not more.</param>
     /// <param name="entries">Where the decoded entries go. A page declaring more than this holds is
     /// refused with <see cref="ItemContainerPageReason.EntryCount"/>.</param>
     /// <param name="header">The decoded header.</param>
@@ -227,10 +227,10 @@ public static partial class ItemContainerPageCodec
     }
 
     /// <summary>
-    /// The version 1 bridge. It runs the existing version 1 reader VERBATIM rather than a second copy of
-    /// its rules, so all eleven of <see cref="ItemContainerCodec.Validate"/>'s refusals still bind,
-    /// including the refusal of a blob whose declared slot count is not the caller's. That one is load
-    /// bearing for a consumer whose bag-widening helpers exist precisely because of it.
+    /// The version 1 bridge. It runs the existing version 1 reader rather than a second copy of its rules,
+    /// using the stored geometry when it fits within the caller's page. The decoded header still declares
+    /// the caller's full page geometry, so a smaller legacy bank, bag or worn set becomes page 0 without
+    /// moving any slot. A stored geometry wider than the page is refused whole.
     /// <para>
     /// A version 1 blob carries no stamp, so the page takes 0, which is older than every published version
     /// and therefore takes the FULL remap rule set on the first load (contracts 8.3). The first ordinary
@@ -254,9 +254,22 @@ public static partial class ItemContainerPageCodec
         header = default;
         entryCount = 0;
         byte[] blob = page.ToArray();
-        reason = ItemContainerCodec.Validate(blob, expectedPageSlots);
+        if (blob.Length < 3)
+        {
+            reason = ItemContainerCodec.Validate(blob, expectedPageSlots);
+            return false;
+        }
+
+        int declaredSlots = BinaryPrimitives.ReadUInt16LittleEndian(blob.AsSpan(1));
+        if (declaredSlots == 0 || declaredSlots > expectedPageSlots)
+        {
+            reason = ItemContainerCodec.Validate(blob, expectedPageSlots);
+            return false;
+        }
+
+        reason = ItemContainerCodec.Validate(blob, declaredSlots);
         if (reason is not null) return false;
-        if (!ItemContainerCodec.TryDecode(blob, expectedPageSlots, NeverStacks, out ItemContainer decoded))
+        if (!ItemContainerCodec.TryDecode(blob, declaredSlots, NeverStacks, out ItemContainer decoded))
         {
             reason = ItemContainerPageReason.EntryMalformed;
             return false;

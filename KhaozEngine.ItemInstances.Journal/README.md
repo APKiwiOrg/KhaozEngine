@@ -57,6 +57,11 @@ var context = new ContainerLoadContext(
 ContainerLoadResult result = ContainerLoad.Load(read.Sections, snapshot, context);
 ```
 
+`Load` passes the 100 slot page geometry to `ItemContainerPageCodec`. A version 1 section named for page 0
+may declare any stored width from 1 through 100. It loads as a full 100 slot page with every stored slot index
+unchanged, so the host does not widen or re-encode an older bank, bag or worn set first. A version 1 blob that
+declares more than 100 slots fails at the page level and is quarantined as a unit.
+
 `Load` takes the whole projection read and keeps the sections that are this container's pages, so a caller
 never re-implements the naming rule to filter first. It takes its whole world as arguments: no store read, no
 file read, no ambient static. `streamKey` remains the exact stored key used for that filter. `telemetryKey` is

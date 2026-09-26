@@ -16619,7 +16619,8 @@ byte[] page = ItemContainerPageCodec.Encode(
     entries);
 
 // Reload. The decoder REFUSES rather than throws, and byte 0 dispatches, so a stored version 1
-// blob comes back through the same call with instance id 0 and page stamp 0 on every entry.
+// blob from 1 through 100 slots needs no pre-widening. It comes back as page 0 with the stored
+// slot indexes unchanged, instance id 0 and page stamp 0 on every entry.
 Span<PageEntry> decoded = stackalloc PageEntry[ItemContainerPageCodec.ContainerPageSlots];
 if (!ItemContainerPageCodec.TryDecode(
         page,
@@ -16919,6 +16920,12 @@ slot holding what it already held never does.
 `ContainerLoad.Load` in `KhaozEngine.ItemInstances.Journal` is the read half. It is a `Server` package
 because composing a `JournalCommit` needs `KhaozEngine.WorldStore`, so a client build keeps the record and
 none of this.
+
+The load path passes the 100 slot page geometry to the version 1 bridge. A page 0 section whose legacy blob
+declares 1 through 100 slots loads directly as a full 100 slot page, with its slot indexes unchanged and no
+consumer pre-widening. A declared width above 100 is refused and the section is quarantined as a unit. This
+one-sided bridge does not change `ItemContainerCodec.TryDecode`, which still requires exact stored geometry
+when called directly.
 
 ```csharp
 using KhaozEngine.ItemInstances;

@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.6.1
+
+`KhaozEngine.Platform` now keeps the macOS pasteboard implementation in one internal
+`MacPasteboardBackend` type. `ClipboardInterop` retains provider selection, fallback order, Windows DIB,
+and the mobile bridge. Public `Clipboard` behavior is unchanged. The original source file shrank from
+824 to 574 lines and left the KESIZE baseline ([#259](https://github.com/APKiwiOrg/KhaozEngine/issues/259)).
+
 ## 20.6.0
 
 **A journal can be reset, MapEditor can generate undoable dungeons, and an additive pose can be layered onto

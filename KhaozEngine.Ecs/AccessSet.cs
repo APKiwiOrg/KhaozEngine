@@ -8,9 +8,8 @@ namespace KhaozEngine.Ecs;
 /// <see cref="Writes"/> (read+write). This is the shared access-declaration vocabulary of the parallel-job-system
 /// program. For a <see cref="World.ParallelForEach{T1}(RefAction{T1}, KhaozEngine.Simulation.IJobScheduler?)"/> the
 /// safety contract is enforced at runtime (per-row-pure + the hazard guard); an explicit <see cref="AccessSet"/>
-/// is a <em>declaration</em> a future system scheduler (layer 3) could use to decide which systems may run
-/// concurrently: two units may overlap only if their access sets do not <see cref="ConflictsWith"/>. No scheduler
-/// consumes it today. The jobs-3 benchmark gate did not justify that scheduler at hot-cell sizes (issue #125).
+/// is the <em>declaration</em> the system scheduler (layer 3) reuses to decide which systems may run concurrently:
+/// two units may overlap only if their access sets do not <see cref="ConflictsWith"/>.
 /// </summary>
 /// <remarks>
 /// Keyed by <see cref="Type"/> (global and stable), not per-world component ids, so a declaration is portable

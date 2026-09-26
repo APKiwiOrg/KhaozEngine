@@ -5,6 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.6.5
+
+- `ContainerLoadContext.TelemetryKey` lets a host redact an account-bearing stream key from validation logs
+  while section filtering still uses the real stream key. The default keeps existing log text
+  ([#1036](https://github.com/APKiwiOrg/KhaozEngine/issues/1036)).
+- Catalog benchmarks now derive their item schema from shipped `ItemContentType` and check their specialized
+  codec against it, so a later item field addition cannot silently change the measured workload
+  ([#1064](https://github.com/APKiwiOrg/KhaozEngine/issues/1064)).
+- One-tick tile movement now presents the committed next step without a hold after a click. Other predicted
+  states retain their existing interpolation target by default
+  ([#1109](https://github.com/APKiwiOrg/KhaozEngine/issues/1109)).
+- The diagnostics overlay resolves its built-in titles, row labels and disconnected text through the
+  localization catalog, with the same English output when a translation is absent
+  ([#1093](https://github.com/APKiwiOrg/KhaozEngine/issues/1093)).
+- Terrain height and biome shares now use one smooth transition across an uncovered gap between bands,
+  matching each adjacent band at its support edge ([#1102](https://github.com/APKiwiOrg/KhaozEngine/issues/1102)).
+
 ## 20.6.4
 
 - Catalog validation now refuses negative or unrepresentable loot weights and weighted table totals that

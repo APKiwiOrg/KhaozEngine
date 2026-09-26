@@ -174,13 +174,14 @@ public sealed class ContainerCommitPartsTests
     [Fact]
     public void Parts_that_throw_leave_the_batch_where_it_was()
     {
-        // The same reachable throw Close has: a name four short of the identity cap opens at page 0 and cannot
-        // name page 100. Nothing is recorded until the parts are built, so the batch is still open.
-        string wide = new('b', JournalLimits.EngineMaximumIdentityCharacters - 4);
-        PagedItemContainer bank = Container(pageCount: 101);
-        ContainerCommitBuilder batch = ContainerCommitBuilder.Open(
-            StreamKey, ItemInstanceEvents.CraftActionKind, Scope, Containers((wide, bank)), tick: 4);
-        Assert.True(batch.Apply(ContainerOperation.Grant(wide, slot: 10_000, Sword, 1, Instance, Payload())));
+        // An invalid projection schema throws while the projection writes are built. Nothing is recorded until
+        // the parts are built, so the batch is still open.
+        PagedItemContainer bank = Container();
+        ContainerCommitBuilder batch = OpenBank(bank, tick: 4, options: new ContainerCommitOptions
+        {
+            ProjectionSchema = "",
+        });
+        Assert.True(batch.Apply(ContainerOperation.Grant(Bank, slot: 0, Sword, 1, Instance, Payload())));
 
         Assert.Throws<ArgumentException>(() => batch.TryBuildParts(out _, out _));
 

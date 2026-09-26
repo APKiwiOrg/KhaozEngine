@@ -85,6 +85,8 @@ public sealed partial class Scene3D
                 CpuSkinnedMotion.AppendCurrent(skinned.Slice(dr.BaseVertex, dr.VertexCount), _cpuSkinnedInstances[d].Model,
                     _cpuSkinnedPrevious);
         }
+        System.Diagnostics.Debug.Assert(_cpuSkinnedPrevious.Count == _cpuSkinnedVerts.Count,
+            "The CPU-skinned previous positions must stay parallel to the deformed vertices.");
         _model.UploadCpuSkinnedPrevious(cl, CollectionsMarshal.AsSpan(_cpuSkinnedPrevious));
     }
 }

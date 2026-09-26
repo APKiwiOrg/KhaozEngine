@@ -20,11 +20,19 @@ namespace KhaozEngine.Tests.Gpu
         void NoteVertexBuffer(uint slot, IGpuBuffer buffer)
         {
             if (slot == 0) _currentVertexBuffer = buffer;
+            NoteVertexSlot(slot, buffer);
         }
         void NoteIndexBuffer(IGpuBuffer buffer) => _currentIndexBuffer = buffer;
         void NoteIndexedDraw(uint indexCount, uint indexStart, int vertexOffset)
-            => _indexedDraws.Add(new IndexedDraw(indexCount, _currentPipeline, _currentVertexBuffer,
+        {
+            _indexedDraws.Add(new IndexedDraw(indexCount, _currentPipeline, _currentVertexBuffer,
                 _currentIndexBuffer, indexStart, vertexOffset));
-        void ClearDraws() => _indexedDraws.Clear();
+            NoteDrawBindings();
+        }
+        void ClearDraws()
+        {
+            _indexedDraws.Clear();
+            ClearBindings();
+        }
     }
 }

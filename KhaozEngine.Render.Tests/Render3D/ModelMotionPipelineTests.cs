@@ -93,6 +93,10 @@ public sealed class ModelMotionPipelineTests
     [Fact]
     public void TheTemporalTargetBuildsBothCpuSkinnedVariantsOverThePreviousPositionStream()
     {
+        using var baseDevice = new FakeGpuDevice();
+        using var baseModel = new ModelRenderer(baseDevice, ModelTargets.Base, 64, 1);
+        GpuPipelineDescription basePipeline = Assert.Single(((FakeGpuResourceFactory)baseDevice.Factory).GraphicsPipelines,
+            p => p.VertexGlsl == ShaderSources.ModelVert && p.FragmentGlsl == ShaderSources.ModelFrag).Description;
         using var device = new FakeGpuDevice();
         var factory = (FakeGpuResourceFactory)device.Factory;
         using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
@@ -104,6 +108,9 @@ public sealed class ModelMotionPipelineTests
         Assert.All(cpu, p =>
         {
             Assert.Equal(2, p.Description.ResourceLayouts.Length);
+            Assert.Same(model.Motion!.FrameLayout, p.Description.ResourceLayouts[1]);
+            Assert.Equal(3, p.Description.VertexLayouts.Count);
+            Assert.Equal(Shape(basePipeline.VertexLayouts.Take(2)), Shape(p.Description.VertexLayouts.Take(2)));
             Assert.Equal(0u, p.Description.VertexLayouts[2].InstanceStepRate);   // per vertex, not per instance
             Assert.Equal(12u, p.Description.VertexLayouts[2].Stride);
         });

@@ -752,28 +752,6 @@ namespace KhaozEngine.Render3D
             get { int n = 0; foreach (var m in _meshes) if (m != null) n++; return n; }
         }
 
-        /// <summary>Queue one skinned draw. <paramref name="boneMatrices"/> are this frame's joint world
-        /// transforms (model space), one per bone in the mesh's skin; the engine composes them with the mesh's
-        /// inverse-bind. Passing the mesh's <see cref="SkinnedGltfMesh.RestPose"/> yields no deformation.
-        /// Presentation only - never feed sim/RNG/netcode from bone state.</summary>
-        public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint)
-            => DrawSkinned(h, boneMatrices, model, tint, Material.None);
-
-        /// <summary>As <see cref="DrawSkinned(SkinnedMeshHandle,ReadOnlySpan{Matrix4x4},Matrix4x4,Color)"/> with an
-        /// explicit <paramref name="material"/> (emissive + specular).</summary>
-        public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint, Material material)
-            => DrawSkinned(h, boneMatrices, model, tint, material, castsShadows: true);
-
-        /// <summary>As the material overload, but dissolves the mesh for a <see cref="CharDissolve"/> teleport:
-        /// <paramref name="dissolve"/> is the 0..1 threshold (0 = solid, 1 = fully gone; feed
-        /// <see cref="ITransition.Cover"/>), with a glowing emissive edge of <paramref name="edgeColor"/> and width
-        /// <paramref name="edgeWidth"/> (a fraction of the noise range). A <paramref name="dissolve"/> of 0 draws
-        /// exactly like the material overload (the normal pipeline), so it is safe to call unconditionally while
-        /// gating the value on the transition. The draw's SHADOW erodes with the same mask (issue #387).</summary>
-        public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint,
-            Material material, float dissolve, float edgeWidth, Color edgeColor)
-            => DrawSkinned(h, boneMatrices, model, tint, material, dissolve, edgeWidth, edgeColor, castsShadows: true);
-
         /// <summary>Skinned draws queued this frame. Internal: lets tests assert Begin clears the queue.</summary>
         internal int SkinnedInstanceCount => _skinnedInstances.Items.Count;
 

@@ -24,7 +24,8 @@ namespace KhaozEngine.Render3D
         /// the material overload.</summary>
         public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint,
             Material material, bool castsShadows)
-            => DrawSkinned(h, boneMatrices, model, tint, material, 0f, 0f, default, castsShadows);
+            => DrawSkinned(new SkinnedInstanceDraw(h, model) { Tint = tint, Material = material, CastsShadows = castsShadows },
+                boneMatrices);
 
         /// <summary>The CharDissolve overload plus the shadow-caster opt-out (issue #387): as
         /// <see cref="DrawSkinned(SkinnedMeshHandle, ReadOnlySpan{Matrix4x4}, Matrix4x4, Color, Material, float, float, Color)"/>,
@@ -33,17 +34,11 @@ namespace KhaozEngine.Render3D
         /// thins the body, on the GPU-skinned and the CPU-skinned path alike.</summary>
         public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint,
             Material material, float dissolve, float edgeWidth, Color edgeColor, bool castsShadows)
-        {
-            if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
-            var entry = _skinnedMeshes[h.Index];
-            if (entry is null) return;
-            // This draw's bones go into slot N (N = its submission index), padded to the per-draw window so the
-            // dynamic-offset bind selects exactly this draw's palette. Slot N maps to bone byte offset
-            // N * SlotBytes and to instance buffer element N in the render loop.
-            int slot = _skinnedInstances.Items.Count;
-            ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
-            _skinnedInstances.Add(h, model, tint, material, dissolve, edgeWidth, edgeColor, castsShadows);
-        }
+            => DrawSkinned(new SkinnedInstanceDraw(h, model)
+            {
+                Tint = tint, Material = material, Dissolve = dissolve, DissolveEdgeWidth = edgeWidth,
+                DissolveEdgeColor = edgeColor, CastsShadows = castsShadows,
+            }, boneMatrices);
 
         /// <summary>The skinned draws recorded this frame that write into the depth pass: the active path's draw
         /// list minus the opted-out entries. Feeds the dirty check's <c>anySkinnedCaster</c> and the diagnostics'

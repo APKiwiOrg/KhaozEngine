@@ -52,5 +52,62 @@ namespace KhaozEngine.Render3D
         /// <summary>The queued rigid instances in submission order, live until the next <see cref="Begin"/>. For
         /// tests.</summary>
         internal IReadOnlyList<SceneInstances.Instance> QueuedInstancesForTests => _instances.Items;
+
+        /// <summary>
+        /// Queue one skinned draw with every knob in <paramref name="draw"/>. <paramref name="boneMatrices"/> are this
+        /// frame's joint world transforms (model space), one per bone in the mesh's skin, and the engine composes them
+        /// with the mesh's inverse-bind. Every <c>DrawSkinned</c> overload forwards here with
+        /// <see cref="MotionKey.None"/>. A stale or default handle queues nothing, and a bone count that differs from
+        /// the mesh's throws <see cref="ArgumentException"/>. Presentation only - never feed sim/RNG/netcode from bone
+        /// state.
+        /// </summary>
+        public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices)
+        {
+            SkinnedMeshHandle h = draw.Mesh;
+            if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
+            var entry = _skinnedMeshes[h.Index];
+            if (entry is null) return;
+            // This draw's bones go into slot N (N = its submission index), padded to the per-draw window so the
+            // dynamic-offset bind selects exactly this draw's palette. Slot N maps to bone byte offset
+            // N * SlotBytes and to instance buffer element N in the render loop.
+            int slot = _skinnedInstances.Items.Count;
+            ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
+            _skinnedInstances.Add(in draw);
+        }
+
+        /// <summary>Queue one skinned draw. <paramref name="boneMatrices"/> are this frame's joint world
+        /// transforms (model space), one per bone in the mesh's skin, and the engine composes them with the mesh's
+        /// inverse-bind. Passing the mesh's <see cref="SkinnedGltfMesh.RestPose"/> yields no deformation.
+        /// Presentation only - never feed sim/RNG/netcode from bone state.</summary>
+        public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint)
+            => DrawSkinned(new SkinnedInstanceDraw(h, model) { Tint = tint }, boneMatrices);
+
+        /// <summary>As <see cref="DrawSkinned(SkinnedMeshHandle,ReadOnlySpan{Matrix4x4},Matrix4x4,Color)"/> with an
+        /// explicit <paramref name="material"/> (emissive + specular).</summary>
+        public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint, Material material)
+            => DrawSkinned(new SkinnedInstanceDraw(h, model) { Tint = tint, Material = material }, boneMatrices);
+
+        /// <summary>As the material overload, but dissolves the mesh for a <see cref="CharDissolve"/> teleport:
+        /// <paramref name="dissolve"/> is the 0..1 threshold (0 = solid, 1 = fully gone, fed from
+        /// <see cref="ITransition.Cover"/>), with a glowing emissive edge of <paramref name="edgeColor"/> and width
+        /// <paramref name="edgeWidth"/> (a fraction of the noise range). A <paramref name="dissolve"/> of 0 draws
+        /// exactly like the material overload (the normal pipeline), so it is safe to call unconditionally while
+        /// gating the value on the transition. The draw's SHADOW erodes with the same mask (issue #387).</summary>
+        public void DrawSkinned(SkinnedMeshHandle h, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 model, Color tint,
+            Material material, float dissolve, float edgeWidth, Color edgeColor)
+            => DrawSkinned(new SkinnedInstanceDraw(h, model)
+            {
+                Tint = tint, Material = material, Dissolve = dissolve, DissolveEdgeWidth = edgeWidth,
+                DissolveEdgeColor = edgeColor,
+            }, boneMatrices);
+
+        /// <summary>The queued skinned draws in submission order, live until the next <see cref="Begin"/>. For
+        /// tests.</summary>
+        internal IReadOnlyList<SkinnedSceneInstances.Instance> QueuedSkinnedInstancesForTests => _skinnedInstances.Items;
+
+        /// <summary>A copy of skinned slot <paramref name="slot"/>'s composed palette window, all
+        /// <see cref="SkinningMath.MaxBonesPerDraw"/> matrices. For tests.</summary>
+        internal Matrix4x4[] BonePaletteSlotForTests(int slot)
+            => _boneMatrices.GetRange(slot * SkinningMath.MaxBonesPerDraw, SkinningMath.MaxBonesPerDraw).ToArray();
     }
 }

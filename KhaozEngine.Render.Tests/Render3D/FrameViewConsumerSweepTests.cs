@@ -118,7 +118,8 @@ public sealed class FrameViewConsumerSweepTests
     /// <summary>
     /// Every call in the frame that is handed a camera matrix, and the side of the snapshot it takes. Rasterised into
     /// the internal target: jittered. Drawn at display size after post, or applied after the resolve in round 2:
-    /// unjittered. CPU spatial work: unjittered. A new matrix-carrying pass adds its row here.
+    /// unjittered. CPU spatial work: unjittered. A new matrix-carrying pass adds its row here, and
+    /// <see cref="EveryMatrixUseInScene3DHasACallSiteRow"/> fails on a matrix use that has none.
     /// </summary>
     internal static readonly Site[] Sites =
     {
@@ -167,11 +168,11 @@ public sealed class FrameViewConsumerSweepTests
         foreach (Site site in Sites)
         {
             string text = SourceSweep.Render3DSource(site.File);
-            List<(int Line, string Arguments)> calls = Calls(text, site.Call);
+            List<(int Line, string Arguments, int Start, int End)> calls = Calls(text, site.Call);
             if (calls.Count != site.Count)
                 failures.Add($"{site.File}: expected {site.Count} call(s) of {site.Call} ({site.Why}), found {calls.Count}. "
                     + "A renamed, added or removed call needs its row in Sites.");
-            foreach ((int line, string arguments) in calls)
+            foreach ((int line, string arguments, _, _) in calls)
             {
                 if (!Regex.IsMatch(arguments, site.Required, RegexOptions.Singleline))
                     failures.Add($"{site.File}:{line} {site.Call} ({site.Why}) does not take {site.Required}: ({arguments.Trim()})");
@@ -193,9 +194,76 @@ public sealed class FrameViewConsumerSweepTests
         Assert.Single(Regex.Matches(text, @"\bMatrix4x4 vp\b"));
     }
 
-    static List<(int Line, string Arguments)> Calls(string text, string call)
+    /// <summary>The frame's three matrix locals, which only Scene3D.cs declares.</summary>
+    const string FrameLocal = @"\b(?:vp|displayVp|absVp)\b";
+    const string SnapshotMatrix = Snapshot
+        + @"\.(?:View|Projection|ViewProjection|AbsoluteViewProjection|JitteredProjection|JitteredViewProjection)\b";
+
+    /// <summary>
+    /// A frame local assigned from its own side of the snapshot, the pairing
+    /// <see cref="TheFrameLocalsComeFromTheirSideOfTheSnapshot"/> pins. That local and that read are the declaration,
+    /// not a use. A local assigned from any other side matches nothing here, so both of its halves still need a row.
+    /// </summary>
+    const string FrameLocalDeclarator = @"(?<local>\bvp)\s*=\s*(?<source>" + Snapshot + @"\.JitteredViewProjection\b)"
+        + @"|(?<local>\babsVp)\s*=\s*(?<source>" + Snapshot + @"\.AbsoluteViewProjection\b)"
+        + @"|(?<local>\bdisplayVp)\s*=\s*(?<source>" + Snapshot + @"\.ViewProjection\b)";
+
+    [Fact]
+    public void EveryMatrixUseInScene3DHasACallSiteRow()
     {
-        var calls = new List<(int, string)>();
+        // What the Sites rows cover, per file: each call's argument span and the line its name sits on.
+        var covered = new Dictionary<string, List<(int Line, int Start, int End)>>(StringComparer.Ordinal);
+        foreach (Site site in Sites)
+        {
+            if (!covered.TryGetValue(site.File, out List<(int Line, int Start, int End)>? spans))
+                covered[site.File] = spans = new List<(int Line, int Start, int End)>();
+            foreach ((int line, _, int start, int end) in Calls(SourceSweep.Render3DSource(site.File), site.Call))
+                spans.Add((line, start, end));
+        }
+
+        string root = SourceSweep.Render3DRoot();
+        var uses = new List<string>();
+        var uncovered = new List<string>();
+        foreach ((string path, string text) in SourceSweep.Render3DSources())
+        {
+            string file = string.Join("/", SourceSweep.Segments(root, path));
+            if (file == "Scene3D.FrameView.cs") continue;   // the latch fills the snapshot
+            var matches = Regex.Matches(text, SnapshotMatrix).ToList();
+            var declarators = new HashSet<int>();
+            if (file == "Scene3D.cs")
+            {
+                matches.AddRange(Regex.Matches(text, FrameLocal));
+                foreach (Match declarator in Regex.Matches(text, FrameLocalDeclarator))
+                {
+                    declarators.Add(declarator.Groups["local"].Index);
+                    declarators.Add(declarator.Groups["source"].Index);
+                }
+            }
+            covered.TryGetValue(file, out List<(int Line, int Start, int End)>? rows);
+            foreach (Match match in matches)
+            {
+                if (declarators.Contains(match.Index)) continue;
+                int line = SourceSweep.Line(text, match.Index);
+                string use = $"{file}:{line}  {match.Value}";
+                uses.Add(use);
+                bool inRow = rows is not null && rows.Any(row => row.Line == line
+                    || (match.Index >= row.Start && match.Index + match.Length <= row.End));
+                if (!inRow) uncovered.Add(use);
+            }
+        }
+
+        foreach (string use in uses) _output.WriteLine(use);
+        Assert.True(uses.Count > 0, "the fact found no matrix use at all, so its matchers are dead rather than every use covered");
+        Assert.True(uncovered.Count == 0,
+            "These hand a frame matrix to something no Sites row names, so nothing checks which side of the snapshot "
+            + "it takes. Add a row for the call that receives each one:\n" + string.Join("\n", uncovered));
+    }
+
+    /// <summary>Every call of <paramref name="call"/> in a comment-blanked file: the line its name sits on, its
+    /// arguments, and their span as indexes into <paramref name="text"/> with the end exclusive.</summary>
+    static List<(int Line, string Arguments, int Start, int End)> Calls(string text, string call)
+    {
+        var calls = new List<(int, string, int, int)>();
         foreach (Match match in Regex.Matches(text, @"(?<!\w)" + Regex.Escape(call)))
         {
             int open = match.Index + match.Length - 1;   // every Call ends in its opening bracket
@@ -205,7 +273,8 @@ public sealed class FrameViewConsumerSweepTests
                 if (text[i] == '(') depth++;
                 else if (text[i] == ')' && --depth == 0) close = i;
             }
-            calls.Add((SourceSweep.Line(text, match.Index), close < 0 ? string.Empty : text.Substring(open + 1, close - open - 1)));
+            int end = close < 0 ? open + 1 : close;
+            calls.Add((SourceSweep.Line(text, match.Index), text.Substring(open + 1, end - open - 1), open + 1, end));
         }
         return calls;
     }

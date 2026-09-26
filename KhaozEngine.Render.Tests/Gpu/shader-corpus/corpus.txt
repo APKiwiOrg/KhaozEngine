@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 456
+# Rows: 472
 Beam.fragment.hlsl 763e8e2481a2a78f468f6d62ed5e3a24df6ffd7ad4d0e8c280ac5ad953b177fe 1809
 Beam.fragment.msl f8bb4e895ae8c1794baa7115089311abef23c86d22b47d85f68e225dae39ad99 1493
 Beam.fragment.spirv 7023f2b860be99c43999b4be78b8fe5cbdba1e201d451dd77c137a80224eba79 2724
@@ -322,6 +322,22 @@ SkinnedModelDissolve.layout.msl e7cfdb9d1182ca426fe807fd7375463e218819d6c38e0f49
 SkinnedModelDissolve.vertex.hlsl 29b9b028923e1531fad10028325a1948538d791be060f686686a422d635b9cec 4642
 SkinnedModelDissolve.vertex.msl a85c1872a7422f0cdb6577d86e1a0a27911444167846aba752edeecb2a4dce8d 3414
 SkinnedModelDissolve.vertex.spirv c0a0812b754c8abf533c3535165b651fad9715532086bf1e4babfc7b42547d2d 6124
+SkinnedModelDissolveMotion.fragment.hlsl 90e283b22bb584a57472ff7a2b3b97700671e66f9d0d07cf60dbde515e9bb0de 70063
+SkinnedModelDissolveMotion.fragment.msl 9fea08d1b4deea01705aabd901e9c3b0af9080c91d490f0db2558c31ab80c565 69470
+SkinnedModelDissolveMotion.fragment.spirv 2129b4cdabef6a17b554c6e55c1dfebf84e6019b2a19f5b2c7cd684548af2300 47464
+SkinnedModelDissolveMotion.layout.hlsl e14c5f77ecb738b68f1e97484c78ce4e86489c4fd3eaae6d4537ece27547134e 22 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set2[<unnamed>:UniformBuffer:V]|set3[<unnamed>:UniformBuffer:V,<unnamed>:UniformBuffer:V]
+SkinnedModelDissolveMotion.layout.msl e14c5f77ecb738b68f1e97484c78ce4e86489c4fd3eaae6d4537ece27547134e 22 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set2[<unnamed>:UniformBuffer:V]|set3[<unnamed>:UniformBuffer:V,<unnamed>:UniformBuffer:V]
+SkinnedModelDissolveMotion.vertex.hlsl d7396e05e8041f3ac8fbf543891f47cc6d4fbb80ded9f6e7f2bee0133ba416f4 6033
+SkinnedModelDissolveMotion.vertex.msl 0fe0c7f68b2e56e63cb3afcb2531607cd711b8f19cd0e89e5b9adfa3f590ab97 4625
+SkinnedModelDissolveMotion.vertex.spirv 786827afa9e1fba33f45e26b0154478c58b5a9b31f72fd2fc7fa04f1fdbcb8f7 8196
+SkinnedModelMotion.fragment.hlsl afeb4fb3352cf5846cf8678c4470e3e2708a27ac00933c1ffbb261b2383336d6 68435
+SkinnedModelMotion.fragment.msl 02399ee40972a8aea5025035b87d32aa9580f4854a59644a6a5b15ddcaf1d441 67868
+SkinnedModelMotion.fragment.spirv 5f8ea02e7dc68e9d6cbadc21a4161d2e0bb12a6f1289ab52038a243cfee8ad1a 45908
+SkinnedModelMotion.layout.hlsl e14c5f77ecb738b68f1e97484c78ce4e86489c4fd3eaae6d4537ece27547134e 22 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set2[<unnamed>:UniformBuffer:V]|set3[<unnamed>:UniformBuffer:V,<unnamed>:UniformBuffer:V]
+SkinnedModelMotion.layout.msl e14c5f77ecb738b68f1e97484c78ce4e86489c4fd3eaae6d4537ece27547134e 22 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:UniformBuffer:V]|set1[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set2[<unnamed>:UniformBuffer:V]|set3[<unnamed>:UniformBuffer:V,<unnamed>:UniformBuffer:V]
+SkinnedModelMotion.vertex.hlsl d7396e05e8041f3ac8fbf543891f47cc6d4fbb80ded9f6e7f2bee0133ba416f4 6033
+SkinnedModelMotion.vertex.msl 0fe0c7f68b2e56e63cb3afcb2531607cd711b8f19cd0e89e5b9adfa3f590ab97 4625
+SkinnedModelMotion.vertex.spirv 786827afa9e1fba33f45e26b0154478c58b5a9b31f72fd2fc7fa04f1fdbcb8f7 8196
 SkinnedShadowDepth.fragment.hlsl fe25680158d32541b71f9b25acd31950e87083e6b0ec1827ca8f90071c42ae8e 419
 SkinnedShadowDepth.fragment.msl 1c08c344e56821da4b766bce31185c34fb66bbd295d90e9772f8b83af9373675 336
 SkinnedShadowDepth.fragment.spirv 475068619bbc72bb527dfc6846b3340f7b95fdb130ab0dd827f60fb8a24b79c7 400

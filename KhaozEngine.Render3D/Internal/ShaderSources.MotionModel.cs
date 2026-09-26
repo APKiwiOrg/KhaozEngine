@@ -28,4 +28,29 @@ layout(location=12) out vec4 vPrevClip;"),
     vCurClip = CurViewProj * world;
     vPrevClip = MotionParams.x > 0.5 ? PrevViewProj * (prevModel * vec4(Position, 1.0)) : vCurClip;
 ");
+
+    /// <summary>SkinnedModelVert with motion: skinned twice (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24 section 3). Last
+    /// frame's position is <c>PrevModel * blend(prevBones) * rest</c>, read from this caster's slot of
+    /// <c>SkinnedMotionPalette</c>, which holds this frame's own when the key has no usable last frame. Set 3 is the last
+    /// set Vulkan guarantees, so the motion block shares it. vDissolve stays at 9 and the pair sits at 10 and 11.</summary>
+    public static readonly string SkinnedModelMotionVert = ShaderText.BeforeEndOfMain(
+        ShaderText.After(SkinnedModelVert, "layout(location=9) out vec2 vDissolve;", @"
+layout(set=3, binding=0) uniform MotionFrame {" + MotionFrameMembersGlsl + @"};
+// This caster's last frame, at the per-caster dynamic offset its palette at set 2 uses.
+layout(set=3, binding=1) uniform PrevPalette {
+    mat4 PrevModel;          // last frame's world transform, render-relative
+    mat4 prevBones[128];     // last frame's composed palette
+};
+layout(location=10) out vec4 vCurClip;
+layout(location=11) out vec4 vPrevClip;"),
+        @"    mat4 prevSkin = mat4(1.0);
+    if (wsum >= 1e-8) {
+        prevSkin = prevBones[int(BoneIndices.x)] * BoneWeights.x
+                 + prevBones[int(BoneIndices.y)] * BoneWeights.y
+                 + prevBones[int(BoneIndices.z)] * BoneWeights.z
+                 + prevBones[int(BoneIndices.w)] * BoneWeights.w;
+    }
+    vCurClip = CurViewProj * world;
+    vPrevClip = MotionParams.x > 0.5 ? PrevViewProj * (PrevModel * (prevSkin * vec4(Position, 1.0))) : vCurClip;
+");
 }

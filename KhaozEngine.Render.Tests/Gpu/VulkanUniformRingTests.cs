@@ -238,8 +238,13 @@ namespace KhaozEngine.Tests.Gpu
                     ModelRenderer.SkinnedMainSlotBytes, new uint[] { 8, 16, 32, 64 }),
 
                 // SkinnedBonePalette.cs:80, GpuBufferRange(_ubo, 0, SlotBytes). ONE slot per caster, whatever the
-                // cascade count, and the widest window the engine binds at 8192 bytes.
+                // cascade count, 8192 bytes wide.
                 ("SkinnedBonePalette per caster", SkinnedBonePalette.SlotBytes, SkinnedBonePalette.SlotBytes,
+                    new uint[] { 8, 16, 32, 64 }),
+
+                // SkinnedMotionPalette.cs, GpuBufferRange(_buffer, 0, SlotBytes). ONE slot per caster, capacity 8 and
+                // doubling, and the widest window the engine binds at 8448 bytes.
+                ("SkinnedMotionPalette per caster", SkinnedMotionPalette.SlotBytes, SkinnedMotionPalette.SlotBytes,
                     new uint[] { 8, 16, 32, 64 }),
 
                 // WaterRenderer.cs:276, GpuBufferRange(_ubo, 0, SlotBytes). Capacity starts at 4 and doubles.
@@ -247,7 +252,7 @@ namespace KhaozEngine.Tests.Gpu
                     new uint[] { 4, 8, 16, 32 }),
             };
 
-            Assert.Equal(8, sets.Length);
+            Assert.Equal(9, sets.Length);
 
             foreach ((string site, uint slotBytes, uint rangeBytes, uint[] capacities) in sets)
             {

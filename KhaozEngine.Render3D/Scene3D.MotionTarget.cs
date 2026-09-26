@@ -1,3 +1,6 @@
+using System;
+using System.Numerics;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D;
@@ -18,5 +21,34 @@ public sealed partial class Scene3D
     {
         CpuSkinnedDraw record = _cpuSkinnedDraws[draw];
         return (record.Motion, record.MeshIndex, record.VertexCount);
+    }
+
+    /// <summary>Whether this frame has a previous frame to measure motion against. Group B's
+    /// <see cref="PreviousFrameView"/> is null on the first temporal frame and after every reset, and every temporal
+    /// variant then writes exactly zero.</summary>
+    bool MotionHistoryValid => PreviousFrameView is not null;
+
+    /// <summary>The history previous object state is read from this frame, or null when there is none to read.</summary>
+    MotionHistory? PreviousMotion => MotionHistoryValid ? ActiveMotionHistory : null;
+
+    /// <summary>Pack every GPU-skinned caster's last frame into its <c>SkinnedMotionPalette</c> slot and upload them in
+    /// one write. A draw with no key, a key with no last frame, a previous palette of another length (the key moved to
+    /// another mesh, group C amendment 1) or a frame with no valid history packs this frame's own, which is camera-only
+    /// motion.</summary>
+    void PrepareGpuSkinnedMotion(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> boneSpan)
+    {
+        _model.EnsureSkinnedMotionCapacity((uint)_gpuSkinnedDraws.Count);
+        MotionHistory? history = PreviousMotion;
+        for (int d = 0; d < _gpuSkinnedDraws.Count; d++)
+        {
+            GpuSkinnedDraw dr = _gpuSkinnedDraws[d];
+            if (history is not null && !dr.Motion.IsNone
+                && history.TryGetPreviousSkinned(dr.Motion, out Matrix4x4 world, out ReadOnlySpan<Matrix4x4> palette)
+                && palette.Length == dr.BoneCount)
+                _model.PackSkinnedMotion(dr.Slot, ToRender(world), palette);
+            else
+                _model.PackSkinnedMotion(dr.Slot, dr.World, boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
+        }
+        _model.UploadSkinnedMotion(cl);
     }
 }

@@ -50,6 +50,20 @@ public sealed class ModelMotionPipelineTests
     }
 
     [Fact]
+    public void TheTemporalTargetBuildsBothGpuSkinnedVariantsOnFourSets()
+    {
+        using var device = new FakeGpuDevice();
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
+
+        FakeGraphicsPipelineRequest[] skinned = factory.GraphicsPipelines
+            .Where(p => p.VertexGlsl == ShaderSources.SkinnedModelMotionVert).ToArray();
+        Assert.Equal(new[] { ShaderSources.SkinnedModelMotionFrag, ShaderSources.SkinnedModelDissolveMotionFrag },
+            skinned.Select(p => p.FragmentGlsl).ToArray());
+        Assert.All(skinned, p => Assert.Equal(4, p.Description.ResourceLayouts.Length));
+    }
+
+    [Fact]
     public void LeavingTheTemporalTargetRetiresTheMotionResources()
     {
         using var device = new FakeGpuDevice();

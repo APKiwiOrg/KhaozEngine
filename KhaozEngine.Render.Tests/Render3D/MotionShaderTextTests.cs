@@ -15,6 +15,10 @@ public sealed class MotionShaderTextTests
     static readonly Dictionary<string, (string Variant, string Base, string Sink)> Variants = new()
     {
         ["ModelMotionFrag"] = (ShaderSources.ModelMotionFrag, ShaderSources.ModelFrag, ""),
+        ["SkinnedModelMotionFrag"] = (ShaderSources.SkinnedModelMotionFrag, ShaderSources.SkinnedModelFrag,
+            "layout(location=9) in vec2 vDissolve;"),
+        ["SkinnedModelDissolveMotionFrag"] = (ShaderSources.SkinnedModelDissolveMotionFrag,
+            ShaderSources.SkinnedModelDissolveFrag, ""),
     };
 
     public static TheoryData<string> Names()

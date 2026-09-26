@@ -172,6 +172,9 @@ internal sealed partial class ModelRenderer
         cl.SetGraphicsResourceSet(0, _skinnedMainSet!, slot * SkinnedMainSlotBytes);
         cl.SetGraphicsResourceSet(1, skinnedFragSet ?? _skinnedDefaultFragSet);
         cl.SetGraphicsResourceSet(2, _bonePalette.Set, SkinnedBonePalette.OffsetFor(paletteSlot));
+        // The skinned variant's set 3: the motion block and this caster's last frame, at its own slot.
+        if (_motion is { } motion)
+            cl.SetGraphicsResourceSet(3, motion.SkinnedPalette.Set, SkinnedMotionPalette.OffsetFor(paletteSlot));
         cl.SetVertexBuffer(0, restVb);
         cl.SetIndexBuffer(ib, indexFormat);
         cl.DrawIndexed((uint)indexCount, 1, 0, 0, 0);

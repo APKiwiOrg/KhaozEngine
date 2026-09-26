@@ -86,6 +86,7 @@ namespace KhaozEngine.Tests.Gpu
             // different slots: set 2 of the model pair and set 1 of the depth one. Layout-relative it is always b0,
             // and the ACROSS-layouts row below is where the two pipelines' different bases show up.
             ("SkinnedBonePalette._layout", new[] { U("Palette", dynamic: true) }, "b0"),
+            ("SkinnedMotionPalette.Layout", new[] { U("MotionFrame"), U("PrevPalette", dynamic: true) }, "b0 b1"),
             // The splat pass's two, also since #604: the shared frame block on its own, then the material.
             ("ModelRenderer._splatFrameLayout",
                 new[] { U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
@@ -347,6 +348,14 @@ namespace KhaozEngine.Tests.Gpu
             D3D11ResourceLayout[] rigid = { model, rigidMotion };
 
             Assert.Equal("b1 t8", Absolute(rigid, 1));
+
+            // The skinned temporal variant: the three skinned sets, then the motion set at set 3, whose two uniform
+            // buffers continue the b file after the palette's b2.
+            using var skinnedMotion = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("MotionFrame"), U("PrevPalette", dynamic: true)));
+            D3D11ResourceLayout[] skinnedTemporal = { skinnedMain, skinnedFrag, bonePalette, skinnedMotion };
+
+            Assert.Equal("b3 b4", Absolute(skinnedTemporal, 3));
         }
 
         /// <summary>

@@ -433,7 +433,8 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("BoneIndices", GpuVertexElementFormat.Float4),
                 new GpuVertexElement("BoneWeights", GpuVertexElementFormat.Float4),
                 new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4));
-            _skinnedPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
+            if (temporal) _skinnedPipeline = CreateSkinnedMotionPipeline(factory, modelOutputs, skinnedVertexLayout, dissolve: false);
+            else _skinnedPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
                 BlendAttachments = ModelTargetBlends.Opaque(modelOutputs),
@@ -445,7 +446,8 @@ namespace KhaozEngine.Render3D.Rendering
                 VertexLayouts = new List<GpuVertexLayoutDescription> { skinnedVertexLayout },
                 Outputs = modelOutputs,
             });
-            _skinnedDissolvePipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
+            if (temporal) _skinnedDissolvePipeline = CreateSkinnedMotionPipeline(factory, modelOutputs, skinnedVertexLayout, dissolve: true);
+            else _skinnedDissolvePipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
                 BlendAttachments = ModelTargetBlends.Opaque(modelOutputs),

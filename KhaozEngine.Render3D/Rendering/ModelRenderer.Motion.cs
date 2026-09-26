@@ -57,6 +57,27 @@ internal sealed partial class ModelRenderer
             new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout, ModelMotionResources.SlotLayout });
     }
 
+    /// <summary>The GPU-skinned variant: the base pipeline's sets 0 to 2 and, at set 3, the motion block with this
+    /// caster's last frame.</summary>
+    IGpuPipeline CreateSkinnedMotionPipeline(IGpuResourceFactory factory, GpuOutputDescription outputs,
+        GpuVertexLayoutDescription skinnedVertexLayout, bool dissolve)
+    {
+        ModelMotionResources motion = _motion!;
+        return OpaqueMotionPipeline(factory, outputs, dissolve ? motion.SkinnedDissolveShaders : motion.SkinnedShaders,
+            new[] { _skinnedMainLayout, _skinnedFragLayout, _bonePalette.Layout, motion.SkinnedPalette.Layout },
+            new List<GpuVertexLayoutDescription> { skinnedVertexLayout });
+    }
+
+    /// <summary>Hold a last-frame slot per GPU-skinned caster.</summary>
+    internal void EnsureSkinnedMotionCapacity(uint slotCount) => _motion!.SkinnedPalette.EnsureCapacity(slotCount);
+
+    /// <summary>Pack one caster's last frame into its slot.</summary>
+    internal void PackSkinnedMotion(uint slot, in Matrix4x4 previousWorld, ReadOnlySpan<Matrix4x4> previousBones)
+        => _motion!.SkinnedPalette.Pack(slot, previousWorld, previousBones);
+
+    /// <summary>Upload every packed last-frame slot, before any skinned draw.</summary>
+    internal void UploadSkinnedMotion(IGpuCommandList cl) => _motion!.SkinnedPalette.Upload(cl);
+
     /// <summary>Upload this frame's motion block. Once per temporal frame, before the model pass.</summary>
     internal void UploadMotionFrame(IGpuCommandList cl, in MotionFrameUbo frame) => _motion!.UploadFrame(cl, frame);
 

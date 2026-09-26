@@ -9,7 +9,7 @@ namespace KhaozEngine.Render3D.Rendering;
 /// What the model pass's temporal variants read (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24 section 4). Created on the first
 /// build against a model target that carries the motion attachment and retired when the target loses it, so with
 /// temporal rendering off none of it exists. Programs compile on first use, so a scene pays only for the paths it draws.
-/// Later tasks add the skinned, CPU-skinned, foliage and ground members.
+/// Later tasks add the CPU-skinned, foliage and ground members.
 /// </summary>
 internal sealed class ModelMotionResources : IDisposable
 {
@@ -29,6 +29,7 @@ internal sealed class ModelMotionResources : IDisposable
     IGpuBuffer? _slots;
     uint _slotCapacity;
     IGpuShaderSet? _rigid;
+    IGpuShaderSet? _skinned, _skinnedDissolve;
 
     internal ModelMotionResources(IGpuDevice gd, GpuRetireQueue retired)
     {
@@ -43,6 +44,7 @@ internal sealed class ModelMotionResources : IDisposable
         _previousCapacity = InitialPrevious;
         _previous = CreatePrevious(_previousCapacity);
         RigidSet = f.CreateResourceSet(new GpuResourceSetDescription(RigidLayout, _frame, _previous));
+        SkinnedPalette = new SkinnedMotionPalette(gd, _frame, retired);
     }
 
     /// <summary>The frame's <c>MotionFrame</c> block, 144 bytes, uploaded whole once per temporal frame.</summary>
@@ -61,6 +63,17 @@ internal sealed class ModelMotionResources : IDisposable
     /// <summary>ModelMotionVert with ModelMotionFrag.</summary>
     internal IGpuShaderSet RigidShaders =>
         _rigid ??= _gd.Factory.CreateShadersFromSpirv(ShaderSources.ModelMotionVert, ShaderSources.ModelMotionFrag);
+
+    /// <summary>Last frame's world and palette of each GPU-skinned caster, and set 3 of the skinned variant.</summary>
+    internal SkinnedMotionPalette SkinnedPalette { get; }
+
+    /// <summary>SkinnedModelMotionVert with SkinnedModelMotionFrag.</summary>
+    internal IGpuShaderSet SkinnedShaders => _skinned ??= _gd.Factory.CreateShadersFromSpirv(
+        ShaderSources.SkinnedModelMotionVert, ShaderSources.SkinnedModelMotionFrag);
+
+    /// <summary>SkinnedModelMotionVert with SkinnedModelDissolveMotionFrag.</summary>
+    internal IGpuShaderSet SkinnedDissolveShaders => _skinnedDissolve ??= _gd.Factory.CreateShadersFromSpirv(
+        ShaderSources.SkinnedModelMotionVert, ShaderSources.SkinnedModelDissolveMotionFrag);
 
     IGpuBuffer CreatePrevious(uint capacity) => _gd.Factory.CreateBuffer(new GpuBufferDescription(
         capacity * MatrixBytes, GpuBufferUsage.StructuredBufferReadOnly, MatrixBytes));
@@ -97,6 +110,9 @@ internal sealed class ModelMotionResources : IDisposable
         RigidLayout.Dispose();
         _previous.Dispose();
         _slots?.Dispose();
+        SkinnedPalette.Dispose();
+        _skinned?.Dispose();
+        _skinnedDissolve?.Dispose();
         _frame.Dispose();
         _rigid?.Dispose();
     }

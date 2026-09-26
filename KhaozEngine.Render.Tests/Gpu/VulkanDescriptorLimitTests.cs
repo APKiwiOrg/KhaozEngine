@@ -92,6 +92,9 @@ namespace KhaozEngine.Tests.Gpu
                 // pipeline. A set layout carries no set number, so one declaration really does serve both, and it
                 // is what lets one palette upload feed the main pass and every shadow cascade.
                 ["SkinnedBonePalette"] = L(U("Palette", V, dynamic: true)),
+                // Render3D/Rendering/SkinnedMotionPalette.cs, set 3 of the skinned temporal variant: the motion block and
+                // this caster's last frame at its dynamic offset. A set carries one dynamic offset, which is the palette's.
+                ["Motion.skinned"] = L(U("MotionFrame", V), U("PrevPalette", V, dynamic: true)),
                 // Render3D/Rendering/ModelRenderer.Splat.cs:41 and :48. TWO sets since #604: the shared frame
                 // block, then everything the material owns. One of the two ground pipelines that put a uniform
                 // buffer in BOTH of their sets, and one of the three that spend two uniform buffers in total.
@@ -192,6 +195,7 @@ namespace KhaozEngine.Tests.Gpu
             // Render3D/Rendering/ModelRenderer.cs:407 and :419. THREE slots since #407 added the shared palette.
             ("ModelRenderer skinned", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette"]),
             ("ModelRenderer skinned dissolve", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette"]),
+            ("ModelRenderer skinned motion", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette", "Motion.skinned"]),
 
             // The rest, alphabetically. Every one is a single-set pipeline except the two ground passes, which
             // carry their own two-slot arrays below since #604 and #727.
@@ -255,8 +259,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(46, ShippedLayouts.Count);
-            Assert.Equal(46, ShippedPipelines.Count);
+            Assert.Equal(47, ShippedLayouts.Count);
+            Assert.Equal(47, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {
@@ -284,7 +288,9 @@ namespace KhaozEngine.Tests.Gpu
         /// there at #604 and #727. <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/407">#407</see> then
         /// raised it to THREE, on the skinned model pair alone: the shared frame block and the per-draw header in
         /// set 0 plus the per-caster bone palette in a set of its own. The skinned DEPTH pipeline took the same
-        /// palette and sits at two with the other three. Five descriptors of headroom are left.
+        /// palette and sits at two with the other three. The skinned temporal variant raised it to FIVE: the frame
+        /// block, the per-draw header and the palette as before, then the motion block and the last-frame palette at
+        /// set 3. Three descriptors of headroom are left.
         /// <para>
         /// RAISING THIS NUMBER IS FINE UP TO <see cref="VulkanDescriptorLimits.SpecRequiredMinimum"/>. Update it
         /// with the pipeline that raised it. This is a per-PIPELINE-LAYOUT sum over EVERY uniform buffer, so both
@@ -292,12 +298,12 @@ namespace KhaozEngine.Tests.Gpu
         /// </para>
         /// </summary>
         [Fact]
-        public void TheHeaviestShippedPipeline_SpendsThreeDynamicUniformDescriptors()
+        public void TheHeaviestShippedPipeline_SpendsFiveDynamicUniformDescriptors()
         {
             int heaviest = ShippedPipelines.Max(
                 p => p.Slots.Sum(slot => VulkanDescriptorPolicy.DynamicUniformCount(ShippedLayouts[slot])));
 
-            Assert.Equal(3, heaviest);
+            Assert.Equal(5, heaviest);
             Assert.True(heaviest < VulkanDescriptorLimits.SpecRequiredMinimum,
                 "the heaviest shipped pipeline is at the spec floor, so the next uniform buffer added to it cannot "
                 + "be created on a minimum-spec device at all.");

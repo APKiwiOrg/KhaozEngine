@@ -20,6 +20,9 @@ public sealed class MotionUboLayoutTests
     [
         ("ModelMotionVert", ShaderSources.ModelMotionVert),
         ("ModelMotionFrag", ShaderSources.ModelMotionFrag),
+        ("SkinnedModelMotionVert", ShaderSources.SkinnedModelMotionVert),
+        ("SkinnedModelMotionFrag", ShaderSources.SkinnedModelMotionFrag),
+        ("SkinnedModelDissolveMotionFrag", ShaderSources.SkinnedModelDissolveMotionFrag),
     ];
 
     [Fact]

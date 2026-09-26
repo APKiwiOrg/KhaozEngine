@@ -39,4 +39,12 @@ internal static partial class ShaderSources
     /// with <see cref="ModelMotionVert"/>, and in later tasks with the CPU-skinned and foliage motion vertices, which
     /// emit the same block.</summary>
     public static readonly string ModelMotionFrag = MotionFragment(ModelFrag, 11);
+
+    /// <summary>SkinnedModelFrag with motion. The base fragment reads 0 to 8 and the vertex emits vDissolve at 9, so a
+    /// sink holds 9 live below the pair at 10 and 11.</summary>
+    public static readonly string SkinnedModelMotionFrag = MotionFragment(SkinnedModelFrag, 10,
+        "\nlayout(location=9) in vec2 vDissolve;", "    oMotion.w += vDissolve.x * 1e-30;\n");
+
+    /// <summary>SkinnedModelDissolveFrag with motion. The base reads 0 to 9, so the pair follows at 10 and 11.</summary>
+    public static readonly string SkinnedModelDissolveMotionFrag = MotionFragment(SkinnedModelDissolveFrag, 10);
 }

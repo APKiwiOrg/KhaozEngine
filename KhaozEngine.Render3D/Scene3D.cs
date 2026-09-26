@@ -1886,6 +1886,7 @@ namespace KhaozEngine.Render3D
             if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             _post.Run(cl, _res, target, Post, runFxaa, distortionActive);
+            DrawDebugView(cl, target);   // a development view replaces the final image (Scene3D.DebugView.cs)
             DrawTargetOutlines(cl, displayVp, target);
             if (EnableTiming) postMs = ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
@@ -2208,6 +2209,7 @@ namespace KhaozEngine.Render3D
             foreach (var t in _textures) t?.Dispose();
             _textures.Clear();
             DisposeSplatMaterials();
+            DisposeMotionVectorsView();
             DisposeTileGroundAndPointShadowResources();
         }
 

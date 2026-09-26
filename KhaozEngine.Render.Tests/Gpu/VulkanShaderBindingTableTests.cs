@@ -131,6 +131,7 @@ namespace KhaozEngine.Tests.Gpu
 
                 ["TransitionSolid"] = "TransitionRenderer solid",
                 ["TransitionCrossfade"] = "TransitionRenderer cross",
+                ["MotionVectorsView"] = "MotionVectorsView",
             };
 
         /// <summary>
@@ -220,7 +221,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(64, catalog.Length);
+            Assert.Equal(65, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

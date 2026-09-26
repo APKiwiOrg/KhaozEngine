@@ -170,6 +170,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["Transition.solid"] = L(U("Fill", F)),
                 ["Transition.cross"] = L(T("Src"), S("Samp"), U("Params", F)),
 
+                // Render3D/Rendering/MotionVectorsView.cs, the MotionVectors debug view.
+                ["MotionVectorsView"] = L(T("Motion"), S("Samp")),
+
                 // Render3D/Rendering/WaterRenderer.cs:188
                 ["Water"] = L(T("BathyTex", VF), S("BathySamp", VF), T("OceanMap", VF), S("OceanSamp", VF),
                     T("DepthTex"), S("Samp"), U("Water", VF, dynamic: true)),
@@ -256,6 +259,7 @@ namespace KhaozEngine.Tests.Gpu
             ("TrailRenderer", ["Trail"]),
             ("TransitionRenderer solid", ["Transition.solid"]),
             ("TransitionRenderer cross", ["Transition.cross"]),
+            ("MotionVectorsView", ["MotionVectorsView"]),
             ("WaterRenderer", ["Water"]),
         ];
 
@@ -269,8 +273,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(49, ShippedLayouts.Count);
-            Assert.Equal(52, ShippedPipelines.Count);
+            Assert.Equal(50, ShippedLayouts.Count);
+            Assert.Equal(53, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

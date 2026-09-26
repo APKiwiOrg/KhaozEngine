@@ -28,6 +28,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <item>FullscreenVert paired with each post fragment PaletteFrag/EdgeFrag/BlitFrag/FxaaFrag/BloomBrightFrag/
     /// BloomBlurFrag/BloomCompositeFrag (PixelPostProcess)</item>
     /// <item>FullscreenVert+TransitionSolidFrag/TransitionCrossfadeFrag (TransitionRenderer), ModelVert+ModelDissolveFrag (CharDissolve)</item>
+    /// <item>FullscreenVert+MotionVectorsViewFrag (MotionVectorsView, the MotionVectors debug view)</item>
     /// <item>SpriteBatch VertSrc+FragSrc (Render2D)</item>
     /// <item>The temporal motion variants of the model, skinned, CPU-skinned, foliage, splat and tile-ground passes
     /// and the five motion-preserving transparent fragments (built only against a model target with the motion
@@ -149,6 +150,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void TransitionCrossfade()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TransitionCrossfadeFrag, "TransitionCrossfade");
+
+        [Fact]
+        public void MotionVectorsView()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.MotionVectorsViewFrag, "MotionVectorsView");
 
         [Fact]
         public void ModelDissolve()

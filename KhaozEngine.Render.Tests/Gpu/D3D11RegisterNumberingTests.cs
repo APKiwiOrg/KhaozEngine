@@ -150,6 +150,7 @@ namespace KhaozEngine.Tests.Gpu
             ("TrailRenderer._layout", new[] { U("U") }, "b0"),
             ("TransitionRenderer._solidLayout", new[] { U("Fill") }, "b0"),
             ("TransitionRenderer._crossLayout", new[] { T("Src"), S("Samp"), U("Params") }, "t0 s0 b0"),
+            ("MotionVectorsView._layout", new[] { T("Motion"), S("Samp") }, "t0 s0"),
 
             // The widest shipped layout, and the one whose own source comment already explains that the order is
             // load-bearing because of exactly this numbering.

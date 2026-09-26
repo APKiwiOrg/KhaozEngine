@@ -10,7 +10,7 @@ namespace KhaozEngine.Render3D
         /// <summary>The normal image. The default.</summary>
         None,
         /// <summary>The screen-space motion vectors in place of the final image: hue for direction, brightness for
-        /// magnitude, background black.</summary>
+        /// magnitude, black for the background and for no motion.</summary>
         MotionVectors,
         /// <summary>The temporal history in place of the final image.</summary>
         History,

@@ -22,6 +22,8 @@
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
     <!-- ShowcaseBootLogTests names SessionLogOptions. -->
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Dungeon/KhaozEngine.Dungeon.csproj" />
+    <ProjectReference Include="../KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
     <!-- DragDropPageTests names ScreenStack, InputState and MouseFrames. -->
     <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />

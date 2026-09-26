@@ -45,6 +45,9 @@ internal sealed class SkinnedMotionPalette : IDisposable
     internal IGpuResourceSet Set => _set ?? throw new InvalidOperationException(
         "EnsureCapacity has not run, so no skinned motion slot exists to bind.");
 
+    /// <summary>The slot buffer, null before <see cref="EnsureCapacity"/>. For tests.</summary>
+    internal IGpuBuffer? BufferForTests => _buffer;
+
     /// <summary>The dynamic offset that selects caster <paramref name="slot"/>.</summary>
     internal static uint OffsetFor(uint slot) => slot * SlotBytes;
 
@@ -72,8 +75,12 @@ internal sealed class SkinnedMotionPalette : IDisposable
         MemoryMarshal.AsBytes(previousBones).CopyTo(destination[64..]);
     }
 
-    /// <summary>Upload every packed slot in one whole-buffer write.</summary>
-    internal void Upload(IGpuCommandList cl) => cl.UpdateBuffer(_buffer!, 0, (ReadOnlySpan<byte>)_image);
+    /// <summary>Upload every packed slot in one whole-buffer write. Returns the bytes uploaded.</summary>
+    internal long Upload(IGpuCommandList cl)
+    {
+        cl.UpdateBuffer(_buffer!, 0, (ReadOnlySpan<byte>)_image);
+        return _image.Length;
+    }
 
     public void Dispose()
     {

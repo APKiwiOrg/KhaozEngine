@@ -14,8 +14,9 @@ internal static partial class ShaderSources
     internal const float MotionViewStillPixels = 1.0e-4f;
 
     /// <summary>Hue for direction and brightness for length, full at <see cref="MotionViewFullBrightnessPixels"/>
-    /// internal pixels, black for the background sentinel (any channel past <see cref="MotionMath.BackgroundThreshold"/>)
-    /// and for no motion. The thresholds are spliced from those C# constants, so the shader cannot drift from
+    /// internal pixels, black for the background sentinel and for no motion. The background test is
+    /// <see cref="MotionMath.IsBackground"/>, U alone past <see cref="MotionMath.BackgroundThreshold"/>, as every other
+    /// reader tests it. The thresholds are spliced from those C# constants, so the shader cannot drift from
     /// them.</summary>
     public static readonly string MotionVectorsViewFrag = @"#version 450
 layout(set=0, binding=0) uniform texture2D Motion;
@@ -31,7 +32,7 @@ void main() {
     vec2 motion = texture(sampler2D(Motion, Samp), uv).xy;
     vec2 pixels = motion * vec2(textureSize(sampler2D(Motion, Samp), 0));
     float magnitude = length(pixels);
-    if (max(abs(motion.x), abs(motion.y)) > BackgroundThreshold || magnitude < StillPixels) {
+    if (abs(motion.x) > BackgroundThreshold || magnitude < StillPixels) {
         oColor = vec4(0.0, 0.0, 0.0, 1.0);
         return;
     }

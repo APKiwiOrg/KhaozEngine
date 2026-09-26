@@ -68,7 +68,15 @@ namespace KhaozEngine.Render3D.Rendering
             _alpha.Dispose();
             _additive = BuildPipeline(_gd.Factory, modelOutputs, GpuBlendAttachment.Additive);
             _alpha = BuildPipeline(_gd.Factory, modelOutputs, GpuBlendAttachment.AlphaBlend);
+            if (MotionMath.IsTemporal(modelOutputs)) return;
+            // Scene3D idles the device before it changes the model target's attachments, so no list in flight still
+            // reads the temporal program the old pipelines used.
+            _motionShaders?.Dispose();
+            _motionShaders = null;
         }
+
+        /// <summary>Whether the temporal program is held. For tests.</summary>
+        internal bool HoldsMotionShadersForTests => _motionShaders is not null;
 
         IGpuPipeline BuildPipeline(IGpuResourceFactory factory, GpuOutputDescription modelOutputs, GpuBlendAttachment color0)
         {

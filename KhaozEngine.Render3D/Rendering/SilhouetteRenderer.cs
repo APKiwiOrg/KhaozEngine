@@ -60,7 +60,15 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _pipeline.Dispose();
             _pipeline = BuildPipeline(_gd.Factory, modelOutputs);
+            if (MotionMath.IsTemporal(modelOutputs)) return;
+            // Scene3D idles the device before it changes the model target's attachments, so no list in flight still
+            // reads the temporal program the old pipeline used.
+            _motionShaders?.Dispose();
+            _motionShaders = null;
         }
+
+        /// <summary>Whether the temporal program is held. For tests.</summary>
+        internal bool HoldsMotionShadersForTests => _motionShaders is not null;
 
         IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription modelOutputs)
         {

@@ -93,7 +93,14 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _pipeline.Dispose();
             _pipeline = BuildPipeline(_gd.Factory, modelOutputs);
+            if (MotionMath.IsTemporal(modelOutputs)) return;
+            // The temporal program the old pipeline used goes where this pass's grown-out buffers go.
+            _retired.Retire(_motionShaders);
+            _motionShaders = null;
         }
+
+        /// <summary>Whether the temporal program is held. For tests.</summary>
+        internal bool HoldsMotionShadersForTests => _motionShaders is not null;
 
         IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription modelOutputs)
         {

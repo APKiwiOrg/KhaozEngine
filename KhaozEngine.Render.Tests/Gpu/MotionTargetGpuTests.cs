@@ -333,8 +333,8 @@ public sealed class MotionTargetGpuTests
         Veiled veiled = RenderVeiled(transparent: true), bare = RenderVeiled(transparent: false);
         MotionTargetReadback motion = veiled.Motion;
 
-        // Under the shell and the beam the box keeps its own motion, which is the camera's, bit for bit the motion of
-        // the same frames drawn without them.
+        // Under the shell and the beam the box keeps its own motion, which is the camera's, value for value the motion
+        // of the same frames drawn without them.
         int drawn = MotionExpectation.AssertDrawnPixels(motion,
             (x, y) => MotionExpectation.StaticSurface(veiled.Now, veiled.Then, x, y, W, H, veiled.Jitter), Line);
         Assert.True(drawn > 100, $"only {drawn} pixels drew");

@@ -70,12 +70,18 @@ public sealed class MotionTargetLifecycleGpuTests
 
         rig.Scene.ForceTemporalForTests = true;
         rig.Frame();
+        rig.Scene.DebugView = SceneDebugView.MotionVectors;
         rig.Frame();
         Assert.NotNull(rig.Scene.MotionResourcesForTests);
+        Assert.True(rig.Scene.TransparentMotionShadersHeldForTests);
+        Assert.True(rig.Scene.MotionVectorsViewBuiltForTests);
 
         rig.Scene.ForceTemporalForTests = false;
+        rig.Scene.DebugView = SceneDebugView.None;
         byte[] after = rig.Frame();
         Assert.Null(rig.Scene.MotionResourcesForTests);
+        Assert.False(rig.Scene.TransparentMotionShadersHeldForTests);
+        Assert.False(rig.Scene.MotionVectorsViewBuiltForTests);
         Assert.Equal(before, after);
     }
 

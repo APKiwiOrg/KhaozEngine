@@ -34,7 +34,7 @@ namespace KhaozEngine.Render3D
             }
         }
 
-        // The MotionVectors pass, built the first time the view is drawn.
+        // The MotionVectors pass, built when the view is drawn and retired by the first frame that does not draw it.
         MotionVectorsView? _motionVectorsView;
 
         /// <summary>Whether the MotionVectors pass has been built. For tests.</summary>
@@ -55,7 +55,20 @@ namespace KhaozEngine.Render3D
                         "The MotionVectors view has no motion target: the frame that latched it is not temporal.");
                     (_motionVectorsView ??= new MotionVectorsView(_gd, _targetOutput)).Draw(cl, motion, target);
                     break;
+                default:
+                    RetireMotionVectorsView();
+                    break;
             }
+        }
+
+        // Its resource set samples the motion target, which a later resize or a temporal-off frame frees, so a frame
+        // that does not draw the view lets it go. The last frame's commands may still read it, so it goes to the
+        // retire queue.
+        void RetireMotionVectorsView()
+        {
+            if (_motionVectorsView is null) return;
+            _retired.Retire(_motionVectorsView);
+            _motionVectorsView = null;
         }
 
         void DisposeMotionVectorsView()

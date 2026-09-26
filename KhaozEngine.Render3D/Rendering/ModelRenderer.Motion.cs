@@ -96,8 +96,8 @@ internal sealed partial class ModelRenderer
     /// whose pipeline is the CPU-skinned dissolve variant while temporal.</summary>
     public void BindCpuSkinnedPass(IGpuCommandList cl) => cl.SetPipeline(_cpuSkinnedMotionPipeline ?? _pipeline);
 
-    /// <summary>Upload last frame's CPU-skinned positions, before the model pass.</summary>
-    internal void UploadCpuSkinnedPrevious(IGpuCommandList cl, ReadOnlySpan<Vector3> positions)
+    /// <summary>Upload last frame's CPU-skinned positions, before the model pass. Returns the bytes uploaded.</summary>
+    internal long UploadCpuSkinnedPrevious(IGpuCommandList cl, ReadOnlySpan<Vector3> positions)
         => RequireMotion().UploadCpuPrevious(cl, positions);
 
     /// <summary>Hold a last-frame slot per GPU-skinned caster.</summary>
@@ -107,15 +107,16 @@ internal sealed partial class ModelRenderer
     internal void PackSkinnedMotion(uint slot, in Matrix4x4 previousWorld, ReadOnlySpan<Matrix4x4> previousBones)
         => RequireMotion().SkinnedPalette.Pack(slot, previousWorld, previousBones);
 
-    /// <summary>Upload every packed last-frame slot, before any skinned draw.</summary>
-    internal void UploadSkinnedMotion(IGpuCommandList cl) => RequireMotion().SkinnedPalette.Upload(cl);
+    /// <summary>Upload every packed last-frame slot, before any skinned draw. Returns the bytes uploaded.</summary>
+    internal long UploadSkinnedMotion(IGpuCommandList cl) => RequireMotion().SkinnedPalette.Upload(cl);
 
-    /// <summary>Upload this frame's motion block. Once per temporal frame, before the model pass.</summary>
-    internal void UploadMotionFrame(IGpuCommandList cl, in MotionFrameUbo frame) => RequireMotion().UploadFrame(cl, frame);
+    /// <summary>Upload this frame's motion block. Once per temporal frame, before the model pass. Returns the bytes
+    /// uploaded.</summary>
+    internal long UploadMotionFrame(IGpuCommandList cl, in MotionFrameUbo frame) => RequireMotion().UploadFrame(cl, frame);
 
     /// <summary>Upload one motion slot per grouped instance and the previous transforms they index, before the model
-    /// pass.</summary>
-    internal void UploadRigidMotion(IGpuCommandList cl, ReadOnlySpan<float> slots, ReadOnlySpan<Matrix4x4> previous)
+    /// pass. Returns the bytes uploaded.</summary>
+    internal long UploadRigidMotion(IGpuCommandList cl, ReadOnlySpan<float> slots, ReadOnlySpan<Matrix4x4> previous)
         => RequireMotion().UploadRigid(cl, slots, previous);
 
     void DisposeMotionResources()

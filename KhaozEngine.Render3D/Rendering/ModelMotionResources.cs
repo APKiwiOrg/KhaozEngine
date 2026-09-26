@@ -122,14 +122,18 @@ internal sealed class ModelMotionResources : IDisposable
     IGpuBuffer CreatePrevious(uint capacity) => _gd.Factory.CreateBuffer(new GpuBufferDescription(
         capacity * MatrixBytes, GpuBufferUsage.StructuredBufferReadOnly, MatrixBytes));
 
-    /// <summary>Upload this frame's motion block, whole.</summary>
-    internal void UploadFrame(IGpuCommandList cl, in MotionFrameUbo frame) => cl.UpdateBuffer(_frame, 0, in frame);
+    /// <summary>Upload this frame's motion block, whole. Returns the bytes uploaded.</summary>
+    internal long UploadFrame(IGpuCommandList cl, in MotionFrameUbo frame)
+    {
+        cl.UpdateBuffer(_frame, 0, in frame);
+        return MotionFrameUbo.SizeInBytes;
+    }
 
     /// <summary>Upload the motion slots and the previous transforms. Both grow geometrically and retire what they
-    /// replace, because an earlier frame may still read it.</summary>
-    internal void UploadRigid(IGpuCommandList cl, ReadOnlySpan<float> slots, ReadOnlySpan<Matrix4x4> previous)
+    /// replace, because an earlier frame may still read it. Returns the bytes uploaded.</summary>
+    internal long UploadRigid(IGpuCommandList cl, ReadOnlySpan<float> slots, ReadOnlySpan<Matrix4x4> previous)
     {
-        if (slots.Length == 0) return;
+        if (slots.Length == 0) return 0;
         if (_slots is null || _slotCapacity < slots.Length)
         {
             _retired.Retire(_slots);
@@ -137,7 +141,8 @@ internal sealed class ModelMotionResources : IDisposable
             _slots = _gd.Factory.CreateBuffer(new GpuBufferDescription(_slotCapacity * 4, GpuBufferUsage.VertexBuffer));
         }
         cl.UpdateBuffer(_slots, 0, slots);
-        if (previous.Length == 0) return;
+        long bytes = (long)slots.Length * sizeof(float);
+        if (previous.Length == 0) return bytes;
         if (_previousCapacity < previous.Length)
         {
             _retired.Retire(RigidSet, _previous, null);
@@ -146,12 +151,14 @@ internal sealed class ModelMotionResources : IDisposable
             RigidSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(RigidLayout, _frame, _previous));
         }
         cl.UpdateBuffer(_previous, 0, previous);
+        return bytes + previous.Length * (long)MatrixBytes;
     }
 
-    /// <summary>Upload the CPU-skinned last-frame positions, growing geometrically like the deformed vertex stream.</summary>
-    internal void UploadCpuPrevious(IGpuCommandList cl, ReadOnlySpan<Vector3> positions)
+    /// <summary>Upload the CPU-skinned last-frame positions, growing geometrically like the deformed vertex stream.
+    /// Returns the bytes uploaded.</summary>
+    internal long UploadCpuPrevious(IGpuCommandList cl, ReadOnlySpan<Vector3> positions)
     {
-        if (positions.Length == 0) return;
+        if (positions.Length == 0) return 0;
         if (_cpuPrevious is null || _cpuPreviousCapacity < positions.Length)
         {
             _retired.Retire(_cpuPrevious);
@@ -159,6 +166,7 @@ internal sealed class ModelMotionResources : IDisposable
             _cpuPrevious = _gd.Factory.CreateBuffer(new GpuBufferDescription(_cpuPreviousCapacity * 12, GpuBufferUsage.VertexBuffer));
         }
         cl.UpdateBuffer(_cpuPrevious, 0, positions);
+        return positions.Length * 12L;
     }
 
     public void Dispose()

@@ -237,4 +237,30 @@ public sealed class MotionTargetWiringTests
         Assert.Contains(off, p => p.VertexGlsl == ShaderSources.ModelVert && p.FragmentGlsl == ShaderSources.ModelFrag);
         Assert.Contains(off, p => p.FragmentGlsl == ShaderSources.TexturedBillboardFrag);
     }
+
+    [Fact]
+    public void TheTransparentPassesFreeTheirTemporalProgramsWhenTemporalRenderingTurnsOff()
+    {
+        using var harness = new MotionTestScene();
+        var factory = (FakeGpuResourceFactory)harness.Device.Factory;
+        MeshHandle box = harness.Scene.LoadMesh(MeshPrimitives.Box(1f));
+        void Queue(Scene3D s) => s.Draw(box, Matrix4x4.Identity);
+        Frame(harness, Queue).Dispose();
+        Assert.False(harness.Scene.TransparentMotionShadersHeldForTests);
+
+        harness.Scene.ForceTemporalForTests = true;
+        Frame(harness, Queue).Dispose();
+        Assert.True(harness.Scene.TransparentMotionShadersHeldForTests);
+        string[] preserving = { ShaderSources.TexturedBillboardMotionFrag, ShaderSources.BeamMotionFrag,
+            ShaderSources.TrailMotionFrag, ShaderSources.OverlayUnlitMotionFrag, ShaderSources.SilhouetteMotionFrag };
+        FakeShaderSet[] programs = factory.ShaderSets.Where(s => preserving.Contains(s.FragmentGlsl)).ToArray();
+        Assert.Equal(5, programs.Length);
+
+        harness.Scene.ForceTemporalForTests = false;
+        Frame(harness, Queue).Dispose();
+        Assert.False(harness.Scene.TransparentMotionShadersHeldForTests);
+        // The overlay pass hands its program to the scene's retire queue, which frees it a few frames on.
+        for (int i = 0; i <= GpuRetireQueue.DefaultFrameDelay; i++) Frame(harness, Queue).Dispose();
+        Assert.All(programs, p => Assert.True(p.Disposed));
+    }
 }

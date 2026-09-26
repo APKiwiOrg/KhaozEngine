@@ -48,21 +48,27 @@ public sealed partial class Scene3D
     /// <summary>The model framebuffer's sample count this frame. For tests.</summary>
     internal int ModelSampleCountForTests => _res.SampleCount;
 
+    /// <summary>Whether any transparent pass that draws into the model framebuffer holds its temporal program. For
+    /// tests.</summary>
+    internal bool TransparentMotionShadersHeldForTests => _texBillboards.HoldsMotionShadersForTests
+        || _beams.HoldsMotionShadersForTests || _trails.HoldsMotionShadersForTests
+        || _overlayMeshes.HoldsMotionShadersForTests || _silhouettes.HoldsMotionShadersForTests;
+
     /// <summary>Upload this frame's motion block and the rigid motion slots, before the model pass. The block carries
     /// this frame's unjittered view-projection and last frame's, which group B has already rebased to this frame's
     /// origin, or this frame's again with the flag at zero when there is no valid history, which makes every variant
-    /// write exactly zero.</summary>
+    /// write exactly zero. Both count toward the rigid instance stream's upload.</summary>
     internal void PrepareMotionFrame(IGpuCommandList cl)
     {
         if (!_res.MotionAllocated) return;
         FrameView current = CurrentFrameView;
         FrameView? previous = PreviousFrameView;
-        _model.UploadMotionFrame(cl, new MotionFrameUbo
+        _frameStats.AddInstanceUpload(_model.UploadMotionFrame(cl, new MotionFrameUbo
         {
             CurViewProj = current.ViewProjection,
             PrevViewProj = previous?.ViewProjection ?? current.ViewProjection,
             Params = new Vector4(previous is null ? 0f : 1f, 0f, 0f, 0f),
-        });
+        }));
 
         int count = _instanceData.Count;
         if (count == 0) return;
@@ -72,7 +78,8 @@ public sealed partial class Scene3D
         Span<float> slots = _motionSlots.AsSpan(0, count);
         RigidMotionSlots.Build(CollectionsMarshal.AsSpan(_instanceMotionKeys), PreviousMotion, current.RenderOrigin,
             slots, _previousInstanceTransforms);
-        _model.UploadRigidMotion(cl, slots, CollectionsMarshal.AsSpan(_previousInstanceTransforms));
+        _frameStats.AddInstanceUpload(
+            _model.UploadRigidMotion(cl, slots, CollectionsMarshal.AsSpan(_previousInstanceTransforms)));
     }
 
     /// <summary>Read the motion target back: one UV motion per internal pixel, row 0 at the top, the sentinel where no
@@ -113,7 +120,7 @@ public sealed partial class Scene3D
     /// <summary>Pack every GPU-skinned caster's last frame into its <c>SkinnedMotionPalette</c> slot and upload them in
     /// one write. A draw with no key, a key with no last frame, a previous palette of another length (the key moved to
     /// another mesh, group C amendment 1) or a frame with no valid history packs this frame's own, which is camera-only
-    /// motion.</summary>
+    /// motion. The upload counts toward the GPU-skinning uniforms.</summary>
     void PrepareGpuSkinnedMotion(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> boneSpan)
     {
         _model.EnsureSkinnedMotionCapacity((uint)_gpuSkinnedDraws.Count);
@@ -128,7 +135,7 @@ public sealed partial class Scene3D
             else
                 _model.PackSkinnedMotion(dr.Slot, dr.World, boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
         }
-        _model.UploadSkinnedMotion(cl);
+        _frameStats.AddSkinnedUniformUpload(_model.UploadSkinnedMotion(cl));
     }
 
     // Last frame's position of every deformed CPU-skinned vertex, parallel to _cpuSkinnedVerts. Grow-only.
@@ -136,7 +143,7 @@ public sealed partial class Scene3D
 
     /// <summary>Upload this frame's CPU-skinned geometry, and while the target is temporal each vertex's last-frame
     /// position: re-skinned from the key's previous palette and world when it has a usable one, this frame's own
-    /// otherwise.</summary>
+    /// otherwise. Both count toward the CPU-skinned stream's upload.</summary>
     void UploadCpuSkinnedFrame(IGpuCommandList cl)
     {
         _model.UploadCpuSkinned(cl, CollectionsMarshal.AsSpan(_cpuSkinnedVerts), CollectionsMarshal.AsSpan(_cpuSkinnedInstances));
@@ -162,6 +169,6 @@ public sealed partial class Scene3D
         }
         System.Diagnostics.Debug.Assert(_cpuSkinnedPrevious.Count == _cpuSkinnedVerts.Count,
             "The CPU-skinned previous positions must stay parallel to the deformed vertices.");
-        _model.UploadCpuSkinnedPrevious(cl, CollectionsMarshal.AsSpan(_cpuSkinnedPrevious));
+        _frameStats.AddSkinnedUpload(_model.UploadCpuSkinnedPrevious(cl, CollectionsMarshal.AsSpan(_cpuSkinnedPrevious)));
     }
 }

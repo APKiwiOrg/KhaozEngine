@@ -46,7 +46,8 @@ namespace KhaozEngine.Primitives
         /// <summary>3D: bytes of the rigid INSTANCE stream uploaded this frame (one <c>InstanceData</c> per queued
         /// rigid instance, at 124 bytes each). Scales with the number of instances a frame submits, not with their
         /// geometry, so a streamed world full of small props lands here and a world of a few heavy meshes does
-        /// not.</summary>
+        /// not. While temporal rendering is active it also carries the frame's motion block, one motion slot per
+        /// rigid instance and the keyed instances' previous transforms.</summary>
         public long InstanceUploadBytes;
 
         /// <summary>3D: bytes of the CPU-SKINNED stream uploaded this frame (every skinned draw's deformed vertices
@@ -54,13 +55,15 @@ namespace KhaozEngine.Primitives
         /// every character the frame skinned, so a crowd of detailed characters dwarfs the rigid instance stream:
         /// one 13k-vertex character costs about 0.87 MB per frame, which is more than a few thousand rigid
         /// instances put together. Always 0 while <c>Scene3D.UseGpuSkinning</c> is on (that path uploads
-        /// <see cref="SkinnedUniformUploadBytes"/> instead, which is O(bones) rather than O(vertices)).</summary>
+        /// <see cref="SkinnedUniformUploadBytes"/> instead, which is O(bones) rather than O(vertices)). While temporal
+        /// rendering is active it also carries each deformed vertex's last-frame position at 12 bytes.</summary>
         public long SkinnedUploadBytes;
 
         /// <summary>3D: bytes of the GPU-SKINNING per-draw uniform slots uploaded this frame (the combined
         /// matrices + bone palette per visible skinned draw, plus one slot per cascade per skinned shadow caster).
         /// Always 0 while <c>Scene3D.UseGpuSkinning</c> is off. O(bones) per draw rather than O(vertices), which is
-        /// the whole point of that path.</summary>
+        /// the whole point of that path. While temporal rendering is active it also carries the last-frame palette
+        /// buffer, uploaded whole at its grown capacity.</summary>
         public long SkinnedUniformUploadBytes;
 
         /// <summary>2D: bytes of sprite/glyph vertices uploaded this frame by the 2D batcher (64 bytes per vertex,

@@ -402,7 +402,7 @@ namespace KhaozEngine.Tests.Gpu
             scene.Post.LightDirection = new Vector3(-0.55f, -0.8f, -0.25f);
             scene.Camera.Frame(new Vector3(0f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
 
-            Scene3D.SplatMaterialHandle mat = scene.LoadSplatMaterial(4, 4, FiveFlatLayers(4));
+            Scene3D.SplatMaterialHandle mat = scene.LoadSplatMaterial(4, 4, GroundLayerImages.FlatSplatLayers(4));
             var w = new Vector4(1f, 0f, 0f, 0f);
             const float e = 6f;
             var verts = new[]
@@ -462,7 +462,7 @@ namespace KhaozEngine.Tests.Gpu
             scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
             scene.Camera.Frame(new Vector3(0f, 0.4f, 0f), new Vector3(6f, 4.5f, 6f));
 
-            Scene3D.TileGroundMaterialHandle mat = scene.LoadTileGroundMaterial(4, 4, FlatGroundLayers(4));
+            Scene3D.TileGroundMaterialHandle mat = scene.LoadTileGroundMaterial(4, 4, GroundLayerImages.FlatGroundLayers(4));
             MeshHandle ground = scene.LoadMesh(TileGroundQuad(), mat);
 
             using IGpuCommandList real = f.CreateCommandList();
@@ -476,7 +476,7 @@ namespace KhaozEngine.Tests.Gpu
             // A SECOND loaded material, drawn with alongside the first. Before #727 this frame paid one more
             // whole-buffer upload for it, in DrawTileGroundRuns, and the loop that did it walked every loaded
             // material rather than every drawn one.
-            Scene3D.TileGroundMaterialHandle second = scene.LoadTileGroundMaterial(4, 4, FlatGroundLayers(4));
+            Scene3D.TileGroundMaterialHandle second = scene.LoadTileGroundMaterial(4, 4, GroundLayerImages.FlatGroundLayers(4));
             MeshHandle secondGround = scene.LoadMesh(TileGroundQuad(), second);
 
             rec.Clear();
@@ -522,23 +522,6 @@ namespace KhaozEngine.Tests.Gpu
             return new GltfMesh(verts, new ushort[] { 0, 1, 2, 0, 2, 3 });
         }
 
-        /// <summary>Two flat single-colour tile-ground layers, the cheapest material the pipeline accepts that is
-        /// not the one-layer special case.</summary>
-        static List<TileGroundLayerImage> FlatGroundLayers(int size)
-        {
-            var layers = new List<TileGroundLayerImage>();
-            for (int i = 0; i < 2; i++)
-            {
-                var albedo = new byte[size * size * 4];
-                for (int p = 0; p < albedo.Length; p += 4)
-                {
-                    albedo[p] = (byte)(40 + i * 60); albedo[p + 1] = 110; albedo[p + 2] = 60; albedo[p + 3] = 255;
-                }
-                layers.Add(new TileGroundLayerImage { AlbedoRgba = albedo, TilesPerMetre = 0.25f });
-            }
-            return layers;
-        }
-
         [Fact]
         public void A_sprite_frame_writes_its_view_projection_slots_whole_once_per_begin()
         {
@@ -571,24 +554,6 @@ namespace KhaozEngine.Tests.Gpu
 
             rec.End();
             AssertOnlyWholeBufferWrites(rec, ViewProjUboBytes, Begins, "sprite view-projection UBO");
-        }
-
-        /// <summary>Five flat single-colour splat layers, the cheapest material the splat pipeline accepts.</summary>
-        static List<SplatLayerImage> FiveFlatLayers(int size)
-        {
-            var layers = new List<SplatLayerImage>();
-            for (int i = 0; i < SplatMaterialConfig.LayerCount; i++)
-            {
-                var albedo = new byte[size * size * 4];
-                var normal = new byte[size * size * 4];
-                for (int p = 0; p < albedo.Length; p += 4)
-                {
-                    albedo[p] = (byte)(40 + i * 30); albedo[p + 1] = 110; albedo[p + 2] = 60; albedo[p + 3] = 255;
-                    normal[p] = 128; normal[p + 1] = 128; normal[p + 2] = 255; normal[p + 3] = 255;
-                }
-                layers.Add(new SplatLayerImage { AlbedoRgba = albedo, NormalRgba = normal, TilesPerMetre = 0.25f, Roughness = 0.8f });
-            }
-            return layers;
         }
     }
 }

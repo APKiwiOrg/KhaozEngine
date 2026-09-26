@@ -44,6 +44,12 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Choose this frame's pair, as the scene does once per frame index.</summary>
         public void BeginFrame() => _history.BeginResolve(_frame++);
 
+        /// <summary>Move the history to a new display size at the same internal size, as a resize with a fixed render
+        /// size does. The scene inputs and their generation stay, so only the history's target generation tells the
+        /// renderer its sets are stale. True when the targets were recreated.</summary>
+        public bool ResizeDisplay(int displayWidth, int displayHeight)
+            => _history.EnsureTargets(_gd, displayWidth, displayHeight, _width, _height);
+
         public void Fill(float[] scene, float[] opaque, float[] motion)
         {
             TemporalTextureIo.Upload(_gd, _scene, scene);

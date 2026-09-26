@@ -7,33 +7,14 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// The temporal resolve against synthetic inputs, one fact per step of TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3,
-    /// on an 8 by 8 target at native resolution unless a fact says otherwise. Grey inputs keep YCoCg chroma at zero, so
-    /// the expected output follows from the mirrors in <see cref="TemporalResolveMath"/>. The confidence target stores
-    /// accumulated weight over <see cref="TemporalResolveTuning.MaxAccumulation"/>. Step 6, the thin feature lock, has its
-    /// facts in <see cref="TemporalResolveLockGpuTests"/>.
-    /// <para>The uniforms come from <see cref="TemporalResolveMath.BuildUniforms"/> over a real perspective camera, and
-    /// the scene depth is the NDC depth that camera gives a wall <see cref="SceneMetres"/> ahead. A surface whose motion
-    /// disagrees with the camera's own reprojection of it reads as moving and skips the depth test, so under a still
-    /// camera any nonzero motion skips it. Every fact that needs the depth test uses zero motion under a still camera
-    /// or the camera-consistent motion of a moving one.</para>
+    /// on an 8 by 8 target at native resolution unless a fact says otherwise, over what
+    /// <see cref="TemporalResolveGpuFacts"/> shares. Step 6, the thin feature lock, has its facts in
+    /// <see cref="TemporalResolveLockGpuTests"/>, and the resolve under a fast camera step, a glint, an infinite colour
+    /// and a moving clip has its facts in <see cref="TemporalResolveEdgeCaseGpuTests"/>.
     /// </summary>
-    public sealed class TemporalResolveRendererGpuTests
+    public sealed class TemporalResolveRendererGpuTests : TemporalResolveGpuFacts
     {
-        const int N = 8;
-        const float Max = TemporalResolveTuning.MaxAccumulation;
-        const float SceneMetres = 2f;
-        static readonly Vector3 Eye = new(0f, 1.7f, 10f);
-        static readonly Matrix4x4 Projection = Perspective(1f);
-        static readonly TemporalViewInput Still = View(Eye, Projection);
-        static readonly Vector4 Depth = TemporalResolveMath.DepthParams(Projection);
-        static readonly float SceneNdc = NdcDepth(Projection, SceneMetres);
-        static float SceneLinear => TemporalResolveMath.LinearDepth(SceneNdc, Depth);
-
-        static float Q(float v) => (float)(Half)v;                    // what a half float texel holds
         static float Ramp(int x) => Q(0.1f + 0.05f * x);
-        static float Weighted(float grey) => TemporalResolveMath.ToWeighted(new Vector3(grey)).X;
-        static float Unweighted(float y) => y / (1f - y);             // FromWeighted for grey
-        static int At(int x, int y) => y * N + x;
 
         [GpuFact]
         public void A_reset_frame_outputs_the_current_frame_and_stores_linear_depth_with_background_marked()
@@ -93,13 +74,45 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void Background_reprojects_by_rotation_and_keeps_its_history()
         {
+            // Last frame the camera looked about one pixel left and one pixel up of where it looks now, a yaw and a pitch
+            // of atan(0.25 / M11) at 8 pixels over a 1 radian field of view. The current frame and the history are
+            // planes that slope on both axes, and the history plane sits low by about the rotation's step, so the
+            // history at each pixel's rotated position lands inside its variance box and the blend is exact. That
+            // position is computed here through BackgroundToPrevious as the shader applies it. A resolve that drops
+            // or transposes the rotation, or flips y in its UV, reads history a pixel or more away, and misses by far
+            // more than the tolerance.
+            float yaw = MathF.Atan(0.25f / Projection.M11), pitch = MathF.Atan(0.25f / Projection.M22);
+            Matrix4x4 turn = Matrix4x4.CreateRotationY(yaw) * Matrix4x4.CreateRotationX(pitch);
+            Matrix4x4 viewThen = Matrix4x4.CreateLookAt(Eye, Eye + Vector3.TransformNormal(-Vector3.UnitZ, turn),
+                Vector3.TransformNormal(Vector3.UnitY, turn));
+            var then = new TemporalViewInput(viewThen, Projection, viewThen * Projection);
+            TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(Still, then, Vector2.Zero, N, N, N, N,
+                historyValid: true);
+            static float Plane(float x, float y) => 0.2f + 0.03f * x + 0.025f * y;   // over texel indices
+            const float HistoryBelow = 0.05f;
+
             using var rig = new Rig();
             rig.BeginFrame();
-            rig.Fill(Grey((x, _) => Ramp(x)), Grey((x, _) => Ramp(x)), Motion((_, _) => new Vector2(65504f)));
-            rig.FillHistory(Grey((x, _) => Q(Ramp(x) + 0.01f)), State((_, _) => new Vector2(Q(3f / Max), 0f)),
+            rig.Fill(Grey((x, y) => Q(Plane(x, y))), Grey((x, y) => Q(Plane(x, y))), Motion((_, _) => new Vector2(65504f)));
+            rig.FillHistory(Grey((x, y) => Q(Plane(x, y) - HistoryBelow)), State((_, _) => new Vector2(Q(3f / Max), 0f)),
                 TemporalResolveTuning.BackgroundLinearDepth);
-            rig.Resolve(Uniforms(historyValid: true));
-            AssertInteriorBlend(rig, x => Q(Ramp(x) + 0.01f), accumulated: Q(3f / Max) * Max);
+            rig.Resolve(u);
+
+            float[] color = rig.ReadColor(), state = rig.ReadState();
+            float accumulated = Q(3f / Max) * Max;
+            for (int y = 2; y < N - 2; y++)
+                for (int x = 2; x < N - 2; x++)
+                {
+                    var uv = new Vector2(x + 0.5f, y + 0.5f) / N;
+                    Vector4 clip = Vector4.Transform(new Vector4(Ndc(uv), 1f, 1f), u.BackgroundToPrevious);
+                    Vector2 previous = new Vector2(clip.X / clip.W * 0.5f + 0.5f, 0.5f - clip.Y / clip.W * 0.5f) * N
+                        - new Vector2(0.5f);
+                    Assert.InRange(previous.X - x, 0.9f, 1.2f);   // about a pixel right and a pixel down
+                    Assert.InRange(previous.Y - y, 0.9f, 1.2f);
+                    float h = Weighted(Plane(previous.X, previous.Y) - HistoryBelow), c = Weighted(Q(Plane(x, y)));
+                    Assert.Equal(Unweighted(h + (c - h) / (accumulated + 1f)), color[At(x, y) * 4], 1e-3);
+                    Assert.Equal((accumulated + 1f) / Max, state[At(x, y) * 2], 1e-3);
+                }
         }
 
         [GpuTheory]
@@ -176,126 +189,34 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
-        public void A_fast_sideways_step_keeps_the_depth_test_and_drops_only_the_history_that_was_covered()
+        public void New_history_targets_rebuild_the_sets_the_resolve_reads()
         {
-            // The camera steps 1.5 m right past a wall 2 m ahead, so the wall moves about 11 pixels left. The motion is
-            // what the motion target writes for a static wall, so the resolve reads the wall as static and runs the
-            // depth test. Last frame something 1 m away covered the right of the wall, from stored column CoverFrom on.
-            // Pixels that reproject there drop their history, and pixels that reproject onto the wall keep it.
-            // A y flip between the shader's static reprojection and StaticPreviousUv would put the static UV
-            // |1 - 2v| * 16 pixels from where the motion says, at least one pixel on every row here. Every pixel would
-            // then read as moving and skip the depth test, and the covered region would keep its history.
-            const int W = 48, H = 16, CoverFrom = 32;
-            var size = new Vector2(W, H);
-            Matrix4x4 projection = Perspective((float)W / H);
-            TemporalViewInput now = View(Eye, projection), then = View(Eye - new Vector3(1.5f, 0f, 0f), projection);
-            TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(now, then, Vector2.Zero, W, H, W, H,
-                historyValid: true);
-            float ndc = NdcDepth(projection, SceneMetres);
-            float wall = TemporalResolveMath.LinearDepth(ndc, u.CurrentDepth);
-            Vector2[] motion = CameraMotion(u, now, then, W, H, wall);
-            Assert.True(MathF.Abs(motion[0].X * W) > 8f, $"the step moves the wall {motion[0].X * W} pixels");
-
-            using var rig = new Rig(W, H, W, H, ndc);
+            // The scene inputs keep their generation across a display resize, so only the history's target generation
+            // tells BindInputs that the targets its sets were built over are retired. The first resolve reads a history
+            // of accumulated weight 3. The display then grows to 16 by 16 over the same 8 by 8 internal frame, and the new
+            // targets hold weight 5. Sets left over the retired targets would read the old history, or a freed one.
+            const int D = 2 * N;
+            float[] flat = Grey((_, _) => Q(0.3f)), zero = Motion((_, _) => Vector2.Zero);
+            using var rig = new Rig();
             rig.BeginFrame();
-            rig.Fill(Grey(W, H, (_, _) => Q(0.3f)), Grey(W, H, (_, _) => Q(0.3f)), Pairs(W, H, (x, y) => motion[y * W + x]));
-            rig.FillHistory(Grey(W, H, (_, _) => Q(0.3f)), Pairs(W, H, (_, _) => new Vector2(Q(3f / Max), 0f)),
-                (x, _) => x >= CoverFrom ? 1f : wall);
-            rig.Resolve(u);
+            rig.Fill(flat, flat, zero);
+            rig.FillHistory(flat, State((_, _) => new Vector2(Q(3f / Max), 0f)), SceneLinear);
+            rig.Resolve(Uniforms(historyValid: true));
+            Assert.Equal((Q(3f / Max) * Max + 1f) / Max, rig.ReadState()[At(4, 4) * 2], 1e-3);
 
+            Assert.True(rig.ResizeDisplay(D, D));
+            rig.BeginFrame();
+            rig.Fill(flat, flat, zero);
+            rig.FillHistory(Grey(D, D, (_, _) => Q(0.3f)), Pairs(D, D, (_, _) => new Vector2(Q(5f / Max), 0f)), SceneLinear);
+            rig.Resolve(TemporalResolveMath.BuildUniforms(Still, Still, Vector2.Zero, N, N, D, D, historyValid: true));
+
+            // Upscaled by two with no jitter, every display pixel centre sits a quarter texel from its nearest sample on
+            // each axis, half a display pixel, so each frame is worth Lanczos2(0.5) squared.
+            float sampleWeight = TemporalResolveMath.Lanczos2(0.5f) * TemporalResolveMath.Lanczos2(0.5f);
             float[] state = rig.ReadState();
-            int covered = 0, kept = 0;
-            for (int y = 0; y < H; y++)
-                for (int x = 0; x < W; x++)
-                {
-                    // The dilated texel of a flat wall is the first of the 3x3, and its previous footprint starts at
-                    // floor(previous - 0.5) in stored pixels. Pixels within a quarter pixel of a class edge are skipped.
-                    Vector2 m = motion[Math.Max(y - 1, 0) * W + Math.Max(x - 1, 0)];
-                    Vector2 previous = (new Vector2(x + 0.5f, y + 0.5f) / size - m) * size;
-                    if (previous.X < 0.25f || previous.X > W - 0.25f) continue;
-                    float motionPixels = (m * size).Length();
-                    float cap = Max - (Max - TemporalResolveTuning.MovingAccumulation)
-                        * Math.Clamp(motionPixels / TemporalResolveTuning.MotionAccumulationPixels, 0f, 1f);
-                    float confidence = state[(y * W + x) * 2];
-                    if (previous.X - 0.5f >= CoverFrom + 0.25f)
-                    {
-                        Assert.True(MathF.Abs(1f / Max - confidence) < 1e-3f, $"covered ({x}, {y}) kept {confidence * Max}");
-                        covered++;
-                    }
-                    else if (previous.X + 0.5f <= CoverFrom - 0.25f)
-                    {
-                        float expected = MathF.Min(MathF.Min(Q(3f / Max) * Max, cap) + 1f, cap) / Max;
-                        Assert.True(MathF.Abs(expected - confidence) < 1e-3f, $"wall ({x}, {y}) dropped to {confidence * Max}");
-                        kept++;
-                    }
-                }
-            Assert.True(covered >= 10 * H && kept >= 10 * H, $"{covered} covered and {kept} kept pixels");
-        }
-
-        [GpuFact]
-        public void A_glint_in_the_history_never_rings_the_fetch_darker_than_the_surface_beside_it()
-        {
-            // A 50.0 history texel in a 0.1 surface, and a slow sideways pan that moves the surface a third of a pixel
-            // left, so each pixel reads history a third of a pixel right of its centre. Catmull-Rom then weights the
-            // texel left of the pixel by about -0.07, so the pixel right of the glint would fetch about -3.6. Scene
-            // colour is 0.1 around the glint, which sits in the current frame too, so the variance box of that pixel
-            // reaches below zero and would accept the black the ring is floored to. The fetch is clamped to the history
-            // texels of its bilinear footprint, both 0.1 there, which keeps it at 0.1.
-            // The motion is camera-consistent and the stored depth matches, so the history passes the depth test.
-            const int G = 4;
-            float bg = Q(0.1f), glint = Q(50f);
-            float step = 2f * (1f / (3f * N)) * SceneMetres / Projection.M11;
-            TemporalViewInput then = View(Eye - new Vector3(step, 0f, 0f), Projection);
-            TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(Still, then, Vector2.Zero, N, N, N, N,
-                historyValid: true);
-            Vector2[] motion = CameraMotion(u, Still, then, N, N, SceneLinear);
-            Assert.InRange(-motion[At(G, G)].X * N, 0.32f, 0.35f);
-
-            using var rig = new Rig();
-            Func<int, int, float> surface = (x, y) => x == G && y == G ? glint : bg;
-            rig.BeginFrame();
-            rig.Fill(Grey(surface), Grey(surface), Motion((x, y) => motion[At(x, y)]));
-            rig.FillHistory(Grey(surface), State((_, _) => new Vector2(Q(3f / Max), 0f)), SceneLinear);
-            rig.Resolve(u);
-
-            float[] color = rig.ReadColor(), state = rig.ReadState();
-            for (int i = 0; i < color.Length; i++)
-                Assert.True(color[i] >= 0f && float.IsFinite(color[i]), $"channel {i % 4} of pixel {i / 4} is {color[i]}");
-            for (int y = 0; y < N; y++)
-                for (int x = 0; x < N; x++)
-                {
-                    if (x == G && y == G) continue;
-                    Assert.True(color[At(x, y) * 4] >= bg - 1e-3f, $"({x}, {y}) came out {color[At(x, y) * 4]} beside the glint");
-                }
-            // The pixel right of the glint read its history, or the fact would prove nothing.
-            float cap = Max - (Max - TemporalResolveTuning.MovingAccumulation) * Math.Clamp(
-                (motion[At(G, G)] * N).Length() / TemporalResolveTuning.MotionAccumulationPixels, 0f, 1f);
-            Assert.Equal(MathF.Min(Q(3f / Max) * Max + 1f, cap) / Max, state[At(G + 1, G) * 2], 1e-3);
-        }
-
-        [GpuFact]
-        public void An_infinite_scene_colour_leaves_every_output_finite()
-        {
-            // One texel at +infinity in the scene and in the opaque copy, a reset frame and then a frame that reads it
-            // back as history. Held at HalfMax before the luma weighting it stays finite. Unheld it would weight to
-            // infinity over infinity, a NaN that the variance box spreads over its 3x3 on a device whose min and max
-            // keep NaN. On one whose min and max drop NaN, Metal among them, the output stays finite but the texel
-            // vanishes into the surface, so the fact also holds it far brighter than the surface. Held, the weighted
-            // round trip caps it near 1e4.
-            using var rig = new Rig();
-            Func<int, int, float> firefly = (x, y) => x == 4 && y == 4 ? float.PositiveInfinity : Q(0.1f);
-            for (int frame = 0; frame < 2; frame++)
-            {
-                rig.BeginFrame();
-                rig.Fill(Grey(firefly), Grey(firefly), Motion((_, _) => Vector2.Zero));
-                rig.Resolve(Uniforms(historyValid: frame > 0));
-                float[] color = rig.ReadColor(), state = rig.ReadState();
-                for (int i = 0; i < color.Length; i++)
-                    Assert.True(float.IsFinite(color[i]), $"frame {frame}: colour channel {i % 4} of pixel {i / 4} is {color[i]}");
-                for (int i = 0; i < state.Length; i++)
-                    Assert.True(float.IsFinite(state[i]), $"frame {frame}: state channel {i % 2} of pixel {i / 2} is {state[i]}");
-                Assert.True(color[At(4, 4) * 4] > 100f, $"frame {frame}: the infinite texel came out {color[At(4, 4) * 4]}");
-            }
+            Assert.Equal(D * D * 2, state.Length);
+            for (int i = 0; i < D * D; i++)
+                Assert.Equal((Q(5f / Max) * Max + sampleWeight) / Max, state[i * 2], 1e-3);
         }
 
         static void AssertInteriorBlend(Rig rig, Func<int, float> history, float accumulated)
@@ -344,99 +265,6 @@ namespace KhaozEngine.Tests.Gpu
                     best = MathF.Max(best, Math.Clamp(k, 0f, 1f));
                 }
             return (Unweighted(Math.Clamp(sum / MathF.Max(weight, 1e-4f), min, max)), best);
-        }
-
-        // The still camera's uniforms: jitter in internal pixels as TemporalJitter.Apply receives it, and a
-        // reprojection that returns every static point to itself.
-        static TemporalResolveUniforms Uniforms(bool historyValid, Vector2 jitter = default) => TemporalResolveMath.BuildUniforms(
-            Still, Still, jitter, N, N, N, N, historyValid);
-
-        static Matrix4x4 Perspective(float aspect) => Matrix4x4.CreatePerspectiveFieldOfView(1f, aspect, 0.1f, 100f);
-
-        static TemporalViewInput View(Vector3 eye, Matrix4x4 projection)
-        {
-            Matrix4x4 view = Matrix4x4.CreateLookAt(eye, eye - Vector3.UnitZ, Vector3.UnitY);
-            return new TemporalViewInput(view, projection, view * projection);
-        }
-
-        // What the depth target holds for a point this far ahead: the projection's NDC depth.
-        static float NdcDepth(in Matrix4x4 projection, float metres)
-        {
-            Vector4 clip = Vector4.Transform(new Vector4(0f, 0f, -metres, 1f), projection);
-            return clip.Z / clip.W;
-        }
-
-        static Vector2 Ndc(Vector2 uv) => new(uv.X * 2f - 1f, 1f - uv.Y * 2f);
-
-        // The camera-consistent motion of a static wall at one linear depth, zero jitter: each texel's sample UV minus
-        // the resolve's static previous UV of that sample. Each is held to what MotionMath writes for the world point,
-        // within 0.05 pixels plus 1/1024 of the motion, so a flip in StaticPreviousUv against the motion target fails.
-        static Vector2[] CameraMotion(in TemporalResolveUniforms u, TemporalViewInput now, TemporalViewInput then,
-            int width, int height, float linearDepth)
-        {
-            var size = new Vector2(width, height);
-            Assert.True(Matrix4x4.Invert(now.View, out Matrix4x4 inverseView));
-            var motion = new Vector2[width * height];
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
-                {
-                    Vector2 uv = TemporalResolveMath.UnjitteredSamplePosition(new Vector2(x, y), Vector2.Zero) / size;
-                    Vector2? previous = TemporalResolveMath.StaticPreviousUv(u, Ndc(uv), linearDepth);
-                    Assert.True(previous.HasValue, $"texel ({x}, {y}) has no previous position");
-                    motion[y * width + x] = uv - previous.Value;
-
-                    Vector2 ndc = Ndc(uv);
-                    var viewPoint = new Vector4(ndc.X * linearDepth / now.Projection.M11,
-                        ndc.Y * linearDepth / now.Projection.M22, -linearDepth, 1f);
-                    Vector4 world = Vector4.Transform(viewPoint, inverseView);
-                    Vector2 written = MotionMath.UvMotion(Vector4.Transform(world, now.ViewProjection),
-                        Vector4.Transform(world, then.ViewProjection));
-                    float apart = ((written - motion[y * width + x]) * size).Length();
-                    float tolerance = 0.05f + (written * size).Length() / 1024f;
-                    Assert.True(apart <= tolerance, $"texel ({x}, {y}): {apart} px from the written motion");
-                }
-            return motion;
-        }
-
-        static float[] Grey(Func<int, int, float> value) => Grey(N, N, value);
-
-        static float[] Grey(int width, int height, Func<int, int, float> value)
-        {
-            var v = new float[width * height * 4];
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
-                {
-                    float g = value(x, y);
-                    int i = (y * width + x) * 4;
-                    v[i] = g; v[i + 1] = g; v[i + 2] = g; v[i + 3] = 1f;
-                }
-            return v;
-        }
-
-        static float[] Motion(Func<int, int, Vector2> value) => Pairs(N, N, value);
-        static float[] State(Func<int, int, Vector2> value) => Pairs(N, N, value);
-
-        static float[] Pairs(int width, int height, Func<int, int, Vector2> value)
-        {
-            var v = new float[width * height * 2];
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
-                {
-                    Vector2 p = value(x, y);
-                    v[(y * width + x) * 2] = p.X;
-                    v[(y * width + x) * 2 + 1] = p.Y;
-                }
-            return v;
-        }
-
-        /// <summary>The shared rig on the 8 by 8 native target, the wall <see cref="SceneMetres"/> ahead in every texel,
-        /// unless a fact gives other sizes.</summary>
-        sealed class Rig : TemporalResolveRig
-        {
-            public Rig() : base(N, N, N, N, SceneNdc) { }
-
-            public Rig(int internalWidth, int internalHeight, int displayWidth, int displayHeight, float sceneNdc)
-                : base(internalWidth, internalHeight, displayWidth, displayHeight, sceneNdc) { }
         }
     }
 }

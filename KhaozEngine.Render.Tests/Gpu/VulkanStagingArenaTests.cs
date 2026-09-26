@@ -631,15 +631,21 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The copy side, recorded rather than made. It shares the command log with the barrier sink so
         /// the two streams interleave into ONE sequence, which is the only way the bracket around the copy is an
-        /// assertion rather than two independent counts.</summary>
-        sealed class FakeUploadSink : IVulkanUploadSink
+        /// assertion rather than two independent counts. A readonly struct over reference state, like
+        /// <see cref="RecordingCmdSink"/>, because the recorder takes its copy sink by value through a
+        /// <c>struct</c> constraint.</summary>
+        readonly struct FakeUploadSink : IVulkanUploadSink
         {
             readonly CmdLog _log;
 
-            internal FakeUploadSink(CmdLog log) => _log = log;
+            internal FakeUploadSink(CmdLog log)
+            {
+                _log = log;
+                Copies = new();
+            }
 
-            internal List<(ulong Source, ulong SourceOffset, ulong Destination, ulong DestinationOffset,
-                ulong SizeBytes)> Copies { get; } = new();
+            internal readonly List<(ulong Source, ulong SourceOffset, ulong Destination, ulong DestinationOffset,
+                ulong SizeBytes)> Copies;
 
             public void CopyBuffer(ulong source, ulong sourceOffsetBytes, ulong destination,
                 ulong destinationOffsetBytes, ulong sizeBytes)

@@ -48,10 +48,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// interface to hold instead of the arena itself.</para>
     ///
     /// <para><b>THE TWO SINKS ARE BUILT PER UPLOAD, ON THE STACK.</b> Both are readonly structs over the API and
-    /// the current buffer, and <see cref="VulkanBufferUpload.Record"/> takes the barrier sink through a
-    /// <c>where TSink : struct</c> constraint so the JIT monomorphizes it and boxes nothing (V-T2). Storing either
-    /// as an interface-typed field would box it and pay a dispatch, which is the one way to spend the cost that
-    /// seam was shaped to avoid.</para>
+    /// the current buffer, and <see cref="VulkanBufferUpload.Record"/> takes BOTH through a <c>struct</c>
+    /// constraint so the JIT monomorphizes them and boxes nothing (V-T2). Storing either as an interface-typed field,
+    /// or passing either as an interface-typed argument, would box it and pay a dispatch, which is the one way to
+    /// spend the cost that seam was shaped to avoid. The copy sink used to be passed that way, and it cost 32 bytes
+    /// per staged upload on every frame.</para>
     ///
     /// <para><b>THE RENDERING SCOPE ARRIVES AFTER CONSTRUCTION, WHICH IS THE CYCLE RATHER THAN AN OVERSIGHT.</b>
     /// The scope IS the list (<see cref="VulkanCommandList"/> implements <see cref="IVulkanRenderingScope"/>) and

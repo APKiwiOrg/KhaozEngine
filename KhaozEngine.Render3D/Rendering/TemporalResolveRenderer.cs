@@ -24,8 +24,9 @@ namespace KhaozEngine.Render3D.Rendering
     /// once per target generation and <see cref="Run"/> picks one, which keeps a steady frame from building or
     /// allocating anything.</para>
     /// <para>Created on the first frame the resolve runs, so a scene that never selects temporal anti-aliasing owns
-    /// none of its objects. The temporal debug views and the sampled temporal counts re-evaluate the resolve over
-    /// <see cref="ResolveLayout"/> and <see cref="CurrentSet"/>, through <c>ShaderSources.TemporalResolveCoreGlsl</c>.</para>
+    /// none of its objects. <see cref="ResolveLayout"/> and <see cref="CurrentSet"/> are exposed for planned consumers,
+    /// such as a temporal debug view, that re-evaluate the resolve through <c>ShaderSources.TemporalResolveCoreGlsl</c>
+    /// over the set it bound. No pass reads them yet.</para>
     /// </summary>
     internal sealed partial class TemporalResolveRenderer : IDisposable
     {
@@ -63,15 +64,15 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuOutputDescription(null, TemporalFormats.PreviousDepth));
         }
 
-        /// <summary>The resolve's resource layout, which the temporal debug views and the count probe bind the resolve's
-        /// own set through.</summary>
+        /// <summary>The resolve's resource layout, for a planned pass that binds the resolve's own set to re-evaluate
+        /// it.</summary>
         internal IGpuResourceLayout ResolveLayout => _resolveLayout;
 
         /// <summary>The resolve set <see cref="Run"/> bound this frame, over the history pair it read. Null before the
         /// first run.</summary>
         internal IGpuResourceSet? CurrentSet { get; private set; }
 
-        /// <summary>The uniforms uploaded for this frame. Internal, for the tests and the temporal diagnostics.</summary>
+        /// <summary>The uniforms uploaded for this frame. Internal, for the tests and planned temporal diagnostics.</summary>
         internal TemporalResolveUniforms LastUniforms { get; private set; }
 
         static GpuResourceLayoutElement T(string n) => new(n, GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);

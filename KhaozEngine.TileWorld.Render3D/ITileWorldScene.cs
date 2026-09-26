@@ -66,6 +66,32 @@ public interface ITileWorldScene
     void DrawMeshDissolved(MeshHandle handle, Matrix4x4 world, float dissolve, float edgeWidth, Color edgeColor) =>
         DrawMesh(handle, world);
 
+    /// <summary>Queues one rigid mesh from a full draw descriptor, its motion key included. The
+    /// <see cref="MotionKey"/> lets the engine find the draw's previous transform so temporal rendering reprojects it,
+    /// so it must stay the same across frames and be unique per draw: each part of a multi-part body takes its own
+    /// key, derived with <see cref="MotionKey.Combine"/>. Defaults to the solid or dissolved mesh draw, which keeps an
+    /// implementation written before descriptors compiling and keeps the body visible. That fallback keeps the mesh,
+    /// the transform and the dissolve with its edge. It drops the key, the tint, the material, <c>CastsShadows</c> and
+    /// <c>InvertShadowDissolve</c>, and does not forward <c>DissolveComplement</c>. It draws nothing for a shadow-only
+    /// descriptor, which an older scene never cast. It also draws nothing for a complement phase above one half with
+    /// no dissolve. <see cref="Scene3D"/> shows no body for that draw, at most a shadow, so the fallback treats it like
+    /// a shadow-only draw.</summary>
+    /// <exception cref="ArgumentException">The descriptor is shadow-only and casts no shadow, the pair the scene's
+    /// instance queue refuses with the same exception.</exception>
+    void DrawMesh(in RigidInstanceDraw draw)
+    {
+        if (draw.ShadowOnly && !draw.CastsShadows)
+            throw new ArgumentException(
+                "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
+                "shadowOnly");
+        // The colour pass and the plain shadow passes read a phase above one half as the complement, which keeps
+        // nothing at a threshold of zero. An inverted shadow ignores the phase, so such a draw is at most a shadow.
+        if (draw.ShadowOnly || (draw.DissolveComplement > 0.5f && draw.Dissolve <= 0f)) return;
+        if (draw.Dissolve > 0f)
+            DrawMeshDissolved(draw.Mesh, draw.World, draw.Dissolve, draw.DissolveEdgeWidth, draw.DissolveEdgeColor);
+        else DrawMesh(draw.Mesh, draw.World);
+    }
+
     /// <summary>Uploads one skinned mesh. An implementation that cannot preserve its skin refuses the call.</summary>
     /// <exception cref="NotSupportedException">This scene implementation has no skinned-mesh pass.</exception>
     SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) =>
@@ -94,6 +120,25 @@ public interface ITileWorldScene
     void DrawSkinnedDissolved(SkinnedMeshHandle handle, ReadOnlySpan<Matrix4x4> boneMatrices, Matrix4x4 world,
         Color tint, float dissolve, float edgeWidth, Color edgeColor) =>
         throw new NotSupportedException("This tile-world scene does not support skinned meshes.");
+
+    /// <summary>Queues one skinned mesh from a full draw descriptor, its motion key included. The
+    /// <see cref="MotionKey"/> lets the engine find the draw's previous transform and bone palette so temporal
+    /// rendering reprojects it, so it must stay the same across frames and be unique per draw: each part of a
+    /// multi-part body takes its own key, derived with <see cref="MotionKey.Combine"/>. Defaults to the plain skinned
+    /// draw, or to the dissolved one when the descriptor dissolves. That fallback keeps the mesh, the palette,
+    /// the model transform, the tint and the dissolve with its edge, and drops the key, the material and
+    /// <c>CastsShadows</c>. Each route refuses where the older draw it reaches refuses: a scene with no skinned pass
+    /// throws on every descriptor, and a scene that implements only the plain <c>DrawSkinned</c> throws from the
+    /// dissolved default when the descriptor dissolves.</summary>
+    /// <exception cref="NotSupportedException">This scene implementation does not implement the older skinned draw the
+    /// descriptor routes to.</exception>
+    void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices)
+    {
+        if (draw.Dissolve > 0f)
+            DrawSkinnedDissolved(draw.Mesh, boneMatrices, draw.Model, draw.Tint, draw.Dissolve, draw.DissolveEdgeWidth,
+                draw.DissolveEdgeColor);
+        else DrawSkinned(draw.Mesh, boneMatrices, draw.Model, draw.Tint);
+    }
 
     /// <summary>Uploads the ground material set every region-plane mesh of this world is drawn with, once per
     /// view, and returns its handle. Defaults to an invalid handle so an implementation written before textured
@@ -225,6 +270,12 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
     public void DrawMeshDissolved(MeshHandle handle, Matrix4x4 world, float dissolve, float edgeWidth, Color edgeColor) =>
         _scene.Draw(handle, world, Color.White, Material.None, dissolve, edgeWidth, edgeColor);
 
+    /// <summary>Forwards the whole descriptor, motion key included, to
+    /// <see cref="Scene3D.Draw(in RigidInstanceDraw)"/>. Nothing is dropped, unlike the interface's fallback.</summary>
+    /// <exception cref="ArgumentException">The descriptor is shadow-only and casts no shadow, which the scene's
+    /// instance queue refuses.</exception>
+    public void DrawMesh(in RigidInstanceDraw draw) => _scene.Draw(in draw);
+
     /// <inheritdoc />
     public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) => _scene.LoadSkinnedMesh(mesh);
 
@@ -243,6 +294,12 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene
     public void DrawSkinnedDissolved(SkinnedMeshHandle handle, ReadOnlySpan<Matrix4x4> boneMatrices,
         Matrix4x4 world, Color tint, float dissolve, float edgeWidth, Color edgeColor) =>
         _scene.DrawSkinned(handle, boneMatrices, world, tint, Material.None, dissolve, edgeWidth, edgeColor);
+
+    /// <summary>Forwards the whole descriptor, motion key included, to
+    /// <see cref="Scene3D.DrawSkinned(in SkinnedInstanceDraw, ReadOnlySpan{Matrix4x4})"/>. Nothing is dropped, unlike
+    /// the interface's fallback.</summary>
+    public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices) =>
+        _scene.DrawSkinned(in draw, boneMatrices);
 
     /// <inheritdoc />
     public void DrawMeshSilhouette(MeshHandle handle, Matrix4x4 world, Color color, float widthMetres) =>

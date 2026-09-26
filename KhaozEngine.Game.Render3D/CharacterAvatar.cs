@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Primitives;
@@ -55,6 +56,15 @@ namespace KhaozEngine.Game
         readonly float _modelScale;
         float _facingYaw;
         float _renderY;   // presentation-smoothed draw height (eases the discrete stair step snaps; see RenderPosition)
+        // The avatar's motion key, fixed for its whole life (TEMPORAL-FOUNDATIONS-DESIGN section 3). Nothing the
+        // avatar holds identifies it: the controller and the animation have no id, the mesh handle can be shared
+        // between avatars, and it is client-cosmetic, so no replicated id reaches it. A process-wide serial does,
+        // the way Scene3D takes its outline owner (Scene3D.TargetOutlinePass.cs), mixed into a key space of the
+        // avatar's own ("KEAVATAR") so in practice it does not meet a key a game derives from its own ids.
+        static readonly MotionKey AvatarKeySpace = MotionKey.From(0x4B45_4156_4154_4152UL);
+        static int s_nextMotionSerial;
+        readonly MotionKey _motion =
+            MotionKey.Combine(AvatarKeySpace, unchecked((uint)Interlocked.Increment(ref s_nextMotionSerial)));
 
         /// <summary>Default facing turn rate (radians/second): how fast the model rotates toward the intended move
         /// direction. 12 rad/s (~690 deg/s) turns a quarter-circle in about 0.13 s - responsive without snapping.</summary>
@@ -124,6 +134,11 @@ namespace KhaozEngine.Game
         /// <summary>The skinned mesh handle this avatar draws (for a game that wants to unload it on teardown via
         /// <c>Scene3D.UnloadSkinnedMesh</c>).</summary>
         public SkinnedMeshHandle Mesh => _mesh;
+
+        /// <summary>The motion key every <see cref="Draw(Scene3D, Color)"/> carries, fixed for the avatar's life, so
+        /// temporal rendering sees the character's own motion. Internal because the class is obsolete and gains no
+        /// public surface.</summary>
+        internal MotionKey Motion => _motion;
 
         /// <summary>Compose an avatar from already-built pieces.</summary>
         /// <param name="controller">The movement body. Not null.</param>
@@ -201,7 +216,7 @@ namespace KhaozEngine.Game
             Matrix4x4 model = Matrix4x4.CreateScale(_modelScale)
                               * Matrix4x4.CreateRotationY(_facingYaw)
                               * Matrix4x4.CreateTranslation(p.X, footY, p.Z);
-            scene.DrawSkinned(_mesh, _animation.Pose, model, tint);
+            scene.DrawSkinned(new SkinnedInstanceDraw(_mesh, model) { Tint = tint, Motion = _motion }, _animation.Pose);
         }
 
         /// <summary>Draw untinted (white).</summary>

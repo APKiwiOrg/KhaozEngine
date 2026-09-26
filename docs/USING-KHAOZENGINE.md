@@ -3032,7 +3032,8 @@ scene.DebugCircle(center, up, radius, color);                        // immediat
 ```
 
 - `Scene3D`: `LoadMesh`/`LoadTexture`/`UnloadMesh`/`UnloadTexture`, `Begin()`, `PrepareFrame()` (below),
-  `Draw(handle, transform[, tint[, material]])`,
+  `Draw(handle, transform[, tint[, material]])` or `Draw(in RigidInstanceDraw)` with every knob (see "Draw
+  descriptors and motion keys" below),
   billboards, a debug-draw overlay (`DebugLine/Ray/Box/Grid/Axes/Circle`), and depth-tested debug wire volumes
   (`DebugWireSphere/Dome/Cylinder/Circle`, see below). `LoadTexture` builds and generates a
   full mip chain for each texture (from 9.2.0), so model/prop surfaces stay smooth at distance instead of aliasing
@@ -3388,6 +3389,81 @@ for (int i = 0; i < live.Length; i++)
 scene.DrawTrail(strip, TrailStyle.Default with { Color = new Color(0.8f, 0.9f, 1f, 1f) });
 ```
 
+### Draw descriptors and motion keys (`RigidInstanceDraw`, `SkinnedInstanceDraw`, `MotionKey`)
+
+A draw descriptor holds every knob of one draw in one value. `Scene3D.Draw(in RigidInstanceDraw)` queues a rigid
+instance and `Scene3D.DrawSkinned(in SkinnedInstanceDraw, ReadOnlySpan<Matrix4x4> boneMatrices)` queues a skinned
+one. The constructor takes the mesh and the absolute transform and sets the defaults: a white tint, `Material.None`,
+no dissolve, casting shadows and no key, which are the plain rigid overload's. Everything else is an object
+initializer.
+
+```csharp
+// crateId and sessionId are ulong ids the game already owns.
+// A rigid draw with the knobs the overloads carry, plus a motion key.
+scene.Draw(new RigidInstanceDraw(crate, world)
+{
+    Tint = tint,
+    Material = Material.Shiny(0.4f),
+    Dissolve = fade, DissolveEdgeWidth = 0.1f, DissolveEdgeColor = Color.White,
+    Motion = MotionKey.From(crateId),
+});
+
+// A skinned draw. The bones are this frame's joint world transforms, exactly as for DrawSkinned.
+scene.DrawSkinned(new SkinnedInstanceDraw(body, model) { Tint = tint, Motion = MotionKey.From(sessionId) }, pose);
+
+// One key per part of a multi-part body.
+MotionKey bodyKey = MotionKey.From(sessionId);
+for (int i = 0; i < parts.Count; i++)
+    scene.Draw(new RigidInstanceDraw(parts[i], partWorld[i]) { Motion = MotionKey.Combine(bodyKey, (uint)i) });
+```
+
+Every older `Draw(MeshHandle, ...)`, `Draw(PropHandle, ...)`, `DrawShadowOnly` and `DrawSkinned` overload builds a
+descriptor with no key and forwards to these two, so existing code queues exactly what it did and needs no change. A
+new draw knob becomes a descriptor property rather than another overload. The rigid descriptor also carries
+`ShadowOnly`, `InvertShadowDissolve` and `DissolveComplement`. `ShadowOnly = true` with `CastsShadows = false` draws
+nowhere and throws the same `ArgumentException` the instance queue has always thrown for that pair. A `default`
+descriptor is not the plain draw (its tint is transparent, its material is not `Material.None` and it casts no
+shadow), so build one with the constructor.
+
+**Motion keys.** Immediate-mode draws carry no identity from one frame to the next, and temporal rendering (see
+"Temporal rendering" below) needs to know where each object was last frame. So a draw that moves names itself with a
+`MotionKey`:
+
+- `MotionKey.None`, the default, marks a static draw. Terrain, tile ground and placed props need nothing, because
+  their motion comes from the camera alone.
+- `MotionKey.From(id)` wraps an id the game already owns, such as a session id or an entity id. The id is kept as it
+  is, so equal ids give equal keys, and id 0 is `None`. When two id spaces can hold the same number and both key
+  draws of one kind, give one of them a part of its own with `Combine`, as `Scene3DBinder` does for entities.
+- `MotionKey.Combine(key, part)` derives one key per part of a multi-part body, such as a held sword or each rigid
+  segment of an avatar. It is a fixed 64-bit mix, stable across runs and platforms, distinct for every part of one
+  key and never `None` for a real key. `Combine(None, part)` stays `None`. Keys of different bodies stay apart in
+  practice for ids from ordinary sources such as serials and entity ids, but that is not a guarantee.
+
+Keep a key for the object's whole life. While temporal rendering is active, the scene records each keyed draw's
+world transform at submission, and for a skinned draw its composed bone palette as well, and keeps last frame's for
+the renderer. Whether a draw is recorded is decided when it is submitted. Before the frame's first render, recording
+follows whatever asks for temporal rendering at that moment, and after it, the frame's fixed state. At `Begin`, while
+temporal rendering is active, the records of the frame that just ended become last frame's. While it is off, `Begin`
+forgets them all, so a scene that turns temporal rendering off and on again starts with no previous state rather
+than a stale one. Only `Scene3D.Draw(in RigidInstanceDraw)` and `Scene3D.DrawSkinned(in SkinnedInstanceDraw, ...)`
+record. `SceneInstances.Add(in RigidInstanceDraw)` and `SkinnedSceneInstances.Add(in SkinnedInstanceDraw)` carry the
+key as data only, so a key queued on a standalone queue is never recorded.
+
+A key seen for the first time has no previous state and gets camera-only motion, and so does a key that skipped the
+last frame. Two draws of the same kind with one key in a frame collide: the last one wins, so one of the two gets
+wrong motion, never a failure. A rigid and a skinned draw that share a key never collide. `LastTemporalDiagnostics`
+counts collisions in `KeyCollisions`, beside the keyed submissions in `KeyedRigid` and `KeyedSkinned`. It counts the
+submissions made before the frame's first render, before culling, and reads zero with temporal rendering off. A
+shadow-only draw is never seen, so its key is ignored and it is not counted. With temporal rendering off, keys cost
+nothing: nothing is recorded and nothing is allocated.
+
+`CharacterAvatar` (obsolete) and `SkinnedLimb` key their own draws, `Scene3DBinder.Submit` keys each entity from its id
+and version (see ECS entities below), and `Scene3DTileWorldScene` forwards the tile-world seam's descriptor draws whole
+(`ITileWorldScene.DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw, boneMatrices)`). Everything
+else a game draws that moves, such as remote players, monsters and held items, takes a key from the game.
+`Draw(PropHandle, ...)` takes no key, so a moving multi-part body is loaded and drawn as individual `MeshHandle`s, each
+through `Draw(in RigidInstanceDraw)` with its own key.
+
 ### Camera-relative rendering (`Scene3D.RenderOrigin`)
 
 A world hundreds of metres or kilometres from the origin used to render badly, and the reason was float32
@@ -3470,16 +3546,30 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   `SceneDebugView.MotionVectors`, turns temporal rendering on, which jitters the rasterised image by under half an
   internal pixel on each axis each frame. A change takes effect at the frame's first render. One made after that
   render waits for the next frame.
-- `LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, whether history was valid, and why it
-  was last reset. Read it on the render thread after the frame renders. A second render inside the same frame, such as
-  an offscreen capture, leaves it and the history untouched.
+- `LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed draws and key collisions
+  (see "Draw descriptors and motion keys"), whether history was valid, and why it was last reset. Read it on the render
+  thread after the frame renders. A second render inside the same frame, such as an offscreen capture, leaves it and the
+  history untouched.
 
 ### ECS entities (`KhaozEngine.Render3D.Ecs`)
 
 `Scene3DBinder.Submit(world, scene)` draws every `KhaozEngine.Ecs` entity carrying both a `Transform3D` and a
 `MeshInstance`, carrying the instance `Material` through. A zero `Transform3D.Scale` is treated as one, a zero
 `Rotation` as identity, and a zero `MeshInstance.Tint` as white. The delegate overloads
-`Submit(world, draw)` are the pure core for a headless test with a recording delegate.
+`Submit(world, draw)` are the pure cores for a headless test with a recording delegate.
+
+`Submit(world, scene)` keys each draw with `Scene3DBinder.MotionKeyOf(entity)`, derived from the entity's id and
+version. The key holds for the entity's life, and a recycled id carries a new version, so it becomes a new key with
+no previous state. `Submit(world, Action<RigidInstanceDraw>)` is the keyed pure core. Each descriptor it hands over
+carries the mesh, the world matrix, the tint with zero read as white, the entity's `MeshInstance.Material` and the
+key, and every other knob keeps its default. The two older delegate overloads carry no key. A game derives the key of
+an entity's attachment from `MotionKeyOf`, for example `MotionKey.Combine(Scene3DBinder.MotionKeyOf(e), 1)` for a
+held sword. Keys of one world never collide. Two worlds drawn into one scene share entity ids, so their keys collide
+and one of each pair gets wrong motion. Draw the second world through the keyed core and re-key it with a
+distinctive part, for example
+`Submit(preview, d => scene.Draw(d with { Motion = MotionKey.Combine(d.Motion, 0x5052_5657) }))` ("PRVW"). A part
+of `1` would give exactly the first world's attachment key `Combine(key, 1)`. Derive the re-keyed world's attachment
+keys from the re-keyed key, not from `MotionKeyOf`.
 
 ```csharp
 world.Set(e, new Transform3D { Position = new Vector3(4f, 0f, 2f) });
@@ -4611,6 +4701,9 @@ with no GPU via `SkinnedLimb.CreateHeadless(boneCount, config, axis)` (a limb wi
 `Draw` is a no-op). Reach for the manual `BuildTube` + `ProceduralChainSolver` + `PolylineFrames` calls
 only when you need to deviate from this orchestration.
 
+Each limb carries its own `Motion` key for temporal rendering, so draw each limb once per frame. A second draw of
+the same limb in one frame collides with the first, so give each on-screen tentacle its own limb.
+
 The bone matrices are joint **world** transforms (model space); the engine composes them with the
 mesh's inverse-bind. Skinning rewrites position and normal only, so the lit colour path
 (`albedo = vColor * vTint * texRgb`), tint, and texture semantics are unchanged.
@@ -4738,7 +4831,9 @@ through the load, so a failure after that point releases the upload before retur
 owns a handle, and you free that one through `avatar.Mesh`. Tune facing turn speed with `avatar.MaxTurnRate`. The composed pieces stay usable alone -
 `CharacterController3D` for a movement-only game, `ReplicatedCharacterAnimators` (below) for remote players, the
 static `CharacterFacing` for the facing math - the bundle is the convenient default, never a requirement.
-Client-cosmetic: pose and facing never feed sim or netcode.
+Client-cosmetic: pose and facing never feed sim or netcode. The avatar owns a motion key for its lifetime, so its
+draw reports its own motion to temporal rendering with no wiring. The key is not exposed, so anything drawn with the
+avatar, such as a held item, takes a key from the game.
 
 **Point the follow camera at `avatar.RenderPosition`, not `avatar.Position`.** Discrete stair steps snap the physics
 height a whole riser per tick (most visible descending), which bumps the model and the camera. The avatar eases its
@@ -14896,6 +14991,18 @@ path, and release the handle with `UnloadSkinnedMesh`. `Scene3DTileWorldScene` f
 including `Material.None` for the dissolved draw. The members have default implementations so older custom scenes
 keep compiling, but every default throws `NotSupportedException`. A rigid draw or a no-op cannot preserve the
 skinned body, so unsupported use fails at the call instead of dropping or misdrawing it.
+
+A moving body keys its draw through `DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw,
+boneMatrices)`, which carry a full draw descriptor with its motion key (see "Draw descriptors and motion keys").
+`Scene3DTileWorldScene` forwards both to `Scene3D` whole. Their defaults fall back to the draws above, so an older
+custom scene keeps compiling. The rigid default keeps the mesh, the transform and the dissolve with its edge, and routes
+a descriptor whose `Dissolve` is above 0 through `DrawMeshDissolved`. It draws nothing for a shadow-only descriptor.
+It also draws nothing for a complement phase above one half with no dissolve. `Scene3D` shows no body for that draw, at
+most a shadow, so the fallback treats it like a shadow-only draw. A shadow-only descriptor with `CastsShadows = false`
+throws the same `ArgumentException` the scene's instance queue throws. The rigid default drops the key, the tint, the
+material, `CastsShadows` and `InvertShadowDissolve`, and does not forward `DissolveComplement`. The skinned default
+keeps the tint as well and drops the key, the material and `CastsShadows`. On a scene that does not implement the older
+skinned draws it still throws `NotSupportedException`.
 
 **Build the static list.** The game collects the shapes it wants outlined as a flat
 `IReadOnlyList<CollisionStatic>` (`readonly record struct CollisionStatic(PhysicsShape Shape, Pose Pose)`) -

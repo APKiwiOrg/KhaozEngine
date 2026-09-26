@@ -320,6 +320,15 @@ Tile-world body presenters share the seam's two `LoadSkinnedMesh` forms, `Unload
 `DrawSkinnedDissolved`. They expose `Scene3D`'s existing plain and glTF-material-map loads, solid and dissolved
 draws, and unload. Every skinned default throws `NotSupportedException`. A legacy scene still compiles, then
 refuses the call clearly because neither a rigid fallback nor a no-op can preserve a skinned body.
+`DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw, boneMatrices)` carry a full draw descriptor,
+motion key included, so a moving body reports its own motion to temporal rendering. The shipped adapter forwards them
+whole. Their defaults fall back to the older draws, so an older scene keeps compiling and draws what it drew before.
+The rigid default drops the key, the tint, the material, `CastsShadows` and `InvertShadowDissolve`, and does not
+forward `DissolveComplement`. It draws nothing for a shadow-only descriptor. It also draws nothing for a complement
+phase above one half with no dissolve. `Scene3D` shows no body for that draw, at most a shadow, so the fallback treats
+it like a shadow-only draw. A shadow-only descriptor with `CastsShadows = false` throws the same `ArgumentException`
+the scene's instance queue throws. The skinned default keeps the tint, drops the key, the material and the shadow opt-out, and
+still refuses the call on a scene without skinned meshes.
 `CreatePropClusterOwner()` is the opt-in cluster seam. Its default throws `NotSupportedException`, so a custom
 scene can continue to host an ordinary view and fails clearly only when `PropLayers` asks it for large-world
 clusters. `Scene3DTileWorldScene` adapts the shared Terrain.Render3D `PropClusterRenderer` directly.

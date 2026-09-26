@@ -19,6 +19,12 @@ namespace KhaozEngine.Render3D
         public void Add(MeshHandle mesh, Matrix4x4 world, Color tint) => _items.Add(new Instance(mesh, world, tint));
         public void Add(MeshHandle mesh, Matrix4x4 world, Color tint, Material material) => _items.Add(new Instance(mesh, world, tint, material));
 
+        /// <summary>Queue one instance from its descriptor: every knob plus the motion key. The shadow-only and
+        /// opt-out pair is refused exactly as the <see cref="Instance"/> constructor refuses it. The key rides as data
+        /// only: motion history is recorded by <see cref="Scene3D.Draw(in RigidInstanceDraw)"/>, so a key queued on a
+        /// standalone queue is never recorded.</summary>
+        public void Add(in RigidInstanceDraw draw) => _items.Add(new Instance(in draw));
+
         /// <summary>Queue one instance with rigid-dissolve params (issue #253). Mirrors the
         /// <see cref="SkinnedSceneInstances"/> dissolve overload: <paramref name="dissolveThreshold"/> 0 = fully
         /// drawn (the byte-identical old path), &gt; 0 folds the noise discard + emissive edge into ModelFrag, with
@@ -97,11 +103,31 @@ namespace KhaozEngine.Render3D
             /// identical either way. Shadow-only with <see cref="CastsShadows"/> false is a contradiction (an
             /// instance that draws nowhere at all) and the constructor refuses the pair.</summary>
             public bool ShadowOnly { get; }
+            /// <summary>The draw's motion key (TEMPORAL-FOUNDATIONS-DESIGN section 3): which object this is across
+            /// frames, so temporal effects can find where it was last frame. CPU-side only, exactly like
+            /// <see cref="CastsShadows"/>. It never reaches the GPU instance stream, so the uploaded bytes are
+            /// identical keyed or not. <see cref="MotionKey.None"/> from every constructor except the
+            /// descriptor's. Only <see cref="Scene3D.Draw(in RigidInstanceDraw)"/> records it into motion history.
+            /// </summary>
+            public MotionKey Motion { get; }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint) : this(mesh, world, tint, Material.None) { }
             public Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
                 float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default,
                 bool castsShadows = true, bool invertShadowDissolve = false, float dissolveComplement = 0f,
                 bool shadowOnly = false)
+                : this(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge, castsShadows,
+                    invertShadowDissolve, dissolveComplement, shadowOnly, MotionKey.None) { }
+
+            /// <summary>One queued draw from its descriptor: every knob of <paramref name="draw"/>, its motion key
+            /// included, through the same checks as the public constructor.</summary>
+            internal Instance(in RigidInstanceDraw draw)
+                : this(draw.Mesh, draw.World, draw.Tint, draw.Material, draw.Dissolve, draw.DissolveEdgeWidth,
+                    draw.DissolveEdgeColor, draw.CastsShadows, draw.InvertShadowDissolve, draw.DissolveComplement,
+                    draw.ShadowOnly, draw.Motion) { }
+
+            Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material, float dissolveThreshold,
+                float dissolveEdgeWidth, Vector4 dissolveEdge, bool castsShadows, bool invertShadowDissolve,
+                float dissolveComplement, bool shadowOnly, MotionKey motion)
             {
                 // Shadow-only says "colour pass no, depth pass yes" and the opt-out says "depth pass no", so the
                 // pair asks for an instance that is drawn in neither: a queue entry that costs a slot and produces
@@ -114,7 +140,7 @@ namespace KhaozEngine.Render3D
                 Mesh = mesh; World = world; Tint = tint; Material = material;
                 DissolveThreshold = dissolveThreshold; DissolveEdgeWidth = dissolveEdgeWidth; DissolveEdge = dissolveEdge;
                 CastsShadows = castsShadows; InvertShadowDissolve = invertShadowDissolve;
-                DissolveComplement = dissolveComplement; ShadowOnly = shadowOnly;
+                DissolveComplement = dissolveComplement; ShadowOnly = shadowOnly; Motion = motion;
             }
 
             /// <summary>True when this draw carries a dissolve (routes through the gated ModelFrag term).</summary>
@@ -129,7 +155,11 @@ namespace KhaozEngine.Render3D
         public void Draw(MeshHandle mesh, Matrix4x4 world, Color tint, Material material,
             float dissolve, float edgeWidth, Color edgeColor, bool castsShadows, bool invertShadowDissolve,
             float dissolveComplement)
-            => _instances.Add(mesh, world, tint, material, dissolve, edgeWidth, edgeColor, castsShadows,
-                invertShadowDissolve, dissolveComplement);
+            => Draw(new RigidInstanceDraw(mesh, world)
+            {
+                Tint = tint, Material = material, Dissolve = dissolve, DissolveEdgeWidth = edgeWidth,
+                DissolveEdgeColor = edgeColor, CastsShadows = castsShadows,
+                InvertShadowDissolve = invertShadowDissolve, DissolveComplement = dissolveComplement,
+            });
     }
 }

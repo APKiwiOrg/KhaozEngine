@@ -78,7 +78,7 @@ namespace KhaozEngine.Render3D
         /// </summary>
         /// <param name="mesh">The already-uploaded mesh to record depth for.</param>
         /// <param name="world">The world transform to record it at.</param>
-        public void DrawShadowOnly(MeshHandle mesh, Matrix4x4 world) => _instances.AddShadowOnly(mesh, world);
+        public void DrawShadowOnly(MeshHandle mesh, Matrix4x4 world) => Draw(new RigidInstanceDraw(mesh, world) { ShadowOnly = true });
 
         /// <summary>How one grouped slot takes part in the main pass, from the shadow-only flag and the frustum
         /// result. Shadow-only WINS over the frustum test, and is reached on the culling-off parity path too, so

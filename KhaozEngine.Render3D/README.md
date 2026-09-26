@@ -79,6 +79,22 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   model, shadow, decal, particle, distortion, water and overlay renderers. Those renderers keep no private retired
   lists, so a grow survives until the same fence or frame boundary and teardown drains the queue once before GPU
   resources are destroyed.
+- `RigidInstanceDraw` / `SkinnedInstanceDraw` / `MotionKey` - draw descriptors and motion keys. A descriptor carries
+  every knob of one draw (mesh, absolute transform, tint, material, dissolve and edge, shadow casting, and for a
+  rigid draw the shadow-only flag, the inverted shadow dither and the complement phase) plus a `Motion` key.
+  `Scene3D.Draw(in RigidInstanceDraw)` and `Scene3D.DrawSkinned(in SkinnedInstanceDraw, boneMatrices)` queue one.
+  Every older `Draw`, `DrawShadowOnly` and `DrawSkinned` overload builds a descriptor with no key and forwards, so
+  existing callers queue exactly what they did, and a new draw knob becomes a descriptor property rather than another
+  overload. The constructor sets a white tint, `Material.None` and casting shadows (the plain rigid overload's), and
+  shadow-only without casting is refused as before. `MotionKey` is a stable 64-bit identity for a draw that moves:
+  `MotionKey.From(id)` wraps an id the game owns and `MotionKey.Combine(key, part)` derives one key per part of a
+  multi-part body. While temporal rendering is active (see the `Scene3D.CameraCut()` bullet above) the scene
+  remembers each keyed draw's previous world transform and, for a skinned draw, its previous bone palette. A draw
+  with no key is static and gets camera-only motion, which is right for terrain, tile ground and placed props. Two
+  draws of the same kind with one key in a frame collide, the last wins, and `LastTemporalDiagnostics.KeyCollisions`
+  counts it. A rigid and a skinned draw never collide, and a shadow-only draw is never recorded. `CharacterAvatar`,
+  `SkinnedLimb`, `Scene3DBinder.Submit` and `Scene3DTileWorldScene` key or forward keys themselves. See
+  docs/USING-KHAOZENGINE.md.
 - `Scene3D.GetOrLoadMesh` / `GetOrLoadSkinnedMesh` / `GetOrLoadTexture` - keyed, idempotent loads for a scene that
   outlives what it draws ([#250](https://github.com/APKiwiOrg/KhaozEngine/issues/250)). Each takes a key plus a
   loader and runs the loader only the FIRST time that key is seen, returning the cached handle after that, so a

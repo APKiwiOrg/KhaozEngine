@@ -3435,8 +3435,8 @@ reduces the absolute matrix you hand it. Calling both double-subtracts.
 
 ### Temporal rendering (`Post.Temporal`, `Scene3D.CameraCut`, `Scene3D.DebugView`)
 
-`Scene3D` renders every frame through one view snapshot and keeps the previous frame's view, ready for temporal
-effects such as temporal anti-aliasing. **Adoption: none.** Nothing changes until something asks for temporal
+`Scene3D` renders from one latched view per render and keeps the previous frame's view, ready for temporal effects
+such as temporal anti-aliasing. **Adoption: none.** Nothing changes until something asks for temporal
 rendering, and with it off every frame renders exactly as before.
 
 ```csharp
@@ -3464,7 +3464,8 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   like that while the eye stays still, so the distance check alone would miss it.
 - History also resets for one frame when the internal size, the render scale or the anti-aliasing selection changes,
   and when the HDR colour chain (`Post.Hdr.Enabled`) is toggled. A bloom toggle or a distortion sprite coming and
-  going keeps it.
+  going keeps it. `Post.Pixelated` forces anti-aliasing off, so toggling it counts as an anti-aliasing change while
+  `Post.Quality.AntiAliasing` selects a mode. With the default `AntiAliasing.Off` a toggle keeps history.
 - `DebugView` is a development aid, not a player setting. Any value other than `SceneDebugView.None`, such as
   `SceneDebugView.MotionVectors`, turns temporal rendering on, which jitters the rasterised image by under half an
   internal pixel on each axis each frame. A change takes effect at the frame's first render. One made after that

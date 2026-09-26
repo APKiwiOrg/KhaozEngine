@@ -10,8 +10,9 @@ namespace KhaozEngine.Tests.Render3D;
 /// <summary>
 /// One reset reason per frame, the highest ranked when several triggers fire together
 /// (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, section 2). The ranking is not the enum's declaration order:
-/// <see cref="TemporalResetReason.FirstFrame"/> is declared first but <see cref="TemporalResetReason.DeviceReset"/>,
-/// declared last, ranks second, and <see cref="TemporalResetReason.Resize"/> ranks above both camera cuts.
+/// <see cref="TemporalResetReason.FirstFrame"/> is the first reason declared after
+/// <see cref="TemporalResetReason.None"/> but <see cref="TemporalResetReason.DeviceReset"/>, declared last, ranks
+/// second, and <see cref="TemporalResetReason.Resize"/> ranks above both camera cuts.
 /// </summary>
 public sealed class TemporalResetPrecedenceTests
 {

@@ -52,7 +52,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   consumer that wants one, which `Scene3D` itself never requires. Terrain chunk vertices, terrain texturing at range and depth precision are
   explicitly NOT fixed by it. See docs/USING-KHAOZENGINE.md.
 - `Scene3D.CameraCut()` / `Scene3D.DebugView` / `Scene3D.LastTemporalDiagnostics` / `Post.Temporal` - the temporal
-  rendering foundations. Every frame renders through one view snapshot and the previous frame's view is kept, rebased
+  rendering foundations. Each render draws from one latched view and the previous frame's view is kept, rebased
   across the one-cell steps the automatic render origin takes. Nothing changes until something asks for temporal
   rendering, and a `DebugView` other than `SceneDebugView.None`, such as `SceneDebugView.MotionVectors`, is the public
   way to ask. Call `CameraCut()` on a teleport, a loading screen or a cutscene cut.

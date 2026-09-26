@@ -18783,8 +18783,10 @@ so external sink use never drains the World's internal pool.
 **`AccessSet` - the read/write declaration model.** `Access.Read<T>()` / `Access.Write<T>()` build an immutable
 declaration of which components a unit of work reads vs writes; `a.ConflictsWith(b)` is true iff one writes a type the
 other touches (write-write or read-write; two readers never conflict). `ParallelForEach`'s own safety is the runtime
-guard above, but `AccessSet` is the explicit vocabulary a future system scheduler reuses to decide which systems may
-run concurrently.
+guard above. `AccessSet` is an available declaration vocabulary, but `ISystem` and `RunGroup` remain sequential
+and no scheduler consumes it. The `KhaozEngine.Benchmarks --gate` measurement did not justify layer 3 at
+hot-cell sizes on the measured 12-core machine, so that scheduler is not planned without a contrary real
+workload. The decision and benchmark rows are in [#125](https://github.com/APKiwiOrg/KhaozEngine/issues/125).
 
 ```csharp
 AccessSet move = Access.Write<Position>().Read<Velocity>();

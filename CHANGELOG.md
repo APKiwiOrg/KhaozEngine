@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.6.3
+
+- `MarkupText` adds opt-in semantic color markup for localized chat and tooltips. Theme styles map named spans,
+  formatted values are escaped, and the public colored-run wrapper supports a game-owned dialogue view
+  ([#65](https://github.com/APKiwiOrg/KhaozEngine/issues/65)).
+- `KhaozEngine.Localization.Analyzers` now generates `StringId` fields from explicitly opted-in neutral
+  `.resx` files. Names and keys are deterministic, collisions fail the build, and Showcase no longer carries
+  its 136-field hand-written mirror ([#66](https://github.com/APKiwiOrg/KhaozEngine/issues/66)).
+- `CharacterPose` now composes an attachment from its current bone palette and draw transform, with a rigid
+  option for held equipment. The pose type has its own file ([#96](https://github.com/APKiwiOrg/KhaozEngine/issues/96)).
+- The `AirControl` contract now states that momentum steering blends once per simulation tick, while
+  `AirBrakeAccel` remains a rate per second. Movement behavior is unchanged
+  ([#471](https://github.com/APKiwiOrg/KhaozEngine/issues/471)).
+- The Stats facts now run from `KhaozEngine.Foundation.Tests`, so a Stats change no longer pulls the broad
+  Game test project through selective CI ([#890](https://github.com/APKiwiOrg/KhaozEngine/issues/890)).
+
 ## 20.6.2
 
 - A catalog type validator that throws now keeps the findings it emitted first and adds the `KEC0040`

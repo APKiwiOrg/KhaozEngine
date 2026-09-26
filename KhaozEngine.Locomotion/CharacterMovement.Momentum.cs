@@ -70,7 +70,8 @@ public static partial class CharacterMovement
     {
         // Air control is the steering authority over DIRECTION, clamped into [0,1] so a mis-set tuning cannot
         // overshoot the blend past the command (> 1) or steer away from it (< 0). At 1 the character has full
-        // authority and can turn its arc through 180 degrees in a tick, still at the carried speed. At 0 nothing of
+        // authority and can turn its arc through 180 degrees in a tick, still at the carried speed. This is one
+        // blend per tick, not a dt-scaled rate. At 0 nothing of
         // the command reaches the velocity at all and the arc is purely ballistic, which is the reading this knob
         // gains under momentum: the old model froze the horizontal instead of letting the arc fly out.
         float ac = Math.Clamp(t.AirControl, 0f, 1f);

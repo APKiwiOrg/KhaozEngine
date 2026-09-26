@@ -1366,6 +1366,23 @@ TooltipLine action = TooltipLine.OfSegments(localizedActionSegments, actionColor
 tip.Show(default, new[] { action }, anchor);
 ```
 
+Use one trusted localized template when the translator must control the whole sentence. Semantic tags map
+through the caller's current palette, and formatted arguments are escaped automatically:
+
+```csharp
+var inlineStyles = new InlineTextStyles(
+    new InlineTextStyle("emphasis", rarityColor),
+    new InlineTextStyle("key", keyColor));
+// Catalog value: "Equip [emphasis]{0}[/] with [key]{1}[/]"
+TooltipLine action = TooltipLine.OfMarkup(
+    MarkupText.Of(Strings.EquipHint, itemName, bindingName), inlineStyles, actionColor);
+```
+
+Tags use `[name]...[/]`, may nest, and use `[[` for a literal `[`. Missing names inherit the enclosing colour.
+Names begin with an ASCII letter, continue with ASCII letters, digits, dot, underscore or hyphen, and match
+ordinally. Malformed markup renders literally rather than throwing or dropping text. Styles are semantic colours
+only. Translations do not contain raw palette values, font names, links or actions.
+
 For separate bubbles that must keep one order beside the pointer, measure each with `Tooltip.ComputeBounds`,
 pass the widths and heights to `TooltipStackLayout.Place`, then show each offset-mode `Tooltip` at
 `TooltipStackLayout.AnchorFor(box, tip.Metrics)`. Use the same viewport and metrics for measurement and drawing.
@@ -1552,6 +1569,11 @@ latest entry supplies the timestamp, author, content and ownership, while `Repea
 into it. Author and content use `LocalizedText`, so catalog-backed system copy and explicit raw player names or
 messages keep the same localization boundary as the rest of Gui.
 
+Localized system entries may instead use the additive `MarkupText` constructor. The catalog owns the trusted
+markup and `MarkupText.Of` escapes every formatted argument before it is inserted. Map the semantic names on
+`ChatBoxTheme.InlineStyles`. A style missing from the map inherits the ordinary, own or system entry colour.
+Plain `LocalizedText` entries retain their existing layout and draw path.
+
 `ChatBox` owns wrapped scrollback and a single-line composer inside caller-selected design-space bounds. Enter
 opens the composer. A later Enter submits trimmed non-empty text and leaves it open. Escape clears and closes it.
 `ShowTimestamps` converts each UTC timestamp to local time for presentation only. `ChatBoxTheme` carries the frame,
@@ -1579,6 +1601,7 @@ string placeholder or prefix overload on `ChatBox`.
 ```csharp
 using System;
 using KhaozEngine.App;
+using KhaozEngine.Gui;
 using KhaozEngine.Gui.Chat;
 using KhaozEngine.Primitives;
 
@@ -1601,6 +1624,19 @@ history.Add(new ChatEntry(
     CollapseKey: message,
     Kind: ChatEntryKind.Ordinary,
     IsOwn: senderId == localPlayerId));
+
+chat.Theme.InlineStyles = new InlineTextStyles(
+    new InlineTextStyle("emphasis", chat.Theme.OwnText),
+    new InlineTextStyle("key", GuiTheme.Default.AccentBright));
+// Catalog value: "[emphasis]{0}[/] found. Press [key]{1}[/] to inspect."
+history.Add(new ChatEntry(
+    DateTimeOffset.UtcNow,
+    SourceKey: "loot",
+    Author: null,
+    Content: MarkupText.Of(Strings.ChatLootFound, itemName, bindingName),
+    CollapseKey: itemId,
+    Kind: ChatEntryKind.System,
+    IsOwn: false));
 ```
 
 Update the chatbox before world picking. It blocks its complete bounds through `Pointer`, including pointer
@@ -2249,19 +2285,30 @@ reference each other just to agree on how versions order.
 The Gui text sinks accept a `LocalizedText` (from `KhaozEngine.App`), not a raw `string`. The only implicit
 conversion into `LocalizedText` is from `StringId`, so **a bare string literal at a sink is a compile error** -
 you either localize it (a `StringId`) or opt out explicitly (`LocalizedText.Raw`). The `KhaozEngine.Localization.Analyzers`
-analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adopting it on a bump:
+analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest.
 
-1. **Author a `.resx` + `StringId` constants.** One satellite `.resx` per culture (the base file is the default
-   language), and a constants class of keys (a `.resx` -> `StringId` source generator is on the roadmap):
+Rich-text adapters take `MarkupText`, which is built only from a `StringId` and has no raw root factory.
+Non-localizable values enter through `MarkupText.Of` format arguments, where they are escaped before insertion
+into the catalog's trusted semantic markup.
 
-   ```csharp
-   internal static class Strings
-   {
-       public static readonly StringId Pause  = new("Menu.Pause");
-       public static readonly StringId Resume = new("Menu.Resume");
-       public static readonly StringId Score  = new("Hud.Score");   // "Score: {0}"
-   }
+To adopt the analyzer on a bump:
+
+1. **Author a neutral `.resx` and generate its `StringId` keys.** Keep one satellite `.resx` per culture, with
+   the base file as the default language. Add only that neutral file as an opted AdditionalFile:
+
+   ```xml
+   <ItemGroup>
+     <AdditionalFiles Include="Strings.resx"
+                      KhaozStringIdType="MyGame.Strings" />
+   </ItemGroup>
    ```
+
+   The class is internal by default and contains one public static readonly `StringId` per string key. Set
+   `KhaozStringIdAccessibility="public"` when another assembly needs the class. Member names join key runs with
+   invariant uppercase starts, so `Menu.Pause` becomes `MenuPause` and `fly_speed` becomes `FlySpeed`. A key
+   rename or removal then breaks stale call sites at compile time. Name collisions and invalid resx inputs are
+   build errors. Do not opt satellite files in. Use `KhaozEngine.Localization.TestKit` for their coverage and
+   placeholder parity.
 
 2. **Wire the catalog once at startup** so every `LocalizedText` resolves against it. `LocalizationContext.WireResx`
    is the one-liner (no per-game bridge class needed - it builds the `ResourceStringCatalog`, installs it as the
@@ -2279,8 +2326,8 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
 3. **Pass a `StringId` (or `LocalizedText.Of` with format args) at the sinks:**
 
    ```csharp
-   gui.Button(font, rect, Strings.Resume);                 // StringId -> LocalizedText implicitly
-   label.Content = LocalizedText.Of(Strings.Score, score); // format args -> catalog.Format
+   gui.Button(font, rect, Strings.MenuResume);                // StringId -> LocalizedText implicitly
+   label.Content = LocalizedText.Of(Strings.HudScore, score); // format args -> catalog.Format
    ```
 
    `LocalizedText` re-resolves on every draw, so `LocalizationManager.SetCulture(...)` at runtime updates the UI
@@ -2300,8 +2347,8 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
    ```
 
 The Gui sinks carry no `string` overload, so every player-facing call site must be migrated before a game
-builds against them. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
-`ShowcaseStrings` constants + `LocalizationContext` wiring).
+builds against them. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` generates the
+`ShowcaseStrings` key class, with `LocalizationContext` wiring at startup).
 
 **A widget with no sink is invisible to the analyzer, which is the failure mode to watch for.** KELOC001 and
 KELOC003 flag a literal passed into a parameter that is typed or marked as a sink, so a widget holding a plain
@@ -2775,6 +2822,19 @@ inside the callback: the command list it is recording into still names them unti
   string body = "Line one.\n\nLine two, which is long enough to wrap.";
   float height = TextLayout.MeasureWrappedHeight(font, body, boxWidth);
   TextLayout.DrawWrapped(batch, font, body, topLeft, boxWidth, TextAlign.Left, color);
+  ```
+
+- `ColoredTextLayout.Wrap` - device-free wrapping for adjacent `ColoredTextRun` values. It preserves interior
+  spaces and returns `ColoredTextLine` values whose runs concatenate to the visible line and retain colour through
+  word and hard breaks. This is the layout seam for a game-owned dialogue view:
+
+  ```csharp
+  ColoredTextRun[] runs = InlineMarkup.Resolve(dialogue, inlineStyles, bodyColor);
+  foreach (ColoredTextLine line in ColoredTextLayout.Wrap(font, runs, boxWidth, hardBreak: true))
+  {
+      batch.DrawStringRuns(font, line.Runs.Span, topLeft);
+      topLeft.Y += font.LineHeight;
+  }
   ```
 
 ### 2D VFX (`KhaozEngine.Render2D.Vfx`)
@@ -4968,6 +5028,21 @@ The set is render-free and headless-testable (owns no GPU handle, never calls `S
 asset's rest pose looks down +Z; set `CharacterAnimatorTuning.FacingYawOffset` if yours does not. A
 `CharacterPose.Pose` is the brain's own buffer reused each frame - draw it this frame, do not retain it.
 
+For equipment or a VFX anchor, resolve a named skeleton joint to its skin bone index once, then compose from
+each draw-ready pose. `ComposeSocket` keeps the joint's scale and shear. `ComposeRigidSocket` removes those
+from the joint while retaining the character model transform:
+
+```csharp
+int handBone = skeleton.BoneIndexOfNode(skeleton.IndexOf("RightHand"));
+foreach (CharacterPose p in animators.Live)
+{
+    Matrix4x4 weaponWorld = p.ComposeRigidSocket(handBone, gripLocal);
+    // Draw the equipped mesh with weaponWorld in the same frame.
+}
+```
+
+The bone index addresses `CharacterPose.Pose`, not the skeleton's node array. The pose remains transient.
+
 `Live` holds exactly ONE pose per entity id, so the draw loop above cannot draw a character twice. The sample list
 is expected to carry at most one entry per `CharacterSample.Id` (the netcode's own snapshot does, its samples coming
 out of a dictionary keyed by id), and a list assembled another way that repeats one has the repeat DROPPED: the
@@ -7084,7 +7159,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.6.2" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.6.3" />
 ```
 
 ```csharp
@@ -13543,7 +13618,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.6.2" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.6.3" />
 ```
 
 ```csharp
@@ -13579,7 +13654,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.6.2" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.6.3" />
 ```
 
 ```csharp
@@ -13821,7 +13896,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.6.2" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.6.3" />
 ```
 
 ```csharp
@@ -17787,7 +17862,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.6.2" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.6.3" />
 </ItemGroup>
 ```
 
@@ -20595,7 +20670,9 @@ consumed while grounded.
 over the direction of travel rather than a speed scale. `1` is still full control (an instant 180 mid-flight, still
 at the carried speed), and `0` is now a true ballistic arc rather than "frozen horizontally in mid-air". If your
 game runs a partial `AirControl` and opts in, re-check the feel: the value now bends the arc over several ticks
-instead of scaling it.
+instead of scaling it. That blend is applied once per simulation tick with no `dt` factor, so changing the tick
+rate changes airborne steering over the same airtime. Keep prediction and authority at the same fixed rate.
+`AirBrakeAccel` is separate and remains measured per second.
 
 **`AirBrakeAccel`** (m/s^2, default `0`) bleeds a conserved speed down toward a STRICTLY SLOWER commanded speed and
 stops there, never below it. `0` is pure conservation. It is for a root or a snare landing mid-flight, and it is

@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.App;
+using KhaozEngine.Gui;
 using KhaozEngine.Gui.Chat;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -50,11 +51,40 @@ public sealed class ChatBoxDrawAllocationTests
         });
     }
 
+    [Fact]
+    public void Drawing_steady_markup_history_allocates_nothing()
+    {
+        var history = new ChatHistory(100);
+        for (int i = 0; i < 100; i++)
+        {
+            string content = $"message {i}";
+            history.Add(new ChatEntry(DateTimeOffset.UnixEpoch.AddMinutes(i), $"source-{i}",
+                null, MarkupText.Of(new StringId($"Chat.Message.{i}")), content,
+                ChatEntryKind.System, IsOwn: false));
+        }
+        var box = new ChatBox(history, new Rect(100f, 100f, 300f, 180f));
+        box.RefreshLayout(Font, TimeZoneInfo.Utc);
+        var sink = new CountingSink();
+        box.DrawHistoryRows(ref sink);
+        Assert.True(sink.Runs > 0);
+
+        AllocAssert.NoPerCallAllocation("ChatBox markup history rows on a steady frame", () =>
+        {
+            for (int frame = 0; frame < 60; frame++)
+            {
+                box.RefreshLayout(Font, TimeZoneInfo.Utc);
+                box.DrawHistoryRows(ref sink);
+            }
+        });
+    }
+
     struct CountingSink : IChatRowSink
     {
         public int Runs;
 
         public void DrawText(string text, Vector2 position, Color color) => Runs++;
+
+        public void DrawTextRuns(ReadOnlySpan<ColoredTextRun> runs, Vector2 position) => Runs++;
     }
 
     sealed class FixedMeasurer : ITextMeasurer

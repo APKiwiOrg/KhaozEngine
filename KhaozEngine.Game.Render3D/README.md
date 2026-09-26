@@ -128,6 +128,22 @@ coming out of a dictionary keyed by id), and a list assembled another way that r
 the first entry for an id is the one advanced and posed. Deduplicate upstream if which of two entries wins matters,
 since the bridge cannot know which is the newer.
 
+`CharacterPose.ComposeSocket(boneIndex, pieceLocal)` composes an attachment from one joint in this pose's
+transient palette through `CharacterPose.World`. `ComposeRigidSocket` first removes joint scale and shear,
+which keeps a held rigid prop from deforming. Resolve a named joint to its skin bone index once through the
+asset's `Skeleton`, then use that index on each frame's pose:
+
+```csharp
+int handBone = skeleton.BoneIndexOfNode(skeleton.IndexOf("RightHand"));
+foreach (CharacterPose pose in animators.Live)
+{
+    Matrix4x4 weaponWorld = pose.ComposeRigidSocket(handBone, gripLocal);
+    // Draw the equipped mesh with weaponWorld in the same frame.
+}
+```
+
+The returned matrix is a value. The pose and palette still expire on the next animator update.
+
 ### Reverse locomotion (a backpedal that does not moonwalk)
 
 A character holding a facing while it travels backwards is genuinely moving in reverse relative to that facing, so

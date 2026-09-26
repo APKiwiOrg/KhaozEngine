@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -13,6 +14,9 @@ internal interface IChatRowSink
 {
     /// <summary>Draw <paramref name="text"/> with its top-left at <paramref name="position"/>.</summary>
     void DrawText(string text, Vector2 position, Color color);
+
+    /// <summary>Draw adjacent coloured runs as one text block at <paramref name="position"/>.</summary>
+    void DrawTextRuns(ReadOnlySpan<ColoredTextRun> runs, Vector2 position);
 }
 
 /// <summary>The sink the frame draw uses, a pass-through to <c>SpriteBatch.DrawString</c>. A struct, so the
@@ -29,4 +33,7 @@ internal readonly struct SpriteBatchChatRowSink : IChatRowSink
     }
 
     public void DrawText(string text, Vector2 position, Color color) => _batch.DrawString(_font, text, position, color);
+
+    public void DrawTextRuns(ReadOnlySpan<ColoredTextRun> runs, Vector2 position) =>
+        _batch.DrawStringRuns(_font, runs, position);
 }

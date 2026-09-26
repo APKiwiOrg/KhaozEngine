@@ -38,6 +38,12 @@ namespace KhaozEngine.Gui
         public static TooltipLine OfSegments(IReadOnlyList<LabelSegment> segments,
             Vector4 defaultColor, float scale = 1f) =>
             TooltipColoredLines.FromSegments(segments, defaultColor, scale);
+
+        /// <summary>Build a line from trusted localized semantic colour markup. Missing style names inherit
+        /// <paramref name="defaultColor"/>, and malformed markup renders literally.</summary>
+        public static TooltipLine OfMarkup(MarkupText text, InlineTextStyles styles,
+            Vector4 defaultColor, float scale = 1f) =>
+            TooltipColoredLines.FromMarkup(text, styles, defaultColor, scale);
     }
 
     /// <summary>

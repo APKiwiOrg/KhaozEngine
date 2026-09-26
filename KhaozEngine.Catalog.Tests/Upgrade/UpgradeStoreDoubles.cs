@@ -212,8 +212,8 @@ internal sealed class LedgerlessStore(IContentAuthoringStore inner) : Forwarding
 }
 
 /// <summary>
-/// Counts the four writes a run can make to the one draft, so a test can say what the runner did rather than
-/// only what the catalog ended up holding.
+/// Counts the runner's reads and the four writes it can make to the one draft, so a test can say what the
+/// runner did rather than only what the catalog ended up holding.
 /// <para>
 /// The counters see the RUNNER's calls only. A store's own publish pipeline runs against the inner store, so
 /// the freeze it sets and releases for itself never reaches this decorator, which is exactly the separation
@@ -223,6 +223,9 @@ internal sealed class LedgerlessStore(IContentAuthoringStore inner) : Forwarding
 internal sealed class CountingContentAuthoringStore(InMemoryContentAuthoringStore inner)
     : ForwardingContentAuthoringStore(inner), IContentUpgradeLedger
 {
+    /// <summary>How many times the runner read the open draft.</summary>
+    public int OpenDraftReads { get; private set; }
+
     /// <summary>How many times the runner wrote edits into the draft.</summary>
     public int EditWrites { get; private set; }
 
@@ -234,6 +237,13 @@ internal sealed class CountingContentAuthoringStore(InMemoryContentAuthoringStor
 
     /// <summary>How many publishes the runner started.</summary>
     public int Publishes { get; private set; }
+
+    /// <inheritdoc />
+    public override Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
+    {
+        OpenDraftReads++;
+        return base.GetOpenDraftAsync(cancellationToken);
+    }
 
     /// <summary>
     /// What <see cref="FreezeClears"/> stood at when the runner started its FIRST publish, which is the

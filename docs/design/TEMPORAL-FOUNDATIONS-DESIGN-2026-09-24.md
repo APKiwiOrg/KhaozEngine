@@ -294,3 +294,8 @@ and changed these details. Each group's "Contract amendments" block carries the 
     submission, CPU preparation and recording excluded) at 1600x900 on Apple M2 Max, median of three runs, for a floor,
     400 keyed boxes, 8 keyed GPU-skinned bodies and 2500 wind-blown foliage blades under a panning camera
     (`MotionTargetCostProbe`). The town-path reading of acceptance 5 is taken in round 3 (group D).
+18. A last-frame clip w of 1e-6 or less puts the point on or behind last frame's camera plane, where the divide has no
+    image position. The opaque motion write gives UV motion (2, 2) there, finite and below the background threshold,
+    so the resolve rejects that pixel's history as it does any off-screen previous position (group D).
+19. The MotionVectors view tests background on the x channel alone, as `MotionMath.IsBackground` and the resolve do, so
+    a pixel whose y motion alone is large draws as motion (group D).

@@ -5,6 +5,23 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.6.4
+
+- Catalog validation now refuses negative or unrepresentable loot weights and weighted table totals that
+  would overflow the runtime's prefix array. `KEC0043` names the offending entry or table before publish
+  ([#944](https://github.com/APKiwiOrg/KhaozEngine/issues/944)).
+- Tile rectangles and path searches now reject coordinate ranges whose edges cannot fit the existing
+  signed tile domain, and reach candidates no longer wrap at its extremes
+  ([#978](https://github.com/APKiwiOrg/KhaozEngine/issues/978)).
+- MapEditor skips authored-placement diffs after commands that cannot change placements, while placement
+  edits and external custom commands still invalidate the cache
+  ([#1107](https://github.com/APKiwiOrg/KhaozEngine/issues/1107)).
+- `SlotGrid` visits only slots intersecting its visible region for draw, input and lookup. A grid with no
+  visible region retains full traversal ([#1121](https://github.com/APKiwiOrg/KhaozEngine/issues/1121)).
+- The exchange endpoint's oversized-body test now reads the HTTP/1.1 wire response after sending the
+  request, preserving the bare 413 assertion without `HttpClient` upload races
+  ([#1163](https://github.com/APKiwiOrg/KhaozEngine/issues/1163)).
+
 ## 20.6.3
 
 - `MarkupText` adds opt-in semantic color markup for localized chat and tooltips. Theme styles map named spans,

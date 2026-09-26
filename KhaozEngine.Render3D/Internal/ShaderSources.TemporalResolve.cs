@@ -1,0 +1,352 @@
+namespace KhaozEngine.Render3D.Internal
+{
+    /// <summary>
+    /// The temporal resolve and its depth store (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3), two fullscreen fragment
+    /// programs paired with <see cref="FullscreenVert"/> and recorded by <c>TemporalResolveRenderer</c>.
+    /// <para><b>ORIENTATION.</b> Both address pixels by <c>gl_FragCoord</c>, which is upper-left on every backend (the
+    /// convention <c>DecalFrag</c> and <c>StarfieldFrag</c> rely on), and read every input by <c>texelFetch</c> or at the
+    /// UV of a pixel centre. So neither flips: the resolve's output is upright like <c>ColorTex</c>, and the post
+    /// chain's flip parities stay what they were.</para>
+    /// <para><b>THE CORE IS SHARED.</b> <see cref="TemporalResolveCoreGlsl"/> holds the bindings, the uniform block and
+    /// the per-pixel resolve as a function with no stage inputs or outputs, so the temporal debug views and the sampled
+    /// counts (the design's plan amendment 8) re-evaluate exactly what the resolve decided, through the resource set it
+    /// bound.</para>
+    /// <para><b>THE UNIFORM BLOCKS ARE THE C# STRUCTS.</b> Each block's members are spliced from
+    /// <see cref="TemporalResolveUniforms.GlslMembers"/> and <see cref="TemporalDepthStoreUniforms.GlslMembers"/>, so the
+    /// text cannot drift from the fields, and the fields carry the meaning.</para>
+    /// <para><b>A MOVING SURFACE SKIPS THE DEPTH TEST.</b> <see cref="TemporalResolveUniforms.CurrentToPrevious"/> maps a
+    /// static point, so the expected depth is only meaningful where the dilated motion lands within
+    /// <see cref="TemporalResolveTuning.MovingSurfaceInternalPixels"/> of the static point's previous UV. Elsewhere the
+    /// surface moved and neighbourhood clipping handles it. The motion target never reads as background off screen: an
+    /// x channel past <see cref="TemporalResolveTuning.MotionSentinel"/> is background, and a previous UV outside
+    /// [0, 1], which every clamped or behind-the-camera motion gives, rejects history as off screen.</para>
+    /// <para><b>D3D11 SIGNATURE.</b> Each <c>main</c> reads <c>vUv</c> with a <c>1e-30</c> weight, which changes no
+    /// output, so the pixel-input signature is TEXCOORD0 then SV_Position, the shape <c>PaletteFrag</c> ships on every
+    /// backend, rather than SV_Position alone after a vertex stage that writes TEXCOORD0.</para>
+    /// <para>The constants mirror <see cref="TemporalResolveTuning"/> one for one, and the helpers mirror
+    /// <see cref="TemporalResolveMath"/>. Change both together.</para>
+    /// </summary>
+    internal static partial class ShaderSources
+    {
+        // ---- Shared by both temporal programs: the background sentinel and the depth linearisation ----
+        internal const string TemporalCommonGlsl = @"
+const float MotionSentinel = 60000.0;
+const float BackgroundLinearDepth = 1.0e30;
+// The largest finite half float. A history texel outside it is not finite.
+const float HalfMax = 65504.0;
+// View distance from NDC depth: perspective as OutlineMath.LinearizeDepth, orthographic linear between near and far.
+// depthParams = (1 for perspective else 0, near, far, 0).
+float temporalLinearDepth(float ndcDepth, vec4 depthParams) {
+    return depthParams.x > 0.5
+        ? (depthParams.y * depthParams.z) / (depthParams.z - ndcDepth * (depthParams.z - depthParams.y))
+        : depthParams.y + ndcDepth * (depthParams.z - depthParams.y);
+}
+";
+
+        // ---- The resolve's tuning constants, one for one with TemporalResolveTuning ----
+        internal const string TemporalResolveTuningGlsl = @"
+const float DisocclusionTolerance = 0.02;
+const float MovingSurfaceInternalPixels = 0.5;
+const float MaxAccumulation = 15.0;
+const float MovingAccumulation = 8.0;
+const float MotionAccumulationPixels = 16.0;
+const float GammaStill = 1.5;
+const float GammaMoving = 0.75;
+const float GammaMotionPixels = 3.0;
+const float ReactiveGain = 4.0;
+const float ReactiveStrength = 0.9;
+const float LockRidgeAbsolute = 0.02;
+const float LockRidgeRelative = 0.1;
+const float LockMotionStartPixels = 1.0;
+const float LockMotionEndPixels = 4.0;
+const float LockReactiveRelease = 2.0;
+";
+
+        // ---- The resolve's core: bindings, uniforms and the per-pixel resolve, no stage inputs or outputs ----
+        public const string TemporalResolveCoreGlsl = @"
+layout(set=0, binding=0) uniform texture2D SceneColor;
+layout(set=0, binding=1) uniform texture2D OpaqueColor;
+layout(set=0, binding=2) uniform texture2D SceneDepth;
+layout(set=0, binding=3) uniform texture2D MotionTex;
+layout(set=0, binding=4) uniform texture2D PrevDepth;
+layout(set=0, binding=5) uniform texture2D HistoryColor;
+layout(set=0, binding=6) uniform texture2D HistoryConfidence;
+layout(set=0, binding=7) uniform sampler LinearClamp;
+// The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
+layout(set=0, binding=8) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
+" + TemporalCommonGlsl + TemporalResolveTuningGlsl + @"
+struct TemporalPixel { vec3 color; float confidence; float stability; float disocclusion; float reactive; float clip; float alpha; };
+
+float temporalLuma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+vec3 toWeighted(vec3 c) { return c / (1.0 + temporalLuma(c)); }
+vec3 fromWeighted(vec3 w) { return w / max(1.0 - temporalLuma(w), 1.0e-4); }
+vec3 rgbToYCoCg(vec3 c) {
+    return vec3(0.25 * c.r + 0.5 * c.g + 0.25 * c.b, 0.5 * c.r - 0.5 * c.b, -0.25 * c.r + 0.5 * c.g - 0.25 * c.b);
+}
+vec3 yCoCgToRgb(vec3 c) { return vec3(c.x + c.y - c.z, c.x + c.z, c.x - c.y - c.z); }
+
+// sinc(x) * sinc(x / 2) on |x| < 2, mirrored by TemporalResolveMath.Lanczos2.
+float lanczos2(float x) {
+    float ax = abs(x);
+    if (ax < 1.0e-5) return 1.0;
+    if (ax >= 2.0) return 0.0;
+    float px = 3.14159265 * ax;
+    return 2.0 * sin(px) * sin(0.5 * px) / (px * px);
+}
+
+bool isRidge(float centreLuma, float a, float b, float threshold) {
+    return centreLuma - max(a, b) > threshold || min(a, b) - centreLuma > threshold;
+}
+
+// Step 2: Catmull-Rom from five bilinear taps (the corner taps dropped), weights renormalised over the five. At a
+// texel centre it returns that texel exactly, so a still history is never softened.
+vec4 sampleHistoryCatmullRom(vec2 uv, vec2 size) {
+    vec2 samplePos = uv * size;
+    vec2 texPos1 = floor(samplePos - 0.5) + 0.5;
+    vec2 f = samplePos - texPos1;
+    vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+    vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+    vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+    vec2 w3 = f * f * (-0.5 + 0.5 * f);
+    vec2 w12 = w1 + w2;
+    vec2 tc0 = (texPos1 - 1.0) / size;
+    vec2 tc3 = (texPos1 + 2.0) / size;
+    vec2 tc12 = (texPos1 + w2 / w12) / size;
+    vec4 top = textureLod(sampler2D(HistoryColor, LinearClamp), vec2(tc12.x, tc0.y), 0.0) * (w12.x * w0.y);
+    vec4 left = textureLod(sampler2D(HistoryColor, LinearClamp), vec2(tc0.x, tc12.y), 0.0) * (w0.x * w12.y);
+    vec4 middle = textureLod(sampler2D(HistoryColor, LinearClamp), tc12, 0.0) * (w12.x * w12.y);
+    vec4 right = textureLod(sampler2D(HistoryColor, LinearClamp), vec2(tc3.x, tc12.y), 0.0) * (w3.x * w12.y);
+    vec4 bottom = textureLod(sampler2D(HistoryColor, LinearClamp), vec2(tc12.x, tc3.y), 0.0) * (w12.x * w3.y);
+    float weight = w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y;
+    return (top + left + middle + right + bottom) / weight;
+}
+
+ivec2 temporalDisplaySize() { return ivec2(Sizes.zw); }
+
+TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
+    vec2 internalSize = Sizes.xy;
+    vec2 displaySize = Sizes.zw;
+    vec2 jitter = Jitter.xy;
+    float displayOverInternal = Jitter.z;
+    bool historyValid = Jitter.w > 0.5;
+
+    // The display pixel centre in upright UV (row 0 at the top) and in internal pixels, and the texel whose jittered
+    // sample lands within half a texel of it.
+    vec2 uv = (vec2(displayPixel) + 0.5) / displaySize;
+    vec2 pixelCentre = uv * internalSize;
+    ivec2 maxTexel = ivec2(internalSize) - ivec2(1);
+    ivec2 centreTexel = clamp(ivec2(floor(pixelCentre + jitter)), ivec2(0), maxTexel);
+
+    vec3 momentSum = vec3(0.0);
+    vec3 momentSquares = vec3(0.0);
+    vec3 neighbourMin = vec3(1.0e30);
+    vec3 neighbourMax = vec3(-1.0e30);
+    float alphaMin = 1.0e30;
+    float alphaMax = -1.0e30;
+    vec4 reconstruction = vec4(0.0);
+    float reconstructionWeight = 0.0;
+    float sampleWeight = 0.0;
+    float closestDepth = 2.0 * BackgroundLinearDepth;
+    vec2 closestMotion = vec2(0.0);
+    bool closestIsBackground = true;
+    float reactiveDifference = 0.0;
+    float lumas[9];
+
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            ivec2 texel = clamp(centreTexel + ivec2(x, y), ivec2(0), maxTexel);
+            vec4 sceneColor = texelFetch(sampler2D(SceneColor, LinearClamp), texel, 0);
+            vec3 weightedColor = toWeighted(max(sceneColor.rgb, vec3(0.0)));
+            vec3 ycc = rgbToYCoCg(weightedColor);
+            lumas[(y + 1) * 3 + (x + 1)] = ycc.x;
+            momentSum += ycc;
+            momentSquares += ycc * ycc;
+            neighbourMin = min(neighbourMin, ycc);
+            neighbourMax = max(neighbourMax, ycc);
+            alphaMin = min(alphaMin, sceneColor.a);
+            alphaMax = max(alphaMax, sceneColor.a);
+
+            // Step 4: Lanczos 2 on the distance from this texel's jittered sample to the pixel centre, in internal
+            // pixels. How close the nearest sample lands in display pixels is what this frame is worth to the pixel.
+            vec2 toSample = vec2(texel) + 0.5 - jitter - pixelCentre;
+            float lanczosWeight = lanczos2(toSample.x) * lanczos2(toSample.y);
+            reconstruction += vec4(ycc, sceneColor.a) * lanczosWeight;
+            reconstructionWeight += lanczosWeight;
+            vec2 toSampleDisplay = toSample * displayOverInternal;
+            sampleWeight = max(sampleWeight, clamp(lanczos2(toSampleDisplay.x) * lanczos2(toSampleDisplay.y), 0.0, 1.0));
+
+            // Step 1: the nearest surface in the neighbourhood carries the motion. Background is the motion sentinel
+            // on the x channel alone, because the depth attachment is cleared to the background colour, not to the far
+            // plane. A clamped or off-screen motion is finite and far below the sentinel, so it is never background.
+            vec2 motion = texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg;
+            float ndcDepth = texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r;
+            bool isBackground = abs(motion.x) > MotionSentinel;
+            float viewDepth = isBackground ? BackgroundLinearDepth : temporalLinearDepth(ndcDepth, CurrentDepth);
+            if (viewDepth < closestDepth) {
+                closestDepth = viewDepth;
+                closestMotion = motion;
+                closestIsBackground = isBackground;
+            }
+
+            // Step 7: how much the transparent passes changed this texel.
+            vec3 opaqueColor = texelFetch(sampler2D(OpaqueColor, LinearClamp), texel, 0).rgb;
+            reactiveDifference = max(reactiveDifference,
+                abs(temporalLuma(weightedColor) - temporalLuma(toWeighted(max(opaqueColor, vec3(0.0))))));
+        }
+    }
+
+    float reactive = clamp(reactiveDifference * ReactiveGain, 0.0, 1.0);
+    vec3 mean = momentSum / 9.0;
+    vec3 deviation = sqrt(max(momentSquares / 9.0 - mean * mean, vec3(0.0)));
+    vec4 current = reconstruction / max(reconstructionWeight, 1.0e-4);
+    current.xyz = clamp(current.xyz, neighbourMin, neighbourMax);   // the negative lobes cannot ring past the neighbourhood
+    current.w = clamp(current.w, alphaMin, alphaMax);
+
+    // Steps 1 and 3: where this pixel was last frame, and the depth a static surface there had. Background reprojects
+    // from camera rotation alone. A surface reads history where its dilated motion puts it, and takes its expected
+    // depth from CurrentToPrevious, which maps a static point to last frame's view space. The same point through
+    // PreviousProjection is where the camera alone would have carried it. A surface that landed more than
+    // MovingSurfaceInternalPixels from there moved, and skips the depth test. So does one whose static point sat on or
+    // behind last frame's camera plane.
+    vec2 ndcXY = vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+    vec2 previousUv = vec2(-1.0);
+    float expectedDepth = BackgroundLinearDepth;
+    bool depthTested = true;
+    if (closestIsBackground) {
+        vec4 previousClip = BackgroundToPrevious * vec4(ndcXY, 1.0, 1.0);
+        if (previousClip.w > 1.0e-6)
+            previousUv = vec2(previousClip.x / previousClip.w * 0.5 + 0.5, 0.5 - previousClip.y / previousClip.w * 0.5);
+    } else {
+        previousUv = uv - closestMotion;
+        float clipW = CurrentDepth.x > 0.5 ? closestDepth : 1.0;
+        vec4 previousView = CurrentToPrevious * vec4(ndcXY * clipW, closestDepth, 1.0);
+        expectedDepth = -previousView.z;
+        vec4 staticClip = PreviousProjection * previousView;
+        depthTested = false;
+        if (staticClip.w > 1.0e-6) {
+            vec2 staticUv = vec2(staticClip.x / staticClip.w * 0.5 + 0.5, 0.5 - staticClip.y / staticClip.w * 0.5);
+            vec2 surfaceMotion = (staticUv - previousUv) * internalSize;
+            depthTested = dot(surfaceMotion, surfaceMotion) <= MovingSurfaceInternalPixels * MovingSurfaceInternalPixels;
+        }
+    }
+    // Motion is clamped to two screens and a point behind last frame's camera is written two screens away, so any
+    // such previous position falls outside [0, 1] here and is rejected like any other off-screen one.
+    bool onScreen = all(greaterThanEqual(previousUv, vec2(0.0))) && all(lessThanEqual(previousUv, vec2(1.0)));
+    float motionPixels = onScreen ? length((uv - previousUv) * displaySize) : 0.0;
+
+    // Step 3: disocclusion, one-sided. The farthest of the four stored depths around the reprojected position keeps a
+    // sub-pixel edge from reading as revealed. A background pixel expects BackgroundLinearDepth, so anything stored
+    // nearer there was covering it. A static surface on or behind last frame's camera had no history there.
+    bool disoccluded = false;
+    if (historyValid && onScreen && depthTested) {
+        ivec2 baseTexel = ivec2(floor(previousUv * internalSize - 0.5));
+        float farthest = 0.0;
+        for (int corner = 0; corner < 4; corner++) {
+            ivec2 texel = clamp(baseTexel + ivec2(corner & 1, corner >> 1), ivec2(0), maxTexel);
+            farthest = max(farthest, texelFetch(sampler2D(PrevDepth, LinearClamp), texel, 0).r);
+        }
+        disoccluded = !(expectedDepth > 1.0e-6) || farthest < expectedDepth * (1.0 - DisocclusionTolerance);
+    }
+
+    // Step 2: Catmull-Rom history at the reprojected position. A NaN or an infinity never reaches the output, because
+    // a comparison with either is false, which survives fast math where isnan may not.
+    bool useHistory = historyValid && onScreen && !disoccluded;
+    vec4 history = vec4(0.0);
+    vec2 historyState = vec2(0.0);
+    if (useHistory) {
+        vec4 fetched = sampleHistoryCatmullRom(previousUv, displaySize);
+        vec2 fetchedState = textureLod(sampler2D(HistoryConfidence, LinearClamp), previousUv, 0.0).rg;
+        bool finite = all(greaterThan(fetched, vec4(-HalfMax))) && all(lessThan(fetched, vec4(HalfMax)))
+            && all(greaterThan(fetchedState, vec2(-HalfMax))) && all(lessThan(fetchedState, vec2(HalfMax)));
+        if (finite) {
+            history = max(fetched, vec4(0.0));
+            historyState = clamp(fetchedState, vec2(0.0), vec2(1.0));
+        } else {
+            useHistory = false;
+        }
+    }
+
+    // Step 8, first half: the accumulated sample weight, capped lower as motion grows and cut by reactive content.
+    float motionCap = mix(MaxAccumulation, MovingAccumulation, clamp(motionPixels / MotionAccumulationPixels, 0.0, 1.0));
+    float accumulated = useHistory
+        ? min(historyState.x * MaxAccumulation, motionCap) * (1.0 - reactive * ReactiveStrength)
+        : 0.0;
+
+    // Step 6: thin features. A ridge through the centre texel refreshes the lock, which decays over one jitter cycle
+    // (Params.x) and is released by motion and reactive content.
+    float centreLuma = lumas[4];
+    float ridgeThreshold = max(LockRidgeAbsolute, LockRidgeRelative * centreLuma);
+    bool ridge = isRidge(centreLuma, lumas[3], lumas[5], ridgeThreshold)
+        || isRidge(centreLuma, lumas[1], lumas[7], ridgeThreshold)
+        || isRidge(centreLuma, lumas[0], lumas[8], ridgeThreshold)
+        || isRidge(centreLuma, lumas[2], lumas[6], ridgeThreshold);
+    float lockValue = useHistory ? max(historyState.y - Params.x, 0.0) : 0.0;
+    if (ridge) lockValue = 1.0;
+    float motionRelease = clamp((motionPixels - LockMotionStartPixels) / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
+    lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0));
+
+    // Step 5: variance clipping in luma-weighted YCoCg, from the box centre towards the history, which keeps its hue.
+    // Gamma is wide for a still pixel and narrows as it moves. A locked thin feature's luma neither drives the clip
+    // nor loses its share of it.
+    float gamma = mix(GammaStill, GammaMoving, clamp(motionPixels / GammaMotionPixels, 0.0, 1.0));
+    vec3 boxMin = mean - gamma * deviation;
+    vec3 boxMax = mean + gamma * deviation;
+    vec3 historyYcc = rgbToYCoCg(toWeighted(history.rgb));
+    vec3 boxCentre = 0.5 * (boxMin + boxMax);
+    vec3 boxExtent = 0.5 * (boxMax - boxMin) + vec3(1.0e-5);
+    vec3 fromCentre = historyYcc - boxCentre;
+    vec3 excess = abs(fromCentre) / boxExtent;
+    excess.x *= 1.0 - lockValue;
+    float clipScale = max(excess.x, max(excess.y, excess.z));
+    vec3 clipped = clipScale > 1.0 ? boxCentre + fromCentre / clipScale : historyYcc;
+    clipped.x = mix(clipped.x, historyYcc.x, lockValue);
+    float historyAlpha = clamp(history.a, alphaMin, alphaMax);
+
+    // Step 8, second half: blend in the weighted space. The current weight is 1 on a reset and falls to
+    // sampleWeight / (MaxAccumulation + sampleWeight), about one in sixteen, raised wherever reactive content or a
+    // disocclusion removed accumulated weight.
+    float currentWeight = accumulated > 1.0e-3 ? sampleWeight / (accumulated + sampleWeight) : 1.0;
+    vec3 resolvedYcc = mix(clipped, current.xyz, currentWeight);
+
+    TemporalPixel result;
+    result.color = fromWeighted(max(yCoCgToRgb(resolvedYcc), vec3(0.0)));
+    result.alpha = mix(historyAlpha, current.w, currentWeight);
+    result.confidence = min(accumulated + sampleWeight, motionCap) / MaxAccumulation;
+    result.stability = lockValue;
+    result.disocclusion = historyValid && (!onScreen || disoccluded) ? 1.0 : 0.0;
+    result.reactive = reactive;
+    result.clip = useHistory && clipScale > 1.0 ? 1.0 : 0.0;
+    return result;
+}
+";
+
+        // ---- The resolve: the core plus the two history outputs ----
+        public const string TemporalResolveFrag = "#version 450\n" + TemporalResolveCoreGlsl + @"
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oColor;
+layout(location=1) out vec4 oState;
+void main() {
+    TemporalPixel p = temporalResolvePixel(ivec2(gl_FragCoord.xy));
+    oColor = vec4(p.color, p.alpha + vUv.x * 1.0e-30);   // the vUv read changes no output, see the class summary
+    oState = vec4(p.confidence, p.stability, 0.0, 1.0);
+}";
+
+        // ---- The depth store: this frame's linear view depth for next frame's disocclusion test ----
+        public const string TemporalDepthStoreFrag = @"#version 450
+layout(set=0, binding=0) uniform texture2D SceneDepth;
+layout(set=0, binding=1) uniform texture2D MotionTex;
+layout(set=0, binding=2) uniform sampler Samp;
+// The member is TemporalDepthStoreUniforms.GlslMembers, documented on the struct's field.
+layout(set=0, binding=3) uniform DepthStore {" + TemporalDepthStoreUniforms.GlslMembers + @"};
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oDepth;
+" + TemporalCommonGlsl + @"
+void main() {
+    ivec2 texel = ivec2(gl_FragCoord.xy);
+    float ndcDepth = texelFetch(sampler2D(SceneDepth, Samp), texel, 0).r;
+    vec2 motion = texelFetch(sampler2D(MotionTex, Samp), texel, 0).rg;
+    float viewDepth = abs(motion.x) > MotionSentinel ? BackgroundLinearDepth : temporalLinearDepth(ndcDepth, CurrentDepth);
+    oDepth = vec4(viewDepth + vUv.x * 1.0e-30, 0.0, 0.0, 1.0);   // the vUv read changes no output
+}";
+    }
+}

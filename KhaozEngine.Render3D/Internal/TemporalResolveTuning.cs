@@ -20,6 +20,13 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>Step 3. A previous surface nearer than the expected depth by more than this share of it means the
         /// pixel was hidden last frame, and its history is rejected.</summary>
         public const float DisocclusionTolerance = 0.02f;
+        /// <summary>Step 3. <see cref="TemporalResolveUniforms.CurrentToPrevious"/> assumes a static point, so the depth
+        /// test runs only where the pixel's dilated motion puts it within this many internal pixels of the UV that point
+        /// had last frame if it did not move (<see cref="TemporalResolveMath.StaticPreviousUv"/>). Farther than that the
+        /// surface moved, the static expected depth says nothing about it, and the test is skipped. Neighbourhood
+        /// clipping (step 5) handles the pixel instead. A static point on or behind last frame's camera plane counts as
+        /// moving, and the motion target already sends such a point off screen.</summary>
+        public const float MovingSurfaceInternalPixels = 0.5f;
         /// <summary>Step 8. The accumulated sample weight's cap. The current weight is at least w / (15 + w), about one
         /// in sixteen for a well-placed sample.</summary>
         public const float MaxAccumulation = 15f;

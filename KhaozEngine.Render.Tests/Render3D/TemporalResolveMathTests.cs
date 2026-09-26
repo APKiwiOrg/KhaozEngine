@@ -112,6 +112,14 @@ namespace KhaozEngine.Tests.Render3D
                 historyValid: true, phaseCount: 18).Jitter.W);
             Assert.Equal(0f, TemporalResolveMath.BuildUniforms(current, current, Vector2.Zero, 1280, 720, 1920, 1080,
                 historyValid: false, phaseCount: 18).Jitter.W);
+
+            // The previous projection falls back to the current one, so the block stays well defined.
+            Matrix4x4 zoomed = Matrix4x4.CreatePerspectiveFieldOfView(0.6f, 16f / 9f, 0.1f, 500f);
+            var previous = new TemporalViewInput(current.View, zoomed, current.View * zoomed);
+            Assert.Equal(Perspective, TemporalResolveMath.BuildUniforms(current, previous, Vector2.Zero, 1280, 720, 1920, 1080,
+                historyValid: false, phaseCount: 18).PreviousProjection);
+            Assert.Equal(Perspective, TemporalResolveMath.BuildUniforms(current, null, Vector2.Zero, 1280, 720, 1920, 1080,
+                historyValid: true, phaseCount: 18).PreviousProjection);
         }
 
         [Fact]
@@ -125,6 +133,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(1f / 18f, u.Params.X);
             Assert.Equal(TemporalResolveMath.DepthParams(current.Projection), u.CurrentDepth);
             Assert.Equal(u.CurrentDepth, u.PreviousDepth);
+            Assert.Equal(current.Projection, u.PreviousProjection);
             Assert.Equal(1f / 8f, TemporalResolveMath.BuildUniforms(current, current, Vector2.Zero, 64, 64, 64, 64,
                 historyValid: true, phaseCount: 4).Params.X);
             Assert.Equal(u.CurrentDepth, TemporalResolveMath.BuildDepthStore(current.Projection).CurrentDepth);
@@ -179,6 +188,59 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void A_static_point_lands_at_its_previous_UV_under_a_moving_perspective_camera_that_also_zooms()
+        {
+            TemporalViewInput current = View(new Vector3(0f, 2f, 10f), new Vector3(0.4f, 1.8f, 0f));
+            Matrix4x4 zoomed = Matrix4x4.CreatePerspectiveFieldOfView(0.85f, 16f / 9f, 0.1f, 500f);
+            Matrix4x4 viewThen = Matrix4x4.CreateLookAt(new Vector3(0.6f, 2.2f, 10.9f), new Vector3(0.1f, 1.9f, 0f), Vector3.UnitY);
+            var previous = new TemporalViewInput(viewThen, zoomed, viewThen * zoomed);
+            TemporalResolveUniforms u = Build(current, previous);
+            Assert.Equal(zoomed, u.PreviousProjection);
+            Assert.Equal(TemporalResolveMath.DepthParams(zoomed), u.PreviousDepth);
+
+            foreach (Vector4 world in new[] { new Vector4(1.2f, 0.7f, -3f, 1f), new Vector4(-2.5f, 3.1f, 1f, 1f),
+                new Vector4(0.3f, 0.1f, -40f, 1f), new Vector4(6f, -1f, -120f, 1f) })
+            {
+                AssertStaticPreviousUv(u, current, previous, world);
+            }
+        }
+
+        [Fact]
+        public void A_static_point_lands_at_its_previous_UV_under_a_moving_orthographic_camera()
+        {
+            Matrix4x4 ortho = Matrix4x4.CreateOrthographic(24f, 13.5f, 0.5f, 200f);
+            Matrix4x4 viewNow = Matrix4x4.CreateLookAt(new Vector3(0f, 30f, 30f), Vector3.Zero, Vector3.UnitY);
+            Matrix4x4 viewThen = Matrix4x4.CreateLookAt(new Vector3(0.9f, 30.2f, 29.4f), new Vector3(0.7f, 0f, 0.3f), Vector3.UnitY);
+            var current = new TemporalViewInput(viewNow, ortho, viewNow * ortho);
+            var previous = new TemporalViewInput(viewThen, ortho, viewThen * ortho);
+            TemporalResolveUniforms u = Build(current, previous);
+            Assert.Equal(ortho, u.PreviousProjection);
+
+            foreach (Vector4 world in new[] { new Vector4(2.5f, 1f, -3f, 1f), new Vector4(-8f, 0f, 4f, 1f),
+                new Vector4(5f, 2.5f, 3f, 1f) })
+            {
+                AssertStaticPreviousUv(u, current, previous, world);
+            }
+        }
+
+        [Fact]
+        public void A_static_point_on_or_behind_the_previous_camera_plane_has_no_previous_UV()
+        {
+            // The camera stepped back two metres past a point one metre ahead of it now, so the point sat behind the
+            // previous camera. The motion target writes its off-screen value there, and the resolve treats the surface
+            // as moving and skips the depth test.
+            TemporalViewInput current = View(new Vector3(0f, 2f, 10f), new Vector3(0f, 2f, 0f));
+            TemporalViewInput previous = View(new Vector3(0f, 2f, 8f), new Vector3(0f, 2f, -2f));
+            TemporalResolveUniforms u = Build(current, previous);
+            Vector4 now = Vector4.Transform(new Vector4(0.1f, 2.2f, 9f, 1f), current.ViewProjection);
+            var ndc = new Vector2(now.X / now.W, now.Y / now.W);
+            float depth = TemporalResolveMath.LinearDepth(now.Z / now.W, u.CurrentDepth);
+
+            Assert.Null(TemporalResolveMath.StaticPreviousUv(u, ndc, depth));
+            Assert.True(TemporalResolveMath.ExpectedPreviousDepth(u, ndc, depth) <= MotionMath.MinPreviousClipW);
+        }
+
+        [Fact]
         public void Luma_weighting_keeps_every_colour_under_one_and_round_trips()
         {
             Vector3[] colours =
@@ -195,6 +257,28 @@ namespace KhaozEngine.Tests.Render3D
                 Assert.True(Vector3.Distance(c, back) <= tolerance, $"{c} came back as {back}");
             }
             Assert.Equal(0.5 / 1.5, TemporalResolveMath.ToWeighted(new Vector3(0.5f)).X, 5);
+        }
+
+        // A world point through both frames' own matrices, against the mirror that sees only the uniforms, and the
+        // camera-only motion it implies against the value the motion target writes for the same point.
+        static void AssertStaticPreviousUv(in TemporalResolveUniforms u, in TemporalViewInput current,
+            in TemporalViewInput previous, Vector4 world)
+        {
+            Vector4 now = Vector4.Transform(world, current.ViewProjection);
+            Vector4 then = Vector4.Transform(world, previous.ViewProjection);
+            var ndc = new Vector2(now.X / now.W, now.Y / now.W);
+            float depth = TemporalResolveMath.LinearDepth(now.Z / now.W, u.CurrentDepth);
+            var expected = new Vector2(then.X / then.W * 0.5f + 0.5f, 0.5f - then.Y / then.W * 0.5f);
+
+            Vector2? previousUv = TemporalResolveMath.StaticPreviousUv(u, ndc, depth);
+            Assert.True(previousUv.HasValue, $"{world} has no previous UV");
+            Assert.Equal(expected.X, previousUv.Value.X, 1e-4);
+            Assert.Equal(expected.Y, previousUv.Value.Y, 1e-4);
+
+            var uvNow = new Vector2(ndc.X * 0.5f + 0.5f, 0.5f - ndc.Y * 0.5f);
+            Vector2 written = MotionMath.UvMotion(now, then);
+            Assert.Equal(written.X, uvNow.X - previousUv.Value.X, 1e-4);
+            Assert.Equal(written.Y, uvNow.Y - previousUv.Value.Y, 1e-4);
         }
 
         static Vector2 ToPixels(Vector4 clip, int w, int h)

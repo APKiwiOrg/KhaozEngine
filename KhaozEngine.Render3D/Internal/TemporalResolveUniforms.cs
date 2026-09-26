@@ -5,19 +5,21 @@ namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
     /// The temporal resolve's uniform block, mirroring <c>Resolve</c> in <c>ShaderSources.TemporalResolveCoreGlsl</c>.
-    /// std140: two mat4 then five vec4, 208 bytes. Built once per frame by <see cref="TemporalResolveMath.BuildUniforms"/>
-    /// and uploaded before any framebuffer is bound.
+    /// std140: three mat4 then five vec4, 272 bytes. Built once per frame by <see cref="TemporalResolveMath.BuildUniforms"/>
+    /// and uploaded before any framebuffer is bound. Every matrix is System.Numerics bytes, which the shader applies as
+    /// <c>M * v</c>.
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     internal struct TemporalResolveUniforms
     {
-        public const uint SizeInBytes = 208;
+        public const uint SizeInBytes = 272;
 
         /// <summary>The block's members in GLSL, in field order, which the resolve shader declares inside its
         /// <c>Resolve</c> block. <c>TemporalUboLayoutTests</c> holds them to the fields.</summary>
         public const string GlslMembers = @"
     mat4 CurrentToPrevious;
     mat4 BackgroundToPrevious;
+    mat4 PreviousProjection;
     vec4 Sizes;
     vec4 Jitter;
     vec4 CurrentDepth;
@@ -29,12 +31,19 @@ namespace KhaozEngine.Render3D.Internal
         /// rebased to this frame's origin. The shader multiplies <c>(ndc.x * w, ndc.y * w, linear depth, 1)</c>, with the
         /// pixel's unjittered NDC and w the linear depth under perspective and 1 under orthographic, and takes minus z as
         /// the expected previous depth (<see cref="TemporalResolveMath.ExpectedPreviousDepth"/>). It assumes the point did
-        /// not move, so the resolve applies it only for that expected depth, never for the previous position, which comes
-        /// from the motion target, and skips the depth test on a surface that moved.</summary>
+        /// not move, so the resolve applies it only for that expected depth and for the static previous position
+        /// (<see cref="PreviousProjection"/>), never for the previous position it reads history at, which comes from the
+        /// motion target, and skips the depth test on a surface that moved.</summary>
         public Matrix4x4 CurrentToPrevious;
         /// <summary>This frame's unjittered NDC on the far plane to last frame's clip space, with both views' translation
         /// removed, so background reprojects from camera rotation alone.</summary>
         public Matrix4x4 BackgroundToPrevious;
+        /// <summary>Last frame's unjittered projection, applied as <c>M * v</c> to the view-space point from
+        /// <see cref="CurrentToPrevious"/>. That gives the UV a static point had last frame
+        /// (<see cref="TemporalResolveMath.StaticPreviousUv"/>), and a pixel whose motion lands more than
+        /// <see cref="TemporalResolveTuning.MovingSurfaceInternalPixels"/> from it is a moving surface, which skips the
+        /// depth test. The current projection when history is not readable, so the block stays well defined.</summary>
+        public Matrix4x4 PreviousProjection;
         /// <summary>(internal width, internal height, display width, display height).</summary>
         public Vector4 Sizes;
         /// <summary>(jitter x, jitter y in internal pixels, display over internal per axis, 1 when history may be read).</summary>

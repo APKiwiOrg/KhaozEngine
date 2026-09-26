@@ -132,6 +132,14 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.DistortionApplyFrag, "PostDistortionApply");
 
         [Fact]
+        public void TemporalResolve()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TemporalResolveFrag, "TemporalResolve");
+
+        [Fact]
+        public void TemporalDepthStore()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TemporalDepthStoreFrag, "TemporalDepthStore");
+
+        [Fact]
         public void PostBloomBright()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.BloomBrightFrag, "PostBloomBright");
 

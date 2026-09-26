@@ -15,10 +15,11 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void TemporalResolveUniforms_MarshalSize_EqualsBufferAllocation()
         {
-            // GLSL: Resolve { mat4 CurrentToPrevious; mat4 BackgroundToPrevious; vec4 Sizes; vec4 Jitter;
-            // vec4 CurrentDepth; vec4 PreviousDepth; vec4 Params; } = 2 mat4 + 5 vec4 = 208 bytes (TemporalResolveCoreGlsl).
+            // GLSL: Resolve { mat4 CurrentToPrevious; mat4 BackgroundToPrevious; mat4 PreviousProjection; vec4 Sizes;
+            // vec4 Jitter; vec4 CurrentDepth; vec4 PreviousDepth; vec4 Params; } = 3 mat4 + 5 vec4 = 272 bytes
+            // (TemporalResolveCoreGlsl).
             Assert.Equal((int)TemporalResolveUniforms.SizeInBytes, Marshal.SizeOf<TemporalResolveUniforms>());
-            Assert.Equal(208u, TemporalResolveUniforms.SizeInBytes);
+            Assert.Equal(272u, TemporalResolveUniforms.SizeInBytes);
         }
 
         [Fact]
@@ -34,11 +35,12 @@ namespace KhaozEngine.Tests.Render3D
             // A mat4 is four vec4 columns, 64 bytes at 16-byte alignment, and a vec4 is 16 bytes.
             Assert.Equal(0, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.CurrentToPrevious)));
             Assert.Equal(64, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.BackgroundToPrevious)));
-            Assert.Equal(128, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.Sizes)));
-            Assert.Equal(144, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.Jitter)));
-            Assert.Equal(160, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.CurrentDepth)));
-            Assert.Equal(176, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.PreviousDepth)));
-            Assert.Equal(192, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.Params)));
+            Assert.Equal(128, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.PreviousProjection)));
+            Assert.Equal(192, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.Sizes)));
+            Assert.Equal(208, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.Jitter)));
+            Assert.Equal(224, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.CurrentDepth)));
+            Assert.Equal(240, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.PreviousDepth)));
+            Assert.Equal(256, Offset<TemporalResolveUniforms>(nameof(TemporalResolveUniforms.Params)));
             Assert.Equal(0, Offset<TemporalDepthStoreUniforms>(nameof(TemporalDepthStoreUniforms.CurrentDepth)));
         }
 

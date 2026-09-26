@@ -5,9 +5,10 @@ namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
     /// The CPU half of the temporal resolve (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3): the reprojection matrices, the
-    /// depth parameters and the lock decay the shader reads, and C# mirrors of the kernel, the depth linearisation and the
-    /// luma weighting it applies, kept in sync with <c>ShaderSources.TemporalResolveCoreGlsl</c> so the tests can
-    /// compute what the shader must output. Pure and allocation-free.
+    /// depth parameters and the lock decay the shader reads, and C# mirrors of the kernel, the depth linearisation, the
+    /// static reprojection and the luma weighting it applies, kept in sync with
+    /// <c>ShaderSources.TemporalResolveCoreGlsl</c> so the tests can compute what the shader must output. Pure and
+    /// allocation-free.
     /// </summary>
     internal static class TemporalResolveMath
     {
@@ -117,9 +118,27 @@ namespace KhaozEngine.Render3D.Internal
             return -Vector4.Transform(new Vector4(ndcXY * w, linearDepth, 1f), uniforms.CurrentToPrevious).Z;
         }
 
+        /// <summary>The UV this frame's surface point had last frame if it did not move: the view-space point
+        /// <see cref="ExpectedPreviousDepth"/> reads its depth from, through
+        /// <see cref="TemporalResolveUniforms.PreviousProjection"/>, divided by w, then NDC to UV with V running down the
+        /// image as <see cref="MotionMath.UvMotion"/> writes it. So this frame's UV minus this is the motion the camera
+        /// alone gives the point, and the resolve compares it with the motion target's value to find a moving surface.
+        /// Null when the previous clip w is at or below <see cref="MotionMath.MinPreviousClipW"/> or not a number, where
+        /// the resolve treats the surface as moving. The shader computes exactly this, in float.</summary>
+        public static Vector2? StaticPreviousUv(in TemporalResolveUniforms uniforms, Vector2 ndcXY, float linearDepth)
+        {
+            float w = uniforms.CurrentDepth.X > 0.5f ? linearDepth : 1f;
+            Vector4 view = Vector4.Transform(new Vector4(ndcXY * w, linearDepth, 1f), uniforms.CurrentToPrevious);
+            Vector4 clip = Vector4.Transform(view, uniforms.PreviousProjection);
+            if (!(clip.W > MotionMath.MinPreviousClipW)) return null;
+            return new Vector2(clip.X / clip.W * 0.5f + 0.5f, 0.5f - clip.Y / clip.W * 0.5f);
+        }
+
         /// <summary>The resolve's uniforms for one frame. <paramref name="previous"/> is the previous frame view rebased to
-        /// this frame's origin, or null when there is none. History is readable only when it is valid and a previous
-        /// view exists and both reprojections invert. <paramref name="phaseCount"/> is the jitter cycle the caller
+        /// this frame's origin, or null when there is none. Both views are unjittered, as the motion target's clip
+        /// positions are, so the static previous UV and the motion agree. History is readable only when it is valid and a
+        /// previous view exists and both reprojections invert. The previous projection and depth parameters are the
+        /// current ones when it is not. <paramref name="phaseCount"/> is the jitter cycle the caller
         /// already runs, <see cref="TemporalJitter.PhaseCount"/> of the unrounded display over internal scale with the
         /// render cap included, <c>1 / (EffectiveUpscaleRatio * capScale)</c>, where <c>capScale</c> is the
         /// <see cref="KhaozEngine.Primitives.ViewportMath.Fit"/> scale <see cref="Scene3D.ComputeTargetSize"/> applies
@@ -137,15 +156,17 @@ namespace KhaozEngine.Render3D.Internal
             bool readable = historyValid && previous is { } prev
                 && TryReprojection(current, prev, out currentToPrevious, out backgroundToPrevious);
             Vector4 currentDepth = DepthParams(current.Projection);
+            Matrix4x4 previousProjection = readable && previous is { } shown ? shown.Projection : current.Projection;
             float displayOverInternal = DisplayOverInternal(dw, dh, iw, ih);
             return new TemporalResolveUniforms
             {
                 CurrentToPrevious = currentToPrevious,
                 BackgroundToPrevious = backgroundToPrevious,
+                PreviousProjection = previousProjection,
                 Sizes = new Vector4(iw, ih, dw, dh),
                 Jitter = new Vector4(jitterPixels.X, jitterPixels.Y, displayOverInternal, readable ? 1f : 0f),
                 CurrentDepth = currentDepth,
-                PreviousDepth = readable && previous is { } last ? DepthParams(last.Projection) : currentDepth,
+                PreviousDepth = DepthParams(previousProjection),
                 Params = new Vector4(1f / Math.Max(TemporalJitter.NativePhaseCount, phaseCount), 0f, 0f, 0f),
             };
         }

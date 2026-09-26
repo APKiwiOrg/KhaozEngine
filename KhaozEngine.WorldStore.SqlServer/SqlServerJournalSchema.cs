@@ -72,7 +72,9 @@ internal static partial class SqlServerJournalSchema
         }
         catch (SqlException exception)
         {
-            throw Failure(JournalStoreFailureKind.Unavailable, "SQL Server journal schema could not open a connection.", exception);
+            throw cancellationToken.IsCancellationRequested
+                ? Failure(JournalStoreFailureKind.Cancelled, "Schema initialization was cancelled before a transaction began.", exception)
+                : Failure(JournalStoreFailureKind.Unavailable, "SQL Server journal schema could not open a connection.", exception);
         }
 
         await using SqlTransaction transaction = await BeginTransactionAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -149,6 +151,8 @@ internal static partial class SqlServerJournalSchema
         {
             bool rolledBack = await TryRollbackAsync(transaction).ConfigureAwait(false);
             if (!rolledBack) throw Unknown("Schema initialization failed and rollback could not be confirmed.", exception);
+            if (cancellationToken.IsCancellationRequested)
+                throw Failure(JournalStoreFailureKind.Cancelled, "Schema initialization was cancelled.", exception);
             throw exception.Number switch
             {
                 1205 => Failure(JournalStoreFailureKind.Deadlock, "Schema initialization was a deadlock victim.", exception),
@@ -583,6 +587,8 @@ internal static partial class SqlServerJournalSchema
         }
         catch (SqlException exception)
         {
+            if (cancellationToken.IsCancellationRequested)
+                throw Failure(JournalStoreFailureKind.Cancelled, "Schema initialization was cancelled before the transaction began.", exception);
             throw exception.Number switch
             {
                 1205 => Failure(JournalStoreFailureKind.Deadlock, "Schema initialization was a deadlock victim before transaction admission.", exception),

@@ -149,7 +149,14 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         catch (SqlException exception)
         {
             await connection.DisposeAsync().ConfigureAwait(false);
-            throw MapProviderFailure(exception.Number, exception, Array.Empty<string>(), false, false, false);
+            throw MapCommandFailure(
+                exception.Number,
+                exception,
+                cancellationToken,
+                Array.Empty<string>(),
+                false,
+                false,
+                false);
         }
     }
 
@@ -167,7 +174,14 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         }
         catch (SqlException exception)
         {
-            throw MapProviderFailure(exception.Number, exception, Array.Empty<string>(), false, false, false);
+            throw MapCommandFailure(
+                exception.Number,
+                exception,
+                cancellationToken,
+                Array.Empty<string>(),
+                false,
+                false,
+                false);
         }
     }
 
@@ -305,6 +319,18 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
             exception);
     }
 
+    private static JournalStoreException MapCommandFailure(
+        int number,
+        Exception exception,
+        CancellationToken cancellationToken,
+        IReadOnlyList<string> streamKeys,
+        bool transactionStarted,
+        bool commitStarted,
+        bool rollbackConfirmed)
+        => cancellationToken.IsCancellationRequested
+            ? Cancelled(streamKeys, transactionStarted, commitStarted, rollbackConfirmed, exception)
+            : MapProviderFailure(number, exception, streamKeys, transactionStarted, commitStarted, rollbackConfirmed);
+
     private static JournalStoreException Cancelled(
         IReadOnlyList<string> streamKeys,
         bool transactionStarted,
@@ -349,6 +375,15 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         bool rollbackConfirmed,
         IReadOnlyList<string> streamKeys)
         => MapProviderFailure(number, new InvalidOperationException("provider test seam"), streamKeys, transactionStarted, commitStarted, rollbackConfirmed);
+
+    internal static JournalStoreException MapCommandFailureForTest(
+        int number,
+        CancellationToken cancellationToken,
+        bool transactionStarted,
+        bool commitStarted,
+        bool rollbackConfirmed,
+        IReadOnlyList<string> streamKeys)
+        => MapCommandFailure(number, new InvalidOperationException("provider test seam"), cancellationToken, streamKeys, transactionStarted, commitStarted, rollbackConfirmed);
 
     internal static JournalStoreException MapCancellationForTest(
         bool transactionStarted,

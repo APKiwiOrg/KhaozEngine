@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Tests.WorldStore;
 using KhaozEngine.WorldStore.Journal;
@@ -89,6 +90,24 @@ public sealed partial class SqlServerMutationJournalFailureTests : IDisposable
     public void Cancellation_after_transaction_start_is_definite_when_rollback_succeeds()
     {
         JournalStoreException mapped = SqlServerMutationJournalStore.MapCancellationForTest(
+            transactionStarted: true,
+            commitStarted: false,
+            rollbackConfirmed: true,
+            new[] { "player/a" });
+
+        Assert.Equal(JournalStoreFailureKind.Cancelled, mapped.Kind);
+        Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, mapped.Certainty);
+    }
+
+    [Fact]
+    public void Caller_cancellation_takes_precedence_over_a_provider_failure()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        JournalStoreException mapped = SqlServerMutationJournalStore.MapCommandFailureForTest(
+            0,
+            cancellation.Token,
             transactionStarted: true,
             commitStarted: false,
             rollbackConfirmed: true,

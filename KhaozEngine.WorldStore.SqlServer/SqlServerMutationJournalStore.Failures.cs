@@ -41,7 +41,14 @@ public sealed partial class SqlServerMutationJournalStore
         catch (SqlException exception)
         {
             bool rolledBack = readTransaction is not null && await TryRollbackAsync(readTransaction).ConfigureAwait(false);
-            throw MapProviderFailure(exception.Number, exception, streamKeys, readTransaction is not null, false, rolledBack);
+            throw MapCommandFailure(
+                exception.Number,
+                exception,
+                cancellationToken,
+                streamKeys,
+                readTransaction is not null,
+                false,
+                rolledBack);
         }
         catch (OperationCanceledException exception)
         {
@@ -59,13 +66,21 @@ public sealed partial class SqlServerMutationJournalStore
         SqlTransaction? transaction,
         IReadOnlyList<string> streamKeys,
         bool commitStarted,
-        bool committed)
+        bool committed,
+        CancellationToken cancellationToken)
     {
         if (committed) throw UnknownOutcome(streamKeys, exception);
         bool rolledBack = transaction is not null && await TryRollbackAsync(transaction).ConfigureAwait(false);
         if (exception is JournalStoreException) return;
         if (exception is SqlException sql)
-            throw MapProviderFailure(sql.Number, sql, streamKeys, transaction is not null, commitStarted, rolledBack);
+            throw MapCommandFailure(
+                sql.Number,
+                sql,
+                cancellationToken,
+                streamKeys,
+                transaction is not null,
+                commitStarted,
+                rolledBack);
         if (exception is OperationCanceledException && transaction is not null)
             throw Cancelled(streamKeys, true, commitStarted, rolledBack, exception);
         if (exception is IOException or SocketException)

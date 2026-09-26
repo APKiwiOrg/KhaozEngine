@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.6.6
+
+- `ContentBundleJson.ReadFormatVersion` reads a bundle's format version using the same JSON rules as the
+  full reader, so authoring tools can reject unsupported formats before decoding the bundle
+  ([#1147](https://github.com/APKiwiOrg/KhaozEngine/issues/1147)).
+- The provider deadline regression waits until its validator has entered before triggering the deadline,
+  removing a scheduling race on hosted test runners ([#1148](https://github.com/APKiwiOrg/KhaozEngine/issues/1148)).
+- The version 1 container load bridge accepts stored widths up to the page width and preserves each
+  stored slot index while returning full page geometry ([#1027](https://github.com/APKiwiOrg/KhaozEngine/issues/1027)).
+- The catalog-list design example no longer promises `validFrom` on each row. Full history remains
+  available through catalog-get ([#946](https://github.com/APKiwiOrg/KhaozEngine/issues/946)).
+- Catalog stale-apply tests detect an extra stand-off by draft reads instead of a short wall-clock
+  deadline, avoiding Windows full-suite timeouts under load ([#1158](https://github.com/APKiwiOrg/KhaozEngine/issues/1158)).
+
 ## 20.6.5
 
 - `ContainerLoadContext.TelemetryKey` lets a host redact an account-bearing stream key from validation logs

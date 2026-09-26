@@ -287,3 +287,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
 14. Five transparent passes that draw into the model target get variants that leave the motion target untouched
     (group D).
 15. There are seven hand-maintained shader lists, not six. `VulkanShippedVertexLayoutTests` is the seventh.
+16. The GPU-skinned previous palette is a second per-caster buffer whose slot holds last frame's world matrix then its
+    composed palette. It shares set 3 with MotionFrame, the last set Vulkan guarantees (group D).
+17. The motion target and previous-state work cost 0.099 ms per frame at 1600x900 on Apple M2 Max (MotionTargetCostProbe).
+    The town-path reading of acceptance 5 is taken in round 3 (group D).

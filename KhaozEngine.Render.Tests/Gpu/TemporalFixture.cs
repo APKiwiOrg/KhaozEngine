@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
@@ -52,6 +53,9 @@ public sealed class TemporalFixture : IDisposable
 
     public int DisplayHeight { get; private set; }
 
+    /// <summary>Wall time of the last frame's Submit and drain, in milliseconds: the GPU work plus its submission.</summary>
+    public double LastSubmitMilliseconds { get; private set; }
+
     /// <summary>One frame: Begin, a deterministic effect clock of n / 60 seconds, the draw callback with the frame
     /// number n (every Begin the fixture issued, skipped ones included), PrepareFrame, the recording into
     /// <see cref="Target"/>, Submit and a drain, then the RGBA8 readback.</summary>
@@ -76,8 +80,10 @@ public sealed class TemporalFixture : IDisposable
         Scene.PrepareFrame();
         using (GpuRecording.Open(Device, _commands, "TemporalFixture.Frame"))
             Scene.RenderInternal(_commands, DisplayWidth, DisplayHeight, Target);
+        long submitted = Stopwatch.GetTimestamp();
         Device.Submit(_commands);
         Device.WaitForIdle();
+        LastSubmitMilliseconds = Stopwatch.GetElapsedTime(submitted).TotalMilliseconds;
     }
 
     /// <summary>Begin <paramref name="count"/> frames without rendering them, so a fresh fixture can meet another at

@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -55,6 +56,16 @@ public class CachingPackStoreTests
         var store = new CachingPackStore(new MemoryPackStore(), new MemoryPackStore());
 
         Assert.Null(await store.GetAsync(new string('a', 64)));
+    }
+
+    [Fact]
+    public async Task A_non_prunable_local_miss_does_not_run_an_existence_check_it_cannot_use()
+    {
+        var local = new ReadOnlyPackStore();
+        var store = new CachingPackStore(local, new MemoryPackStore());
+
+        Assert.Null(await store.GetAsync(new string('a', 64)));
+        Assert.Equal(0, local.Exists);
     }
 
     [Fact]
@@ -140,6 +151,36 @@ public class CachingPackStoreTests
         Assert.Equal(
             pack.TagChunk.StoredFile.ToArray(),
             await System.IO.File.ReadAllBytesAsync(local.PathFor(pack.TagChunk.Hash)));
+    }
+
+    [Fact]
+    public async Task An_oversized_file_in_the_file_system_cache_is_refetched_and_available_offline()
+    {
+        using var root = new TemporaryRoot();
+        CatalogPack pack = CatalogPack.Build();
+        var local = new FileSystemPackStore(root.Path);
+        string path = local.PathFor(pack.TagChunk.Hash);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using (FileStream sparse = File.Create(path))
+        {
+            sparse.SetLength((long)ContentPackFormat.MaxObjectBytes + 1);
+        }
+
+        var remote = new MemoryPackStore();
+        remote.Plant(pack.TagChunk.Hash, pack.TagChunk.StoredFile.ToArray());
+        var store = new CachingPackStore(local, remote);
+
+        ReadOnlyMemory<byte>? fetched = await store.GetAsync(pack.TagChunk.Hash);
+        Assert.NotNull(fetched);
+        Assert.Equal(pack.TagChunk.StoredFile, fetched.Value.ToArray());
+
+        Assert.True(await remote.DeleteAsync(pack.TagChunk.Hash));
+        ReadOnlyMemory<byte>? offline = await store.GetAsync(pack.TagChunk.Hash);
+
+        Assert.NotNull(offline);
+        Assert.Equal(pack.TagChunk.StoredFile, offline.Value.ToArray());
+        Assert.Equal(1, remote.Gets);
+        Assert.Equal(pack.TagChunk.StoredFile.Length, new FileInfo(path).Length);
     }
 
     // The hostile case, written explicitly: a 40 KB body whose header declares uncompressedBytes = 0xFFFFFFFF
@@ -410,8 +451,13 @@ public class CachingPackStoreTests
     /// <summary>A store with no pruning half at all, which is the read-only provider's shape.</summary>
     sealed class ReadOnlyPackStore : IPackStore
     {
+        public int Exists { get; private set; }
+
         public Task<bool> ExistsAsync(string hash, CancellationToken cancellationToken = default)
-            => Task.FromResult(false);
+        {
+            Exists++;
+            return Task.FromResult(false);
+        }
 
         public Task<ReadOnlyMemory<byte>?> GetAsync(string hash, CancellationToken cancellationToken = default)
             => Task.FromResult<ReadOnlyMemory<byte>?>(null);

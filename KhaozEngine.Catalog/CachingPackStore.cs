@@ -76,7 +76,15 @@ public sealed class CachingPackStore : IPackStore, IPackStorePruning
         }
 
         ReadOnlyMemory<byte>? cached = await Local.GetAsync(hash, cancellationToken).ConfigureAwait(false);
-        if (cached is not null)
+        if (cached is null)
+        {
+            if (Local is IPackStorePruning
+                && await Local.ExistsAsync(hash, cancellationToken).ConfigureAwait(false))
+            {
+                await EvictAsync(hash, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        else
         {
             if (ContentPackReader.TryVerify(cached.Value.Span, hash, out string? cacheReason))
             {

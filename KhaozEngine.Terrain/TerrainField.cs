@@ -42,8 +42,8 @@ namespace KhaozEngine.Terrain
 
         public float WaterLevel => _cfg.WaterLevel;
 
-        /// <summary>Blends the biome bands at world Z: normalized smoothstep weights -> (baseHeight, hillAmp);
-        /// biome = argmax weight. Continuous everywhere.</summary>
+        /// <summary>Blends the biome bands at world Z into base height, hill amplitude, and dominant biome.
+        /// Uncovered gaps crossfade between the adjacent bands across their effective support edges.</summary>
         internal (float baseHeight, float hillAmp, BiomeId biome) ShapeAt(float z)
         {
             float blend = MathF.Max(1e-3f, _cfg.BiomeBlend);
@@ -58,7 +58,25 @@ namespace KhaozEngine.Terrain
                 hill += w * b.HillAmplitude;
                 if (w > bestW) { bestW = w; best = b.Biome; }
             }
-            if (wSum > 1e-6f) { baseH /= wSum; hill /= wSum; }
+            if (wSum == 0f)
+            {
+                BiomeBandGapBlend gap = BiomeBandGapBlend.At(_bands, blend, z);
+                ref readonly BiomeBand first = ref _bands[gap.FirstBand];
+                baseH = gap.FirstWeight * first.BaseHeight;
+                hill = gap.FirstWeight * first.HillAmplitude;
+                if (gap.SecondBand >= 0)
+                {
+                    ref readonly BiomeBand second = ref _bands[gap.SecondBand];
+                    baseH += gap.SecondWeight * second.BaseHeight;
+                    hill += gap.SecondWeight * second.HillAmplitude;
+                }
+                best = _bands[gap.DominantBand].Biome;
+            }
+            else
+            {
+                baseH /= wSum;
+                hill /= wSum;
+            }
             return (baseH, hill, best);
         }
 
@@ -130,9 +148,9 @@ namespace KhaozEngine.Terrain
 
         /// <summary>The share of each biome at the world point, off the same band blend that shapes the height. The
         /// shares sum to 1 and change continuously across a band boundary, and <see cref="BiomeWeights.Dominant"/>
-        /// equals <see cref="SampleBiome"/>. A point no band covers (a gap wider than the blend window) is all of the
-        /// dominant biome, matching <c>SampleBiome</c>'s fallback. The chunk builder feeds this to the default splat so
-        /// a biome's ground tint fades across the blend window instead of switching at the dominant-band line.</summary>
+        /// equals <see cref="SampleBiome"/>. A gap no band covers crossfades between its adjacent bands using the same
+        /// fallback as the shape. A gap with only one adjacent band uses that band alone. The chunk builder feeds this
+        /// to the default splat so a biome's ground tint fades instead of switching at the dominant-band line.</summary>
         public BiomeWeights SampleBiomeWeights(float x, float z)
         {
             float blend = MathF.Max(1e-3f, _cfg.BiomeBlend);
@@ -147,7 +165,19 @@ namespace KhaozEngine.Terrain
                 if ((uint)b.Biome < BiomeWeights.Count) shares[(int)b.Biome] += w;
                 if (w > bestW) { bestW = w; best = b.Biome; }
             }
-            if (wSum <= 1e-6f) return BiomeWeights.Single(best);
+            if (wSum == 0f)
+            {
+                BiomeBandGapBlend gap = BiomeBandGapBlend.At(_bands, blend, z);
+                BiomeBand first = _bands[gap.FirstBand];
+                if ((uint)first.Biome < BiomeWeights.Count) shares[(int)first.Biome] += gap.FirstWeight;
+                if (gap.SecondBand >= 0)
+                {
+                    BiomeBand second = _bands[gap.SecondBand];
+                    if ((uint)second.Biome < BiomeWeights.Count) shares[(int)second.Biome] += gap.SecondWeight;
+                }
+                best = _bands[gap.DominantBand].Biome;
+                return new BiomeWeights(shares, best);
+            }
             for (int s = 0; s < shares.Length; s++) shares[s] /= wSum;
             return new BiomeWeights(shares, best);
         }

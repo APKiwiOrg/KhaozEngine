@@ -11,8 +11,8 @@ up regardless of load order. Plain `float` math throughout.
   blended, base coordinate-hash fractal noise, then an ordered feature list), then adds the authored
   sculpt delta when a `TerrainSculpt` is attached. Also `SampleNormal` (central finite difference over
   the composited height, at the sculpt cell size when sculpted), `SampleBiome` (dominant band),
-  `SampleBiomeWeights` (every biome's share off the same band blend, continuous across a boundary and summing
-  to 1, which the default terrain splat fades its per-biome tilt over), and
+  `SampleBiomeWeights` (every biome's share off the same band blend, continuous across boundaries and uncovered
+  gaps, and summing to 1, which the default terrain splat fades its per-biome tilt over), and
   `WaterLevel`. The `TerrainField(TerrainConfig, TerrainSculpt?)` constructor takes the sculpt layer; a
   null or empty one keeps the exact pure-analytic fast path. **`SetSculpt(TerrainSculpt?)`** swaps that
   layer at runtime by an atomic reference exchange, for a game whose authored sculpt streams in and out
@@ -34,7 +34,9 @@ up regardless of load order. Plain `float` math throughout.
   of each added array, matching the constructor: clone first if you intend to keep editing it, exactly as
   the editor's sculpt stroke already does. Removals apply before additions.
 - **`TerrainConfig`** / **`BiomeBand`** / **`BiomeId`** - authoring inputs. Defaults give a single
-  gentle meadow band, supply `Biomes` (designed regions along world Z) and `Features` for more.
+  gentle meadow band, supply `Biomes` (designed regions along world Z) and `Features` for more. If no band has
+  weight in a gap, the field smoothstep-crossfades height, hill amplitude, and biome shares between the adjacent
+  bands across their effective blend edges. A gap with a band on only one side uses that nearest band.
   **`BiomeWeights`** is the value `SampleBiomeWeights` returns: an indexer by `BiomeId`, the `Dominant` biome
   (always equal to `SampleBiome` at the same point) and `BiomeWeights.Single(biome)`.
 - **`TerrainNoise`** - stateless coordinate-hash noise (`Hash2`, `ValueNoise`, `Fbm`, `Turbulence`,

@@ -4,8 +4,8 @@ namespace KhaozEngine.Terrain
 {
     /// <summary>How much of each <see cref="BiomeId"/> applies at one world point: the normalized band weights
     /// <see cref="TerrainField.SampleBiomeWeights"/> reads off the same smoothstep blend that shapes the height. The
-    /// shares change continuously across a band boundary, where <see cref="TerrainField.SampleBiome"/> switches at a
-    /// line. A field sample has non-negative shares summing to 1, and its <see cref="Dominant"/> is exactly what
+    /// shares change continuously across a band boundary and across an uncovered gap, where
+    /// <see cref="TerrainField.SampleBiome"/> switches at a line. A field sample has non-negative shares summing to 1, and its <see cref="Dominant"/> is exactly what
     /// <c>SampleBiome</c> returns at the same point. <c>default</c> has no shares at all. Render-free value type.</summary>
     public readonly struct BiomeWeights
     {

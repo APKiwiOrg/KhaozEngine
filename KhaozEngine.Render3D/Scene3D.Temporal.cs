@@ -59,6 +59,11 @@ namespace KhaozEngine.Render3D
         /// which for motion means zero motion.</summary>
         internal FrameView? PreviousFrameView => _previousFrameView;
 
+        /// <summary>The last rendered frame's temporal state: its index, jitter phase and offset, the keyed draws, and
+        /// whether history was valid with the reason it was last reset. Default-valued before the first render. See
+        /// <see cref="TemporalDiagnostics"/>.</summary>
+        public TemporalDiagnostics LastTemporalDiagnostics { get; private set; }
+
         /// <summary>Advance the history by one frame, from <see cref="LatchFrameView"/> on the frame's first render.</summary>
         void AdvanceTemporalHistory()
         {
@@ -89,6 +94,15 @@ namespace KhaozEngine.Render3D
             _historyKey = key;
             _historyEye = eye;
             _historyForward = forward;
+            LastTemporalDiagnostics = new TemporalDiagnostics(
+                FrameIndex: view.FrameIndex,
+                JitterPhase: TemporalJitter.Phase(view.FrameIndex, TemporalJitter.PhaseCount(DisplayOverInternalRatio)),
+                JitterPixels: view.JitterPixels,
+                KeyedRigid: 0,
+                KeyedSkinned: 0,
+                KeyCollisions: 0,
+                HistoryValid: TemporalHistory.IsValid,
+                LastReset: TemporalHistory.LastReset);
         }
 
         /// <summary>

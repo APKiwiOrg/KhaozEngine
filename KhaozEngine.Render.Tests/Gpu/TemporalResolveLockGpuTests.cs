@@ -11,21 +11,19 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// Step 6 of TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3, thin feature retention, against both sides of risk 1: a
     /// moving thin feature must not trail (section 7 acceptance 3) and a still one narrower than a texel must not
-    /// shimmer (acceptance 2). The camera is still, and the uniforms come from
-    /// <see cref="TemporalResolveMath.BuildUniforms"/> as in <see cref="TemporalResolveRendererGpuTests"/>. The moving
-    /// and still line facts write their measurements to the test output and into their failure messages.
+    /// shimmer (acceptance 2), and a still sub-texel feature must keep holding when its surface moves as a whole. Same
+    /// rig and camera as <see cref="TemporalResolveRendererGpuTests"/>, through <see cref="TemporalResolveGpuFacts"/>. The
+    /// moving and still line facts write their measurements to the test output and into their failure messages.
     /// </summary>
-    public sealed class TemporalResolveLockGpuTests
+    public sealed class TemporalResolveLockGpuTests : TemporalResolveGpuFacts
     {
         /// <summary>The share of a feature's contrast above the background at which a pixel it left counts as trail.</summary>
         const float TrailContrast = 0.1f;
-        const float SceneMetres = 2f;
-        /// <summary>How far ahead a keyed line stands, in front of the wall at <see cref="SceneMetres"/>, as a blade
-        /// stands in front of the ground behind it. The dilation of step 1 then carries its motion.</summary>
+        /// <summary>How far ahead a keyed line stands, in front of the wall at <see cref="TemporalResolveGpuFacts.SceneMetres"/>,
+        /// as a blade stands in front of the ground behind it. The dilation of step 1 then carries its motion.</summary>
         const float LineMetres = 1.5f;
         const int LineW = 96, LineH = 12, LineRow = LineH / 2;
         const float LineStart = 4f;
-        static readonly Vector3 Eye = new(0f, 1.7f, 10f);
         static readonly float Bg = Q(0.1f), Line = Q(1f);
         static readonly float[] Speeds = { 0.3f, 0.6f, 0.9f };
 
@@ -36,22 +34,13 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void A_thin_ridge_takes_a_lock_and_the_lock_holds_its_luma_against_the_clip()
         {
-            const int N = 8;
-            const float Max = TemporalResolveTuning.MaxAccumulation;
-            Matrix4x4 projection = Perspective(1f);
-            TemporalViewInput still = View(Eye, projection);
-            float ndc = NdcDepth(projection, SceneMetres);
-            float sceneLinear = TemporalResolveMath.LinearDepth(ndc, TemporalResolveMath.DepthParams(projection));
-            TemporalResolveUniforms Uniforms(bool historyValid) => TemporalResolveMath.BuildUniforms(still, still,
-                Vector2.Zero, N, N, N, N, historyValid);
-            int At(int x, int y) => y * N + x;
-            float[] zero = Pairs(N, N, (_, _) => Vector2.Zero);
-            using var rig = new TemporalResolveRig(N, N, N, N, ndc);
+            float[] zero = Motion((_, _) => Vector2.Zero);
+            using var rig = new Rig();
             float bg = Q(0.1f), line = Q(1f), held = Q(0.55f);
 
             // Frame one: the line is in the current samples. The ridge takes a lock on its own column only.
             rig.BeginFrame();
-            rig.Fill(Grey(N, N, (x, _) => x == 4 ? line : bg), Grey(N, N, (x, _) => x == 4 ? line : bg), zero);
+            rig.Fill(Grey((x, _) => x == 4 ? line : bg), Grey((x, _) => x == 4 ? line : bg), zero);
             rig.Resolve(Uniforms(historyValid: false));
             float[] state = rig.ReadState();
             Assert.Equal(1f, state[At(4, 3) * 2 + 1], 1e-3);
@@ -67,9 +56,9 @@ namespace KhaozEngine.Tests.Gpu
             foreach (float stored in new[] { 1f, Q(0.3f) })
             {
                 rig.BeginFrame();
-                rig.Fill(Grey(N, N, (_, _) => bg), Grey(N, N, (_, _) => bg), zero);
-                rig.FillHistory(Grey(N, N, (x, _) => x == 4 ? held : bg),
-                    Pairs(N, N, (x, _) => new Vector2(Q(8f / Max), x == 4 ? stored : 0f)), sceneLinear);
+                rig.Fill(Grey((_, _) => bg), Grey((_, _) => bg), zero);
+                rig.FillHistory(Grey((x, _) => x == 4 ? held : bg),
+                    State((x, _) => new Vector2(Q(8f / Max), x == 4 ? stored : 0f)), SceneLinear);
                 rig.Resolve(Uniforms(historyValid: true));
 
                 float lockAfter = stored - TemporalResolveTuning.LockDecay;
@@ -110,11 +99,13 @@ namespace KhaozEngine.Tests.Gpu
             // the same position. The mean is the measure and not the worst frame, because at Quality the line is 1.5
             // display pixels wide and straddles two pixels on some frames, where its peak drops in any render, so one
             // frame's peak measures where the line sits on the grid as much as what the resolve kept. Resampling blur
-            // that accumulates lowers every frame of the window, so the mean still catches it. The worst frame is in
-            // the message.
+            // that accumulates lowers every frame of the window, so the mean still catches it. At UltraPerformance the
+            // line is 3 display pixels wide and always covers one whole pixel, so there the worst frame keeps half too.
+            // The worst frame is in the message.
             (LineRun[] runs, string message) = RunKeyed(preset);
             _output.WriteLine(message);
-            Assert.True(Array.TrueForAll(runs, r => r.KeptMean >= 0.5f), message);
+            bool worstHolds = preset != TemporalUpscale.UltraPerformance || Array.TrueForAll(runs, r => r.KeptLeast >= 0.5f);
+            Assert.True(Array.TrueForAll(runs, r => r.KeptMean >= 0.5f) && worstHolds, message);
         }
 
         // The keyed line at each speed. The motion steps 0.3 display pixels at a time and both presets' grids line up
@@ -177,20 +168,103 @@ namespace KhaozEngine.Tests.Gpu
             // wide, centred in its texel column, is in that column's samples on 3 of every 8 frames and absent from the
             // whole neighbourhood on the rest. The pattern is the one the native jitter gives it: Halton x offsets 0,
             // 0.125 and -0.125, phases 0, 4 and 5, put the sample inside it. Without the lock a missed frame clips the
-            // history to the wall. Once converged, the line's pixels change by at most a tenth of its contrast from frame
-            // to frame. At Native the pixel is the texel, and it averages within a quarter of the coverage, 3/8 of the
-            // contrast. Upscaled, the pixel at the line's centre is narrower than the texel and the line covers more of
-            // it, and the reconstruction weights the frames whose sample lands near it, which are the frames that hit
-            // the line, so there it only has to reach three quarters of the coverage. Values are read in the
-            // luma-weighted space the resolve accumulates in, where coverage is linear.
+            // history to the wall. HoldsLikeAStillLine sets the bounds.
+            SubTexelRun run = RunSubTexelLine(preset, followStep: 0f);
+            _output.WriteLine($"{preset}: {run}");
+            Assert.True(HoldsLikeAStillLine(preset, run), $"{preset}: {run}");
+        }
+
+        [GpuTheory]
+        [InlineData(TemporalUpscale.Native, 0.3f, Skip = "The committed lock is released by the surface's own "
+            + "travel and read bilinearly under motion, so it lets go of a line on a swaying surface. It sums to 5.6 "
+            + "percent of its contrast against a coverage of 37.5. Skipped until the lock follows its history.")]
+        [InlineData(TemporalUpscale.Native, 0.5f, Skip = "The committed lock is released by the surface's own "
+            + "travel and read bilinearly under motion, so it lets go of a line on a swaying surface. It sums to 4.4 "
+            + "percent of its contrast against a coverage of 37.5. Skipped until the lock follows its history.")]
+        [InlineData(TemporalUpscale.UltraPerformance, 0.3f, Skip = "The committed lock is released by the surface's own "
+            + "travel and read bilinearly under motion, so it lets go of a line on a swaying surface. It sums to 2.8 "
+            + "percent of its contrast against a floor of 28.1. Skipped until the lock follows its history.")]
+        public void A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(TemporalUpscale preset,
+            float speed)
+        {
+            // The same line on a surface that sways as the foliage wind sways a blade, a sine with a 24 frame period
+            // peaking at speed internal pixels a frame, so it swings back and forth about its place and crosses a few
+            // columns. The surface writes its true motion in every texel every frame, and the frames that see the line
+            // light the column its centre is in. Its history is where the motion says, so it must hold as the still
+            // line does. The line crosses pixels, so what is measured is its coverage summed over the pixels within
+            // one and a half texels of its centre, in texels, which does not depend on where it sits on the grid. The
+            // speeds stay under LockMotionStartPixels in display pixels, where the design keeps locks, so
+            // UltraPerformance takes 0.3 alone. Quality is left out: there the pixels beside the line's centre share its
+            // reconstruction but take a ridge only on the frames whose jitter puts their centre texel on it, and even
+            // held still the line sums to 28 percent, at the floor.
+            SubTexelRun run = RunSwayingLine(preset, speed);
+            _output.WriteLine($"{preset} at {speed} px/frame: {run}");
+            Assert.True(HoldsLikeAStillLine(preset, run), $"{preset} at {speed} px/frame: {run}");
+        }
+
+        [GpuTheory]
+        [InlineData(TemporalUpscale.Native, Skip = "The committed lock is released by the surface's own travel, 8 internal "
+            + "pixels a frame here though the surface is still on screen, so the line averages 2.6 percent against a "
+            + "coverage of 37.5, as with the lock off. Skipped until the release looks at edges.")]
+        [InlineData(TemporalUpscale.UltraPerformance, Skip = "The committed lock is released by the surface's own travel, 8 "
+            + "internal pixels a frame here though the surface is still on screen, so the line averages 1.5 percent against "
+            + "a floor of 28.1, as with the lock off. Skipped until the release looks at edges.")]
+        public void A_line_narrower_than_a_texel_on_a_surface_the_camera_follows_holds_like_a_still_one(TemporalUpscale preset)
+        {
+            // A follow camera. The camera steps sideways every frame and the surface carrying the line moves with it, as
+            // an avatar's staff or blade does, so on screen it is still and its motion is zero, while the camera alone
+            // would have moved a static point there 8 internal pixels. Its history is exactly where it was, so it must
+            // hold as the still line does.
+            SubTexelRun run = RunSubTexelLine(preset, followStep: 8f);
+            _output.WriteLine($"{preset}: {run}");
+            Assert.True(HoldsLikeAStillLine(preset, run), $"{preset}: {run}");
+        }
+
+        // The still line's bounds. Once converged, the line's pixels change by at most a tenth of its contrast from frame
+        // to frame. At Native the pixel is the texel, and it averages within a quarter of the coverage, 3/8 of the
+        // contrast. Upscaled rows guard stability and not coverage: the pixel at the line's centre is narrower than the
+        // texel, so the line covers about 53 percent of it at Quality and all of it at UltraPerformance, and the
+        // reconstruction weights the frames whose sample lands near it, which are the frames that hit the line. There
+        // the mean only has to show the lock held, three quarters of the texel coverage. Values are read in the
+        // luma-weighted space the resolve accumulates in, where coverage is linear.
+        static bool HoldsLikeAStillLine(TemporalUpscale preset, SubTexelRun run)
+        {
+            const float Coverage = 3f / 8f;
+            bool meanHolds = preset == TemporalUpscale.Native
+                ? MathF.Abs(run.Mean - Coverage) <= 0.25f * Coverage
+                : run.Mean >= 0.75f * Coverage;
+            return run.Change <= 0.1f && meanHolds;
+        }
+
+        /// <summary>What one run of the sub-texel line measured: the largest frame to frame change over the pixels
+        /// centred in its column, where and when, and the mean at the pixel nearest its centre, as shares of the
+        /// contrast in the luma-weighted space. A swaying run sums its coverage instead and has no pixel, so its
+        /// <see cref="Centre"/> and <see cref="ChangePixel"/> are -1.</summary>
+        readonly record struct SubTexelRun(float Change, int ChangePixel, int ChangeFrame, int Centre, float Mean)
+        {
+            public override string ToString() => Centre < 0
+                ? $"largest frame to frame change {Change:P1} of the contrast at frame {ChangeFrame}, summed coverage mean "
+                    + $"{Mean:P1} against 37.5%"
+                : $"largest frame to frame change {Change:P1} of the contrast at pixel {ChangePixel} frame {ChangeFrame}, "
+                    + $"centre pixel {Centre} mean {Mean:P1} against coverage 37.5%";
+        }
+
+        // A line three eighths of a texel wide in the middle texel column, lit on the frames n % 8 of 0, 4 and 5.
+        // followStep is how many internal pixels the camera alone moves a static point on the wall each frame, while the
+        // wall and the line move with the camera and write zero motion. Converges 64 frames and measures 16.
+        static SubTexelRun RunSubTexelLine(TemporalUpscale preset, float followStep)
+        {
             const int DisplayW = 48, DisplayH = 12, Row = DisplayH / 2, Converge = 64, Measured = 16;
             float factor = TemporalSettings.DisplayOverInternal(preset);
             int iw = (int)(DisplayW / factor), ih = (int)(DisplayH / factor), phases = TemporalJitter.PhaseCount(factor);
             int column = iw / 2;
             Matrix4x4 projection = Perspective((float)DisplayW / DisplayH);
-            TemporalViewInput still = View(Eye, projection);
-            float[] zero = Pairs(iw, ih, (_, _) => Vector2.Zero);
+            float wallNdc = NdcDepth(projection, SceneMetres);
+            // A sideways step of d metres moves a point SceneMetres ahead M11 * d / SceneMetres in NDC, half the
+            // internal width per unit.
+            float stepMetres = followStep * SceneMetres / (projection.M11 * iw / 2f);
             float[] lit = Grey(iw, ih, (x, _) => x == column ? Line : Bg), missed = Grey(iw, ih, (_, _) => Bg);
+            float[] zero = Pairs(iw, ih, (_, _) => Vector2.Zero);
             float wBg = Weighted(Bg), wContrast = Weighted(Line) - wBg;
 
             var pixels = new List<int>();
@@ -199,7 +273,7 @@ namespace KhaozEngine.Tests.Gpu
             int centre = (int)MathF.Floor((column + 0.5f) * factor);
             Assert.Contains(centre, pixels);
 
-            using var rig = new TemporalResolveRig(iw, ih, DisplayW, DisplayH, NdcDepth(projection, SceneMetres));
+            using var rig = new Rig(iw, ih, DisplayW, DisplayH, wallNdc);
             var previous = new float[DisplayW];
             float change = 0f, sum = 0f;
             int changeFrame = 0, changePixel = 0;
@@ -207,9 +281,11 @@ namespace KhaozEngine.Tests.Gpu
             {
                 Vector2 jitter = TemporalJitter.Offset(n, phases);
                 bool hit = (n % 8) is 0 or 4 or 5;
+                TemporalViewInput now = View(Eye + new Vector3(n * stepMetres, 0f, 0f), projection);
+                TemporalViewInput then = View(Eye + new Vector3((n - 1) * stepMetres, 0f, 0f), projection);
                 rig.BeginFrame();
                 rig.Fill(hit ? lit : missed, hit ? lit : missed, zero);
-                rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, jitter, iw, ih, DisplayW, DisplayH,
+                rig.Resolve(TemporalResolveMath.BuildUniforms(now, then, jitter, iw, ih, DisplayW, DisplayH,
                     historyValid: n > 0));
                 if (n < Converge - 1) continue;
                 float[] color = rig.ReadColor();
@@ -222,14 +298,53 @@ namespace KhaozEngine.Tests.Gpu
                     previous[c] = value;
                 }
             }
-            float mean = sum / Measured, coverage = 3f / 8f;
-            bool meanHolds = preset == TemporalUpscale.Native
-                ? MathF.Abs(mean - coverage) <= 0.25f * coverage
-                : mean >= 0.75f * coverage;
-            string message = $"{preset}: largest frame to frame change {change:P1} of the contrast at pixel {changePixel} "
-                + $"frame {changeFrame}, centre pixel {centre} mean {mean:P1} against coverage {coverage:P1}";
-            _output.WriteLine(message);
-            Assert.True(change <= 0.1f && meanHolds, message);
+            return new SubTexelRun(change, changePixel, changeFrame, centre, sum / Measured);
+        }
+
+        // The line on a wall that sways sideways as a whole, offset(n) = A sin(2 pi n / 24) internal pixels with
+        // A = speed * 24 / (2 pi), every texel writing the wall's motion each frame, under a still camera. The frames
+        // n % 8 of 0, 4 and 5 light the column the line's centre is in. Each frame's value is the weighted contrast
+        // summed over the display pixels centred within 1.5 texels of the line's centre, over the display pixels per
+        // texel, so a line of coverage 3/8 sums to 3/8 wherever it sits. Converges 64 frames and measures 16.
+        static SubTexelRun RunSwayingLine(TemporalUpscale preset, float speed)
+        {
+            const int DisplayW = 48, DisplayH = 12, Row = DisplayH / 2, Converge = 64, Measured = 16, Period = 24;
+            float factor = TemporalSettings.DisplayOverInternal(preset);
+            int iw = (int)(DisplayW / factor), ih = (int)(DisplayH / factor), phases = TemporalJitter.PhaseCount(factor);
+            float amplitude = speed * Period / (2f * MathF.PI), rest = iw / 2 + 0.5f;
+            float Offset(int n) => amplitude * MathF.Sin(2f * MathF.PI * n / Period);
+            Matrix4x4 projection = Perspective((float)DisplayW / DisplayH);
+            TemporalViewInput still = View(Eye, projection);
+            float wBg = Weighted(Bg), wContrast = Weighted(Line) - wBg;
+
+            using var rig = new Rig(iw, ih, DisplayW, DisplayH, NdcDepth(projection, SceneMetres));
+            float change = 0f, sum = 0f, previous = 0f;
+            int changeFrame = 0;
+            for (int n = 0; n < Converge + Measured; n++)
+            {
+                float centreX = rest + Offset(n);
+                int column = (int)MathF.Floor(centreX);
+                bool hit = (n % 8) is 0 or 4 or 5;
+                float[] scene = Grey(iw, ih, (x, _) => hit && x == column ? Line : Bg);
+                var motion = new Vector2(n > 0 ? (Offset(n) - Offset(n - 1)) / iw : 0f, 0f);
+                rig.BeginFrame();
+                rig.Fill(scene, scene, Pairs(iw, ih, (_, _) => motion));
+                rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, TemporalJitter.Offset(n, phases), iw, ih,
+                    DisplayW, DisplayH, historyValid: n > 0));
+                if (n < Converge - 1) continue;
+                float[] color = rig.ReadColor();
+                float covered = 0f;
+                for (int c = 0; c < DisplayW; c++)
+                    if (MathF.Abs((c + 0.5f) / factor - centreX) <= 1.5f)
+                        covered += (Weighted(color[(Row * DisplayW + c) * 4]) - wBg) / wContrast / factor;
+                if (n >= Converge)
+                {
+                    if (MathF.Abs(covered - previous) > change) (change, changeFrame) = (MathF.Abs(covered - previous), n);
+                    sum += covered;
+                }
+                previous = covered;
+            }
+            return new SubTexelRun(change, -1, changeFrame, -1, sum / Measured);
         }
 
         /// <summary>What one run of the moving line measured. Trail is the most display pixels, wholly left of the line's
@@ -262,7 +377,7 @@ namespace KhaozEngine.Tests.Gpu
             float threshold = Bg + TrailContrast * (Line - Bg), threshold5 = Bg + 0.05f * (Line - Bg);
             var motion = new Vector2(speed / LineW, 0f);
 
-            using var rig = new TemporalResolveRig(iw, ih, LineW, LineH, wallNdc);
+            using var rig = new Rig(iw, ih, LineW, LineH, wallNdc);
             int trail = 0, trailFrame = 0, trail5 = 0, stillCount = 0, keptCount = 0, keptLeastFrame = 0;
             float peak = 0f, stillSum = 0f, keptLeast = float.MaxValue, keptSum = 0f;
             for (int n = 0; n < frames; n++)
@@ -275,7 +390,7 @@ namespace KhaozEngine.Tests.Gpu
                 float[] feature = Grey(iw, ih, (x, _) => InLine(x) ? Line : Bg);
                 rig.BeginFrame();
                 rig.Fill(feature, feature, Pairs(iw, ih, (x, _) => carries && InLine(x) ? motion : Vector2.Zero));
-                rig.FillDepth(Grey(iw, ih, 1, (x, _) => InLine(x) ? lineNdc : wallNdc));
+                rig.FillDepth(DepthMap(iw, ih, x => InLine(x) ? lineNdc : wallNdc));
                 rig.Resolve(TemporalResolveMath.BuildUniforms(still, still, jitter, iw, ih, LineW, LineH,
                     historyValid: n > 0));
 
@@ -311,50 +426,13 @@ namespace KhaozEngine.Tests.Gpu
                 keptCount > 0 ? keptLeast : 0f, keptLeastFrame, keptCount > 0 ? keptSum / keptCount : 0f);
         }
 
-        static float Q(float v) => (float)(Half)v;                    // what a half float texel holds
-        static float Weighted(float grey) => TemporalResolveMath.ToWeighted(new Vector3(grey)).X;
-        static float Unweighted(float y) => y / (1f - y);             // FromWeighted for grey
-
-        static Matrix4x4 Perspective(float aspect) => Matrix4x4.CreatePerspectiveFieldOfView(1f, aspect, 0.1f, 100f);
-
-        static TemporalViewInput View(Vector3 eye, Matrix4x4 projection)
+        // One NDC depth per texel, by column, rows top to bottom.
+        static float[] DepthMap(int width, int height, Func<int, float> ndcOfColumn)
         {
-            Matrix4x4 view = Matrix4x4.CreateLookAt(eye, eye - Vector3.UnitZ, Vector3.UnitY);
-            return new TemporalViewInput(view, projection, view * projection);
-        }
-
-        // What the depth target holds for a point this far ahead: the projection's NDC depth.
-        static float NdcDepth(in Matrix4x4 projection, float metres)
-        {
-            Vector4 clip = Vector4.Transform(new Vector4(0f, 0f, -metres, 1f), projection);
-            return clip.Z / clip.W;
-        }
-
-        static float[] Grey(int width, int height, Func<int, int, float> value) => Grey(width, height, 4, value);
-
-        // One value per texel repeated over its channels, the fourth of four set to 1 as an opaque alpha.
-        static float[] Grey(int width, int height, int channels, Func<int, int, float> value)
-        {
-            var v = new float[width * height * channels];
+            var v = new float[width * height];
             for (int y = 0; y < height; y++)
                 for (int x = 0; x < width; x++)
-                {
-                    int i = (y * width + x) * channels;
-                    for (int ch = 0; ch < channels; ch++) v[i + ch] = ch == 3 ? 1f : value(x, y);
-                }
-            return v;
-        }
-
-        static float[] Pairs(int width, int height, Func<int, int, Vector2> value)
-        {
-            var v = new float[width * height * 2];
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
-                {
-                    Vector2 p = value(x, y);
-                    v[(y * width + x) * 2] = p.X;
-                    v[(y * width + x) * 2 + 1] = p.Y;
-                }
+                    v[y * width + x] = ndcOfColumn(x);
             return v;
         }
     }

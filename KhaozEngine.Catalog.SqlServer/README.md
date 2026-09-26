@@ -57,7 +57,9 @@ validates it, under an exclusive application lock inside one transaction, so two
 race. `ContentAuthoringSchemaMode.ValidateOnly` refuses an empty or mismatched database rather than creating
 anything, which is what a production host sets so a typo in a connection string cannot silently create a second
 empty catalog and serve it. A mismatch throws `ContentAuthoringException` with reason `schema-mismatch`, naming
-the object and the migration `catalog-v2-content-upgrade-ledger`.
+the object and the migration `catalog-v2-content-upgrade-ledger`. Only SQL Server errors 207 and 208 from a
+schema read become the unreadable mismatch. Lock timeouts, deadlocks, permission failures, cancellations and
+failed creates or migrations surface as their original provider or cancellation exception.
 
 Schema version 2 adds `catalog_content_upgrade`, the content upgrade ledger behind `IContentUpgradeLedger`.
 `CatalogSchemaV2.sql` is what a fresh create runs, so a new database is version 2 directly, and

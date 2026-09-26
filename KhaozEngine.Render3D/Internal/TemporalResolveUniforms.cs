@@ -1,0 +1,49 @@
+using System.Numerics;
+using System.Runtime.InteropServices;
+
+namespace KhaozEngine.Render3D.Internal
+{
+    /// <summary>
+    /// The temporal resolve's uniform block, mirroring <c>Resolve</c> in <c>ShaderSources.TemporalResolveCoreGlsl</c>.
+    /// std140: two mat4 then five vec4, 208 bytes. Built once per frame by <see cref="TemporalResolveMath.BuildUniforms"/>
+    /// and uploaded before any framebuffer is bound.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct TemporalResolveUniforms
+    {
+        public const uint SizeInBytes = 208;
+
+        /// <summary>This frame's unjittered NDC (x, y, depth, 1) to last frame's clip space, render-relative, the previous
+        /// view already rebased to this frame's origin.</summary>
+        public Matrix4x4 CurrentToPrevious;
+        /// <summary>The same for a direction on the far plane, with both views' translation removed, so background
+        /// reprojects from camera rotation alone.</summary>
+        public Matrix4x4 BackgroundToPrevious;
+        /// <summary>(internal width, internal height, display width, display height).</summary>
+        public Vector4 Sizes;
+        /// <summary>(jitter x, jitter y in internal pixels, display over internal per axis, 1 when history may be read).</summary>
+        public Vector4 Jitter;
+        /// <summary>(1 for a perspective projection else 0, near, far, 0) of this frame.</summary>
+        public Vector4 CurrentDepth;
+        /// <summary>The same of last frame, which the stored previous depth was linearised with.</summary>
+        public Vector4 PreviousDepth;
+        /// <summary>x: the thin feature lock's decay per frame. yzw reserved.</summary>
+        public Vector4 Params;
+    }
+
+    /// <summary>The depth store's uniform block, mirroring <c>DepthStore</c> in
+    /// <c>ShaderSources.TemporalDepthStoreFrag</c>. 16 bytes.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct TemporalDepthStoreUniforms
+    {
+        public const uint SizeInBytes = 16;
+
+        /// <summary>(1 for a perspective projection else 0, near, far, 0) of this frame.</summary>
+        public Vector4 CurrentDepth;
+    }
+
+    /// <summary>The three unjittered matrices of one frame view that the resolve reprojects with. The scene reads them
+    /// from a <see cref="FrameView"/>, the previous one already rebased to this frame's render origin, and the tests
+    /// build them directly.</summary>
+    internal readonly record struct TemporalViewInput(Matrix4x4 View, Matrix4x4 Projection, Matrix4x4 ViewProjection);
+}

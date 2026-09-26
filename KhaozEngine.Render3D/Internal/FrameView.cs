@@ -79,4 +79,22 @@ internal readonly struct FrameView
 
     /// <summary>The frame index, advanced once per <c>Scene3D.Begin</c>.</summary>
     public long FrameIndex { get; }
+
+    /// <summary>
+    /// This snapshot expressed against <paramref name="renderOrigin"/> instead of the origin it was latched against. A
+    /// point <c>q</c> in the new render frame sits at <c>q + d</c> in the old one, with
+    /// <c>d = renderOrigin - RenderOrigin</c>, so each render-relative matrix becomes <c>T(d) * M</c>. Engine render
+    /// origins are whole multiples of the 128 m frame grid, so the step is exact in float32, and the product leaves rows
+    /// 1 to 3 untouched, so the only rounding is in the translation row. The projection, the absolute matrix, the size,
+    /// the index and the jitter do not depend on the origin and are kept. A zero step returns the snapshot unchanged,
+    /// bit for bit.
+    /// </summary>
+    internal FrameView RebasedTo(Vector3 renderOrigin)
+    {
+        Vector3 step = renderOrigin - RenderOrigin;
+        if (step == Vector3.Zero) return this;
+        Matrix4x4 shift = Matrix4x4.CreateTranslation(step);
+        return new FrameView(shift * View, Projection, shift * ViewProjection, AbsoluteViewProjection, renderOrigin,
+            Width, Height, FrameIndex, JitterPixels);
+    }
 }

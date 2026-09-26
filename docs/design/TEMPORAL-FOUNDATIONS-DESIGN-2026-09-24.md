@@ -8,7 +8,7 @@ Consumer: Grimhollow, through round 3 of the same program.
 ## Outcome
 
 `Scene3D` gains the shared machinery every temporal technique needs, built once and to a standard later graphics
-work can reuse. Each frame renders through one view snapshot that carries a sub-pixel jitter for the rasteriser and
+work can reuse. Each render draws from one latched view snapshot that carries a sub-pixel jitter for the rasteriser and
 an unjittered copy for everything else. The previous frame's view is kept and survives render origin steps. Moving
 draws carry a stable key, the engine remembers their previous transforms and bone palettes, and every opaque pass
 can write a screen-space motion vector target. History targets live in their own owner with explicit reset rules.
@@ -63,8 +63,9 @@ track previous local-to-world transforms. The owner chose B.
 
 ## 1. Frame view snapshot and jitter
 
-A new internal `FrameView` is latched once per rendered frame in `RenderInternal`, immediately after `EnsureSize`,
-when the camera override and the internal size are final. It holds:
+A new internal `FrameView` is latched on every render in `RenderInternal`, immediately after `EnsureSize`, when the
+camera override and the internal size are final. The frame's temporal state, which decides whether the jitter is
+applied, is fixed at the frame's first render and shared by every later render of that frame. Each snapshot holds:
 
 - unjittered `View`, `Projection` and `ViewProjection`, render-relative, plus the unjittered absolute view-projection,
 - the jittered `Projection` and `ViewProjection` used to rasterise,
@@ -97,16 +98,21 @@ every existing golden stays byte-identical.
 
 ## 2. Previous frame state and history lifetime
 
-At the end of each rendered frame the snapshot becomes `PreviousFrameView`. Motion is always the difference between
-this frame's unjittered projection of a point and last frame's unjittered projection of the same point, so jitter
-never reads as motion.
+The previous view is taken at the next frame's first render, where `AdvanceTemporalHistory` runs once per frame from
+`LatchFrameView`. The first render of a frame keeps its snapshot, and the next frame's first render rebases that
+snapshot onto its own render origin and exposes it as `PreviousFrameView`, or null while the history is invalid.
+Motion is always the difference between this frame's unjittered projection of a point and last frame's unjittered
+projection of the same point, so jitter never reads as motion.
 
 The render origin steps in exact 128 m multiples on X and Z (`WorldFrame`). When it moved by `d` between frames,
-the previous render-relative view-projection is rebased as `T(d) * PreviousViewProjection` before use. Float32
-represents the step exactly, so a rebase adds no error. A static scene read across a step shows zero motion.
+the previous render-relative view-projection is rebased as `T(d) * PreviousViewProjection` at that first render,
+before any pass reads it. Float32 represents the step exactly, and the rebase leaves rows 1 to 3 of the matrix
+exact. Row 4 is a float32 sum at the magnitude of the step, so a still scene read across a 128 m step shows at most
+1e-5 UV of motion, a third of the acceptance line (plan amendment 2).
 
-The frame index advances once per `Begin`. A second render in the same frame, such as an offscreen capture, reuses
-the frame's snapshot and does not advance history.
+The frame index advances once per `Begin`. A second render in the same frame, such as an offscreen capture, re-latches
+its own matrices for its viewport with the same frame index and jitter, and leaves the history, the previous view and
+the diagnostics untouched (amendment 4 below).
 
 A new internal `TemporalHistory` owns every cross-frame target: round 2's colour history now, and motion blur or
 reflection history later. It lives outside `RenderResources`, so the rebuilds that already happen there, a
@@ -117,6 +123,25 @@ distortion toggle or a bloom change, no longer discard temporal state. History r
 - `Scene3D.CameraCut()`, for teleports, loading screens and cutscene cuts,
 - an automatic cut when the camera moves further than `Post.Temporal.CutDistanceMetres` (default 16) or turns more
   than `Post.Temporal.CutAngleDegrees` (default 60) in one frame.
+
+As built, both threshold comparisons are strict, so a move of exactly `CutDistanceMetres` or a turn of exactly
+`CutAngleDegrees` continues history. The distance is between consecutive frames' absolute eyes. The turn is in
+degrees, the acos of the dot product of the two normalised forward directions, with the dot clamped to [-1, 1] first
+so an about-turn whose rounded dot falls below -1 still measures 180. A zero or NaN forward has no direction, so its
+angle is NaN and is not a cut, and only the other triggers can reset that frame.
+
+A render origin step the previous view cannot be rebased across is an automatic cut too, reported as
+`CameraCutDetected` whatever the thresholds: a step on X or Z other than zero or exactly one 128 m cell, which covers
+a step off the grid and a step of more than one cell, and any step on Y, where the automatic origin never moves. A
+step of one cell on X, Z or both is rebased and is not a cut by itself. An explicit `RenderOrigin` can jump while the
+eye stays still, so the distance check cannot be relied on to catch these.
+
+One reason is reported per frame. On a frame that continues a temporal one, every trigger is evaluated and the
+highest ranked reason is reported, in the order `FirstFrame`, `DeviceReset`, `AntiAliasing`, `RenderScale`,
+`Resize`, `CameraCutRequested`, `CameraCutDetected` (`TemporalResetPrecedence`). A settings change is reported over
+the size change it causes, and an explicit cut over a detected one. `FirstFrame` outranks every trigger, so a frame
+whose last rendered frame was not temporal, and every frame with temporal rendering off, reports it without comparing
+the rest. The rank is a reason's place in this order, not its declared value in `TemporalResetReason`.
 
 A reset marks the history invalid for one frame. Consumers then treat the frame as having no previous state, and the
 motion target reports zero motion. A test proves the frame after a cut matches a render from scratch.

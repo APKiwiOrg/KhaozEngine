@@ -3433,6 +3433,47 @@ If you write your own renderer against `Transform3D` (from `KhaozEngine.Render3D
 `ToMatrix(Vector3 renderOrigin)` builds the reduced matrix directly. You do not need it for `Scene3D`, which
 reduces the absolute matrix you hand it. Calling both double-subtracts.
 
+### Temporal rendering (`Post.Temporal`, `Scene3D.CameraCut`, `Scene3D.DebugView`)
+
+`Scene3D` renders from one latched view per render and keeps the previous frame's view, ready for temporal effects
+such as temporal anti-aliasing. **Adoption: none.** Nothing changes until something asks for temporal
+rendering, and with it off every frame renders exactly as before.
+
+```csharp
+// After a teleport, a loading screen or a cutscene cut: nothing from before it may reproject into the next frame.
+scene.CameraCut();
+
+// The automatic cut, a Post bag beside Post.Bloom and Post.Water.
+scene.Post.Temporal.CutDistanceMetres = 24f;
+scene.Post.Temporal.CutAngleDegrees = 45f;
+
+// Development only: turn temporal rendering on through a debug view and read the frame's state.
+scene.DebugView = SceneDebugView.MotionVectors;
+TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
+```
+
+- `CameraCut()` drops temporal history for the next rendered frame. Call it for every discontinuity the scene cannot
+  see for itself. Calling it twice before a frame is the same as calling it once, and it does nothing visible while
+  temporal rendering is off.
+- A camera that moves more than `Post.Temporal.CutDistanceMetres` (default 16) or turns more than
+  `Post.Temporal.CutAngleDegrees` (default 60) between two frames is treated as a cut without the call. Both
+  comparisons are strict, so a move or turn of exactly the limit continues history. The distance is measured between
+  absolute eye positions, so the one-cell step the automatic render origin takes as the camera moves is not a cut.
+- A render origin jump the previous view cannot be rebased across is the same automatic cut, whatever the thresholds:
+  a step on X or Z other than zero or exactly one 128 m cell, and any step on Y. An explicit `RenderOrigin` can jump
+  like that while the eye stays still, so the distance check alone would miss it.
+- History also resets for one frame when the internal size, the render scale or the anti-aliasing selection changes,
+  and when the HDR colour chain (`Post.Hdr.Enabled`) is toggled. A bloom toggle or a distortion sprite coming and
+  going keeps it. `Post.Pixelated` forces anti-aliasing off, so toggling it counts as an anti-aliasing change while
+  `Post.Quality.AntiAliasing` selects a mode. With the default `AntiAliasing.Off` a toggle keeps history.
+- `DebugView` is a development aid, not a player setting. Any value other than `SceneDebugView.None`, such as
+  `SceneDebugView.MotionVectors`, turns temporal rendering on, which jitters the rasterised image by under half an
+  internal pixel on each axis each frame. A change takes effect at the frame's first render. One made after that
+  render waits for the next frame.
+- `LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, whether history was valid, and why it
+  was last reset. Read it on the render thread after the frame renders. A second render inside the same frame, such as
+  an offscreen capture, leaves it and the history untouched.
+
 ### ECS entities (`KhaozEngine.Render3D.Ecs`)
 
 `Scene3DBinder.Submit(world, scene)` draws every `KhaozEngine.Ecs` entity carrying both a `Transform3D` and a

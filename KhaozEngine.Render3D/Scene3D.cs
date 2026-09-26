@@ -1553,7 +1553,7 @@ namespace KhaozEngine.Render3D
             // and a re-render never double-counts.
             _frameStats.Reset();
             EnsureSize(viewportW, viewportH);
-            LatchFrameView();   // the frame's one view snapshot, now that the size and the camera are final
+            LatchFrameView();   // this render's view snapshot, now that the size and the camera are final
             // The caps-resolved FXAA decision (FXAA alone, opted in after MSAA, or an unsupported MSAA request
             // falling back to FXAA). Must be the same value for PrepareUniforms (flip parity) and Run.
             bool runFxaa = ResolvedAa().UsesFxaa;

@@ -32,7 +32,14 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStre
         }
         catch (SqlException exception)
         {
-            throw MapProviderFailure(exception.Number, exception, Array.Empty<string>(), false, false, false);
+            throw MapCommandFailure(
+                exception.Number,
+                exception,
+                cancellationToken,
+                Array.Empty<string>(),
+                false,
+                false,
+                false);
         }
         catch (OperationCanceledException exception)
         {

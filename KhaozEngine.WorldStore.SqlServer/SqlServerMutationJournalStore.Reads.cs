@@ -41,7 +41,14 @@ public sealed partial class SqlServerMutationJournalStore
         }
         catch (SqlException exception)
         {
-            throw MapProviderFailure(exception.Number, exception, new[] { streamKey }, false, false, false);
+            throw MapCommandFailure(
+                exception.Number,
+                exception,
+                cancellationToken,
+                new[] { streamKey },
+                false,
+                false,
+                false);
         }
         catch (OperationCanceledException exception)
         {
@@ -127,7 +134,14 @@ public sealed partial class SqlServerMutationJournalStore
         catch (SqlException exception)
         {
             bool rolledBack = await TryRollbackAsync(transaction).ConfigureAwait(false);
-            throw MapProviderFailure(exception.Number, exception, new[] { read.StreamKey }, false, false, rolledBack);
+            throw MapCommandFailure(
+                exception.Number,
+                exception,
+                cancellationToken,
+                new[] { read.StreamKey },
+                false,
+                false,
+                rolledBack);
         }
         catch (OperationCanceledException exception)
         {
@@ -203,7 +217,14 @@ public sealed partial class SqlServerMutationJournalStore
         catch (SqlException exception)
         {
             bool rolledBack = await TryRollbackAsync(transaction).ConfigureAwait(false);
-            throw MapProviderFailure(exception.Number, exception, new[] { query.StreamKey }, false, false, rolledBack);
+            throw MapCommandFailure(
+                exception.Number,
+                exception,
+                cancellationToken,
+                new[] { query.StreamKey },
+                false,
+                false,
+                rolledBack);
         }
         catch (OperationCanceledException exception)
         {

@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
 
@@ -131,43 +130,70 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(u.CurrentDepth, TemporalResolveMath.BuildDepthStore(current.Projection).CurrentDepth);
         }
 
-        [Theory]
-        [InlineData(TemporalUpscale.Quality, 3456, 2234, 18)]
-        [InlineData(TemporalUpscale.UltraPerformance, 2560, 1600, 72)]
-        public void The_jitter_cycle_comes_from_the_preset_ratio_never_from_the_rounded_target_sizes(
-            TemporalUpscale preset, int displayWidth, int displayHeight, int phases)
+        [Fact]
+        public void A_singular_current_view_or_projection_gives_no_reprojection_and_no_history()
         {
-            // The internal size is the display size times the ratio rounded to whole pixels, so one axis can land a hair
-            // above the preset's exact ratio, and ceil(8 * r * r) then takes one phase more. The cycle reads the preset's
-            // ratio. The size ratio only scales the resolve's sampling footprint.
-            var s = new PixelPostProcessSettings();
-            s.Quality.AntiAliasing = AntiAliasing.Temporal;
-            s.Temporal.Upscale = preset;
-            var (iw, ih) = Scene3D.ComputeTargetSize(s, displayWidth, displayHeight);
-            float presetRatio = TemporalSettings.DisplayOverInternal(preset);
-            float sizeRatio = TemporalResolveMath.DisplayOverInternal(displayWidth, displayHeight, iw, ih);
+            TemporalViewInput good = View(new Vector3(0f, 2f, 10f), Vector3.Zero);
+            var flatView = new TemporalViewInput(default, Perspective, default);
+            var flatProjection = new TemporalViewInput(good.View, default, default);
 
-            Assert.True(sizeRatio > presetRatio, $"{iw}x{ih} gives {sizeRatio}, not just above {presetRatio}");
-            Assert.Equal(phases, TemporalJitter.PhaseCount(presetRatio));
-            Assert.NotEqual(phases, TemporalJitter.PhaseCount(sizeRatio));
+            Assert.False(TemporalResolveMath.TryReprojection(flatView, good, out Matrix4x4 currentToPrevious,
+                out Matrix4x4 backgroundToPrevious));
+            Assert.Equal(Matrix4x4.Identity, currentToPrevious);
+            Assert.Equal(Matrix4x4.Identity, backgroundToPrevious);
+            Assert.False(TemporalResolveMath.TryReprojection(flatProjection, good, out _, out _));
 
-            TemporalViewInput current = View(new Vector3(0f, 2f, 10f), Vector3.Zero);
-            TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(current, current, Vector2.Zero, iw, ih,
-                displayWidth, displayHeight, historyValid: true, phaseCount: TemporalJitter.PhaseCount(presetRatio));
-            Assert.Equal(1f / phases, u.Params.X);
-            Assert.Equal(sizeRatio, u.Jitter.Z);
+            TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(flatView, good, Vector2.Zero, 64, 64, 64, 64,
+                historyValid: true, phaseCount: 8);
+            Assert.Equal(0f, u.Jitter.W);
+            Assert.Equal(Matrix4x4.Identity, u.CurrentToPrevious);
+            Assert.Equal(Matrix4x4.Identity, u.BackgroundToPrevious);
+        }
+
+        [Fact]
+        public void An_orthographic_view_reprojects_a_static_point_with_linear_depth()
+        {
+            Matrix4x4 ortho = Matrix4x4.CreateOrthographic(24f, 13.5f, 0.5f, 200f);
+            Matrix4x4 viewNow = Matrix4x4.CreateLookAt(new Vector3(0f, 30f, 30f), Vector3.Zero, Vector3.UnitY);
+            Matrix4x4 viewThen = Matrix4x4.CreateLookAt(new Vector3(0.4f, 30.2f, 29.7f), new Vector3(0.4f, 0f, 0.3f), Vector3.UnitY);
+            TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(new TemporalViewInput(viewNow, ortho, viewNow * ortho),
+                new TemporalViewInput(viewThen, ortho, viewThen * ortho), Vector2.Zero, 1280, 720, 1280, 720,
+                historyValid: true, phaseCount: 8);
+            Assert.Equal(1f, u.Jitter.W);
+            Assert.Equal(0f, u.CurrentDepth.X);
+            Assert.Equal(0.5, u.CurrentDepth.Y, 4);
+            Assert.Equal(200.0, u.CurrentDepth.Z, 2);
+            Assert.Equal(u.CurrentDepth, u.PreviousDepth);
+
+            var world = new Vector4(2.5f, 1f, -3f, 1f);
+            Vector4 clip = Vector4.Transform(world, viewNow * ortho);   // w is 1
+            Vector4 then = Vector4.Transform(world, viewThen);
+            float depth = TemporalResolveMath.LinearDepth(clip.Z, u.CurrentDepth);
+            Assert.Equal(-Vector4.Transform(world, viewNow).Z, depth, 3);
+
+            // Under an orthographic projection the shader rebuilds (ndc.xy, linear depth, 1).
+            Vector4 back = Vector4.Transform(new Vector4(clip.X, clip.Y, depth, 1f), u.CurrentToPrevious);
+            Assert.Equal(then.X, back.X, 3);
+            Assert.Equal(then.Y, back.Y, 3);
+            Assert.Equal(-then.Z, TemporalResolveMath.ExpectedPreviousDepth(u, new Vector2(clip.X, clip.Y), depth), 3);
         }
 
         [Fact]
         public void Luma_weighting_keeps_every_colour_under_one_and_round_trips()
         {
-            var c = new Vector3(4f, 2f, 0.5f);
-            Vector3 w = TemporalResolveMath.ToWeighted(c);
-            Assert.True(TemporalResolveMath.Luma(w) < 1f);
-            Vector3 back = TemporalResolveMath.FromWeighted(w);
-            Assert.Equal(c.X, back.X, 3);
-            Assert.Equal(c.Y, back.Y, 3);
-            Assert.Equal(c.Z, back.Z, 3);
+            Vector3[] colours =
+            [
+                Vector3.Zero, new(0.02f, 0.01f, 0.03f), new(0.5f), new(4f, 2f, 0.5f), new(1f, 0f, 0f), new(0f, 0f, 60f),
+                new(500f, 800f, 300f),
+            ];
+            foreach (Vector3 c in colours)
+            {
+                Vector3 w = TemporalResolveMath.ToWeighted(c);
+                Assert.True(TemporalResolveMath.Luma(w) < 1f, $"{c} weighs {TemporalResolveMath.Luma(w)}");
+                Vector3 back = TemporalResolveMath.FromWeighted(w);
+                float tolerance = 1e-4f * MathF.Max(1f, MathF.Max(c.X, MathF.Max(c.Y, c.Z)));
+                Assert.True(Vector3.Distance(c, back) <= tolerance, $"{c} came back as {back}");
+            }
             Assert.Equal(0.5 / 1.5, TemporalResolveMath.ToWeighted(new Vector3(0.5f)).X, 5);
         }
 

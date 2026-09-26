@@ -13,10 +13,24 @@ namespace KhaozEngine.Render3D.Internal
     {
         public const uint SizeInBytes = 208;
 
+        /// <summary>The block's members in GLSL, in field order, which the resolve shader declares inside its
+        /// <c>Resolve</c> block. <c>TemporalUboLayoutTests</c> holds them to the fields.</summary>
+        public const string GlslMembers = @"
+    mat4 CurrentToPrevious;
+    mat4 BackgroundToPrevious;
+    vec4 Sizes;
+    vec4 Jitter;
+    vec4 CurrentDepth;
+    vec4 PreviousDepth;
+    vec4 Params;
+";
+
         /// <summary>This frame's surface point to last frame's view space, render-relative, the previous view already
         /// rebased to this frame's origin. The shader multiplies <c>(ndc.x * w, ndc.y * w, linear depth, 1)</c>, with the
         /// pixel's unjittered NDC and w the linear depth under perspective and 1 under orthographic, and takes minus z as
-        /// the expected previous depth (<see cref="TemporalResolveMath.ExpectedPreviousDepth"/>).</summary>
+        /// the expected previous depth (<see cref="TemporalResolveMath.ExpectedPreviousDepth"/>). It assumes the point did
+        /// not move, so the resolve applies it only for that expected depth, never for the previous position, which comes
+        /// from the motion target, and skips the depth test on a surface that moved.</summary>
         public Matrix4x4 CurrentToPrevious;
         /// <summary>This frame's unjittered NDC on the far plane to last frame's clip space, with both views' translation
         /// removed, so background reprojects from camera rotation alone.</summary>
@@ -39,6 +53,12 @@ namespace KhaozEngine.Render3D.Internal
     internal struct TemporalDepthStoreUniforms
     {
         public const uint SizeInBytes = 16;
+
+        /// <summary>The block's members in GLSL, which the depth store shader declares inside its <c>DepthStore</c>
+        /// block. <c>TemporalUboLayoutTests</c> holds them to the field.</summary>
+        public const string GlslMembers = @"
+    vec4 CurrentDepth;
+";
 
         /// <summary>(1 for a perspective projection else 0, near, far, 0) of this frame.</summary>
         public Vector4 CurrentDepth;

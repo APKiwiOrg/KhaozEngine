@@ -120,10 +120,13 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>The resolve's uniforms for one frame. <paramref name="previous"/> is the previous frame view rebased to
         /// this frame's origin, or null when there is none. History is readable only when it is valid and a previous
         /// view exists and both reprojections invert. <paramref name="phaseCount"/> is the jitter cycle the caller
-        /// already runs, <see cref="TemporalJitter.PhaseCount"/> of the preset's exact ratio
-        /// (<see cref="TemporalSettings.DisplayOverInternal"/>) or of the reciprocal of
-        /// <see cref="TemporalSettings.ResolvedUpscaleRatio"/> for an explicit ratio, never of
-        /// <see cref="DisplayOverInternal"/>.</summary>
+        /// already runs, <see cref="TemporalJitter.PhaseCount"/> of the unrounded display over internal scale with the
+        /// render cap included, <c>1 / (EffectiveUpscaleRatio * capScale)</c>, where <c>capScale</c> is the
+        /// <see cref="KhaozEngine.Primitives.ViewportMath.Fit"/> scale <see cref="Scene3D.ComputeTargetSize"/> applies
+        /// before rounding to whole pixels (1 when the cap does not bite). Never
+        /// <see cref="DisplayOverInternal"/>, which reads the rounded sizes and can overshoot by a phase, and never the
+        /// bare preset ratio, which under-covers when the cap bites. Native on a 5120x2880 display renders 3840x2160, a
+        /// scale of 1.333, and needs 15 phases, not 8.</summary>
         public static TemporalResolveUniforms BuildUniforms(in TemporalViewInput current, TemporalViewInput? previous,
             Vector2 jitterPixels, int internalWidth, int internalHeight, int displayWidth, int displayHeight,
             bool historyValid, int phaseCount)
@@ -149,9 +152,11 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>The larger per-axis ratio of a display size to an internal size, at least 1, with every size below 1
         /// read as 1. A size ratio for sampling only, the resolve's reconstruction footprint (Jitter.z). It must never
-        /// feed <see cref="TemporalJitter.PhaseCount"/>. The internal size is the display size times the ratio rounded
-        /// to whole pixels, so this can land just above a preset's exact ratio, and <c>ceil(8 * r * r)</c> then takes one
-        /// phase more than the preset's cycle, 19 instead of 18 for a 3456x2234 display on Quality.</summary>
+        /// feed <see cref="TemporalJitter.PhaseCount"/>. The internal size already carries the render cap, the fit to
+        /// <see cref="PixelPostProcessSettings.MaxRenderWidth"/> by <see cref="PixelPostProcessSettings.MaxRenderHeight"/>,
+        /// and is rounded to whole pixels, so this can land just above the unrounded scale, and <c>ceil(8 * r * r)</c>
+        /// then takes one phase more, 19 instead of 18 for a 3456x2234 display on Quality. The jitter cycle reads the
+        /// unrounded scale described on <see cref="BuildUniforms"/>.</summary>
         public static float DisplayOverInternal(int displayWidth, int displayHeight, int internalWidth, int internalHeight)
             => MathF.Max(1f, MathF.Max(Math.Max(1, displayWidth) / (float)Math.Max(1, internalWidth),
                 Math.Max(1, displayHeight) / (float)Math.Max(1, internalHeight)));

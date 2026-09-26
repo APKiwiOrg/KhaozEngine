@@ -8,7 +8,7 @@ Consumer: Grimhollow, through round 3 of the same program.
 ## Outcome
 
 `Scene3D` gains the shared machinery every temporal technique needs, built once and to a standard later graphics
-work can reuse. Each frame renders through one view snapshot that carries a sub-pixel jitter for the rasteriser and
+work can reuse. Each render draws from one latched view snapshot that carries a sub-pixel jitter for the rasteriser and
 an unjittered copy for everything else. The previous frame's view is kept and survives render origin steps. Moving
 draws carry a stable key, the engine remembers their previous transforms and bone palettes, and every opaque pass
 can write a screen-space motion vector target. History targets live in their own owner with explicit reset rules.
@@ -112,7 +112,7 @@ exact. Row 4 is a float32 sum at the magnitude of the step, so a still scene rea
 
 The frame index advances once per `Begin`. A second render in the same frame, such as an offscreen capture, re-latches
 its own matrices for its viewport with the same frame index and jitter, and leaves the history, the previous view and
-the diagnostics untouched (plan amendment 4).
+the diagnostics untouched (amendment 4 below).
 
 A new internal `TemporalHistory` owns every cross-frame target: round 2's colour history now, and motion blur or
 reflection history later. It lives outside `RenderResources`, so the rebuilds that already happen there, a

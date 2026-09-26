@@ -55,8 +55,9 @@ A new `RenderScale.Temporal` sizing mode, forced while `AntiAliasing.Temporal` i
 | `Quality` | 1 / 1.5 | 44% |
 | `Balanced` | 1 / 1.7 | 35% |
 | `Performance` | 1 / 2.0 | 25% |
+| `UltraPerformance` | 1 / 3.0 | 11% |
 
-`Post.Temporal.Upscale` takes a preset or an explicit ratio from 0.5 to 1.0. A ratio change resets history, per round
+`Post.Temporal.Upscale` takes a preset or an explicit ratio from 0.33 to 1.0. A ratio change resets history, per round
 1. Dynamic resolution, which would change the ratio every frame without a reset, is out of scope, and the resolve's
 inputs are sized per frame so it can be added later.
 

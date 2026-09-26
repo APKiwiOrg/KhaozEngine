@@ -4968,6 +4968,21 @@ The set is render-free and headless-testable (owns no GPU handle, never calls `S
 asset's rest pose looks down +Z; set `CharacterAnimatorTuning.FacingYawOffset` if yours does not. A
 `CharacterPose.Pose` is the brain's own buffer reused each frame - draw it this frame, do not retain it.
 
+For equipment or a VFX anchor, resolve a named skeleton joint to its skin bone index once, then compose from
+each draw-ready pose. `ComposeSocket` keeps the joint's scale and shear. `ComposeRigidSocket` removes those
+from the joint while retaining the character model transform:
+
+```csharp
+int handBone = skeleton.BoneIndexOfNode(skeleton.IndexOf("RightHand"));
+foreach (CharacterPose p in animators.Live)
+{
+    Matrix4x4 weaponWorld = p.ComposeRigidSocket(handBone, gripLocal);
+    // Draw the equipped mesh with weaponWorld in the same frame.
+}
+```
+
+The bone index addresses `CharacterPose.Pose`, not the skeleton's node array. The pose remains transient.
+
 `Live` holds exactly ONE pose per entity id, so the draw loop above cannot draw a character twice. The sample list
 is expected to carry at most one entry per `CharacterSample.Id` (the netcode's own snapshot does, its samples coming
 out of a dictionary keyed by id), and a list assembled another way that repeats one has the repeat DROPPED: the

@@ -26,14 +26,15 @@ resolves a named bone through `Skeleton` once, then uses its bone index on each 
 | Grow the animator file | 3 | 8 | 2 | 13 |
 
 The direct methods avoid a second helper surface that merely repackages `BoneSocket`. Moving the
-pose struct is a cohesive KESIZE reduction rather than an arbitrary split. The methods read the
-palette at call time and do not cache its transient array.
+pose struct gives it one clear file and reduces the animator file from 590 to 515 lines. That file
+was already below the KESIZE cap, so no baseline update is needed. The methods read the palette
+at call time and do not cache its transient array.
 
 ## Verification
 
 Headless Game tests cover transform order, the rigid scale and shear choice, index validation, and
 reading the current palette value after mutation. Existing `BoneSocketTests` cover the underlying
-matrix behavior. Update the Game.Render3D package README and the consumer guide. Ratchet down the
-old animator file with the sanctioned file-size update, then run Release build, tests and guards.
+matrix behavior. Update the Game.Render3D package README and the consumer guide, then run Release
+build, tests and guards.
 This package change rides the next staged version. Before merge, pack only to a private feed. After
 the validated commit is pushed on `main`, pack the shared feed from that checkout.

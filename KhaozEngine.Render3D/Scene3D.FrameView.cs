@@ -37,9 +37,9 @@ namespace KhaozEngine.Render3D
         /// temporal state. <see cref="TemporalRequested"/> lists the requesters.
         /// <para>
         /// A frame fixes the value at its first render. <see cref="LatchFrameView"/> takes the requesters as they stand
-        /// then, and every later render and every draw of the same frame reads that value, so the jitter, the latch,
-        /// the history advance and anything recorded at draw time agree. A requester changed after the frame's first
-        /// render takes effect on the next frame.
+        /// then, and every later render and every draw made after that render in the same frame reads that value, so
+        /// the jitter, the latch and the history advance agree. A requester changed after the frame's first render
+        /// takes effect on the next frame.
         /// </para>
         /// <para>
         /// Before the frame's first render this reads the live requesters, by design. A change made between

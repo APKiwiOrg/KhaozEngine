@@ -2,7 +2,8 @@ namespace KhaozEngine.Render3D
 {
     /// <summary>
     /// A development view of the scene's temporal machinery, selected with <see cref="Scene3D.DebugView"/>. Any value
-    /// other than <see cref="None"/> turns temporal rendering on while it is set. Not a player setting.
+    /// other than <see cref="None"/> turns temporal rendering on while it is set. A change takes effect at the frame's
+    /// first render, and one made after that render waits for the next frame. Not a player setting.
     /// </summary>
     public enum SceneDebugView
     {

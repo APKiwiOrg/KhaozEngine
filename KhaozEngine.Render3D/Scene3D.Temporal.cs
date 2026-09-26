@@ -39,9 +39,11 @@ namespace KhaozEngine.Render3D
         /// rendering is off.
         /// <para>
         /// A camera move past <see cref="TemporalSettings.CutDistanceMetres"/> or a turn past
-        /// <see cref="TemporalSettings.CutAngleDegrees"/> in one frame is a cut without this call. Both drop history
-        /// the same way. This call reports <see cref="TemporalResetReason.CameraCutRequested"/>, the automatic cut
-        /// reports <see cref="TemporalResetReason.CameraCutDetected"/>, and a frame with both reports the call.
+        /// <see cref="TemporalSettings.CutAngleDegrees"/> in one frame is a cut without this call, and so is a render
+        /// origin jump the previous view cannot be rebased across: a step on X or Z other than zero or exactly one
+        /// 128 m cell, or any step on Y, whatever the thresholds. Both kinds drop history the same way. This call
+        /// reports <see cref="TemporalResetReason.CameraCutRequested"/>, the automatic cut reports
+        /// <see cref="TemporalResetReason.CameraCutDetected"/>, and a frame with both reports the call.
         /// </para>
         /// </summary>
         public void CameraCut() => _cameraCutRequested = true;

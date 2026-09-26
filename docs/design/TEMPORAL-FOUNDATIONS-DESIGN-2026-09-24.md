@@ -118,6 +118,18 @@ distortion toggle or a bloom change, no longer discard temporal state. History r
 - an automatic cut when the camera moves further than `Post.Temporal.CutDistanceMetres` (default 16) or turns more
   than `Post.Temporal.CutAngleDegrees` (default 60) in one frame.
 
+As built, both threshold comparisons are strict, so a move of exactly `CutDistanceMetres` or a turn of exactly
+`CutAngleDegrees` continues history. The distance is between consecutive frames' absolute eyes. The turn is in
+degrees, the acos of the dot product of the two normalised forward directions, with the dot clamped to [-1, 1] first
+so an about-turn whose rounded dot falls below -1 still measures 180. A zero or NaN forward has no direction, so its
+angle is NaN and is not a cut, and only the other triggers can reset that frame.
+
+A render origin step the previous view cannot be rebased across is an automatic cut too, reported as
+`CameraCutDetected` whatever the thresholds: a step on X or Z other than zero or exactly one 128 m cell, which covers
+a step off the grid and a step of more than one cell, and any step on Y, where the automatic origin never moves. A
+step of one cell on X, Z or both is rebased and is not a cut by itself. An explicit `RenderOrigin` can jump while the
+eye stays still, so the distance check cannot be relied on to catch these.
+
 A reset marks the history invalid for one frame. Consumers then treat the frame as having no previous state, and the
 motion target reports zero motion. A test proves the frame after a cut matches a render from scratch.
 

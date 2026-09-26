@@ -15,11 +15,14 @@ namespace KhaozEngine.Render3D
     {
         /// <summary>The largest distance, in metres, the camera eye may move between two frames and still continue the
         /// previous one. Default 16. <see cref="float.PositiveInfinity"/> turns the distance check off. A render origin
-        /// step of more than one 128 m cell is still a cut, see <see cref="TemporalResetReason.CameraCutDetected"/>.</summary>
+        /// jump the previous frame cannot be rebased across is still a cut, see
+        /// <see cref="TemporalResetReason.CameraCutDetected"/>. NaN and negative values are caller errors. They are not
+        /// validated and their behaviour is unsupported.</summary>
         public float CutDistanceMetres = 16f;
 
         /// <summary>The largest angle, in degrees, the camera's forward direction may turn between two frames and still
-        /// continue the previous one. Default 60. A value of 180 or more turns the angle check off.</summary>
+        /// continue the previous one. Default 60. A value of 180 or more turns the angle check off. NaN and negative
+        /// values are caller errors. They are not validated and their behaviour is unsupported.</summary>
         public float CutAngleDegrees = 60f;
     }
 }

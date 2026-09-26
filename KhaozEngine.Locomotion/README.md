@@ -477,7 +477,9 @@ direction, and pressing into the arc can ACCELERATE it but never brake it. **Gro
 way** - it stays instant-to-target with no acceleration and no friction. `AirControl` becomes the STEERING
 authority over the direction of travel rather than a speed scale, which gives it a reading it never had: `1` is
 still full control (an instant 180 mid-flight, still at the carried speed), and `0` is now a true ballistic arc
-rather than "frozen horizontally in mid-air".
+rather than "frozen horizontally in mid-air". Between those endpoints it blends once per simulation tick, without
+`dt` scaling. A different tick rate changes the bend over the same airtime. Keep prediction and authority on the
+same fixed tick rate. `AirBrakeAccel` below is a rate per second and does use `dt`.
 
 `MoveTuning.AirBrakeAccel` (m/s^2, default 0) bleeds a conserved speed down toward a STRICTLY SLOWER commanded
 speed, stopping there and never going below it. `0` is pure conservation. It is there for a root or a snare

@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 using Xunit.Abstractions;
+using static KhaozEngine.Tests.Render3D.SourceSweep;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -444,42 +445,6 @@ namespace KhaozEngine.Tests.Gpu
         static bool IsTestProject(string root, string path)
             => Segments(root, path).Any(segment => segment.EndsWith("Tests", StringComparison.Ordinal));
 
-        static string[] Segments(string root, string path)
-            => Path.GetRelativePath(root, path).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        // COMMENTS BLANKED IN PLACE, length and newlines preserved. String literals are deliberately left alone:
-        // nothing in this repository writes a receiver, a dot and the member name inside one, and a blanker that
-        // tried to track verbatim, interpolated and raw strings could desync and hide a real call site, which is
-        // the failure direction that matters.
-        static string WithoutComments(string text)
-        {
-            char[] chars = text.ToCharArray();
-
-            for (int i = 0; i < chars.Length - 1; i++)
-            {
-                if (chars[i] != '/') continue;
-
-                if (chars[i + 1] == '/')
-                {
-                    while (i < chars.Length && chars[i] != '\n') chars[i++] = ' ';
-                }
-                else if (chars[i + 1] == '*')
-                {
-                    while (i < chars.Length && !(chars[i] == '*' && i + 1 < chars.Length && chars[i + 1] == '/'))
-                    {
-                        if (chars[i] != '\n') chars[i] = ' ';
-                        i++;
-                    }
-
-                    if (i < chars.Length) chars[i] = ' ';
-                    if (i + 1 < chars.Length) chars[i + 1] = ' ';
-                    i++;
-                }
-            }
-
-            return new string(chars);
-        }
-
         // ---- Small parsers ---------------------------------------------------------------------------------
 
         // The top-level arguments of the list opening at openIndex, or null when the brackets do not balance.
@@ -625,24 +590,5 @@ namespace KhaozEngine.Tests.Gpu
 
         static string Describe(Site site) => site.File + ":"
             + site.Line.ToString(CultureInfo.InvariantCulture) + " (" + site.Receiver + ".CopyBuffer)";
-
-        // THE REPOSITORY ROOT, found by walking up from this source file to the solution. Located through
-        // CallerFilePath rather than the working directory, which is the technique GoldenCompare and the three
-        // shader byte-equality tables already use.
-        static string RepositoryRoot([CallerFilePath] string thisFile = "")
-        {
-            DirectoryInfo? directory = new FileInfo(thisFile).Directory;
-
-            while (directory is not null)
-            {
-                if (File.Exists(Path.Combine(directory.FullName, "KhaozEngine.slnx"))) return directory.FullName;
-                directory = directory.Parent;
-            }
-
-            throw new InvalidOperationException(
-                "The CopyBuffer call-site sweep could not find KhaozEngine.slnx above " + thisFile
-                + ". It reads the repository's own source at test time, so it needs the checked-out tree the "
-                + "assembly was compiled from.");
-        }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 
 namespace KhaozEngine.Render3D
 {
@@ -26,6 +27,14 @@ namespace KhaozEngine.Render3D
         readonly int[] _shadowPassRigidSpans = new int[ShadowSettings.MaxCascades];
         int _shadowPassRigidDraws;
         int _shadowPassSkinnedDraws;
+
+        /// <summary>This frame's fitted cascade matrices against absolute world space, the caster classification's.
+        /// Test seam for the proof that temporal jitter never reaches the fit (TemporalCpuIsolationTests).</summary>
+        internal ReadOnlySpan<Matrix4x4> CascadeFitAbsoluteForTests => _cascadeCpuVpsAbsolute.AsSpan(0, _cascadeCount);
+
+        /// <summary>This frame's fitted cascade matrices in the render frame, the ones the depth pass draws with and
+        /// the dirty-skip compares. Test seam beside <see cref="CascadeFitAbsoluteForTests"/>.</summary>
+        internal ReadOnlySpan<Matrix4x4> CascadeFitRelativeForTests => _cascadeCpuVps.AsSpan(0, _cascadeCount);
 
         /// <summary>Zero this frame's recorded counters. Called at the top of <c>RenderShadowDepthPass</c>, so the
         /// numbers a snapshot carries are always the ones THIS pass recorded rather than an older pass's.</summary>

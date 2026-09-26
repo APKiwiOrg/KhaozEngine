@@ -9,6 +9,10 @@ namespace KhaozEngine.Render3D
         bool[] _retainedInstances = Array.Empty<bool>();
         int _earlyCulledInstances;
 
+        /// <summary>This frame's main-pass visibility, one entry per grouped instance. Test seam for the proof that
+        /// temporal jitter never reaches the cull (TemporalCpuIsolationTests).</summary>
+        internal ReadOnlySpan<bool> MainPassVisibilityForTests => _instanceVisible.AsSpan(0, _instanceData.Count);
+
         // Keep every caster, regardless of the shadow tier or camera. Explicit opt-outs have no depth-pass
         // consumer, so rejected geometry can avoid packing, upload and gaps in the visible model runs (#836).
         // Queue transforms and the frustum stay absolute. Only UploadInstancesRelative changes render space.

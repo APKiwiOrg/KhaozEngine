@@ -53,6 +53,20 @@ public sealed class MotionShaderTextTests
         Assert.True(baseline == stripped, $"{name} differs from its base program beyond the motion lines.");
     }
 
+    /// <summary>Every opaque variant ends main with the write <see cref="MotionMath.UvMotion"/> restates, guarded so a
+    /// last-frame clip w at or below zero writes finite off-screen motion instead of dividing by it.</summary>
+    [Theory]
+    [InlineData("ModelMotionFrag")]
+    [InlineData("SkinnedModelMotionFrag")]
+    [InlineData("SkinnedModelDissolveMotionFrag")]
+    [InlineData("ModelDissolveMotionFrag")]
+    [InlineData("SplatMotionFrag")]
+    [InlineData("TileGroundMotionFrag")]
+    public void AnOpaqueVariantWritesOffScreenMotionWhenLastFrameWasBehindTheCamera(string name) =>
+        Assert.Contains("    oMotion = vec4(vPrevClip.w <= 1e-6 ? vec2(2.0, 2.0) : "
+            + "(vCurClip.xy / vCurClip.w - vPrevClip.xy / vPrevClip.w) * vec2(0.5, -0.5), 0.0, 1.0);",
+            Lines(Variants[name].Variant));
+
     /// <summary>The rigid variant keeps the slot choice and clamps the index it reads with, so an unkeyed instance's -1
     /// never reaches the buffer even where a compiler evaluates both sides of the choice as a select.</summary>
     [Fact]

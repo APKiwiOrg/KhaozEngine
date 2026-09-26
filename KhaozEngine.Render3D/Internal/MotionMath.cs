@@ -35,9 +35,24 @@ internal static class MotionMath
     /// <summary>Whether a stored motion value is the background sentinel.</summary>
     public static bool IsBackground(Vector2 motion) => MathF.Abs(motion.X) > BackgroundThreshold;
 
+    /// <summary>A last-frame clip w at or below this puts the point on or behind last frame's camera plane, where a
+    /// perspective divide has no image position.</summary>
+    public const float MinPreviousClipW = 1e-6f;
+
+    /// <summary>The motion written for a point whose last-frame clip w is at or below <see cref="MinPreviousClipW"/>:
+    /// two screens right and down. It reprojects off the screen, stays finite and below
+    /// <see cref="BackgroundThreshold"/>, so a resolve rejects that pixel's history as it does for any off-screen
+    /// previous position.</summary>
+    public static Vector2 OffScreenMotion => new(2f, 2f);
+
     /// <summary>The value a motion fragment writes for one surface point, <c>(ndcNow - ndcThen) * (0.5, -0.5)</c>: the
-    /// difference of the two UVs, whose 0.5 offsets cancel, with V running down the image.</summary>
+    /// difference of the two UVs, whose 0.5 offsets cancel, with V running down the image. A last-frame w at or below
+    /// <see cref="MinPreviousClipW"/> writes <see cref="OffScreenMotion"/> instead, because dividing by it would
+    /// overflow RG16F to an infinity, or give NaN for 0/0, and every reader takes a value past the threshold for
+    /// sky.</summary>
     public static Vector2 UvMotion(Vector4 currentClip, Vector4 previousClip) =>
-        (new Vector2(currentClip.X, currentClip.Y) / currentClip.W
-            - new Vector2(previousClip.X, previousClip.Y) / previousClip.W) * new Vector2(0.5f, -0.5f);
+        previousClip.W <= MinPreviousClipW
+            ? OffScreenMotion
+            : (new Vector2(currentClip.X, currentClip.Y) / currentClip.W
+                - new Vector2(previousClip.X, previousClip.Y) / previousClip.W) * new Vector2(0.5f, -0.5f);
 }

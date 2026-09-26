@@ -42,6 +42,22 @@ public sealed class MotionMathTests
     }
 
     [Fact]
+    public void ALastFramePositionOnOrBehindTheCameraPlaneMovesOffScreen()
+    {
+        // Dividing by a perspective w at or below zero overflows RG16F or gives NaN for 0/0, which readers take for sky.
+        // The write gives finite motion off the screen instead, which is not background.
+        var offScreen = new Vector2(2f, 2f);
+        var now = new Vector4(.1f, -.2f, .3f, 1f);
+        Assert.Equal(offScreen, MotionMath.UvMotion(now, new Vector4(.5f, .4f, .2f, 0f)));
+        Assert.Equal(offScreen, MotionMath.UvMotion(now, new Vector4(0f, 0f, 0f, 0f)));
+        Assert.Equal(offScreen, MotionMath.UvMotion(now, new Vector4(.5f, .4f, .2f, -3f)));
+        Assert.Equal(offScreen, MotionMath.UvMotion(now, new Vector4(.5f, .4f, .2f, 1e-6f)));
+        Assert.False(MotionMath.IsBackground(offScreen));
+        // Past the guard the divide runs as before.
+        Assert.Equal(new Vector2(0f, 0f), MotionMath.UvMotion(new Vector4(0f, 0f, 0f, 1f), new Vector4(0f, 0f, 0f, 1e-5f)));
+    }
+
+    [Fact]
     public void OnlyTheSentinelBandReadsAsBackground()
     {
         Assert.False(MotionMath.IsBackground(new Vector2(MotionMath.BackgroundThreshold, 0f)));

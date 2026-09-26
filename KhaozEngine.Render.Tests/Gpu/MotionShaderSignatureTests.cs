@@ -43,7 +43,8 @@ public sealed class MotionShaderSignatureTests
         string fragment = D3D11FxcValidationTests.Program(name).FragmentGlsl;
         Assert.Contains("layout(location=3) out vec4 oMotion;", fragment, StringComparison.Ordinal);
         if (fragment.Contains("vCurClip", StringComparison.Ordinal))
-            Assert.Contains("oMotion = vec4((vCurClip.xy / vCurClip.w - vPrevClip.xy / vPrevClip.w) * vec2(0.5, -0.5), 0.0, 1.0);",
+            Assert.Contains("oMotion = vec4(vPrevClip.w <= 1e-6 ? vec2(2.0, 2.0) : "
+                + "(vCurClip.xy / vCurClip.w - vPrevClip.xy / vPrevClip.w) * vec2(0.5, -0.5), 0.0, 1.0);",
                 fragment, StringComparison.Ordinal);
         else
             Assert.Contains("oMotion = vec4(0.0);", fragment, StringComparison.Ordinal);

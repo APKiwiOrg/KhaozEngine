@@ -15,11 +15,12 @@ namespace KhaozEngine.Render3D.Internal
     /// <see cref="TemporalResolveUniforms.GlslMembers"/> and <see cref="TemporalDepthStoreUniforms.GlslMembers"/>, so the
     /// text cannot drift from the fields, and the fields carry the meaning.</para>
     /// <para><b>A MOVING SURFACE SKIPS THE DEPTH TEST.</b> <see cref="TemporalResolveUniforms.CurrentToPrevious"/> maps a
-    /// static point, so the expected depth is only meaningful where the dilated motion lands within
-    /// <see cref="TemporalResolveTuning.MovingSurfaceInternalPixels"/> of the static point's previous UV. Elsewhere the
-    /// surface moved and neighbourhood clipping handles it. The motion target never reads as background off screen: an
-    /// x channel past <see cref="TemporalResolveTuning.MotionSentinel"/> is background, and a previous UV outside
-    /// [0, 1], which every clamped or behind-the-camera motion gives, rejects history as off screen.</para>
+    /// static point, so the expected depth is only meaningful where the dilated texel's motion carries its own sample
+    /// within <see cref="TemporalResolveTuning.MovingSurfaceInternalPixels"/> of that sample's static previous UV. The
+    /// motion target wrote the motion for exactly that surface point, so a static surface agrees to float precision.
+    /// Elsewhere the surface moved and neighbourhood clipping handles it. The motion target never reads as background
+    /// off screen: an x channel past <see cref="TemporalResolveTuning.MotionSentinel"/> is background, and a previous UV
+    /// outside [0, 1], which every clamped or behind-the-camera motion gives, rejects history as off screen.</para>
     /// <para><b>D3D11 SIGNATURE.</b> Each <c>main</c> reads <c>vUv</c> with a <c>1e-30</c> weight, which changes no
     /// output, so the pixel-input signature is TEXCOORD0 then SV_Position, the shape <c>PaletteFrag</c> ships on every
     /// backend, rather than SV_Position alone after a vertex stage that writes TEXCOORD0.</para>
@@ -147,6 +148,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     float reconstructionWeight = 0.0;
     float sampleWeight = 0.0;
     float closestDepth = 2.0 * BackgroundLinearDepth;
+    vec2 closestSample = pixelCentre;
     vec2 closestMotion = vec2(0.0);
     bool closestIsBackground = true;
     float reactiveDifference = 0.0;
@@ -168,22 +170,25 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
 
             // Step 4: Lanczos 2 on the distance from this texel's jittered sample to the pixel centre, in internal
             // pixels. How close the nearest sample lands in display pixels is what this frame is worth to the pixel.
-            vec2 toSample = vec2(texel) + 0.5 - jitter - pixelCentre;
+            vec2 samplePosition = vec2(texel) + 0.5 - jitter;
+            vec2 toSample = samplePosition - pixelCentre;
             float lanczosWeight = lanczos2(toSample.x) * lanczos2(toSample.y);
             reconstruction += vec4(ycc, sceneColor.a) * lanczosWeight;
             reconstructionWeight += lanczosWeight;
             vec2 toSampleDisplay = toSample * displayOverInternal;
             sampleWeight = max(sampleWeight, clamp(lanczos2(toSampleDisplay.x) * lanczos2(toSampleDisplay.y), 0.0, 1.0));
 
-            // Step 1: the nearest surface in the neighbourhood carries the motion. Background is the motion sentinel
-            // on the x channel alone, because the depth attachment is cleared to the background colour, not to the far
-            // plane. A clamped or off-screen motion is finite and far below the sentinel, so it is never background.
+            // Step 1: the nearest surface in the neighbourhood carries the motion, and its unjittered sample position is
+            // the surface point that motion was written for. Background is the motion sentinel on the x channel alone,
+            // because the depth attachment is cleared to the background colour, not to the far plane. A clamped or
+            // off-screen motion is finite and far below the sentinel, so it is never background.
             vec2 motion = texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg;
             float ndcDepth = texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r;
             bool isBackground = abs(motion.x) > MotionSentinel;
             float viewDepth = isBackground ? BackgroundLinearDepth : temporalLinearDepth(ndcDepth, CurrentDepth);
             if (viewDepth < closestDepth) {
                 closestDepth = viewDepth;
+                closestSample = samplePosition;
                 closestMotion = motion;
                 closestIsBackground = isBackground;
             }
@@ -203,11 +208,13 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     current.w = clamp(current.w, alphaMin, alphaMax);
 
     // Steps 1 and 3: where this pixel was last frame, and the depth a static surface there had. Background reprojects
-    // from camera rotation alone. A surface reads history where its dilated motion puts it, and takes its expected
-    // depth from CurrentToPrevious, which maps a static point to last frame's view space. The same point through
-    // PreviousProjection is where the camera alone would have carried it. A surface that landed more than
-    // MovingSurfaceInternalPixels from there moved, and skips the depth test. So does one whose static point sat on or
-    // behind last frame's camera plane.
+    // from camera rotation alone. A surface reads history where the dilated motion carries this display pixel. The
+    // expected depth and the moving-surface test use the dilated texel's own surface point, its unjittered sample at its
+    // own depth, which is the point the motion target wrote that motion for. CurrentToPrevious takes it to last
+    // frame's view space as if static, and PreviousProjection gives the UV it had there. On a static surface that UV
+    // and the texel's own previous position agree to float precision. More than MovingSurfaceInternalPixels apart the
+    // surface moved, and skips the depth test. So does one whose static point sat on or behind last frame's camera
+    // plane.
     vec2 ndcXY = vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
     vec2 previousUv = vec2(-1.0);
     float expectedDepth = BackgroundLinearDepth;
@@ -218,14 +225,16 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             previousUv = vec2(previousClip.x / previousClip.w * 0.5 + 0.5, 0.5 - previousClip.y / previousClip.w * 0.5);
     } else {
         previousUv = uv - closestMotion;
+        vec2 closestUv = closestSample / internalSize;
+        vec2 closestNdc = vec2(closestUv.x * 2.0 - 1.0, 1.0 - closestUv.y * 2.0);
         float clipW = CurrentDepth.x > 0.5 ? closestDepth : 1.0;
-        vec4 previousView = CurrentToPrevious * vec4(ndcXY * clipW, closestDepth, 1.0);
+        vec4 previousView = CurrentToPrevious * vec4(closestNdc * clipW, closestDepth, 1.0);
         expectedDepth = -previousView.z;
         vec4 staticClip = PreviousProjection * previousView;
         depthTested = false;
         if (staticClip.w > 1.0e-6) {
             vec2 staticUv = vec2(staticClip.x / staticClip.w * 0.5 + 0.5, 0.5 - staticClip.y / staticClip.w * 0.5);
-            vec2 surfaceMotion = (staticUv - previousUv) * internalSize;
+            vec2 surfaceMotion = (staticUv - (closestUv - closestMotion)) * internalSize;
             depthTested = dot(surfaceMotion, surfaceMotion) <= MovingSurfaceInternalPixels * MovingSurfaceInternalPixels;
         }
     }

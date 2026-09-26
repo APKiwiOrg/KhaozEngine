@@ -107,8 +107,9 @@ namespace KhaozEngine.Render3D.Internal
         }
 
         /// <summary>The linear depth this frame's surface point had from last frame's camera, which the resolve's
-        /// disocclusion test compares with the stored previous depth. <paramref name="ndcXY"/> is the pixel's unjittered
-        /// NDC and <paramref name="linearDepth"/> its depth linearised with <see cref="TemporalResolveUniforms.CurrentDepth"/>.
+        /// disocclusion test compares with the stored previous depth. <paramref name="ndcXY"/> is the unjittered NDC of the
+        /// sample the depth was read at, the dilated texel's own sample in the resolve, and <paramref name="linearDepth"/>
+        /// that depth linearised with <see cref="TemporalResolveUniforms.CurrentDepth"/>.
         /// Zero or less when the point was on or behind last frame's camera plane. The shader computes exactly this,
         /// <c>-(CurrentToPrevious * vec4(ndcXY * w, linearDepth, 1.0)).z</c> with w the linear depth under perspective and
         /// 1 under orthographic, in float.</summary>
@@ -122,7 +123,8 @@ namespace KhaozEngine.Render3D.Internal
         /// <see cref="ExpectedPreviousDepth"/> reads its depth from, through
         /// <see cref="TemporalResolveUniforms.PreviousProjection"/>, divided by w, then NDC to UV with V running down the
         /// image as <see cref="MotionMath.UvMotion"/> writes it. So this frame's UV minus this is the motion the camera
-        /// alone gives the point, and the resolve compares it with the motion target's value to find a moving surface.
+        /// alone gives the point. The resolve takes the point at the dilated texel's own sample, which is the point the
+        /// motion target wrote that texel's motion for, and compares the two to find a moving surface.
         /// Null when the previous clip w is at or below <see cref="MotionMath.MinPreviousClipW"/> or not a number, where
         /// the resolve treats the surface as moving. The shader computes exactly this, in float.</summary>
         public static Vector2? StaticPreviousUv(in TemporalResolveUniforms uniforms, Vector2 ndcXY, float linearDepth)

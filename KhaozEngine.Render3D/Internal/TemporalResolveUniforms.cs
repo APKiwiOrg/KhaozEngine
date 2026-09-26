@@ -40,9 +40,9 @@ namespace KhaozEngine.Render3D.Internal
         public Matrix4x4 BackgroundToPrevious;
         /// <summary>Last frame's unjittered projection, applied as <c>M * v</c> to the view-space point from
         /// <see cref="CurrentToPrevious"/>. That gives the UV a static point had last frame
-        /// (<see cref="TemporalResolveMath.StaticPreviousUv"/>), and a pixel whose motion lands more than
-        /// <see cref="TemporalResolveTuning.MovingSurfaceInternalPixels"/> from it is a moving surface, which skips the
-        /// depth test. The current projection when history is not readable, so the block stays well defined.</summary>
+        /// (<see cref="TemporalResolveMath.StaticPreviousUv"/>), and a dilated texel whose motion carries its own sample
+        /// more than <see cref="TemporalResolveTuning.MovingSurfaceInternalPixels"/> from it is a moving surface, which
+        /// skips the depth test. The current projection when history is not readable, so the block stays well defined.</summary>
         public Matrix4x4 PreviousProjection;
         /// <summary>(internal width, internal height, display width, display height).</summary>
         public Vector4 Sizes;

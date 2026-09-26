@@ -82,17 +82,28 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void The_expected_depth_and_the_static_previous_position_are_the_CSharp_mirrors_in_GLSL()
         {
-            // TemporalResolveMath.ExpectedPreviousDepth and StaticPreviousUv, term for term.
+            // TemporalResolveMath.ExpectedPreviousDepth and StaticPreviousUv, term for term, at the dilated texel's own
+            // unjittered sample position and depth, which is the point that texel's motion was written for.
             string core = ShaderSources.TemporalResolveCoreGlsl;
+            Assert.Contains("vec2 samplePosition = vec2(texel) + 0.5 - jitter;", core, StringComparison.Ordinal);
+            Assert.Contains("closestSample = samplePosition;", core, StringComparison.Ordinal);
+            Assert.Contains("vec2 closestUv = closestSample / internalSize;", core, StringComparison.Ordinal);
+            Assert.Contains("vec2 closestNdc = vec2(closestUv.x * 2.0 - 1.0, 1.0 - closestUv.y * 2.0);", core,
+                StringComparison.Ordinal);
             Assert.Contains("float clipW = CurrentDepth.x > 0.5 ? closestDepth : 1.0;", core, StringComparison.Ordinal);
-            Assert.Contains("vec4 previousView = CurrentToPrevious * vec4(ndcXY * clipW, closestDepth, 1.0);", core,
+            Assert.Contains("vec4 previousView = CurrentToPrevious * vec4(closestNdc * clipW, closestDepth, 1.0);", core,
                 StringComparison.Ordinal);
             Assert.Contains("expectedDepth = -previousView.z;", core, StringComparison.Ordinal);
             Assert.Contains("vec4 staticClip = PreviousProjection * previousView;", core, StringComparison.Ordinal);
             Assert.Contains("if (staticClip.w > 1.0e-6) {", core, StringComparison.Ordinal);
             Assert.Contains("vec2 staticUv = vec2(staticClip.x / staticClip.w * 0.5 + 0.5, 0.5 - staticClip.y / staticClip.w * 0.5);",
                 core, StringComparison.Ordinal);
-            Assert.Contains("vec2 surfaceMotion = (staticUv - previousUv) * internalSize;", core, StringComparison.Ordinal);
+            Assert.Contains("vec2 surfaceMotion = (staticUv - (closestUv - closestMotion)) * internalSize;", core,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("CurrentToPrevious * vec4(ndcXY", core, StringComparison.Ordinal);
+
+            // History is still read where the dilated motion carries the display pixel.
+            Assert.Contains("previousUv = uv - closestMotion;", core, StringComparison.Ordinal);
             Assert.Contains("bool isBackground = abs(motion.x) > MotionSentinel;", core, StringComparison.Ordinal);
         }
 

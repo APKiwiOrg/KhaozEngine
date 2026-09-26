@@ -8,7 +8,8 @@ public abstract partial class EditorCommand
     internal virtual RectArea? DirtyRegionFor(MapDocument doc) => DirtyRegion;
 
     /// <summary>True when applying or reverting this command can change authored placements. False is the default
-    /// because most editor commands target another document collection.</summary>
+    /// for the engine's known commands because most target another document collection. Commands declared by
+    /// another assembly take the conservative path regardless of this internal classification.</summary>
     internal virtual bool ChangesPlacements => false;
 
     /// <summary>True unless the command is known to leave the terrain field unchanged. Only meaningful while

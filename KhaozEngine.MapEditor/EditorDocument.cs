@@ -51,8 +51,8 @@ public sealed class EditorDocument
     /// <see cref="Redo"/>).</summary>
     public event Action? DocumentChanged;
 
-    /// <summary>Fired after a committed mutation that can change authored placements. Unknown custom
-    /// <see cref="IEditorCommand"/> implementations take this safe path.</summary>
+    /// <summary>Fired after a committed mutation that can change authored placements. Commands implemented outside
+    /// this assembly take this safe path, including custom <see cref="EditorCommand"/> subclasses.</summary>
     internal event Action? PlacementsChanged;
 
     /// <summary>Fired after a command applies through <see cref="Execute"/>, carrying that command (BEFORE
@@ -208,7 +208,9 @@ public sealed class EditorDocument
 
     void MarkPlacementsChanged(IEditorCommand command)
     {
-        if (command is EditorCommand ec && !ec.ChangesPlacements) return;
+        if (command is EditorCommand ec
+            && ec.GetType().Assembly == typeof(EditorCommand).Assembly
+            && !ec.ChangesPlacements) return;
         PlacementsChanged?.Invoke();
     }
 }

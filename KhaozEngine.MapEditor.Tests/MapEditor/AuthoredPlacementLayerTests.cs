@@ -156,6 +156,19 @@ public sealed class AuthoredPlacementLayerTests
     }
 
     [Fact]
+    public void DerivedEditorCommand_UsesConservativePlacementInvalidation()
+    {
+        using var rig = new Rig();
+        Assert.True(rig.Frame());
+        Assert.Empty(rig.Served());
+
+        rig.Editor.Execute(new CustomPlacementCommand(Placement("custom", "oak", 10f, 10f)));
+
+        Assert.True(rig.Frame());
+        Assert.Equal("oak", Assert.Single(rig.Served()).Id);
+    }
+
+    [Fact]
     public void SelectedPlacement_IsServedOutsideTheLayer_AndDraggingItRebuildsNoChunk()
     {
         using var rig = new Rig();
@@ -482,6 +495,20 @@ public sealed class AuthoredPlacementLayerTests
             },
         },
     });
+
+    sealed class CustomPlacementCommand : EditorCommand
+    {
+        readonly MapPlacement _placement;
+
+        public CustomPlacementCommand(MapPlacement placement) => _placement = placement;
+
+        public override string Label => "Custom placement";
+        internal override bool AffectsWorld => false;
+
+        public override void Apply(MapDocument doc) => doc.Placements.Add(_placement);
+
+        public override void Revert(MapDocument doc) => doc.Placements.Remove(_placement);
+    }
 
     /// <summary>The viewport's wiring without a device: document, layer, synchronous streamer around the camera,
     /// and a sink that records every chunk build's query.</summary>

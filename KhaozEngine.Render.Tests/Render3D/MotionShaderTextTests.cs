@@ -53,6 +53,19 @@ public sealed class MotionShaderTextTests
         Assert.True(baseline == stripped, $"{name} differs from its base program beyond the motion lines.");
     }
 
+    /// <summary>The rigid variant keeps the slot choice and clamps the index it reads with, so an unkeyed instance's -1
+    /// never reaches the buffer even where a compiler evaluates both sides of the choice as a select.</summary>
+    [Fact]
+    public void TheRigidVariantNeverIndexesThePreviousTransformsBelowZero()
+    {
+        string[] variant = Lines(ShaderSources.ModelMotionVert);
+        Assert.Contains("    int slot = int(IMotionSlot);", variant);
+        Assert.Contains("    mat4 prevModel = slot < 0 ? Model : PrevModel[max(slot, 0)];", variant);
+        // The clamped read is the only indexed one. The other line naming the buffer is its declaration.
+        Assert.Single(variant, line => line.Contains("PrevModel[", StringComparison.Ordinal)
+            && !line.Contains("PrevModel[]", StringComparison.Ordinal));
+    }
+
     static string[] Lines(string source) => source.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
 
     static bool IsClip(string line) =>

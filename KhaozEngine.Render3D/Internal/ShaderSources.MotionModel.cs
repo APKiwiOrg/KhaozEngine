@@ -12,9 +12,10 @@ internal static partial class ShaderSources
 {
     /// <summary>ModelVert with motion, the rigid instanced path. An instance's previous world transform is
     /// <c>PrevModel[IMotionSlot]</c>, or its own transform when the slot is -1 (unkeyed, or keyed with no last frame),
-    /// which is camera-only motion. Set 1 carries the motion block and the previous transforms. Location 15 is the one
-    /// attribute Vulkan guarantees above the instance stream's 5 to 14 (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24
-    /// section 3).</summary>
+    /// which is camera-only motion. The index is clamped at zero, so a compiler that turns the choice into a select
+    /// still reads inside the buffer, which always holds at least one transform. Set 1 carries the motion block and the
+    /// previous transforms. Location 15 is the one attribute Vulkan guarantees above the instance stream's 5 to 14
+    /// (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24 section 3).</summary>
     public static readonly string ModelMotionVert = ShaderText.BeforeEndOfMain(
         ShaderText.After(ModelVert, "layout(location=10) out float vDissolveComplement;", @"
 layout(set=1, binding=0) uniform MotionFrame {" + MotionFrameMembersGlsl + @"};
@@ -24,7 +25,8 @@ layout(std430, set=1, binding=1) readonly buffer PreviousInstanceTransforms {
 layout(location=15) in float IMotionSlot;   // this instance's index into PrevModel, or -1 for its own transform
 layout(location=11) out vec4 vCurClip;
 layout(location=12) out vec4 vPrevClip;"),
-        @"    mat4 prevModel = IMotionSlot < 0.0 ? Model : PrevModel[int(IMotionSlot)];
+        @"    int slot = int(IMotionSlot);
+    mat4 prevModel = slot < 0 ? Model : PrevModel[max(slot, 0)];
     vCurClip = CurViewProj * world;
     vPrevClip = MotionParams.x > 0.5 ? PrevViewProj * (prevModel * vec4(Position, 1.0)) : vCurClip;
 ");

@@ -111,9 +111,9 @@ ModelMotion.fragment.msl 0b6ccdc31cff3de764ddfc7b5e5b50823d86ee64fafc0878a5b48a8
 ModelMotion.fragment.spirv 700540a514d5115ae78dd6d92387059c0c18c4074044579e97f44e40f1b968a7 48072
 ModelMotion.layout.hlsl 1e0b0a5528b87c79430aa171ea9a0118f73049e87b168b999fb5d57ae43619da 29 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set1[<unnamed>:UniformBuffer:V,<unnamed>:StructuredBufferReadOnly:V]
 ModelMotion.layout.msl 1e0b0a5528b87c79430aa171ea9a0118f73049e87b168b999fb5d57ae43619da 29 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float1,<unnamed>:Float2,<unnamed>:Float1,<unnamed>:Float1]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set1[<unnamed>:UniformBuffer:V,<unnamed>:StructuredBufferReadOnly:V]
-ModelMotion.vertex.hlsl 584340e5f9c0f4c3895e952c1a935f8ca2fa4dc079d37f7a358efd8d84d8e7e3 4557
-ModelMotion.vertex.msl 5a3f9ac8b7ab16c1fd4ff1ad5a2860ecfdbaaeb3f7691d5a118d570896c4302c 2745
-ModelMotion.vertex.spirv bbf54cafe1d7fa60275d74da79ed78d6d705ac61fad83d1382e1611359e29f4f 4508
+ModelMotion.vertex.hlsl faf809efa5a7ea1d449d169ffccdaee289aa661faf1c8aa9557ed0995085d8e1 4592
+ModelMotion.vertex.msl 07ec5e29ec1e900e36df178dd67400a488515ed1b2bde3e7c1c5fc05bbed0dc1 2768
+ModelMotion.vertex.spirv 24190985eb973640c4c0cad39081b2d1c87d122f22c40e0ef112a53c388424c2 4520
 OceanFftColumnPass128.compute.hlsl 76efda72362466ed58ba7ecd497d6fbcb0fa786a0d4558b64ac1af6d5cbc9eda 5337
 OceanFftColumnPass128.compute.msl 3c5b9541956bbd905e9870241df2a4017ed088f22564cb11c9da01414b2fe97c 6329
 OceanFftColumnPass128.compute.spirv c3a788b4a26a5bc4b839174997f2e8ca2bd7d3c22c1e52ddd487b645a49b6f58 7084

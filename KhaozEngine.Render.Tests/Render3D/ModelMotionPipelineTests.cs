@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
@@ -171,6 +172,23 @@ public sealed class ModelMotionPipelineTests
 
         Assert.NotEmpty(Temporal(factory));
         Assert.All(factory.GraphicsPipelines, p => Assert.InRange(p.Description.ResourceLayouts.Length, 1, 4));
+    }
+
+    /// <summary>ModelMotionVert clamps an unkeyed slot's index to zero, so the previous transforms the rigid set binds
+    /// must never be empty: not before the first upload, and not on a frame whose instances upload slots but no key has
+    /// a last frame, which leaves the buffer as it was.</summary>
+    [Fact]
+    public void TheRigidSetAlwaysBindsAtLeastOnePreviousTransform()
+    {
+        using var device = new FakeGpuDevice();
+        using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
+        ModelMotionResources motion = model.Motion!;
+        Assert.Same(motion.PreviousTransforms, ((FakeResourceSet)motion.RigidSet).Resources[1]);
+        Assert.True(motion.PreviousTransforms.SizeInBytes >= 64, "the rigid set binds an empty previous-transform buffer");
+
+        model.UploadRigidMotion(new NullGpuCommandList(), new[] { -1f, -1f }, ReadOnlySpan<Matrix4x4>.Empty);
+        Assert.Same(motion.PreviousTransforms, ((FakeResourceSet)motion.RigidSet).Resources[1]);
+        Assert.True(motion.PreviousTransforms.SizeInBytes >= 64, "the rigid set binds an empty previous-transform buffer");
     }
 
     [Fact]

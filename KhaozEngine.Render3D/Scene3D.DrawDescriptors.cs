@@ -19,9 +19,14 @@ namespace KhaozEngine.Render3D
         /// Every <c>Draw(MeshHandle, ...)</c> overload, both <c>Draw(PropHandle, ...)</c> overloads and
         /// <see cref="DrawShadowOnly"/> forward here with <see cref="MotionKey.None"/>, so what they queue is
         /// unchanged. A shadow-only draw that does not cast draws nowhere and throws <see cref="ArgumentException"/>,
-        /// exactly as the instance queue always has.
+        /// exactly as the instance queue always has. While temporal rendering is active, a keyed draw's world
+        /// transform is remembered for the next frame.
         /// </summary>
-        public void Draw(in RigidInstanceDraw draw) => _instances.Add(in draw);
+        public void Draw(in RigidInstanceDraw draw)
+        {
+            _instances.Add(in draw);
+            RecordRigidMotion(in draw);
+        }
 
         /// <summary>Queue one instance: draw <paramref name="mesh"/> at world transform <paramref name="world"/> (no tint).</summary>
         public void Draw(MeshHandle mesh, Matrix4x4 world) => Draw(new RigidInstanceDraw(mesh, world));
@@ -58,8 +63,9 @@ namespace KhaozEngine.Render3D
         /// frame's joint world transforms (model space), one per bone in the mesh's skin, and the engine composes them
         /// with the mesh's inverse-bind. Every <c>DrawSkinned</c> overload forwards here with
         /// <see cref="MotionKey.None"/>. A stale or default handle queues nothing, and a bone count that differs from
-        /// the mesh's throws <see cref="ArgumentException"/>. Presentation only - never feed sim/RNG/netcode from bone
-        /// state.
+        /// the mesh's throws <see cref="ArgumentException"/>. While temporal rendering is active, a keyed draw's model
+        /// transform and composed palette are remembered for the next frame. Presentation only - never feed
+        /// sim/RNG/netcode from bone state.
         /// </summary>
         public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices)
         {
@@ -73,6 +79,7 @@ namespace KhaozEngine.Render3D
             int slot = _skinnedInstances.Items.Count;
             ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
             _skinnedInstances.Add(in draw);
+            RecordSkinnedMotion(in draw, slot, boneMatrices.Length);
         }
 
         /// <summary>Queue one skinned draw. <paramref name="boneMatrices"/> are this frame's joint world

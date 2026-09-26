@@ -767,6 +767,7 @@ namespace KhaozEngine.Render3D
             BeginFoliageFrame();
             _skinnedInstances.Begin();
             _boneMatrices.Clear();
+            BeginMotionFrame();                // swap or forget per-key motion history (Scene3D.MotionKeys.cs)
             _lights.Clear();
             _lineVerts.Clear();
             _depthLineVerts.Clear();

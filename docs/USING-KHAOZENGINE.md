@@ -5978,6 +5978,10 @@ Build a field (server and client both do this), `using KhaozEngine.Terrain;`:
 base height + hill amplitude + `BiomeId`), the base-noise knobs, and an ordered `ITerrainFeature[]` folded in
 order: `LakeFeature` (carves a basin), `RidgeFeature` (a gaussian wall pierced by a pass), `FlattenFeature`
 (levels a hub). Write your own `ITerrainFeature` (`float Apply(float x, float z, float h)`) for new shapes.
+When a gap is wider than both bands' blend windows, `TerrainField` smoothstep-crossfades the adjacent bands from
+the left band's effective end to the right band's effective start. Height, hill amplitude, and biome shares use
+that same fallback. A gap with a band on only one side uses the nearest band, and equal shares choose the earlier
+band in the configured array as dominant.
 
 The sim keeps entities on the ground with `TerrainCollision` (render-free, in the leaf):
 
@@ -7965,9 +7969,10 @@ open ground only and never takes weight from a cliff, a shore or a peak.
 | Snow | 0.85 to snow | snow cover below the snow line with a little tundra showing through |
 
 `SampleBiomeWeights` reads each biome's share off the same smoothstep band blend that shapes the height, so the
-tilt fades across a band's `BiomeBlend` window. A per-vertex dominant biome would switch it along one triangle row
-instead, which is the visible seam the blend avoids. `TerrainSplatWeights.From(height, slope01, biome, ...)` is the
-discrete form for one biome, bit-identical to `FromBlend` wherever that biome holds the whole share.
+tilt fades across a band's `BiomeBlend` window and any uncovered interval between effective band edges. A
+per-vertex dominant biome would switch it along one triangle row instead, which is the visible seam the blend
+avoids. `TerrainSplatWeights.From(height, slope01, biome, ...)` is the discrete form for one biome, bit-identical
+to `FromBlend` wherever that biome holds the whole share.
 
 **4. Influence the mix with a splat rule (optional).** The default derives its sand band from the field's single
 `WaterLevel`. That is the sea, so a world with a SECOND body of water (a lake, river, pond, oasis, flooded

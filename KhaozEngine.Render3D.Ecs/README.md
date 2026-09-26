@@ -13,8 +13,12 @@ The ECS arm of `KhaozEngine.Render3D`. Three types, kept in their own package (i
 - `MeshInstance` - an `IComponent` carrying the `MeshHandle`, a `Tint` (zero is white) and a `Material`
   (unset is matte).
 - `Scene3DBinder.Submit(world, scene)` - draws every entity carrying both components into the scene,
-  carrying the material through. Call once per frame between `Scene3D.Begin` and the surface render. The
-  delegate overloads `Submit(world, draw)` are the pure core, headless-testable with a recording delegate.
+  carrying the material through. Call once per frame between `Scene3D.Begin` and the surface render. Each draw
+  carries `Scene3DBinder.MotionKeyOf(entity)`, a motion key from the entity's id and version, so a moving entity
+  reports its own motion to temporal rendering. The delegate overloads `Submit(world, draw)` are the pure cores,
+  headless-testable with a recording delegate. `Submit(world, Action<RigidInstanceDraw>)` is the keyed one, and
+  the other two carry no key. Two worlds drawn into one scene share entity ids and so share keys. Re-key one
+  through the keyed core, as docs/USING-KHAOZENGINE.md shows.
 
 ```csharp
 var e = world.Spawn();

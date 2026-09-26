@@ -695,6 +695,12 @@ so a custom scene cannot silently turn a translucent request into an opaque mesh
 The two `LoadSkinnedMesh` forms, `UnloadSkinnedMesh`, `DrawSkinned` and `DrawSkinnedDissolved` also remain
 default interface members, but every default throws `NotSupportedException`. The shipped adapter forwards them
 to `Scene3D`. This keeps older custom scenes compiling while refusing a call that cannot preserve a skinned body.
+`DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw, ReadOnlySpan<Matrix4x4>)` carry a full draw
+descriptor, motion key included, and the shipped adapter forwards them to `Scene3D` whole. Their defaults fall back to
+the older draws above. The rigid default keeps the mesh, the transform and the dissolve, drops the key, the tint, the
+material, `CastsShadows`, `InvertShadowDissolve` and `DissolveComplement`, and draws nothing for a shadow-only
+descriptor, which an older scene never cast. The skinned default keeps the tint as well, drops the key, the material
+and `CastsShadows`, and still throws `NotSupportedException` where the older skinned draws do.
 `CreatePropClusterOwner()` returns the view-owned `ITileWorldPropClusterOwner` used for detached CPU builds,
 scene-thread apply and draw, invalidation, unload and disposal. Its default also throws `NotSupportedException`.
 An older custom scene can still host the default empty `TileWorldViewOptions.PropLayers`, while an opted-in

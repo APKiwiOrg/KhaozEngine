@@ -844,6 +844,12 @@ wants as an integer can be handed `1.5`, an id past `int.MaxValue` or `1e308`. T
 1 to 65,535 domain, and field kinds, visibility values and remap kinds must be known enum values. Each bad
 value is refused naming the member, the same as a missing one.
 
+`ContentBundleJson.ReadFormatVersion` is the precheck for a consumer that must inspect the declared format
+before reading or combining a bundle. It uses the same JSONC policy and format member rules as `Read`, so both
+accept comments and trailing commas and both refuse malformed JSON, a nonobject root, a missing version or a
+version that is not a 32-bit integer. The precheck returns an unsupported integer so the caller can compare or
+report it. `Read` remains the operation that refuses a format version this build does not support.
+
 An import runs through the ORDINARY publish and there is no second mechanism. It restores the families and
 their blocks verbatim, restamps the bundle's rules as the new line's, turns every row into an `Add` edit and
 publishes the draft as version 1. `ContentEdit.Import` is the only factory that may name a definition id, and

@@ -15806,6 +15806,24 @@ rewrote one chunk and reused the rest. `ContentRollback` builds a reviewable dra
 version's field values, `ContentDiff` is the field-level comparison, and `ContentBundle` is the lossless
 seeding document, imported into an EMPTY database only.
 
+When a tool must inspect the bundle format before reading or combining the document, use the reader's
+precheck rather than parsing the JSON separately:
+
+```csharp
+int declaredFormat = ContentBundleJson.ReadFormatVersion(json);
+if (declaredFormat != ContentBundle.CurrentFormatVersion)
+{
+    throw new InvalidOperationException($"Unsupported bundle format {declaredFormat}.");
+}
+
+ContentBundle bundle = ContentBundleJson.Read(json);
+```
+
+`ReadFormatVersion` and `Read` share the same JSONC parsing and format member rules. Both accept comments and
+trailing commas. Both refuse malformed JSON, a nonobject root, a missing version or a version that is not a
+32-bit integer with `ContentAuthoringException`. The precheck returns an unsupported integer for the caller to
+inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`.
+
 ### Replacing a catalog from its bundle
 
 A game that ships its client content pack inside the client build cuts that pack from a fresh store, so the

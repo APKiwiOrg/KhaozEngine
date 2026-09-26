@@ -104,7 +104,7 @@ namespace KhaozEngine.Render3D.Rendering
             }
 
             // The sets that read the chain source, once per source slot.
-            for (int slot = 0; slot < res.SourceSlotCount; slot++)
+            for (int slot = 0; slot < slots; slot++)
                 _fromSource[slot] = BuildSourceSets(res, res.Source(slot), samp, lin);
 
             _bound = res; _boundGen = res.Generation;

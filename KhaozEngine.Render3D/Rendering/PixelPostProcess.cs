@@ -172,6 +172,11 @@ namespace KhaozEngine.Render3D.Rendering
                 Outputs = outputs,
             });
 
+        // The bloom blur weights for the radius they were last built for. Rebuilt only when the radius changes, so a
+        // steady frame with bloom on uploads them without allocating.
+        readonly float[] _blurWeights = new float[2 * BloomMath.MaxRadius + 1];
+        int _blurWeightsRadius = -1;
+
         /// <summary>Upload post UBOs. Call BEFORE any SetFramebuffer this frame (no active render pass).
         /// <paramref name="runFxaa"/> is the caps-resolved FXAA decision from the scene (so an MSAA request the device
         /// can't honour can fall back to FXAA); it must match the value passed to <see cref="Run"/> so the flip parity
@@ -236,7 +241,12 @@ namespace KhaozEngine.Render3D.Rendering
                 cl.UpdateBuffer(_brightBuf, 0, in bright);
 
                 int radius = Math.Clamp(s.Bloom.Radius, 0, BloomMath.MaxRadius);
-                float[] weights = BloomMath.GaussianWeights(radius); // length 2*radius+1, symmetric about the centre
+                if (radius != _blurWeightsRadius)
+                {
+                    BloomMath.GaussianWeights(radius, _blurWeights);
+                    _blurWeightsRadius = radius;
+                }
+                float[] weights = _blurWeights; // the first 2*radius+1 entries, symmetric about the centre
                 // Weights[i].x = weight for tap i (i=0 = centre = weights[radius] in the symmetric array).
                 const int weightsBase = 8; // Texel (4 floats) + Params (4 floats)
                 void FillBlurScratch(float[] scratch, float dirX, float dirY)

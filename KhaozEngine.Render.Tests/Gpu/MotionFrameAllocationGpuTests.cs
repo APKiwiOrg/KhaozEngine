@@ -22,6 +22,7 @@ public sealed class MotionFrameAllocationGpuTests(ITestOutputHelper output)
         {
             s.UseGpuSkinning = gpuSkinning;
             s.Camera.OrthoSize = 10f;
+            s.Post.Bloom.Enabled = true;   // the bloom passes run on the steady frames too
         });
         Scene3D scene = fx.Scene;
         MeshHandle box = scene.LoadMesh(MeshPrimitives.Box(1f));
@@ -56,6 +57,7 @@ public sealed class MotionFrameAllocationGpuTests(ITestOutputHelper output)
 
         output.WriteLine($"{Measured} steady frames: {without} bytes without temporal rendering, {with} bytes with it");
         MotionFrameAllocationTests.AssertEveryPathRan(scene, gpuSkinning);
+        Assert.True(without == 0, $"{Measured} steady frames without temporal rendering allocated {without} bytes");
         Assert.True(with <= without,
             $"{Measured} steady temporal frames allocated {with} bytes, and the same frames without temporal rendering {without}");
     }

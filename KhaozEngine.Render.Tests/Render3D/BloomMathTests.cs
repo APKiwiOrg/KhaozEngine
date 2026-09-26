@@ -132,6 +132,23 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void GaussianWeights_IntoABuffer_MatchesTheArrayBitForBit_AndLeavesTheRestAlone()
+        {
+            var buffer = new float[2 * BloomMath.MaxRadius + 2];
+            for (int radius = 0; radius <= BloomMath.MaxRadius; radius++)
+            {
+                Array.Fill(buffer, -1f);
+                BloomMath.GaussianWeights(radius, buffer);
+                float[] expected = BloomMath.GaussianWeights(radius);
+                for (int i = 0; i < expected.Length; i++)
+                    Assert.Equal(BitConverter.SingleToInt32Bits(expected[i]), BitConverter.SingleToInt32Bits(buffer[i]));
+                for (int i = expected.Length; i < buffer.Length; i++) Assert.Equal(-1f, buffer[i]);
+            }
+            Assert.Throws<ArgumentException>(() => BloomMath.GaussianWeights(2, new float[4]));
+            Assert.Throws<ArgumentOutOfRangeException>(() => BloomMath.GaussianWeights(-1, buffer));
+        }
+
+        [Fact]
         public void GaussianWeights_WiderRadius_HasFlatterCentre()
         {
             // A bigger radius derives a bigger sigma, so the centre tap's share of the total energy should shrink

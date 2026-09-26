@@ -10,8 +10,8 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// A STEADY FRAME OF THE DISPLAY POST CHAIN ALLOCATES NOTHING. Each frame ensures the display targets, flips the
-    /// history pair, binds, uploads, takes the opaque copy and runs the chain over the history colour, with the
-    /// outline, the distortion apply and FXAA reading through the display targets. Only the recording window is
+    /// history pair, binds, uploads, takes the opaque copy and runs the chain over the history colour, with bloom,
+    /// the outline, the distortion apply and FXAA reading through the display targets. Only the recording window is
     /// measured, and the submit and drain run outside it, as in <see cref="MetalRecordingAllocationGpuTests"/>.
     /// </summary>
     [Collection("AllocSensitive")]
@@ -34,9 +34,9 @@ namespace KhaozEngine.Tests.Gpu
             try
             {
                 history.EnsureTargets(gd, DisplayW, DisplayH, InternalW, InternalH);
-                targets.Ensure(res, history, DisplayW, DisplayH, bloomEnabled: false);
+                targets.Ensure(res, history, DisplayW, DisplayH, bloomEnabled: true);
                 using var post = new PixelPostProcess(gd, targets.PingAFB.Outputs, swapchain.Framebuffer.Outputs);
-                var s = new PixelPostProcessSettings { Outline = true };
+                var s = new PixelPostProcessSettings { Outline = true, Bloom = { Enabled = true } };
                 var cam = new CameraDepth(true, 0.1f, 100f);
                 long frame = 0;
                 int slotsRead = 0;   // one bit per source slot a frame's chain read
@@ -57,7 +57,7 @@ namespace KhaozEngine.Tests.Gpu
                     for (int i = 0; i < count; i++)
                     {
                         long before = GC.GetAllocatedBytesForCurrentThread();
-                        targets.Ensure(res, history, DisplayW, DisplayH, bloomEnabled: false);
+                        targets.Ensure(res, history, DisplayW, DisplayH, bloomEnabled: true);
                         history.BeginResolve(frame++);
                         post.BindTargets(targets);
                         slotsRead |= 1 << targets.SourceSlot;

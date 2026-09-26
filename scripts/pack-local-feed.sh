@@ -20,6 +20,7 @@
 # scripts/hooks/pack-release-guard.sh is the other half, catching the raw dotnet command an agent types
 # out of habit and pointing it here.
 set -eu
+script_path=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/$(basename -- "$0")
 cd "$(git rev-parse --show-toplevel)"
 . scripts/tag-standard.sh
 . scripts/pack-standard.sh
@@ -29,7 +30,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run|-n) dry=1; shift ;;
     --help|-h)
-      sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,14p' "$script_path" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     --) shift; break ;;
     *) break ;;

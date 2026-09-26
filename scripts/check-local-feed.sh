@@ -22,6 +22,7 @@
 # is the annotated tag peeled to its commit. Package modification times remain informational only.
 # scripts/pack-local-feed.sh is the prevention. This is detection for a feed that already drifted.
 set -eu
+script_path=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/$(basename -- "$0")
 cd "$(git rev-parse --show-toplevel)"
 . scripts/pack-standard.sh
 
@@ -31,7 +32,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --strict) strict=1; shift ;;
     --feed) feed=${2:-}; shift 2 2>/dev/null || { echo "check-local-feed: --feed needs a directory." >&2; exit 2; } ;;
-    --help|-h) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,23p' "$script_path" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "check-local-feed: unknown argument '$1'." >&2; exit 2 ;;
   esac
 done

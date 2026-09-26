@@ -61,6 +61,11 @@ public partial class MapEditorScene
             _statusText = "Dungeon preset invalid. " + ex.Message;
             return;
         }
+        catch (ArgumentException ex)
+        {
+            _statusText = "Dungeon preset invalid. " + ex.Message;
+            return;
+        }
         _statusText = "";
     }
 

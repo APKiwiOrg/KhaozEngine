@@ -98,6 +98,11 @@ internal sealed class DungeonGenerationDialog
             Error = ex.Message;
             return false;
         }
+        catch (ArgumentException ex)
+        {
+            Error = "Generator settings invalid. " + ex.Message;
+            return false;
+        }
 
         plot = new DungeonPlotTransform(OriginX, OriginZ, BaseY, YawDegrees * MathF.PI / 180f);
         if (!float.IsFinite(plot.OriginX) || !float.IsFinite(plot.OriginZ) ||

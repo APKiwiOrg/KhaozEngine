@@ -61,6 +61,17 @@ public class DungeonGenerationDialogTests
     }
 
     [Fact]
+    public void NonFiniteDraftStaysInDialogWithAnError()
+    {
+        var dialog = new DungeonGenerationDialog(new DungeonConfig(), Vector3.Zero);
+        dialog.Draft.CellSizeMeters = float.NaN;
+
+        Assert.False(dialog.TryBuild(out _, out _, out _));
+        Assert.NotEmpty(dialog.Error);
+        Assert.False(dialog.CloseRequested);
+    }
+
+    [Fact]
     public void CancelRequestsCloseWithoutChangingThePreset()
     {
         var preset = new DungeonConfig { RoomCountTarget = 6 };

@@ -166,4 +166,40 @@ public class GenerateDungeonCommandTests
         Assert.False(editor.History.CanUndo);
         Assert.False(editor.IsDirty);
     }
+
+    [Fact]
+    public void OverflowingFlattenRadius_IsRejectedBeforeMapMutation()
+    {
+        MapDocument doc = Document();
+        var editor = new EditorDocument(doc);
+        DungeonConfig config = new() { CellSizeMeters = 3e17f };
+        int placementsBefore = doc.Placements.Count;
+        int featuresBefore = doc.Terrain.Features.Count;
+
+        Assert.Throws<ArgumentException>(() =>
+            editor.Execute(new GenerateDungeonCommand(config, 42UL, DungeonKitMap.Greybox(), Plot())));
+
+        Assert.Equal(placementsBefore, doc.Placements.Count);
+        Assert.Equal(featuresBefore, doc.Terrain.Features.Count);
+        Assert.False(editor.History.CanUndo);
+    }
+
+    [Fact]
+    public void FailedDuplicateApply_DoesNotReuseFirstMapsBoundsOnAnotherMap()
+    {
+        MapDocument first = Document();
+        var firstEditor = new EditorDocument(first);
+        firstEditor.Execute(new GenerateDungeonCommand(Config(), 42UL, DungeonKitMap.Greybox(), Plot()));
+        var retried = new GenerateDungeonCommand(Config(), 42UL, DungeonKitMap.Greybox(), Plot());
+        Assert.Throws<InvalidOperationException>(() => firstEditor.Execute(retried));
+
+        MapDocument second = Document();
+        second.Bounds = new MapBounds { MinX = -1000f, MinZ = -1000f, MaxX = 1000f, MaxZ = 1000f };
+        new EditorDocument(second).Execute(retried);
+
+        Assert.Equal(-1000f, second.Bounds.MinX);
+        Assert.Equal(-1000f, second.Bounds.MinZ);
+        Assert.Equal(1000f, second.Bounds.MaxX);
+        Assert.Equal(1000f, second.Bounds.MaxZ);
+    }
 }

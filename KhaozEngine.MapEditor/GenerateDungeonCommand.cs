@@ -53,9 +53,10 @@ public sealed class GenerateDungeonCommand : EditorCommand
         if (_target is not null && !ReferenceEquals(_target, doc))
             throw new InvalidOperationException("A dungeon bake command cannot be reused on another document.");
 
-        BakePatch patch = _patch ??= BuildPatch(doc);
+        BakePatch patch = _patch ?? BuildPatch(doc);
         ValidateUniqueIds(doc, patch);
         AppendAtomically(doc, patch);
+        _patch ??= patch;
     }
 
     /// <inheritdoc/>
@@ -92,6 +93,7 @@ public sealed class GenerateDungeonCommand : EditorCommand
         DungeonMapDocEmitter.Emit(layout, _kit, _plot, scratch, _spawnArchetypeId);
         if (!BoundsFinite(scratch.Bounds))
             throw new ArgumentException("The generated dungeon bounds are not finite.", nameof(doc));
+        ValidateStagedGeometry(scratch);
 
         return new BakePatch(
             scratch.Placements.ToArray(), scratch.Spawns.ToArray(), scratch.Regions.ToArray(),
@@ -143,6 +145,41 @@ public sealed class GenerateDungeonCommand : EditorCommand
     private static bool BoundsFinite(MapBounds bounds) =>
         float.IsFinite(bounds.MinX) && float.IsFinite(bounds.MinZ) &&
         float.IsFinite(bounds.MaxX) && float.IsFinite(bounds.MaxZ);
+
+    private static void ValidateStagedGeometry(MapDocument scratch)
+    {
+        foreach (MapPlacement placement in scratch.Placements)
+            if (!float.IsFinite(placement.X) || !float.IsFinite(placement.Z) ||
+                (placement.Y.HasValue && !float.IsFinite(placement.Y.Value)) ||
+                !float.IsFinite(placement.Yaw) || !float.IsFinite(placement.Scale))
+                throw new ArgumentException("A generated dungeon placement has non-finite geometry.");
+
+        foreach (MapSpawn spawn in scratch.Spawns)
+            if (!float.IsFinite(spawn.X) || !float.IsFinite(spawn.Z))
+                throw new ArgumentException("A generated dungeon spawn has non-finite coordinates.");
+
+        foreach (MapRegion region in scratch.Regions)
+        {
+            switch (region.Shape)
+            {
+                case DiscShapeDoc disc when float.IsFinite(disc.CenterX) && float.IsFinite(disc.CenterZ) &&
+                                            float.IsFinite(disc.Radius):
+                    break;
+                case PolygonShapeDoc polygon when polygon.Points.All(static p =>
+                    p.Length == 2 && float.IsFinite(p[0]) && float.IsFinite(p[1])):
+                    break;
+                default:
+                    throw new ArgumentException("A generated dungeon region has invalid geometry.");
+            }
+        }
+
+        foreach (MapFeature feature in scratch.Terrain.Features)
+            if (feature is not FlattenFeatureDoc flatten ||
+                !float.IsFinite(flatten.CenterX) || !float.IsFinite(flatten.CenterZ) ||
+                !float.IsFinite(flatten.Radius) || !float.IsFinite(flatten.TargetHeight) ||
+                !float.IsFinite(flatten.Blend))
+                throw new ArgumentException("A generated dungeon terrain feature has non-finite geometry.");
+    }
 
     private static void ValidateUniqueIds(MapDocument doc, BakePatch patch)
     {

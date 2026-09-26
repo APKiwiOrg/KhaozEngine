@@ -55,6 +55,22 @@ public class MapEditorDungeonSceneTests
     }
 
     [Fact]
+    public void NonFiniteGamePreset_ReportsErrorInsteadOfCrashingOnOpen()
+    {
+        SpyScene scene = Open(new MapEditorOptions
+        {
+            DungeonKit = DungeonKitMap.Greybox(),
+            DungeonPreset = new DungeonConfig { CellSizeMeters = float.NaN },
+        });
+
+        scene.GenerateDungeonButton!.OnClick!.Invoke();
+
+        Assert.Null(scene.DungeonDialog);
+        Assert.Contains("preset", scene.StatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.False(scene.Document.IsDirty);
+    }
+
+    [Fact]
     public void GenerateButton_OpensModalThatBlocksToolsAndCancelsCleanly()
     {
         SpyScene scene = Open(new MapEditorOptions { DungeonKit = DungeonKitMap.Greybox() });

@@ -57,7 +57,7 @@ All labels and errors are developer-tool text under MapEditor's existing localiz
 
 The command stages `DungeonMapDocEmitter.Emit` into a scratch `MapDocument` with a copy of the target's starting bounds. It keeps the emitted placements, spawns, regions, flatten feature, and resulting bounds together as one patch. A missing kit mapping, invalid config, or generator failure occurs before the target is touched.
 
-Before appending, it rejects an emitted placement or spawn id, or region name, that already exists in the target. This covers a repeated bake at the same layout and plot, whose deterministic salt would otherwise reuse ids. It also validates the input plot coordinates and generated bounds as finite values. A failed preflight leaves the document and history unchanged.
+Before appending, it rejects an emitted placement or spawn id, or region name, that already exists in the target. This covers a repeated bake at the same layout and plot, whose deterministic salt would otherwise reuse ids. It also validates the input plot coordinates, generated bounds, and every staged placement, spawn, region, and flatten feature as finite values. A failed preflight leaves the document and history unchanged.
 
 `Apply` appends the staged objects and sets the new bounds. If an ordinary append fails partway, it removes only this command's appended tail and restores the original bounds before rethrowing. `Revert` removes that tail and restores the exact prior bounds. It checks the expected tail before removal, so an external mutation cannot silently delete a different author's content. Redo appends the cached patch again. Undo and redo use `EditorDocument`'s existing dirty and rebuild signals.
 

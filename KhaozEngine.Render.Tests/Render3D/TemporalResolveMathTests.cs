@@ -75,14 +75,18 @@ namespace KhaozEngine.Tests.Render3D
             TemporalViewInput previous = View(new Vector3(0.3f, 2.1f, 10.4f), new Vector3(0.2f, 1.9f, 0f));
             var world = new Vector4(1.2f, 0.7f, -3f, 1f);
             Vector4 now = Vector4.Transform(world, current.ViewProjection);
-            Vector4 then = Vector4.Transform(world, previous.ViewProjection);
+            Vector4 then = Vector4.Transform(world, previous.View);
 
+            // The shader rebuilds (ndc.xy * w, linear depth, 1) and lands in last frame's view space.
             TemporalResolveUniforms u = Build(current, previous);
-            Vector4 back = Vector4.Transform(new Vector4(now.X / now.W, now.Y / now.W, now.Z / now.W, 1f), u.CurrentToPrevious);
+            var ndc = new Vector2(now.X / now.W, now.Y / now.W);
+            float depth = TemporalResolveMath.LinearDepth(now.Z / now.W, u.CurrentDepth);
+            Vector4 back = Vector4.Transform(new Vector4(ndc * depth, depth, 1f), u.CurrentToPrevious);
 
-            Assert.Equal(then.X / then.W, back.X / back.W, 3);
-            Assert.Equal(then.Y / then.W, back.Y / back.W, 3);
-            Assert.Equal(then.Z / then.W, back.Z / back.W, 4);
+            Assert.Equal(then.X, back.X, 3);
+            Assert.Equal(then.Y, back.Y, 3);
+            Assert.Equal(then.Z, back.Z, 3);
+            Assert.Equal(-then.Z, TemporalResolveMath.ExpectedPreviousDepth(u, ndc, depth), 3);
             Assert.Equal(1f, u.Jitter.W);
         }
 

@@ -54,18 +54,67 @@ namespace KhaozEngine.Render3D.Internal
             return view;
         }
 
-        /// <summary>This frame's NDC to last frame's clip space, for a surface and for the background. False when a
-        /// matrix cannot be inverted, which the resolve treats as no history.</summary>
+        /// <summary>
+        /// The two reprojections of <see cref="TemporalResolveUniforms"/>, each built in double and rounded to float
+        /// once. <paramref name="currentToPrevious"/> is this frame's unprojection then the rigid view change, from
+        /// <c>(ndc.x * w, ndc.y * w, linear depth, 1)</c> to last frame's view space. <paramref name="backgroundToPrevious"/>
+        /// is this frame's NDC to last frame's clip space with both views' translation removed. False when the current
+        /// view or its rotation cannot be inverted or the current projection has no x or y scale, which the resolve
+        /// treats as no history.
+        /// <para>
+        /// Why the surface matrix ends in view space and not in clip space. An NDC to clip matrix is well conditioned
+        /// for x and y but not for depth. Its expected depth is <c>z / w</c> linearised near 1, which multiplies an error
+        /// of one float step there by about 6000 at 590 m with a 0.1 m near plane. That leaves 0.03 percent on a still
+        /// camera and over 1 percent on a 1.5 m step, against a 2 percent tolerance, even with the matrix built in
+        /// double. Built in float it was off by up to 47 percent. The view-space result takes the depth as minus z,
+        /// which stays within the depth target's own float quantisation.
+        /// </para>
+        /// </summary>
         public static bool TryReprojection(in TemporalViewInput current, in TemporalViewInput previous,
             out Matrix4x4 currentToPrevious, out Matrix4x4 backgroundToPrevious)
         {
             currentToPrevious = Matrix4x4.Identity;
             backgroundToPrevious = Matrix4x4.Identity;
-            if (!Matrix4x4.Invert(current.ViewProjection, out Matrix4x4 inverse)) return false;
-            if (!Matrix4x4.Invert(RotationOnly(current.View) * current.Projection, out Matrix4x4 inverseRotation)) return false;
-            currentToPrevious = inverse * previous.ViewProjection;
-            backgroundToPrevious = inverseRotation * (RotationOnly(previous.View) * previous.Projection);
+            if (!TryUnprojection(current.Projection, out DoubleMatrix4x4 unprojection)) return false;
+            if (!DoubleMatrix4x4.TryInvert(new DoubleMatrix4x4(current.View), out DoubleMatrix4x4 inverseView)) return false;
+            DoubleMatrix4x4 rotationNow = new DoubleMatrix4x4(RotationOnly(current.View)) * new DoubleMatrix4x4(current.Projection);
+            if (!DoubleMatrix4x4.TryInvert(rotationNow, out DoubleMatrix4x4 inverseRotation)) return false;
+            DoubleMatrix4x4 viewChange = inverseView * new DoubleMatrix4x4(previous.View);
+            DoubleMatrix4x4 rotationThen = new DoubleMatrix4x4(RotationOnly(previous.View)) * new DoubleMatrix4x4(previous.Projection);
+            currentToPrevious = (unprojection * viewChange).ToSingle();
+            backgroundToPrevious = (inverseRotation * rotationThen).ToSingle();
             return true;
+        }
+
+        /// <summary>The linear map from <c>(ndc.x * w, ndc.y * w, linear depth, 1)</c> to view space for a System.Numerics
+        /// projection without skew, whose clip w is the linear depth under perspective and 1 under orthographic:
+        /// <c>x = (u.x + u.z * M31 - M41) / M11</c>, <c>y = (u.y + u.z * M32 - M42) / M22</c>, <c>z = -u.z</c>.</summary>
+        static bool TryUnprojection(in Matrix4x4 projection, out DoubleMatrix4x4 unprojection)
+        {
+            double sx = projection.M11, sy = projection.M22;
+            if (!(Math.Abs(sx) > 0.0) || !(Math.Abs(sy) > 0.0) || !double.IsFinite(sx) || !double.IsFinite(sy))
+            {
+                unprojection = default;
+                return false;
+            }
+            unprojection = new DoubleMatrix4x4(
+                1.0 / sx, 0.0, 0.0, 0.0,
+                0.0, 1.0 / sy, 0.0, 0.0,
+                projection.M31 / sx, projection.M32 / sy, -1.0, 0.0,
+                -projection.M41 / sx, -projection.M42 / sy, 0.0, 1.0);
+            return true;
+        }
+
+        /// <summary>The linear depth this frame's surface point had from last frame's camera, which the resolve's
+        /// disocclusion test compares with the stored previous depth. <paramref name="ndcXY"/> is the pixel's unjittered
+        /// NDC and <paramref name="linearDepth"/> its depth linearised with <see cref="TemporalResolveUniforms.CurrentDepth"/>.
+        /// Zero or less when the point was on or behind last frame's camera plane. The shader computes exactly this,
+        /// <c>-(CurrentToPrevious * vec4(ndcXY * w, linearDepth, 1.0)).z</c> with w the linear depth under perspective and
+        /// 1 under orthographic, in float.</summary>
+        public static float ExpectedPreviousDepth(in TemporalResolveUniforms uniforms, Vector2 ndcXY, float linearDepth)
+        {
+            float w = uniforms.CurrentDepth.X > 0.5f ? linearDepth : 1f;
+            return -Vector4.Transform(new Vector4(ndcXY * w, linearDepth, 1f), uniforms.CurrentToPrevious).Z;
         }
 
         /// <summary>The resolve's uniforms for one frame. <paramref name="previous"/> is the previous frame view rebased to

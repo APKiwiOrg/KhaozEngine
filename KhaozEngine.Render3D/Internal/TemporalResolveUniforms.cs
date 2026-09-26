@@ -13,11 +13,13 @@ namespace KhaozEngine.Render3D.Internal
     {
         public const uint SizeInBytes = 208;
 
-        /// <summary>This frame's unjittered NDC (x, y, depth, 1) to last frame's clip space, render-relative, the previous
-        /// view already rebased to this frame's origin.</summary>
+        /// <summary>This frame's surface point to last frame's view space, render-relative, the previous view already
+        /// rebased to this frame's origin. The shader multiplies <c>(ndc.x * w, ndc.y * w, linear depth, 1)</c>, with the
+        /// pixel's unjittered NDC and w the linear depth under perspective and 1 under orthographic, and takes minus z as
+        /// the expected previous depth (<see cref="TemporalResolveMath.ExpectedPreviousDepth"/>).</summary>
         public Matrix4x4 CurrentToPrevious;
-        /// <summary>The same for a direction on the far plane, with both views' translation removed, so background
-        /// reprojects from camera rotation alone.</summary>
+        /// <summary>This frame's unjittered NDC on the far plane to last frame's clip space, with both views' translation
+        /// removed, so background reprojects from camera rotation alone.</summary>
         public Matrix4x4 BackgroundToPrevious;
         /// <summary>(internal width, internal height, display width, display height).</summary>
         public Vector4 Sizes;

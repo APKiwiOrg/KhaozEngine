@@ -1012,6 +1012,12 @@ chat.Draw(batch, white);
   `PassTimingsSection` lists one row per pass name (in first-sampled order)
   with that pass's rolling avg/min/max milliseconds - CPU encode time, not true GPU time (see the
   `KhaozEngine.Render3D` README / `docs/USING-KHAOZENGINE.md`).
+  Every title and row label supplied by these built-in populators, plus the disconnected Network value, resolves
+  through the public `DiagnosticsOverlayStrings` `StringId` fields. The `diagnostics.overlay.performance.*`,
+  `diagnostics.overlay.pass-timings.*`, `diagnostics.overlay.draw-stats.*`, and
+  `diagnostics.overlay.network.*` keys have built-in English fallbacks that preserve the historical output.
+  Dynamic pass names, formatted numbers, and conventional units remain raw tokens. Custom section text stays
+  game-owned.
   `Bounds` is the last-drawn panel rect (empty when hidden/faded-out), so a caller can place an `OverlayLegend`
   at `Bounds.Right` + a gap to sit a second panel directly beside it.
 - `DiagnosticsHud` - turn-key wiring of the frame-cost HUD: bundles a `FrameStats` meter, an optional
@@ -1022,9 +1028,10 @@ chat.Draw(batch, white);
   `AssemblyInformationalVersionAttribute`, with a `+` build metadata suffix (the SourceLink commit) dropped.
   `SetBuildIdentity(string name, string version)` shows the game's own display strings instead, e.g.
   `Diagnostics?.SetBuildIdentity(BuildConfig.Product, BuildConfig.DisplayVersion)`. The identity is read once,
-  on the first refresh that shows it, never per frame. Its title is the localized
-  `DiagnosticsOverlayStrings.BuildTitle` (`diagnostics.overlay.build.title`, English fallback "Build"). The
-  name and version are shown verbatim as non-localizable tokens. Call `Update(input, dt)`
+  on the first refresh that shows it, never per frame. Its title uses the already shipped
+  `DiagnosticsOverlayStrings.BuildTitle` (`diagnostics.overlay.build.title`, English fallback "Build") alongside
+  the other built-in keys. The name and version are shown verbatim as non-localizable tokens. Call
+  `Update(input, dt)`
   once per frame (samples FPS, handles the toggle + fade), feed `SetDrawStats(in RenderFrameStats)` the aggregate
   and (3D) sample its `PassTimings`, then `Draw`. Hidden by default, and while hidden the provider builds nothing,
   so the only cost is the surfaces' always-on counter increments. `SetNetStatsSource(Func<ClientNetStats?>?)` opts a

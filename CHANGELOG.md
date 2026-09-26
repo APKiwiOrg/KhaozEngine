@@ -7,7 +7,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.6.0
 
-**A journal can be reset** ([#1150](https://github.com/APKiwiOrg/KhaozEngine/issues/1150)).
+**A journal can be reset, and MapEditor can generate undoable dungeons**
+([#1150](https://github.com/APKiwiOrg/KhaozEngine/issues/1150),
+[#74](https://github.com/APKiwiOrg/KhaozEngine/issues/74)).
 
 - `SqliteJournalReset` and `SqlServerJournalReset` delete every row of the journal's six data tables in one
   transaction: streams, events, snapshots, projection sections, replay receipts and their stream ranges.
@@ -29,6 +31,14 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Because the epoch is kept, a projection cursor from before the reset is not told apart by epoch. Consumers drop
   their cursors, or the caller rotates the epoch afterwards. The in-memory store has no reset, as the content
   catalog's in-memory store has none.
+
+`KhaozEngine.MapEditor` now offers an optional Dungeon toolbar action when the game supplies a
+`DungeonKitMap`. Its modal panel takes a seed, plot placement, and common layout controls over a copied
+`DungeonConfig` preset. `GenerateDungeonCommand` stages the MapDoc bake before changing the document, then
+applies placements, spawns, regions, a flatten feature, and expanded bounds as one undoable edit. Failed
+generation and plots outside a loaded tiled window leave the map and history unchanged. MapEditor now
+depends on `KhaozEngine.Dungeon`, while remaining outside every umbrella. The Showcase Map editor room
+loads its dungeon kit and exposes the action for visual validation.
 
 ## 20.5.1
 

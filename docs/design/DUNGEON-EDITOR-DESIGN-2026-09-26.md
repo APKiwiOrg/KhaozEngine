@@ -1,6 +1,7 @@
 # Dungeon generation in MapEditor
 
-Draft for written review on 2026-09-26. Tracks the editor integration in [#74](https://github.com/APKiwiOrg/KhaozEngine/issues/74).
+Approved and implemented for staged 20.6.0 on 2026-09-26. Tracks the editor integration in
+[#74](https://github.com/APKiwiOrg/KhaozEngine/issues/74).
 
 ## Goal
 

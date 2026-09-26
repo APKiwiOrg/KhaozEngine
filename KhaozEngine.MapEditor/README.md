@@ -119,6 +119,50 @@ extra key handling in the outer code that owns the `Push`/`Pop` call, not in a s
 See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor.Create` plus one
 `Rooms.Add(("Map editor", () => RoomMapEditor.Create(...)))` line).
 
+## Generate dungeons
+
+Supply a `KhaozEngine.Dungeon.DungeonKitMap` whose ids exist in the game's manifests. The toolbar shows a
+**Dungeon** button only when `MapEditorOptions.DungeonKit` is set. `DungeonPreset` is optional and supplies
+the settings the focused panel does not edit. Set these before the `sceneManager.Push` call in Quickstart:
+
+```csharp
+var kit = new DungeonKitMap();
+kit.Map(DungeonPiece.Floor, "dungeon_floor");
+kit.Map(DungeonPiece.Wall, "dungeon_wall");
+kit.Map(DungeonPiece.DoorFrame, "dungeon_doorframe");
+kit.Map(DungeonPiece.StairUp, "dungeon_stair");
+kit.Map(DungeonPiece.StairDown, "dungeon_landing");
+kit.Map(DungeonPiece.Ceiling, "dungeon_ceiling");
+options.DungeonKit = kit;
+options.DungeonPreset = new DungeonConfig { RoomCountTarget = 16, CeilingMode = DungeonCeilingMode.Roofed };
+```
+
+The modal panel edits the unsigned 64-bit seed, plot origin X/Z, base Y, yaw in degrees, plot width and
+depth, room count, floor count, corridor width range, and ceiling mode. It starts with a copy of the game
+preset and centres the plot on the viewport's terrain focus when possible. Generate runs one
+`GenerateDungeonCommand` through `EditorDocument.Execute`, so the placements, spawns, regions, flatten
+feature, and bounds expansion undo and redo together. Cancel changes nothing. Invalid settings, missing
+kit ids, duplicate bake ids, and a plot crossing a partially loaded document window leave the map and undo
+stack unchanged and show an error. On a windowed tiled map, open the needed tiles or load the whole map
+before generating beyond the loaded window.
+
+The same command can be used without the panel when a tool owns an `EditorDocument`:
+
+```csharp
+var editor = new EditorDocument(MapDocumentFile.Load(options.DocumentPath));
+editor.Execute(new GenerateDungeonCommand(new DungeonConfig(), 42UL, kit,
+    new DungeonPlotTransform(100f, 200f, 0f, 0f)));
+editor.Undo();
+editor.Redo();
+```
+
+Pass `loadedWindow` to the command when `editor.Doc` is a partial tiled document. The command refuses a
+partial document without that constraint. Redo reapplies the first generated bake, even if the caller
+later changes the config or kit map.
+
+The Showcase Map editor room loads its committed dungeon manifest and supplies `DungeonKitMap.Greybox()`,
+so its Dungeon button is a ready-made windowed validation path.
+
 ## Keys
 
 The viewport uses a pivot-based editor camera. Middle drag orbits around the terrain point captured when the

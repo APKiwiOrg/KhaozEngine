@@ -9225,6 +9225,29 @@ var options = new MapEditorOptions
 sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, options));
 ```
 
+**Dungeon generation.** Set `options.DungeonKit` to a `DungeonKitMap` whose six piece ids exist in the
+game's manifests. The toolbar then shows **Dungeon**, opening a modal Generate dungeon panel. Null hides
+the action. `options.DungeonPreset` optionally supplies advanced `DungeonConfig` values, while the panel
+edits seed, plot position and yaw, plot size, room count, floors, corridor widths, and ceiling mode.
+The panel copies the preset, so cancelling or changing fields never mutates the game's options. Generate
+uses one `GenerateDungeonCommand` through `EditorDocument.Execute`, making all emitted placements, spawns,
+regions, the flatten feature, and expanded bounds one undo step. Invalid input or a missing kit piece
+leaves the map and history unchanged. The command is also usable directly by a headless authoring tool:
+
+```csharp
+var dungeonKit = DungeonKitMap.Greybox(); // use only when the game manifests contain these kit ids
+var editor = new EditorDocument(MapDocumentFile.Load(options.DocumentPath));
+editor.Execute(new GenerateDungeonCommand(new DungeonConfig(), 42UL, dungeonKit,
+    new DungeonPlotTransform(originX: 120f, originZ: 0f, baseY: 0f, yawRadians: 0f)));
+editor.Undo();
+editor.Redo();
+```
+
+For a partial tiled document pass the loaded `MapTileRect` as the command's `loadedWindow` argument.
+The editor panel supplies its own loaded window and refuses a plot that crosses it. Redo reuses the
+first bake rather than regenerating from later changes to the config or kit. See the
+`KhaozEngine.MapEditor` README for the complete kit mapping and panel workflow.
+
 Push it directly rather than wrapping it in your own `GameScene`. `GameScene.Manager` is set only by
 `SceneManager.Push` (an internal setter), so a hand-built wrapper that forwards lifecycle calls to a
 `new MapEditorScene()` it never pushes leaves that inner scene's `Manager` permanently null (its first

@@ -614,6 +614,12 @@ returns a `KhaozEngine.Navigation.NavSpace`, but nothing in `Navigation` referen
 Its plot overload forwards yaw to `NavGrid`, whose optional `yawRadians` controls cell/world mapping
 and planner visibility checks. Navigation keeps no dependency on `DungeonPlotTransform`.
 
+`MapEditor -> Dungeon` is an authoring-only edge. `GenerateDungeonCommand` stages the Dungeon package's
+MapDoc emitter output as one reversible editor command, and `MapEditorScene` exposes it through an
+optional panel when the game supplies a `DungeonKitMap`. Dungeon never references MapEditor back, so
+the edge adds no cycle. MapEditor stays outside every umbrella, so consumers that do not install the
+editor do not gain this dependency.
+
 ## Tile world package edges
 
 `KhaozEngine.TileWorld` adds four edges, all acyclic and all onto packages that already sit below it:

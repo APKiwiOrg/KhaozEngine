@@ -48,7 +48,7 @@ public static class CatalogMicroBenchmarks
         return new MicroResult(clock.Elapsed.TotalMilliseconds * 1_000_000.0 / iterations, allocated);
     }
 
-    /// <summary>The same loop through the typed <c>ItemRowView</c>, which is the hot read of section 9.1.</summary>
+    /// <summary>The same loop through the shipped typed <c>ItemRow</c>, which is the hot read of section 9.1.</summary>
     public static MicroResult MeasureTypedItemLookup(ContentRuntime runtime, int[] ring, int iterations)
     {
         ArgumentNullException.ThrowIfNull(runtime);
@@ -235,7 +235,7 @@ public static class CatalogMicroBenchmarks
         long accumulator = 0;
         for (int i = 0; i < iterations; i++)
         {
-            if (runtime.TryGetItem(ring[i & mask], out ItemRowView row)) accumulator += row.MaxStack;
+            if (runtime.TryGetItem(ring[i & mask], out KhaozEngine.Catalog.ItemRow row)) accumulator += row.MaxStack;
         }
         _sink += accumulator;
     }

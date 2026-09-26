@@ -7,11 +7,20 @@ namespace KhaozEngine.Benchmarks.Catalog;
 /// The row codec for the six engine types plus the synthetic game type. Fields are written POSITIONALLY in
 /// schema order and a marker field takes zero width (spec sections 3.2 and 7.9). Every decode path is
 /// TOTAL: a malformed row returns false with the offset untouched, and nothing here throws.
+/// <para>
+/// The item encoder remains specialized because the measured publish loop reuses an <see cref="ItemRowData"/>
+/// and writes into a caller supplied span. The shipped codec takes an immutable content row and a buffer
+/// writer, which would add row and field-array allocations to that measurement. <see cref="ItemFieldCount"/>
+/// is checked against the shipped schema when the benchmark types are built.
+/// </para>
 /// </summary>
 public static class ContentRowCodec
 {
     /// <summary>Asset references are constrained to 128 bytes by their type's codec (section 3.3).</summary>
     public const int MaxAssetReferenceBytes = 128;
+
+    /// <summary>The shipped item fields this allocation-free codec handles.</summary>
+    public const int ItemFieldCount = KhaozEngine.Catalog.ItemContentType.BaselineFieldCount + 1;
 
     public static int EncodeTag(in TagRowData row, Span<byte> destination) =>
         ContentVarint.Write(destination, (uint)row.Sort);
@@ -44,6 +53,8 @@ public static class ContentRowCodec
         written += ContentVarint.Write(destination[written..], (uint)row.DurabilityMax);
         written += ContentVarint.Write(destination[written..], (uint)row.SocketMax);
         written += ContentVarint.Write(destination[written..], (uint)row.EquipProfile);
+        if (row.Category != 0)
+            written += ContentVarint.Write(destination[written..], (uint)row.Category);
         return written;
     }
 
@@ -85,7 +96,14 @@ public static class ContentRowCodec
         row.SocketMax = (int)sockets;
         if (!ContentVarint.TryRead(source, ref offset, out uint equip)) return false;
         row.EquipProfile = (int)equip;
-        return offset == source.Length;
+        row.Category = 0;
+        if (offset == source.Length) return true;
+        if (!ContentVarint.TryRead(source, ref offset, out uint category)
+            || category == 0
+            || offset != source.Length)
+            return false;
+        row.Category = (int)category;
+        return true;
     }
 
     public static int EncodeStat(in StatRowData row, Span<byte> destination)

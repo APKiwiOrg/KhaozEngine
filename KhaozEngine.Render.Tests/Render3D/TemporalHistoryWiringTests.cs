@@ -41,18 +41,25 @@ public sealed class TemporalHistoryWiringTests
         scene.ForceTemporalForTests = true;
         rig.Frame();
         rig.Frame();
-        long index = scene.CurrentFrameView.FrameIndex;
-        Vector2 jitter = scene.CurrentFrameView.JitterPixels;
+        FrameView first = scene.CurrentFrameView;
+        long index = first.FrameIndex;
+        Vector2 jitter = first.JitterPixels;
         long previousIndex = TemporalAssert.Previous(scene).FrameIndex;
 
-        rig.Render();
+        rig.Render(HeadlessSceneRig.Width / 2, HeadlessSceneRig.Height / 2);   // an offscreen capture at another size
+        Assert.Equal((HeadlessSceneRig.Width / 2, HeadlessSceneRig.Height / 2),
+            (scene.CurrentFrameView.Width, scene.CurrentFrameView.Height));   // the capture latched its own matrices
         Assert.Equal(index, scene.CurrentFrameView.FrameIndex);
         Assert.Equal(jitter, scene.CurrentFrameView.JitterPixels);
         Assert.True(scene.TemporalHistory.IsValid);
         Assert.Equal(previousIndex, TemporalAssert.Previous(scene).FrameIndex);
 
         rig.Frame();
-        Assert.Equal(index, TemporalAssert.Previous(scene).FrameIndex);   // the frame, not its second render, is history
+        // The frame's first render is history, not its capture. The origin is unchanged, so the rebase is bit exact.
+        FrameView previous = TemporalAssert.Previous(scene);
+        Assert.Equal(index, previous.FrameIndex);
+        Assert.Equal((HeadlessSceneRig.Width, HeadlessSceneRig.Height), (previous.Width, previous.Height));
+        TemporalAssert.BitIdentical(first.ViewProjection, previous.ViewProjection, "the previous view-projection");
     }
 
     [Fact]
@@ -110,6 +117,7 @@ public sealed class TemporalHistoryWiringTests
         rig.Frame();
         Assert.False(scene.TemporalHistory.IsValid);
         Assert.Null(scene.PreviousFrameView);
+        Assert.Equal(TemporalResetReason.FirstFrame, scene.TemporalHistory.LastReset);
 
         scene.ForceTemporalForTests = true;
         rig.Frame();
@@ -123,5 +131,6 @@ public sealed class TemporalHistoryWiringTests
         rig.Frame();
         Assert.False(scene.TemporalHistory.IsValid);
         Assert.Null(scene.PreviousFrameView);
+        Assert.Equal(TemporalResetReason.FirstFrame, scene.TemporalHistory.LastReset);
     }
 }

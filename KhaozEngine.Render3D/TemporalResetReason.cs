@@ -15,9 +15,10 @@ namespace KhaozEngine.Render3D
         RenderScale,
         /// <summary>The anti-aliasing selection changed.</summary>
         AntiAliasing,
-        /// <summary>The consumer called <c>Scene3D.CameraCut</c>.</summary>
+        /// <summary>The consumer called <see cref="Scene3D.CameraCut"/>.</summary>
         CameraCutRequested,
-        /// <summary>The camera moved or turned further in one frame than the cut thresholds allow.</summary>
+        /// <summary>The camera moved or turned further in one frame than the cut thresholds allow, or the render origin
+        /// jumped off the 128 m grid or by more than one cell.</summary>
         CameraCutDetected,
         /// <summary>The scene rebuilt its colour targets and every pipeline that draws into them for a colour-format
         /// change, which today is the HDR chain being toggled.</summary>

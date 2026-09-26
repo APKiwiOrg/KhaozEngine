@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
@@ -51,7 +52,7 @@ public sealed class TemporalResetPrecedenceTests
             () => TemporalResetPrecedence.Higher((TemporalResetReason)99, TemporalResetReason.FirstFrame));
     }
 
-    /// <summary>The triggers this task can produce in one frame. The camera cuts join in Task B6.</summary>
+    /// <summary>The triggers a scene can produce in one frame.</summary>
     [Flags]
     public enum Trigger
     {
@@ -60,6 +61,8 @@ public sealed class TemporalResetPrecedenceTests
         AntiAliasingMode = 4,
         SupersampleFactor = 8,
         ViewportSize = 16,
+        ExplicitCut = 32,
+        CameraJump = 64,
     }
 
     [Theory]
@@ -69,11 +72,15 @@ public sealed class TemporalResetPrecedenceTests
     [InlineData(Trigger.AntiAliasingMode, TemporalResetReason.AntiAliasing)]
     [InlineData(Trigger.SupersampleFactor, TemporalResetReason.RenderScale)]
     [InlineData(Trigger.ViewportSize, TemporalResetReason.Resize)]
+    [InlineData(Trigger.ExplicitCut, TemporalResetReason.CameraCutRequested)]
+    [InlineData(Trigger.CameraJump, TemporalResetReason.CameraCutDetected)]
     // FirstFrame against every other reason.
     [InlineData(Trigger.TemporalTurnedOn | Trigger.HdrToggle, TemporalResetReason.FirstFrame)]
     [InlineData(Trigger.TemporalTurnedOn | Trigger.AntiAliasingMode, TemporalResetReason.FirstFrame)]
     [InlineData(Trigger.TemporalTurnedOn | Trigger.SupersampleFactor, TemporalResetReason.FirstFrame)]
     [InlineData(Trigger.TemporalTurnedOn | Trigger.ViewportSize, TemporalResetReason.FirstFrame)]
+    [InlineData(Trigger.TemporalTurnedOn | Trigger.ExplicitCut, TemporalResetReason.FirstFrame)]
+    [InlineData(Trigger.TemporalTurnedOn | Trigger.CameraJump, TemporalResetReason.FirstFrame)]
     // Each settings change over the ones below it and over the size change.
     [InlineData(Trigger.HdrToggle | Trigger.AntiAliasingMode, TemporalResetReason.DeviceReset)]
     [InlineData(Trigger.HdrToggle | Trigger.SupersampleFactor, TemporalResetReason.DeviceReset)]
@@ -81,6 +88,10 @@ public sealed class TemporalResetPrecedenceTests
     [InlineData(Trigger.AntiAliasingMode | Trigger.SupersampleFactor, TemporalResetReason.AntiAliasing)]
     [InlineData(Trigger.AntiAliasingMode | Trigger.ViewportSize, TemporalResetReason.AntiAliasing)]
     [InlineData(Trigger.SupersampleFactor | Trigger.ViewportSize, TemporalResetReason.RenderScale)]
+    // The size change over both cuts, and an explicit cut over a detected one.
+    [InlineData(Trigger.ViewportSize | Trigger.ExplicitCut, TemporalResetReason.Resize)]
+    [InlineData(Trigger.ViewportSize | Trigger.CameraJump, TemporalResetReason.Resize)]
+    [InlineData(Trigger.ExplicitCut | Trigger.CameraJump, TemporalResetReason.CameraCutRequested)]
     // Everything at once.
     [InlineData(Trigger.HdrToggle | Trigger.AntiAliasingMode | Trigger.SupersampleFactor | Trigger.ViewportSize,
         TemporalResetReason.DeviceReset)]
@@ -99,6 +110,8 @@ public sealed class TemporalResetPrecedenceTests
         if (triggers.HasFlag(Trigger.HdrToggle)) scene.Post.Hdr.Enabled = !scene.Post.Hdr.Enabled;
         if (triggers.HasFlag(Trigger.AntiAliasingMode)) scene.Post.Quality.AntiAliasing = AntiAliasing.Fxaa;
         if (triggers.HasFlag(Trigger.SupersampleFactor)) scene.Post.Supersample = 2f;
+        if (triggers.HasFlag(Trigger.ExplicitCut)) scene.CameraCut();
+        if (triggers.HasFlag(Trigger.CameraJump)) scene.Camera.Target += new Vector3(40f, 0f, 0f);
         int width = triggers.HasFlag(Trigger.ViewportSize) ? 80 : HeadlessSceneRig.Width;
         rig.Frame(width, HeadlessSceneRig.Height);
         Assert.False(scene.TemporalHistory.IsValid);

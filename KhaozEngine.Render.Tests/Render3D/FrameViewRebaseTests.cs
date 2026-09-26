@@ -8,18 +8,26 @@ namespace KhaozEngine.Tests.Render3D;
 /// <summary>
 /// <see cref="FrameView.RebasedTo"/> carries a previous frame's view across a render origin step as <c>T(d) * M</c>
 /// (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, section 2). The step is exact, rows 1 to 3 of every rebased
-/// matrix are untouched, and a still scene read across a 128 m step shows no motion beyond the float32 rounding of the
-/// translation row.
+/// matrix are untouched, and a still scene read across a 128 m step (along either axis, across a corner, or backward)
+/// shows no motion beyond the float32 rounding of the translation row.
 /// </summary>
 public sealed class FrameViewRebaseTests
 {
     const int W = 1600, H = 900;
 
+    /// <summary>The render origin step from the previous frame, which sits at the zero origin, to the current one.</summary>
+    public enum StepCase { AlongX, AlongZ, Corner, Backward }
+
     // Eye and target near a 128 m frame boundary, on the side where subtracting either candidate origin shrinks every
     // coordinate, so both frames' reductions are exact (the WorldFrame lemma) and only the rebase itself can round.
-    static (Vector3 Eye, Vector3 Target, Vector3 Step) Case(bool alongZ) => alongZ
-        ? (new Vector3(12.75f, 9.5f, 70.25f), new Vector3(3.25f, 0.5f, 66.5f), new Vector3(0f, 0f, 128f))
-        : (new Vector3(70.25f, 9.5f, 12.75f), new Vector3(66.5f, 0.5f, 3.25f), new Vector3(128f, 0f, 0f));
+    static (Vector3 Eye, Vector3 Target, Vector3 Step) Case(StepCase step) => step switch
+    {
+        StepCase.AlongX => (new Vector3(70.25f, 9.5f, 12.75f), new Vector3(66.5f, 0.5f, 3.25f), new Vector3(128f, 0f, 0f)),
+        StepCase.AlongZ => (new Vector3(12.75f, 9.5f, 70.25f), new Vector3(3.25f, 0.5f, 66.5f), new Vector3(0f, 0f, 128f)),
+        StepCase.Corner => (new Vector3(70.25f, 9.5f, 69.75f), new Vector3(66.5f, 0.5f, 64.25f), new Vector3(128f, 0f, 128f)),
+        StepCase.Backward => (new Vector3(-70.25f, 9.5f, 12.75f), new Vector3(-66.5f, 0.5f, 3.25f), new Vector3(-128f, 0f, 0f)),
+        _ => throw new ArgumentOutOfRangeException(nameof(step), step, null),
+    };
 
     static FrameView Latch(Vector3 eye, Vector3 target, Vector3 origin, bool perspective, long frameIndex)
     {
@@ -33,13 +41,17 @@ public sealed class FrameViewRebaseTests
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public void AStillSceneAcrossA128MetreStepShowsNoMotion(bool perspective, bool alongZ)
+    [InlineData(false, StepCase.AlongX)]
+    [InlineData(false, StepCase.AlongZ)]
+    [InlineData(false, StepCase.Corner)]
+    [InlineData(false, StepCase.Backward)]
+    [InlineData(true, StepCase.AlongX)]
+    [InlineData(true, StepCase.AlongZ)]
+    [InlineData(true, StepCase.Corner)]
+    [InlineData(true, StepCase.Backward)]
+    public void AStillSceneAcrossA128MetreStepShowsNoMotion(bool perspective, StepCase stepCase)
     {
-        (Vector3 eye, Vector3 target, Vector3 step) = Case(alongZ);
+        (Vector3 eye, Vector3 target, Vector3 step) = Case(stepCase);
         FrameView previous = Latch(eye, target, Vector3.Zero, perspective, 1);
         FrameView current = Latch(eye, target, step, perspective, 2);
         FrameView rebased = previous.RebasedTo(current.RenderOrigin);
@@ -63,7 +75,7 @@ public sealed class FrameViewRebaseTests
     [Fact]
     public void TheRebaseMovesOnlyTheTranslationRow()
     {
-        (Vector3 eye, Vector3 target, Vector3 step) = Case(alongZ: false);
+        (Vector3 eye, Vector3 target, Vector3 step) = Case(StepCase.AlongX);
         FrameView previous = Latch(eye, target, Vector3.Zero, perspective: true, 1);
         FrameView rebased = previous.RebasedTo(step);
         foreach ((Matrix4x4 before, Matrix4x4 after) in new[]
@@ -90,7 +102,7 @@ public sealed class FrameViewRebaseTests
     [Fact]
     public void AZeroStepReturnsTheSnapshotBitForBit()
     {
-        (Vector3 eye, Vector3 target, Vector3 step) = Case(alongZ: false);
+        (Vector3 eye, Vector3 target, Vector3 step) = Case(StepCase.AlongX);
         FrameView view = Latch(eye, target, step, perspective: true, 3);
         FrameView same = view.RebasedTo(step);
         TemporalAssert.BitIdentical(view.View, same.View, "View");

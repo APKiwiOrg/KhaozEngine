@@ -20,6 +20,19 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   ([#471](https://github.com/APKiwiOrg/KhaozEngine/issues/471)).
 - The Stats facts now run from `KhaozEngine.Foundation.Tests`, so a Stats change no longer pulls the broad
   Game test project through selective CI ([#890](https://github.com/APKiwiOrg/KhaozEngine/issues/890)).
+- `pack-local-feed.sh` and `check-local-feed.sh` now print help when invoked through relative paths from a
+  subdirectory ([#1091](https://github.com/APKiwiOrg/KhaozEngine/issues/1091)).
+- SQL Server catalog schema validation calls only missing column and object errors schema mismatches.
+  Timeouts, deadlocks, cancellation and other provider failures retain their own error
+  ([#1078](https://github.com/APKiwiOrg/KhaozEngine/issues/1078)).
+- A MapEditor reload keeps the existing prop visibility filter and category resolver, so hidden props stay
+  hidden in drawing and picking ([#1094](https://github.com/APKiwiOrg/KhaozEngine/issues/1094)).
+- Catalog upgrade recovery tests now distinguish an immediate recovered draft from a real stand-off by store
+  reads, without a wall-clock threshold that flakes under load
+  ([#1089](https://github.com/APKiwiOrg/KhaozEngine/issues/1089)).
+- A `ke:banned` connect refusal and a post-join ban now both end in terminal `DisconnectReason.Banned`.
+  Admin bans send the typed notice to a live session before disconnecting it
+  ([#1103](https://github.com/APKiwiOrg/KhaozEngine/issues/1103)).
 
 ## 20.6.2
 

@@ -40,8 +40,8 @@ WRITES rather than on the container, because the suffix is three characters at p
 Without it the refusal arrives from the journal at the far end of a commit, with the batch already closed and
 its pages already dirty.
 
-`ContainerCommitBuilder.Open` asks `Format` for each container it is opened over, at page 0, so a name that
-cannot be a section name never reaches a commit.
+`ContainerCommitBuilder.Open` asks `Format` for each container it is opened over, at the container's highest
+page, so a name that cannot be a section name never reaches a commit.
 
 **`TryParse` is the ONE place a name is taken apart** and it is CANONICAL rather than tolerant: it accepts
 exactly what `Format` writes, so `bank/p007` is refused rather than read as page 7. A tolerant parse would let

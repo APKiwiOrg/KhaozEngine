@@ -17,6 +17,21 @@ and the mobile bridge. Public `Clipboard` behavior is unchanged. The original so
 the US key-map fallback. Filters and length limits admit non-BMP scalars whole, and Backspace removes both
 UTF-16 units together. IME preedit and candidate UI remain deferred ([#61](https://github.com/APKiwiOrg/KhaozEngine/issues/61)).
 
+- SQL Server journal commands now report `Cancelled` when the caller cancels them, including when SqlClient
+  returns a provider exception. The mapping covers writes, reads and schema validation while retaining
+  rollback certainty ([#1152](https://github.com/APKiwiOrg/KhaozEngine/issues/1152)).
+- `ContainerCommitBuilder.Open` checks names against the container's highest possible page, so a name that
+  cannot represent every projection section fails before a batch opens
+  ([#949](https://github.com/APKiwiOrg/KhaozEngine/issues/949)).
+- Whole-page instance validation reads a quarantined entry's stored reason and content version from its
+  wrapper. Duplicate instance ID checks now include those entries as well as live ones
+  ([#936](https://github.com/APKiwiOrg/KhaozEngine/issues/936)).
+- `check-local-feed.sh` compares each package's nuspec commit with its release tag and marks mismatches
+  `DRIFTED`, regardless of file timestamps ([#1136](https://github.com/APKiwiOrg/KhaozEngine/issues/1136)).
+- The shared local feed now accepts only clean commits on `origin/main`. Branch builds use a separate
+  `KHAOZENGINE_FEED`, and the feed check marks staged packages from unmerged commits `UNSAFE`
+  ([#1135](https://github.com/APKiwiOrg/KhaozEngine/issues/1135)).
+
 ## 20.6.0
 
 **A journal can be reset, MapEditor can generate undoable dungeons, and an additive pose can be layered onto

@@ -1,9 +1,9 @@
 #!/bin/sh
-# check-local-feed.sh - report which versions sitting in local-feed are RELEASED-AND-RE-PACKED, so a
-# consumer about to vendor from the feed can see the hazard before it ships. POSIX sh.
+# check-local-feed.sh - report whether tagged versions in local-feed were built from their tag commit,
+# so a consumer about to vendor from the feed can see drift before it ships. POSIX sh.
 #
 #   scripts/check-local-feed.sh            # report, always exits 0 (informational, like ledger.sh)
-#   scripts/check-local-feed.sh --strict   # exit 1 when any version is RE-PACKED
+#   scripts/check-local-feed.sh --strict   # exit 1 when any version is UNSAFE or DRIFTED
 #   scripts/check-local-feed.sh --feed DIR # read DIR instead of the default feed
 #
 # The default feed is the one scripts/pack-local-feed.sh writes: KHAOZENGINE_FEED when set, otherwise the
@@ -11,16 +11,16 @@
 # A relative DIR or KHAOZENGINE_FEED resolves against this tree's toplevel, not the directory you ran from.
 #
 # Statuses, per version present in the feed:
-#   STAGED     no v<version> tag yet. The ordinary in-flight state, nothing to see.
-#   RELEASED   tagged, and the feed's newest package for it predates the tag. The feed and the tag agree.
-#   RE-PACKED  tagged, and the feed's newest package for it was written AFTER the tag. The feed holds a
-#              build the tag does not describe (#492). GitHub Packages still has the published copy, so
-#              the recovery is to re-vendor from there or from a checkout of the tag, never to trust
-#              these bytes as "what vX.Y.Z is".
+#   STAGED     no v<version> tag yet, and every package commit is on current origin/main.
+#   UNSAFE     no tag yet, and at least one package commit is missing or not on current origin/main.
+#   RELEASED   tagged, and every package's nuspec commit matches the tag commit.
+#   DRIFTED    tagged, and at least one package has a missing or different nuspec commit. The feed holds
+#              a build the tag does not describe (#492, #1136). GitHub Packages still has the published
+#              copy, so recover from there or from a checkout of the tag.
 #
-# The pack time is the nupkg's mtime and the release time is the annotated tag's own taggerdate, so this
-# reads the two events the hazard is actually made of rather than inferring anything from contents.
-# scripts/pack-local-feed.sh is the prevention. This is the detection, for a feed that already drifted.
+# The package stamp is the repository commit written by the .NET SDK into the nuspec. The release stamp
+# is the annotated tag peeled to its commit. Package modification times remain informational only.
+# scripts/pack-local-feed.sh is the prevention. This is detection for a feed that already drifted.
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 . scripts/pack-standard.sh
@@ -53,6 +53,14 @@ stamp() {
   date -r "$1" '+%Y-%m-%d %H:%M' 2>/dev/null || date -d "@$1" '+%Y-%m-%d %H:%M' 2>/dev/null || printf '%s' "$1"
 }
 
+# package_commit <nupkg> -> the repository commit from the package's nuspec, or empty when absent.
+package_commit() {
+  _pc_file=$1
+  unzip -p "$_pc_file" '*.nuspec' 2>/dev/null \
+    | sed -n '/<repository[[:space:]][^>]*>/s/.*commit="\([^"]*\)".*/\1/p' \
+    | head -1
+}
+
 # Every X.Y.Z carried by a KhaozEngine package file in the feed, deduplicated, newest first. The
 # greedy prefix is what makes an id with digits in it (KhaozEngine.Gpu.D3D11) split at the right dot.
 versions=$(ls -1 "$feed" 2>/dev/null \
@@ -66,37 +74,96 @@ if [ -z "${versions:-}" ]; then
   exit 0
 fi
 
-staged=0; released=0; repacked=0
+originmain=$(pack_origin_main_commit)
+staged=0; unsafe=0; released=0; drifted=0
 for v in $versions; do
   # Newest pack time across every file of this version, so a partial re-pack of a single package still
   # shows up rather than being averaged away by its untouched siblings.
   newest=0
-  newest_file=''
   for f in "$feed"/KhaozEngine.*."$v".nupkg "$feed"/KhaozEngine.*."$v".snupkg; do
     [ -f "$f" ] || continue
     m=$(pack_file_mtime "$f")
     [ -n "${m:-}" ] || continue
-    if [ "$m" -gt "$newest" ]; then newest=$m; newest_file=$f; fi
+    if [ "$m" -gt "$newest" ]; then newest=$m; fi
   done
-  tagtime=$(pack_tag_time "v$v")
-  if [ -z "${tagtime:-}" ]; then
-    echo "  STAGED     $v  packed $(stamp "$newest")  (no v$v tag)"
-    staged=$((staged + 1))
-  elif [ "$newest" -gt "$tagtime" ]; then
-    echo "  RE-PACKED  $v  packed $(stamp "$newest")  AFTER  v$v tagged $(stamp "$tagtime")"
-    echo "             newest: $(basename "$newest_file")"
-    repacked=$((repacked + 1))
+  tagcommit=$(git rev-parse -q --verify "refs/tags/v$v^{commit}" 2>/dev/null || true)
+  if [ -z "${tagcommit:-}" ]; then
+    staged_unsafe=0
+    staged_commits=''
+    unsafe_lines=''
+    for f in "$feed"/KhaozEngine.*."$v".nupkg "$feed"/KhaozEngine.*."$v".snupkg; do
+      [ -f "$f" ] || continue
+      packagecommit=$(package_commit "$f")
+      if [ -z "${packagecommit:-}" ]; then
+        staged_unsafe=1
+        detail="$(basename "$f"): no repository commit in nuspec"
+        unsafe_lines="${unsafe_lines}${unsafe_lines:+
+}$detail"
+        continue
+      fi
+      case "
+$staged_commits
+" in
+        *"
+$packagecommit
+"*) ;;
+        *) staged_commits="${staged_commits}${staged_commits:+
+}$packagecommit" ;;
+      esac
+      if [ -z "${originmain:-}" ] || ! pack_commit_on_origin_main "$packagecommit"; then
+        staged_unsafe=1
+        detail="$(basename "$f"): commit $packagecommit not on origin/main"
+        unsafe_lines="${unsafe_lines}${unsafe_lines:+
+}$detail"
+      fi
+    done
+    if [ "$staged_unsafe" = 1 ]; then
+      echo "  UNSAFE     $v  packed $(stamp "$newest")  (no v$v tag)"
+      printf '%s\n' "$unsafe_lines" | sed 's/^/             /'
+      unsafe=$((unsafe + 1))
+    else
+      firstcommit=$(printf '%s\n' "$staged_commits" | head -1)
+      echo "  STAGED     $v  commit $firstcommit on origin/main  packed $(stamp "$newest")"
+      staged=$((staged + 1))
+    fi
   else
-    echo "  RELEASED   $v  packed $(stamp "$newest")  before v$v tagged $(stamp "$tagtime")"
-    released=$((released + 1))
+    version_drifted=0
+    drift_lines=''
+    for f in "$feed"/KhaozEngine.*."$v".nupkg "$feed"/KhaozEngine.*."$v".snupkg; do
+      [ -f "$f" ] || continue
+      packagecommit=$(package_commit "$f")
+      if [ "${packagecommit:-}" != "$tagcommit" ]; then
+        version_drifted=1
+        if [ -n "${packagecommit:-}" ]; then
+          detail="$(basename "$f"): commit $packagecommit"
+        else
+          detail="$(basename "$f"): no repository commit in nuspec"
+        fi
+        drift_lines="${drift_lines}${drift_lines:+
+}$detail"
+      fi
+    done
+    if [ "$version_drifted" = 1 ]; then
+      echo "  DRIFTED    $v  tag commit $tagcommit  packed $(stamp "$newest")"
+      printf '%s\n' "$drift_lines" | sed 's/^/             /'
+      drifted=$((drifted + 1))
+    else
+      echo "  RELEASED   $v  commit $tagcommit  packed $(stamp "$newest")"
+      released=$((released + 1))
+    fi
   fi
 done
 
-echo "check-local-feed: $staged staged, $released released, $repacked re-packed (feed: $feed)."
-if [ "$repacked" -ne 0 ]; then
-  echo "check-local-feed: a RE-PACKED version is a build its tag does not describe (#492). Do not vendor" >&2
-  echo "                  it into a consumer: re-pack from a checkout of the tag, or restore the" >&2
-  echo "                  published copy from GitHub Packages. Prevention is scripts/pack-local-feed.sh." >&2
-  if [ "$strict" = 1 ]; then exit 1; fi
+echo "check-local-feed: $staged staged, $unsafe unsafe, $released released, $drifted drifted (feed: $feed)."
+if [ "$unsafe" -ne 0 ]; then
+  echo "check-local-feed: an UNSAFE staged version contains a package commit not on origin/main (#1135)." >&2
+  echo "                  Do not vendor it from the shared feed. Re-pack from origin/main, or use an" >&2
+  echo "                  explicit private KHAOZENGINE_FEED for intentional branch builds." >&2
 fi
+if [ "$drifted" -ne 0 ]; then
+  echo "check-local-feed: a DRIFTED version contains a build its tag does not describe (#492, #1136)." >&2
+  echo "                  Do not vendor it into a consumer. Re-pack from a checkout of the tag or" >&2
+  echo "                  restore the published copy from GitHub Packages." >&2
+fi
+if [ "$strict" = 1 ] && { [ "$unsafe" -ne 0 ] || [ "$drifted" -ne 0 ]; }; then exit 1; fi
 exit 0

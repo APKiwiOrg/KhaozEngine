@@ -90,8 +90,9 @@ minimum is:
 1. Re-read current `main`, the version and tags before selecting a version.
 2. Put the `CHANGELOG.md` entry in the same commit as a version bump.
 3. Update every declaration guarded by `scripts/check-doc-versions.sh`.
-4. Build and test Release, then run `scripts/pack-local-feed.sh`.
-5. Reconcile through the owning orchestrator and push the validated result.
+4. Build and test Release. Use an explicit private `KHAOZENGINE_FEED` for any pre-merge pack proof.
+5. Reconcile through the owning orchestrator, push the validated result, then run
+   `scripts/pack-local-feed.sh` from `main` after `origin/main` contains that commit.
 
 Never run a bare pack into `local-feed`. Never hand-create a release tag. `scripts/tag-release.sh`
 creates the canonical annotated tag only when a release is explicitly due. The sole automatic tag

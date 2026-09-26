@@ -135,8 +135,8 @@ namespace KhaozEngine.Tests.Gpu
                 ["TargetOutline.composite"] = L(T("FullCoverage"), T("VisibleCoverage"), T("VisibleDepth"),
                     T("SceneDepth"), S("PointSamp"), S("LinearSamp"), U("Composite", F)),
 
-                // Render3D/Rendering/PixelPostProcess.cs:143 to :159, the nine fullscreen passes. Their T, S and
-                // U helpers at :178-180 are all fragment-stage and none is dynamic.
+                // Render3D/Rendering/PixelPostProcess.cs:109 to :125, the nine fullscreen passes. Their T, S and
+                // U helpers at :144-146 are all fragment-stage and none is dynamic.
                 ["Pixel.pal"] = L(T("Src"), S("Samp"), U("Pal", F)),
                 ["Pixel.edge"] = L(T("ColorTex"), T("NormalTex"), T("DepthTex"), S("Samp"), U("Edge", F)),
                 ["Pixel.blit"] = L(T("Src"), S("Samp"), U("Final", F)),

@@ -8,7 +8,7 @@ namespace KhaozEngine.Render3D
     /// <summary>Turn-key procedural limb: a single stateful component that owns a tube <see cref="SkinnedMeshHandle"/>
     /// plus its reusable motion buffers and drives the whole tentacle / cable / tail pipeline
     /// (<see cref="SkinnedMeshBuilder.BuildTube"/> -&gt; <see cref="ProceduralChainSolver"/> -&gt;
-    /// <see cref="PolylineFrames"/> -&gt; <see cref="Scene3D.DrawSkinned(KhaozEngine.Render3D.SkinnedMeshHandle, System.ReadOnlySpan{System.Numerics.Matrix4x4}, System.Numerics.Matrix4x4, KhaozEngine.Primitives.Color)"/>) so a game stands a limb up in two calls:
+    /// <see cref="PolylineFrames"/> -&gt; <see cref="Scene3D.DrawSkinned(in SkinnedInstanceDraw, System.ReadOnlySpan{System.Numerics.Matrix4x4})"/>) so a game stands a limb up in two calls:
     /// <c>new SkinnedLimb(scene, ...)</c> then per-frame <c>Update(...)</c> + <c>Draw(...)</c>.
     ///
     /// <para>The motion math (solve -&gt; frames -&gt; bones) is pure and GPU-free: it runs against caller-owned
@@ -107,13 +107,14 @@ namespace KhaozEngine.Render3D
         public SkinnedMeshHandle Handle => _handle;
 
         /// <summary>This frame's bone world transforms (model space), one per bone - exactly what
-        /// <see cref="Draw(Scene3D,Matrix4x4,Color)"/> feeds to <see cref="Scene3D.DrawSkinned(KhaozEngine.Render3D.SkinnedMeshHandle, System.ReadOnlySpan{System.Numerics.Matrix4x4}, System.Numerics.Matrix4x4, KhaozEngine.Primitives.Color)"/>. Valid after the
+        /// <see cref="Draw(Scene3D,Matrix4x4,Color)"/> feeds to <see cref="Scene3D.DrawSkinned(in SkinnedInstanceDraw, System.ReadOnlySpan{System.Numerics.Matrix4x4})"/>. Valid after the
         /// ctor and refreshed by every <c>Update</c>. The backing buffer is reused, so copy if you need to retain it
         /// past the next <c>Update</c>.</summary>
         public ReadOnlySpan<Matrix4x4> Bones => _bones;
 
         /// <summary>The motion key both <c>Draw</c> overloads carry, fixed for the limb's life, so temporal rendering
-        /// sees the limb's own writhe rather than the camera's motion.</summary>
+        /// sees the limb's own writhe rather than the camera's motion. Draw each limb once per frame: a second draw of
+        /// the same limb in one frame collides with the first, so give each on-screen tentacle its own limb.</summary>
         public MotionKey Motion => _motion;
 
         /// <summary>This frame's solved spine (one point per bone), pre-frame-orientation. Same reuse caveat as

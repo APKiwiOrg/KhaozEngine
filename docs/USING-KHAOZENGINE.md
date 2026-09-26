@@ -2285,11 +2285,13 @@ reference each other just to agree on how versions order.
 The Gui text sinks accept a `LocalizedText` (from `KhaozEngine.App`), not a raw `string`. The only implicit
 conversion into `LocalizedText` is from `StringId`, so **a bare string literal at a sink is a compile error** -
 you either localize it (a `StringId`) or opt out explicitly (`LocalizedText.Raw`). The `KhaozEngine.Localization.Analyzers`
-analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adopting it on a bump:
+analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest.
 
 Rich-text adapters take `MarkupText`, which is built only from a `StringId` and has no raw root factory.
 Non-localizable values enter through `MarkupText.Of` format arguments, where they are escaped before insertion
 into the catalog's trusted semantic markup.
+
+To adopt the analyzer on a bump:
 
 1. **Author a neutral `.resx` and generate its `StringId` keys.** Keep one satellite `.resx` per culture, with
    the base file as the default language. Add only that neutral file as an opted AdditionalFile:

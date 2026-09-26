@@ -128,14 +128,21 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void The_history_fetch_is_clamped_to_its_taps_before_the_finite_check()
+        public void The_history_fetch_is_clamped_to_its_bilinear_texel_footprint_before_the_finite_check()
         {
             // The outer Catmull-Rom weights go negative, so a bright history texel beside a dark one would ring below
-            // zero, and the clamp to zero after it would leave a black halo inside the variance box.
+            // zero, and the clamp to zero after it would leave a black halo inside the variance box. The bound is the
+            // four history texels around the position, not the five taps, whose bilinear blends sit below a thin line's
+            // peak and flattened it on every fractional resample.
             string core = ShaderSources.TemporalResolveCoreGlsl;
-            Assert.Contains("vec4 tapMin = min(min(min(top, left), min(middle, right)), bottom);", core, StringComparison.Ordinal);
-            Assert.Contains("vec4 tapMax = max(max(max(top, left), max(middle, right)), bottom);", core, StringComparison.Ordinal);
-            Assert.Contains("return clamp(sum / weight, tapMin, tapMax);", core, StringComparison.Ordinal);
+            Assert.Contains("ivec2 base = ivec2(floor(samplePos - 0.5));", core, StringComparison.Ordinal);
+            foreach (string offset in new[] { "base", "base + ivec2(1, 0)", "base + ivec2(0, 1)", "base + ivec2(1, 1)" })
+                Assert.Contains($"texelFetch(sampler2D(HistoryColor, LinearClamp), clamp({offset}, ivec2(0), lastTexel), 0);",
+                    core, StringComparison.Ordinal);
+            Assert.Contains("vec4 texelMin = min(min(t00, t10), min(t01, t11));", core, StringComparison.Ordinal);
+            Assert.Contains("vec4 texelMax = max(max(t00, t10), max(t01, t11));", core, StringComparison.Ordinal);
+            Assert.Contains("return clamp(sum / weight, texelMin, texelMax);", core, StringComparison.Ordinal);
+            Assert.DoesNotContain("tapMax", core, StringComparison.Ordinal);
             int fetch = core.IndexOf("vec4 fetched = sampleHistoryCatmullRom(previousUv, displaySize);", StringComparison.Ordinal);
             int finite = core.IndexOf("bool finite = ", StringComparison.Ordinal);
             Assert.True(fetch >= 0 && finite > fetch, "the clamped fetch must come before the finite check");

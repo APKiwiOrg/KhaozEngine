@@ -107,9 +107,12 @@ bool isRidge(float centreLuma, float a, float b, float threshold) {
 
 // Step 2: Catmull-Rom from five bilinear taps (the corner taps dropped), weights renormalised over the five. At a
 // texel centre it returns that texel exactly, so a still history is never softened. The outer weights go negative, so
-// the result is clamped to the range of the taps. Unclamped, a history texel about 14 times brighter than its
-// neighbour drives the fetch below zero, and the clamp to zero after it leaves a black halo that the variance box
-// accepts.
+// the result is clamped to the range of the four history texels in the position's bilinear footprint, colour and
+// alpha. Unclamped, a history texel about 14 times brighter than its neighbour drives the fetch below zero, and the
+// clamp to zero after it leaves a black halo that the variance box accepts. The range is the texels' own, not the
+// taps': each tap is a bilinear blend, so the taps of a thin line all sit below its peak, and clamping to them shaved
+// the peak on every fractional resample. The footprint holds the peak texel whenever the position is beside it, and
+// still bounds undershoot and overshoot to values the history holds. Four texel fetches.
 vec4 sampleHistoryCatmullRom(vec2 uv, vec2 size) {
     vec2 samplePos = uv * size;
     vec2 texPos1 = floor(samplePos - 0.5) + 0.5;
@@ -130,9 +133,15 @@ vec4 sampleHistoryCatmullRom(vec2 uv, vec2 size) {
     vec4 sum = top * (w12.x * w0.y) + left * (w0.x * w12.y) + middle * (w12.x * w12.y) + right * (w3.x * w12.y)
         + bottom * (w12.x * w3.y);
     float weight = w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y;
-    vec4 tapMin = min(min(min(top, left), min(middle, right)), bottom);
-    vec4 tapMax = max(max(max(top, left), max(middle, right)), bottom);
-    return clamp(sum / weight, tapMin, tapMax);
+    ivec2 base = ivec2(floor(samplePos - 0.5));
+    ivec2 lastTexel = ivec2(size) - ivec2(1);
+    vec4 t00 = texelFetch(sampler2D(HistoryColor, LinearClamp), clamp(base, ivec2(0), lastTexel), 0);
+    vec4 t10 = texelFetch(sampler2D(HistoryColor, LinearClamp), clamp(base + ivec2(1, 0), ivec2(0), lastTexel), 0);
+    vec4 t01 = texelFetch(sampler2D(HistoryColor, LinearClamp), clamp(base + ivec2(0, 1), ivec2(0), lastTexel), 0);
+    vec4 t11 = texelFetch(sampler2D(HistoryColor, LinearClamp), clamp(base + ivec2(1, 1), ivec2(0), lastTexel), 0);
+    vec4 texelMin = min(min(t00, t10), min(t01, t11));
+    vec4 texelMax = max(max(t00, t10), max(t01, t11));
+    return clamp(sum / weight, texelMin, texelMax);
 }
 
 ivec2 temporalDisplaySize() { return ivec2(Sizes.zw); }

@@ -239,8 +239,8 @@ namespace KhaozEngine.Tests.Gpu
             // left, so each pixel reads history a third of a pixel right of its centre. Catmull-Rom then weights the
             // texel left of the pixel by about -0.07, so the pixel right of the glint would fetch about -3.6. Scene
             // colour is 0.1 around the glint, which sits in the current frame too, so the variance box of that pixel
-            // reaches below zero and would accept the black the ring is floored to. The fetch is clamped to its taps,
-            // which keeps it at 0.1.
+            // reaches below zero and would accept the black the ring is floored to. The fetch is clamped to the history
+            // texels of its bilinear footprint, both 0.1 there, which keeps it at 0.1.
             // The motion is camera-consistent and the stored depth matches, so the history passes the depth test.
             const int G = 4;
             float bg = Q(0.1f), glint = Q(50f);

@@ -102,10 +102,10 @@ namespace KhaozEngine.Tests.Gpu
 
         [GpuTheory]
         [InlineData(TemporalUpscale.UltraPerformance)]
-        [InlineData(TemporalUpscale.Quality, Skip = "The history fetch clamps to the range of its bilinear taps (step 2), "
-            + "which flattens a thin peak on every fractional resample. At Quality the keyed line keeps at least 32, 27 "
-            + "and 49 percent at 0.3, 0.6 and 0.9 display px per frame, and the same with the lock off. Clamped only "
-            + "below, it keeps 55, 51 and 63 percent. Skipped until the fetch is decided.")]
+        [InlineData(TemporalUpscale.Quality, Skip = "Short of the floor at Quality, and not through the lock. With the "
+            + "history fetch clamped to the four texels of its bilinear footprint the keyed line keeps at least 48, 45 and "
+            + "61 percent at 0.3, 0.6 and 0.9 display px per frame, means 61, 54 and 74, and 48, 41 and 62 with the lock "
+            + "off. Clamped to the five taps it kept 32, 27 and 49. Skipped until the history fetch is revisited.")]
         public void A_keyed_thin_feature_keeps_half_its_still_contrast_while_it_moves(TemporalUpscale preset)
         {
             // The other side of risk 1 for the same keyed line: the history follows it, so from the eighth frame of

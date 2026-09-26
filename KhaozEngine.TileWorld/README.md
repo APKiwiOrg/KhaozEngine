@@ -27,6 +27,8 @@ clockwise viewed from above with north up.
 `TileRect` is a rect of world tiles with EXCLUSIVE far edges (`X1`, `Z1`, plus `FromCorners`, `Expand`,
 `Intersect`, `Union`, `Intersects`, `Contains`), and `TileDirection` with `TileDirections.All/Delta/IsDiagonal`
 gives the eight step directions in the fixed W, E, S, N, SW, SE, NW, NE order the pathfinder needs.
+Tile addresses use signed 32-bit coordinates. Rect operations that read or produce an exclusive far edge reject
+geometry whose edge falls outside that same domain, so a rect cannot include `int.MaxValue` on either axis.
 
 ## The document
 
@@ -229,6 +231,8 @@ so both heads replay identical paths. `maxRadius` must be 1..`MaxSearchRadius` (
 arrays being `(2r + 1)^2` entries each. `TilePath` carries `Tiles` (the steps AFTER the start), `Reached` and
 `End`. An unreachable goal yields the walk to the nearest reachable tile, nearest by SQUARED EUCLIDEAN distance
 to the goal, then by BFS distance, then by scan order, and a start on a `Blocked` tile behaves like any other.
+The window's near and exclusive far edges must fit signed 32-bit tile coordinates. A start and radius that would
+cross that boundary throw instead of wrapping the search to the opposite extreme.
 **Branch on `Reached`, never on `Tiles.Count`**: a partial walk and a reached one both carry steps.
 
 `TilePathfinder.FindPathToAny(map, plane, start, goals, agentSize, maxRadius, scratch, out int goalIndex)` walks

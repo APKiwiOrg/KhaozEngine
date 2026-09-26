@@ -55,35 +55,49 @@ public readonly record struct TileCoord(int X, int Z, int Plane)
 }
 
 /// <summary>An axis-aligned rect of world tiles, far edges EXCLUSIVE (<see cref="X1"/> is one past the last
-/// column). Empty when either dimension is not positive.</summary>
+/// column). Empty when either dimension is not positive. An operation that needs a far edge refuses a rect whose
+/// origin plus size falls outside the signed 32-bit coordinate domain.</summary>
 public readonly record struct TileRect(int X, int Z, int Width, int Height)
 {
     /// <summary>One past the last column, so the rect covers x in [X, X1).</summary>
-    public int X1 => X + Width;
+    /// <exception cref="InvalidOperationException">The exclusive edge is outside the signed 32-bit coordinate
+    /// domain.</exception>
+    public int X1 => Edge(X, Width, "x");
     /// <summary>One past the last row, so the rect covers z in [Z, Z1).</summary>
-    public int Z1 => Z + Height;
+    /// <exception cref="InvalidOperationException">The exclusive edge is outside the signed 32-bit coordinate
+    /// domain.</exception>
+    public int Z1 => Edge(Z, Height, "z");
     /// <summary>True when the rect covers no tiles at all.</summary>
     public bool IsEmpty => Width <= 0 || Height <= 0;
     /// <summary>True when world tile (x, z) falls inside the rect.</summary>
-    public bool Contains(int x, int z) => x >= X && x < X1 && z >= Z && z < Z1;
+    public bool Contains(int x, int z)
+    {
+        int x1 = X1, z1 = Z1;
+        return x >= X && x < x1 && z >= Z && z < z1;
+    }
 
     /// <summary>The rect spanning two INCLUSIVE corners, given in any order.</summary>
     public static TileRect FromCorners(int x0, int z0, int x1, int z1)
     {
         int minX = Math.Min(x0, x1), maxX = Math.Max(x0, x1);
         int minZ = Math.Min(z0, z1), maxZ = Math.Max(z0, z1);
-        return new TileRect(minX, minZ, maxX - minX + 1, maxZ - minZ + 1);
+        return Create(minX, minZ, (long)maxX - minX + 1, (long)maxZ - minZ + 1,
+            nameof(x1), x1);
     }
 
     /// <summary>The rect grown by n tiles on every side (shrunk when n is negative).</summary>
-    public TileRect Expand(int n) => new(X - n, Z - n, Width + 2 * n, Height + 2 * n);
+    /// <exception cref="ArgumentOutOfRangeException">The expanded rect cannot be represented by signed 32-bit
+    /// origins, sizes and exclusive edges.</exception>
+    public TileRect Expand(int n) => Create((long)X - n, (long)Z - n, (long)Width + 2L * n,
+        (long)Height + 2L * n, nameof(n), n);
 
     /// <summary>The overlap of the two rects, empty when they do not overlap.</summary>
     public TileRect Intersect(TileRect o)
     {
         int x0 = Math.Max(X, o.X), z0 = Math.Max(Z, o.Z);
         int x1 = Math.Min(X1, o.X1), z1 = Math.Min(Z1, o.Z1);
-        return new TileRect(x0, z0, x1 - x0, z1 - z0);
+        if (x1 <= x0 || z1 <= z0) return new TileRect(x0, z0, 0, 0);
+        return Create(x0, z0, (long)x1 - x0, (long)z1 - z0, nameof(o), o);
     }
 
     /// <summary>The smallest rect covering both, ignoring an empty operand.</summary>
@@ -93,11 +107,31 @@ public readonly record struct TileRect(int X, int Z, int Width, int Height)
         if (o.IsEmpty) return this;
         int x0 = Math.Min(X, o.X), z0 = Math.Min(Z, o.Z);
         int x1 = Math.Max(X1, o.X1), z1 = Math.Max(Z1, o.Z1);
-        return new TileRect(x0, z0, x1 - x0, z1 - z0);
+        return Create(x0, z0, (long)x1 - x0, (long)z1 - z0, nameof(o), o);
     }
 
     /// <summary>True when the two rects share at least one tile.</summary>
     public bool Intersects(TileRect o) => !Intersect(o).IsEmpty;
+
+    static int Edge(int origin, int size, string axis)
+    {
+        long edge = (long)origin + size;
+        if (edge < int.MinValue || edge > int.MaxValue)
+            throw new InvalidOperationException(
+                $"TileRect {axis} far edge {edge} is outside {int.MinValue}..{int.MaxValue}");
+        return (int)edge;
+    }
+
+    static TileRect Create(long x, long z, long width, long height, string parameterName, object actualValue)
+    {
+        long x1 = x + width, z1 = z + height;
+        if (x < int.MinValue || x > int.MaxValue || z < int.MinValue || z > int.MaxValue
+            || width < int.MinValue || width > int.MaxValue || height < int.MinValue || height > int.MaxValue
+            || x1 < int.MinValue || x1 > int.MaxValue || z1 < int.MinValue || z1 > int.MaxValue)
+            throw new ArgumentOutOfRangeException(parameterName, actualValue,
+                "TileRect origins, sizes and exclusive far edges must fit signed 32-bit coordinates");
+        return new TileRect((int)x, (int)z, (int)width, (int)height);
+    }
 }
 
 /// <summary>The eight step directions in the OSRS neighbour-expansion order the pathfinder relies on.</summary>

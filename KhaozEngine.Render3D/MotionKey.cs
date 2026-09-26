@@ -15,7 +15,7 @@ namespace KhaozEngine.Render3D;
 /// </para>
 /// <para>
 /// Two draws that share a key in one frame collide. The last one wins and
-/// <c>Scene3D.LastTemporalDiagnostics</c> counts it, so a collision reads as wrong motion on one of the two and
+/// <see cref="Scene3D.LastTemporalDiagnostics"/> counts it, so a collision reads as wrong motion on one of the two and
 /// never as a failure.
 /// </para>
 /// </summary>
@@ -43,10 +43,12 @@ public readonly struct MotionKey : IEquatable<MotionKey>
     /// A key for part <paramref name="part"/> of the body keyed by <paramref name="key"/>, such as a sword in a hand or
     /// one rigid segment of an avatar. The result is stable across runs, processes and platforms (a fixed 64-bit
     /// mixer, never <see cref="HashCode"/>, whose seed changes per process). It differs for every part of one key,
-    /// because the mixer is a bijection over distinct inputs, and it is well mixed, so parts of different bodies do
-    /// not fall onto each other or onto small ids passed to <see cref="From"/>. <see cref="None"/> stays
-    /// <see cref="None"/>, and any other key never yields <see cref="None"/>. Order matters: combining 1 then 2 is a
-    /// different key from 2 then 1.
+    /// because the mixer is a bijection over distinct inputs, and it is well mixed, so for ids from ordinary sources
+    /// (serials, entity ids) parts of different bodies do not fall onto each other or onto small ids passed to
+    /// <see cref="From"/>. That is a practical property, not a guarantee: the mixer's input is linear in the key and
+    /// the part, so two keys a multiple of the golden-ratio constant apart give the same key for two different parts.
+    /// <see cref="None"/> stays <see cref="None"/>, and any other key never yields <see cref="None"/>. Order matters:
+    /// combining 1 then 2 is a different key from 2 then 1.
     /// </summary>
     public static MotionKey Combine(MotionKey key, uint part)
     {

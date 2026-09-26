@@ -112,8 +112,13 @@ public sealed class MotionKeyTests
         Assert.False(a != b);
         Assert.True(a.Equals((object)b));
         Assert.Equal(a.GetHashCode(), b.GetHashCode());
-        Assert.NotEqual(a, MotionKey.From(0x1234_5678_9ABC_DEF1));
+        MotionKey c = MotionKey.From(0x1234_5678_9ABC_DEF1);
+        Assert.NotEqual(a, c);
+        Assert.False(a == c);
+        Assert.True(a != c);
+        Assert.False(a.Equals((object)a.Value));
         Assert.Equal("MotionKey.None", MotionKey.None.ToString());
         Assert.Equal("MotionKey(0x123456789ABCDEF0)", a.ToString());
+        Assert.Equal("MotionKey(0x0000000000000001)", MotionKey.From(1).ToString());
     }
 }

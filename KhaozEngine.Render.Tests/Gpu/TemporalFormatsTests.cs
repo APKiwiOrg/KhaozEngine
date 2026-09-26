@@ -1,4 +1,6 @@
+using System;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using KhaozEngine.Gpu.Vulkan.Internal;
@@ -12,11 +14,22 @@ namespace KhaozEngine.Tests.Gpu
     /// TASK E1'S DECISION, PINNED. The temporal history colour is half float RGBA, the confidence and stability target
     /// half float RG, and the previous depth single float R. All three are seam members every backend already renders
     /// and samples. R11G11B10 float, the design's first choice, is not a seam member. The reasoning is in the design's
-    /// plan amendments. Device-free: the Direct3D 11 map is a Windows-only type, and its leg proves the same three
-    /// formats through the HDR, distortion and outline goldens.
+    /// plan amendments. Device-free. The Direct3D 11 map is a Windows-only type, so its fact asserts only on Windows,
+    /// and that leg also proves the three formats through the HDR, distortion and outline goldens.
     /// </summary>
     public sealed class TemporalFormatsTests
     {
+        [Fact]
+        public void TheDirect3D11MapMapsEveryHistoryFormatAsAColourTarget()
+        {
+            if (!OperatingSystem.IsWindows()) return;   // the map is a Windows-only type
+            Assert.Equal(Vortice.DXGI.Format.R16G16B16A16_Float,
+                D3D11Formats.ToDxgiFormat(TemporalFormats.HistoryColor, false));
+            Assert.Equal(Vortice.DXGI.Format.R16G16_Float,
+                D3D11Formats.ToDxgiFormat(TemporalFormats.HistoryConfidence, false));
+            Assert.Equal(Vortice.DXGI.Format.R32_Float, D3D11Formats.ToDxgiFormat(TemporalFormats.PreviousDepth, false));
+        }
+
         [Fact]
         public void TheMetalAndVulkanMapsMapEveryHistoryFormatAsAColourTarget()
         {

@@ -226,7 +226,7 @@ namespace KhaozEngine.Render3D
         };
 
         /// <summary>The temporal upscale ratio in effect: <see cref="TemporalSettings.ResolvedUpscaleRatio"/> under
-        /// <see cref="Render3D.RenderScale.Temporal"/>, else 1. Group B's reset key reads it.</summary>
+        /// <see cref="Render3D.RenderScale.Temporal"/>, else 1.</summary>
         internal float EffectiveUpscaleRatio =>
             EffectiveRenderScale == RenderScale.Temporal ? Temporal.ResolvedUpscaleRatio : 1f;
 

@@ -3,7 +3,7 @@ using KhaozEngine.Gpu;
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// THE TEMPORAL TARGET FORMATS, decided by Task E1 of the round 2 plan and recorded in the design's plan amendments.
+    /// THE TEMPORAL TARGET FORMATS, recorded in the plan amendments of the temporal resolve design.
     /// Each is a seam member every backend already renders and samples: half float RGBA is the HDR colour target, half
     /// float RG the distortion field, single float R the linear-depth MRT attachment.
     /// <para><b>WHY NOT R11G11B10 FLOAT FOR THE HISTORY COLOUR.</b> The seam has no such member, Vulkan does not

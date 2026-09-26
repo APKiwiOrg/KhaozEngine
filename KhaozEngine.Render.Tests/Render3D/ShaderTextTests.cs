@@ -31,4 +31,13 @@ public sealed class ShaderTextTests
         Assert.Throws<InvalidOperationException>(() => ShaderText.BeforeEndOfMain(Source + "\nfloat f() { return 1.0; }", "x"));
         Assert.Throws<InvalidOperationException>(() => ShaderText.BeforeEndOfMain("#version 450\n", "x"));
     }
+
+    [Fact]
+    public void BeforeEndOfMainSkipsBracesNestedInsideMain()
+        => Assert.Equal("void main() {\n    if (true) { o = 1.0; }\n    o = 2.0;\n}",
+            ShaderText.BeforeEndOfMain("void main() {\n    if (true) { o = 1.0; }\n}", "    o = 2.0;\n"));
+
+    [Fact]
+    public void AfterRefusesAnAnchorThatOverlapsItsOwnRepeat()
+        => Assert.Throws<InvalidOperationException>(() => ShaderText.After("}}}", "}}", "x"));
 }

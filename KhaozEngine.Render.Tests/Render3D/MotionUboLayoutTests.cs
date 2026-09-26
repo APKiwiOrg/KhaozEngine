@@ -39,7 +39,9 @@ public sealed class MotionUboLayoutTests
     /// whitespace collapsed.</summary>
     internal static string[] Members(string source, string open)
     {
-        int start = source.IndexOf(open, StringComparison.Ordinal) + open.Length;
+        int at = source.IndexOf(open, StringComparison.Ordinal);
+        Assert.True(at >= 0, $"The block '{open}' is not in the source.");
+        int start = at + open.Length;
         int end = source.IndexOf("};", start, StringComparison.Ordinal);
         string body = Regex.Replace(source[start..end], "//[^\n]*", "");
         return body.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

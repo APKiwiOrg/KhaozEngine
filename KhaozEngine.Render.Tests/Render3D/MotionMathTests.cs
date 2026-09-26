@@ -37,6 +37,17 @@ public sealed class MotionMathTests
         Assert.Equal(new Vector2(.25f, 0f), MotionMath.UvMotion(new Vector4(.5f, 0f, 0f, 1f), new Vector4(0f, 0f, 0f, 1f)));
         Assert.Equal(new Vector2(0f, -.25f), MotionMath.UvMotion(new Vector4(0f, 1f, 0f, 2f), new Vector4(0f, 0f, 0f, 1f)));
         Assert.Equal(Vector2.Zero, MotionMath.UvMotion(new Vector4(.3f, -.2f, .5f, 3f), new Vector4(.3f, -.2f, .5f, 3f)));
+        // The previous position divides by its own w: NDC x 0.5 then, 0 now, is a quarter of the image leftward.
+        Assert.Equal(new Vector2(-.25f, 0f), MotionMath.UvMotion(new Vector4(0f, 0f, 0f, 1f), new Vector4(1f, 0f, 0f, 2f)));
+    }
+
+    [Fact]
+    public void OnlyTheSentinelBandReadsAsBackground()
+    {
+        Assert.False(MotionMath.IsBackground(new Vector2(MotionMath.BackgroundThreshold, 0f)));
+        Assert.True(MotionMath.IsBackground(new Vector2(MotionMath.BackgroundThreshold + 1f, 0f)));
+        Assert.True(MotionMath.IsBackground(new Vector2(-MotionMath.Sentinel, -MotionMath.Sentinel)));
+        Assert.False(MotionMath.IsBackground(new Vector2(-1f, 0.5f)));
     }
 
     [Fact]
@@ -44,10 +55,12 @@ public sealed class MotionMathTests
     {
         var motion = new Vector2[6];
         motion[1 * 3 + 2] = new Vector2(.5f, -.25f);
+        motion[0 * 3 + 2] = new Vector2(-.5f, .5f);   // row-major index 2, column-major would read index 4
         motion[0] = new Vector2(MotionMath.Sentinel, MotionMath.Sentinel);
         var readback = new MotionTargetReadback(motion, 3, 2);
 
         Assert.Equal(new Vector2(1.5f, -.5f), readback.PixelsAt(2, 1));
+        Assert.Equal(new Vector2(-.5f, .5f), readback.UvAt(2, 0));
         Assert.True(readback.IsBackground(0, 0));
         Assert.False(readback.IsBackground(2, 1));
         (Vector2[] m, int w, int h) = readback;   // the shape group F deconstructs

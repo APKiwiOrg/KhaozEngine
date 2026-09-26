@@ -160,20 +160,16 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
         }
 
         string path = PathFor(hash);
-        if (!File.Exists(path))
-        {
-            return null;
-        }
-
         try
         {
-            byte[] bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
-            return new ReadOnlyMemory<byte>(bytes);
+            return await BoundedFileReader
+                .ReadAsync(path, ContentPackFormat.MaxObjectBytes, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (IOException)
         {
-            // A file that went away between the check and the read is the same answer as one that was never
-            // there, because the caller's next move is to fetch it from somewhere else either way.
+            // A file that is absent or changed while it is read is the same answer as one that was never
+            // there, because the caller fetches it from somewhere else either way.
             return null;
         }
         catch (UnauthorizedAccessException)

@@ -35,21 +35,10 @@ namespace KhaozEngine.Catalog;
 public sealed class HttpPackStore : IPackStore, IContentVersionPointerSource
 {
     /// <summary>
-    /// The most bytes one stored object may be, and the point a fetch stops reading (spec 8.4, 13.4). It is
-    /// <see cref="ContentPackFormat.MaxChunkUncompressedBytes"/> plus
-    /// <see cref="ContentManifestCodec.FixedHeaderBytes"/>, the largest fixed header any pack file carries,
-    /// because a stored body is never larger than the uncompressed bytes it decompresses to: every codec
-    /// keeps the canonical file when Brotli does not shrink it, and the uncompressed ceiling is the one the
-    /// decoders already enforce from the header alone.
-    /// <para>
-    /// A store is the ONLY layer that can apply it. Every other length check in the format runs inside
-    /// <see cref="ContentPackReader.TryVerify"/>, which <see cref="CachingPackStore"/> calls once the whole
-    /// body is already buffered, so an origin that declares 256 MiB gets 256 MiB allocated before one of
-    /// those checks can see a byte of it, across the bounded concurrency of four.
-    /// </para>
+    /// Compatibility name for <see cref="ContentPackFormat.MaxObjectBytes"/>. The shared format constant is
+    /// the ceiling every provider applies before it allocates a stored object.
     /// </summary>
-    public const int MaxObjectBytes =
-        ContentPackFormat.MaxChunkUncompressedBytes + ContentManifestCodec.FixedHeaderBytes;
+    public const int MaxObjectBytes = ContentPackFormat.MaxObjectBytes;
 
     /// <summary>Where a body that declared no length starts, before it grows toward the ceiling.</summary>
     const int UndeclaredStartBytes = 64 * 1024;
@@ -215,7 +204,7 @@ public sealed class HttpPackStore : IPackStore, IContentVersionPointerSource
             }
 
             long? declared = response.Content.Headers.ContentLength;
-            if (declared > MaxObjectBytes)
+            if (declared > ContentPackFormat.MaxObjectBytes)
             {
                 // A REFUSAL rather than a throw, and taken from the header alone: the caller's next move is
                 // the same as for a 404, and nothing is read, so a hostile declaration costs one round trip.
@@ -242,9 +231,10 @@ public sealed class HttpPackStore : IPackStore, IContentVersionPointerSource
     }
 
     /// <summary>
-    /// Reads the body under <see cref="MaxObjectBytes"/>. A DECLARED length allocates exactly that (spec
-    /// 8.4), and a chunked response, which declares nothing, grows to the ceiling and then answers null for
-    /// the first byte past it: an origin that omits the header must not be the one origin with no bound.
+    /// Reads the body under <see cref="ContentPackFormat.MaxObjectBytes"/>. A DECLARED length allocates
+    /// exactly that (spec 8.4), and a chunked response, which declares nothing, grows to the ceiling and then
+    /// answers null for the first byte past it: an origin that omits the header must not be the one origin
+    /// with no bound.
     /// </summary>
     static async Task<ReadOnlyMemory<byte>?> ReadBoundedAsync(
         Stream body,
@@ -264,7 +254,7 @@ public sealed class HttpPackStore : IPackStore, IContentVersionPointerSource
         {
             if (filled == buffer.Length)
             {
-                if (filled >= MaxObjectBytes)
+                if (filled >= ContentPackFormat.MaxObjectBytes)
                 {
                     // One byte past the ceiling settles it, and the null is written as a statement rather
                     // than as a conditional branch: a null in a conditional beside a ReadOnlyMemory binds to
@@ -278,7 +268,9 @@ public sealed class HttpPackStore : IPackStore, IContentVersionPointerSource
                     return new ReadOnlyMemory<byte>(buffer, 0, filled);
                 }
 
-                Array.Resize(ref buffer, (int)Math.Min((long)buffer.Length * 2, MaxObjectBytes));
+                Array.Resize(
+                    ref buffer,
+                    (int)Math.Min((long)buffer.Length * 2, ContentPackFormat.MaxObjectBytes));
             }
 
             int read = await body.ReadAsync(buffer.AsMemory(filled), cancellationToken).ConfigureAwait(false);

@@ -11,7 +11,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   throw finding. Authors can see the earlier defects while publish remains refused
   ([#1075](https://github.com/APKiwiOrg/KhaozEngine/issues/1075)).
 - `FileSystemPackStore` refuses an oversized or growing cache file before it can allocate an unbounded
-  object. The object byte ceiling is shared across file, HTTP and Azure Blob stores
+  object. `CachingPackStore` evicts a corrupt local entry before refetching it, so the verified copy is
+  available offline afterwards. The object byte ceiling is shared across file, HTTP and Azure Blob stores
   ([#957](https://github.com/APKiwiOrg/KhaozEngine/issues/957)).
 - Split and Merge operations reject a destination container, matching their same-container write path
   and page accounting ([#1096](https://github.com/APKiwiOrg/KhaozEngine/issues/1096)).

@@ -8,8 +8,8 @@ namespace KhaozEngine.Render3D.Internal
     /// UV of a pixel centre. So neither flips: the resolve's output is upright like <c>ColorTex</c>, and the post
     /// chain's flip parities stay what they were.</para>
     /// <para><b>THE CORE IS SHARED.</b> <see cref="TemporalResolveCoreGlsl"/> holds the bindings, the uniform block and
-    /// the per-pixel resolve as a function with no stage inputs or outputs, so the temporal debug views and the sampled
-    /// temporal counts re-evaluate exactly what the resolve decided, through the resource set it bound.</para>
+    /// the per-pixel resolve as a function with no stage inputs or outputs, so the planned temporal debug views and
+    /// sampled temporal counts can re-evaluate exactly what the resolve decided, through the resource set it bound.</para>
     /// <para><b>THE UNIFORM BLOCKS ARE THE C# STRUCTS.</b> Each block's members are spliced from
     /// <see cref="TemporalResolveUniforms.GlslMembers"/> and <see cref="TemporalDepthStoreUniforms.GlslMembers"/>, so the
     /// text cannot drift from the fields, and the fields carry the meaning.</para>
@@ -66,7 +66,7 @@ const float LockMotionEndPixels = 4.0;
 const float LockReactiveRelease = 2.0;
 const float LockDecay = 0.125;
 const float LockHoldGain = 2.0;
-const float LockTravelRelease = 1.0;
+const float LockEdgeRelease = 1.0;
 ";
 
         // ---- The resolve's core: bindings, uniforms and the per-pixel resolve, no stage inputs or outputs ----
@@ -174,6 +174,8 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     vec2 closestMotion = vec2(0.0);
     bool closestIsBackground = true;
     float reactiveDifference = 0.0;
+    vec2 centreMotion = vec2(0.0);
+    bool centreIsBackground = true;
     float lumas[9];
 
     // Step 4's kernel is separable, and each axis of a clamped 3x3 texel depends on that axis alone. So three weights
@@ -222,6 +224,10 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             vec2 motion = texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg;
             float ndcDepth = texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r;
             bool isBackground = abs(motion.x) > MotionSentinel;
+            if (x == 0 && y == 0) {
+                centreMotion = motion;
+                centreIsBackground = isBackground;
+            }
             float viewDepth = isBackground ? BackgroundLinearDepth : temporalLinearDepth(ndcDepth, CurrentDepth);
             if (viewDepth < closestDepth) {
                 closestDepth = viewDepth;
@@ -257,7 +263,6 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     vec2 previousUv = vec2(-1.0);
     float expectedDepth = BackgroundLinearDepth;
     bool depthTested = true;
-    float surfaceTravel = 0.0;   // the surface's own motion in internal pixels, which step 6 releases the lock by
     if (closestIsBackground) {
         vec4 previousClip = BackgroundToPrevious * vec4(ndcXY, 1.0, 1.0);
         if (previousClip.w > 1.0e-6)
@@ -276,7 +281,6 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             vec2 surfaceMotion = (staticUv - (closestUv - closestMotion)) * internalSize;
             float movingThreshold = MovingSurfaceInternalPixels + length(closestMotion * internalSize) * MovingSurfaceMotionFraction;
             depthTested = length(surfaceMotion) <= movingThreshold;
-            surfaceTravel = length(surfaceMotion);
         }
     }
     // Motion is clamped to two screens and a point behind last frame's camera is written two screens away, so any
@@ -308,7 +312,23 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     vec2 historyState = vec2(0.0);
     if (useHistory) {
         vec4 fetched = sampleHistoryCatmullRom(previousUv, displaySize);
-        vec2 fetchedState = textureLod(sampler2D(HistoryConfidence, LinearClamp), previousUv, 0.0).rg;
+        // The state's four texels around the position: confidence blended by their bilinear weights, and the lock as
+        // the largest of those that carry weight. A bilinear lock under motion is blended with unlocked neighbours every
+        // frame and ran out about three times faster than LockDecay, so a moving sub-texel feature lost its hold. At a
+        // texel centre only that texel carries weight, so a still lock reads back unchanged and never spreads.
+        vec2 statePosition = previousUv * displaySize - 0.5;
+        ivec2 stateBase = ivec2(floor(statePosition));
+        vec2 stateFraction = statePosition - vec2(stateBase);
+        ivec2 lastState = ivec2(displaySize) - ivec2(1);
+        vec2 s00 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase, ivec2(0), lastState), 0).rg;
+        vec2 s10 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase + ivec2(1, 0), ivec2(0), lastState), 0).rg;
+        vec2 s01 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase + ivec2(0, 1), ivec2(0), lastState), 0).rg;
+        vec2 s11 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase + ivec2(1, 1), ivec2(0), lastState), 0).rg;
+        vec2 g = 1.0 - stateFraction;
+        vec4 bilinear = vec4(g.x * g.y, stateFraction.x * g.y, g.x * stateFraction.y, stateFraction.x * stateFraction.y);
+        vec4 carried = step(vec4(1.0e-3), bilinear);   // texels whose weight is more than rounding
+        vec2 fetchedState = vec2(dot(bilinear, vec4(s00.x, s10.x, s01.x, s11.x)),
+            max(max(carried.x * s00.y, carried.y * s10.y), max(carried.z * s01.y, carried.w * s11.y)));
         bool finite = all(greaterThan(fetched, vec4(-HalfMax))) && all(lessThan(fetched, vec4(HalfMax)))
             && all(greaterThan(fetchedState, vec2(-HalfMax))) && all(lessThan(fetchedState, vec2(HalfMax)));
         if (finite) {
@@ -326,10 +346,24 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         : 0.0;
 
     // Step 6: thin features. A ridge through the centre texel refreshes the lock, which decays by LockDecay a frame
-    // whatever the preset, and is released by motion, by reactive content and by the surface's own travel, so a ridge
-    // on a surface crossing texels cannot hold what it leaves behind. The hold on the clip stays whole while the lock is
-    // at least 1 / LockHoldGain, so a sub-texel feature missed for a few frames keeps its luma, and it lets go over the
-    // rest of the lock.
+    // whatever the preset. Large motion and reactive content release it, and so does motion at an edge: where the
+    // centre texel moves otherwise than the dilated nearest surface, a moving feature is passing over a background, and
+    // what the pixel holds is that feature's history, not its own. A surface moving as a whole, a swaying blade or an
+    // avatar the camera follows, has no such edge and keeps its lock. A background centre moves by the camera's rotation
+    // alone. The hold on the clip stays whole while the lock is at least 1 / LockHoldGain, so a sub-texel feature missed
+    // for a few frames keeps its luma, and it lets go over the rest of the lock.
+    float edgeMotion = 0.0;
+    if (!closestIsBackground) {
+        vec2 centreOwn = centreMotion;
+        if (centreIsBackground) {
+            vec2 centreUv = (vec2(centreTexel) + 0.5 - jitter) / internalSize;
+            vec4 centrePrevious = BackgroundToPrevious * vec4(centreUv.x * 2.0 - 1.0, 1.0 - centreUv.y * 2.0, 1.0, 1.0);
+            centreOwn = centrePrevious.w > 1.0e-6
+                ? centreUv - vec2(centrePrevious.x / centrePrevious.w * 0.5 + 0.5, 0.5 - centrePrevious.y / centrePrevious.w * 0.5)
+                : vec2(2.0);   // behind last frame's camera: as far apart as motion goes
+        }
+        edgeMotion = length((closestMotion - centreOwn) * internalSize);
+    }
     float centreLuma = lumas[4];
     float ridgeThreshold = max(LockRidgeAbsolute, LockRidgeRelative * centreLuma);
     bool ridge = isRidge(centreLuma, lumas[3], lumas[5], ridgeThreshold)
@@ -340,7 +374,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     if (ridge) lockValue = 1.0;
     float motionRelease = clamp((motionPixels - LockMotionStartPixels) / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
     lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))
-        * (1.0 - clamp(surfaceTravel * LockTravelRelease, 0.0, 1.0));
+        * (1.0 - clamp(edgeMotion * LockEdgeRelease, 0.0, 1.0));
     float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 
     // Step 5: variance clipping in luma-weighted YCoCg, from the box centre towards the history, which keeps its hue.

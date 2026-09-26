@@ -66,25 +66,28 @@ namespace KhaozEngine.Render3D.Internal
         public const float LockReactiveRelease = 2f;
         /// <summary>Step 6. Lock lost per frame, the same at every preset. A thin feature shows when a jittered sample
         /// lands on it, and the Halton x offsets visit every eighth of a texel about once in eight frames at any display
-        /// ratio, so how often it shows follows its internal texel coverage, not the jitter cycle. One over the cycle
-        /// held a lock for 72 frames at UltraPerformance, and an unkeyed line crossing at 0.6 display pixels a frame
-        /// trailed 2 display pixels at 28 percent of its contrast. One eighth, with <see cref="LockHoldGain"/>, trails
-        /// at most 1 at 11 percent.</summary>
+        /// ratio, so how often it shows follows its internal texel coverage, not the jitter cycle. A decay of one over the
+        /// cycle, 1/72 at UltraPerformance, trails an unkeyed line crossing at 0.3 to 0.9 display pixels a frame by 5 to
+        /// 8 display pixels at up to 50 percent of its contrast. One eighth trails at most 1 at 11 percent.</summary>
         public const float LockDecay = 1f / TemporalJitter.NativePhaseCount;
         /// <summary>Step 6. The hold on the luma clip is the lock times this, at most 1. With <see cref="LockDecay"/> of
         /// an eighth it stays whole through four frames without a ridge, then lets go over four more. A still line three
-        /// eighths of a texel wide goes up to three frames unseen. A hold equal to the lock clipped a share of it on each
-        /// of them, and at Native the line averaged 10 percent of its contrast against a coverage of 37.5. At 2 it
-        /// averages 42 percent and changes by under 4 percent a frame at Native, Quality and UltraPerformance. 3 and 4
-        /// raised the unkeyed trail's peak from 11 to 22 and 31 percent.</summary>
+        /// eighths of a texel wide goes up to three frames unseen, and a hold equal to the lock clipped a share of it on
+        /// each: it averaged 10.4, 5.4 and 8.3 percent of its contrast at Native, Quality and UltraPerformance. At 2 the
+        /// pixel at its centre averages 41.7 percent at Native against a coverage of 37.5, and 36.1 and 81.7 upscaled,
+        /// where that pixel is narrower than the texel, and changes by under 4 percent a frame at all three. 3 and 4
+        /// raise the unkeyed trail's peak from 11 to 22 and 31 percent. A line an eighth of a texel wide, seen once in
+        /// eight frames, outlasts the hold: it averages about 4 percent against its coverage of 12.5 and pulses by up to
+        /// 9 percent a frame.</summary>
         public const float LockHoldGain = 2f;
-        /// <summary>Step 6. Lock lost per internal pixel the dilated surface moved on its own this frame, the motion the
-        /// camera does not explain, so the lock holds only while the reprojected history stays consistent (design
-        /// section 3 step 6). A ridge refreshed on a surface crossing texels would leave the pixel it just crossed
-        /// locked on the history that surface carried there, held after the surface has gone. At 1, a surface moving a
-        /// texel a frame keeps no lock. A keyed line at 0.9 display pixels a frame on Quality trailed 1 display pixel at
-        /// 14 percent of its contrast without it, and none with it. 2 cost the same line at 0.6 display pixels a frame 2
-        /// to 4 points of the contrast it keeps.</summary>
-        public const float LockTravelRelease = 1f;
+        /// <summary>Step 6. Lock lost per internal pixel of motion between the centre texel and the dilated nearest
+        /// surface this frame. Where they differ, a moving feature is passing over a background, and the pixel holds the
+        /// history that feature carried there, not a sub-texel feature of its own. A surface moving as a whole, a swaying
+        /// blade or an avatar the camera follows, differs nowhere and keeps its lock, where a release on the surface's
+        /// own travel left a line on it no brighter than with the lock off. Without it a keyed line at 0.9 display pixels
+        /// a frame on Quality trails 2 display pixels at 18 percent of its contrast. At 1 it trails 1 at 17 percent, and
+        /// every factor from 0.5 to 4 leaves that pixel, the one a ridge refreshes on the frame the line skips a texel.
+        /// 1 is the gentlest of them.</summary>
+        public const float LockEdgeRelease = 1f;
     }
 }

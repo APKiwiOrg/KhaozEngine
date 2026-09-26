@@ -39,7 +39,7 @@ namespace KhaozEngine.Tests.Render3D
             { "const float LockReactiveRelease = 2.0;", TemporalResolveTuning.LockReactiveRelease, 2f },
             { "const float LockDecay = 0.125;", TemporalResolveTuning.LockDecay, 0.125f },
             { "const float LockHoldGain = 2.0;", TemporalResolveTuning.LockHoldGain, 2f },
-            { "const float LockTravelRelease = 1.0;", TemporalResolveTuning.LockTravelRelease, 1f },
+            { "const float LockEdgeRelease = 1.0;", TemporalResolveTuning.LockEdgeRelease, 1f },
         };
 
         [Theory]
@@ -149,17 +149,24 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void The_thin_feature_lock_decays_the_same_at_every_preset_and_releases_on_the_surface_s_own_travel()
+        public void The_thin_feature_lock_decays_the_same_at_every_preset_follows_its_history_and_releases_at_moving_edges()
         {
             // A lock that decayed by one over the jitter cycle, 72 frames at UltraPerformance, held a moving line's
-            // trail, so the decay is a constant and Params.x is reserved. The surface's own travel is the motion the
-            // camera does not explain, measured where the moving-surface test measures it.
+            // trail, so the decay is a constant and Params.x is reserved. The lock is the largest of the state texels
+            // that carry bilinear weight, because a bilinear lock under motion ran out early. The release is the centre
+            // texel's motion against the dilated one, which is zero for a surface moving as a whole, not the surface's
+            // own travel, which released a swaying blade and an avatar the camera follows.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("float lockValue = useHistory ? max(historyState.y - LockDecay, 0.0) : 0.0;", core,
                 StringComparison.Ordinal);
             Assert.DoesNotMatch(@"\bParams\.x", core);
-            Assert.Contains("surfaceTravel = length(surfaceMotion);", core, StringComparison.Ordinal);
-            Assert.Contains("* (1.0 - clamp(surfaceTravel * LockTravelRelease, 0.0, 1.0));", core, StringComparison.Ordinal);
+            Assert.Contains("vec4 carried = step(vec4(1.0e-3), bilinear);", core, StringComparison.Ordinal);
+            Assert.Contains("max(max(carried.x * s00.y, carried.y * s10.y), max(carried.z * s01.y, carried.w * s11.y)));", core,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("textureLod(sampler2D(HistoryConfidence", core, StringComparison.Ordinal);
+            Assert.Contains("edgeMotion = length((closestMotion - centreOwn) * internalSize);", core, StringComparison.Ordinal);
+            Assert.Contains("* (1.0 - clamp(edgeMotion * LockEdgeRelease, 0.0, 1.0));", core, StringComparison.Ordinal);
+            Assert.DoesNotContain("surfaceTravel", core, StringComparison.Ordinal);
             Assert.Contains("float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);", core, StringComparison.Ordinal);
             Assert.Contains("excess.x *= 1.0 - hold;", core, StringComparison.Ordinal);
             Assert.Contains("clipped.x = mix(clipped.x, historyYcc.x, hold);", core, StringComparison.Ordinal);

@@ -175,15 +175,9 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, 0.3f, Skip = "The committed lock is released by the surface's own "
-            + "travel and read bilinearly under motion, so it lets go of a line on a swaying surface. It sums to 5.6 "
-            + "percent of its contrast against a coverage of 37.5. Skipped until the lock follows its history.")]
-        [InlineData(TemporalUpscale.Native, 0.5f, Skip = "The committed lock is released by the surface's own "
-            + "travel and read bilinearly under motion, so it lets go of a line on a swaying surface. It sums to 4.4 "
-            + "percent of its contrast against a coverage of 37.5. Skipped until the lock follows its history.")]
-        [InlineData(TemporalUpscale.UltraPerformance, 0.3f, Skip = "The committed lock is released by the surface's own "
-            + "travel and read bilinearly under motion, so it lets go of a line on a swaying surface. It sums to 2.8 "
-            + "percent of its contrast against a floor of 28.1. Skipped until the lock follows its history.")]
+        [InlineData(TemporalUpscale.Native, 0.3f)]
+        [InlineData(TemporalUpscale.Native, 0.5f)]
+        [InlineData(TemporalUpscale.UltraPerformance, 0.3f)]
         public void A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(TemporalUpscale preset,
             float speed)
         {
@@ -203,12 +197,8 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native, Skip = "The committed lock is released by the surface's own travel, 8 internal "
-            + "pixels a frame here though the surface is still on screen, so the line averages 2.6 percent against a "
-            + "coverage of 37.5, as with the lock off. Skipped until the release looks at edges.")]
-        [InlineData(TemporalUpscale.UltraPerformance, Skip = "The committed lock is released by the surface's own travel, 8 "
-            + "internal pixels a frame here though the surface is still on screen, so the line averages 1.5 percent against "
-            + "a floor of 28.1, as with the lock off. Skipped until the release looks at edges.")]
+        [InlineData(TemporalUpscale.Native)]
+        [InlineData(TemporalUpscale.UltraPerformance)]
         public void A_line_narrower_than_a_texel_on_a_surface_the_camera_follows_holds_like_a_still_one(TemporalUpscale preset)
         {
             // A follow camera. The camera steps sideways every frame and the surface carrying the line moves with it, as

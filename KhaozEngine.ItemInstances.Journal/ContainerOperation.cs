@@ -360,9 +360,9 @@ public readonly record struct ContainerOperation
     /// a game refuses never reaches the journal at all (spec 10.6), so everything here is a caller bug.
     /// </summary>
     /// <exception cref="ArgumentException">The kind is <see cref="ContainerOperationKind.None"/> or unknown,
-    /// a name is missing or empty, a slot is negative, a required count or definition id is not positive, a
-    /// client operation carries no id, a craft carries no event body, or a craft that consumes no currency
-    /// carries a currency field anyway.</exception>
+    /// a name is missing or empty, a split or merge names a destination container, a slot is negative, a
+    /// required count or definition id is not positive, a client operation carries no id, a craft carries no
+    /// event body, or a craft that consumes no currency carries a currency field anyway.</exception>
     public void Validate()
     {
         ValidateCanonical();
@@ -378,6 +378,10 @@ public readonly record struct ContainerOperation
         if ((fields & Field.Slot) != 0) Require(Slot >= 0, "A slot is never negative.");
         if ((fields & Field.DestinationContainer) != 0)
             Require(DestinationContainer is null || DestinationContainer.Length > 0, "A destination container name is never empty.");
+        Require(
+            Kind is not (ContainerOperationKind.Split or ContainerOperationKind.Merge)
+                || DestinationContainer is null,
+            "A split or merge stays inside its container.");
         if ((fields & Field.DestinationSlot) != 0)
             Require(DestinationSlot >= 0, "A destination slot is never negative.");
         if ((fields & Field.Count) != 0)

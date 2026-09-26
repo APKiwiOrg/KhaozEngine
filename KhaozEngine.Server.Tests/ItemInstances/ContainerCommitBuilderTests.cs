@@ -500,6 +500,38 @@ public sealed class ContainerCommitBuilderTests
         Assert.True(batch.Window.IsOpen);
     }
 
+    [Theory]
+    [InlineData(ContainerOperationKind.Split)]
+    [InlineData(ContainerOperationKind.Merge)]
+    public void Split_and_merge_refuse_a_destination_container_before_reaching_the_working_copy(
+        ContainerOperationKind kind)
+    {
+        PagedItemContainer bank = Container();
+        SeatStack(bank, 0, Potion, kind == ContainerOperationKind.Split ? 4 : 2);
+        if (kind == ContainerOperationKind.Merge) SeatStack(bank, 1, Potion, 3);
+        ContainerCommitBuilder batch = OpenBank(bank);
+        ContainerOperation operation = kind == ContainerOperationKind.Split
+            ? ContainerOperation.Split(Bank, 0, 1, 2)
+            : ContainerOperation.Merge(Bank, 0, 1);
+
+        Assert.Throws<ArgumentException>(() =>
+            batch.Apply(operation with { DestinationContainer = Bag }));
+        Assert.True(batch.Window.IsOpen);
+        Assert.Empty(batch.Operations);
+
+        Assert.True(batch.Apply(operation));
+        if (kind == ContainerOperationKind.Split)
+        {
+            Assert.Equal(2, bank.SlotAt(0).Stack.Count);
+            Assert.Equal(2, bank.SlotAt(1).Stack.Count);
+        }
+        else
+        {
+            Assert.True(bank.SlotAt(0).IsEmpty);
+            Assert.Equal(5, bank.SlotAt(1).Stack.Count);
+        }
+    }
+
     [Fact]
     public void A_craft_that_consumes_no_currency_carries_no_currency_fields()
     {

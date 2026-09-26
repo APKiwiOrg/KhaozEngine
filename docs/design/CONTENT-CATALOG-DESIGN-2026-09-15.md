@@ -3196,7 +3196,7 @@ registering, so there is no such thing as a content type with no page.
 
 // response 200
 { "version": 47, "total": 35, "rows": [
-    { "id": 13, "key": "stone_sword", "retired": false, "validFrom": 41,
+    { "id": 13, "key": "stone_sword", "retired": false,
       "fields": { "name": "item.stone_sword.name", "stackable": false, "value": 42 } } ] }
 ```
 

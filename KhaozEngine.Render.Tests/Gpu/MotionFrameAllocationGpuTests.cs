@@ -44,7 +44,9 @@ public sealed class MotionFrameAllocationGpuTests(ITestOutputHelper output)
         };
 
         fx.Frames(Warm, draw);
-        long without = Allocated(() => fx.Frames(Measured, draw));
+        // The control is measured twice and the smaller kept, so a one-off foreign allocation cannot raise the bar.
+        long without = Math.Min(Allocated(() => fx.Frames(Measured, draw)),
+            Allocated(() => fx.Frames(Measured, draw)));
 
         scene.ForceTemporalForTests = true;
         fx.Frames(Warm, draw);   // the first temporal frames build the target, the variants and the history

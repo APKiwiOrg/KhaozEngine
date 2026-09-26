@@ -92,6 +92,9 @@ public sealed class MotionFrameAllocationTests(ITestOutputHelper output)
         Assert.NotNull(scene.PreviousFrameView);
         MotionHistory history = scene.ActiveMotionHistory!;
         Assert.True(history.TryGetPreviousRigid(MotionKey.From(1), out _), "the keyed box has no last frame");
+        // Shadow casters are always kept for the slot build, so only main-pass visibility proves the rigid draws bound
+        // the motion set and slot stream in the measured frames.
+        Assert.Contains(true, scene.MainPassVisibilityForTests.ToArray());
         Assert.True(history.TryGetPreviousSkinned(MotionKey.From(100), out _, out _), "the keyed body has no last frame");
         Assert.Equal(2, scene.DrawnSkinnedInstances);
         MotionKey first = gpuSkinning ? scene.GpuSkinnedMotionForTests(0) : scene.CpuSkinnedMotionForTests(0).Motion;

@@ -95,6 +95,60 @@ public class TilePathfinderTests
         Assert.Throws<ArgumentOutOfRangeException>(() => Find(map, 5, 5, 8, 8, radius: TilePathfinder.MaxSearchRadius + 1));
     }
 
+    [Theory]
+    [InlineData(int.MinValue, 0, int.MinValue + 1, 0)]
+    [InlineData(int.MaxValue - 1, 0, int.MaxValue - 2, 0)]
+    [InlineData(0, int.MinValue, 0, int.MinValue + 1)]
+    [InlineData(0, int.MaxValue - 1, 0, int.MaxValue - 2)]
+    public void A_search_window_with_an_unrepresentable_edge_is_refused(int sx, int sz, int gx, int gz)
+    {
+        var map = new TileCollisionMap(1);
+        map.EnsureRegion(RegionCoord.Of(sx, sz));
+
+        Assert.Throws<ArgumentOutOfRangeException>("start", () => Find(map, sx, sz, gx, gz, radius: 1));
+    }
+
+    [Fact]
+    public void An_unrepresentable_window_is_refused_before_a_zero_step_answer()
+    {
+        var map = new TileCollisionMap(1);
+        var start = new TileCoord(int.MinValue, 0, 0);
+        map.EnsureRegion(start.Region);
+
+        Assert.Throws<ArgumentOutOfRangeException>("start",
+            () => TilePathfinder.FindPath(map, 0, start, start, maxRadius: 1));
+        Assert.Throws<ArgumentOutOfRangeException>("start",
+            () => TilePathfinder.FindPathToAny(map, 0, start, Array.Empty<TileCoord>(), 1, 1, null, out _));
+    }
+
+    [Theory]
+    [InlineData(int.MinValue + 1, int.MinValue)]
+    [InlineData(int.MaxValue - 2, int.MaxValue - 1)]
+    public void A_search_window_next_to_the_coordinate_boundary_still_reaches(int startX, int goalX)
+    {
+        var map = new TileCollisionMap(1);
+        map.EnsureRegion(RegionCoord.Of(startX, 0));
+
+        TilePath path = Find(map, startX, 0, goalX, 0, radius: 1);
+
+        Assert.True(path.Reached);
+        Assert.Equal(new TileCoord(goalX, 0, 0), path.End);
+        Assert.Single(path.Tiles);
+    }
+
+    [Fact]
+    public void Nearest_reachable_scoring_does_not_wrap_when_the_goal_is_over_three_billion_tiles_away()
+    {
+        const int StartX = -889_516_852;
+        var map = new TileCollisionMap(1);
+        map.EnsureRegion(RegionCoord.Of(StartX, 0));
+
+        TilePath path = Find(map, StartX, 0, int.MaxValue, 0, radius: 1);
+
+        Assert.False(path.Reached);
+        Assert.Equal(new TileCoord(StartX + 1, 0, 0), path.End);
+    }
+
     [Fact]
     public void A_2x2_agent_avoids_a_gap_it_does_not_fit_through()
     {

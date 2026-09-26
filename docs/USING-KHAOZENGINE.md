@@ -8522,6 +8522,8 @@ Validation resolves the foliage archetype and material ids against the same cata
 `TileObject.X/Z` and `TileMarker.X/Z`, and the owning region is always `RegionCoord.Of(X, Z)`, which floors, so
 a negative coordinate lands in a negative region with a local coordinate in 0..63. Rotation is quarter turns
 clockwise from above, 0 west, 1 north, 2 east, 3 south, on objects, on overlay shapes and on prefab stamps.
+Tile addresses use signed 32-bit coordinates. `TileRect` operations that read or produce an exclusive far edge
+reject geometry whose edge falls outside that domain, so a rect cannot include `int.MaxValue` on either axis.
 
 **Tile space is not render space, and `TileWorldSpace` is the only place that knows it.** The document is x east,
 z NORTH, y up, while the engine renders right handed with y up where a camera facing +z has +x on its left, so
@@ -8594,6 +8596,8 @@ it. Both entry points share one expansion, so a multi-goal walk and a single-goa
 step. There is no nearest-reachable fallback here, unlike `FindPath`, because a goal set has no single tile to be
 near: an unreachable set answers a not-reached empty path and a `goalIndex` of -1. `TileReach.TryNearest` is built
 on it, so an interaction click against a walled-in target costs one window rather than one per reach tile.
+Both pathfinder entry points require the window's near and exclusive far edges to fit signed 32-bit tile
+coordinates. A start and radius that cross the boundary throw instead of wrapping to the opposite extreme.
 
 **A caller that paths on a tick hands `FindPath` a `TilePathfinderScratch`.** The default call allocates the two
 `(2r + 1)^2` window arrays every search, about 83 KB at radius 64, which is nothing for an editor click and is

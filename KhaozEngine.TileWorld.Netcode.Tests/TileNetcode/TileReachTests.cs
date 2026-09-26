@@ -12,6 +12,46 @@ public class TileReachTests
     static TileCollisionMap Bake(TileWorldDocument doc) => TileMoveSimulatorTests.Bake(doc);
 
     [Fact]
+    public void A_reach_set_at_int_min_does_not_wrap_to_int_max()
+    {
+        var map = new TileCollisionMap(1);
+        map.EnsureRegion(RegionCoord.Of(int.MinValue, 10));
+        map.EnsureRegion(RegionCoord.Of(int.MaxValue, 10));
+
+        IReadOnlyList<TileCoord> set = TileReach.Set(map, new TileRect(int.MinValue, 10, 1, 1), 0);
+
+        Assert.Equal(new[]
+        {
+            new TileCoord(int.MinValue + 1, 10, 0),
+            new TileCoord(int.MinValue, 9, 0),
+            new TileCoord(int.MinValue, 11, 0),
+        }, set);
+        Assert.DoesNotContain(new TileCoord(int.MaxValue, 10, 0), set);
+    }
+
+    [Fact]
+    public void A_reach_set_next_to_int_max_keeps_its_representable_edge_candidate()
+    {
+        var map = new TileCollisionMap(1);
+        map.EnsureRegion(RegionCoord.Of(int.MaxValue - 1, 10));
+
+        IReadOnlyList<TileCoord> set = TileReach.Set(map, new TileRect(int.MaxValue - 1, 10, 1, 1), 0);
+
+        Assert.Equal(4, set.Count);
+        Assert.Contains(new TileCoord(int.MaxValue, 10, 0), set);
+    }
+
+    [Fact]
+    public void A_reach_set_refuses_a_footprint_with_an_unrepresentable_far_edge()
+    {
+        var map = new TileCollisionMap(1);
+        map.EnsureRegion(RegionCoord.Of(int.MaxValue, 10));
+
+        Assert.Throws<InvalidOperationException>(
+            () => TileReach.Set(map, new TileRect(int.MaxValue, 10, 1, 1), 0));
+    }
+
+    [Fact]
     public void A_one_by_one_footprint_in_the_open_has_four_reach_tiles()
     {
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld();
@@ -173,25 +213,25 @@ public class TileReachTests
             out _, out _));
     }
 
-    // The admission arithmetic at coordinates where the rect's own far edge wraps. TileRect.X1 is X + Width in
-    // INT, so a footprint whose last column is int.MaxValue reports a far edge of int.MinValue, and reading that
-    // measured a target one tile away as about 2^32 away and refused it (#898). Asserted on the helper rather than
-    // through TryNearest because Set iterates x from X to X1, which a wrapped X1 makes an empty loop: the call
-    // answers false either way, so the arithmetic is observable only here.
+    // The admission subtraction still needs long when an accepted rect near int.MaxValue is measured from the
+    // opposite coordinate extreme. Performing the subtraction in int changes a distance near 2^32 into a small
+    // negative value and admits a target that the search window cannot hold.
     [Fact]
-    public void The_admission_distance_reads_the_far_edge_in_long_rather_than_a_wrapped_int()
+    public void The_admission_distance_uses_long_between_opposite_coordinate_extremes()
     {
         const int width = 4;
-        int x = int.MaxValue - width + 1;                       // covers x through int.MaxValue
+        int x = int.MaxValue - width;                           // covers x through int.MaxValue - 1
         var footprint = new TileRect(x, 10, width, 2);
-        Assert.True(footprint.X1 < 0, "the rect's own far edge really has wrapped");
+        Assert.Equal(int.MaxValue, footprint.X1);
 
-        Assert.Equal(0L, TileReach.FootprintDistance(footprint, new TileCoord(int.MaxValue, 10, 0)));   // on it
+        Assert.Equal(0L, TileReach.FootprintDistance(footprint, new TileCoord(int.MaxValue - 1, 10, 0)));
         Assert.Equal(0L, TileReach.FootprintDistance(footprint, new TileCoord(x, 11, 0)));
         Assert.Equal(1L, TileReach.FootprintDistance(footprint, new TileCoord(x - 1, 10, 0)));          // adjacent
         Assert.Equal(2L, TileReach.FootprintDistance(footprint, new TileCoord(x - 2, 10, 0)));
         Assert.Equal(3L, TileReach.FootprintDistance(footprint, new TileCoord(x, 14, 0)));              // z 10..11
         Assert.Equal(1000L, TileReach.FootprintDistance(footprint, new TileCoord(x - 1000, 10, 0)));    // really far
+        Assert.Equal(4_294_967_291L,
+            TileReach.FootprintDistance(footprint, new TileCoord(int.MinValue, 10, 0)));
 
         // And the same helper away from the wrap, where it IS the admission bound TryNearest answers on: 6 tiles
         // out is refused at radius 4 for a one tile agent and admitted for a three tile one.

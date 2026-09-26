@@ -51,13 +51,16 @@ public static class TilePathfinder
     /// which overrides the planes carried on both coords. A start standing on a Blocked tile is treated like any
     /// other start, because <see cref="TileCollision.CanStep"/> allows egress from a tile that was blocked under
     /// the agent, so the search proceeds normally rather than refusing to move. <paramref name="maxRadius"/>
-    /// must be 1..<see cref="MaxSearchRadius"/>.</summary>
+    /// must be 1..<see cref="MaxSearchRadius"/>. The resulting window's near and exclusive far edges must fit
+    /// signed 32-bit tile coordinates.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxRadius"/> is below 1 or above
-    /// <see cref="MaxSearchRadius"/>.</exception>
+    /// <see cref="MaxSearchRadius"/>, or the window around <paramref name="start"/> has an edge outside the signed
+    /// 32-bit tile-coordinate domain.</exception>
     public static TilePath FindPath(TileCollisionMap map, int plane, TileCoord start, TileCoord goal, int agentSize = 1, int maxRadius = DefaultMaxRadius, TilePathfinderScratch? scratch = null)
     {
         ArgumentNullException.ThrowIfNull(map);
         RequireRadius(maxRadius);
+        RequireRepresentableWindow(start, maxRadius);
         if (start.X == goal.X && start.Z == goal.Z) return TilePath.Empty(new TileCoord(start.X, start.Z, plane));
 
         var window = new SearchWindow(start, maxRadius, scratch);
@@ -83,7 +86,8 @@ public static class TilePathfinder
     /// goal resolves to its lowest index.</para></summary>
     /// <param name="map">The collision map to path over.</param>
     /// <param name="plane">The plane to search on, overriding the planes carried on the coords.</param>
-    /// <param name="start">The tile the agent's anchor stands on.</param>
+    /// <param name="start">The tile the agent's anchor stands on. The search window's near and exclusive far
+    /// edges must fit signed 32-bit tile coordinates.</param>
     /// <param name="goals">The candidate goals, in the caller's own tie-break order.</param>
     /// <param name="agentSize">The agent's NxN footprint edge in tiles, anchored on its south-west tile.</param>
     /// <param name="maxRadius">Half width of the search window, 1..<see cref="MaxSearchRadius"/>.</param>
@@ -92,7 +96,8 @@ public static class TilePathfinder
     /// reached.</param>
     /// <exception cref="ArgumentNullException"><paramref name="map"/> or <paramref name="goals"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxRadius"/> is below 1 or above
-    /// <see cref="MaxSearchRadius"/>.</exception>
+    /// <see cref="MaxSearchRadius"/>, or the window around <paramref name="start"/> has an edge outside the signed
+    /// 32-bit tile-coordinate domain.</exception>
     public static TilePath FindPathToAny(TileCollisionMap map, int plane, TileCoord start,
         IReadOnlyList<TileCoord> goals, int agentSize, int maxRadius, TilePathfinderScratch? scratch,
         out int goalIndex)
@@ -100,6 +105,7 @@ public static class TilePathfinder
         ArgumentNullException.ThrowIfNull(map);
         ArgumentNullException.ThrowIfNull(goals);
         RequireRadius(maxRadius);
+        RequireRepresentableWindow(start, maxRadius);
 
         goalIndex = -1;
         var origin = new TileCoord(start.X, start.Z, plane);
@@ -116,6 +122,15 @@ public static class TilePathfinder
     {
         if (maxRadius < 1 || maxRadius > MaxSearchRadius)
             throw new ArgumentOutOfRangeException(nameof(maxRadius), maxRadius, $"maxRadius must be 1..{MaxSearchRadius}");
+    }
+
+    static void RequireRepresentableWindow(TileCoord start, int maxRadius)
+    {
+        long x0 = (long)start.X - maxRadius, z0 = (long)start.Z - maxRadius;
+        long x1 = (long)start.X + maxRadius + 1, z1 = (long)start.Z + maxRadius + 1;
+        if (x0 < int.MinValue || z0 < int.MinValue || x1 > int.MaxValue || z1 > int.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(start), start,
+                "the search window exclusive edges must fit signed 32-bit coordinates");
     }
 
     // The ONE expansion both entry points run, which is what keeps the step rules, the window bound and the
@@ -167,9 +182,11 @@ public static class TilePathfinder
                 {
                     TileDirection d = dirs[i];
                     (int dx, int dz) = TileDirections.Delta(d);
-                    int nx = cx + dx, nz = cz + dz;
-                    int wx = nx - originX, wz = nz - originZ;
-                    if ((uint)wx >= (uint)side || (uint)wz >= (uint)side) continue;
+                    long nextX = (long)cx + dx, nextZ = (long)cz + dz;
+                    long windowX = nextX - originX, windowZ = nextZ - originZ;
+                    if ((ulong)windowX >= (uint)side || (ulong)windowZ >= (uint)side) continue;
+                    int nx = (int)nextX, nz = (int)nextZ;
+                    int wx = (int)windowX, wz = (int)windowZ;
                     int ni = wz * side + wx;
                     if (dist[ni] >= 0) continue;
                     if (!TileCollision.CanStep(map, cx, cz, plane, d, agentSize)) continue;
@@ -236,12 +253,14 @@ public static class TilePathfinder
     {
         int[] dist = w.Dist;
         int best = -1, bestDist = int.MaxValue;
-        long bestSq = long.MaxValue;
+        UInt128 bestSq = UInt128.MaxValue;
         for (int i = 0; i < w.Cells; i++)
         {
             if (dist[i] < 0) continue;
-            long ex = w.OriginX + i % w.Side - goal.X, ez = w.OriginZ + i / w.Side - goal.Z;
-            long sq = ex * ex + ez * ez;
+            long ex = (long)w.OriginX + i % w.Side - goal.X;
+            long ez = (long)w.OriginZ + i / w.Side - goal.Z;
+            ulong ax = (ulong)Math.Abs(ex), az = (ulong)Math.Abs(ez);
+            UInt128 sq = (UInt128)ax * ax + (UInt128)az * az;
             if (sq < bestSq || (sq == bestSq && dist[i] < bestDist))
             {
                 best = i; bestSq = sq; bestDist = dist[i];
@@ -250,9 +269,9 @@ public static class TilePathfinder
         return best;
     }
 
-    // The window one search floods, sized and reset in one place so both entry points bound themselves the same
-    // way. A scratch hands back arrays it has already handed out, so every read is bounded by Cells rather than
-    // by Length: a scratch sized for a bigger radius is longer than this window needs.
+    // The window one search floods, validated, sized and reset in one place so both entry points bound themselves
+    // the same way. A scratch hands back arrays it has already handed out, so every read is bounded by Cells rather
+    // than by Length: a scratch sized for a bigger radius is longer than this window needs.
     readonly struct SearchWindow
     {
         internal readonly int[] Dist;
@@ -286,6 +305,7 @@ public static class TilePathfinder
                 Queue = scratch.Queue;
             }
         }
+
     }
 }
 

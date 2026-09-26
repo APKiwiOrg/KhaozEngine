@@ -144,14 +144,35 @@ public sealed class MotionHistoryTests
         var history = new MotionHistory();
         history.BeginFrame();
         history.RecordRigid(A, At(1f));
+        history.RecordSkinned(B, At(1f), Palette(2, 0f));
         history.BeginFrame();
         history.RecordRigid(A, At(2f));
+        history.RecordRigid(A, At(2f));
+        history.RecordSkinned(B, At(2f), Palette(2, 3f));
         history.Reset();
         Assert.Equal(0, history.KeyedRigid);
+        Assert.Equal(0, history.KeyedSkinned);
+        Assert.Equal(0, history.Collisions);
         Assert.False(history.TryGetPreviousRigid(A, out _));
+        Assert.False(history.TryGetPreviousSkinned(B, out _, out ReadOnlySpan<Matrix4x4> previous));
+        Assert.True(previous.IsEmpty);
 
         history.BeginFrame();
         Assert.False(history.TryGetPreviousRigid(A, out _));
+        Assert.False(history.TryGetPreviousSkinned(B, out _, out ReadOnlySpan<Matrix4x4> resurrected));
+        Assert.True(resurrected.IsEmpty);
+    }
+
+    [Fact]
+    public void A_key_first_seen_this_frame_has_no_previous_palette()
+    {
+        var history = new MotionHistory();
+        history.BeginFrame();
+        history.RecordSkinned(A, At(1f), Palette(3, 0f));
+        history.BeginFrame();
+        Assert.False(history.TryGetPreviousSkinned(B, out Matrix4x4 world, out ReadOnlySpan<Matrix4x4> palette));
+        Assert.Equal(default(Matrix4x4), world);
+        Assert.True(palette.IsEmpty);
     }
 
     [Fact]

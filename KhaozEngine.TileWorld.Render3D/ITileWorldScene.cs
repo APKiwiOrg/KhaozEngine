@@ -66,14 +66,24 @@ public interface ITileWorldScene
     void DrawMeshDissolved(MeshHandle handle, Matrix4x4 world, float dissolve, float edgeWidth, Color edgeColor) =>
         DrawMesh(handle, world);
 
-    /// <summary>Queues one rigid mesh from a full draw descriptor, its motion key included, so a moving body reports
-    /// its own motion to temporal rendering. Defaults to the solid or dissolved mesh draw, which keeps an
-    /// implementation written before descriptors compiling and keeps the body visible. That fallback keeps only the
-    /// mesh, the transform and the dissolve, drops the key, tint, material and shadow knobs, and draws nothing for a
-    /// shadow-only descriptor, which an older scene never cast anyway.</summary>
+    /// <summary>Queues one rigid mesh from a full draw descriptor, its motion key included. The
+    /// <see cref="MotionKey"/> lets the engine find the body's previous transform so temporal rendering reprojects it,
+    /// so it must stay the same across frames and be unique per body. Defaults to the solid or dissolved mesh draw,
+    /// which keeps an implementation written before descriptors compiling and keeps the body visible. That fallback
+    /// keeps the mesh, the transform and the dissolve with its edge. It drops the key, the tint, the material,
+    /// <c>CastsShadows</c>, <c>InvertShadowDissolve</c> and <c>DissolveComplement</c>. It draws nothing for a
+    /// shadow-only descriptor, which an older scene never cast, and nothing for a complement phase with no dissolve,
+    /// which the scene's queue draws in neither pass.</summary>
+    /// <exception cref="ArgumentException">The descriptor is shadow-only and casts no shadow, the pair the scene's
+    /// instance queue refuses with the same exception.</exception>
     void DrawMesh(in RigidInstanceDraw draw)
     {
-        if (draw.ShadowOnly) return;
+        if (draw.ShadowOnly && !draw.CastsShadows)
+            throw new ArgumentException(
+                "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
+                "shadowOnly");
+        // The shaders read a phase above one half as the complement, which keeps nothing at a threshold of zero.
+        if (draw.ShadowOnly || (draw.DissolveComplement > 0.5f && draw.Dissolve <= 0f)) return;
         if (draw.Dissolve > 0f)
             DrawMeshDissolved(draw.Mesh, draw.World, draw.Dissolve, draw.DissolveEdgeWidth, draw.DissolveEdgeColor);
         else DrawMesh(draw.Mesh, draw.World);
@@ -108,10 +118,16 @@ public interface ITileWorldScene
         Color tint, float dissolve, float edgeWidth, Color edgeColor) =>
         throw new NotSupportedException("This tile-world scene does not support skinned meshes.");
 
-    /// <summary>Queues one skinned mesh from a full draw descriptor, its motion key included. Defaults to the plain or
-    /// dissolved skinned draw, dropping the key, the material and the shadow opt-out, so an implementation that
-    /// supports skinned meshes keeps drawing and one that does not still refuses the call.</summary>
-    /// <exception cref="NotSupportedException">This scene implementation has no skinned-mesh pass.</exception>
+    /// <summary>Queues one skinned mesh from a full draw descriptor, its motion key included. The
+    /// <see cref="MotionKey"/> lets the engine find the body's previous transform and bone palette so temporal
+    /// rendering reprojects it, so it must stay the same across frames and be unique per body. Defaults to the plain
+    /// skinned draw, or to the dissolved one when the descriptor dissolves. That fallback keeps the mesh, the palette,
+    /// the model transform, the tint and the dissolve with its edge, and drops the key, the material and
+    /// <c>CastsShadows</c>. Each route refuses where the older draw it reaches refuses: a scene with no skinned pass
+    /// throws on every descriptor, and a scene that implements only the plain <c>DrawSkinned</c> throws from the
+    /// dissolved default when the descriptor dissolves.</summary>
+    /// <exception cref="NotSupportedException">This scene implementation does not implement the older skinned draw the
+    /// descriptor routes to.</exception>
     void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices)
     {
         if (draw.Dissolve > 0f)

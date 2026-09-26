@@ -55,7 +55,9 @@ internal static class SqlServerCatalogSchemaValidation
     /// <param name="connection">An open connection to the catalog database.</param>
     /// <param name="mode">Whether a database carrying no catalog table may be created into.</param>
     /// <param name="cancellationToken">Cancels the work.</param>
-    /// <exception cref="ContentAuthoringException">The schema is absent under ValidateOnly, carries a version this build does not support, or holds an object that does not match.</exception>
+    /// <exception cref="ContentAuthoringException">The schema is absent under ValidateOnly, carries a version this build does not support, holds an object that does not match, or does not read as a catalog.</exception>
+    /// <exception cref="SqlException">SQL Server failed for a reason that is not the schema, for example a lock held past the timeout.</exception>
+    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
     internal static async Task InitializeAsync(
         SqlConnection connection,
         ContentAuthoringSchemaMode mode,
@@ -63,51 +65,63 @@ internal static class SqlServerCatalogSchemaValidation
     {
         ArgumentNullException.ThrowIfNull(connection);
 
-        try
+        if (await ReadAsync(() => CountTablesAsync(connection, cancellationToken)).ConfigureAwait(false) == 0)
         {
-            if (await CountTablesAsync(connection, cancellationToken).ConfigureAwait(false) == 0)
+            if (mode == ContentAuthoringSchemaMode.ValidateOnly)
             {
-                if (mode == ContentAuthoringSchemaMode.ValidateOnly)
-                {
-                    throw Mismatch("missing");
-                }
-
-                await CreateAsync(connection, cancellationToken).ConfigureAwait(false);
+                throw Mismatch("missing");
             }
 
-            int version = await ReadSchemaVersionAsync(connection, cancellationToken).ConfigureAwait(false);
-            if (version == 1)
-            {
-                // The version 1 shape is checked BEFORE the migration runs, so a database that is version 1
-                // and something else besides is refused rather than half migrated. Under ValidateOnly the
-                // refusal names the migration, which is the one thing an operator can act on.
-                await ValidateObjectsAsync(connection, 1, cancellationToken).ConfigureAwait(false);
-                if (mode == ContentAuthoringSchemaMode.ValidateOnly)
-                {
-                    throw Mismatch("at unsupported version '1'");
-                }
+            await CreateAsync(connection, cancellationToken).ConfigureAwait(false);
+        }
 
-                await MigrateVersionOneAsync(connection, cancellationToken).ConfigureAwait(false);
-                version = await ReadSchemaVersionAsync(connection, cancellationToken).ConfigureAwait(false);
+        int version = await ReadAsync(() => ReadSchemaVersionAsync(connection, cancellationToken))
+            .ConfigureAwait(false);
+        if (version == 1)
+        {
+            // The version 1 shape is checked BEFORE the migration runs, so a database that is version 1
+            // and something else besides is refused rather than half migrated. Under ValidateOnly the
+            // refusal names the migration, which is the one thing an operator can act on.
+            await ValidateObjectsAsync(connection, 1, cancellationToken).ConfigureAwait(false);
+            if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+            {
+                throw Mismatch("at unsupported version '1'");
             }
 
-            if (version != SqlServerCatalogSchema.CurrentVersion)
-            {
-                throw Mismatch(FormattableString.Invariant($"at unsupported version '{version}'"));
-            }
-
-            await ValidateObjectsAsync(connection, SqlServerCatalogSchema.CurrentVersion, cancellationToken)
+            await MigrateVersionOneAsync(connection, cancellationToken).ConfigureAwait(false);
+            version = await ReadAsync(() => ReadSchemaVersionAsync(connection, cancellationToken))
                 .ConfigureAwait(false);
         }
-        catch (ContentAuthoringException)
+
+        if (version != SqlServerCatalogSchema.CurrentVersion)
         {
-            throw;
+            throw Mismatch(FormattableString.Invariant($"at unsupported version '{version}'"));
         }
-        catch (SqlException exception)
+
+        await ValidateObjectsAsync(connection, SqlServerCatalogSchema.CurrentVersion, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// One schema or metadata read, translating only a missing column or object into the schema refusal.
+    /// A lock timeout, deadlock, permission failure or lost connection says nothing about the schema and
+    /// propagates as the provider's own exception. Creates and migrations do not pass through this helper.
+    /// </summary>
+    static async Task<T> ReadAsync<T>(Func<Task<T>> read)
+    {
+        try
+        {
+            return await read().ConfigureAwait(false);
+        }
+        catch (SqlException exception) when (IsMissingName(exception.Number))
         {
             throw Mismatch("unreadable, so its metadata could not be checked", exception);
         }
     }
+
+    /// <summary>Whether SQL Server says a named column or object is missing.</summary>
+    /// <param name="number">The provider's error number.</param>
+    internal static bool IsMissingName(int number) => number is 207 or 208;
 
     /// <summary>The schema version the database carries, which a migration compares against.</summary>
     /// <param name="connection">An open connection.</param>
@@ -276,43 +290,46 @@ internal static class SqlServerCatalogSchemaValidation
         CancellationToken cancellationToken)
     {
         bool versionOne = expectedVersion == 1;
-        IReadOnlySet<string> tables = await ReadNamesAsync(
-            connection,
-            """
-            SELECT name FROM sys.tables
-            WHERE schema_id = SCHEMA_ID(N'dbo') AND name LIKE N'catalog[_]%';
-            """,
-            cancellationToken).ConfigureAwait(false);
+        IReadOnlySet<string> tables = await ReadAsync(() => ReadNamesAsync(
+                connection,
+                """
+                SELECT name FROM sys.tables
+                WHERE schema_id = SCHEMA_ID(N'dbo') AND name LIKE N'catalog[_]%';
+                """,
+                cancellationToken))
+            .ConfigureAwait(false);
         Compare(
             "table",
             tables,
             versionOne ? SqlServerCatalogSchemaExpectations.TablesV1 : SqlServerCatalogSchemaExpectations.Tables,
             expectedVersion);
 
-        IReadOnlySet<string> indexes = await ReadNamesAsync(
-            connection,
-            """
-            SELECT t.name + N'.' + i.name
-            FROM sys.indexes i
-            JOIN sys.tables t ON t.object_id = i.object_id
-            WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%' AND i.name IS NOT NULL;
-            """,
-            cancellationToken).ConfigureAwait(false);
+        IReadOnlySet<string> indexes = await ReadAsync(() => ReadNamesAsync(
+                connection,
+                """
+                SELECT t.name + N'.' + i.name
+                FROM sys.indexes i
+                JOIN sys.tables t ON t.object_id = i.object_id
+                WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%' AND i.name IS NOT NULL;
+                """,
+                cancellationToken))
+            .ConfigureAwait(false);
         Compare(
             "index",
             indexes,
             versionOne ? SqlServerCatalogSchemaExpectations.IndexesV1 : SqlServerCatalogSchemaExpectations.Indexes,
             expectedVersion);
 
-        IReadOnlySet<string> checks = await ReadNamesAsync(
-            connection,
-            """
-            SELECT t.name + N'.' + c.name
-            FROM sys.check_constraints c
-            JOIN sys.tables t ON t.object_id = c.parent_object_id
-            WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%';
-            """,
-            cancellationToken).ConfigureAwait(false);
+        IReadOnlySet<string> checks = await ReadAsync(() => ReadNamesAsync(
+                connection,
+                """
+                SELECT t.name + N'.' + c.name
+                FROM sys.check_constraints c
+                JOIN sys.tables t ON t.object_id = c.parent_object_id
+                WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%';
+                """,
+                cancellationToken))
+            .ConfigureAwait(false);
         Compare(
             "check constraint",
             checks,
@@ -323,30 +340,32 @@ internal static class SqlServerCatalogSchemaValidation
         // one did not. A missing foreign key accepts a chunk row pointing at a version that is not there, and
         // a missing default turns an insert that omits a column into a NULL in a NOT NULL column. Both are
         // writes this build believes the schema makes impossible, so neither can be left unchecked.
-        IReadOnlySet<string> foreignKeys = await ReadNamesAsync(
-            connection,
-            """
-            SELECT t.name + N'.' + f.name
-            FROM sys.foreign_keys f
-            JOIN sys.tables t ON t.object_id = f.parent_object_id
-            WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%';
-            """,
-            cancellationToken).ConfigureAwait(false);
+        IReadOnlySet<string> foreignKeys = await ReadAsync(() => ReadNamesAsync(
+                connection,
+                """
+                SELECT t.name + N'.' + f.name
+                FROM sys.foreign_keys f
+                JOIN sys.tables t ON t.object_id = f.parent_object_id
+                WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%';
+                """,
+                cancellationToken))
+            .ConfigureAwait(false);
         Compare(
             "foreign key",
             foreignKeys,
             versionOne ? SqlServerCatalogSchemaExpectations.ForeignKeysV1 : SqlServerCatalogSchemaExpectations.ForeignKeys,
             expectedVersion);
 
-        IReadOnlySet<string> defaults = await ReadNamesAsync(
-            connection,
-            """
-            SELECT t.name + N'.' + d.name
-            FROM sys.default_constraints d
-            JOIN sys.tables t ON t.object_id = d.parent_object_id
-            WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%';
-            """,
-            cancellationToken).ConfigureAwait(false);
+        IReadOnlySet<string> defaults = await ReadAsync(() => ReadNamesAsync(
+                connection,
+                """
+                SELECT t.name + N'.' + d.name
+                FROM sys.default_constraints d
+                JOIN sys.tables t ON t.object_id = d.parent_object_id
+                WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%';
+                """,
+                cancellationToken))
+            .ConfigureAwait(false);
         Compare(
             "default constraint",
             defaults,

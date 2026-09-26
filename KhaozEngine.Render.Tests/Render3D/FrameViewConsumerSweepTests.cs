@@ -76,9 +76,18 @@ public sealed class FrameViewConsumerSweepTests
         List<string> latch = Reads(Path.Combine(root, "Scene3D.FrameView.cs"), SourceSweep.Render3DSource("Scene3D.FrameView.cs"));
         List<string> helpers = Reads(Path.Combine(root, "Scene3D.RenderOrigin.cs"), SourceSweep.Render3DSource("Scene3D.RenderOrigin.cs"));
         foreach (string read in latch.Concat(helpers)) _output.WriteLine(read);
-        Assert.True(latch.Count >= 4, $"the matcher found {latch.Count} camera reads in the latch, expected at least 4");
-        Assert.True(helpers.Count >= 5, $"the matcher found {helpers.Count} camera reads in the helpers, expected at least 5");
+        // One named read per matcher arm, so dropping an arm fails here instead of leaving the sweep blind.
+        AssertHit(helpers, "ActiveCamera.ViewProjection", "a well-known receiver");
+        AssertHit(helpers, "aware.AbsoluteViewProjection", "an identifier a type pattern declares");
+        AssertHit(latch, "cam.View", "an identifier a local declaration names");
+        AssertHit(latch, "FrameViewProjection()", "a render-origin helper call");
+        AssertHit(Reads("NullForgiving.cs", "Matrix4x4 view = CameraOverride!.View;"), "CameraOverride.View",
+            "a read through the null-forgiving operator");
     }
+
+    static void AssertHit(List<string> hits, string read, string arm)
+        => Assert.True(hits.Any(hit => hit.EndsWith("  " + read, StringComparison.Ordinal)),
+            $"the matcher missed {read}, {arm}. It found:\n" + string.Join("\n", hits));
 
     /// <summary>Every camera matrix read and render-origin helper call in one comment-blanked file.</summary>
     internal static List<string> Reads(string path, string text)
@@ -86,7 +95,7 @@ public sealed class FrameViewConsumerSweepTests
         var receivers = new HashSet<string>(WellKnownReceivers, StringComparer.Ordinal);
         foreach (Match declaration in Regex.Matches(text, @"\b(?:" + string.Join("|", CameraTypes) + @")\??\s+(?<name>[A-Za-z_]\w*)"))
             receivers.Add(declaration.Groups["name"].Value);
-        string read = @"\b(?<receiver>" + string.Join("|", receivers.Select(Regex.Escape)) + @")\s*\??\.\s*(?<member>"
+        string read = @"\b(?<receiver>" + string.Join("|", receivers.Select(Regex.Escape)) + @")\s*[?!]?\.\s*(?<member>"
             + MatrixMembers + @")\b";
         string file = Path.GetFileName(path);
         var hits = new List<string>();
@@ -95,5 +104,109 @@ public sealed class FrameViewConsumerSweepTests
         foreach (Match match in Regex.Matches(text, HelperCall))
             hits.Add($"{file}:{SourceSweep.Line(text, match.Index)}  {match.Value.TrimEnd('(', ' ', '\t')}()");
         return hits;
+    }
+
+    /// <summary>One matrix-carrying call, how many there are, what its arguments must and must not contain, and why.</summary>
+    internal readonly record struct Site(string File, string Call, int Count, string Required, string Forbidden, string Why);
+
+    /// <summary>The snapshot as a Scene3D partial names it: the backing field, or the by-value getter.</summary>
+    const string Snapshot = @"\b(?:_c|C)urrentFrameView";
+    const string RasterForbidden = @"\bdisplayVp\b|" + Snapshot + @"\.ViewProjection\b|" + Snapshot + @"\.Projection\b|ActiveCamera";
+    const string DisplayForbidden = @"\bvp\b|Jittered|ActiveCamera";
+    const string CpuForbidden = @"Jittered|ActiveCamera\.(?:View|Projection)\b";
+
+    /// <summary>
+    /// Every call in the frame that is handed a camera matrix, and the side of the snapshot it takes. Rasterised into
+    /// the internal target: jittered. Drawn at display size after post, or applied after the resolve in round 2:
+    /// unjittered. CPU spatial work: unjittered. A new matrix-carrying pass adds its row here.
+    /// </summary>
+    internal static readonly Site[] Sites =
+    {
+        new("Scene3D.cs", "_model.SetFrameUniforms(", 1, @"\bvp\b", RasterForbidden,
+            "the frame block the model, splat, tile ground, foliage and skinned pipelines rasterise with"),
+        new("Scene3D.cs", "BuildAndUploadPointLightClusters(", 1, @"\bvp\b", RasterForbidden,
+            "the cluster grid a lit fragment indexes through the frame block's jittered ViewProj"),
+        new("Scene3D.cs", "_decalRenderer.Draw(", 2, @"\bvp\b", RasterForbidden, "blob shadows and ground decals"),
+        new("Scene3D.cs", "DrawOverlayMeshes(", 1, @"\bvp\b", RasterForbidden, "overlay meshes in the model target"),
+        new("Scene3D.cs", "DrawSilhouettes(", 1, @"\bvp\b", RasterForbidden, "silhouette hulls in the model target"),
+        new("Scene3D.cs", "_sky.Draw(", 1, @"^(?=.*" + Snapshot + @"\.View\b)(?=.*" + Snapshot + @"\.JitteredProjection\b)",
+            RasterForbidden, "the sky, which rebuilds NDC from gl_FragCoord through the projection"),
+        new("Scene3D.cs", "_water.Draw(", 1, @"\bvp\b", RasterForbidden, "water"),
+        new("Scene3D.cs", "_particleRenderer.Draw(", 1, @"\bvp\b", RasterForbidden, "particles"),
+        new("Scene3D.cs", "_depthLines.Draw(", 1, @"\bvp\b", RasterForbidden, "depth-tested wire volumes before post"),
+        new("Scene3D.cs", "_texBillboards.SetViewProj(", 1, Snapshot + @"\.JitteredViewProjection\b", RasterForbidden,
+            "textured billboards in the model target"),
+        new("Scene3D.cs", "_beams.SetFrameUniforms(", 1, Snapshot + @"\.JitteredViewProjection\b", RasterForbidden,
+            "beams in the model target"),
+        new("Scene3D.cs", "_trails.SetFrameUniforms(", 1, Snapshot + @"\.JitteredViewProjection\b", RasterForbidden,
+            "trails in the model target"),
+        new("Scene3D.cs", "_distortionRenderer.Draw(", 1, @"\bdisplayVp\b", DisplayForbidden,
+            "the distortion field, applied after the temporal resolve in round 2"),
+        new("Scene3D.cs", "DrawTargetOutlines(", 1, @"\bdisplayVp\b", DisplayForbidden, "target outlines after post"),
+        new("Scene3D.cs", "_fills.Draw(", 1, @"\bdisplayVp\b", DisplayForbidden, "filled overlays after post"),
+        new("Scene3D.cs", "_lines.Draw(", 1, @"\bdisplayVp\b", DisplayForbidden, "debug lines after post"),
+        new("Scene3D.cs", "_billboards.Draw(", 2, @"\bdisplayVp\b", DisplayForbidden, "legacy overlay billboards after post"),
+        new("Scene3D.cs", "ExtractCameraDepth(", 1, Snapshot + @"\.Projection\b", CpuForbidden,
+            "the edge pass depth convention"),
+        new("Scene3D.cs", "FrustumCornersWorld(", 1, Snapshot + @"\.AbsoluteViewProjection\b", CpuForbidden,
+            "the cascade fit"),
+        new("Scene3D.cs", "FrustumCulling ? FrustumPlanes.Extract(", 1, @"\babsVp\b", CpuForbidden,
+            "the camera frustum every CPU cull reads"),
+        new("Scene3D.Foliage.cs", "MetresPerPixel(", 1, Snapshot + @"\.Projection\b", CpuForbidden,
+            "the foliage pixel scale"),
+        new("Scene3D.PointLightClusters.cs", "_model.BuildAndUploadPointLightClusters(", 1,
+            @"^(?=.*\brasterViewProjection\b)(?=.*" + Snapshot + @"\.Projection\b)",
+            @"\bdisplayVp\b|ActiveCamera\.(?:View|Projection)\b",
+            "the cluster grid on the raster matrix, its projection kind from the unjittered one"),
+    };
+
+    [Fact]
+    public void EveryMatrixCallTakesTheSideOfTheSnapshotItsTargetNeeds()
+    {
+        var failures = new List<string>();
+        foreach (Site site in Sites)
+        {
+            string text = SourceSweep.Render3DSource(site.File);
+            List<(int Line, string Arguments)> calls = Calls(text, site.Call);
+            if (calls.Count != site.Count)
+                failures.Add($"{site.File}: expected {site.Count} call(s) of {site.Call} ({site.Why}), found {calls.Count}. "
+                    + "A renamed, added or removed call needs its row in Sites.");
+            foreach ((int line, string arguments) in calls)
+            {
+                if (!Regex.IsMatch(arguments, site.Required, RegexOptions.Singleline))
+                    failures.Add($"{site.File}:{line} {site.Call} ({site.Why}) does not take {site.Required}: ({arguments.Trim()})");
+                if (Regex.IsMatch(arguments, site.Forbidden, RegexOptions.Singleline))
+                    failures.Add($"{site.File}:{line} {site.Call} ({site.Why}) takes the wrong side of the snapshot: ({arguments.Trim()})");
+            }
+        }
+        Assert.True(failures.Count == 0, "Matrix call sites that read the wrong side of the frame view:\n"
+            + string.Join("\n", failures));
+    }
+
+    [Fact]
+    public void TheFrameLocalsComeFromTheirSideOfTheSnapshot()
+    {
+        string text = SourceSweep.Render3DSource("Scene3D.cs");
+        Assert.Matches(@"Matrix4x4 vp = " + Snapshot + @"\.JitteredViewProjection\b", text);
+        Assert.Matches(@"\babsVp = " + Snapshot + @"\.AbsoluteViewProjection\b", text);
+        Assert.Matches(@"Matrix4x4 displayVp = " + Snapshot + @"\.ViewProjection\b", text);
+        Assert.Single(Regex.Matches(text, @"\bMatrix4x4 vp\b"));
+    }
+
+    static List<(int Line, string Arguments)> Calls(string text, string call)
+    {
+        var calls = new List<(int, string)>();
+        foreach (Match match in Regex.Matches(text, @"(?<!\w)" + Regex.Escape(call)))
+        {
+            int open = match.Index + match.Length - 1;   // every Call ends in its opening bracket
+            int depth = 0, close = -1;
+            for (int i = open; i < text.Length && close < 0; i++)
+            {
+                if (text[i] == '(') depth++;
+                else if (text[i] == ')' && --depth == 0) close = i;
+            }
+            calls.Add((SourceSweep.Line(text, match.Index), close < 0 ? string.Empty : text.Substring(open + 1, close - open - 1)));
+        }
+        return calls;
     }
 }

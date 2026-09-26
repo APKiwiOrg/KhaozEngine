@@ -1464,7 +1464,7 @@ namespace KhaozEngine.Render3D
         {
             var shadows = Post.Quality.Shadows;
             // ABSOLUTE: the fit, the radii and the caster classification stay byte-identical at any render origin.
-            if (!Internal.ShadowMapMath.FrustumCornersWorld(CurrentFrameView.AbsoluteViewProjection, _frustumCornersScratch))
+            if (!Internal.ShadowMapMath.FrustumCornersWorld(_currentFrameView.AbsoluteViewProjection, _frustumCornersScratch))
             {
                 _cascadeCount = 0;
                 return 0;
@@ -1567,7 +1567,7 @@ namespace KhaozEngine.Render3D
             _post.BindTargets(_res);
             // Edge pass needs the camera's depth convention (perspective vs ortho + near/far) to linearize depth
             // under perspective; derived from the projection matrix so no camera-interface change is required.
-            var camDepth = Internal.OutlineMath.ExtractCameraDepth(CurrentFrameView.Projection);
+            var camDepth = Internal.OutlineMath.ExtractCameraDepth(_currentFrameView.Projection);
             _post.PrepareUniforms(cl, _res, Post, camDepth, runFxaa, distortionActive);
 
             // Frozen-frame capture for a screen crossfade must read the PREVIOUS frame (the origin view, before the
@@ -1575,8 +1575,10 @@ namespace KhaozEngine.Render3D
             // unless a FrozenCrossfade transition just went active. See TransitionRenderer.BeginFrame.
             _transitions.BeginFrame(cl, _res, ScreenTransition);
 
-            // The snapshot's matrices (relative for the GPU, absolute for the CPU), and the eye in the render frame.
-            Matrix4x4 vp = CurrentFrameView.ViewProjection, absVp = CurrentFrameView.AbsoluteViewProjection;
+            // The frame's snapshot: jittered for everything rasterised into the internal target, unjittered for what
+            // draws at display size after post, absolute for CPU culling. Then the eye in the render frame.
+            Matrix4x4 vp = _currentFrameView.JitteredViewProjection, absVp = _currentFrameView.AbsoluteViewProjection;
+            Matrix4x4 displayVp = _currentFrameView.ViewProjection;
             Vector3 eye = ToRender(ActiveCamera.Eye);
             FrustumPlanes camFrustum = FrustumCulling ? FrustumPlanes.Extract(absVp) : default;
 
@@ -1891,7 +1893,7 @@ namespace KhaozEngine.Render3D
             switch (Post.Background)
             {
                 case BackgroundMode.Sky:
-                    _sky.Draw(cl, _res, CurrentFrameView.View, CurrentFrameView.Projection, Post.LightDirection, Post.Sky);
+                    _sky.Draw(cl, _res, _currentFrameView.View, _currentFrameView.JitteredProjection, Post.LightDirection, Post.Sky);
                     _frameStats.DrawCalls++;
                     break;
                 case BackgroundMode.Starfield:
@@ -1979,7 +1981,7 @@ namespace KhaozEngine.Render3D
             {
                 BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 dRight, out Vector3 dUp);
                 float resRatio = DistortionQuality == DistortionQuality.Full ? 2f : 4f;
-                _frameStats.DrawCalls += _distortionRenderer.Draw(cl, _res, vp, eye, dRight, dUp,
+                _frameStats.DrawCalls += _distortionRenderer.Draw(cl, _res, displayVp, eye, dRight, dUp,
                     EffectTimeSeconds, ParticleSoftFade, DistortionQuality, Post.BackgroundColor.R, resRatio,
                     RelativeDistortionSprites());
             }
@@ -1990,25 +1992,23 @@ namespace KhaozEngine.Render3D
             if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             _post.Run(cl, _res, target, Post, runFxaa, distortionActive);
-            DrawTargetOutlines(cl, vp, target);
+            DrawTargetOutlines(cl, displayVp, target);
             if (EnableTiming) postMs = ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
 
-            // Filled overlay: rebind `target` and draw the accumulated translucent triangles on top of the post
-            // image, BEFORE the lines so an outline drawn on top of a fill reads crisp. Depth disabled + alpha
-            // blend; same ActiveCamera.ViewProjection as the model pass (so fills line up with geometry and picking).
+            // Filled overlay: rebind `target` and draw the accumulated translucent triangles over the post image,
+            // BEFORE the lines so an outline on a fill reads crisp. Depth off, alpha blend, unjittered like picking.
             if (_fillVerts.Count > 0)
             {
-                _fills.Draw(cl, vp, CollectionsMarshal.AsSpan(_fillVerts), target);
+                _fills.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_fillVerts), target);
                 _frameStats.DrawCalls++;
             }
 
-            // Debug overlay: rebind `target` and draw the accumulated lines on top of the post image, with
-            // depth disabled and alpha blend. ActiveCamera.ViewProjection matches the model pass (unflipped, so
-            // lines line up with rendered geometry and with ScreenToGround picking).
+            // Debug overlay: rebind `target` and draw the accumulated lines over the post image, depth off, alpha
+            // blend, unjittered so they line up with ScreenToGround picking.
             if (_lineVerts.Count > 0)
             {
-                _lines.Draw(cl, vp, CollectionsMarshal.AsSpan(_lineVerts), target);
+                _lines.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_lineVerts), target);
                 _frameStats.DrawCalls++;
             }
 
@@ -2018,13 +2018,13 @@ namespace KhaozEngine.Render3D
             // translucent billboards composite far-to-near regardless of the order the host queued them.
             if (_billboardAdditive.Count > 0)
             {
-                _billboards.Draw(cl, vp, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
+                _billboards.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_billboardAdditive), target, additive: true);
                 _frameStats.DrawCalls++;
             }
             BuildSortedAlphaBillboards();
             if (_billboardAlpha.Count > 0)
             {
-                _billboards.Draw(cl, vp, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
+                _billboards.Draw(cl, displayVp, CollectionsMarshal.AsSpan(_billboardAlpha), target, additive: false);
                 _frameStats.DrawCalls++;
             }
 
@@ -2124,7 +2124,7 @@ namespace KhaozEngine.Render3D
 
             // Camera basis is constant across the frame; compute once and reuse for every quad.
             BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 right, out Vector3 up);
-            _texBillboards.SetViewProj(cl, CurrentFrameView.ViewProjection);
+            _texBillboards.SetViewProj(cl, _currentFrameView.JitteredViewProjection);
 
             Span<Vector3> pos = stackalloc Vector3[6];
             Span<Vector2> uv = stackalloc Vector2[6];
@@ -2193,7 +2193,7 @@ namespace KhaozEngine.Render3D
             }
             if (_beamVerts.Count == 0) return;
 
-            _beams.SetFrameUniforms(cl, CurrentFrameView.ViewProjection, EffectTimeSeconds);
+            _beams.SetFrameUniforms(cl, _currentFrameView.JitteredViewProjection, EffectTimeSeconds);
             _beams.Draw(cl, CollectionsMarshal.AsSpan(_beamVerts), _res.ModelFB);
             _frameStats.DrawCalls++;
         }
@@ -2235,7 +2235,7 @@ namespace KhaozEngine.Render3D
 
             if (_trailVertsAdditive.Count == 0 && _trailVertsAlpha.Count == 0) return;
 
-            _trails.SetFrameUniforms(cl, CurrentFrameView.ViewProjection);
+            _trails.SetFrameUniforms(cl, _currentFrameView.JitteredViewProjection);
             if (_trailVertsAdditive.Count > 0)
             {
                 _trails.Draw(cl, CollectionsMarshal.AsSpan(_trailVertsAdditive), _res.ModelFB, TrailBlend.Additive);

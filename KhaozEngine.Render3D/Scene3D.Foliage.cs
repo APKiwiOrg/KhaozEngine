@@ -130,7 +130,7 @@ public sealed partial class Scene3D
         {
             Span<ModelRenderer.FoliageUniforms> slots = CollectionsMarshal.AsSpan(_foliageUniforms);
             ModelRenderer.FoliageUniforms.ApplyPixelScale(slots,
-                ModelRenderer.FoliageUniforms.MetresPerPixel(CurrentFrameView.Projection, _res.Height));
+                ModelRenderer.FoliageUniforms.MetresPerPixel(_currentFrameView.Projection, _res.Height));
             uniforms = _model.UploadFoliageUniforms(cl, slots);
         }
         _frameStats.AddInstanceUpload(uploaded);

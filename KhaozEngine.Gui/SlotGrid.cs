@@ -69,9 +69,10 @@ namespace KhaozEngine.Gui
         public Rect Bounds;
 
         /// <summary>
-        /// Optional visible region for input. When set, slot hit-testing, pointer reservation, and drag source and
-        /// target paths use each slot's intersection with this region. Null preserves the full-grid behavior.
-        /// Drawing still relies on the caller's matching scissor region.
+        /// Optional visible region for input and drawing. When set, draw and update traversal visit only slots that
+        /// intersect this region. Hit-testing, pointer reservation, and drag source and target paths use each slot's
+        /// visible intersection. Null preserves the full-grid behavior. The caller's matching scissor still clips
+        /// partially visible slots.
         /// </summary>
         public Rect? VisibleBounds { get; set; }
 
@@ -303,10 +304,13 @@ namespace KhaozEngine.Gui
         /// is off every slot (the inter-slot gaps count as off). Pure geometry, independent of pointer state.</summary>
         public int SlotAt(Vector2 point)
         {
-            for (int i = 0; i < Count; i++)
-                if (TryVisiblePart(SlotRect(i), out Rect visible) && visible.Contains(point)) return i;
+            foreach (SlotGridCandidate candidate in VisibleSlotCandidates())
+                if (candidate.VisibleRect.Contains(point)) return candidate.Index;
             return -1;
         }
+
+        /// <summary>The allocation-free slot candidate path shared by lookup, update, and drawing.</summary>
+        internal SlotGridCandidateEnumerable VisibleSlotCandidates() => new(this);
 
         bool TryVisiblePart(Rect rect, out Rect visible)
         {
@@ -316,12 +320,7 @@ namespace KhaozEngine.Gui
                 return true;
             }
 
-            float x = Math.Max(rect.X, clip.X);
-            float y = Math.Max(rect.Y, clip.Y);
-            float right = Math.Min(rect.Right, clip.Right);
-            float bottom = Math.Min(rect.Bottom, clip.Bottom);
-            visible = new Rect(x, y, Math.Max(0f, right - x), Math.Max(0f, bottom - y));
-            return right > x && bottom > y;
+            return SlotGridCandidateEnumerable.TryIntersect(rect, clip, out visible);
         }
 
         /// <summary>Set (or replace) the drawable <see cref="SlotContent"/> of slot <paramref name="index"/>. The
@@ -377,9 +376,10 @@ namespace KhaozEngine.Gui
             DroppedPayload = default;
             RightClickedSlot = -1;
             int clicked = -1;
-            for (int i = 0; i < Count; i++)
+            foreach (SlotGridCandidate candidate in VisibleSlotCandidates())
             {
-                if (!TryVisiblePart(SlotRect(i), out Rect r)) continue;
+                int i = candidate.Index;
+                Rect r = candidate.VisibleRect;
                 if (HoveredSlot < 0 && pointer.IsHoveringIn(r)) HoveredSlot = i;
                 if (PressedSlot < 0 && pointer.IsPressingIn(r)) PressedSlot = i;
                 if (RightPressedSlot < 0 && pointer.IsRightPressingIn(r)) RightPressedSlot = i;
@@ -442,15 +442,17 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>
-        /// Draw every slot frame (with its hover / press state), then the per-slot <see cref="DrawSlotContent"/> and
-        /// the keybind label on top. <paramref name="white"/> is a 1x1 white texture. <paramref name="font"/> renders
+        /// Draw every slot frame that intersects <see cref="VisibleBounds"/> (with its hover / press state), then the
+        /// per-slot <see cref="DrawSlotContent"/> and the keybind label on top. A null visible region draws every
+        /// slot. <paramref name="white"/> is a 1x1 white texture. <paramref name="font"/> renders
         /// <see cref="KeybindLabels"/> and is only needed when they are set.
         /// </summary>
         public void Draw(SpriteBatch batch, Texture2D white, SpriteFont? font = null)
         {
-            for (int i = 0; i < Count; i++)
+            foreach (SlotGridCandidate candidate in VisibleSlotCandidates())
             {
-                Rect r = SlotRect(i);
+                int i = candidate.Index;
+                Rect r = candidate.SlotRect;
                 bool hover = i == HoveredSlot;
                 bool press = i == PressedSlot;
                 Vector4 fill = press ? PressColor : hover ? HoverColor : SlotColor;

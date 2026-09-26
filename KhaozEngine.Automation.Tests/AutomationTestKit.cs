@@ -90,7 +90,9 @@ static class AutomationTestKit
         IEnumerable<Key>? keysDown = null,
         IEnumerable<MouseButton>? mouseDown = null,
         int width = 1280,
-        int height = 720)
+        int height = 720,
+        string textInput = "",
+        bool textInputAvailable = false)
     {
         var down = new HashSet<Key>(keysDown ?? Array.Empty<Key>());
         var buttons = new HashSet<MouseButton>(mouseDown ?? Array.Empty<MouseButton>());
@@ -98,7 +100,8 @@ static class AutomationTestKit
             down, new HashSet<Key>(), new HashSet<Key>(),
             buttons, new HashSet<MouseButton>(),
             position, Vector2.Zero, 0f, width, height,
-            windowFocused: windowFocused);
+            windowFocused: windowFocused,
+            textInput: textInput, textInputAvailable: textInputAvailable);
     }
 
     /// <summary>Parse a wire line into a request, failing the test if it will not parse.</summary>

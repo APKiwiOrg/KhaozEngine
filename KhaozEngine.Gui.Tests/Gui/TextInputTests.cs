@@ -21,7 +21,7 @@ namespace KhaozEngine.Tests.Gui
         // release edges derive from this test's own frame sequence and nothing crosses between tests.
         readonly MouseFrames _mouse = new();
 
-        InputState Frame(Vector2 pos, bool leftDown, IEnumerable<Key>? pressed = null)
+        InputState Frame(Vector2 pos, bool leftDown, IEnumerable<Key>? pressed = null, string? committedText = null)
         {
             var down = new HashSet<MouseButton>();
             if (leftDown) down.Add(MouseButton.Left);
@@ -29,7 +29,8 @@ namespace KhaozEngine.Tests.Gui
             var (edgePressed, edgeReleased) = _mouse.Advance(down);
             return new InputState(
                 keys, keys, new HashSet<Key>(),
-                down, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased);
+                down, edgePressed, pos, Vector2.Zero, 0, 960, 540, mouseReleased: edgeReleased,
+                textInput: committedText ?? "", textInputAvailable: committedText != null);
         }
 
         // Tap = press + release at the same point.
@@ -69,6 +70,21 @@ namespace KhaozEngine.Tests.Gui
             p.Update(Frame(Inside, false, pressed: new[] { Key.H }));
             field.Update(p, Frame(Inside, false, pressed: new[] { Key.H }), 0f);
             Assert.Equal("h", field.Text);
+            Assert.True(field.TextChanged);
+        }
+
+        [Fact]
+        public void Focused_field_uses_committed_layout_text_instead_of_the_physical_key()
+        {
+            var field = new TextInput(Field);
+            var pointer = new Pointer();
+            Tap(field, pointer, Inside);
+
+            InputState frame = Frame(Inside, false, pressed: new[] { Key.Y }, committedText: "z");
+            pointer.Update(frame);
+            field.Update(pointer, frame, 0f);
+
+            Assert.Equal("z", field.Text);
             Assert.True(field.TextChanged);
         }
 

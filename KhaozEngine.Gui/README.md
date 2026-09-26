@@ -1011,11 +1011,11 @@ chat.Draw(batch, white);
   OVER the built-in one and costs all five built-in sections, which is the trap this seam exists to close.
   The ctor's `visibleAtBoot` starts the panel shown (default false), for a build whose tester has to read a value
   without first finding the toggle key. `GameApp`/`GameApp3D` wire one automatically (F1).
-- `TextEntry` - headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.
-  Ctrl/Super (Cmd) held suppresses character entry so shortcut chords like Ctrl+V / Cmd+V paste instead of typing.
-  Acts on `InputState.WasTyped` (press edge OR OS auto-repeat tick), so a held Backspace or character key repeats at
-  the OS rate; the chord suppression still blocks repeated character entry while Ctrl/Cmd is held. Keypad (numpad)
-  keys type their digit/dot/operator characters shift-independently (a keypad has no symbol row) via the
+- `TextEntry` - headless editing helper used by `TextInput`. On GLFW windows it reads the OS committed Unicode
+  stream, so layout changes and dead-key commits work. Hand-built snapshots and non-GLFW windows keep the US
+  key-map fallback. Ctrl/Super (Cmd) suppresses ordinary shortcut chords, while AltGr text is admitted. Ctrl+V /
+  Cmd+V pastes. `InputState.WasTyped` still drives Backspace and fallback character repeat at the OS rate. Keypad
+  keys type their digit/dot/operator characters shift-independently in the fallback via the
   `Keypad0`..`Keypad9`/`KeypadDecimal`/`KeypadAdd`/`KeypadSubtract`/`KeypadMultiply`/`KeypadDivide`/`KeypadEqual`
   members on `KhaozEngine.Windowing.Key`. A physical keypad Enter is folded into the regular `Enter` by
   `AppWindow`, so it commits/confirms identically everywhere, with no separate `KeypadEnter` member. The optional

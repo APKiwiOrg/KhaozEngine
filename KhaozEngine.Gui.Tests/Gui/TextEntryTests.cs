@@ -13,7 +13,8 @@ namespace KhaozEngine.Tests.Gui
     {
         // Build a frame where `pressed` keys went down this frame, `held` keys are held (for shift / chords),
         // and `repeated` keys fired an OS auto-repeat tick this frame (held past the repeat delay).
-        static InputState Frame(IEnumerable<Key> pressed, IEnumerable<Key>? held = null, IEnumerable<Key>? repeated = null)
+        static InputState Frame(IEnumerable<Key> pressed, IEnumerable<Key>? held = null, IEnumerable<Key>? repeated = null,
+            string? committedText = null)
         {
             var down = new HashSet<Key>(held ?? System.Array.Empty<Key>());
             var press = new HashSet<Key>(pressed);
@@ -23,7 +24,8 @@ namespace KhaozEngine.Tests.Gui
             return new InputState(
                 down, press, new HashSet<Key>(),
                 new HashSet<MouseButton>(), new HashSet<MouseButton>(),
-                Vector2.Zero, Vector2.Zero, 0, 960, 540, repeated: rep);
+                Vector2.Zero, Vector2.Zero, 0, 960, 540, repeated: rep,
+                textInput: committedText ?? "", textInputAvailable: committedText != null);
         }
 
         // A frame where `repeated` keys fired an OS auto-repeat tick (held, past the delay) with NO fresh press edge.
@@ -333,6 +335,65 @@ namespace KhaozEngine.Tests.Gui
             var mgr = new InputManager();
             mgr.Update(Frame(new[] { Key.V }, held: new[] { Key.LeftControl }));
             Assert.Equal("abXY", TextEntry.Apply("ab", mgr, maxLength: 32, filter: null, allowPaste: true));
+        }
+
+        [Fact]
+        public void OS_committed_text_wins_over_the_US_key_map()
+        {
+            Assert.Equal("z", TextEntry.Apply("", Frame(new[] { Key.Y }, committedText: "z")));
+            Assert.Equal("é", TextEntry.Apply("", Frame(new[] { Key.E }, committedText: "é")));
+        }
+
+        [Fact]
+        public void Empty_OS_text_frame_does_not_map_a_dead_key()
+        {
+            Assert.Equal("", TextEntry.Apply("", Frame(new[] { Key.Apostrophe }, committedText: "")));
+        }
+
+        [Fact]
+        public void Multiple_OS_characters_are_admitted_once_in_callback_order()
+        {
+            Assert.Equal("éé", TextEntry.Apply("", Frame(new[] { Key.E }, repeated: new[] { Key.E },
+                committedText: "éé")));
+        }
+
+        [Fact]
+        public void OS_text_is_suppressed_for_Ctrl_and_Super_shortcuts()
+        {
+            Assert.Equal("", TextEntry.Apply("", Frame(new[] { Key.C }, held: new[] { Key.LeftControl },
+                committedText: "c")));
+            Assert.Equal("", TextEntry.Apply("", Frame(new[] { Key.C }, held: new[] { Key.LeftSuper },
+                committedText: "c")));
+        }
+
+        [Fact]
+        public void AltGr_committed_text_survives_its_Ctrl_and_RightAlt_modifiers()
+        {
+            Assert.Equal("@", TextEntry.Apply("", Frame(new[] { Key.Q },
+                held: new[] { Key.LeftControl, Key.RightAlt }, committedText: "@")));
+        }
+
+        [Fact]
+        public void OS_text_filter_sees_each_earlier_admitted_character()
+        {
+            static bool Number(string buffer, char c) => char.IsDigit(c) || (c == '.' && !buffer.Contains('.'));
+            Assert.Equal("1.23", TextEntry.Apply("", Frame(Array.Empty<Key>(), committedText: "1.2.3"),
+                filter: Number));
+        }
+
+        [Fact]
+        public void Non_BMP_OS_text_is_admitted_or_rejected_as_one_scalar()
+        {
+            InputState frame = Frame(Array.Empty<Key>(), committedText: "🙂");
+            Assert.Equal("", TextEntry.Apply("", frame, maxLength: 1));
+            Assert.Equal("🙂", TextEntry.Apply("", frame, maxLength: 2));
+            Assert.Equal("", TextEntry.Apply("", frame, filter: (_, c) => !char.IsLowSurrogate(c)));
+        }
+
+        [Fact]
+        public void Backspace_removes_both_UTF16_units_of_a_non_BMP_scalar()
+        {
+            Assert.Equal("a", TextEntry.Apply("a🙂", Frame(new[] { Key.Backspace }, committedText: "")));
         }
     }
 }

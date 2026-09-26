@@ -131,5 +131,21 @@ namespace KhaozEngine.Tests.Windowing
             Assert.False(WithKeyDown(Key.A).IsCommandDown);
             Assert.False(InputState.Empty.IsCommandDown);
         }
+
+        [Fact]
+        public void WithoutScroll_preserves_committed_text_and_its_source_flag()
+        {
+            var state = new InputState(
+                new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                new HashSet<MouseButton>(), new HashSet<MouseButton>(),
+                Vector2.Zero, Vector2.Zero, 1f, 800, 600,
+                textInput: "é", textInputAvailable: true);
+
+            InputState cleared = state.WithoutScroll();
+            Assert.Equal(0f, cleared.ScrollDelta);
+            Assert.Equal("é", cleared.TextInput);
+            Assert.True(cleared.TextInputAvailable);
+            Assert.False(InputState.Empty.TextInputAvailable);
+        }
     }
 }

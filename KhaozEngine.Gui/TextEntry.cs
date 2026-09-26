@@ -6,29 +6,30 @@ using KhaozEngine.Windowing;
 namespace KhaozEngine.Gui
 {
     /// <summary>
-    /// Headless text-entry helper: maps a frame's <see cref="InputState"/> key presses to typed characters and
-    /// applies them to a string buffer (append printable, Backspace deletes). Works off the engine-native
-    /// <see cref="Key"/> enum + shift state, so it needs no SDL text-input plumbing and is fully unit-testable.
-    /// Holding Ctrl or Super (Cmd) suppresses character entry so shortcut chords don't type the letter into the
-    /// field; Shift is a text modifier and still applies. The one chord that is acted on is Ctrl+V / Cmd+V, which
+    /// Headless text-entry helper: applies OS committed text when the input snapshot provides it, or maps the
+    /// frame's <see cref="InputState"/> key presses through a US-layout fallback. Backspace deletes one scalar.
+    /// Holding Ctrl or Super (Cmd) suppresses ordinary shortcut chords. OS text produced by AltGr is admitted.
+    /// Shift is a text modifier and still applies. The one shortcut acted on is Ctrl+V / Cmd+V, which
     /// pastes the system clipboard (filtered + length-capped like typed text; opt out with <c>allowPaste: false</c>).
-    /// US keyboard layout for shifted symbols. Keypad (numpad) keys type their digit, dot, and operator characters
-    /// shift-independently. Used by the <see cref="TextInput"/> widget, and consumable by a
+    /// The fallback uses a US keyboard layout for shifted symbols. Keypad (numpad) keys type their digit, dot,
+    /// and operator characters shift-independently. Used by the <see cref="TextInput"/> widget, and consumable by a
     /// retained custom widget via the <see cref="InputManager"/> overload.
-    /// Hold-to-repeat works because it acts on <see cref="InputState.WasTyped"/> (press edge OR an OS auto-repeat
-    /// tick), so a held Backspace or character key deletes / types at the OS repeat rate.
+    /// <see cref="InputState.WasTyped"/> drives Backspace and fallback-key repeat. The OS text stream supplies
+    /// its own repeated characters.
     /// A <c>filter</c> is validated against the buffer as it accumulates THIS call, not a snapshot taken before the
     /// call started: a multi-key frame (several keys typed the same tick) and a paste both feed the filter each
     /// already-admitted char first, so a stateful filter (e.g. <see cref="NumberField"/>'s "at most one dot") sees
     /// every earlier admission within the same call, not a stale pre-call buffer.
-    /// Limitations vs a real IME: no locale layouts, dead keys, or composition.
+    /// The OS text path follows the active keyboard layout and dead-key commits. Preedit text and candidate
+    /// selection are not surfaced by the windowing layer.
     /// </summary>
     public static class TextEntry
     {
         /// <summary>
-        /// Returns <paramref name="current"/> after applying this frame's typed keys: Backspace removes the
-        /// last char; printable keys append (subject to <paramref name="maxLength"/> and <paramref name="filter"/>).
-        /// Acts on the press-or-repeat signal (<see cref="InputState.WasTyped"/>), so holding a key auto-repeats.
+        /// Returns <paramref name="current"/> after applying this frame's committed text or fallback typed keys.
+        /// Backspace removes the last Unicode scalar. Printable text appends subject to
+        /// <paramref name="maxLength"/> and <paramref name="filter"/>. Key actions use the press-or-repeat signal
+        /// (<see cref="InputState.WasTyped"/>).
         /// When <paramref name="allowPaste"/> is set (the default), a Ctrl+V / Cmd+V chord appends the system
         /// clipboard text (<see cref="Clipboard.TryGetClipboardText"/>) through the same <paramref name="filter"/>
         /// and <paramref name="maxLength"/> path as typed characters; pass <c>false</c> to suppress paste.
@@ -39,14 +40,14 @@ namespace KhaozEngine.Gui
         public static string Apply(string current, InputState input, int maxLength = int.MaxValue, Func<string, char, bool>? filter = null, bool allowPaste = true)
         {
             if (input.WasTyped(Key.Backspace) && current.Length > 0)
-                current = current[..^1];
+                current = CommittedTextAdmission.RemoveLastScalar(current);
 
-            // Ctrl/Super held = a shortcut chord (Ctrl+V / Cmd+V paste, etc.), not text entry. IsCommandDown is the
-            // shared cross-platform gate (also used by MapEditorScene's shortcuts), so this and every other chord
-            // agree on which keys count. Don't type the printable key (Backspace above still works). Shift is a
-            // text modifier, not a chord. This gate runs before the printable loop, so it also blocks repeat ticks
-            // (no machine-gunning a chord key).
-            if (input.IsCommandDown)
+            // Suppress Ctrl/Super shortcuts before printable input. On layouts with AltGr, the OS can surface
+            // RightAlt with Ctrl while still committing text. Preserve that OS text, but never map the physical
+            // key as a US character. Backspace above remains available under either modifier.
+            bool superDown = input.IsDown(Key.LeftSuper) || input.IsDown(Key.RightSuper);
+            bool altGrText = input.TextInputAvailable && input.IsDown(Key.RightAlt) && !superDown;
+            if (input.IsCommandDown && !altGrText)
             {
                 // Ctrl/Cmd+V pastes the clipboard (filtered + length-capped, same path as typed chars). Fires on the
                 // V press edge only, so holding the chord doesn't paste again on every OS auto-repeat tick.
@@ -54,6 +55,9 @@ namespace KhaozEngine.Gui
                     current = AppendClipboard(current, maxLength, filter);
                 return current;
             }
+
+            if (input.TextInputAvailable)
+                return CommittedTextAdmission.Append(current, input.TextInput, maxLength, filter);
 
             bool shift = input.IsDown(Key.LeftShift) || input.IsDown(Key.RightShift);
 

@@ -12,6 +12,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 and the mobile bridge. Public `Clipboard` behavior is unchanged. The original source file shrank from
 824 to 574 lines and left the KESIZE baseline ([#259](https://github.com/APKiwiOrg/KhaozEngine/issues/259)).
 
+`KhaozEngine.Windowing` now carries OS committed Unicode text through each `InputState` on GLFW windows.
+`TextEntry` and `TextInput` follow the active keyboard layout and dead-key commits, while headless input keeps
+the US key-map fallback. Filters and length limits admit non-BMP scalars whole, and Backspace removes both
+UTF-16 units together. IME preedit and candidate UI remain deferred ([#61](https://github.com/APKiwiOrg/KhaozEngine/issues/61)).
+
 ## 20.6.0
 
 **A journal can be reset, MapEditor can generate undoable dungeons, and an additive pose can be layered onto

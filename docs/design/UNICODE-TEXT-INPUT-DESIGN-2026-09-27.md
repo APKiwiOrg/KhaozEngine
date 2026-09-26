@@ -10,6 +10,9 @@ wrong symbol on other layouts and cannot receive the character committed after a
 `AppWindow` already captures physical keys through Silk.NET and GLFW, then publishes `InputState`
 through `InputAccumulator`. That snapshot has no text channel.
 
+The frozen `AppWindow.cs` file cannot grow under KESIZE. Its two GLFW keyboard callbacks therefore
+live together in a cohesive `AppWindow.GlfwKeyboard.cs` partial file.
+
 ## Choice
 
 Use GLFW's Unicode character callback on GLFW windows. It reports committed code points according
@@ -40,7 +43,8 @@ package, returns full code points, and keeps OS-specific input in `AppWindow`.
 ## Boundaries and verification
 
 `InputState` remains immutable and its new constructor arguments are optional for existing
-headless callers. `InputState.WithoutScroll` preserves committed text. `InputAccumulator` clears
+headless callers. `InputState.WithoutScroll` and the dev automation snapshot composer preserve
+committed text. `InputAccumulator` clears
 pending text on snapshot and focus loss. Invalid Unicode scalar values are ignored.
 
 Headless tests cover accumulation, frame clearing, focus loss, empty committed frames, layout

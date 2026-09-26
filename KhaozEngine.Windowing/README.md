@@ -160,7 +160,9 @@ Windowing + input foundation for the custom MonoGame-free stack.
 - `InputState` - per-frame keyboard + mouse + gamepad + touch snapshot (`IsDown`/`WasPressed` for
   `Key`/`MouseButton`, mouse position/delta/scroll, `Gamepad(i)`). Immutable; no MonoGame. `WasRepeated(Key)` /
   `WasTyped(Key)` surface OS key auto-repeat (`AppWindow` fills it from GLFW's `REPEAT` action; `WasPressed` stays
-  press-edge only) so text fields hold-to-repeat. `IsCommandDown` is true while either Ctrl key or either Super
+  press-edge only) so text fields hold-to-repeat. `TextInput` carries the ordered Unicode text committed by the
+  OS this frame. `TextInputAvailable` remains true on an empty GLFW text frame, so dead keys do not type through
+  the fallback key map. Hand-built snapshots default to no text source. `IsCommandDown` is true while either Ctrl key or either Super
   (Cmd) key is held, the one cross-platform check for a "command modifier" keyboard chord (Ctrl+Z / Cmd+Z,
   Ctrl+S / Cmd+S, and so on) so a game or editor tests one property instead of OR-ing all four keys itself.
   `WasReleased(MouseButton)` / `MouseReleased` (since 14.25.0) give the mouse the release edge the keyboard

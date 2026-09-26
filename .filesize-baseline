@@ -46,5 +46,4 @@
 905 KhaozEngine.Game.Tests/Game/ReplicatedCharacterAnimatorsTests.cs
 905 KhaozEngine.Dungeon/Internal/RoomGrower.cs
 857 KhaozEngine.MapEditor.Tests/MapEditTool/MutationServiceProceduralTests.cs
-820 KhaozEngine.Windowing/AppWindow.cs
 806 KhaozEngine.Game.Tests/Physics/ConstraintTests.cs

@@ -11,9 +11,6 @@ using Silk.NET.Windowing.Glfw;
 using KhaozEngine.Gpu;
 using SilkKey = Silk.NET.Input.Key;
 using SilkMouseButton = Silk.NET.Input.MouseButton;
-// GLFW interop for key auto-repeat. Targeted aliases instead of `using Silk.NET.GLFW;` to avoid clashing
-// with Silk.NET.Windowing's Monitor / the engine's own MouseButton.
-using GlfwInputAction = Silk.NET.GLFW.InputAction;
 
 namespace KhaozEngine.Windowing
 {
@@ -68,10 +65,6 @@ namespace KhaozEngine.Windowing
         // loop asks for one immutable snapshot per render callback. Everything past the translation lives in
         // InputAccumulator so it is testable without a window.
         readonly InputAccumulator _accumulator = new();
-        // The chained GLFW key callback (held so the native delegate isn't GC'd) and Silk's previous callback we
-        // re-invoke from it so the high-level KeyDown/KeyUp keep firing. See WireKeyRepeat.
-        Silk.NET.GLFW.GlfwCallbacks.KeyCallback? _keyCallback;
-        Silk.NET.GLFW.GlfwCallbacks.KeyCallback? _prevKeyCallback;
         readonly SilkGamepadReader _gamepads = new();
         // Rumble OUTPUT seam. The Silk sink is the ONLY place touching the vibration motors (mirror of the
         // AppWindow-only input-static rule); the driver wraps it with the pure envelope mixer. Built lazily on first
@@ -681,33 +674,7 @@ namespace KhaozEngine.Windowing
                 m.Scroll += (_, wheel) => _accumulator.OnScroll(wheel.Y);
             }
             WireKeyRepeat();
-        }
-
-        /// <summary>
-        /// Capture OS key auto-repeat. GLFW fires a <c>REPEAT</c> key action while a key is held (after the user's
-        /// OS repeat delay, then at the OS repeat rate), but Silk's high-level keyboard maps only PRESS/RELEASE and
-        /// drops REPEAT, so <see cref="WireInput"/>'s KeyDown/KeyUp never see it. We install our own GLFW key callback
-        /// to report repeats to <see cref="InputAccumulator.OnKeyRepeat"/>, then CHAIN to Silk's previous callback so
-        /// its KeyDown/KeyUp (and thus the press and release edges) keep working unchanged. GLFW key codes share the
-        /// <see cref="SilkKey"/> integer values, so we reuse <see cref="MapKey"/>. Per the input hard rule, this is the
-        /// only place the GLFW statics are touched. Callbacks run on the GLFW/main thread during the frame poll (same
-        /// as the KeyDown handler), so the accumulator's sets need no locking.
-        /// </summary>
-        unsafe void WireKeyRepeat()
-        {
-            nint glfwWindow = _window.Native?.Glfw ?? 0;
-            if (glfwWindow == 0) return; // non-GLFW backend: repeat stays empty; press/release are unaffected.
-
-            var glfw = Silk.NET.GLFW.GlfwProvider.GLFW.Value;
-            var handle = (Silk.NET.GLFW.WindowHandle*)glfwWindow;
-            _keyCallback = (window, key, code, action, mods) =>
-            {
-                if (action == GlfwInputAction.Repeat && MapKey((SilkKey)(int)key, out Key k))
-                    _accumulator.OnKeyRepeat(k);
-                _prevKeyCallback?.Invoke(window, key, code, action, mods); // keep Silk's KeyDown/KeyUp alive
-            };
-            // SetKeyCallback returns the previously-installed callback (Silk's); capture it to re-invoke above.
-            _prevKeyCallback = glfw.SetKeyCallback(handle, _keyCallback);
+            WireTextInput();
         }
 
         /// <summary>Read this frame's Silk state (cursor, framebuffer size, gamepads) and let

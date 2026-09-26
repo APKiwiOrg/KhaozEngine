@@ -138,7 +138,9 @@ namespace KhaozEngine.Automation
                 real.Touches,
                 windowFocused: true,
                 repeated: real.KeysRepeated,
-                mouseReleased: Union(real.MouseReleased, _buttonsReleased));
+                mouseReleased: Union(real.MouseReleased, _buttonsReleased),
+                textInput: real.TextInput,
+                textInputAvailable: real.TextInputAvailable);
         }
 
         /// <summary>Clear this frame's injected edges. Called after <see cref="Compose"/>, once the frame has read them.</summary>

@@ -791,7 +791,10 @@ GamepadState Gamepad(int i = 0);  GamepadState PrimaryGamepad { get; }
 then recurring at the OS repeat rate); `AppWindow` fills `KeysRepeated` from GLFW's `REPEAT` key action. `WasPressed`
 stays the press edge only (auto-repeat excluded), so existing callers are unchanged; `WasTyped(Key)` is the union
 (`WasPressed || WasRepeated`) - the "a character was typed this frame" signal hold-to-repeat text entry wants.
-`TextEntry`/`TextInput` use it, so a held Backspace or character key repeats with no game code.
+`TextEntry`/`TextInput` use committed `InputState.TextInput` on GLFW windows, including layout-specific and
+dead-key output. `TextInputAvailable` stays true on empty text frames to avoid a US key-map fallback for dead
+keys. Headless frames and non-GLFW windows keep that fallback. `WasTyped` still handles Backspace and fallback
+repeat. The windowing seam does not expose IME preedit text or candidate selection.
 
 `MouseReleased` (since 14.25.0) is the mouse counterpart to `KeysReleased`, read via `WasReleased(MouseButton)`.
 Before it existed the mouse had a press edge but no release edge, so a rebindable action bound to a mouse button
@@ -865,7 +868,8 @@ for the player to accept "any connected controller".
 
 **Feeding the text-entry core:** `State` returns this frame's `InputState` snapshot (the value last passed to
 `Update`), so a retained, custom-rendered widget that holds an `InputManager` can drive the headless
-`TextEntry.Apply(text, input, maxLength, filter, allowPaste)` editing core - the full printable map, hold-to-repeat,
+`TextEntry.Apply(text, input, maxLength, filter, allowPaste)` editing core - committed OS text when available,
+the US printable map otherwise, hold-to-repeat,
 and Ctrl/Cmd+V clipboard paste - without reaching for the raw window input. There is an `InputManager` overload of
 `Apply` that reads `State` for you, so the call is one line; pass `allowPaste: false` to suppress paste. Paste
 appends `Clipboard.TryGetClipboardText()` through the same `filter` + `maxLength` path as typed chars (so a digits

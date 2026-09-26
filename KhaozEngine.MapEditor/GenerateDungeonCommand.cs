@@ -9,7 +9,7 @@ namespace KhaozEngine.MapEditor;
 
 /// <summary>Bakes one deterministic dungeon into a map as a single reversible editor edit. The first apply stages
 /// the whole bake before changing the target, and redo reuses that exact staged content.</summary>
-public sealed class GenerateDungeonCommand : EditorCommand
+public sealed partial class GenerateDungeonCommand : EditorCommand
 {
     private readonly DungeonConfig _config;
     private readonly ulong _seed;

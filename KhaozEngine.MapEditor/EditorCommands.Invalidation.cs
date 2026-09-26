@@ -7,12 +7,62 @@ public abstract partial class EditorCommand
 {
     internal virtual RectArea? DirtyRegionFor(MapDocument doc) => DirtyRegion;
 
+    /// <summary>True when applying or reverting this command can change authored placements. False is the default
+    /// for the engine's known commands because most target another document collection. Commands declared by
+    /// another assembly take the conservative path regardless of this internal classification.</summary>
+    internal virtual bool ChangesPlacements => false;
+
     /// <summary>True unless the command is known to leave the terrain field unchanged. Only meaningful while
     /// <see cref="AffectsWorld"/> is true. An exclusion or scatter-override edit changes nothing but the captured
     /// scatter configs, so it reports false and its bounded region only needs its props re-served
     /// (<see cref="ViewportWorld.RefreshLayerProps(MapDocument, RectArea)"/>), never a field swap or a terrain re-mesh. True is the safe
     /// default for everything else.</summary>
     internal virtual bool ChangesField => true;
+}
+
+public sealed partial class AddPlacementCommand
+{
+    internal override bool ChangesPlacements => true;
+}
+
+public sealed partial class RemovePlacementCommand
+{
+    internal override bool ChangesPlacements => true;
+}
+
+public sealed partial class MovePlacementCommand
+{
+    internal override bool ChangesPlacements => true;
+}
+
+public sealed partial class RotatePlacementCommand
+{
+    internal override bool ChangesPlacements => true;
+}
+
+public sealed partial class ScalePlacementCommand
+{
+    internal override bool ChangesPlacements => true;
+}
+
+public sealed partial class RenamePlacementCommand
+{
+    internal override bool ChangesPlacements => true;
+}
+
+public sealed partial class BakeRegionCommand
+{
+    internal override bool ChangesPlacements => true;
+}
+
+public sealed partial class FreezeZoneCommand
+{
+    internal override bool ChangesPlacements => true;
+}
+
+public sealed partial class GenerateDungeonCommand
+{
+    internal override bool ChangesPlacements => true;
 }
 
 public sealed partial class AddExclusionCommand

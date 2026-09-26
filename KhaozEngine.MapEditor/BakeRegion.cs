@@ -18,7 +18,7 @@ namespace KhaozEngine.MapEditor;
 /// an Apply/Revert/Apply cycle is byte-identical. <see cref="PropScatter"/> is deterministic given field + config +
 /// region, but an earlier command replayed before this one on redo could have changed the field, so capturing on
 /// first apply is the safe contract rather than regenerating.</para></summary>
-public sealed class BakeRegionCommand : EditorCommand
+public sealed partial class BakeRegionCommand : EditorCommand
 {
     readonly RectArea _region;
     readonly string _layerName;

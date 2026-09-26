@@ -20113,7 +20113,7 @@ client.AdvancePresentation(dt);
 EntityRenderState[] snapshot = client.Snapshot();
 ```
 
-`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below), and the catalog content door's two refusals, `ContentVersionMismatch` and `ContentClientTooOld` (see "The connect door, and the client's catch-up", which parses `DisconnectReasonDetail` with `ContentRefusal`). The last two were appended after every shipped value, so no numeric value moved. The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the `ke:banned` connect refusal or the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below), and the catalog content door's two refusals, `ContentVersionMismatch` and `ContentClientTooOld` (see "The connect door, and the client's catch-up", which parses `DisconnectReasonDetail` with `ContentRefusal`). The last two were appended after every shipped value, so no numeric value moved. The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
 
 **One account, one live session (17.38.0).** The join gate keys a live session by the SUBJECT the authenticator verified, so two clients presenting one account's connect token cannot become two live sessions. Above the session layer that shape is unrepresentable: `WorldPersistence` keys one record per account, so the two shared it and the later join left the earlier session unrestored, then let its default-spawn state overwrite the record once the winner left (#662). Set the policy on either head:
 
@@ -20301,11 +20301,10 @@ ban list for a game on that registry (see "Identity / sign-in"). Such a game doe
 whose keys would be a second list. Pass the store as the trailing `banStore:` ctor arg on either server. Bans key on
 the verified account id, and guests are not bannable. A rejected account receives a typed `ServerNoticeKind.Banned`
 notice (empty message) just before the drop, which the client maps to its own localized "you are banned" string, so
-the ban text never ships from the server as a hardcoded literal. The drop itself attributes as `DisconnectReason.Banned`,
-mirroring the way a `Shutdown` notice promotes the following drop to `ServerShutdown`, so a screen that only reads
-`client.DisconnectReason` can still tell a ban from a network outage. It stays retried on the reconnect backoff,
-deliberately: a ban may carry an expiry, and going terminal would sit out a five-minute ban forever. Read the
-reason and set `ReconnectBackoff.MaxAttempts` (or turn `AutoReconnect` off) if your game would rather stop asking.
+the ban text never ships from the server as a hardcoded literal. The drop itself attributes as terminal
+`DisconnectReason.Banned`, mirroring the way a `Shutdown` notice promotes the following drop to `ServerShutdown`,
+so a screen that only reads `client.DisconnectReason` can still tell a ban from a network outage. A ban is never put
+on the reconnect backoff. The player can reconnect manually after an expiry.
 
 One store serves every ban path. `IBanStore`, `BanRecord` and `InMemoryBanStore` live in the `KhaozEngine.Netcode`
 assembly under their `KhaozEngine.NetWorld` names, forwarded from `KhaozEngine.NetWorld`, so existing code compiles
@@ -20325,10 +20324,11 @@ var admin = new ServerAdmin(server, bans);                       // BanAsync rec
 `BanGateAuthenticator(inner, Func<string,bool>, log?)` form stays for a ban list that is not a store. A tile server
 takes the store as `TileWorldServerConfig.BanStore` and reads it at the door, at the join, and once per tick over
 every live session, closing a banned session with the `ke:banned` notice token (`TileServerReason.Banned`), so a ban
-written straight to the store ends a tile session on the next tick with no kick of the game's own. The two paths
-read differently on a `WorldClient`:
-a door refusal is `DisconnectReason.RejectedToken` with `ke:banned` in `DisconnectReasonDetail`, terminal unless
-`RetryOnReject` is set, while the join kick is `DisconnectReason.Banned` and is retried.
+written straight to the store ends a tile session on the next tick with no kick of the game's own. A float server
+checks direct store writes at the next join. Its `ServerAdmin.BanAsync` path records the ban and kicks a live session
+through a typed `Banned` notice. On `WorldClient`, both the connect door's `ke:banned` refusal and the typed notice
+become terminal `DisconnectReason.Banned`, with empty `DisconnectReasonDetail`, even when `RetryOnReject` and
+`AutoReconnect` are enabled.
 
 **Account enumeration.** Stores opt into `IEnumerableWorldStore` (`InMemoryWorldStore`, `SqliteWorldStore`,
 `SqlServerWorldStore` all do): `EnumerateAsync(keyPrefix?)` streams `WorldStoreEntry { Key, UpdatedAt, Size? }`.

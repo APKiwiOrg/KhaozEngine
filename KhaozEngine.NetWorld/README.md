@@ -524,15 +524,15 @@ Bans key on the verified account id, and guests are not bannable.
 `KhaozEngine.NetWorld` names, and this package type-forwards them, so the connect gate and a tile server take the
 same seam and existing code compiles and binds unchanged. `WorldStoreBanStore` stays here.
 
-That is the LIVE ban path: the check runs at JOIN, after the authenticator admitted the peer, and the kick is a
-typed `ServerNotice(ServerNoticeKind.Banned)`, so a ban applied mid-session lands on the next join and a game
-banned-player banner has a typed notice to render. The drop that follows attributes as
-`DisconnectReason.Banned` on the client, mirroring what a `Shutdown` notice does for `ServerShutdown`, so a
-consumer reading only the disconnect reason can tell a ban from an outage. It is still retried on the backoff,
-because a ban may carry an expiry. `KhaozEngine.Netcode.BanGateAuthenticator` is the other path,
-refusing a banned subject during AUTHENTICATION with the `ke:banned` wire reason, before any join happens. It
-takes the same `IBanStore`, so a game that wants both hands ONE store to both, here as `banStore:` and there as
-`new BanGateAuthenticator(tokenAuth, store)`, and the two can never disagree about who is banned.
+That is the JOIN ban path: the check runs after the authenticator admitted the peer, and the kick is a typed
+`ServerNotice(ServerNoticeKind.Banned)`, so a direct store write with no kick lands on the next join and a game
+banned-player banner has a typed notice to render. `ServerAdmin.BanAsync` records the ban and kicks a live session
+through the same typed notice. `KhaozEngine.Netcode.BanGateAuthenticator` is the connect-door path, refusing a
+banned subject during AUTHENTICATION with the `ke:banned` wire reason before any join happens. `WorldClient` maps
+both paths to terminal `DisconnectReason.Banned` and never puts either on the reconnect backoff, even when
+`RetryOnReject` is set. The gate takes the same `IBanStore`, so a game that wants both hands ONE store to both, here
+as `banStore:` and there as `new BanGateAuthenticator(tokenAuth, store)`, and the two can never disagree about who
+is banned.
 
 **NativeAOT.** The durable persistence DTOs (`PlayerRecord`, `WorldMetaRecord`, and the `WorldStoreBanStore` ban
 record) encode and decode through a source-generated `System.Text.Json` context, so they round-trip under

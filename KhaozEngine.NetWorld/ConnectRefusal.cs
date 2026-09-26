@@ -58,6 +58,11 @@ internal readonly record struct ConnectRefusal(
         if (reason is not null && reason.StartsWith(HandshakeToken.ContentClientTooOldPrefix, StringComparison.Ordinal))
             return new(DisconnectReason.ContentClientTooOld, reason, RetryRule.Never);
 
+        // A banned account gets the same typed, terminal reason whether the connect door refuses it here or the
+        // joined session receives a Banned notice before its transport closes.
+        if (reason == HandshakeToken.BannedReason)
+            return new(DisconnectReason.Banned, string.Empty, RetryRule.Never);
+
         // The KICK half of the duplicate-session gate: another client took this account's seat. Terminal, and the
         // one reason here that has to be: retrying would displace the session that just displaced this one, and the
         // two clients would trade the seat forever. The game shows its own localized line and offers a manual

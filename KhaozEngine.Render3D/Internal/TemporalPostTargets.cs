@@ -23,14 +23,30 @@ namespace KhaozEngine.Render3D.Internal
         IGpuFramebuffer? _pingAFB, _pingBFB, _bloomAFB, _bloomBFB;
         GpuPixelFormat _colorFormat;
         int _resGeneration = int.MinValue, _historyGeneration = int.MinValue;
+        int _generation;
 
         public TemporalPostTargets(IGpuDevice gd) => _gd = gd;
 
         /// <summary>The display size of the ping pair. Zero while released.</summary>
         public int Width { get; private set; }
         public int Height { get; private set; }
-        /// <summary>Bumped when a texture this reports is replaced here or upstream (the scene's targets, the history's).</summary>
-        public int Generation { get; private set; }
+        /// <summary>Bumped when a texture this reports is replaced here or upstream (the scene's targets, the history's).
+        /// The upstream generations are compared on every read, so a replacement between <see cref="Ensure"/> and the
+        /// chain's bind still moves it, and the chain, whose sets are keyed on it, rebuilds them before a run.</summary>
+        public int Generation
+        {
+            get
+            {
+                if (_res is not null && _history is not null
+                    && (_res.Generation != _resGeneration || _history.TargetGeneration != _historyGeneration))
+                {
+                    _resGeneration = _res.Generation;
+                    _historyGeneration = _history.TargetGeneration;
+                    _generation++;
+                }
+                return _generation;
+            }
+        }
         public bool BloomAllocated { get; private set; }
         public int BloomWidth { get; private set; }
         public int BloomHeight { get; private set; }
@@ -58,7 +74,7 @@ namespace KhaozEngine.Render3D.Internal
             if (opaque) CreateOpaque((uint)res.Width, (uint)res.Height, format);
             bool upstream = !ReferenceEquals(res, _res) || !ReferenceEquals(history, _history)
                 || res.Generation != _resGeneration || history.TargetGeneration != _historyGeneration;
-            if (display || opaque || upstream) Generation++;
+            if (display || opaque || upstream) _generation++;
             _res = res;
             _history = history;
             _resGeneration = res.Generation;
@@ -84,7 +100,7 @@ namespace KhaozEngine.Render3D.Internal
             _res = null;
             _history = null;
             _resGeneration = _historyGeneration = int.MinValue;
-            Generation++;
+            _generation++;
         }
 
         public void Dispose() => Release();

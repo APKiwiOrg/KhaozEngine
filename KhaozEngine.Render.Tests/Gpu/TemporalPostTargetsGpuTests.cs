@@ -105,6 +105,13 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.True(targets.Generation > g);
                 g = targets.Generation;
 
+                history.ReleaseTargets();                            // new sources at the same sizes
+                history.EnsureTargets(gd, 128, 72, 64, 36);
+                targets.Ensure(res, history, 128, 72, bloomEnabled: false);
+                Assert.Equal((128, 72), (targets.Width, targets.Height));
+                Assert.True(targets.Generation > g);
+                g = targets.Generation;
+
                 targets.Ensure(res, history, 128, 72, bloomEnabled: true);
                 Assert.True(targets.Generation > g);
                 Assert.True(targets.BloomAllocated);
@@ -271,6 +278,95 @@ namespace KhaozEngine.Tests.Gpu
             {
                 history.ReleaseTargets();
             }
+        }
+
+        public enum Upstream { OffsetFieldAppears, OffsetFieldFreed, SceneTargetsRecreated, HistoryRecreated }
+
+        /// <summary>A texture this reports is replaced upstream after <see cref="TemporalPostTargets.Ensure"/> and before
+        /// the chain binds. The generation must move on the next read, so the chain refuses its old sets and a rebind
+        /// rebuilds them over the live textures, never over a freed one.</summary>
+        [GpuTheory]
+        [InlineData(Upstream.OffsetFieldAppears)]
+        [InlineData(Upstream.OffsetFieldFreed)]
+        [InlineData(Upstream.SceneTargetsRecreated)]
+        [InlineData(Upstream.HistoryRecreated)]
+        public void A_texture_replaced_upstream_after_Ensure_moves_the_generation_and_the_chain_rebinds(Upstream change)
+        {
+            const int W = 24, H = 12;
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = gpu.GpuDevice;
+            using var res = new RenderResources(gd, 16, 8, hdrColor: false);
+            if (change == Upstream.OffsetFieldFreed) res.EnsureDistortion(true, 2);
+            var history = new TemporalHistory();
+            using var targets = new TemporalPostTargets(gd);
+            using var output = new PostChainRig.Output(gd, W, H);
+            try
+            {
+                history.EnsureTargets(gd, W, H, 16, 8);
+                FillSources(gd, history, Slot0);
+                targets.Ensure(res, history, W, H, bloomEnabled: false);
+                using var post = new PixelPostProcess(gd, targets.PingAFB.Outputs, output.Framebuffer.Outputs);
+                post.BindTargets(targets);
+                PixelPostProcessSettings s = PostChainRig.LegacyPlain();
+                history.BeginResolve(0);
+                int g = targets.Generation;
+
+                Color expected = Slot0;
+                switch (change)
+                {
+                    case Upstream.OffsetFieldAppears:
+                        res.EnsureDistortion(true, 2);
+                        ClearOffsets(gd, res);   // no offset, so the apply pass reproduces its source
+                        break;
+                    case Upstream.OffsetFieldFreed:
+                        res.EnsureDistortion(false, 2);
+                        break;
+                    case Upstream.SceneTargetsRecreated:
+                        res.Resize(20, 10, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: false);
+                        break;
+                    case Upstream.HistoryRecreated:
+                        history.ReleaseTargets();
+                        history.EnsureTargets(gd, W, H, 16, 8);
+                        FillSources(gd, history, Slot1);
+                        expected = Slot1;
+                        break;
+                }
+
+                Assert.True(targets.Generation > g, $"{change} after Ensure left the generation at {g}");
+                int moved = targets.Generation;
+                Assert.Equal(moved, targets.Generation);   // recorded, so a second read moves nothing
+                PostChainRig.RunRefused(gd, post, targets, output, s, distortionActive: true);
+
+                post.BindTargets(targets);
+                PostChainRig.AssertEveryPixel(PostChainRig.RunChain(gd, post, targets, output, s, runFxaa: false,
+                    distortionActive: true), expected);
+                Assert.Equal(res.DistortAllocated, targets.DistortAllocated);
+                Assert.Same(res.DistortTex, targets.DistortTex);
+                Assert.Same(res.NormalTex, targets.NormalTex);
+                Assert.Same(history.Color(targets.SourceSlot), targets.Source(targets.SourceSlot));
+            }
+            finally
+            {
+                history.ReleaseTargets();
+            }
+        }
+
+        static void FillSources(IGpuDevice gd, TemporalHistory history, Color c)
+        {
+            for (int slot = 0; slot < 2; slot++)
+                TemporalTextureIo.Upload(gd, history.Color(slot), Fill(history.DisplayWidth, history.DisplayHeight, c));
+        }
+
+        static void ClearOffsets(IGpuDevice gd, RenderResources res)
+        {
+            using IGpuCommandList cl = gd.Factory.CreateCommandList();
+            using (GpuRecording.Open(gd, cl, nameof(TemporalPostTargetsGpuTests)))
+            {
+                cl.SetFramebuffer(res.DistortFB!);
+                cl.ClearColorTarget(0, new Color(0f, 0f, 0f, 0f));
+            }
+            gd.Submit(cl);
+            gd.WaitForIdle();
         }
 
         static readonly Color Slot0 = new(0.25f, 0.5f, 0.75f, 1f);

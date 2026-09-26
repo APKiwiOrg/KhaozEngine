@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
@@ -27,6 +28,38 @@ namespace KhaozEngine.Tests.Gui
             SlotSize = 40f,
             Spacing = 4f,
         };
+
+        static int[] CandidateIndexes(SlotGrid grid)
+        {
+            var indexes = new List<int>();
+            foreach (var candidate in grid.VisibleSlotCandidates()) indexes.Add(candidate.Index);
+            return indexes.ToArray();
+        }
+
+        [Fact]
+        public void Visible_slot_candidates_cull_a_large_grid_and_keep_partial_edge_slots()
+        {
+            var grid = new SlotGrid(new Rect(100, 100, 0, 0), count: 1000, columns: 10)
+            {
+                SlotSize = 40f,
+                Spacing = 4f,
+                VisibleBounds = new Rect(160, 160, 56, 56),
+            };
+
+            Assert.Equal(new[] { 11, 12, 21, 22 }, CandidateIndexes(grid));
+        }
+
+        [Fact]
+        public void Null_visible_bounds_visits_every_slot_candidate()
+        {
+            var grid = new SlotGrid(new Rect(100, 100, 0, 0), count: 1000, columns: 10)
+            {
+                SlotSize = 40f,
+                Spacing = 4f,
+            };
+
+            Assert.Equal(Enumerable.Range(0, 1000), CandidateIndexes(grid));
+        }
 
         [Fact]
         public void Null_visible_bounds_keeps_full_hit_testing_and_reservation()

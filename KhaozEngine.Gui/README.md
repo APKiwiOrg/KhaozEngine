@@ -530,9 +530,9 @@ chat.Draw(batch, white);
     the origin, and the footprint is derived from `Columns`/`SlotWidth`/`SlotHeight`/`Spacing` and the slot `Count`
     (read `ContentSize`
     / `ContentBounds`). Set nullable `VisibleBounds` to the same region passed to the caller's scissor when the
-    grid is inside a clipped panel. Slot lookup, hover, presses, taps, drag sources and targets, and pointer
-    reservation then use only the visible intersection. Null keeps the full-grid behavior, and drawing still
-    relies on the caller's scissor. A slot is square by default and `SlotSize` is the shorthand that writes both axes (reading
+    grid is inside a clipped panel. Drawing, slot lookup, hover, presses, taps, drag sources and targets, and pointer
+    reservation then visit only slots that intersect the visible region. The caller's scissor clips partially
+    visible slots. Null keeps the full-grid behavior. A slot is square by default and `SlotSize` is the shorthand that writes both axes (reading
     it returns `SlotWidth`), so a panel drawing item NAMES rather than icons sets `SlotWidth`/`SlotHeight` apart for
     a wide, short cell. Each slot hit-tests through the press-origin invariant, and `HoveredSlot`/`PressedSlot` expose the
     live index (-1 = none) and a valid tap fires `OnSlotClicked` (and `Update` returns the index). The right button

@@ -1434,9 +1434,10 @@ invariant as the left: a valid right tap sets `RightClickedSlot` and fires `OnSl
 per-slot context menu opens only when the right press BEGAN in that slot. The `Update` return stays the left tap.
 
 For a grid inside a scrolling panel, set `VisibleBounds` (18.19.0) to the panel's clip rectangle each frame.
-`SlotAt`, gestures and pointer reservation use the visible intersection, so a hidden row cannot answer a click
-on the panel's tabs or footer. Partially visible cells require the press and release inside their visible
-portion. Null leaves the original behavior intact. The caller still supplies the drawing scissor.
+`Draw`, `SlotAt`, gestures and pointer reservation visit only slots that intersect the visible region, so a
+hidden row is neither drawn nor allowed to answer a click on the panel's tabs or footer. Partially visible cells
+still draw from their full slot rectangle under the caller's scissor, and require the press and release inside
+their visible portion. Null leaves the original full-grid behavior intact.
 
 ```csharp
 // A two-column inventory of wide text rows, right-click opening a per-slot context menu.

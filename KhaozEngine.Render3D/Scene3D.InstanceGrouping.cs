@@ -30,12 +30,14 @@ namespace KhaozEngine.Render3D
         /// to <paramref name="instanceData"/> the same way <paramref name="castKinds"/> is and for the same reason:
         /// this is the one place that still knows which queued instance a slot came from. Omit it and no flags are
         /// produced, which the main-pass mask reads as "nothing is shadow-only" (the pre-policy shape).
+        /// <paramref name="motionKeys"/> (optional) receives each SLOT's motion key, index-aligned the same way, for the rigid
+        /// motion slots (TEMPORAL-FOUNDATIONS-DESIGN section 3). Omit it and no keys are produced.
         /// </summary>
         internal static void GroupInstances(IReadOnlyList<SceneInstances.Instance> items,
             List<ModelRenderer.InstanceData> instanceData, List<MeshRun> runs,
             Dictionary<(int Index, int Generation), int>? meshRunIndex = null,
             List<ShadowCastKind>? castKinds = null, ReadOnlySpan<bool> retained = default,
-            List<uint>? writeCursorScratch = null, List<bool>? shadowOnly = null)
+            List<uint>? writeCursorScratch = null, List<bool>? shadowOnly = null, List<MotionKey>? motionKeys = null)
         {
             if (!retained.IsEmpty && retained.Length != items.Count)
                 throw new ArgumentException("Retention must cover every queued instance.", nameof(retained));
@@ -43,6 +45,7 @@ namespace KhaozEngine.Render3D
             runs.Clear();
             castKinds?.Clear();
             shadowOnly?.Clear();
+            motionKeys?.Clear();
             if (items.Count == 0) return;
 
             meshRunIndex ??= new Dictionary<(int, int), int>();
@@ -94,6 +97,7 @@ namespace KhaozEngine.Render3D
                 for (int i = 0; i < total; i++) instanceData.Add(default);
                 if (castKinds != null) for (int i = 0; i < total; i++) castKinds.Add(ShadowCastKind.Opaque);
                 if (shadowOnly != null) for (int i = 0; i < total; i++) shadowOnly.Add(false);
+                if (motionKeys != null) for (int i = 0; i < total; i++) motionKeys.Add(MotionKey.None);
                 for (int i = 0; i < items.Count; i++)
                 {
                     if (!retained.IsEmpty && !retained[i]) continue;
@@ -103,6 +107,7 @@ namespace KhaozEngine.Render3D
                     bool dissolving = inst.Dissolving;
                     if (castKinds != null) castKinds[(int)dst] = ClassifyCaster(inst);
                     if (shadowOnly != null) shadowOnly[(int)dst] = inst.ShadowOnly;
+                    if (motionKeys != null) motionKeys[(int)dst] = inst.Motion;
                     instanceData[(int)dst] = new ModelRenderer.InstanceData
                     {
                         Model = inst.World,

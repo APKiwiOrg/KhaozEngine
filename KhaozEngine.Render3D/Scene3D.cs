@@ -1620,7 +1620,7 @@ namespace KhaozEngine.Render3D
                         _gpuSkinnedDraws.Add(new GpuSkinnedDraw(entry.Vb, entry.Ib, entry.IndexCount, entry.IndexFormat,
                             entry.SkinnedMaterialSet, i * cap, entry.InverseBind.Length, (uint)_gpuSkinnedDraws.Count,
                             ToRender(it.World), it.Tint, emissive, specParams, dissolveParams,
-                            visibleMain, dissolving, shadowKind, pointSphere));   // reduced after the absolute classify
+                            visibleMain, dissolving, shadowKind, pointSphere, it.Motion));   // reduced after the absolute classify
                     }
                     else
                     {
@@ -1638,8 +1638,8 @@ namespace KhaozEngine.Render3D
                             // The colour and rigid dissolve depth pipelines read this dedicated vector.
                             Dissolve = dissolveParams,
                         });
-                        _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat,
-                            baseVertex, entry.MaterialSet, dissolving, visibleMain, shadowKind, pointSphere));
+                        _cpuSkinnedDraws.Add(new CpuSkinnedDraw(entry.Ib, entry.IndexCount, entry.IndexFormat, baseVertex,
+                            entry.MaterialSet, dissolving, visibleMain, shadowKind, pointSphere, it.Motion, it.Mesh.Index, src.Length));
                     }
                 }
                 // Sizes the frame's three skinned destinations and uploads the ONE shared bone palette both passes

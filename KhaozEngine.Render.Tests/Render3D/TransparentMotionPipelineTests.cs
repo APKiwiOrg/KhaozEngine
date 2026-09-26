@@ -13,22 +13,21 @@ namespace KhaozEngine.Tests.Render3D;
 /// builds exactly what it always did.</summary>
 public sealed class TransparentMotionPipelineTests
 {
-    static void AssertPreserving(FakeGpuResourceFactory factory, string vertex, string fragment, int pipelines)
+    // Each pass's pipelines built from `vertex` and `fragment`, in build order: attachment 0 takes that pipeline's
+    // colour blend, and every later attachment keeps its destination whole, the motion one included.
+    static void AssertBlends(FakeGpuResourceFactory factory, string vertex, string fragment, int attachments,
+        params GpuBlendAttachment[] colours)
     {
         FakeGraphicsPipelineRequest[] built = factory.GraphicsPipelines
             .Where(p => p.VertexGlsl == vertex && p.FragmentGlsl == fragment).ToArray();
-        Assert.Equal(pipelines, built.Length);
-        Assert.All(built, p =>
+        Assert.Equal(colours.Length, built.Length);
+        for (int p = 0; p < built.Length; p++)
         {
-            GpuBlendAttachment[] blends = p.Description.BlendAttachments;
-            Assert.Equal(4, blends.Length);
-            for (int i = 1; i < blends.Length; i++)
-            {
-                Assert.True(blends[i].BlendEnabled);
-                Assert.Equal((GpuBlendFactor.Zero, GpuBlendFactor.One), (blends[i].SourceColorFactor, blends[i].DestinationColorFactor));
-                Assert.Equal((GpuBlendFactor.Zero, GpuBlendFactor.One), (blends[i].SourceAlphaFactor, blends[i].DestinationAlphaFactor));
-            }
-        });
+            GpuBlendAttachment[] blends = built[p].Description.BlendAttachments;
+            Assert.Equal(attachments, blends.Length);
+            Assert.Equal(colours[p], blends[0]);
+            for (int i = 1; i < blends.Length; i++) Assert.Equal(GpuBlendAttachment.PreserveDestination, blends[i]);
+        }
     }
 
     [Fact]
@@ -36,17 +35,19 @@ public sealed class TransparentMotionPipelineTests
     {
         using var device = new FakeGpuDevice();
         var factory = (FakeGpuResourceFactory)device.Factory;
+        GpuBlendAttachment alpha = GpuBlendAttachment.AlphaBlend, additive = GpuBlendAttachment.Additive;
 
         using (new TexturedBillboardRenderer(device, ModelTargets.Temporal))
-            AssertPreserving(factory, ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag, 2);
+            AssertBlends(factory, ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag, 4,
+                alpha, additive);
         using (new BeamRenderer(device, ModelTargets.Temporal))
-            AssertPreserving(factory, ShaderSources.BeamVert, ShaderSources.BeamMotionFrag, 1);
+            AssertBlends(factory, ShaderSources.BeamVert, ShaderSources.BeamMotionFrag, 4, additive);
         using (new TrailRenderer(device, ModelTargets.Temporal))
-            AssertPreserving(factory, ShaderSources.TrailVert, ShaderSources.TrailMotionFrag, 2);
+            AssertBlends(factory, ShaderSources.TrailVert, ShaderSources.TrailMotionFrag, 4, additive, alpha);
         using (new OverlayMeshRenderer(device, ModelTargets.Temporal))
-            AssertPreserving(factory, ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitMotionFrag, 1);
+            AssertBlends(factory, ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitMotionFrag, 4, alpha);
         using (new SilhouetteRenderer(device, ModelTargets.Temporal))
-            AssertPreserving(factory, ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag, 1);
+            AssertBlends(factory, ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag, 4, alpha);
     }
 
     [Fact]
@@ -54,6 +55,7 @@ public sealed class TransparentMotionPipelineTests
     {
         using var device = new FakeGpuDevice();
         var factory = (FakeGpuResourceFactory)device.Factory;
+        GpuBlendAttachment alpha = GpuBlendAttachment.AlphaBlend, additive = GpuBlendAttachment.Additive;
 
         using (new TexturedBillboardRenderer(device, ModelTargets.Base))
         using (new BeamRenderer(device, ModelTargets.Base))
@@ -62,11 +64,24 @@ public sealed class TransparentMotionPipelineTests
         using (new SilhouetteRenderer(device, ModelTargets.Base))
         {
             Assert.Equal(7, factory.GraphicsPipelines.Count);
+            AssertBlends(factory, ShaderSources.BillboardVert, ShaderSources.TexturedBillboardFrag, 3,
+                alpha, additive);
+            AssertBlends(factory, ShaderSources.BeamVert, ShaderSources.BeamFrag, 3, additive);
+            AssertBlends(factory, ShaderSources.TrailVert, ShaderSources.TrailFrag, 3, additive, alpha);
+            AssertBlends(factory, ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitFrag, 3, alpha);
+            AssertBlends(factory, ShaderSources.SilhouetteVert, ShaderSources.SilhouetteFrag, 3, alpha);
             Assert.All(factory.GraphicsPipelines, p =>
+                Assert.DoesNotContain("oMotion", p.FragmentGlsl, StringComparison.Ordinal));
+
+            // Nothing compiled the motion programs either, whether or not a pipeline would have used them.
+            string[] motion =
             {
-                Assert.Equal(3, p.Description.BlendAttachments.Length);
-                Assert.DoesNotContain("oMotion", p.FragmentGlsl, StringComparison.Ordinal);
-            });
+                ShaderSources.TexturedBillboardMotionFrag, ShaderSources.BeamMotionFrag, ShaderSources.TrailMotionFrag,
+                ShaderSources.OverlayUnlitMotionFrag, ShaderSources.SilhouetteMotionFrag,
+            };
+            Assert.NotEmpty(factory.ShaderRequests);
+            Assert.DoesNotContain(factory.ShaderRequests, r => motion.Contains(r.FragmentGlsl)
+                || r.FragmentGlsl.Contains("oMotion", StringComparison.Ordinal));
         }
     }
 }

@@ -78,8 +78,9 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("Shape", GpuVertexElementFormat.Float4),
                 new GpuVertexElement("Anim", GpuVertexElementFormat.Float4));
 
-            // Attachment 0 additive (glow accumulation); normal/depth preserved so the edge pass reads the
-            // meshes' normal/depth, not the beam's (no outline traced around the strip).
+            // Attachment 0 is additive (glow accumulation). Normal, depth and, while temporal rendering is active,
+            // motion keep their destination, so the edge pass reads the meshes' normal and depth, not the beam's (no
+            // outline traced around the strip), and the resolve reads the meshes' motion.
             var blends = ModelTargetBlends.Transparent(GpuBlendAttachment.Additive, modelOutputs);
 
             return factory.CreateGraphicsPipeline(new GpuPipelineDescription

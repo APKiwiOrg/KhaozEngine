@@ -110,9 +110,9 @@ namespace KhaozEngine.Render3D.Rendering
             return f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
-                // The model FB has 3 colour attachments, and a 4th (motion) while temporal rendering is active. Colour blends, and every
-                // other attachment keeps its destination, so the edge pass reads the meshes' normal and depth and the resolve reads their
-                // motion.
+                // The model FB has 3 colour attachments, and a 4th (motion) while temporal rendering is active.
+                // Colour blends, and every other attachment keeps its destination, so the edge pass reads the meshes'
+                // normal and depth and the resolve reads their motion.
                 BlendAttachments = ModelTargetBlends.Transparent(GpuBlendAttachment.AlphaBlend, modelOutputs),
                 // Read the scene depth (occlude behind geometry) but do NOT write it (the overlay must not occlude
                 // the later scene passes, and overlapping proxies blend by submission order, not by depth).

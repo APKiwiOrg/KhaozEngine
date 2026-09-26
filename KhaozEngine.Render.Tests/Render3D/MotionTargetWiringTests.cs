@@ -77,7 +77,9 @@ public sealed class MotionTargetWiringTests
 
         using RecordingGpuCommandList first = Frame(harness, At(0f));
         ModelMotionResources motion = scene.MotionResourcesForTests!;
-        Assert.Equal(0f, MemoryMarshal.Read<MotionFrameUbo>(Payload(first, motion.FrameBuffer)).Params.X);   // no history yet
+        MotionFrameUbo firstBlock = MemoryMarshal.Read<MotionFrameUbo>(Payload(first, motion.FrameBuffer));
+        Assert.Equal(0f, firstBlock.Params.X);   // no history yet
+        Assert.Equal(firstBlock.CurViewProj, firstBlock.PrevViewProj);   // so last frame's matrix is this frame's
 
         using RecordingGpuCommandList second = Frame(harness, At(1f));
         MotionFrameUbo block = MemoryMarshal.Read<MotionFrameUbo>(Payload(second, motion.FrameBuffer));
@@ -111,6 +113,33 @@ public sealed class MotionTargetWiringTests
         Assert.True(cl.DrawCount > 0, "the frame drew nothing, so the ordering proves nothing");
         Assert.Equal(0, Assert.Single(cl.Uploads, u => ReferenceEquals(u.Buffer, motion.FrameBuffer)).DrawsBefore);
         Assert.Equal(0, Assert.Single(cl.Uploads, u => ReferenceEquals(u.Buffer, motion.SlotBuffer)).DrawsBefore);
+    }
+
+    [Fact]
+    public void ASecondRenderInsideAFrameUploadsTheSameHistoryAndItsOwnRigidSlots()
+    {
+        using var harness = new MotionTestScene();
+        Scene3D scene = harness.Scene;
+        scene.ForceTemporalForTests = true;
+        MeshHandle box = scene.LoadMesh(MeshPrimitives.Box(1f));
+        MotionKey key = MotionKey.From(5);
+        Action<Scene3D> At(float x) => s =>
+            s.Draw(new RigidInstanceDraw(box, Matrix4x4.CreateTranslation(x, 0f, 0f)) { Motion = key });
+        Frame(harness, At(0f)).Dispose();
+
+        using RecordingGpuCommandList first = Frame(harness, At(1f));   // valid history
+        ModelMotionResources motion = scene.MotionResourcesForTests!;
+        MotionFrameUbo block = MemoryMarshal.Read<MotionFrameUbo>(Payload(first, motion.FrameBuffer));
+        Assert.Equal(1f, block.Params.X);
+
+        // An offscreen capture inside the same frame: no Begin, so the frame keeps its history, keys and instances.
+        using var second = new RecordingGpuCommandList(new NullGpuCommandList()) { CapturePayloads = true };
+        scene.PrepareFrame();
+        scene.RenderInternal(second, MotionTestScene.Width, MotionTestScene.Height, harness.Target);
+        MotionFrameUbo again = MemoryMarshal.Read<MotionFrameUbo>(Payload(second, motion.FrameBuffer));
+        Assert.Equal(1f, again.Params.X);
+        Assert.Equal(block.PrevViewProj, again.PrevViewProj);
+        Assert.Equal(0f, MemoryMarshal.Read<float>(Payload(second, motion.SlotBuffer)));   // the keyed box's last frame
     }
 
     // One frame recorded with every indexed draw's bindings, the draws whose vertex program is one of `vertex`.

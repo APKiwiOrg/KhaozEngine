@@ -1,6 +1,4 @@
-using System;
 using KhaozEngine.Gpu;
-using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D
 {
@@ -14,8 +12,9 @@ namespace KhaozEngine.Render3D
     {
         /// <summary>The anti-aliasing selection resolved against THIS device's capabilities (never throws): an MSAA
         /// request is clamped to a member of <see cref="GpuCapabilities.SupportedMsaaSampleCounts"/> or falls back
-        /// to FXAA if the device cannot satisfy it; SSAA/FXAA/None pass through. Read fresh each frame (Post is mutable).
-        /// Temporal rendering is single-sample, so while it is active an MSAA request falls back the same way.</summary>
+        /// to FXAA if the device cannot satisfy it. SSAA, FXAA and None pass through. Read fresh each frame (Post is
+        /// mutable). Temporal rendering is single-sample, so while it is active an MSAA request falls back the same
+        /// way.</summary>
         AntiAliasing ResolvedAa() => Post.EffectiveAaMode == AntiAliasingMode.None
             ? AntiAliasing.Off
             : Post.Quality.AntiAliasing.ResolveFor(_gd.Capabilities, TemporalActive);
@@ -27,10 +26,10 @@ namespace KhaozEngine.Render3D
             return aa.Mode == AntiAliasingMode.Msaa ? aa.MsaaSamples : 1;
         }
 
-        // Rebuild the pipelines of every renderer that draws into the model MRT, so their sample count matches the
-        // (possibly now multisampled) framebuffer. Called only when the MSAA sample count changes (rare - a menu
-        // apply), never per frame. Material sets bind to each renderer's layout (not the pipeline), so loaded meshes
-        // survive the rebuild.
+        // Rebuild the pipelines of every renderer that draws into the model MRT or the colour-depth framebuffer, so
+        // each pipeline matches its framebuffer's sample count, colour format and attachment count. Called only when
+        // one of those changes (an MSAA, HDR or temporal toggle, all rare), never per frame. Material sets bind to each
+        // renderer's layout (not the pipeline), so loaded meshes survive the rebuild.
         void RebuildMrtRenderers()
         {
             var modelOut = _res.ModelFB.Outputs;

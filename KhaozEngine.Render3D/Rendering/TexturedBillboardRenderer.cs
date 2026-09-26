@@ -64,9 +64,9 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("Uv", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Color", GpuVertexElementFormat.Float4));
 
-            // The model FB has 3 colour attachments, and a 4th (motion) while temporal rendering is active. Colour blends, and every
-            // other attachment keeps its destination, so the edge pass reads the meshes' normal and depth and the resolve reads their
-            // motion.
+            // The model FB has 3 colour attachments, and a 4th (motion) while temporal rendering is active. Colour
+            // blends, and every other attachment keeps its destination, so the edge pass reads the meshes' normal and
+            // depth and the resolve reads their motion.
             var alphaBlends = ModelTargetBlends.Transparent(GpuBlendAttachment.AlphaBlend, modelOutputs);
             var addBlends = ModelTargetBlends.Transparent(GpuBlendAttachment.Additive, modelOutputs);
 

@@ -77,8 +77,9 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("Uv", GpuVertexElementFormat.Float3),
                 new GpuVertexElement("Color", GpuVertexElementFormat.Float4));
 
-            // Attachment 0 blends (additive or alpha); normal/depth preserved so the edge pass reads the meshes'
-            // normal/depth, not the trail's (no outline traced around the strip).
+            // Attachment 0 blends (additive or alpha). Normal, depth and, while temporal rendering is active, motion
+            // keep their destination, so the edge pass reads the meshes' normal and depth, not the trail's (no outline
+            // traced around the strip), and the resolve reads the meshes' motion.
             var blends = ModelTargetBlends.Transparent(color0, modelOutputs);
 
             return factory.CreateGraphicsPipeline(new GpuPipelineDescription

@@ -361,9 +361,9 @@ public sealed partial class ViewportWorld : IDisposable
     }
 
     /// <summary>Marks the authored placements dirty so the next <see cref="Draw"/> diffs them against the placement
-    /// layer and republishes only the props of the chunks that changed. The editor scene wires
-    /// <see cref="EditorDocument.DocumentChanged"/> to this, which covers every execute, undo and redo. Deliberately
-    /// unguarded (a safe no-op after <see cref="Dispose"/>) so a late change event during teardown never throws.</summary>
+    /// layer and republishes only the props of the chunks that changed. The editor scene calls this for each execute,
+    /// undo and redo whose command can change authored placements. Deliberately unguarded (a safe no-op after
+    /// <see cref="Dispose"/>) so a late change event during teardown never throws.</summary>
     public void InvalidatePlacements() => _authored.Invalidate();
 
     /// <summary>Whether the authored placement layer draws a placement at world (<paramref name="x"/>,
@@ -695,10 +695,10 @@ public sealed partial class ViewportWorld : IDisposable
 internal readonly record struct EditorPlacement(string Id, PropPlacement Prop);
 
 /// <summary>Caches the authored placements as index-aligned <see cref="EditorPlacement"/>s and rebuilds them lazily
-/// after an <see cref="Invalidate"/>. The editor scene invalidates it on
-/// <see cref="EditorDocument.DocumentChanged"/>, so <see cref="AuthoredPlacementLayer"/> rebuilds the list only when
-/// the document actually changed, not every frame. GPU-free (it only reads the document + field), so the
-/// invalidation semantics are headless-testable.</summary>
+/// after an <see cref="Invalidate"/>. The editor scene invalidates it when a command can change authored placements,
+/// so <see cref="AuthoredPlacementLayer"/> rebuilds the list only when its inputs changed, not after every document
+/// edit or frame. GPU-free (it only reads the document + field), so the invalidation semantics are
+/// headless-testable.</summary>
 internal sealed class PlacementCache
 {
     List<EditorPlacement>? _cached;

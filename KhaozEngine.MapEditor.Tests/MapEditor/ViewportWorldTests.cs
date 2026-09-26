@@ -306,7 +306,7 @@ namespace KhaozEngine.Tests.MapEditor
         [Fact]
         public void InvalidatePlacements_AfterDispose_IsSafeNoOp()
         {
-            // The scene wires DocumentChanged -> InvalidatePlacements; a late event after teardown must not throw.
+            // The scene wires placement changes to InvalidatePlacements. A late event after teardown must not throw.
             ViewportWorld vw = Construct(TwoPropManifest);
             vw.Dispose();
             vw.InvalidatePlacements();
@@ -519,16 +519,16 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
-        public void PlacementCache_InvalidatedByDocumentChanged()
+        public void PlacementCache_InvalidatedByPlacementChange()
         {
-            // Mirrors the Task 8 scene wiring: EditorDocument.DocumentChanged -> cache.Invalidate. An edit through
+            // Mirrors the scene wiring: EditorDocument.PlacementsChanged -> cache.Invalidate. An edit through
             // the command choke point invalidates the cache, so the next Get reflects the new placement.
             var cache = new PlacementCache();
             TerrainField field = FlatField();
             var doc = new MapDocument { Id = "wired" };
             doc.Placements.Add(new MapPlacement { Id = "hut-1", Kind = "hut" });
             var edoc = new EditorDocument(doc);
-            edoc.DocumentChanged += cache.Invalidate;
+            edoc.PlacementsChanged += cache.Invalidate;
 
             Assert.Single(cache.Get(doc, field));   // warm the cache
             Assert.False(cache.IsDirty);

@@ -10,8 +10,8 @@ using Xunit;
 namespace KhaozEngine.Tests.MapEditor;
 
 /// <summary>The viewport's authored placement layer, driven exactly as <see cref="ViewportWorld"/> drives it: the
-/// document's <see cref="EditorDocument.DocumentChanged"/> invalidates it, a per-frame refresh publishes the change
-/// and refreshes only the touched chunks' props on a real synchronous <see cref="TerrainStreamer"/>, and a
+/// document's placement change signal invalidates it, a per-frame refresh publishes the change and refreshes only
+/// the touched chunks' props on a real synchronous <see cref="TerrainStreamer"/>, and a
 /// capturing sink records what each chunk build and refresh queried from the layer. No GPU: the capturing sink
 /// stands in for <see cref="Scene3DChunkSink"/>, which queries a live placement source the same way.</summary>
 [Collection("AllocSensitive")]
@@ -129,6 +129,30 @@ public sealed class AuthoredPlacementLayerTests
         rig.Editor.Execute(new RotatePlacementCommand("b", 0.5f));
         Assert.True(rig.Frame());
         Assert.Equal(new[] { new ChunkCoord(1, 1) }, rig.Sink.TakeRefreshes());
+    }
+
+    [Fact]
+    public void UnrelatedDocumentChanges_SkipThePlacementDiff_ButPlacementChangesStillRunIt()
+    {
+        using var rig = new Rig();
+        var oldExclusionShape = new DiscShapeDoc { CenterX = 10f, CenterZ = 10f, Radius = 5f };
+        rig.Editor.Doc.Exclusions.Add(new MapExclusion { Shape = oldExclusionShape });
+        rig.Editor.Execute(new AddPlacementCommand(Placement("a", "oak", 10f, 10f)));
+        Assert.True(rig.Frame());
+
+        rig.Editor.SealGesture();
+        rig.Editor.Execute(new EditExclusionShapeCommand(0,
+            new DiscShapeDoc { CenterX = 15f, CenterZ = 10f, Radius = 5f }, oldExclusionShape));
+        Assert.False(rig.Frame());
+
+        rig.Editor.SealGesture();
+        int oldSeed = rig.Editor.Doc.Terrain.Seed;
+        rig.Editor.Execute(new EditTerrainCommand(newSeed: oldSeed + 1, oldSeed: oldSeed));
+        Assert.False(rig.Frame());
+
+        rig.Editor.SealGesture();
+        rig.Editor.Execute(new RotatePlacementCommand("a", 0.5f));
+        Assert.True(rig.Frame());
     }
 
     [Fact]
@@ -474,7 +498,7 @@ public sealed class AuthoredPlacementLayerTests
 
         public Rig()
         {
-            Editor.DocumentChanged += Layer.Invalidate;
+            Editor.PlacementsChanged += Layer.Invalidate;
             Sink = new CapturingSink(Layer);
             Streamer = new TerrainStreamer(
                 new StreamerConfig(LoadRadius: 2, UnloadRadius: 3, MaxLoadsPerFrame: 64, ChunkSize: Chunk,

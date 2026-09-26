@@ -127,6 +127,7 @@ public partial class MapEditorScene
 
     void SubscribeDocument(EditorDocument document)
     {
+        document.PlacementsChanged += OnPlacementsChanged;
         document.DocumentChanged += OnDocumentChanged;
         document.CommandApplied += OnCommandVisibilityForward;
         document.CommandRedone += OnCommandVisibilityForward;
@@ -136,6 +137,7 @@ public partial class MapEditorScene
 
     void UnsubscribeDocument(EditorDocument document)
     {
+        document.PlacementsChanged -= OnPlacementsChanged;
         document.DocumentChanged -= OnDocumentChanged;
         document.CommandApplied -= OnCommandVisibilityForward;
         document.CommandRedone -= OnCommandVisibilityForward;

@@ -33,7 +33,7 @@ namespace KhaozEngine.MapEditor;
 /// exclusions, and overrides exactly, and removes the added placements, so the document deep-equals its pre-freeze
 /// state. Affects the streamed world (it changes generation inputs everywhere), so the viewport must rebuild the
 /// whole world.</para></summary>
-public sealed class FreezeZoneCommand : EditorCommand
+public sealed partial class FreezeZoneCommand : EditorCommand
 {
     readonly MapDocRegistry? _registry;
 

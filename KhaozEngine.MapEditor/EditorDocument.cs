@@ -51,6 +51,10 @@ public sealed class EditorDocument
     /// <see cref="Redo"/>).</summary>
     public event Action? DocumentChanged;
 
+    /// <summary>Fired after a committed mutation that can change authored placements. Unknown custom
+    /// <see cref="IEditorCommand"/> implementations take this safe path.</summary>
+    internal event Action? PlacementsChanged;
+
     /// <summary>Fired after a command applies through <see cref="Execute"/>, carrying that command (BEFORE
     /// <see cref="DocumentChanged"/>). Fires on EVERY execute, including one that coalesced into the current undo
     /// step (a merged command still applied its mutation). The editor subscribes to run a command's view-only
@@ -123,6 +127,7 @@ public sealed class EditorDocument
             _savedMarker = Unreachable;
         MarkWorldRebuild(command);
         CommandApplied?.Invoke(command);
+        MarkPlacementsChanged(command);
         DocumentChanged?.Invoke();
     }
 
@@ -135,6 +140,7 @@ public sealed class EditorDocument
         {
             MarkWorldRebuild(command);
             CommandUndone?.Invoke(command);
+            MarkPlacementsChanged(command);
         }
         DocumentChanged?.Invoke();
         return true;
@@ -149,6 +155,7 @@ public sealed class EditorDocument
         {
             MarkWorldRebuild(command);
             CommandRedone?.Invoke(command);
+            MarkPlacementsChanged(command);
         }
         DocumentChanged?.Invoke();
         return true;
@@ -197,5 +204,11 @@ public sealed class EditorDocument
             _pendingAllLoaded = false;
             _pendingRegion = null;
         }
+    }
+
+    void MarkPlacementsChanged(IEditorCommand command)
+    {
+        if (command is EditorCommand ec && !ec.ChangesPlacements) return;
+        PlacementsChanged?.Invoke();
     }
 }

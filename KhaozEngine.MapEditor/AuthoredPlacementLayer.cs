@@ -18,12 +18,11 @@ namespace KhaozEngine.MapEditor;
 /// <para><see cref="Refresh(MapDocument, TerrainField, EditorVisibility, string, Action{ChunkCoord})"/> is
 /// incremental. It diffs the current placement set against the one it last published, keyed by stable placement
 /// id, republishes only the chunk buckets whose content changed, and reports exactly those chunks so the caller
-/// invalidates them. It runs only when the document changed
-/// (<see cref="Invalidate"/>), the selection changed, or <see cref="EditorVisibility.Version"/> moved, so an idle
-/// frame costs three compares. A document or visibility change identifies the changed chunks with one pass over the
-/// document's placements, the same pass the placement cache already pays per document change. A selection-only
-/// change skips that pass: it moves just the old and new selected placements between the layer and the direct
-/// highlight draw.</para>
+/// invalidates them. It runs only when a command can change authored placements, a field swap requires placements
+/// to re-ground, the selection changed, or <see cref="EditorVisibility.Version"/> moved, so an idle frame costs
+/// three compares. A placement or visibility change identifies the changed chunks with one pass over the document's
+/// placements. A selection-only change skips that pass: it moves just the old and new selected placements between
+/// the layer and the direct highlight draw.</para>
 /// <para>Threading: <see cref="PlacementsIn"/> reads one immutable bucket snapshot published with a volatile write,
 /// which satisfies the build-thread contract. Every other member is frame-thread only.</para></summary>
 internal sealed class AuthoredPlacementLayer : IPlacementSource
@@ -77,8 +76,8 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
     /// <summary>True when the next refresh rebuilds the placement cache from the document.</summary>
     internal bool IsDirty => _cache.IsDirty;
 
-    /// <summary>Marks the document side dirty. The editor scene routes <see cref="EditorDocument.DocumentChanged"/>
-    /// here, and a field swap calls it so ground-snapped placements pick up the new height.</summary>
+    /// <summary>Marks the document side dirty. The editor scene routes placement-changing commands here, and a
+    /// field swap calls it so ground-snapped placements pick up the new height.</summary>
     internal void Invalidate() => _cache.Invalidate();
 
     /// <summary>Refreshes against the visibility and selection last passed to

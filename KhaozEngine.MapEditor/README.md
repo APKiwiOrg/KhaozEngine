@@ -892,9 +892,12 @@ placement outside the gameplay ring (four 60 m chunks around the camera at every
 not drawn, and it appears once its chunk streams in. The viewport no longer submits a whole-document
 `DrawProps` list every frame.
 
-`DocumentChanged` marks the layer dirty. The next `ViewportWorld.Draw` diffs the placements against the set the
-layer last published, keyed by stable id, and refreshes only the loaded chunks whose placements changed (one
-chunk for a rotate, scale, add or delete, two for a move across a chunk edge). The refresh is props-only
+Each command declares whether it can change authored placements. Execute, undo and redo of one of those commands
+mark the layer dirty. Other document edits, including exclusions and terrain fields, skip the placement diff. A
+field rebuild still invalidates the layer against the replacement field so ground-snapped placements move to the
+new height. The next `ViewportWorld.Draw` diffs dirty placements against the set the layer last published, keyed by
+stable id, and refreshes only the loaded chunks whose placements changed (one chunk for a rotate, scale, add or
+delete, two for a move across a chunk edge). The refresh is props-only
 (`TerrainStreamer.RefreshPlacements`): the sink re-queries the placement layer for that chunk and republishes
 its prop instances, and the chunk's terrain mesh is never rebuilt. Execute, undo and redo all take this path,
 so an edit shows on the next frame. An idle frame costs a few compares and allocates nothing. The selected

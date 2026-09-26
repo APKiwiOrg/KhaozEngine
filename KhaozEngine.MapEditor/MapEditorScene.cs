@@ -811,11 +811,9 @@ public partial class MapEditorScene : GameScene, IGameScene3D
             Manager?.Pop();
     }
 
-    void OnDocumentChanged()
-    {
-        _viewport.InvalidatePlacements();
-        RebuildOutline();
-    }
+    void OnPlacementsChanged() => _viewport.InvalidatePlacements();
+
+    void OnDocumentChanged() => RebuildOutline();
 
     // The single source of per-element-hide maintenance: a command that carries an IVisibilityEffect runs its
     // forward hide remap on execute / redo and its inverse on undo, so a hide stays glued to the element the command

@@ -19,7 +19,7 @@ namespace KhaozEngine.Render3D
     ///   high-frequency terrain/foliage shimmer), at ~factor^2 the fragment cost.</item>
     /// </list>
     /// Extend by adding modes (future TAA / SMAA) - unknown/unsupported modes resolve to a safe fallback rather than
-    /// throwing (see <see cref="AntiAliasing.ResolveFor"/>).
+    /// throwing (see <see cref="AntiAliasing.ResolveFor(in GpuCapabilities)"/>).
     /// </summary>
     public enum AntiAliasingMode
     {
@@ -38,14 +38,15 @@ namespace KhaozEngine.Render3D
     /// (<see cref="MsaaSamples"/> for <see cref="AntiAliasingMode.Msaa"/>, <see cref="SsaaFactor"/> for
     /// <see cref="AntiAliasingMode.Ssaa"/>). Build one with the factories (<see cref="Off"/> / <see cref="Fxaa"/> /
     /// <see cref="Msaa(int)"/> / <see cref="Ssaa"/>) and assign it to <see cref="RenderQuality.AntiAliasing"/>. Immutable
-    /// value; <see cref="ResolveFor"/> clamps a request to what the device can actually do (never throws).
+    /// value. <see cref="ResolveFor(in GpuCapabilities)"/> clamps a request to what the device can actually do (never
+    /// throws).
     /// </summary>
     public readonly struct AntiAliasing : IEquatable<AntiAliasing>
     {
         /// <summary>The selected technique.</summary>
         public AntiAliasingMode Mode { get; }
         /// <summary>MSAA sample count (2 / 4 / 8) when <see cref="Mode"/> is <see cref="AntiAliasingMode.Msaa"/>;
-        /// ignored otherwise. Clamped to the device maximum (and to a power of two) by <see cref="ResolveFor"/>.</summary>
+        /// ignored otherwise. Clamped to the device maximum (and to a power of two) by <see cref="ResolveFor(in GpuCapabilities)"/>.</summary>
         public int MsaaSamples { get; }
         /// <summary>Supersample factor per axis (e.g. 2 / 3 / 4) when <see cref="Mode"/> is
         /// <see cref="AntiAliasingMode.Ssaa"/>; ignored otherwise. Forces <see cref="RenderScale.MatchViewport"/> and
@@ -106,6 +107,17 @@ namespace KhaozEngine.Render3D
             }
         }
 
+        /// <summary>
+        /// As <see cref="ResolveFor(in GpuCapabilities)"/>, and while temporal rendering is active an MSAA request
+        /// resolves to <see cref="Fxaa"/>, the fallback a device without MSAA takes, because temporal rendering is
+        /// single-sample (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24 section 4).
+        /// </summary>
+        internal AntiAliasing ResolveFor(in GpuCapabilities caps, bool temporalActive)
+        {
+            AntiAliasing resolved = ResolveFor(caps);
+            return temporalActive && resolved.Mode == AntiAliasingMode.Msaa ? Fxaa : resolved;
+        }
+
         public bool Equals(AntiAliasing other) =>
             Mode == other.Mode && MsaaSamples == other.MsaaSamples && SsaaFactor.Equals(other.SsaaFactor)
                 && _postFxaa == other._postFxaa;
@@ -133,7 +145,7 @@ namespace KhaozEngine.Render3D
     {
         /// <summary>The anti-aliasing technique. Default <see cref="AntiAliasing.Off"/> (no AA, no cost). Set it from
         /// a menu, e.g. <c>Post.Quality.AntiAliasing = AntiAliasing.Ssaa(3f)</c>. Validate a menu choice against the
-        /// device with <see cref="AntiAliasing.ResolveFor"/>.</summary>
+        /// device with <see cref="AntiAliasing.ResolveFor(in GpuCapabilities)"/>.</summary>
         public AntiAliasing AntiAliasing = AntiAliasing.Off;
 
         /// <summary>Shadow tier + blob-tier tuning. Default <see cref="ShadowMode.Off"/> (no shadows, no cost,

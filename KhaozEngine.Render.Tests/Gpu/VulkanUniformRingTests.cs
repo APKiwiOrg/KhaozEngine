@@ -95,7 +95,7 @@ namespace KhaozEngine.Tests.Gpu
         [Theory]
         [InlineData(256u, 256u)]
         [InlineData(768u, 768u)]
-        [InlineData(8192u, 8192u)]     // SkinnedBonePalette.SlotBytes, the largest slot the engine binds
+        [InlineData(8192u, 8192u)]     // SkinnedBonePalette.SlotBytes, the widest before SkinnedMotionPalette's 8448
         [InlineData(8448u, 8448u)]     // both skinned slots between #604 and #407, when each still carried a palette
         [InlineData(9472u, 9472u)]     // the skinned main slot before #604 took the folded frame block out of it
         [InlineData(16u, 256u)]
@@ -193,12 +193,14 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// EVERY SHIPPED RESOURCE-SET SHAPE, against the invariant, device-free. The engine builds nine
-        /// <c>new GpuBufferRange(...)</c> resource sets over a uniform buffer, which are EIGHT distinct shapes
-        /// (<c>SpriteBatch</c> builds the same one at construction and again after a grow), and every one of them
-        /// is a slot array addressed by a per-draw dynamic offset. Each is swept across the capacities the renderer
-        /// actually grows through, because the buffer's size and the largest offset both scale with the capacity
-        /// and a single sample would pin one of them by accident.
+        /// THE SHIPPED RESOURCE-SET SHAPES THIS TABLE HOLDS, against the invariant, device-free. The table holds NINE
+        /// distinct shapes, and every one of them is a slot array addressed by a per-draw dynamic offset. The engine
+        /// builds eighteen <c>new GpuBufferRange(...)</c> resource sets over a uniform buffer, which are sixteen
+        /// distinct shapes (<c>SpriteBatch</c> and the skinned main set each build theirs at two sites), so seven
+        /// shapes are not swept here: the ground-decal frame block, the foliage block, the point-shadow face and
+        /// skinned caster slots, the silhouette slot, and the target-outline draw and palette slots. Each row is swept
+        /// across the capacities the renderer actually grows through, because the buffer's size and the largest
+        /// offset both scale with the capacity and a single sample would pin one of them by accident.
         /// <para>
         /// Sizes are referenced by their own constant wherever one is reachable, and the private literals are
         /// hardcoded against the line that owns them, which is the same convention
@@ -238,8 +240,13 @@ namespace KhaozEngine.Tests.Gpu
                     ModelRenderer.SkinnedMainSlotBytes, new uint[] { 8, 16, 32, 64 }),
 
                 // SkinnedBonePalette.cs:80, GpuBufferRange(_ubo, 0, SlotBytes). ONE slot per caster, whatever the
-                // cascade count, and the widest window the engine binds at 8192 bytes.
+                // cascade count, 8192 bytes wide.
                 ("SkinnedBonePalette per caster", SkinnedBonePalette.SlotBytes, SkinnedBonePalette.SlotBytes,
+                    new uint[] { 8, 16, 32, 64 }),
+
+                // SkinnedMotionPalette.cs, GpuBufferRange(_buffer, 0, SlotBytes). ONE slot per caster, capacity 8 and
+                // doubling, and the widest window the engine binds at 8448 bytes.
+                ("SkinnedMotionPalette per caster", SkinnedMotionPalette.SlotBytes, SkinnedMotionPalette.SlotBytes,
                     new uint[] { 8, 16, 32, 64 }),
 
                 // WaterRenderer.cs:276, GpuBufferRange(_ubo, 0, SlotBytes). Capacity starts at 4 and doubles.
@@ -247,7 +254,7 @@ namespace KhaozEngine.Tests.Gpu
                     new uint[] { 4, 8, 16, 32 }),
             };
 
-            Assert.Equal(8, sets.Length);
+            Assert.Equal(9, sets.Length);
 
             foreach ((string site, uint slotBytes, uint rangeBytes, uint[] capacities) in sets)
             {

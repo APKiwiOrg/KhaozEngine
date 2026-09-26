@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Linq;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
@@ -135,7 +136,7 @@ namespace KhaozEngine.Tests.Render3D
                 ("SplatVert", ShaderSources.SplatVert), ("SplatFrag", ShaderSources.SplatFrag),
                 ("TileGroundVert", ShaderSources.TileGroundVert), ("TileGroundFrag", ShaderSources.TileGroundFrag),
                 ("WaterVert", ShaderSources.WaterVert), ("WaterFrag", ShaderSources.WaterFrag),
-            })
+            }.Concat(MotionUboLayoutTests.FrameBlockSources))
                 Assert.True(src.Contains("vec4 RenderOrigin;"),
                     $"{name} lost 'vec4 RenderOrigin;': the camera-relative render origin dropped out of its uniform " +
                     "block, so every member declared after it in that block now reads the wrong bytes.");
@@ -506,7 +507,7 @@ namespace KhaozEngine.Tests.Render3D
                 ("SkinnedModelVert", ShaderSources.SkinnedModelVert),
                 ("SkinnedModelFrag", ShaderSources.SkinnedModelFrag),
                 ("SkinnedModelDissolveFrag", ShaderSources.SkinnedModelDissolveFrag),
-            })
+            }.Concat(MotionUboLayoutTests.FrameBlockSources))
             {
                 Assert.True(src.Contains(mats),
                     $"{name} lost '{mats}': the cascaded shadow matrices dropped or mis-sized in the frame UBO block, so every member after them lands at the wrong offset. Fix ShaderSources.{name} or ModelRenderer.MaxCascades.");

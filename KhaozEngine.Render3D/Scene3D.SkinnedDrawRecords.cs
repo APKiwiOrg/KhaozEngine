@@ -29,11 +29,12 @@ public sealed partial class Scene3D
         public readonly bool VisibleMain;
         public readonly bool Dissolve;
         public readonly ShadowCastKind ShadowKind;   // how it takes part in the depth pass (issue #387)
+        public readonly MotionKey Motion;       // the submission's key, None when unkeyed (the skinned motion pass reads it)
         public GpuSkinnedDraw(IGpuBuffer restVb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
             IGpuResourceSet? skinnedMaterialSet, int boneSpanStart, int boneCount, uint slot,
             in Matrix4x4 world, Vector4 tint, Vector4 emissive, Vector4 specParams, Vector2 dissolveParams,
             bool visibleMain, bool dissolve,
-            ShadowCastKind shadowKind, PointShadowCasterSphere pointSphere)
+            ShadowCastKind shadowKind, PointShadowCasterSphere pointSphere, MotionKey motion)
         {
             RestVb = restVb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat;
             SkinnedMaterialSet = skinnedMaterialSet; BoneSpanStart = boneSpanStart; BoneCount = boneCount; Slot = slot;
@@ -41,6 +42,7 @@ public sealed partial class Scene3D
             DissolveParams = dissolveParams; VisibleMain = visibleMain; Dissolve = dissolve;
             ShadowKind = shadowKind;
             PointSphere = pointSphere;
+            Motion = motion;
         }
     }
 
@@ -61,13 +63,17 @@ public sealed partial class Scene3D
         public readonly bool VisibleMain;   // draw in the main visible pass, always true when culling is off
         public readonly ShadowCastKind ShadowKind;   // how it takes part in the depth pass (issue #387)
         public readonly PointShadowCasterSphere PointSphere;
+        public readonly MotionKey Motion;      // the submission's key, None when unkeyed
+        public readonly int MeshIndex;         // the skinned mesh slot, for its rest vertices (CPU-skinned motion)
+        public readonly int VertexCount;       // how many deformed vertices start at BaseVertex
         public CpuSkinnedDraw(IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex,
             IGpuResourceSet? materialSet, bool dissolve, bool visibleMain, ShadowCastKind shadowKind,
-            PointShadowCasterSphere pointSphere)
+            PointShadowCasterSphere pointSphere, MotionKey motion, int meshIndex, int vertexCount)
         {
             Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat; BaseVertex = baseVertex; MaterialSet = materialSet; Dissolve = dissolve; VisibleMain = visibleMain;
             ShadowKind = shadowKind;
             PointSphere = pointSphere;
+            Motion = motion; MeshIndex = meshIndex; VertexCount = vertexCount;
         }
     }
 

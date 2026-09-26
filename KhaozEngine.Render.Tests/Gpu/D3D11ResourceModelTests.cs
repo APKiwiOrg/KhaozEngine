@@ -384,10 +384,12 @@ namespace KhaozEngine.Tests.Gpu
             (string Window, uint Bytes)[] windows =
             {
                 ("ModelRenderer frame UBO", ModelRenderer.UboBytes),
+                ("ModelMotionResources motion frame UBO", MotionFrameUbo.SizeInBytes),
                 ("ModelRenderer splat params UBO", SplatParamsData.SizeInBytes),
                 ("ModelRenderer skinned main slot", ModelRenderer.SkinnedMainSlotBytes),
                 ("ShadowMapRenderer skinned depth slot", ShadowMapRenderer.SkinnedDepthSlotBytes),
                 ("SkinnedBonePalette slot", SkinnedBonePalette.SlotBytes),
+                ("SkinnedMotionPalette slot", SkinnedMotionPalette.SlotBytes),
                 ("ShadowMapRenderer cascade slot", 256u),          // private const, ShadowMapRenderer.cs:41
                 ("WaterRenderer plane slot", WaterRenderer.SlotBytes),
                 ("PixelPostProcess palette", PixelPostProcess.PaletteBufferBytes),

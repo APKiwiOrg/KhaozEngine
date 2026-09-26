@@ -15,6 +15,34 @@ public sealed partial class Scene3D
     readonly List<ModelRenderer.FoliageUniforms> _foliageUniforms = new();
     int _foliagePatchTests;
     bool _foliageDisposed;
+    // _frameIndex (Scene3D.FrameView.cs) counts Begin, so a batch's state and the pixel scale can tell "last frame"
+    // from "some earlier frame". The scale rolls like a batch's state, on the frame's first upload, so a second render
+    // inside the frame reads the same last frame and does not replace the frame's own.
+    float _foliageScale, _foliagePreviousScale;
+    long _foliageScaleFrame = long.MinValue;
+    bool _foliagePreviousScaleValid;
+    // Set when a batch was submitted while temporal rendering was off, so its slot holds no last frame. A frame that
+    // then turns temporal on before its render must not read those zeros as last frame's state.
+    bool _foliageDrawnWithoutMotion;
+
+    /// <summary>This frame's foliage uniform slots. For tests.</summary>
+    internal ReadOnlySpan<ModelRenderer.FoliageUniforms> FoliageUniformsForTests => CollectionsMarshal.AsSpan(_foliageUniforms);
+
+    /// <summary>This submission with its batch's last frame folded in. The first submission of a batch in a frame rolls
+    /// the batch's current into previous, so every submission in a frame measures against the batch's last submission
+    /// of the frame before. A batch not submitted last frame has no previous and reads its own current.</summary>
+    ModelRenderer.FoliageUniforms WithFoliageMotion(FoliageBatch batch, in ModelRenderer.FoliageUniforms current)
+    {
+        if (batch.MotionFrame != _frameIndex)
+        {
+            batch.MotionPreviousValid = batch.MotionFrame == _frameIndex - 1;
+            batch.MotionPrevious = batch.MotionCurrent;
+            batch.MotionFrame = _frameIndex;
+        }
+        batch.MotionCurrent = current;
+        return current.WithPrevious(batch.MotionPreviousValid ? batch.MotionPrevious : current);
+    }
+
     readonly record struct FoliageDraw(FoliageBatch Batch, FoliagePatch Patch, int Count, int UniformSlot, float CullRadius);
 
     /// <summary>Last completed foliage submission counters. These are workload counts, not GPU timings.</summary>
@@ -81,7 +109,13 @@ public sealed partial class Scene3D
             candidates = checked(candidates + count);
         }
         if (candidates > 0)
-            _foliageUniforms.Add(ModelRenderer.FoliageUniforms.Build(focus, settings, interactors, EffectTimeSeconds));
+        {
+            ModelRenderer.FoliageUniforms uniforms =
+                ModelRenderer.FoliageUniforms.Build(focus, settings, interactors, EffectTimeSeconds);
+            bool motion = TemporalActive;
+            _foliageDrawnWithoutMotion |= !motion;
+            _foliageUniforms.Add(motion ? WithFoliageMotion(batch, uniforms) : uniforms);
+        }
         return candidates;
     }
 
@@ -100,6 +134,7 @@ public sealed partial class Scene3D
         _foliageDraws.Clear();
         _foliageUniforms.Clear();
         _foliagePatchTests = 0;
+        _foliageDrawnWithoutMotion = false;
     }
 
     void PrepareFoliageFrame(IGpuCommandList cl, in FrustumPlanes frustum)
@@ -129,12 +164,35 @@ public sealed partial class Scene3D
         if (kept > 0)
         {
             Span<ModelRenderer.FoliageUniforms> slots = CollectionsMarshal.AsSpan(_foliageUniforms);
-            ModelRenderer.FoliageUniforms.ApplyPixelScale(slots,
-                ModelRenderer.FoliageUniforms.MetresPerPixel(_currentFrameView.Projection, _res.Height));
+            float metresPerPixel = ModelRenderer.FoliageUniforms.MetresPerPixel(_currentFrameView.Projection, _res.Height);
+            if (_res.MotionAllocated) PrepareFoliageMotion(slots, metresPerPixel);
+            else ModelRenderer.FoliageUniforms.ApplyPixelScale(slots, metresPerPixel);
             uniforms = _model.UploadFoliageUniforms(cl, slots);
         }
         _frameStats.AddInstanceUpload(uploaded);
         LastFoliageStats = new FoliageFrameStats(_foliagePatchTests, 0, 0, uploaded, uniforms);
+    }
+
+    /// <summary>FoliageMotionVert's last frame, once the frame's history is known. With valid history
+    /// (<see cref="MotionHistoryValid"/>) each slot keeps the state its submission folded in and takes last frame's
+    /// pixel scale, or this frame's when no foliage uploaded last frame. Without it, or when a batch was submitted before
+    /// temporal rendering turned on this frame, every slot's last frame is its own,
+    /// scale included, so the recomputed displacement cancels and the variant writes the motion the other paths write
+    /// with no previous state.</summary>
+    void PrepareFoliageMotion(Span<ModelRenderer.FoliageUniforms> slots, float metresPerPixel)
+    {
+        if (_foliageScaleFrame != _frameIndex)
+        {
+            _foliagePreviousScaleValid = _foliageScaleFrame == _frameIndex - 1;
+            _foliagePreviousScale = _foliageScale;
+            _foliageScale = metresPerPixel;
+            _foliageScaleFrame = _frameIndex;
+        }
+        bool history = MotionHistoryValid && !_foliageDrawnWithoutMotion;
+        if (!history)
+            foreach (ref ModelRenderer.FoliageUniforms slot in slots) slot = slot.WithPrevious(slot);
+        ModelRenderer.FoliageUniforms.ApplyPixelScale(slots, metresPerPixel,
+            history && _foliagePreviousScaleValid ? _foliagePreviousScale : metresPerPixel);
     }
 
     void DrawFoliagePass(IGpuCommandList cl)

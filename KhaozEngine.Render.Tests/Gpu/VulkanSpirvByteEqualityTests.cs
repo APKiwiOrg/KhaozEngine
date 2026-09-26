@@ -138,9 +138,10 @@ namespace KhaozEngine.Tests.Gpu
             Dictionary<string, string> emitted = EmitEverything();
             int distinct = emitted.Values.Distinct(StringComparer.Ordinal).Count();
 
-            // 110 with the five target-outline pairs and three point-skinned pairs. 94 was the cascade cutout pair and
-            // dissolve-aware skinned vertex, and the 76 above is the original 2026-08-08 measurement.
-            Assert.Equal(110, emitted.Count);
+            // 138 with the MotionVectors debug view. 136 was the thirteen temporal motion programs of group D, 126 its
+            // eight opaque ones, 110 the five target-outline pairs and three point-skinned pairs, 94 the cascade cutout
+            // pair and dissolve-aware skinned vertex, and the 76 above is the original 2026-08-08 measurement.
+            Assert.Equal(138, emitted.Count);
             Assert.True(distinct < emitted.Count,
                 $"The {emitted.Count} shipped stage emissions produced {distinct} distinct SPIR-V modules, so "
                 + "nothing is shared and decision V-S7's dedup buys nothing. Measured at 59 distinct on "

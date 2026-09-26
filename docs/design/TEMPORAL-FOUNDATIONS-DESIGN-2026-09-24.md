@@ -287,3 +287,18 @@ and changed these details. Each group's "Contract amendments" block carries the 
 14. Five transparent passes that draw into the model target get variants that leave the motion target untouched
     (group D).
 15. There are seven hand-maintained shader lists, not six. `VulkanShippedVertexLayoutTests` is the seventh.
+16. The GPU-skinned previous palette is a second per-caster buffer, `SkinnedMotionPalette`, whose 8448-byte slot holds
+    last frame's world matrix then its composed palette. It shares set 3 with `MotionFrame`, the last set Vulkan
+    guarantees (group D).
+17. The motion target and previous-state work add 0.119 ms of Submit-and-drain wall time per frame (GPU work and its
+    submission, CPU preparation and recording excluded) at 1600x900 on Apple M2 Max, median of three runs, for a floor,
+    400 keyed boxes, 8 keyed GPU-skinned bodies and 2500 wind-blown foliage blades under a panning camera
+    (`MotionTargetCostProbe`). The town-path reading of acceptance 5 is taken in round 3 (group D).
+18. The opaque motion write has a w guard and a clamp. A last-frame clip w of 1e-6 or less puts the point on or behind
+    last frame's camera plane, where the divide has no image position, and the write gives UV motion (2, 2) there.
+    Every other motion is clamped to two screens, -2 to 2 UV on each axis, so a w just past the guard cannot reach the
+    background threshold or overflow half precision. The current UV lies in 0 to 1, so any motion past 1 UV on an axis
+    already puts the previous position off the screen. The clamp keeps it off the screen, changes no on-screen motion,
+    and the resolve rejects that pixel's history as it does any off-screen previous position (group D).
+19. The MotionVectors view tests background on the x channel alone, as `MotionMath.IsBackground` and the resolve do, so
+    a pixel whose y motion alone is large draws as motion (group D).

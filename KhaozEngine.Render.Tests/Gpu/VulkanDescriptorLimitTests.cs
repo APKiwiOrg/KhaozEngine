@@ -92,6 +92,9 @@ namespace KhaozEngine.Tests.Gpu
                 // pipeline. A set layout carries no set number, so one declaration really does serve both, and it
                 // is what lets one palette upload feed the main pass and every shadow cascade.
                 ["SkinnedBonePalette"] = L(U("Palette", V, dynamic: true)),
+                // Render3D/Rendering/SkinnedMotionPalette.cs, set 3 of the skinned temporal variant: the motion block and
+                // this caster's last frame at its dynamic offset. A set carries one dynamic offset, which is the palette's.
+                ["Motion.skinned"] = L(U("MotionFrame", V), U("PrevPalette", V, dynamic: true)),
                 // Render3D/Rendering/ModelRenderer.Splat.cs:41 and :48. TWO sets since #604: the shared frame
                 // block, then everything the material owns. One of the two ground pipelines that put a uniform
                 // buffer in BOTH of their sets, and one of the three that spend two uniform buffers in total.
@@ -104,6 +107,12 @@ namespace KhaozEngine.Tests.Gpu
                 ["Model.tileGroundFrame"] = L(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F)),
                 ["Model.tileGroundMaterial"] = L(U("TileGroundParams", F), T("AlbedoArray"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
+                // Render3D/Rendering/ModelMotionResources.cs, the rigid temporal variant's set 1: the motion block and
+                // the previous transforms, both read by the vertex stage alone.
+                ["Motion.rigid"] = L(U("MotionFrame", V), Ro("PreviousInstanceTransforms", V)),
+                // Render3D/Rendering/ModelMotionResources.cs, the motion block alone: set 1 of the CPU-skinned variants
+                // and set 2 of the foliage and ground variants.
+                ["Motion.frame"] = L(U("MotionFrame", V)),
 
                 // Render3D/Rendering/OceanFftProducer.cs:506 and :510, both compute
                 ["OceanFft.row"] = L(U("Params", C), Rw("H0Buf", C), Rw("WorkBuf", C)),
@@ -111,6 +120,8 @@ namespace KhaozEngine.Tests.Gpu
 
                 // Render3D/Rendering/OverlayMeshRenderer.cs:54
                 ["OverlayMesh"] = L(U("Draw", V, dynamic: true)),
+                // Render3D/Rendering/SilhouetteRenderer.cs:50-54, both stages read one dynamic-offset window.
+                ["Silhouette"] = L(U("Draw", VF, dynamic: true)),
                 // Render3D/Rendering/OverlayRenderer.cs:47, shared by Billboard, Fill and Line
                 ["Overlay"] = L(U("U", V)),
                 // Render3D/Rendering/ParticleRenderer.cs:93
@@ -159,6 +170,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["Transition.solid"] = L(U("Fill", F)),
                 ["Transition.cross"] = L(T("Src"), S("Samp"), U("Params", F)),
 
+                // Render3D/Rendering/MotionVectorsView.cs, the MotionVectors debug view.
+                ["MotionVectorsView"] = L(T("Motion"), S("Samp")),
+
                 // Render3D/Rendering/WaterRenderer.cs:188
                 ["Water"] = L(T("BathyTex", VF), S("BathySamp", VF), T("OceanMap", VF), S("OceanSamp", VF),
                     T("DepthTex"), S("Samp"), U("Water", VF, dynamic: true)),
@@ -189,6 +203,7 @@ namespace KhaozEngine.Tests.Gpu
             // Render3D/Rendering/ModelRenderer.cs:407 and :419. THREE slots since #407 added the shared palette.
             ("ModelRenderer skinned", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette"]),
             ("ModelRenderer skinned dissolve", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette"]),
+            ("ModelRenderer skinned motion", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette", "Motion.skinned"]),
 
             // The rest, alphabetically. Every one is a single-set pipeline except the two ground passes, which
             // carry their own two-slot arrays below since #604 and #727.
@@ -198,13 +213,19 @@ namespace KhaozEngine.Tests.Gpu
             ("GroundDecalRenderer", ["GroundDecal"]),
             ("ModelRenderer", ["Model"]),
             ("ModelRenderer foliage", ["Model", "Foliage"]),
+            ("ModelRenderer foliage motion", ["Model", "Foliage", "Motion.frame"]),
             ("ModelRenderer dissolve", ["Model"]),
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
             ("ModelRenderer tile ground", ["Model.tileGroundFrame", "Model.tileGroundMaterial"]),
+            ("ModelRenderer splat motion", ["Model.splatFrame", "Model.splatMaterial", "Motion.frame"]),
+            ("ModelRenderer tile ground motion", ["Model.tileGroundFrame", "Model.tileGroundMaterial", "Motion.frame"]),
+            ("ModelRenderer motion", ["Model", "Motion.rigid"]),
+            ("ModelRenderer cpu skinned motion", ["Model", "Motion.frame"]),
             ("OceanFftProducer row", ["OceanFft.row"]),
             ("OceanFftProducer col", ["OceanFft.col"]),
             ("OverlayMeshRenderer", ["OverlayMesh"]),
             ("OverlayRenderer", ["Overlay"]),
+            ("SilhouetteRenderer", ["Silhouette"]),
             ("ParticleRenderer", ["Particle"]),
             ("TargetOutlineRenderer rigid full", ["TargetOutline.draw", "TargetOutline.material"]),
             ("TargetOutlineRenderer rigid visible", ["TargetOutline.draw", "TargetOutline.material"]),
@@ -238,6 +259,7 @@ namespace KhaozEngine.Tests.Gpu
             ("TrailRenderer", ["Trail"]),
             ("TransitionRenderer solid", ["Transition.solid"]),
             ("TransitionRenderer cross", ["Transition.cross"]),
+            ("MotionVectorsView", ["MotionVectorsView"]),
             ("WaterRenderer", ["Water"]),
         ];
 
@@ -251,8 +273,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(45, ShippedLayouts.Count);
-            Assert.Equal(45, ShippedPipelines.Count);
+            Assert.Equal(50, ShippedLayouts.Count);
+            Assert.Equal(53, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {
@@ -280,7 +302,9 @@ namespace KhaozEngine.Tests.Gpu
         /// there at #604 and #727. <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/407">#407</see> then
         /// raised it to THREE, on the skinned model pair alone: the shared frame block and the per-draw header in
         /// set 0 plus the per-caster bone palette in a set of its own. The skinned DEPTH pipeline took the same
-        /// palette and sits at two with the other three. Five descriptors of headroom are left.
+        /// palette and sits at two with the other three. The skinned temporal variant raised it to FIVE: the frame
+        /// block, the per-draw header and the palette as before, then the motion block and the last-frame palette at
+        /// set 3. Three descriptors of headroom are left.
         /// <para>
         /// RAISING THIS NUMBER IS FINE UP TO <see cref="VulkanDescriptorLimits.SpecRequiredMinimum"/>. Update it
         /// with the pipeline that raised it. This is a per-PIPELINE-LAYOUT sum over EVERY uniform buffer, so both
@@ -288,12 +312,12 @@ namespace KhaozEngine.Tests.Gpu
         /// </para>
         /// </summary>
         [Fact]
-        public void TheHeaviestShippedPipeline_SpendsThreeDynamicUniformDescriptors()
+        public void TheHeaviestShippedPipeline_SpendsFiveDynamicUniformDescriptors()
         {
             int heaviest = ShippedPipelines.Max(
                 p => p.Slots.Sum(slot => VulkanDescriptorPolicy.DynamicUniformCount(ShippedLayouts[slot])));
 
-            Assert.Equal(3, heaviest);
+            Assert.Equal(5, heaviest);
             Assert.True(heaviest < VulkanDescriptorLimits.SpecRequiredMinimum,
                 "the heaviest shipped pipeline is at the spec floor, so the next uniform buffer added to it cannot "
                 + "be created on a minimum-spec device at all.");

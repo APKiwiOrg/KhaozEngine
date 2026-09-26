@@ -86,6 +86,9 @@ namespace KhaozEngine.Tests.Gpu
             // different slots: set 2 of the model pair and set 1 of the depth one. Layout-relative it is always b0,
             // and the ACROSS-layouts row below is where the two pipelines' different bases show up.
             ("SkinnedBonePalette._layout", new[] { U("Palette", dynamic: true) }, "b0"),
+            // The foliage block, the second set of the foliage pipeline and its temporal variant.
+            ("ModelRenderer._foliageLayout", new[] { U("Foliage", dynamic: true) }, "b0"),
+            ("SkinnedMotionPalette.Layout", new[] { U("MotionFrame"), U("PrevPalette", dynamic: true) }, "b0 b1"),
             // The splat pass's two, also since #604: the shared frame block on its own, then the material.
             ("ModelRenderer._splatFrameLayout",
                 new[] { U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
@@ -103,6 +106,11 @@ namespace KhaozEngine.Tests.Gpu
                 new[] { U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                     T("PointShadowMap"), T("PointShadowTransientMap") },
                 "b0 t0 s0 t1 s1 t2 t3"),
+            // The rigid temporal variant's set 1. A vertex-stage structured buffer takes the t counter like
+            // any other shader resource.
+            ("ModelMotionResources.RigidLayout",
+                new[] { U("MotionFrame"), StructRO("PreviousInstanceTransforms", GpuShaderStages.Vertex) }, "b0 t0"),
+            ("ModelMotionResources.FrameLayout", new[] { U("MotionFrame") }, "b0"),
 
             // The only two layouts in the engine that reach the u file at all, and the only ones that mix a
             // read-write structured buffer with a storage texture. They are why the u counter is SHARED.
@@ -114,6 +122,7 @@ namespace KhaozEngine.Tests.Gpu
 
             ("OverlayMeshRenderer._layout", new[] { U("Draw", dynamic: true) }, "b0"),
             ("OverlayRenderer._layout", new[] { U("U") }, "b0"),
+            ("SilhouetteRenderer._layout", new[] { U("Draw", dynamic: true) }, "b0"),
             ("ParticleRenderer._layout",
                 new[] { U("Frame"), T("DepthTex"), S("Samp"), T("MotionTex"), T("AtlasTex"), S("AtlasSamp") },
                 "b0 t0 s0 t1 t2 s1"),
@@ -141,6 +150,7 @@ namespace KhaozEngine.Tests.Gpu
             ("TrailRenderer._layout", new[] { U("U") }, "b0"),
             ("TransitionRenderer._solidLayout", new[] { U("Fill") }, "b0"),
             ("TransitionRenderer._crossLayout", new[] { T("Src"), S("Samp"), U("Params") }, "t0 s0 b0"),
+            ("MotionVectorsView._layout", new[] { T("Motion"), S("Samp") }, "t0 s0"),
 
             // The widest shipped layout, and the one whose own source comment already explains that the order is
             // load-bearing because of exactly this numbering.
@@ -260,10 +270,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on the five shipped
+        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on ten of the shipped
         /// multi-layout pipelines: <c>SpriteBatch</c>, the skinned model pass, the skinned depth pass, the splat
-        /// pass and the tile-ground pass. The two skinned ones share one palette layout OBJECT at different slots,
-        /// which is the case that proves the base comes from the array rather than from the layout.
+        /// pass, the tile-ground pass, and the rigid, skinned, foliage, splat and tile-ground temporal variants. The
+        /// skinned model and depth passes share one palette layout OBJECT at different slots, which is the case that
+        /// proves the base comes from the array rather than from the layout.
         /// </summary>
         [Fact]
         public void AcrossLayouts_TheShippedPipelinesFlattenInArrayOrder()
@@ -331,6 +342,48 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal("b0 t0 t1", Absolute(ground, 0));
             Assert.Equal("b1 t2 s0 t3 s1 t4 t5", Absolute(ground, 1));
+
+            // The rigid temporal variant: the model layout at set 0 and the motion set at set 1, so the motion block is
+            // b1 and the previous transforms follow the model layout's eight t registers.
+            using var model = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                StructRO("PointLightClusters", GpuShaderStages.Fragment), T("Albedo"), T("NormalMap"), T("RoughnessMap"),
+                S("Sampler"), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")));
+            using var rigidMotion = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("MotionFrame"), StructRO("PreviousInstanceTransforms", GpuShaderStages.Vertex)));
+            D3D11ResourceLayout[] rigid = { model, rigidMotion };
+
+            Assert.Equal("b1 t8", Absolute(rigid, 1));
+
+            // The skinned temporal variant: the three skinned sets, then the motion set at set 3, whose two uniform
+            // buffers continue the b file after the palette's b2.
+            using var skinnedMotion = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("MotionFrame"), U("PrevPalette", dynamic: true)));
+            D3D11ResourceLayout[] skinnedTemporal = { skinnedMain, skinnedFrag, bonePalette, skinnedMotion };
+
+            Assert.Equal("b3 b4", Absolute(skinnedTemporal, 3));
+
+            // The foliage temporal variant: the model layout, the foliage block at set 1 and the motion block alone at
+            // set 2, so the two blocks continue the b file after the frame block. Read off the emitted HLSL, whose
+            // vertex stage names the foliage block b1 and the motion block b2.
+            using var foliage = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("Foliage", dynamic: true)));
+            using var motionFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("MotionFrame")));
+            D3D11ResourceLayout[] foliageTemporal = { model, foliage, motionFrame };
+
+            Assert.Equal("b1", Absolute(foliageTemporal, 1));
+            Assert.Equal("b2", Absolute(foliageTemporal, 2));
+
+            // The two ground temporal variants: each ground pass's frame and material sets, then the motion block alone
+            // at set 2, so it continues the b file after the material's params block and the two sets keep the base
+            // pass's registers. Read off the emitted HLSL: both vertex stages name the frame block b0 and the motion
+            // block b2, and both fragment stages name exactly the registers of their base program.
+            D3D11ResourceLayout[] splatTemporal = { splatFrame, splatMaterial, motionFrame };
+            D3D11ResourceLayout[] groundTemporal = { groundFrame, groundMaterial, motionFrame };
+
+            Assert.Equal("b1 t2 t3 s0 t4 s1 t5 t6", Absolute(splatTemporal, 1));
+            Assert.Equal("b2", Absolute(splatTemporal, 2));
+            Assert.Equal("b1 t2 s0 t3 s1 t4 t5", Absolute(groundTemporal, 1));
+            Assert.Equal("b2", Absolute(groundTemporal, 2));
         }
 
         /// <summary>

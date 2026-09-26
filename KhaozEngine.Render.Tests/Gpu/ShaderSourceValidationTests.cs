@@ -28,7 +28,11 @@ namespace KhaozEngine.Tests.Gpu
     /// <item>FullscreenVert paired with each post fragment PaletteFrag/EdgeFrag/BlitFrag/FxaaFrag/BloomBrightFrag/
     /// BloomBlurFrag/BloomCompositeFrag (PixelPostProcess)</item>
     /// <item>FullscreenVert+TransitionSolidFrag/TransitionCrossfadeFrag (TransitionRenderer), ModelVert+ModelDissolveFrag (CharDissolve)</item>
+    /// <item>FullscreenVert+MotionVectorsViewFrag (MotionVectorsView, the MotionVectors debug view)</item>
     /// <item>SpriteBatch VertSrc+FragSrc (Render2D)</item>
+    /// <item>The temporal motion variants of the model, skinned, CPU-skinned, foliage, splat and tile-ground passes
+    /// and the five motion-preserving transparent fragments (built only against a model target with the motion
+    /// attachment)</item>
     /// </list>
     /// </summary>
     public sealed class ShaderSourceValidationTests
@@ -148,6 +152,10 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TransitionCrossfadeFrag, "TransitionCrossfade");
 
         [Fact]
+        public void MotionVectorsView()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.MotionVectorsViewFrag, "MotionVectorsView");
+
+        [Fact]
         public void ModelDissolve()
             => ShaderValidation.ValidatePair(ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag, "ModelDissolve");
 
@@ -158,6 +166,61 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void SkinnedModelDissolve()
             => ShaderValidation.ValidatePair(ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag, "SkinnedModelDissolve");
+
+        // The rigid temporal variant: ModelVert plus the motion block, a vertex-stage structured buffer and
+        // the motion slot at location 15.
+        [Fact]
+        public void ModelMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.ModelMotionVert, ShaderSources.ModelMotionFrag, "ModelMotion");
+
+        [Fact]
+        public void SkinnedModelMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.SkinnedModelMotionVert, ShaderSources.SkinnedModelMotionFrag, "SkinnedModelMotion");
+
+        [Fact]
+        public void SkinnedModelDissolveMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.SkinnedModelMotionVert, ShaderSources.SkinnedModelDissolveMotionFrag, "SkinnedModelDissolveMotion");
+
+        [Fact]
+        public void ModelCpuSkinnedMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelMotionFrag, "ModelCpuSkinnedMotion");
+
+        [Fact]
+        public void ModelCpuSkinnedDissolveMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelDissolveMotionFrag, "ModelCpuSkinnedDissolveMotion");
+
+        [Fact]
+        public void FoliageMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.FoliageMotionVert, ShaderSources.ModelMotionFrag, "FoliageMotion");
+
+        [Fact]
+        public void SplatMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.SplatMotionVert, ShaderSources.SplatMotionFrag, "SplatMotion");
+
+        [Fact]
+        public void TileGroundMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, "TileGroundMotion");
+
+        // The transparent passes' temporal variants: each base fragment plus a zero fourth output its blend discards.
+        [Fact]
+        public void TexturedBillboardMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag, "TexturedBillboardMotion");
+
+        [Fact]
+        public void BeamMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.BeamVert, ShaderSources.BeamMotionFrag, "BeamMotion");
+
+        [Fact]
+        public void TrailMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.TrailVert, ShaderSources.TrailMotionFrag, "TrailMotion");
+
+        [Fact]
+        public void OverlayMeshMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitMotionFrag, "OverlayMeshMotion");
+
+        [Fact]
+        public void SilhouetteMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag, "SilhouetteMotion");
 
         [Fact]
         public void SkinnedShadowDepth()

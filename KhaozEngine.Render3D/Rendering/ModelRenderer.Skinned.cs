@@ -48,16 +48,24 @@ internal sealed partial class ModelRenderer
         cl.UpdateBuffer(_skinnedInstanceBuffer!, 0, instances);
     }
 
-    /// <summary>Draw one CPU-skinned mesh through the model pipeline: its deformed vertices live at
-    /// <paramref name="baseVertex"/>.. in the shared skinned vertex buffer (added per index via the draw's
-    /// vertexOffset), and its instance data is element <paramref name="drawIndex"/> of the skinned instance
-    /// buffer (selected by instanceStart). One <c>instanceCount=1</c> draw. <see cref="BindPass"/> +
-    /// <see cref="SetFrameUniforms"/> must already be bound (the rigid pass shares the frame UBO).</summary>
+    /// <summary>Draw one CPU-skinned mesh through the pipeline <see cref="BindCpuSkinnedPass"/> or
+    /// <see cref="BindDissolvePass"/> bound: its deformed vertices live at <paramref name="baseVertex"/>.. in the
+    /// shared skinned vertex buffer (added per index via the draw's vertexOffset), and its instance data is element
+    /// <paramref name="drawIndex"/> of the skinned instance buffer (selected by instanceStart). One
+    /// <c>instanceCount=1</c> draw. <see cref="SetFrameUniforms"/> must already have run (the rigid pass shares the
+    /// frame UBO). While the target is temporal the draw also binds the motion block at set 1 and last frame's
+    /// positions at vertex slot 2, parallel to the deformed vertices.</summary>
     public void DrawCpuSkinned(IGpuCommandList cl, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex, uint drawIndex, IGpuResourceSet? materialSet)
     {
         cl.SetGraphicsResourceSet(0, materialSet ?? _defaultSet);
         cl.SetVertexBuffer(0, _skinnedVertexBuffer!);
         cl.SetVertexBuffer(1, _skinnedInstanceBuffer!);
+        if (_motion is { } motion)
+        {
+            // The CPU-skinned variant's set 1 and last frame's positions, parallel to the deformed vertices.
+            cl.SetGraphicsResourceSet(1, motion.FrameSet);
+            cl.SetVertexBuffer(2, motion.CpuPrevious);
+        }
         cl.SetIndexBuffer(ib, indexFormat);
         cl.DrawIndexed((uint)indexCount, 1, 0, baseVertex, drawIndex);
     }
@@ -172,6 +180,9 @@ internal sealed partial class ModelRenderer
         cl.SetGraphicsResourceSet(0, _skinnedMainSet!, slot * SkinnedMainSlotBytes);
         cl.SetGraphicsResourceSet(1, skinnedFragSet ?? _skinnedDefaultFragSet);
         cl.SetGraphicsResourceSet(2, _bonePalette.Set, SkinnedBonePalette.OffsetFor(paletteSlot));
+        // The skinned variant's set 3: the motion block and this caster's last frame, at its own slot.
+        if (_motion is { } motion)
+            cl.SetGraphicsResourceSet(3, motion.SkinnedPalette.Set, SkinnedMotionPalette.OffsetFor(paletteSlot));
         cl.SetVertexBuffer(0, restVb);
         cl.SetIndexBuffer(ib, indexFormat);
         cl.DrawIndexed((uint)indexCount, 1, 0, 0, 0);

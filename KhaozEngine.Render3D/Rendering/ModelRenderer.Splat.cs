@@ -64,14 +64,22 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Build the splat pipeline from the MRT outputs and the shared vertex + instance layouts. Called by
         /// <see cref="BuildPipelines"/>, so <see cref="SetOutputs"/> rebuilds it with the rest when the sample count
         /// changes. The layout array order IS the set numbering the backends flatten registers in, so set 0 (frame)
-        /// comes before set 1 (material).</summary>
+        /// comes before set 1 (material), and against a temporal target set 2 is the motion block.</summary>
         void BuildSplatPipeline(IGpuResourceFactory factory, GpuOutputDescription modelOutputs,
             GpuVertexLayoutDescription vertexLayout, GpuVertexLayoutDescription instanceLayout)
         {
+            if (_motion is { } motion && MotionMath.IsTemporal(modelOutputs))
+            {
+                // The temporal variant: the terrain's two sets, then the motion block at set 2.
+                _splatPipeline = OpaqueMotionPipeline(factory, modelOutputs, motion.SplatShaders,
+                    new[] { _splatFrameLayout, _splatMaterialLayout, motion.FrameLayout },
+                    new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout });
+                return;
+            }
             _splatPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
-                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend },
+                BlendAttachments = ModelTargetBlends.Opaque(modelOutputs),
                 DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
@@ -109,12 +117,14 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Draw one splat-terrain mesh run through the splat pipeline, reusing the shared instance buffer
         /// (terrain instances are identity-transform, white-tint). Set 0 is the shared frame block and set 1 is
         /// <paramref name="splatSet"/>, the material's params UBO + texture arrays + sampler. Both are bound per
-        /// draw, the way the GPU-skinning pass binds its own pair. <see cref="BindSplatPass"/> must be bound.</summary>
+        /// draw, the way the GPU-skinning pass binds its own pair, and against a temporal target so is the motion block
+        /// at set 2. <see cref="BindSplatPass"/> must be bound.</summary>
         public void DrawSplatMeshInstanced(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
             GpuIndexFormat indexFormat, uint instanceStart, uint instanceCount, IGpuResourceSet splatSet)
         {
             cl.SetGraphicsResourceSet(0, _splatFrameSet);
             cl.SetGraphicsResourceSet(1, splatSet);
+            if (_motion is { } motion) cl.SetGraphicsResourceSet(2, motion.FrameSet);   // the terrain variant's motion block
             cl.SetVertexBuffer(0, vb);
             cl.SetVertexBuffer(1, _instanceBuffer!);
             cl.SetIndexBuffer(ib, indexFormat);

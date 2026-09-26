@@ -30,6 +30,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
+        IGpuShaderSet? _motionShaders;   // SilhouetteMotionFrag, built only for a temporal model target
         readonly IGpuResourceLayout _layout;
         IGpuPipeline _pipeline;
         readonly List<IDisposable> _retired = new();
@@ -59,7 +60,15 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _pipeline.Dispose();
             _pipeline = BuildPipeline(_gd.Factory, modelOutputs);
+            if (MotionMath.IsTemporal(modelOutputs)) return;
+            // Scene3D idles the device before it changes the model target's attachments, so no list in flight still
+            // reads the temporal program the old pipeline used.
+            _motionShaders?.Dispose();
+            _motionShaders = null;
         }
+
+        /// <summary>Whether the temporal program is held. For tests.</summary>
+        internal bool HoldsMotionShadersForTests => _motionShaders is not null;
 
         IGpuPipeline BuildPipeline(IGpuResourceFactory f, GpuOutputDescription modelOutputs)
         {
@@ -72,12 +81,7 @@ namespace KhaozEngine.Render3D.Rendering
             return f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
-                BlendAttachments = new[]
-                {
-                    GpuBlendAttachment.AlphaBlend,
-                    GpuBlendAttachment.PreserveDestination,
-                    GpuBlendAttachment.PreserveDestination,
-                },
+                BlendAttachments = ModelTargetBlends.Transparent(GpuBlendAttachment.AlphaBlend, modelOutputs),
                 DepthStencil = GpuDepthStencilState.DepthTestLessEqualNoWrite,
                 // FRONT-face culling is the inverted hull: only the pushed-out back faces draw, and the model's
                 // own depth (written by the opaque pass) eats the hull's interior, leaving the rim. FrontFace is
@@ -88,7 +92,9 @@ namespace KhaozEngine.Render3D.Rendering
                     GpuFrontFace.CounterClockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _shaders,
+                ShaderSet = MotionMath.IsTemporal(modelOutputs)
+                    ? _motionShaders ??= f.CreateShadersFromSpirv(ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag)
+                    : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { positionLayout, normalLayout },
                 Outputs = modelOutputs,
             });
@@ -171,6 +177,7 @@ namespace KhaozEngine.Render3D.Rendering
             _pipeline.Dispose();
             _layout.Dispose();
             _shaders.Dispose();
+            _motionShaders?.Dispose();
             _ubo?.Dispose();
             foreach (var r in _retired) r.Dispose();
             _retired.Clear();

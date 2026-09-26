@@ -43,6 +43,7 @@ namespace KhaozEngine.Tests.Gpu
             // four pipelines and the three caster programs would read here as uncaptured.
             Assert.True(scene.EnsurePointShadowAtlas(PointShadowAtlas.MinFaceResolution, 1));
             CaptureTargetOutlinePipelines(scene, framebuffer, commands);
+            CaptureTemporalPipelines(device, commands);
 
             ShippedGraphicsProgram[] expectedPrograms = ShippedShaderPrograms.GraphicsPrograms()
                 .Where(program => Parse(program.VertexGlsl).Count > 0)
@@ -148,6 +149,19 @@ namespace KhaozEngine.Tests.Gpu
             scene.DrawSkinnedOutline(group, skinned, tube.RestPose, Matrix4x4.Identity);
             scene.PrepareFrame();
             scene.RenderInternal(commands, 64, 64, framebuffer);
+        }
+
+        // The temporal variants are built only against a model target that carries the motion attachment, so a scene
+        // that never renders temporally captures none of them. Building the renderers against that target captures all.
+        static void CaptureTemporalPipelines(FakeGpuDevice device, IGpuCommandList commands)
+        {
+            using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
+            model.UploadFoliageUniforms(commands, [default]);
+            using var billboards = new TexturedBillboardRenderer(device, ModelTargets.Temporal);
+            using var beams = new BeamRenderer(device, ModelTargets.Temporal);
+            using var trails = new TrailRenderer(device, ModelTargets.Temporal);
+            using var overlays = new OverlayMeshRenderer(device, ModelTargets.Temporal);
+            using var silhouettes = new SilhouetteRenderer(device, ModelTargets.Temporal);
         }
 
         static IReadOnlyList<VertexDeclaration> Parse(string glsl)

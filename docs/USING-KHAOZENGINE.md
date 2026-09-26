@@ -3450,12 +3450,13 @@ record. `SceneInstances.Add(in RigidInstanceDraw)` and `SkinnedSceneInstances.Ad
 key as data only, so a key queued on a standalone queue is never recorded.
 
 A key seen for the first time has no previous state and gets camera-only motion, and so does a key that skipped the
-last frame. Two draws of the same kind with one key in a frame collide: the last one wins, so one of the two gets
-wrong motion, never a failure. A rigid and a skinned draw that share a key never collide. `LastTemporalDiagnostics`
-counts collisions in `KeyCollisions`, beside the keyed submissions in `KeyedRigid` and `KeyedSkinned`. It counts the
-submissions made before the frame's first render, before culling, and reads zero with temporal rendering off. A
-shadow-only draw is never seen, so its key is ignored and it is not counted. With temporal rendering off, keys cost
-nothing: nothing is recorded and nothing is allocated.
+last frame. A moving draw that forgets its key gets camera-only motion too, and the `SceneDebugView.MotionVectors` view
+shows it as an object painted with the camera's motion instead of its own. Two draws of the same kind with one key in a
+frame collide: the last one wins, so one of the two gets wrong motion, never a failure. A rigid and a skinned draw that
+share a key never collide. `LastTemporalDiagnostics` counts collisions in `KeyCollisions`, beside the keyed submissions
+in `KeyedRigid` and `KeyedSkinned`. It counts the submissions made before the frame's first render, before culling, and
+reads zero with temporal rendering off. A shadow-only draw is never seen, so its key is ignored and it is not counted.
+With temporal rendering off, keys cost nothing: nothing is recorded and nothing is allocated.
 
 `CharacterAvatar` (obsolete) and `SkinnedLimb` key their own draws, `Scene3DBinder.Submit` keys each entity from its id
 and version (see ECS entities below), and `Scene3DTileWorldScene` forwards the tile-world seam's descriptor draws whole
@@ -3546,6 +3547,11 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   `SceneDebugView.MotionVectors`, turns temporal rendering on, which jitters the rasterised image by under half an
   internal pixel on each axis each frame. A change takes effect at the frame's first render. One made after that
   render waits for the next frame.
+- `SceneDebugView.MotionVectors` replaces the final image with each pixel's screen motion since the last frame: hue
+  for direction (rightward cyan, leftward red, downward violet, upward yellow-green), brightness for length (full at
+  16 internal pixels), and black where nothing opaque drew or nothing moved. A moving object painted with the camera's
+  motion instead of its own is missing its `MotionKey`. The screen overlays drawn after the post chain (target
+  outlines, fills, lines, billboards and the screen transition) still draw over the view.
 - `LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed draws and key collisions
   (see "Draw descriptors and motion keys"), whether history was valid, and why it was last reset. Read it on the render
   thread after the frame renders. A second render inside the same frame, such as an offscreen capture, leaves it and the

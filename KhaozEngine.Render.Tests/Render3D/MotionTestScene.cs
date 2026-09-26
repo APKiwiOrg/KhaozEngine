@@ -34,6 +34,9 @@ internal sealed class MotionTestScene : IDisposable
 
     public IGpuFramebuffer Target { get; }
 
+    /// <summary>The fake device, so a test can read what the scene created on it.</summary>
+    public FakeGpuDevice Device => _device;
+
     /// <summary>Upload a three-bone tube. <paramref name="mesh"/> carries its rest pose and inverse-bind.</summary>
     public SkinnedMeshHandle LoadTube(out SkinnedGltfMesh mesh)
     {

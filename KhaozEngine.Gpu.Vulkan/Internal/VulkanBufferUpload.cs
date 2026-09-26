@@ -22,11 +22,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// the first has finished its vertex fetch. The pool ring's fence does not help either, because it waits on the
     /// submission FRAMES-IN-FLIGHT back rather than the immediately preceding one.</para>
     ///
-    /// <para><b>A STATIC OVER A GENERIC SINK, deliberately.</b> The barrier goes through
-    /// <see cref="IVkCmdSink"/>, which is consumed through a <c>where TSink : struct</c> constraint so the JIT
-    /// monomorphizes it and boxes nothing (V-T2). Making this a method on a type that STORED the sink would box it,
-    /// which is the one way to spend the cost that seam was shaped to avoid, so the sink is a parameter and the row
-    /// that owns a real sink calls in with its own.</para>
+    /// <para><b>A STATIC OVER TWO GENERIC SINKS, deliberately.</b> The barrier goes through
+    /// <see cref="IVkCmdSink"/> and the copy through <see cref="IVulkanUploadSink"/>, and both are consumed through a
+    /// <c>struct</c> constraint so the JIT monomorphizes them and boxes nothing (V-T2). Making this a method on a
+    /// type that STORED either sink would box it, which is the one way to spend the cost that seam was shaped to
+    /// avoid, so the sinks are parameters and the row that owns the real ones calls in with its own.</para>
+    ///
+    /// <para>The real <see cref="VulkanCopySink"/> is a readonly struct, so an <see cref="IVulkanUploadSink"/>
+    /// parameter would allocate a 32-byte box per staged upload. <c>VulkanStagingAllocationTests</c> pins that the
+    /// generic form allocates nothing.</para>
     ///
     /// <para><b>BOTH BARRIERS ARE OVER THE WRITTEN RANGE.</b> The incumbent emitted a GLOBAL
     /// <c>VkMemoryBarrier</c> instead, one of them, which makes every access of its class wait rather than the one
@@ -46,6 +50,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// Record one staged upload.
         /// </summary>
         /// <typeparam name="TSink">The command sink, monomorphized at the call site.</typeparam>
+        /// <typeparam name="TCopies">The copy sink, monomorphized at the call site for the same reason.</typeparam>
         /// <param name="sink">Where the barrier is recorded.</param>
         /// <param name="copies">Where the copy is recorded. Not the budget seam: see
         /// <see cref="IVulkanUploadSink"/>.</param>
@@ -59,12 +64,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="destinationOffsetBytes">Where in that buffer the payload lands.</param>
         /// <param name="data">The payload. An empty one records NOTHING at all, because a zero-byte copy is a
         /// command and a barrier bought for no bytes.</param>
-        internal static void Record<TSink>(TSink sink, IVulkanUploadSink copies, VulkanStagingArena arena,
+        internal static void Record<TSink, TCopies>(TSink sink, TCopies copies, VulkanStagingArena arena,
             IVulkanRenderingScope? rendering, IVulkanUploadDestination destination, ulong destinationOffsetBytes,
             ReadOnlySpan<byte> data)
             where TSink : struct, IVkCmdSink
+            where TCopies : struct, IVulkanUploadSink
         {
-            ArgumentNullException.ThrowIfNull(copies);
             ArgumentNullException.ThrowIfNull(arena);
             ArgumentNullException.ThrowIfNull(destination);
 

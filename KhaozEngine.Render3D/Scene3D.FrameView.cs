@@ -21,6 +21,9 @@ namespace KhaozEngine.Render3D
         bool _frameViewLatchedThisFrame;
         // The frame's temporal state, fixed by its first render (see TemporalActive).
         bool _frameTemporalActive;
+        // The frame's debug view, fixed by its first render beside the temporal state (see DebugView). A view is only
+        // drawn on a temporal frame, so its data exists whenever it is drawn.
+        SceneDebugView _frameDebugView;
 
         /// <summary>The display size over the internal size per axis, which sets the jitter sequence length. Native
         /// in round 1. Round 2's upscaler replaces this with its ratio.</summary>
@@ -62,6 +65,7 @@ namespace KhaozEngine.Render3D
             _frameIndex++;
             _frameViewLatchedThisFrame = false;
             _frameTemporalActive = false;
+            _frameDebugView = SceneDebugView.None;
         }
 
         /// <summary>
@@ -70,7 +74,8 @@ namespace KhaozEngine.Render3D
         /// latched origin on an origin-aware camera first, so the <c>View</c> read after it is in the same render
         /// frame. A camera that cannot take an origin but was swapped in after <see cref="Begin"/> latched one gets the
         /// translation composed onto its view, as the fallback in <see cref="FrameViewProjection"/> does for its
-        /// view-projection. The frame's first render also fixes its temporal state (<see cref="TemporalActive"/>).
+        /// view-projection. The frame's first render also fixes its temporal state (<see cref="TemporalActive"/>) and
+        /// its debug view (<see cref="DebugView"/>).
         /// </summary>
         internal void LatchFrameView()
         {
@@ -91,6 +96,7 @@ namespace KhaozEngine.Render3D
             if (_frameViewLatchedThisFrame) return;
             _frameViewLatchedThisFrame = true;
             _frameTemporalActive = temporal;
+            _frameDebugView = _debugView;
             AdvanceTemporalHistory();
         }
     }

@@ -6,8 +6,10 @@ namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
     /// Owns the low-res GPU targets for one resolution: a 3-attachment MRT (lit color, encoded normal,
-    /// linear depth) plus a depth-stencil for the model pass, and two single-target ping-pong buffers for
-    /// the post chain. Recreated on resolution / mip-mode / MSAA-sample-count / bloom-enabled / HDR-format change.
+    /// linear depth), or a 4-attachment one with the RG16F motion target while temporal rendering asks for it
+    /// (<see cref="MotionAllocated"/>), plus a depth-stencil for the model pass, and two single-target ping-pong
+    /// buffers for the post chain. Recreated on resolution / mip-mode / MSAA-sample-count / bloom-enabled /
+    /// HDR-format / motion change.
     /// Also owns an optional half-resolution ping-pong pair (<see cref="BloomA"/>/<see cref="BloomB"/>) for the
     /// bloom bright-pass + separable blur, allocated only while bloom is enabled (see <see cref="BloomAllocated"/>).
     /// The colour-carrying targets (lit colour + both ping-pong pairs) render at <c>R16G16B16A16Float</c> when
@@ -73,6 +75,16 @@ namespace KhaozEngine.Render3D.Internal
         public IGpuTexture? MsNormal;
         public IGpuTexture? MsDepthColor;
 
+        /// <summary>The screen-space motion target (<see cref="MotionMath.Format"/>, internal size): the fourth colour
+        /// attachment of <see cref="ModelFB"/> while temporal rendering is active, null otherwise. Cleared to
+        /// <see cref="MotionMath.Sentinel"/> by the model pass, so background pixels carry it. Never multisampled,
+        /// because temporal rendering is single-sample.</summary>
+        public IGpuTexture? MotionTex;
+
+        /// <summary>Whether <see cref="MotionTex"/> is allocated and attached (the <c>motion</c> argument of the last
+        /// <see cref="Resize"/>).</summary>
+        public bool MotionAllocated { get; private set; }
+
         public IGpuTexture PingA = null!, PingB = null!;
         public IGpuFramebuffer PingAFB = null!, PingBFB = null!;
 
@@ -112,25 +124,32 @@ namespace KhaozEngine.Render3D.Internal
         public RenderResources(IGpuDevice gd, int w, int h, bool hdrColor)
         {
             _gd = gd;
-            Create(w, h, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: hdrColor);
+            Create(w, h, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: hdrColor, motion: false);
         }
 
-        public void Resize(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor)
+        /// <summary>Recreate the targets when any argument changed. <paramref name="motion"/> adds the motion target
+        /// as a fourth model attachment, which a multisampled target refuses before anything is released.</summary>
+        public void Resize(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor, bool motion = false)
         {
+            if (motion && sampleCount > 1)
+                throw new ArgumentException(
+                    "Temporal rendering is single-sample, so the motion target cannot join a multisampled model target.",
+                    nameof(motion));
             if (w == Width && h == Height && mipped == Mipped && sampleCount == SampleCount
-                && bloomEnabled == BloomAllocated && hdrColor == HdrColor) return;
+                && bloomEnabled == BloomAllocated && hdrColor == HdrColor && motion == MotionAllocated) return;
             DisposeTargets();
-            Create(w, h, mipped, sampleCount, bloomEnabled, hdrColor);
+            Create(w, h, mipped, sampleCount, bloomEnabled, hdrColor, motion);
         }
 
         IGpuTexture Tex(uint w, uint h, GpuPixelFormat fmt, GpuTextureUsage usage, uint mipLevels = 1, uint samples = 1) =>
             _gd.Factory.CreateTexture(new GpuTextureDescription(w, h, fmt, usage, mipLevels, 1, samples));
 
-        void Create(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor)
+        void Create(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor, bool motion)
         {
             Generation++;
             Width = w; Height = h; Mipped = mipped; SampleCount = sampleCount < 1 ? 1 : sampleCount;
             HdrColor = hdrColor;
+            MotionAllocated = motion;
             uint uw = (uint)w, uh = (uint)h, s = (uint)SampleCount;
             var rt = GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled;
             // The colour-carrying targets go float16 in HDR mode for over-range headroom. The encoded-normal (UNorm)
@@ -165,7 +184,12 @@ namespace KhaozEngine.Render3D.Internal
             else
             {
                 DepthStencil = Tex(uw, uh, GpuPixelFormat.D32FloatS8UInt, GpuTextureUsage.DepthStencil);
-                ModelFB = _gd.Factory.CreateFramebuffer(DepthStencil, ColorTex, NormalTex, DepthColorTex);
+                // While temporal rendering is active every opaque path writes motion in the same pass as colour,
+                // normal and depth, so the target rides as a fourth attachment (MotionMath).
+                MotionTex = motion ? Tex(uw, uh, MotionMath.Format, rt) : null;
+                ModelFB = MotionTex is null
+                    ? _gd.Factory.CreateFramebuffer(DepthStencil, ColorTex, NormalTex, DepthColorTex)
+                    : _gd.Factory.CreateFramebuffer(DepthStencil, ColorTex, NormalTex, DepthColorTex, MotionTex);
                 // Lit color attachment + the scene depth-stencil, so the ground-decal pass can blend into ColorTex AND
                 // use a read-only hardware depth test to reject no-geometry background pixels (cleared to the far
                 // plane), while sampling the separate linear-depth texture (DepthColorTex) for world reconstruction.
@@ -289,6 +313,8 @@ namespace KhaozEngine.Render3D.Internal
             ColorTex?.Dispose(); NormalTex?.Dispose(); DepthColorTex?.Dispose(); DepthStencil?.Dispose();
             MsColor?.Dispose(); MsNormal?.Dispose(); MsDepthColor?.Dispose();
             MsColor = MsNormal = MsDepthColor = null;
+            MotionTex?.Dispose();
+            MotionTex = null;
             PingA?.Dispose(); PingB?.Dispose();
             BloomAFB?.Dispose(); BloomBFB?.Dispose(); BloomA?.Dispose(); BloomB?.Dispose();
             BloomAFB = BloomBFB = null; BloomA = BloomB = null;

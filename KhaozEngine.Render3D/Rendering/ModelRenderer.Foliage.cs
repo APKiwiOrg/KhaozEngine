@@ -22,8 +22,13 @@ internal sealed partial class ModelRenderer
     {
         public Vector4 FocusRadius, Density, FadeWind, WindTime;
         public Vector4 Interactor0, Interactor1, Interactor2, Interactor3, Strengths;
-        public Vector4 WindFade; // blade pixels where wind stops, metres per internal pixel at clip w of 1
-        public const uint SizeInBytes = 160;
+        // x = blade pixels where wind stops, y = metres per internal pixel at clip w of 1, z = the same last frame
+        public Vector4 WindFade;
+        // Last frame's state for FoliageMotionVert, zero while temporal rendering is off. FoliageVert's block is the 160
+        // bytes above, and these fill the rest of the slot it always had.
+        public Vector4 PrevFocus;   // xyz = last frame's focus, w = last frame's wind time
+        public Vector4 PrevInteractor0, PrevInteractor1, PrevInteractor2, PrevInteractor3, PrevStrengths;
+        public const uint SizeInBytes = 256;
         public const uint SlotBytes = 256;
 
         /// <summary>Metres one internal pixel covers vertically at clip w of 1. Perspective clip w is view depth.
@@ -40,6 +45,32 @@ internal sealed partial class ModelRenderer
         public static void ApplyPixelScale(Span<FoliageUniforms> uniforms, float metresPerPixel)
         {
             foreach (ref FoliageUniforms slot in uniforms) slot.WindFade.Y = metresPerPixel;
+        }
+
+        /// <summary>As the one-argument overload, plus last frame's scale in <c>WindFade.z</c> for the temporal
+        /// variant's previous wind fade.</summary>
+        public static void ApplyPixelScale(Span<FoliageUniforms> uniforms, float metresPerPixel, float previousMetresPerPixel)
+        {
+            foreach (ref FoliageUniforms slot in uniforms)
+            {
+                slot.WindFade.Y = metresPerPixel;
+                slot.WindFade.Z = previousMetresPerPixel;
+            }
+        }
+
+        /// <summary>This submission with <paramref name="previous"/>'s focus, clock, interactors and strengths as
+        /// last frame's.</summary>
+        public readonly FoliageUniforms WithPrevious(in FoliageUniforms previous)
+        {
+            FoliageUniforms data = this;
+            data.PrevFocus = new Vector4(previous.FocusRadius.X, previous.FocusRadius.Y, previous.FocusRadius.Z,
+                previous.WindTime.Z);
+            data.PrevInteractor0 = previous.Interactor0;
+            data.PrevInteractor1 = previous.Interactor1;
+            data.PrevInteractor2 = previous.Interactor2;
+            data.PrevInteractor3 = previous.Interactor3;
+            data.PrevStrengths = previous.Strengths;
+            return data;
         }
 
         public static FoliageUniforms Build(Vector3 focus, in FoliageRenderSettings settings,
@@ -93,17 +124,22 @@ internal sealed partial class ModelRenderer
         var factory = _gd.Factory;
         _foliageLayout ??= factory.CreateResourceLayout(new GpuResourceLayoutDescription(
             new GpuResourceLayoutElement("Foliage", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
-        _foliageShaders ??= factory.CreateShadersFromSpirv(ShaderSources.FoliageVert, ShaderSources.ModelFrag);
+        // The temporal variant against a target with the motion attachment, the base program otherwise.
+        ModelMotionResources? motion = MotionMath.IsTemporal(_foliageOutputs) ? _motion : null;
+        IGpuShaderSet shaders = motion?.FoliageShaders
+            ?? (_foliageShaders ??= factory.CreateShadersFromSpirv(ShaderSources.FoliageVert, ShaderSources.ModelFrag));
         _foliagePipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
         {
             BlendFactor = Vector4.Zero,
-            BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend },
+            BlendAttachments = ModelTargetBlends.Opaque(_foliageOutputs),
             DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
             Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise,
                 depthClipEnabled: true, scissorTestEnabled: false),
             Topology = GpuPrimitiveTopology.TriangleList,
-            ResourceLayouts = new[] { _layout, _foliageLayout },
-            ShaderSet = _foliageShaders,
+            ResourceLayouts = motion is null
+                ? new[] { _layout, _foliageLayout }
+                : new[] { _layout, _foliageLayout, motion.FrameLayout },
+            ShaderSet = shaders,
             VertexLayouts = new List<GpuVertexLayoutDescription>
             {
                 new GpuVertexLayoutDescription(
@@ -153,6 +189,7 @@ internal sealed partial class ModelRenderer
         cl.SetPipeline(_foliagePipeline!);
         cl.SetGraphicsResourceSet(0, materialSet ?? _defaultSet);
         cl.SetGraphicsResourceSet(1, _foliageSet!, uniformSlot * FoliageUniforms.SlotBytes);
+        if (_motion is { } motion) cl.SetGraphicsResourceSet(2, motion.FrameSet);   // the foliage variant's motion block
         cl.SetVertexBuffer(0, vb);
         cl.SetVertexBuffer(1, instances);
         cl.SetIndexBuffer(ib, indexFormat);

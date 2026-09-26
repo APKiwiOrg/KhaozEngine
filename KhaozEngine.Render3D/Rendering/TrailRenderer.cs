@@ -39,6 +39,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _layout;   // UBO (vertex)
         readonly IGpuResourceSet _set;
         readonly IGpuShaderSet _shaders;
+        IGpuShaderSet? _motionShaders;   // TrailMotionFrag, built only for a temporal model target
         IGpuPipeline _additive;                // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
         IGpuPipeline _alpha;
         IGpuBuffer? _vb;
@@ -67,7 +68,15 @@ namespace KhaozEngine.Render3D.Rendering
             _alpha.Dispose();
             _additive = BuildPipeline(_gd.Factory, modelOutputs, GpuBlendAttachment.Additive);
             _alpha = BuildPipeline(_gd.Factory, modelOutputs, GpuBlendAttachment.AlphaBlend);
+            if (MotionMath.IsTemporal(modelOutputs)) return;
+            // Scene3D idles the device before it changes the model target's attachments, so no list in flight still
+            // reads the temporal program the old pipelines used.
+            _motionShaders?.Dispose();
+            _motionShaders = null;
         }
+
+        /// <summary>Whether the temporal program is held. For tests.</summary>
+        internal bool HoldsMotionShadersForTests => _motionShaders is not null;
 
         IGpuPipeline BuildPipeline(IGpuResourceFactory factory, GpuOutputDescription modelOutputs, GpuBlendAttachment color0)
         {
@@ -76,9 +85,10 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("Uv", GpuVertexElementFormat.Float3),
                 new GpuVertexElement("Color", GpuVertexElementFormat.Float4));
 
-            // Attachment 0 blends (additive or alpha); normal/depth preserved so the edge pass reads the meshes'
-            // normal/depth, not the trail's (no outline traced around the strip).
-            var blends = new[] { color0, GpuBlendAttachment.PreserveDestination, GpuBlendAttachment.PreserveDestination };
+            // Attachment 0 blends (additive or alpha). Normal, depth and, while temporal rendering is active, motion
+            // keep their destination, so the edge pass reads the meshes' normal and depth, not the trail's (no outline
+            // traced around the strip), and the resolve reads the meshes' motion.
+            var blends = ModelTargetBlends.Transparent(color0, modelOutputs);
 
             return factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
@@ -89,7 +99,9 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _shaders,
+                ShaderSet = MotionMath.IsTemporal(modelOutputs)
+                    ? _motionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.TrailVert, ShaderSources.TrailMotionFrag)
+                    : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = modelOutputs,
             });
@@ -132,6 +144,7 @@ namespace KhaozEngine.Render3D.Rendering
             _additive.Dispose();
             _alpha.Dispose();
             _shaders.Dispose();
+            _motionShaders?.Dispose();
             _set.Dispose();
             _layout.Dispose();
             _ubo.Dispose();

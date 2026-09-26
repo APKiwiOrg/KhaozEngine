@@ -184,7 +184,20 @@ namespace KhaozEngine.Tests.Gpu
             return set;
         }
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
-            => new FakeShaderSet(vertGlsl, fragGlsl);
+        {
+            ShaderRequests.Add(new FakeShaderRequest(vertGlsl, fragGlsl));
+            var shaders = new FakeShaderSet(vertGlsl, fragGlsl);
+            ShaderSets.Add(shaders);
+            return shaders;
+        }
+
+        /// <summary>Every shader set handed out, in request order, so a test can ask whether its owner freed it.</summary>
+        internal List<FakeShaderSet> ShaderSets { get; } = new();
+
+        /// <summary>Every shader set requested, in request order, whether or not a pipeline was built from it, so a
+        /// test can see a program compiled that no pipeline uses.</summary>
+        internal List<FakeShaderRequest> ShaderRequests { get; } = new();
+
         public IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d)
         {
             if (d.ShaderSet is not FakeShaderSet shaders) return new FakePipeline();
@@ -306,9 +319,14 @@ namespace KhaozEngine.Tests.Gpu
 
         internal string VertexGlsl { get; }
         internal string FragmentGlsl { get; }
-        public void Dispose() { }
+
+        /// <summary>Whether the owner freed this program.</summary>
+        internal bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
     }
 
+    internal readonly record struct FakeShaderRequest(string VertexGlsl, string FragmentGlsl);
     internal readonly record struct FakeGraphicsPipelineRequest(
         string VertexGlsl, string FragmentGlsl, GpuPipelineDescription Description);
     internal sealed class FakePipeline : IGpuPipeline

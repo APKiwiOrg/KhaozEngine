@@ -321,7 +321,7 @@ namespace KhaozEngine.Render3D
         /// <item><see cref="ShadowMode.ShadowMap"/> runs when the device reports
         ///   <see cref="GpuCapabilities.SupportsShadowMaps"/> (can render + sample the R32_Float depth target the
         ///   manual-PCF path needs); otherwise it degrades DOWN to <see cref="ShadowMode.Blob"/> with a reason. This
-        ///   is the <see cref="AntiAliasing.ResolveFor"/> stance: return the best tier that actually runs, never
+        ///   is the <see cref="AntiAliasing.ResolveFor(in GpuCapabilities)"/> stance: return the best tier that actually runs, never
         ///   crash on a menu choice. (Every currently-supported backend reports the capability, so the degradation is
         ///   a safety net for a hypothetical constrained device.)</item>
         /// <item><see cref="ShadowMode.Off"/> / <see cref="ShadowMode.Blob"/> are unchanged (always available; the

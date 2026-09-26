@@ -41,6 +41,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _layout;   // UBO (vertex + fragment)
         readonly IGpuResourceSet _set;
         readonly IGpuShaderSet _shaders;
+        IGpuShaderSet? _motionShaders;   // BeamMotionFrag, built only for a temporal model target
         IGpuPipeline _pipeline;                // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
         IGpuBuffer? _vb;
         uint _vbCapacity;                      // capacity in vertices
@@ -65,7 +66,15 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _pipeline.Dispose();
             _pipeline = BuildPipeline(_gd.Factory, modelOutputs);
+            if (MotionMath.IsTemporal(modelOutputs)) return;
+            // Scene3D idles the device before it changes the model target's attachments, so no list in flight still
+            // reads the temporal program the old pipeline used.
+            _motionShaders?.Dispose();
+            _motionShaders = null;
         }
+
+        /// <summary>Whether the temporal program is held. For tests.</summary>
+        internal bool HoldsMotionShadersForTests => _motionShaders is not null;
 
         IGpuPipeline BuildPipeline(IGpuResourceFactory factory, GpuOutputDescription modelOutputs)
         {
@@ -77,9 +86,10 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("Shape", GpuVertexElementFormat.Float4),
                 new GpuVertexElement("Anim", GpuVertexElementFormat.Float4));
 
-            // Attachment 0 additive (glow accumulation); normal/depth preserved so the edge pass reads the
-            // meshes' normal/depth, not the beam's (no outline traced around the strip).
-            var blends = new[] { GpuBlendAttachment.Additive, GpuBlendAttachment.PreserveDestination, GpuBlendAttachment.PreserveDestination };
+            // Attachment 0 is additive (glow accumulation). Normal, depth and, while temporal rendering is active,
+            // motion keep their destination, so the edge pass reads the meshes' normal and depth, not the beam's (no
+            // outline traced around the strip), and the resolve reads the meshes' motion.
+            var blends = ModelTargetBlends.Transparent(GpuBlendAttachment.Additive, modelOutputs);
 
             return factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
@@ -90,7 +100,9 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _shaders,
+                ShaderSet = MotionMath.IsTemporal(modelOutputs)
+                    ? _motionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.BeamVert, ShaderSources.BeamMotionFrag)
+                    : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = modelOutputs,
             });
@@ -135,6 +147,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _pipeline.Dispose();
             _shaders.Dispose();
+            _motionShaders?.Dispose();
             _set.Dispose();
             _layout.Dispose();
             _ubo.Dispose();

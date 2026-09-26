@@ -36,6 +36,17 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Temporal_rendering_refuses_msaa_the_way_an_incapable_device_does()
+        {
+            Assert.Equal(AntiAliasing.Fxaa, AntiAliasing.Msaa(4).ResolveFor(Caps(8), temporalActive: true));
+            Assert.Equal(AntiAliasing.Fxaa, AntiAliasing.Msaa(4, postFxaa: true).ResolveFor(Caps(8), temporalActive: true));
+            Assert.Equal(AntiAliasing.Msaa(4), AntiAliasing.Msaa(4).ResolveFor(Caps(8), temporalActive: false));
+            Assert.Equal(AntiAliasing.Ssaa(2f), AntiAliasing.Ssaa(2f).ResolveFor(Caps(8), temporalActive: true));
+            Assert.Equal(AntiAliasing.Fxaa, AntiAliasing.Fxaa.ResolveFor(Caps(8), temporalActive: true));
+            Assert.Equal(AntiAliasing.Off, AntiAliasing.Off.ResolveFor(Caps(8), temporalActive: true));
+        }
+
+        [Fact]
         public void Factories_carry_the_right_mode_and_parameter()
         {
             Assert.Equal(AntiAliasingMode.None, AntiAliasing.Off.Mode);

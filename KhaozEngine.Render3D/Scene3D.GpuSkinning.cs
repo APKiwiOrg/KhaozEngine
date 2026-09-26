@@ -42,6 +42,7 @@ namespace KhaozEngine.Render3D
                 _frameStats.AddSkinnedUniformUpload((long)dr.BoneCount * 64);
             }
             _model.UploadSkinnedBonePalette(cl);
+            if (_res.MotionAllocated) PrepareGpuSkinnedMotion(cl, boneSpan);   // Scene3D.MotionTarget.cs
         }
 
         /// <summary>The main pass's GPU-skinned draws. An entry with <c>VisibleMain</c> false is camera-culled and

@@ -142,7 +142,8 @@ stable ids and keys, plus the two type keys the engine writes down and a GAME re
   cap of its own because entries outnumber tables. **`guaranteed` is a field of this type and not of the
   table**, settled by `LootRoller` below: the composition spec 3.5 is written around is a table that drops one
   thing on its own chance AND another out of a weighted draw, which a table-level flag cannot express and which
-  would make `roll_count` meaningless on the table that set it.
+  would make `roll_count` meaningless on the table that set it. `MaxWeight` and `MaxWeightedPoolTotal` are both
+  `int.MaxValue`, the widest exact domain of the runtime prefix array.
 - `BaseSocketContentType` - `base_socket`, id 6, one socket an item base is authored WITH, in authored order,
   which `item.socket_max` caps rather than describes.
 - `ItemCategoryContentType` - `item_category`, id 7, the coarse bucket `item.category` names. The tag type's
@@ -332,10 +333,10 @@ build inside a tick is a latency spike.
   Tracked as https://github.com/APKiwiOrg/KhaozEngine/issues/934.
 - `ContentLootIndex` and `ContentLootEntry` - per `loot_table`, the resolved entries with the weights PREFIX
   SUMMED, so a weighted draw is one `NextInt(0, total)` and one binary search over an `int[]` with no
-  allocation and no per-roll summation. Entries come back in `sort` then id order, a negative weight is clamped
-  and the running total saturates, both so the prefix array stays monotonic and searchable, and both the only
-  defence a weight has: no validator check reads one
-  (https://github.com/APKiwiOrg/KhaozEngine/issues/944). The sums run over
+  allocation and no per-roll summation. `KEC0043` refuses a live entry weight outside zero to `int.MaxValue`
+  and a live table whose non-guaranteed pool exceeds `int.MaxValue`. The load-time clamp and saturation remain
+  defence in depth for a pack that bypassed validation, so the prefix array stays monotonic and searchable.
+  The sums run over
   the NON-GUARANTEED entries only: a guaranteed entry rolls its own chance instead of competing, so it has zero
   width and a pick steps straight over it, which keeps one array and one search. `TotalWeight` is therefore the
   weighted pool's total rather than the sum of every authored weight. A `required_tags` entry resolves at load
@@ -640,7 +641,7 @@ reports every defect rather than the earliest.
   when it is null and the report carries `KEC0000` naming them. That is a property of the ARGUMENT rather
   than a mode flag, and `KEC0000` is the one finding that leaves `IsValid` true.
 - **Five passes, in order, none of them stopping early**: structure, schema, references, visibility and
-  codec, then the remap rules. `KEC0001` to `KEC0099` are the engine's own and 1 to 42 are issued.
+  codec, then the remap rules. `KEC0001` to `KEC0099` are the engine's own and 1 to 43 are issued.
 - **Pass 6 is the item-instances band**, which runs INSIDE the sweep after pass 5 and emits the reserved
   `KEC0100` to `KEC0199`. It reaches a registration the way every other pass does, through the registry: a
   type registered in the `Instances` band whose registration carries a validator has that validator run HERE,

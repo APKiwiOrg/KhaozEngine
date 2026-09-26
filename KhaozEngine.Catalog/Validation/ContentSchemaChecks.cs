@@ -31,6 +31,7 @@ internal static class ContentSchemaChecks
 
         CheckStatRanges(run);
         CheckStackShape(run);
+        CheckLootWeights(run);
     }
 
     /// <summary>
@@ -248,6 +249,87 @@ internal static class ContentSchemaChecks
                     FormattableString.Invariant(
                         $"Item '{row.Key}' is stackable and caps its stack at 1, which is the same as not stacking. Say one or the other."));
             }
+        }
+    }
+
+    /// <summary>
+    /// <c>KEC0043</c> on a live engine <c>loot_entry</c> whose weight cannot enter the runtime's int prefix
+    /// array exactly, or on a table whose non-guaranteed weighted pool cannot be summed there exactly.
+    /// </summary>
+    static void CheckLootWeights(ContentValidationRun run)
+    {
+        if (!run.TryGetEngineType(EngineContentTypes.LootEntryTypeKey, out ContentTypeRegistration? entry)
+            || !run.TryGetEngineType(EngineContentTypes.LootTableTypeKey, out ContentTypeRegistration? table))
+        {
+            return;
+        }
+
+        int tableIndex = ContentValidationRun.FieldIndex(entry.Schema, LootEntryContentType.TableField);
+        int weightIndex = ContentValidationRun.FieldIndex(entry.Schema, LootEntryContentType.WeightField);
+        int guaranteedIndex = ContentValidationRun.FieldIndex(entry.Schema, LootEntryContentType.GuaranteedField);
+        var totals = new SortedDictionary<int, long>();
+
+        foreach (ContentRow row in run.Candidate.Rows(entry.Type))
+        {
+            if (row.IsRetired)
+            {
+                continue;
+            }
+
+            ContentFieldValue weight = ContentValidationRun.Value(row, weightIndex, ContentFieldKind.Int);
+            if (weight.IsAbsent)
+            {
+                continue;
+            }
+
+            if (weight.Number is < 0 or > LootEntryContentType.MaxWeight)
+            {
+                run.Add(
+                    entry.Type,
+                    row.Id,
+                    "KEC0043",
+                    FormattableString.Invariant(
+                        $"Loot entry '{row.Key}' declares weight {weight.Number}. A weight is between 0 and {LootEntryContentType.MaxWeight}, inclusive, so it can enter the runtime's int prefix array unchanged."));
+                continue;
+            }
+
+            ContentFieldValue guaranteed =
+                ContentValidationRun.Value(row, guaranteedIndex, ContentFieldKind.Bool);
+            if (guaranteed.IsAbsent || guaranteed.Number != 0)
+            {
+                continue;
+            }
+
+            ContentFieldValue tableReference =
+                ContentValidationRun.Value(row, tableIndex, ContentFieldKind.KeyReference);
+            if (tableReference.IsAbsent || tableReference.Number is < 1 or > int.MaxValue)
+            {
+                continue;
+            }
+
+            int tableId = (int)tableReference.Number;
+            if (!run.Candidate.TryGetRow(table.Type, tableId, out ContentRow? tableRow) || tableRow.IsRetired)
+            {
+                continue;
+            }
+
+            totals.TryGetValue(tableId, out long total);
+            totals[tableId] = total + weight.Number;
+        }
+
+        foreach (KeyValuePair<int, long> pair in totals)
+        {
+            if (pair.Value <= LootEntryContentType.MaxWeightedPoolTotal)
+            {
+                continue;
+            }
+
+            run.Add(
+                table.Type,
+                pair.Key,
+                "KEC0043",
+                FormattableString.Invariant(
+                    $"Loot table {pair.Key} has a non-guaranteed weighted pool of {pair.Value}. The total is at most {LootEntryContentType.MaxWeightedPoolTotal}, so every prefix remains exact in the runtime's int array."));
         }
     }
 

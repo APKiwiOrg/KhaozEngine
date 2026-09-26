@@ -177,9 +177,8 @@ internal static class ContentLootIndexBuilder
                 int slot = start[id] + i;
 
                 // Saturating, because a non-monotonic prefix array is unsearchable and an overflowed one
-                // would wrap negative. Nothing upstream bounds an authored weight: no validator check reads
-                // one, so this and the clamp above are the whole defence.
-                // https://github.com/APKiwiOrg/KhaozEngine/issues/944
+                // would wrap negative. KEC0043 refuses either defect before publish and at ordinary boot.
+                // This remains the last defence for a pack that bypassed the validator.
                 total = Math.Min(total + prefixWeights[slot], int.MaxValue);
                 prefixWeights[slot] = (int)total;
                 entries[slot] = entries[slot] with { PrefixWeight = (int)total };

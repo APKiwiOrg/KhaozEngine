@@ -3455,7 +3455,8 @@ submissions made before the frame's first render, before culling, and reads zero
 shadow-only draw is never seen, so its key is ignored and it is not counted. With temporal rendering off, keys cost
 nothing: nothing is recorded and nothing is allocated.
 
-`CharacterAvatar` (obsolete) keys its own draw, `Scene3DBinder.Submit` keys each entity from its id and version (see
+`CharacterAvatar` (obsolete) and `SkinnedLimb` key their own draws, `Scene3DBinder.Submit` keys each entity
+from its id and version (see
 ECS entities below), and `Scene3DTileWorldScene` forwards the tile-world seam's descriptor draws whole
 (`ITileWorldScene.DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw, boneMatrices)`).
 Everything else a game draws that moves, such as remote players, monsters and held items, takes a key from the

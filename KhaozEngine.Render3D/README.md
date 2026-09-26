@@ -93,7 +93,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   with no key is static and gets camera-only motion, which is right for terrain, tile ground and placed props. Two
   draws of the same kind with one key in a frame collide, the last wins, and `LastTemporalDiagnostics.KeyCollisions`
   counts it. A rigid and a skinned draw never collide, and a shadow-only draw is never recorded. `CharacterAvatar`,
-  `Scene3DBinder.Submit` and `Scene3DTileWorldScene` key or forward keys themselves. See docs/USING-KHAOZENGINE.md.
+  `SkinnedLimb`, `Scene3DBinder.Submit` and `Scene3DTileWorldScene` key or forward keys themselves. See
+  docs/USING-KHAOZENGINE.md.
 - `Scene3D.GetOrLoadMesh` / `GetOrLoadSkinnedMesh` / `GetOrLoadTexture` - keyed, idempotent loads for a scene that
   outlives what it draws ([#250](https://github.com/APKiwiOrg/KhaozEngine/issues/250)). Each takes a key plus a
   loader and runs the loader only the FIRST time that key is seen, returning the cached handle after that, so a

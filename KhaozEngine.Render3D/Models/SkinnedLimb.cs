@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Threading;
 using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D
@@ -26,6 +27,14 @@ namespace KhaozEngine.Render3D
         readonly Matrix4x4[] _bones;       // reused every Update; one world transform per bone
         SkinnedMeshHandle _handle;         // default for a headless limb
         bool _disposed;
+        // The limb's motion key, fixed for its whole life (TEMPORAL-FOUNDATIONS-DESIGN section 3). The limb writhes
+        // every frame, and nothing it holds carries an id a game assigned, so a process-wide serial identifies it, as
+        // CharacterAvatar's does, mixed into a key space of the limb's own ("KELIMB") so in practice it does not meet
+        // a key a game derives from its own ids.
+        static readonly MotionKey LimbKeySpace = MotionKey.From(0x4B45_4C49_4D42_0000UL);
+        static int s_nextMotionSerial;
+        readonly MotionKey _motion =
+            MotionKey.Combine(LimbKeySpace, unchecked((uint)Interlocked.Increment(ref s_nextMotionSerial)));
 
         /// <summary>Tuning for the writhe / reach solve. Mutable so a game can retune the idle motion at runtime
         /// (e.g. ramp <see cref="ChainConfig.WritheAmplitude"/> as a boss enrages) without rebuilding the limb.</summary>
@@ -103,6 +112,10 @@ namespace KhaozEngine.Render3D
         /// past the next <c>Update</c>.</summary>
         public ReadOnlySpan<Matrix4x4> Bones => _bones;
 
+        /// <summary>The motion key both <c>Draw</c> overloads carry, fixed for the limb's life, so temporal rendering
+        /// sees the limb's own writhe rather than the camera's motion.</summary>
+        public MotionKey Motion => _motion;
+
         /// <summary>This frame's solved spine (one point per bone), pre-frame-orientation. Same reuse caveat as
         /// <see cref="Bones"/>.</summary>
         public ReadOnlySpan<Vector3> Spine => _spine;
@@ -138,7 +151,7 @@ namespace KhaozEngine.Render3D
         public void Draw(Scene3D scene, Matrix4x4 model, Color tint)
         {
             if (_disposed || _handle.Generation == 0) return;
-            scene.DrawSkinned(_handle, _bones, model, tint);
+            scene.DrawSkinned(new SkinnedInstanceDraw(_handle, model) { Tint = tint, Motion = _motion }, _bones);
         }
 
         /// <summary>As <see cref="Draw(Scene3D,Matrix4x4,Color)"/> with an explicit <paramref name="material"/>
@@ -146,7 +159,8 @@ namespace KhaozEngine.Render3D
         public void Draw(Scene3D scene, Matrix4x4 model, Color tint, Material material)
         {
             if (_disposed || _handle.Generation == 0) return;
-            scene.DrawSkinned(_handle, _bones, model, tint, material);
+            scene.DrawSkinned(
+                new SkinnedInstanceDraw(_handle, model) { Tint = tint, Material = material, Motion = _motion }, _bones);
         }
 
         /// <summary>Free the tube's GPU buffers (via <see cref="Scene3D.UnloadSkinnedMesh"/>) and mark the limb spent.

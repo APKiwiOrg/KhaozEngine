@@ -62,18 +62,27 @@ else
   exit 1
 fi
 
-if pack_feed_is_shared "$feed"; then
-  headcommit=$(git rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null || true)
-  maincommit=$(pack_origin_main_commit)
-  if [ -z "${headcommit:-}" ] || [ -z "${maincommit:-}" ] || ! pack_commit_on_origin_main "$headcommit"; then
-    pack_shared_feed_refusal_lines "$headcommit" "$maincommit" | sed 's/^/pack-local-feed: /' >&2
+feed_scope=$(pack_feed_scope "$feed")
+case "$feed_scope" in
+  shared)
+    headcommit=$(git rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null || true)
+    maincommit=$(pack_origin_main_commit)
+    if [ -z "${headcommit:-}" ] || [ -z "${maincommit:-}" ] || ! pack_commit_on_origin_main "$headcommit"; then
+      pack_shared_feed_refusal_lines "$headcommit" "$maincommit" | sed 's/^/pack-local-feed: /' >&2
+      exit 1
+    fi
+    if ! pack_tree_clean; then
+      pack_shared_feed_dirty_refusal_lines | sed 's/^/pack-local-feed: /' >&2
+      exit 1
+    fi
+    ;;
+  private) ;;
+  *)
+    echo "pack-local-feed: refusing to pack because feed path '$feed' cannot be resolved safely." >&2
+    echo "pack-local-feed: use an existing parent directory or a simpler private KHAOZENGINE_FEED." >&2
     exit 1
-  fi
-  if ! pack_tree_clean; then
-    pack_shared_feed_dirty_refusal_lines | sed 's/^/pack-local-feed: /' >&2
-    exit 1
-  fi
-fi
+    ;;
+esac
 
 if [ "$pack_message_stderr" = 1 ]; then echo "$pack_message" >&2; else echo "$pack_message"; fi
 

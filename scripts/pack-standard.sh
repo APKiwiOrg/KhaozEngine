@@ -55,26 +55,64 @@ pack_shared_feed_dir() {
   printf '%s/local-feed' "$(dirname "$_pfc")"
 }
 
-# pack_dir_identity <path> -> a physical absolute directory identity, including a final path component
-# that does not exist yet when its parent exists.
+# pack_dir_identity <path> -> a physical absolute directory identity. Existing components resolve
+# symlinks. Missing components are retained, and a later .. removes them exactly as mkdir -p will.
 pack_dir_identity() {
   _pdi_path=$1
-  if [ -d "$_pdi_path" ]; then
-    CDPATH='' cd -- "$_pdi_path" 2>/dev/null && pwd -P
-    return $?
+  case "$_pdi_path" in /*) ;; *) return 1 ;; esac
+  _pdi_resolved=/
+  _pdi_suffix=''
+  _pdi_ifs=$IFS
+  _pdi_added_noglob=0
+  case $- in *f*) ;; *) set -f; _pdi_added_noglob=1 ;; esac
+  IFS=/
+  set -- $_pdi_path
+  IFS=$_pdi_ifs
+  [ "$_pdi_added_noglob" = 0 ] || set +f
+  for _pdi_component in "$@"; do
+    case "$_pdi_component" in
+      ''|.) continue ;;
+      ..)
+        if [ -n "$_pdi_suffix" ]; then
+          _pdi_suffix=${_pdi_suffix%/*}
+        elif [ "$_pdi_resolved" != / ]; then
+          _pdi_resolved=$(dirname "$_pdi_resolved")
+        fi
+        ;;
+      *)
+        if [ -n "$_pdi_suffix" ]; then
+          _pdi_suffix="$_pdi_suffix/$_pdi_component"
+          continue
+        fi
+        if [ "$_pdi_resolved" = / ]; then
+          _pdi_next="/$_pdi_component"
+        else
+          _pdi_next="$_pdi_resolved/$_pdi_component"
+        fi
+        if [ -d "$_pdi_next" ]; then
+          _pdi_resolved=$(CDPATH='' cd -- "$_pdi_next" 2>/dev/null && pwd -P) || return 1
+        elif [ -e "$_pdi_next" ] || [ -L "$_pdi_next" ]; then
+          return 1
+        else
+          _pdi_suffix="/$_pdi_component"
+        fi
+        ;;
+    esac
+  done
+  if [ "$_pdi_resolved" = / ] && [ -n "$_pdi_suffix" ]; then
+    printf '%s' "$_pdi_suffix"
+  else
+    printf '%s%s' "$_pdi_resolved" "$_pdi_suffix"
   fi
-  _pdi_parent=$(dirname "$_pdi_path")
-  _pdi_name=$(basename "$_pdi_path")
-  _pdi_parent=$(CDPATH='' cd -- "$_pdi_parent" 2>/dev/null && pwd -P) || return 1
-  printf '%s/%s' "$_pdi_parent" "$_pdi_name"
 }
 
-# pack_feed_is_shared <path> -> 0 when path resolves to the main checkout's shared local-feed.
-pack_feed_is_shared() {
-  _pfis_candidate=$(pack_dir_identity "$1") || return 1
-  _pfis_shared=$(pack_shared_feed_dir) || return 1
-  _pfis_shared=$(pack_dir_identity "$_pfis_shared") || return 1
-  [ "$_pfis_candidate" = "$_pfis_shared" ]
+# pack_feed_scope <path> -> shared, private or unknown. An unresolvable candidate is unknown so callers
+# can fail closed. A repository layout with no implicit shared feed still permits an explicit feed.
+pack_feed_scope() {
+  _pfs_candidate=$(pack_dir_identity "$1") || { printf unknown; return 0; }
+  _pfs_shared=$(pack_shared_feed_dir) || { printf private; return 0; }
+  _pfs_shared=$(pack_dir_identity "$_pfs_shared") || { printf unknown; return 0; }
+  if [ "$_pfs_candidate" = "$_pfs_shared" ]; then printf shared; else printf private; fi
 }
 
 # pack_origin_main_commit -> the current local origin/main commit, or empty when unavailable.

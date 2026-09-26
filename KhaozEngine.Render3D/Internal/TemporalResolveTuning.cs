@@ -22,13 +22,19 @@ namespace KhaozEngine.Render3D.Internal
         public const float DisocclusionTolerance = 0.02f;
         /// <summary>Step 3. <see cref="TemporalResolveUniforms.CurrentToPrevious"/> assumes a static point, so the depth
         /// test runs only where the dilated texel's motion carries its own unjittered sample within this many internal
-        /// pixels of the UV that sample's surface point had last frame if it did not move
-        /// (<see cref="TemporalResolveMath.StaticPreviousUv"/>). The motion was written for that same point, so a static
-        /// surface agrees to float precision. Farther than that the surface moved, the static expected depth says nothing
-        /// about it, and the test is skipped. Neighbourhood
+        /// pixels, plus <see cref="MovingSurfaceMotionFraction"/> of that motion, of the UV that sample's surface point had
+        /// last frame if it did not move (<see cref="TemporalResolveMath.StaticPreviousUv"/>). The motion was written for
+        /// that same point, so a static surface agrees up to float precision and the target's rounding. Farther than that
+        /// the surface moved, the static expected depth says nothing about it, and the test is skipped. Neighbourhood
         /// clipping (step 5) handles the pixel instead. A static point on or behind last frame's camera plane counts as
         /// moving, and the motion target already sends such a point off screen.</summary>
         public const float MovingSurfaceInternalPixels = 0.5f;
+        /// <summary>Step 3. The share of the dilated texel's motion length, in internal pixels, added to
+        /// <see cref="MovingSurfaceInternalPixels"/>. The motion target is RG16F, whose 10-bit mantissa rounds each
+        /// channel by up to half a unit in the last place, at most 1/2048 of its magnitude. For a motion between 0.5 and
+        /// 1 UV that is up to 2.4e-4 UV, 0.94 internal pixels on a 3840 wide target, which alone would read a static
+        /// surface as moving. 1/1024 is twice that bound.</summary>
+        public const float MovingSurfaceMotionFraction = 1f / 1024f;
         /// <summary>Step 8. The accumulated sample weight's cap. The current weight is at least w / (15 + w), about one
         /// in sixteen for a well-placed sample.</summary>
         public const float MaxAccumulation = 15f;

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using KhaozEngine.Gpu;
@@ -21,6 +23,7 @@ namespace KhaozEngine.Tests.Render3D
             { "const float BackgroundLinearDepth = 1.0e30;", TemporalResolveTuning.BackgroundLinearDepth, 1.0e30f },
             { "const float DisocclusionTolerance = 0.02;", TemporalResolveTuning.DisocclusionTolerance, 0.02f },
             { "const float MovingSurfaceInternalPixels = 0.5;", TemporalResolveTuning.MovingSurfaceInternalPixels, 0.5f },
+            { "const float MovingSurfaceMotionFraction = 0.0009765625;", TemporalResolveTuning.MovingSurfaceMotionFraction, 1f / 1024f },
             { "const float MaxAccumulation = 15.0;", TemporalResolveTuning.MaxAccumulation, 15f },
             { "const float MovingAccumulation = 8.0;", TemporalResolveTuning.MovingAccumulation, 8f },
             { "const float MotionAccumulationPixels = 16.0;", TemporalResolveTuning.MotionAccumulationPixels, 16f },
@@ -100,6 +103,9 @@ namespace KhaozEngine.Tests.Render3D
                 core, StringComparison.Ordinal);
             Assert.Contains("vec2 surfaceMotion = (staticUv - (closestUv - closestMotion)) * internalSize;", core,
                 StringComparison.Ordinal);
+            Assert.Contains("float movingThreshold = MovingSurfaceInternalPixels + length(closestMotion * internalSize) "
+                + "* MovingSurfaceMotionFraction;", core, StringComparison.Ordinal);
+            Assert.Contains("depthTested = length(surfaceMotion) <= movingThreshold;", core, StringComparison.Ordinal);
             Assert.DoesNotContain("CurrentToPrevious * vec4(ndcXY", core, StringComparison.Ordinal);
 
             // History is still read where the dilated motion carries the display pixel.
@@ -111,10 +117,47 @@ namespace KhaozEngine.Tests.Render3D
         public void Every_declared_resource_survives_the_optimised_compile_in_binding_order()
         {
             const GpuResourceKind T = GpuResourceKind.TextureReadOnly;
-            AssertSurvives(ShaderSources.TemporalResolveFrag, "TemporalResolve", "b0 s0 t0 t1 t2 t3 t4 t5 t6",
+            AssertSurvives(ShaderSources.TemporalResolveFrag, "TemporalResolve",
+                new[] { "t0", "t1", "t2", "t3", "t4", "t5", "t6", "s0", "b0" },
                 T, T, T, T, T, T, T, GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer);
-            AssertSurvives(ShaderSources.TemporalDepthStoreFrag, "TemporalDepthStore", "b0 s0 t0 t1",
+            AssertSurvives(ShaderSources.TemporalDepthStoreFrag, "TemporalDepthStore", new[] { "t0", "t1", "s0", "b0" },
                 T, T, GpuResourceKind.Sampler, GpuResourceKind.UniformBuffer);
+        }
+
+        [Fact]
+        public void The_history_fetch_is_clamped_to_its_taps_before_the_finite_check()
+        {
+            // The outer Catmull-Rom weights go negative, so a bright history texel beside a dark one would ring below
+            // zero, and the clamp to zero after it would leave a black halo inside the variance box.
+            string core = ShaderSources.TemporalResolveCoreGlsl;
+            Assert.Contains("vec4 tapMin = min(min(min(top, left), min(middle, right)), bottom);", core, StringComparison.Ordinal);
+            Assert.Contains("vec4 tapMax = max(max(max(top, left), max(middle, right)), bottom);", core, StringComparison.Ordinal);
+            Assert.Contains("return clamp(sum / weight, tapMin, tapMax);", core, StringComparison.Ordinal);
+            int fetch = core.IndexOf("vec4 fetched = sampleHistoryCatmullRom(previousUv, displaySize);", StringComparison.Ordinal);
+            int finite = core.IndexOf("bool finite = ", StringComparison.Ordinal);
+            Assert.True(fetch >= 0 && finite > fetch, "the clamped fetch must come before the finite check");
+        }
+
+        [Fact]
+        public void An_infinite_scene_or_opaque_colour_is_held_finite_before_the_luma_weighting()
+        {
+            string core = ShaderSources.TemporalResolveCoreGlsl;
+            Assert.Contains("const float HalfMax = 65504.0;", core, StringComparison.Ordinal);
+            Assert.Contains("toWeighted(min(max(sceneColor.rgb, vec3(0.0)), vec3(HalfMax)))", core, StringComparison.Ordinal);
+            Assert.Contains("toWeighted(min(max(opaqueColor, vec3(0.0)), vec3(HalfMax)))", core, StringComparison.Ordinal);
+            Assert.DoesNotContain("toWeighted(max(", core, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void The_separable_Lanczos_kernel_takes_twelve_evaluations_per_pixel()
+        {
+            // One definition and four calls in a three-pass loop: three weights per axis at internal scale and three per
+            // axis at display scale, formed into the nine products of the 3x3.
+            string core = ShaderSources.TemporalResolveCoreGlsl;
+            Assert.Equal(5, core.Split("lanczos2(").Length - 1);
+            Assert.Contains("for (int i = 0; i < 3; i++) {", core, StringComparison.Ordinal);
+            Assert.Contains("float lanczosWeight = kernelX[x + 1] * kernelY[y + 1];", core, StringComparison.Ordinal);
+            Assert.Contains("clamp(displayKernelX[x + 1] * displayKernelY[y + 1], 0.0, 1.0)", core, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -165,16 +208,26 @@ namespace KhaozEngine.Tests.Render3D
 
         // The optimiser strips a resource the program never reads, and the reflected layout and the Direct3D 11
         // registers are numbered over what survives. So the layout the renderer declares is only right when every
-        // binding here is live after the Performance-level compile. The compile also strips names, so the check is
-        // the kinds in binding order and the registers the emitted HLSL names across both stages.
-        static void AssertSurvives(string fragment, string label, string registers, params GpuResourceKind[] kinds)
+        // binding here is live after the Performance-level compile. The compile also strips names, so each binding is
+        // found by its SPIR-V decorations, which survive, and joined on the variable id the emitted HLSL names it by
+        // (_<id>) to the register that HLSL gives it. FullscreenVert declares no resources, so the fragment module holds
+        // them all. The reflected layout's kinds are checked in its own order too.
+        static void AssertSurvives(string fragment, string label, string[] registerByBinding, params GpuResourceKind[] kinds)
         {
             CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(ShaderSources.FullscreenVert, fragment, label);
             GpuResourceLayoutDescription layout = Assert.Single(pair.Reflection.ResourceLayouts);
             Assert.Equal(kinds, layout.Elements.Select(e => e.Kind).ToArray());
-            string emitted = string.Join(" ", Regex.Matches(pair.VertexSource + pair.FragmentSource, @"register\(([btsu]\d+)\)")
-                .Select(m => m.Groups[1].Value).Distinct().Order(StringComparer.Ordinal));
-            Assert.Equal(registers, emitted);
+
+            byte[] spirv = SpirvFrontEnd.ToSpirv(fragment, GpuShaderStages.Fragment, label);
+            SpirvResourceDecoration[] declared = SpirvResourceDecorations.Read(spirv, label).Values
+                .OrderBy(d => d.Binding).ToArray();
+            Assert.All(declared, d => Assert.Equal(0u, d.Set));
+            Assert.Equal(Enumerable.Range(0, registerByBinding.Length).Select(b => (uint)b), declared.Select(d => d.Binding));
+
+            var registerById = new Dictionary<uint, string>();
+            foreach (Match m in Regex.Matches(pair.FragmentSource, @"_(\d+) : register\(([btsu]\d+)\)"))
+                registerById[uint.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture)] = m.Groups[2].Value;
+            Assert.Equal(registerByBinding, declared.Select(d => registerById[d.Id]).ToArray());
         }
     }
 }

@@ -41,8 +41,9 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>Last frame's unjittered projection, applied as <c>M * v</c> to the view-space point from
         /// <see cref="CurrentToPrevious"/>. That gives the UV a static point had last frame
         /// (<see cref="TemporalResolveMath.StaticPreviousUv"/>), and a dilated texel whose motion carries its own sample
-        /// more than <see cref="TemporalResolveTuning.MovingSurfaceInternalPixels"/> from it is a moving surface, which
-        /// skips the depth test. The current projection when history is not readable, so the block stays well defined.</summary>
+        /// more than <see cref="TemporalResolveTuning.MovingSurfaceInternalPixels"/>, plus
+        /// <see cref="TemporalResolveTuning.MovingSurfaceMotionFraction"/> of that motion, from it is a moving surface,
+        /// which skips the depth test. The current projection when history is not readable, so the block stays well defined.</summary>
         public Matrix4x4 PreviousProjection;
         /// <summary>(internal width, internal height, display width, display height).</summary>
         public Vector4 Sizes;
@@ -50,7 +51,10 @@ namespace KhaozEngine.Render3D.Internal
         public Vector4 Jitter;
         /// <summary>(1 for a perspective projection else 0, near, far, 0) of this frame.</summary>
         public Vector4 CurrentDepth;
-        /// <summary>The same of last frame, which the stored previous depth was linearised with.</summary>
+        /// <summary>The same of last frame, which the stored previous depth was linearised with. The resolve does not
+        /// read it: the expected depth comes from <see cref="CurrentToPrevious"/> in last frame's view space, which
+        /// needs no depth parameters. It is kept so the block layout stays fixed, and for a later reader of the stored
+        /// depth, such as a debug view, that needs last frame's near and far.</summary>
         public Vector4 PreviousDepth;
         /// <summary>x: the thin feature lock's decay per frame. yzw reserved.</summary>
         public Vector4 Params;

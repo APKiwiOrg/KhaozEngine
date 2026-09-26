@@ -100,9 +100,20 @@ namespace KhaozEngine.Render3D.Internal
         /// (<see cref="DisocclusionTolerance"/>), the lock read with it is dropped. Without that, a nearer surface
         /// crossing a held sub-texel line at 0.1 internal pixels a frame on UltraPerformance carries the line onto the 2
         /// display pixels ahead of it at up to 26 percent of its contrast, and with it at most 3 percent shows. Where
-        /// nothing moves the stored depths never drop a lock: releasing wherever the history lay farther than the
-        /// dilated surface took a still line beside a still nearer surface from 40.4 to 5.9 percent at Native. A
-        /// threshold of 0 measures the same as 1/512 on every thin-feature fact.</summary>
+        /// nothing moves the stored depths never drop a lock, because an edge must also pass
+        /// <see cref="LockEdgeFloorInternalPixels"/>: releasing wherever the history lay farther than the dilated surface
+        /// took a still line beside a still nearer surface from 40.4 to 5.9 percent at Native. With the floor in place, a
+        /// share of 0 measures the same as 1/512 on every thin-feature fact.</summary>
         public const float LockEdgeMotionFraction = 1f / 512f;
+        /// <summary>Step 6. The least difference, in internal pixels, between the centre texel's motion and the dilated
+        /// motion that counts as a moving edge, whatever <see cref="LockEdgeMotionFraction"/> gives. A background centre
+        /// takes its motion through a round trip to NDC and back, <c>(2u - 1) * 0.5 + 0.5</c>, which float rounds by up to
+        /// 2^-26 of the screen per axis below a quarter of it, even with the camera still. That is under 1.1e-4 internal
+        /// pixels even at an internal width of 5120, about a tenth of this floor. Where a still surface stands in front
+        /// of the sky, that rounding alone read as an edge beside a still sub-texel line in the top left quarter of the
+        /// screen, and the line averaged 7.3 percent at Native and 6.3 at UltraPerformance against 40.4 and 81.5 at the
+        /// centre. With this floor it measures the same as at the centre, and every other thin-feature fact is unchanged.
+        /// A nearer surface crossing a held line at 0.1 internal pixels a frame is a hundred times this.</summary>
+        public const float LockEdgeFloorInternalPixels = 1e-3f;
     }
 }

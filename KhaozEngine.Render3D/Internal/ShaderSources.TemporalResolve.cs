@@ -69,6 +69,7 @@ const float LockDecay = 0.125;
 const float LockHoldGain = 2.0;
 const float LockEdgeRelease = 1.0;
 const float LockEdgeMotionFraction = 0.001953125;
+const float LockEdgeFloorInternalPixels = 0.001;
 ";
 
         // ---- The resolve's core: bindings, uniforms and the per-pixel resolve, no stage inputs or outputs ----
@@ -294,7 +295,9 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // nearest surface, a moving feature is passing over a background, and the pixel reads history along that feature's
     // motion rather than its own. A surface moving as a whole, a swaying blade or an avatar the camera follows, has no
     // such edge. A background centre moves by the camera's rotation alone. An edge counts once the two motions differ
-    // by more than LockEdgeMotionFraction of the dilated motion, past the motion target's rounding.
+    // by more than LockEdgeMotionFraction of the dilated motion, past the motion target's rounding, and by more than
+    // LockEdgeFloorInternalPixels, past the float rounding of a background centre's round trip through NDC, which is
+    // not exact below a quarter of the screen even when the camera is still.
     float edgeMotion = 0.0;
     if (!closestIsBackground) {
         vec2 centreOwn = centreMotion;
@@ -307,7 +310,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         }
         edgeMotion = length((closestMotion - centreOwn) * internalSize);
     }
-    bool movingEdge = edgeMotion > length(closestMotion * internalSize) * LockEdgeMotionFraction;
+    bool movingEdge = edgeMotion > max(LockEdgeFloorInternalPixels, length(closestMotion * internalSize) * LockEdgeMotionFraction);
 
     // Step 3: disocclusion, one-sided. The farthest of the four stored depths around the reprojected position keeps a
     // sub-pixel edge from reading as revealed. A background pixel expects BackgroundLinearDepth, so anything stored

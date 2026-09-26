@@ -252,19 +252,45 @@ namespace KhaozEngine.Tests.Gpu
 
         [GpuTheory]
         [InlineData(TemporalUpscale.Native)]
+        [InlineData(TemporalUpscale.Quality)]
+        [InlineData(TemporalUpscale.UltraPerformance)]
+        public void A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(
+            TemporalUpscale preset)
+        {
+            // The still line against the sky with a still dark surface LineMetres ahead in every texel left of its column,
+            // run once at the centre and once in the top left quarter of the screen, with the same alignment to both
+            // grids. On a frame that misses the line its pixel's centre texel is sky and the surface is the nearest in
+            // its neighbourhood, so the edge release reprojects the sky texel through NDC. Below a quarter of the screen
+            // that round trip is not exact in float, and the sky reads as moving by about 1e-5 internal pixels. Nothing
+            // moves, so the line must hold there as at the centre: both hold like a still line and their centre means
+            // agree within a hundredth of the contrast. With the edge counted from zero motion up, the line in the
+            // corner averaged 7.3 percent at Native and 6.3 at UltraPerformance against 40.4 and 81.5 at the centre.
+            SubTexelRun centred = RunSubTexelLine(preset, 0f, overSky: true, beside: -1, displayHeight: 24);
+            SubTexelRun corner = RunSubTexelLine(preset, 0f, overSky: true, beside: -1, displayHeight: 24, offCentre: true);
+            string message = $"{preset}: centred {centred}, in the corner {corner}";
+            _output.WriteLine(message);
+            Assert.True(HoldsLikeAStillLine(preset, centred) && HoldsLikeAStillLine(preset, corner)
+                && MathF.Abs(corner.Mean - centred.Mean) <= 0.01f, message);
+        }
+
+        [GpuTheory]
+        [InlineData(TemporalUpscale.Native)]
+        [InlineData(TemporalUpscale.Quality)]
         [InlineData(TemporalUpscale.UltraPerformance)]
         public void A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(TemporalUpscale preset)
         {
             // Only the line sways, a blade standing LineMetres ahead of still ground, and it writes its motion and its depth
             // on the frames that see it. The pixels beside it take its motion by the dilation of step 1 while their own
             // centre texel is the still ground, so the edge release acts on them. At 0.1 internal pixels a frame it holds
-            // as the still line does. Quality is left out, where held still in front of the ground it sums to 28.4
-            // percent, at the floor, and moving at 0.1 to 22.1. From 0.2 on the blade sums to 16 percent or less at every
+            // as the still line does at Native and UltraPerformance. At Quality, where held still in front of the ground
+            // it sums to 28.4 percent, the still line's floor, it only has to keep half its coverage: it sums to 22.1,
+            // and a LockEdgeRelease of 4 takes it to 13.1. From 0.2 on the blade sums to 16 percent or less at every
             // preset with any lock tried, and the same with the edge release off: nothing carries its history through the
             // frames that miss it, so the history stays where the blade was last seen.
             SubTexelRun run = RunSwayingLine(preset, 0.1f, bladeOnly: true);
             _output.WriteLine($"{preset} at 0.1 px/frame: {run}");
-            Assert.True(HoldsLikeAStillLine(preset, run), $"{preset} at 0.1 px/frame: {run}");
+            bool holds = preset == TemporalUpscale.Quality ? run.Mean >= 0.5f * 3f / 8f : HoldsLikeAStillLine(preset, run);
+            Assert.True(holds, $"{preset} at 0.1 px/frame: {run}");
         }
 
         [GpuTheory]
@@ -405,13 +431,17 @@ namespace KhaozEngine.Tests.Gpu
         // followStep is how many internal pixels the camera alone moves a static point on the wall each frame, while the
         // wall and the line move with the camera and write zero motion. overSky writes the background sentinel in every
         // texel the line does not light. beside puts a still Occluder surface LineMetres ahead in every texel left of the
-        // column when negative, or right of it when positive. Converges 64 frames and measures 16.
-        static SubTexelRun RunSubTexelLine(TemporalUpscale preset, float followStep, bool overSky = false, int beside = 0)
+        // column when negative, or right of it when positive. offCentre moves the line to an eighth of the internal width
+        // and reads the display row an eighth of the way down, which for a display height of 24 keeps both grids
+        // aligned as at the centre. Converges 64 frames and measures 16.
+        static SubTexelRun RunSubTexelLine(TemporalUpscale preset, float followStep, bool overSky = false, int beside = 0,
+            int displayHeight = 12, bool offCentre = false)
         {
-            const int DisplayW = 48, DisplayH = 12, Row = DisplayH / 2, Converge = 64, Measured = 16;
+            const int DisplayW = 48, Converge = 64, Measured = 16;
+            int DisplayH = displayHeight, Row = offCentre ? displayHeight / 8 : displayHeight / 2;
             float factor = TemporalSettings.DisplayOverInternal(preset);
             int iw = (int)(DisplayW / factor), ih = (int)(DisplayH / factor), phases = TemporalJitter.PhaseCount(factor);
-            int column = iw / 2;
+            int column = offCentre ? iw / 8 : iw / 2;
             Matrix4x4 projection = Perspective((float)DisplayW / DisplayH);
             float wallNdc = NdcDepth(projection, SceneMetres);
             // A sideways step of d metres moves a point SceneMetres ahead M11 * d / SceneMetres in NDC, half the
@@ -421,8 +451,8 @@ namespace KhaozEngine.Tests.Gpu
             float[] lit = Grey(iw, ih, (x, _) => x == column ? Line : Near(x) ? Occluder : Bg),
                 missed = Grey(iw, ih, (x, _) => Near(x) ? Occluder : Bg);
             var sky = new Vector2(MotionMath.Sentinel);
-            float[] litMotion = Pairs(iw, ih, (x, _) => overSky && x != column ? sky : Vector2.Zero);
-            float[] missedMotion = Pairs(iw, ih, (_, _) => overSky ? sky : Vector2.Zero);
+            float[] litMotion = Pairs(iw, ih, (x, _) => overSky && x != column && !Near(x) ? sky : Vector2.Zero);
+            float[] missedMotion = Pairs(iw, ih, (x, _) => overSky && !Near(x) ? sky : Vector2.Zero);
             float wBg = Weighted(Bg), wContrast = Weighted(Line) - wBg;
 
             var pixels = new List<int>();

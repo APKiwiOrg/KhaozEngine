@@ -159,6 +159,12 @@ namespace KhaozEngine.Tests.Gpu
         public void SkinnedModelDissolve()
             => ShaderValidation.ValidatePair(ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag, "SkinnedModelDissolve");
 
+        // The rigid temporal variant: ModelVert plus the motion block, a vertex-stage structured buffer and
+        // the motion slot at location 15.
+        [Fact]
+        public void ModelMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.ModelMotionVert, ShaderSources.ModelMotionFrag, "ModelMotion");
+
         [Fact]
         public void SkinnedShadowDepth()
             => ShaderValidation.ValidatePair(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag, "SkinnedShadowDepth");

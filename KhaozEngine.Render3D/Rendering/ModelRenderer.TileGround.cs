@@ -76,7 +76,7 @@ namespace KhaozEngine.Render3D.Rendering
             _tileGroundPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
-                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend },
+                BlendAttachments = ModelTargetBlends.Opaque(modelOutputs),
                 DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,

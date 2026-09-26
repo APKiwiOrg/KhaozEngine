@@ -54,7 +54,7 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             // Includes the four target-outline layouts and the point-skinned caster header.
-            Assert.Equal(45, shapes.Count);
+            Assert.Equal(46, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

@@ -16,7 +16,11 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class MotionUboLayoutTests
 {
     /// <summary>Every temporal program that declares <c>U</c>. Each task that adds a variant adds its entries.</summary>
-    internal static readonly (string Name, string Source)[] FrameBlockSources = [];
+    internal static readonly (string Name, string Source)[] FrameBlockSources =
+    [
+        ("ModelMotionVert", ShaderSources.ModelMotionVert),
+        ("ModelMotionFrag", ShaderSources.ModelMotionFrag),
+    ];
 
     [Fact]
     public void MotionFrameUboMirrorsTheGlslBlock()

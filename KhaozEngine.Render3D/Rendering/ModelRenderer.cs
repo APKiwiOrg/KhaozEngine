@@ -348,6 +348,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         void BuildPipelines(IGpuResourceFactory factory, GpuOutputDescription modelOutputs)
         {
+            // First: the foliage rebuild just below builds its temporal variant against these resources.
+            bool temporal = MotionMath.IsTemporal(modelOutputs);
+            EnsureMotionResources(temporal);
             SetFoliageOutputs(modelOutputs);
             // Slot 0: per-vertex geometry (locations 0..4).
             var vertexLayout = new GpuVertexLayoutDescription(
@@ -387,15 +390,11 @@ namespace KhaozEngine.Render3D.Rendering
                     new GpuVertexElement("IDissolveComplement", GpuVertexElementFormat.Float1),
                 });
 
-            _pipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
+            if (temporal) _pipeline = CreateRigidMotionPipeline(factory, modelOutputs, vertexLayout, instanceLayout);
+            else _pipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
-                BlendAttachments = new[]
-                {
-                    GpuBlendAttachment.OverrideBlend,
-                    GpuBlendAttachment.OverrideBlend,
-                    GpuBlendAttachment.OverrideBlend,
-                },
+                BlendAttachments = ModelTargetBlends.Opaque(modelOutputs),
                 DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
@@ -409,12 +408,7 @@ namespace KhaozEngine.Render3D.Rendering
             _dissolvePipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
-                BlendAttachments = new[]
-                {
-                    GpuBlendAttachment.OverrideBlend,
-                    GpuBlendAttachment.OverrideBlend,
-                    GpuBlendAttachment.OverrideBlend,
-                },
+                BlendAttachments = ModelTargetBlends.Opaque(modelOutputs),
                 DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
@@ -442,7 +436,7 @@ namespace KhaozEngine.Render3D.Rendering
             _skinnedPipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
-                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend },
+                BlendAttachments = ModelTargetBlends.Opaque(modelOutputs),
                 DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
@@ -454,7 +448,7 @@ namespace KhaozEngine.Render3D.Rendering
             _skinnedDissolvePipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
-                BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend },
+                BlendAttachments = ModelTargetBlends.Opaque(modelOutputs),
                 DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
@@ -557,6 +551,13 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetGraphicsResourceSet(0, materialSet ?? _defaultSet);
             cl.SetVertexBuffer(0, vb);
             cl.SetVertexBuffer(1, _instanceBuffer!);
+            if (_motion is { } motion)
+            {
+                // The rigid variant's set 1 and its motion slots, parallel to the instance stream (TEMPORAL-FOUNDATIONS-DESIGN
+                // section 3).
+                cl.SetGraphicsResourceSet(1, motion.RigidSet);
+                cl.SetVertexBuffer(2, motion.SlotBuffer);
+            }
             cl.SetIndexBuffer(ib, indexFormat);
             cl.DrawIndexed((uint)indexCount, instanceCount, 0, 0, instanceStart);
         }
@@ -610,6 +611,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             if (_ownsRetired) _retired.Dispose();
             DisposeFoliageResources();
+            DisposeMotionResources();
             _shadowMap.Dispose();
             _pipeline.Dispose(); _defaultSet.Dispose(); _layout.Dispose();
             _white.Dispose(); _flatNormal.Dispose(); _defaultRough.Dispose(); // _sampler is the device built-in (non-owning); do not dispose it.

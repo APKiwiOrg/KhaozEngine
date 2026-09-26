@@ -97,7 +97,7 @@ internal sealed partial class ModelRenderer
         _foliagePipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
         {
             BlendFactor = Vector4.Zero,
-            BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend, GpuBlendAttachment.OverrideBlend },
+            BlendAttachments = ModelTargetBlends.Opaque(_foliageOutputs),
             DepthStencil = GpuDepthStencilState.DepthOnlyLessEqual,
             Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise,
                 depthClipEnabled: true, scissorTestEnabled: false),

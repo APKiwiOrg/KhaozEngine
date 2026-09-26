@@ -103,6 +103,10 @@ namespace KhaozEngine.Tests.Gpu
                 new[] { U("TileGroundParams"), T("AlbedoArray"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
                     T("PointShadowMap"), T("PointShadowTransientMap") },
                 "b0 t0 s0 t1 s1 t2 t3"),
+            // The rigid temporal variant's set 1. A vertex-stage structured buffer takes the t counter like
+            // any other shader resource.
+            ("ModelMotionResources.RigidLayout",
+                new[] { U("MotionFrame"), StructRO("PreviousInstanceTransforms", GpuShaderStages.Vertex) }, "b0 t0"),
 
             // The only two layouts in the engine that reach the u file at all, and the only ones that mix a
             // read-write structured buffer with a storage texture. They are why the u counter is SHARED.
@@ -331,6 +335,18 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal("b0 t0 t1", Absolute(ground, 0));
             Assert.Equal("b1 t2 s0 t3 s1 t4 t5", Absolute(ground, 1));
+
+            // The rigid temporal variant: the model layout at set 0 and the motion set at set 1, so the motion block is
+            // b1 and the previous transforms follow the model layout's eight t registers.
+            using var model = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("U"), StructRO("PointLights", GpuShaderStages.Fragment),
+                StructRO("PointLightClusters", GpuShaderStages.Fragment), T("Albedo"), T("NormalMap"), T("RoughnessMap"),
+                S("Sampler"), T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")));
+            using var rigidMotion = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                U("MotionFrame"), StructRO("PreviousInstanceTransforms", GpuShaderStages.Vertex)));
+            D3D11ResourceLayout[] rigid = { model, rigidMotion };
+
+            Assert.Equal("b1 t8", Absolute(rigid, 1));
         }
 
         /// <summary>

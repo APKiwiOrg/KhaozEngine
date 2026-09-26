@@ -366,7 +366,7 @@ void main() { oColor = vec4(vUv, 0, 1); }";
 
         // ---- helpers -------------------------------------------------------------------------------------
 
-        static ShippedGraphicsProgram Program(string name)
+        internal static ShippedGraphicsProgram Program(string name)
             => ShippedShaderPrograms.GraphicsPrograms()
                 .Single(p => string.Equals(p.Name, name, StringComparison.Ordinal));
 
@@ -375,7 +375,7 @@ void main() { oColor = vec4(vUv, 0, 1); }";
         // reflection is Windows-only and the shipped checks use it, while this runs everywhere and is what keeps
         // the three workarounds asserted in the fast loop. The struct body is taken up to its closing brace so a
         // later struct's members cannot leak in.
-        static uint[] Semantics(string hlsl, string structName)
+        internal static uint[] Semantics(string hlsl, string structName)
         {
             int start = hlsl.IndexOf("struct " + structName, StringComparison.Ordinal);
             if (start < 0) return Array.Empty<uint>();

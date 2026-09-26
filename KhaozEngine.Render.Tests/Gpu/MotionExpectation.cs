@@ -63,7 +63,10 @@ internal static class MotionExpectation
         for (int y = 0; y < motion.Height; y++)
             for (int x = 0; x < motion.Width; x++)
             {
-                if (motion.IsBackground(x, y) || (where is not null && !where(x, y))) continue;
+                // Only the finite sentinel is background. An overflow to infinity is a failure, never skipped.
+                Vector2 stored = motion.UvAt(x, y);
+                bool finite = float.IsFinite(stored.X) && float.IsFinite(stored.Y);
+                if ((finite && motion.IsBackground(x, y)) || (where is not null && !where(x, y))) continue;
                 count++;
                 Vector2 reported = motion.PixelsAt(x, y), analytic = expected(x, y);
                 float error = Vector2.Distance(reported, analytic);

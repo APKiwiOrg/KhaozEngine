@@ -79,4 +79,15 @@ public sealed class MotionExpectationTests
             () => MotionExpectation.AssertDrawnPixels(motion, (_, _) => Vector2.Zero, .05f));
         Assert.Contains("pixel (1, 0)", failure.Message);
     }
+
+    [Fact]
+    public void AnOverflowToInfinityIsAFailureNotTheBackgroundSentinel()
+    {
+        // Past the threshold, as the sentinel is, but not finite: a motion that overflowed half precision.
+        var motion = new MotionTargetReadback([new Vector2(float.PositiveInfinity, 0f), new Vector2(0f, 0f)], 2, 1);
+
+        var failure = Assert.ThrowsAny<Xunit.Sdk.XunitException>(
+            () => MotionExpectation.AssertDrawnPixels(motion, (_, _) => Vector2.Zero, .05f));
+        Assert.Contains("pixel (0, 0)", failure.Message);
+    }
 }

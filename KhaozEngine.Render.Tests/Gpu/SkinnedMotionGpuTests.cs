@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -14,7 +15,8 @@ public sealed class SkinnedMotionGpuTests
     static readonly MotionKey Key = MotionKey.From(21);
 
     // Every joint shifts by this in model space, and the body is placed further along each frame.
-    static Vector3 PoseShift(int n) => new(.12f * n, .05f * n, 0f);
+    // The pose's rise carries a screen-vertical part well over the tolerance, so a flipped or dropped y shows too.
+    static Vector3 PoseShift(int n) => new(.12f * n, .12f * n, 0f);
     static Vector3 Placement(int n, float x) => new(x + .1f * n, 0f, -.08f * n);
 
     [GpuTheory]
@@ -51,7 +53,17 @@ public sealed class SkinnedMotionGpuTests
         Vector2 expected = MotionExpectation.Moved(now, then, moved, Vector3.Zero, W, H);
         Assert.True(expected.Length() > 5f, $"the keyed body moves {expected} px");
 
-        MotionTargetReadback motion = fx.Scene.ReadMotionTargetForTests();
+        Assert.True(MathF.Abs(expected.Y) > 1f, $"the keyed body's vertical motion {expected.Y} px pins screen y");
+        AssertBodies(fx.Scene.ReadMotionTargetForTests(), expected);
+
+        // A third frame reads the second's pose, so a history that stopped advancing after one swap shows here. The
+        // motion is linear in n and the camera is still, so the expectation is unchanged.
+        fx.Frame(Draw);
+        AssertBodies(fx.Scene.ReadMotionTargetForTests(), expected);
+    }
+
+    static void AssertBodies(MotionTargetReadback motion, Vector2 expected)
+    {
         // The keyed body sits left of the centre and the unkeyed one right of it, further apart than either is wide.
         int keyed = MotionExpectation.AssertDrawnPixels(motion, (_, _) => expected, .05f, (x, _) => x < W / 2);
         int unkeyed = MotionExpectation.AssertDrawnPixels(motion, (_, _) => Vector2.Zero, .05f, (x, _) => x >= W / 2);

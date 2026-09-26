@@ -5,9 +5,11 @@ namespace KhaozEngine.Render3D
     /// <see cref="PixelPostProcessSettings.Bloom"/> and <see cref="PixelPostProcessSettings.Water"/>. Nothing here costs
     /// anything until something asks for temporal rendering. The thresholds decide when a camera move is a cut: a frame
     /// whose camera moved further than <see cref="CutDistanceMetres"/> or turned more than <see cref="CutAngleDegrees"/>
-    /// since the last frame drops its temporal history, exactly as an explicit <see cref="Scene3D.CameraCut"/> does. The
-    /// two cuts differ only in the reason they report: <see cref="TemporalResetReason.CameraCutDetected"/> for this one
-    /// and <see cref="TemporalResetReason.CameraCutRequested"/> for the explicit call.
+    /// since the last frame drops its temporal history, exactly as an explicit <see cref="Scene3D.CameraCut"/> does. A
+    /// render origin jump the previous frame cannot be rebased across triggers the same automatic cut, whatever the
+    /// thresholds, as <see cref="TemporalResetReason.CameraCutDetected"/> describes. The two cuts differ only in the
+    /// reason they report: <see cref="TemporalResetReason.CameraCutDetected"/> for the automatic one and
+    /// <see cref="TemporalResetReason.CameraCutRequested"/> for the explicit call.
     /// </summary>
     public sealed class TemporalSettings
     {

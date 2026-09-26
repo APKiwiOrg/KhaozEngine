@@ -195,22 +195,25 @@ public sealed class TemporalCameraCutTests
         Assert.Equal(new Vector3(128f, 0f, 0f), TemporalAssert.Previous(scene).RenderOrigin);
     }
 
-    /// <summary>An explicit render origin may jump anywhere while the eye stays still. A step of one 128 m cell or less
-    /// per axis on the grid is rebased as usual. A step off the grid, or of more than one cell, is a detected cut.</summary>
+    /// <summary>An explicit render origin may jump anywhere while the eye stays still. A step on X and Z of one 128 m
+    /// cell or less per axis on the grid is rebased as usual. A step off the grid, or of more than one cell, is a
+    /// detected cut, and so is any step on Y, where an engine origin never moves.</summary>
     [Theory]
-    [InlineData(0.5f, 0f, true)]
-    [InlineData(0f, 64f, true)]
-    [InlineData(256f, 0f, true)]
-    [InlineData(0f, -384f, true)]
-    [InlineData(128f, 0f, false)]
-    [InlineData(0f, -128f, false)]
-    [InlineData(128f, -128f, false)]
-    public void AnOverrideJumpOffTheGridOrPastOneCellIsADetectedCut(float x, float z, bool cut)
+    [InlineData(0.5f, 0f, 0f, true)]
+    [InlineData(0f, 0f, 64f, true)]
+    [InlineData(256f, 0f, 0f, true)]
+    [InlineData(0f, 0f, -384f, true)]
+    [InlineData(0f, 1f, 0f, true)]
+    [InlineData(0f, 128f, 0f, true)]
+    [InlineData(128f, 0f, 0f, false)]
+    [InlineData(0f, 0f, -128f, false)]
+    [InlineData(128f, 0f, -128f, false)]
+    public void AnOverrideJumpOffTheGridOrPastOneCellIsADetectedCut(float x, float y, float z, bool cut)
     {
         using HeadlessSceneRig rig = Warm();
         Scene3D scene = rig.Scene;
         Assert.Equal(Vector3.Zero, scene.CurrentFrameView.RenderOrigin);
-        var origin = new Vector3(x, 0f, z);
+        var origin = new Vector3(x, y, z);
         scene.RenderOrigin = origin;
         rig.Frame();
         Assert.Equal(origin, scene.CurrentFrameView.RenderOrigin);

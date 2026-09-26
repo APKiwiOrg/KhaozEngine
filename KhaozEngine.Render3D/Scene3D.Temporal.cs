@@ -133,6 +133,9 @@ namespace KhaozEngine.Render3D
             // Acos returns at most pi, so dividing by pi, rather than multiplying by 180 / pi, keeps every turn at or
             // below 180 and an exact about-turn at exactly 180, which a limit of 180 must not cut.
             double degrees = Math.Acos(cosine) / Math.PI * 180.0;
+            // A zero or NaN forward, which no engine camera produces but a consumer camera could, has no direction to
+            // measure a turn from. The angle is then NaN and counts as no turn, so only the other checks can cut.
+            if (double.IsNaN(degrees)) return false;
             return degrees > limits.CutAngleDegrees;
         }
 
@@ -141,10 +144,12 @@ namespace KhaozEngine.Render3D
         /// 128 m cell per axis on X and Z, the step the automatic origin takes under ordinary camera motion, is carried
         /// by <see cref="FrameView.RebasedTo"/> within its motion bound. <see cref="RenderOrigin"/> accepts any value,
         /// and a jump off the grid rounds the step itself, while a jump of more than one cell grows the rounding in the
-        /// rebased translation row past that bound. An explicit origin can jump while the eye stays still, so the
-        /// distance check cannot be relied on to catch either, and each is a detected cut in its own right.
+        /// rebased translation row past that bound. An engine origin never moves on Y, so any step on Y comes from an
+        /// explicit origin and is treated the same way. An explicit origin can jump while the eye stays still, so the
+        /// distance check cannot be relied on to catch any of these, and each is a detected cut in its own right.
         /// </summary>
-        static bool RenderOriginJumped(Vector3 from, Vector3 to) => !IsCellStep(to.X - from.X) || !IsCellStep(to.Z - from.Z);
+        static bool RenderOriginJumped(Vector3 from, Vector3 to)
+            => to.Y != from.Y || !IsCellStep(to.X - from.X) || !IsCellStep(to.Z - from.Z);
 
         /// <summary>A whole number of 128 m cells and at most one: zero, or one cell either way.</summary>
         static bool IsCellStep(float step) => step == 0f || MathF.Abs(step) == WorldFrame.Grid;

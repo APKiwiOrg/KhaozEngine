@@ -18,7 +18,7 @@ namespace KhaozEngine.Render3D
         /// <summary>The consumer called <see cref="Scene3D.CameraCut"/>.</summary>
         CameraCutRequested,
         /// <summary>The camera moved or turned further in one frame than the cut thresholds allow, or the render origin
-        /// jumped off the 128 m grid or by more than one cell.</summary>
+        /// jumped off the 128 m grid or by more than one cell on X or Z, or moved at all on Y.</summary>
         CameraCutDetected,
         /// <summary>The scene rebuilt its colour targets and every pipeline that draws into them for a colour-format
         /// change, which today is the HDR chain being toggled.</summary>

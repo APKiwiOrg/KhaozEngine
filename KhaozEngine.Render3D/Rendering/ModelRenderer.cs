@@ -343,6 +343,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _pipeline.Dispose(); _splatPipeline.Dispose(); _dissolvePipeline.Dispose(); _tileGroundPipeline.Dispose();
             _skinnedPipeline.Dispose(); _skinnedDissolvePipeline.Dispose();
+            _cpuSkinnedMotionPipeline?.Dispose(); _cpuSkinnedMotionPipeline = null;
             BuildPipelines(_gd.Factory, modelOutputs);
         }
 
@@ -405,7 +406,8 @@ namespace KhaozEngine.Render3D.Rendering
             });
 
             // CharDissolve variant: identical to _pipeline except the fragment shader (noise alpha-clip + edge).
-            _dissolvePipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
+            if (temporal) _dissolvePipeline = CreateCpuSkinnedMotionPipeline(factory, modelOutputs, vertexLayout, instanceLayout, dissolve: true);
+            else _dissolvePipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
                 BlendAttachments = ModelTargetBlends.Opaque(modelOutputs),
@@ -417,6 +419,9 @@ namespace KhaozEngine.Render3D.Rendering
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = modelOutputs,
             });
+            _cpuSkinnedMotionPipeline = temporal
+                ? CreateCpuSkinnedMotionPipeline(factory, modelOutputs, vertexLayout, instanceLayout, dissolve: false)
+                : null;
 
             BuildSplatPipeline(factory, modelOutputs, vertexLayout, instanceLayout);
             BuildTileGroundPipeline(factory, modelOutputs, vertexLayout, instanceLayout);

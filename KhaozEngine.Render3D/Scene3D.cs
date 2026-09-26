@@ -1645,12 +1645,7 @@ namespace KhaozEngine.Render3D
                 // Sizes the frame's three skinned destinations and uploads the ONE shared bone palette both passes
                 // read. See Scene3D.GpuSkinning.cs.
                 if (UseGpuSkinning) PrepareGpuSkinnedFrame(cl, shadowMapActive);
-                else if (_cpuSkinnedDraws.Count > 0)
-                {
-                    _model.UploadCpuSkinned(cl, CollectionsMarshal.AsSpan(_cpuSkinnedVerts), CollectionsMarshal.AsSpan(_cpuSkinnedInstances));
-                    _frameStats.AddSkinnedUpload((long)_cpuSkinnedVerts.Count * Unsafe.SizeOf<ModelVertex>()
-                        + (long)_cpuSkinnedInstances.Count * Unsafe.SizeOf<ModelRenderer.InstanceData>());
-                }
+                else if (_cpuSkinnedDraws.Count > 0) UploadCpuSkinnedFrame(cl);   // Scene3D.MotionTarget.cs
             }
             int skinnedCasterCount = CountSkinnedCasters();   // opted-out skinned draws neither cast nor dirty the atlas
 
@@ -1796,7 +1791,7 @@ namespace KhaozEngine.Render3D
             else if (_cpuSkinnedDraws.Count > 0)
             {
                 // CPU path: the deformed geometry uploaded above, drawn through the rigid (no-bone) model pipeline.
-                _model.BindPass(cl);   // re-bind the model pipeline (the skinned draws follow the rigid run)
+                _model.BindCpuSkinnedPass(cl);   // the CPU-skinned pipeline (the rigid one, or its temporal variant)
                 bool dissolveBound = false;
                 for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
                 {
@@ -1804,7 +1799,7 @@ namespace KhaozEngine.Render3D
                     if (!dr.VisibleMain) continue;
                     if (dr.Dissolve != dissolveBound)   // switch pipelines only when the dissolve state changes
                     {
-                        if (dr.Dissolve) _model.BindDissolvePass(cl); else _model.BindPass(cl);
+                        if (dr.Dissolve) _model.BindDissolvePass(cl); else _model.BindCpuSkinnedPass(cl);
                         dissolveBound = dr.Dissolve;
                     }
                     _model.DrawCpuSkinned(cl, dr.Ib, dr.IndexCount, dr.IndexFormat, dr.BaseVertex, (uint)d, dr.MaterialSet);

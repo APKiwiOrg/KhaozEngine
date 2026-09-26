@@ -174,6 +174,14 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.SkinnedModelMotionVert, ShaderSources.SkinnedModelDissolveMotionFrag, "SkinnedModelDissolveMotion");
 
         [Fact]
+        public void ModelCpuSkinnedMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelMotionFrag, "ModelCpuSkinnedMotion");
+
+        [Fact]
+        public void ModelCpuSkinnedDissolveMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelDissolveMotionFrag, "ModelCpuSkinnedDissolveMotion");
+
+        [Fact]
         public void SkinnedShadowDepth()
             => ShaderValidation.ValidatePair(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag, "SkinnedShadowDepth");
 

@@ -10,7 +10,7 @@ namespace KhaozEngine.Render3D.Rendering;
 /// build against a model target that carries the motion attachment and retired when the target loses it, so with
 /// temporal rendering off none of it exists. The temporal programs compile when the renderer builds against that
 /// target, whether or not a scene draws every path.
-/// Later tasks add the CPU-skinned, foliage and ground members.
+/// Later tasks add the foliage and ground members.
 /// </summary>
 internal sealed class ModelMotionResources : IDisposable
 {
@@ -18,6 +18,10 @@ internal sealed class ModelMotionResources : IDisposable
     /// parallel to the instance stream so a draw's first instance selects both.</summary>
     internal static readonly GpuVertexLayoutDescription SlotLayout = new(stride: 4, instanceStepRate: 1,
         elements: new[] { new GpuVertexElement("IMotionSlot", GpuVertexElementFormat.Float1) });
+
+    /// <summary>The CPU-skinned variant's last-frame positions: vertex buffer slot 2, location 15, per vertex.</summary>
+    internal static readonly GpuVertexLayoutDescription CpuPreviousLayout = new(stride: 12, instanceStepRate: 0,
+        elements: new[] { new GpuVertexElement("PrevPosition", GpuVertexElementFormat.Float3) });
 
     const uint MatrixBytes = 64;
     const uint InitialPrevious = 64;
@@ -31,6 +35,9 @@ internal sealed class ModelMotionResources : IDisposable
     uint _slotCapacity;
     IGpuShaderSet? _rigid;
     IGpuShaderSet? _skinned, _skinnedDissolve;
+    IGpuBuffer? _cpuPrevious;
+    uint _cpuPreviousCapacity;
+    IGpuShaderSet? _cpuSkinned, _cpuSkinnedDissolve;
 
     internal ModelMotionResources(IGpuDevice gd, GpuRetireQueue retired)
     {
@@ -38,6 +45,9 @@ internal sealed class ModelMotionResources : IDisposable
         _retired = retired;
         IGpuResourceFactory f = gd.Factory;
         _frame = f.CreateBuffer(new GpuBufferDescription(MotionFrameUbo.SizeInBytes, GpuBufferUsage.UniformBuffer));
+        FrameLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+            new GpuResourceLayoutElement("MotionFrame", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)));
+        FrameSet = f.CreateResourceSet(new GpuResourceSetDescription(FrameLayout, _frame));
         RigidLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
             new GpuResourceLayoutElement("MotionFrame", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex),
             new GpuResourceLayoutElement("PreviousInstanceTransforms", GpuResourceKind.StructuredBufferReadOnly,
@@ -50,6 +60,11 @@ internal sealed class ModelMotionResources : IDisposable
 
     /// <summary>The frame's <c>MotionFrame</c> block, 144 bytes, uploaded whole once per temporal frame.</summary>
     internal IGpuBuffer FrameBuffer => _frame;
+
+    /// <summary>A set holding the motion block alone: set 1 of the CPU-skinned variants, set 2 of the foliage and
+    /// ground variants.</summary>
+    internal IGpuResourceLayout FrameLayout { get; }
+    internal IGpuResourceSet FrameSet { get; }
 
     /// <summary>Set 1 of the rigid variant: the motion block and <c>PreviousInstanceTransforms</c>, vertex stage only.</summary>
     internal IGpuResourceLayout RigidLayout { get; }
@@ -75,6 +90,18 @@ internal sealed class ModelMotionResources : IDisposable
     /// <summary>SkinnedModelMotionVert with SkinnedModelDissolveMotionFrag.</summary>
     internal IGpuShaderSet SkinnedDissolveShaders => _skinnedDissolve ??= _gd.Factory.CreateShadersFromSpirv(
         ShaderSources.SkinnedModelMotionVert, ShaderSources.SkinnedModelDissolveMotionFrag);
+
+    /// <summary>This frame's CPU-skinned last-frame positions. Uploaded before any CPU-skinned draw binds them.</summary>
+    internal IGpuBuffer CpuPrevious => _cpuPrevious ?? throw new InvalidOperationException(
+        "No CPU-skinned previous positions were uploaded this frame.");
+
+    /// <summary>ModelCpuSkinnedMotionVert with ModelMotionFrag.</summary>
+    internal IGpuShaderSet CpuSkinnedShaders => _cpuSkinned ??= _gd.Factory.CreateShadersFromSpirv(
+        ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelMotionFrag);
+
+    /// <summary>ModelCpuSkinnedMotionVert with ModelDissolveMotionFrag.</summary>
+    internal IGpuShaderSet CpuSkinnedDissolveShaders => _cpuSkinnedDissolve ??= _gd.Factory.CreateShadersFromSpirv(
+        ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelDissolveMotionFrag);
 
     IGpuBuffer CreatePrevious(uint capacity) => _gd.Factory.CreateBuffer(new GpuBufferDescription(
         capacity * MatrixBytes, GpuBufferUsage.StructuredBufferReadOnly, MatrixBytes));
@@ -105,6 +132,19 @@ internal sealed class ModelMotionResources : IDisposable
         cl.UpdateBuffer(_previous, 0, previous);
     }
 
+    /// <summary>Upload the CPU-skinned last-frame positions, growing geometrically like the deformed vertex stream.</summary>
+    internal void UploadCpuPrevious(IGpuCommandList cl, ReadOnlySpan<Vector3> positions)
+    {
+        if (positions.Length == 0) return;
+        if (_cpuPrevious is null || _cpuPreviousCapacity < positions.Length)
+        {
+            _retired.Retire(_cpuPrevious);
+            _cpuPreviousCapacity = Math.Max((uint)positions.Length, _cpuPreviousCapacity == 0 ? 4096u : _cpuPreviousCapacity * 2);
+            _cpuPrevious = _gd.Factory.CreateBuffer(new GpuBufferDescription(_cpuPreviousCapacity * 12, GpuBufferUsage.VertexBuffer));
+        }
+        cl.UpdateBuffer(_cpuPrevious, 0, positions);
+    }
+
     public void Dispose()
     {
         RigidSet.Dispose();
@@ -114,6 +154,11 @@ internal sealed class ModelMotionResources : IDisposable
         SkinnedPalette.Dispose();
         _skinned?.Dispose();
         _skinnedDissolve?.Dispose();
+        FrameSet.Dispose();
+        FrameLayout.Dispose();
+        _cpuPrevious?.Dispose();
+        _cpuSkinned?.Dispose();
+        _cpuSkinnedDissolve?.Dispose();
         _frame.Dispose();
         _rigid?.Dispose();
     }

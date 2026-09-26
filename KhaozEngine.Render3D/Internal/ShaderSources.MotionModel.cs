@@ -53,4 +53,17 @@ layout(location=11) out vec4 vPrevClip;"),
     vCurClip = CurViewProj * world;
     vPrevClip = MotionParams.x > 0.5 ? PrevViewProj * (PrevModel * (prevSkin * vec4(Position, 1.0))) : vCurClip;
 ");
+
+    /// <summary>ModelVert with motion for CPU-skinned draws. Their vertices are deformed on the CPU, so last frame's
+    /// position arrives per vertex, already placed in this frame's render-relative world, at location 15 from a third
+    /// vertex stream. Set 1 is the motion block alone.</summary>
+    public static readonly string ModelCpuSkinnedMotionVert = ShaderText.BeforeEndOfMain(
+        ShaderText.After(ModelVert, "layout(location=10) out float vDissolveComplement;", @"
+layout(set=1, binding=0) uniform MotionFrame {" + MotionFrameMembersGlsl + @"};
+layout(location=15) in vec3 PrevPosition;   // last frame's skinned position in the world, render-relative
+layout(location=11) out vec4 vCurClip;
+layout(location=12) out vec4 vPrevClip;"),
+        @"    vCurClip = CurViewProj * world;
+    vPrevClip = MotionParams.x > 0.5 ? PrevViewProj * vec4(PrevPosition, 1.0) : vCurClip;
+");
 }

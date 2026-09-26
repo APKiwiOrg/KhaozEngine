@@ -74,6 +74,32 @@ internal sealed partial class ModelRenderer
             new List<GpuVertexLayoutDescription> { skinnedVertexLayout });
     }
 
+    // The CPU-skinned non-dissolving variant. The base pass draws CPU-skinned meshes through the rigid pipeline, which a
+    // temporal target cannot, because the rigid variant reads a per-instance slot stream where these need per-vertex
+    // positions. Null while the target has no motion attachment.
+    IGpuPipeline? _cpuSkinnedMotionPipeline;
+
+    /// <summary>A CPU-skinned variant: the model material set at set 0, the motion block at set 1, and last frame's
+    /// positions at vertex buffer slot 2.</summary>
+    IGpuPipeline CreateCpuSkinnedMotionPipeline(IGpuResourceFactory factory, GpuOutputDescription outputs,
+        GpuVertexLayoutDescription vertexLayout, GpuVertexLayoutDescription instanceLayout, bool dissolve)
+    {
+        ModelMotionResources motion = RequireMotion();
+        return OpaqueMotionPipeline(factory, outputs,
+            dissolve ? motion.CpuSkinnedDissolveShaders : motion.CpuSkinnedShaders,
+            new[] { _layout, motion.FrameLayout },
+            new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout, ModelMotionResources.CpuPreviousLayout });
+    }
+
+    /// <summary>Bind the pipeline non-dissolving CPU-skinned draws use: the rigid pipeline, as CPU skinning always has,
+    /// or the CPU-skinned variant while the target is temporal. Dissolving draws keep <see cref="BindDissolvePass"/>,
+    /// whose pipeline is the CPU-skinned dissolve variant while temporal.</summary>
+    public void BindCpuSkinnedPass(IGpuCommandList cl) => cl.SetPipeline(_cpuSkinnedMotionPipeline ?? _pipeline);
+
+    /// <summary>Upload last frame's CPU-skinned positions, before the model pass.</summary>
+    internal void UploadCpuSkinnedPrevious(IGpuCommandList cl, ReadOnlySpan<Vector3> positions)
+        => RequireMotion().UploadCpuPrevious(cl, positions);
+
     /// <summary>Hold a last-frame slot per GPU-skinned caster.</summary>
     internal void EnsureSkinnedMotionCapacity(uint slotCount) => RequireMotion().SkinnedPalette.EnsureCapacity(slotCount);
 
@@ -94,6 +120,8 @@ internal sealed partial class ModelRenderer
 
     void DisposeMotionResources()
     {
+        _cpuSkinnedMotionPipeline?.Dispose();
+        _cpuSkinnedMotionPipeline = null;
         _motion?.Dispose();
         _motion = null;
     }

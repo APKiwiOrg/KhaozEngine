@@ -110,6 +110,9 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/ModelMotionResources.cs, the rigid temporal variant's set 1: the motion block and
                 // the previous transforms, both read by the vertex stage alone.
                 ["Motion.rigid"] = L(U("MotionFrame", V), Ro("PreviousInstanceTransforms", V)),
+                // Render3D/Rendering/ModelMotionResources.cs, the motion block alone: set 1 of the CPU-skinned variants
+                // and set 2 of the foliage and ground variants.
+                ["Motion.frame"] = L(U("MotionFrame", V)),
 
                 // Render3D/Rendering/OceanFftProducer.cs:506 and :510, both compute
                 ["OceanFft.row"] = L(U("Params", C), Rw("H0Buf", C), Rw("WorkBuf", C)),
@@ -209,6 +212,7 @@ namespace KhaozEngine.Tests.Gpu
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
             ("ModelRenderer tile ground", ["Model.tileGroundFrame", "Model.tileGroundMaterial"]),
             ("ModelRenderer motion", ["Model", "Motion.rigid"]),
+            ("ModelRenderer cpu skinned motion", ["Model", "Motion.frame"]),
             ("OceanFftProducer row", ["OceanFft.row"]),
             ("OceanFftProducer col", ["OceanFft.col"]),
             ("OverlayMeshRenderer", ["OverlayMesh"]),
@@ -259,8 +263,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(47, ShippedLayouts.Count);
-            Assert.Equal(47, ShippedPipelines.Count);
+            Assert.Equal(48, ShippedLayouts.Count);
+            Assert.Equal(48, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

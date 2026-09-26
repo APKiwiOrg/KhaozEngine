@@ -58,6 +58,12 @@ internal sealed partial class ModelRenderer
         cl.SetGraphicsResourceSet(0, materialSet ?? _defaultSet);
         cl.SetVertexBuffer(0, _skinnedVertexBuffer!);
         cl.SetVertexBuffer(1, _skinnedInstanceBuffer!);
+        if (_motion is { } motion)
+        {
+            // The CPU-skinned variant's set 1 and last frame's positions, parallel to the deformed vertices.
+            cl.SetGraphicsResourceSet(1, motion.FrameSet);
+            cl.SetVertexBuffer(2, motion.CpuPrevious);
+        }
         cl.SetIndexBuffer(ib, indexFormat);
         cl.DrawIndexed((uint)indexCount, 1, 0, baseVertex, drawIndex);
     }

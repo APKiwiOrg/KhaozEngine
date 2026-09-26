@@ -1,7 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D;
 
@@ -50,5 +54,37 @@ public sealed partial class Scene3D
                 _model.PackSkinnedMotion(dr.Slot, dr.World, boneSpan.Slice(dr.BoneSpanStart, dr.BoneCount));
         }
         _model.UploadSkinnedMotion(cl);
+    }
+
+    // Last frame's position of every deformed CPU-skinned vertex, parallel to _cpuSkinnedVerts. Grow-only.
+    readonly List<Vector3> _cpuSkinnedPrevious = new();
+
+    /// <summary>Upload this frame's CPU-skinned geometry, and while the target is temporal each vertex's last-frame
+    /// position: re-skinned from the key's previous palette and world when it has a usable one, this frame's own
+    /// otherwise.</summary>
+    void UploadCpuSkinnedFrame(IGpuCommandList cl)
+    {
+        _model.UploadCpuSkinned(cl, CollectionsMarshal.AsSpan(_cpuSkinnedVerts), CollectionsMarshal.AsSpan(_cpuSkinnedInstances));
+        _frameStats.AddSkinnedUpload((long)_cpuSkinnedVerts.Count * Unsafe.SizeOf<ModelVertex>()
+            + (long)_cpuSkinnedInstances.Count * Unsafe.SizeOf<ModelRenderer.InstanceData>());
+        if (!_res.MotionAllocated) return;
+
+        _cpuSkinnedPrevious.Clear();
+        MotionHistory? history = PreviousMotion;
+        ReadOnlySpan<ModelVertex> skinned = CollectionsMarshal.AsSpan(_cpuSkinnedVerts);
+        for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
+        {
+            CpuSkinnedDraw dr = _cpuSkinnedDraws[d];
+            SkinnedVertex[]? source = _skinnedCpuVerts[dr.MeshIndex];
+            int bones = _skinnedMeshes[dr.MeshIndex]?.InverseBind.Length ?? -1;
+            if (history is not null && source is not null && !dr.Motion.IsNone
+                && history.TryGetPreviousSkinned(dr.Motion, out Matrix4x4 world, out ReadOnlySpan<Matrix4x4> palette)
+                && palette.Length == bones)
+                CpuSkinnedMotion.AppendPrevious(source, palette, ToRender(world), _cpuSkinnedPrevious);
+            else
+                CpuSkinnedMotion.AppendCurrent(skinned.Slice(dr.BaseVertex, dr.VertexCount), _cpuSkinnedInstances[d].Model,
+                    _cpuSkinnedPrevious);
+        }
+        _model.UploadCpuSkinnedPrevious(cl, CollectionsMarshal.AsSpan(_cpuSkinnedPrevious));
     }
 }

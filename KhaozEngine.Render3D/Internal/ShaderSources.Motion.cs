@@ -47,4 +47,9 @@ internal static partial class ShaderSources
 
     /// <summary>SkinnedModelDissolveFrag with motion. The base reads 0 to 9, so the pair follows at 10 and 11.</summary>
     public static readonly string SkinnedModelDissolveMotionFrag = MotionFragment(SkinnedModelDissolveFrag, 10);
+
+    /// <summary>ModelDissolveFrag with motion, for dissolving CPU-skinned draws. The base reads 0 to 9, so a sink holds
+    /// vDissolveComplement at 10 live below the pair at 11 and 12.</summary>
+    public static readonly string ModelDissolveMotionFrag = MotionFragment(ModelDissolveFrag, 11,
+        "\nlayout(location=10) in float vDissolveComplement;", "    oMotion.w += vDissolveComplement * 1e-30;\n");
 }

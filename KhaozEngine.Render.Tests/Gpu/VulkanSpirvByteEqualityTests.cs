@@ -140,7 +140,7 @@ namespace KhaozEngine.Tests.Gpu
 
             // 110 with the five target-outline pairs and three point-skinned pairs. 94 was the cascade cutout pair and
             // dissolve-aware skinned vertex, and the 76 above is the original 2026-08-08 measurement.
-            Assert.Equal(116, emitted.Count);
+            Assert.Equal(120, emitted.Count);
             Assert.True(distinct < emitted.Count,
                 $"The {emitted.Count} shipped stage emissions produced {distinct} distinct SPIR-V modules, so "
                 + "nothing is shared and decision V-S7's dedup buys nothing. Measured at 59 distinct on "

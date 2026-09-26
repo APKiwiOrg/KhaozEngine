@@ -108,6 +108,7 @@ namespace KhaozEngine.Tests.Gpu
             // any other shader resource.
             ("ModelMotionResources.RigidLayout",
                 new[] { U("MotionFrame"), StructRO("PreviousInstanceTransforms", GpuShaderStages.Vertex) }, "b0 t0"),
+            ("ModelMotionResources.FrameLayout", new[] { U("MotionFrame") }, "b0"),
 
             // The only two layouts in the engine that reach the u file at all, and the only ones that mix a
             // read-write structured buffer with a storage texture. They are why the u counter is SHARED.

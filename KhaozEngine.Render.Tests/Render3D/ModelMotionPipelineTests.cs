@@ -91,6 +91,25 @@ public sealed class ModelMotionPipelineTests
     }
 
     [Fact]
+    public void TheTemporalTargetBuildsBothCpuSkinnedVariantsOverThePreviousPositionStream()
+    {
+        using var device = new FakeGpuDevice();
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
+
+        FakeGraphicsPipelineRequest[] cpu = factory.GraphicsPipelines
+            .Where(p => p.VertexGlsl == ShaderSources.ModelCpuSkinnedMotionVert).ToArray();
+        Assert.Equal(new[] { ShaderSources.ModelDissolveMotionFrag, ShaderSources.ModelMotionFrag },
+            cpu.Select(p => p.FragmentGlsl).ToArray());
+        Assert.All(cpu, p =>
+        {
+            Assert.Equal(2, p.Description.ResourceLayouts.Length);
+            Assert.Equal(0u, p.Description.VertexLayouts[2].InstanceStepRate);   // per vertex, not per instance
+            Assert.Equal(12u, p.Description.VertexLayouts[2].Stride);
+        });
+    }
+
+    [Fact]
     public void LeavingTheTemporalTargetRetiresTheMotionResources()
     {
         using var device = new FakeGpuDevice();

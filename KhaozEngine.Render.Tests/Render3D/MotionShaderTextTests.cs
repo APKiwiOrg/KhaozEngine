@@ -19,6 +19,8 @@ public sealed class MotionShaderTextTests
             "layout(location=9) in vec2 vDissolve;"),
         ["SkinnedModelDissolveMotionFrag"] = (ShaderSources.SkinnedModelDissolveMotionFrag,
             ShaderSources.SkinnedModelDissolveFrag, ""),
+        ["ModelDissolveMotionFrag"] = (ShaderSources.ModelDissolveMotionFrag, ShaderSources.ModelDissolveFrag,
+            "layout(location=10) in float vDissolveComplement;"),
     };
 
     public static TheoryData<string> Names()

@@ -134,14 +134,17 @@ backlog here: a follow-up recorded only in a design doc is invisible to the ledg
 - [../AGENTS.md](../AGENTS.md) - concurrent-dev rule (worktree per change), the release ritual, build/test commands.
 - Release ritual, short form: bump `Directory.Build.props` `<KhaozEngineVersion>` -> add the `CHANGELOG.md` entry
   (its newest `## X.Y.Z` heading must be the new version) -> update every `<PackageReference>` example in `README.md`
-  and `USING-KHAOZENGINE.md` -> `scripts/pack-local-feed.sh` -> commit -> `scripts/tag-release.sh` (annotated `vX.Y.Z`) ->
-  push `main` + tag. (Don't hand-type `git tag vX.Y.Z`: a lightweight tag is rejected by the `pre-push` hook.)
+  and `USING-KHAOZENGINE.md` -> commit -> push `main` -> `scripts/pack-local-feed.sh` -> `scripts/tag-release.sh`
+  (annotated `vX.Y.Z`) -> push the tag. (Don't hand-type `git tag vX.Y.Z`: a lightweight tag is rejected by
+  the `pre-push` hook.)
 - The pack step is a script because it is guarded. `scripts/pack-local-feed.sh` refuses to pack a version that is
   already tagged unless HEAD is that tag with a clean tree, so a finish landing after a release cannot overwrite
   the released bytes in the feed with a bigger build of the same number ([#492](https://github.com/APKiwiOrg/KhaozEngine/issues/492)).
-  `PACK_RELEASED_OK=1` is the deliberate exception, `scripts/hooks/pack-release-guard.sh` catches the bare
-  `dotnet pack` an agent types from memory, and `scripts/check-local-feed.sh` compares each tagged package's
-  nuspec commit with the tag commit before vendoring the feed into a game
+  `PACK_RELEASED_OK=1` is the deliberate release exception. The shared feed also requires a clean HEAD on
+  current `origin/main`, while a `KHAOZENGINE_FEED` outside the shared path may carry a branch build
+  ([#1135](https://github.com/APKiwiOrg/KhaozEngine/issues/1135)). `scripts/hooks/pack-release-guard.sh` catches
+  the bare `dotnet pack` an agent types from memory. `scripts/check-local-feed.sh` checks staged package commits
+  against `origin/main` and tagged package commits against their tag before a game vendors the feed
   ([#1136](https://github.com/APKiwiOrg/KhaozEngine/issues/1136)).
 - The same window is refused at push time. `.githooks/pre-push` rejects a push of `main` whose
   `<KhaozEngineVersion>` names a version already tagged at another commit, when the commits past that tag

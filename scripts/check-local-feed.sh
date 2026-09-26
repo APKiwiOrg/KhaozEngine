@@ -3,7 +3,7 @@
 # so a consumer about to vendor from the feed can see drift before it ships. POSIX sh.
 #
 #   scripts/check-local-feed.sh            # report, always exits 0 (informational, like ledger.sh)
-#   scripts/check-local-feed.sh --strict   # exit 1 when any tagged version is DRIFTED
+#   scripts/check-local-feed.sh --strict   # exit 1 when any version is UNSAFE or DRIFTED
 #   scripts/check-local-feed.sh --feed DIR # read DIR instead of the default feed
 #
 # The default feed is the one scripts/pack-local-feed.sh writes: KHAOZENGINE_FEED when set, otherwise the
@@ -11,7 +11,8 @@
 # A relative DIR or KHAOZENGINE_FEED resolves against this tree's toplevel, not the directory you ran from.
 #
 # Statuses, per version present in the feed:
-#   STAGED     no v<version> tag yet. The ordinary in-flight state, nothing to see.
+#   STAGED     no v<version> tag yet, and every package commit is on current origin/main.
+#   UNSAFE     no tag yet, and at least one package commit is missing or not on current origin/main.
 #   RELEASED   tagged, and every package's nuspec commit matches the tag commit.
 #   DRIFTED    tagged, and at least one package has a missing or different nuspec commit. The feed holds
 #              a build the tag does not describe (#492, #1136). GitHub Packages still has the published
@@ -30,7 +31,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --strict) strict=1; shift ;;
     --feed) feed=${2:-}; shift 2 2>/dev/null || { echo "check-local-feed: --feed needs a directory." >&2; exit 2; } ;;
-    --help|-h) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "check-local-feed: unknown argument '$1'." >&2; exit 2 ;;
   esac
 done
@@ -73,7 +74,8 @@ if [ -z "${versions:-}" ]; then
   exit 0
 fi
 
-staged=0; released=0; drifted=0
+originmain=$(pack_origin_main_commit)
+staged=0; unsafe=0; released=0; drifted=0
 for v in $versions; do
   # Newest pack time across every file of this version, so a partial re-pack of a single package still
   # shows up rather than being averaged away by its untouched siblings.
@@ -86,8 +88,44 @@ for v in $versions; do
   done
   tagcommit=$(git rev-parse -q --verify "refs/tags/v$v^{commit}" 2>/dev/null || true)
   if [ -z "${tagcommit:-}" ]; then
-    echo "  STAGED     $v  packed $(stamp "$newest")  (no v$v tag)"
-    staged=$((staged + 1))
+    staged_unsafe=0
+    staged_commits=''
+    unsafe_lines=''
+    for f in "$feed"/KhaozEngine.*."$v".nupkg "$feed"/KhaozEngine.*."$v".snupkg; do
+      [ -f "$f" ] || continue
+      packagecommit=$(package_commit "$f")
+      if [ -z "${packagecommit:-}" ]; then
+        staged_unsafe=1
+        detail="$(basename "$f"): no repository commit in nuspec"
+        unsafe_lines="${unsafe_lines}${unsafe_lines:+
+}$detail"
+        continue
+      fi
+      case "
+$staged_commits
+" in
+        *"
+$packagecommit
+"*) ;;
+        *) staged_commits="${staged_commits}${staged_commits:+
+}$packagecommit" ;;
+      esac
+      if [ -z "${originmain:-}" ] || ! pack_commit_on_origin_main "$packagecommit"; then
+        staged_unsafe=1
+        detail="$(basename "$f"): commit $packagecommit not on origin/main"
+        unsafe_lines="${unsafe_lines}${unsafe_lines:+
+}$detail"
+      fi
+    done
+    if [ "$staged_unsafe" = 1 ]; then
+      echo "  UNSAFE     $v  packed $(stamp "$newest")  (no v$v tag)"
+      printf '%s\n' "$unsafe_lines" | sed 's/^/             /'
+      unsafe=$((unsafe + 1))
+    else
+      firstcommit=$(printf '%s\n' "$staged_commits" | head -1)
+      echo "  STAGED     $v  commit $firstcommit on origin/main  packed $(stamp "$newest")"
+      staged=$((staged + 1))
+    fi
   else
     version_drifted=0
     drift_lines=''
@@ -116,11 +154,16 @@ for v in $versions; do
   fi
 done
 
-echo "check-local-feed: $staged staged, $released released, $drifted drifted (feed: $feed)."
+echo "check-local-feed: $staged staged, $unsafe unsafe, $released released, $drifted drifted (feed: $feed)."
+if [ "$unsafe" -ne 0 ]; then
+  echo "check-local-feed: an UNSAFE staged version contains a package commit not on origin/main (#1135)." >&2
+  echo "                  Do not vendor it from the shared feed. Re-pack from origin/main, or use an" >&2
+  echo "                  explicit private KHAOZENGINE_FEED for intentional branch builds." >&2
+fi
 if [ "$drifted" -ne 0 ]; then
   echo "check-local-feed: a DRIFTED version contains a build its tag does not describe (#492, #1136)." >&2
   echo "                  Do not vendor it into a consumer. Re-pack from a checkout of the tag or" >&2
   echo "                  restore the published copy from GitHub Packages." >&2
-  if [ "$strict" = 1 ]; then exit 1; fi
 fi
+if [ "$strict" = 1 ] && { [ "$unsafe" -ne 0 ] || [ "$drifted" -ne 0 ]; }; then exit 1; fi
 exit 0

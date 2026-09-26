@@ -109,24 +109,28 @@ For a package-bearing change:
 3. Add or extend the newest `CHANGELOG.md` entry in the same commit as the version change.
 4. Update every version declaration guarded by `scripts/check-doc-versions.sh`.
 5. Run the full documentation sweep described below.
-6. Build and test in Release.
-7. Run `scripts/pack-local-feed.sh`. Never write released bytes with a bare pack command.
-8. Commit, reconcile with current `main`, verify again, merge and push `main` through the owning
+6. Build and test in Release. Use an explicit private `KHAOZENGINE_FEED` for any pre-merge pack proof.
+7. Commit, reconcile with current `main`, verify again, merge and push `main` through the owning
    orchestrator.
+8. Run `scripts/pack-local-feed.sh` from `main` after `origin/main` contains that commit. Never write
+   released bytes with a bare pack command.
 
 One related batch gets one version bump. Item commits can remain separate, followed by one release
 commit. Commit subjects use `area(scope): summary`. A release commit uses the new version as scope.
 
 Packing is cumulative and occurs on every package-bearing finish. `scripts/pack-local-feed.sh` refuses
-to overwrite a released version unless the tree is exactly that clean tagged commit. The pack standard
-lives in `scripts/pack-standard.sh` and is covered by `scripts/tests/pack-local-feed.test.sh`. Run
-`scripts/check-local-feed.sh` before a consumer vendors packages.
+to overwrite a released version unless the tree is exactly that clean tagged commit. It also refuses
+to write the shared feed until HEAD is an ancestor of current `origin/main` and the tree is clean. A
+`KHAOZENGINE_FEED` that resolves outside the shared feed is the private path for a deliberate branch
+build. The pack standard lives in `scripts/pack-standard.sh` and is covered by
+`scripts/tests/pack-local-feed.test.sh`. Run `scripts/check-local-feed.sh` before a consumer vendors
+packages.
 
 The pack builds the current tree, worktree or not, and writes to the main checkout's `local-feed`,
-which is the feed consumers read. `scripts/check-local-feed.sh` reads the same feed. Setting
-`KHAOZENGINE_FEED` moves both to another directory. A relative value resolves against the root of the
-tree the script runs in. A linked worktree still keeps its own empty `local-feed`, because
-`nuget.config` names it as a restore source.
+which is the feed consumers read. `scripts/check-local-feed.sh` reads the same feed and flags staged
+package commits that are not on current `origin/main`. Setting `KHAOZENGINE_FEED` moves both to another
+directory. A relative value resolves against the root of the tree the script runs in. A linked
+worktree still keeps its own empty `local-feed`, because `nuget.config` names it as a restore source.
 
 A release tag is separate and user-started. Create it with `scripts/tag-release.sh`, which reads the
 version and creates the canonical annotated message. Do not hand-create a tag. The only automatic tag

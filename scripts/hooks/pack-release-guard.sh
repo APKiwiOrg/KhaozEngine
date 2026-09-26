@@ -1,9 +1,9 @@
 #!/bin/sh
 # pack-release-guard.sh - PreToolUse Bash guard. Reads the hook JSON on stdin, looks for a proposed
 # `dotnet pack` whose output lands in local-feed, and denies it when <KhaozEngineVersion> names a
-# version that is already released (issue #492). Silent (exit 0, no output) for everything else, which
-# is the allow path. Same shape and the same stdin contract as scripts/hooks/tag-collision-guard.sh,
-# which both agent hook configs already invoke.
+# version that is already released (issue #492) or HEAD is not on origin/main (issue #1135). Silent
+# (exit 0, no output) for everything else, which is the allow path. Same shape and the same stdin
+# contract as scripts/hooks/tag-collision-guard.sh, which both agent hook configs already invoke.
 #
 # WHY A HOOK AND NOT JUST A SCRIPT. The prevention is scripts/pack-local-feed.sh, which carries the
 # guard inline. But the ritual line has read `dotnet pack -c Release -o ./local-feed` for a very long
@@ -21,9 +21,10 @@ case "$cmd" in *pack*) ;; *) exit 0 ;; esac
 case "$cmd" in *local-feed*) ;; *) exit 0 ;; esac
 # The wrapper carries the same guard, so let it speak for itself rather than denying it from out here.
 case "$cmd" in *pack-local-feed.sh*) exit 0 ;; esac
-# An inline PACK_RELEASED_OK=1 is the sanctioned override and is honoured here exactly as the wrapper
-# honours it from the environment.
-printf '%s' "$cmd" | grep -q 'PACK_RELEASED_OK=1' && exit 0
+# An inline PACK_RELEASED_OK=1 bypasses only the released-version guard. The shared-feed ancestry
+# boundary still applies, matching the wrapper.
+release_override=0
+printf '%s' "$cmd" | grep -q 'PACK_RELEASED_OK=1' && release_override=1
 
 # Strip heredoc bodies and quoted spans before parsing, so a command that merely TALKS about packing
 # (a commit message, an echo, a doc edit) cannot be read as one. Lifted from tag-collision-guard.sh,
@@ -89,11 +90,21 @@ for stmt in $norm; do
     v=$(tag_props_version < Directory.Build.props 2>/dev/null || true)
     [ -n "${v:-}" ] || exit 0
     s=$(pack_release_state "$v")
-    pack_state_allows "$s" && exit 0
-    pack_refusal_lines "$v" "$s"
+    if ! pack_state_allows "$s" && [ "$release_override" != 1 ]; then
+      pack_refusal_lines "$v" "$s"
+      exit 0
+    fi
+    h=$(git rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null || true)
+    m=$(pack_origin_main_commit)
+    if [ -z "${h:-}" ] || [ -z "${m:-}" ] || ! pack_commit_on_origin_main "$h"; then
+      pack_shared_feed_refusal_lines "$h" "$m"
+      exit 0
+    fi
+    pack_tree_clean && exit 0
+    pack_shared_feed_dirty_refusal_lines
   )
   [ -n "${decision:-}" ] || continue
-  reason=$(printf '%s\n%s\n' "$decision" "Use scripts/pack-local-feed.sh, which carries this guard, once the version is bumped." | jq -Rs .)
+  reason=$(printf '%s\n%s\n' "$decision" "Use scripts/pack-local-feed.sh, which applies the shared feed guards." | jq -Rs .)
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}' "$reason"
   exit 0
 done

@@ -51,7 +51,8 @@ internal static class MotionExpectation
 
     /// <summary>Hold every pixel opaque geometry drew (every pixel that is not the sentinel), and that
     /// <paramref name="where"/> admits, to within <paramref name="tolerance"/> internal pixels of
-    /// <paramref name="expected"/>. Returns how many pixels were checked. The message names the worst one.</summary>
+    /// <paramref name="expected"/>. A non-finite error counts as infinitely wrong, so a NaN reading fails
+    /// wherever it falls in the scan. Returns how many pixels were checked. The message names the worst one.</summary>
     public static int AssertDrawnPixels(MotionTargetReadback motion, Func<int, int, Vector2> expected, float tolerance,
         Func<int, int, bool>? where = null)
     {
@@ -66,6 +67,8 @@ internal static class MotionExpectation
                 count++;
                 Vector2 reported = motion.PixelsAt(x, y), analytic = expected(x, y);
                 float error = Vector2.Distance(reported, analytic);
+                // NaN compares false both ways, so it would take the worst and lose it to the next pixel.
+                if (!float.IsFinite(error)) error = float.PositiveInfinity;
                 if (error <= worst) continue;
                 (worst, at, got, want) = (error, (x, y), reported, analytic);
             }

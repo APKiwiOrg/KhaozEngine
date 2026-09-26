@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
@@ -49,5 +50,18 @@ public sealed class MotionExpectationTests
         float dx = 260f - 160f;
         Assert.Equal(dx - dx / 1.25f, motion.X, 3);
         Assert.Equal(0f, motion.Y, 3);
+    }
+
+    [Fact]
+    public void ANonFiniteMotionFailsTheReadbackWhereverItFallsInTheScan()
+    {
+        // One row in scan order: 5 px off, then NaN, then 0.001 px off. NaN compares false both ways, so a worst kept
+        // by comparison alone takes the NaN, loses it to the next pixel and passes with 0.001 px.
+        var motion = new MotionTargetReadback(
+            [new Vector2(5f / 3f, 0f), new Vector2(float.NaN, float.NaN), new Vector2(.001f / 3f, 0f)], 3, 1);
+
+        var failure = Assert.ThrowsAny<Xunit.Sdk.XunitException>(
+            () => MotionExpectation.AssertDrawnPixels(motion, (_, _) => Vector2.Zero, .05f));
+        Assert.Contains("pixel (1, 0)", failure.Message);
     }
 }

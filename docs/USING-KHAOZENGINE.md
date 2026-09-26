@@ -12922,6 +12922,14 @@ panel over the frame. It starts hidden, so the only cost until you press F1 is t
 MB), **Draw stats** (the counters below), for a 3D app **Pass timings** (per-pass CPU encode ms, enabled
 only while the panel is visible so it costs nothing when hidden), and **Build**.
 
+All built-in section titles and row labels resolve through the public `DiagnosticsOverlayStrings` `StringId`
+fields. The disconnected Network value does too. Add the `diagnostics.overlay.performance.*`,
+`diagnostics.overlay.pass-timings.*`, `diagnostics.overlay.draw-stats.*`, `diagnostics.overlay.network.*`, and
+`diagnostics.overlay.build.title` keys to the game's catalog to translate the complete built-in panel. Missing
+keys use the built-in English fallback, preserving the earlier output. A locale switch appears on the next HUD
+refresh. Dynamic pass names, formatted numbers, and conventional units remain raw tokens. Text in custom
+`OverlaySection` and `OverlayRow` instances remains the game's responsibility.
+
 **Build** is one row naming the running app and its version, so a tester reading the panel can say which binary
 they ran. It needs no wiring and no debug switch. The default label is the entry assembly's product name and the
 default value is its `AssemblyInformationalVersionAttribute`, with a `+` build metadata suffix (the SourceLink
@@ -12932,9 +12940,8 @@ Diagnostics?.SetBuildIdentity(BuildConfig.Product, BuildConfig.DisplayVersion); 
 ```
 
 The identity is read once, on the first refresh that shows it, and never per frame. The name and version are
-shown verbatim as non-localizable tokens. The section title is the localized
-`DiagnosticsOverlayStrings.BuildTitle` (key `diagnostics.overlay.build.title`, English fallback "Build"). Add
-that key to the game's catalog to translate it.
+shown verbatim as non-localizable tokens. The section title keeps the already shipped
+`DiagnosticsOverlayStrings.BuildTitle` key (`diagnostics.overlay.build.title`, English fallback "Build").
 
 Opt out or rebind via `GameAppOptions`:
 
@@ -13024,6 +13031,8 @@ game hands it, a frame-time meter, a client network-stats snapshot, and a crash-
 widget is content-agnostic - **the game assembles the rows each frame**, so the metric catalog stays
 game-owned. The engine ships populators for the common Performance / Network sections. (For most games the
 turn-key HUD above is enough. Reach for this manual path only for custom rows, a recorder, or a bespoke panel.)
+The built-in populators localize their own titles, labels, and disconnected status through
+`DiagnosticsOverlayStrings`. A game's custom section titles and rows are passed through unchanged.
 
 The four pieces (`FrameStats`, `TelemetryRecorder`, `ClientNetStats` are in `KhaozEngine.Diagnostics`;
 `DiagnosticsOverlay` + `DiagnosticsOverlayTheme` in `KhaozEngine.Gui`; `WorldClient.NetStats` in

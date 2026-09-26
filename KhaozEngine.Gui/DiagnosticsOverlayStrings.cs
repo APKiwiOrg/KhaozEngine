@@ -14,6 +14,81 @@ namespace KhaozEngine.Gui;
 /// </summary>
 public static class DiagnosticsOverlayStrings
 {
+    /// <summary>The title of the built-in Performance section. No arguments.</summary>
+    public static readonly StringId PerformanceTitle = new("diagnostics.overlay.performance.title");
+
+    /// <summary>The frames-per-second row label. No arguments.</summary>
+    public static readonly StringId PerformanceFpsLabel = new("diagnostics.overlay.performance.fps");
+
+    /// <summary>The frame-time row label. No arguments.</summary>
+    public static readonly StringId PerformanceFrameMsLabel = new("diagnostics.overlay.performance.frame-ms");
+
+    /// <summary>The managed-memory row label. No arguments.</summary>
+    public static readonly StringId PerformanceManagedMbLabel = new("diagnostics.overlay.performance.managed-mb");
+
+    /// <summary>The title of the built-in Pass timings section. No arguments.</summary>
+    public static readonly StringId PassTimingsTitle = new("diagnostics.overlay.pass-timings.title");
+
+    /// <summary>The title of the built-in Draw stats section. No arguments.</summary>
+    public static readonly StringId DrawStatsTitle = new("diagnostics.overlay.draw-stats.title");
+
+    /// <summary>The draw-call row label. No arguments.</summary>
+    public static readonly StringId DrawCallsLabel = new("diagnostics.overlay.draw-stats.draw-calls");
+
+    /// <summary>The instance-count row label. No arguments.</summary>
+    public static readonly StringId InstancesLabel = new("diagnostics.overlay.draw-stats.instances");
+
+    /// <summary>The triangle-count row label. No arguments.</summary>
+    public static readonly StringId TrianglesLabel = new("diagnostics.overlay.draw-stats.triangles");
+
+    /// <summary>The quad-count row label. No arguments.</summary>
+    public static readonly StringId QuadsLabel = new("diagnostics.overlay.draw-stats.quads");
+
+    /// <summary>The batch-flush row label. No arguments.</summary>
+    public static readonly StringId FlushesLabel = new("diagnostics.overlay.draw-stats.flushes");
+
+    /// <summary>The texture-switch row label. No arguments.</summary>
+    public static readonly StringId TextureSwitchesLabel = new("diagnostics.overlay.draw-stats.texture-switches");
+
+    /// <summary>The total buffer-upload row label. No arguments.</summary>
+    public static readonly StringId UploadKbLabel = new("diagnostics.overlay.draw-stats.upload-kb");
+
+    /// <summary>The indented instance-upload row label. No arguments.</summary>
+    public static readonly StringId InstanceUploadKbLabel = new("diagnostics.overlay.draw-stats.instances-kb");
+
+    /// <summary>The indented CPU-skinned upload row label. No arguments.</summary>
+    public static readonly StringId SkinnedUploadKbLabel = new("diagnostics.overlay.draw-stats.skinned-kb");
+
+    /// <summary>The indented skinning-uniform upload row label. No arguments.</summary>
+    public static readonly StringId SkinUboUploadKbLabel = new("diagnostics.overlay.draw-stats.skin-ubo-kb");
+
+    /// <summary>The indented sprite-upload row label. No arguments.</summary>
+    public static readonly StringId SpriteUploadKbLabel = new("diagnostics.overlay.draw-stats.sprites-kb");
+
+    /// <summary>The title of the built-in Network section. No arguments.</summary>
+    public static readonly StringId NetworkTitle = new("diagnostics.overlay.network.title");
+
+    /// <summary>The disconnected-status row label. No arguments.</summary>
+    public static readonly StringId NetworkStatusLabel = new("diagnostics.overlay.network.status");
+
+    /// <summary>The value shown when the network source is disconnected. No arguments.</summary>
+    public static readonly StringId NetworkNotConnected = new("diagnostics.overlay.network.not-connected");
+
+    /// <summary>The round-trip latency row label. No arguments.</summary>
+    public static readonly StringId NetworkPingLabel = new("diagnostics.overlay.network.ping");
+
+    /// <summary>The packet-loss row label. No arguments.</summary>
+    public static readonly StringId NetworkLossLabel = new("diagnostics.overlay.network.loss");
+
+    /// <summary>The incoming and outgoing bandwidth row label. No arguments.</summary>
+    public static readonly StringId NetworkInOutLabel = new("diagnostics.overlay.network.in-out");
+
+    /// <summary>The snapshot-rate row label. No arguments.</summary>
+    public static readonly StringId NetworkSnapshotsLabel = new("diagnostics.overlay.network.snapshots");
+
+    /// <summary>The reconciliation-correction row label. No arguments.</summary>
+    public static readonly StringId NetworkCorrectionLabel = new("diagnostics.overlay.network.correction");
+
     /// <summary>The title of the built-in Build section, which names the running app and its version. No arguments.</summary>
     public static readonly StringId BuildTitle = new("diagnostics.overlay.build.title");
 
@@ -41,6 +116,31 @@ public static class DiagnosticsOverlayStrings
     {
         internal static readonly IReadOnlyDictionary<string, string> Map = new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["diagnostics.overlay.performance.title"] = "Performance",
+            ["diagnostics.overlay.performance.fps"] = "fps",
+            ["diagnostics.overlay.performance.frame-ms"] = "frame ms",
+            ["diagnostics.overlay.performance.managed-mb"] = "managed MB",
+            ["diagnostics.overlay.pass-timings.title"] = "Pass timings",
+            ["diagnostics.overlay.draw-stats.title"] = "Draw stats",
+            ["diagnostics.overlay.draw-stats.draw-calls"] = "draw calls",
+            ["diagnostics.overlay.draw-stats.instances"] = "instances",
+            ["diagnostics.overlay.draw-stats.triangles"] = "triangles",
+            ["diagnostics.overlay.draw-stats.quads"] = "quads",
+            ["diagnostics.overlay.draw-stats.flushes"] = "flushes",
+            ["diagnostics.overlay.draw-stats.texture-switches"] = "tex switches",
+            ["diagnostics.overlay.draw-stats.upload-kb"] = "upload KB",
+            ["diagnostics.overlay.draw-stats.instances-kb"] = "  instances KB",
+            ["diagnostics.overlay.draw-stats.skinned-kb"] = "  skinned KB",
+            ["diagnostics.overlay.draw-stats.skin-ubo-kb"] = "  skin ubo KB",
+            ["diagnostics.overlay.draw-stats.sprites-kb"] = "  sprites KB",
+            ["diagnostics.overlay.network.title"] = "Network",
+            ["diagnostics.overlay.network.status"] = "status",
+            ["diagnostics.overlay.network.not-connected"] = "not connected",
+            ["diagnostics.overlay.network.ping"] = "ping",
+            ["diagnostics.overlay.network.loss"] = "loss",
+            ["diagnostics.overlay.network.in-out"] = "in/out",
+            ["diagnostics.overlay.network.snapshots"] = "snapshots",
+            ["diagnostics.overlay.network.correction"] = "correction",
             ["diagnostics.overlay.build.title"] = "Build",
         };
 

@@ -28,6 +28,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   ([#471](https://github.com/APKiwiOrg/KhaozEngine/issues/471)).
 - The Stats facts now run from `KhaozEngine.Foundation.Tests`, so a Stats change no longer pulls the broad
   Game test project through selective CI ([#890](https://github.com/APKiwiOrg/KhaozEngine/issues/890)).
+- `KhaozEngine.Localization.Analyzers` now generates `StringId` fields from explicitly opted-in neutral
+  `.resx` files. Names and keys are deterministic, collisions fail the build, and Showcase no longer carries
+  its 136-field hand-written mirror ([#66](https://github.com/APKiwiOrg/KhaozEngine/issues/66)).
 
 ## 20.6.1
 

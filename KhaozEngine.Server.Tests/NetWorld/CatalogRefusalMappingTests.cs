@@ -192,10 +192,18 @@ public class CatalogRefusalMappingTests
         Assert.Equal("a", ConnectRefusal.Read("ke:world-mismatch:a|b").Detail);
         Assert.Equal(DisconnectReason.SignedInElsewhere, ConnectRefusal.Read(SessionRejectReason.SignedInElsewhere).Reason);
         Assert.True(ConnectRefusal.Read(SessionRejectReason.AlreadySignedIn).AllowsReconnect(retryOnReject: false));
-        Assert.Equal(DisconnectReason.RejectedToken, ConnectRefusal.Read(HandshakeToken.BannedReason).Reason);
-        Assert.Equal(HandshakeToken.BannedReason, ConnectRefusal.Read(HandshakeToken.BannedReason).Detail);
         Assert.Equal(DisconnectReason.RejectedToken, ConnectRefusal.Read(null).Reason);
         Assert.Equal(string.Empty, ConnectRefusal.Read(null).Detail);
+    }
+
+    [Fact]
+    public void A_ban_refusal_is_typed_and_terminal()
+    {
+        ConnectRefusal refusal = ConnectRefusal.Read(HandshakeToken.BannedReason);
+
+        Assert.Equal(DisconnectReason.Banned, refusal.Reason);
+        Assert.False(refusal.AllowsReconnect(retryOnReject: false));
+        Assert.False(refusal.AllowsReconnect(retryOnReject: true));
     }
 
     // Appended LAST so no shipped numeric value moves: a consumer that persisted or switched on the raw value keeps

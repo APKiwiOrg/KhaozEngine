@@ -468,13 +468,15 @@ consumer compiles and binds unchanged and a file importing both namespaces sees 
 `using KhaozEngine.NetWorld;` even from a head that never references the `NetWorld` package.
 
 - `BanGateAuthenticator(inner, IBanStore banStore, log?)` is the AT-THE-DOOR path: it refuses a banned subject
-  during authentication, with `ke:banned`, before any join, so the client reads a refused connect. It reads the
-  store live on every connect. The older `BanGateAuthenticator(inner, Func<string,bool> isBanned, log?)` stays
-  for a head whose ban list is not a store, and refuses identically.
+  during authentication, with `ke:banned`, before any join. `WorldClient` maps it to terminal
+  `DisconnectReason.Banned`. It reads the store live on every connect. The older
+  `BanGateAuthenticator(inner, Func<string,bool> isBanned, log?)` stays for a head whose ban list is not a store,
+  and refuses identically.
 - The JOIN path belongs to the server that owns players. A `WorldServer` or `ShardedWorldServer` handed the store
   as `banStore:` checks it after the authenticator admitted the peer and kicks with a typed
-  `ServerNotice(ServerNoticeKind.Banned)`, the notice a game banned-player banner renders. `ServerAdmin.BanAsync`
-  records the ban and kicks the live session.
+  `ServerNotice(ServerNoticeKind.Banned)`, the notice a game banned-player banner renders and `WorldClient` maps to
+  the same terminal reason. `ServerAdmin.BanAsync` records the ban and kicks the live session through that typed
+  notice. A direct store write reaches a float session on its next join.
 - Hand the SAME instance to both, `new BanGateAuthenticator(tokenAuth, bans)` and `banStore: bans`, and the two can
   never disagree about who is banned. A tile server takes it as `TileWorldServerConfig.BanStore` and reads it at the
   door, at the join, and once per tick over every live session, closing a banned one with the `ke:banned` notice

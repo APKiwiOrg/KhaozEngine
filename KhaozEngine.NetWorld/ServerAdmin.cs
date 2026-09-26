@@ -55,10 +55,12 @@ public sealed partial class ServerAdmin
     public void Kick(PlayerRef target, string reason) => server.Kick(target, reason);
     public void Broadcast(string text) => server.Broadcast(text);
 
-    /// <summary>Persists a ban then kicks the account if it is currently online (no-op if offline). A TOKENLESS
-    /// connection's id (<see cref="ResumePositionCache.GuestAccountPrefix"/>) is refused: it names a seat rather
-    /// than a person, so banning it punishes whoever is seated there next. Use <see cref="Kick"/> on the
-    /// <see cref="PlayerRef.Slot"/> for a player with no durable identity.</summary>
+    /// <summary>Persists a ban then kicks the account if it is currently online (no-op if offline). The shipped heads
+    /// read the stored ban while applying the kick and send their typed ban notice instead of the operator reason,
+    /// which stays in the store. A TOKENLESS connection's id
+    /// (<see cref="ResumePositionCache.GuestAccountPrefix"/>) is refused: it names a seat rather than a person, so
+    /// banning it punishes whoever is seated there next. Use <see cref="Kick"/> on the <see cref="PlayerRef.Slot"/>
+    /// for a player with no durable identity.</summary>
     /// <exception cref="ArgumentException"><paramref name="accountId"/> is a tokenless connection's id.</exception>
     public async ValueTask BanAsync(string accountId, string reason, DateTimeOffset? until = null, CancellationToken ct = default)
     {

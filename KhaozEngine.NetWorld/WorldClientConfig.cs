@@ -34,16 +34,17 @@ public sealed class WorldClientConfig
     /// snapshot (only advances when <see cref="WorldClient.Poll(float)"/> is called with dt &gt; 0). Default 3s.</summary>
     public float DisconnectTimeoutSeconds { get; init; } = 3f;
 
-    /// <summary>Auto-reconnect on a mid-session drop (honored only when the factory ctor is used). Default true:
-    /// the client rebuilds the transport, resumes the same token, and re-syncs without a manual rebuild.</summary>
+    /// <summary>Auto-reconnect on a retryable mid-session drop (honored only when the factory ctor is used). Default
+    /// true: the client rebuilds the transport, resumes the same token, and re-syncs without a manual rebuild.
+    /// Terminal reasons such as <see cref="DisconnectReason.Banned"/> never reconnect.</summary>
     public bool AutoReconnect { get; init; } = true;
 
     /// <summary>Keep retrying even after a token rejection. Default false: a rejected token is terminal (it will not
     /// fix itself), surfaced as <see cref="DisconnectReason.RejectedToken"/>. Only that reason follows this switch: the
     /// typed refusals the same build can never clear (<see cref="DisconnectReason.IncompatibleVersion"/>,
     /// <see cref="DisconnectReason.ContentMismatch"/>, <see cref="DisconnectReason.ContentVersionMismatch"/>,
-    /// <see cref="DisconnectReason.ContentClientTooOld"/> and <see cref="DisconnectReason.SignedInElsewhere"/>) stay
-    /// terminal whatever it says.</summary>
+    /// <see cref="DisconnectReason.ContentClientTooOld"/>, <see cref="DisconnectReason.SignedInElsewhere"/> and
+    /// <see cref="DisconnectReason.Banned"/>) stay terminal whatever it says.</summary>
     public bool RetryOnReject { get; init; } = false;
 
     /// <summary>Backoff schedule for auto-reconnect.</summary>

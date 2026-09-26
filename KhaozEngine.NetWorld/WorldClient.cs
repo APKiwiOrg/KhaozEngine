@@ -318,11 +318,12 @@ public sealed partial class WorldClient : IDisposable
                         // A typed notice that arrived before the drop says what the drop MEANS, so it wins over the
                         // generic Unreachable a bare transport loss gets. A ban outranks a shutdown when somehow
                         // both arrived: a broadcast restart warning goes to everyone, a ban is aimed at this account.
-                        // Neither changes whether the attempt is retried, only how it is described.
+                        // A ban is terminal because reconnecting cannot clear the server's decision. Shutdown and a
+                        // bare transport loss stay on the reconnect backoff.
                         disconnectReason = sawBanNotice ? DisconnectReason.Banned
                             : sawShutdownNotice ? DisconnectReason.ServerShutdown
                             : DisconnectReason.Unreachable;
-                        FailAttempt(allowReconnect: true);
+                        FailAttempt(allowReconnect: disconnectReason != DisconnectReason.Banned);
                     }
                     break;
             }

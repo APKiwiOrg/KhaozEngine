@@ -87,7 +87,11 @@ public sealed class ModelMotionPipelineTests
             .Where(p => p.VertexGlsl == ShaderSources.SkinnedModelMotionVert).ToArray();
         Assert.Equal(new[] { ShaderSources.SkinnedModelMotionFrag, ShaderSources.SkinnedModelDissolveMotionFrag },
             skinned.Select(p => p.FragmentGlsl).ToArray());
-        Assert.All(skinned, p => Assert.Equal(4, p.Description.ResourceLayouts.Length));
+        Assert.All(skinned, p =>
+        {
+            Assert.Equal(4, p.Description.ResourceLayouts.Length);
+            Assert.Same(model.Motion!.SkinnedPalette.Layout, p.Description.ResourceLayouts[3]);
+        });
     }
 
     [Fact]
@@ -131,6 +135,21 @@ public sealed class ModelMotionPipelineTests
         Assert.Equal(3, foliage.Description.ResourceLayouts.Length);
         Assert.Same(model.Motion!.FrameLayout, foliage.Description.ResourceLayouts[2]);
         Assert.DoesNotContain(factory.GraphicsPipelines, p => p.VertexGlsl == ShaderSources.FoliageVert);
+    }
+
+    [Fact]
+    public void EveryPipelineATemporalRendererBuildsBindsAtMostVulkansFourGuaranteedSets()
+    {
+        // maxBoundDescriptorSets is only guaranteed to be 4, so a fifth set would fail pipeline creation on a
+        // minimum-spec Vulkan device. The GPU-skinned variant already sits at the ceiling with the motion block at set 3.
+        using var device = new FakeGpuDevice();
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
+        using IGpuCommandList commands = factory.CreateCommandList();
+        model.UploadFoliageUniforms(commands, [default]);   // the foliage pipeline builds on its first upload
+
+        Assert.NotEmpty(Temporal(factory));
+        Assert.All(factory.GraphicsPipelines, p => Assert.InRange(p.Description.ResourceLayouts.Length, 1, 4));
     }
 
     [Fact]

@@ -161,9 +161,11 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuResourceSet _defaultSet;   // UBO + white + flatNormal + defaultRough + sampler; bound for meshes with no material set
         IGpuPipeline _pipeline = null!;         // rebuilt by SetOutputs when the MRT sample count (MSAA) changes (set via BuildPipelines)
         readonly IGpuShaderSet _shaders;
-        // Teleport CharDissolve variant: the SAME layout + vertex/instance layouts + outputs as _pipeline, only the
-        // fragment shader differs (noise alpha-clip + emissive edge). A separate pipeline so the normal skinned/rigid
-        // path keeps _pipeline byte-identical (the golden images are unaffected); selected per-draw by BindDissolvePass.
+        // Teleport CharDissolve variant, bound by BindDissolvePass for the CPU-skinned draws that dissolve. Under the
+        // base target it has _pipeline's layout, vertex and instance streams and outputs, and only the fragment shader
+        // differs (noise alpha-clip + emissive edge), so the non-dissolving path keeps _pipeline byte-identical and the
+        // golden images are unaffected. Under a temporal target it is the CPU-skinned dissolve variant
+        // (ModelRenderer.Motion.cs).
         IGpuPipeline _dissolvePipeline = null!;
         readonly IGpuShaderSet _dissolveShaders;
 
@@ -182,9 +184,9 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuBuffer? _instanceBuffer;
         uint _instanceCapacity;          // capacity in instances
         // CPU-skinned path (Scene3D.UseGpuSkinning = false): skinned meshes are deformed on the CPU each frame and
-        // drawn through THIS no-bone model pipeline. One concatenated transient vertex stream (all skinned draws'
-        // deformed verts) + a parallel per-draw instance stream, both grown geometrically and retired like
-        // _instanceBuffer.
+        // drawn through this renderer's no-bone pipelines (BindCpuSkinnedPass, BindDissolvePass). One concatenated
+        // transient vertex stream (all skinned draws' deformed verts) + a parallel per-draw instance stream, both
+        // grown geometrically and retired like _instanceBuffer.
         IGpuBuffer? _skinnedVertexBuffer; uint _skinnedVertexCapacity;     // capacity in ModelVertex
         IGpuBuffer? _skinnedInstanceBuffer; uint _skinnedInstanceCapacity; // capacity in InstanceData
 
@@ -405,7 +407,9 @@ namespace KhaozEngine.Render3D.Rendering
                 Outputs = modelOutputs,
             });
 
-            // CharDissolve variant: identical to _pipeline except the fragment shader (noise alpha-clip + edge).
+            // CharDissolve variant. Under the base target it is identical to _pipeline except the fragment shader
+            // (noise alpha-clip + edge). Under a temporal target it is the CPU-skinned dissolve variant, because only
+            // CPU-skinned draws bind it and they carry last frame's positions per vertex, not a rigid motion slot.
             if (temporal) _dissolvePipeline = CreateCpuSkinnedMotionPipeline(factory, modelOutputs, vertexLayout, instanceLayout, dissolve: true);
             else _dissolvePipeline = factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
@@ -522,9 +526,10 @@ namespace KhaozEngine.Render3D.Rendering
                 cfg.Filter, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap,
                 maximumAnisotropy: cfg.MaximumAnisotropy, mipLodBias: cfg.MipLodBias));
 
-        /// <summary>Bind the CharDissolve pipeline variant for the skinned draws that carry a dissolve threshold (the
-        /// InstanceData.Dissolve channels drive the noise discard + emissive edge). Same material sets + frame UBO as
-        /// <see cref="BindPass"/>; switch back with <see cref="BindPass"/> for non-dissolving draws.</summary>
+        /// <summary>Bind the CharDissolve pipeline variant for the CPU-skinned draws that carry a dissolve threshold
+        /// (the InstanceData.Dissolve channels drive the noise discard + emissive edge): the base dissolve pipeline, or
+        /// the CPU-skinned dissolve variant while the target is temporal. Same material sets and frame UBO as
+        /// <see cref="BindCpuSkinnedPass"/>, which switches back for non-dissolving draws.</summary>
         public void BindDissolvePass(IGpuCommandList cl) => cl.SetPipeline(_dissolvePipeline);
 
         /// <summary>Ensure the persistent instance buffer holds at least <paramref name="instances"/>.Length

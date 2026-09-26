@@ -7,14 +7,16 @@ namespace KhaozEngine.Render3D.Internal;
 /// <summary>
 /// Last frame's world positions of a CPU-skinned draw, one per deformed vertex, for the CPU-skinned temporal variant
 /// (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24 section 3). A keyed draw with a usable last frame is re-skinned from the
-/// palette and world <see cref="MotionHistory"/> kept for its key. Anything else gets this frame's own positions, which
-/// is camera-only motion. The stream is parallel to the deformed vertices, so a draw's base vertex selects both.
+/// palette <see cref="MotionHistory"/> kept for its key and placed with last frame's world, reduced against this
+/// frame's render origin. Anything else gets this frame's own positions, which is camera-only motion. The stream is
+/// parallel to the deformed vertices, so a draw's base vertex selects both.
 /// </summary>
 internal static class CpuSkinnedMotion
 {
     /// <summary>Re-skin <paramref name="source"/> with last frame's composed palette and place it with last frame's
-    /// render-relative world. <see cref="SkinningMath.SkinVertex"/> runs this blend and this position transform, so each
-    /// position is the one the draw uploaded last frame, bit for bit before the world transform.</summary>
+    /// world, reduced against this frame's render origin. <see cref="SkinningMath.SkinVertex"/> runs this blend and this
+    /// position transform, so each position is the one the draw uploaded last frame, bit for bit before the world
+    /// transform.</summary>
     public static void AppendPrevious(ReadOnlySpan<SkinnedVertex> source, ReadOnlySpan<Matrix4x4> previousPalette,
         in Matrix4x4 previousWorld, List<Vector3> destination)
     {

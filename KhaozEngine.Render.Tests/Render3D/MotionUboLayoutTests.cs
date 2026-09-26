@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
@@ -38,6 +39,16 @@ public sealed class MotionUboLayoutTests
         Assert.Equal(128, (int)Marshal.OffsetOf<MotionFrameUbo>(nameof(MotionFrameUbo.Params)));
         Assert.Equal(["mat4 CurViewProj", "mat4 PrevViewProj", "vec4 MotionParams"],
             Members("uniform MotionFrame {" + ShaderSources.MotionFrameMembersGlsl + "};", "uniform MotionFrame {"));
+    }
+
+    [Fact]
+    public void TheSkinnedMotionVertexDeclaresOnePreviousBonePerPaletteBone()
+    {
+        // The skinned motion palette's slot is last frame's world then its palette, sized from the same bone cap the
+        // live palette uses, so the GLSL window and the C# payload cannot drift apart.
+        string palette = "mat4 prevBones[" + SkinningMath.MaxBonesPerDraw + "];";
+        Assert.Contains(palette, ShaderSources.SkinnedModelMotionVert);
+        Assert.Equal(64u + (uint)SkinningMath.MaxBonesPerDraw * 64, SkinnedMotionPalette.PayloadBytes);
     }
 
     [Fact]

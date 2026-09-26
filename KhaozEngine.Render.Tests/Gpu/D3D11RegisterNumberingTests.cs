@@ -266,10 +266,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on the five shipped
+        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on eight of the shipped
         /// multi-layout pipelines: <c>SpriteBatch</c>, the skinned model pass, the skinned depth pass, the splat
-        /// pass and the tile-ground pass. The two skinned ones share one palette layout OBJECT at different slots,
-        /// which is the case that proves the base comes from the array rather than from the layout.
+        /// pass, the tile-ground pass, and the rigid, skinned and foliage temporal variants. The skinned model and
+        /// depth passes share one palette layout OBJECT at different slots, which is the case that proves the base
+        /// comes from the array rather than from the layout.
         /// </summary>
         [Fact]
         public void AcrossLayouts_TheShippedPipelinesFlattenInArrayOrder()

@@ -193,12 +193,14 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// EVERY SHIPPED RESOURCE-SET SHAPE, against the invariant, device-free. The engine builds nine
-        /// <c>new GpuBufferRange(...)</c> resource sets over a uniform buffer, which are EIGHT distinct shapes
-        /// (<c>SpriteBatch</c> builds the same one at construction and again after a grow), and every one of them
-        /// is a slot array addressed by a per-draw dynamic offset. Each is swept across the capacities the renderer
-        /// actually grows through, because the buffer's size and the largest offset both scale with the capacity
-        /// and a single sample would pin one of them by accident.
+        /// THE SHIPPED RESOURCE-SET SHAPES THIS TABLE HOLDS, against the invariant, device-free. The table holds NINE
+        /// distinct shapes, and every one of them is a slot array addressed by a per-draw dynamic offset. The engine
+        /// builds eighteen <c>new GpuBufferRange(...)</c> resource sets over a uniform buffer, which are sixteen
+        /// distinct shapes (<c>SpriteBatch</c> and the skinned main set each build theirs at two sites), so seven
+        /// shapes are not swept here: the ground-decal frame block, the foliage block, the point-shadow face and
+        /// skinned caster slots, the silhouette slot, and the target-outline draw and palette slots. Each row is swept
+        /// across the capacities the renderer actually grows through, because the buffer's size and the largest
+        /// offset both scale with the capacity and a single sample would pin one of them by accident.
         /// <para>
         /// Sizes are referenced by their own constant wherever one is reachable, and the private literals are
         /// hardcoded against the line that owns them, which is the same convention

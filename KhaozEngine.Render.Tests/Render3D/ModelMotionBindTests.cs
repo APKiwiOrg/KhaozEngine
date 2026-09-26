@@ -27,6 +27,8 @@ public sealed class ModelMotionBindTests
         [ShaderSources.ModelMotionFrag] = nameof(ShaderSources.ModelMotionFrag),
         [ShaderSources.ModelCpuSkinnedMotionVert] = nameof(ShaderSources.ModelCpuSkinnedMotionVert),
         [ShaderSources.ModelDissolveMotionFrag] = nameof(ShaderSources.ModelDissolveMotionFrag),
+        [ShaderSources.SkinnedModelMotionVert] = nameof(ShaderSources.SkinnedModelMotionVert),
+        [ShaderSources.SkinnedModelMotionFrag] = nameof(ShaderSources.SkinnedModelMotionFrag),
     };
 
     // The program a recorded draw's pipeline was built from, as "vertex + fragment".
@@ -96,5 +98,30 @@ public sealed class ModelMotionBindTests
             Assert.Same(model.CpuSkinnedInstanceBuffer, draw.VertexBuffers[1]);
             Assert.Same(motion.CpuPrevious, draw.VertexBuffers[2]);
         });
+    }
+
+    [Fact]
+    public void AGpuSkinnedDrawBindsItsCastersLastFrameAtSetThreeAtThatCastersSlot()
+    {
+        using var device = new FakeGpuDevice();
+        using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
+        ModelMotionResources motion = model.Motion!;
+        model.EnsureSkinnedMainCapacity(4);
+        model.EnsureSkinnedBonePaletteCapacity(4);
+        model.EnsureSkinnedMotionCapacity(4);
+        using IGpuBuffer vb = device.Factory.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.VertexBuffer));
+        using IGpuBuffer ib = device.Factory.CreateBuffer(new GpuBufferDescription(6, GpuBufferUsage.IndexBuffer));
+        var cl = new RecordingGpuCommandList(new NullGpuCommandList()) { CaptureBindings = true };
+
+        // Scene3D passes one compacted caster index as both slots. They differ here, so the fact also pins that set 3
+        // follows the palette slot, as set 2 does.
+        model.BindSkinnedPass(cl);
+        model.DrawGpuSkinned(cl, vb, ib, 3, GpuIndexFormat.UInt16, slot: 1, paletteSlot: 2, null);
+
+        RecordingGpuCommandList.DrawBindings draw = Assert.Single(cl.Bindings);
+        Assert.Equal("SkinnedModelMotionVert + SkinnedModelMotionFrag", Program(draw.Pipeline));
+        Assert.Same(motion.SkinnedPalette.Set, draw.Sets[3].Set);
+        Assert.Equal(SkinnedMotionPalette.OffsetFor(2), draw.Sets[3].DynamicOffset);
+        Assert.Equal(2u * 8448u, draw.Sets[3].DynamicOffset);
     }
 }

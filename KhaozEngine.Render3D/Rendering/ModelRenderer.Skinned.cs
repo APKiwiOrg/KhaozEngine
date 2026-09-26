@@ -48,11 +48,13 @@ internal sealed partial class ModelRenderer
         cl.UpdateBuffer(_skinnedInstanceBuffer!, 0, instances);
     }
 
-    /// <summary>Draw one CPU-skinned mesh through the model pipeline: its deformed vertices live at
-    /// <paramref name="baseVertex"/>.. in the shared skinned vertex buffer (added per index via the draw's
-    /// vertexOffset), and its instance data is element <paramref name="drawIndex"/> of the skinned instance
-    /// buffer (selected by instanceStart). One <c>instanceCount=1</c> draw. <see cref="BindPass"/> +
-    /// <see cref="SetFrameUniforms"/> must already be bound (the rigid pass shares the frame UBO).</summary>
+    /// <summary>Draw one CPU-skinned mesh through the pipeline <see cref="BindCpuSkinnedPass"/> or
+    /// <see cref="BindDissolvePass"/> bound: its deformed vertices live at <paramref name="baseVertex"/>.. in the
+    /// shared skinned vertex buffer (added per index via the draw's vertexOffset), and its instance data is element
+    /// <paramref name="drawIndex"/> of the skinned instance buffer (selected by instanceStart). One
+    /// <c>instanceCount=1</c> draw. <see cref="SetFrameUniforms"/> must already have run (the rigid pass shares the
+    /// frame UBO). While the target is temporal the draw also binds the motion block at set 1 and last frame's
+    /// positions at vertex slot 2, parallel to the deformed vertices.</summary>
     public void DrawCpuSkinned(IGpuCommandList cl, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, int baseVertex, uint drawIndex, IGpuResourceSet? materialSet)
     {
         cl.SetGraphicsResourceSet(0, materialSet ?? _defaultSet);

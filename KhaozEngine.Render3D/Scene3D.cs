@@ -1790,7 +1790,7 @@ namespace KhaozEngine.Render3D
             if (UseGpuSkinning) DrawGpuSkinnedMain(cl);
             else if (_cpuSkinnedDraws.Count > 0)
             {
-                // CPU path: the deformed geometry uploaded above, drawn through the rigid (no-bone) model pipeline.
+                // CPU path: the deformed geometry uploaded above, drawn without bones through the pipelines bound below.
                 _model.BindCpuSkinnedPass(cl);   // the CPU-skinned pipeline (the rigid one, or its temporal variant)
                 bool dissolveBound = false;
                 for (int d = 0; d < _cpuSkinnedDraws.Count; d++)

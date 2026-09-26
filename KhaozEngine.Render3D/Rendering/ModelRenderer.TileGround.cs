@@ -69,7 +69,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Build the tile-ground pipeline from the MRT outputs and the shared vertex + instance layouts.
         /// Called by <see cref="BuildPipelines"/>, so <see cref="SetOutputs"/> rebuilds it with the rest when the
         /// sample count changes. The layout array order IS the set numbering the backends flatten registers in, so
-        /// set 0 (frame) comes before set 1 (material).</summary>
+        /// set 0 (frame) comes before set 1 (material), and against a temporal target set 2 is the motion block.</summary>
         void BuildTileGroundPipeline(IGpuResourceFactory factory, GpuOutputDescription modelOutputs,
             GpuVertexLayoutDescription vertexLayout, GpuVertexLayoutDescription instanceLayout)
         {
@@ -133,8 +133,9 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>Draw one tile-ground mesh run through the tile-ground pipeline, reusing the shared instance
         /// buffer. Set 0 is the shared frame block and set 1 is <paramref name="groundSet"/>, the material's params
-        /// UBO + albedo array + sampler. Both are bound per draw, the way the splat pass binds its own pair.
-        /// <see cref="BindTileGroundPass"/> must be bound.</summary>
+        /// UBO + albedo array + sampler. Both are bound per draw, the way the splat pass binds its own pair, and
+        /// against a temporal target so is the motion block at set 2. <see cref="BindTileGroundPass"/> must be
+        /// bound.</summary>
         public void DrawTileGroundMeshInstanced(IGpuCommandList cl, IGpuBuffer vb, IGpuBuffer ib, int indexCount,
             GpuIndexFormat indexFormat, uint instanceStart, uint instanceCount, IGpuResourceSet groundSet)
         {

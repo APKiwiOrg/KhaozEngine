@@ -38,6 +38,10 @@ namespace KhaozEngine.Tests.Gpu
             _drawBindings.Add(new DrawBindings(_currentPipeline, sets, new Dictionary<uint, IGpuBuffer>(_vertexBuffers)));
         }
 
-        void ClearBindings() => _drawBindings.Clear();
+        void ClearBindings()
+        {
+            _drawBindings.Clear();
+            _vertexBuffers.Clear();   // ClearReads forgets the bound sets, so the vertex streams go with them
+        }
     }
 }

@@ -29,6 +29,9 @@ namespace KhaozEngine.Tests.Gpu
     /// BloomBlurFrag/BloomCompositeFrag (PixelPostProcess)</item>
     /// <item>FullscreenVert+TransitionSolidFrag/TransitionCrossfadeFrag (TransitionRenderer), ModelVert+ModelDissolveFrag (CharDissolve)</item>
     /// <item>SpriteBatch VertSrc+FragSrc (Render2D)</item>
+    /// <item>The temporal motion variants of the model, skinned, CPU-skinned, foliage, splat and tile-ground passes
+    /// and the five motion-preserving transparent fragments (built only against a model target with the motion
+    /// attachment)</item>
     /// </list>
     /// </summary>
     public sealed class ShaderSourceValidationTests

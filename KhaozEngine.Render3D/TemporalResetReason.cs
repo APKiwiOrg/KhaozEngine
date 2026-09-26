@@ -7,7 +7,7 @@ namespace KhaozEngine.Render3D
         /// <summary>No reset has happened.</summary>
         None,
         /// <summary>The first frame rendered with temporal rendering active, since the scene was created or since
-        /// temporal rendering was last off.</summary>
+        /// temporal rendering was last off, and every frame while temporal rendering is off.</summary>
         FirstFrame,
         /// <summary>The internal render target changed size.</summary>
         Resize,

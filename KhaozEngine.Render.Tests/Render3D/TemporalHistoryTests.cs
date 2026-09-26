@@ -45,6 +45,27 @@ public sealed class TemporalHistoryTests
         Assert.Equal(reason, history.LastReset);
     }
 
+    /// <summary>A reason appended to the public enum lands after the guard's upper bound. Reading the members at run
+    /// time makes that a failing test rather than a throw on the first frame that hits the new trigger.</summary>
+    [Fact]
+    public void EveryDefinedReasonIsAcceptedAndTheValueAfterTheLastIsRefused()
+    {
+        var max = TemporalResetReason.None;
+        foreach (var reason in Enum.GetValues<TemporalResetReason>())
+        {
+            if (reason > max)
+                max = reason;
+            if (reason == TemporalResetReason.None)
+                continue;
+            var accepting = new TemporalHistory();
+            accepting.Invalidate(reason);
+            Assert.Equal(reason, accepting.LastReset);
+        }
+
+        var refusing = new TemporalHistory();
+        Assert.Throws<ArgumentOutOfRangeException>(() => refusing.Invalidate((TemporalResetReason)((int)max + 1)));
+    }
+
     [Fact]
     public void TheLatestResetWins()
     {

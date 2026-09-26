@@ -51,6 +51,14 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `Transform3D.ToMatrix(Vector3 renderOrigin)` (in `KhaozEngine.Render3D.Ecs`) builds a reduced matrix for a
   consumer that wants one, which `Scene3D` itself never requires. Terrain chunk vertices, terrain texturing at range and depth precision are
   explicitly NOT fixed by it. See docs/USING-KHAOZENGINE.md.
+- `Scene3D.CameraCut()` / `Scene3D.DebugView` / `Scene3D.LastTemporalDiagnostics` / `Post.Temporal` - the temporal
+  rendering foundations. Every frame renders through one view snapshot and the previous frame's view is kept, rebased
+  across the one-cell steps the automatic render origin takes. Nothing changes until something asks for temporal
+  rendering, and a `DebugView` other than `SceneDebugView.None`, such as `SceneDebugView.MotionVectors`, is the public
+  way to ask. Call `CameraCut()` on a teleport, a loading screen or a cutscene cut.
+  A camera that moves further than `Post.Temporal.CutDistanceMetres` (16 m) or turns more than
+  `Post.Temporal.CutAngleDegrees` (60 degrees) in one frame is a cut automatically, and so is a render origin jump the
+  previous view cannot be rebased across. See docs/USING-KHAOZENGINE.md.
 - `GltfLoader` / `GltfMesh` / `MeshPrimitives` / `MeshBuilder` - runtime glTF load (SharpGLTF) + procedural meshes.
 - `Scene3D` + `Render3DSurface(AppWindow)` - multi-instance mesh draw (`LoadMesh`/`LoadTexture`/`Begin`/`Draw`
   with per-instance tint + `Material`, plus a per-instance dissolve overload `Draw(handle, transform, tint,

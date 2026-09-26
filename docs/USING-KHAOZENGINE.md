@@ -16905,6 +16905,7 @@ bankPages.Capacity = 800;                    // LEGAL below occupancy: nothing i
 // refused is rejected here before a single page is decoded.
 var context = new ContainerLoadContext(
     streamKey: persistenceKey,
+    telemetryKey: telemetrySafeKey,             // log-only identifier, redacted when persistenceKey has an account id
     container: "bank",
     properties: properties,
     types: types,
@@ -16928,6 +16929,10 @@ foreach (ContainerLoadFinding finding in loaded.Findings)
 
 IReadOnlyList<ItemContainerPage> owed = loaded.Dirty;   // rides the NEXT commit and never causes one
 ```
+
+`streamKey` is always the exact stored key and remains the section filter. The optional `telemetryKey` is used
+only in the warning line and defaults to `streamKey`. Give it a redacted value when the stored key contains an
+account id. The counter still reports one increment per quarantined record with only content type id and reason.
 
 Rules run BEFORE the validator, which is what gives a drift finding its meaning: an `unknown-definition` or
 `unknown-content-reference` finding means no rule covered it. `InstanceRemapPass.Apply` is the pass itself, in

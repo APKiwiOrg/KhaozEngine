@@ -11,9 +11,9 @@ namespace KhaozEngine.ItemInstances.Journal;
 /// <para>
 /// <b>It is a record of arguments rather than a service.</b> Spec 5.5 writes the load as
 /// <c>Load(sections, snapshot)</c>, and the pass and the validator need four more things by name (the two
-/// registries, the rule set and the door predicate) plus the two sinks the telemetry call takes. Passing
-/// eight arguments positionally is how a caller puts the registries the wrong way round, so they arrive as
-/// one named thing that is built once per container.
+/// registries, the rule set and the door predicate) plus the safe telemetry identifier and the two sinks the
+/// telemetry call takes. Passing these arguments positionally is how a caller puts the registries the wrong
+/// way round, so they arrive as one named thing that is built once per container.
 /// </para>
 /// <para>
 /// <b>The rule set is vetted HERE, once.</b> <c>RemapRuleSet.IsIdempotent</c> is a nested loop over the whole
@@ -28,9 +28,8 @@ public sealed class ContainerLoadContext
     /// <summary>
     /// Builds the context for one container on one stream.
     /// </summary>
-    /// <param name="streamKey">The stream the sections are filed under, which is the only identifying thing
-    /// the log line carries (contracts 10.2 forbids the payload bytes and a raw account id). A section on any
-    /// other stream is not this container's.</param>
+    /// <param name="streamKey">The stream the sections are filed under. A section on any other stream is not
+    /// this container's.</param>
     /// <param name="container">The container name, the first half of every one of its section names.</param>
     /// <param name="properties">The property kinds this build knows.</param>
     /// <param name="types">The content types the active pack registers.</param>
@@ -42,6 +41,8 @@ public sealed class ContainerLoadContext
     /// through the ambient facade. Null emits no line.</param>
     /// <param name="counter">Contracts 10.2's counter, called once per record out of play and once per
     /// abandoned remap. Null counts nothing.</param>
+    /// <param name="telemetryKey">The safe stream identifier written to telemetry. Null uses
+    /// <paramref name="streamKey"/>. Supply a redacted value when the stored key contains an account id.</param>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="container"/> is not a name
     /// <see cref="ContainerSectionNames.Format"/> would accept, or the rule set is not idempotent.</exception>
@@ -53,7 +54,8 @@ public sealed class ContainerLoadContext
         RemapRuleSet rules,
         Func<int, bool> stackable,
         ILogger? logger = null,
-        Action<int, string>? counter = null)
+        Action<int, string>? counter = null,
+        string? telemetryKey = null)
     {
         ArgumentNullException.ThrowIfNull(streamKey);
         ArgumentNullException.ThrowIfNull(container);
@@ -74,6 +76,7 @@ public sealed class ContainerLoadContext
         Stackable = stackable;
         Logger = logger;
         Counter = counter;
+        TelemetryKey = telemetryKey ?? streamKey;
     }
 
     /// <summary>The stream the sections are filed under.</summary>
@@ -99,4 +102,7 @@ public sealed class ContainerLoadContext
 
     /// <summary>Where the per record count goes, or null.</summary>
     public Action<int, string>? Counter { get; }
+
+    /// <summary>The safe stream identifier written to telemetry.</summary>
+    public string TelemetryKey { get; }
 }

@@ -40,8 +40,8 @@ public static partial class ContainerLoad
     /// filtering it first and duplicating the naming rule.</param>
     /// <param name="snapshot">The ACTIVE content version. Nothing is read from a store, a file or an ambient
     /// static inside this call.</param>
-    /// <param name="context">The registries, the vetted rule set, the door predicate and the two telemetry
-    /// sinks.</param>
+    /// <param name="context">The registries, the vetted rule set, the door predicate, the safe telemetry
+    /// identifier and the two telemetry sinks.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     public static ContainerLoadResult Load(
         IReadOnlyList<JournalProjectionSection> sections,
@@ -69,7 +69,7 @@ public static partial class ContainerLoad
         // ONE line per container and one counter increment per record, spec 12.6 over contracts 10.2. The
         // load's own findings ride beside the sweeps for page failures, rescues and remap facts.
         InstanceValidationTelemetry.Report(
-            load.Reports, load.Reasons, context.StreamKey, snapshot.VersionNumber, context.Logger, context.Counter);
+            load.Reports, load.Reasons, context.TelemetryKey, snapshot.VersionNumber, context.Logger, context.Counter);
         return new ContainerLoadResult(context.Container, load.Pages, load.Reports, load.Findings);
     }
 

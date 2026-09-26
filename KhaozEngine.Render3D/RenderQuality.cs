@@ -17,8 +17,11 @@ namespace KhaozEngine.Render3D
     /// <item><see cref="Ssaa"/> - supersample the whole image at <see cref="AntiAliasing.SsaaFactor"/> per axis, then
     ///   downsample. Anti-aliases geometry AND shaded interiors (the strongest, and the only one that kills
     ///   high-frequency terrain/foliage shimmer), at ~factor^2 the fragment cost.</item>
+    /// <item><see cref="Temporal"/> - temporal anti-aliasing with upscaling: render jittered at a fraction of the display
+    ///   (<see cref="TemporalSettings.Upscale"/>) and reconstruct the display image from the frame and its history.
+    ///   Single-sample, stable on thin moving detail, cheaper than MSAA at the lower presets.</item>
     /// </list>
-    /// Extend by adding modes (future TAA / SMAA) - unknown/unsupported modes resolve to a safe fallback rather than
+    /// Extend by adding modes (future SMAA). Unknown or unsupported modes resolve to a safe fallback rather than
     /// throwing (see <see cref="AntiAliasing.ResolveFor(in GpuCapabilities)"/>).
     /// </summary>
     public enum AntiAliasingMode
@@ -31,6 +34,9 @@ namespace KhaozEngine.Render3D
         Msaa,
         /// <summary>Supersample AA: render larger, downsample (edges AND shaded interiors).</summary>
         Ssaa,
+        /// <summary>Temporal AA with upscaling. Forces <see cref="RenderScale.Temporal"/>, never combines with MSAA, and
+        /// is refused with <see cref="PixelPostProcessSettings.Pixelated"/>.</summary>
+        Temporal,
     }
 
     /// <summary>
@@ -77,6 +83,10 @@ namespace KhaozEngine.Render3D
         /// <summary>Supersample AA at <paramref name="factor"/> per axis (e.g. 2 / 3 / 4). Costs ~factor^2 in
         /// fragment shading; the strongest AA and the only one that removes high-frequency shimmer.</summary>
         public static AntiAliasing Ssaa(float factor) => new(AntiAliasingMode.Ssaa, 1, MathF.Max(1f, factor));
+        /// <summary>Temporal anti-aliasing with upscaling (see <see cref="AntiAliasingMode.Temporal"/>). The internal size
+        /// follows <see cref="PixelPostProcessSettings.Temporal"/>'s <see cref="TemporalSettings.Upscale"/> preset or
+        /// <see cref="TemporalSettings.UpscaleRatio"/>.</summary>
+        public static AntiAliasing Temporal => new(AntiAliasingMode.Temporal, 1, 1f);
 
         /// <summary>
         /// Return a copy clamped to what <paramref name="caps"/> supports, so an unsupported request degrades
@@ -87,6 +97,7 @@ namespace KhaozEngine.Render3D
         ///   one it falls back to <see cref="Fxaa"/>.</item>
         /// <item><see cref="AntiAliasingMode.Ssaa"/> keeps its factor (clamped to at least 1; the target size is
         ///   separately capped by <see cref="PixelPostProcessSettings.MaxRenderWidth"/>/<c>Height</c>).</item>
+        /// <item><see cref="AntiAliasingMode.Temporal"/> is always available and always single-sample.</item>
         /// <item><see cref="AntiAliasingMode.None"/> / <see cref="AntiAliasingMode.Fxaa"/> are unchanged (always
         ///   available).</item>
         /// </list>
@@ -102,6 +113,8 @@ namespace KhaozEngine.Render3D
                     return Msaa(supported, _postFxaa);
                 case AntiAliasingMode.Ssaa:
                     return Ssaa(SsaaFactor);                          // factor already >= 1; target size capped elsewhere
+                case AntiAliasingMode.Temporal:
+                    return Temporal;                                  // one sample and no FXAA, whatever the device offers
                 default:
                     return this;                                     // None / Fxaa always available
             }
@@ -129,6 +142,7 @@ namespace KhaozEngine.Render3D
         {
             AntiAliasingMode.Msaa => $"MSAA x{MsaaSamples}" + (_postFxaa ? " + FXAA" : ""),
             AntiAliasingMode.Ssaa => $"SSAA x{SsaaFactor:0.##}",
+            AntiAliasingMode.Temporal => "TAA",
             AntiAliasingMode.Fxaa => "FXAA",
             _ => "None",
         };

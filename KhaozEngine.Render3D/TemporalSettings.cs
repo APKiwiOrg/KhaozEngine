@@ -1,3 +1,5 @@
+using System;
+
 namespace KhaozEngine.Render3D
 {
     /// <summary>
@@ -24,5 +26,33 @@ namespace KhaozEngine.Render3D
         /// continue the previous one. Default 60. A value of 180 or more turns the angle check off. NaN and negative
         /// values are caller errors. They are not validated and their behaviour is unsupported.</summary>
         public float CutAngleDegrees = 60f;
+
+        /// <summary>The smallest internal-over-display ratio <see cref="UpscaleRatio"/> accepts, a third per axis.</summary>
+        internal const float MinUpscaleRatio = 0.33f;
+
+        /// <summary>The internal resolution preset while <see cref="AntiAliasing.Temporal"/> is active. Default
+        /// <see cref="TemporalUpscale.Native"/>. A change resets the temporal history for one frame.</summary>
+        public TemporalUpscale Upscale = TemporalUpscale.Native;
+
+        /// <summary>An explicit internal-over-display ratio per axis that overrides <see cref="Upscale"/> when set, clamped
+        /// to 0.33 to 1. A value that is not finite is ignored and the preset applies. A change resets the temporal
+        /// history for one frame.</summary>
+        public float? UpscaleRatio;
+
+        /// <summary>The display-over-internal factor per axis a preset stands for: 1, 1.5, 1.7, 2 or 3.</summary>
+        internal static float DisplayOverInternal(TemporalUpscale preset) => preset switch
+        {
+            TemporalUpscale.Quality => 1.5f,
+            TemporalUpscale.Balanced => 1.7f,
+            TemporalUpscale.Performance => 2f,
+            TemporalUpscale.UltraPerformance => 3f,
+            _ => 1f,
+        };
+
+        /// <summary>The internal-over-display ratio per axis in effect: <see cref="UpscaleRatio"/> clamped when it is set
+        /// and finite, else the reciprocal of the preset's factor.</summary>
+        internal float ResolvedUpscaleRatio => UpscaleRatio is float ratio && float.IsFinite(ratio)
+            ? Math.Clamp(ratio, MinUpscaleRatio, 1f)
+            : 1f / DisplayOverInternal(Upscale);
     }
 }

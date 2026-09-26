@@ -24,7 +24,7 @@ namespace KhaozEngine.Render3D.Internal
     /// samples. Single-sample (the default) leaves <c>Ms*</c> null and <see cref="ColorTex"/> etc. ARE the MRT
     /// attachments - byte-identical to the pre-MSAA path.
     /// </remarks>
-    internal sealed class RenderResources : IDisposable
+    internal sealed class RenderResources : IDisposable, IPostChainTargets
     {
         readonly IGpuDevice _gd;
 
@@ -319,6 +319,23 @@ namespace KhaozEngine.Render3D.Internal
             BloomAFB?.Dispose(); BloomBFB?.Dispose(); BloomA?.Dispose(); BloomB?.Dispose();
             BloomAFB = BloomBFB = null; BloomA = BloomB = null;
         }
+
+        // IPostChainTargets: the internal-resolution chain, whose one source is the lit colour. Width, Height,
+        // Generation, BloomAllocated, BloomWidth, BloomHeight and DistortAllocated are the public properties above.
+        int IPostChainTargets.SourceSlotCount => 1;
+        int IPostChainTargets.SourceSlot => 0;
+        IGpuTexture IPostChainTargets.Source(int slot) => ColorTex;
+        IGpuTexture IPostChainTargets.NormalTex => NormalTex;
+        IGpuTexture IPostChainTargets.DepthColorTex => DepthColorTex;
+        IGpuTexture IPostChainTargets.PingA => PingA;
+        IGpuTexture IPostChainTargets.PingB => PingB;
+        IGpuFramebuffer IPostChainTargets.PingAFB => PingAFB;
+        IGpuFramebuffer IPostChainTargets.PingBFB => PingBFB;
+        IGpuTexture? IPostChainTargets.BloomA => BloomA;
+        IGpuTexture? IPostChainTargets.BloomB => BloomB;
+        IGpuFramebuffer? IPostChainTargets.BloomAFB => BloomAFB;
+        IGpuFramebuffer? IPostChainTargets.BloomBFB => BloomBFB;
+        IGpuTexture? IPostChainTargets.DistortTex => DistortTex;
 
         public void Dispose() => DisposeTargets();
     }

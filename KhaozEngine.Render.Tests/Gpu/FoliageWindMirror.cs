@@ -19,6 +19,14 @@ internal static class FoliageWindMirror
     /// camera of the frame <paramref name="u"/> was uploaded for, and needs it only when the fade is on.</summary>
     public static Vector3 TopOffset(in FoliageUniforms u, Vector3 root, Matrix4x4? viewProjection = null)
     {
+        Assert.True(u.WindFade.X <= 0f || viewProjection.HasValue, "the wind fade reads the root's clip w");
+        return TopOffset(u, root, viewProjection is { } m ? Vector4.Transform(new Vector4(root, 1f), m).W : 0f);
+    }
+
+    /// <summary>As the matrix overload, with the root's clip w given directly: its depth in front of the eye under a
+    /// perspective camera, 1 under an orthographic one. The wind fade reads it only when the fade is on.</summary>
+    public static Vector3 TopOffset(in FoliageUniforms u, Vector3 root, float rootClipW)
+    {
         // Fully faded in: no thinning band, and the root inside the distance fade's start, so heightFade is 1.
         Assert.True(u.Density.X <= u.Density.Y, "the mirror does not model the thinning band");
         float fadeStart = MathF.Max(0f, u.FocusRadius.W - u.WindTime.W);
@@ -29,9 +37,7 @@ internal static class FoliageWindMirror
         Vector2 bend = direction * (MathF.Sin(phase) * .7f + MathF.Sin(phase * .43f + 1.7f) * .3f) * u.FadeWind.Y * BladeHeight;
         if (u.WindFade.X > 0f)
         {
-            Assert.True(viewProjection.HasValue, "the wind fade reads the root's clip w");
-            float fadeHeight = MathF.Max(Vector4.Transform(new Vector4(root, 1f), viewProjection.Value).W, 0f)
-                * u.WindFade.Y * u.WindFade.X;
+            float fadeHeight = MathF.Max(rootClipW, 0f) * u.WindFade.Y * u.WindFade.X;
             bend *= fadeHeight > 0f ? SmoothStep(1f, 2f, BladeHeight / fadeHeight) : 1f;
         }
         ReadOnlySpan<Vector4> interactors = [u.Interactor0, u.Interactor1, u.Interactor2, u.Interactor3];

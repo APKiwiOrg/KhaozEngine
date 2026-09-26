@@ -16,7 +16,7 @@ public sealed class FoliageAndGroundMotionGpuTests
     static FoliageRenderSettings Still => new() { DrawRadius = 100f, DistantDensity = 1f };
 
     // A 1.2 m plate at the top of a 1 m blade whose root is the one vertex no triangle draws.
-    static GltfMesh Plate()
+    internal static GltfMesh Plate()
     {
         GltfMesh plane = MeshPrimitives.Plane(1.2f, 1.2f);
         var vertices = new ModelVertex[plane.Vertices.Length + 1];

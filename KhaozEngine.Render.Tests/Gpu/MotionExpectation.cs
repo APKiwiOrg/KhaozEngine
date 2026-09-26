@@ -54,6 +54,11 @@ internal static class MotionExpectation
     /// <paramref name="expected"/>. A non-finite error counts as infinitely wrong, so a NaN reading fails
     /// wherever it falls in the scan. Returns how many pixels were checked. The message names the worst one.</summary>
     public static int AssertDrawnPixels(MotionTargetReadback motion, Func<int, int, Vector2> expected, float tolerance,
+        Func<int, int, bool>? where = null) => HoldDrawnPixels(motion, expected, tolerance, where).Count;
+
+    /// <summary><see cref="AssertDrawnPixels"/>, returning the scan: how many pixels were checked and the worst of
+    /// them, for a test to report.</summary>
+    public static MotionScan HoldDrawnPixels(MotionTargetReadback motion, Func<int, int, Vector2> expected, float tolerance,
         Func<int, int, bool>? where = null)
     {
         int count = 0;
@@ -78,6 +83,29 @@ internal static class MotionExpectation
         Assert.True(count > 0, "no pixel drew opaque geometry");
         Assert.True(worst <= tolerance,
             $"pixel {at} reported {got} px where {want} px was expected, {worst:F4} px off, over {count} drawn pixels");
+        return new MotionScan(count, worst, at, got, want);
+    }
+
+    /// <summary>Require opaque geometry at every pixel <paramref name="where"/> admits: a finite value that is not the
+    /// sentinel. A pixel the scene covers can then never pass by reading as background. Returns how many pixels were
+    /// admitted.</summary>
+    public static int AssertCovered(MotionTargetReadback motion, Func<int, int, bool> where)
+    {
+        int count = 0;
+        for (int y = 0; y < motion.Height; y++)
+            for (int x = 0; x < motion.Width; x++)
+            {
+                if (!where(x, y)) continue;
+                count++;
+                Vector2 stored = motion.UvAt(x, y);
+                Assert.True(float.IsFinite(stored.X) && float.IsFinite(stored.Y) && !motion.IsBackground(x, y),
+                    $"pixel ({x}, {y}) stored {stored}, which is not a drawn surface's motion");
+            }
+        Assert.True(count > 0, "no pixel was admitted");
         return count;
     }
 }
+
+/// <summary>One readback scan: how many drawn pixels were checked, and the worst error, where it fell and the two
+/// values there, in internal pixels.</summary>
+internal readonly record struct MotionScan(int Count, float Worst, (int X, int Y) At, Vector2 Reported, Vector2 Expected);

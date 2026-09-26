@@ -90,19 +90,53 @@ public class ItemContainerPageVersionTests
         Assert.Equal(0, header.ContentVersion);
     }
 
-    [Fact]
-    public void A_version_1_blob_whose_declared_slot_count_differs_is_still_refused_whole()
+    [Theory]
+    [InlineData(2)]
+    [InlineData(11)]
+    [InlineData(28)]
+    [InlineData(30)]
+    [InlineData(56)]
+    public void A_smaller_version_1_container_decodes_as_page_0_without_pre_widening(int declaredSlots)
     {
-        byte[] stored = Load("container-v1-multi.blob");
+        var container = new ItemContainer(declaredSlots, Stackable);
+        container.SetAt(declaredSlots - 1, new ItemStack(42, 3));
+        byte[] stored = ItemContainerCodec.Encode(container);
 
-        Span<PageEntry> entries = stackalloc PageEntry[64];
-        // The version 1 path's own refusal travels out as the version 1 validator spelled it, rather than
-        // being flattened into a page token: the seven page reasons belong to the version 2 page, and a
-        // version 1 blob is refused by the reader that owns it.
-        Assert.False(ItemContainerPageCodec.TryDecode(stored, BagSlots - 1, entries, out _, out _, out string? narrow));
-        Assert.Contains("item container blob", narrow ?? string.Empty, StringComparison.Ordinal);
-        Assert.False(ItemContainerPageCodec.TryDecode(stored, BagSlots + 1, entries, out _, out _, out _));
-        Assert.True(ItemContainerPageCodec.TryDecode(stored, BagSlots, entries, out _, out _, out _));
+        Span<PageEntry> entries = stackalloc PageEntry[ItemContainerPageCodec.ContainerPageSlots];
+        Assert.True(ItemContainerPageCodec.TryDecode(
+            stored,
+            ItemContainerPageCodec.ContainerPageSlots,
+            entries,
+            out PageHeader header,
+            out int count,
+            out string? reason), reason);
+
+        PageEntry entry = Assert.Single(entries[..count].ToArray());
+        Assert.Equal(declaredSlots - 1, entry.Slot);
+        Assert.Equal(42, entry.DefinitionId);
+        Assert.Equal(3, entry.Count);
+        Assert.Equal(0, header.PageIndex);
+        Assert.Equal(0, header.FirstSlot);
+        Assert.Equal(ItemContainerPageCodec.ContainerPageSlots, header.SlotCount);
+        Assert.Equal(0, header.ContentVersion);
+    }
+
+    [Fact]
+    public void A_version_1_container_wider_than_a_page_is_refused()
+    {
+        var container = new ItemContainer(ItemContainerPageCodec.ContainerPageSlots + 1, Stackable);
+        container.SetAt(ItemContainerPageCodec.ContainerPageSlots, new ItemStack(42, 3));
+        byte[] stored = ItemContainerCodec.Encode(container);
+        Span<PageEntry> entries = stackalloc PageEntry[ItemContainerPageCodec.ContainerPageSlots];
+
+        Assert.False(ItemContainerPageCodec.TryDecode(
+            stored,
+            ItemContainerPageCodec.ContainerPageSlots,
+            entries,
+            out _,
+            out _,
+            out string? reason));
+        Assert.Contains("declares 101 slots", reason ?? string.Empty, StringComparison.Ordinal);
     }
 
     [Theory]

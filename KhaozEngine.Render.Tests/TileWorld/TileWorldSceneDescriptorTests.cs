@@ -131,6 +131,24 @@ public sealed class TileWorldSceneDescriptorTests
         Assert.Empty(dissolving.MeshDissolves);
     }
 
+    // The shaders take the complement only above one half, so a lower phase with no dissolve is an ordinary solid draw.
+    [Theory]
+    [InlineData(0.3f)]
+    [InlineData(0.5f)]
+    public void A_complement_phase_at_or_below_one_half_with_no_dissolve_draws_solid(float complement)
+    {
+        var legacy = new LegacyTileWorldScene();
+        var dissolving = new DissolvingTileWorldScene();
+        RigidInstanceDraw ordinary = Rigid(0f) with { DissolveComplement = complement };
+
+        ((ITileWorldScene)legacy).DrawMesh(ordinary);
+        ((ITileWorldScene)dissolving).DrawMesh(ordinary);
+
+        Assert.Equal(new[] { (Handle, World) }, legacy.Drawn);
+        Assert.Equal(new[] { (Handle, World) }, dissolving.Meshes);
+        Assert.Empty(dissolving.MeshDissolves);
+    }
+
     [Fact]
     public void A_legacy_skinned_scene_falls_back_to_the_plain_skinned_draw()
     {

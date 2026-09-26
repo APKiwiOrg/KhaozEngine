@@ -14991,10 +14991,11 @@ A moving body keys its draw through `DrawMesh(in RigidInstanceDraw)` and `DrawSk
 boneMatrices)`, which carry a full draw descriptor with its motion key (see "Draw descriptors and motion keys").
 `Scene3DTileWorldScene` forwards both to `Scene3D` whole. Their defaults fall back to the draws above, so an older
 custom scene keeps compiling. The rigid default keeps the mesh, the transform and the dissolve with its edge, and routes
-a descriptor whose `Dissolve` is above 0 through `DrawMeshDissolved`. It draws nothing for a shadow-only descriptor, and
-nothing for a complement phase with no dissolve, which `Scene3D` draws in neither pass. A shadow-only descriptor with
-`CastsShadows = false` throws the same `ArgumentException` the scene's instance queue throws. The rigid default drops
-the key, the tint, the material, `CastsShadows`, `InvertShadowDissolve` and `DissolveComplement`. The skinned default
+a descriptor whose `Dissolve` is above 0 through `DrawMeshDissolved`. It draws nothing for a shadow-only descriptor.
+It also draws nothing for a complement phase above one half with no dissolve. `Scene3D` shows no body for that draw, at
+most a shadow, so the fallback treats it like a shadow-only draw. A shadow-only descriptor with `CastsShadows = false`
+throws the same `ArgumentException` the scene's instance queue throws. The rigid default drops the key, the tint, the
+material, `CastsShadows` and `InvertShadowDissolve`, and does not forward `DissolveComplement`. The skinned default
 keeps the tint as well and drops the key, the material and `CastsShadows`. On a scene that does not implement the older
 skinned draws it still throws `NotSupportedException`.
 

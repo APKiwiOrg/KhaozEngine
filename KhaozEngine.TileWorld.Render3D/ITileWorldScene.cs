@@ -67,13 +67,15 @@ public interface ITileWorldScene
         DrawMesh(handle, world);
 
     /// <summary>Queues one rigid mesh from a full draw descriptor, its motion key included. The
-    /// <see cref="MotionKey"/> lets the engine find the body's previous transform so temporal rendering reprojects it,
-    /// so it must stay the same across frames and be unique per body. Defaults to the solid or dissolved mesh draw,
-    /// which keeps an implementation written before descriptors compiling and keeps the body visible. That fallback
-    /// keeps the mesh, the transform and the dissolve with its edge. It drops the key, the tint, the material,
-    /// <c>CastsShadows</c>, <c>InvertShadowDissolve</c> and <c>DissolveComplement</c>. It draws nothing for a
-    /// shadow-only descriptor, which an older scene never cast, and nothing for a complement phase with no dissolve,
-    /// which the scene's queue draws in neither pass.</summary>
+    /// <see cref="MotionKey"/> lets the engine find the draw's previous transform so temporal rendering reprojects it,
+    /// so it must stay the same across frames and be unique per draw: each part of a multi-part body takes its own
+    /// key, derived with <see cref="MotionKey.Combine"/>. Defaults to the solid or dissolved mesh draw, which keeps an
+    /// implementation written before descriptors compiling and keeps the body visible. That fallback keeps the mesh,
+    /// the transform and the dissolve with its edge. It drops the key, the tint, the material, <c>CastsShadows</c> and
+    /// <c>InvertShadowDissolve</c>, and does not forward <c>DissolveComplement</c>. It draws nothing for a shadow-only
+    /// descriptor, which an older scene never cast. It also draws nothing for a complement phase above one half with
+    /// no dissolve. <see cref="Scene3D"/> shows no body for that draw, at most a shadow, so the fallback treats it like
+    /// a shadow-only draw.</summary>
     /// <exception cref="ArgumentException">The descriptor is shadow-only and casts no shadow, the pair the scene's
     /// instance queue refuses with the same exception.</exception>
     void DrawMesh(in RigidInstanceDraw draw)
@@ -82,7 +84,8 @@ public interface ITileWorldScene
             throw new ArgumentException(
                 "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
                 "shadowOnly");
-        // The shaders read a phase above one half as the complement, which keeps nothing at a threshold of zero.
+        // The colour pass and the plain shadow passes read a phase above one half as the complement, which keeps
+        // nothing at a threshold of zero. An inverted shadow ignores the phase, so such a draw is at most a shadow.
         if (draw.ShadowOnly || (draw.DissolveComplement > 0.5f && draw.Dissolve <= 0f)) return;
         if (draw.Dissolve > 0f)
             DrawMeshDissolved(draw.Mesh, draw.World, draw.Dissolve, draw.DissolveEdgeWidth, draw.DissolveEdgeColor);
@@ -119,9 +122,10 @@ public interface ITileWorldScene
         throw new NotSupportedException("This tile-world scene does not support skinned meshes.");
 
     /// <summary>Queues one skinned mesh from a full draw descriptor, its motion key included. The
-    /// <see cref="MotionKey"/> lets the engine find the body's previous transform and bone palette so temporal
-    /// rendering reprojects it, so it must stay the same across frames and be unique per body. Defaults to the plain
-    /// skinned draw, or to the dissolved one when the descriptor dissolves. That fallback keeps the mesh, the palette,
+    /// <see cref="MotionKey"/> lets the engine find the draw's previous transform and bone palette so temporal
+    /// rendering reprojects it, so it must stay the same across frames and be unique per draw: each part of a
+    /// multi-part body takes its own key, derived with <see cref="MotionKey.Combine"/>. Defaults to the plain skinned
+    /// draw, or to the dissolved one when the descriptor dissolves. That fallback keeps the mesh, the palette,
     /// the model transform, the tint and the dissolve with its edge, and drops the key, the material and
     /// <c>CastsShadows</c>. Each route refuses where the older draw it reaches refuses: a scene with no skinned pass
     /// throws on every descriptor, and a scene that implements only the plain <c>DrawSkinned</c> throws from the

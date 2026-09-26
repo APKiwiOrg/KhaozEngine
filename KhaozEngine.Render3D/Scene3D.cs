@@ -1567,7 +1567,7 @@ namespace KhaozEngine.Render3D
             _post.BindTargets(_res);
             // Edge pass needs the camera's depth convention (perspective vs ortho + near/far) to linearize depth
             // under perspective; derived from the projection matrix so no camera-interface change is required.
-            var camDepth = Internal.OutlineMath.ExtractCameraDepth(ActiveCamera.Projection);
+            var camDepth = Internal.OutlineMath.ExtractCameraDepth(CurrentFrameView.Projection);
             _post.PrepareUniforms(cl, _res, Post, camDepth, runFxaa, distortionActive);
 
             // Frozen-frame capture for a screen crossfade must read the PREVIOUS frame (the origin view, before the
@@ -1891,7 +1891,7 @@ namespace KhaozEngine.Render3D
             switch (Post.Background)
             {
                 case BackgroundMode.Sky:
-                    _sky.Draw(cl, _res, ActiveCamera.View, ActiveCamera.Projection, Post.LightDirection, Post.Sky);
+                    _sky.Draw(cl, _res, CurrentFrameView.View, CurrentFrameView.Projection, Post.LightDirection, Post.Sky);
                     _frameStats.DrawCalls++;
                     break;
                 case BackgroundMode.Starfield:
@@ -2124,7 +2124,7 @@ namespace KhaozEngine.Render3D
 
             // Camera basis is constant across the frame; compute once and reuse for every quad.
             BillboardGeometry.CameraBasis(ActiveCamera.Forward, out Vector3 right, out Vector3 up);
-            _texBillboards.SetViewProj(cl, FrameViewProjection());
+            _texBillboards.SetViewProj(cl, CurrentFrameView.ViewProjection);
 
             Span<Vector3> pos = stackalloc Vector3[6];
             Span<Vector2> uv = stackalloc Vector2[6];
@@ -2193,7 +2193,7 @@ namespace KhaozEngine.Render3D
             }
             if (_beamVerts.Count == 0) return;
 
-            _beams.SetFrameUniforms(cl, FrameViewProjection(), EffectTimeSeconds);
+            _beams.SetFrameUniforms(cl, CurrentFrameView.ViewProjection, EffectTimeSeconds);
             _beams.Draw(cl, CollectionsMarshal.AsSpan(_beamVerts), _res.ModelFB);
             _frameStats.DrawCalls++;
         }
@@ -2235,7 +2235,7 @@ namespace KhaozEngine.Render3D
 
             if (_trailVertsAdditive.Count == 0 && _trailVertsAlpha.Count == 0) return;
 
-            _trails.SetFrameUniforms(cl, FrameViewProjection());
+            _trails.SetFrameUniforms(cl, CurrentFrameView.ViewProjection);
             if (_trailVertsAdditive.Count > 0)
             {
                 _trails.Draw(cl, CollectionsMarshal.AsSpan(_trailVertsAdditive), _res.ModelFB, TrailBlend.Additive);

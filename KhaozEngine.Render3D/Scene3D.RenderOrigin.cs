@@ -143,8 +143,8 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// This frame's RENDER-RELATIVE view-projection: what every GPU pass rasterizes with. Re-asserts the latched
-        /// origin on the camera first.
+        /// This frame's RENDER-RELATIVE view-projection as the camera produced it, read once per render by
+        /// <see cref="LatchFrameView"/> and by nothing else. Re-asserts the latched origin on the camera first.
         /// <para>
         /// The fallback branch handles the one case the Begin-time latch cannot: <see cref="CameraOverride"/> swapped
         /// to a camera that is NOT <see cref="IRenderOriginAware"/> after the frame's vertices were already reduced.
@@ -167,9 +167,9 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// This frame's ABSOLUTE view-projection: the pre-shift matrix every CPU-side spatial computation runs
-        /// against (frustum culling, shadow-cascade fitting, caster classification), so those paths stay
-        /// byte-identical to the pre-release engine at any origin. Identical to
+        /// This frame's ABSOLUTE view-projection, read once per render by <see cref="LatchFrameView"/>: the pre-shift
+        /// matrix every CPU-side spatial computation runs against (frustum culling, shadow-cascade fitting, caster
+        /// classification), so those paths stay byte-identical to the pre-release engine at any origin. Identical to
         /// <see cref="FrameViewProjection"/> when the origin is zero.
         /// </summary>
         Matrix4x4 FrameAbsoluteViewProjection() =>

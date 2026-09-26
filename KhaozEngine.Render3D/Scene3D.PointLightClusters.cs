@@ -13,7 +13,7 @@ public sealed partial class Scene3D
     void BuildAndUploadPointLightClusters(IGpuCommandList cl, Matrix4x4 viewProjection, Vector3 eyeRender)
     {
         _model.BuildAndUploadPointLightClusters(cl, CollectionsMarshal.AsSpan(_lights), viewProjection, eyeRender,
-            ActiveCamera.Forward, ActiveCamera.Projection, _frameOrigin);
+            ActiveCamera.Forward, CurrentFrameView.Projection, _frameOrigin);
         PointLightClusters = _model.PointLightClusterDiagnostics(_lights.Count);
     }
 }

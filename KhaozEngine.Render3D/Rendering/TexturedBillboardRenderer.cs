@@ -24,6 +24,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _layout;   // UBO(vert) + texture(frag) + sampler(frag)
         readonly IGpuSampler _sampler;         // device built-in linear sampler (non-owning)
         readonly IGpuShaderSet _shaders;
+        IGpuShaderSet? _motionShaders;   // TexturedBillboardMotionFrag, built only for a temporal model target
         IGpuPipeline[] _pipelines;             // [0] alpha, [1] additive; rebuilt by SetOutputs on MSAA change
         IGpuBuffer? _vb;
         uint _vbCapacity;                      // capacity in vertices
@@ -63,11 +64,11 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuVertexElement("Uv", GpuVertexElementFormat.Float2),
                 new GpuVertexElement("Color", GpuVertexElementFormat.Float4));
 
-            // The model FB has 3 colour attachments (lit colour, encoded normal, linear depth). We only paint
-            // colour: attachment 0 gets the chosen blend; attachments 1 & 2 preserve their destination so the
-            // outline post-pass still reads the meshes' normal/depth, not the quad's.
-            var alphaBlends = new[] { GpuBlendAttachment.AlphaBlend, GpuBlendAttachment.PreserveDestination, GpuBlendAttachment.PreserveDestination };
-            var addBlends = new[] { GpuBlendAttachment.Additive, GpuBlendAttachment.PreserveDestination, GpuBlendAttachment.PreserveDestination };
+            // The model FB has 3 colour attachments, and a 4th (motion) while temporal rendering is active. Colour blends, and every
+            // other attachment keeps its destination, so the edge pass reads the meshes' normal and depth and the resolve reads their
+            // motion.
+            var alphaBlends = ModelTargetBlends.Transparent(GpuBlendAttachment.AlphaBlend, modelOutputs);
+            var addBlends = ModelTargetBlends.Transparent(GpuBlendAttachment.Additive, modelOutputs);
 
             return new[]
             {
@@ -88,7 +89,9 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _shaders,
+                ShaderSet = MotionMath.IsTemporal(modelOutputs)
+                    ? _motionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag)
+                    : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = modelOutputs,
             });
@@ -136,6 +139,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             foreach (var p in _pipelines) p.Dispose();
             _shaders.Dispose();
+            _motionShaders?.Dispose();
             _layout.Dispose();
             _ubo.Dispose();
             _vb?.Dispose();

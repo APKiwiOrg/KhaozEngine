@@ -193,6 +193,27 @@ namespace KhaozEngine.Tests.Gpu
         public void TileGroundMotion()
             => ShaderValidation.ValidatePair(ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag, "TileGroundMotion");
 
+        // The transparent passes' temporal variants: each base fragment plus a zero fourth output its blend discards.
+        [Fact]
+        public void TexturedBillboardMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag, "TexturedBillboardMotion");
+
+        [Fact]
+        public void BeamMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.BeamVert, ShaderSources.BeamMotionFrag, "BeamMotion");
+
+        [Fact]
+        public void TrailMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.TrailVert, ShaderSources.TrailMotionFrag, "TrailMotion");
+
+        [Fact]
+        public void OverlayMeshMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitMotionFrag, "OverlayMeshMotion");
+
+        [Fact]
+        public void SilhouetteMotion()
+            => ShaderValidation.ValidatePair(ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag, "SilhouetteMotion");
+
         [Fact]
         public void SkinnedShadowDepth()
             => ShaderValidation.ValidatePair(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag, "SkinnedShadowDepth");

@@ -24,7 +24,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 59 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 64 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -48,7 +48,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct shipped vertex and fragment pair, 59 of them.</summary>
+        /// <summary>Every distinct shipped vertex and fragment pair, 64 of them.</summary>
         public static IEnumerable<ShippedGraphicsProgram> GraphicsPrograms()
         {
             // Render2D.
@@ -80,6 +80,13 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("FoliageMotion", ShaderSources.FoliageMotionVert, ShaderSources.ModelMotionFrag);
             yield return new("SplatMotion", ShaderSources.SplatMotionVert, ShaderSources.SplatMotionFrag);
             yield return new("TileGroundMotion", ShaderSources.TileGroundMotionVert, ShaderSources.TileGroundMotionFrag);
+            yield return new("TexturedBillboardMotion", ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag);
+            yield return new("BeamMotion", ShaderSources.BeamVert, ShaderSources.BeamMotionFrag);
+            yield return new("TrailMotion", ShaderSources.TrailVert, ShaderSources.TrailMotionFrag);
+            yield return new("OverlayMeshMotion", ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitMotionFrag);
+            // The silhouette's base pair is not in this catalog (a gap that predates this plan, see its issue). Its
+            // temporal variant is, with the pipeline and layout rows the binding tests need.
+            yield return new("SilhouetteMotion", ShaderSources.SilhouetteVert, ShaderSources.SilhouetteMotionFrag);
 
             // Render3D shadow atlas. The other half of the S5 evidence: every one of these vertex sources carries
             // the sink that stops SPIRV-Cross dropping a declared-but-unread input and holing the signature.

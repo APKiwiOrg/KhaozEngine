@@ -157,6 +157,11 @@ namespace KhaozEngine.Tests.Gpu
         {
             using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
             model.UploadFoliageUniforms(commands, [default]);
+            using var billboards = new TexturedBillboardRenderer(device, ModelTargets.Temporal);
+            using var beams = new BeamRenderer(device, ModelTargets.Temporal);
+            using var trails = new TrailRenderer(device, ModelTargets.Temporal);
+            using var overlays = new OverlayMeshRenderer(device, ModelTargets.Temporal);
+            using var silhouettes = new SilhouetteRenderer(device, ModelTargets.Temporal);
         }
 
         static IReadOnlyList<VertexDeclaration> Parse(string glsl)

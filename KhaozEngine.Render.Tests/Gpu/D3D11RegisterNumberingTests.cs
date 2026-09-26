@@ -120,6 +120,7 @@ namespace KhaozEngine.Tests.Gpu
 
             ("OverlayMeshRenderer._layout", new[] { U("Draw", dynamic: true) }, "b0"),
             ("OverlayRenderer._layout", new[] { U("U") }, "b0"),
+            ("SilhouetteRenderer._layout", new[] { U("Draw", dynamic: true) }, "b0"),
             ("ParticleRenderer._layout",
                 new[] { U("Frame"), T("DepthTex"), S("Samp"), T("MotionTex"), T("AtlasTex"), S("AtlasSamp") },
                 "b0 t0 s0 t1 t2 s1"),

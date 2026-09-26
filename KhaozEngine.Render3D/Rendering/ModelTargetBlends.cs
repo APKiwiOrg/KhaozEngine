@@ -15,4 +15,14 @@ internal static class ModelTargetBlends
         for (int i = 0; i < blends.Length; i++) blends[i] = GpuBlendAttachment.OverrideBlend;
         return blends;
     }
+
+    /// <summary>Transparent passes blend colour with <paramref name="colour"/> and keep every other attachment: the
+    /// normal and depth the edge pass reads, and the motion the temporal resolve reads.</summary>
+    internal static GpuBlendAttachment[] Transparent(GpuBlendAttachment colour, in GpuOutputDescription outputs)
+    {
+        var blends = new GpuBlendAttachment[outputs.Colour.Length];
+        blends[0] = colour;
+        for (int i = 1; i < blends.Length; i++) blends[i] = GpuBlendAttachment.PreserveDestination;
+        return blends;
+    }
 }

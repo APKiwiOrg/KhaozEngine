@@ -39,6 +39,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
+        IGpuShaderSet? _motionShaders;   // OverlayUnlitMotionFrag, built only for a temporal model target
         readonly IGpuResourceLayout _layout;
         IGpuPipeline _pipeline;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
         // Grown-out UBOs and their sets enter the scene retirement queue because a submitted frame may still read
@@ -109,21 +110,19 @@ namespace KhaozEngine.Render3D.Rendering
             return f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
-                // Model FB has 3 colour attachments (lit colour, encoded normal, linear depth). Alpha-blend colour;
-                // preserve the meshes' normal/depth so the edge pass still reads geometry, not the proxy.
-                BlendAttachments = new[]
-                {
-                    GpuBlendAttachment.AlphaBlend,
-                    GpuBlendAttachment.PreserveDestination,
-                    GpuBlendAttachment.PreserveDestination,
-                },
+                // The model FB has 3 colour attachments, and a 4th (motion) while temporal rendering is active. Colour blends, and every
+                // other attachment keeps its destination, so the edge pass reads the meshes' normal and depth and the resolve reads their
+                // motion.
+                BlendAttachments = ModelTargetBlends.Transparent(GpuBlendAttachment.AlphaBlend, modelOutputs),
                 // Read the scene depth (occlude behind geometry) but do NOT write it (the overlay must not occlude
                 // the later scene passes, and overlapping proxies blend by submission order, not by depth).
                 DepthStencil = GpuDepthStencilState.DepthTestLessEqualNoWrite,
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _shaders,
+                ShaderSet = MotionMath.IsTemporal(modelOutputs)
+                    ? _motionShaders ??= f.CreateShadersFromSpirv(ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitMotionFrag)
+                    : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = modelOutputs,
             });
@@ -212,6 +211,7 @@ namespace KhaozEngine.Render3D.Rendering
             _pipeline.Dispose();
             _layout.Dispose();
             _shaders.Dispose();
+            _motionShaders?.Dispose();
             _ubo?.Dispose();
         }
     }

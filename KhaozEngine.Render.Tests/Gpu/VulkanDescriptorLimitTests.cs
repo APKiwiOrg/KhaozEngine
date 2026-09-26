@@ -120,6 +120,8 @@ namespace KhaozEngine.Tests.Gpu
 
                 // Render3D/Rendering/OverlayMeshRenderer.cs:54
                 ["OverlayMesh"] = L(U("Draw", V, dynamic: true)),
+                // Render3D/Rendering/SilhouetteRenderer.cs:50-54, both stages read one dynamic-offset window.
+                ["Silhouette"] = L(U("Draw", VF, dynamic: true)),
                 // Render3D/Rendering/OverlayRenderer.cs:47, shared by Billboard, Fill and Line
                 ["Overlay"] = L(U("U", V)),
                 // Render3D/Rendering/ParticleRenderer.cs:93
@@ -220,6 +222,7 @@ namespace KhaozEngine.Tests.Gpu
             ("OceanFftProducer col", ["OceanFft.col"]),
             ("OverlayMeshRenderer", ["OverlayMesh"]),
             ("OverlayRenderer", ["Overlay"]),
+            ("SilhouetteRenderer", ["Silhouette"]),
             ("ParticleRenderer", ["Particle"]),
             ("TargetOutlineRenderer rigid full", ["TargetOutline.draw", "TargetOutline.material"]),
             ("TargetOutlineRenderer rigid visible", ["TargetOutline.draw", "TargetOutline.material"]),
@@ -266,8 +269,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(48, ShippedLayouts.Count);
-            Assert.Equal(51, ShippedPipelines.Count);
+            Assert.Equal(49, ShippedLayouts.Count);
+            Assert.Equal(52, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

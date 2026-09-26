@@ -23,6 +23,11 @@ public sealed class MotionShaderTextTests
             "layout(location=10) in float vDissolveComplement;"),
         ["SplatMotionFrag"] = (ShaderSources.SplatMotionFrag, ShaderSources.SplatFrag, ""),
         ["TileGroundMotionFrag"] = (ShaderSources.TileGroundMotionFrag, ShaderSources.TileGroundFrag, ""),
+        ["TexturedBillboardMotionFrag"] = (ShaderSources.TexturedBillboardMotionFrag, ShaderSources.TexturedBillboardFrag, ""),
+        ["BeamMotionFrag"] = (ShaderSources.BeamMotionFrag, ShaderSources.BeamFrag, ""),
+        ["TrailMotionFrag"] = (ShaderSources.TrailMotionFrag, ShaderSources.TrailFrag, ""),
+        ["OverlayUnlitMotionFrag"] = (ShaderSources.OverlayUnlitMotionFrag, ShaderSources.OverlayUnlitFrag, ""),
+        ["SilhouetteMotionFrag"] = (ShaderSources.SilhouetteMotionFrag, ShaderSources.SilhouetteFrag, ""),
     };
 
     public static TheoryData<string> Names()

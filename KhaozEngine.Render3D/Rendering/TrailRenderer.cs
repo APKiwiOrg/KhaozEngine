@@ -39,6 +39,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuResourceLayout _layout;   // UBO (vertex)
         readonly IGpuResourceSet _set;
         readonly IGpuShaderSet _shaders;
+        IGpuShaderSet? _motionShaders;   // TrailMotionFrag, built only for a temporal model target
         IGpuPipeline _additive;                // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
         IGpuPipeline _alpha;
         IGpuBuffer? _vb;
@@ -78,7 +79,7 @@ namespace KhaozEngine.Render3D.Rendering
 
             // Attachment 0 blends (additive or alpha); normal/depth preserved so the edge pass reads the meshes'
             // normal/depth, not the trail's (no outline traced around the strip).
-            var blends = new[] { color0, GpuBlendAttachment.PreserveDestination, GpuBlendAttachment.PreserveDestination };
+            var blends = ModelTargetBlends.Transparent(color0, modelOutputs);
 
             return factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
@@ -89,7 +90,9 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: false),
                 Topology = GpuPrimitiveTopology.TriangleList,
                 ResourceLayouts = new[] { _layout },
-                ShaderSet = _shaders,
+                ShaderSet = MotionMath.IsTemporal(modelOutputs)
+                    ? _motionShaders ??= factory.CreateShadersFromSpirv(ShaderSources.TrailVert, ShaderSources.TrailMotionFrag)
+                    : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout },
                 Outputs = modelOutputs,
             });
@@ -132,6 +135,7 @@ namespace KhaozEngine.Render3D.Rendering
             _additive.Dispose();
             _alpha.Dispose();
             _shaders.Dispose();
+            _motionShaders?.Dispose();
             _set.Dispose();
             _layout.Dispose();
             _ubo.Dispose();

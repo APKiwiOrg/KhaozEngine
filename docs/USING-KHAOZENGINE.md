@@ -14987,9 +14987,11 @@ skinned body, so unsupported use fails at the call instead of dropping or misdra
 A moving body keys its draw through `DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw,
 boneMatrices)`, which carry a full draw descriptor with its motion key (see "Draw descriptors and motion keys").
 `Scene3DTileWorldScene` forwards both to `Scene3D` whole. Their defaults fall back to the draws above, so an older
-custom scene keeps compiling. The rigid default keeps the mesh, the transform and the dissolve with its edge, routes
-a dissolving descriptor through `DrawMeshDissolved`, and draws nothing for a shadow-only descriptor. It drops the
-key, the tint, the material, `CastsShadows`, `InvertShadowDissolve` and `DissolveComplement`. The skinned default
+custom scene keeps compiling. The rigid default keeps the mesh, the transform and the dissolve with its edge, and
+routes a dissolving descriptor through `DrawMeshDissolved`. It draws nothing for a shadow-only descriptor, and
+nothing for a complement phase with no dissolve, which `Scene3D` draws in neither pass. A shadow-only descriptor with
+`CastsShadows = false` throws the same `ArgumentException` the scene's instance queue throws. The rigid default drops
+the key, the tint, the material, `CastsShadows`, `InvertShadowDissolve` and `DissolveComplement`. The skinned default
 keeps the tint as well and drops the key, the material and `CastsShadows`. On a scene that does not implement the
 older skinned draws it still throws `NotSupportedException`.
 

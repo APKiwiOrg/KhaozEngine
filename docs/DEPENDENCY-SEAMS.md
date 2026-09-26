@@ -699,7 +699,9 @@ to `Scene3D`. This keeps older custom scenes compiling while refusing a call tha
 descriptor, motion key included, and the shipped adapter forwards them to `Scene3D` whole. Their defaults fall back to
 the older draws above. The rigid default keeps the mesh, the transform and the dissolve, drops the key, the tint, the
 material, `CastsShadows`, `InvertShadowDissolve` and `DissolveComplement`, and draws nothing for a shadow-only
-descriptor, which an older scene never cast. The skinned default keeps the tint as well, drops the key, the material
+descriptor, which an older scene never cast, or for a complement phase with no dissolve, which `Scene3D` draws in
+neither pass. A shadow-only descriptor with `CastsShadows = false` throws the same `ArgumentException` the scene's
+instance queue throws. The skinned default keeps the tint as well, drops the key, the material
 and `CastsShadows`, and still throws `NotSupportedException` where the older skinned draws do.
 `CreatePropClusterOwner()` returns the view-owned `ITileWorldPropClusterOwner` used for detached CPU builds,
 scene-thread apply and draw, invalidation, unload and disposal. Its default also throws `NotSupportedException`.

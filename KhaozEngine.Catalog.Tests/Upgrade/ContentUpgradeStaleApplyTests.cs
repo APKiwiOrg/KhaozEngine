@@ -22,14 +22,17 @@ namespace KhaozEngine.Tests.Catalog.Upgrade;
 /// runs out. That is the hosted-runner failure these tests pin down.
 /// </para>
 /// <para>
-/// Every run here is given a HARD deadline well under the stand-off budget, because the defect's signature is
-/// a stall rather than a wrong answer and a test that hangs for the whole budget reports nothing useful.
+/// Every stale-plan run counts its open-draft reads. The exact count keeps an extra stand-off observable
+/// without making correctness depend on how long a loaded machine takes.
 /// </para>
 /// </summary>
 public sealed class ContentUpgradeStaleApplyTests
 {
-    /// <summary>The deadline a run is given. The stand-off budget is a little over thirty seconds.</summary>
-    static readonly TimeSpan Deadline = TimeSpan.FromSeconds(10);
+    /// <summary>
+    /// A last-resort bound for a store call that never completes. Stand-off detection uses the read limit,
+    /// so ordinary test correctness does not depend on this clock.
+    /// </summary>
+    static readonly TimeSpan HangWatchdog = TimeSpan.FromMinutes(5);
 
     /// <summary>The stale write OPENS the draft and the runner's own write appends into it.</summary>
     [Fact]
@@ -90,15 +93,21 @@ public sealed class ContentUpgradeStaleApplyTests
         using var files = new TemporaryCatalogDatabase();
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
         using ContentAuthoringStoreLease lease = await LeaseAsync(files, registry, sqlite);
+        int expectedReads = moment == DraftRaceMoment.BeforeTheRunnersWrite ? 8 : 11;
         var race = new DraftRaceStore(
             lease.Store,
             ContentUpgradeRunner.NoteFor(UpgradeHarness.FirstId),
             ContentUpgradeRunner.NoteFor(UpgradeHarness.SecondId),
-            moment);
+            moment)
+        {
+            OpenDraftReadLimit = expectedReads,
+        };
 
         ContentUpgradeReport report = await RunAsync(race, registry);
 
         Assert.True(race.Raced, "the rival write never landed, so the interleaving was not exercised.");
+        Assert.Equal(expectedReads, race.OpenDraftReads);
+        race.OpenDraftReadLimit = null;
         Assert.True(report.Success, string.Join(" | ", report.Lines));
         IReadOnlyList<ContentUpgradeRecord> ledger = await race.ListUpgradesAsync();
         Assert.Equal(2, ledger.Count);
@@ -220,12 +229,15 @@ public sealed class ContentUpgradeStaleApplyTests
         return keys;
     }
 
-    /// <summary>One apply run under a hard deadline, so a stall fails fast instead of spending the budget.</summary>
+    /// <summary>
+    /// One apply run. The race store's read counter detects a stand-off without a clock, while the watchdog
+    /// bounds a store operation that stops completing altogether.
+    /// </summary>
     static async Task<ContentUpgradeReport> RunAsync(DraftRaceStore race, ContentTypeRegistry registry)
     {
-        using var deadline = new CancellationTokenSource(Deadline);
+        using var watchdog = new CancellationTokenSource(HangWatchdog);
         return await ContentUpgradeRunner.RunAsync(
-            race, registry, SetFor(registry), UpgradeFixtures.Apply(), deadline.Token);
+            race, registry, SetFor(registry), UpgradeFixtures.Apply(), watchdog.Token);
     }
 
     /// <summary>An OLDER catalog at version 1, in memory or on a real SQLite file.</summary>

@@ -110,6 +110,23 @@ public sealed class ModelMotionPipelineTests
     }
 
     [Fact]
+    public void TheTemporalTargetBuildsTheFoliageVariantWithTheMotionBlockAtSetTwo()
+    {
+        using var device = new FakeGpuDevice();
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        using var model = new ModelRenderer(device, ModelTargets.Temporal, 64, 1);
+        using IGpuCommandList commands = factory.CreateCommandList();
+        model.UploadFoliageUniforms(commands, [default]);   // the foliage pipeline builds on its first upload
+
+        FakeGraphicsPipelineRequest foliage = Assert.Single(factory.GraphicsPipelines,
+            p => p.VertexGlsl == ShaderSources.FoliageMotionVert);
+        Assert.Equal(ShaderSources.ModelMotionFrag, foliage.FragmentGlsl);
+        Assert.Equal(3, foliage.Description.ResourceLayouts.Length);
+        Assert.Same(model.Motion!.FrameLayout, foliage.Description.ResourceLayouts[2]);
+        Assert.DoesNotContain(factory.GraphicsPipelines, p => p.VertexGlsl == ShaderSources.FoliageVert);
+    }
+
+    [Fact]
     public void LeavingTheTemporalTargetRetiresTheMotionResources()
     {
         using var device = new FakeGpuDevice();

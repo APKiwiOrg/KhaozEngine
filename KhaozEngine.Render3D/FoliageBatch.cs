@@ -12,6 +12,14 @@ public sealed class FoliageBatch : IDisposable
     internal readonly FoliagePatchLayout Layout;
     internal ModelRenderer.FoliageInstanceData[]? Pending;
     internal IGpuBuffer? Buffer;
+    // The temporal variant's last frame (TEMPORAL-FOUNDATIONS-DESIGN section 3). The uniforms this batch was last
+    // submitted with and the frame they belong to, and the frame before's, which a submission reads as previous.
+    // Written only while temporal rendering is active. The frame starts at a value no frame index takes, so a batch
+    // submitted before the scene's first Begin cannot read the empty previous as last frame's.
+    internal ModelRenderer.FoliageUniforms MotionCurrent;
+    internal ModelRenderer.FoliageUniforms MotionPrevious;
+    internal long MotionFrame = long.MinValue;
+    internal bool MotionPreviousValid;
 
     internal FoliageBatch(Scene3D owner, FoliagePatchLayout layout, ModelRenderer.FoliageInstanceData[] data)
     {

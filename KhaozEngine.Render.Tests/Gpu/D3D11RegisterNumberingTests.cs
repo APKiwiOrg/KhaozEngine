@@ -357,6 +357,16 @@ namespace KhaozEngine.Tests.Gpu
             D3D11ResourceLayout[] skinnedTemporal = { skinnedMain, skinnedFrag, bonePalette, skinnedMotion };
 
             Assert.Equal("b3 b4", Absolute(skinnedTemporal, 3));
+
+            // The foliage temporal variant: the model layout, the foliage block at set 1 and the motion block alone at
+            // set 2, so the two blocks continue the b file after the frame block. Read off the emitted HLSL, whose
+            // vertex stage names the foliage block b1 and the motion block b2.
+            using var foliage = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("Foliage", dynamic: true)));
+            using var motionFrame = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("MotionFrame")));
+            D3D11ResourceLayout[] foliageTemporal = { model, foliage, motionFrame };
+
+            Assert.Equal("b1", Absolute(foliageTemporal, 1));
+            Assert.Equal("b2", Absolute(foliageTemporal, 2));
         }
 
         /// <summary>

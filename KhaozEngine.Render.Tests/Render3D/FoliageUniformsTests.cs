@@ -25,8 +25,10 @@ public sealed class FoliageUniformsTests
         // Every std140 member is a vec4 or a vec4 array, so each one advances exactly 16 bytes per element.
         Assert.Equal(144, (int)Marshal.OffsetOf<FoliageUniforms>(nameof(FoliageUniforms.WindFade)));
         Assert.Equal(128, (int)Marshal.OffsetOf<FoliageUniforms>(nameof(FoliageUniforms.Strengths)));
-        Assert.Equal(160, Marshal.SizeOf<FoliageUniforms>());
-        Assert.Equal(160u, FoliageUniforms.SizeInBytes);
+        // The base block is the struct's first 160 bytes. The temporal variant reads the rest (FoliageMotionUniformsTests).
+        Assert.Equal(160, (int)Marshal.OffsetOf<FoliageUniforms>(nameof(FoliageUniforms.PrevFocus)));
+        Assert.Equal(256, Marshal.SizeOf<FoliageUniforms>());
+        Assert.Equal(256u, FoliageUniforms.SizeInBytes);
         Assert.True(FoliageUniforms.SizeInBytes <= FoliageUniforms.SlotBytes);
     }
 

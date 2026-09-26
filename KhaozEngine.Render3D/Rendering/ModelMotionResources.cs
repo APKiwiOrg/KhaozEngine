@@ -10,7 +10,7 @@ namespace KhaozEngine.Render3D.Rendering;
 /// build against a model target that carries the motion attachment and retired when the target loses it, so with
 /// temporal rendering off none of it exists. The temporal programs compile when the renderer builds against that
 /// target, whether or not a scene draws every path.
-/// Later tasks add the foliage and ground members.
+/// Later tasks add the ground members.
 /// </summary>
 internal sealed class ModelMotionResources : IDisposable
 {
@@ -38,6 +38,7 @@ internal sealed class ModelMotionResources : IDisposable
     IGpuBuffer? _cpuPrevious;
     uint _cpuPreviousCapacity;
     IGpuShaderSet? _cpuSkinned, _cpuSkinnedDissolve;
+    IGpuShaderSet? _foliage;
 
     internal ModelMotionResources(IGpuDevice gd, GpuRetireQueue retired)
     {
@@ -103,6 +104,10 @@ internal sealed class ModelMotionResources : IDisposable
     internal IGpuShaderSet CpuSkinnedDissolveShaders => _cpuSkinnedDissolve ??= _gd.Factory.CreateShadersFromSpirv(
         ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelDissolveMotionFrag);
 
+    /// <summary>FoliageMotionVert with ModelMotionFrag.</summary>
+    internal IGpuShaderSet FoliageShaders => _foliage ??= _gd.Factory.CreateShadersFromSpirv(
+        ShaderSources.FoliageMotionVert, ShaderSources.ModelMotionFrag);
+
     IGpuBuffer CreatePrevious(uint capacity) => _gd.Factory.CreateBuffer(new GpuBufferDescription(
         capacity * MatrixBytes, GpuBufferUsage.StructuredBufferReadOnly, MatrixBytes));
 
@@ -159,6 +164,7 @@ internal sealed class ModelMotionResources : IDisposable
         _cpuPrevious?.Dispose();
         _cpuSkinned?.Dispose();
         _cpuSkinnedDissolve?.Dispose();
+        _foliage?.Dispose();
         _frame.Dispose();
         _rigid?.Dispose();
     }

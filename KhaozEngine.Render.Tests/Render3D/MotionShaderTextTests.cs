@@ -45,4 +45,65 @@ public sealed class MotionShaderTextTests
             && (sink.Length == 0 || line != sink)));
         Assert.True(baseline == stripped, $"{name} differs from its base program beyond the motion lines.");
     }
+
+    static string[] Lines(string source) => source.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+
+    static bool IsClip(string line) =>
+        line.Contains("vCurClip", StringComparison.Ordinal) || line.Contains("vPrevClip", StringComparison.Ordinal);
+
+    static bool Declares(string line, string direction) =>
+        line.StartsWith("layout(location=", StringComparison.Ordinal) && line.Contains(direction, StringComparison.Ordinal);
+
+    // The vertex inputs, whole lines.
+    static string[] Inputs(string[] lines) => lines.Where(line => Declares(line, ") in ")).ToArray();
+
+    // The outputs as type and name, without the location and comment a variant may change, and without the clip pair.
+    static string[] Outputs(string[] lines) => lines
+        .Where(line => Declares(line, ") out ") && !IsClip(line))
+        .Select(line =>
+        {
+            string declaration = line[(line.IndexOf(") out ", StringComparison.Ordinal) + ") out ".Length)..];
+            return declaration[..(declaration.IndexOf(';', StringComparison.Ordinal) + 1)];
+        })
+        .ToArray();
+
+    // From gl_Position to the end of the program, without the clip pair.
+    static string[] Tail(string[] lines) => lines
+        .SkipWhile(line => !line.TrimStart().StartsWith("gl_Position", StringComparison.Ordinal))
+        .Where(line => !IsClip(line))
+        .ToArray();
+
+    /// <summary>FoliageVert's statements up to gl_Position, with the renames foliageWorld makes (the focus, clock,
+    /// pixel scale and fade matrix become parameters, and the interactor reads go through the current-or-previous
+    /// locals), equal foliageWorld's body line for line. The inputs, the outputs and the rest of main match too.</summary>
+    [Fact]
+    public void TheFoliageVariantRestatesFoliageVertLineForLine()
+    {
+        string[] baseline = Lines(ShaderSources.FoliageVert);
+        string[] variant = Lines(ShaderSources.FoliageMotionVert);
+        string[] deformation = baseline
+            .SkipWhile(line => line != "void main() {").Skip(1)
+            .TakeWhile(line => !line.TrimStart().StartsWith("gl_Position", StringComparison.Ordinal))
+            .Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal))
+            .Select(line => line
+                .Replace("FocusRadius.xz", "focus.xz", StringComparison.Ordinal)
+                .Replace("bool rejected =", "rejected =", StringComparison.Ordinal)
+                .Replace("mat4 Model =", "Model =", StringComparison.Ordinal)
+                .Replace("WindTime.z * FadeWind.z", "windTime * FadeWind.z", StringComparison.Ordinal)
+                .Replace("(ViewProj * vec4(root, 1.0)).w, 0.0) * WindFade.y",
+                    "(fadeViewProj * vec4(root, 1.0)).w, 0.0) * metresPerPixel", StringComparison.Ordinal)
+                .Replace("Interactors[i]", "interactor", StringComparison.Ordinal)
+                .Replace("Strengths[i]", "strength", StringComparison.Ordinal))
+            .ToArray();
+        string[] function = variant
+            .SkipWhile(line => !line.StartsWith("vec3 foliageWorld(", StringComparison.Ordinal)).Skip(2)
+            .TakeWhile(line => line != "    return world.xyz;")
+            .Where(line => !line.Contains("previous ? Prev", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Equal(deformation, function);
+        Assert.Equal(Inputs(baseline), Inputs(variant));
+        Assert.Equal(Outputs(baseline), Outputs(variant));
+        Assert.Equal(Tail(baseline), Tail(variant));
+    }
 }

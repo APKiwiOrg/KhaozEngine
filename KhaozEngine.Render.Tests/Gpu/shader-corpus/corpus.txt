@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 488
+# Rows: 496
 Beam.fragment.hlsl 763e8e2481a2a78f468f6d62ed5e3a24df6ffd7ad4d0e8c280ac5ad953b177fe 1809
 Beam.fragment.msl f8bb4e895ae8c1794baa7115089311abef23c86d22b47d85f68e225dae39ad99 1493
 Beam.fragment.spirv 7023f2b860be99c43999b4be78b8fe5cbdba1e201d451dd77c137a80224eba79 2724
@@ -42,6 +42,14 @@ Foliage.layout.msl d15e8aa69ca53cb5bf1fb64b8d6b57a584449562ad85d1e4f55b70f91dd84
 Foliage.vertex.hlsl a2b813f217c491a8555620f4bcd48fbf12b81e625b03070a8fde54440f5eef8e 7149
 Foliage.vertex.msl cad418a2dc868a6d3ba63a5b2f3a6782bb67ebc1b23fd57a74c792cb071e0257 5774
 Foliage.vertex.spirv fa60b569e3fe3564046b2b8d6a00712061b8db1c2c5f1e229d54f4a8c7fdffc0 9224
+FoliageMotion.fragment.hlsl b56074f4562029264edd3f32738d6727a32b16722e62284b588df7306c8b0206 70602
+FoliageMotion.fragment.msl 0b6ccdc31cff3de764ddfc7b5e5b50823d86ee64fafc0878a5b48a832c1e2c20 69977
+FoliageMotion.fragment.spirv 700540a514d5115ae78dd6d92387059c0c18c4074044579e97f44e40f1b968a7 48072
+FoliageMotion.layout.hlsl 2bd6f512714d335ef82ebff8b7fdec69020eb0477112709bb1662d579d05bef7 23 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set1[<unnamed>:UniformBuffer:V]|set2[<unnamed>:UniformBuffer:V]
+FoliageMotion.layout.msl 2bd6f512714d335ef82ebff8b7fdec69020eb0477112709bb1662d579d05bef7 23 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set1[<unnamed>:UniformBuffer:V]|set2[<unnamed>:UniformBuffer:V]
+FoliageMotion.vertex.hlsl e55e27019ec9d88e369a63bde3ec2c22928cdb0181fa1802468be572f0b31c94 10712
+FoliageMotion.vertex.msl 1dd1e2c67dab2de01c0ac0dea7a463a7ac9006b3e5fbc56886a0d1d42cf42b55 9180
+FoliageMotion.vertex.spirv 4e5e57b150080868e305ab258597a053bfce6a28bf9303208c8bb13cfe74d069 13396
 GroundDecal.fragment.hlsl a1fcf07e2d3b9419607030d5a36565c6344f608c6cb003afee6aab614c791873 31736
 GroundDecal.fragment.msl 5132cb5126e3019cc082d26b7049dfc6f16dc95f54f6e78d485c27b211f89b73 31588
 GroundDecal.fragment.spirv f9c5ad3158dc260af8e32eaedc864a136ceb26a779326ebbf4a565fe57e53d27 32028

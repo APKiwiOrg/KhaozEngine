@@ -208,6 +208,7 @@ namespace KhaozEngine.Tests.Gpu
             ("GroundDecalRenderer", ["GroundDecal"]),
             ("ModelRenderer", ["Model"]),
             ("ModelRenderer foliage", ["Model", "Foliage"]),
+            ("ModelRenderer foliage motion", ["Model", "Foliage", "Motion.frame"]),
             ("ModelRenderer dissolve", ["Model"]),
             ("ModelRenderer splat", ["Model.splatFrame", "Model.splatMaterial"]),
             ("ModelRenderer tile ground", ["Model.tileGroundFrame", "Model.tileGroundMaterial"]),
@@ -264,7 +265,7 @@ namespace KhaozEngine.Tests.Gpu
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
             Assert.Equal(48, ShippedLayouts.Count);
-            Assert.Equal(48, ShippedPipelines.Count);
+            Assert.Equal(49, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

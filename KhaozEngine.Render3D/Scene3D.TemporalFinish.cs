@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 
@@ -7,11 +8,11 @@ namespace KhaozEngine.Render3D
 {
     /// <summary>
     /// The finishing layer over the temporal resolve (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md,
-    /// sections 4 to 6, amendments 7 and 20): the sharpen's test seams, the material mip bias, and the sizes, preset
-    /// and counts the diagnostics report. The sharpen runs in the display post chain, which only the first render of a
-    /// resolving frame runs, so a later render's chain and a frame without the resolve never build it. The mip bias
-    /// follows the same rule, and the diagnostics describe that first render. A partial of its own because
-    /// <c>Scene3D.cs</c> is frozen by the file-size ratchet.
+    /// sections 4 to 6, amendments 7 and 20): the sharpen's test seams, the material mip bias, the resolve's debug
+    /// views, and the sizes, preset and counts the diagnostics report. The sharpen runs in the display post chain,
+    /// which only the first render of a resolving frame runs, so a later render's chain and a frame without the
+    /// resolve never build it. The mip bias and the debug views follow the same rule, and the diagnostics describe
+    /// that first render. A partial of its own because <c>Scene3D.cs</c> is frozen by the file-size ratchet.
     /// </summary>
     public sealed partial class Scene3D
     {
@@ -90,5 +91,22 @@ namespace KhaozEngine.Render3D
 
         /// <summary>The model pass's packed frame block as last uploaded. Internal, for the tests.</summary>
         internal ReadOnlySpan<byte> FrameImageForTests => _model.FrameImage;
+
+        /// <summary>
+        /// Draw the frame's History, Disocclusion or Reactive view over <paramref name="target"/>, re-evaluating the
+        /// resolve this render ran over the set and uniforms it used. Only the render that ran the resolve draws it: a
+        /// frame without temporal anti-aliasing draws nothing, and so does a later render of a resolving frame, which
+        /// is unjittered and unresolved and would re-evaluate the first render's inputs against its own image. The
+        /// resolve, the sharpen and the mip bias run exactly as they do without a view, and the view only replaces the
+        /// final image after them.
+        /// </summary>
+        void DrawTemporalDebugView(IGpuCommandList cl, IGpuFramebuffer target)
+        {
+            if (!_resolveThisRender || _temporalResolve is not { } resolve) return;
+            resolve.DrawDebugView(cl, _frameDebugView, target, _targetOutput);
+        }
+
+        /// <summary>Whether the resolve has built its debug view pass. Internal, for the tests.</summary>
+        internal bool TemporalDebugViewBuiltForTests => _temporalResolve?.DebugViewBuilt ?? false;
     }
 }

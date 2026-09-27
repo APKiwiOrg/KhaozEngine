@@ -149,6 +149,7 @@ namespace KhaozEngine.Tests.Gpu
                 "t0 t1 t2 t3 t4 t5 t6 s0 b0"),
             ("TemporalResolveRenderer._storeLayout",
                 new[] { T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore") }, "t0 t1 s0 b0"),
+            ("TemporalDebugViewPass._modeLayout", new[] { U("DebugView") }, "b0"),
 
             ("ShadowMapRenderer._layout", new[] { U("U", dynamic: true) }, "b0"),
             ("ShadowMapRenderer._skinnedLayout", new[] { U("VBlock", dynamic: true) }, "b0"),
@@ -278,11 +279,12 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on ten of the shipped
+        /// ACROSS layouts, the flattening follows the PIPELINE ARRAY, per file. Shown on eleven of the shipped
         /// multi-layout pipelines: <c>SpriteBatch</c>, the skinned model pass, the skinned depth pass, the splat
-        /// pass, the tile-ground pass, and the rigid, skinned, foliage, splat and tile-ground temporal variants. The
-        /// skinned model and depth passes share one palette layout OBJECT at different slots, which is the case that
-        /// proves the base comes from the array rather than from the layout.
+        /// pass, the tile-ground pass, the rigid, skinned, foliage, splat and tile-ground temporal variants, and the
+        /// temporal resolve's debug view. The skinned model and depth passes share one palette layout OBJECT at
+        /// different slots, which is the case that proves the base comes from the array rather than from the
+        /// layout.
         /// </summary>
         [Fact]
         public void AcrossLayouts_TheShippedPipelinesFlattenInArrayOrder()
@@ -392,6 +394,19 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal("b2", Absolute(splatTemporal, 2));
             Assert.Equal("b1 t2 s0 t3 s1 t4 t5", Absolute(groundTemporal, 1));
             Assert.Equal("b2", Absolute(groundTemporal, 2));
+
+            // The temporal resolve's debug view: the resolve's own layout at set 0, so the view re-evaluates the
+            // resolve over the set it bound, and the view's mode block alone at set 1, which continues the b file
+            // after the resolve's block. Read off the emitted HLSL, whose fragment stage names the resolve block b0,
+            // the mode block b1 and the seven textures t0 to t6 with the sampler s0.
+            using var resolve = new D3D11ResourceLayout(new GpuResourceLayoutDescription(
+                T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"), T("HistoryColor"),
+                T("HistoryConfidence"), S("LinearClamp"), U("Resolve")));
+            using var debugMode = new D3D11ResourceLayout(new GpuResourceLayoutDescription(U("DebugView")));
+            D3D11ResourceLayout[] debugView = { resolve, debugMode };
+
+            Assert.Equal("t0 t1 t2 t3 t4 t5 t6 s0 b0", Absolute(debugView, 0));
+            Assert.Equal("b1", Absolute(debugView, 1));
         }
 
         /// <summary>

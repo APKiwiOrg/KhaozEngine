@@ -28,8 +28,9 @@ namespace KhaozEngine.Render3D
         // The display over internal scale that sequence length came from, fixed with it, which the frame's material
         // mip bias reads (Scene3D.TemporalFinish.cs).
         float _frameDisplayOverInternal = 1f;
-        // The frame's debug view, fixed by its first render beside the temporal state (see DebugView). A view is only
-        // drawn on a temporal frame, so its data exists whenever it is drawn.
+        // The frame's debug view, fixed by its first render beside the temporal state (see DebugView). The
+        // MotionVectors view makes its frame temporal, and the resolve views draw only on the render that ran the
+        // resolve, so a view's data exists whenever it is drawn.
         SceneDebugView _frameDebugView;
         // Whether the frame's first render was given a display size, so the diagnostics never pair the last nonzero
         // display size a zero-size render keeps with its internal size (Scene3D.TemporalFinish.cs).
@@ -60,9 +61,11 @@ namespace KhaozEngine.Render3D
         internal bool TemporalActive => _frameViewLatchedThisFrame ? _frameTemporalActive : TemporalRequested;
 
         /// <summary>Whether a temporal consumer asks for temporal rendering right now: temporal anti-aliasing
-        /// (<see cref="TemporalResolveActive"/>), the main requester, a <see cref="DebugView"/> other than
-        /// <see cref="SceneDebugView.None"/>, or the test seam. Read only through <see cref="TemporalActive"/>.</summary>
-        bool TemporalRequested => ForceTemporalForTests || _debugView != SceneDebugView.None || TemporalResolveActive;
+        /// (<see cref="TemporalResolveActive"/>), the main requester, the <see cref="SceneDebugView.MotionVectors"/>
+        /// debug view, or the test seam. The three resolve views take effect only under temporal anti-aliasing, so
+        /// they request nothing. Read only through <see cref="TemporalActive"/>.</summary>
+        bool TemporalRequested => ForceTemporalForTests || _debugView == SceneDebugView.MotionVectors
+            || TemporalResolveActive;
 
         /// <summary>Called from <see cref="Begin"/>: one frame index per Begin, however many renders follow, and the
         /// next render is the frame's first, which fixes the frame's temporal state.</summary>

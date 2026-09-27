@@ -24,7 +24,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 68 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 69 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -48,7 +48,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct shipped vertex and fragment pair, 68 of them.</summary>
+        /// <summary>Every distinct shipped vertex and fragment pair, 69 of them.</summary>
         public static IEnumerable<ShippedGraphicsProgram> GraphicsPrograms()
         {
             // Render2D.
@@ -177,6 +177,8 @@ namespace KhaozEngine.Tests.Gpu
             // Render3D temporal resolve and its depth store, sharing FullscreenVert.
             yield return new("TemporalResolve", ShaderSources.FullscreenVert, ShaderSources.TemporalResolveFrag);
             yield return new("TemporalDepthStore", ShaderSources.FullscreenVert, ShaderSources.TemporalDepthStoreFrag);
+            // The resolve's History, Disocclusion and Reactive debug views, one program over the resolve's own core.
+            yield return new("TemporalDebugView", ShaderSources.FullscreenVert, ShaderSources.TemporalDebugFrag);
         }
 
         /// <summary>Every shipped compute kernel, across the four reachable cascade resolutions.</summary>

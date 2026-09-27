@@ -405,6 +405,7 @@ namespace KhaozEngine.Tests.Gpu
                 ("TemporalSharpenPass sharpen", TemporalSharpenPass.SharpenBufferBytes),
                 ("TemporalResolveRenderer resolve UBO", TemporalResolveUniforms.SizeInBytes),
                 ("TemporalResolveRenderer depth store UBO", TemporalDepthStoreUniforms.SizeInBytes),
+                ("TemporalDebugViewPass mode", TemporalDebugViewPass.DebugViewBufferBytes),
                 ("DistortionRenderer frame UBO", DistortionRenderer.FrameBufferBytes),
                 ("SkyRenderer UBO", SkyRenderer.UboBytes),
                 ("StarfieldRenderer UBO", StarfieldRenderer.UboBytes),

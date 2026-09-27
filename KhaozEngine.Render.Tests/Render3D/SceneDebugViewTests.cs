@@ -6,9 +6,11 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
-/// <summary><c>Scene3D.DebugView</c>: <see cref="SceneDebugView.None"/> by default, and any other value turns temporal
-/// rendering on while it is set (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, sections 5 and 6). A frame fixes
-/// its temporal state at its first render, so a requester changed after that render takes effect on the next frame.</summary>
+/// <summary><c>Scene3D.DebugView</c>: <see cref="SceneDebugView.None"/> by default, and only
+/// <see cref="SceneDebugView.MotionVectors"/> turns temporal rendering on while it is set. The three resolve views take
+/// effect only under temporal anti-aliasing (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, sections 5 and
+/// 6). A frame fixes its temporal state at its first render, so a requester changed after that render takes effect on
+/// the next frame.</summary>
 public sealed class SceneDebugViewTests
 {
     /// <summary>The two requesters of temporal rendering other than temporal anti-aliasing.</summary>
@@ -30,10 +32,7 @@ public sealed class SceneDebugViewTests
 
     [Theory]
     [InlineData(SceneDebugView.MotionVectors)]
-    [InlineData(SceneDebugView.History)]
-    [InlineData(SceneDebugView.Disocclusion)]
-    [InlineData(SceneDebugView.Reactive)]
-    public void AnyViewOtherThanNoneTurnsTemporalRenderingOnWhileItIsSet(SceneDebugView debugView)
+    public void TheMotionVectorsViewTurnsTemporalRenderingOnWhileItIsSet(SceneDebugView debugView)
     {
         using var rig = new HeadlessSceneRig();
         Scene3D scene = rig.Scene;
@@ -52,6 +51,23 @@ public sealed class SceneDebugViewTests
         Assert.False(scene.TemporalActive);
         Assert.Equal(Vector2.Zero, scene.CurrentFrameView.JitterPixels);
         Assert.False(scene.TemporalHistory.IsValid);
+    }
+
+    [Theory]
+    [InlineData(SceneDebugView.History)]
+    [InlineData(SceneDebugView.Disocclusion)]
+    [InlineData(SceneDebugView.Reactive)]
+    public void AResolveViewTurnsNothingOnOutsideTemporalAntiAliasing(SceneDebugView debugView)
+    {
+        using var rig = new HeadlessSceneRig();
+        rig.Scene.DebugView = debugView;
+        Assert.False(rig.Scene.TemporalActive);
+        rig.Frame();
+        Assert.Equal(Vector2.Zero, rig.Scene.CurrentFrameView.JitterPixels);
+
+        rig.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+        rig.Frame();   // the frame's temporal state is fixed at its first render
+        Assert.True(rig.Scene.TemporalActive);
     }
 
     [Theory]

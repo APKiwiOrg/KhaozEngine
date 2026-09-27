@@ -58,6 +58,15 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal((int)TemporalSharpenPass.SharpenBufferBytes, Marshal.SizeOf<TemporalSharpenPass.SharpenUbo>());
         }
 
+        [Fact]
+        public void DebugViewUbo_MarshalSize_EqualsModeBufferAllocation()
+        {
+            // GLSL: DebugView { vec4 Mode; } = 1 vec4 = 16 bytes (TemporalDebugFrag).
+            Assert.Equal(16u, TemporalDebugViewPass.DebugViewBufferBytes);
+            Assert.Equal((int)TemporalDebugViewPass.DebugViewBufferBytes,
+                Marshal.SizeOf<TemporalDebugViewPass.DebugViewUbo>());
+        }
+
         static void AssertMirrors<T>(string glslMembers, uint sizeInBytes) where T : struct
         {
             Assert.DoesNotContain("//", glslMembers, StringComparison.Ordinal);

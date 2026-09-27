@@ -4,18 +4,20 @@ using KhaozEngine.Render3D.Rendering;
 
 namespace KhaozEngine.Render3D
 {
-    /// <summary>The debug view (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, section 5): the selection, which
-    /// turns temporal rendering on, and the dispatch that draws the frame's view after the post chain. Each view's pass
-    /// lives with the data it shows.</summary>
+    /// <summary>The debug view (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, section 5): the selection, whose
+    /// MotionVectors view turns temporal rendering on, and the dispatch that draws the frame's view after the post
+    /// chain. Each view's pass lives with the data it shows.</summary>
     public sealed partial class Scene3D
     {
         SceneDebugView _debugView;
 
         /// <summary>
         /// A development view that replaces the final image with a view of the temporal machinery.
-        /// <see cref="SceneDebugView.None"/>, the default, renders normally. Any other value turns temporal rendering on
-        /// for as long as it is set, which jitters the rasterised image by under half an internal pixel on each axis
-        /// each frame. Not a player setting.
+        /// <see cref="SceneDebugView.None"/>, the default, renders normally. <see cref="SceneDebugView.MotionVectors"/>
+        /// turns temporal rendering on for as long as it is set, which jitters the rasterised image by under half an
+        /// internal pixel on each axis each frame. The other three take effect only under
+        /// <see cref="AntiAliasing.Temporal"/>, and only on the frame's first render, the one the resolve runs on. Not
+        /// a player setting.
         /// <para>
         /// The selection counts per frame. A change takes effect at the frame's first render, including one made
         /// between <see cref="Begin"/> and that render. A change made after that render waits for the next frame, so
@@ -43,17 +45,24 @@ namespace KhaozEngine.Render3D
         /// <summary>Draw the frame's debug view over <paramref name="target"/>, once per render right after the post
         /// chain. <see cref="SceneDebugView.None"/> draws nothing. The view is the one the frame's first render latched
         /// (<see cref="LatchFrameView"/>), so a selection made after that render waits for the next frame, as
-        /// <see cref="DebugView"/> documents.</summary>
+        /// <see cref="DebugView"/> documents. The three resolve views draw only on the render that ran the resolve
+        /// (<see cref="DrawTemporalDebugView"/>).</summary>
         void DrawDebugView(IGpuCommandList cl, IGpuFramebuffer target)
         {
             switch (_frameDebugView)
             {
                 case SceneDebugView.MotionVectors:
-                    // A latched view means a temporal frame, and every render of a temporal frame carries the motion
-                    // target. A miss is a wiring error, so it says so instead of failing on a null.
+                    // A latched MotionVectors view means a temporal frame, and every render of a temporal frame carries
+                    // the motion target. A miss is a wiring error, so it says so instead of failing on a null.
                     IGpuTexture motion = _res.MotionTex ?? throw new InvalidOperationException(
                         "The MotionVectors view has no motion target: the frame that latched it is not temporal.");
                     (_motionVectorsView ??= new MotionVectorsView(_gd, _targetOutput)).Draw(cl, motion, target);
+                    break;
+                case SceneDebugView.History:
+                case SceneDebugView.Disocclusion:
+                case SceneDebugView.Reactive:
+                    RetireMotionVectorsView();
+                    DrawTemporalDebugView(cl, target);
                     break;
                 default:
                     RetireMotionVectorsView();

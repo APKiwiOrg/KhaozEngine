@@ -154,6 +154,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["Temporal.resolve"] = L(T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"),
                     T("PrevDepth"), T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve", F)),
                 ["Temporal.depthStore"] = L(T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore", F)),
+                // Render3D/Rendering/TemporalDebugViewPass.cs, the debug views' immutable mode block at set 1, after
+                // the resolve's own layout at set 0.
+                ["Temporal.debugMode"] = L(U("DebugView", F)),
 
                 // The face layout behind all seven point-shadow pipelines. Both stages read it: the vertex takes
                 // the face matrix and the fragment takes the light position and radius for stored distance.
@@ -254,6 +257,7 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalSharpenPass", ["TemporalSharpen"]),
             ("TemporalResolveRenderer resolve", ["Temporal.resolve"]),
             ("TemporalResolveRenderer depth store", ["Temporal.depthStore"]),
+            ("TemporalResolveRenderer debug view", ["Temporal.resolve", "Temporal.debugMode"]),
             // The four rigid point-shadow pipelines (three caster variants and the row clear) are one row, the way
             // the cascade pass's three depth variants are: they differ in blend, depth state and shaders, and a
             // pipeline is in this table for its LAYOUT ARRAY, which is the same single set for all of them.
@@ -284,8 +288,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(53, ShippedLayouts.Count);
-            Assert.Equal(56, ShippedPipelines.Count);
+            Assert.Equal(54, ShippedLayouts.Count);
+            Assert.Equal(57, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

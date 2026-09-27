@@ -27,11 +27,11 @@ namespace KhaozEngine.Render3D.Rendering
     /// <para>The scene creates it on the first frame the resolve runs. On the first frame the resolve does not run it lets
     /// go of the sets (<see cref="ReleaseSets"/>), which name the released history targets, and keeps the pipelines for the
     /// next time. A scene that never selects temporal anti-aliasing owns none of its objects.
-    /// <see cref="ResolveLayout"/> and <see cref="CurrentSet"/> are exposed for planned consumers,
-    /// such as a temporal debug view, that re-evaluate the resolve through <c>ShaderSources.TemporalResolveCoreGlsl</c>
-    /// over the set it bound. No pass reads them yet.</para>
+    /// <see cref="ResolveLayout"/> and <see cref="CurrentSet"/> are exposed for the passes that re-evaluate the
+    /// resolve through <c>ShaderSources.TemporalResolveCoreGlsl</c> over the set it bound, such as the debug views
+    /// (TemporalResolveRenderer.Finish.cs).</para>
     /// </summary>
-    internal sealed class TemporalResolveRenderer : IDisposable
+    internal sealed partial class TemporalResolveRenderer : IDisposable
     {
         /// <summary>The draws <see cref="Run"/> records: the resolve and the depth store.</summary>
         internal const int DrawCallsPerFrame = 2;
@@ -68,7 +68,7 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuOutputDescription(null, TemporalFormats.PreviousDepth));
         }
 
-        /// <summary>The resolve's resource layout, for a planned pass that binds the resolve's own set to re-evaluate
+        /// <summary>The resolve's resource layout, for a pass that binds the resolve's own set to re-evaluate
         /// it.</summary>
         internal IGpuResourceLayout ResolveLayout => _resolveLayout;
 
@@ -198,6 +198,7 @@ namespace KhaozEngine.Render3D.Rendering
 
         public void Dispose()
         {
+            DisposeFinish();
             DisposeSets();
             _resolvePipeline.Dispose();
             _storePipeline.Dispose();

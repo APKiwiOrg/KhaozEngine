@@ -217,8 +217,8 @@ namespace KhaozEngine.Tests.Render3D
             // there even where the depth test is skipped, and never drop a lock where nothing moves: an edge must pass an
             // absolute floor as well, above the float rounding of a sky texel's own motion under a still camera.
             string core = ShaderSources.TemporalResolveCoreGlsl;
-            Assert.Contains("float lockValue = useHistory && !heldFromFarther && !partlyRevealed "
-                + "? max(historyState.y - LockDecay, 0.0) : 0.0;", core, StringComparison.Ordinal);
+            Assert.Contains("float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;",
+                core, StringComparison.Ordinal);
             Assert.Contains("bool movingEdge = edgeMotion > max(LockEdgeFloorInternalPixels, length(closestMotion * internalSize) "
                 + "* LockEdgeMotionFraction);", core, StringComparison.Ordinal);
             Assert.Contains("if (historyValid && onScreen && (depthTested || movingEdge)) {", core, StringComparison.Ordinal);
@@ -244,32 +244,6 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);", core, StringComparison.Ordinal);
             Assert.Contains("excess.x *= 1.0 - hold;", core, StringComparison.Ordinal);
             Assert.Contains("clipped.x = mix(clipped.x, historyYcc.x, hold);", core, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void A_partly_revealed_pixel_drops_its_carried_lock_unless_a_thin_feature_left_it()
-        {
-            // A surface nearer than the expected depth, the nearest in the current 3x3, stored anywhere in last frame's
-            // 3x3 around the pixel, aligned with the current one, means something covered part of the pixel and has
-            // gone. The lock is released unless that stored surface is thin, a sub-texel feature the jitter missed. It
-            // is tested only where the depth test ran and a lock carries past this frame's decay, before the ridge
-            // refresh.
-            string core = ShaderSources.TemporalResolveCoreGlsl;
-            Assert.Contains("ivec2 texel = clamp(around + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), maxTexel);", core,
-                StringComparison.Ordinal);
-            Assert.Contains("return nearest < expectedDepth * (1.0 - DisocclusionTolerance)", core,
-                StringComparison.Ordinal);
-            Assert.Contains("&& !temporalThinDepth(nearestTexel, nearest, maxTexel);", core, StringComparison.Ordinal);
-            Assert.Contains("ivec2 previousCentre = centreTexel + ivec2(round((previousUv - uv) * internalSize));",
-                core, StringComparison.Ordinal);
-            Assert.Contains("bool partlyRevealed = useHistory && depthTested && !heldFromFarther "
-                + "&& historyState.y > LockDecay", core, StringComparison.Ordinal);
-            Assert.Contains("&& temporalPartlyRevealed(previousCentre, expectedDepth, maxTexel);", core,
-                StringComparison.Ordinal);
-            int reveal = core.IndexOf("bool partlyRevealed = ", StringComparison.Ordinal);
-            int refresh = core.IndexOf("if (ridge) lockValue = 1.0;", StringComparison.Ordinal);
-            Assert.True(reveal >= 0 && refresh > reveal,
-                "the partial reveal must drop the lock before a ridge refreshes it");
         }
 
         [Fact]

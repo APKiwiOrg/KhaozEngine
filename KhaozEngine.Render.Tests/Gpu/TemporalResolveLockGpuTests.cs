@@ -251,6 +251,26 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
+        [InlineData(TemporalUpscale.Native, -1)]
+        [InlineData(TemporalUpscale.Native, 1)]
+        [InlineData(TemporalUpscale.Quality, -1)]
+        [InlineData(TemporalUpscale.Quality, 1)]
+        public void A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(
+            TemporalUpscale preset, int side)
+        {
+            // The still line beside the still nearer surface, with the surface's edge half a texel into the column next
+            // to the line, so the jitter decides each frame whether that column's sample lands on the surface, as a
+            // rasteriser decides it, the way a blade stands a texel from a rock or a standing avatar. At Native with
+            // the surface to the left that column shows the surface on the frames n % 8 of 2, 4 and 6. On 3 and 7 the
+            // line is missed too, so the current 3x3 holds only wall while last frame's stored depths still hold the
+            // surface. Nothing moves, so the line must hold as the still line does.
+            SubTexelRun run = RunSubTexelLine(preset, followStep: 0f, beside: side, edgeInto: 0.5f);
+            _output.WriteLine($"{preset}, surface edge half a texel into the column on side {side}: {run}");
+            Assert.True(HoldsLikeAStillLine(preset, run),
+                $"{preset}, surface edge half a texel into the column on side {side}: {run}");
+        }
+
+        [GpuTheory]
         [InlineData(TemporalUpscale.Native)]
         [InlineData(TemporalUpscale.Quality)]
         [InlineData(TemporalUpscale.UltraPerformance)]
@@ -431,11 +451,13 @@ namespace KhaozEngine.Tests.Gpu
         // followStep is how many internal pixels the camera alone moves a static point on the wall each frame, while the
         // wall and the line move with the camera and write zero motion. overSky writes the background sentinel in every
         // texel the line does not light. beside puts a still Occluder surface LineMetres ahead in every texel left of the
-        // column when negative, or right of it when positive. offCentre moves the line to an eighth of the internal width
-        // and reads the display row an eighth of the way down, which for a display height of 24 keeps both grids
-        // aligned as at the centre. Converges 64 frames and measures 16.
+        // column when negative, or right of it when positive. edgeInto moves that surface's edge this far into the
+        // column beside the line's, and each frame the surface covers the texels whose jittered sample falls on it, in
+        // colour and in depth. offCentre moves the line to an eighth of the internal width and reads the display row an
+        // eighth of the way down, which for a display height of 24 keeps both grids aligned as at the centre. Converges
+        // 64 frames and measures 16.
         static SubTexelRun RunSubTexelLine(TemporalUpscale preset, float followStep, bool overSky = false, int beside = 0,
-            int displayHeight = 12, bool offCentre = false)
+            int displayHeight = 12, bool offCentre = false, float edgeInto = 0f)
         {
             const int DisplayW = 48, Converge = 64, Measured = 16;
             int DisplayH = displayHeight, Row = offCentre ? displayHeight / 8 : displayHeight / 2;
@@ -464,6 +486,11 @@ namespace KhaozEngine.Tests.Gpu
             using var rig = new Rig(iw, ih, DisplayW, DisplayH, wallNdc);
             float nearNdc = NdcDepth(projection, LineMetres);
             if (beside != 0) rig.FillDepth(DepthMap(iw, ih, x => Near(x) ? nearNdc : wallNdc));
+            // With edgeInto the surface's edge lies inside the column beside the line's, and a texel is on the surface
+            // when its jittered sample falls on the surface's side of that edge.
+            float edge = beside < 0 ? column - edgeInto : column + 1f + edgeInto;
+            bool NearNow(int x, float jitterX) => beside < 0 ? x + 0.5f - jitterX < edge
+                : beside > 0 && x + 0.5f - jitterX >= edge;
             var previous = new float[DisplayW];
             float change = 0f, sum = 0f;
             int changeFrame = 0, changePixel = 0;
@@ -474,6 +501,13 @@ namespace KhaozEngine.Tests.Gpu
                 TemporalViewInput now = View(Eye + new Vector3(n * stepMetres, 0f, 0f), projection);
                 TemporalViewInput then = View(Eye + new Vector3((n - 1) * stepMetres, 0f, 0f), projection);
                 rig.BeginFrame();
+                if (edgeInto != 0f)
+                {
+                    float jx = jitter.X;
+                    lit = Grey(iw, ih, (x, _) => x == column ? Line : NearNow(x, jx) ? Occluder : Bg);
+                    missed = Grey(iw, ih, (x, _) => NearNow(x, jx) ? Occluder : Bg);
+                    rig.FillDepth(DepthMap(iw, ih, x => NearNow(x, jx) ? nearNdc : wallNdc));
+                }
                 rig.Fill(hit ? lit : missed, hit ? lit : missed, hit ? litMotion : missedMotion);
                 rig.Resolve(TemporalResolveMath.BuildUniforms(now, then, jitter, iw, ih, DisplayW, DisplayH,
                     historyValid: n > 0));

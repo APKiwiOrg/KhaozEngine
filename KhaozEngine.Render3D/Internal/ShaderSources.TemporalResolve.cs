@@ -233,23 +233,6 @@ bool temporalThinDepth(ivec2 texel, float depth, ivec2 maxTexel) {
     return (leftApart && rightApart) || (upApart && downApart);
 }
 
-// Step 6's partial reveal: whether a depth nearer than the expected one by the disocclusion tolerance, and not a thin
-// feature, was stored in last frame's 3x3 of texels around a texel.
-bool temporalPartlyRevealed(ivec2 around, float expectedDepth, ivec2 maxTexel) {
-    float nearest = 2.0 * BackgroundLinearDepth;
-    ivec2 nearestTexel = around;
-    for (int k = 0; k < 9; k++) {
-        ivec2 texel = clamp(around + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), maxTexel);
-        float stored = texelFetch(sampler2D(PrevDepth, LinearClamp), texel, 0).r;
-        if (stored < nearest) {
-            nearest = stored;
-            nearestTexel = texel;
-        }
-    }
-    return nearest < expectedDepth * (1.0 - DisocclusionTolerance)
-        && !temporalThinDepth(nearestTexel, nearest, maxTexel);
-}
-
 ivec2 temporalDisplaySize() { return ivec2(Sizes.zw); }
 
 TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
@@ -476,24 +459,16 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // holds a moving feature's history, not its own. At a moving edge whose history a farther surface left, the lock
     // read with that history belongs to that surface, and a nearer surface crossing a held thin feature would carry it
     // onward, so it is dropped before a ridge can refresh it. A thin feature taking a ridge keeps its own lock, and so
-    // does one beside a still nearer surface, which is no moving edge. A pixel partly revealed drops its lock the same
-    // way: a surface nearer than the one it expects, the nearest in its current 3x3, was stored in last frame's 3x3
-    // around it, so something nearer covered part of it and has gone, and the luma the lock would hold is that
-    // surface's. A thin stored feature is spared (temporalThinDepth), because a sub-texel line the jitter missed this
-    // frame stands in the stored depths and not in the current samples, and the lock is there to hold it. The test runs
-    // only where the depth test ran and a lock carries past this frame's decay. The hold on the clip stays whole while
-    // the lock is at least 1 / LockHoldGain, so a sub-texel feature missed for a few frames keeps its luma, and it lets
-    // go over the rest of the lock.
+    // does one beside a still nearer surface, which is no moving edge. The hold on the clip stays whole while the lock
+    // is at least 1 / LockHoldGain, so a sub-texel feature missed for a few frames keeps its luma, and it lets go over
+    // the rest of the lock.
     float centreLuma = lumas[4];
     float ridgeThreshold = max(LockRidgeAbsolute, LockRidgeRelative * centreLuma);
     bool ridge = isRidge(centreLuma, lumas[3], lumas[5], ridgeThreshold)
         || isRidge(centreLuma, lumas[1], lumas[7], ridgeThreshold)
         || isRidge(centreLuma, lumas[0], lumas[8], ridgeThreshold)
         || isRidge(centreLuma, lumas[2], lumas[6], ridgeThreshold);
-    ivec2 previousCentre = centreTexel + ivec2(round((previousUv - uv) * internalSize));
-    bool partlyRevealed = useHistory && depthTested && !heldFromFarther && historyState.y > LockDecay
-        && temporalPartlyRevealed(previousCentre, expectedDepth, maxTexel);
-    float lockValue = useHistory && !heldFromFarther && !partlyRevealed ? max(historyState.y - LockDecay, 0.0) : 0.0;
+    float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;
     if (ridge) lockValue = 1.0;
     float motionRelease = clamp((motionPixels - LockMotionStartPixels) / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
     lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))

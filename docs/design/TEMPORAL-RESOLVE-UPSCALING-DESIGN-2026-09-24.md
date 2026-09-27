@@ -92,7 +92,7 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
    single thin feature would be clipped away every frame, which is exactly distant grass. A per-pixel luma stability
    term, stored with the history confidence, holds such pixels against clipping while their reprojected history
    stays consistent, and releases them on disocclusion, reactive content or large motion, and at moving edges
-   (amendment 19), and after a partial reveal (amendment 24).
+   (amendment 19).
 7. **Reactive estimate.** The luma difference between the opaque-only copy and the final colour marks pixels that
    transparent content changed: particles, billboards, beams, trails, decals and water. Those pixels take a lower
    history weight, so a smoke puff or a splash does not leave a trail. An explicit reactive input can override the
@@ -284,12 +284,14 @@ and changed these details. Each group's "Contract amendments" block carries the 
     confidence, and kept its own colour in the ring of pixels around its old place, whose footprints reached past its
     edge: 63 and 180 of 840 trail pixels at Native and Quality passed a freshly revealed wall's difference by more than
     0.05, against 1 and 0 now.
-24. Step 6's lock is also released after a partial reveal: where a stored depth nearer than the one the pixel expects,
-    the nearest in its current 3x3, lies anywhere in last frame's 3x3 around it, aligned with the current one, and is
-    not thin, something covered part of the pixel and has gone, and the luma the lock would hold is that surface's. The
-    history stays. A thin stored feature, apart in depth from both its neighbours along a row or a column, is a
-    sub-texel line the jitter missed this frame, and keeps its lock. The test runs only where the depth test ran and a
-    lock carries past this frame's decay. Before, a partly covered corner of a still box read as a ridge and held its
-    lock through the box's 10 m keyed jump, so 8 and 12 of the 144 pixels of its old place differed from the wall by
-    more than 0.05 two frames later at Native and Quality, against 0 and 0 now. The four stored depths of step 3 alone
-    missed the corners whose own samples fell on the wall on the last frame before the jump and left 4 at Native.
+24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
+    pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
+    frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies
+    inside the next texel column lost its lock whenever last frame's jitter put that column's sample on the surface and
+    this frame's did not, and averaged 5.1 and 3.3 percent of its contrast at Native against its coverage of 37.5. A
+    release that also required the stored surface to stand nowhere in the current 3x3 around it, and to be wider than
+    two texels, kept that line and the teleport's corners clean, but wherever step 3 kept the history it still wiped the
+    lock of the right one of three still blades narrower than a texel side by side, which averaged 2.6 percent against
+    41.8. The lock therefore keeps amendment 19's behaviour. A keyed object's 10 m jump leaves its partly covered
+    corners holding their luma for about four frames: two frames after the jump 4 and 5 of the 144 pixels of its old
+    place differ from the wall by more than 0.05 at Native and Quality.

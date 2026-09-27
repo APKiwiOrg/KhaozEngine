@@ -22,11 +22,9 @@ namespace KhaozEngine.Render3D.Internal
         /// moving edge (<see cref="LockEdgeMotionFraction"/>) where all four stored depths lie farther than the
         /// expected depth by more than it, the history there is a farther surface's, and the lock read with it is
         /// dropped. It is also the least depth step that separates two surfaces elsewhere: a centre texel farther than
-        /// the dilated nearest by it may reproject by its own motion (<see cref="DilationReachInternalPixels"/>), a
+        /// the dilated nearest by it may reproject by its own motion (<see cref="DilationReachInternalPixels"/>), and a
         /// stored depth apart from both its neighbours along a row or a column by it is a thin feature
-        /// (<see cref="DisocclusionVisibleShare"/>), and a stored depth that is no thin feature and lies nearer than
-        /// the expected depth by it, anywhere in last frame's 3x3 around the pixel, marks a partial reveal, which drops
-        /// a carried lock.</summary>
+        /// (<see cref="DisocclusionVisibleShare"/>).</summary>
         public const float DisocclusionTolerance = 0.02f;
         /// <summary>Step 3. <see cref="TemporalResolveUniforms.CurrentToPrevious"/> assumes a static point, so the depth
         /// test runs only where the dilated texel's motion carries its own unjittered sample within this many internal

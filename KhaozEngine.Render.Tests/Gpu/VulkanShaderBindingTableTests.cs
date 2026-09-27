@@ -125,6 +125,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["PostFxaa"] = "PixelPostProcess fxaa",
                 ["PostTonemap"] = "PixelPostProcess tone",
                 ["PostDistortionApply"] = "PixelPostProcess apply",
+                ["PostTemporalSharpen"] = "TemporalSharpenPass",
                 ["PostBloomBright"] = "PixelPostProcess bright",
                 ["PostBloomBlur"] = "PixelPostProcess blur",
                 ["PostBloomComposite"] = "PixelPostProcess composite",
@@ -224,7 +225,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(67, catalog.Length);
+            Assert.Equal(68, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

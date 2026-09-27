@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 576
+# Rows: 584
 Beam.fragment.hlsl 763e8e2481a2a78f468f6d62ed5e3a24df6ffd7ad4d0e8c280ac5ad953b177fe 1809
 Beam.fragment.msl f8bb4e895ae8c1794baa7115089311abef23c86d22b47d85f68e225dae39ad99 1493
 Beam.fragment.spirv 7023f2b860be99c43999b4be78b8fe5cbdba1e201d451dd77c137a80224eba79 2724
@@ -306,6 +306,14 @@ PostPalette.layout.msl b7b3dda74dfddf250657578823d795ff8f4812fdc622bab2fc3416824
 PostPalette.vertex.hlsl a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23 691
 PostPalette.vertex.msl 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1 451
 PostPalette.vertex.spirv 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4 916
+PostTemporalSharpen.fragment.hlsl e52411f076558088a8866c7e1cd79a05f4cb6d0bdc154d3001988a1897dca750 2518
+PostTemporalSharpen.fragment.msl c1378071bc2ca915ddd93f8d213a5ebccbd9fc6597534c012c21d3612bd7c8ab 2257
+PostTemporalSharpen.fragment.spirv 66ec708376ae337974aad470f097ba0170fb266b258ada0b0812fee2eb1e4bc2 3920
+PostTemporalSharpen.layout.hlsl b7b3dda74dfddf250657578823d795ff8f4812fdc622bab2fc3416824afc177b 3 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+PostTemporalSharpen.layout.msl b7b3dda74dfddf250657578823d795ff8f4812fdc622bab2fc3416824afc177b 3 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+PostTemporalSharpen.vertex.hlsl a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23 691
+PostTemporalSharpen.vertex.msl 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1 451
+PostTemporalSharpen.vertex.spirv 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4 916
 PostTonemap.fragment.hlsl 58e959aa03c2614e32a606944dd86cce77b72777b2d2dfdd78970a79e62d0423 2367
 PostTonemap.fragment.msl 3efd0b639d720a2bed3216c90e96739c0fce28c372336eeed136a68496e6e83a 2352
 PostTonemap.fragment.spirv 24102f86dc6371a71050b199bc07ef9082156e68a90d3cef5e908dc81795fef6 3068

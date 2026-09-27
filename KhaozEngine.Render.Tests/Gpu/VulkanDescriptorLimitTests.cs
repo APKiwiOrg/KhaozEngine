@@ -146,6 +146,8 @@ namespace KhaozEngine.Tests.Gpu
                 ["Pixel.composite"] = L(T("Src"), T("Bloom"), S("Samp"), U("Composite", F)),
                 ["Pixel.tone"] = L(T("Src"), S("Samp"), U("Tone", F)),
                 ["Pixel.apply"] = L(T("Src"), T("OffsetTex"), S("Samp"), U("Apply", F)),
+                // Render3D/Rendering/TemporalSharpenPass.cs, the RCAS pass PixelPostProcess builds lazily.
+                ["TemporalSharpen"] = L(T("Src"), S("Samp"), U("Sharpen", F)),
 
                 // Render3D/Rendering/TemporalResolveRenderer.cs, the resolve and the depth store. Fragment-stage,
                 // none dynamic.
@@ -249,6 +251,7 @@ namespace KhaozEngine.Tests.Gpu
             ("PixelPostProcess composite", ["Pixel.composite"]),
             ("PixelPostProcess tone", ["Pixel.tone"]),
             ("PixelPostProcess apply", ["Pixel.apply"]),
+            ("TemporalSharpenPass", ["TemporalSharpen"]),
             ("TemporalResolveRenderer resolve", ["Temporal.resolve"]),
             ("TemporalResolveRenderer depth store", ["Temporal.depthStore"]),
             // The four rigid point-shadow pipelines (three caster variants and the row clear) are one row, the way
@@ -281,8 +284,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(52, ShippedLayouts.Count);
-            Assert.Equal(55, ShippedPipelines.Count);
+            Assert.Equal(53, ShippedLayouts.Count);
+            Assert.Equal(56, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

@@ -29,6 +29,7 @@ namespace KhaozEngine.Tests.Gpu
     /// BloomBlurFrag/BloomCompositeFrag (PixelPostProcess)</item>
     /// <item>FullscreenVert+TransitionSolidFrag/TransitionCrossfadeFrag (TransitionRenderer), ModelVert+ModelDissolveFrag (CharDissolve)</item>
     /// <item>FullscreenVert+MotionVectorsViewFrag (MotionVectorsView, the MotionVectors debug view)</item>
+    /// <item>FullscreenVert+TemporalSharpenFrag (TemporalSharpenPass)</item>
     /// <item>SpriteBatch VertSrc+FragSrc (Render2D)</item>
     /// <item>The temporal motion variants of the model, skinned, CPU-skinned, foliage, splat and tile-ground passes
     /// and the five motion-preserving transparent fragments (built only against a model target with the motion
@@ -130,6 +131,11 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void PostDistortionApply()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.DistortionApplyFrag, "PostDistortionApply");
+
+        [Fact]
+        public void PostTemporalSharpen()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TemporalSharpenFrag,
+                "PostTemporalSharpen");
 
         [Fact]
         public void TemporalResolve()

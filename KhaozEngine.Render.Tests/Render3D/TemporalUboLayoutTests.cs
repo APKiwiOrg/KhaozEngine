@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D
@@ -47,6 +48,14 @@ namespace KhaozEngine.Tests.Render3D
         {
             AssertMirrors<TemporalResolveUniforms>(TemporalResolveUniforms.GlslMembers, TemporalResolveUniforms.SizeInBytes);
             AssertMirrors<TemporalDepthStoreUniforms>(TemporalDepthStoreUniforms.GlslMembers, TemporalDepthStoreUniforms.SizeInBytes);
+        }
+
+        [Fact]
+        public void SharpenUbo_MarshalSize_EqualsSharpenBufferAllocation()
+        {
+            // GLSL: Sharpen { vec4 Params; } = 1 vec4 = 16 bytes (TemporalSharpenFrag).
+            Assert.Equal(16u, TemporalSharpenPass.SharpenBufferBytes);
+            Assert.Equal((int)TemporalSharpenPass.SharpenBufferBytes, Marshal.SizeOf<TemporalSharpenPass.SharpenUbo>());
         }
 
         static void AssertMirrors<T>(string glslMembers, uint sizeInBytes) where T : struct

@@ -402,6 +402,7 @@ namespace KhaozEngine.Tests.Gpu
                 ("PixelPostProcess composite", PixelPostProcess.CompositeBufferBytes),
                 ("PixelPostProcess tone", PixelPostProcess.ToneBufferBytes),
                 ("PixelPostProcess apply", PixelPostProcess.ApplyBufferBytes),
+                ("TemporalSharpenPass sharpen", TemporalSharpenPass.SharpenBufferBytes),
                 ("TemporalResolveRenderer resolve UBO", TemporalResolveUniforms.SizeInBytes),
                 ("TemporalResolveRenderer depth store UBO", TemporalDepthStoreUniforms.SizeInBytes),
                 ("DistortionRenderer frame UBO", DistortionRenderer.FrameBufferBytes),

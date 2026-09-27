@@ -141,6 +141,7 @@ namespace KhaozEngine.Tests.Gpu
             ("PixelPostProcess._toneLayout", new[] { T("Src"), S("Samp"), U("Tone") }, "t0 s0 b0"),
             ("PixelPostProcess._applyLayout",
                 new[] { T("Src"), T("OffsetTex"), S("Samp"), U("Apply") }, "t0 t1 s0 b0"),
+            ("TemporalSharpenPass._layout", new[] { T("Src"), S("Samp"), U("Sharpen") }, "t0 s0 b0"),
             // The temporal resolve's two: textures first and the uniform buffer last, like the post chain.
             ("TemporalResolveRenderer._resolveLayout",
                 new[] { T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),

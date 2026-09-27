@@ -266,11 +266,13 @@ and changed these details. Each group's "Contract amendments" block carries the 
     with a reference averaged the same way the resolve averages. Both gates hold on every frame from 32 to 48, not on
     one frame alone (group F).
 22. Acceptance 2 is not measured by the grass probe's flip metric, because raw flips reward blur: a thin feature
-    crossing a pixel flips it under every mode, and a blurred or lagging image flips less than an ideal filter. With HDR
-    off, stability is asserted as added change against a per-frame supersampled reference sequence of the same path,
-    the frame-to-frame change the output makes and the reference does not, compared with MSAA 4x's. Sharpness floors
-    guard the blur that added change cannot see. The zoom is asserted as its error after a 5 by 5 low-pass against a
-    one-frame-lag control.
+    crossing a pixel flips it under every mode, an ideal filter included, and only an image smoothed over time flips
+    less. Stability is measured with HDR off against a per-frame supersampled reference sequence of the same camera
+    path. The slow pan over thin geometry is asserted as added change, the frame-to-frame change the output makes and
+    the reference does not, compared with MSAA 4x's. Sharpness floors guard the blur that added change cannot see, and
+    a shimmer guard keeps the temporal error within 1.15 times a frozen image's. The default isometric camera's zoom is
+    asserted as its temporal error after a 5 by 5 low-pass, against a one-frame-lag control (the reference sequence one
+    frame late) and against no anti-aliasing.
 23. Step 1's dilation and step 3's depth test give way beside a fast edge and around a revealed place. Where the centre
     texel lies farther than the dilated nearest surface by more than the disocclusion tolerance, and the two move more
     than `DilationReachInternalPixels` (1.25 internal pixels) apart, the dilated motion carries the pixel onto another

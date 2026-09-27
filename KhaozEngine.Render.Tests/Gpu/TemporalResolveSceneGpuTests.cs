@@ -254,5 +254,59 @@ namespace KhaozEngine.Tests.Gpu
                     wrong++;
             Assert.True(wrong == 0, $"{wrong} of {copy.Length / 4} opaque copy pixels are not the cleared background");
         }
+
+        /// <summary>
+        /// Toggling HDR and then bloom while the resolve runs crosses the internal targets' colour-format rebuild, the
+        /// display targets' format change and ping pipeline rebuild, the display bloom pair and the resolve's input
+        /// rebind. Every frame resolves, stands upright, is not blank, presents through display targets in the scene's
+        /// colour format and leaves finite history. The HDR toggle resets the history for one frame, as the frame key
+        /// says, and the bloom toggle, which the key does not name, keeps it.
+        /// </summary>
+        [GpuFact]
+        public void Toggling_hdr_then_bloom_while_resolving_keeps_every_frame_sane_and_resets_only_on_hdr()
+        {
+            const int W = 160, H = 96;
+            using var h = new TemporalFixture(W, H);
+            MeshHandle box = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
+            h.Scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
+            h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+            h.Scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
+            h.Scene.CameraOverride = CaptureCamera(W, H);
+            Assert.True(h.Scene.Post.Hdr.Enabled);
+            Assert.False(h.Scene.Post.Bloom.Enabled);
+
+            void Frame(string label, bool historyValid, TemporalResetReason lastReset)
+            {
+                byte[] rgba = h.Frame((s, _) => DrawCaptureScene(s, box));
+                string at = $"{label} (hdr {h.Scene.Post.Hdr.Enabled}, bloom {h.Scene.Post.Bloom.Enabled})";
+                Assert.True(h.Scene.ResolvedLastRenderForTests, $"{at}: the frame did not resolve");
+                Assert.True(LumaDeviation(rgba) > 2.0, $"{at}: the frame is a flat fill");
+                double top = MeanLuma(rgba, W, 0, H / 2), bottom = MeanLuma(rgba, W, H / 2, H);
+                Assert.True(top > bottom + 5.0, $"{at}: not upright, top half luma {top:0.0}, bottom {bottom:0.0}");
+                GpuPixelFormat format = h.Scene.Post.Hdr.Enabled
+                    ? GpuPixelFormat.R16G16B16A16Float
+                    : GpuPixelFormat.R8G8B8A8UNorm;
+                Assert.Equal(format, h.Scene.TemporalPostTargetsForTests!.PingA.Format);   // the display chain's format
+                var history = h.Scene.TemporalHistory;
+                float[] resolved = TemporalTextureIo.Read(h.Device, history.Color(history.WriteIndex));
+                int notFinite = 0;
+                foreach (float v in resolved) if (!float.IsFinite(v)) notFinite++;
+                Assert.True(notFinite == 0, $"{at}: {notFinite} history values are not finite");
+                TemporalDiagnostics d = h.Scene.LastTemporalDiagnostics;
+                Assert.True((historyValid, lastReset) == (d.HistoryValid, d.LastReset),
+                    $"{at}: history valid {d.HistoryValid}, last reset {d.LastReset}");
+                Assert.Equal(historyValid ? 1f : 0f, h.Scene.TemporalResolveRendererForTests!.LastUniforms.Jitter.W);
+            }
+
+            Frame("first frame", historyValid: false, TemporalResetReason.FirstFrame);
+            for (int i = 0; i < 3; i++) Frame("steady", historyValid: true, TemporalResetReason.FirstFrame);
+            h.Scene.Post.Hdr.Enabled = false;
+            Frame("HDR toggled", historyValid: false, TemporalResetReason.DeviceReset);
+            for (int i = 0; i < 2; i++) Frame("after HDR", historyValid: true, TemporalResetReason.DeviceReset);
+            h.Scene.Post.Bloom.Enabled = true;
+            Frame("bloom toggled", historyValid: true, TemporalResetReason.DeviceReset);
+            Assert.True(h.Scene.TemporalPostTargetsForTests!.BloomAllocated, "the display chain has no bloom pair");
+            for (int i = 0; i < 2; i++) Frame("after bloom", historyValid: true, TemporalResetReason.DeviceReset);
+        }
     }
 }

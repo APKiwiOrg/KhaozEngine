@@ -10,8 +10,8 @@ It reads in layers, and the sections below are in that order. The RECORD is the 
 registry, the refusal sets, the `KECQ` quarantine wrapper and the instance id allocator. The CONTAINER is
 container codec version 2, the paged container and its capacity gate, the merge rule and the registry-derived
 remap pass that brings a stored page forward. The WIRE is the visibility projection every replicated byte
-passes through, the one frame page delta and the whole viewer page built on it, and the two byte resync
-request a client answers with.
+passes through, the public ground payload built on the same projection, the one frame page delta and the
+whole viewer page built on it, and the two byte resync request a client answers with.
 The validator, the player-facing strings and the one telemetry call sit under those three.
 
 Over them sit the four things that PRODUCE and CHANGE a payload, which are the last four sections. The
@@ -188,6 +188,7 @@ function is a call-site constraint rather than a convenience.
 | `CanSee(registry, kind, viewerLevel, identified, revealedMask)` | the same rule reached by kind id, which is the tooltip builder's door |
 | `PublicView(registry, payload, level, identified, revealedMask, destination)` | the payload one viewer may see, as bytes written into the caller's span |
 | `OwnerRemainder(registry, payload, identified, revealedMask, destination)` | the exact complement of `PublicView` at `Everyone`, which is what the targeted owner message carries |
+| `GroundItemPayloadProjection.Project(registry, storedPayload, quarantined, identified, revealedMask, destination)` | the stored payload safe for a public ground component, fixed at `Everyone` and sharing the container projection's hollow quarantine rule |
 
 **The rule, in order.** `ServerOnly` is never visible to anyone. `OwnerOnly` is visible when the viewer
 level is `OwnerOnly`. `Everyone` is visible always. THEN, and only then, the identification gate: a kind
@@ -232,11 +233,14 @@ one.
 
 **A GROUND item has no owner, and that is a rule rather than an omission.** A drop's entity is the drop,
 whose net id is nobody's, so there is no viewer this design calls the owner of a ground stack. A ground
-item's public view is `PublicView` at `Everyone` and there is NO owner remainder for a drop. Kind 6
-`BoundTo` is owner-only, so it is stripped before the sibling component is written and a passer-by cannot
-read who a dropped item is bound to, which is a fact about a PLAYER rather than about an item. Kinds 4 and 5
-go with it, which is why the 58 byte reference rare replicates as 54 bytes on the ground: it carries one of
-the three owner-only kinds, kind 5 durability, whose whole field is four bytes.
+item's public view goes through `GroundItemPayloadProjection.Project` and there is NO owner remainder for a
+drop. The helper runs the stored payload through the same core as
+`ContainerPageProjection.ProjectPayload`, fixed at `Everyone`. Kind 6 `BoundTo` is owner-only, so it is
+stripped before the sibling component is written and a passer-by cannot read who a dropped item is bound to,
+which is a fact about a PLAYER rather than about an item. Kinds 4 and 5 go with it, which is why the 58 byte
+reference rare replicates as 54 bytes on the ground: it carries one of the three owner-only kinds, kind 5
+durability, whose whole field is four bytes. A quarantined stored payload becomes the same hollow wrapper a
+projected container page carries, with no preserved bytes leaving the server.
 
 The owner remainder's BYTES live here, beside the projection they complement, so the two cannot disagree.
 The MESSAGE KIND stays the game's, because `TileProtocol` reserves the `ushort` kind space to the game and

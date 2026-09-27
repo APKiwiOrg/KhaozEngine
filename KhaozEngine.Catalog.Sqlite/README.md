@@ -202,7 +202,10 @@ the marker stands, with reason `publish-in-progress`. It is a durable column rat
 6.2 describes for the same reason the version is re-read: no lock this provider can take spans steps 1 to 10,
 because step 9 writes the whole pack outside any lease. The publish clears the marker on every exit path, and
 a marker naming a version the database has moved past is a dead publish's leftover that the next baseline
-read clears. The draft delete at step 10 is scoped to the edits step 1 froze.
+read clears. A marker naming the current version may belong to a live publisher or one that died before
+commit, so draft writes never clear it. After proving no publisher is live, run `catalog-publish` for the
+current draft or call `IContentAuthoringStore.ClearDraftFreezeAsync` from a host recovery path. The explicit
+clear preserves the draft and its edits. The draft delete at step 10 is scoped to the edits step 1 froze.
 
 ## Ids
 

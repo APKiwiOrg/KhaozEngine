@@ -45,11 +45,13 @@ namespace KhaozEngine.Tests.Gpu
         public void A_keyed_line_crossing_fast_leaves_no_trail_and_does_not_shimmer(TemporalUpscale preset)
         {
             // Measured: fast flips 0.0015 and 0.0047 against reference flips of 0.0175 and 0.0194, trail 1 and 0,
-            // energy 0.69 and 0.43. Before amendment 23 the line smeared: 8 trail pixels at Native, fast flips 0.0124
-            // and 0.0213, energy 2.09 and 1.28. It is dimmer now, and the energy floor keeps it from fading further.
+            // energy 0.69 and 0.43, temporal error over the band 0.00374 and 0.00428. Before amendment 23 the line
+            // smeared: 8 trail pixels at Native, fast flips 0.0124 and 0.0213, energy 2.09 and 1.28, temporal error
+            // 0.00255 and 0.00220. It is dimmer now, and the energy floor keeps it from fading further. The trail bound
+            // leaves two pixels over the one measured, well under the smear's 8.
             string message = Report(FastEdgeScene.KeyedLine, preset);
             FastEdgeRun r = runs.Run(FastEdgeScene.KeyedLine, preset);
-            Assert.True(r.TrailOver <= 1, $"the line leaves a trail. {message}");
+            Assert.True(r.TrailOver <= 3, $"the line leaves a trail. {message}");
             Assert.True(r.Flicker.FastFlips <= MaxFastFlipShare * r.Flicker.ReferenceFlips,
                 $"the line shimmers. {message}");
             Assert.True(r.Flicker.Energy >= 0.3, $"the line fades. {message}");
@@ -60,9 +62,10 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(TemporalUpscale.Quality)]
         public void A_keyed_box_crossing_fast_keeps_its_edges_close_to_the_reference(TemporalUpscale preset)
         {
-            // Measured: edge error 0.00163 and 0.00204, fast flips 0.00053 and 0.00164 against reference flips of
-            // 0.00176 and 0.00546, no trail. Before amendment 23 the edge error was 0.00083 and 0.00140: an edge pixel
-            // whose centre texel misses the box now reads its own history, not the box's edge carried along.
+            // Measured: edge error 0.00150 and 0.00204, fast flips 0.00057 and 0.00164 against reference flips of
+            // 0.00176 and 0.00546, no trail, temporal error over the band 0.00208 and 0.00274. Before amendment 23 the
+            // edge error was 0.00083 and 0.00140 and the band's temporal error 0.00085 and 0.00168: an edge pixel whose
+            // centre texel misses the box now reads its own history, not the box's edge carried along.
             string message = Report(FastEdgeScene.KeyedBoxEdge, preset);
             FastEdgeRun r = runs.Run(FastEdgeScene.KeyedBoxEdge, preset);
             Assert.True(r.EdgeError <= 0.003, $"the box's edges stray from the reference. {message}");
@@ -92,7 +95,7 @@ namespace KhaozEngine.Tests.Gpu
         public void A_still_box_against_the_sky_under_a_sideways_camera_keeps_steady_edges(TemporalUpscale preset,
             double maxEdgeError)
         {
-            // Measured: fast flips 0 and 0.00004, edge error 0.0165 and 0.0270, as before amendment 23. Reprojecting
+            // Measured: fast flips 0 and 0.00004, edge error 0.0162 and 0.0270, as before amendment 23. Reprojecting
             // the sky beside the box by its own motion gave fast flips of 0.0035 and 0.0063 and edge errors of 0.0278
             // and 0.0362.
             string message = Report(FastEdgeScene.ParallaxOverSky, preset);

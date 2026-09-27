@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.8.0
+
+- Wallet credit and debit results now report a conflict when a scoped idempotency key is reused with a
+  different signed amount or reason. Exact retries keep their historical balance across in-memory, SQLite
+  and SQL Server stores ([#892](https://github.com/APKiwiOrg/KhaozEngine/issues/892)).
+- Journal records expose zero-copy read-only byte spans for owned payloads and checksums. Existing memory
+  properties still return defensive copies ([#889](https://github.com/APKiwiOrg/KhaozEngine/issues/889)).
+- The Game2D, Game3D and Server package READMEs now name their bundled CodeHealth analyzer, and the doc
+  guard checks direct membership for all four umbrellas ([#1165](https://github.com/APKiwiOrg/KhaozEngine/issues/1165)).
+- Invoking the Bash-only doc-version guard with `sh` now gives a clear Bash instruction instead of a
+  parser error ([#894](https://github.com/APKiwiOrg/KhaozEngine/issues/894)).
+- New `docs/superpowers/` plans are no longer ignored, matching the tracked plans already in the repo
+  ([#896](https://github.com/APKiwiOrg/KhaozEngine/issues/896)).
+
 ## 20.7.0
 
 - Item instance adds and live journal merges now honor a caller-supplied stack cap without making the

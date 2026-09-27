@@ -447,14 +447,16 @@ if (!roller.TryRoll(tableId, drops, out int written))
   optional callback, which is how a fetch loop says `hash-mismatch` without this type knowing what a fetch loop is.
 - `ContentPackReader` - the ONE reader, shared by the server and the client, which differ only in when they
   call it. `ReadAllAsync` is the server's eager boot path, `ReadRowAsync` is the client's lazy one and
-  touches at most the chunk whose slots cover the id, and `ReadChunkAsync` never refetches a chunk it holds.
-  Verify comes before decode, always. `ReadManifestAsync` fetches one manifest by hash and checks that its
-  canonical text digests back to the name it was fetched under, and the static `TryVerify` dispatches on the
-  magic, so a caller hashes an object the way the publisher did rather than guessing. `BuildSnapshot` HANDS
-  the decoded chunks over: the snapshot copies every row body into its own blob, so the reader drops them
-  and reading rows through the reader afterwards is not a supported mode. The constructor cross-checks every
-  manifest type's `chunkSlots` against the local registration and throws on a disagreement, because the
-  manifest digest does not cover `chunkSlots` and a registry-free decode leaves it unchecked.
+  touches at most the chunk whose slots cover the id. The public constructor retains decoded chunks for
+  `BuildSnapshot`, which HANDS them over and clears the reader. Long-lived clients use
+  `ContentPackReader.CreateLazy(..., maxResidentChunks)`, whose decoded working set is a bounded LRU. That
+  explicit mode refuses `ReadAllAsync` and `BuildSnapshot` rather than silently omitting evicted chunks.
+  `ChunksRead` reports current decoded residency. Verify comes before decode, always. `ReadManifestAsync`
+  fetches one manifest by hash and checks that its canonical text digests back to the name it was fetched
+  under, and the static `TryVerify` dispatches on the magic, so a caller hashes an object the way the publisher
+  did rather than guessing. Construction cross-checks every manifest type's `chunkSlots` against the local
+  registration and throws on a disagreement, because the manifest digest does not cover `chunkSlots` and a
+  registry-free decode leaves it unchecked.
 - `ContentManifestRead`, `ContentChunkRead`, `ContentRowRead` and `ContentPackRead` - one attempt each, every
   one carrying a stable reason token rather than throwing. The reasons this type adds (`hash-mismatch`,
   `manifest-hash-mismatch`, `chunk-fetch-failed`, `chunk-type-unregistered`) are FETCH outcomes and are
@@ -502,10 +504,11 @@ else
   `ContentFetchOptions.Delay` is the wait itself, `Task.Delay` in a client and a recorder in a test.
 - **Decode is LAZY and the loop stores BYTES.** No row body is decoded and no decompressed body is kept: the one
   decompression a chunk pays is the verify's, inside the store pair, where its row table is walked structurally
-  before the result is dropped. A client
-  that later reads one item id through `ContentPackReader.ReadRowAsync` decompresses the one chunk whose
-  slots cover it and leaves every other chunk compressed in the cache, which is what makes the cold start a
-  download budget rather than a decode budget.
+  before the result is dropped. A client that later reads one item id through a reader from
+  `ContentPackReader.CreateLazy` decompresses the one chunk whose slots cover it and leaves every other chunk
+  compressed in the store. The caller sets `maxResidentChunks` from its decoded heap budget. The least recently
+  used decoded chunk leaves when that count is reached and is decoded again from the content-addressed store
+  on a later lookup.
 - **A partial download never becomes a partial catalog.** `Success` is `Complete` and nothing else, and
   there is deliberately no member on the loop or the result that hands back a snapshot, a runtime or a
   reader. That is what makes the door comparison a hash equality rather than a negotiation.

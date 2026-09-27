@@ -15720,8 +15720,10 @@ the seven engine types through `EngineContentTypes.Register`, then its own `Game
 closes the registry at boot, so no type can appear halfway through a session. The SERVER's way in is eager,
 reading every chunk the manifest names through `ContentPackReader.ReadAllAsync` and assembling one
 `IContentSnapshot` over `ContentSnapshotBuilder`. The CLIENT's way in is the lazy one, `ReadRowAsync`, which
-touches at most the chunk whose slots cover the id. Either way verify comes before decode and a decode never
-throws: a bad byte comes back as a stable reason token on the result.
+touches at most the chunk whose slots cover the id. A long-lived client opens that path through
+`ContentPackReader.CreateLazy(..., maxResidentChunks)`. Its decoded chunks form a bounded LRU, while the
+content-addressed store remains the durable byte cache. Either way verify comes before decode and a decode
+never throws: a bad byte comes back as a stable reason token on the result.
 
 Five packages carry it. `KhaozEngine.Catalog` is the read side above, plus the runtime, the loot roller, the
 server boot, the client fetch loop and the string catalog, and it is in the `Foundation` umbrella.
@@ -15751,6 +15753,21 @@ ContentValidationReport report = ContentValidator.Validate(
     pack.Snapshot!, previous: null, content.Rules, registry);
 if (!report.IsValid) return Refuse(report);         // boot exits non-zero, publish writes nothing
 ```
+
+The constructor above is the SNAPSHOT mode. It retains every decoded chunk until `BuildSnapshot` hands them
+to the snapshot and clears the reader. Use the explicit bounded mode for a long-lived client:
+
+```csharp
+ContentPackReader lazy = ContentPackReader.CreateLazy(
+    store, registry, manifest.Manifest!, manifestHash, maxResidentChunks: decodedChunkBudget);
+ContentRowRead row = await lazy.ReadRowAsync(EngineContentTypes.ItemType, itemId, ct);
+```
+
+Choose `decodedChunkBudget` from the game's active screen and inventory working set. `lazy.ChunksRead` reports
+the current resident count and never exceeds that bound. A lookup promotes its chunk. Adding past the bound
+evicts the least recently used decoded chunk, which a later lookup decodes again from `store`. Lazy mode
+refuses `ReadAllAsync` and `BuildSnapshot` before fetching, because a synchronous snapshot cannot include an
+evicted chunk. Use the constructor when the caller needs a snapshot.
 
 ### Registering a game type
 

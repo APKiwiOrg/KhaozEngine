@@ -46,22 +46,31 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// The same line while a keyed passer one or two internal texels wide and as tall as the box slides past it
         /// half an internal texel away, as a thin sword passes grass, so its texels carry weight in the line's
-        /// reconstruction on most jitter phases. The passer is narrow in this frame's depth, so the line's pixels take
-        /// its current colour where they reproject by their own motion (amendment 23), and they store no confidence
-        /// for the next frame, which then shows the raw sample: the line blinks out on the frames the jitter misses
-        /// it. Printed, not asserted.
+        /// reconstruction on most jitter phases. The passer is narrow in this frame's depth, so the pixels beside it
+        /// that reproject by their own motion take its current colour and store no confidence (amendment 23). A pixel
+        /// whose lock holds the line takes none of it and keeps its own history.
         /// </summary>
-        [GpuFact]
-        public void The_narrow_passers_print_the_line_s_worst_frame()
+        [GpuTheory]
+        [InlineData(TemporalUpscale.Native, 1, 1)]
+        [InlineData(TemporalUpscale.Native, -1, 1)]
+        [InlineData(TemporalUpscale.Quality, 1, 1)]
+        [InlineData(TemporalUpscale.Quality, -1, 1)]
+        [InlineData(TemporalUpscale.Native, 1, 2)]
+        [InlineData(TemporalUpscale.Native, -1, 2)]
+        [InlineData(TemporalUpscale.Quality, 1, 2)]
+        [InlineData(TemporalUpscale.Quality, -1, 2)]
+        public void A_still_sub_texel_line_holds_while_a_narrow_keyed_passer_slides_past_it(TemporalUpscale preset,
+            int side, int passerTexels)
         {
-            foreach (int passer in new[] { 1, 2 })
-                foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
-                    foreach (int side in new[] { 1, -1 })
-                    {
-                        PassingBoxRun r = runs.Run(preset, side, passer);
-                        output.WriteLine(Describe(r, preset, side, passer));
-                        Assert.True(r.Pixels > 0, $"the line covered nothing. {Describe(r, preset, side, passer)}");
-                    }
+            // Measured: the worst frame keeps 0.912 to 0.945 at Native and 0.937 to 0.954 at Quality. While the line's
+            // held pixels took the passer's colour and stored no confidence, the next frame showed the raw sample and
+            // the line blinked out on the frames the jitter missed it: 0.017 and 0.010 at Native with the one texel
+            // passer right and left, and 0.000 and below at Quality.
+            PassingBoxRun r = runs.Run(preset, side, passerTexels);
+            string message = Describe(r, preset, side, passerTexels);
+            output.WriteLine(message);
+            Assert.True(r.Pixels > 0, $"the line covered nothing. {message}");
+            Assert.True(r.Worst >= MinShareOfStill, $"the line blinks out beside the passer. {message}");
         }
 
         static string Describe(PassingBoxRun r, TemporalUpscale preset, int side, int passerTexels)

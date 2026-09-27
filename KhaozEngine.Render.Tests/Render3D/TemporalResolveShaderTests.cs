@@ -160,7 +160,8 @@ namespace KhaozEngine.Tests.Render3D
         {
             // Where the pixel reprojected by its own motion and the nearer surface is narrow in this frame's depth,
             // the share of the reconstruction weight on texels nearer than the centre texel's own surface takes their
-            // current colour in the clipped history, before the blend, and the pixel stores MovingShareConfidence. The
+            // current colour in the clipped history, before the blend, save the share the pixel's lock holds, and the
+            // pixel stores MovingShareConfidence. A pixel whose hold is whole keeps its own history and confidence. The
             // centre texel's own depth is read before the 3x3, so the nearer texels are summed in the loop.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("vec2 ownMotion = texelFetch(sampler2D(MotionTex, LinearClamp), centreTexel, 0).rg;", core,
@@ -174,8 +175,8 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("bool temporalNarrowCurrentDepth(ivec2 texel, float depth, ivec2 maxTexel) {", core,
                 StringComparison.Ordinal);
             Assert.Contains("if (narrowMoving && nearerWeight > 1.0e-4) {", core, StringComparison.Ordinal);
-            Assert.Contains("movingShare = clamp(nearerWeight / max(reconstructionWeight, 1.0e-4), 0.0, 1.0);", core,
-                StringComparison.Ordinal);
+            Assert.Contains("movingShare = clamp(nearerWeight / max(reconstructionWeight, 1.0e-4), 0.0, 1.0) * (1.0 - "
+                + "hold);", core, StringComparison.Ordinal);
             Assert.Contains("clipped = mix(clipped, clamp(movingColor.xyz, neighbourMin, neighbourMax), movingShare);",
                 core, StringComparison.Ordinal);
             Assert.Contains("result.confidence = movingShare > 0.0 ? MovingShareConfidence", core,

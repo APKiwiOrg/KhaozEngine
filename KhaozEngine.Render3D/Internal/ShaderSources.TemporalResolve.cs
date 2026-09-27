@@ -607,12 +607,14 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // Step 5 beside a fast narrow moving feature: where the pixel reprojected by its own motion, its history holds its
     // own surface alone, and the feature this frame's reconstruction also saw is missing from it. So the feature's
     // share of the reconstruction weight, on the texels nearer than the pixel's own surface, takes the feature's
-    // current colour in the history. The pixel then shows its current coverage while its own surface stays
-    // accumulated, and it stores MovingShareConfidence, since that colour holds for this frame alone. A wider
-    // surface's edge keeps its own history, where the same colour flickered with the jitter.
+    // current colour in the history, save the share the pixel's lock holds. The pixel then shows its current coverage
+    // while its own surface stays accumulated, and it stores MovingShareConfidence, since that colour holds for this
+    // frame alone. A pixel whose hold is whole keeps its own history and its confidence: it holds a still sub-texel
+    // feature, which the next frame needs whole on the frames the jitter misses it. A wider surface's edge keeps its
+    // own history, where the same colour flickered with the jitter.
     float movingShare = 0.0;
     if (narrowMoving && nearerWeight > 1.0e-4) {
-        movingShare = clamp(nearerWeight / max(reconstructionWeight, 1.0e-4), 0.0, 1.0);
+        movingShare = clamp(nearerWeight / max(reconstructionWeight, 1.0e-4), 0.0, 1.0) * (1.0 - hold);
         vec4 movingColor = nearerSum / nearerWeight;
         clipped = mix(clipped, clamp(movingColor.xyz, neighbourMin, neighbourMax), movingShare);
         historyAlpha = mix(historyAlpha, clamp(movingColor.w, alphaMin, alphaMax), movingShare);

@@ -15,6 +15,13 @@
 #
 # Run locally: ./scripts/check-doc-versions.sh   (also runs in CI)
 
+case "${BASH_VERSION:-}:${SHELLOPTS:-}" in
+  :*|*:posix|*:posix:*)
+    printf '%s\n' 'Run this script with bash: bash scripts/check-doc-versions.sh' >&2
+    exit 2
+    ;;
+esac
+
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

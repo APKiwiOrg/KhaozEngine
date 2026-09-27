@@ -1660,6 +1660,17 @@ split `loot_entry` off its table, and appendix A records it under C2.
 | 272 | `currency_guard` | one guard, on a currency's target or on one of its steps | `crafting_currency` | `Client` | 16,384 |
 | 273 | `rare_name_word_weight` | one word's weight against one tag | `rare_name_word` | `ServerOnly` | 16,384 |
 
+The `id` and `key` rows in the type tables below describe authored identity, not entries in
+`ContentFieldSchema.Fields`. The chunk row table carries `ContentRow.Id`, and the row body encodes
+`ContentRow.Key` before the schema fields. `ContentRow.Fields` begins with the first type-specific field
+after those identity rows.
+
+**Row caps belong to registration alongside chunk slots.** `ContentTypeRegistry.CheckChunkShape` requires
+`(chunkSlots * (maxRowBytes + 8)) + 36 <= 16 MiB` before a type can register. `mod_tier`,
+`unique_line`, `currency_step`, `currency_guard` and `rare_name_word_weight` declare 512 bytes,
+`stat_line` declares 384, and `mod_tier_weight` declares 128. The other eleven types use the 1,024-byte
+default. A row cap is not an authored field.
+
 Eighteen of the 768 ids in the Scope B range, leaving 750. The ids are assigned in one block and never
 reused, per contracts 5.1.
 
@@ -2097,11 +2108,11 @@ The naive table is keyed by (base, item level) and it does not fit. At 50,000 ba
 that is 5,000,000 candidate arrays, and at even 500 candidates each it is tens of gigabytes. The shape
 below is keyed so that the BASE COUNT contributes almost nothing, which is the whole trick.
 
-**The input is three row sets and nothing else:** every `mod` row for its `kind`, `group_id` and
-`legacy` flag, every `mod_tier` row for its ordinal and its two level bounds, and every
-`mod_tier_weight` row for its tag and weight (8.3). All three are ordinary content rows, so the build is
-a scan of three indexed row sets rather than a decode of a blob per mod, and a server whose pack omits
-the `ServerOnly` weight type builds no tables at all, which is exactly what a client does.
+**The input is five row sets:** `mod` supplies kind, group and legacy, `mod_group` supplies
+`max_per_item`, `mod_tier` supplies ordinals and level bounds, `mod_tier_weight` supplies tags and
+weights, and `item` supplies the distinct base tag signatures used by the overlap tables. All five are
+ordinary content rows, so the build scans indexed row sets rather than decoding a blob per mod. A client
+whose pack omits the `ServerOnly` weight type builds no candidate tables.
 
 **Three levels: bands, tag tables split by mod kind, and the precomputed OVERLAP between the tables one
 base's tags select.** The first draft of this section had a fourth thing, a memoized merge of those

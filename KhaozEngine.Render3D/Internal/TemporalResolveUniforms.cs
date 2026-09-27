@@ -78,8 +78,8 @@ namespace KhaozEngine.Render3D.Internal
         public Vector4 CurrentDepth;
     }
 
-    /// <summary>The three unjittered matrices of one frame view that the resolve reprojects with. The scene reads them
+    /// <summary>The two unjittered matrices of one frame view that the resolve reprojects with. The scene reads them
     /// from a <see cref="FrameView"/>, the previous one already rebased to this frame's render origin, and the tests
     /// build them directly.</summary>
-    internal readonly record struct TemporalViewInput(Matrix4x4 View, Matrix4x4 Projection, Matrix4x4 ViewProjection);
+    internal readonly record struct TemporalViewInput(Matrix4x4 View, Matrix4x4 Projection);
 }

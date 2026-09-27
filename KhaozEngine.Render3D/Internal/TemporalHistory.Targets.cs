@@ -11,14 +11,15 @@ namespace KhaozEngine.Render3D.Internal;
 /// runs, reused while both sizes hold, recreated when either changes, released when the resolve stops. A reset
 /// (<see cref="Invalidate"/>) keeps them, since <see cref="IsValid"/> already stops every read.
 /// <para><b>A NEW GENERATION IS A RESET.</b> Every creation bumps <see cref="TargetGeneration"/>, a recreation at the
-/// same sizes after <see cref="ReleaseTargets"/> included. New targets hold nothing, so a consumer that sees the
-/// generation change invalidates the history before the resolve reads it, and rebuilds any resource set it cached over
-/// the old targets. This type never invalidates on its own. <see cref="EnsureTargets"/> returns true on a creation and
-/// leaves the reason to its caller.</para>
+/// same sizes after <see cref="ReleaseTargets"/> included, and so does every release of allocated targets, so a consumer
+/// holding sets over released targets sees the change even when nothing replaces them. New targets hold nothing, so a
+/// consumer that sees the generation change invalidates the history before the resolve reads it, and rebuilds any
+/// resource set it cached over the old targets. This type never invalidates on its own. <see cref="EnsureTargets"/>
+/// returns true on a creation and leaves the reason to its caller.</para>
 /// <para><b>THE PAIR FLIPS ONCE PER FRAME INDEX.</b> The resolve reads <see cref="ReadIndex"/> and writes
-/// <see cref="WriteIndex"/>. A second render in the same frame, such as an offscreen capture, resolves into the same pair
-/// again, so history advances once per frame as the foundations design requires, and the write target the post chain
-/// then reads holds the frame's last render.</para>
+/// <see cref="WriteIndex"/>. A repeated index keeps the pair, so history advances once per frame as the foundations
+/// design requires. The scene resolves on a frame's first render only. A later render inside the frame, such as an
+/// offscreen capture, presents its internal frame unresolved and leaves the pair and its contents alone.</para>
 /// <para><b>OLD TARGETS ARE RETIRED, NOT FREED IN PLACE.</b> A frame the device has not finished may still read them, so
 /// a recreation or a release hands them to the caller's <see cref="GpuRetireQueue"/>, which frees them at a frame
 /// boundary once the GPU is done. With no queue the release drains the device and frees them at once, which suits a
@@ -44,8 +45,9 @@ internal sealed partial class TemporalHistory
     public int InternalHeight { get; private set; }
 
     /// <summary>Bumped on every creation of the targets, a recreation at the same sizes after
-    /// <see cref="ReleaseTargets"/> included, and never on a release. New targets hold no history, so a consumer that
-    /// sees this change invalidates the history and rebuilds any resource set it cached over the old targets.</summary>
+    /// <see cref="ReleaseTargets"/> included, and on every release of allocated targets. New targets hold no history,
+    /// so a consumer that sees this change invalidates the history and rebuilds any resource set it cached over the old
+    /// targets. A release with nothing allocated leaves it alone.</summary>
     public int TargetGeneration { get; private set; }
 
     /// <summary>The pair the resolve reads this frame: last frame's output.</summary>
@@ -73,7 +75,7 @@ internal sealed partial class TemporalHistory
             && iw == InternalWidth && ih == InternalHeight)
             return false;
 
-        ReleaseTargets(ReferenceEquals(gd, _targetDevice) ? retired : null);
+        FreeTargets(ReferenceEquals(gd, _targetDevice) ? retired : null);   // the creation below bumps the generation once
         // Recorded before the first creation, so a creation that throws part way leaves what it made releasable.
         _targetDevice = gd;
         IGpuResourceFactory f = gd.Factory;
@@ -110,17 +112,24 @@ internal sealed partial class TemporalHistory
         _resolveFrame = frameIndex;
     }
 
-    /// <summary>Let go of every target and restart the pair. With <paramref name="retired"/> the targets are retired
-    /// into it, costing no drain, and the queue frees them once the GPU is done with the frames that read them. Without
-    /// one the device is drained and they are freed at once, which is right only where no open recording references
-    /// them. At teardown release before the queue is disposed, so its flush frees them, or release with no queue after
-    /// the device drained. Nothing allocated means nothing to drain for.</summary>
+    /// <summary>Let go of every target, restart the pair and bump <see cref="TargetGeneration"/>. With
+    /// <paramref name="retired"/> the targets are retired into it, costing no drain, and the queue frees them once the
+    /// GPU is done with the frames that read them. Without one the device is drained and they are freed at once, which
+    /// is right only where no open recording references them. At teardown release before the queue is disposed, so its
+    /// flush frees them, or release with no queue after the device drained. Nothing allocated means nothing to drain
+    /// for and no new generation.</summary>
     public void ReleaseTargets(GpuRetireQueue? retired = null)
+    {
+        if (FreeTargets(retired)) TargetGeneration++;
+    }
+
+    // Free every target and restart the pair. True when anything was allocated.
+    bool FreeTargets(GpuRetireQueue? retired)
     {
         _readIndex = 0;
         _writeIndex = 1;
         _resolveFrame = -1;
-        if (_targetDevice is null) return;
+        if (_targetDevice is null) return false;
         if (retired is null) _targetDevice.WaitForIdle();
         for (int i = 0; i < 2; i++)
         {
@@ -132,6 +141,7 @@ internal sealed partial class TemporalHistory
         }
         _targetDevice = null;
         DisplayWidth = DisplayHeight = InternalWidth = InternalHeight = 0;
+        return true;
     }
 
     static void Free<T>(ref T? resource, GpuRetireQueue? retired) where T : class, IDisposable

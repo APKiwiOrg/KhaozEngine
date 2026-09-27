@@ -82,11 +82,18 @@ namespace KhaozEngine.Render3D.Internal
         }
 
         /// <summary>Copy the lit colour's mip 0 into <see cref="OpaqueColor"/>. The scene calls it after the opaque passes
-        /// and the background, before the transparent model-pass writers.</summary>
+        /// and the background, before the transparent model-pass writers, and after this frame's <see cref="Ensure"/>.</summary>
+        /// <exception cref="InvalidOperationException">The scene's targets changed size since <see cref="Ensure"/> sized the
+        /// copy, so it would copy a region of the wrong size.</exception>
         public void CopyOpaque(IGpuCommandList cl)
         {
             RenderResources res = _res ?? throw NotAllocated();
-            cl.CopyTextureSubresource(res.ColorTex, 0, 0, OpaqueColor, (uint)res.Width, (uint)res.Height);
+            IGpuTexture opaque = OpaqueColor;
+            if (opaque.Width != (uint)res.Width || opaque.Height != (uint)res.Height)
+                throw new InvalidOperationException(
+                    $"The opaque copy is {opaque.Width}x{opaque.Height} and the scene's colour {res.Width}x{res.Height}. "
+                    + "Call TemporalPostTargets.Ensure after the scene's targets are sized and before the copy.");
+            cl.CopyTextureSubresource(res.ColorTex, 0, 0, opaque, (uint)res.Width, (uint)res.Height);
         }
 
         /// <summary>Free every target. Drains the device first. Safe to call when nothing is allocated.</summary>

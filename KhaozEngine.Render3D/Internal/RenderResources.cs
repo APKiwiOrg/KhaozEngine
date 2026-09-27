@@ -8,8 +8,8 @@ namespace KhaozEngine.Render3D.Internal
     /// Owns the low-res GPU targets for one resolution: a 3-attachment MRT (lit color, encoded normal,
     /// linear depth), or a 4-attachment one with the RG16F motion target while temporal rendering asks for it
     /// (<see cref="MotionAllocated"/>), plus a depth-stencil for the model pass, and two single-target ping-pong
-    /// buffers for the post chain. Recreated on resolution / mip-mode / MSAA-sample-count / bloom-enabled /
-    /// HDR-format / motion change.
+    /// buffers for the post chain while the scene runs the chain over these targets (<see cref="PingsAllocated"/>).
+    /// Recreated on resolution / mip-mode / MSAA-sample-count / bloom-enabled / HDR-format / motion change.
     /// Also owns an optional half-resolution ping-pong pair (<see cref="BloomA"/>/<see cref="BloomB"/>) for the
     /// bloom bright-pass + separable blur, allocated only while bloom is enabled (see <see cref="BloomAllocated"/>).
     /// The colour-carrying targets (lit colour + both ping-pong pairs) render at <c>R16G16B16A16Float</c> when
@@ -88,6 +88,11 @@ namespace KhaozEngine.Render3D.Internal
         public IGpuTexture PingA = null!, PingB = null!;
         public IGpuFramebuffer PingAFB = null!, PingBFB = null!;
 
+        /// <summary>Whether <see cref="PingA"/> and <see cref="PingB"/> exist. Always, unless the temporal resolve runs
+        /// the post chain over its display-size targets and no render in the frame presents through these ones
+        /// (Scene3D.TemporalResolve.cs). The post chain can only bind these targets while it is set.</summary>
+        public bool PingsAllocated { get; private set; }
+
         /// <summary>Half-resolution ping-pong pair for the bloom bright-pass + separable blur (see
         /// <see cref="Internal.BloomMath.HalfResSize"/>). Allocated ONLY when <see cref="BloomAllocated"/> is
         /// requested (<see cref="BloomSettings.Enabled"/> at the time of the last <see cref="Resize"/>), so bloom
@@ -124,27 +129,50 @@ namespace KhaozEngine.Render3D.Internal
         public RenderResources(IGpuDevice gd, int w, int h, bool hdrColor)
         {
             _gd = gd;
-            Create(w, h, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: hdrColor, motion: false);
+            Create(w, h, mipped: false, sampleCount: 1, bloomEnabled: false, hdrColor: hdrColor, motion: false, pings: true);
         }
 
-        /// <summary>Recreate the targets when any argument changed. <paramref name="motion"/> adds the motion target
-        /// as a fourth model attachment, which a multisampled target refuses before anything is released.</summary>
-        public void Resize(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor, bool motion = false)
+        /// <summary>Recreate the targets when any argument other than <paramref name="pings"/> changed.
+        /// <paramref name="motion"/> adds the motion target as a fourth model attachment, which a multisampled target
+        /// refuses before anything is released. A change of <paramref name="pings"/> alone adds or drops the ping pair
+        /// and keeps every other target (<see cref="EnsurePings"/>).</summary>
+        public void Resize(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor, bool motion = false,
+            bool pings = true)
         {
             if (motion && sampleCount > 1)
                 throw new ArgumentException(
                     "Temporal rendering is single-sample, so the motion target cannot join a multisampled model target.",
                     nameof(motion));
             if (w == Width && h == Height && mipped == Mipped && sampleCount == SampleCount
-                && bloomEnabled == BloomAllocated && hdrColor == HdrColor && motion == MotionAllocated) return;
+                && bloomEnabled == BloomAllocated && hdrColor == HdrColor && motion == MotionAllocated)
+            {
+                EnsurePings(pings);
+                return;
+            }
             DisposeTargets();
-            Create(w, h, mipped, sampleCount, bloomEnabled, hdrColor, motion);
+            Create(w, h, mipped, sampleCount, bloomEnabled, hdrColor, motion, pings);
+        }
+
+        /// <summary>Add or drop the ping pair alone, at the current size, mip mode and colour format, keeping every other
+        /// target. Adding creates without releasing anything, so a render later in a frame can add the pair while an
+        /// earlier render's commands still read the other targets. Dropping drains the device first. A change bumps
+        /// <see cref="Generation"/>.</summary>
+        public void EnsurePings(bool wanted)
+        {
+            if (wanted == PingsAllocated) return;
+            if (wanted) CreatePings();
+            else
+            {
+                _gd.WaitForIdle();
+                DisposePings();
+            }
+            Generation++;
         }
 
         IGpuTexture Tex(uint w, uint h, GpuPixelFormat fmt, GpuTextureUsage usage, uint mipLevels = 1, uint samples = 1) =>
             _gd.Factory.CreateTexture(new GpuTextureDescription(w, h, fmt, usage, mipLevels, 1, samples));
 
-        void Create(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor, bool motion)
+        void Create(int w, int h, bool mipped, int sampleCount, bool bloomEnabled, bool hdrColor, bool motion, bool pings)
         {
             Generation++;
             Width = w; Height = h; Mipped = mipped; SampleCount = sampleCount < 1 ? 1 : sampleCount;
@@ -196,10 +224,8 @@ namespace KhaozEngine.Render3D.Internal
                 ColorDepthFB = _gd.Factory.CreateFramebuffer(DepthStencil, ColorTex);
             }
 
-            PingA = Tex(uw, uh, colorFmt, blitRt, blitMips);
-            PingB = Tex(uw, uh, colorFmt, blitRt, blitMips);
-            PingAFB = _gd.Factory.CreateFramebuffer(null, PingA);
-            PingBFB = _gd.Factory.CreateFramebuffer(null, PingB);
+            if (pings) CreatePings();
+            else PingsAllocated = false;
 
             BloomAllocated = bloomEnabled;
             if (bloomEnabled)
@@ -216,6 +242,28 @@ namespace KhaozEngine.Render3D.Internal
             {
                 BloomWidth = 0; BloomHeight = 0;
             }
+        }
+
+        // The post chain's full-size ping pair, in the colour format, mip mode and size Create recorded.
+        void CreatePings()
+        {
+            var rt = GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled;
+            var colorFmt = HdrColor ? GpuPixelFormat.R16G16B16A16Float : GpuPixelFormat.R8G8B8A8UNorm;
+            uint blitMips = Mipped ? SplatMaterialConfig.MipLevelCount(Width, Height) : 1u;
+            var blitRt = Mipped ? rt | GpuTextureUsage.GenerateMipmaps : rt;
+            PingA = Tex((uint)Width, (uint)Height, colorFmt, blitRt, blitMips);
+            PingB = Tex((uint)Width, (uint)Height, colorFmt, blitRt, blitMips);
+            PingAFB = _gd.Factory.CreateFramebuffer(null, PingA);
+            PingBFB = _gd.Factory.CreateFramebuffer(null, PingB);
+            PingsAllocated = true;
+        }
+
+        void DisposePings()
+        {
+            PingAFB?.Dispose(); PingBFB?.Dispose(); PingA?.Dispose(); PingB?.Dispose();
+            PingAFB = PingBFB = null!;
+            PingA = PingB = null!;
+            PingsAllocated = false;
         }
 
         /// <summary>Resolve the multisampled MRT's depth into the single-sample <see cref="DepthColorTex"/> that the
@@ -309,13 +357,13 @@ namespace KhaozEngine.Render3D.Internal
         {
             if (ModelFB != null) _gd.WaitForIdle();   // drain only when targets exist to dispose
             DisposeDistortion();
-            ModelFB?.Dispose(); ColorDepthFB?.Dispose(); PingAFB?.Dispose(); PingBFB?.Dispose();
+            ModelFB?.Dispose(); ColorDepthFB?.Dispose();
             ColorTex?.Dispose(); NormalTex?.Dispose(); DepthColorTex?.Dispose(); DepthStencil?.Dispose();
             MsColor?.Dispose(); MsNormal?.Dispose(); MsDepthColor?.Dispose();
             MsColor = MsNormal = MsDepthColor = null;
             MotionTex?.Dispose();
             MotionTex = null;
-            PingA?.Dispose(); PingB?.Dispose();
+            DisposePings();
             BloomAFB?.Dispose(); BloomBFB?.Dispose(); BloomA?.Dispose(); BloomB?.Dispose();
             BloomAFB = BloomBFB = null; BloomA = BloomB = null;
         }
@@ -327,15 +375,19 @@ namespace KhaozEngine.Render3D.Internal
         IGpuTexture IPostChainTargets.Source(int slot) => ColorTex;
         IGpuTexture IPostChainTargets.NormalTex => NormalTex;
         IGpuTexture IPostChainTargets.DepthColorTex => DepthColorTex;
-        IGpuTexture IPostChainTargets.PingA => PingA;
-        IGpuTexture IPostChainTargets.PingB => PingB;
-        IGpuFramebuffer IPostChainTargets.PingAFB => PingAFB;
-        IGpuFramebuffer IPostChainTargets.PingBFB => PingBFB;
+        IGpuTexture IPostChainTargets.PingA => PingsAllocated ? PingA : throw NoPings();
+        IGpuTexture IPostChainTargets.PingB => PingsAllocated ? PingB : throw NoPings();
+        IGpuFramebuffer IPostChainTargets.PingAFB => PingsAllocated ? PingAFB : throw NoPings();
+        IGpuFramebuffer IPostChainTargets.PingBFB => PingsAllocated ? PingBFB : throw NoPings();
         IGpuTexture? IPostChainTargets.BloomA => BloomA;
         IGpuTexture? IPostChainTargets.BloomB => BloomB;
         IGpuFramebuffer? IPostChainTargets.BloomAFB => BloomAFB;
         IGpuFramebuffer? IPostChainTargets.BloomBFB => BloomBFB;
         IGpuTexture? IPostChainTargets.DistortTex => DistortTex;
+
+        static InvalidOperationException NoPings() => new(
+            "The internal targets hold no ping pair while the temporal resolve runs the post chain over its display "
+            + "targets. Request the pair through RenderResources.EnsurePings before binding these targets to the chain.");
 
         public void Dispose() => DisposeTargets();
     }

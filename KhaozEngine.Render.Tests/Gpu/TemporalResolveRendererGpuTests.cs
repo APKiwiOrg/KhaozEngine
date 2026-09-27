@@ -85,7 +85,7 @@ namespace KhaozEngine.Tests.Gpu
             Matrix4x4 turn = Matrix4x4.CreateRotationY(yaw) * Matrix4x4.CreateRotationX(pitch);
             Matrix4x4 viewThen = Matrix4x4.CreateLookAt(Eye, Eye + Vector3.TransformNormal(-Vector3.UnitZ, turn),
                 Vector3.TransformNormal(Vector3.UnitY, turn));
-            var then = new TemporalViewInput(viewThen, Projection, viewThen * Projection);
+            var then = new TemporalViewInput(viewThen, Projection);
             TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(Still, then, Vector2.Zero, N, N, N, N,
                 historyValid: true);
             static float Plane(float x, float y) => 0.2f + 0.03f * x + 0.025f * y;   // over texel indices

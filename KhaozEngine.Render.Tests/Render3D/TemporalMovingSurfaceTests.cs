@@ -92,8 +92,8 @@ namespace KhaozEngine.Tests.Render3D
             Assert.True(Matrix4x4.Invert(current.View, out Matrix4x4 inverseView));
             var viewPoint = new Vector4(ndc.X * metres / Perspective.M11, ndc.Y * metres / Perspective.M22, -metres, 1f);
             Vector4 world = Vector4.Transform(viewPoint, inverseView);
-            Vector4 now = Vector4.Transform(world, current.ViewProjection);
-            Vector2 motion = MotionMath.UvMotion(now, Vector4.Transform(world, previous.ViewProjection));
+            Vector4 now = Vector4.Transform(world, current.View * current.Projection);
+            Vector2 motion = MotionMath.UvMotion(now, Vector4.Transform(world, previous.View * previous.Projection));
             return (TemporalResolveMath.LinearDepth(now.Z / now.W, u.CurrentDepth), motion);
         }
 
@@ -113,7 +113,7 @@ namespace KhaozEngine.Tests.Render3D
         static TemporalViewInput View(Vector3 eye)
         {
             Matrix4x4 view = Matrix4x4.CreateLookAt(eye, eye - Vector3.UnitZ, Vector3.UnitY);
-            return new TemporalViewInput(view, Perspective, view * Perspective);
+            return new TemporalViewInput(view, Perspective);
         }
 
         static Vector2 Ndc(Vector2 uv) => new(uv.X * 2f - 1f, 1f - uv.Y * 2f);

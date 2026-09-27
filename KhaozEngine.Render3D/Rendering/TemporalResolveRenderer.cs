@@ -23,8 +23,9 @@ namespace KhaozEngine.Render3D.Rendering
     /// <para><b>TWO RESOURCE SETS, ONE PER READ INDEX.</b> The history pair alternates every frame, so both sets are built
     /// once per target generation and <see cref="Run"/> picks one, which keeps a steady frame from building or
     /// allocating anything.</para>
-    /// <para>Created on the first frame the resolve runs, so a scene that never selects temporal anti-aliasing owns
-    /// none of its objects. <see cref="ResolveLayout"/> and <see cref="CurrentSet"/> are exposed for planned consumers,
+    /// <para>The scene creates it on the first frame the resolve runs and retires it on the first frame the resolve does
+    /// not, so a scene that is not using temporal anti-aliasing owns none of its objects and no set over released
+    /// history targets. <see cref="ResolveLayout"/> and <see cref="CurrentSet"/> are exposed for planned consumers,
     /// such as a temporal debug view, that re-evaluate the resolve through <c>ShaderSources.TemporalResolveCoreGlsl</c>
     /// over the set it bound. No pass reads them yet.</para>
     /// </summary>

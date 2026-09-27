@@ -213,3 +213,5 @@ and changed these details. Each group's "Contract amendments" block carries the 
     accumulated rather than jittered. A non-black outline colour mixes before the tonemap there (Task F16b).
 11. Round 3 keys carcasses, which move through their 0.9 s collapse (group I).
 12. The release version is chosen at release time by the ride rule: an untagged staged minor is ridden (Task H5).
+13. The distortion offset field keeps its internal-relative size. Only its apply pass moves to the display resolution,
+    after the resolve (group E).

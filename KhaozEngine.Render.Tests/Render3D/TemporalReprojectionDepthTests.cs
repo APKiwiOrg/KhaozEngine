@@ -38,8 +38,8 @@ namespace KhaozEngine.Tests.Render3D
                 Matrix4x4 viewNow = Matrix4x4.CreateLookAt(eye, eye + forward, Vector3.UnitY);
                 Matrix4x4 viewThen = Matrix4x4.CreateLookAt(eyeThen, eyeThen + forwardThen, Vector3.UnitY);
                 TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(
-                    new TemporalViewInput(viewNow, TownPerspective, viewNow * TownPerspective),
-                    new TemporalViewInput(viewThen, TownPerspective, viewThen * TownPerspective),
+                    new TemporalViewInput(viewNow, TownPerspective),
+                    new TemporalViewInput(viewThen, TownPerspective),
                     Vector2.Zero, 1600, 900, 1600, 900, historyValid: true);
                 Assert.Equal(1f, u.Jitter.W);
 

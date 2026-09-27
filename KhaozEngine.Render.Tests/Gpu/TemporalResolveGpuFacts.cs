@@ -49,7 +49,7 @@ namespace KhaozEngine.Tests.Gpu
         private protected static TemporalViewInput View(Vector3 eye, Matrix4x4 projection)
         {
             Matrix4x4 view = Matrix4x4.CreateLookAt(eye, eye - Vector3.UnitZ, Vector3.UnitY);
-            return new TemporalViewInput(view, projection, view * projection);
+            return new TemporalViewInput(view, projection);
         }
 
         // What the depth target holds for a point this far ahead: the projection's NDC depth.
@@ -82,8 +82,8 @@ namespace KhaozEngine.Tests.Gpu
                     var viewPoint = new Vector4(ndc.X * linearDepth / now.Projection.M11,
                         ndc.Y * linearDepth / now.Projection.M22, -linearDepth, 1f);
                     Vector4 world = Vector4.Transform(viewPoint, inverseView);
-                    Vector2 written = MotionMath.UvMotion(Vector4.Transform(world, now.ViewProjection),
-                        Vector4.Transform(world, then.ViewProjection));
+                    Vector2 written = MotionMath.UvMotion(Vector4.Transform(world, now.View * now.Projection),
+                        Vector4.Transform(world, then.View * then.Projection));
                     float apart = ((written - motion[y * width + x]) * size).Length();
                     float tolerance = 0.05f + (written * size).Length() / 1024f;
                     Assert.True(apart <= tolerance, $"texel ({x}, {y}): {apart} px from the written motion");

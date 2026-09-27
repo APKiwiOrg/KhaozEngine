@@ -73,7 +73,7 @@ namespace KhaozEngine.Tests.Render3D
             TemporalViewInput current = View(new Vector3(0f, 2f, 10f), new Vector3(0.4f, 1.8f, 0f));
             TemporalViewInput previous = View(new Vector3(0.3f, 2.1f, 10.4f), new Vector3(0.2f, 1.9f, 0f));
             var world = new Vector4(1.2f, 0.7f, -3f, 1f);
-            Vector4 now = Vector4.Transform(world, current.ViewProjection);
+            Vector4 now = Vector4.Transform(world, current.View * current.Projection);
             Vector4 then = Vector4.Transform(world, previous.View);
 
             // The shader rebuilds (ndc.xy * w, linear depth, 1) and lands in last frame's view space.
@@ -115,7 +115,7 @@ namespace KhaozEngine.Tests.Render3D
 
             // The previous projection falls back to the current one, so the block stays well defined.
             Matrix4x4 zoomed = Matrix4x4.CreatePerspectiveFieldOfView(0.6f, 16f / 9f, 0.1f, 500f);
-            var previous = new TemporalViewInput(current.View, zoomed, current.View * zoomed);
+            var previous = new TemporalViewInput(current.View, zoomed);
             Assert.Equal(Perspective, TemporalResolveMath.BuildUniforms(current, previous, Vector2.Zero, 1280, 720, 1920, 1080,
                 historyValid: false).PreviousProjection);
             Assert.Equal(Perspective, TemporalResolveMath.BuildUniforms(current, null, Vector2.Zero, 1280, 720, 1920, 1080,
@@ -141,8 +141,8 @@ namespace KhaozEngine.Tests.Render3D
         public void A_singular_current_view_or_projection_gives_no_reprojection_and_no_history()
         {
             TemporalViewInput good = View(new Vector3(0f, 2f, 10f), Vector3.Zero);
-            var flatView = new TemporalViewInput(default, Perspective, default);
-            var flatProjection = new TemporalViewInput(good.View, default, default);
+            var flatView = new TemporalViewInput(default, Perspective);
+            var flatProjection = new TemporalViewInput(good.View, default);
 
             Assert.False(TemporalResolveMath.TryReprojection(flatView, good, out Matrix4x4 currentToPrevious,
                 out Matrix4x4 backgroundToPrevious));
@@ -163,8 +163,8 @@ namespace KhaozEngine.Tests.Render3D
             Matrix4x4 ortho = Matrix4x4.CreateOrthographic(24f, 13.5f, 0.5f, 200f);
             Matrix4x4 viewNow = Matrix4x4.CreateLookAt(new Vector3(0f, 30f, 30f), Vector3.Zero, Vector3.UnitY);
             Matrix4x4 viewThen = Matrix4x4.CreateLookAt(new Vector3(0.4f, 30.2f, 29.7f), new Vector3(0.4f, 0f, 0.3f), Vector3.UnitY);
-            TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(new TemporalViewInput(viewNow, ortho, viewNow * ortho),
-                new TemporalViewInput(viewThen, ortho, viewThen * ortho), Vector2.Zero, 1280, 720, 1280, 720,
+            TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(new TemporalViewInput(viewNow, ortho),
+                new TemporalViewInput(viewThen, ortho), Vector2.Zero, 1280, 720, 1280, 720,
                 historyValid: true);
             Assert.Equal(1f, u.Jitter.W);
             Assert.Equal(0f, u.CurrentDepth.X);
@@ -191,7 +191,7 @@ namespace KhaozEngine.Tests.Render3D
             TemporalViewInput current = View(new Vector3(0f, 2f, 10f), new Vector3(0.4f, 1.8f, 0f));
             Matrix4x4 zoomed = Matrix4x4.CreatePerspectiveFieldOfView(0.85f, 16f / 9f, 0.1f, 500f);
             Matrix4x4 viewThen = Matrix4x4.CreateLookAt(new Vector3(0.6f, 2.2f, 10.9f), new Vector3(0.1f, 1.9f, 0f), Vector3.UnitY);
-            var previous = new TemporalViewInput(viewThen, zoomed, viewThen * zoomed);
+            var previous = new TemporalViewInput(viewThen, zoomed);
             TemporalResolveUniforms u = Build(current, previous);
             Assert.Equal(zoomed, u.PreviousProjection);
             Assert.Equal(TemporalResolveMath.DepthParams(zoomed), u.PreviousDepth);
@@ -209,8 +209,8 @@ namespace KhaozEngine.Tests.Render3D
             Matrix4x4 ortho = Matrix4x4.CreateOrthographic(24f, 13.5f, 0.5f, 200f);
             Matrix4x4 viewNow = Matrix4x4.CreateLookAt(new Vector3(0f, 30f, 30f), Vector3.Zero, Vector3.UnitY);
             Matrix4x4 viewThen = Matrix4x4.CreateLookAt(new Vector3(0.9f, 30.2f, 29.4f), new Vector3(0.7f, 0f, 0.3f), Vector3.UnitY);
-            var current = new TemporalViewInput(viewNow, ortho, viewNow * ortho);
-            var previous = new TemporalViewInput(viewThen, ortho, viewThen * ortho);
+            var current = new TemporalViewInput(viewNow, ortho);
+            var previous = new TemporalViewInput(viewThen, ortho);
             TemporalResolveUniforms u = Build(current, previous);
             Assert.Equal(ortho, u.PreviousProjection);
 
@@ -230,7 +230,7 @@ namespace KhaozEngine.Tests.Render3D
             TemporalViewInput current = View(new Vector3(0f, 2f, 10f), new Vector3(0f, 2f, 0f));
             TemporalViewInput previous = View(new Vector3(0f, 2f, 8f), new Vector3(0f, 2f, -2f));
             TemporalResolveUniforms u = Build(current, previous);
-            Vector4 now = Vector4.Transform(new Vector4(0.1f, 2.2f, 9f, 1f), current.ViewProjection);
+            Vector4 now = Vector4.Transform(new Vector4(0.1f, 2.2f, 9f, 1f), current.View * current.Projection);
             var ndc = new Vector2(now.X / now.W, now.Y / now.W);
             float depth = TemporalResolveMath.LinearDepth(now.Z / now.W, u.CurrentDepth);
 
@@ -262,8 +262,8 @@ namespace KhaozEngine.Tests.Render3D
         static void AssertStaticPreviousUv(in TemporalResolveUniforms u, in TemporalViewInput current,
             in TemporalViewInput previous, Vector4 world)
         {
-            Vector4 now = Vector4.Transform(world, current.ViewProjection);
-            Vector4 then = Vector4.Transform(world, previous.ViewProjection);
+            Vector4 now = Vector4.Transform(world, current.View * current.Projection);
+            Vector4 then = Vector4.Transform(world, previous.View * previous.Projection);
             var ndc = new Vector2(now.X / now.W, now.Y / now.W);
             float depth = TemporalResolveMath.LinearDepth(now.Z / now.W, u.CurrentDepth);
             var expected = new Vector2(then.X / then.W * 0.5f + 0.5f, 0.5f - then.Y / then.W * 0.5f);
@@ -285,7 +285,7 @@ namespace KhaozEngine.Tests.Render3D
         static TemporalViewInput View(Vector3 eye, Vector3 target)
         {
             Matrix4x4 view = Matrix4x4.CreateLookAt(eye, target, Vector3.UnitY);
-            return new TemporalViewInput(view, Perspective, view * Perspective);
+            return new TemporalViewInput(view, Perspective);
         }
 
         static TemporalResolveUniforms Build(in TemporalViewInput current, in TemporalViewInput previous)

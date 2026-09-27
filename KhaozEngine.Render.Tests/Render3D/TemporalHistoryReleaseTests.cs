@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Render3D
     /// How the history's targets live and die, on the device-free fake. A recreation or a release hands the old targets
     /// to the caller's retire queue, because a command list the device has not finished may still read them. Without a
     /// queue it drains the device and frees them at once. Every creation bumps the generation, the same sizes after a
-    /// release included, and a reset keeps the targets.
+    /// release included, and so does a release of allocated targets, while a reset keeps the targets.
     /// </summary>
     public sealed class TemporalHistoryReleaseTests
     {
@@ -72,7 +72,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void Every_creation_bumps_the_generation_the_same_sizes_after_a_release_included()
+        public void Every_creation_and_every_release_bumps_the_generation_once()
         {
             using var device = new FakeGpuDevice();
             var history = new TemporalHistory();
@@ -84,14 +84,35 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(1, history.TargetGeneration);
 
             history.ReleaseTargets();
-            Assert.Equal(1, history.TargetGeneration);   // a release creates nothing
+            Assert.Equal(2, history.TargetGeneration);   // a release alone is visible to every set built over the targets
+            history.ReleaseTargets();
+            Assert.Equal(2, history.TargetGeneration);   // nothing was left to release
             Assert.True(history.EnsureTargets(device, 96, 54, 64, 36));
-            Assert.Equal(2, history.TargetGeneration);
+            Assert.Equal(3, history.TargetGeneration);
+            Assert.True(history.EnsureTargets(device, 128, 72, 64, 36));
+            Assert.Equal(4, history.TargetGeneration);   // a recreation replaces the targets in one step
 
             using var other = new FakeGpuDevice();       // a new device holds none of the old targets
             Assert.True(history.EnsureTargets(other, 96, 54, 64, 36));
-            Assert.Equal(3, history.TargetGeneration);
+            Assert.Equal(5, history.TargetGeneration);
             history.ReleaseTargets();
+            Assert.Equal(6, history.TargetGeneration);
+        }
+
+        [Fact]
+        public void A_history_release_without_a_recreation_moves_the_display_targets_generation()
+        {
+            using var device = new FakeGpuDevice();
+            using var res = new RenderResources(device, 64, 36, hdrColor: true);
+            var history = new TemporalHistory();
+            using var post = new TemporalPostTargets(device);
+            history.EnsureTargets(device, 96, 54, 64, 36);
+            post.Ensure(res, history, 96, 54, bloomEnabled: false);
+            int generation = post.Generation;
+
+            history.ReleaseTargets();
+
+            Assert.NotEqual(generation, post.Generation);
         }
 
         [Fact]

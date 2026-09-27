@@ -38,16 +38,20 @@ public sealed class MotionFrameAllocationTests(ITestOutputHelper output)
 
     // The skinned and foliage motion runs inside the frame, not in PrepareMotionFrame, so this reading renders whole
     // frames: keyed and unkeyed rigid, a keyed and an unkeyed body under the skinning path the row names, wind-blown
-    // foliage and a beam.
+    // foliage and a beam. The resolve rows select temporal anti-aliasing with bloom on, so the frames also resolve and
+    // run the post chain over the display targets.
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void ASteadyTemporalFrameOverEveryPathAllocatesNothing(bool gpuSkinning)
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void ASteadyTemporalFrameOverEveryPathAllocatesNothing(bool gpuSkinning, bool resolve)
     {
         const int Warm = 8, Measured = 16;
         using var harness = new MotionTestScene();
         Scene3D scene = harness.Scene;
         scene.UseGpuSkinning = gpuSkinning;
+        scene.Post.Bloom.Enabled = resolve;
         MeshHandle box = scene.LoadMesh(MeshPrimitives.Box(.5f));
         SkinnedMeshHandle tube = harness.LoadTube(out SkinnedGltfMesh mesh);
         Matrix4x4[] pose = MotionTestScene.Bent(mesh, .3f);
@@ -77,9 +81,11 @@ public sealed class MotionFrameAllocationTests(ITestOutputHelper output)
         long without = Allocated(() => Frames(Measured));
         output.WriteLine($"{Measured} steady headless frames without temporal rendering: {without} bytes");
 
-        scene.ForceTemporalForTests = true;
+        if (resolve) scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+        else scene.ForceTemporalForTests = true;
         Frames(Warm);   // both history generations, the slots and every grow-only buffer reach their steady size
         Assert.NotNull(scene.MotionResourcesForTests);
+        Assert.Equal(resolve, scene.ResolvedLastRenderForTests);
         AllocAssert.NoPerCallAllocation($"{Measured} steady temporal frames over every path", () => Frames(Measured));
         AssertEveryPathRan(scene, gpuSkinning);
     }

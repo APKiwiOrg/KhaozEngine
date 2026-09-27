@@ -1280,9 +1280,9 @@ namespace KhaozEngine.Render3D
         internal int RenderTargetWidth => _res.Width;
         internal int RenderTargetHeight => _res.Height;
 
-        // Bloom half-res target state. Exposed for tests to assert bloom off allocates nothing, bloom on allocates
-        // exactly BloomMath.HalfResSize(RenderTargetWidth, RenderTargetHeight), and a resize/RenderScale change
-        // re-derives it; not part of the public surface.
+        // The internal chain's bloom half-res targets, for tests: none with bloom off, and none while the temporal resolve
+        // runs the chain over its display targets, else exactly BloomMath.HalfResSize(RenderTargetWidth,
+        // RenderTargetHeight), re-derived on a resize or RenderScale change. Not part of the public surface.
         internal bool BloomAllocated => _res.BloomAllocated;
         internal int BloomTargetWidth => _res.BloomWidth;
         internal int BloomTargetHeight => _res.BloomHeight;
@@ -1432,11 +1432,11 @@ namespace KhaozEngine.Render3D
             // otherwise). Byte-neutral when never used. The apply-pass parity is stable from here through Run.
             bool distortionActive = _distortionSprites.Count > 0;
             _res.EnsureDistortion(distortionActive, DistortionQuality == DistortionQuality.Full ? 2 : 4);
-            _post.BindTargets(_res);
-            // Edge pass needs the camera's depth convention (perspective vs ortho + near/far) to linearize depth
-            // under perspective; derived from the projection matrix so no camera-interface change is required.
+            IPostChainTargets postTargets = PrepareTemporalResolve(cl, viewportW, viewportH);   // _res unless this render resolves
+            _post.BindTargets(postTargets);
+            // The edge pass's depth convention (perspective or ortho, near and far), from the unjittered projection.
             var camDepth = Internal.OutlineMath.ExtractCameraDepth(_currentFrameView.Projection);
-            _post.PrepareUniforms(cl, _res, Post, camDepth, runFxaa, distortionActive);
+            _post.PrepareUniforms(cl, postTargets, Post, camDepth, runFxaa, distortionActive);
 
             // Frozen-frame capture for a screen crossfade must read the PREVIOUS frame (the origin view, before the
             // teleport cut). Snapshot ColorTex here, at the top of the frame, before the model pass overwrites it. No-op
@@ -1720,6 +1720,7 @@ namespace KhaozEngine.Render3D
 
             if (EnableTiming) modelMs = ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
+            CaptureOpaqueForTemporal(cl);   // resolving renders only: the background, then the opaque-only copy
 
             // Textured billboards: drawn into the SAME model framebuffer (still bound), after the meshes, with the
             // depth test on (no write). This is what gives mesh/sprite depth interleaving; then the whole MRT
@@ -1746,25 +1747,9 @@ namespace KhaozEngine.Render3D
             // and is complete by this line. Nothing after it does. No-op when not multisampled.
             _res.ResolveDepthNormal(cl);
 
-            // Background pass, before the decals: whichever mode is selected paints the no-geometry pixels and marks
-            // them alpha 1. Mutually exclusive by construction (Post.Background derives the sky-over-starfield
-            // precedence), so at most one of these runs, and Solid runs neither. The far-plane sky triangle passes
-            // the Equal read-only depth test ONLY where the stored depth still EQUALS the cleared far plane
-            // (background where no mesh drew), so it fills the gradient + sun there and geometry pixels (depth < 1)
-            // reject it. Both passes write only the colour attachment (never the MRT normal/linear-depth the outline
-            // pass reads) with alpha 1, marking those pixels as opaque painted background. Fully skipped when
-            // Solid, so a Solid frame renders byte-identical to before this pass existed.
-            switch (Post.Background)
-            {
-                case BackgroundMode.Sky:
-                    _sky.Draw(cl, _res, _currentFrameView.View, _currentFrameView.JitteredProjection, Post.LightDirection, Post.Sky);
-                    _frameStats.DrawCalls++;
-                    break;
-                case BackgroundMode.Starfield:
-                    _starfield.Draw(cl, _res, Post.BackgroundColor);
-                    _frameStats.DrawCalls++;
-                    break;
-            }
+            // Background pass, before the decals (Scene3D.TemporalResolve.cs). When this render resolves it already ran,
+            // before the transparent model-pass writers, so the opaque-only copy holds it.
+            if (!_resolveThisRender) DrawBackground(cl);
 
             // Ground decals: after the model pass wrote depth (meshes + textured billboards + beams), paint the
             // queued decals onto the reconstructed surface into ColorTex, BEFORE post - so they conform to the
@@ -1855,7 +1840,8 @@ namespace KhaozEngine.Render3D
             // WaterSyncMs still reports it, from the same measured span (#423).
             if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-            _post.Run(cl, _res, target, Post, runFxaa, distortionActive);
+            RunTemporalResolve(cl);   // resolving renders only: internal to display history, then the depth store
+            _post.Run(cl, postTargets, target, Post, runFxaa, distortionActive);
             DrawDebugView(cl, target);   // a development view replaces the final image (Scene3D.DebugView.cs)
             DrawTargetOutlines(cl, displayVp, target);
             if (EnableTiming) postMs = ElapsedMs(timingStart);
@@ -2181,6 +2167,7 @@ namespace KhaozEngine.Render3D
             DisposeSplatMaterials();
             DisposeMotionVectorsView();
             DisposeTileGroundAndPointShadowResources();
+            DisposeTemporalResolve();
         }
 
         /// <summary>A contiguous run of instances of one mesh handle inside the flat instance array.</summary>

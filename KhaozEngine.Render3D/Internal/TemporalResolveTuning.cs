@@ -32,10 +32,13 @@ namespace KhaozEngine.Render3D.Internal
         /// moving, and the motion target already sends such a point off screen.</summary>
         public const float MovingSurfaceInternalPixels = 0.5f;
         /// <summary>Step 3. The share of the dilated texel's motion length, in internal pixels, added to
-        /// <see cref="MovingSurfaceInternalPixels"/>. The motion target is RG16F, whose 10-bit mantissa rounds each
-        /// channel by up to half a unit in the last place, at most 1/2048 of its magnitude. For a motion between 0.5 and
-        /// 1 UV that is up to 2.4e-4 UV, 0.94 internal pixels on a 3840 wide target, which alone would read a static
-        /// surface as moving. 1/1024 is twice that bound.</summary>
+        /// <see cref="MovingSurfaceInternalPixels"/>. The motion target is RG16F, whose 10-bit mantissa puts one unit
+        /// in the last place at no more than 1/1024 of a channel's magnitude. Vulkan leaves the conversion's rounding
+        /// undefined. Rounding to nearest moves a channel by up to half a unit, at most 1/2048 of its magnitude, which
+        /// for a motion between 0.5 and 1 UV is up to 2.4e-4 UV, 0.94 internal pixels on a 3840 wide target, and alone
+        /// would read a static surface as moving. Rounding toward zero moves it by less than a whole unit. 1/1024
+        /// covers the whole unit, so it holds under either rounding, with twice the margin under rounding to
+        /// nearest.</summary>
         public const float MovingSurfaceMotionFraction = 1f / 1024f;
         /// <summary>Step 8. The accumulated sample weight's cap. The current weight is at least w / (15 + w), about one
         /// in sixteen for a well-placed sample.</summary>

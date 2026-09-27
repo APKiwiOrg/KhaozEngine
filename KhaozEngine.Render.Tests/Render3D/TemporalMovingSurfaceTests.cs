@@ -45,9 +45,9 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void The_half_float_rounding_of_a_fast_motion_stays_inside_the_motion_scaled_threshold()
         {
-            // A 1.5 m strafe past points 1 to 1.5 m away moves them between about 0.5 and 0.8 UV. RG16F rounds a channel
-            // there by up to 2.4e-4 UV, 0.94 internal pixels on a 3840 wide target, which alone would pass the fixed half
-            // pixel on a surface that did not move.
+            // A 1.5 m strafe past points 1 to 1.5 m away, six depths a tenth of a metre apart, moves them between about
+            // 0.5 and 0.8 UV. RG16F rounds a channel there by up to 2.4e-4 UV, 0.94 internal pixels on a 3840 wide
+            // target, which alone would pass the fixed half pixel on a surface that did not move.
             var size = new Vector2(3840f, 2160f);
             var eyeNow = new Vector3(0f, 1.7f, 10f);
             var eyeThen = new Vector3(-1.5f, 1.7f, 10f);
@@ -57,8 +57,9 @@ namespace KhaozEngine.Tests.Render3D
             {
                 foreach (float row in new[] { 1080f, 1500f })
                 {
-                    for (float metres = 1f; metres <= 1.5f; metres += 0.1f)
+                    for (int tenths = 10; tenths <= 15; tenths++)
                     {
+                        float metres = tenths / 10f;
                         Vector2 sample = TemporalResolveMath.UnjitteredSamplePosition(new Vector2(column, row), Jitter);
                         (float depth, Vector2 motion) = Observe(u, eyeNow, eyeThen, sample, size, metres);
                         Assert.InRange(MathF.Abs(motion.X), 0.5f, 1f);

@@ -16,7 +16,7 @@ on:
     tags: [ 'v*' ]   # all four packages share one version + tag line
   pull_request:
     branches: [ main ]
-  workflow_dispatch:   # manual re-trigger (e.g. after a self-hosted runner change) without a dummy commit
+  workflow_dispatch:   # manual re-trigger (e.g. to check a hosted runner image update) without a dummy commit
 
 jobs:
   # Runs on GitHub-hosted x64 ubuntu, NOT the self-hosted arm64 container. The engine test suite needs

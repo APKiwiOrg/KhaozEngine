@@ -340,7 +340,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
     box's fast flips from 0.00058 to 0.00068 at Native and from 0.00168 to 0.00186 at Quality, within the bounds of
     0.00088 and 0.00273. The rule costs two fetches for every pixel, the centre texel's own depth and motion read before
     the 3x3, and sixteen for the narrow test behind rule 1's branch. The emitted resolve grew from 33367 to 38149 bytes
-    of HLSL with it and the kept lock below, and to 41825 with the fast flag and the held share. Its hardware cost has
+    of HLSL with it and the kept lock below, and to 41801 with the fast flag and the held share. Its hardware cost has
     not been measured: section 7's cost acceptance measures it with the rest of the resolve's (group F, F15). The line's
     fast flips are 0.019 and 0.022, about MSAA 4x's 0.021 and 0.022. Each pixel shows the line for about one frame, so
     every flip of the reference is fast, and against half the reference's raw flips the reference itself, scaled to a

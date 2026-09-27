@@ -1460,12 +1460,12 @@ the shape `SendCombatTo(slot, interest)` already is, a second non-snapshot per-v
 off the same interest set (`TileWorldServer.Tick.cs:248-259`), and `PickupState.OwnerNetId` is the
 existing precedent for the engine owning the TAG and not the RULE.
 
-**`ItemInstanceVisibility.PublicView(payload, kinds)` is the one function**, and it is a forward pass that
-copies the RETAINED RUNS of the input. Because fields are already ascending and each is length prefixed,
-a filtered payload is a sequence of memcpy calls over contiguous ranges with no decode, no re-sort and no
-allocation beyond the output. That is why 3.3 declines contracts 11.2's optional coupling of kind ids to
-visibility: the coupling would buy a single memcpy instead of two or three, forever, in exchange for
-constraining every future kind assignment.
+**`ItemInstanceVisibility.PublicView(registry, payload, level, identified, revealedMask, destination)` is
+the shared visibility serializer.** It copies retained runs of ordinary fields and rebuilds a registered
+nested payload through the same visibility rule. Fields are already ascending and length prefixed, so
+neither path re-sorts them and the caller owns the destination. That is why 3.3 declines contracts 11.2's
+optional coupling of kind ids to visibility: grouping ids would save a few copies of ordinary fields in
+exchange for constraining every future kind assignment.
 
 **A GROUND item has no owner viewer in v1, and that is a rule rather than an omission.** A drop's entity
 is the drop, whose net id is nobody's, and the durable claim has not happened yet, so there is no viewer

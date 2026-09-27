@@ -83,9 +83,12 @@ namespace KhaozEngine.Tests.Render3D
             cam.BoomProbe = probe;
             cam.BeginFrame();
 
-            for (int i = 0; i < 4; i++) ReadEveryEyePath(cam);
+            int reads = 0;
+            for (int i = 0; i < 4; i++) reads += ReadEveryEyePath(cam);
             _ = cam.Eye;
+            reads++;
 
+            Assert.Equal(33, reads);
             Assert.Equal(1, probe.Calls);                   // counted by the probe, not by the camera
             Assert.Equal(1L, cam.BoomProbeCount);           // and the camera agrees
             Assert.Equal(0L, cam.OcclusionSweepCount);      // no world, so no physics sweep
@@ -94,11 +97,37 @@ namespace KhaozEngine.Tests.Render3D
             using var world = new CountingPhysicsWorld { WallDistance = 6.25f };
             FollowCamera3D bare = Camera(world);
             bare.BeginFrame();
-            for (int i = 0; i < 4; i++) ReadEveryEyePath(bare);
+            int bareReads = 0;
+            for (int i = 0; i < 4; i++) bareReads += ReadEveryEyePath(bare);
             _ = bare.Eye;
+            bareReads++;
 
+            Assert.Equal(33, bareReads);
             Assert.Equal(0L, bare.BoomProbeCount);
             Assert.Equal(1L, bare.OcclusionSweepCount);
+        }
+
+        [Fact]
+        public void Recovery_costs_one_probe_call_per_frame()
+        {
+            // The held shortfall is raised inside the computation. A cache key taken before it would miss on the
+            // very next read and pay a second probe call.
+            var probe = new FixedReachProbe { ReachAt = 6f };
+            FollowCamera3D cam = Camera(null);
+            cam.BoomProbe = probe;
+            cam.BoomRecoveryRate = 4f;
+            cam.BeginFrame();
+
+            int reads = 0;
+            for (int i = 0; i < 4; i++) reads += ReadEveryEyePath(cam);
+            _ = cam.Eye;
+            reads++;
+
+            Assert.Equal(33, reads);
+            Assert.Equal(6f - cam.OcclusionSkin, Vector3.Distance(cam.Eye, cam.Pivot), 4);   // it did pull in
+            Assert.Equal(1, probe.Calls);
+            Assert.Equal(1L, cam.BoomProbeCount);
+            Assert.Equal(1L, cam.EyeComputeCount);
         }
 
         [Fact]

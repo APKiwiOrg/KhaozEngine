@@ -127,5 +127,26 @@ namespace KhaozEngine.Tests.Render3D
             ctl.Update(Frame(), 1f / 60f);
             Assert.Equal(cam.Target, cam.EffectiveTarget);           // immediate, unchanged behaviour
         }
+
+        [Fact]
+        public void Update_advances_boom_recovery()
+        {
+            var probe = new FixedReachProbe { ReachAt = 4f };
+            var cam = new FollowCamera3D
+            {
+                Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = 0f, BoomProbe = probe,
+                BoomRecoveryRate = 4f,
+            };
+            cam.Pitch = 0f;
+            cam.Distance = 10f;
+            var ctl = new FollowCameraController(cam);
+            Assert.Equal(3.95f, Vector3.Distance(cam.Eye, cam.Pivot), 4);   // pulled in
+
+            probe.ReachAt = null;
+            ctl.Update(Frame(), 0.1f);
+            float length = Vector3.Distance(cam.Eye, cam.Pivot);
+
+            Assert.True(length > 3.95f && length < 10f, $"controller should be easing the boom out, got {length}");
+        }
     }
 }

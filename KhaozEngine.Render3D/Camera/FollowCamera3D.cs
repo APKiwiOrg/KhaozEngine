@@ -71,7 +71,8 @@ namespace KhaozEngine.Render3D
         /// self-rescue, fast-travel) so the follow camera does not ease ("fly") across the jump. While
         /// <see cref="EnableTargetDamping"/> is off the effective target already tracks <see cref="Target"/>, so the
         /// cut is invisible, but it still updates <see cref="Target"/> and arms the smoothed state so enabling
-        /// damping later starts without a lurch.
+        /// damping later starts without a lurch. It also drops any held <see cref="BoomRecoveryRate"/> shortfall, so
+        /// the boom never eases out from the old site.
         /// </summary>
         /// <param name="target">The world-space point to cut the camera onto (also the new follow point).</param>
         public void Warp(Vector3 target)
@@ -79,6 +80,7 @@ namespace KhaozEngine.Render3D
             Target = target;
             _dampedTarget = target;
             _dampedInit = true;
+            _heldShortfall = 0f;
         }
 
         /// <summary>
@@ -176,11 +178,17 @@ namespace KhaozEngine.Render3D
             set => _pitch = Math.Clamp(Math.Clamp(value, MinPitch, MaxPitch), -PitchLimit, PitchLimit);
         }
 
-        /// <summary>Eye distance from the pivot, clamped to [<see cref="MinDistance"/>, <see cref="MaxDistance"/>].</summary>
+        /// <summary>Eye distance from the pivot, clamped to [<see cref="MinDistance"/>, <see cref="MaxDistance"/>].
+        /// Setting it drops any held <see cref="BoomRecoveryRate"/> shortfall, so a zoom is instant and a real
+        /// obstruction re-imposes itself on the next read.</summary>
         public float Distance
         {
             get => _distance;
-            set => _distance = Math.Clamp(value, MinDistance, MaxDistance);
+            set
+            {
+                _distance = Math.Clamp(value, MinDistance, MaxDistance);
+                _heldShortfall = 0f;
+            }
         }
 
         Vector3 DirToEye
@@ -227,13 +235,14 @@ namespace KhaozEngine.Render3D
         /// (they are). All are conservative in the safe direction, since the worst a false difference costs is one
         /// recompute.
         /// <see cref="OcclusionOrigin"/> is in here because a rebased world moves the frame the sweep start is
-        /// expressed in without any camera field changing.
+        /// expressed in without any camera field changing. <see cref="HeldShortfall"/> is in here because
+        /// <see cref="AdvanceBoom"/> moves the eye without any field being assigned.
         /// </summary>
         readonly record struct EyeInputs(
             Vector3 Target, float Yaw, float Pitch, float Distance, float HeightOffset, float PivotHeight,
             IPhysicsWorld? Occlusion, Vector3 OcclusionOrigin, float OcclusionRadius, float OcclusionSkin,
             float MinOcclusionDistance, ICameraBoomProbe? BoomProbe, Func<float, float, float>? GroundHeight,
-            float GroundClearance);
+            float GroundClearance, float BoomRecoveryRate, float HeldShortfall);
 
         EyeInputs _eyeInputs;
         Vector3 _eye;
@@ -289,10 +298,11 @@ namespace KhaozEngine.Render3D
         {
             get
             {
-                EyeInputs inputs = CurrentEyeInputs();
-                if (_eyeValid && inputs == _eyeInputs) return _eye;
+                if (_eyeValid && CurrentEyeInputs() == _eyeInputs) return _eye;
                 _eye = ComputeEye();
-                _eyeInputs = inputs;
+                // Keyed AFTER the computation, which can raise the held shortfall. A key taken before it would
+                // miss on the next read and pay a second probe call in the same frame.
+                _eyeInputs = CurrentEyeInputs();
                 _eyeValid = true;
                 _eyeComputes++;
                 return _eye;
@@ -302,7 +312,7 @@ namespace KhaozEngine.Render3D
         EyeInputs CurrentEyeInputs() => new(
             EffectiveTarget, Yaw, _pitch, _distance, HeightOffset, PivotHeight,
             Occlusion, Occlusion?.Origin ?? Vector3.Zero, OcclusionRadius, OcclusionSkin, MinOcclusionDistance,
-            BoomProbe, GroundHeight, GroundClearance);
+            BoomProbe, GroundHeight, GroundClearance, BoomRecoveryRate, _heldShortfall);
 
         /// <summary>The uncached geometry, byte for byte what the getter used to run on every read.</summary>
         Vector3 ComputeEye()

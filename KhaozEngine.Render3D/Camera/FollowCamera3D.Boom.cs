@@ -16,8 +16,18 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public ICameraBoomProbe? BoomProbe;
 
+        /// <summary>
+        /// Rate, per second, at which the boom eases back out after an obstruction clears. A pull-in is always
+        /// instant, because an eased pull-in would put the eye inside the occluder. Once the probe reports more
+        /// room, the boom recovers the metres it is held short by <c>exp(-BoomRecoveryRate * dt)</c> per
+        /// <see cref="AdvanceBoom"/> call, frame-rate independent. Zero (the default) follows the probe both ways at
+        /// once.
+        /// </summary>
+        public float BoomRecoveryRate = 0f;
+
         long _boomProbeCalls;
         PhysicsBoomProbe? _physicsProbe;
+        float _heldShortfall;   // metres the boom is held short of its full length, decayed by AdvanceBoom
 
         /// <summary>
         /// Calls this camera has made through <see cref="BoomProbe"/> since it was constructed, cumulative and never
@@ -27,21 +37,42 @@ namespace KhaozEngine.Render3D
         public long BoomProbeCount => _boomProbeCalls;
 
         /// <summary>
+        /// Advances the eased boom recovery by <paramref name="dt"/> seconds. Call it once per render frame, for
+        /// example via <see cref="FollowCameraController.Update"/>. It decays the held shortfall by
+        /// <c>exp(-BoomRecoveryRate * dt)</c>, and drops it outright while <see cref="BoomRecoveryRate"/> is not a
+        /// finite positive rate, so turning recovery off never leaves the boom held in.
+        /// </summary>
+        public void AdvanceBoom(float dt)
+        {
+            if (!(BoomRecoveryRate > 0f) || !float.IsFinite(BoomRecoveryRate))
+            {
+                _heldShortfall = 0f;
+                return;
+            }
+            if (!(dt > 0f)) return;   // nothing to advance, and a NaN step must not poison the held shortfall
+            _heldShortfall *= MathF.Exp(-BoomRecoveryRate * dt);
+            if (_heldShortfall < 1e-4f) _heldShortfall = 0f;
+        }
+
+        /// <summary>
         /// Shortens the boom from <paramref name="pivot"/> to <paramref name="geometricEye"/> to the shorter reach
         /// of the <see cref="Occlusion"/> sweep and the <see cref="BoomProbe"/>. A reach short of the full boom puts
         /// the eye that reach less <see cref="OcclusionSkin"/> along the boom, floored at
         /// <see cref="MinOcclusionDistance"/> so it never collapses onto the pivot and leaves
-        /// <see cref="Forward"/> and <see cref="View"/> with a zero-length look direction.
+        /// <see cref="Forward"/> and <see cref="View"/> with a zero-length look direction. With
+        /// <see cref="BoomRecoveryRate"/> on, a deeper pull-in raises the held shortfall at once, and the boom
+        /// stays that far short, even when the probe reports full reach, until <see cref="AdvanceBoom"/> decays it.
         /// </summary>
         Vector3 ConstrainBoom(Vector3 pivot, Vector3 geometricEye)
         {
             IPhysicsWorld? world = Occlusion;
+            if (world is null) _physicsProbe = null;   // do not keep a dropped world alive through the adapter
             ICameraBoomProbe? probe = BoomProbe;
             if (world is null && probe is null) return geometricEye;
 
             Vector3 toEye = geometricEye - pivot;
             float full = toEye.Length();
-            if (full <= 1e-6f) return geometricEye;
+            if (!(full > 1e-6f)) return geometricEye;
 
             Vector3 dir = toEye / full;
             float reach = full;
@@ -55,8 +86,20 @@ namespace KhaozEngine.Render3D
                 _boomProbeCalls++;
                 reach = MathF.Min(reach, probe.Reach(pivot, dir, full, OcclusionRadius));
             }
-            if (!(reach < full)) return geometricEye;
-            return pivot + dir * MathF.Max(MinOcclusionDistance, reach - OcclusionSkin);
+            bool shortened = reach < full;
+            float length = shortened ? MathF.Max(MinOcclusionDistance, reach - OcclusionSkin) : full;
+            if (BoomRecoveryRate > 0f)
+            {
+                float shortfall = full - length;
+                if (shortfall > _heldShortfall) _heldShortfall = shortfall;
+                if (_heldShortfall > 0f)
+                {
+                    length = MathF.Max(MathF.Min(MinOcclusionDistance, full), full - _heldShortfall);
+                    shortened = true;
+                }
+            }
+            if (!shortened) return geometricEye;
+            return pivot + dir * length;
         }
 
         /// <summary>The physics adapter for <paramref name="world"/>, rebuilt only when <see cref="Occlusion"/>

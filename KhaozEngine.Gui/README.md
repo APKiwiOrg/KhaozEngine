@@ -135,6 +135,7 @@ public sealed partial class RadialMenu
     public RadialMenuTheme Theme { get; set; }
     public Rect SafeBounds { get; set; }
     public RadialMenuInteractionMode InteractionMode { get; set; }
+    public bool ShowEnabledEntryDetails { get; set; }
     public bool IsOpen { get; }
     public int HoverIndex { get; }
     public ContextMenu? EntryContextMenu { get; set; }
@@ -203,7 +204,8 @@ public readonly record struct RadialMenuMetrics(
 ```
 
 `RadialMenuTheme` is a settable class with public `Vector4` fields named `Shadow`, `Surface`,
-`SurfaceHighlight`, `Border`, `BorderActive`, `Accent`, `Text`, `TextMuted`, `Disabled`, and `Sheen`.
+`SurfaceHighlight`, `Border`, `BorderActive`, `Accent`, `Text`, `TextMuted`, `Detail`, `DisabledDetail`,
+`Disabled`, and `Sheen`.
 `RadialMenuTheme.Default` returns a fresh theme built from the ambient `GuiTheme.Default` values.
 
 `Open` rejects duplicate entry or choice tags. An explicit nonzero `InitialChoiceTag` must identify an enabled
@@ -248,10 +250,19 @@ wedge gap must be nonnegative and smaller than one active entry's angular step. 
 non-finite dimensions. `ComputeCenter` and `Open` reject a safe area that cannot contain the complete wheel and
 footer plus both margins.
 
-`RadialMenuTheme` carries the shadow, surface, highlight, border, accent, text, disabled tint and alpha,
-`DisabledDetail`, and sheen colors. Its defaults derive from `GuiTheme.Default`. A disabled entry draws its
-localized `Detail` compactly beneath the wedge label in `DisabledDetail`, while the active entry still shows the
-same detail in the centre. Disabled labels and icons use `Disabled` directly. Backgrounds and borders take its
+`ShowEnabledEntryDetails` opts enabled entries into drawing their localized `Detail` compactly beneath the wedge
+label. It defaults to false, so existing enabled entries keep their earlier output. Enabled under-label detail
+uses `RadialMenuTheme.Detail`, whose default is the ambient muted text color. Disabled detail remains visible
+without the option and continues to use `DisabledDetail`. The active entry still shows the same detail in the
+centre whether the option is on or off.
+
+`RadialMenuMetrics.DetailGap` now controls the vertical space between a wedge label block and its detail. The
+field was previously validated and documented but unused by drawing. Its default is 2 pixels, matching the old
+fixed spacing, so default disabled output is unchanged. Caller supplied values are used directly.
+
+`RadialMenuTheme` carries the shadow, surface, highlight, border, accent, text, enabled detail, disabled tint and
+alpha, disabled detail, and sheen colors. Its defaults derive from `GuiTheme.Default`. Disabled labels and icons
+use `Disabled` directly. Backgrounds and borders take its
 hue while retaining their source luminance, and multiply their source alpha by `Disabled.W`. Setting that alpha
 to zero hides all disabled entry channels. `Draw` uses ordinary Render2D geometry. The centre plate has its own
 shadow, translucent surface, inner highlight, and border, and remains visible when every entry is disabled.

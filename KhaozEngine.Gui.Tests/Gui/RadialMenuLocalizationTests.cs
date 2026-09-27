@@ -29,6 +29,7 @@ namespace KhaozEngine.Tests.Gui
                 new Vector3(theme.Accent.X, theme.Accent.Y, theme.Accent.Z));
             Assert.Equal(palette.Text, theme.Text);
             Assert.Equal(palette.TextMuted, theme.TextMuted);
+            Assert.Equal(palette.TextMuted, theme.Detail);
             Assert.Equal(palette.Danger, theme.DisabledDetail);
 
             Assert.Equal(0.38f, theme.Shadow.W);

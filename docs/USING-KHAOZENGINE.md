@@ -1911,6 +1911,12 @@ if (radial.WasSelected)
 radial.Draw(batch, white, font, icons);
 ```
 
+Set `ShowEnabledEntryDetails = true` when enabled wedges carry compact secondary text that should remain visible,
+such as a resolved quantity, cost, or yield. It defaults to false. The under-label line uses
+`RadialMenuTheme.Detail`, which defaults to the ambient muted text color. Disabled entry detail remains visible
+through `DisabledDetail`, and the active entry's detail continues to appear in the centre with either setting.
+The option changes only wedge placement. It does not remove or move the centre hover detail.
+
 For pointer shortcuts, assign a caller-owned `ContextMenu` to `EntryContextMenu`, set its `Viewport`, and set
 `QuickSelectLabel` before `Open`. Construct that context menu with `SpriteFont` values for normal drawing or with
 `ITextMeasurer` values for headless interaction tests. A right tap on an enabled wedge opens it with the entry name
@@ -1964,11 +1970,15 @@ and `ResolvedChoiceLabel` expose the strings retained at the latest open.
 
 `RadialMenuMetrics` is a public value that controls inner and outer radius, wedge gap, icon size, label scale,
 detail gap, footer gap and button size, composition margin, border thickness, shadow offset, and sheen speed.
+`DetailGap` now controls the actual vertical distance between a wedge label block and its detail. It was unused
+before this option shipped. Its 2-pixel default preserves the earlier fixed spacing for disabled details, and a
+caller supplied value is used directly for both enabled and disabled under-label detail.
 The matching pure geometry is public through `ComputeCenter`, `ComputeBounds`, `WedgeAngles`, `EntryAt`,
 `ChoiceBounds`, and `LabelPoint`. `RadialMenuTheme` supplies the shadow, surface, upper highlight, borders,
-accent, text, disabled tint and alpha, disabled detail, and sheen colors. A fresh default derives from the
-ambient `GuiTheme.Default`. Disabled entry details draw compactly beneath their wedge label through
-`DisabledDetail`, and remain in the centre when that entry is active. Setting `Disabled.W` to zero hides every
+accent, text, enabled detail, disabled tint and alpha, disabled detail, and sheen colors. A fresh default derives
+from the ambient `GuiTheme.Default`. Enabled under-label detail uses `Detail`. Disabled entry details draw
+compactly beneath their wedge label through `DisabledDetail`, and remain in the centre when that entry is active.
+Setting `Disabled.W` to zero hides every
 disabled wedge visual, including its detail. Disabled labels and icons use `Disabled` directly. Backgrounds and
 borders use its hue at their source luminance and multiply their source alpha by its alpha.
 

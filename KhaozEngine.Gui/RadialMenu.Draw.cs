@@ -15,9 +15,9 @@ namespace KhaozEngine.Gui
         readonly Vector2[] _drawOuterEnds = new Vector2[MaximumEntryCount];
         readonly Vector2[] _drawLabelPositions = new Vector2[MaximumEntryCount];
         readonly Vector2[] _drawSecondLabelPositions = new Vector2[MaximumEntryCount];
-        readonly Vector2[] _drawDisabledDetailPositions = new Vector2[MaximumEntryCount];
+        readonly Vector2[] _drawDetailPositions = new Vector2[MaximumEntryCount];
         readonly float[] _drawLabelScales = new float[MaximumEntryCount];
-        readonly float[] _drawDisabledDetailScales = new float[MaximumEntryCount];
+        readonly float[] _drawDetailScales = new float[MaximumEntryCount];
         readonly string?[] _drawFirstLabelLines = new string?[MaximumEntryCount];
         readonly string?[] _drawSecondLabelLines = new string?[MaximumEntryCount];
         readonly Rect[] _drawIconBounds = new Rect[MaximumEntryCount];
@@ -40,6 +40,7 @@ namespace KhaozEngine.Gui
         int _drawLockedEntry = -2;
         int _drawQuickSelectPreviewEntry = -2;
         int _drawQuickSelectPreviewChoice = -2;
+        bool _drawShowEnabledEntryDetails;
 
         public RadialMenuTheme Theme { get; set; } = RadialMenuTheme.Default;
 
@@ -117,7 +118,8 @@ namespace KhaozEngine.Gui
                 !ReferenceEquals(_drawEntriesSource, _entries) ||
                 !ReferenceEquals(_drawChoicesSource, _choices) ||
                 !ReferenceEquals(_drawFont, font) ||
-                !ReferenceEquals(_drawIcons, icons);
+                !ReferenceEquals(_drawIcons, icons) ||
+                _drawShowEnabledEntryDetails != ShowEnabledEntryDetails;
 
             if (geometryChanged)
             {
@@ -135,6 +137,7 @@ namespace KhaozEngine.Gui
                 _drawIcons = icons;
                 _drawEntriesSource = _entries;
                 _drawChoicesSource = _choices;
+                _drawShowEnabledEntryDetails = ShowEnabledEntryDetails;
                 _drawDetailEntry = -2;
                 _drawLockedEntry = -2;
                 _drawQuickSelectPreviewEntry = -2;
@@ -178,42 +181,27 @@ namespace KhaozEngine.Gui
             for (int i = 0; i < _entries.Length; i++)
             {
                 Vector2 point = LabelPoint(_center, i, _entries.Length, Metrics);
-                string label = _entries[i].Content;
                 float maximumTextWidth = EntryTextWidth(i);
-                Vector2 measuredLabel = font.Measure(label);
-                float labelScale = FittedScale(measuredLabel.X, Metrics.LabelScale, maximumTextWidth);
-                string firstLabelLine = label;
-                string? secondLabelLine = null;
-                if (labelScale < Metrics.LabelScale * 0.75f &&
-                    TrySplitLabel(font, label, out string first, out string second))
-                {
-                    firstLabelLine = first;
-                    secondLabelLine = second;
-                    float widestLine = MathF.Max(font.Measure(first).X, font.Measure(second).X);
-                    labelScale = FittedScale(widestLine, Metrics.LabelScale, maximumTextWidth);
-                }
-                Vector2 firstLabelSize = font.Measure(firstLabelLine) * labelScale;
-                Vector2 secondLabelSize = secondLabelLine is null
-                    ? Vector2.Zero
-                    : font.Measure(secondLabelLine) * labelScale;
-                float labelBlockHeight = firstLabelSize.Y + (secondLabelLine is null ? 0f : secondLabelSize.Y + 1f);
-                bool hasDisabledDetail = !_entries[i].Enabled && _entries[i].Detail.Length > 0;
-                Vector2 measuredDisabledDetail = hasDisabledDetail
-                    ? font.Measure(_entries[i].Detail)
-                    : Vector2.Zero;
-                float disabledDetailScale = FittedScale(
-                    measuredDisabledDetail.X,
-                    Metrics.LabelScale * 0.72f,
-                    maximumTextWidth);
-                Vector2 disabledDetailSize = measuredDisabledDetail * disabledDetailScale;
-                _drawLabelScales[i] = labelScale;
-                _drawDisabledDetailScales[i] = disabledDetailScale;
-                _drawFirstLabelLines[i] = firstLabelLine;
-                _drawSecondLabelLines[i] = secondLabelLine;
                 Texture2D? texture = null;
                 Vector4 uv = default;
                 bool hasIcon = _entries[i].IconId is { } iconId && icons is not null &&
                     icons.TryGet(iconId, out texture, out uv);
+                RadialMenuEntryTextLayout layout = RadialMenuTextLayout.ComputeEntry(
+                    font,
+                    _entries[i].Content,
+                    _entries[i].Detail,
+                    ShowsEntryDetailUnderLabel(i),
+                    hasIcon,
+                    point,
+                    maximumTextWidth,
+                    Metrics);
+                _drawLabelScales[i] = layout.LabelScale;
+                _drawDetailScales[i] = layout.DetailScale;
+                _drawFirstLabelLines[i] = layout.FirstLabelLine;
+                _drawSecondLabelLines[i] = layout.SecondLabelLine;
+                _drawLabelPositions[i] = layout.FirstLabelPosition;
+                _drawSecondLabelPositions[i] = layout.SecondLabelPosition;
+                _drawDetailPositions[i] = layout.DetailPosition;
 
                 if (hasIcon)
                 {
@@ -224,31 +212,12 @@ namespace KhaozEngine.Gui
                         point.Y - Metrics.IconSize,
                         Metrics.IconSize,
                         Metrics.IconSize);
-                    _drawLabelPositions[i] = new Vector2(
-                        point.X - firstLabelSize.X * 0.5f,
-                        point.Y + 4f);
-                    _drawSecondLabelPositions[i] = new Vector2(
-                        point.X - secondLabelSize.X * 0.5f,
-                        _drawLabelPositions[i].Y + firstLabelSize.Y + 1f);
-                    _drawDisabledDetailPositions[i] = new Vector2(
-                        point.X - disabledDetailSize.X * 0.5f,
-                        _drawLabelPositions[i].Y + labelBlockHeight + 2f);
                 }
                 else
                 {
                     _drawIconTextures[i] = null;
                     _drawIconUvs[i] = default;
                     _drawIconBounds[i] = default;
-                    float blockHeight = labelBlockHeight + (hasDisabledDetail ? disabledDetailSize.Y + 2f : 0f);
-                    _drawLabelPositions[i] = new Vector2(
-                        point.X - firstLabelSize.X * 0.5f,
-                        point.Y - blockHeight * 0.5f);
-                    _drawSecondLabelPositions[i] = new Vector2(
-                        point.X - secondLabelSize.X * 0.5f,
-                        _drawLabelPositions[i].Y + firstLabelSize.Y + 1f);
-                    _drawDisabledDetailPositions[i] = new Vector2(
-                        point.X - disabledDetailSize.X * 0.5f,
-                        _drawLabelPositions[i].Y + labelBlockHeight + 2f);
                 }
             }
 
@@ -367,14 +336,14 @@ namespace KhaozEngine.Gui
                     batch.DrawString(font, secondLine, _drawSecondLabelPositions[i],
                         ForegroundColor(text, _entries[i].Enabled), _drawLabelScales[i]);
                 }
-                if (!_entries[i].Enabled && _entries[i].Detail.Length > 0)
+                if (ShowsEntryDetailUnderLabel(i))
                 {
                     batch.DrawString(
                         font,
                         _entries[i].Detail,
-                        _drawDisabledDetailPositions[i],
-                        DisabledDetailColor(),
-                        _drawDisabledDetailScales[i]);
+                        _drawDetailPositions[i],
+                        _entries[i].Enabled ? (Color)Theme.Detail : DisabledDetailColor(),
+                        _drawDetailScales[i]);
                 }
             }
         }
@@ -458,6 +427,12 @@ namespace KhaozEngine.Gui
             return _choices[choiceIndex];
         }
 
+        internal bool ShowsEntryDetailUnderLabel(int entryIndex)
+        {
+            ResolvedRadialMenuEntry entry = ResolvedEntry(entryIndex);
+            return entry.Detail.Length > 0 && (!entry.Enabled || ShowEnabledEntryDetails);
+        }
+
         Color DrawColor(Vector4 color, bool enabled)
         {
             if (enabled)
@@ -503,48 +478,6 @@ namespace KhaozEngine.Gui
                 : float.PositiveInfinity;
 
             return MathF.Max(1f, MathF.Min(radialWidth, tangentialWidth) - 8f);
-        }
-
-        static float FittedScale(float measuredWidth, float preferredScale, float maximumWidth) =>
-            measuredWidth > 0f
-                ? MathF.Min(preferredScale, maximumWidth / measuredWidth)
-                : preferredScale;
-
-        static bool TrySplitLabel(SpriteFont font, string label, out string first, out string second)
-        {
-            int bestBreak = -1;
-            float bestWidth = float.PositiveInfinity;
-            for (int i = 1; i < label.Length - 1; i++)
-            {
-                if (!char.IsWhiteSpace(label[i]))
-                    continue;
-                float firstWidth = font.Measure(label.AsSpan(0, i)).X;
-                int secondStart = i + 1;
-                while (secondStart < label.Length && char.IsWhiteSpace(label[secondStart]))
-                    secondStart++;
-                if (secondStart >= label.Length)
-                    continue;
-                float secondWidth = font.Measure(label.AsSpan(secondStart)).X;
-                float widest = MathF.Max(firstWidth, secondWidth);
-                if (widest >= bestWidth)
-                    continue;
-                bestWidth = widest;
-                bestBreak = i;
-            }
-
-            if (bestBreak < 0)
-            {
-                first = label;
-                second = "";
-                return false;
-            }
-
-            int start = bestBreak + 1;
-            while (start < label.Length && char.IsWhiteSpace(label[start]))
-                start++;
-            first = label[..bestBreak];
-            second = label[start..];
-            return true;
         }
 
         static Vector4 WithAlpha(Vector4 color, float alpha) =>

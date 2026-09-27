@@ -154,12 +154,14 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void A_mostly_covered_footprint_is_disoccluded_unless_a_narrow_feature_or_a_fresh_lock_covered_it()
+        public void A_mostly_covered_footprint_is_disoccluded_unless_a_still_narrow_feature_or_a_fresh_lock_covered_it()
         {
             // All four stored depths nearer than expected, or the expected surface under less than
             // DisocclusionVisibleShare of their bilinear weight while the lock the pixel carries lies more than half of
             // LockDecay below whole and the nearest of them is no narrow feature, a run of at most two texels along a
-            // row or a column. The lock is read from the state texels step 2 reads, fetched once before the test.
+            // row or a column, or the state says a moving surface showed there last frame. The lock and that fact are
+            // read from the state texels step 2 reads, fetched once before the test. The stored lock is minus one minus
+            // the lock where the pixel's dilated nearest surface moved, and reads back unchanged.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("float weight = mix(1.0 - f.x, f.x, float(corner & 1)) "
                 + "* mix(1.0 - f.y, f.y, float(corner >> 1));", core, StringComparison.Ordinal);
@@ -169,8 +171,21 @@ namespace KhaozEngine.Tests.Render3D
                 StringComparison.Ordinal);
             Assert.Contains("|| (footprint.visibleShare < DisocclusionVisibleShare", core, StringComparison.Ordinal);
             Assert.Contains("&& fetchedState.y <= 1.0 - 0.5 * LockDecay", core, StringComparison.Ordinal);
-            Assert.Contains("&& !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel)));", core,
+            Assert.Contains("&& (carriedMoved || !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, "
+                + "maxTexel))));", core, StringComparison.Ordinal);
+            Assert.Contains("float temporalStoreLock(float lockValue, bool moved) { return moved ? -1.0 - lockValue "
+                + ": lockValue; }", core, StringComparison.Ordinal);
+            Assert.Contains("bool temporalStoredMoved(float stored) { return stored < -0.5; }", core,
                 StringComparison.Ordinal);
+            Assert.Contains("float temporalStoredLock(float stored) { return temporalStoredMoved(stored) "
+                + "? -1.0 - stored : stored; }", core, StringComparison.Ordinal);
+            Assert.Contains("bool nearerMoved = !depthTested;", core, StringComparison.Ordinal);
+            Assert.Contains("result.moved = historyValid && nearerMoved ? 1.0 : 0.0;", core, StringComparison.Ordinal);
+            foreach (string texel in new[] { "s00", "s10", "s01", "s11" })
+            {
+                Assert.Contains($"{texel}.y = temporalStoredLock({texel}.y);", core, StringComparison.Ordinal);
+                Assert.Contains($"temporalStoredMoved({texel}.y)", core, StringComparison.Ordinal);
+            }
             Assert.Contains("run[i] = !(depth < stored * limit || stored < depth * limit);", core,
                 StringComparison.Ordinal);
             Assert.Contains("bool narrowRow = !(run[0] && run[2]) && !(run[0] && run[1]) && !(run[2] && run[3]);", core,
@@ -294,8 +309,9 @@ namespace KhaozEngine.Tests.Render3D
         public void The_core_exposes_the_pixel_function_the_debug_views_and_counts_re_evaluate()
         {
             string core = ShaderSources.TemporalResolveCoreGlsl;
-            Assert.Contains("struct TemporalPixel { vec3 color; float confidence; float stability; float disocclusion; "
-                + "float reactive; float clip; float alpha; };", core, StringComparison.Ordinal);
+            Assert.Contains("struct TemporalPixel {", core, StringComparison.Ordinal);
+            Assert.Contains("vec3 color; float confidence; float stability; float moved; float disocclusion; "
+                + "float reactive; float clip;", core, StringComparison.Ordinal);
             Assert.Contains("TemporalPixel temporalResolvePixel(ivec2 displayPixel) {", core, StringComparison.Ordinal);
             Assert.Contains("ivec2 temporalDisplaySize() {", core, StringComparison.Ordinal);
             Assert.Contains("vec2 uv = (vec2(displayPixel) + 0.5) / displaySize;", core, StringComparison.Ordinal);
@@ -321,6 +337,8 @@ namespace KhaozEngine.Tests.Render3D
             Assert.StartsWith("#version 450\n" + ShaderSources.TemporalResolveCoreGlsl, frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=0) out vec4 oColor;", frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=1) out vec4 oState;", frag, StringComparison.Ordinal);
+            Assert.Contains("oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved > 0.5), 0.0, 1.0);",
+                frag, StringComparison.Ordinal);
             Assert.Contains("temporalResolvePixel(ivec2(gl_FragCoord.xy))", frag, StringComparison.Ordinal);
         }
 

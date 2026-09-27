@@ -90,7 +90,10 @@ layout(set=0, binding=7) uniform sampler LinearClamp;
 // The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
 layout(set=0, binding=8) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
 " + TemporalCommonGlsl + TemporalResolveTuningGlsl + @"
-struct TemporalPixel { vec3 color; float confidence; float stability; float disocclusion; float reactive; float clip; float alpha; };
+struct TemporalPixel {
+    vec3 color; float confidence; float stability; float moved; float disocclusion; float reactive; float clip;
+    float alpha;
+};
 
 float temporalLuma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 vec3 toWeighted(vec3 c) { return c / (1.0 + temporalLuma(c)); }
@@ -237,6 +240,13 @@ bool temporalNarrowDepth(ivec2 texel, float depth, ivec2 maxTexel) {
     return narrowRow || narrowColumn;
 }
 
+// Step 6's stored lock carries one fact more: where the pixel's dilated nearest surface moved, so that its depth test
+// was skipped, the state holds minus one minus the lock. A lock lies in [0, 1], so the stored value then lies in
+// [-2, -1], the lock reads back unchanged, and the next frame knows a moving surface showed there. Step 3 reads it.
+float temporalStoreLock(float lockValue, bool moved) { return moved ? -1.0 - lockValue : lockValue; }
+bool temporalStoredMoved(float stored) { return stored < -0.5; }
+float temporalStoredLock(float stored) { return temporalStoredMoved(stored) ? -1.0 - stored : stored; }
+
 ivec2 temporalDisplaySize() { return ivec2(Sizes.zw); }
 
 TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
@@ -354,6 +364,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     bool depthTested;
     temporalReproject(uv, closestSample, closestMotion, closestDepth, closestIsBackground, internalSize, previousUv,
         expectedDepth, depthTested);
+    bool nearerMoved = !depthTested;   // the dilated nearest surface moved, which the stored lock records
     // Motion is clamped to two screens and a point behind last frame's camera is written two screens away, so any
     // such previous position falls outside [0, 1] here and is rejected like any other off-screen one.
     bool onScreen = all(greaterThanEqual(previousUv, vec2(0.0))) && all(lessThanEqual(previousUv, vec2(1.0)));
@@ -400,8 +411,10 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // four texels' bilinear weights, and the lock as the largest of those that carry weight. A bilinear lock under
     // motion is blended with unlocked neighbours every frame and ran out about three times faster than LockDecay, so
     // a moving sub-texel feature lost its hold. At a texel centre only that texel carries weight, so a still lock
-    // reads back unchanged and never spreads.
+    // reads back unchanged and never spreads. carriedMoved is whether any texel that carries weight stored the lock
+    // of a moving surface (temporalStoreLock).
     vec2 fetchedState = vec2(0.0);
+    bool carriedMoved = false;
     if (historyValid && onScreen) {
         vec2 statePosition = previousUv * displaySize - 0.5;
         ivec2 stateBase = ivec2(floor(statePosition));
@@ -418,6 +431,14 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         vec4 bilinear = vec4(g.x * g.y, stateFraction.x * g.y, g.x * stateFraction.y,
             stateFraction.x * stateFraction.y);
         vec4 carried = step(vec4(1.0e-3), bilinear);   // texels whose weight is more than rounding
+        carriedMoved = (carried.x > 0.5 && temporalStoredMoved(s00.y))
+            || (carried.y > 0.5 && temporalStoredMoved(s10.y))
+            || (carried.z > 0.5 && temporalStoredMoved(s01.y))
+            || (carried.w > 0.5 && temporalStoredMoved(s11.y));
+        s00.y = temporalStoredLock(s00.y);
+        s10.y = temporalStoredLock(s10.y);
+        s01.y = temporalStoredLock(s01.y);
+        s11.y = temporalStoredLock(s11.y);
         fetchedState = vec2(dot(bilinear, vec4(s00.x, s10.x, s01.x, s11.x)),
             max(max(carried.x * s00.y, carried.y * s10.y), max(carried.z * s01.y, carried.w * s11.y)));
     }
@@ -427,15 +448,17 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // nearer drops the history. Where the expected surface shows under less than DisocclusionVisibleShare of their
     // bilinear weight, the pixel was mostly covered and drops it too, unless the nearest stored depth is narrow
     // (temporalNarrowDepth), a feature narrower than a texel, or two side by side, that the jitter missed this frame,
-    // or the lock the pixel carries lies within half of LockDecay of whole. A ridge refreshed such a lock on the last
-    // frame and less than that was released since, as a still sub-texel feature's is on the frame after the jitter
-    // showed it, and step 6 keeps its hold whole. Step 6 releases a lock by motion from LockMotionStartPixels on, so a
-    // feature moving more than a sixteenth of the way from there to LockMotionEndPixels, about 1.2 display pixels a
-    // frame, leaves no such lock where it was. Any farther stored depth kept a sub-pixel edge from reading as
-    // revealed, and on its own it kept the ring of pixels around a moving object's old place, whose footprint
-    // reaches past its edge, from ever being disoccluded.
-    // A background pixel expects BackgroundLinearDepth, so anything stored nearer there was covering it. A static
-    // surface on or behind last frame's camera had no history there. The footprint sits at the display pixel's previous
+    // or the lock the pixel carries lies within half of LockDecay of whole. The narrow exception holds only where the
+    // state the pixel carries says no moving surface showed there last frame (temporalStoreLock): a keyed line one or
+    // two texels wide that moved on is as narrow as a missed still blade, and only that state tells them apart. A lock
+    // within half a decay of whole was refreshed by a ridge on the last frame and has lost less than that since, as a
+    // still sub-texel feature's has on the frame after the jitter showed it, and step 6 keeps its hold whole. Step 6
+    // releases a lock by motion from LockMotionStartPixels on, so a feature moving more than a sixteenth of the way
+    // from there to LockMotionEndPixels, about 1.2 display pixels a frame, leaves no such lock where it was. Any
+    // farther stored depth kept a sub-pixel edge from reading as revealed, and on its own it kept the ring of pixels
+    // around a moving object's old place, whose footprint reaches past its edge, from ever being disoccluded. A
+    // background pixel expects BackgroundLinearDepth, so anything stored nearer there was covering it. A static surface
+    // on or behind last frame's camera had no history there. The footprint sits at the display pixel's previous
     // position, where history is read, while the expected depth comes from the reprojected texel's own point, the
     // dilated nearest in the 3x3 unless the pixel reprojected by its own. The same four depths tell step 6 whether a
     // pixel at a moving edge reads history a farther surface left: every one of them farther than the moving surface's
@@ -449,7 +472,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             || footprint.farthest < expectedDepth * (1.0 - DisocclusionTolerance)
             || (footprint.visibleShare < DisocclusionVisibleShare
                 && fetchedState.y <= 1.0 - 0.5 * LockDecay
-                && !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel)));
+                && (carriedMoved || !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel))));
         heldFromFarther = movingEdge && expectedDepth < footprint.nearest * (1.0 - DisocclusionTolerance);
     }
 
@@ -525,6 +548,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     result.alpha = mix(historyAlpha, current.w, currentWeight);
     result.confidence = min(accumulated + sampleWeight, motionCap) / MaxAccumulation;
     result.stability = lockValue;
+    result.moved = historyValid && nearerMoved ? 1.0 : 0.0;
     result.disocclusion = historyValid && (!onScreen || disoccluded) ? 1.0 : 0.0;
     result.reactive = reactive;
     result.clip = useHistory && clipScale > 1.0 && length(clipped - historyYcc) > ClipFlagMinimumMove ? 1.0 : 0.0;
@@ -540,7 +564,7 @@ layout(location=1) out vec4 oState;
 void main() {
     TemporalPixel p = temporalResolvePixel(ivec2(gl_FragCoord.xy));
     oColor = vec4(p.color, p.alpha + vUv.x * 1.0e-30);   // the vUv read changes no output, see the class summary
-    oState = vec4(p.confidence, p.stability, 0.0, 1.0);
+    oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved > 0.5), 0.0, 1.0);
 }";
 
         // ---- The depth store: this frame's linear view depth for next frame's disocclusion test ----

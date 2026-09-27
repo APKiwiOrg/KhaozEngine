@@ -2504,6 +2504,15 @@ its guards. 8.1 has the type ids and the reason.
 evaluated before that step. One type rather than two because the guard SCHEMA is identical and a second
 type would duplicate it, and check 1 of 8.9 is what stops a guard naming a step of a different currency.
 
+`CraftPlanIndex` is the `IContentLoadIndex` registered for `crafting_currency`. At boot step 7b it reads
+the currency, step and guard rows once and resolves each currency into an immutable `CraftPlan`. A tick
+looks up that plan rather than walking child rows. The index freezes the supplied `CraftingRegistry` after
+building, so a later registration cannot give the same authored plan a different operation. Each
+`CraftPlanStep` retains its `currency_step` row id for refusals, its ordered guards, operation and four
+parameters. A selector occupies two parameter slots, its kind followed by its parameter, and the executor
+below is the one place that interprets them. A failed resolution refuses boot instead of exposing a
+partial plan set.
+
 A step naming an `operation` at or above 1,024 is a GAME operation rather than a primitive (10.5). The two
 share the step list so a currency can mix them, which is the point of having a registry at all.
 
@@ -2558,6 +2567,16 @@ at the moment it is used rather than at boot. That is a deliberate softening of 
 fail-closed rule, and the reason is that the rule is about a missing CONTENT VERSION rather than about a
 code registration: a server that shipped without an operation is a deploy mismatch, which is loud at the
 first use and would be a boot failure for every player if it were fail-closed at boot. It is open question 8.
+
+**The plan executor is `CraftExecutor`.** Its constructor takes an `IContentSnapshot`, one version's
+`GenerationTables`, a `CraftingRegistry` and an `IRandomSource`. It holds that random source and builds
+the `ItemGenerator` used by `AddRandomMod`, `RerollMods` and `RandomOfKind` over the SAME source, so a craft's
+draws use one stream. The generator's instance-id allocator refuses every request because a craft rewrites
+an existing item and never mints an id. The executor evaluates the target guard set once, then each step
+in authored order with that step's guards immediately before its operation. A false step guard skips only
+that step, while a target refusal or operation refusal stops the craft. `CraftOutcome` reports the refusal,
+step count and separate `RanMask` and `SkippedMask` values. Those masks are not complements when a step
+refuses. One executor belongs to one craft loop or thread because its generator reuses working arrays.
 
 ### 10.6 The journal operation for a craft
 
@@ -2724,6 +2743,15 @@ commitment rather than a feature list.
 **Socket order is authored and never sorted** (3.5), so kind 4's ordinal is the authored index. A player
 who rearranges two gems can move a displayed value by one unit, which is correct and is the price of
 integer rounding being honest.
+
+**`InstanceStatLines` is the producer between a payload and these lines.** Its constructor indexes one
+content version's `mod_tier` and `stat_line` rows once. `Build` walks payload kinds 131, 133 and 132 into
+caller-provided line, tag and source spans without allocating. One stored roll position drives EVERY line
+on a tier through the single `RollPosition.Resolve` formula, so a two-line tier moves together. The
+builder returns `InstanceStatLines.Refused` and no partial source set when the payload or a destination
+span is invalid. `MaxTierLineCount` and `MaxTierTagCount` size a tier's destination spans. Kind 1's base
+and implicit lines come from the item definition rather than the payload, so the caller supplies those
+separately before the evaluator folds the full source set.
 
 ### 11.5 Recompute, never per tick
 

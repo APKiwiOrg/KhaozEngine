@@ -118,5 +118,13 @@ namespace KhaozEngine.Render3D.Internal
         /// centre. With this floor it measures the same as at the centre, and every other thin-feature fact is unchanged.
         /// A nearer surface crossing a held line at 0.1 internal pixels a frame is a hundred times this.</summary>
         public const float LockEdgeFloorInternalPixels = 1e-3f;
+        /// <summary>Step 5. The least move the clip must make to the history, as blended, in the luma-weighted YCoCg
+        /// space the clip runs in, for the pixel's clip flag. Passes that re-evaluate the resolve read the flag, such
+        /// as the sampled temporal counts, and the resolve's colour never does. On flat content the variance box
+        /// shrinks to its floor of 1e-5, so the half-float history's own rounding lies outside it and the clip moves
+        /// nearly every pixel: a still flat frame flagged 94 percent of its pixels, and every one of those moves was
+        /// under 1/4096. 1/1024 is a quarter of an 8-bit display step, far below anything visible, while a sharp
+        /// change of colour between frames still flags nearly every pixel it reaches.</summary>
+        public const float ClipFlagMinimumMove = 1f / 1024f;
     }
 }

@@ -43,6 +43,7 @@ namespace KhaozEngine.Tests.Render3D
             { "const float LockEdgeRelease = 1.0;", TemporalResolveTuning.LockEdgeRelease, 1f },
             { "const float LockEdgeMotionFraction = 0.001953125;", TemporalResolveTuning.LockEdgeMotionFraction, 1f / 512f },
             { "const float LockEdgeFloorInternalPixels = 0.001;", TemporalResolveTuning.LockEdgeFloorInternalPixels, 1e-3f },
+            { "const float ClipFlagMinimumMove = 0.0009765625;", TemporalResolveTuning.ClipFlagMinimumMove, 1f / 1024f },
         };
 
         [Theory]
@@ -230,6 +231,19 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("TemporalPixel temporalResolvePixel(ivec2 displayPixel) {", core, StringComparison.Ordinal);
             Assert.Contains("ivec2 temporalDisplaySize() {", core, StringComparison.Ordinal);
             Assert.Contains("vec2 uv = (vec2(displayPixel) + 0.5) / displaySize;", core, StringComparison.Ordinal);
+        }
+
+        /// <summary>The clip flag the debug views and counts read marks a clip that moved the history, as blended, by
+        /// more than the minimum in the weighted YCoCg space the clip runs in. The colour the resolve writes does not
+        /// read the flag.</summary>
+        [Fact]
+        public void The_clip_flag_marks_only_a_clip_that_moved_the_history_by_more_than_the_minimum()
+        {
+            string core = ShaderSources.TemporalResolveCoreGlsl;
+            Assert.Contains("result.clip = useHistory && clipScale > 1.0 && length(clipped - historyYcc) > "
+                + "ClipFlagMinimumMove ? 1.0 : 0.0;", core, StringComparison.Ordinal);
+            Assert.True(core.IndexOf("clipped.x = mix(clipped.x, historyYcc.x, hold);", StringComparison.Ordinal)
+                < core.IndexOf("result.clip =", StringComparison.Ordinal), "the flag reads the history as blended");
         }
 
         [Fact]

@@ -45,8 +45,9 @@ namespace KhaozEngine.Render3D;
 /// <param name="DisoccludedPixels">Estimated display pixels whose history was rejected by depth or an off-screen
 /// reprojection, from a 32 by 18 grid of 16 samples a cell.</param>
 /// <param name="ReactivePixels">Estimated display pixels the reactive estimate marked, on the same grid.</param>
-/// <param name="ClippedPixels">Estimated display pixels whose history the variance clip moved, on the same
-/// grid.</param>
+/// <param name="ClippedPixels">Estimated display pixels whose history the variance clip moved by more than 1/1024 in
+/// luma-weighted YCoCg, a quarter of an 8-bit display step, on the same grid. A smaller move, such as the half-float
+/// rounding the clip trims on flat content, does not count.</param>
 public readonly record struct TemporalDiagnostics(long FrameIndex, int JitterPhase, Vector2 JitterPixels,
     int KeyedRigid, int KeyedSkinned, int KeyCollisions, bool HistoryValid, TemporalResetReason LastReset,
     int InternalWidth = 0, int InternalHeight = 0, int DisplayWidth = 0, int DisplayHeight = 0,

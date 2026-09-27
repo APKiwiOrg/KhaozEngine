@@ -71,6 +71,7 @@ const float LockHoldGain = 2.0;
 const float LockEdgeRelease = 1.0;
 const float LockEdgeMotionFraction = 0.001953125;
 const float LockEdgeFloorInternalPixels = 0.001;
+const float ClipFlagMinimumMove = 0.0009765625;
 ";
 
         // ---- The resolve's core: bindings, uniforms and the per-pixel resolve, no stage inputs or outputs ----
@@ -430,7 +431,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     result.stability = lockValue;
     result.disocclusion = historyValid && (!onScreen || disoccluded) ? 1.0 : 0.0;
     result.reactive = reactive;
-    result.clip = useHistory && clipScale > 1.0 ? 1.0 : 0.0;
+    result.clip = useHistory && clipScale > 1.0 && length(clipped - historyYcc) > ClipFlagMinimumMove ? 1.0 : 0.0;
     return result;
 }
 ";

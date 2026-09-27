@@ -6,10 +6,10 @@ using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering
 {
-    /// <summary>The internal-resolution inputs of one resolve. <paramref name="Generation"/> changes whenever any of the
-    /// four textures is replaced, which is when the renderer rebuilds its resource sets.</summary>
+    /// <summary>The internal-resolution inputs of one resolve. The renderer rebuilds its resource sets when any of the
+    /// four textures is a different one from those it last bound.</summary>
     internal readonly record struct TemporalResolveInputs(IGpuTexture SceneColor, IGpuTexture OpaqueColor,
-        IGpuTexture SceneDepth, IGpuTexture Motion, int Generation);
+        IGpuTexture SceneDepth, IGpuTexture Motion);
 
     /// <summary>
     /// THE TEMPORAL RESOLVE (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3): one fullscreen fragment pass at the display
@@ -21,11 +21,13 @@ namespace KhaozEngine.Render3D.Rendering
     /// a history tap past the edge must not read the other side of the screen. <see cref="GpuSamplerDescription.Linear"/>
     /// clamps on every axis.</para>
     /// <para><b>TWO RESOURCE SETS, ONE PER READ INDEX.</b> The history pair alternates every frame, so both sets are built
-    /// once per target generation and <see cref="Run"/> picks one, which keeps a steady frame from building or
-    /// allocating anything.</para>
-    /// <para>The scene creates it on the first frame the resolve runs and retires it on the first frame the resolve does
-    /// not, so a scene that is not using temporal anti-aliasing owns none of its objects and no set over released
-    /// history targets. <see cref="ResolveLayout"/> and <see cref="CurrentSet"/> are exposed for planned consumers,
+    /// once per set of input textures and history target generation, and <see cref="Run"/> picks one, which keeps a
+    /// steady frame from building or allocating anything. They are keyed on the textures themselves, so a change
+    /// elsewhere in the scene's targets, such as the distortion field coming or going, rebuilds nothing.</para>
+    /// <para>The scene creates it on the first frame the resolve runs. On the first frame the resolve does not run it lets
+    /// go of the sets (<see cref="ReleaseSets"/>), which name the released history targets, and keeps the pipelines for the
+    /// next time. A scene that never selects temporal anti-aliasing owns none of its objects.
+    /// <see cref="ResolveLayout"/> and <see cref="CurrentSet"/> are exposed for planned consumers,
     /// such as a temporal debug view, that re-evaluate the resolve through <c>ShaderSources.TemporalResolveCoreGlsl</c>
     /// over the set it bound. No pass reads them yet.</para>
     /// </summary>
@@ -42,7 +44,8 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuSampler _clampSampler;
         readonly IGpuResourceSet?[] _resolveSets = new IGpuResourceSet?[2];
         IGpuResourceSet? _storeSet;
-        int _boundInputs = int.MinValue, _boundTargets = int.MinValue;
+        TemporalResolveInputs _boundInputs;
+        int _boundTargets = int.MinValue;
         TemporalHistory? _boundHistory;
 
         public TemporalResolveRenderer(IGpuDevice gd)
@@ -100,11 +103,14 @@ namespace KhaozEngine.Render3D.Rendering
             });
         }
 
-        /// <summary>Build the resolve sets for both read indices and the depth store set, unless the inputs and the
-        /// history targets are the ones already bound.</summary>
+        /// <summary>Whether the resolve and depth store sets exist. For tests.</summary>
+        internal bool HoldsSetsForTests => _storeSet is not null;
+
+        /// <summary>Build the resolve sets for both read indices and the depth store set, unless the four input textures
+        /// are the very ones already bound and the history targets are the same generation of the same owner.</summary>
         public void BindInputs(in TemporalResolveInputs inputs, TemporalHistory history)
         {
-            if (inputs.Generation == _boundInputs && ReferenceEquals(history, _boundHistory)
+            if (_storeSet is not null && SameInputs(inputs, _boundInputs) && ReferenceEquals(history, _boundHistory)
                 && history.TargetGeneration == _boundTargets)
                 return;
             DisposeSets();
@@ -115,9 +121,30 @@ namespace KhaozEngine.Render3D.Rendering
                     history.Color(read), history.Confidence(read), _clampSampler, _resolveBuffer));
             _storeSet = f.CreateResourceSet(new GpuResourceSetDescription(_storeLayout,
                 inputs.SceneDepth, inputs.Motion, _clampSampler, _storeBuffer));
-            _boundInputs = inputs.Generation;
+            _boundInputs = inputs;
             _boundTargets = history.TargetGeneration;
             _boundHistory = history;
+        }
+
+        // By reference: the sets name these objects, and holding them keeps a replacement from ever being the same one.
+        static bool SameInputs(in TemporalResolveInputs a, in TemporalResolveInputs b)
+            => ReferenceEquals(a.SceneColor, b.SceneColor) && ReferenceEquals(a.OpaqueColor, b.OpaqueColor)
+                && ReferenceEquals(a.SceneDepth, b.SceneDepth) && ReferenceEquals(a.Motion, b.Motion);
+
+        /// <summary>Let go of the sets, which name the history targets and the scene's inputs, and keep the pipelines,
+        /// layouts, buffers and sampler. The sets go to <paramref name="retired"/>, since a frame the device has not
+        /// finished may still bind them. The next <see cref="BindInputs"/> builds them again.</summary>
+        public void ReleaseSets(GpuRetireQueue retired)
+        {
+            if (_storeSet is null) return;
+            for (int i = 0; i < 2; i++)
+            {
+                retired.Retire(_resolveSets[i]);
+                _resolveSets[i] = null;
+            }
+            retired.Retire(_storeSet);
+            _storeSet = null;
+            ForgetBinding();
         }
 
         /// <summary>Upload this frame's uniforms. Call before any framebuffer is bound this frame, as the post chain's
@@ -158,8 +185,14 @@ namespace KhaozEngine.Render3D.Rendering
             }
             _storeSet?.Dispose();
             _storeSet = null;
+            ForgetBinding();
+        }
+
+        void ForgetBinding()
+        {
             CurrentSet = null;
-            _boundInputs = _boundTargets = int.MinValue;
+            _boundInputs = default;
+            _boundTargets = int.MinValue;
             _boundHistory = null;
         }
 

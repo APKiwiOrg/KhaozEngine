@@ -49,13 +49,12 @@ namespace KhaozEngine.Render3D
             return 1f / (Post.EffectiveUpscaleRatio * ScaledViewport(Post, displayWidth, displayHeight).CapScale);
         }
 
-        // The resolve's renderer and display targets, created on the first frame the resolve runs and let go on the
-        // first frame it does not.
+        // The resolve's renderer and display targets, created on the first frame the resolve runs. The first frame
+        // without it releases the display targets and the renderer's sets and keeps both objects.
         TemporalResolveRenderer? _temporalResolve;
         TemporalPostTargets? _temporalPost;
 
-        /// <summary>The resolve's renderer, null until the first frame that resolves and after a frame that does not.
-        /// Internal, for the tests.</summary>
+        /// <summary>The resolve's renderer, null until the first frame that resolves. Internal, for the tests.</summary>
         internal TemporalResolveRenderer? TemporalResolveRendererForTests => _temporalResolve;
 
         /// <summary>The display post targets, null until the first frame that resolves and released, but kept, by a frame
@@ -135,7 +134,7 @@ namespace KhaozEngine.Render3D
             IGpuTexture motion = _res.MotionTex ?? throw new InvalidOperationException(
                 "The temporal resolve runs only while temporal rendering is active, which allocates the motion target.");
             _temporalResolve.BindInputs(new TemporalResolveInputs(_res.ColorTex, _temporalPost.OpaqueColor,
-                _res.DepthColorTex, motion, _temporalPost.Generation), TemporalHistory);
+                _res.DepthColorTex, motion), TemporalHistory);
 
             // The previous view is the one the motion target reprojects with (Scene3D.MotionTarget.cs): the last frame's
             // first render rebased to this frame's origin, or null without history.
@@ -199,15 +198,14 @@ namespace KhaozEngine.Render3D
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
         }
 
-        // A frame without the resolve holds none of it. The history targets and the renderer, whose sets name them, go to
-        // the retire queue, since the last frame's commands may still read them. The display targets drain and free.
+        // A frame without the resolve holds none of its targets. The history targets and the resolve's sets that name them
+        // go to the retire queue, since the last frame's commands may still read them. The resolve keeps its pipelines for
+        // the next time. The display targets drain and free.
         void ReleaseTemporalResolve()
         {
             TemporalHistory.ReleaseTargets(_retired);
+            _temporalResolve?.ReleaseSets(_retired);
             _temporalPost?.Release();
-            if (_temporalResolve is null) return;
-            _retired.Retire(_temporalResolve);
-            _temporalResolve = null;
         }
 
         /// <summary>From <c>Dispose</c>, after the device drained and the retire queue was disposed, so the history is

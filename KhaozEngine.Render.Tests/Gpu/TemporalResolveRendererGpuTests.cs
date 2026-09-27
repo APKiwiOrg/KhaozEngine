@@ -191,7 +191,7 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void New_history_targets_rebuild_the_sets_the_resolve_reads()
         {
-            // The scene inputs keep their generation across a display resize, so only the history's target generation
+            // The scene inputs keep their textures across a display resize, so only the history's target generation
             // tells BindInputs that the targets its sets were built over are retired. The first resolve reads a history
             // of accumulated weight 3. The display then grows to 16 by 16 over the same 8 by 8 internal frame, and the new
             // targets hold weight 5. Sets left over the retired targets would read the old history, or a freed one.

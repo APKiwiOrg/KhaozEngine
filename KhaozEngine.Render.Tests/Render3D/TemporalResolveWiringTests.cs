@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using KhaozEngine.Tests.Gpu;
 using Xunit;
 
@@ -121,6 +122,33 @@ namespace KhaozEngine.Tests.Render3D
             Assert.True(scene.InternalPingsAllocatedForTests, "a host that captures every frame would reallocate the pair");
         }
 
+        /// <summary>The resolve's sets name only its four inputs and the history targets, so the distortion field coming
+        /// and going, which moves the scene targets' generation, rebuilds none of them.</summary>
+        [Fact]
+        public void A_distortion_field_coming_and_going_keeps_the_resolve_sets()
+        {
+            using var rig = new HeadlessSceneRig();
+            Scene3D scene = rig.Scene;
+            scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+            Action<Scene3D> ripple = s => s.DrawDistortion(new DistortionSprite
+            {
+                Position = new Vector3(0f, 1f, 0f), Size = 1f, Strength = 0.5f,
+            });
+            for (int i = 0; i < 3; i++) rig.Frame(96, 64);
+            TemporalResolveRenderer renderer = scene.TemporalResolveRendererForTests!;
+            IGpuResourceSet before = renderer.CurrentSet!;
+
+            rig.Frame(96, 64, ripple);
+            Assert.True(scene.TemporalPostTargetsForTests!.DistortAllocated);
+            IGpuResourceSet during = renderer.CurrentSet!;
+            rig.Frame(96, 64);
+            Assert.False(scene.TemporalPostTargetsForTests!.DistortAllocated);
+
+            Assert.Same(before, renderer.CurrentSet);   // the same read index two frames on, through the field's life
+            rig.Frame(96, 64);
+            Assert.Same(during, renderer.CurrentSet);
+        }
+
         /// <summary>
         /// The resolve reprojects through the same previous view the motion target does: the last frame's first render
         /// rebased to this frame's origin. Across a 128 m origin step and a camera move, the UV the resolve gives a still
@@ -202,7 +230,8 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         /// <summary>A resize and the frame that leaves the resolve both hand the history targets to the scene's retire
-        /// queue, because the last frame's commands may still read them. Leaving also retires the renderer.</summary>
+        /// queue, because the last frame's commands may still read them. Leaving also lets go of the resolve's sets over
+        /// them and keeps its pipelines for a restart.</summary>
         [Fact]
         public void Replaced_or_released_history_targets_are_retired_not_freed_in_place()
         {
@@ -215,11 +244,18 @@ namespace KhaozEngine.Tests.Render3D
             Assert.False(first.Disposed, "a resize freed the history in place");
 
             var second = (FakeTexture)scene.TemporalHistory.Color(0);
+            TemporalResolveRenderer renderer = scene.TemporalResolveRendererForTests!;
             scene.Post.Quality.AntiAliasing = AntiAliasing.Off;
             rig.Frame(128, 64);
             Assert.False(scene.TemporalHistory.TargetsAllocated);
             Assert.False(second.Disposed, "leaving the resolve freed the history in place");
-            Assert.Null(scene.TemporalResolveRendererForTests);
+            Assert.Same(renderer, scene.TemporalResolveRendererForTests);   // the pipelines stay for the next time
+            Assert.False(renderer.HoldsSetsForTests, "the resolve kept sets over the released history");
+
+            scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+            rig.Frame(128, 64);
+            Assert.Same(renderer, scene.TemporalResolveRendererForTests);
+            Assert.True(renderer.HoldsSetsForTests);
         }
 
         /// <summary>The display chain reads its own bloom and ping pair, so under the resolve the internal targets carry

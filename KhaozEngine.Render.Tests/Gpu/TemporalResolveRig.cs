@@ -79,7 +79,7 @@ namespace KhaozEngine.Tests.Gpu
         /// projection.</summary>
         public void Resolve(in TemporalResolveUniforms uniforms)
         {
-            _renderer.BindInputs(new TemporalResolveInputs(_scene, _opaque, _depth, _motion, 1), _history);
+            _renderer.BindInputs(new TemporalResolveInputs(_scene, _opaque, _depth, _motion), _history);
             using IGpuCommandList cl = _gd.Factory.CreateCommandList();
             using (GpuRecording.Open(_gd, cl, nameof(TemporalResolveRig)))
             {

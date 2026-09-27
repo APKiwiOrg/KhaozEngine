@@ -10,25 +10,27 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// A smoke over whole frames, ahead of the temporal acceptance tests: a still scene converges, the resolved image
     /// stays upright, the converged image is anti-aliased, keeps its brightness and is not one jittered frame, and the
-    /// upscaling presets land close to native. Relative same-session measurements, no goldens. Measured on Metal: the
-    /// frame-to-frame change falls from 1.393 to 0.119, the marker sits within half a row of the aliased frame, the
-    /// converged frame is 0.718 from the reference supersampled 4x per axis against the aliased frame's 2.582, 2.139
-    /// from a single jittered frame, and keeps a mean luma of 30.2, and Quality and UltraPerformance land 1.353 and
-    /// 2.072 from native with the marker on the same row. Only Metal was measured. The anti-aliasing gate is the
-    /// tightest, 1.8x over its measured value (0.718 against a limit of 1.291), and every other gate leaves a wider
-    /// margin. Every message prints the measured values.
+    /// upscaling presets land close to native. Relative same-session measurements, no goldens. The anti-aliasing
+    /// reference is the scene rendered at 4x per axis with anti-aliasing off and box-filtered on the CPU, so it is
+    /// independent of every anti-aliasing mode's backend path (#1175). Measured on Metal: the frame-to-frame change
+    /// falls from 1.393 to 0.119, the marker sits within half a row of the aliased frame, the converged frame is 0.728
+    /// from the reference against the aliased frame's 2.576, 2.139 from a single jittered frame, and keeps a mean luma
+    /// of 30.2, and Quality and UltraPerformance land 1.353 and 2.072 from native with the marker on the same row. Only
+    /// Metal was measured. The anti-aliasing gate is the tightest, 1.8x over its measured value (0.728 against a limit
+    /// of 1.288), and every other gate leaves a wider margin. Every message prints the measured values.
     /// </summary>
     public sealed class TemporalResolveSmokeGpuTests
     {
-        const int W = 240, H = 240, Bars = 15;
+        const int W = 240, H = 240, Bars = 15, ReferenceScale = 4;
 
         // cutEveryFrame calls CameraCut before every frame, so the last frame is one jittered frame with no history, at
-        // the same jitter phase as an uncut render of the same length.
+        // the same jitter phase as an uncut render of the same length. scale multiplies the width and height only. The
+        // orthographic height and the square aspect hold, so a larger capture frames the same view in more pixels.
         static byte[] Render(AntiAliasing aa, int frames, TemporalUpscale upscale = TemporalUpscale.Native,
-            bool cutEveryFrame = false)
+            bool cutEveryFrame = false, int scale = 1)
         {
             MeshHandle box = default;
-            return Render3DSnapshot.Capture(W, H,
+            return Render3DSnapshot.Capture(W * scale, H * scale,
                 setup: scene =>
                 {
                     scene.Post.UseSmoothPreset();
@@ -56,11 +58,16 @@ namespace KhaozEngine.Tests.Gpu
                 frames: frames);
         }
 
+        // Anti-aliasing off at 4x the width and height, 960 by 960 and inside the default 3840 by 2160 render cap, then
+        // box-filtered on the CPU to the display size in the capture bytes the other frames are compared in.
+        static byte[] Reference() => BoxDownsample(Render(AntiAliasing.Off, 2, scale: ReferenceScale),
+            W * ReferenceScale, H * ReferenceScale, ReferenceScale);
+
         [GpuFact]
         public void A_still_scene_converges_upright_anti_aliased_and_unlike_a_single_jittered_frame()
         {
             byte[] off = Render(AntiAliasing.Off, 2);
-            byte[] reference = Render(AntiAliasing.Ssaa(4f), 2);
+            byte[] reference = Reference();
             byte[] first = Render(AntiAliasing.Temporal, 1);
             byte[] second = Render(AntiAliasing.Temporal, 2);
             byte[] converged = Render(AntiAliasing.Temporal, 32);
@@ -77,11 +84,13 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(MarkerRow(off) < H / 4.0, "the marker is not where the scene put it " + ctx);
             Assert.True(Math.Abs(MarkerRow(converged) - MarkerRow(off)) < 2.0, "the resolved image is not upright " + ctx);
             Assert.True(late < 1.5 && late <= 0.5 * early, "the history does not settle on a still scene " + ctx);
-            // Anti-aliasing is judged by the distance to a reference supersampled 4x per axis, not by a count of
-            // mid-luma edge pixels. With anti-aliasing off the bars' interiors already sit inside the counted band, so
-            // every real anti-aliasing mode, the reference included at 1.092x, fell below a 1.15x count gate. The count
-            // stays in the message as a reported number. The strict convergence acceptance against 8x supersampling
-            // belongs to the temporal acceptance tests.
+            // Anti-aliasing is judged by the distance to a reference, not by a count of mid-luma edge pixels. The
+            // reference is the scene rendered at 4x per axis with anti-aliasing off and box-filtered on the CPU, so it
+            // rides no anti-aliasing mode's backend path (the Direct3D 11 supersample downsample is suspect, #1175).
+            // With anti-aliasing off the bars' interiors already sit inside the counted band, so every real
+            // anti-aliasing mode, 4x supersampling included at 1.092x, fell below a 1.15x count gate. The count stays
+            // in the message as a reported number. The strict convergence acceptance against 8x supersampling belongs
+            // to the temporal acceptance tests.
             Assert.True(taaFromReference < 0.5 * offFromReference, "the converged frame is not anti-aliased " + ctx);
             Assert.True(MeanAbs(converged, single) > 0.1, "the converged frame is still a single jittered frame " + ctx);
             Assert.True(Math.Abs(MeanLuma(converged) - MeanLuma(off)) < Math.Max(2.0, MeanLuma(off) * 0.05),

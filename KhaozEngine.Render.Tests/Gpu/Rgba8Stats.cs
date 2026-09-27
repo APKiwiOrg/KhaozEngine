@@ -40,6 +40,31 @@ internal static class Rgba8Stats
         return sum / ((toRow - fromRow) * width);
     }
 
+    /// <summary>The image <paramref name="factor"/> times smaller per axis. Each output byte, alpha included, is the
+    /// rounded mean of the matching byte over a <paramref name="factor"/> by <paramref name="factor"/> block of
+    /// <paramref name="rgba"/>, an image <paramref name="width"/> by <paramref name="height"/> pixels whose sizes are
+    /// multiples of the factor.</summary>
+    public static byte[] BoxDownsample(byte[] rgba, int width, int height, int factor)
+    {
+        if (factor < 1 || width % factor != 0 || height % factor != 0)
+            throw new ArgumentException("The image size is not a multiple of the factor.", nameof(factor));
+        if (rgba.Length != width * height * 4)
+            throw new ArgumentException("The image is not width by height RGBA8 pixels.", nameof(rgba));
+        int w = width / factor, h = height / factor, n = factor * factor;
+        var small = new byte[w * h * 4];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                for (int c = 0; c < 4; c++)
+                {
+                    int sum = 0;
+                    for (int dy = 0; dy < factor; dy++)
+                        for (int dx = 0; dx < factor; dx++)
+                            sum += rgba[((y * factor + dy) * width + x * factor + dx) * 4 + c];
+                    small[(y * w + x) * 4 + c] = (byte)((sum + n / 2) / n);
+                }
+        return small;
+    }
+
     /// <summary>The standard deviation of luma over the whole image, which a flat fill keeps near zero.</summary>
     public static double LumaDeviation(byte[] rgba)
     {

@@ -6,8 +6,9 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// The confidence and stability target's green channel as step 6 reads it back
-    /// (<see cref="TemporalFormats.HistoryConfidence"/>): where the pixel's dilated nearest surface moved, the resolve
-    /// stores minus one minus the lock, and the next frame must read the lock unchanged. Same rig and still camera as
+    /// (<see cref="TemporalFormats.HistoryConfidence"/>): where the surface the pixel reprojected by moved, the resolve
+    /// stores minus one minus the lock, and minus three minus the lock where that surface travelled past the dilation's
+    /// reach, and the next frame must read the lock unchanged. Same rig and still camera as
     /// <see cref="TemporalResolveLockGpuTests"/>, through <see cref="TemporalResolveGpuFacts"/>.
     /// </summary>
     public sealed class TemporalStoredLockGpuTests : TemporalResolveGpuFacts
@@ -19,17 +20,38 @@ namespace KhaozEngine.Tests.Gpu
             // -1 - (-1.79980) = 0.79980 and decays by LockDecay to 0.67480. Its hold, twice that, stays whole, so the
             // history keeps the line's luma against the flat box. A decode that read the moved texel as no lock would
             // store 0 and clip the line to the background. Nothing moves this frame, so the lock is stored plain.
+            float stored = Q(-1.8f);
+            float lockAfter = -1f - stored - TemporalResolveTuning.LockDecay;
+            Assert.Equal(0.67480f, lockAfter, 1e-5);
+            HeldLineKeepsItsLock(stored, lockAfter);
+        }
+
+        [GpuFact]
+        public void A_lock_stored_where_a_fast_moving_surface_showed_reads_back_unchanged()
+        {
+            // The same lock stored for a surface that travelled past the dilation's reach is Q(-3.8) = -3.80078, which
+            // reads back as -3 - (-3.80078) = 0.80078 and decays to 0.67578. The stored depths are the scene's own, so
+            // the footprint is whole and keeps its history. A decode that read it as a plain moved texel would take
+            // 2.80078 as the lock, a whole one, and store 0.875.
+            float stored = Q(-3.8f);
+            float lockAfter = -3f - stored - TemporalResolveTuning.LockDecay;
+            Assert.Equal(0.67578f, lockAfter, 1e-5);
+            HeldLineKeepsItsLock(stored, lockAfter);
+        }
+
+        // A held line at column 4 over a flat background, its state holding the stored lock, resolved once with no
+        // motion: the lock the pixel stores and the line's luma it keeps.
+        static void HeldLineKeepsItsLock(float stored, float lockAfter)
+        {
             float[] zero = Motion((_, _) => Vector2.Zero);
             using var rig = new Rig();
-            float bg = Q(0.1f), held = Q(0.55f), stored = Q(-1.8f);
+            float bg = Q(0.1f), held = Q(0.55f);
             rig.BeginFrame();
             rig.Fill(Grey((_, _) => bg), Grey((_, _) => bg), zero);
             rig.FillHistory(Grey((x, _) => x == 4 ? held : bg),
                 State((x, _) => new Vector2(Q(8f / Max), x == 4 ? stored : 0f)), SceneLinear);
             rig.Resolve(Uniforms(historyValid: true));
 
-            float lockAfter = -1f - stored - TemporalResolveTuning.LockDecay;
-            Assert.Equal(0.67480f, lockAfter, 1e-5);
             float accumulated = Q(8f / Max) * Max;
             float c = Weighted(bg), h = Weighted(held);
             float expected = Unweighted(h + (c - h) / (accumulated + 1f));

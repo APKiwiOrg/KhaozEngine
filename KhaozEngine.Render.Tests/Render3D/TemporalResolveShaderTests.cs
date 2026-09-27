@@ -119,7 +119,8 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("float movingThreshold = MovingSurfaceInternalPixels", core, StringComparison.Ordinal);
             Assert.Contains("+ length(motion * internalSize) * MovingSurfaceMotionFraction;", core,
                 StringComparison.Ordinal);
-            Assert.Contains("depthTested = length(surfaceMotion) <= movingThreshold;", core, StringComparison.Ordinal);
+            Assert.Contains("travel = length(surfaceMotion);", core, StringComparison.Ordinal);
+            Assert.Contains("depthTested = travel <= movingThreshold;", core, StringComparison.Ordinal);
             Assert.DoesNotContain("CurrentToPrevious * vec4(ndcXY", core, StringComparison.Ordinal);
 
             // History is read where the dilated motion carries the display pixel, from the dilated texel's own point.
@@ -198,7 +199,7 @@ namespace KhaozEngine.Tests.Render3D
             // LockDecay below whole and the nearest of them is no narrow feature, a run of at most two texels along a
             // row or a column, or the state says a moving surface showed there last frame. The lock and that fact are
             // read from the state texels step 2 reads, fetched once before the test. The stored lock is minus one minus
-            // the lock where the pixel's dilated nearest surface moved, and reads back unchanged.
+            // the lock where the surface the pixel reprojected by moved, and reads back unchanged.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("float weight = mix(1.0 - f.x, f.x, float(corner & 1)) "
                 + "* mix(1.0 - f.y, f.y, float(corner >> 1));", core, StringComparison.Ordinal);
@@ -206,18 +207,19 @@ namespace KhaozEngine.Tests.Render3D
                 + "footprint.visibleShare += weight;", core, StringComparison.Ordinal);
             Assert.Contains("|| footprint.farthest < expectedDepth * (1.0 - DisocclusionTolerance)", core,
                 StringComparison.Ordinal);
-            Assert.Contains("|| (footprint.visibleShare < DisocclusionVisibleShare", core, StringComparison.Ordinal);
+            Assert.Contains(": footprint.visibleShare < DisocclusionVisibleShare", core, StringComparison.Ordinal);
             Assert.Contains("&& fetchedState.y <= 1.0 - 0.5 * LockDecay", core, StringComparison.Ordinal);
             Assert.Contains("&& (carriedMoved || !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, "
                 + "maxTexel))));", core, StringComparison.Ordinal);
-            Assert.Contains("float temporalStoreLock(float lockValue, bool moved) { return moved ? -1.0 - lockValue "
-                + ": lockValue; }", core, StringComparison.Ordinal);
+            Assert.Contains("return fast ? -3.0 - lockValue : moved ? -1.0 - lockValue : lockValue;", core,
+                StringComparison.Ordinal);
             Assert.Contains("bool temporalStoredMoved(float stored) { return stored < -0.5; }", core,
                 StringComparison.Ordinal);
-            Assert.Contains("float temporalStoredLock(float stored) { return temporalStoredMoved(stored) "
-                + "? -1.0 - stored : stored; }", core, StringComparison.Ordinal);
-            Assert.Contains("bool nearerMoved = !depthTested;", core, StringComparison.Ordinal);
-            Assert.Contains("result.moved = historyValid && nearerMoved ? 1.0 : 0.0;", core, StringComparison.Ordinal);
+            Assert.Contains("return temporalStoredFast(stored) ? -3.0 - stored : temporalStoredMoved(stored) ? -1.0 - "
+                + "stored : stored;", core, StringComparison.Ordinal);
+            Assert.DoesNotContain("nearerMoved", core, StringComparison.Ordinal);
+            Assert.Contains("result.moved = historyValid && !depthTested ? (travel > DilationReachInternalPixels ? 2.0 "
+                + ": 1.0) : 0.0;", core, StringComparison.Ordinal);
             foreach (string texel in new[] { "s00", "s10", "s01", "s11" })
             {
                 Assert.Contains($"{texel}.y = temporalStoredLock({texel}.y);", core, StringComparison.Ordinal);
@@ -237,6 +239,32 @@ namespace KhaozEngine.Tests.Render3D
                 StringComparison.Ordinal);
             Assert.True(state >= 0 && test > state && history > test,
                 "the state must be read once, before the depth test and the history fetch that both use it");
+        }
+
+        [Fact]
+        public void A_footprint_a_fast_moving_surface_showed_at_keeps_its_history_only_where_it_is_whole()
+        {
+            // Where the surface the pixel reprojected by travelled more than DilationReachInternalPixels against a
+            // static point, the state stores minus three minus the lock. Where any texel carrying weight holds that,
+            // neither the narrow nor the lock exception applies, and any weight on a nearer stored depth drops the
+            // history. The narrow and lock exceptions keep their rule elsewhere.
+            string core = ShaderSources.TemporalResolveCoreGlsl;
+            Assert.Contains("out vec2 previousUv, out float expectedDepth, out bool depthTested, out float travel) {",
+                core, StringComparison.Ordinal);
+            Assert.Contains("travel = length(surfaceMotion);", core, StringComparison.Ordinal);
+            Assert.Contains("depthTested = travel <= movingThreshold;", core, StringComparison.Ordinal);
+            Assert.Contains("travel = BackgroundLinearDepth;", core, StringComparison.Ordinal);
+            Assert.Contains("bool temporalStoredFast(float stored) { return stored < -2.5; }", core,
+                StringComparison.Ordinal);
+            Assert.Contains("|| (carriedFast ? footprint.visibleShare < 1.0 - 1.0e-3", core, StringComparison.Ordinal);
+            foreach (string texel in new[] { "s00", "s10", "s01", "s11" })
+                Assert.Contains($"temporalStoredFast({texel}.y)", core, StringComparison.Ordinal);
+            Assert.Equal(2, core.Split("expectedDepth, depthTested, travel);").Length - 1);
+            int fast = core.IndexOf("carriedFast = (carried.x > 0.5", StringComparison.Ordinal);
+            int lockRead = core.IndexOf("s00.y = temporalStoredLock(s00.y);", StringComparison.Ordinal);
+            int test = core.IndexOf("|| (carriedFast ? footprint.visibleShare", StringComparison.Ordinal);
+            Assert.True(fast >= 0 && lockRead > fast && test > lockRead,
+                "the fast flag is read from the stored state before its lock is decoded, and before the depth test");
         }
 
         [Fact]
@@ -376,8 +404,8 @@ namespace KhaozEngine.Tests.Render3D
             Assert.StartsWith("#version 450\n" + ShaderSources.TemporalResolveCoreGlsl, frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=0) out vec4 oColor;", frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=1) out vec4 oState;", frag, StringComparison.Ordinal);
-            Assert.Contains("oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved > 0.5), 0.0, 1.0);",
-                frag, StringComparison.Ordinal);
+            Assert.Contains("oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved > 0.5, p.moved > 1.5), "
+                + "0.0, 1.0);", frag, StringComparison.Ordinal);
             Assert.Contains("temporalResolvePixel(ivec2(gl_FragCoord.xy))", frag, StringComparison.Ordinal);
         }
 

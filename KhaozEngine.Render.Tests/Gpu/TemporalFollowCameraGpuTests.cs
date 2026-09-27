@@ -40,7 +40,30 @@ namespace KhaozEngine.Tests.Gpu
             $"{t.Name}: trail {t.Total}, acceptance 3 allows {Allowed(t.Total.Checked)}, reach {t.Reach} px, oldest "
             + $"age {t.OldestAge}. Two frames after: {t.Age(TemporalGhostingRuns.FirstAge)}";
 
-        /// <summary>Every preset's trail, and by age at Native and Quality.</summary>
+        /// <summary>
+        /// The wall the box uncovers keeps none of its colour at Native and Quality, where the walk is 2.5 and 1.67
+        /// internal pixels a frame. The box's pixels store the state of a surface that travelled past the dilation's
+        /// reach, so a footprint it covered keeps its history only where no part of it was the box. Measured 0 of 510
+        /// at both against the 2 acceptance 3 allows. Before, the lock exception kept the box's history where its
+        /// ridged pixels held locks near whole, and a footprint half on the box kept a history half its colour: 38 and
+        /// 22.
+        /// </summary>
+        [GpuTheory]
+        [InlineData(TemporalUpscale.Native)]
+        [InlineData(TemporalUpscale.Quality)]
+        public void A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(TemporalUpscale preset)
+        {
+            CrossingTrail t = runs.Run(preset, WalkPixels);
+            string ctx = Describe(t);
+            output.WriteLine(ctx);
+            Assert.True(t.Total.Checked > MinTrailPixels,
+                $"the trail region holds {t.Total.Checked} pixels, so nothing was measured. {ctx}");
+            Assert.True(t.Total.Excess <= Allowed(t.Total.Checked), $"the box's colour stays where it left. {ctx}");
+        }
+
+        /// <summary>Every preset's trail, and by age at Native and Quality. Performance and UltraPerformance walk 1.25
+        /// and 0.83 internal pixels a frame, within the dilation's reach, where the pixels beside the trailing edge
+        /// read the box's own history and keep 172 and 171 of 510.</summary>
         [GpuFact]
         public void The_follow_camera_table_prints_every_preset()
         {

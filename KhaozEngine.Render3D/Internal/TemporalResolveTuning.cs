@@ -101,12 +101,13 @@ namespace KhaozEngine.Render3D.Internal
         /// frame over still ground on Quality, whose summed coverage falls from 22.1 percent to 20.8 and 13.1, where 0
         /// to 1 all keep 22.1. So 1 is the smallest factor that leaves one trailing pixel at 5 percent, and the largest
         /// measured that costs that blade nothing. A pixel that reprojected by its own motion
-        /// (<see cref="DilationReachInternalPixels"/>) and kept its history holds its own, and keeps its lock. A still
-        /// line three eighths of a texel wide, with a keyed 30 display pixel box sliding past one internal texel away
-        /// at 2 display pixels a frame, fell on its worst frame to 0.01 of its energy without the box at Native and to
-        /// 0.00 to 0.25 at Quality, and was still at 0.43 to 0.69 sixteen frames after the box passed. It keeps 0.99
-        /// now. Keeping the lock where such a pixel restarted too left a ridged keyed box crossing the textured wall 6
-        /// and 8 of its 420 trail pixels at Native and Quality, against 3 and 4.</summary>
+        /// (<see cref="DilationReachInternalPixels"/>) and kept its history holds its own, since where a fast surface
+        /// showed step 3 keeps a history only whole (<see cref="DisocclusionVisibleShare"/>), and keeps its lock. A
+        /// still line three eighths of a texel wide, with a keyed 30 display pixel box sliding past one internal texel
+        /// away at 2 display pixels a frame, fell on its worst frame to 0.01 of its energy without the box at Native
+        /// and to 0.00 to 0.25 at Quality, and was still at 0.43 to 0.69 sixteen frames after the box passed. It keeps
+        /// 0.99 now. Keeping the lock where such a pixel restarted too left a ridged keyed box crossing the textured
+        /// wall 6 and 8 of its 420 trail pixels at Native and Quality, against 3 and 4.</summary>
         public const float LockEdgeRelease = 1f;
         /// <summary>Step 6. A centre texel whose motion differs from the dilated motion by more than this share of the
         /// dilated motion's length sits at a moving edge. Both come from the RG16F motion target, which rounds each
@@ -196,7 +197,17 @@ namespace KhaozEngine.Render3D.Internal
         /// its colour where it left over the textured wall, 128 and 177 of the trail pixels for the line one texel wide
         /// and 50 and 136 for two, against 11 and 23, and 0 and 3, where the moving surface's stored state rules it
         /// out, and 0 and 8, and 0 and 0, since the pixels beside such a line restart once it moves on
-        /// (<see cref="MovingShareConfidence"/>). The still blades and lines hold as before.</summary>
+        /// (<see cref="MovingShareConfidence"/>). The still blades and lines hold as before. Where the stored state
+        /// says a surface that travelled more than <see cref="DilationReachInternalPixels"/> against a static point
+        /// showed there, neither exception applies, and any weight on a stored depth nearer than expected drops the
+        /// history. A keyed box with ridged pixels walking across the textured wall at 2.5 display pixels a frame while
+        /// the camera follows it, as a third-person camera follows an avatar, kept its luma in 38 and 22 of the 510
+        /// wall pixels it uncovered at Native and Quality, against 0 and 0 now: its pixels hold locks near whole, and a
+        /// footprint it covered in half kept a history half its colour. The keyed box crossing the textured wall at 4
+        /// display pixels a frame leaves 6 and 12 of 840 at Performance and UltraPerformance against 17 and 63. Applied
+        /// to every moving surface, the rule also cost the lock facts: a dark surface crossing a held line at 0.2
+        /// internal pixels a frame on UltraPerformance showed one revealed pixel at half the line's contrast, from its
+        /// first raw sample, against none. So a slower surface keeps both exceptions.</summary>
         public const float DisocclusionVisibleShare = 0.5f;
         /// <summary>Steps 5 and 8. Beside a keyed feature at most two texels wide in this frame's depth that moves more
         /// than <see cref="DilationReachInternalPixels"/> against the surface behind it, a pixel that reprojected by

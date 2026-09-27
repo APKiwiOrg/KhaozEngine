@@ -38,9 +38,9 @@ public sealed record ContentPackRead(bool Success, ContentSnapshot? Snapshot, st
 /// <para>
 /// <b>The server and the client share it and differ only in when they call it.</b> A server calls
 /// <see cref="ReadAllAsync"/> once at boot, because the validator runs on the full snapshot and because a
-/// server that decoded lazily would pay a first-touch cost inside a tick. A client calls
-/// <see cref="ReadRowAsync"/>, which touches at most the one chunk whose slots cover the id, which is what
-/// makes a cold start a download budget rather than a decode budget. One decoder, one set of reason tokens.
+/// server that decoded lazily would pay a first-touch cost inside a tick. A client opens the bounded
+/// <see cref="CreateLazy"/> mode and calls <see cref="ReadRowAsync"/>, which touches at most the one chunk
+/// whose slots cover the id. One decoder, one set of reason tokens.
 /// </para>
 /// <para>
 /// <b>Verify comes before decode, always.</b> A chunk whose bytes do not hash to the name it was fetched
@@ -74,21 +74,23 @@ public sealed class ContentPackReader
     public const string ReasonTypeUnregistered = "chunk-type-unregistered";
 
     /// <summary>
-    /// The chunks fetched, verified and decoded but NOT yet handed to a snapshot. <see cref="BuildSnapshot"/>
-    /// empties it, because the snapshot copies every row body into its own per-type blob and holding both is
-    /// paying for the catalog twice.
+    /// The chunks fetched, verified and decoded. The public constructor retains every one until
+    /// <see cref="BuildSnapshot"/> hands them off. <see cref="CreateLazy"/> uses a bounded least recently used
+    /// set and refuses snapshot operations, because an evicted chunk cannot belong to a later synchronous
+    /// snapshot.
     /// <para>
-    /// That bounds the EAGER path, which is the one that reads every chunk the manifest names: boot's peak is
-    /// the decoded chunks OR the snapshot rather than both. It does not bound the lazy client path, where a
-    /// reader that never builds a snapshot accumulates a chunk per slot range touched and frees none. That is
-    /// https://github.com/APKiwiOrg/KhaozEngine/issues/902 and it needs an eviction policy rather than a
-    /// hand-off point.
+    /// Snapshot handoff bounds the eager path. The explicit lazy path bounds a long-lived client's decoded
+    /// working set while its content-addressed store remains the durable cache.
     /// </para>
     /// </summary>
-    readonly Dictionary<string, LoadedChunk> _chunks = new(StringComparer.Ordinal);
+    readonly ContentChunkResidency<LoadedChunk> _chunks;
+    readonly int? _maxResidentChunks;
     RemapRuleSet? _rules;
 
-    /// <summary>Opens a reader over one version.</summary>
+    /// <summary>
+    /// Opens the snapshot-building reader over one version. It retains every decoded chunk until
+    /// <see cref="BuildSnapshot"/> hands them off. Use <see cref="CreateLazy"/> for long-lived row lookup.
+    /// </summary>
     /// <param name="store">Where the objects are fetched from.</param>
     /// <param name="registry">The local registry, which is what supplies the row codecs.</param>
     /// <param name="manifest">The version's manifest, already fetched and verified.</param>
@@ -102,6 +104,16 @@ public sealed class ContentPackReader
         ContentTypeRegistry registry,
         ContentManifest manifest,
         string manifestHash)
+        : this(store, registry, manifest, manifestHash, maxResidentChunks: null)
+    {
+    }
+
+    ContentPackReader(
+        IPackStore store,
+        ContentTypeRegistry registry,
+        ContentManifest manifest,
+        string manifestHash,
+        int? maxResidentChunks)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(registry);
@@ -114,6 +126,37 @@ public sealed class ContentPackReader
         Registry = registry;
         Manifest = manifest;
         ManifestHash = manifestHash;
+        _maxResidentChunks = maxResidentChunks;
+        _chunks = new ContentChunkResidency<LoadedChunk>(maxResidentChunks);
+    }
+
+    /// <summary>
+    /// Opens the long-lived CLIENT reader of spec 9.3 with a bounded decoded working set. A cache hit moves
+    /// the chunk to the front and adding past <paramref name="maxResidentChunks"/> evicts the least recently
+    /// used decoded chunk. A later lookup may decode it again from <paramref name="store"/>.
+    /// <para>
+    /// <see cref="BuildSnapshot"/> and <see cref="ReadAllAsync"/> are unavailable on this explicit mode. A
+    /// snapshot promises every chunk read so far, which cannot include an evicted chunk without asynchronous
+    /// store access. Use the public constructor for snapshot assembly and server boot.
+    /// </para>
+    /// </summary>
+    /// <param name="store">Where objects are fetched from, normally the client's <see cref="CachingPackStore"/>.</param>
+    /// <param name="registry">The local registry, which supplies the row codecs.</param>
+    /// <param name="manifest">The client manifest, already fetched and verified.</param>
+    /// <param name="manifestHash">The manifest's content address.</param>
+    /// <param name="maxResidentChunks">The positive maximum number of decoded chunks held at once.</param>
+    /// <exception cref="ArgumentNullException">A reference argument is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxResidentChunks"/> is not positive.</exception>
+    /// <exception cref="ContentPackException">A manifest type's chunk slots disagree with the registry.</exception>
+    public static ContentPackReader CreateLazy(
+        IPackStore store,
+        ContentTypeRegistry registry,
+        ContentManifest manifest,
+        string manifestHash,
+        int maxResidentChunks)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxResidentChunks, 1);
+        return new ContentPackReader(store, registry, manifest, manifestHash, maxResidentChunks);
     }
 
     /// <summary>
@@ -165,7 +208,10 @@ public sealed class ContentPackReader
     /// <summary>The manifest's content address, which the assembled snapshot carries as its identity.</summary>
     public string ManifestHash { get; }
 
-    /// <summary>How many distinct chunks have been fetched, verified and decoded so far.</summary>
+    /// <summary>
+    /// How many decoded chunks are resident now. On a reader from <see cref="CreateLazy"/> this never exceeds
+    /// the bound supplied to that factory.
+    /// </summary>
     public int ChunksRead => _chunks.Count;
 
     /// <summary>
@@ -255,33 +301,19 @@ public sealed class ContentPackReader
 
     /// <summary>
     /// Fetches, verifies, decompresses and decodes ONE chunk, then decodes every row in it through its type's
-    /// codec. A chunk already read is answered from memory and never refetched, which is what makes a second
-    /// lookup inside the same slot range free.
+    /// codec. A resident chunk is answered from memory, which makes a second lookup inside the working set
+    /// free. A lazy reader refetches a chunk from its store after that chunk ages out of the bounded set.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="hash"/> is null.</exception>
     public async Task<ContentChunkRead> ReadChunkAsync(string hash, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(hash);
 
-        if (_chunks.TryGetValue(hash, out LoadedChunk? cached))
-        {
-            return new ContentChunkRead(true, hash, cached.Chunk, null);
-        }
-
-        ReadOnlyMemory<byte>? file = await Store.GetAsync(hash, cancellationToken).ConfigureAwait(false);
-        if (file is null)
-        {
-            return new ContentChunkRead(false, hash, null, ReasonFetchFailed);
-        }
-
-        LoadedChunk? loaded = LoadChunk(hash, file.Value, out string? reason);
-        if (loaded is null)
-        {
-            return new ContentChunkRead(false, hash, null, reason);
-        }
-
-        _chunks[hash] = loaded;
-        return new ContentChunkRead(true, hash, loaded.Chunk, null);
+        (LoadedChunk? loaded, string? reason) =
+            await ReadLoadedChunkAsync(hash, cancellationToken).ConfigureAwait(false);
+        return loaded is null
+            ? new ContentChunkRead(false, hash, null, reason)
+            : new ContentChunkRead(true, hash, loaded.Chunk, null);
     }
 
     /// <summary>
@@ -300,16 +332,37 @@ public sealed class ContentPackReader
             return new ContentRowRead(false, null, ContentChunkCodec.ReasonRowMissing);
         }
 
-        ContentChunkRead read = await ReadChunkAsync(entry.Hash, cancellationToken).ConfigureAwait(false);
-        if (!read.Success)
+        (LoadedChunk? loaded, string? reason) =
+            await ReadLoadedChunkAsync(entry.Hash, cancellationToken).ConfigureAwait(false);
+        if (loaded is null)
         {
-            return new ContentRowRead(false, null, read.Reason);
+            return new ContentRowRead(false, null, reason);
         }
 
-        LoadedChunk loaded = _chunks[entry.Hash];
         return loaded.Chunk.TryGetIndex(id, out int index)
             ? new ContentRowRead(true, loaded.Rows[index], null)
             : new ContentRowRead(false, null, ContentChunkCodec.ReasonRowMissing);
+    }
+
+    async Task<(LoadedChunk? Loaded, string? Reason)> ReadLoadedChunkAsync(
+        string hash,
+        CancellationToken cancellationToken)
+    {
+        if (_chunks.TryGetValue(hash, out LoadedChunk? cached))
+        {
+            return (cached, null);
+        }
+
+        ReadOnlyMemory<byte>? file = await Store.GetAsync(hash, cancellationToken).ConfigureAwait(false);
+        if (file is null)
+        {
+            return (null, ReasonFetchFailed);
+        }
+
+        LoadedChunk? loaded = LoadChunk(hash, file.Value, out string? reason);
+        return loaded is null
+            ? (null, reason)
+            : (_chunks.AddOrGetExisting(hash, loaded), null);
     }
 
     /// <summary>
@@ -321,8 +374,11 @@ public sealed class ContentPackReader
     /// which object is wrong rather than how many are.
     /// </para>
     /// </summary>
+    /// <exception cref="InvalidOperationException">This reader was opened through <see cref="CreateLazy"/>.</exception>
     public async Task<ContentPackRead> ReadAllAsync(CancellationToken cancellationToken = default)
     {
+        ThrowIfLazy(nameof(ReadAllAsync));
+
         for (int t = 0; t < Manifest.Types.Count; t++)
         {
             IReadOnlyList<ManifestChunkEntry> chunks = Manifest.Types[t].Chunks;
@@ -362,8 +418,8 @@ public sealed class ContentPackReader
 
     /// <summary>
     /// The snapshot over the chunks read SO FAR, rows ascending by id whatever order the chunks arrived in.
-    /// A reader that has only been asked for one row therefore builds a snapshot holding one chunk's rows,
-    /// which is the whole shape of the lazy client path.
+    /// A snapshot-mode reader that has only been asked for one row therefore builds a snapshot holding that
+    /// chunk's rows.
     /// <para>
     /// <b>It HANDS the chunks over rather than sharing them.</b> The snapshot copies every row body into its
     /// own per-type blob, so a reader that kept its decoded chunks afterwards would hold the whole catalog
@@ -372,14 +428,16 @@ public sealed class ContentPackReader
     /// snapshot rather than the same one.
     /// </para>
     /// <para>
-    /// Reading rows through the READER after building is therefore not a supported mode: read them from the
-    /// snapshot, which is the thing that owns them. A lazy caller that keeps looking rows up through
-    /// <see cref="ReadRowAsync"/> simply does not build a snapshot in between, and one that does pays a
-    /// refetch for the slot ranges it asks for again.
+    /// Reading rows through the READER after building is therefore not a supported mode. Read them from the
+    /// snapshot, which is the thing that owns them. A reader opened through <see cref="CreateLazy"/> refuses
+    /// this method because its evicted chunks cannot be included synchronously.
     /// </para>
     /// </summary>
+    /// <exception cref="InvalidOperationException">This reader was opened through <see cref="CreateLazy"/>.</exception>
     public ContentSnapshot BuildSnapshot()
     {
+        ThrowIfLazy(nameof(BuildSnapshot));
+
         var builder = new ContentSnapshotBuilder(Registry)
             .WithIdentity((int)Manifest.VersionNumber, ManifestHash);
 
@@ -390,7 +448,8 @@ public sealed class ContentPackReader
 
         // By type then chunk index, so the snapshot a given set of chunks produces does not depend on the
         // order the dictionary happens to hand them back in.
-        var ordered = new List<LoadedChunk>(_chunks.Values);
+        var ordered = new List<LoadedChunk>(_chunks.Count);
+        _chunks.CopyValuesTo(ordered);
         ordered.Sort(static (left, right) => left.Chunk.Type.Value == right.Chunk.Type.Value
             ? left.Chunk.ChunkIndex.CompareTo(right.Chunk.ChunkIndex)
             : left.Chunk.Type.Value.CompareTo(right.Chunk.Type.Value));
@@ -409,6 +468,16 @@ public sealed class ContentPackReader
         // Build COPIED every body into the snapshot's own blob, so the decoded chunks are dead weight now.
         _chunks.Clear();
         return snapshot;
+    }
+
+    void ThrowIfLazy(string operation)
+    {
+        if (_maxResidentChunks is not null)
+        {
+            throw new InvalidOperationException(
+                FormattableString.Invariant(
+                    $"{operation} is unavailable on a reader opened by {nameof(CreateLazy)} because evicted chunks cannot be included in a synchronous snapshot. Use the public constructor for snapshot assembly."));
+        }
     }
 
     static ContentManifestRead DecodeManifest(

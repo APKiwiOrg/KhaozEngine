@@ -2916,10 +2916,17 @@ what failed. Budget P3 in 14.1 is where the trade is measured rather than argued
 because a server that decodes lazily pays a first-touch cost inside a tick. The decode is one pass over
 `Bodies` and it is what builds any per-type derived index the runtime holds (section 9.4).
 
-**The client decodes lazily**, per chunk, on first lookup into that chunk's id range. It holds the compressed
-bytes from the cache and decompresses a chunk the first time a row in it is asked for. A client that walks a
-30-slot inventory touches at most a handful of chunks, which is the whole reason the cold start budget is a
-download budget (section 14, P4).
+**The client decodes lazily**, per chunk, through `ContentPackReader.CreateLazy`. The caller supplies the
+maximum decoded chunk count and the reader keeps that many in least recently used order. It holds compressed
+bytes in the content-addressed store and decompresses a chunk when a row in its id range is asked for. A later
+lookup decompresses it again after eviction. A client that walks a 30-slot inventory touches at most a handful
+of chunks, which is the whole reason the cold start budget is a download budget (section 14, P4).
+
+The ordinary constructor remains the snapshot mode and retains every chunk read until `BuildSnapshot` hands
+them over. `CreateLazy` refuses `BuildSnapshot` and `ReadAllAsync`, because evicting a decoded chunk while
+promising that a later synchronous snapshot includes every chunk read would be contradictory. P10 measures
+text residency and P11 measures composed server boot. Neither is a lazy decoded-chunk residency budget, so
+the consumer chooses this structural count from its own decoded heap budget.
 
 The two paths share one reader and differ only in when they call it, so there is one decoder and one set of
 reason tokens.

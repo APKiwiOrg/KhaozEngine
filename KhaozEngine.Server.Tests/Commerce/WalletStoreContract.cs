@@ -27,11 +27,31 @@ public abstract class WalletStoreContract
     public async Task Credit_is_idempotent_by_key()
     {
         IWalletStore s = NewStore();
-        await s.CreditAsync(A, C, 5, "dup", LedgerReason.Grant, null);
-        CreditResult again = await s.CreditAsync(A, C, 5, "dup", LedgerReason.Grant, null);
+        await s.CreditAsync(A, C, 5, "dup", LedgerReason.Grant, "first-source");
+        await s.CreditAsync(A, C, 2, "later", LedgerReason.Grant, null);
+        CreditResult again = await s.CreditAsync(A, C, 5, "dup", LedgerReason.Grant, "retry-source");
+        Assert.False(again.Applied);
         Assert.True(again.Replayed);
+        Assert.False(again.Conflict);
         Assert.Equal(5, again.NewBalance);
-        Assert.Single(await s.GetLedgerAsync(A, C, 100));
+        Assert.Equal(7, await s.GetBalanceAsync(A, C));
+        Assert.Equal(2, (await s.GetLedgerAsync(A, C, 100)).Count);
+    }
+
+    [Fact]
+    public async Task Credit_key_reuse_with_different_intent_conflicts()
+    {
+        IWalletStore s = NewStore();
+        await s.CreditAsync(A, C, 5, "dup", LedgerReason.Grant, null);
+        await s.CreditAsync(A, C, 2, "later", LedgerReason.Grant, null);
+
+        CreditResult differentAmount = await s.CreditAsync(A, C, 6, "dup", LedgerReason.Grant, null);
+        CreditResult differentReason = await s.CreditAsync(A, C, 5, "dup", LedgerReason.Adjustment, null);
+
+        AssertCreditConflict(differentAmount, 5);
+        AssertCreditConflict(differentReason, 5);
+        Assert.Equal(7, await s.GetBalanceAsync(A, C));
+        Assert.Equal(2, (await s.GetLedgerAsync(A, C, 100)).Count);
     }
 
     [Fact]
@@ -52,9 +72,57 @@ public abstract class WalletStoreContract
         IWalletStore s = NewStore();
         await s.CreditAsync(A, C, 10, "c", LedgerReason.Grant, null);
         await s.DebitAsync(A, C, 4, "spend", LedgerReason.Spend, null);
+        await s.CreditAsync(A, C, 2, "later", LedgerReason.Grant, null);
         DebitResult again = await s.DebitAsync(A, C, 4, "spend", LedgerReason.Spend, null);
+        Assert.False(again.Applied);
         Assert.True(again.Replayed);
+        Assert.False(again.Conflict);
+        Assert.False(again.Insufficient);
         Assert.Equal(6, again.NewBalance);
+        Assert.Equal(8, await s.GetBalanceAsync(A, C));
+        Assert.Equal(3, (await s.GetLedgerAsync(A, C, 100)).Count);
+    }
+
+    [Fact]
+    public async Task Debit_key_reuse_with_different_intent_conflicts()
+    {
+        IWalletStore s = NewStore();
+        await s.CreditAsync(A, C, 10, "seed", LedgerReason.Grant, null);
+        await s.DebitAsync(A, C, 4, "dup", LedgerReason.Spend, null);
+        await s.CreditAsync(A, C, 2, "later", LedgerReason.Grant, null);
+
+        DebitResult differentAmount = await s.DebitAsync(A, C, 3, "dup", LedgerReason.Spend, null);
+        DebitResult differentReason = await s.DebitAsync(A, C, 4, "dup", LedgerReason.Adjustment, null);
+
+        AssertDebitConflict(differentAmount, 6);
+        AssertDebitConflict(differentReason, 6);
+        Assert.Equal(8, await s.GetBalanceAsync(A, C));
+        Assert.Equal(3, (await s.GetLedgerAsync(A, C, 100)).Count);
+    }
+
+    [Fact]
+    public async Task Key_reuse_across_credit_and_debit_conflicts()
+    {
+        IWalletStore s = NewStore();
+        await s.CreditAsync(A, C, 4, "credit-first", LedgerReason.Adjustment, null);
+
+        DebitResult debitConflict = await s.DebitAsync(
+            A, C, 4, "credit-first", LedgerReason.Adjustment, null);
+
+        AssertDebitConflict(debitConflict, 4);
+        Assert.Equal(4, await s.GetBalanceAsync(A, C));
+        Assert.Single(await s.GetLedgerAsync(A, C, 100));
+
+        AccountId second = new("acct:2");
+        await s.CreditAsync(second, C, 10, "seed", LedgerReason.Grant, null);
+        await s.DebitAsync(second, C, 4, "debit-first", LedgerReason.Adjustment, null);
+
+        CreditResult creditConflict = await s.CreditAsync(
+            second, C, 4, "debit-first", LedgerReason.Adjustment, null);
+
+        AssertCreditConflict(creditConflict, 6);
+        Assert.Equal(6, await s.GetBalanceAsync(second, C));
+        Assert.Equal(2, (await s.GetLedgerAsync(second, C, 100)).Count);
     }
 
     [Fact]
@@ -120,5 +188,22 @@ public abstract class WalletStoreContract
         Assert.False(r2.Replayed);
         Assert.Equal(5, await s.GetBalanceAsync(A, C));
         Assert.Equal(7, await s.GetBalanceAsync(a2, C));
+    }
+
+    private static void AssertCreditConflict(CreditResult result, long historicalBalance)
+    {
+        Assert.False(result.Applied);
+        Assert.False(result.Replayed);
+        Assert.True(result.Conflict);
+        Assert.Equal(historicalBalance, result.NewBalance);
+    }
+
+    private static void AssertDebitConflict(DebitResult result, long historicalBalance)
+    {
+        Assert.False(result.Applied);
+        Assert.False(result.Replayed);
+        Assert.False(result.Insufficient);
+        Assert.True(result.Conflict);
+        Assert.Equal(historicalBalance, result.NewBalance);
     }
 }

@@ -17,12 +17,14 @@ public sealed class Wallet
         this.catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
     }
 
-    /// <summary>A server-authorized free grant (e.g. daily). Idempotent by idempotency key.</summary>
+    /// <summary>A server-authorized free grant (e.g. daily). Idempotent by idempotency key, with an explicit
+    /// conflict when a key is reused for another amount.</summary>
     public Task<CreditResult> GrantAsync(AccountId account, CurrencyId currency, long amount,
         string idempotencyKey, CancellationToken ct = default)
         => store.CreditAsync(account, currency, amount, idempotencyKey, LedgerReason.Grant, null, ct);
 
-    /// <summary>A player spend. Idempotent; returns <c>Insufficient</c> if the balance is too low.</summary>
+    /// <summary>A player spend. Idempotent, with an explicit conflict when a key is reused for another amount.
+    /// Returns <c>Insufficient</c> if the balance is too low.</summary>
     public Task<DebitResult> SpendAsync(AccountId account, CurrencyId currency, long amount,
         string idempotencyKey, CancellationToken ct = default)
         => store.DebitAsync(account, currency, amount, idempotencyKey, LedgerReason.Spend, null, ct);
@@ -30,7 +32,8 @@ public sealed class Wallet
     public Task<long> BalanceAsync(AccountId account, CurrencyId currency, CancellationToken ct = default)
         => store.GetBalanceAsync(account, currency, ct);
 
-    /// <summary>Credit a validated purchase. Idempotent by the entitlement's source transaction id.</summary>
+    /// <summary>Credit a validated purchase. Idempotent by the entitlement's source transaction id, with an
+    /// explicit conflict when that transaction id is reused for another amount.</summary>
     /// <exception cref="ArgumentException">The product id is not in the catalog, or quantity is not positive.</exception>
     public Task<CreditResult> RedeemAsync(VerifiedEntitlement ent, CancellationToken ct = default)
     {

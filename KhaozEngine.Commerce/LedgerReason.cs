@@ -1,6 +1,7 @@
 namespace KhaozEngine.Commerce;
 
-/// <summary>Why a ledger row exists. Purely descriptive; does not affect balance math.</summary>
+/// <summary>Why a ledger row exists. It does not affect balance math, but a stored value participates in
+/// idempotency conflict detection.</summary>
 public enum LedgerReason
 {
     /// <summary>A server-authorized free grant (e.g. a daily reward).</summary>

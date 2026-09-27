@@ -12,17 +12,20 @@ namespace KhaozEngine.Commerce;
 /// not a replay. Not a reuse of IWorldStore, which is opaque-bytes last-write-wins and cannot express
 /// atomic increments or idempotency.
 /// A replayed key returns the balance as of the original operation (the historical post-balance),
-/// not necessarily the current balance. An idempotency key is assumed to bind a fixed
-/// <c>(amount, reason)</c>: re-using the same key with a different amount or reason silently returns
-/// the original result, no error (a future conflict-detecting result is a deferred follow-up).
+/// not necessarily the current balance. An idempotency key binds the signed amount and
+/// <see cref="LedgerReason"/>. Reusing it with a different amount or reason, including switching between
+/// credit and debit, returns a result with <c>Conflict=true</c> and leaves the balance and ledger unchanged.
+/// A conflict also carries the original operation's historical post-balance. <c>sourceRef</c> is descriptive
+/// provenance and does not participate in this comparison.
 /// </summary>
 public interface IWalletStore
 {
-    /// <summary>Add <paramref name="amount"/> (must be &gt; 0) idempotently.</summary>
+    /// <summary>Add <paramref name="amount"/> (must be &gt; 0) idempotently, or report an intent conflict.</summary>
     Task<CreditResult> CreditAsync(AccountId account, CurrencyId currency, long amount,
         string idempotencyKey, LedgerReason reason, string? sourceRef, CancellationToken ct = default);
 
-    /// <summary>Subtract <paramref name="amount"/> (must be &gt; 0) idempotently; fails (no throw) if balance is too low.</summary>
+    /// <summary>Subtract <paramref name="amount"/> (must be &gt; 0) idempotently, report an intent conflict, or
+    /// fail without throwing when the balance is too low.</summary>
     Task<DebitResult> DebitAsync(AccountId account, CurrencyId currency, long amount,
         string idempotencyKey, LedgerReason reason, string? sourceRef, CancellationToken ct = default);
 

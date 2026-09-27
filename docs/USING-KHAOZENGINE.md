@@ -17252,6 +17252,7 @@ var account = new AccountId("player:1234");
 var entitlement = new VerifiedEntitlement(account, ProductId: "shards_100", SourceTxnId: "txn_abc123", Quantity: 1);
 CreditResult redeemed = await wallet.RedeemAsync(entitlement);
 // redeemed.Replayed is true if this SourceTxnId was already credited - safe to call again on a retry.
+// redeemed.Conflict is true if that SourceTxnId was already bound to another amount or ledger reason.
 
 // A daily grant, routed through the same wallet and store (InMemoryWalletStore also implements IGrantScheduleStore).
 var daily = new PeriodicGrant(wallet, store, TimeSpan.FromHours(24),
@@ -17272,6 +17273,11 @@ long balance = await wallet.BalanceAsync(account, new CurrencyId("shard"));
 
 `rewardId` may not contain `':'`, the separator the wallet idempotency key joins its segments with. An account id
 still may (the fleet writes them as `"acct:1"`).
+
+An idempotency key binds the signed amount and `LedgerReason` within its account and currency scope. An exact retry
+returns `Replayed=true` and the original operation's historical post-balance. Reusing the key with another amount
+or reason, including changing a credit to a debit, returns `Conflict=true` with that historical post-balance and
+does not change the balance or ledger. `SourceRef` is provenance and does not take part in the comparison.
 
 `Wallet.SpendAsync` debits (fails with `Insufficient`, no throw, if the balance is too low); `GrantAsync` is
 a raw server-authorized credit for anything outside the periodic/purchase paths. See

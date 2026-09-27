@@ -16,8 +16,10 @@ Schema (`wallet_ledger`, `wallet_balance`, `grant_schedule`) is bootstrapped on 
 inside a SQLite transaction over a single held connection, serialized by a semaphore so operations never overlap
 on the shared connection. Idempotency is enforced by a composite unique index on
 `(account_id, currency_id, idempotency_key)`: replaying an already-seen key for the same account and currency is a
-no-op that returns the prior balance; the same key on a different account, or a different currency on the same
-account, is a distinct operation.
+no-op that returns the prior balance when its signed amount and `LedgerReason` match. A different amount, reason,
+or direction returns `Conflict=true` and leaves the balance and ledger unchanged. The same key on a different
+account, or a different currency on the same account, is a distinct operation. The existing ledger row already
+holds the signed delta and reason, so this needs no extra fingerprint table or schema migration.
 
 Opt-in: pulls `Microsoft.Data.Sqlite` without touching the dependency-free `KhaozEngine.Commerce` core. Not
 bundled in the `Server` umbrella. Dispose the store to close the connection. The connection is never pooled, so the OS

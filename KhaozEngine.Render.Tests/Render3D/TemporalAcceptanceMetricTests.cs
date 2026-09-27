@@ -211,5 +211,140 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(new PixelRect(145, 75, 176, 105),
                 TemporalAcceptance.Footprint(stage.Camera(), shift - half, shift + half, 320, 180));
         }
+
+        static ChangeStats Changes(float[] tested, float[] reference) =>
+            TemporalAcceptance.Changes(Sequence(tested), Sequence(reference), 1, 1, Pixel);
+
+        [Fact]
+        public void AFlickerTheReferenceLacksIsAllAddedChange()
+        {
+            ChangeStats c = Changes(new[] { 0.5f, 0.6f, 0.5f, 0.6f, 0.5f }, new[] { 0.5f, 0.5f, 0.5f, 0.5f, 0.5f });
+            Assert.Equal(25.0 / 255.0, c.Added, 6);
+            Assert.Equal(25.0 / 255.0, c.OwnChange, 6);
+            Assert.Equal((0.0, 0.0), (c.Removed, c.ReferenceChange));
+        }
+
+        [Fact]
+        public void AFrozenImageRemovesAllOfTheReferencesChange()
+        {
+            ChangeStats c = Changes(new[] { 0.3f, 0.3f, 0.3f, 0.3f }, new[] { 0f, 1f, 0f, 0.4f });
+            Assert.Equal((0.0, 0.0), (c.Added, c.OwnChange));
+            Assert.Equal(c.ReferenceChange, c.Removed, 6);
+            Assert.Equal(c.ReferenceChange, c.Error, 6);
+        }
+
+        [Fact]
+        public void AddedLessRemovedIsOwnLessReferenceChangeAndTheirSumIsAtMostTheError()
+        {
+            float[] tested = { 0.1f, 0.5f, 0.45f, 0.9f, 0.2f, 0.25f }, reference = { 0.2f, 0.2f, 0.7f, 0.6f, 0.6f, 0f };
+            ChangeStats c = Changes(tested, reference);
+            Assert.Equal(c.OwnChange - c.ReferenceChange, c.Added - c.Removed, 6);
+            Assert.True(c.Added + c.Removed <= c.Error + 1e-9, $"{c}");
+        }
+
+        [Fact]
+        public void AOneFrameLagOfACrossingReachesTwiceTheFrozenScore()
+        {
+            byte[][] reference = Sequence(0f, 0f, 1f, 0f, 0f, 0f);
+            byte[][] lagged = TemporalAcceptance.LaggedReference(reference, Grey(0f));
+            double frozen = TemporalAcceptance.MeanChange(reference, 1, 1, Pixel);
+
+            Assert.Equal(0.4, frozen, 6);
+            Assert.Equal(2 * frozen, TemporalAcceptance.TemporalError(lagged, reference, 1, 1, Pixel), 6);
+        }
+
+        [Fact]
+        public void AStillBiasCancelsButAMovingFeatureScaledByHalfCostsHalfTheFrozenScore()
+        {
+            Assert.Equal(0.0, Error(new[] { 0.3f, 0.3f, 0.3f }, new[] { 0.6f, 0.6f, 0.6f }));
+
+            float[] crossing = { 0f, 0f, 1f, 0f, 0f }, halved = { 0f, 0f, 0.5f, 0f, 0f };
+            double frozen = TemporalAcceptance.MeanChange(Sequence(crossing), 1, 1, Pixel);
+            Assert.InRange(Error(halved, crossing) / frozen, 0.49, 0.51);
+        }
+
+        [Fact]
+        public void TheFiveByFiveLowPassDividesAOnePixelFlickerByTwentyFiveAndKeepsAWideOne()
+        {
+            // 9 by 9 grey 100. The centre pixel, or the whole image, toggles to 125 against a still reference.
+            static byte[] Image(bool centre, bool whole)
+            {
+                var rgba = new byte[9 * 9 * 4];
+                for (int p = 0; p < 81; p++)
+                {
+                    byte v = (byte)(whole || (centre && p == 40) ? 125 : 100);
+                    rgba[p * 4] = rgba[p * 4 + 1] = rgba[p * 4 + 2] = v;
+                    rgba[p * 4 + 3] = 255;
+                }
+                return rgba;
+            }
+            var still = new[] { Image(false, false), Image(false, false), Image(false, false) };
+            var one = new[] { Image(false, false), Image(true, false), Image(false, false) };
+            var wide = new[] { Image(false, false), Image(false, true), Image(false, false) };
+            var centre = new PixelRect(4, 4, 5, 5);
+            const double Step = 25.0 / 255.0;
+
+            Assert.Equal(Step, TemporalAcceptance.TemporalError(one, still, 9, 9, centre), 6);
+            Assert.Equal(Step / 25, TemporalAcceptance.LowPassedError(one, still, 9, 9, centre), 6);
+            Assert.Equal(Step, TemporalAcceptance.LowPassedError(wide, still, 9, 9, centre), 6);
+        }
+
+        [Fact]
+        public void EnergyIsTheShareOfLumaAboveEachImagesOwnBackground()
+        {
+            // 8 by 4, background at pixel (2, 2), region the right half.
+            static byte[] Image(byte background, byte feature)
+            {
+                var rgba = new byte[8 * 4 * 4];
+                for (int p = 0; p < 32; p++)
+                {
+                    byte v = p % 8 >= 4 ? feature : background;
+                    rgba[p * 4] = rgba[p * 4 + 1] = rgba[p * 4 + 2] = v;
+                    rgba[p * 4 + 3] = 255;
+                }
+                return rgba;
+            }
+            var half = new PixelRect(4, 0, 8, 4);
+            byte[] reference = Image(50, 150);
+
+            Assert.Equal(1.0, TemporalAcceptance.Energy(reference, reference, 8, 4, half), 6);
+            Assert.Equal(0.5, TemporalAcceptance.Energy(Image(50, 100), reference, 8, 4, half), 6);
+            Assert.Equal(0.0, TemporalAcceptance.Energy(Image(50, 50), reference, 8, 4, half), 6);
+            Assert.Equal(1.0, TemporalAcceptance.Energy(Image(60, 160), reference, 8, 4, half), 6);
+        }
+
+        [Fact]
+        public void TheLaggedReferenceIsTheReferenceOneFrameLate()
+        {
+            byte[][] reference = Sequence(0.1f, 0.2f, 0.3f);
+            byte[] before = Grey(0.05f);
+            byte[][] lagged = TemporalAcceptance.LaggedReference(reference, before);
+
+            Assert.Same(before, lagged[0]);
+            Assert.Same(reference[0], lagged[1]);
+            Assert.Same(reference[1], lagged[2]);
+        }
+
+        [Fact]
+        public void FlickerTakesSharpnessAndEnergyAsRatiosOfSumsSoAFlatFrameIsNotNaN()
+        {
+            var checker = new byte[4 * 4 * 4];
+            var flat = new byte[4 * 4 * 4];
+            for (int p = 0; p < 16; p++)
+            {
+                byte v = (byte)(((p % 4) + (p / 4)) % 2 == 0 ? 0 : 255);
+                checker[p * 4] = checker[p * 4 + 1] = checker[p * 4 + 2] = v;
+                flat[p * 4] = flat[p * 4 + 1] = flat[p * 4 + 2] = 128;
+                checker[p * 4 + 3] = flat[p * 4 + 3] = 255;
+            }
+            var frames = new[] { checker, flat };
+
+            FlickerStats f = TemporalAcceptance.Flicker(frames, frames, 4, 4, new PixelRect(0, 0, 4, 4));
+
+            Assert.True(double.IsNaN(TemporalAcceptance.Sharpness(flat, flat, 4, 4, new PixelRect(0, 0, 4, 4))));
+            Assert.Equal(1.0, f.Sharpness, 6);
+            Assert.Equal(1.0, f.Energy, 6);
+            Assert.Equal((0.0, 0.0, 0.0), (f.TemporalError, f.AddedChange, f.LowPassedError));
+        }
     }
 }

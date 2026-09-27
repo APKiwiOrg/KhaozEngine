@@ -14,8 +14,10 @@ namespace KhaozEngine.Tests.Gpu
     /// and not the rig. A supersampled reference frames the display view and box-filters a quarter-pixel edge to the
     /// exact quarter mix, with the render cap raised for it. The flip counter counts every reversal of a patch toggled
     /// each frame and nothing on a still wall. Every scene renders one frame the same way twice. The rectangles the
-    /// metrics read cover exactly what the scenes draw. On the fence pan, raw flips cannot tell MSAA 4x from no
-    /// anti-aliasing while the temporal error against a reference sequence can.
+    /// metrics read cover exactly what the scenes draw. A reference sequence equals an anti-aliasing off sequence at
+    /// the larger size box-filtered by hand, byte for byte, and its lag control is the same sequence one frame
+    /// earlier. On the fence pan, raw flips cannot tell MSAA 4x from no anti-aliasing while the temporal error against
+    /// a reference sequence can.
     /// </summary>
     public sealed class TemporalAcceptanceRigGpuTests(ITestOutputHelper output)
     {
@@ -120,6 +122,8 @@ namespace KhaozEngine.Tests.Gpu
             var fence = new FenceScene(SceneW, SceneH);
             yield return ("fence pan", s => fence.Stage.Setup(s, AntiAliasing.Temporal),
                 (s, n) => fence.Draw(s, n * 0.2f), 8);
+            yield return ("fence over the wall, pan", s => fence.Stage.Setup(s, AntiAliasing.Temporal),
+                (s, n) => fence.DrawOverWall(s, n * 0.2f), 8);
             var yard = new IsoYard(SceneW, SceneH);
             yield return ("isometric zoom", s => yard.Setup(s, AntiAliasing.Temporal), yard.Draw,
                 IsoYard.HoldFrames + 4);
@@ -246,11 +250,15 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
+        // 0 the SSAA mode, 1 a raw supersample, 2 temporal anti-aliasing, 3 forced temporal rendering, 4 the motion
+        // vectors view.
         [GpuTheory]
         [InlineData(0)]
         [InlineData(1)]
         [InlineData(2)]
-        public void A_snapshot_refuses_the_supersampling_paths_and_a_lone_temporal_frame(int kind)
+        [InlineData(3)]
+        [InlineData(4)]
+        public void A_snapshot_refuses_the_supersampling_paths_and_a_jittered_frame(int kind)
         {
             var stage = new FrontStage(W, H, 4.5f);
             void Setup(Scene3D s)
@@ -262,19 +270,58 @@ namespace KhaozEngine.Tests.Gpu
                     _ => AntiAliasing.Off,
                 });
                 if (kind == 1) s.Post.Supersample = 2f;
+                if (kind == 3) s.ForceTemporalForTests = true;
+                if (kind == 4) s.DebugView = SceneDebugView.MotionVectors;
             }
             var refused = Assert.Throws<ArgumentException>(() => TemporalAcceptance.Snapshot(W, H, Setup, stage.Wall));
             output.WriteLine(refused.Message);
+        }
+
+        [GpuFact]
+        public void A_reference_sequence_equals_a_larger_sequence_box_filtered_and_its_lag_is_one_frame_earlier()
+        {
+            // The fence over the wall panning 0.2 pixels a frame, HDR off, frames 3 to 5. The larger sequence renders
+            // its first frames where the reference sequence skips them.
+            const int First = 3, Count = 3, Factor = TemporalAcceptance.SequenceReferenceFactor;
+            var fence = new FenceScene(SceneW, SceneH);
+            void Draw(Scene3D s, int n) => fence.DrawOverWall(s, n * 0.2f);
+            void Setup(Scene3D s)
+            {
+                fence.Stage.Setup(s, AntiAliasing.Off);
+                s.Post.Hdr.Enabled = false;
+            }
+
+            byte[][] reference = TemporalAcceptance.ReferenceSequence(SceneW, SceneH, Setup, Draw, First, Count);
+            byte[][] large = TemporalAcceptance.Sequence(SceneW * Factor, SceneH * Factor, Setup, Draw, First, Count);
+            byte[][] early = TemporalAcceptance.ReferenceSequence(SceneW, SceneH, Setup, Draw, First - 1, Count);
+            byte[] before = TemporalAcceptance.Supersampled(SceneW, SceneH, Factor, Setup, Draw, First - 1);
+            byte[][] lagged = TemporalAcceptance.LaggedReference(reference, before);
+
+            for (int t = 0; t < Count; t++)
+            {
+                byte[] filtered = Rgba8Stats.BoxDownsample(large[t], SceneW * Factor, SceneH * Factor, Factor);
+                Assert.True(filtered.AsSpan().SequenceEqual(reference[t]),
+                    $"frame {First + t} differs from the reference");
+                Assert.True(lagged[t].AsSpan().SequenceEqual(early[t]),
+                    $"lagged frame {t} is not frame {First + t - 1}");
+            }
+            Assert.False(reference[0].AsSpan().SequenceEqual(reference[1]), "the pan must move the image");
         }
 
         [GpuFact(RequiresFourSampleMsaa = true)]
         public void On_the_fence_pan_raw_flips_cannot_tell_msaa_from_aliasing_and_the_temporal_error_can()
         {
             // The pan and window a stability acceptance uses: 0.2 display pixels a frame, 16 warm frames, 64 measured.
+            // HDR is off, the legacy chain with no tonemap, so the reference's box filter after the tonemap and the
+            // MSAA resolve before it average the same values.
             const int Warm = 16, Measured = 64;
             var fence = new FenceScene(SceneW, SceneH);
             void Draw(Scene3D s, int n) => fence.Draw(s, n * 0.2f);
-            Action<Scene3D> Setup(AntiAliasing aa) => s => fence.Stage.Setup(s, aa);
+            Action<Scene3D> Setup(AntiAliasing aa) => s =>
+            {
+                fence.Stage.Setup(s, aa);
+                s.Post.Hdr.Enabled = false;
+            };
             PixelRect region = fence.Region;
 
             long started = Stopwatch.GetTimestamp();
@@ -299,6 +346,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0.0, TemporalAcceptance.TemporalError(reference, reference, SceneW, SceneH, region));
             Assert.True(o.Flips > 0.005, $"the fence pan must flip without anti-aliasing. off {o.Flips:0.00000}");
             Assert.InRange(m.Flips / o.Flips, 0.75, 1.25);
+            Assert.True(m.TemporalError < 0.8 * o.TemporalError,
+                $"MSAA 4x must sit closer to the reference than no anti-aliasing: {m.TemporalError:0.00000} against "
+                + $"{o.TemporalError:0.00000}");
             Assert.True(i.TemporalError < 0.5 * o.TemporalError,
                 "the 8x sequence must sit far closer to the reference than no anti-aliasing: "
                 + $"{i.TemporalError:0.00000} against {o.TemporalError:0.00000}");

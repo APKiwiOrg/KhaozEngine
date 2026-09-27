@@ -45,9 +45,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// Raw flips do not rank anti-aliasing modes on a moving path. A feature thinner than a pixel raises a pixel and
     /// then lowers it as it crosses, one reversal per crossing under any anti-aliasing, so no anti-aliasing, MSAA 4x
-    /// and an ideal box filter score alike, and blur or lag scores lower than the ideal. Rank modes by
-    /// <see cref="TemporalAcceptance.TemporalError"/> against <see cref="TemporalAcceptance.ReferenceSequence"/>,
-    /// and read the flips of the reference sequence as the floor of legitimate crossings.
+    /// and an ideal box filter score alike, and blur or lag scores lower than the ideal. Measure flicker against
+    /// <see cref="TemporalAcceptance.ReferenceSequence"/> instead, with <see cref="TemporalAcceptance.Flicker"/>, and
+    /// read the flips of the reference sequence as the floor of legitimate crossings.
     /// </para>
     /// </summary>
     internal sealed class FlipCounter
@@ -290,8 +290,9 @@ namespace KhaozEngine.Tests.Gpu
         /// for a single frame under anti-aliasing off, FXAA or MSAA. It refuses three setups. The engine's
         /// supersampling mode and a raw <see cref="PixelPostProcessSettings.Supersample"/> above 1 both downsample
         /// through the mip-filtered blit, whose capture on Direct3D 11 is barely anti-aliased (#1175), so a reference
-        /// is always built by <see cref="Supersampled"/>. Temporal anti-aliasing would give one jittered frame with no
-        /// history, so a temporal frame comes from a <see cref="TemporalFixture"/> run instead.
+        /// is always built by <see cref="Supersampled"/>. Temporal anti-aliasing, forced temporal rendering and the
+        /// motion vectors view would each give one jittered frame, the first with no history, so a temporal frame comes
+        /// from a <see cref="TemporalFixture"/> run instead.
         /// </summary>
         public static byte[] Snapshot(int w, int h, Action<Scene3D> setup, Action<Scene3D> draw)
         {
@@ -306,6 +307,9 @@ namespace KhaozEngine.Tests.Gpu
             if (post.Quality.AntiAliasing.Mode == AntiAliasingMode.Temporal)
                 throw new ArgumentException("A single temporal frame is one jittered frame with no history. Render "
                     + "temporal frames through a TemporalFixture run.", nameof(setup));
+            if (fx.Scene.ForceTemporalForTests || fx.Scene.DebugView == SceneDebugView.MotionVectors)
+                throw new ArgumentException("Forced temporal rendering and the motion vectors view jitter the frame. "
+                    + "Render temporal frames through a TemporalFixture run.", nameof(setup));
             return fx.Frame((s, _) => draw(s));
         }
 

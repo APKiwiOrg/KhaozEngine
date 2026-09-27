@@ -116,11 +116,20 @@ namespace KhaozEngine.Tests.Gpu
     }
 
     /// <summary>Thin geometry: 21 bars a third of a pixel wide at 30 degrees, the sub-pixel case that aliases. A pan
-    /// moves the camera, never the bars.</summary>
+    /// moves the camera, never the bars. <see cref="Draw"/> puts them over the dark background, which reprojects by
+    /// the camera's rotation, the worst case for the resolve's lock. <see cref="DrawOverWall"/> puts them over the flat
+    /// wall, bars over a surface as on an isometric ground.</summary>
     internal sealed class FenceScene
     {
         public readonly FrontStage Stage;
         public FenceScene(int w, int h) => Stage = new FrontStage(w, h, 4.5f);
+
+        /// <summary>The same bars and pan in front of the flat grey wall.</summary>
+        public void DrawOverWall(Scene3D s, float panPixels)
+        {
+            Draw(s, panPixels);
+            Stage.Wall(s);
+        }
 
         public void Draw(Scene3D s, float panPixels)
         {

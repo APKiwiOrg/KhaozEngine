@@ -35,8 +35,8 @@ public enum ContainerOperationKind
     Take = 5,
 
     /// <summary>Rewrite the payload of an owned item in place and consume the currency that paid for it,
-    /// spec 10.6. The PLACEHOLDER of this phase: the operation and its page write are real, and the event
-    /// BODY is the crafting framework's to encode.</summary>
+    /// spec 10.6. Its durable body is <see cref="ItemCraftedEvent"/>, which carries the before and after
+    /// payloads for audit and replay.</summary>
     Craft = 6,
 
     /// <summary>Shift one occupied run to an empty leading or trailing fringe in the same container.
@@ -140,9 +140,8 @@ public readonly record struct ContainerOperation
 
     /// <summary>
     /// The durable event body, which only <see cref="ContainerOperationKind.Craft"/> takes and which it
-    /// REQUIRES. Spec 10.6 owns that body and the crafting framework encodes it, so this phase carries it
-    /// rather than freezing a format under a durable event name. Every other kind writes its own canonical
-    /// encoding as its event body.
+    /// REQUIRES. A craft carries the <see cref="ItemCraftedEvent"/> audit body encoded by the caller that
+    /// composes the commit. Every other kind writes its own canonical encoding as its event body.
     /// </summary>
     public ReadOnlyMemory<byte> EventPayload { get; init; }
 

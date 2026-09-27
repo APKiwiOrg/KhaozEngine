@@ -35,20 +35,33 @@ namespace KhaozEngine.Tests.Gpu
     /// across any number of ignored changes. So a pixel toggling between blade and ground flips on every reversal, a
     /// pixel crossed once by a moving edge steps once and never flips, and a slow drift or a ramp never flips at
     /// all.
+    /// A fast flip reverses a step taken at most <see cref="FastFrames"/> frames earlier, the probe's measure of
+    /// flicker a viewer sees as a shimmer rather than as motion.
     /// <para>
     /// The threshold, 0.03, is 7.65 steps of 8-bit luma. Rounding the output to 8 bits moves luma by at most one step,
     /// under 0.004, and the half-float history rounds a display value under 1 by less than 0.0005, so rounding noise on
-    /// any backend never makes a step. Compare rates from one backend in one session only, such as a temporal run
-    /// against an MSAA 4x run of the same path.
+    /// any backend never makes a step. Compare rates from one backend in one session only.
+    /// </para>
+    /// <para>
+    /// Raw flips do not rank anti-aliasing modes on a moving path. A feature thinner than a pixel raises a pixel and
+    /// then lowers it as it crosses, one reversal per crossing under any anti-aliasing, so no anti-aliasing, MSAA 4x
+    /// and an ideal box filter score alike, and blur or lag scores lower than the ideal. Rank modes by
+    /// <see cref="TemporalAcceptance.TemporalError"/> against <see cref="TemporalAcceptance.ReferenceSequence"/>,
+    /// and read the flips of the reference sequence as the floor of legitimate crossings.
     /// </para>
     /// </summary>
     internal sealed class FlipCounter
     {
         public const float Threshold = 0.03f;
+
+        /// <summary>A flip that reverses a step at most this many frames old counts as fast.</summary>
+        public const int FastFrames = 2;
+
         readonly int _w;
         readonly PixelRect _region;
         readonly float[] _previous;
         readonly sbyte[] _sign;
+        readonly int[] _stepFrame;
         int _frames;
 
         /// <summary>A counter over <paramref name="region"/>, clipped to the <paramref name="width"/> by
@@ -59,6 +72,7 @@ namespace KhaozEngine.Tests.Gpu
             _region = region.Clip(width, height);
             _previous = new float[width * height];
             _sign = new sbyte[width * height];
+            _stepFrame = new int[width * height];
         }
 
         /// <summary>Flips so far, summed over the region.</summary>
@@ -66,8 +80,16 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Flips per region pixel per frame step: <see cref="Flips"/> over the clipped region's area times
         /// one less than the frames added.</summary>
-        public double FlipsPerPixelPerFrame =>
-            _frames <= 1 || _region.Area == 0 ? 0 : Flips / ((double)_region.Area * (_frames - 1));
+        public double FlipsPerPixelPerFrame => PerPixelPerFrame(Flips);
+
+        /// <summary>Flips so far that reversed a step at most <see cref="FastFrames"/> frames old.</summary>
+        public long FastFlips { get; private set; }
+
+        /// <summary><see cref="FastFlips"/> per region pixel per frame step.</summary>
+        public double FastFlipsPerPixelPerFrame => PerPixelPerFrame(FastFlips);
+
+        double PerPixelPerFrame(long count) =>
+            _frames <= 1 || _region.Area == 0 ? 0 : count / ((double)_region.Area * (_frames - 1));
 
         public void Add(byte[] rgba)
         {
@@ -82,8 +104,13 @@ namespace KhaozEngine.Tests.Gpu
                     _previous[p] = luma;
                     if (MathF.Abs(delta) <= Threshold) continue;
                     sbyte sign = delta > 0f ? (sbyte)1 : (sbyte)-1;
-                    if (_sign[p] != 0 && _sign[p] != sign) Flips++;
+                    if (_sign[p] != 0 && _sign[p] != sign)
+                    {
+                        Flips++;
+                        if (frame - _stepFrame[p] <= FastFrames) FastFlips++;
+                    }
                     _sign[p] = sign;
+                    _stepFrame[p] = frame;
                 }
         }
     }
@@ -91,9 +118,10 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The measures and frame sources the temporal acceptance tests share. Luma is Rec. 709 on 8-bit values, 0 to 1.
     /// Every measure compares frames from one session, never a stored image. Supersampled references come from
-    /// <see cref="Supersampled"/>, never from the engine's supersampling mode.
+    /// <see cref="Supersampled"/> and <see cref="ReferenceSequence"/>, never from the engine's supersampling mode.
+    /// The measures over frame sequences are in TemporalAcceptanceFlicker.cs.
     /// </summary>
-    internal static class TemporalAcceptance
+    internal static partial class TemporalAcceptance
     {
         /// <summary>The largest width or height a <see cref="Supersampled"/> reference renders at, so a reference stays
         /// cheap and inside every backend's texture limits.</summary>
@@ -132,8 +160,15 @@ namespace KhaozEngine.Tests.Gpu
             return region.Area == 0 ? 0 : sum / region.Area;
         }
 
+        /// <summary>An edge closer than this to a pixel boundary, in pixels, is taken to lie on it. Projection rounding
+        /// is under a ten-thousandth of a pixel at these sizes.</summary>
+        public const float EdgeSnapPixels = 1e-3f;
+
         /// <summary>The screen rectangle of a world box, from its eight projected corners, clipped to the image. It
-        /// holds every pixel the box touches, the partly covered ones included.</summary>
+        /// holds every pixel the box touches, the partly covered ones included. An edge within
+        /// <see cref="EdgeSnapPixels"/> of a pixel boundary is snapped to it, so a box whose edges lie on pixel
+        /// boundaries gets exactly the pixels it covers, not one more row or column from rounding. A box with no
+        /// corner in front of the camera has an empty rectangle.</summary>
         public static PixelRect Footprint(IIsoCamera3D camera, Vector3 min, Vector3 max, int w, int h)
         {
             float x0 = float.MaxValue, y0 = float.MaxValue, x1 = float.MinValue, y1 = float.MinValue;
@@ -144,9 +179,16 @@ namespace KhaozEngine.Tests.Gpu
                 if (!camera.WorldToScreen(c, w, h, out Vector2 p)) continue;
                 x0 = MathF.Min(x0, p.X); y0 = MathF.Min(y0, p.Y); x1 = MathF.Max(x1, p.X); y1 = MathF.Max(y1, p.Y);
             }
-            var rect = new PixelRect((int)MathF.Floor(x0), (int)MathF.Floor(y0), (int)MathF.Ceiling(x1),
-                (int)MathF.Ceiling(y1));
+            if (x0 > x1) return default;
+            var rect = new PixelRect((int)MathF.Floor(Snap(x0)), (int)MathF.Floor(Snap(y0)),
+                (int)MathF.Ceiling(Snap(x1)), (int)MathF.Ceiling(Snap(y1)));
             return rect.Clip(w, h);
+        }
+
+        static float Snap(float v)
+        {
+            float boundary = MathF.Round(v);
+            return MathF.Abs(v - boundary) < EdgeSnapPixels ? boundary : v;
         }
 
         /// <summary>
@@ -155,12 +197,16 @@ namespace KhaozEngine.Tests.Gpu
         /// frame it was not drawn. A checked pixel is one the object last covered two or more frames ago and that lies
         /// more than one pixel from where it is now. It counts as trail when it differs from the same pixel of the
         /// background frame, rendered without the object at the same frame index, by more than
-        /// <paramref name="tolerance"/> under <paramref name="measure"/>.
+        /// <paramref name="tolerance"/> under <paramref name="measure"/>. It needs at least the rectangles now and one
+        /// frame ago. An empty rectangle now excludes nothing.
         /// </summary>
         public static (int Over, int Checked, float Worst) Trail(byte[] frame, byte[] background, int w, int h,
             IReadOnlyList<PixelRect> footprints, float tolerance, PixelDifference measure = PixelDifference.Luma)
         {
-            PixelRect now = footprints[0].Inflate(1), previous = footprints[1];
+            if (footprints.Count < 2)
+                throw new ArgumentException("The trail needs the rectangles now and one frame ago.",
+                    nameof(footprints));
+            PixelRect now = footprints[0].Area == 0 ? default : footprints[0].Inflate(1), previous = footprints[1];
             int over = 0, check = 0;
             float worst = 0f;
             for (int y = 0; y < h; y++)
@@ -241,16 +287,25 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// The first frame of a fresh <see cref="TemporalFixture"/> at <paramref name="w"/> by <paramref name="h"/>,
-        /// for a single frame under anti-aliasing off, FXAA or MSAA. It refuses the engine's supersampling mode, whose
-        /// capture on Direct3D 11 is barely anti-aliased (#1175), so a reference is always built by
-        /// <see cref="Supersampled"/>.
+        /// for a single frame under anti-aliasing off, FXAA or MSAA. It refuses three setups. The engine's
+        /// supersampling mode and a raw <see cref="PixelPostProcessSettings.Supersample"/> above 1 both downsample
+        /// through the mip-filtered blit, whose capture on Direct3D 11 is barely anti-aliased (#1175), so a reference
+        /// is always built by <see cref="Supersampled"/>. Temporal anti-aliasing would give one jittered frame with no
+        /// history, so a temporal frame comes from a <see cref="TemporalFixture"/> run instead.
         /// </summary>
         public static byte[] Snapshot(int w, int h, Action<Scene3D> setup, Action<Scene3D> draw)
         {
             using var fx = new TemporalFixture(w, h, setup);
-            if (fx.Scene.Post.Quality.AntiAliasing.Mode == AntiAliasingMode.Ssaa)
+            PixelPostProcessSettings post = fx.Scene.Post;
+            if (post.Quality.AntiAliasing.Mode == AntiAliasingMode.Ssaa)
                 throw new ArgumentException("Build a supersampled reference with Supersampled, not the SSAA mode.",
                     nameof(setup));
+            if (post.Supersample > 1f)
+                throw new ArgumentException("Build a supersampled reference with Supersampled, not Post.Supersample, "
+                    + "which downsamples through the same blit as the SSAA mode.", nameof(setup));
+            if (post.Quality.AntiAliasing.Mode == AntiAliasingMode.Temporal)
+                throw new ArgumentException("A single temporal frame is one jittered frame with no history. Render "
+                    + "temporal frames through a TemporalFixture run.", nameof(setup));
             return fx.Frame((s, _) => draw(s));
         }
 
@@ -273,13 +328,22 @@ namespace KhaozEngine.Tests.Gpu
         public static byte[] Supersampled(int w, int h, int factor, Action<Scene3D> setup, Action<Scene3D, int> draw,
             int frame = 0)
         {
+            using TemporalFixture fx = ReferenceFixture(w, h, factor, setup);
+            fx.SkipFrames(frame);
+            return Rgba8Stats.BoxDownsample(fx.Frame(draw), w * factor, h * factor, factor);
+        }
+
+        // The fixture every supersampled reference renders through: factor times the size, the caller's setup, then
+        // anti-aliasing off at a 1:1 internal size with the cap raised for this fixture alone.
+        static TemporalFixture ReferenceFixture(int w, int h, int factor, Action<Scene3D> setup)
+        {
             if (factor < 1)
                 throw new ArgumentOutOfRangeException(nameof(factor), factor, "The factor must be at least 1.");
             int rw = w * factor, rh = h * factor;
             if (rw > MaxReferenceSide || rh > MaxReferenceSide)
                 throw new ArgumentOutOfRangeException(nameof(factor), factor,
                     $"A {rw} by {rh} reference is larger than {MaxReferenceSide} a side.");
-            using var fx = new TemporalFixture(rw, rh, s =>
+            return new TemporalFixture(rw, rh, s =>
             {
                 setup(s);
                 s.Post.Quality.AntiAliasing = AntiAliasing.Off;
@@ -291,8 +355,6 @@ namespace KhaozEngine.Tests.Gpu
                 s.ForceTemporalForTests = false;
                 s.DebugView = SceneDebugView.None;
             });
-            fx.SkipFrames(frame);
-            return Rgba8Stats.BoxDownsample(fx.Frame(draw), rw, rh, factor);
         }
 
         /// <summary>Flips per pixel per frame over <paramref name="region"/> for <paramref name="measured"/> frames

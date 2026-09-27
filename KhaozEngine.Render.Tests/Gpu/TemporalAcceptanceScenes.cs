@@ -15,8 +15,10 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     internal sealed class FrontStage
     {
-        /// <summary>Display pixels one texel of the textured wall spans, so the texture is magnified in every mode and
-        /// never aliases, while every three by three neighbourhood still holds its variation.</summary>
+        /// <summary>Display pixels one texel of the textured wall spans, so every three by three neighbourhood holds
+        /// its variation. A texel is magnified at a 1:1 internal size, in every supersampled reference and under the
+        /// Quality and Balanced presets, one internal pixel under Performance, and minified under UltraPerformance,
+        /// where the mip chain and the mip bias decide what it shows.</summary>
         public const float TexelPixels = 2f;
 
         /// <summary>The textured wall's texture is this many texels a side, repeating.</summary>
@@ -288,7 +290,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Every pixel the box touches from the reveal on.</summary>
         public PixelRect Landed => Rect(To);
 
-        /// <summary>The pixels the box fully covered before the reveal, which show only the wall after it.</summary>
+        /// <summary>The pixels the box covered before the reveal, less a one-pixel border, which show only the wall
+        /// after it.</summary>
         public PixelRect Revealed => Covered.Inflate(-1);
 
         PixelRect Rect(Vector3 centre) =>

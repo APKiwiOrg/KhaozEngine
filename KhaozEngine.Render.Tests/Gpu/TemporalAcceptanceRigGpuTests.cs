@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
@@ -13,13 +14,15 @@ namespace KhaozEngine.Tests.Gpu
     /// and not the rig. A supersampled reference frames the display view and box-filters a quarter-pixel edge to the
     /// exact quarter mix, with the render cap raised for it. The flip counter counts every reversal of a patch toggled
     /// each frame and nothing on a still wall. Every scene renders one frame the same way twice. The rectangles the
-    /// metrics read cover exactly what the scenes draw.
+    /// metrics read cover exactly what the scenes draw. On the fence pan, raw flips cannot tell MSAA 4x from no
+    /// anti-aliasing while the temporal error against a reference sequence can.
     /// </summary>
     public sealed class TemporalAcceptanceRigGpuTests(ITestOutputHelper output)
     {
         const int W = 160, H = 90, SceneW = 320, SceneH = 180;
 
-        static readonly Color Bright = new(0.95f, 0.85f, 0.6f, 1f);
+        // Lit, it stays under 1 in every channel with HDR off and differs from the wall by more than 16 steps in each.
+        static readonly Color BoxColour = new(0.75f, 0.15f, 0.1f, 1f);
 
         // A 30 by 20 pixel box whose left edge is a quarter of the way into column 60 and whose top edge is a quarter
         // of the way into row 20, at 0.05 world units a pixel. Its shadow falls below the view.
@@ -33,23 +36,30 @@ namespace KhaozEngine.Tests.Gpu
         static int Channel(byte[] rgba, int x, int y, int c) => rgba[(y * W + x) * 4 + c];
 
         [GpuTheory]
-        [InlineData(4, false)]
-        [InlineData(8, false)]
-        [InlineData(8, true)]
+        [InlineData(4, false, true)]
+        [InlineData(8, false, true)]
+        [InlineData(8, true, true)]
+        [InlineData(8, false, false)]
         public void A_supersampled_reference_frames_the_display_view_and_box_filters_a_quarter_pixel_edge(int factor,
-            bool lowCap)
+            bool lowCap, bool hdr)
         {
             var stage = new FrontStage(W, H, 4.5f);
-            void Draw(Scene3D s, int _) { stage.Wall(s); s.Draw(stage.Box, QuarterEdgeBox(stage), Bright); }
+            void Draw(Scene3D s, int _) { stage.Wall(s); s.Draw(stage.Box, QuarterEdgeBox(stage), BoxColour); }
 
             // The setup asks for temporal anti-aliasing, which a reference must override. lowCap also caps the render
-            // at the display size, which only a reference that raises the cap renders past.
+            // at the display size, which only a reference that raises the cap renders past. hdr false is the legacy
+            // chain with no tonemap, which the convergence acceptance runs.
             byte[] reference = TemporalAcceptance.Supersampled(W, H, factor, s =>
             {
                 stage.Setup(s, AntiAliasing.Temporal);
+                s.Post.Hdr.Enabled = hdr;
                 if (lowCap) { s.Post.MaxRenderWidth = W; s.Post.MaxRenderHeight = H; }
             }, Draw);
-            byte[] aliased = TemporalAcceptance.Snapshot(W, H, s => stage.Setup(s, AntiAliasing.Off), s => Draw(s, 0));
+            byte[] aliased = TemporalAcceptance.Snapshot(W, H, s =>
+            {
+                stage.Setup(s, AntiAliasing.Off);
+                s.Post.Hdr.Enabled = hdr;
+            }, s => Draw(s, 0));
 
             // Row 30 crosses the left edge at column 60 and column 75 crosses the top edge at row 20. Each walk runs
             // from two pixels on the wall side, through the edge pixel, to two pixels into the box.
@@ -60,8 +70,8 @@ namespace KhaozEngine.Tests.Gpu
                     int wall = At(reference, -2), before = At(reference, -1), edge = At(reference, 0);
                     int after = At(reference, 1), box = At(reference, 2);
                     int want = (wall + 3 * box + 2) / 4;
-                    string ctx = $"{name} edge, channel {c}, factor {factor}, low cap {lowCap}: wall {wall}, "
-                        + $"before {before}, edge {edge} against {want}, after {after}, box {box}, "
+                    string ctx = $"{name} edge, channel {c}, factor {factor}, low cap {lowCap}, HDR {hdr}: "
+                        + $"wall {wall}, before {before}, edge {edge} against {want}, after {after}, box {box}, "
                         + $"aliased {At(aliased, -1)} {At(aliased, 0)}";
                     output.WriteLine(ctx);
                     Assert.True(Math.Abs(box - wall) >= 16, "the box and the wall must differ for the edge to measure "
@@ -180,17 +190,16 @@ namespace KhaozEngine.Tests.Gpu
             byte[] background = Still(crossing.Stage, crossing.Background, Frame);
             IReadOnlyList<PixelRect> footprints = crossing.Footprints(Frame);
 
+            // The box's edges lie on pixel boundaries, so its footprint is exactly the pixels it covers.
             var (inside, outside) = Differing(frame, background, footprints[0]);
-            PixelRect inner = footprints[0].Inflate(-1);
-            var (innerDiffering, _) = Differing(frame, background, inner);
             var (over, check, worst) = TemporalAcceptance.Trail(frame, background, SceneW, SceneH, footprints, 0.05f,
                 PixelDifference.MaxChannel);
             output.WriteLine($"textured {textured}: footprint {footprints[0]}, {inside} differing inside, "
-                + $"{outside} outside, {innerDiffering} of {inner.Area} inner pixels differ, trail {over} of {check}, "
-                + $"worst {worst:0.000}");
+                + $"{outside} outside, trail {over} of {check}, worst {worst:0.000}");
 
+            Assert.Equal(900, footprints[0].Area);
+            Assert.Equal(footprints[0].Area, inside);
             Assert.Equal(0, outside);
-            Assert.Equal(inner.Area, innerDiffering);
             Assert.True(check > 100, $"the trail region holds {check} pixels");
             Assert.Equal(0, over);
             Assert.Equal(0f, worst);
@@ -206,20 +215,17 @@ namespace KhaozEngine.Tests.Gpu
             byte[] revealed = Still(reveal.Stage, reveal.Draw, RevealScene.RevealFrame);
             byte[] background = Still(reveal.Stage, reveal.Background, RevealScene.RevealFrame);
 
-            PixelRect landedInner = reveal.Landed.Inflate(-1);
+            // The box's edges lie on pixel boundaries, so both rectangles are exactly the pixels it covers.
             var (coveredInside, coveredOutside) = Differing(covered, background, reveal.Covered);
             var (landedInside, landedOutside) = Differing(revealed, background, reveal.Landed);
             var (revealedDiffering, _) = Differing(revealed, background, reveal.Revealed);
-            var (innerCovered, _) = Differing(covered, background, reveal.Revealed);
-            var (innerLanded, _) = Differing(revealed, background, landedInner);
             output.WriteLine($"textured {textured}: covered {reveal.Covered} {coveredInside} in {coveredOutside} out, "
                 + $"landed {reveal.Landed} {landedInside} in {landedOutside} out, "
                 + $"revealed {reveal.Revealed} {revealedDiffering}");
 
-            Assert.Equal(0, coveredOutside);
-            Assert.Equal(0, landedOutside);
-            Assert.Equal(reveal.Revealed.Area, innerCovered);
-            Assert.Equal(landedInner.Area, innerLanded);
+            Assert.Equal(3600, reveal.Covered.Area);
+            Assert.Equal((reveal.Covered.Area, 0), (coveredInside, coveredOutside));
+            Assert.Equal((reveal.Landed.Area, 0), (landedInside, landedOutside));
             Assert.Equal(0, revealedDiffering);
         }
 
@@ -238,6 +244,69 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.True(region.Area >= 400, $"the region {region} is too small to measure");
                 Assert.Equal(region.Area, inside);
             }
+        }
+
+        [GpuTheory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void A_snapshot_refuses_the_supersampling_paths_and_a_lone_temporal_frame(int kind)
+        {
+            var stage = new FrontStage(W, H, 4.5f);
+            void Setup(Scene3D s)
+            {
+                stage.Setup(s, kind switch
+                {
+                    0 => AntiAliasing.Ssaa(4f),
+                    2 => AntiAliasing.Temporal,
+                    _ => AntiAliasing.Off,
+                });
+                if (kind == 1) s.Post.Supersample = 2f;
+            }
+            var refused = Assert.Throws<ArgumentException>(() => TemporalAcceptance.Snapshot(W, H, Setup, stage.Wall));
+            output.WriteLine(refused.Message);
+        }
+
+        [GpuFact(RequiresFourSampleMsaa = true)]
+        public void On_the_fence_pan_raw_flips_cannot_tell_msaa_from_aliasing_and_the_temporal_error_can()
+        {
+            // The pan and window a stability acceptance uses: 0.2 display pixels a frame, 16 warm frames, 64 measured.
+            const int Warm = 16, Measured = 64;
+            var fence = new FenceScene(SceneW, SceneH);
+            void Draw(Scene3D s, int n) => fence.Draw(s, n * 0.2f);
+            Action<Scene3D> Setup(AntiAliasing aa) => s => fence.Stage.Setup(s, aa);
+            PixelRect region = fence.Region;
+
+            long started = Stopwatch.GetTimestamp();
+            byte[][] reference = TemporalAcceptance.ReferenceSequence(SceneW, SceneH, Setup(AntiAliasing.Off), Draw,
+                Warm, Measured);
+            double referenceMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            // The nearly ideal candidate: the same path at 8x per axis, 64 samples a pixel.
+            byte[][] ideal = TemporalAcceptance.ReferenceSequence(SceneW, SceneH, Setup(AntiAliasing.Off), Draw,
+                Warm, Measured, factor: 8);
+            byte[][] off = TemporalAcceptance.Sequence(SceneW, SceneH, Setup(AntiAliasing.Off), Draw, Warm, Measured);
+            byte[][] msaa = TemporalAcceptance.Sequence(SceneW, SceneH, Setup(AntiAliasing.Msaa(4)), Draw, Warm,
+                Measured);
+
+            FlickerStats o = TemporalAcceptance.Flicker(off, reference, SceneW, SceneH, region);
+            FlickerStats m = TemporalAcceptance.Flicker(msaa, reference, SceneW, SceneH, region);
+            FlickerStats i = TemporalAcceptance.Flicker(ideal, reference, SceneW, SceneH, region);
+            output.WriteLine($"{Measured} 4x references at {SceneW} by {SceneH}: {referenceMs:0} ms");
+            output.WriteLine($"off: {o}");
+            output.WriteLine($"MSAA 4x: {m}");
+            output.WriteLine($"8x reference: {i}");
+
+            Assert.Equal(0.0, TemporalAcceptance.TemporalError(reference, reference, SceneW, SceneH, region));
+            Assert.True(o.Flips > 0.005, $"the fence pan must flip without anti-aliasing. off {o.Flips:0.00000}");
+            Assert.InRange(m.Flips / o.Flips, 0.75, 1.25);
+            Assert.True(i.TemporalError < 0.5 * o.TemporalError,
+                "the 8x sequence must sit far closer to the reference than no anti-aliasing: "
+                + $"{i.TemporalError:0.00000} against {o.TemporalError:0.00000}");
+            // A frozen image scores the reference's own change, so a sequence that tracks the motion must sit well
+            // under it, or the error could not tell tracking from suppression.
+            Assert.True(i.TemporalError < 0.5 * i.ReferenceChange,
+                $"the 8x sequence must track the motion: {i.TemporalError:0.00000} against a frozen image's "
+                + $"{i.ReferenceChange:0.00000}");
         }
     }
 }

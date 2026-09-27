@@ -369,7 +369,7 @@ public class ContentBootTests
         Assert.Empty(current.Indexes.Families.Blocks);
         Assert.Equal(1, current.Indexes.Loot.EntryCount(100));
 
-        // Step 7b, in type id order, after the four and before the validator.
+        // Step 7b, in type id order, after the five and before the validator.
         Assert.True(current.LoadIndexesBuilt);
         Assert.Equal(1, index.BuildCount);
         Assert.Equal(1, index.ItemsSeen);

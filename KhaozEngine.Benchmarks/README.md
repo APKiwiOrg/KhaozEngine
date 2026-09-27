@@ -401,6 +401,13 @@ The compose command must run second and against the same `--pack-root` as the co
 reports a cold boot only when it finds the pack already published. A one line sanity check that finishes in
 a few seconds is `--catalog --quick`, which drops to 5,000 definitions and shortens the timed loops.
 
+P3's index time, heap and allocation now include all five engine indexes. Its reverse-reference term creates
+one synthetic satellite edge per item row, so the 50,000 definition owner run measures 50,000 one-to-one
+buckets and reports `referenceIndexEdges`, `referenceIndexBuildMilliseconds`,
+`referenceIndexBuildAllocatedBytes` and `referenceIndexApproximateBytes`. The allocation number is transient
+GC allocation during the fifth-index build. The approximate number is the arrays retained by the runtime.
+The term is derived during load and does not change the published pack shape used by the other budgets.
+
 Always `-c Release`. Debug numbers are not representative, and the P7 and P9 figures in particular are
 timed loops whose Debug values say nothing. Like every mode here the project is `IsPackable=false`, is not
 on the engine version line, and CI never invokes its timing loop.

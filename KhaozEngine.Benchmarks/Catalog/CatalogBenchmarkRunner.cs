@@ -159,6 +159,11 @@ public static class CatalogBenchmarkRunner
             + $"verify {runtime.Timing.VerifyMs:F1}, decode {runtime.Timing.DecodeMs:F1}, index {runtime.Timing.IndexMs:F1}, "
             + $"validate {runtime.Timing.ValidateMs:F1}), heap {(heapAfter - heapBefore) / 1048576.0:F1} MB"));
         log.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"P3 reverse references {runtime.Indexes.ReferenceEdgeCount} one-to-one edges, "
+            + $"{runtime.Indexes.ReferenceBuildMilliseconds:F1} ms, "
+            + $"{runtime.Indexes.ReferenceBuildAllocatedBytes / 1048576.0:F1} MB allocated, "
+            + $"{runtime.Indexes.ReferenceApproximateBytes / 1048576.0:F1} MB retained"));
+        log.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"P8 validator {report.TotalMs:F1} ms over {report.RowsSwept} rows, {report.Findings.Count} findings"));
 
         if (!config.Phases.HasFlag(CatalogPhases.Load)) return;

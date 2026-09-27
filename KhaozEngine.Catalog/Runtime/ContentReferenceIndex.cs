@@ -98,9 +98,7 @@ public sealed class ContentReferenceIndex
     /// </summary>
     internal static ContentReferenceIndex Build(ContentRuntime runtime)
     {
-        var byTarget = new SortedDictionary<
-            ushort,
-            SortedDictionary<int, SortedDictionary<ushort, List<int>>>>();
+        var edges = new List<ReferenceEdge>();
 
         IReadOnlyList<ContentTypeId> types = runtime.Types;
         for (int t = 0; t < types.Count; t++)
@@ -130,12 +128,12 @@ public sealed class ContentReferenceIndex
                 claimedId = row.Id;
                 for (int f = 0; f < fields.Length; f++)
                 {
-                    Collect(byTarget, runtime, referencingType, row, fields[f]);
+                    Collect(edges, runtime, referencingType, row, fields[f]);
                 }
             }
         }
 
-        return byTarget.Count == 0 ? Empty : Flatten(byTarget);
+        return edges.Count == 0 ? Empty : Flatten(edges);
     }
 
     static ReferenceField[] ReferenceFields(ContentTypeRegistry registry, ContentFieldSchema schema)
@@ -157,7 +155,7 @@ public sealed class ContentReferenceIndex
     }
 
     static void Collect(
-        SortedDictionary<ushort, SortedDictionary<int, SortedDictionary<ushort, List<int>>>> byTarget,
+        List<ReferenceEdge> edges,
         ContentRuntime runtime,
         ContentTypeId referencingType,
         ContentRow row,
@@ -183,47 +181,35 @@ public sealed class ContentReferenceIndex
             return;
         }
 
-        if (!byTarget.TryGetValue(
-                field.TargetType.Value,
-                out SortedDictionary<int, SortedDictionary<ushort, List<int>>>? ids))
-        {
-            ids = [];
-            byTarget.Add(field.TargetType.Value, ids);
-        }
-
-        if (!ids.TryGetValue(targetId, out SortedDictionary<ushort, List<int>>? types))
-        {
-            types = [];
-            ids.Add(targetId, types);
-        }
-
-        if (!types.TryGetValue(referencingType.Value, out List<int>? rows))
-        {
-            rows = [];
-            types.Add(referencingType.Value, rows);
-        }
-
-        // Rows arrive ascending. A repeat is the same row naming one target through a second field.
-        if (rows.Count == 0 || rows[^1] != row.Id)
-        {
-            rows.Add(row.Id);
-        }
+        edges.Add(new ReferenceEdge(
+            field.TargetType.Value,
+            targetId,
+            referencingType.Value,
+            row.Id));
     }
 
-    static ContentReferenceIndex Flatten(
-        SortedDictionary<ushort, SortedDictionary<int, SortedDictionary<ushort, List<int>>>> byTarget)
+    static ContentReferenceIndex Flatten(List<ReferenceEdge> edges)
     {
-        int entryTotal = 0;
-        int rowTotal = 0;
-        foreach (KeyValuePair<ushort, SortedDictionary<int, SortedDictionary<ushort, List<int>>>> target in byTarget)
+        edges.Sort(static (left, right) => left.CompareTo(right));
+
+        // Compact exact repeats in place. A repeat is one source row naming the same target through a second
+        // field, so it contributes one reverse edge rather than widening its bucket.
+        int edgeCount = 1;
+        for (int read = 1; read < edges.Count; read++)
         {
-            foreach (KeyValuePair<int, SortedDictionary<ushort, List<int>>> id in target.Value)
+            ReferenceEdge edge = edges[read];
+            if (edge != edges[edgeCount - 1])
             {
-                entryTotal += id.Value.Count;
-                foreach (KeyValuePair<ushort, List<int>> type in id.Value)
-                {
-                    rowTotal += type.Value.Count;
-                }
+                edges[edgeCount++] = edge;
+            }
+        }
+
+        int entryTotal = 1;
+        for (int i = 1; i < edgeCount; i++)
+        {
+            if (!edges[i].SameBucket(edges[i - 1]))
+            {
+                entryTotal++;
             }
         }
 
@@ -232,29 +218,23 @@ public sealed class ContentReferenceIndex
         var referencingTypes = new ushort[entryTotal];
         var rowStarts = new int[entryTotal];
         var rowCounts = new int[entryTotal];
-        var rows = new int[rowTotal];
+        var rows = new int[edgeCount];
 
-        int entrySlot = 0;
-        int rowSlot = 0;
-        foreach (KeyValuePair<ushort, SortedDictionary<int, SortedDictionary<ushort, List<int>>>> target in byTarget)
+        int entrySlot = -1;
+        for (int i = 0; i < edgeCount; i++)
         {
-            foreach (KeyValuePair<int, SortedDictionary<ushort, List<int>>> id in target.Value)
+            ReferenceEdge edge = edges[i];
+            if (i == 0 || !edge.SameBucket(edges[i - 1]))
             {
-                foreach (KeyValuePair<ushort, List<int>> type in id.Value)
-                {
-                    targetTypes[entrySlot] = target.Key;
-                    targetIds[entrySlot] = id.Key;
-                    referencingTypes[entrySlot] = type.Key;
-                    rowStarts[entrySlot] = rowSlot;
-                    rowCounts[entrySlot] = type.Value.Count;
-                    entrySlot++;
-
-                    for (int i = 0; i < type.Value.Count; i++)
-                    {
-                        rows[rowSlot++] = type.Value[i];
-                    }
-                }
+                entrySlot++;
+                targetTypes[entrySlot] = edge.TargetType;
+                targetIds[entrySlot] = edge.TargetId;
+                referencingTypes[entrySlot] = edge.ReferencingType;
+                rowStarts[entrySlot] = i;
             }
+
+            rowCounts[entrySlot]++;
+            rows[i] = edge.RowId;
         }
 
         return new ContentReferenceIndex(
@@ -280,4 +260,28 @@ public sealed class ContentReferenceIndex
     }
 
     readonly record struct ReferenceField(int Index, ContentTypeId TargetType);
+
+    readonly record struct ReferenceEdge(
+        ushort TargetType,
+        int TargetId,
+        ushort ReferencingType,
+        int RowId)
+    {
+        public int CompareTo(ReferenceEdge other)
+        {
+            int bucket = Compare(
+                TargetType,
+                TargetId,
+                ReferencingType,
+                other.TargetType,
+                other.TargetId,
+                other.ReferencingType);
+            return bucket != 0 ? bucket : RowId.CompareTo(other.RowId);
+        }
+
+        public bool SameBucket(ReferenceEdge other)
+            => TargetType == other.TargetType
+                && TargetId == other.TargetId
+                && ReferencingType == other.ReferencingType;
+    }
 }

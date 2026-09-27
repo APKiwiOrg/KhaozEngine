@@ -321,9 +321,11 @@ build inside a tick is a latency spike.
   of that table's own blob. Read through `ContentRuntime.TryGetId`.
 - `ContentReferenceIndex` - every `KeyReference` field reversed from `(target type, target id, referencing
   type)` to the referencing row ids. `Ids` returns a read-only span sorted by row id and does no row walk or
-  allocation. Multiple fields on one row naming the same target contribute that row once. Retired target and
-  referencing rows stay indexed for stored-data and admin reads, so gameplay filters retirement explicitly.
-  A reference to a missing target row is left to validation and creates no lookup bucket.
+  allocation. Its load build collects one flat value record per edge, sorts and deduplicates those records,
+  then compacts them into the lookup arrays in two passes. It creates no dictionary or list per target bucket.
+  Multiple fields on one row naming the same target contribute that row once. Retired target and referencing
+  rows stay indexed for stored-data and admin reads, so gameplay filters retirement explicitly. A reference
+  to a missing target row is left to validation and creates no lookup bucket.
 - `ContentTagIndex` - tag id to the sorted, distinct ids of the rows carrying it, per content type. Flat
   arrays sliced three deep rather than a dictionary of lists, so a lookup is two searches over small sorted
   runs and hands back a span. It covers EVERY registered type declaring a tag-list field rather than just

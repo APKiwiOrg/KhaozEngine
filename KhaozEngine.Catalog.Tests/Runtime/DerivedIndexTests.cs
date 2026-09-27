@@ -36,7 +36,7 @@ public class DerivedIndexTests
         ContentRuntime runtime = CatalogLootFixtures.Runtime(out _);
         Assert.True(runtime.TryGetTable(CatalogSnapshotFixtures.ItemType, out ContentTypeTable? items));
 
-        // The first of the four lives on the type table it indexes, because it is keyed on a slice of that
+        // The first of the five lives on the type table it indexes, because it is keyed on a slice of that
         // table's own blob, and it is read through the runtime like everything else.
         Assert.NotEmpty(items.KeyIds);
         Assert.True(runtime.TryGetId(CatalogSnapshotFixtures.ItemType, new ContentKey("item_2"), out int id));

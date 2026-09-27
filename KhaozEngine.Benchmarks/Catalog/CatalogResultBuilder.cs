@@ -118,6 +118,10 @@ public sealed class CatalogResultBuilder
             RuntimeHeapBytes = RuntimeHeapBytes,
             RuntimeAllocatedBytes = RuntimeAllocatedBytes,
             RuntimeApproximateBytes = RuntimeApproximateBytes,
+            ReferenceIndexEdges = Runtime?.Indexes.ReferenceEdgeCount,
+            ReferenceIndexApproximateBytes = Runtime?.Indexes.ReferenceApproximateBytes,
+            ReferenceIndexBuildMilliseconds = Runtime?.Indexes.ReferenceBuildMilliseconds,
+            ReferenceIndexBuildAllocatedBytes = Runtime?.Indexes.ReferenceBuildAllocatedBytes,
 
             ColdStartMs = Fetch?.WallClockMs,
             ColdStartLocalWorkMs = Fetch?.LocalWorkMs,

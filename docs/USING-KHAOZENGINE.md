@@ -15760,7 +15760,7 @@ registry.RegisterContentType(
     ]),
     defaultVisibility: ContentVisibility.Client,
     chunkSlots: 1024,
-    loadIndex: new RecipeByOutputIndex());          // built eagerly at load, beside the engine's four
+    loadIndex: new RecipeByOutputIndex());          // built eagerly at load, beside the engine's five
 ```
 
 ### Authoring: the store seam and the publisher

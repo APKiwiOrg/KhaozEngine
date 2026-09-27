@@ -204,6 +204,42 @@ namespace KhaozEngine.Tests.Render3D.Animation
         }
 
         [Fact]
+        public void ADefaultMomentIsNoMoment()
+        {
+            Moment unset = default;
+            Assert.True(unset.IsNone);
+            Assert.Equal(-1, unset.Family);
+            Assert.Equal(MomentSide.None, unset.Side);
+            Assert.Equal(Moment.None, unset);
+            Assert.True(Moment.None == unset);
+            Assert.Equal(Moment.None, new Moment(-1, MomentSide.None, 0f, 0.0));
+
+            // A real moment keeps its family index, the first family included.
+            foreach (int family in new[] { 0, 1, 3, int.MaxValue })
+            {
+                var moment = new Moment(family, MomentSide.Right, 1.5f, 20.0);
+                Assert.Equal(family, moment.Family);
+                Assert.False(moment.IsNone);
+                Assert.NotEqual(Moment.None, moment);
+                Assert.Equal(family, (moment with { SecondsIn = 0.5f }).Family);
+                (int deconstructed, MomentSide side, float secondsIn, double slotStart) = moment;
+                Assert.Equal((family, MomentSide.Right, 1.5f, 20.0), (deconstructed, side, secondsIn, slotStart));
+            }
+
+            // Every family the schedule plays reads back as its own index.
+            var schedule = new MomentSchedule(CowOptions, Cow);
+            var seen = new bool[Cow.Length];
+            for (int step = 0; step < 40_000; step++)
+            {
+                Moment moment = schedule.At(9, step * Step);
+                if (moment.IsNone) continue;
+                Assert.InRange(moment.Family, 0, Cow.Length - 1);
+                seen[moment.Family] = true;
+            }
+            Assert.All(seen, Assert.True);
+        }
+
+        [Fact]
         public void RefusesABadTable()
         {
             MomentFamily glance = Turns[Glance];

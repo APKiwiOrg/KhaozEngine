@@ -95,8 +95,9 @@ The table is copied at construction and `At` allocates nothing. The constructor 
 weight that is not finite and above zero, weights whose total is not finite, and a length that is not
 finite and above zero or does not fit between a slot's quiet ends. It refuses a slot length that is not
 finite and above zero, a quiet end that is not finite and at least zero, an empty share that is not
-finite, below 0 or at least 1, and a negative cap. No moment is `Moment.None`, family -1. A default `Moment` names family 0, so callers
-test `IsNone`.
+finite, below 0 or at least 1, and a negative cap. No moment is `Moment.None`, which is the default `Moment` and reads family -1. The
+struct keeps the family one up, so a value type built without a moment carries none, as a default
+`IdleTurn` does.
 
 ## What stays in games
 

@@ -45,19 +45,61 @@ namespace KhaozEngine.Render3D
     }
 
     /// <summary>The idle moment a body is in at one instant.</summary>
-    /// <param name="Family">The family's index in the schedule's table, or -1 for none.</param>
-    /// <param name="Side">Which way a mirrored family plays, or <see cref="MomentSide.None"/>.</param>
-    /// <param name="SecondsIn">How far into the moment, seconds, from 0 up to its family's length.</param>
-    /// <param name="SlotStart">When the slot holding it began on the clock, seconds.</param>
-    /// <remarks>No moment is <see cref="None"/>, not the default value: a default <see cref="Moment"/> names family
-    /// 0. Test <see cref="IsNone"/>.</remarks>
-    public readonly record struct Moment(int Family, MomentSide Side, float SecondsIn, double SlotStart)
+    /// <remarks>The default value is no moment, <see cref="None"/>, so a value type built without one carries none
+    /// and two such values compare equal. The family is kept one up for that reason and read back as its index.
+    /// </remarks>
+    public readonly record struct Moment
     {
-        /// <summary>No moment: family -1, no side, 0 s in and a slot start of 0.</summary>
-        public static Moment None => new(-1, MomentSide.None, 0f, 0.0);
+        // The family's index plus one, so the default is no moment. Wrapping, so every index reads back.
+        readonly int _familyPlusOne;
+
+        /// <summary>A moment of a family.</summary>
+        /// <param name="family">The family's index in the schedule's table, or -1 for none.</param>
+        /// <param name="side">Which way a mirrored family plays, or <see cref="MomentSide.None"/>.</param>
+        /// <param name="secondsIn">How far into the moment, seconds, from 0 up to its family's length.</param>
+        /// <param name="slotStart">When the slot holding it began on the clock, seconds.</param>
+        public Moment(int family, MomentSide side, float secondsIn, double slotStart)
+        {
+            _familyPlusOne = unchecked(family + 1);
+            Side = side;
+            SecondsIn = secondsIn;
+            SlotStart = slotStart;
+        }
+
+        /// <summary>No moment: family -1, no side, 0 s in and a slot start of 0. The default value.</summary>
+        public static Moment None => default;
+
+        /// <summary>The family's index in the schedule's table, or -1 for none.</summary>
+        public int Family
+        {
+            get => unchecked(_familyPlusOne - 1);
+            init => _familyPlusOne = unchecked(value + 1);
+        }
+
+        /// <summary>Which way a mirrored family plays, or <see cref="MomentSide.None"/>.</summary>
+        public MomentSide Side { get; init; }
+
+        /// <summary>How far into the moment, seconds, from 0 up to its family's length.</summary>
+        public float SecondsIn { get; init; }
+
+        /// <summary>When the slot holding it began on the clock, seconds.</summary>
+        public double SlotStart { get; init; }
 
         /// <summary>Whether this is no moment.</summary>
         public bool IsNone => Family < 0;
+
+        /// <summary>The moment's family, side, seconds in and slot start.</summary>
+        /// <param name="family">The family's index, or -1 for none.</param>
+        /// <param name="side">Which way it plays.</param>
+        /// <param name="secondsIn">How far into it, seconds.</param>
+        /// <param name="slotStart">When its slot began, seconds.</param>
+        public void Deconstruct(out int family, out MomentSide side, out float secondsIn, out double slotStart)
+        {
+            family = Family;
+            side = Side;
+            secondsIn = SecondsIn;
+            slotStart = SlotStart;
+        }
     }
 
     /// <summary>When a standing body plays an idle moment and which one: a pure function of the body's id and the

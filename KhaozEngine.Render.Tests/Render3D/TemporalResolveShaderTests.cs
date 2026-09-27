@@ -154,11 +154,12 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void A_mostly_covered_footprint_is_disoccluded_unless_a_narrow_feature_or_a_whole_lock_covered_it()
+        public void A_mostly_covered_footprint_is_disoccluded_unless_a_narrow_feature_or_a_fresh_lock_covered_it()
         {
             // All four stored depths nearer than expected, or the expected surface under less than
-            // DisocclusionVisibleShare of their bilinear weight while the pixel carries no lock whose hold is whole
-            // and the nearest of them is no narrow feature, a run of at most two texels along a row or a column.
+            // DisocclusionVisibleShare of their bilinear weight while the lock the pixel carries lies more than half of
+            // LockDecay below whole and the nearest of them is no narrow feature, a run of at most two texels along a
+            // row or a column. The lock is read from the state texels step 2 reads, fetched once before the test.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("float weight = mix(1.0 - f.x, f.x, float(corner & 1)) "
                 + "* mix(1.0 - f.y, f.y, float(corner >> 1));", core, StringComparison.Ordinal);
@@ -167,8 +168,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("|| footprint.farthest < expectedDepth * (1.0 - DisocclusionTolerance)", core,
                 StringComparison.Ordinal);
             Assert.Contains("|| (footprint.visibleShare < DisocclusionVisibleShare", core, StringComparison.Ordinal);
-            Assert.Contains("&& temporalCarriedLock(previousUv, displaySize) * LockHoldGain < 1.0", core,
-                StringComparison.Ordinal);
+            Assert.Contains("&& fetchedState.y <= 1.0 - 0.5 * LockDecay", core, StringComparison.Ordinal);
             Assert.Contains("&& !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel)));", core,
                 StringComparison.Ordinal);
             Assert.Contains("run[i] = !(depth < stored * limit || stored < depth * limit);", core,
@@ -176,8 +176,15 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("bool narrowRow = !(run[0] && run[2]) && !(run[0] && run[1]) && !(run[2] && run[3]);", core,
                 StringComparison.Ordinal);
             Assert.Contains("return narrowRow || narrowColumn;", core, StringComparison.Ordinal);
-            Assert.Contains("if (weight > 1.0e-3) carried = max(carried, texelFetch(sampler2D(HistoryConfidence, "
-                + "LinearClamp), texel, 0).g);", core, StringComparison.Ordinal);
+            Assert.DoesNotContain("temporalCarriedLock", core, StringComparison.Ordinal);
+            Assert.Equal(4, core.Split("texelFetch(sampler2D(HistoryConfidence").Length - 1);
+            int state = core.IndexOf("vec2 fetchedState = vec2(0.0);", StringComparison.Ordinal);
+            int test = core.IndexOf("DepthFootprint footprint = temporalDepthFootprint(previousUv,",
+                StringComparison.Ordinal);
+            int history = core.IndexOf("vec4 fetched = sampleHistoryCatmullRom(previousUv, displaySize);",
+                StringComparison.Ordinal);
+            Assert.True(state >= 0 && test > state && history > test,
+                "the state must be read once, before the depth test and the history fetch that both use it");
         }
 
         [Fact]
@@ -225,8 +232,8 @@ namespace KhaozEngine.Tests.Render3D
             // there even where the depth test is skipped, and never drop a lock where nothing moves: an edge must pass an
             // absolute floor as well, above the float rounding of a sky texel's own motion under a still camera.
             string core = ShaderSources.TemporalResolveCoreGlsl;
-            Assert.Contains("float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;",
-                core, StringComparison.Ordinal);
+            Assert.Contains("float lockValue = useHistory && !heldFromFarther "
+                + "? max(historyState.y - LockDecay, 0.0) : 0.0;", core, StringComparison.Ordinal);
             Assert.Contains("bool movingEdge = edgeMotion > max(LockEdgeFloorInternalPixels, length(closestMotion * internalSize) "
                 + "* LockEdgeMotionFraction);", core, StringComparison.Ordinal);
             Assert.Contains("if (historyValid && onScreen && (depthTested || movingEdge)) {", core, StringComparison.Ordinal);

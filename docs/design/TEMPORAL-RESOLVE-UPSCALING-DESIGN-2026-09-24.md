@@ -280,17 +280,21 @@ and changed these details. Each group's "Contract amendments" block carries the 
     texel's own motion and depth. A still nearer surface keeps dilation, under a camera's translation and against the
     sky alike. Step 3 also disoccludes a pixel whose expected surface shows under `DisocclusionVisibleShare` (half) of
     the bilinear weight of its four stored depths, unless the nearest of them is narrow, its run of texels along a row
-    or a column at most two long, as sub-texel blades alone or side by side are, or the pixel carries a lock whose hold
-    is whole. Before, a keyed box crossing a textured wall at 4 display pixels a frame left the column behind its
-    trailing edge holding a wall texel 4 pixels away at full confidence, and kept its own colour in the ring of pixels
-    around its old place, whose footprints reached past its edge: 63 and 180 of 840 trail pixels at Native and Quality
-    passed a freshly revealed wall's difference by more than 0.05, against 1 and 0 now. The cost falls on a moving
-    object's edge pixels whose centre texel lies on the farther surface. They now read their own history, not the edge
-    carried along. A keyed box tilted and crossing the flat wall at 2 internal pixels a frame averages a luma error of
-    0.0016 and 0.0020 over its edges against 0.0008 and 0.0014, a keyed line one internal pixel wide keeps 0.69 and 0.43
-    of its reference energy where dilation smeared it to 2.09 and 1.28 with an 8 pixel trail, and at the moving edges of
-    the 30 pixel box on the flat wall fast flips rose from 0.0000 and 0.0007 to 0.0061 and 0.0071 at Performance and
-    UltraPerformance, with UltraPerformance's added change rising from 0.0034 to 0.0042.
+    or a column at most two long, as sub-texel blades alone or side by side are, or the lock the pixel carries lies
+    within half of `LockDecay` of whole, which a ridge refreshed on the last frame, as a still blade's is on the frame
+    after the jitter showed it. Any lock whose hold is whole also kept the history where a ridged, textured keyed box
+    crossing the textured wall at 2 display pixels a frame left, since its motion releases only a third of its locks: 10
+    and 39 of 420 trail pixels at Native and Quality, against 3 and 4 now. Before, a keyed box crossing a textured wall
+    at 4 display pixels a frame left the column behind its trailing edge holding a wall texel 4 pixels away at full
+    confidence, and kept its own colour in the ring of pixels around its old place, whose footprints reached past its
+    edge: 63 and 180 of 840 trail pixels at Native and Quality passed a freshly revealed wall's difference by more than
+    0.05, against 1 and 0 now. The cost falls on a moving object's edge pixels whose centre texel lies on the farther
+    surface. They now read their own history, not the edge carried along. A keyed box tilted and crossing the flat wall
+    at 2 internal pixels a frame averages a luma error of 0.0016 and 0.0020 over its edges against 0.0008 and 0.0014, a
+    keyed line one internal pixel wide keeps 0.69 and 0.43 of its reference energy where dilation smeared it to 2.09 and
+    1.28 with an 8 pixel trail, and at the moving edges of the 30 pixel box on the flat wall fast flips rose from 0.0000
+    and 0.0007 to 0.0061 and 0.0071 at Performance and UltraPerformance, with UltraPerformance's added change rising
+    from 0.0034 to 0.0042.
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies
@@ -300,6 +304,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
     two texels, kept that line and the teleport's corners clean, but wherever step 3 kept the history it still wiped the
     lock of the right one of three still blades narrower than a texel side by side, which averaged 2.6 percent against
     41.8. The lock therefore keeps amendment 19's behaviour. A keyed object's 10 m jump leaves its partly covered
-    corners holding their luma for about four frames, since those corners hold a lock and amendment 23's disocclusion
-    yields to it: two frames after the jump 8 and 12 of the 144 pixels of its old place differ from the wall by more
-    than 0.05 at Native and Quality, at most 0.114 and 0.098, as before either ghost fix.
+    corners holding their luma for about four frames, since a corner whose lock a ridge refreshed on the frame before
+    the jump keeps its history through amendment 23's disocclusion: two frames after the jump 7 and 9 of the 144 pixels
+    of its old place differ from the wall by more than 0.05 at Native and Quality, at most 0.110 and 0.098. Before
+    amendment 23 and while its lock clause took any lock whose hold was whole, 8 and 12 did.

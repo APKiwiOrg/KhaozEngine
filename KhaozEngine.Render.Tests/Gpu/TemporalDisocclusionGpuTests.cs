@@ -31,7 +31,7 @@ namespace KhaozEngine.Tests.Gpu
     {
         // The revealed pixels against the from-scratch wall, by the largest channel difference in 8-bit steps: the
         // mean over the region and the worst pixel. Measured a mean of 0 and a worst of 0 at Native on both walls, and
-        // means of 0.005 over the flat wall and 0.033 over the textured wall with a worst of 4 at Quality.
+        // means of 0.002 over both walls with a worst of 4 over the flat wall and 3 over the textured one at Quality.
         const double MaxMeanSteps = 3;
         const int MaxWorstSteps = 20;
 

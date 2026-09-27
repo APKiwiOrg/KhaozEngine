@@ -237,22 +237,6 @@ bool temporalNarrowDepth(ivec2 texel, float depth, ivec2 maxTexel) {
     return narrowRow || narrowColumn;
 }
 
-// The thin-feature lock history carries at a previous position: the largest of the four state texels around it that
-// carry bilinear weight, as step 2's state fetch reads it.
-float temporalCarriedLock(vec2 previousUv, vec2 displaySize) {
-    vec2 position = previousUv * displaySize - 0.5;
-    ivec2 base = ivec2(floor(position));
-    vec2 f = position - vec2(base);
-    ivec2 lastState = ivec2(displaySize) - ivec2(1);
-    float carried = 0.0;
-    for (int corner = 0; corner < 4; corner++) {
-        float weight = mix(1.0 - f.x, f.x, float(corner & 1)) * mix(1.0 - f.y, f.y, float(corner >> 1));
-        ivec2 texel = clamp(base + ivec2(corner & 1, corner >> 1), ivec2(0), lastState);
-        if (weight > 1.0e-3) carried = max(carried, texelFetch(sampler2D(HistoryConfidence, LinearClamp), texel, 0).g);
-    }
-    return carried;
-}
-
 ivec2 temporalDisplaySize() { return ivec2(Sizes.zw); }
 
 TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
@@ -412,14 +396,44 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         motionPixels = onScreen ? length((uv - previousUv) * displaySize) : 0.0;
     }
 
+    // Last frame's state around the previous position, read once for steps 3 and 2: the confidence blended by the
+    // four texels' bilinear weights, and the lock as the largest of those that carry weight. A bilinear lock under
+    // motion is blended with unlocked neighbours every frame and ran out about three times faster than LockDecay, so
+    // a moving sub-texel feature lost its hold. At a texel centre only that texel carries weight, so a still lock
+    // reads back unchanged and never spreads.
+    vec2 fetchedState = vec2(0.0);
+    if (historyValid && onScreen) {
+        vec2 statePosition = previousUv * displaySize - 0.5;
+        ivec2 stateBase = ivec2(floor(statePosition));
+        vec2 stateFraction = statePosition - vec2(stateBase);
+        ivec2 lastState = ivec2(displaySize) - ivec2(1);
+        vec2 s00 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase, ivec2(0), lastState), 0).rg;
+        vec2 s10 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
+            clamp(stateBase + ivec2(1, 0), ivec2(0), lastState), 0).rg;
+        vec2 s01 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
+            clamp(stateBase + ivec2(0, 1), ivec2(0), lastState), 0).rg;
+        vec2 s11 = texelFetch(sampler2D(HistoryConfidence, LinearClamp),
+            clamp(stateBase + ivec2(1, 1), ivec2(0), lastState), 0).rg;
+        vec2 g = 1.0 - stateFraction;
+        vec4 bilinear = vec4(g.x * g.y, stateFraction.x * g.y, g.x * stateFraction.y,
+            stateFraction.x * stateFraction.y);
+        vec4 carried = step(vec4(1.0e-3), bilinear);   // texels whose weight is more than rounding
+        fetchedState = vec2(dot(bilinear, vec4(s00.x, s10.x, s01.x, s11.x)),
+            max(max(carried.x * s00.y, carried.y * s10.y), max(carried.z * s01.y, carried.w * s11.y)));
+    }
+
     // Step 3: disocclusion, one-sided. A pixel expects the depth of the surface it reprojected, and a stored depth
     // nearer than that means something covered it last frame. All four stored depths around the reprojected position
     // nearer drops the history. Where the expected surface shows under less than DisocclusionVisibleShare of their
     // bilinear weight, the pixel was mostly covered and drops it too, unless the nearest stored depth is narrow
     // (temporalNarrowDepth), a feature narrower than a texel, or two side by side, that the jitter missed this frame,
-    // or the pixel carries a lock whose hold on the clip is whole (temporalCarriedLock), which step 6 keeps for such a
-    // feature. Any farther stored depth kept a sub-pixel edge from reading as revealed, and on its own it kept the ring
-    // of pixels around a moving object's old place, whose footprint reaches past its edge, from ever being disoccluded.
+    // or the lock the pixel carries lies within half of LockDecay of whole. A ridge refreshed such a lock on the last
+    // frame and less than that was released since, as a still sub-texel feature's is on the frame after the jitter
+    // showed it, and step 6 keeps its hold whole. Step 6 releases a lock by motion from LockMotionStartPixels on, so a
+    // feature moving more than a sixteenth of the way from there to LockMotionEndPixels, about 1.2 display pixels a
+    // frame, leaves no such lock where it was. Any farther stored depth kept a sub-pixel edge from reading as
+    // revealed, and on its own it kept the ring of pixels around a moving object's old place, whose footprint
+    // reaches past its edge, from ever being disoccluded.
     // A background pixel expects BackgroundLinearDepth, so anything stored nearer there was covering it. A static
     // surface on or behind last frame's camera had no history there. The footprint sits at the display pixel's previous
     // position, where history is read, while the expected depth comes from the reprojected texel's own point, the
@@ -434,7 +448,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         disoccluded = depthTested && (!(expectedDepth > 1.0e-6)
             || footprint.farthest < expectedDepth * (1.0 - DisocclusionTolerance)
             || (footprint.visibleShare < DisocclusionVisibleShare
-                && temporalCarriedLock(previousUv, displaySize) * LockHoldGain < 1.0
+                && fetchedState.y <= 1.0 - 0.5 * LockDecay
                 && !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel)));
         heldFromFarther = movingEdge && expectedDepth < footprint.nearest * (1.0 - DisocclusionTolerance);
     }
@@ -446,23 +460,6 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     vec2 historyState = vec2(0.0);
     if (useHistory) {
         vec4 fetched = sampleHistoryCatmullRom(previousUv, displaySize);
-        // The state's four texels around the position: confidence blended by their bilinear weights, and the lock as
-        // the largest of those that carry weight. A bilinear lock under motion is blended with unlocked neighbours every
-        // frame and ran out about three times faster than LockDecay, so a moving sub-texel feature lost its hold. At a
-        // texel centre only that texel carries weight, so a still lock reads back unchanged and never spreads.
-        vec2 statePosition = previousUv * displaySize - 0.5;
-        ivec2 stateBase = ivec2(floor(statePosition));
-        vec2 stateFraction = statePosition - vec2(stateBase);
-        ivec2 lastState = ivec2(displaySize) - ivec2(1);
-        vec2 s00 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase, ivec2(0), lastState), 0).rg;
-        vec2 s10 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase + ivec2(1, 0), ivec2(0), lastState), 0).rg;
-        vec2 s01 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase + ivec2(0, 1), ivec2(0), lastState), 0).rg;
-        vec2 s11 = texelFetch(sampler2D(HistoryConfidence, LinearClamp), clamp(stateBase + ivec2(1, 1), ivec2(0), lastState), 0).rg;
-        vec2 g = 1.0 - stateFraction;
-        vec4 bilinear = vec4(g.x * g.y, stateFraction.x * g.y, g.x * stateFraction.y, stateFraction.x * stateFraction.y);
-        vec4 carried = step(vec4(1.0e-3), bilinear);   // texels whose weight is more than rounding
-        vec2 fetchedState = vec2(dot(bilinear, vec4(s00.x, s10.x, s01.x, s11.x)),
-            max(max(carried.x * s00.y, carried.y * s10.y), max(carried.z * s01.y, carried.w * s11.y)));
         bool finite = all(greaterThan(fetched, vec4(-HalfMax))) && all(lessThan(fetched, vec4(HalfMax)))
             && all(greaterThan(fetchedState, vec2(-HalfMax))) && all(lessThan(fetchedState, vec2(HalfMax)));
         if (finite) {

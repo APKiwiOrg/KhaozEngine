@@ -162,20 +162,26 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>Step 3. A depth-tested pixel whose expected surface shows under less than this share of the
         /// bilinear weight of its four stored depths was mostly covered last frame, and drops its history, unless the
         /// nearest of the four is narrow, its run of texels along a row or a column, apart in depth from those either
-        /// side by <see cref="DisocclusionTolerance"/>, at most two long, or the pixel carries a lock whose hold on the
-        /// clip is whole (<see cref="LockHoldGain"/>). Otherwise any one stored depth at the expected surface keeps the
-        /// history, which spares a sub-pixel edge, but it also kept the ring of pixels around a moving object's old
-        /// place, whose footprint reaches past the edge, from ever reading as revealed. The keyed box crossing a
-        /// textured wall kept its colour in its bottom row at Native, and in its top and bottom rows and its first
-        /// revealed column at Quality, and with <see cref="DilationReachInternalPixels"/> alone left 9 and 38 trail
-        /// pixels against 1 and 0 with both. A quarter leaves 17 at Quality. Three quarters raise the moving edges'
-        /// fast flips at Balanced and UltraPerformance to 0.0082 and 0.014 from 0.0025 and 0.0071, and a nearer surface
-        /// crossing a held line on UltraPerformance ghosts 2 display pixels. Without either exception a still line
-        /// narrower than a texel against the sky, or a blade over ground, drops its history on the frames the jitter
-        /// misses it: the sky line's centre averages 13.9 percent at Native against its coverage of 37.5. Counting only
-        /// a single texel as narrow and taking no account of the lock, two still blades side by side lost the left
-        /// one's history at Quality, from 45.3 to 18.4 percent, and the right of three still blades side by side, which
-        /// holds a lock, fell from 41.8 to 13.8 at Native.</summary>
+        /// side by <see cref="DisocclusionTolerance"/>, at most two long, or the lock the pixel carries lies within
+        /// half of <see cref="LockDecay"/> of whole: a ridge refreshed it on the last frame and less than that was
+        /// released since. Otherwise any one stored depth at the expected surface keeps the history, which spares a
+        /// sub-pixel edge, but it also kept the ring of pixels around a moving object's old place, whose footprint
+        /// reaches past the edge, from ever reading as revealed. The keyed box crossing a textured wall kept its colour
+        /// in its bottom row at Native, and in its top and bottom rows and its first revealed column at Quality, and
+        /// with <see cref="DilationReachInternalPixels"/> alone left 9 and 38 trail pixels against 1 and 0 with both. A
+        /// quarter leaves 17 at Quality. Three quarters raise the moving edges' fast flips at Balanced and
+        /// UltraPerformance to 0.0082 and 0.014 from 0.0025 and 0.0071, and a nearer surface crossing a held line on
+        /// UltraPerformance ghosts 2 display pixels. Without either exception a still line narrower than a texel
+        /// against the sky, or a blade over ground, drops its history on the frames the jitter misses it: the sky
+        /// line's centre averages 13.9 percent at Native against its coverage of 37.5. Counting only a single texel as
+        /// narrow and taking no account of the lock, two still blades side by side lost the left one's history at
+        /// Quality, from 45.3 to 18.4 percent, and the right of three still blades side by side, which holds a lock,
+        /// fell from 41.8 to 13.8 at Native. Keeping the history for any lock whose hold on the clip is whole, at least
+        /// 1 / <see cref="LockHoldGain"/>, also kept it where a ridged, textured keyed box crossing the textured wall
+        /// at 2 display pixels a frame left, since its motion releases only a third of its locks there: 10 and 39 of
+        /// its 420 trail pixels at Native and Quality passed a freshly revealed wall's difference by more than 0.05,
+        /// against 3 and 4 with the lock within half a decay of whole. The three still blades hold as before, and a
+        /// teleported box's corners hold 7 and 9 of 144 pixels at Native and Quality against 8 and 12.</summary>
         public const float DisocclusionVisibleShare = 0.5f;
     }
 }

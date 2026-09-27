@@ -12111,13 +12111,12 @@ identity and the bytes ride a SIBLING component seated only when the instance id
 kill usually leaves behind carries no component and costs nothing on the wire.
 
 ```csharp
-// Server, dropping an owned item. `held` is the ItemSlot leaving the player's container. The payload is
-// the PUBLIC view rather than the stored bytes: a ground item has no owner viewer at all, so an
-// owner-only kind (6 BoundTo, 4 charges, 5 durability) is stripped before the component is written and a
-// passer-by cannot read who a dropped item is bound to.
+// Server, dropping an owned item. `held` is the ItemSlot leaving the player's container. This one door
+// accepts the STORED payload and produces the public ground view. A ground item has no owner viewer, so
+// owner-only kinds 4, 5 and 6 are stripped before the component is written.
 byte[] view = new byte[held.Payload.Length];
-int viewBytes = ItemInstanceVisibility.PublicView(
-    properties, held.Payload.Span, PropertyVisibility.Everyone,
+int viewBytes = GroundItemPayloadProjection.Project(
+    properties, held.Payload.Span, held.Quarantined,
     identified: true, revealedMask: 0UL, view);
 
 long drop = server.SpawnGroundItem(
@@ -12139,6 +12138,12 @@ client.CollectGroundItemInstances(instancedBuffer);
 foreach ((long netId, TileGroundItem item, TileGroundItemInstance instance) in instancedBuffer)
     DrawInstanceMarker(item.Tile, instance.InstanceId);
 ```
+
+`GroundItemPayloadProjection.Project` shares `ContainerPageProjection`'s serializer and always selects
+`PropertyVisibility.Everyone`. A live stored payload that cannot be projected fails closed to zero bytes. A
+quarantined payload becomes a hollow wrapper carrying its reason and stamp over no preserved bytes. Invalid
+quarantine bytes and a destination shorter than the stored payload throw as caller bugs. Pass only the
+returned slice to `SpawnGroundItem`.
 
 Both halves are opaque. The engine never decodes the payload, has no way to, and never mints an instance id
 of its own, so the same id and the same bytes come out of a claim as went into the drop, whoever is claiming,

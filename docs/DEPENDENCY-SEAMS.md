@@ -958,7 +958,9 @@ opaque `long` and opaque bytes, seated beside `TileGroundItem` only when there i
 netcode never decodes either and has no way to, which is what lets a game bring its own item model to the
 same server. `TileFragmentedMessage` and `TileFragmentReassembler` are item agnostic for the same reason: they
 move bytes, and what a stream carries, what kind the game gives the frames and what decodes the reassembled
-bytes are all the caller's. The split of the page sync follows from that and is by OWNERSHIP of the bytes.
+bytes are all the caller's. `GroundItemPayloadProjection.Project` lives on the item-aware side and hands its
+public bytes to `TileWorldServer.SpawnGroundItem`, so adding the safe projection door adds no reverse edge.
+The split of the page sync follows from that and is by OWNERSHIP of the bytes.
 `ContainerPageDelta` and `ContainerPageSyncRequest` live in `KhaozEngine.ItemInstances`, because only the
 page codec may write the entry body they carry, and the envelope and the fragmenter live in
 `KhaozEngine.TileWorld.Netcode`, because only it owns the frame. The SERVER composes the two.

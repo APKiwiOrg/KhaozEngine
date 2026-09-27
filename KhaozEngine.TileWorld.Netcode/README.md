@@ -727,7 +727,10 @@ entity set and the same cleared then filled shape. A drop with no instance is ab
 Both halves are opaque, exactly as `TileGroundItem`'s `ItemId` is opaque. The engine never decodes a
 payload, has no way to, and never mints an instance id of its own: the same id and the same bytes come
 out of a claim as went into the drop, whoever is claiming, so a drop-and-claim cycle cannot launder an
-item into a fresh one. What the engine owns is still existence.
+item into a fresh one. What the engine owns is still existence. The payload passed to `SpawnGroundItem`
+must already be the public view. A host using `KhaozEngine.ItemInstances` produces it through
+`GroundItemPayloadProjection.Project`, on the item-aware side of the package boundary. Tile netcode keeps no
+ItemInstances reference and remains unable to decode the bytes.
 
 Three rules, all of them the codec's:
 

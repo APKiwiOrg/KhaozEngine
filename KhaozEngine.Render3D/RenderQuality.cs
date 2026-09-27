@@ -42,10 +42,11 @@ namespace KhaozEngine.Render3D
     /// <summary>
     /// The anti-aliasing selection: a <see cref="AntiAliasingMode"/> plus the parameter that mode needs
     /// (<see cref="MsaaSamples"/> for <see cref="AntiAliasingMode.Msaa"/>, <see cref="SsaaFactor"/> for
-    /// <see cref="AntiAliasingMode.Ssaa"/>). Build one with the factories (<see cref="Off"/> / <see cref="Fxaa"/> /
-    /// <see cref="Msaa(int)"/> / <see cref="Ssaa"/>) and assign it to <see cref="RenderQuality.AntiAliasing"/>. Immutable
-    /// value. <see cref="ResolveFor(in GpuCapabilities)"/> clamps a request to what the device can actually do (never
-    /// throws).
+    /// <see cref="AntiAliasingMode.Ssaa"/>, while <see cref="AntiAliasingMode.Temporal"/> reads its size from
+    /// <see cref="PixelPostProcessSettings.Temporal"/>). Build one with the factories (<see cref="Off"/> /
+    /// <see cref="Fxaa"/> / <see cref="Msaa(int)"/> / <see cref="Ssaa"/> / <see cref="Temporal"/>) and assign it to
+    /// <see cref="RenderQuality.AntiAliasing"/>. Immutable value. <see cref="ResolveFor(in GpuCapabilities)"/> clamps a
+    /// request to what the device can actually do (never throws).
     /// </summary>
     public readonly struct AntiAliasing : IEquatable<AntiAliasing>
     {
@@ -112,7 +113,7 @@ namespace KhaozEngine.Render3D
                     if (supported <= 1) return Fxaa;                 // device can't satisfy this request with MSAA
                     return Msaa(supported, _postFxaa);
                 case AntiAliasingMode.Ssaa:
-                    return Ssaa(SsaaFactor);                          // factor already >= 1; target size capped elsewhere
+                    return Ssaa(SsaaFactor);                          // factor already >= 1, target size capped elsewhere
                 case AntiAliasingMode.Temporal:
                     return Temporal;                                  // one sample and no FXAA, whatever the device offers
                 default:
@@ -150,8 +151,9 @@ namespace KhaozEngine.Render3D
 
     /// <summary>
     /// Graphics-quality knobs for the 3D scene, grouped so a game's options menu maps cleanly onto them. Today it
-    /// carries the <see cref="AntiAliasing"/> selection; it is the extension point for further quality settings
-    /// (anisotropy, shadow/texture quality, future TAA) without churning <see cref="PixelPostProcessSettings"/>.
+    /// carries the <see cref="AntiAliasing"/> selection (temporal anti-aliasing included) and <see cref="Shadows"/>.
+    /// It is the extension point for further quality settings (anisotropy, texture quality) without churning
+    /// <see cref="PixelPostProcessSettings"/>.
     /// Reachable as <see cref="PixelPostProcessSettings.Quality"/>. Defaults are the historical no-cost behaviour
     /// (<see cref="AntiAliasing.Off"/>), so existing scenes are unchanged until a game opts in.
     /// </summary>

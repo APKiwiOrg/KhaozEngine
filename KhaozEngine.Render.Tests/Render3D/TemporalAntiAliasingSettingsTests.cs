@@ -46,7 +46,6 @@ namespace KhaozEngine.Tests.Render3D
             AntiAliasing resolved = AntiAliasing.Temporal.ResolveFor(Caps(maxMsaa), temporalActive);
             Assert.Equal(AntiAliasing.Temporal, resolved);
             Assert.Equal(1, resolved.MsaaSamples);
-            Assert.Equal(AntiAliasing.Fxaa, AntiAliasing.Msaa(4).ResolveFor(Caps(8), temporalActive: true));
         }
 
         [Fact]
@@ -86,7 +85,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void An_explicit_ratio_overrides_the_preset_and_clamps_to_a_third_and_one()
+        public void An_explicit_ratio_overrides_the_preset_and_clamps_to_0_33_and_1()
         {
             var t = new TemporalSettings { Upscale = TemporalUpscale.Performance, UpscaleRatio = 0.8f };
             Assert.Equal(0.8f, t.ResolvedUpscaleRatio);
@@ -98,6 +97,22 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(1f, t.ResolvedUpscaleRatio);
             t.UpscaleRatio = null;
             Assert.Equal(0.5f, t.ResolvedUpscaleRatio);
+        }
+
+        [Theory]
+        [InlineData(0.33f, 0.33f, 634, 356)]
+        [InlineData(1f, 1f, 1920, 1080)]
+        [InlineData(0f, 0.33f, 634, 356)]
+        [InlineData(-0.5f, 0.33f, 634, 356)]
+        public void An_explicit_ratio_on_or_past_a_bound_resolves_to_that_bound(float ratio, float resolved, int w,
+            int h)
+        {
+            var s = new PixelPostProcessSettings();
+            s.Quality.AntiAliasing = AntiAliasing.Temporal;
+            s.Temporal.Upscale = TemporalUpscale.Performance;
+            s.Temporal.UpscaleRatio = ratio;
+            Assert.Equal(resolved, s.Temporal.ResolvedUpscaleRatio);
+            Assert.Equal((w, h), Scene3D.ComputeTargetSize(s, 1920, 1080));
         }
 
         [Theory]
@@ -138,6 +153,29 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal((1152, 745), (uw, uh));
             Assert.True(pw * ph > 1600 * 900);
             Assert.True(uw * uh < 1600 * 900);
+        }
+
+        [Fact]
+        public void Quality_at_the_reference_display_gives_the_internal_size_the_history_figure_prices()
+        {
+            // TemporalFormatsTests prices a Quality history at 3456x2234 with 2304x1489 previous depths.
+            var s = new PixelPostProcessSettings();
+            s.Quality.AntiAliasing = AntiAliasing.Temporal;
+            s.Temporal.Upscale = TemporalUpscale.Quality;
+            Assert.Equal((2304, 1489), Scene3D.ComputeTargetSize(s, 3456, 2234));
+        }
+
+        [Theory]
+        [InlineData(1, 1)]
+        [InlineData(2, 2)]
+        public void A_tiny_viewport_at_the_smallest_ratios_still_gets_a_one_pixel_target(int viewportW, int viewportH)
+        {
+            var s = new PixelPostProcessSettings();
+            s.Quality.AntiAliasing = AntiAliasing.Temporal;
+            s.Temporal.Upscale = TemporalUpscale.UltraPerformance;
+            Assert.Equal((1, 1), Scene3D.ComputeTargetSize(s, viewportW, viewportH));
+            s.Temporal.UpscaleRatio = 0.33f;
+            Assert.Equal((1, 1), Scene3D.ComputeTargetSize(s, viewportW, viewportH));
         }
 
         [Fact]

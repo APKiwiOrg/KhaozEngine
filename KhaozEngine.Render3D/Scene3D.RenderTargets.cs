@@ -14,9 +14,9 @@ namespace KhaozEngine.Render3D
     {
         /// <summary>The anti-aliasing selection resolved against THIS device's capabilities (never throws): an MSAA
         /// request is clamped to a member of <see cref="GpuCapabilities.SupportedMsaaSampleCounts"/> or falls back
-        /// to FXAA if the device cannot satisfy it. SSAA, FXAA and None pass through. Read fresh each frame (Post is
-        /// mutable). Temporal rendering is single-sample, so while it is active an MSAA request falls back the same
-        /// way.</summary>
+        /// to FXAA if the device cannot satisfy it. SSAA, FXAA, Temporal and None pass through. Read fresh each frame
+        /// (Post is mutable). Temporal rendering is single-sample, so while it is active an MSAA request falls back
+        /// the same way.</summary>
         AntiAliasing ResolvedAa() => Post.EffectiveAaMode == AntiAliasingMode.None
             ? AntiAliasing.Off
             : Post.Quality.AntiAliasing.ResolveFor(_gd.Capabilities, TemporalActive);
@@ -52,15 +52,15 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// The internal render-target size for a given post config + viewport. <see cref="RenderScale.FixedInternal"/>
         /// returns <see cref="PixelPostProcessSettings.RenderWidth"/>/<c>RenderHeight</c> unchanged (the historical
-        /// path). <see cref="RenderScale.MatchViewport"/> tracks the viewport, clamped to
-        /// <see cref="PixelPostProcessSettings.MaxRenderWidth"/>/<c>MaxRenderHeight</c> with aspect preserved, each
-        /// dimension at least 1. Pure + headless-testable (no GPU). Stable once the viewport is at/over the cap for a
-        /// fixed aspect, so <see cref="EnsureSize"/> doesn't thrash.
+        /// path). <see cref="RenderScale.MatchViewport"/> tracks the viewport times the supersample factor and
+        /// <see cref="RenderScale.Temporal"/> times the upscale ratio, both clamped to <c>MaxRenderWidth</c> x
+        /// <c>MaxRenderHeight</c> with aspect preserved, each dimension at least 1. Pure + headless-testable (no GPU).
+        /// Stable once the viewport is at/over the cap for a fixed aspect, so <see cref="EnsureSize"/> doesn't thrash.
         /// </summary>
         internal static (int W, int H) ComputeTargetSize(PixelPostProcessSettings s, int viewportW, int viewportH)
         {
-            // Read the AA-resolved sizing (AntiAliasing.Ssaa forces MatchViewport + its factor). AntiAliasing.Off
-            // leaves these equal to the raw RenderScale/Supersample fields, so existing callers are unchanged.
+            // Read the AA-resolved sizing (Ssaa forces MatchViewport and its factor, Temporal forces Temporal and its
+            // ratio). AntiAliasing.Off leaves the raw RenderScale and Supersample fields in charge, as before.
             if (s.EffectiveRenderScale == RenderScale.FixedInternal)
                 return (s.RenderWidth, s.RenderHeight);
 

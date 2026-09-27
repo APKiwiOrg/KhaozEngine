@@ -31,12 +31,14 @@ namespace KhaozEngine.Render3D
         internal const float MinUpscaleRatio = 0.33f;
 
         /// <summary>The internal resolution preset while <see cref="AntiAliasing.Temporal"/> is active. Default
-        /// <see cref="TemporalUpscale.Native"/>. A change resets the temporal history for one frame.</summary>
+        /// <see cref="TemporalUpscale.Native"/>. A change resets the temporal history for one frame, reported as
+        /// <see cref="TemporalResetReason.RenderScale"/>, unless <see cref="UpscaleRatio"/> overrides the preset.</summary>
         public TemporalUpscale Upscale = TemporalUpscale.Native;
 
         /// <summary>An explicit internal-over-display ratio per axis that overrides <see cref="Upscale"/> when set, clamped
-        /// to 0.33 to 1. A value that is not finite is ignored and the preset applies. A change resets the temporal
-        /// history for one frame.</summary>
+        /// to 0.33 to 1. A value that is not finite is ignored and the preset applies. A change of the ratio in effect
+        /// resets the temporal history for one frame, reported as <see cref="TemporalResetReason.RenderScale"/>, even
+        /// when the render cap keeps the internal size.</summary>
         public float? UpscaleRatio;
 
         /// <summary>The display-over-internal factor per axis a preset stands for: 1, 1.5, 1.7, 2 or 3.</summary>

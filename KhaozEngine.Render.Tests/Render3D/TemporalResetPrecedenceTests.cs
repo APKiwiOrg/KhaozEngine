@@ -64,6 +64,9 @@ public sealed class TemporalResetPrecedenceTests
         ViewportSize = 16,
         ExplicitCut = 32,
         CameraJump = 64,
+        /// <summary>A change of <see cref="TemporalSettings.Upscale"/> under <see cref="AntiAliasing.Temporal"/>, which
+        /// the rig then renders with from its first frame.</summary>
+        UpscalePreset = 128,
     }
 
     [Theory]
@@ -75,6 +78,7 @@ public sealed class TemporalResetPrecedenceTests
     [InlineData(Trigger.ViewportSize, TemporalResetReason.Resize)]
     [InlineData(Trigger.ExplicitCut, TemporalResetReason.CameraCutRequested)]
     [InlineData(Trigger.CameraJump, TemporalResetReason.CameraCutDetected)]
+    [InlineData(Trigger.UpscalePreset, TemporalResetReason.RenderScale)]
     // FirstFrame against every other reason.
     [InlineData(Trigger.TemporalTurnedOn | Trigger.HdrToggle, TemporalResetReason.FirstFrame)]
     [InlineData(Trigger.TemporalTurnedOn | Trigger.AntiAliasingMode, TemporalResetReason.FirstFrame)]
@@ -86,6 +90,7 @@ public sealed class TemporalResetPrecedenceTests
     [InlineData(Trigger.HdrToggle | Trigger.AntiAliasingMode, TemporalResetReason.DeviceReset)]
     [InlineData(Trigger.HdrToggle | Trigger.SupersampleFactor, TemporalResetReason.DeviceReset)]
     [InlineData(Trigger.HdrToggle | Trigger.ViewportSize, TemporalResetReason.DeviceReset)]
+    [InlineData(Trigger.HdrToggle | Trigger.UpscalePreset, TemporalResetReason.DeviceReset)]
     [InlineData(Trigger.AntiAliasingMode | Trigger.SupersampleFactor, TemporalResetReason.AntiAliasing)]
     [InlineData(Trigger.AntiAliasingMode | Trigger.ViewportSize, TemporalResetReason.AntiAliasing)]
     [InlineData(Trigger.SupersampleFactor | Trigger.ViewportSize, TemporalResetReason.RenderScale)]
@@ -103,6 +108,7 @@ public sealed class TemporalResetPrecedenceTests
         using var rig = new HeadlessSceneRig();
         Scene3D scene = rig.Scene;
         scene.ForceTemporalForTests = !triggers.HasFlag(Trigger.TemporalTurnedOn);
+        if (triggers.HasFlag(Trigger.UpscalePreset)) scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
         rig.Frame();
         rig.Frame();
         Assert.Equal(scene.ForceTemporalForTests, scene.TemporalHistory.IsValid);
@@ -111,6 +117,7 @@ public sealed class TemporalResetPrecedenceTests
         if (triggers.HasFlag(Trigger.HdrToggle)) scene.Post.Hdr.Enabled = !scene.Post.Hdr.Enabled;
         if (triggers.HasFlag(Trigger.AntiAliasingMode)) scene.Post.Quality.AntiAliasing = AntiAliasing.Fxaa;
         if (triggers.HasFlag(Trigger.SupersampleFactor)) scene.Post.Supersample = 2f;
+        if (triggers.HasFlag(Trigger.UpscalePreset)) scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
         if (triggers.HasFlag(Trigger.ExplicitCut)) scene.CameraCut();
         if (triggers.HasFlag(Trigger.CameraJump)) scene.Camera.Target += new Vector3(40f, 0f, 0f);
         int width = triggers.HasFlag(Trigger.ViewportSize) ? 80 : HeadlessSceneRig.Width;

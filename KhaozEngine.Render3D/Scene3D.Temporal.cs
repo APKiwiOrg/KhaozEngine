@@ -49,9 +49,13 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public void CameraCut() => _cameraCutRequested = true;
 
-        /// <summary>The settings whose change resets history, as one frame saw them.</summary>
-        readonly record struct TemporalFrameKey(AntiAliasing AntiAliasing, RenderScale RenderScale, float Supersample,
-            bool HdrColor);
+        /// <summary>The settings and the display size whose change resets history, as one frame saw them.
+        /// <paramref name="ViewportScale"/> is what the viewport is scaled by, which a raw supersample factor does not
+        /// set under temporal anti-aliasing. <paramref name="UpscaleRatio"/> is the temporal ratio, whose change resets
+        /// even when a capped internal size holds. The display size is keyed because a capped internal size can hide a
+        /// display resize.</summary>
+        readonly record struct TemporalFrameKey(AntiAliasing AntiAliasing, RenderScale RenderScale, float ViewportScale,
+            bool HdrColor, float UpscaleRatio, int DisplayWidth, int DisplayHeight);
 
         /// <summary>Whether this frame's history can be read, and why it was last reset.</summary>
         internal TemporalHistory TemporalHistory { get; } = new();
@@ -73,7 +77,8 @@ namespace KhaozEngine.Render3D
         {
             FrameView view = _currentFrameView;
             bool active = TemporalActive;
-            var key = new TemporalFrameKey(ResolvedAa(), Post.EffectiveRenderScale, Post.EffectiveSupersample, _res.HdrColor);
+            var key = new TemporalFrameKey(ResolvedAa(), Post.EffectiveRenderScale, Post.EffectiveViewportScale,
+                _res.HdrColor, Post.EffectiveUpscaleRatio, _latchedDisplayWidth, _latchedDisplayHeight);
             // The camera is read only while temporal rendering is active, so a frame with it off does no added work.
             Vector3 eye = default, forward = default;
             if (active)
@@ -123,9 +128,11 @@ namespace KhaozEngine.Render3D
                 reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.DeviceReset);
             if (key.AntiAliasing != _historyKey.AntiAliasing)
                 reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.AntiAliasing);
-            if (key.RenderScale != _historyKey.RenderScale || key.Supersample != _historyKey.Supersample)
+            if (key.RenderScale != _historyKey.RenderScale || key.ViewportScale != _historyKey.ViewportScale
+                || key.UpscaleRatio != _historyKey.UpscaleRatio)
                 reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.RenderScale);
-            if (view.Width != last.Width || view.Height != last.Height)
+            if (view.Width != last.Width || view.Height != last.Height
+                || key.DisplayWidth != _historyKey.DisplayWidth || key.DisplayHeight != _historyKey.DisplayHeight)
                 reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.Resize);
             if (_cameraCutRequested)
                 reason = TemporalResetPrecedence.Higher(reason, TemporalResetReason.CameraCutRequested);

@@ -25,10 +25,6 @@ namespace KhaozEngine.Render3D
         // drawn on a temporal frame, so its data exists whenever it is drawn.
         SceneDebugView _frameDebugView;
 
-        /// <summary>The display size over the internal size per axis, which sets the jitter sequence length. Native
-        /// in round 1. Round 2's upscaler replaces this with its ratio.</summary>
-        const float DisplayOverInternalRatio = 1f;
-
         /// <summary>This render's view snapshot. Default-valued before the first render.</summary>
         internal FrameView CurrentFrameView => _currentFrameView;
 
@@ -53,10 +49,10 @@ namespace KhaozEngine.Render3D
         /// </summary>
         internal bool TemporalActive => _frameViewLatchedThisFrame ? _frameTemporalActive : TemporalRequested;
 
-        /// <summary>Whether a temporal consumer asks for temporal rendering right now: a <see cref="DebugView"/> other
-        /// than <see cref="SceneDebugView.None"/>, or the test seam. Round 2 adds the temporal anti-aliasing mode. Read
-        /// only through <see cref="TemporalActive"/>.</summary>
-        bool TemporalRequested => ForceTemporalForTests || _debugView != SceneDebugView.None;
+        /// <summary>Whether a temporal consumer asks for temporal rendering right now: temporal anti-aliasing
+        /// (<see cref="TemporalResolveActive"/>), the main requester, a <see cref="DebugView"/> other than
+        /// <see cref="SceneDebugView.None"/>, or the test seam. Read only through <see cref="TemporalActive"/>.</summary>
+        bool TemporalRequested => ForceTemporalForTests || _debugView != SceneDebugView.None || TemporalResolveActive;
 
         /// <summary>Called from <see cref="Begin"/>: one frame index per Begin, however many renders follow, and the
         /// next render is the frame's first, which fixes the frame's temporal state.</summary>
@@ -74,11 +70,17 @@ namespace KhaozEngine.Render3D
         /// latched origin on an origin-aware camera first, so the <c>View</c> read after it is in the same render
         /// frame. A camera that cannot take an origin but was swapped in after <see cref="Begin"/> latched one gets the
         /// translation composed onto its view, as the fallback in <see cref="FrameViewProjection"/> does for its
-        /// view-projection. The frame's first render also fixes its temporal state (<see cref="TemporalActive"/>) and
-        /// its debug view (<see cref="DebugView"/>).
+        /// view-projection. The frame's first render also fixes its temporal state (<see cref="TemporalActive"/>), its
+        /// debug view (<see cref="DebugView"/>) and its display size, <paramref name="displayWidth"/> by
+        /// <paramref name="displayHeight"/>, which sets the jitter cycle under temporal anti-aliasing
+        /// (<see cref="DisplayOverInternalRatio"/>) and joins the history key.
         /// </summary>
-        internal void LatchFrameView()
+        internal void LatchFrameView(int displayWidth = 0, int displayHeight = 0)
         {
+            // A later render inside the frame keeps the frame's display size, so it keeps the frame's jitter too. A call
+            // without a size keeps the last one.
+            if (!_frameViewLatchedThisFrame && displayWidth > 0 && displayHeight > 0)
+                (_latchedDisplayWidth, _latchedDisplayHeight) = (displayWidth, displayHeight);
             IIsoCamera3D cam = ActiveCamera;
             Matrix4x4 viewProjection = FrameViewProjection();
             Matrix4x4 view = cam is not IRenderOriginAware && _frameOriginActive

@@ -3,7 +3,7 @@ namespace KhaozEngine.Render3D
     /// <summary>
     /// How far below the display the temporal upscaler renders, per axis, while <see cref="AntiAliasing.Temporal"/> is
     /// active. Read through <see cref="TemporalSettings.Upscale"/>. <see cref="TemporalSettings.UpscaleRatio"/> overrides
-    /// it with any ratio from 0.33 to 1. A change resets the temporal history for one frame.
+    /// it with any ratio from 0.33 to 1. A change resets the temporal history for one frame while the preset applies.
     /// </summary>
     public enum TemporalUpscale
     {

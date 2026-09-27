@@ -9,9 +9,10 @@ namespace KhaozEngine.Render3D
         /// <summary>The first frame rendered with temporal rendering active, since the scene was created or since
         /// temporal rendering was last off, and every frame while temporal rendering is off.</summary>
         FirstFrame,
-        /// <summary>The internal render target changed size.</summary>
+        /// <summary>The internal render target changed size, or the display it is presented at did, which a capped
+        /// internal size can hide.</summary>
         Resize,
-        /// <summary>The render scale mode or its factor changed.</summary>
+        /// <summary>The render scale mode or its factor changed, the temporal upscale preset or ratio included.</summary>
         RenderScale,
         /// <summary>The anti-aliasing selection changed.</summary>
         AntiAliasing,

@@ -3,8 +3,8 @@
 ## Status
 
 In progress under [#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182). `SkeletonContract`,
-`ContractJointMap`, `ClipRefusals`, `BoneMask.ForJoints` and `SkinnedGrounding` are in. `MomentSchedule`
-follows, and the round ships as one minor release.
+`ContractJointMap`, `ClipRefusals`, `BoneMask.ForJoints`, `SkinnedGrounding` and `MomentSchedule` are in.
+The round ships as one minor release.
 
 ## Purpose
 
@@ -86,7 +86,17 @@ skin returns positive infinity.
 weighted table of moment families that are single or mirrored left and right. It is pure per body id
 and clock. Its hash, its empty draw, its family draw (bits 32 to 47), its side bit (31) and its start
 offset (the low 31 bits) are exactly those of `IdleTurns`, so salt 0 over a glance and turn table
-reproduces the player's schedule to the bit.
+reproduces the player's schedule to the bit. The salt is XORed into the seed before the first finalizer,
+so salt 0 leaves the seed alone. The family draw compares against each family's running weight over the
+table's total, not a running sum of divided shares, so a glance weighing 0.75 of a total of 1 draws below
+exactly 0.75. The last family takes any draw rounding leaves over.
+
+The table is copied at construction and `At` allocates nothing. The constructor refuses an empty table, a
+weight that is not finite and above zero, weights whose total is not finite, and a length that is not
+finite and above zero or does not fit between a slot's quiet ends. It refuses a slot length that is not
+finite and above zero, a quiet end that is not finite and at least zero, an empty share that is not
+finite, below 0 or at least 1, and a negative cap. No moment is `Moment.None`, family -1. A default `Moment` names family 0, so callers
+test `IsNone`.
 
 ## What stays in games
 

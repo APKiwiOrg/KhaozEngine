@@ -147,6 +147,8 @@ oversized game message.
 | `InstanceValidationReport`, `InstanceValidationFinding` | accumulating, side-effect free | 12.2 |
 | `QuarantineWrapper` | `Wrap`, `TryUnwrap`, `Verify` over the `KECQ` format | 12.4 |
 | `ItemInstanceVisibility` | the ONE `CanSee` function plus `PublicView` | 12.5 |
+| `ContainerPageProjection` | one stored entry's viewer payload for page and delta sync | 7.4, 12.5 |
+| `GroundItemPayloadProjection` | `Project` writes the public ground view through the same projection core | 7.4, 12.5 |
 
 `KhaozEngine.ItemInstances`, the content and rules half:
 
@@ -1453,7 +1455,7 @@ the 250 ms tile tick rather than at a 10 Hz one. Moving the sibling component on
 the obvious next optimisation and it is not v1: v1 ships the full-state cost with the budget that says
 what it is.
 
-The second row matters too. Option c needs no engine API change at all: the targeted message is exactly
+The second row matters too. Option c's targeted-message half needs no engine API change: the message is exactly
 the shape `SendCombatTo(slot, interest)` already is, a second non-snapshot per-viewer filtered send driven
 off the same interest set (`TileWorldServer.Tick.cs:248-259`), and `PickupState.OwnerNetId` is the
 existing precedent for the engine owning the TAG and not the RULE.
@@ -1467,9 +1469,13 @@ constraining every future kind assignment.
 
 **A GROUND item has no owner viewer in v1, and that is a rule rather than an omission.** A drop's entity
 is the drop, whose net id is nobody's, and the durable claim has not happened yet, so there is no viewer
-this document can call the owner of a ground stack. So a ground item's PUBLIC view is its WHOLE
-replicated payload: the sibling component carries `PublicView(payload, Everyone)` and there is no owner
-remainder message for a drop, only for an item in a container the viewer owns. The consequence to be
+this document can call the owner of a ground stack. The host should call
+`GroundItemPayloadProjection.Project` on the stored payload before `SpawnGroundItem`, and the sibling
+component carries that `Everyone` view with no owner remainder. The helper uses the same core as
+`ContainerPageProjection.ProjectPayload`, giving a host one projection door for both routes.
+`TileWorldServer.SpawnGroundItem` still accepts opaque bytes, so the host must use that door before spawn.
+A malformed live payload yields zero public bytes, while a
+quarantined wrapper is hollowed to its reason and stamp with no original bytes. The consequence to be
 explicit about is the leak that does not happen: kind 6 `BoundTo` is `OwnerOnly` (3.3), so it is stripped
 before the component is written and a passer-by cannot read who a dropped item is bound to, which is a
 fact about a PLAYER rather than about an item. Kinds 4 and 5, charges and durability, are stripped for
@@ -3059,15 +3065,19 @@ exists to keep. The page's own entry length check is what bounds it, at the 2 Mi
 ### 12.5 The one visibility function
 
 ```csharp
-public static bool CanSee(ushort kind, PropertyVisibility viewerLevel, bool identified, uint revealedMask);
-public static int  PublicView(ReadOnlySpan<byte> payload, PropertyVisibility level, bool identified,
-                              uint revealedMask, Span<byte> destination);
+ItemInstanceVisibility.CanSee(registry, kind, viewerLevel, identified, revealedMask);
+ItemInstanceVisibility.PublicView(registry, payload, level, identified, revealedMask, destination);
+GroundItemPayloadProjection.Project(registry, storedPayload, quarantined, identified, revealedMask, destination);
 ```
 
-`CanSee` is called by the replication filter (7.4) and by the tooltip builder and by NOTHING else, which
-is contracts 11.2's rule stated as a call-site constraint. `PublicView` is the forward pass over retained
-runs described in 7.4, returning the written length. Both are pure and static, so a test calls them with
-no server.
+`CanSee` is the shared rule reached by container and ground projection and by the tooltip builder.
+No caller reimplements it. `PublicView` is the forward pass over retained runs described in 7.4,
+returning the written length. Both are pure and static, so a test calls them with no server.
+
+`GroundItemPayloadProjection.Project` fixes the viewer level to `Everyone` and delegates to the same
+projection core as `ContainerPageProjection.ProjectPayload`. Its caller supplies the stored entry's
+identification state and revealed mask. A destination as long as the stored payload suffices, and a
+quarantined entry becomes a hollow wrapper rather than exposing its preserved bytes.
 
 The rule, in order: `ServerOnly` is never visible to anyone. `OwnerOnly` is visible when the viewer level
 is `OwnerOnly`. `Everyone` is visible always. Then, and only then, the identification gate: a kind marked
@@ -3613,7 +3623,7 @@ Numbered so the sections above can cite a test rather than describe one, and a r
 | 6 | Generator distribution | `ItemInstances.Tests` | weights proportional within an integer bound, positions uniform and both ends reachable, and draw count a function of the affix count including an item whose pool empties mid roll (9.3, 9.4 step 8) |
 | 7 | Evaluator determinism | `ItemInstances.Tests` | the `More` fold order changes the answer and the stated order is stable, add-then-remove restores exactly, and floor division rounds `-14000` to `-1` where C# `/` gives 0 (11.6) |
 | 8 | Remap idempotence | `ItemInstances.Tests` | applying the full ordered rule set twice produces the same bytes as once (contracts 8.3) |
-| 9 | Visibility agreement | `ItemInstances.Tests` | the replication filter and the tooltip builder call `CanSee` and agree on every kind, at every level, identified and not (12.5) |
+| 9 | Visibility agreement | `ItemInstances.Tests` | the replication filter and tooltip call `CanSee` and agree on every kind, while ground projection matches the page's `Everyone` view for live and quarantined entries without exposing owner or server fields (12.5) |
 | 10 | Craft replay | `Server.Tests` | same id and same intent replays to the original receipt, same id with a refilled slot is `OperationConflict` (15.1) |
 | 11 | Drop and claim | `TileWorld.Netcode.Tests` plus `Server.Tests` | the instance id survives a drop, a claim by a stranger and a claim by the dropper |
 | 12 | Allocator rotation and the epoch refusal | `ItemInstances.Tests` | `Rotate` issues no id in the old node's range, a boot on a retired node id throws, an allocator whose persisted `store_epoch` differs from the live one refuses to issue, and a crash skips the unissued block (3.6) |
@@ -3652,7 +3662,7 @@ WRITTEN, NOT EXECUTED. Nothing here is done by this document, and each row is wo
 | 3 | `PlayerJournalSections` widens | a `byte` flags enum with all eight bits used | `uint`, threaded through `ReplaceSections` and `SyncSections`. A `ushort` holds 16 bits and row 2's ten page bank needs 17 sections (5.4), so it runs out on the page this same table ships | https://github.com/APKiwiOrg/Grimhollow/issues/223 |
 | 4 | `ValidateContainer` is replaced | a hard THROW on an unknown item id (`GrimhollowJournalContracts.cs:483-524`) | the engine validator plus quarantine (12.2), so one bad id is a placeholder rather than a locked-out player | https://github.com/APKiwiOrg/Grimhollow/issues/224 |
 | 5 | The bank message is replaced | one whole-container blob that hits the 1,024 byte cap at 102 occupied slots | page sync plus deltas (7.5) | https://github.com/APKiwiOrg/Grimhollow/issues/221 |
-| 6 | Dropped instances ride the region ground streams | `loot-created` with item id and count | the same event plus instance id, payload and stamp (7.3), and the sibling component on the spawn (7.2) | #208 |
+| 6 | Dropped instances ride the region ground streams | `loot-created` with item id and count | the same event plus instance id, payload and stamp (7.3), with `GroundItemPayloadProjection.Project` before the sibling component is spawned (7.2) | https://github.com/APKiwiOrg/Grimhollow/issues/246 |
 | 7 | Rolls move to `IRandomSource` | three `new Random(seed)` sites and four integer literals (`b-grimhollow.md:786-836`) | `CryptographicRandomSource` in production, `SeededRandomSource` in tests, one constructor parameter at a time | https://github.com/APKiwiOrg/Grimhollow/issues/214 |
 | 8 | `EquipStats` becomes content stats | three ints on a hardcoded switch over nine ids | four `stat` rows and `Flat` lines per base (11.7) | #208 |
 | 9 | `PresentAtCommit` is set | never set, anywhere (`b-grimhollow.md:618-639`) | set on a contested claim now, and on a trade when trading arrives | #208 |

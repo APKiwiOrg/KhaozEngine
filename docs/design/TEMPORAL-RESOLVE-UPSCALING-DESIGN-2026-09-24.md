@@ -73,13 +73,15 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
 1. **Motion with dilation.** For each display pixel, find the internal pixel under it and take the motion vector of
    the closest depth in its 3x3 neighbourhood. Edges of moving objects then carry the object's motion rather than the
    background's, which is the main cause of edge ghosting. Background pixels, marked by round 1's sentinel, reproject
-   from camera rotation alone. Beside a fast edge a pixel on the farther surface keeps its own motion (amendment 23).
+   from camera rotation alone. Beside a fast edge, where the nearer surface itself moved, a pixel on the farther
+   surface keeps its own motion (amendment 23).
 2. **History fetch.** Sample the history at the reprojected position with a 5-tap Catmull-Rom filter. Bilinear history
    sampling blurs a little more every frame, and a stability-first filter keeps history for many frames.
 3. **Disocclusion.** Reproject the pixel's linear depth and compare it with the previous frame's depth at the
    reprojected position. Beyond a relative tolerance the pixel was hidden last frame, and its history weight drops to
    zero. A reprojected position off screen does the same. A moving surface skips the test (amendment 17). A mostly
-   covered footprint counts as hidden unless a thin feature covered it (amendment 23).
+   covered footprint counts as hidden unless a narrow feature covered it or the pixel carries a lock a ridge refreshed
+   on the last frame (amendment 23).
 4. **Current sample reconstruction.** Gather the 3x3 internal samples around the display pixel and weight each by a
    Lanczos 2 kernel on the distance from its jittered sample position to the display pixel centre, measured in
    internal pixels. That is what turns jittered low resolution frames into a higher resolution image, and at `Native`
@@ -290,11 +292,20 @@ and changed these details. Each group's "Contract amendments" block carries the 
     edge: 63 and 180 of 840 trail pixels at Native and Quality passed a freshly revealed wall's difference by more than
     0.05, against 1 and 0 now. The cost falls on a moving object's edge pixels whose centre texel lies on the farther
     surface. They now read their own history, not the edge carried along. A keyed box tilted and crossing the flat wall
-    at 2 internal pixels a frame averages a luma error of 0.0016 and 0.0020 over its edges against 0.0008 and 0.0014, a
-    keyed line one internal pixel wide keeps 0.69 and 0.43 of its reference energy where dilation smeared it to 2.09 and
-    1.28 with an 8 pixel trail, and at the moving edges of the 30 pixel box on the flat wall fast flips rose from 0.0000
-    and 0.0007 to 0.0061 and 0.0071 at Performance and UltraPerformance, with UltraPerformance's added change rising
-    from 0.0034 to 0.0042.
+    at 2 internal pixels a frame averages a luma error of 0.0015 and 0.0020 over its edges at Native and Quality against
+    0.0008 and 0.0014, and the temporal error over the band it crosses rose from 0.00085 and 0.00168 to 0.00208 and
+    0.00274. A keyed line one internal pixel wide keeps 0.69 and 0.43 of its reference energy where dilation smeared it
+    to 2.09 and 1.28 with an 8 pixel trail at Native, and its band's temporal error rose from 0.00255 and 0.00220 to
+    0.00374 and 0.00428. At the moving edges of the 30 pixel box on the flat wall fast flips rose from 0.0000 and 0.0007
+    to 0.0061 and 0.0071 at Performance and UltraPerformance, with UltraPerformance's added change rising from 0.0034 to
+    0.0042. The narrow exception cannot tell a still thin feature the jitter missed from a keyed line one or two
+    internal texels wide that moved on at 2 internal pixels a frame, and keeps its colour where it left over the
+    textured wall: 128 and 177 trail pixels at Native and Quality for the line one texel wide and 50 and 136 for two,
+    against acceptance 3's 2 and 3. Keeping the history only where last frame's surface stood still leaves 11 and 23,
+    and 0 and 3, but takes the keyed line crossing the flat wall under its energy floor, 0.27 of its reference at Native
+    against 0.3. The line one texel wide keeps the rest because its colour reaches its neighbours through the
+    reconstruction, and over a grey texture the clip, whose chroma range is nothing, pulls such a pixel's luma to the
+    neighbourhood mean at full confidence.
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies

@@ -284,9 +284,9 @@ namespace KhaozEngine.Tests.Gpu
             // that showed both, the stored depths hold two texels of line that the current 3x3 does not, the case where
             // disoccluding a mostly covered footprint unless its nearest stored depth was a single texel wide dropped
             // the history of the left line at Quality, from 45.3 to 18.4 percent. Standing ahead at Native step 3 drops
-            // the left line's history whenever all four stored depths were line, which the resolve did before the ghost
-            // fixes as well, so that case checks the right line: it changes by 10 percent a frame, and dropping its
-            // history there made it change by 43.8.
+            // the left line's history whenever all four stored depths were line, which the resolve did before
+            // amendment 23 as well, so that case checks the right line: it changes by 10 percent a frame, and dropping
+            // its history there made it change by 43.8.
             var (left, right) = RunLinePair(preset, ahead);
             string message = $"{preset}, {(ahead ? "standing ahead" : "on the wall")}: left {left}, right {right}";
             _output.WriteLine(message);

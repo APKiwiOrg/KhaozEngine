@@ -37,7 +37,7 @@ namespace KhaozEngine.Render3D.Internal
         /// handles the pixel instead. A static point on or behind last frame's camera plane counts as moving, and the
         /// motion target already sends such a point off screen.</summary>
         public const float MovingSurfaceInternalPixels = 0.5f;
-        /// <summary>Step 3. The share of the dilated texel's motion length, in internal pixels, added to
+        /// <summary>Step 3. The share of the reprojected texel's motion length, in internal pixels, added to
         /// <see cref="MovingSurfaceInternalPixels"/>. The motion target is RG16F, whose 10-bit mantissa puts one unit
         /// in the last place at no more than 1/1024 of a channel's magnitude. Vulkan leaves the conversion's rounding
         /// undefined. Rounding to nearest moves a channel by up to half a unit, at most 1/2048 of its magnitude, which
@@ -151,10 +151,12 @@ namespace KhaozEngine.Render3D.Internal
         /// pixels a frame against the wall left 18 and 19 trail pixels at Native and Quality with the rule applied
         /// there, against 6 and 10, and against the sky its edges took 0.0035 and 0.0063 fast flips a pixel a frame
         /// against none. The cost, where a moving object's edge pixel has its centre texel on the farther surface: a
-        /// keyed box tilted and crossing the flat wall at 2 internal pixels a frame averages a luma error of 0.0016 and
-        /// 0.0020 over its edges against 0.0008 and 0.0014 with dilation, and a keyed line one internal pixel wide
-        /// keeps 0.69 and 0.43 of its reference energy where dilation smeared it to 2.09 and 1.28 with a trail of 8
-        /// pixels at Native. The 30 pixel box crossing the flat wall at 4 display pixels a frame shows 0.0029, 0.0025,
+        /// keyed box tilted and crossing the flat wall at 2 internal pixels a frame averages a luma error of 0.0015 and
+        /// 0.0020 over its edges at Native and Quality against 0.0008 and 0.0014 with dilation, and its temporal error
+        /// over the band it crosses is 0.00208 and 0.00274 against 0.00085 and 0.00168. A keyed line one internal
+        /// pixel wide keeps 0.69 and 0.43 of its reference energy where dilation smeared it to 2.09 and 1.28 with a
+        /// trail of 8 pixels at Native, and its band's temporal error is 0.00374 and 0.00428 against 0.00255 and
+        /// 0.00220. The 30 pixel box crossing the flat wall at 4 display pixels a frame shows 0.0029, 0.0025,
         /// 0.0061 and 0.0071 fast flips a pixel a frame at its moving edges at Quality, Balanced, Performance and
         /// UltraPerformance against 0.0001, 0.0000, 0.0000 and 0.0007, and its added change at UltraPerformance rises
         /// from 0.0034 to 0.0042.</summary>

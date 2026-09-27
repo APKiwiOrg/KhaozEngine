@@ -18,14 +18,17 @@ Schema (`wallet_ledger`, `wallet_balance`, `grant_schedule`) is bootstrapped on 
 `SqlTransaction` at `IsolationLevel.Serializable`; the database serializes concurrent operations, there is no
 in-process semaphore. Idempotency is enforced by a composite unique index on
 `(account_id, currency_id, idempotency_key)`: replaying an already-seen key for the same account and currency is a
-no-op that returns the prior balance; the same key on a different account, or a different currency on the same
-account, is a distinct operation. Credit upserts the balance with a relative
+no-op that returns the prior balance when its signed amount and `LedgerReason` match. A different amount, reason,
+or direction returns `Conflict=true` and leaves the balance and ledger unchanged. The same key on a different
+account, or a different currency on the same account, is a distinct operation. The existing ledger row already
+holds the signed delta and reason, so this needs no extra fingerprint table or schema migration. Credit upserts
+the balance with a relative
 `UPDATE ... SET amount = amount + @amt ... OUTPUT inserted.amount`, falling back to an `INSERT` when that update
 matched no row, so a first-ever credit for an account and currency creates the balance row. Debit uses a
 conditional `UPDATE ... WHERE amount >= @amt` and checks `@@ROWCOUNT` to reject an overspend atomically, writing no
 ledger row. The only `MERGE ... WITH (HOLDLOCK)` in the store is in `SetNextAvailableAsync`, on `grant_schedule`,
-not on either wallet path. A duplicate-key race on the ledger insert (`SqlException` 2601/2627) is treated as a replay: the prior
-`post_balance` for that composite key is re-read and returned.
+not on either wallet path. A duplicate-key race on the ledger insert (`SqlException` 2601/2627) reads the winning
+receipt's signed delta, reason, and `post_balance`, then returns either an exact replay or a conflict.
 
 Opt-in: pulls `Microsoft.Data.SqlClient` without touching the dependency-free `KhaozEngine.Commerce` core. Not
 bundled in the `Server` umbrella.
@@ -90,8 +93,9 @@ any database created after this pin.
 
 Run the gated tests (`KE_COMMERCE_SQLSERVER=<conn> dotnet test ...`) against a real (Azure) SQL instance before
 trusting this store with real money. They are skipped, not run, in a normal local/CI pass. This exercises the
-composite unique index, the atomic-update paths for both credit and debit, and the 2601/2627 duplicate-key replay
-recovery under an actual server, and is the point to watch for 1205 deadlocks under parallel load.
+composite unique index, replay and conflict classification, the atomic-update paths for both credit and debit,
+and the 2601/2627 duplicate-key recovery under an actual server. It is also the point to watch for 1205 deadlocks
+under parallel load.
 
 Point the case-sensitivity row at a database whose DEFAULT collation is case-insensitive, which is the
 deployment the pinned column collation exists to protect. Against a database that was already created

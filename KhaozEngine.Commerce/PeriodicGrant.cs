@@ -84,7 +84,7 @@ public sealed class PeriodicGrant
 
         WallClockRewardSchedule advanced = schedule.Claim(serverNowUtc);
         await schedules.SetNextAvailableAsync(account, rewardId, advanced.NextAvailableUtc, ct);
-        return new PeriodicGrantResult(!credit.Replayed, credit.NewBalance, advanced.TimeUntilAvailable(serverNowUtc));
+        return new PeriodicGrantResult(credit.Applied, credit.NewBalance, advanced.TimeUntilAvailable(serverNowUtc));
     }
 
     /// <summary>Re-opens this reward for <paramref name="account"/> from <paramref name="availableFromUtc"/>, so the

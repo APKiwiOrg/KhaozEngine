@@ -11,7 +11,8 @@ namespace KhaozEngine.Commerce.Sqlite;
 /// <summary>SQLite-backed wallet + grant-schedule store. Single connection, serialized behind one gate.
 /// Idempotency is enforced by a composite unique index on <c>(account_id, currency_id, idempotency_key)</c>: the
 /// same key used for a different account, or a different currency on the same account, is a distinct operation, not
-/// a replay.
+/// a replay. Within that scope, the stored ledger row's signed delta and reason distinguish an exact replay from an
+/// intent conflict.
 /// <para>The connection, the gate and the dispose are <see cref="SqliteStoreConnection"/>'s, shared with every other
 /// SQLite store in the engine. That is where the unpooled open and the dispose live, and why this store no longer
 /// carries its own copy of them (#731). What stays here is the schema and the SQL.</para></summary>
@@ -50,14 +51,16 @@ public sealed class SqliteWalletStore : IWalletStore, IGrantScheduleStore, IDisp
     private async Task<CreditResult> MutateForCreditAsync(AccountId a, CurrencyId c, long amount, string key,
         LedgerReason reason, string? src, CancellationToken ct)
     {
-        (bool applied, bool replayed, bool _, long balance) = await Mutate(a, c, amount, key, reason, src, isDebit: false, ct);
+        (bool applied, bool replayed, bool _, long balance) =
+            await Mutate(a, c, amount, key, reason, src, isDebit: false, ct);
         return new CreditResult(applied, replayed, balance);
     }
 
     private async Task<DebitResult> MutateForDebitAsync(AccountId a, CurrencyId c, long amount, string key,
         LedgerReason reason, string? src, CancellationToken ct)
     {
-        (bool applied, bool replayed, bool insufficient, long balance) = await Mutate(a, c, amount, key, reason, src, isDebit: true, ct);
+        (bool applied, bool replayed, bool insufficient, long balance) =
+            await Mutate(a, c, amount, key, reason, src, isDebit: true, ct);
         return new DebitResult(applied, replayed, insufficient, balance);
     }
 
@@ -68,12 +71,14 @@ public sealed class SqliteWalletStore : IWalletStore, IGrantScheduleStore, IDisp
         if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Idempotency key required.", nameof(key));
         using SqliteStoreLease _ = await db.EnterAsync(ct);
         using SqliteTransaction tx = db.BeginTransaction();
-        long? prior = ScalarLong(tx, "SELECT post_balance FROM wallet_ledger WHERE account_id=$a AND currency_id=$c AND idempotency_key=$k",
+        Receipt? prior = ReadReceipt(tx,
+            "SELECT delta, reason, post_balance FROM wallet_ledger WHERE account_id=$a AND currency_id=$c AND idempotency_key=$k",
             ("$a", a.Value), ("$c", c.Value), ("$k", key));
-        if (prior is long pb)
+        if (prior is Receipt receipt)
         {
             tx.Commit();
-            return (false, true, false, pb);
+            bool conflict = receipt.Delta != (isDebit ? -amount : amount) || receipt.Reason != reason;
+            return (false, !conflict, false, receipt.PostBalance);
         }
         long bal = ScalarLong(tx, "SELECT amount FROM wallet_balance WHERE account_id=$a AND currency_id=$c",
             ("$a", a.Value), ("$c", c.Value)) ?? 0;
@@ -153,6 +158,20 @@ public sealed class SqliteWalletStore : IWalletStore, IGrantScheduleStore, IDisp
         object? o = cmd.ExecuteScalar();
         return o is null or DBNull ? null : Convert.ToInt64(o, CultureInfo.InvariantCulture);
     }
+
+    private Receipt? ReadReceipt(SqliteTransaction tx, string sql, params (string, object)[] p)
+    {
+        using SqliteCommand cmd = db.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = sql;
+        Bind(cmd, p);
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        return reader.Read()
+            ? new Receipt(reader.GetInt64(0), (LedgerReason)reader.GetInt32(1), reader.GetInt64(2))
+            : null;
+    }
+
+    private readonly record struct Receipt(long Delta, LedgerReason Reason, long PostBalance);
 
     private static void Bind(SqliteCommand cmd, params (string name, object value)[] p)
     {

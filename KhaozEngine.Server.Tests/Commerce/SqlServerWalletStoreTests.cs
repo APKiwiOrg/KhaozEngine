@@ -35,16 +35,104 @@ public sealed class SqlServerWalletStoreTests
     }
 
     [SqlServerFact]
-    public async Task Replayed_key_credits_once()
+    public async Task Credit_replay_returns_historical_balance()
     {
         SqlServerWalletStore store = NewStore();
         AccountId account = FreshAccount();
         await store.CreditAsync(account, Currency, 5, "dup", LedgerReason.Grant, null);
+        await store.CreditAsync(account, Currency, 2, "later", LedgerReason.Grant, null);
         CreditResult again = await store.CreditAsync(account, Currency, 5, "dup", LedgerReason.Grant, null);
         Assert.True(again.Replayed);
         Assert.False(again.Applied);
+        Assert.False(again.Conflict);
         Assert.Equal(5, again.NewBalance);
-        Assert.Equal(5, await store.GetBalanceAsync(account, Currency));
+        Assert.Equal(7, await store.GetBalanceAsync(account, Currency));
+        Assert.Equal(2, (await store.GetLedgerAsync(account, Currency, 100)).Count);
+    }
+
+    [SqlServerFact]
+    public async Task Debit_replay_returns_historical_balance()
+    {
+        SqlServerWalletStore store = NewStore();
+        AccountId account = FreshAccount();
+        await store.CreditAsync(account, Currency, 10, "seed", LedgerReason.Grant, null);
+        await store.DebitAsync(account, Currency, 4, "dup", LedgerReason.Spend, null);
+        await store.CreditAsync(account, Currency, 2, "later", LedgerReason.Grant, null);
+
+        DebitResult again = await store.DebitAsync(account, Currency, 4, "dup", LedgerReason.Spend, null);
+
+        Assert.False(again.Applied);
+        Assert.True(again.Replayed);
+        Assert.False(again.Conflict);
+        Assert.False(again.Insufficient);
+        Assert.Equal(6, again.NewBalance);
+        Assert.Equal(8, await store.GetBalanceAsync(account, Currency));
+        Assert.Equal(3, (await store.GetLedgerAsync(account, Currency, 100)).Count);
+    }
+
+    [SqlServerFact]
+    public async Task Credit_key_reuse_with_different_intent_conflicts()
+    {
+        SqlServerWalletStore store = NewStore();
+        AccountId account = FreshAccount();
+        await store.CreditAsync(account, Currency, 5, "dup", LedgerReason.Grant, null);
+        await store.CreditAsync(account, Currency, 2, "later", LedgerReason.Grant, null);
+
+        CreditResult differentAmount = await store.CreditAsync(
+            account, Currency, 6, "dup", LedgerReason.Grant, null);
+        CreditResult differentReason = await store.CreditAsync(
+            account, Currency, 5, "dup", LedgerReason.Adjustment, null);
+
+        AssertCreditConflict(differentAmount, 5);
+        AssertCreditConflict(differentReason, 5);
+        Assert.Equal(7, await store.GetBalanceAsync(account, Currency));
+        Assert.Equal(2, (await store.GetLedgerAsync(account, Currency, 100)).Count);
+    }
+
+    [SqlServerFact]
+    public async Task Debit_key_reuse_with_different_intent_conflicts()
+    {
+        SqlServerWalletStore store = NewStore();
+        AccountId account = FreshAccount();
+        await store.CreditAsync(account, Currency, 10, "seed", LedgerReason.Grant, null);
+        await store.DebitAsync(account, Currency, 4, "dup", LedgerReason.Spend, null);
+        await store.CreditAsync(account, Currency, 2, "later", LedgerReason.Grant, null);
+
+        DebitResult differentAmount = await store.DebitAsync(
+            account, Currency, 3, "dup", LedgerReason.Spend, null);
+        DebitResult differentReason = await store.DebitAsync(
+            account, Currency, 4, "dup", LedgerReason.Adjustment, null);
+
+        AssertDebitConflict(differentAmount, 6);
+        AssertDebitConflict(differentReason, 6);
+        Assert.Equal(8, await store.GetBalanceAsync(account, Currency));
+        Assert.Equal(3, (await store.GetLedgerAsync(account, Currency, 100)).Count);
+    }
+
+    [SqlServerFact]
+    public async Task Key_reuse_across_credit_and_debit_conflicts()
+    {
+        SqlServerWalletStore store = NewStore();
+        AccountId creditFirst = FreshAccount();
+        await store.CreditAsync(creditFirst, Currency, 4, "same", LedgerReason.Adjustment, null);
+
+        DebitResult debitConflict = await store.DebitAsync(
+            creditFirst, Currency, 4, "same", LedgerReason.Adjustment, null);
+
+        AssertDebitConflict(debitConflict, 4);
+        Assert.Equal(4, await store.GetBalanceAsync(creditFirst, Currency));
+        Assert.Single(await store.GetLedgerAsync(creditFirst, Currency, 100));
+
+        AccountId debitFirst = FreshAccount();
+        await store.CreditAsync(debitFirst, Currency, 10, "seed", LedgerReason.Grant, null);
+        await store.DebitAsync(debitFirst, Currency, 4, "same", LedgerReason.Adjustment, null);
+
+        CreditResult creditConflict = await store.CreditAsync(
+            debitFirst, Currency, 4, "same", LedgerReason.Adjustment, null);
+
+        AssertCreditConflict(creditConflict, 6);
+        Assert.Equal(6, await store.GetBalanceAsync(debitFirst, Currency));
+        Assert.Equal(2, (await store.GetLedgerAsync(debitFirst, Currency, 100)).Count);
     }
 
     [SqlServerFact]
@@ -162,5 +250,22 @@ public sealed class SqlServerWalletStoreTests
         long balance = await store.GetBalanceAsync(account, Currency);
         Assert.Equal(expected, balance);
         Assert.True(balance >= 0);
+    }
+
+    private static void AssertCreditConflict(CreditResult result, long historicalBalance)
+    {
+        Assert.False(result.Applied);
+        Assert.False(result.Replayed);
+        Assert.True(result.Conflict);
+        Assert.Equal(historicalBalance, result.NewBalance);
+    }
+
+    private static void AssertDebitConflict(DebitResult result, long historicalBalance)
+    {
+        Assert.False(result.Applied);
+        Assert.False(result.Replayed);
+        Assert.False(result.Insufficient);
+        Assert.True(result.Conflict);
+        Assert.Equal(historicalBalance, result.NewBalance);
     }
 }

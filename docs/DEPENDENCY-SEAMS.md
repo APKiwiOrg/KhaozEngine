@@ -211,6 +211,8 @@ game can swap:
   idempotent by an `idempotencyKey`, scoped per `(account, currency)`; `GetBalanceAsync`/`GetLedgerAsync`
   read it back. `InMemoryWalletStore` (in the core package) is the reference/test backend; `Commerce.Sqlite`
   and `Commerce.SqlServer` are the durable opt-in backends, same contract, same idempotency semantics.
+  An exact retry matches the stored signed delta and `LedgerReason`. Another amount, reason, or direction returns
+  `Conflict=true` without changing the balance or ledger. `SourceRef` remains descriptive provenance.
   Keys (account, currency, idempotency key) compare by code point on all three, so they are case sensitive:
   the SQL Server schema pins a binary collation on those columns rather than inherit a database default that
   is usually case-insensitive, which would otherwise answer a differently-cased key as a replay.

@@ -103,6 +103,24 @@ public class PeriodicGrantTests
     }
 
     [Fact]
+    public async Task Changed_amount_on_a_retained_bootstrap_key_reports_no_grant()
+    {
+        AlwaysNullScheduleStore schedules = new();
+        InMemoryWalletStore store = new();
+        Wallet wallet = new(store, new InMemoryProductCatalog(Array.Empty<ProductDefinition>()));
+        PeriodicGrant original = new(wallet, schedules, TimeSpan.FromHours(24), "dailyShard", Shard, 1);
+        PeriodicGrant changed = new(wallet, schedules, TimeSpan.FromHours(24), "dailyShard", Shard, 2);
+
+        Assert.True((await original.TryClaimAsync(A, T0)).Granted);
+
+        PeriodicGrantResult conflict = await changed.TryClaimAsync(A, T0.AddTicks(1));
+
+        Assert.False(conflict.Granted);
+        Assert.Equal(1, await wallet.BalanceAsync(A, Shard));
+        Assert.Single(await store.GetLedgerAsync(A, Shard, 10));
+    }
+
+    [Fact]
     public async Task Concurrent_first_claims_credit_exactly_once()
     {
         // Drive the real concurrency window deterministically, many iterations to guard both directions:

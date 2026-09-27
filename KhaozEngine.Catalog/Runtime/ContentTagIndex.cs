@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace KhaozEngine.Catalog;
 
 /// <summary>
-/// The tag-to-ids index of spec 9.4, second of the engine's four: per content type, per tag id, the sorted
+/// The tag-to-ids index of spec 9.4, third of the engine's five: per content type, per tag id, the sorted
 /// ids of the rows carrying that tag. A drop table with a <c>required_tags</c> filter walks it, and so does a
 /// store pricing by item class.
 /// <para>

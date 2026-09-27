@@ -6,8 +6,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog.Runtime;
 
 /// <summary>
-/// The four indexes the engine derives at load, spec 9.4: key to id per type, tag to sorted ids, family
-/// membership, and the loot candidate arrays with their weights prefix summed.
+/// The five indexes the engine derives at load, spec 9.4: key to id per type, reverse references, tag to
+/// sorted ids, family membership, and the loot candidate arrays with their weights prefix summed.
 /// <para>
 /// Joins <c>AllocSensitive</c> because the walk budget reads
 /// <c>GC.GetAllocatedBytesForCurrentThread</c>.
@@ -17,12 +17,13 @@ namespace KhaozEngine.Tests.Catalog.Runtime;
 public class DerivedIndexTests
 {
     [Fact]
-    public void All_four_are_built_eagerly_at_load_and_none_is_built_lazily()
+    public void All_five_are_built_eagerly_at_load_and_none_is_built_lazily()
     {
         // Each is walked inside gameplay, so a lazy build inside a tick is the latency spike 9.4 refuses.
         // The runtime therefore never exists with its engine indexes missing.
         ContentRuntime runtime = CatalogLootFixtures.Runtime(out _);
 
+        Assert.NotSame(ContentReferenceIndex.Empty, runtime.Indexes.References);
         Assert.NotSame(ContentTagIndex.Empty, runtime.Indexes.Tags);
         Assert.NotSame(ContentLootIndex.Empty, runtime.Indexes.Loot);
         Assert.Same(runtime.Indexes, runtime.Indexes);

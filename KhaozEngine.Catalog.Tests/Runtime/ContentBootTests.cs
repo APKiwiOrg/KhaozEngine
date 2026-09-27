@@ -360,7 +360,7 @@ public class ContentBootTests
         Assert.Equal(BootPack.VersionNumber, current!.Identity.Number);
         Assert.Equal(pack.ManifestHash, current.Identity.ManifestHash);
 
-        // Step 7, the four engine indexes: the key index, the tag index, the family index and the loot index.
+        // Step 7, the five engine indexes: key, reverse references, tags, families and loot.
         Assert.True(current.TryGetId(new ContentTypeId(EngineContentTypes.ItemTypeId), new ContentKey("sword"), out int id));
         Assert.Equal(7, id);
         Assert.Equal(

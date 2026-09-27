@@ -17,7 +17,7 @@ namespace KhaozEngine.Catalog;
 /// <b>This is the candidate shape, and <see cref="ContentRuntime"/> is the ACTIVE one.</b> The two are not
 /// alternatives: a publish and a validator test build one of these and never load it, and a boot builds one
 /// of these out of the pack and then hands it to <see cref="ContentRuntime.FromSnapshot"/>, which indexes it
-/// by id into the arrays of spec 9.1, derives the four indexes of 9.4 over it and is what a running server
+/// by id into the arrays of spec 9.1, derives the five indexes of 9.4 over it and is what a running server
 /// reads through a <see cref="ContentRuntimeHolder"/>. The hand-off SHARES this snapshot's per-type body
 /// blob rather than copying it, so the two hold one copy of the catalog between them.
 /// </para>

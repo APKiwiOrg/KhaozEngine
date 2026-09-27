@@ -6,7 +6,7 @@ using System.Threading;
 namespace KhaozEngine.Catalog;
 
 /// <summary>
-/// The loaded ACTIVE version, spec 9.1: one <c>ContentTypeTable</c> per registered type, the four derived
+/// The loaded ACTIVE version, spec 9.1: one <c>ContentTypeTable</c> per registered type, the five derived
 /// indexes of 9.4 over them, and the seven members of <see cref="IContentSnapshot"/> answered out of those
 /// arrays. Built once at boot, immutable after, and swapped whole through
 /// <see cref="ContentRuntimeHolder"/> when a version changes.
@@ -80,9 +80,9 @@ public sealed class ContentRuntime : IContentSnapshot
     }
 
     /// <summary>
-    /// Boot step 7: index a decoded snapshot by id into the arrays of spec 9.1 and derive the four engine
+    /// Boot step 7: index a decoded snapshot by id into the arrays of spec 9.1 and derive the five engine
     /// indexes of 9.4 over them. Step 7b is <see cref="BuildLoadIndexes"/> and is a separate call, because
-    /// the boot runs it after these four and before the validator.
+    /// the boot runs it after these five and before the validator.
     /// </summary>
     /// <param name="snapshot">The decoded version, which the pack reader assembles.</param>
     /// <param name="registry">The registry the snapshot's types came from, FROZEN by the pack load.</param>
@@ -129,7 +129,7 @@ public sealed class ContentRuntime : IContentSnapshot
     /// <summary>Every content type this version carries a row for, ASCENDING by type id.</summary>
     public IReadOnlyList<ContentTypeId> Types => _types;
 
-    /// <summary>The four derived indexes of spec 9.4, built eagerly at load and immutable after.</summary>
+    /// <summary>The five derived indexes of spec 9.4, built eagerly at load and immutable after.</summary>
     public ContentDerivedIndexes Indexes { get; }
 
     /// <summary>True once <see cref="BuildLoadIndexes"/> has run every registered index to completion.</summary>
@@ -208,7 +208,7 @@ public sealed class ContentRuntime : IContentSnapshot
 
     /// <summary>
     /// Boot step 7b (spec 9.4): every registered <see cref="IContentLoadIndex"/>, in TYPE ID ORDER, after the
-    /// engine's four and before the validator.
+    /// engine's five and before the validator.
     /// <para>
     /// An index MAY read another type's rows through the snapshot it is handed, which is this runtime, and it
     /// MAY NOT read another index: <see cref="TryGetLoadIndex{T}"/> throws for the whole of this call, so the

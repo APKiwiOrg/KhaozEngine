@@ -33,7 +33,7 @@ public readonly record struct ContentIdBlock(ContentTypeId Type, int Base, int S
 }
 
 /// <summary>
-/// The family membership index of spec 9.4, third of the engine's four: the block list per family, cached, so
+/// The family membership index of spec 9.4, fourth of the engine's five: the block list per family, cached, so
 /// the two-comparison test of contracts 5.2 runs against a short loop rather than a store read.
 /// <para>
 /// <b>A pack carries no family declarations, so a version loaded from one indexes an EMPTY block list.</b> A

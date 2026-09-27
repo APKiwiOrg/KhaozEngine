@@ -23,7 +23,8 @@ namespace KhaozEngine.Render3D.Internal;
 /// <para><b>OLD TARGETS ARE RETIRED, NOT FREED IN PLACE.</b> A frame the device has not finished may still read them, so
 /// a recreation or a release hands them to the caller's <see cref="GpuRetireQueue"/>, which frees them at a frame
 /// boundary once the GPU is done. With no queue the release drains the device and frees them at once, which suits a
-/// caller that has none, such as a test, and teardown after the device has drained.</para>
+/// caller that has none, such as a test, and teardown after the device has drained. That path refuses while the device
+/// is recording, since the drain says nothing about a list that has not been submitted.</para>
 /// </summary>
 internal sealed partial class TemporalHistory
 {
@@ -65,7 +66,9 @@ internal sealed partial class TemporalHistory
     /// <summary>Create the targets for a display and an internal size, or keep them when both already match on the same
     /// device. True when they were created by this call, which is when their content is undefined, the generation has
     /// moved and the caller must not read history. Targets this replaces go to <paramref name="retired"/>, or on a
-    /// device change, where the new device's queue says nothing about the old one, through the old device's drain.</summary>
+    /// device change, where the new device's queue says nothing about the old one, through the old device's drain.
+    /// Replacing targets through a drain throws <see cref="InvalidOperationException"/> while that device is recording,
+    /// as <see cref="ReleaseTargets"/> does.</summary>
     public bool EnsureTargets(IGpuDevice gd, int displayWidth, int displayHeight, int internalWidth, int internalHeight,
         GpuRetireQueue? retired = null)
     {
@@ -115,17 +118,22 @@ internal sealed partial class TemporalHistory
     /// <summary>Let go of every target, restart the pair and bump <see cref="TargetGeneration"/>. With
     /// <paramref name="retired"/> the targets are retired into it, costing no drain, and the queue frees them once the
     /// GPU is done with the frames that read them. Without one the device is drained and they are freed at once, which
-    /// is right only where no open recording references them. At teardown release before the queue is disposed, so its
-    /// flush frees them, or release with no queue after the device drained. Nothing allocated means nothing to drain
-    /// for and no new generation.</summary>
+    /// is right only where no open recording references them, so that path throws
+    /// <see cref="InvalidOperationException"/> while the device is recording and leaves everything as it was. At
+    /// teardown release before the queue is disposed, so its flush frees them, or release with no queue after the
+    /// device drained. Nothing allocated means nothing to drain for, no refusal and no new generation.</summary>
     public void ReleaseTargets(GpuRetireQueue? retired = null)
     {
         if (FreeTargets(retired)) TargetGeneration++;
     }
 
-    // Free every target and restart the pair. True when anything was allocated.
+    // Free every target and restart the pair. True when anything was allocated. The no-queue path refuses while the
+    // device is recording, as GpuRetireQueue.FlushAll does, and changes nothing: its drain waits out submitted work
+    // only, so the open list could still read what it would free.
     bool FreeTargets(GpuRetireQueue? retired)
     {
+        if (retired is null && _targetDevice is not null && GpuRecording.OpenOwner(_targetDevice) is { } owner)
+            throw DrainDuringRecording(owner);
         _readIndex = 0;
         _writeIndex = 1;
         _resolveFrame = -1;
@@ -150,6 +158,12 @@ internal sealed partial class TemporalHistory
         else resource?.Dispose();
         resource = null;
     }
+
+    static InvalidOperationException DrainDuringRecording(string owner) => new(
+        $"The temporal history was asked to free its targets with no retire queue while {owner} is recording on this "
+        + "device. That path drains with IGpuDevice.WaitForIdle and frees at once, and a drain only waits out "
+        + "submitted work, so the open recording could still read the freed targets. Pass the frame's GpuRetireQueue, "
+        + "or release outside the recording. Nothing was drained or freed.");
 
     static InvalidOperationException NotAllocated() => new(
         "The temporal history targets are not allocated. They exist only while the temporal resolve runs, after "

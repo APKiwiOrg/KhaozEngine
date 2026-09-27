@@ -1,15 +1,15 @@
 using System;
 using KhaozEngine.Gpu;
-using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>The history's GPU targets: two display-size colour and confidence pairs, two internal-size previous
-    /// depths, created in Task E1's formats, reused while the sizes hold and recreated when either changes. What they
-    /// hold on the device is the figure <see cref="TemporalFormats.HistoryBytes"/> reports, and a recreation or a
-    /// release with a retire queue hands the old targets to it rather than freeing them in place.</summary>
+    /// depths, created in the <see cref="TemporalFormats"/> formats, reused while the sizes hold and recreated when
+    /// either changes. Their sizes and formats add up to the figure <see cref="TemporalFormats.HistoryBytes"/> reports,
+    /// and a recreation or a release with a retire queue hands the old targets to it rather than freeing them in
+    /// place.</summary>
     public sealed class TemporalHistoryTargetsGpuTests
     {
         /// <summary>Six textures and four framebuffers per creation.</summary>
@@ -39,8 +39,8 @@ namespace KhaozEngine.Tests.Gpu
                     bytes += Bytes(history.Color(i)) + Bytes(history.Confidence(i)) + Bytes(history.PreviousDepth(i));
                 }
                 Assert.NotSame(history.Color(0), history.Color(1));
-                // The six textures, sized by the staging table rather than TemporalFormats' own constants, hold what
-                // the memory figure claims. That figure is what TemporalFormatsTests pins at 213 MB for Quality.
+                // The six textures the accessors return match the figure's formula. That figure is what
+                // TemporalFormatsTests pins at 213 MB for Quality.
                 Assert.Equal(TemporalFormats.HistoryBytes(96, 54, 64, 36), bytes);
 
                 Assert.False(history.EnsureTargets(gd, 96, 54, 64, 36));
@@ -89,8 +89,13 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, retired.PendingCount);
         }
 
-        static long Bytes(IGpuTexture texture) =>
-            (long)texture.Width * texture.Height * MetalStagingLayout.BytesPerTexel(texture.Format);
+        static long Bytes(IGpuTexture texture) => (long)texture.Width * texture.Height * texture.Format switch
+        {
+            TemporalFormats.HistoryColor => TemporalFormats.HistoryColorBytesPerPixel,
+            TemporalFormats.HistoryConfidence => TemporalFormats.HistoryConfidenceBytesPerPixel,
+            TemporalFormats.PreviousDepth => TemporalFormats.PreviousDepthBytesPerPixel,
+            _ => throw new ArgumentOutOfRangeException(nameof(texture), texture.Format, "not a history format"),
+        };
 
         static void AssertTexture(IGpuTexture texture, uint width, uint height, GpuPixelFormat format)
         {

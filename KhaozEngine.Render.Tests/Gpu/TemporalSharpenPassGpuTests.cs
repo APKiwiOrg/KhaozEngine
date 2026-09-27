@@ -15,21 +15,25 @@ namespace KhaozEngine.Tests.Gpu
     /// stamps: the limit binding, a channel clipped to 1 across the ring (in red and in green), a coloured ring that
     /// pins the luma weights, an isolated centre and a pure primary.
     /// <para>
-    /// Two readbacks. An RGBA8 target checks every channel: each byte is the mirror's value rounded, within the
-    /// conversion tolerance of a unorm target plus the float error below. A half-float source into an R32Float target
-    /// checks red in float: the GPU samples exactly the inputs the mirror is given, so what is left is float
-    /// arithmetic in a different order (the flip swaps north and south in every sum), a few ulps.
+    /// Two readbacks. An RGBA8 target checks every channel: each byte lies within 0.6 of a step of 255 times the
+    /// mirror's value, the conversion tolerance of a unorm target, plus the float error below. A half-float source
+    /// into an R32Float target checks red in float: the GPU samples exactly the inputs the mirror is given, so what is
+    /// left is float arithmetic in a different order (the flip swaps north and south in every sum), held to an
+    /// absolute 8 times 2^-24.
     /// </para>
     /// </summary>
     public sealed class TemporalSharpenPassGpuTests
     {
         const int W = 48, H = 32;
 
-        // The float spacing just below 1. Every output lies in 0 to 1, so eight of them is a few ulps anywhere.
+        // The float spacing just below 1, 2^-24. The float pin allows an absolute 8 of them, which is 8 ulps for an
+        // output in 0.5 to 1, 16 in 0.25 to 0.5, and twice as many again for each octave below.
         const float Ulp = 1f / (1 << 24);
         const float FewUlps = 8 * Ulp;
 
-        // A unorm target may round a value within 0.6 of a step either way, and the float error rides on top.
+        // A byte may sit up to 0.6 of a step from 255 times the mirror, plus the float error, so the pin accepts a
+        // byte that is not correctly rounded. That is the float to unorm conversion tolerance a Direct3D 11 target is
+        // allowed, and it is all the byte pin enforces.
         const float UnormSlack = 0.6f + 255f * FewUlps;
 
         readonly ITestOutputHelper _output;
@@ -198,13 +202,14 @@ namespace KhaozEngine.Tests.Gpu
                     float d = MathF.Abs(got[y * W + x] - want);
                     if (d > worst) { worst = d; where = $"({x},{y}) GPU {got[y * W + x]:R} mirror {want:R}"; }
                 }
-            _output.WriteLine($"sharpness {sharpness}: R32Float against the mirror worst {worst / Ulp:F1} ulps "
-                + $"of 2^-24 at {where}");
+            _output.WriteLine($"sharpness {sharpness}: R32Float against the mirror worst {worst / Ulp:F1} times "
+                + $"2^-24 at {where}");
             foreach ((string name, int x) in Stamps)
                 _output.WriteLine($"  {name} centre: GPU {got[2 * W + x]:F6}, mirror "
                     + $"{Mirror((u, v) => At(src, u, v), x, 2, sharpness).X:F6}, source {src[(2 * W + x) * 4]:F6}");
             Assert.True(worst <= FewUlps,
-                $"the GPU pass is {worst / Ulp:F1} ulps from TemporalSharpenMath at {where}, past {FewUlps / Ulp}");
+                $"the GPU pass is {worst / Ulp:F1} times 2^-24 from TemporalSharpenMath at {where}, "
+                + $"past {FewUlps / Ulp}");
         }
 
         [GpuFact]

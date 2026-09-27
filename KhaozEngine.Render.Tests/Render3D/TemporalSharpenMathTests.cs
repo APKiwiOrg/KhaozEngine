@@ -182,6 +182,30 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void EachChannelTakesItsOwnLumaWeight()
+        {
+            // The coloured neighbourhood above trades red against green, so a swap of the two weights would pass it.
+            // One unit channel at a time pins each weight to its channel.
+            Assert.Equal(0.5f, TemporalSharpenMath.Luma2(Vector3.UnitX));
+            Assert.Equal(1f, TemporalSharpenMath.Luma2(Vector3.UnitY));
+            Assert.Equal(0.5f, TemporalSharpenMath.Luma2(Vector3.UnitZ));
+        }
+
+        [Theory]
+        [InlineData(float.NaN, 0f)]
+        [InlineData(float.NegativeInfinity, 0f)]
+        [InlineData(-1f, 0f)]
+        [InlineData(0f, 0f)]
+        [InlineData(0.25f, 0.25f)]
+        [InlineData(1f, 1f)]
+        [InlineData(2f, 1f)]
+        [InlineData(float.PositiveInfinity, 1f)]
+        public void TheSharpnessMapsToZeroToOneWithNaNAsZero(float sharpness, float applied)
+        {
+            Assert.Equal(applied, TemporalSharpenMath.ResolvedSharpness(sharpness));
+        }
+
+        [Fact]
         public void ANaNSharpnessIsOff()
         {
             Vector3 b = G(0.5f), h = G(0.5f), d = G(0.4f), f = G(0.6f), e = G(0.55f);

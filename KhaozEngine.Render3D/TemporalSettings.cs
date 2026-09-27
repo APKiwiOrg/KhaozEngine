@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D
 {
@@ -72,8 +73,8 @@ namespace KhaozEngine.Render3D
         /// reaches the pass.</para></summary>
         public float Sharpness = .25f;
 
-        /// <summary>The sharpness the pass is given: <see cref="Sharpness"/> clamped to 0 to 1, with NaN as
-        /// 0.</summary>
-        internal float ResolvedSharpness => Sharpness > 0f ? MathF.Min(Sharpness, 1f) : 0f;
+        /// <summary>The sharpness the pass is given: <see cref="Sharpness"/> clamped to 0 to 1, with NaN as 0, by the
+        /// mapping the pass and its CPU mirror share (<see cref="TemporalSharpenMath.ResolvedSharpness"/>).</summary>
+        internal float ResolvedSharpness => TemporalSharpenMath.ResolvedSharpness(Sharpness);
     }
 }

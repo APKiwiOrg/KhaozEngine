@@ -28,6 +28,11 @@ namespace KhaozEngine.Render3D.Internal
         /// never restricts the other channels.</summary>
         internal const float NoBound = 0.25f;
 
+        /// <summary>The sharpness the pass applies: <paramref name="sharpness"/> clamped to 0 to 1, with NaN as 0, so
+        /// a NaN sharpness is off. The mirror, <see cref="Rendering.TemporalSharpenPass"/> and
+        /// <see cref="TemporalSettings.ResolvedSharpness"/> all map through this, so they cannot drift apart.</summary>
+        internal static float ResolvedSharpness(float sharpness) => sharpness > 0f ? MathF.Min(sharpness, 1f) : 0f;
+
         /// <summary>Twice the luma with the RCAS weights (half red, full green, half blue), for the noise
         /// term.</summary>
         internal static float Luma2(Vector3 c) => c.Z * 0.5f + (c.X * 0.5f + c.Y);
@@ -66,8 +71,7 @@ namespace KhaozEngine.Render3D.Internal
         /// gives none.</summary>
         internal static float Lobe(Vector3 b, Vector3 d, Vector3 e, Vector3 f, Vector3 h, float sharpness)
         {
-            float s = sharpness > 0f ? MathF.Min(sharpness, 1f) : 0f;
-            float lobe = MathF.Max(-Limit, MathF.Min(RingLobe(b, d, e, f, h), 0f)) * s;
+            float lobe = MathF.Max(-Limit, MathF.Min(RingLobe(b, d, e, f, h), 0f)) * ResolvedSharpness(sharpness);
             return lobe * NoiseWeight(b, d, e, f, h);
         }
 
@@ -81,7 +85,7 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>Sharpen <paramref name="e"/> against its four neighbours. <paramref name="sharpness"/> runs from 0
         /// (identity) to 1 (the full RCAS lobe). A NaN sharpness is off.</summary>
         public static Vector3 Sharpen(Vector3 b, Vector3 d, Vector3 e, Vector3 f, Vector3 h, float sharpness)
-            => !(sharpness > 0f)
+            => ResolvedSharpness(sharpness) == 0f
                 ? e
                 : Vector3.Clamp(SharpenUnclamped(b, d, e, f, h, sharpness), Vector3.Zero, Vector3.One);
 

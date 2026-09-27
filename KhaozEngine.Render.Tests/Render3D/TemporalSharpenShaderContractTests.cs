@@ -16,6 +16,8 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("vec3 hitMin = min(mn4, e) / max(4.0 * mx4, vec3(1e-5));", src);
             Assert.Contains("vec3 hitMax = (vec3(1.0) - max(mx4, e)) / min(4.0 * mn4 - vec3(4.0), vec3(-1e-5));", src);
             Assert.Contains("nz = 1.0 - 0.5 * nz;", src);
+            // Half red, full green and half blue, the weights TemporalSharpenMath.Luma2 pins channel by channel.
+            Assert.Contains("float luma2(vec3 c) { return c.b * 0.5 + (c.r * 0.5 + c.g); }", src);
             // A ring channel at 0 or 1 on all four taps sets no bound on that side, as in the mirror.
             Assert.Equal(0.25f, TemporalSharpenMath.NoBound);
             Assert.Contains("const float RCAS_NO_BOUND = 0.25;", src);

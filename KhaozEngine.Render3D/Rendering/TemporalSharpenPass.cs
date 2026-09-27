@@ -76,14 +76,14 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Upload this frame's parameters. Call in the recording that draws, before its first draw or
-        /// dispatch and before any render pass opens this frame. The sharpness maps to 0 to 1 as
-        /// <see cref="TemporalSharpenMath"/> maps it, so a NaN sharpness is off.</summary>
+        /// dispatch and before any render pass opens this frame. The sharpness maps to 0 to 1 through
+        /// <see cref="TemporalSharpenMath.ResolvedSharpness"/>, so a NaN sharpness is off.</summary>
         public void Prepare(IGpuCommandList cl, uint sourceWidth, uint sourceHeight, float sharpness)
         {
             var ubo = new SharpenUbo
             {
                 Params = new Vector4(1f / Math.Max(1u, sourceWidth), 1f / Math.Max(1u, sourceHeight),
-                    sharpness > 0f ? MathF.Min(sharpness, 1f) : 0f, 0f),
+                    TemporalSharpenMath.ResolvedSharpness(sharpness), 0f),
             };
             cl.UpdateBuffer(_ubo, 0, in ubo);
         }

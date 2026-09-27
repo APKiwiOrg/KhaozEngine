@@ -299,6 +299,27 @@ namespace KhaozEngine.Tests.Gpu
         [GpuTheory]
         [InlineData(TemporalUpscale.Native)]
         [InlineData(TemporalUpscale.Quality)]
+        public void Of_three_lines_narrower_than_a_texel_side_by_side_an_outer_one_holds_like_a_still_one(
+            TemporalUpscale preset)
+        {
+            // Three still lines three eighths of a texel wide centred in neighbouring columns, bright, dimmer and
+            // bright, standing LineMetres ahead of the wall (RunLines). After a frame that showed them the stored
+            // depths hold a run of three texels of line, too wide to count as narrow, so of step 3's exceptions for a
+            // mostly covered footprint only the lock the pixel carries keeps its history. The line whose footprint
+            // also reaches the wall is the right one at Native and the left one at Quality. The others see line in all
+            // four stored depths and drop their history at every version. Without the lock clause the right line
+            // averaged 13.8 percent at Native, changing by 43.8 percent a frame, and the left 18.4 percent at Quality,
+            // changing by 64.2.
+            SubTexelRun[] runs = RunLines(preset, ahead: true, new[] { Line, Q(0.5f), Line });
+            SubTexelRun outer = preset == TemporalUpscale.Native ? runs[2] : runs[0];
+            string message = $"{preset}: left {runs[0]}, middle {runs[1]}, right {runs[2]}";
+            _output.WriteLine(message);
+            Assert.True(HoldsLikeAStillLine(preset, outer), message);
+        }
+
+        [GpuTheory]
+        [InlineData(TemporalUpscale.Native)]
+        [InlineData(TemporalUpscale.Quality)]
         [InlineData(TemporalUpscale.UltraPerformance)]
         public void A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(
             TemporalUpscale preset)
@@ -562,6 +583,16 @@ namespace KhaozEngine.Tests.Gpu
         // RunSubTexelLine reports one.
         static (SubTexelRun Left, SubTexelRun Right) RunLinePair(TemporalUpscale preset, bool ahead)
         {
+            SubTexelRun[] runs = RunLines(preset, ahead, new[] { Line, Q(0.5f) });
+            return (runs[0], runs[1]);
+        }
+
+        // Still lines three eighths of a texel wide centred in neighbouring texel columns from the middle one on, one
+        // per grey, each lit where its texel's jittered sample falls inside it, as RunLinePair lights two. ahead stands
+        // them LineMetres in front of the wall. Converges 64 frames and measures 16, and reports each line as
+        // RunSubTexelLine reports one.
+        static SubTexelRun[] RunLines(TemporalUpscale preset, bool ahead, float[] greys)
+        {
             const int DisplayW = 48, DisplayH = 12, Row = DisplayH / 2, Converge = 64, Measured = 16;
             float factor = TemporalSettings.DisplayOverInternal(preset);
             int iw = (int)(DisplayW / factor), ih = (int)(DisplayH / factor);
@@ -570,24 +601,29 @@ namespace KhaozEngine.Tests.Gpu
             TemporalViewInput still = View(Eye, projection);
             float wallNdc = NdcDepth(projection, SceneMetres);
             float bladeNdc = ahead ? NdcDepth(projection, LineMetres) : wallNdc;
-            float[] greys = { Line, Q(0.5f) };
+            int count = greys.Length;
             float wBg = Weighted(Bg);
-            float[] contrasts = { Weighted(greys[0]) - wBg, Weighted(greys[1]) - wBg };
+            var contrasts = new float[count];
+            var centres = new int[count];
+            for (int i = 0; i < count; i++)
+            {
+                contrasts[i] = Weighted(greys[i]) - wBg;
+                centres[i] = (int)MathF.Floor((column + i + 0.5f) * factor);
+            }
 
             using var rig = new Rig(iw, ih, DisplayW, DisplayH, wallNdc);
             var previous = new float[DisplayW];
-            var change = new float[2];
-            var changeFrame = new int[2];
-            var changePixel = new int[2];
-            var sum = new float[2];
-            int[] centres = { (int)MathF.Floor((column + 0.5f) * factor), (int)MathF.Floor((column + 1.5f) * factor) };
+            var change = new float[count];
+            var changeFrame = new int[count];
+            var changePixel = new int[count];
+            var sum = new float[count];
             for (int n = 0; n < Converge + Measured; n++)
             {
                 Vector2 jitter = TemporalJitter.Offset(n, phases);
                 int LineAt(int x)
                 {
                     float sample = x + 0.5f - jitter.X - column;
-                    for (int i = 0; i < 2; i++)
+                    for (int i = 0; i < count; i++)
                         if (sample >= i + 5f / 16f && sample < i + 11f / 16f) return i;
                     return -1;
                 }
@@ -602,7 +638,7 @@ namespace KhaozEngine.Tests.Gpu
                 for (int c = 0; c < DisplayW; c++)
                 {
                     int line = (int)MathF.Floor((c + 0.5f) / factor) - column;
-                    if (line is not (0 or 1)) continue;
+                    if (line < 0 || line >= count) continue;
                     float value = (Weighted(color[(Row * DisplayW + c) * 4]) - wBg) / contrasts[line];
                     if (n >= Converge)
                     {
@@ -613,10 +649,10 @@ namespace KhaozEngine.Tests.Gpu
                     previous[c] = value;
                 }
             }
-            var runs = new SubTexelRun[2];
-            for (int i = 0; i < 2; i++)
+            var runs = new SubTexelRun[count];
+            for (int i = 0; i < count; i++)
                 runs[i] = new SubTexelRun(change[i], changePixel[i], changeFrame[i], centres[i], sum[i] / Measured);
-            return (runs[0], runs[1]);
+            return runs;
         }
 
         // The line on a wall that sways sideways as a whole, offset(n) = A sin(2 pi n / 24) internal pixels with

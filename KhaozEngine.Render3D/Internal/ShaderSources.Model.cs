@@ -137,7 +137,7 @@ layout(location=10) in float vDissolveComplement;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
-" + LightingCommonGlsl + @"
+" + MaterialLodSampleGlsl + LightingCommonGlsl + @"
 // World-space value noise for the per-instance dissolve mask (issue #253). The SAME hash/noise + scale as
 // ModelDissolveFrag (the skinned CharDissolve path), so a prop and a character dissolve with one visual language.
 float dhash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
@@ -158,10 +158,10 @@ void main() {
     // albedo sampler read the normal map - untextured meshes came out flat-normal coloured (R,G ~0.5). Sampling
     // binding 0 (Albedo) first and unconditionally keeps the indices matching the resource layout. (D3D11/Vulkan
     // bind by explicit decoration and are order-insensitive; this is purely the Metal path.) Mirrors EdgeFrag.
-    vec4 texRgba = texture(sampler2D(Albedo, Samp), vUv);          // white (1,1,1,1) for untextured meshes
+    vec4 texRgba = materialSample(Albedo, Samp, vUv);          // white (1,1,1,1) for untextured meshes
     vec3 texRgb = texRgba.rgb;
-    vec3 normalTex = texture(sampler2D(NormalMap, Samp), vUv).xyz; // flat (0.5,0.5,1.0) default => (0,0,1)
-    float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;   // 0 default => per-instance spec unchanged
+    vec3 normalTex = materialSample(NormalMap, Samp, vUv).xyz; // flat (0.5,0.5,1.0) default => (0,0,1)
+    float rough = materialSample(RoughnessMap, Samp, vUv).g;   // 0 default => per-instance spec unchanged
     // Alpha cutout (MASK materials, e.g. foliage/leaf cards): vSpecParams.z carries the cutoff, and we discard a
     // texel whose baseColor alpha is below it so the quad reads as its silhouette instead of a solid (often black)
     // card. Done AFTER all three samples so the implicit-LOD derivatives stay well-defined and the Metal
@@ -268,7 +268,7 @@ layout(location=9) in vec2 vDissolve;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
-" + LightingCommonGlsl + @"
+" + MaterialLodSampleGlsl + LightingCommonGlsl + @"
 float dhash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 float dnoise(vec3 p) {
     vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -280,7 +280,7 @@ float dnoise(vec3 p) {
                mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);
 }
 void main() {
-    vec4 texRgba = texture(sampler2D(Albedo, Samp), vUv);
+    vec4 texRgba = materialSample(Albedo, Samp, vUv);
     if (vSpecParams.z > 0.0 && texRgba.a < vSpecParams.z) discard;
     float threshold = clamp(vDissolve.x, 0.0, 1.0);
     float edgeW = max(vDissolve.y, 1e-3);
@@ -289,8 +289,8 @@ void main() {
 
     vec3 Ngeo = normalize(vNormalW);
     vec3 texRgb = texRgba.rgb;
-    vec3 normalTex = texture(sampler2D(NormalMap, Samp), vUv).xyz;
-    float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;
+    vec3 normalTex = materialSample(NormalMap, Samp, vUv).xyz;
+    float rough = materialSample(RoughnessMap, Samp, vUv).g;
     vec3 N = Ngeo;
     if (dot(vTangent.xyz, vTangent.xyz) > 1e-10) {
         vec3 T = normalize(vTangent.xyz);
@@ -483,13 +483,13 @@ layout(location=8) in float vDynamic;   // dynamic-geometry decal mask (0 static
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
-" + LightingCommonGlsl + @"
+" + MaterialLodSampleGlsl + LightingCommonGlsl + @"
 void main() {
     vec3 Ngeo = normalize(vNormalW);
-    vec4 texRgba = texture(sampler2D(Albedo, Samp), vUv);
+    vec4 texRgba = materialSample(Albedo, Samp, vUv);
     vec3 texRgb = texRgba.rgb;
-    vec3 normalTex = texture(sampler2D(NormalMap, Samp), vUv).xyz;
-    float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;
+    vec3 normalTex = materialSample(NormalMap, Samp, vUv).xyz;
+    float rough = materialSample(RoughnessMap, Samp, vUv).g;
     if (vSpecParams.z > 0.0 && texRgba.a < vSpecParams.z) discard;
     vec3 N = Ngeo;
     if (dot(vTangent.xyz, vTangent.xyz) > 1e-10) {
@@ -561,7 +561,7 @@ layout(location=9) in vec2 vDissolve;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
-" + LightingCommonGlsl + @"
+" + MaterialLodSampleGlsl + LightingCommonGlsl + @"
 float dhash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 float dnoise(vec3 p) {
     vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -573,7 +573,7 @@ float dnoise(vec3 p) {
                mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);
 }
 void main() {
-    vec4 texRgba = texture(sampler2D(Albedo, Samp), vUv);
+    vec4 texRgba = materialSample(Albedo, Samp, vUv);
     if (vSpecParams.z > 0.0 && texRgba.a < vSpecParams.z) discard;
     float threshold = clamp(vDissolve.x, 0.0, 1.0);
     float edgeW = max(vDissolve.y, 1e-3);
@@ -582,8 +582,8 @@ void main() {
 
     vec3 Ngeo = normalize(vNormalW);
     vec3 texRgb = texRgba.rgb;
-    vec3 normalTex = texture(sampler2D(NormalMap, Samp), vUv).xyz;
-    float rough = texture(sampler2D(RoughnessMap, Samp), vUv).g;
+    vec3 normalTex = materialSample(NormalMap, Samp, vUv).xyz;
+    float rough = materialSample(RoughnessMap, Samp, vUv).g;
     vec3 N = Ngeo;
     if (dot(vTangent.xyz, vTangent.xyz) > 1e-10) {
         vec3 T = normalize(vTangent.xyz);

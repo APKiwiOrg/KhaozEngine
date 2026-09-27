@@ -165,7 +165,7 @@ vec3 sampleNormal(int layer, vec2 uvx, vec2 uvy, vec2 uvz, vec3 bw, vec3 Ngeo,
     nz = vec3(nz.xy + Ngeo.xy, abs(nz.z) * Ngeo.z);
     return normalize(nx.zyx * bw.x + ny.xzy * bw.y + nz.xyz * bw.z);
 }
-" + LightingCommonGlsl + @"
+" + MaterialLodGradGlsl + LightingCommonGlsl + @"
 void main() {
     vec3 Ngeo = normalize(vNormalW);
 
@@ -192,8 +192,8 @@ void main() {
     // gradient is the matching world derivative scaled by that layer's tile rate. Feeding these to textureGrad keeps
     // the mip/aniso LOD well-defined regardless of the branch; an implicit texture() under the branch would take
     // undefined derivatives on a diverging quad, which minified high-frequency ground reads as distance shimmer.
-    vec3 dWx = dFdx(vWorldPos);
-    vec3 dWy = dFdy(vWorldPos);
+    vec3 dWx = dFdx(vWorldPos) * materialGradScale();   // the temporal mip bias as a gradient scale, 1.0 when off
+    vec3 dWy = dFdy(vWorldPos) * materialGradScale();
 
     // The triplanar pattern is ANCHORED TO THE WORLD, so it reads the ABSOLUTE position: with a render origin in
     // force vWorldPos is camera-relative, and tiling off that would slide the whole ground texture every time the

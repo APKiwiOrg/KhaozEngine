@@ -171,7 +171,7 @@ layout(location=2) out vec4 oDepth;
 vec3 sampleSlot(int slot, vec2 uv, vec2 g0, vec2 g1) {
     return textureGrad(sampler2DArray(AlbedoArray, Samp), vec3(uv, float(slot)), g0, g1).rgb;
 }
-" + LightingCommonGlsl + @"
+" + MaterialLodGradGlsl + LightingCommonGlsl + @"
 void main() {
     vec3 Ngeo = normalize(vNormalW);
 
@@ -194,8 +194,8 @@ void main() {
     // `continue`). The UV is wpAbs.xz * tile, so its texture-space gradient is the matching world derivative scaled
     // by that slot's tile rate. Feeding these to textureGrad keeps the mip/aniso LOD well-defined regardless of the
     // branch.
-    vec3 dWx = dFdx(vWorldPos);
-    vec3 dWy = dFdy(vWorldPos);
+    vec3 dWx = dFdx(vWorldPos) * materialGradScale();   // the temporal mip bias as a gradient scale, 1.0 when off
+    vec3 dWy = dFdy(vWorldPos) * materialGradScale();
 
     // The tiling pattern is ANCHORED TO THE WORLD, so it reads the ABSOLUTE position: with a render origin in force
     // vWorldPos is camera-relative, and tiling off that would slide the whole ground texture every time the origin

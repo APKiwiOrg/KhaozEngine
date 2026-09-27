@@ -144,6 +144,9 @@ AUTHORED order rather than sorting, and refuses a socket whose nested payload is
 and `AddRareName` is kind 134. `Length` is what `ToArray` will write, so
 a caller can size a buffer, and `FieldCount` is how many fields it holds.
 
+The builder copies field bodies into one working buffer and keeps ordered field windows over it rather than
+allocating one array per field. The builder is mutable and not thread safe. One owner uses one builder at a time.
+
 Three value types are the list entries those helpers take. `InstanceMaterial` is an input item definition and
 how many parts of it went in, which is what makes a materials rebalance a publish rather than a rewrite of
 every crafted item. `InstanceAffix` is a mod id, the mod's AUTHORED tier ordinal (1 to 255, never a content
@@ -1016,6 +1019,10 @@ the pool happened to hold.
 **Step 12 writes kind 128 explicitly, state 0 and revealed mask 0.** An item carrying no `Identification`
 field at all is indistinguishable from an identified one under the visibility function, so the generator,
 which is what decides a new item is unidentified, is what writes the field.
+
+The generator owns one pre-sized `ItemInstancePayloadBuilder` alongside its other scratch arrays and clears it
+for each roll. A warmed generation allocates only the final payload array. Crafting still reaches the same builder
+and `ItemInstancePayload.Encode`, so generation has no second encoder whose canonical form could drift.
 
 `GenerationResult` carries `AffixCount` and `RequestedAffixCount` separately, because an item whose pool ran
 dry ends with fewer affixes than the count asked for, which is a legal outcome and is REPORTED rather than

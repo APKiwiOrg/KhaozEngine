@@ -198,12 +198,13 @@ public static partial class ItemInstancePayload
         }
 
         int written = 0;
-        foreach (PayloadFieldBytes field in builder.Fields)
+        for (int index = 0; index < builder.FieldCount; index++)
         {
+            PayloadFieldBytes field = builder.FieldAt(index);
             written += ContentVarint.Write(destination[written..], field.Kind);
-            written += ContentVarint.Write(destination[written..], (uint)field.Body.Length);
-            field.Body.Span.CopyTo(destination[written..]);
-            written += field.Body.Length;
+            written += ContentVarint.Write(destination[written..], (uint)field.BodyLength);
+            builder.BodyAt(index).CopyTo(destination[written..]);
+            written += field.BodyLength;
         }
 
         return written;

@@ -50,8 +50,8 @@ public readonly record struct InstanceSocket(
     ulong ContainedInstanceId,
     ReadOnlyMemory<byte> Nested);
 
-/// <summary>One field as the builder holds it: its kind and its body bytes, opaque either way.</summary>
-readonly record struct PayloadFieldBytes(ushort Kind, ReadOnlyMemory<byte> Body);
+/// <summary>One field as the builder holds it: its kind and its body window in the reusable buffer.</summary>
+readonly record struct PayloadFieldBytes(ushort Kind, int BodyStart, int BodyLength);
 
 /// <summary>
 /// Builds a canonical payload. <b>The builder is the thing that makes the encoding canonical</b>: it holds
@@ -66,11 +66,30 @@ readonly record struct PayloadFieldBytes(ushort Kind, ReadOnlyMemory<byte> Body)
 /// Every refusal here THROWS, because a builder is handed values by code rather than bytes by a peer. The
 /// decoder is the total half of this pair and it never throws.
 /// </para>
+/// <para>The builder is mutable and not thread safe, so one owner uses one instance at a time.</para>
 /// </summary>
 public sealed class ItemInstancePayloadBuilder
 {
-    readonly List<PayloadFieldBytes> _fields = new();
+    const int DefaultBodyCapacity = 64;
+
+    readonly List<PayloadFieldBytes> _fields;
+    byte[] _bodyBuffer;
+    int _bodyLength;
     int _length;
+
+    /// <summary>Creates an empty builder whose working storage grows on demand.</summary>
+    public ItemInstancePayloadBuilder()
+        : this(fieldCapacity: 0, bodyCapacity: 0)
+    {
+    }
+
+    internal ItemInstancePayloadBuilder(int fieldCapacity, int bodyCapacity)
+    {
+        if (fieldCapacity < 0) throw new ArgumentOutOfRangeException(nameof(fieldCapacity));
+        if (bodyCapacity < 0) throw new ArgumentOutOfRangeException(nameof(bodyCapacity));
+        _fields = new List<PayloadFieldBytes>(fieldCapacity);
+        _bodyBuffer = bodyCapacity == 0 ? Array.Empty<byte>() : new byte[bodyCapacity];
+    }
 
     /// <summary>How many fields the payload will carry.</summary>
     public int FieldCount => _fields.Count;
@@ -78,8 +97,20 @@ public sealed class ItemInstancePayloadBuilder
     /// <summary>The bytes <see cref="ItemInstancePayload.Encode"/> will write, so a caller can size a buffer.</summary>
     public int Length => _length;
 
-    /// <summary>The fields, ascending by kind.</summary>
-    internal IReadOnlyList<PayloadFieldBytes> Fields => _fields;
+    internal PayloadFieldBytes FieldAt(int index) => _fields[index];
+
+    internal ReadOnlySpan<byte> BodyAt(int index)
+    {
+        PayloadFieldBytes field = _fields[index];
+        return _bodyBuffer.AsSpan(field.BodyStart, field.BodyLength);
+    }
+
+    internal void Clear()
+    {
+        _fields.Clear();
+        _bodyLength = 0;
+        _length = 0;
+    }
 
     /// <summary>
     /// Adds one field as opaque bytes, which is how an unknown kind is carried and how a caller writes a
@@ -91,6 +122,13 @@ public sealed class ItemInstancePayloadBuilder
     /// <exception cref="ArgumentException">The kind is already present.</exception>
     public ItemInstancePayloadBuilder Add(ushort kind, ReadOnlySpan<byte> body)
     {
+        body.CopyTo(AddField(kind, body.Length));
+        return this;
+    }
+
+    Span<byte> AddField(ushort kind, int bodyLength)
+    {
+        if (bodyLength < 0) throw new ArgumentOutOfRangeException(nameof(bodyLength));
         if (kind == 0)
         {
             throw new ArgumentOutOfRangeException(
@@ -112,9 +150,27 @@ public sealed class ItemInstancePayloadBuilder
                 nameof(kind));
         }
 
-        _fields.Insert(index, new PayloadFieldBytes(kind, body.ToArray()));
-        _length += ContentVarint.Size(kind) + ContentVarint.Size((uint)body.Length) + body.Length;
-        return this;
+        int required = checked(_bodyLength + bodyLength);
+        int payloadLength = checked(
+            _length + ContentVarint.Size(kind) + ContentVarint.Size((uint)bodyLength) + bodyLength);
+        EnsureBodyCapacity(required);
+        int bodyStart = _bodyLength;
+        _bodyLength = required;
+        _fields.Insert(index, new PayloadFieldBytes(kind, bodyStart, bodyLength));
+        _length = payloadLength;
+        return _bodyBuffer.AsSpan(bodyStart, bodyLength);
+    }
+
+    void EnsureBodyCapacity(int required)
+    {
+        if (required <= _bodyBuffer.Length) return;
+        int capacity = Math.Max(_bodyBuffer.Length, DefaultBodyCapacity);
+        while (capacity < required)
+        {
+            int next = capacity <= int.MaxValue / 2 ? capacity * 2 : required;
+            capacity = Math.Max(next, required);
+        }
+        Array.Resize(ref _bodyBuffer, capacity);
     }
 
     /// <summary>Adds a field whose body is one unsigned varint, which is kinds 1, 2, 3, 6, 8 and 129.</summary>
@@ -184,15 +240,15 @@ public sealed class ItemInstancePayloadBuilder
             size += ContentVarint.Size((uint)material.MaterialId) + ContentVarint.Size(material.Parts);
         }
 
-        byte[] body = new byte[size];
+        Span<byte> body = AddField(InstancePropertyKind.Materials, size);
         int written = ContentVarint.Write(body, (uint)materials.Length);
         foreach (InstanceMaterial material in materials)
         {
-            written += ContentVarint.Write(body.AsSpan(written), (uint)material.MaterialId);
-            written += ContentVarint.Write(body.AsSpan(written), material.Parts);
+            written += ContentVarint.Write(body[written..], (uint)material.MaterialId);
+            written += ContentVarint.Write(body[written..], material.Parts);
         }
 
-        return Add(InstancePropertyKind.Materials, body.AsSpan(0, written));
+        return this;
     }
 
     /// <summary>
@@ -215,9 +271,19 @@ public sealed class ItemInstancePayloadBuilder
                 nameof(affixes));
         }
 
-        var sorted = new InstanceAffix[affixes.Length];
+        Span<InstanceAffix> sorted = stackalloc InstanceAffix[affixes.Length];
         affixes.CopyTo(sorted);
-        Array.Sort(sorted, static (left, right) => left.ModId.CompareTo(right.ModId));
+        for (int outer = 1; outer < sorted.Length; outer++)
+        {
+            InstanceAffix moving = sorted[outer];
+            int inner = outer - 1;
+            while (inner >= 0 && sorted[inner].ModId > moving.ModId)
+            {
+                sorted[inner + 1] = sorted[inner];
+                inner--;
+            }
+            sorted[inner + 1] = moving;
+        }
 
         int size = 1;
         long previousMod = -1;
@@ -252,19 +318,19 @@ public sealed class ItemInstancePayloadBuilder
             size += ContentVarint.Size((uint)affix.ModId) + 1 + 2 + ContentVarint.Size(affix.Flags);
         }
 
-        byte[] body = new byte[size];
+        Span<byte> body = AddField(kind, size);
         body[0] = (byte)sorted.Length;
         int written = 1;
         foreach (InstanceAffix affix in sorted)
         {
-            written += ContentVarint.Write(body.AsSpan(written), (uint)affix.ModId);
+            written += ContentVarint.Write(body[written..], (uint)affix.ModId);
             body[written++] = affix.Tier;
-            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(body.AsSpan(written), affix.Position);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(body[written..], affix.Position);
             written += 2;
-            written += ContentVarint.Write(body.AsSpan(written), affix.Flags);
+            written += ContentVarint.Write(body[written..], affix.Flags);
         }
 
-        return Add(kind, body.AsSpan(0, written));
+        return this;
     }
 
     /// <summary>
@@ -313,19 +379,19 @@ public sealed class ItemInstancePayloadBuilder
                 + socket.Nested.Length;
         }
 
-        byte[] body = new byte[size];
+        Span<byte> body = AddField(InstancePropertyKind.Sockets, size);
         int written = ContentVarint.Write(body, (uint)sockets.Length);
         foreach (InstanceSocket socket in sockets)
         {
-            written += ContentVarint.Write(body.AsSpan(written), (uint)socket.SocketTypeId);
-            written += ContentVarint.Write(body.AsSpan(written), (uint)socket.ContainedDefinitionId);
-            written += ContentVarint.WriteUInt64(body.AsSpan(written), socket.ContainedInstanceId);
-            written += ContentVarint.Write(body.AsSpan(written), (uint)socket.Nested.Length);
-            socket.Nested.Span.CopyTo(body.AsSpan(written));
+            written += ContentVarint.Write(body[written..], (uint)socket.SocketTypeId);
+            written += ContentVarint.Write(body[written..], (uint)socket.ContainedDefinitionId);
+            written += ContentVarint.WriteUInt64(body[written..], socket.ContainedInstanceId);
+            written += ContentVarint.Write(body[written..], (uint)socket.Nested.Length);
+            socket.Nested.Span.CopyTo(body[written..]);
             written += socket.Nested.Length;
         }
 
-        return Add(InstancePropertyKind.Sockets, body.AsSpan(0, written));
+        return this;
     }
 
     /// <summary>
@@ -363,15 +429,15 @@ public sealed class ItemInstancePayloadBuilder
             size += ContentVarint.Size((uint)wordId);
         }
 
-        byte[] body = new byte[size];
+        Span<byte> body = AddField(InstancePropertyKind.RareName, size);
         int written = ContentVarint.Write(body, (uint)rarityRuleId);
         body[written++] = (byte)wordIds.Length;
         foreach (int wordId in wordIds)
         {
-            written += ContentVarint.Write(body.AsSpan(written), (uint)wordId);
+            written += ContentVarint.Write(body[written..], (uint)wordId);
         }
 
-        return Add(InstancePropertyKind.RareName, body.AsSpan(0, written));
+        return this;
     }
 
     /// <summary>

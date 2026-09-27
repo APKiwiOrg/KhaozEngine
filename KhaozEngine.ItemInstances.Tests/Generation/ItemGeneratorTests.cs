@@ -293,34 +293,23 @@ public class ItemGeneratorTests
     }
 
     [Fact]
-    public void Every_generation_allocates_the_SAME_bounded_amount_and_the_pool_is_not_in_it()
+    public void The_only_allocation_per_warmed_generation_is_the_payload_array()
     {
-        // The name this fact used to carry promised the payload buffer was the ONLY allocation, and it is
-        // not: the measured number is 944 bytes here against a payload of 24, and
-        // https://github.com/APKiwiOrg/KhaozEngine/issues/972 is the per field allocation inside
-        // ItemInstancePayloadBuilder that accounts for the rest. What it actually holds is what it always
-        // held: the generator owns every working array and sizes it at construction, so its own per
-        // generation allocation is zero and the number is a function of the PAYLOAD rather than of the
-        // candidate pool. The equality below is the half that says so, because a pool cost would move
-        // between two rolls that placed different mods.
         ItemGenerator generator = GenerationWorld.Generator(new SeededRandomSource(11));
         GenerationContext context = Rare(GenerationWorld.Greatsword);
         for (int warm = 0; warm < 64; warm++)
         {
             _ = generator.Generate(context);
         }
+        _ = PayloadArrayAllocation(1);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         GenerationResult result = generator.Generate(context);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long payloadArray = PayloadArrayAllocation(result.Payload.Length);
 
-        // 944 bytes measured on this world, stable across runs because the seed, the base and the rarity
-        // are all fixed. The bound is the next round number above it, so a regression that adds a single
-        // allocation on the roll path moves it out rather than hiding in two kilobytes of slack.
-        Assert.True(
-            allocated is > 0 and < 1_024,
-            FormattableString.Invariant($"A generation allocated {allocated} bytes, which is outside the encoder's own working set."));
         Assert.True(result.Payload.Length > 0);
+        Assert.Equal(payloadArray, allocated);
 
         long second = GC.GetAllocatedBytesForCurrentThread();
         _ = generator.Generate(context);
@@ -779,6 +768,14 @@ public class ItemGeneratorTests
 
     /// <summary>The same, with the rarity ROLLED rather than forced.</summary>
     static GenerationContext Rolled(int baseId) => new(baseId, 60, 0, 0, 0);
+
+    static long PayloadArrayAllocation(int length)
+    {
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        byte[] payload = new byte[length];
+        GC.KeepAlive(payload);
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
 
     /// <summary>The mod kind of a one affix item, which the authored world's mod ids make unambiguous.</summary>
     static int KindOfOnlyAffix(GenerationResult result)

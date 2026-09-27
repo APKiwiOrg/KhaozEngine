@@ -353,9 +353,9 @@ Four things about the measurements that a reader would otherwise have to reverse
   position of the pool. It is NOT the dead entries a roll walks, which is a merge of that list with the runs
   a placement excluded, taken only as far as the draw, and which has no instrument yet
   ([#988](https://github.com/APKiwiOrg/KhaozEngine/issues/988)). The allocation figure beside them is
-  what a generation costs today, which is more than the payload alone:
-  [#972](https://github.com/APKiwiOrg/KhaozEngine/issues/972) is the per field allocation in
-  `ItemInstancePayloadBuilder` behind it, and budget 5's target is a time rather than a byte count.
+  what a generation costs today. `ItemGenerator` reuses its `ItemInstancePayloadBuilder` working storage, so a
+  warmed generation allocates only the final payload array. Budget 5 still records that allocation beside its
+  time target rather than treating it as an unmeasured assumption.
 - **Budget 13 drops a refused submission rather than retrying it**, which is what section 16 says a
   consumer must do on `Backpressure`. The executor runs at the engine default stream queue depth of 8.
   Latency is measured from `Submit` to the completion being dequeued, so it includes queueing behind

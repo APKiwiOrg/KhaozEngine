@@ -462,7 +462,7 @@ public ref struct CraftWorkingCopy
 
         var builder = new ItemInstancePayloadBuilder();
         _ = builder.AddAffixes(kind, affixes);
-        return Write(kind, builder.Fields[0].Body.Span);
+        return Write(kind, builder.BodyAt(0));
     }
 
     /// <summary>
@@ -509,7 +509,7 @@ public ref struct CraftWorkingCopy
 
         var builder = new ItemInstancePayloadBuilder();
         _ = builder.AddSockets(sockets);
-        return Write(InstancePropertyKind.Sockets, builder.Fields[0].Body.Span);
+        return Write(InstancePropertyKind.Sockets, builder.BodyAt(0));
     }
 
     /// <summary>

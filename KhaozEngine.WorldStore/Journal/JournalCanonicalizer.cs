@@ -39,7 +39,7 @@ public static class JournalCanonicalizer
             WriteField(output, 1, value => WriteGuid(value, identity.OperationId));
             WriteField(output, 2, value => WriteString(value, identity.AuthenticatedScope));
             WriteField(output, 3, value => WriteString(value, identity.ActionKind));
-            WriteField(output, 4, value => WritePayload(value, identity.NormalizedIntent.Span));
+            WriteField(output, 4, value => WritePayload(value, identity.NormalizedIntentSpan));
         });
     }
 
@@ -56,7 +56,7 @@ public static class JournalCanonicalizer
             WriteField(output, 3, value => WriteProjections(value, commit.ProjectionWrites));
             WriteField(output, 4, value => WriteString(value, commit.ResultSchema));
             WriteField(output, 5, value => WriteInt32(value, commit.ResultSchemaVersion));
-            WriteField(output, 6, value => WritePayload(value, commit.ResultData.Span));
+            WriteField(output, 6, value => WritePayload(value, commit.ResultDataSpan));
         });
     }
 
@@ -115,7 +115,7 @@ public static class JournalCanonicalizer
             using var entry = new MemoryStream();
             WriteField(entry, 1, value => WriteString(value, journalEvent.EventType));
             WriteField(entry, 2, value => WriteInt32(value, journalEvent.EventSchemaVersion));
-            WriteField(entry, 3, value => WritePayload(value, journalEvent.Payload.Span));
+            WriteField(entry, 3, value => WritePayload(value, journalEvent.PayloadSpan));
             WriteLengthPrefixedEntry(output, entry);
         }
     }
@@ -130,7 +130,7 @@ public static class JournalCanonicalizer
             WriteField(entry, 2, value => WriteString(value, projection.SectionName));
             WriteField(entry, 3, value => WriteString(value, projection.ProjectionSchema));
             WriteField(entry, 4, value => WriteInt32(value, projection.ProjectionSchemaVersion));
-            WriteField(entry, 5, value => WritePayload(value, projection.Data.Span));
+            WriteField(entry, 5, value => WritePayload(value, projection.DataSpan));
             WriteLengthPrefixedEntry(output, entry);
         }
     }

@@ -19,6 +19,7 @@ public sealed class JournalOperationIdentity
     public string AuthenticatedScope { get; }
     public string ActionKind { get; }
     public ReadOnlyMemory<byte> NormalizedIntent => JournalValidation.CopyForRead(normalizedIntent);
+    public ReadOnlySpan<byte> NormalizedIntentSpan => normalizedIntent;
     public int OwnedByteCount => normalizedIntent.Length;
 
     public void Validate(JournalLimits? limits = null)

@@ -19548,6 +19548,11 @@ listing seams. Their package READMEs cover schema modes
 and permissions. The complete public type and limit reference is in
 [`KhaozEngine.WorldStore/README.md`](../KhaozEngine.WorldStore/README.md).
 
+Journal request values copy byte arrays at construction. Their existing `ReadOnlyMemory<byte>` properties also
+return defensive copies. Use the matching `ReadOnlySpan<byte>` property in a hot synchronous read, such as
+`frozen.ResultDataSpan` or `frozen.Identity.NormalizedIntentSpan`. It views the object's owned bytes without an
+allocation and cannot be retained on the heap. The package README lists every available span accessor.
+
 The host flow is fixed:
 
 1. Authenticate and validate the command on the simulation thread against the executor's admitted view of the

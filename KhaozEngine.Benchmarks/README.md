@@ -231,7 +231,13 @@ failure counter. It does not encode a universal throughput target. The final JSO
 returns a failing exit code for any nonzero checksum, duplicate-effect, sequence, or partial-commit counter.
 
 The checked-in SQLite baseline is
-`Baselines/journal-sqlite-mmo-mixed-v1-seed835-10000ops.json`. Reproduce it on the current machine with:
+`Baselines/journal-sqlite-mmo-mixed-v1-seed835-10000ops.json`.
+
+The baseline's 698.46 operations per second is the offered rate of this mixed workload, not measured SQLite store
+capacity. Zero backpressure, busy and retry rates, together with a 1.17 ms p50 commit latency, show that this run
+did not measure store saturation.
+
+Reproduce it on the current machine with:
 
 ```bash
 dotnet run --project KhaozEngine.Benchmarks -c Release -- --journal --operations 10000 --players 1000 --seed 835 --output "$PWD/KhaozEngine.Benchmarks/Baselines/journal-sqlite-mmo-mixed-v1-seed835-10000ops.json"

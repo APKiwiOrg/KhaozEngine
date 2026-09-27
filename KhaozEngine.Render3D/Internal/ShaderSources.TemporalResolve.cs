@@ -437,9 +437,11 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // dilated history is valid. Where the nearer surface is also narrow in this frame's depth, step 5 below gives the
     // pixel's history that surface's current colour.
     bool narrowMoving = false;
+    bool ownReprojected = false;
     if (!depthTested && edgeMotion > DilationReachInternalPixels
         && centreDepth > closestDepth * (1.0 + DisocclusionTolerance)) {
         narrowMoving = temporalNarrowCurrentDepth(closestTexel, closestDepth, maxTexel);
+        ownReprojected = true;
         temporalReproject(uv, centreSample, centreMotion, centreDepth, centreIsBackground, internalSize, previousUv,
             expectedDepth, depthTested);
         onScreen = all(greaterThanEqual(previousUv, vec2(0.0))) && all(lessThanEqual(previousUv, vec2(1.0)));
@@ -540,12 +542,14 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
 
     // Step 6: thin features. A ridge through the centre texel refreshes the lock, which decays by LockDecay a frame
     // whatever the preset. Large motion and reactive content release it, and so does motion at an edge, where the pixel
-    // holds a moving feature's history, not its own. At a moving edge whose history a farther surface left, the lock
-    // read with that history belongs to that surface, and a nearer surface crossing a held thin feature would carry it
-    // onward, so it is dropped before a ridge can refresh it. A thin feature taking a ridge keeps its own lock, and so
-    // does one beside a still nearer surface, which is no moving edge. The hold on the clip stays whole while the lock
-    // is at least 1 / LockHoldGain, so a sub-texel feature missed for a few frames keeps its luma, and it lets go over
-    // the rest of the lock.
+    // holds a moving feature's history, not its own. A pixel that reprojected by its own motion and kept its history
+    // holds its own, so a still sub-texel feature beside a fast surface keeps its lock, while one that restarted lets
+    // go of a ridge the moving surface's colour may have given it. At a moving edge whose history a farther surface
+    // left, the lock read with that history belongs to that surface, and a nearer surface crossing a held thin feature
+    // would carry it onward, so it is dropped before a ridge can refresh it. A thin feature taking a ridge keeps its
+    // own lock, and so does one beside a still nearer surface, which is no moving edge. The hold on the clip stays
+    // whole while the lock is at least 1 / LockHoldGain, so a sub-texel feature missed for a few frames keeps its
+    // luma, and it lets go over the rest of the lock.
     float centreLuma = lumas[4];
     float ridgeThreshold = max(LockRidgeAbsolute, LockRidgeRelative * centreLuma);
     bool ridge = isRidge(centreLuma, lumas[3], lumas[5], ridgeThreshold)
@@ -556,7 +560,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     if (ridge) lockValue = 1.0;
     float motionRelease = clamp((motionPixels - LockMotionStartPixels) / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
     lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))
-        * (1.0 - clamp(edgeMotion * LockEdgeRelease, 0.0, 1.0));
+        * (1.0 - clamp((ownReprojected && useHistory ? 0.0 : edgeMotion) * LockEdgeRelease, 0.0, 1.0));
     float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 
     // Step 5: variance clipping in luma-weighted YCoCg, from the box centre towards the history, which keeps its hue.

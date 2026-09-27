@@ -100,7 +100,13 @@ namespace KhaozEngine.Render3D.Internal
         /// both from 1 up, at 17 percent at 1 and 15 at 2 and 4. 2 and 4 cost a blade swaying at 0.1 internal pixels a
         /// frame over still ground on Quality, whose summed coverage falls from 22.1 percent to 20.8 and 13.1, where 0
         /// to 1 all keep 22.1. So 1 is the smallest factor that leaves one trailing pixel at 5 percent, and the largest
-        /// measured that costs that blade nothing.</summary>
+        /// measured that costs that blade nothing. A pixel that reprojected by its own motion
+        /// (<see cref="DilationReachInternalPixels"/>) and kept its history holds its own, and keeps its lock. A still
+        /// line three eighths of a texel wide, with a keyed 30 display pixel box sliding past one internal texel away
+        /// at 2 display pixels a frame, fell on its worst frame to 0.01 of its energy without the box at Native and to
+        /// 0.00 to 0.25 at Quality, and was still at 0.43 to 0.69 sixteen frames after the box passed. It keeps 0.99
+        /// now. Keeping the lock where such a pixel restarted too left a ridged keyed box crossing the textured wall 6
+        /// and 8 of its 420 trail pixels at Native and Quality, against 3 and 4.</summary>
         public const float LockEdgeRelease = 1f;
         /// <summary>Step 6. A centre texel whose motion differs from the dilated motion by more than this share of the
         /// dilated motion's length sits at a moving edge. Both come from the RG16F motion target, which rounds each

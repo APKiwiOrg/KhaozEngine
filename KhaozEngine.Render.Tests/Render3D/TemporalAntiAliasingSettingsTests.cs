@@ -6,8 +6,9 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
-    /// Headless coverage of the round 2 settings surface: the Temporal anti-aliasing mode, the Temporal render scale it
-    /// forces, the five upscale presets and the explicit ratio, and the internal size they give ComputeTargetSize.
+    /// Headless coverage of the temporal anti-aliasing settings: the Temporal anti-aliasing mode, the Temporal render
+    /// scale it forces, the five upscale presets and the explicit ratio, and the internal size they give
+    /// ComputeTargetSize.
     /// </summary>
     public sealed class TemporalAntiAliasingSettingsTests
     {

@@ -12,8 +12,9 @@ namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
     /// The temporal resolve's GLSL, read as text: its tuning constants agree with the C# mirror, its bindings match the
-    /// layout Task E6 builds, it reads without gradients, it exposes the pixel function group F re-evaluates, and it keeps
-    /// the fullscreen interpolant live for the Direct3D 11 input signature.
+    /// layout <c>TemporalResolveRenderer</c> builds, it reads without gradients, it exposes the pixel function the
+    /// temporal debug views and sampled counts re-evaluate, and it keeps the fullscreen interpolant live for the
+    /// Direct3D 11 input signature.
     /// </summary>
     public sealed class TemporalResolveShaderTests
     {
@@ -221,7 +222,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void The_core_exposes_the_pixel_function_group_F_re_evaluates()
+        public void The_core_exposes_the_pixel_function_the_debug_views_and_counts_re_evaluate()
         {
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("struct TemporalPixel { vec3 color; float confidence; float stability; float disocclusion; "

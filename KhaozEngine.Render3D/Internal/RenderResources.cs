@@ -94,10 +94,11 @@ namespace KhaozEngine.Render3D.Internal
         public bool PingsAllocated { get; private set; }
 
         /// <summary>Half-resolution ping-pong pair for the bloom bright-pass + separable blur (see
-        /// <see cref="Internal.BloomMath.HalfResSize"/>). Allocated ONLY when <see cref="BloomAllocated"/> is
-        /// requested (<see cref="BloomSettings.Enabled"/> at the time of the last <see cref="Resize"/>), so bloom
-        /// off costs zero extra GPU memory - the historical, pre-bloom footprint. Recreated alongside the main
-        /// targets on any resize while bloom is enabled; freed the next resize after it is disabled.</summary>
+        /// <see cref="Internal.BloomMath.HalfResSize"/>). Allocated ONLY while <see cref="BloomAllocated"/> is set,
+        /// which follows the last <see cref="Resize"/> and any <see cref="EnsureBloom"/> after it, so bloom off costs
+        /// zero extra GPU memory, the historical pre-bloom footprint. Recreated alongside the main targets on any
+        /// resize while bloom is wanted. Freed by the next resize after it is not, or by <see cref="EnsureBloom"/>,
+        /// which adds or drops the pair alone at the current size.</summary>
         public IGpuTexture? BloomA;
         public IGpuTexture? BloomB;
         public IGpuFramebuffer? BloomAFB;
@@ -105,8 +106,9 @@ namespace KhaozEngine.Render3D.Internal
         public int BloomWidth { get; private set; }
         public int BloomHeight { get; private set; }
 
-        /// <summary>Whether the bloom half-res targets are currently allocated (mirrors the <c>bloomEnabled</c>
-        /// argument passed to the last <see cref="Create"/>/<see cref="Resize"/> call).</summary>
+        /// <summary>Whether the bloom half-res targets are currently allocated: the <c>bloomEnabled</c> argument of the
+        /// last <see cref="Create"/>/<see cref="Resize"/> call, or the last <see cref="EnsureBloom"/> request after
+        /// it.</summary>
         public bool BloomAllocated { get; private set; }
 
         /// <summary>Half- or quarter-resolution offset field the distortion pass accumulates signed screen-space UV

@@ -4,10 +4,10 @@ using KhaozEngine.Gpu;
 namespace KhaozEngine.Render3D.Internal;
 
 /// <summary>
-/// THE RESOLVE'S TARGETS ON THE HISTORY OWNER (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, section 3
-/// and plan amendments 2, 3 and 6). Two display-resolution colour histories and two confidence and stability targets,
-/// which the temporal resolve reads and writes alternately, and two internal-resolution previous depths for its
-/// disocclusion test, alternating with them. Formats are <see cref="TemporalFormats"/>'s. Created while the resolve
+/// THE RESOLVE'S TARGETS ON THE HISTORY OWNER (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, section
+/// 3). Two display-resolution colour histories and two confidence and stability targets, which the temporal resolve
+/// reads and writes alternately, and two internal-resolution previous depths for its disocclusion test, alternating
+/// with them. Formats are <see cref="TemporalFormats"/>'s. Created while the resolve
 /// runs, reused while both sizes hold, recreated when either changes, released when the resolve stops. A reset
 /// (<see cref="Invalidate"/>) keeps them, since <see cref="IsValid"/> already stops every read.
 /// <para><b>A NEW GENERATION IS A RESET.</b> Every creation bumps <see cref="TargetGeneration"/>, a recreation at the

@@ -6,7 +6,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D;
 
 /// <summary><c>Scene3D.LastTemporalDiagnostics</c>: one value per frame, written on the frame's first render, and a
-/// latch plus history advance that allocates nothing (acceptance 4).</summary>
+/// latch plus history advance that allocates nothing (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md,
+/// acceptance 4).</summary>
 [Collection("AllocSensitive")]
 public sealed class TemporalDiagnosticsTests
 {

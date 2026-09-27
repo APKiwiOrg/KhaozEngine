@@ -29,7 +29,7 @@ internal static class TemporalJitter
     public const float MaxDisplayOverInternalRatio = 4f;
 
     /// <summary>The longest sequence <see cref="PhaseCount"/> returns, 8 times 4 times 4, reached at a display
-    /// <see cref="MaxDisplayOverInternalRatio"/> times the internal size per axis. Round 2's most aggressive preset,
+    /// <see cref="MaxDisplayOverInternalRatio"/> times the internal size per axis. The most aggressive preset,
     /// UltraPerformance, is three, which gives 72.</summary>
     public const int MaxPhaseCount = 128;
 

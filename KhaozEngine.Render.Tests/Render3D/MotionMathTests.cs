@@ -93,7 +93,7 @@ public sealed class MotionMathTests
         Assert.Equal(new Vector2(-.5f, .5f), readback.UvAt(2, 0));
         Assert.True(readback.IsBackground(0, 0));
         Assert.False(readback.IsBackground(2, 1));
-        (Vector2[] m, int w, int h) = readback;   // the shape group F deconstructs
+        (Vector2[] m, int w, int h) = readback;   // the shape the temporal debug views deconstruct
         Assert.Same(motion, m);
         Assert.Equal((3, 2), (w, h));
     }

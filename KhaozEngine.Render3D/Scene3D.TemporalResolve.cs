@@ -23,9 +23,11 @@ namespace KhaozEngine.Render3D
     /// </para>
     /// <para>
     /// Under the resolve the internal targets carry no bloom or ping pair, since the display chain has its own. The first
-    /// later render adds both in place, and they then stay until temporal anti-aliasing turns off, with that render's post
-    /// chain. A host that captures every frame then reallocates nothing per frame, and one that never captures pays for
-    /// neither (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, plan amendments 14 and 15).
+    /// later render at the same internal size adds both in place, and they then stay until temporal anti-aliasing turns
+    /// off, with that render's post chain. A host that captures every frame at that size then reallocates nothing per
+    /// frame, and one that never captures pays for neither. A later render at another size goes through
+    /// <c>RenderResources.Resize</c>, which recreates the internal targets
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1167">#1167</see>).
     /// </para>
     /// </summary>
     public sealed partial class Scene3D
@@ -170,7 +172,7 @@ namespace KhaozEngine.Render3D
         /// background, copy the lit colour for the reactive estimate, and rebind the model target for the writers that
         /// follow. The background moves up because the copy must hold the sky, and the sky's Equal depth test and
         /// override blend would otherwise paint over any transparent drawn before it
-        /// (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, plan amendment 5).
+        /// (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, section 1).
         /// </summary>
         void CaptureOpaqueForTemporal(IGpuCommandList cl)
         {

@@ -13,11 +13,11 @@ using VkFormat = Silk.NET.Vulkan.Format;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// TASK E1'S DECISION, PINNED. The temporal history colour is half float RGBA, the confidence and stability target
+    /// THE HISTORY FORMATS, PINNED. The temporal history colour is half float RGBA, the confidence and stability target
     /// half float RG, and the previous depth single float R. All three are seam members every backend already renders
-    /// and samples. R11G11B10 float, the design's first choice, is not a seam member. The reasoning is in the design's
-    /// plan amendments. Device-free. The Direct3D 11 map is a Windows-only type, so its fact asserts only on Windows,
-    /// and that leg also proves the three formats through the HDR, distortion and outline goldens.
+    /// and samples. R11G11B10 float, the design's first choice, is not a seam member. The reasoning is on
+    /// <see cref="TemporalFormats"/>. Device-free. The Direct3D 11 map is a Windows-only type, so its fact asserts only
+    /// on Windows, and that leg also proves the three formats through the HDR, distortion and outline goldens.
     /// </summary>
     public sealed class TemporalFormatsTests
     {

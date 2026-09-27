@@ -11,7 +11,8 @@ namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
 /// The engine-side cost of the motion target and the previous-state work at 1600x900
-/// (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24, acceptance 5, read on Grimhollow's town path in round 3). A measurement,
+/// (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24, acceptance 5, read on Grimhollow's town path when Grimhollow adopts
+/// temporal rendering). A measurement,
 /// not a gate: it prints the median frame with and without temporal rendering and asserts that both were measured and
 /// that each block rendered the state it claims. Rounds alternate the two so thermal and clock drift land on both
 /// alike.

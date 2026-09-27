@@ -7,7 +7,8 @@ namespace KhaozEngine.Tests.Render3D
 {
     /// <summary>
     /// The CPU half of the temporal resolve: the reprojection matrices it hands the shader, the depth linearisation, the
-    /// Lanczos kernel and the luma weighting it mirrors, and the sample-position convention against group A's jitter.
+    /// Lanczos kernel and the luma weighting it mirrors, and the sample-position convention against the frame's jitter
+    /// (<c>TemporalJitter</c>).
     /// </summary>
     public sealed class TemporalResolveMathTests
     {

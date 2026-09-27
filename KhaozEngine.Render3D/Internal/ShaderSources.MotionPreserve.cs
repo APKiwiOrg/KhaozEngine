@@ -5,8 +5,8 @@ namespace KhaozEngine.Render3D.Internal;
 /// trails, overlay meshes and silhouettes (TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24 section 4). Each is its base fragment
 /// byte for byte plus a fourth output written zero, which the pipeline's PreserveDestination blend discards, the pattern
 /// those passes already use for the normal and depth attachments. The motion of the opaque surface behind a transparent
-/// pass therefore survives it, and round 2's reactive estimate handles the transparent content itself. Part of the
-/// <see cref="ShaderSources"/> partial.
+/// pass therefore survives it, and the temporal resolve's reactive estimate handles the transparent content itself.
+/// Part of the <see cref="ShaderSources"/> partial.
 /// </summary>
 internal static partial class ShaderSources
 {

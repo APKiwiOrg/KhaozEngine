@@ -1292,7 +1292,7 @@ namespace KhaozEngine.Render3D
         /// mip chain (a correct multi-tap box) rather than the historical single bilinear tap. True under
         /// <see cref="RenderScale.MatchViewport"/> supersampling (or a cap-forced downscale), and ALSO under
         /// <see cref="RenderScale.FixedInternal"/> when <see cref="PixelPostProcessSettings.MipFilterFixedInternalDownscale"/>
-        /// is opted in and the window is smaller than the fixed internal target in either axis - both share the
+        /// is opted in and the window is smaller than the fixed internal target in either axis. Both share the
         /// same "internal target strictly larger than the viewport" test, just gated by a different gate per scale
         /// mode. Always false with a Pixelated blit (retro stays single-mip point-sampled) or (for FixedInternal)
         /// when the opt-in flag is off, so every existing consumer and GPU golden stays byte-identical unless it
@@ -1432,7 +1432,7 @@ namespace KhaozEngine.Render3D
             // otherwise). Byte-neutral when never used. The apply-pass parity is stable from here through Run.
             bool distortionActive = _distortionSprites.Count > 0;
             _res.EnsureDistortion(distortionActive, DistortionQuality == DistortionQuality.Full ? 2 : 4);
-            var (postChain, postTargets) = PrepareTemporalResolve(cl, viewportW, viewportH);   // _post over _res unless temporal
+            var (postChain, postTargets) = PrepareTemporalResolve(cl, viewportW, viewportH);   // _post over _res unless the frame resolves
             postChain.BindTargets(postTargets);
             // The edge pass's depth convention (perspective or ortho, near and far), from the unjittered projection.
             var camDepth = Internal.OutlineMath.ExtractCameraDepth(_currentFrameView.Projection);

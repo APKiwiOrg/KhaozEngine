@@ -10,8 +10,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// A real-device <see cref="Scene3D"/> driven frame after frame the way a game drives it: Begin, a deterministic effect
 /// clock, the caller's draws, PrepareFrame, one recording into the fixture's own display target, Submit and a drain.
 /// The internal size follows the display size (<see cref="RenderScale.MatchViewport"/>), the render origin is pinned at
-/// zero until a test moves it, and the camera looks at the world origin. Round 2 renders its acceptance scenes through
-/// it (TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24).
+/// zero until a test moves it, and the camera looks at the world origin. The temporal resolve's acceptance scenes
+/// render through it (TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24, section 7).
 /// </summary>
 public sealed class TemporalFixture : IDisposable
 {

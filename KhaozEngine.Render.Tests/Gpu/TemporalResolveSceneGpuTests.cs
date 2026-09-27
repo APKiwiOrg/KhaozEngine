@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The resolve inside a real frame: the post chain's bloom and distortion run on the display targets after it, and a
     /// transparent model-pass writer over the sky shows, because the background now draws ahead of it
-    /// (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, plan amendment 5). A later render inside the frame
+    /// (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, section 1). A later render inside the frame
     /// never resolves and looks like a render without temporal anti-aliasing at the internal size, and a Solid frame's
     /// opaque copy holds the cleared background.
     /// </summary>

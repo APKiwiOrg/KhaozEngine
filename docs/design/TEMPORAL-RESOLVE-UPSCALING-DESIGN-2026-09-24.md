@@ -221,9 +221,10 @@ and changed these details. Each group's "Contract amendments" block carries the 
     render without temporal anti-aliasing at the internal size. It leaves the history targets, their pair and their
     contents untouched, and neither post chain is rebound per frame (group E).
 15. Under the resolve the internal targets carry no bloom or ping pair, because the display chain has its own. The first
-    later render adds both in place, never by recreating targets an earlier render in the frame still reads, and they
-    stay until temporal anti-aliasing turns off, so a host that captures every frame reallocates nothing per frame
-    (group E).
+    later render at the same internal size adds both in place, never by recreating targets an earlier render in the
+    frame still reads, and they stay until temporal anti-aliasing turns off, so a host that captures every frame at that
+    size reallocates nothing per frame. A later render at another size resizes the internal targets, which recreates
+    them ([#1167](https://github.com/APKiwiOrg/KhaozEngine/issues/1167)) (group E).
 16. The frozen layer of the screen dissolve (`TransitionRenderer`) is captured from the internal colour before the post
     chain in every mode, so under the resolve it holds an unresolved internal frame
     ([#1166](https://github.com/APKiwiOrg/KhaozEngine/issues/1166)).

@@ -3,9 +3,10 @@ using KhaozEngine.Gpu;
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// THE TEMPORAL TARGET FORMATS, recorded in the plan amendments of the temporal resolve design.
-    /// Each is a seam member every backend already renders and samples: half float RGBA is the HDR colour target, half
-    /// float RG the distortion field, single float R the linear-depth MRT attachment.
+    /// THE TEMPORAL TARGET FORMATS of the resolve's history
+    /// (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, section 3). Each is a seam member every backend
+    /// already renders and samples: half float RGBA is the HDR colour target, half float RG the distortion field,
+    /// single float R the linear-depth MRT attachment.
     /// <para><b>WHY NOT R11G11B10 FLOAT FOR THE HISTORY COLOUR.</b> The seam has no such member, Vulkan does not
     /// guarantee it as a colour attachment, and its 6-bit and 5-bit mantissas stall a one-in-sixteen accumulation 12.5
     /// and 25 percent short of its target. Half float stalls at 0.8 percent, and its alpha carries the

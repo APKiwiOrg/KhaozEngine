@@ -41,6 +41,12 @@ public interface IPagedContainerWorkingCopy
     /// <summary>The game's rule for whether a definition merges into one slot, which a merge and a grant ask.</summary>
     Func<int, bool> Stackable { get; }
 
+    /// <summary>
+    /// The game's current stack cap rule, which a live merge and grant ask. Null means no content cap and a
+    /// negative answer is a caller error. The default keeps existing custom working copies source compatible.
+    /// </summary>
+    Func<int, int>? StackCap => null;
+
     /// <summary>Whether a grant that opens a new slot would be refused (spec 5.7).</summary>
     bool IsAtCapacity { get; }
 

@@ -16935,6 +16935,7 @@ var bankPages = new PagedItemContainer(
     pageCount: 10,
     capacity: 1000,
     stackable: Stackable,
+    stackCap: definitionId => catalog.Item(definitionId).MaxStack,
     payloadCanonical: ItemInstancePayload.IsCanonical,
     quarantineWellFormed: QuarantineWrapper.Verify);
 
@@ -17027,6 +17028,11 @@ The window needs a tick, and your journal layer may not own one. `Apply(operatio
 tick, so a journal that never sees the server tick opens every batch at the default and uses that form:
 `TickBoundary` then never fires, and the batch is bounded by the other four closers and by your own `Close`.
 
+`stackCap` is a content-free seam. A positive value limits the units a new stack or merge accepts, while zero
+or no delegate keeps the `int.MaxValue` ceiling. A negative value is a caller error. The delegate is read
+once per operation and never cached. `Seat` and the load path may preserve a stored over-cap stack, which
+refuses growth until removal brings it below the current cap.
+
 **The batch owns what it is opened over, from `Open` until `MarkCommitted`.** It holds each container by
 reference and writes through it on every `Apply`, through `IPagedContainerWorkingCopy` and nothing wider. The
 overload above hands it the `PagedItemContainer`s themselves. If you share containers copy on write, open over
@@ -17078,9 +17084,9 @@ An event sourced host starts with its prior container pages and applies stored e
 `ContainerOperationEventCodec.TryRead` checks the event name, schema version and complete body, and returns
 the recorded operation. `ContainerOperationApplier.TryReplay` checks the known slot, instance, count,
 payload and currency preconditions before writing through the host's `IPagedContainerWorkingCopy`. It uses
-the historical admission of Merge and occupied Grant as proof of their former stackability, even if the
-current catalog changed. It also allows an admitted Grant after a later capacity reduction. The live builder
-uses `TryApply` and checks the current stackability and capacity. A false
+the historical admission of Merge and Grant as proof of their former stackability and stack cap,
+even if the current catalog changed. It also allows an admitted Grant after a later capacity reduction. The
+live builder uses `TryApply` and checks the current stackability, stack cap and capacity. A false
 answer names a stored record the host must refuse or quarantine. A custom working-copy implementation is
 still responsible for accepting valid writes.
 
@@ -17203,11 +17209,10 @@ types and the item generator are spec 20 phase 4, and the crafting framework and
 are phase 5, both in `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`. `ContainerOperationKind.Craft`
 already carries the operation and its page write, and the event BODY is the crafting framework's to encode.
 
-Three named gaps sit on surfaces that DO exist. The page delta ships an encoder and no reader, while the
-fragmenter ships both halves (https://github.com/APKiwiOrg/KhaozEngine/issues/933). A lowered `max_stack` is
-not enforced on the merge path, which saturates at `int.MaxValue` and is reported after the fact by validator
-check 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/924). And a container operation's events are written
-with nothing able to read one back (https://github.com/APKiwiOrg/KhaozEngine/issues/941).
+Two named gaps sit on surfaces that DO exist. The page delta ships an encoder and no reader, while the
+fragmenter ships both halves (https://github.com/APKiwiOrg/KhaozEngine/issues/933). A container operation's
+events are written with nothing able to read one back
+(https://github.com/APKiwiOrg/KhaozEngine/issues/941).
 
 ---
 

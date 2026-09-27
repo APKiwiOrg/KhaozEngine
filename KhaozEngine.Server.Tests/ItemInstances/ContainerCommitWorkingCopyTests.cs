@@ -39,6 +39,8 @@ public sealed class ContainerCommitWorkingCopyTests
 
         public Func<int, bool> Stackable => Read(nameof(Stackable), () => inner.Stackable);
 
+        public Func<int, int>? StackCap => Read(nameof(StackCap), () => inner.StackCap);
+
         public bool IsAtCapacity => Read(nameof(IsAtCapacity), () => inner.IsAtCapacity);
 
         public ItemSlot SlotAt(int containerSlot) => Read(nameof(SlotAt), () => inner.SlotAt(containerSlot));
@@ -107,6 +109,8 @@ public sealed class ContainerCommitWorkingCopyTests
 
         public Func<int, bool> Stackable => Current.Stackable;
 
+        public Func<int, int>? StackCap => Current.StackCap;
+
         public bool IsAtCapacity => Current.IsAtCapacity;
 
         public ItemSlot SlotAt(int containerSlot) => Current.SlotAt(containerSlot);
@@ -132,7 +136,7 @@ public sealed class ContainerCommitWorkingCopyTests
         {
             if (_own is not null) return _own;
 
-            PagedItemContainer copy = Container(shared.PageCount, shared.Capacity);
+            PagedItemContainer copy = Container(shared.PageCount, shared.Capacity, shared.StackCap);
             for (int page = 0; page < shared.PageCount; page++)
             {
                 copy.Pages[page].SeatStamp(shared.Pages[page].ContentVersion);

@@ -52,8 +52,12 @@ internal static class ContainerCommitFixtures
     /// <summary>A fresh empty container.</summary>
     /// <param name="pageCount">How many pages of a hundred slots.</param>
     /// <param name="capacity">The occupied-slot gate of spec 5.7.</param>
-    public static PagedItemContainer Container(int pageCount = 2, int capacity = 10_000)
-        => new(pageCount, capacity, Stackable, static _ => true, QuarantineWrapper.Verify);
+    /// <param name="stackCap">The current stack cap, or null for the engine ceiling.</param>
+    public static PagedItemContainer Container(
+        int pageCount = 2,
+        int capacity = 10_000,
+        Func<int, int>? stackCap = null)
+        => new(pageCount, capacity, Stackable, static _ => true, QuarantineWrapper.Verify, stackCap);
 
     /// <summary>The container set a batch is opened over, by name.</summary>
     public static Dictionary<string, PagedItemContainer> Containers(params (string Name, PagedItemContainer Container)[] entries)

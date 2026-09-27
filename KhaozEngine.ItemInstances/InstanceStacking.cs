@@ -74,16 +74,8 @@ public static class InstanceStacking
     }
 
     /// <summary>
-    /// The ARITHMETIC of a merge, and never its rules: ask <see cref="CanMerge"/> first. The surviving
-    /// instance id is the numerically LOWER of the two, so the merge is commutative and a replay in the
-    /// other order produces the same id, and the count saturates at <see cref="int.MaxValue"/> exactly as
-    /// <c>ItemContainer.Add</c> does rather than overflowing.
-    /// <para>
-    /// <b>The stack cap of a lowered <c>max_stack</c> is the CALLER's</b>, applied above this kernel:
-    /// <see cref="int.MaxValue"/> is the only ceiling here, because this package reads no content and the
-    /// cap is a content fact. Where that rule should live is
-    /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/924">#924</see>.
-    /// </para>
+    /// The ARITHMETIC of a merge with no content cap. This overload preserves the original engine ceiling
+    /// for callers that do not configure <c>max_stack</c>. Ask <see cref="CanMerge"/> first.
     /// <para>
     /// A merge DESTROYS an instance id, which is the one place this design weakens the contracts'
     /// traceability argument. The mitigation is an event rather than a field: a merge emits
@@ -98,14 +90,36 @@ public static class InstanceStacking
     /// That is a game rule this kernel deliberately does not have.</param>
     /// <exception cref="ArgumentException">Either side is empty, which is a caller bug rather than a fact
     /// about the items.</exception>
-    public static ItemSlot Merge(in ItemSlot destination, in ItemSlot source, out int remainder)
+    public static ItemSlot Merge(in ItemSlot destination, in ItemSlot source, out int remainder) =>
+        Merge(destination, source, 0, out remainder);
+
+    /// <summary>
+    /// The ARITHMETIC of a capped merge, and never its rules: ask <see cref="CanMerge"/> first. A positive
+    /// <paramref name="cap"/> is the current <c>max_stack</c>. Zero means the caller has no content cap and
+    /// keeps the <see cref="int.MaxValue"/> engine ceiling.
+    /// <para>
+    /// A destination below the cap accepts only the units that fit. A destination at or above the cap accepts
+    /// none, so a stored over-cap stack can shrink through other operations but can never grow. Once it is at
+    /// or below the cap, the ordinary cap applies.
+    /// </para>
+    /// </summary>
+    /// <param name="destination">The entry that survives. Its payload is the merged entry's.</param>
+    /// <param name="source">The entry merging in.</param>
+    /// <param name="cap">The current content cap, or zero when no content cap is configured.</param>
+    /// <param name="remainder">The units that did not fit, which are the caller's to handle.</param>
+    /// <exception cref="ArgumentException">Either side is empty.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="cap"/> is negative.</exception>
+    public static ItemSlot Merge(in ItemSlot destination, in ItemSlot source, int cap, out int remainder)
     {
         if (destination.IsEmpty) throw new ArgumentException("An empty slot is not a merge destination.", nameof(destination));
         if (source.IsEmpty) throw new ArgumentException("An empty slot is not a merge source.", nameof(source));
+        ArgumentOutOfRangeException.ThrowIfNegative(cap);
 
-        long room = int.MaxValue - (long)destination.Stack.Count;
-        int moved = (int)Math.Min(room, source.Stack.Count);
+        int ceiling = cap == 0 ? int.MaxValue : cap;
+        long room = ceiling - (long)destination.Stack.Count;
+        int moved = room > 0 ? (int)Math.Min(room, source.Stack.Count) : 0;
         remainder = source.Stack.Count - moved;
+        if (moved == 0) return destination;
 
         return destination with
         {

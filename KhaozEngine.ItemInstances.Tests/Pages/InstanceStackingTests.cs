@@ -194,6 +194,49 @@ public class InstanceStackingTests
     }
 
     [Fact]
+    public void A_positive_stack_cap_stops_a_merge_at_the_cap()
+    {
+        ItemSlot destination = Slot(Potion, 8, 11);
+        ItemSlot merged = InstanceStacking.Merge(destination, Slot(Potion, 5, 12), cap: 10, out int remainder);
+
+        Assert.Equal(10, merged.Stack.Count);
+        Assert.Equal(3, remainder);
+
+        ItemSlot atCap = Slot(Potion, 10, 11);
+        Assert.Equal(atCap, InstanceStacking.Merge(atCap, Slot(Potion, 5, 12), cap: 10, out remainder));
+        Assert.Equal(5, remainder);
+    }
+
+    [Fact]
+    public void An_existing_over_cap_stack_refuses_every_unit_of_a_merge()
+    {
+        ItemSlot overCap = Slot(Potion, 15, 11);
+        ItemSlot merged = InstanceStacking.Merge(overCap, Slot(Potion, 5, 12), cap: 10, out int remainder);
+
+        Assert.Equal(overCap, merged);
+        Assert.Equal(5, remainder);
+    }
+
+    [Fact]
+    public void A_zero_cap_keeps_the_int_MaxValue_overflow_ceiling()
+    {
+        ItemSlot nearlyFull = Slot(Potion, int.MaxValue - 1, 11);
+        ItemSlot merged = InstanceStacking.Merge(nearlyFull, Slot(Potion, 5, 12), cap: 0, out int remainder);
+
+        Assert.Equal(int.MaxValue, merged.Stack.Count);
+        Assert.Equal(4, remainder);
+    }
+
+    [Fact]
+    public void A_negative_stack_cap_is_a_caller_error()
+    {
+        ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            InstanceStacking.Merge(Slot(Potion, 3), Slot(Potion, 5), cap: -1, out _));
+
+        Assert.Equal("cap", error.ParamName);
+    }
+
+    [Fact]
     public void Two_items_differing_only_in_an_UNKNOWN_field_do_not_merge()
     {
         // Contracts 9.4's conservative answer. Neither build understands kind 2000, both keep it verbatim,

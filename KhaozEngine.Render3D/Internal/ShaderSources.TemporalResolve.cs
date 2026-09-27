@@ -610,8 +610,10 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // current colour in the history, save the share the pixel's lock holds. The pixel then shows its current coverage
     // while its own surface stays accumulated, and it stores MovingShareConfidence, since that colour holds for this
     // frame alone. A pixel whose hold is whole keeps its own history and its confidence: it holds a still sub-texel
-    // feature, which the next frame needs whole on the frames the jitter misses it. A wider surface's edge keeps its
-    // own history, where the same colour flickered with the jitter.
+    // feature, which the next frame needs whole on the frames the jitter misses it. A surface wider than two texels
+    // keeps its own history at its edge, where the same colour flickered with the jitter. The narrow test reads the run
+    // through the nearest texel alone, so a wide object is narrow where it is one or two texels across in this frame's
+    // depth, at a corner's tip or on a face seen at a grazing angle, and its colour is taken there too.
     float movingShare = 0.0;
     if (narrowMoving && nearerWeight > 1.0e-4) {
         movingShare = clamp(nearerWeight / max(reconstructionWeight, 1.0e-4), 0.0, 1.0) * (1.0 - hold);

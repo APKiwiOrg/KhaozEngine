@@ -224,14 +224,18 @@ namespace KhaozEngine.Render3D.Internal
         /// against 0 now, because over a grey texture the clip pulls a pixel holding the feature's colour to the
         /// neighbourhood mean at full confidence. The line one texel wide leaves 0 and 8 against 11 and 23. Applied
         /// beside any moving surface, the same colour raised a keyed box edge's fast flips at Native from 0.00058 to
-        /// 0.00112, so it waits for a narrow feature. A pixel whose lock holds takes the colour only for the share the
-        /// hold leaves, and one whose hold is whole keeps its own history and confidence. A still line three eighths of
-        /// a texel wide beside a keyed passer one or two texels wide, sliding past half a texel away at 2 display
-        /// pixels a frame, fell on its worst frame to 0.02 of its energy at Native and 0.00 at Quality, because the
-        /// confidence stored beside it dropped the line's history on the frames the jitter missed it. It keeps 0.91 and
-        /// 0.94 now. Storing one minus the share of the confidence left it at 0.03 to 0.39 and took the fast keyed line
-        /// to 0.80 and 0.74 of its reference, and keeping the confidence where the hold is whole left it at 0.37 or
-        /// less and the line one texel wide crossing the textured wall 29 and 58 trail pixels.</summary>
+        /// 0.00112, so it waits for a narrow feature. The narrow test reads the run through one texel, so it also fires
+        /// where a wide object is one or two texels across in this frame's depth, at a corner's tip or on a face seen
+        /// at a grazing angle: it raised the tilted keyed box's fast flips from 0.00058 to 0.00068 at Native and from
+        /// 0.00168 to 0.00186 at Quality, within the bounds of 0.00088 and 0.00273. A pixel whose lock holds takes the
+        /// colour only for the share the hold leaves, and one whose hold is whole keeps its own history and confidence.
+        /// A still line three eighths of a texel wide beside a keyed passer one or two texels wide, sliding past half a
+        /// texel away at 2 display pixels a frame, fell on its worst frame to 0.02 of its energy at Native and 0.00 at
+        /// Quality, because the confidence stored beside it dropped the line's history on the frames the jitter missed
+        /// it. It keeps 0.91 and 0.94 now. Storing one minus the share of the confidence left it at 0.03 to 0.39 and
+        /// took the fast keyed line to 0.80 and 0.74 of its reference, and keeping the confidence where the hold is
+        /// whole left it at 0.37 or less and the line one texel wide crossing the textured wall 29 and 58 trail
+        /// pixels.</summary>
         public const float MovingShareConfidence = 0f;
     }
 }

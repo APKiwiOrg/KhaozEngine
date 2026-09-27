@@ -32,12 +32,16 @@ namespace KhaozEngine.Render3D
         // render calls before it uploads the frame block. The diagnostics report them. A later render inside the frame
         // leaves them alone, as it leaves the frame's other diagnostics alone. All four are zero for a frame whose
         // first render had no display area, whose display size would be the last nonzero one (_latchedDisplayWidth)
-        // beside the one pixel internal target such a render allocates.
+        // beside whatever internal target such a render allocates: a pixel or two where the internal size follows the
+        // viewport, the unchanged fixed size under RenderScale.FixedInternal.
         int _temporalDisplayWidth, _temporalDisplayHeight, _temporalInternalWidth, _temporalInternalHeight;
         long _temporalSizesFrame = -1;
         // The upscale preset the frame's first render read, latched with the sizes, so a later render or a settings
         // change after the frame leaves the reported preset alone.
         TemporalUpscale _temporalPreset;
+        // Whether the frame's first render ran the temporal resolve, latched with the sizes. The reported ratio is the
+        // resolve's upscale, so a frame the resolve did not run on reports 1.
+        bool _temporalResolved;
 
         // The latest on-request counts, filled when a requested frame's grid is harvested. The frame is minus 1 and
         // the counts zero until the first harvest.
@@ -65,24 +69,28 @@ namespace KhaozEngine.Render3D
                 _temporalInternalWidth = shown ? _currentFrameView.Width : 0;
                 _temporalInternalHeight = shown ? _currentFrameView.Height : 0;
                 _temporalPreset = Post.Temporal.Upscale;
+                _temporalResolved = _resolveThisRender;
             }
             return TemporalMipBias.For(_resolveThisRender, _frameDisplayOverInternal, Post.Temporal.MipBiasOffset);
         }
 
         /// <summary>The diagnostics <see cref="AdvanceTemporalHistory"/> published, with the frame's sizes, preset and
-        /// ratio and the latest counts composed in. A struct copy, so reading <see cref="LastTemporalDiagnostics"/>
-        /// still allocates nothing. Before the first render it is the published value unchanged, the default, which
+        /// ratio and the latest counts composed in. The ratio is the internal to display width ratio of a frame the
+        /// resolve ran on, and 1 on any other. A struct copy, so reading <see cref="LastTemporalDiagnostics"/> still
+        /// allocates nothing. Before the first render it is the published value unchanged, the default, which
         /// <c>TemporalDiagnosticsTests.BeforeTheFirstRenderTheDiagnosticsAreDefault</c> pins.</summary>
-        TemporalDiagnostics WithRound2Diagnostics(in TemporalDiagnostics round1) => _temporalSizesFrame < 0
-            ? round1
-            : round1 with
+        TemporalDiagnostics WithSizesAndCounts(in TemporalDiagnostics published) => _temporalSizesFrame < 0
+            ? published
+            : published with
             {
                 InternalWidth = _temporalInternalWidth,
                 InternalHeight = _temporalInternalHeight,
                 DisplayWidth = _temporalDisplayWidth,
                 DisplayHeight = _temporalDisplayHeight,
                 Preset = _temporalPreset,
-                UpscaleRatio = _temporalDisplayWidth > 0 ? (float)_temporalInternalWidth / _temporalDisplayWidth : 1f,
+                UpscaleRatio = _temporalResolved && _temporalDisplayWidth > 0
+                    ? (float)_temporalInternalWidth / _temporalDisplayWidth
+                    : 1f,
                 CountsFrameIndex = _countsFrame,
                 DisoccludedPixels = _countsDisoccluded,
                 ReactivePixels = _countsReactive,

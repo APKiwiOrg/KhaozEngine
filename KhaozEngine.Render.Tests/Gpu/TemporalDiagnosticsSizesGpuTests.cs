@@ -5,7 +5,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>LastTemporalDiagnostics reports the internal and display sizes, the preset and the effective
     /// ratio.</summary>
-    public sealed class TemporalDiagnosticsRound2GpuTests
+    public sealed class TemporalDiagnosticsSizesGpuTests
     {
         [GpuTheory]
         [InlineData(TemporalUpscale.Native, 320, 180)]
@@ -44,6 +44,7 @@ namespace KhaozEngine.Tests.Gpu
             TemporalDiagnostics d = fx.Scene.LastTemporalDiagnostics;
             Assert.InRange(d.InternalWidth, 255, 257);
             Assert.Equal(0.8f, d.UpscaleRatio, 2);
+            Assert.Equal(TemporalUpscale.Quality, d.Preset);   // the setting, which the explicit ratio overrides
         }
 
         /// <summary>A capture inside the frame at another size, after a preset change, leaves the frame's diagnostics

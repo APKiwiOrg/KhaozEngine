@@ -4,9 +4,9 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D;
 
 /// <summary>The sizes, preset and ratio in <c>Scene3D.LastTemporalDiagnostics</c>: they describe the frame's first
-/// render and nothing after it, a frame with no display area reports no sizes rather than a stale display size, the
-/// history state is the one the resolve used, and reading all of it allocates nothing. Headless, on
-/// <see cref="HeadlessSceneRig"/>.</summary>
+/// render and nothing after it, the ratio is the resolve's and reads 1 on a frame the resolve did not run on, a frame
+/// with no display area reports no sizes rather than a stale display size, the history state is the one the resolve
+/// used, and reading all of it allocates nothing. Headless, on <see cref="HeadlessSceneRig"/>.</summary>
 [Collection("AllocSensitive")]
 public sealed class TemporalDiagnosticsSizesTests
 {
@@ -40,6 +40,57 @@ public sealed class TemporalDiagnosticsSizesTests
         Assert.Equal(TemporalUpscale.Quality, d.Preset);
         Assert.Equal(160f / 240f, d.UpscaleRatio);
         Assert.Equal((-1L, 0, 0, 0), (d.CountsFrameIndex, d.DisoccludedPixels, d.ReactivePixels, d.ClippedPixels));
+    }
+
+    /// <summary>The four sizes are true under every mode, and the ratio is the upscale the resolve ran with, so a frame
+    /// the resolve did not run on reports 1 whatever its internal and display sizes: supersampling renders at twice the
+    /// display, the fixed internal target is larger than this display, and a temporal frame that only the
+    /// MotionVectors view asked for renders at the display size unresolved.</summary>
+    [Theory]
+    [InlineData("ssaa")]
+    [InlineData("fixed")]
+    [InlineData("motion view")]
+    public void AFrameTheResolveDidNotRunOnReportsARatioOf1(string mode)
+    {
+        using var rig = new HeadlessSceneRig();
+        Scene3D scene = rig.Scene;
+        scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
+        (int W, int H) want = (240, 160);
+        switch (mode)
+        {
+            case "ssaa":
+                scene.Post.Quality.AntiAliasing = AntiAliasing.Ssaa(2f);
+                want = (480, 320);
+                break;
+            case "fixed":
+                scene.Post.Quality.AntiAliasing = AntiAliasing.Fxaa;
+                scene.Post.RenderScale = RenderScale.FixedInternal;
+                want = (scene.Post.RenderWidth, scene.Post.RenderHeight);
+                break;
+            default:
+                scene.DebugView = SceneDebugView.MotionVectors;
+                break;
+        }
+        rig.Frame(240, 160);
+        rig.Frame(240, 160);
+
+        Assert.False(scene.ResolvedLastRenderForTests);
+        Assert.Equal(mode == "motion view", scene.TemporalActive);
+        TemporalDiagnostics d = scene.LastTemporalDiagnostics;
+        Assert.Equal((want.W, want.H, 240, 160), (d.InternalWidth, d.InternalHeight, d.DisplayWidth, d.DisplayHeight));
+        Assert.Equal(1f, d.UpscaleRatio);
+        Assert.Equal(TemporalUpscale.Quality, d.Preset);
+    }
+
+    [Fact]
+    public void AResolvingQualityFrameReportsTwoThirds()
+    {
+        using HeadlessSceneRig rig = Resolving(TemporalUpscale.Quality);
+        rig.Frame(960, 540);
+        Assert.True(rig.Scene.ResolvedLastRenderForTests);
+        TemporalDiagnostics d = rig.Scene.LastTemporalDiagnostics;
+        Assert.Equal((640, 360, 960, 540), (d.InternalWidth, d.InternalHeight, d.DisplayWidth, d.DisplayHeight));
+        Assert.Equal(2f / 3f, d.UpscaleRatio, 1e-6f);
     }
 
     /// <summary>A later render inside the frame at another size, after a preset change, renders at its own internal

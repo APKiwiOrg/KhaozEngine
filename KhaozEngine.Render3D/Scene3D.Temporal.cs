@@ -73,7 +73,7 @@ namespace KhaozEngine.Render3D
         /// whether history was valid with the reason it was last reset, its internal and display sizes, the preset and
         /// ratio, and the latest sampled counts. Default-valued before the first render. See
         /// <see cref="TemporalDiagnostics"/>.</summary>
-        public TemporalDiagnostics LastTemporalDiagnostics => WithRound2Diagnostics(_lastTemporalDiagnostics);
+        public TemporalDiagnostics LastTemporalDiagnostics => WithSizesAndCounts(_lastTemporalDiagnostics);
 
         // What AdvanceTemporalHistory published for the last rendered frame, with the history state the resolve left it
         // in (PrepareTemporalResolve), before the sizes and counts are composed in.

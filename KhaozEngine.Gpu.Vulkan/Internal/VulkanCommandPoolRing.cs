@@ -34,11 +34,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// blocked" with a zero.</para>
     ///
     /// <para><b>THE DEPTH IS SHARED WITH THE UNIFORM RING AND THE INDEX IS NOT.</b> This slot advances on every
-    /// <c>Begin</c> and belongs to one list. The ring's segment advances at the FRAME boundary and belongs to the
-    /// device. A list begun twice in one frame takes two slots here and writes one segment there, which is
-    /// correct in both directions: two records must not share a command buffer still in flight, and two records in
-    /// one frame must see one frame's uniform values. See <see cref="VulkanFramesInFlight"/> for the one number
-    /// behind both.</para>
+    /// <c>Begin</c> and belongs to one list. The ring's segment belongs to the device and advances per writing
+    /// submission: at the frame boundary, and at the first uniform write after a list submission that carried
+    /// uniform writes. A list begun twice in one frame takes two slots here, and when its first record wrote
+    /// uniforms and was submitted, its second record's first uniform write takes the next segment there. That is
+    /// correct in both directions: two records must not share a command buffer still in flight, and a record still
+    /// in flight must keep the uniform values it was submitted with. See <see cref="VulkanFramesInFlight"/> for
+    /// the one number behind both.</para>
     ///
     /// <para><b>NOTHING HERE IS THREAD-SAFE, AND THAT IS THE POINT.</b> A <c>VkCommandPool</c> and every buffer
     /// allocated from it are EXTERNALLY SYNCHRONISED, one thread at a time. Per-list pools mean two lists

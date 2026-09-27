@@ -334,8 +334,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 throw new InvalidOperationException(
                     "BeginFrame was called on the native Direct3D 11 ring allocator while the caller held the "
                     + "submit lock. Opening a frame waits for the GPU to finish with the segment it opens, which "
-                    + "is up to a frame, and decision W4 holds the submit lock for microseconds. Call it after "
-                    + "the present has released the lock, not inside it.");
+                    + "is up to a frame, and the submit lock is held for microseconds, never across a GPU wait. "
+                    + "Call it after the present has released the lock, not inside it.");
             }
 
             _lastFrame = new D3D11BackpressureStats(_stallCount, _stallTicks * 1000d / Stopwatch.Frequency);
@@ -652,10 +652,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </para>
         /// <para>
         /// IT FLUSHES ONCE BEFORE IT SPINS, and only when it has to wait. The completion poll never flushes, and a
-        /// signal still buffered on the immediate context is a point the GPU may never reach. A present used to be
-        /// the only way in here, and it flushes, but a record-time write's owed rotation arrives with no present
-        /// behind it on a headless loop, so the gate hands the submitted work to the driver itself, the same one
-        /// flush the drain makes after its signal. A free segment costs one poll and no flush.
+        /// signal still buffered on the immediate context is a point the GPU may never reach. A swapchain present used
+        /// to be the only way in here, and it flushes. A headless present rotates without flushing, and a record-time
+        /// write's owed rotation arrives with no present at all, so the gate hands the submitted work to the driver
+        /// itself, the same one flush the drain makes after its signal. A free segment costs one poll and no flush.
         /// </para>
         /// <para>
         /// The blocking wait the primary timeline offers is deliberately NOT used here. It belongs to the drain
@@ -722,8 +722,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>
         /// APPLY THE SEGMENT'S PENDING PATCHES AND THEN PUBLISH IT AS CURRENT, in ONE hold of the submit lock.
-        /// Called by <see cref="BeginFrame"/> after <see cref="AcquireSegment"/> has proved the GPU is finished
-        /// with it, which is what makes the copies safe.
+        /// Called by every rotation, the frame boundary's <see cref="BeginFrame"/> and a record-time write's owed one
+        /// (<see cref="BeforeRecordWrite"/>), after <see cref="AcquireSegment"/> has proved the GPU is finished with
+        /// it, which is what makes the copies safe.
         /// <para>
         /// THE TWO STEPS ARE ONE CRITICAL SECTION ON PURPOSE, and the order inside it is load-bearing. An
         /// off-timeline write that observes this segment as current copies into it directly, so if it could

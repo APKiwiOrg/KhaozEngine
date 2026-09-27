@@ -764,12 +764,12 @@ A wait on a segment flushes the submitted work to the driver once before it spin
 else hands the awaited signal over, and a free segment costs one poll and no flush.
 
 Three ordering rules follow, and **submit** in them means `IGpuDevice.Submit` of a command list. The device's
-own internal flushes are not submissions: on Vulkan the setup buffer that a `WaitForIdle`, a `Map` or an upload
-hands to the queue never moves the copy.
+own internal flushes are not submissions: on Vulkan the setup buffer, which a `WaitForIdle` or a `Map` flushes to
+the queue and a `Submit` flushes ahead of its own list, never moves the copy. An upload only appends to it.
 
-1. Submit a sealed recording that wrote uniforms before another submission is followed by a later uniform write.
-   Otherwise that later write opens a fresh copy while the sealed recording is still unsubmitted, and its uniforms
-   stop being tied to its own submission: the deferred Direct3D 11 driver binds it to the fresh copy, and on
+1. Once a recording that wrote uniforms is sealed, submit it before any other submission that a uniform write
+   follows. Otherwise that write opens a fresh copy while the sealed recording is still unsubmitted, and its
+   uniforms stop being tied to its own submission: the deferred Direct3D 11 driver binds it to the fresh copy, and on
    Vulkan and the immediate driver the copy it already bound can be reused while it is still queued.
 2. On Vulkan, and on Direct3D 11 under `KE_D3D11_RECORD=immediate`, make a recording's first uniform write before
    its first draw or dispatch. Those drivers fix the copy a draw reads when the draw is recorded, and the first
@@ -778,6 +778,12 @@ hands to the queue never moves the copy.
 3. Submit nothing while a recording that has written uniforms is still open. A submission in that window counts as
    carrying the open recording's writes, so that recording's next write opens a fresh copy, and its earlier and
    later writes land in copies it cannot bind together.
+
+**The fresh copy is read as well as written.** Once a recording that follows a writing submission makes its first
+uniform write, every ring-backed uniform buffer it binds is read from the fresh copy, including buffers it never
+wrote, which still hold whatever that copy held several writing submissions ago. So write each uniform buffer a
+recording reads inside that recording, or once through `IGpuDevice.UpdateBuffer`, which reaches every copy. A
+camera buffer written in a shadow list and then read unwritten in the main list gives the main list a stale camera.
 
 Each uniform-writing submission takes one copy, so a headless loop is backpressured by design (its fourth writing
 submission waits for its first to finish on the GPU) and so is a frame with more writing submissions than frames in

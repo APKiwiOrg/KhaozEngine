@@ -78,9 +78,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // Whether the current segment has taken a record-time write, and the timeline's LIST submit high-water when
         // the last one landed. A list submission registered since then carried those writes out, so the next
-        // record-time write opens another segment. A setup flush raises only the full high-water and never counts. The flag is cleared when a segment is adopted, under the submit
-        // lock, and read by the record path without it, hence volatile. The high-water is the record path's alone,
-        // and one recording is open at a time (GpuRecording).
+        // record-time write opens another segment. A setup flush raises only the full high-water and never counts.
+        // The flag is cleared when a segment is adopted, under the submit lock, and read by the record path without
+        // it, hence volatile. The high-water is the record path's alone, and one recording is open at a time
+        // (GpuRecording).
         volatile bool _segmentWritten;
         ulong _submittedAtLastWrite;
 
@@ -194,8 +195,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 throw new InvalidOperationException(
                     "BeginFrame was called on the native Vulkan ring allocator while the caller held the submit "
                     + "lock. Opening a frame waits for the GPU to finish with the segment it opens, which is up to "
-                    + "a frame, and decision V-W8 holds the submit lock for microseconds. Call it after the present "
-                    + "has released the lock, not inside it.");
+                    + "a frame, and the submit lock is held for microseconds, never across a GPU wait. Call it after "
+                    + "the present has released the lock, not inside it.");
             }
 
             _frameIndex++;
@@ -217,11 +218,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <para>
         /// THE WINDOWED FRAME IS UNCHANGED. Its one submission is followed by the present, whose rotation clears the
         /// owed one, so the next frame's writes open nothing. A submission that wrote no uniforms owes nothing
-        /// either. Detected from the timeline's LIST submit high-water (<see cref="VulkanTimeline.LastListSubmitted"/>):
-        /// a list submission registered since the segment's last record-time write is one that carried it. A setup
-        /// flush in the middle of a recording (a <c>WaitForIdle</c>, a <c>Map</c>, an upload into a non-uniform
-        /// buffer) raises only the full high-water, so it neither rotates the open recording's segment nor closes
-        /// it below that recording's own submission. Allocates nothing.
+        /// either. Detected from the timeline's LIST submit high-water
+        /// (<see cref="VulkanTimeline.LastListSubmitted"/>): a list submission registered since the segment's last
+        /// record-time write is one that carried it. A setup flush in the middle of a recording (from a
+        /// <c>WaitForIdle</c> or a <c>Map</c>, since an upload only appends to the setup buffer) raises only the
+        /// full high-water, so it neither rotates the open recording's segment nor closes it below that recording's
+        /// own submission. Allocates nothing.
         /// </para>
         /// <para>
         /// A bind composes the segment current when its draw is recorded, so a recording's first uniform write comes
@@ -242,8 +244,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     throw new InvalidOperationException(
                         "A record-time uniform write on the native Vulkan ring owed a segment rotation while the "
                         + "caller held the submit lock. The rotation waits for the GPU to finish with the segment it "
-                        + "opens, and the submit lock is held for microseconds, never across a GPU wait. Record outside "
-                        + "the lock.");
+                        + "opens, and the submit lock is held for microseconds, never across a GPU wait. Record "
+                        + "outside the lock.");
                 }
 
                 Rotate();

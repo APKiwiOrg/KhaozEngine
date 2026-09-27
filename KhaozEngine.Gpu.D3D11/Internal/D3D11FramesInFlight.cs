@@ -4,16 +4,20 @@ using System.Globalization;
 namespace KhaozEngine.Gpu.D3D11.Internal
 {
     /// <summary>
-    /// <c>KE_D3D11_FRAMES_IN_FLIGHT</c>, THE M3 KILL SWITCH (decision U5, section 13): how many per-frame segments
-    /// every constant-buffer ring is cut into, and therefore how far ahead of the GPU the CPU may write uniforms
-    /// before it has to wait for a segment to come free.
+    /// <c>KE_D3D11_FRAMES_IN_FLIGHT</c>, THE M3 KILL SWITCH: how many segments every constant-buffer ring is cut
+    /// into, and therefore how many uniform-writing submissions the CPU may run ahead of the GPU before it has to
+    /// wait for a segment to come free.
     /// <para>
-    /// THE BET THIS TURNS OFF. M3 says three is enough that segment backpressure never blocks the CPU, and its
-    /// exit criterion is a backpressure stall count of zero across a full soak capture window. A non-zero count
-    /// means three is the wrong number and not that the ring is the wrong design, so the lever raises it rather
-    /// than disabling anything. Lowering it is just as useful in the other direction: at one segment every frame
-    /// waits for the previous frame to finish, which is the degenerate no-pipelining case a soak can use to prove
-    /// the stall counter is measuring what it claims to.
+    /// THE BET THIS TURNS OFF. Each submission that writes uniforms uses one segment. M3 says three is enough that
+    /// a windowed frame, with one writing submission per present, never blocks on segment backpressure, and its exit
+    /// criterion is a backpressure stall count of zero across a full windowed soak capture window. A non-zero count
+    /// there means three is the wrong number and not that the ring is the wrong design, so the lever raises it
+    /// rather than disabling anything. A headless loop has no present to space its submissions and is
+    /// backpressured by design, its fourth writing submission waiting for its first, and a frame with more writing
+    /// submissions than this number waits by design too, so neither is a reason to raise it. Lowering it is just
+    /// as useful in the other direction: at one segment every writing submission waits for the previous one to
+    /// finish, which is the degenerate no-pipelining case a soak can use to prove the stall counter is measuring
+    /// what it claims to.
     /// </para>
     /// <para>
     /// COST OF RAISING IT, so a field session knows what it is trading. Every uniform buffer in the process is

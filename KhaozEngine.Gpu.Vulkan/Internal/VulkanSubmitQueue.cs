@@ -189,7 +189,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     // ONLY HERE does the drain's target move. Everything above this line is reversible and
                     // everything below it is a fact about the queue.
                     _timeline.RegisterSubmitted(value);
-                    _timeline.RegisterListSubmitted(value);   // what the uniform ring counts, and a setup flush never raises
+                    // What the uniform ring counts toward a rotation, and a setup flush never raises.
+                    _timeline.RegisterListSubmitted(value);
                     list.RecordSubmitted(value);
                     return value;
                 }

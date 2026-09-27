@@ -6,8 +6,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 {
     /// <summary>
     /// <c>KE_VULKAN_FRAMES_IN_FLIGHT</c>, MV3'S KNOB: the ONE depth this backend pipelines at, governing BOTH the
-    /// command-buffer pool slots every list owns (this row) and the segments every uniform ring is cut into (row 8,
-    /// https://github.com/APKiwiOrg/KhaozEngine/issues/518).
+    /// command-buffer pool slots every list owns and the segments every uniform ring is cut into
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/518).
     /// <para>
     /// ONE NUMBER, TWO INDEXES, and conflating them is the mistake available here. The POOL SLOT is per list and
     /// advances on every <c>Begin</c>. The RING SEGMENT is per writing submission: it advances at the frame boundary
@@ -15,15 +15,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// frame takes two different pool slots, and when its first record wrote uniforms and was submitted, its second
     /// record's first uniform write takes the next segment. That is correct in both directions: two records must not
     /// share a command buffer still in flight, and a record still in flight must keep the uniform values it was
-    /// submitted with. What is shared is the DEPTH, because a deeper
-    /// command-buffer ring behind a shallower uniform gate is dead capacity, so there is one number to move if MV3
-    /// says 3 is wrong (section 6.1).
+    /// submitted with. What is shared is the DEPTH, because a deeper command-buffer ring behind a shallower uniform
+    /// gate is dead capacity, so there is one number to move if MV3 says 3 is wrong (section 6.1).
     /// </para>
     /// <para>
-    /// THE BET THIS TURNS OFF. MV3 says 3 is enough that ring-segment backpressure and command-buffer slot waits
-    /// never block the CPU, and its exit criterion is <c>BackpressureStallCount</c> zero across a full capture
-    /// window, on ONE <see cref="WaitAccumulator"/> covering both. A non-zero count means 3 is
-    /// the wrong number and not that the design is wrong, so the lever raises it rather than disabling anything.
+    /// THE BET THIS TURNS OFF. Each submission that writes uniforms uses one ring segment, and each <c>Begin</c> one
+    /// pool slot. MV3 says 3 is enough that a windowed frame never blocks on either, and its exit criterion is
+    /// <c>BackpressureStallCount</c> zero across a full windowed capture window, on ONE
+    /// <see cref="WaitAccumulator"/> covering both. A non-zero count there means 3 is the wrong number and not that
+    /// the design is wrong, so the lever raises it rather than disabling anything. A headless loop has no present to
+    /// space its submissions and is backpressured by design, and a frame with more writing submissions than this
+    /// number waits by design too, so neither is a reason to raise it.
     /// </para>
     /// <para>
     /// THE TUNING-KNOB SURVIVAL RULE, quoted from section 2.7 because it is the whole condition on this variable

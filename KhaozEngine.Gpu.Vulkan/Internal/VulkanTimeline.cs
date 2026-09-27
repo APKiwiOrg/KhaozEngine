@@ -228,10 +228,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         /// <summary>
         /// The highest value a COMMAND LIST submission's <c>vkQueueSubmit</c> accepted, 0 before any. A subset of
-        /// <see cref="LastSubmitted"/>: the device's setup flushes (from <c>WaitForIdle</c>, a <c>Map</c>, an upload)
-        /// raise that one and never this. The uniform ring reads it to tell a submission that carried an open
-        /// recording's record-time writes, which only a list can, from a setup flush in the middle of that
-        /// recording, which carries none of them.
+        /// <see cref="LastSubmitted"/>: the device's setup flushes (from a <c>WaitForIdle</c> or a <c>Map</c>, and
+        /// ahead of a list in <c>Submit</c>) raise that one and never this. The uniform ring reads it to tell a
+        /// submission that carried an open recording's record-time writes, which only a list can, from a setup flush
+        /// in the middle of that recording, which carries none of them.
         /// </summary>
         internal ulong LastListSubmitted => Volatile.Read(ref _listSubmitted);
 

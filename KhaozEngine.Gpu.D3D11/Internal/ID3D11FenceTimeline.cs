@@ -93,18 +93,26 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// Hand everything recorded so far to the GPU, so a signal already placed is a point the GPU will
         /// actually reach.
         /// <para>
-        /// THE DRAIN CALLS THIS EXACTLY ONCE, after placing its own signal and before its first poll, and nothing
-        /// else calls it at all. The immediate context buffers commands, so a signal sitting at the tail of a
-        /// buffer the driver has not been handed yet is a point the GPU may never arrive at, and a drain polling
-        /// for it spins with nothing on the other end. Polling is not what fixes that: the event-query poll is
-        /// deliberately <c>DO_NOT_FLUSH</c>, which Direct3D documents as able to loop forever for exactly this
-        /// reason, and the monotonic fence has no flushing poll at all.
+        /// TWO CALLERS, EACH ONCE PER WAIT. The drain calls it after placing its own signal and before its first
+        /// poll. The constant-buffer ring's segment gate calls it, through
+        /// <see cref="D3D11FenceSubsystem.FlushSubmitted"/>, once before a segment wait that would otherwise spin,
+        /// and never when the segment is already free. Nothing else calls it. The immediate context buffers
+        /// commands, so a signal sitting at the tail of a buffer the driver has not been handed yet is a point the
+        /// GPU may never arrive at, and a waiter polling for it spins with nothing on the other end. Polling is not
+        /// what fixes that: the event-query poll is deliberately <c>DO_NOT_FLUSH</c>, which Direct3D documents as
+        /// able to loop forever for exactly this reason, and the monotonic fence has no flushing poll at all.
+        /// </para>
+        /// <para>
+        /// THE GATE'S FLUSH IS NOT OPTIONAL. The segment it waits for belongs to an earlier submission, and on a
+        /// headless loop no swapchain present ever hands that submission to the driver, so without this call the
+        /// gate spins forever on a point the GPU never reaches: a headless capture of more frames than
+        /// <c>KE_D3D11_FRAMES_IN_FLIGHT</c> hangs on real hardware.
         /// </para>
         /// <para>
         /// IT IS NOT ON THE FENCE POLL PATH, deliberately. <see cref="IGpuFence.Signaled"/> stays non-flushing,
         /// because a poll that flushed would turn every look at a fence into a submission and give the seam's
-        /// cheapest member a cost that grows with how often a consumer looks. The drain is the one caller that
-        /// has decided to wait, so it is the one caller that may pay for the work to be handed over.
+        /// cheapest member a cost that grows with how often a consumer looks. The drain and the ring's gate are the
+        /// callers that have decided to wait, so they are the ones that may pay for the work to be handed over.
         /// </para>
         /// <para>Called under the submit lock, as any context call must be.</para>
         /// </summary>

@@ -15,25 +15,31 @@ namespace KhaozEngine.Tests.Gpu
         static readonly Vector2 Center = new(180f, 180f);
 
         [GpuFact]
-        public void Enabled_detail_draws_in_its_color_after_the_option_changes_on_an_open_cached_menu()
+        public void Warmed_option_change_matches_cold_enabled_layout_and_uses_the_enabled_detail_color()
         {
             RadialMenuTheme theme = TextOnlyTheme();
             theme.Detail = new Vector4(0.05f, 0.75f, 0.12f, 1f);
-            byte[] rgba = Capture(
-                theme,
-                [new RadialMenuEntry(
+            RadialMenuEntry[] entries =
+            [
+                new RadialMenuEntry(
                     LocalizedText.Raw("Drop"),
                     1,
-                    Detail: LocalizedText.Raw("(4)"))],
+                    Detail: LocalizedText.Raw("(4)")),
+            ];
+            byte[] cold = Capture(theme, entries, showEnabledDetails: true);
+            byte[] warmed = Capture(
+                theme,
+                entries,
                 showEnabledDetails: true,
                 warmWithoutEnabledDetails: true);
 
+            Assert.Equal(cold, warmed);
             int greenPixels = 0;
             for (int y = 72; y < 112; y++)
             {
                 for (int x = 135; x < 225; x++)
                 {
-                    Rgba pixel = Pixel(rgba, x, y);
+                    Rgba pixel = Pixel(warmed, x, y);
                     if (pixel.A > 0 && pixel.G > pixel.R * 2 && pixel.G > pixel.B * 2)
                         greenPixels++;
                 }

@@ -6380,10 +6380,10 @@ eye inside the occluder. The camera holds the metres the boom is short of its fu
 multiplies that shortfall by `exp(-BoomRecoveryRate * dt)`, frame-rate independent. `FollowCameraController.Update`
 calls it after `AdvanceTarget`, so a camera driven by the controller needs only the rate. A camera driven without
 the controller calls `camera.AdvanceBoom(dt)` once a frame. `Warp` and `SnapToTarget` clear the held shortfall, so
-a teleport never eases out from the old site. **The `Distance` setter clears it too**, which is what keeps zoom
-instant: the eye moves to the new length at once, and a real obstruction re-imposes itself on the next read. The
-cost is that a consumer that writes `Distance` every frame gets no easing at all. Write it only when the zoom
-changes, as `FollowCameraController` does. A zero or non-finite rate follows the probe both ways at once.
+a teleport never eases out from the old site. **The `Distance` setter shifts it by the change in distance**,
+floored at zero. A zoom in during recovery holds the eye still until the new distance fits, so the eye never moves
+against the gesture, and a zoom out continues the ease. With no shortfall held a zoom is instant, and writing the
+same `Distance` every frame leaves the ease alone. A zero or non-finite rate follows the probe both ways at once.
 
 **The eye is computed once a frame, not once a read (since 17.37.0).** `Eye` is the expensive property here, and
 `Forward`, `View`, `ViewProjection`, `AbsoluteViewProjection`, `WorldToScreen`, `ScreenToRay` and `ScreenToGround`

@@ -186,15 +186,17 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Eye distance from the pivot, clamped to [<see cref="MinDistance"/>, <see cref="MaxDistance"/>].
-        /// Setting it drops any held <see cref="BoomRecoveryRate"/> shortfall, so a zoom is instant and a real
-        /// obstruction re-imposes itself on the next read.</summary>
+        /// Setting it shifts any held <see cref="BoomRecoveryRate"/> shortfall by the change in distance, floored at
+        /// zero, so a zoom in during recovery holds the eye still until the new distance fits and never moves it
+        /// outward, and a zoom out continues the ease. With no shortfall held a zoom is instant.</summary>
         public float Distance
         {
             get => _distance;
             set
             {
+                float old = _distance;
                 _distance = Math.Clamp(value, MinDistance, MaxDistance);
-                _heldShortfall = 0f;
+                _heldShortfall = _heldShortfall > 0f ? MathF.Max(0f, _heldShortfall + (_distance - old)) : 0f;
             }
         }
 

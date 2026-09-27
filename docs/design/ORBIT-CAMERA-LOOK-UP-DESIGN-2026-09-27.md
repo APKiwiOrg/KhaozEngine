@@ -35,8 +35,8 @@ and leaves `HeightOffset` at zero.
 A negative `MinPitch` is supported. Below zero the eye sits under the pivot and the view looks up. The `Pitch`
 setter keeps its clamp to `[MinPitch, MaxPitch]` and adds a clamp to `[-PitchLimit, PitchLimit]`, where the
 new public constant `PitchLimit` is 85 degrees, so `LookAt` against world up never degenerates. The engine
-default `MaxPitch` is 81 degrees, so no existing camera reaches the new limit. The `MinPitch` doc stops claiming
-the value is kept above zero.
+default `MaxPitch` is 81 degrees, so a camera at the default never reaches the new limit, and a `MaxPitch` above
+85 degrees is capped there. The `MinPitch` doc stops claiming the value is kept above zero.
 
 ### Boom probe seam
 
@@ -78,8 +78,10 @@ The camera keeps a shortfall, the metres the boom is currently held short of its
 - `AdvanceBoom(dt)` decays the held shortfall by `exp(-BoomRecoveryRate * dt)`, frame-rate independent.
   `FollowCameraController.Update` calls it beside `AdvanceTarget`.
 - `Warp` and `SnapToTarget` clear the held shortfall, so a teleport never eases out from the old site.
-- The `Distance` setter clears it too. A zoom during recovery would otherwise lurch the eye to the minimum
-  distance, and a real obstruction re-imposes itself on the next read anyway.
+- The `Distance` setter shifts it by the change in distance, floored at zero:
+  `held = held > 0 ? max(0, held + (new - old)) : 0`. Clearing it instead made a zoom in during recovery pop the
+  eye outward, against the gesture, while the shift holds the eye still until the new distance fits and keeps a
+  zoom in the open instant.
 - The held shortfall joins the eye cache key.
 
 Tracking a shortfall instead of an eased length keeps zoom instant. Scrolling out in the open changes the full
@@ -136,7 +138,8 @@ selection, and every consumer that leaves the new members at their defaults.
 - Negative pitch looks up, and `PitchLimit` holds against a setter past it.
 - A probe shortens the boom with skin and minimum distance applied. Probe and physics together take the shorter.
 - Recovery pulls in instantly, eases out, matches across frame rates, and rate zero equals today.
-- `Warp` clears the held shortfall. Zoom stays instant while unobstructed.
+- `Warp` clears the held shortfall. Zoom stays instant while unobstructed, and a zoom in during recovery never
+  moves the eye outward.
 - `BoomProbeCount` advances once per frame across repeated reads.
 
 `TileWorldCameraProbe`:

@@ -8,7 +8,8 @@ namespace KhaozEngine.Tests.Render3D
     /// <summary>
     /// Eased boom recovery (<see cref="FollowCamera3D.BoomRecoveryRate"/>). A pull-in is always instant, and once
     /// the obstruction clears the boom eases back out as <see cref="FollowCamera3D.AdvanceBoom"/> decays the held
-    /// shortfall. A zoom and a teleport stay instant.
+    /// shortfall. A teleport and a zoom in the open stay instant, and a zoom during recovery shifts the held
+    /// shortfall so the eye never moves against the gesture.
     /// </summary>
     public class FollowCamera3DBoomRecoveryTests
     {
@@ -102,27 +103,55 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(15f, Length(cam), 4);
         }
 
-        [Fact]
-        public void A_zoom_drops_the_held_shortfall()
+        /// <summary>Pulled in to 3.95 of 10 m, cleared, and eased out for 0.1 s. Returns the eased length.</summary>
+        static float EasingAfterAPullIn(out FollowCamera3D cam)
         {
-            // Cleared: a zoom in to 2 m while 8.05 m is held would otherwise floor the boom at the minimum.
-            var cleared = new FixedReachProbe { ReachAt = 2f };
-            FollowCamera3D cam = Camera(cleared, 4f);
-            Assert.Equal(1.95f, Length(cam), 4);
+            var probe = new FixedReachProbe { ReachAt = 4f };
+            cam = Camera(probe, 4f);
+            Assert.Equal(3.95f, Length(cam), 4);
 
-            cleared.ReachAt = null;
+            probe.ReachAt = null;
+            cam.AdvanceBoom(0.1f);
+            float eased = Length(cam);
+            Assert.True(eased > 3.95f && eased < 10f, eased.ToString());
+            return eased;
+        }
+
+        [Fact]
+        public void A_zoom_in_during_recovery_never_moves_the_eye_outward()
+        {
+            float eased = EasingAfterAPullIn(out FollowCamera3D cam);
+
+            cam.Distance = 8f;
+
+            Assert.Equal(MathF.Min(eased, 8f), Length(cam), 4);
+        }
+
+        [Fact]
+        public void A_zoom_in_past_the_eased_length_lands_on_the_new_distance()
+        {
+            EasingAfterAPullIn(out FollowCamera3D cam);
+
             cam.Distance = 2f;
 
             Assert.Equal(2f, Length(cam), 4);
+        }
 
-            // Still obstructed: the real obstruction re-imposes itself on the same read.
-            var blocked = new FixedReachProbe { ReachAt = 1f };
-            FollowCamera3D held = Camera(blocked, 4f);
-            Assert.Equal(0.95f, Length(held), 4);
+        [Fact]
+        public void A_deeper_obstruction_during_recovery_pulls_in_at_once()
+        {
+            var probe = new FixedReachProbe { ReachAt = 6f };
+            FollowCamera3D cam = Camera(probe, 4f);
+            Assert.Equal(5.95f, Length(cam), 4);
 
-            held.Distance = 2f;
+            probe.ReachAt = null;
+            float eased = Frame(cam, 0.1f);
+            Assert.True(eased > 5.95f && eased < 10f, eased.ToString());
 
-            Assert.Equal(0.95f, Length(held), 4);
+            probe.ReachAt = 2f;
+            cam.BeginFrame();
+
+            Assert.Equal(1.95f, Length(cam), 4);
         }
 
         [Fact]

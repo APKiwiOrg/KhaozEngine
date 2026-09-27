@@ -264,6 +264,11 @@ is the consumer's rule for which archetypes stop the camera. Tags are game conte
 - **Terrain.** `PickSurface` on the observer's plane, so drawn terrain, water and walk surfaces stop the boom and
   undrawn tiles do not. The hit distance is reduced by the sphere radius. Planes above the observer are not tested
   for terrain, and the camera's `GroundHeight` clearance stays the guard against grazing hits.
+- **Pivot on the ground.** The ground pick counts both faces, so a pivot standing on the ground reports a hit at
+  distance 0 for any boom. A hit within a millimetre of the pivot is that touching start, and the probe skips it by
+  picking once more from a centimetre above the pivot. A boom rising away from the ground keeps its length and a
+  boom pointing into it stops at the pivot. Lift the pivot clear of the ground with `FollowCamera3D.PivotHeight`,
+  which is the intended setup and saves the second pick.
 - **Objects.** `PickObjects` on the observer's plane and the plane above it, where roofs stand, against every
   model box grown by the radius on each axis, which gives the boom a sphere's clearance rather than a ray's. Hits
   are walked nearest first and the first that passes stops the boom. A box that already contains the origin is
@@ -272,9 +277,9 @@ is the consumer's rule for which archetypes stop the camera. Tags are game conte
   invisible ceiling must never stop a camera. The authored archetype decides, as in object picking, not a look
   override.
 - **Result.** The nearer of the terrain and object distances, capped at the requested length.
-- **Cost.** One surface pick and up to two object picks per call, and the camera calls once per computed eye. The
-  probe reuses one hit list and one bounds delegate, so it allocates nothing itself, but the object pick walks the
-  document through the `ObjectsIn` iterator, which does allocate
+- **Cost.** One surface pick, two when the pivot touches the ground, and up to two object picks per call, and the
+  camera calls once per computed eye. The probe reuses one hit list and one bounds delegate, so it allocates
+  nothing itself, but the object pick walks the document through the `ObjectsIn` iterator, which does allocate
   ([#1183](https://github.com/APKiwiOrg/KhaozEngine/issues/1183)). Not thread-safe, like the view it reads.
 
 ### Real meshes (`GltfMeshResolver`)

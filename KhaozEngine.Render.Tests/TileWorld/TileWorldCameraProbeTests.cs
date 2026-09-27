@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Render3D;
@@ -55,6 +56,48 @@ public class TileWorldCameraProbeTests
             new Vector3(40.5f, 1.5f, -40.5f), new Vector3(0f, -MathF.Sin(1f), MathF.Cos(1f)));
 
         Assert.Equal(1.5f / MathF.Sin(1f) - Radius, reach, 1e-3f);
+    }
+
+    [Fact]
+    public void A_pivot_on_flat_ground_with_a_rising_boom_gets_the_full_length()
+    {
+        using TileWorldView view = View(TileRenderTestData.HouseWorld(), out var bounds);
+
+        float reach = Reach(view, bounds, _ => true,
+            new Vector3(40.5f, 0f, -40.5f), Vector3.Normalize(new Vector3(0f, 0.5f, 1f)));
+
+        Assert.Equal(Length, reach);
+    }
+
+    [Fact]
+    public void A_pivot_on_flat_ground_with_a_falling_boom_is_blocked()
+    {
+        using TileWorldView view = View(TileRenderTestData.HouseWorld(), out var bounds);
+
+        float reach = Reach(view, bounds, _ => true,
+            new Vector3(40.5f, 0f, -40.5f), Vector3.Normalize(new Vector3(0f, -0.5f, 1f)));
+
+        Assert.Equal(0f, reach);
+    }
+
+    // The hill's west flank: tile x 19 on rows 20 and 21 is a plane ramp rising 2 m over one tile toward +x, a
+    // 63 degree slope. A boom climbing at 72 degrees clears it and the hilltop beyond. Several spots, because
+    // whether a pivot on the slope lands a hair above or below it is float rounding and differs per spot.
+    [Fact]
+    public void A_pivot_on_a_slope_with_a_boom_clearing_the_slope_is_not_collapsed()
+    {
+        using TileWorldView view = View(TileRenderTestData.HillWorld(), out var bounds);
+        Vector3 direction = Vector3.Normalize(new Vector3(1f, 3f, 0f));
+
+        foreach (float x in new[] { 19.1f, 19.3f, 19.5f, 19.7f, 19.9f })
+        {
+            TileHit ground = Assert.IsType<TileHit>(
+                view.PickSurface(0, new Vector3(x, 5f, -21.3f), -Vector3.UnitY, Length));
+
+            float reach = Reach(view, bounds, _ => true, ground.Point, direction);
+
+            Assert.True(reach > 1f, $"pivot {ground.Point} reached {reach}");
+        }
     }
 
     [Fact]
@@ -132,6 +175,23 @@ public class TileWorldCameraProbeTests
         TileWorldDocument doc = TileRenderTestData.HouseWorld();
         using TileWorldView view = View(doc, out var bounds);
         var origin = new Vector3(11.5f, 1.5f, -10.5f);
+
+        float reach = Reach(view, bounds, a => a.Id == "wall", origin, -Vector3.UnitX);
+
+        Assert.Equal(origin.X - (WestWallEastFace(doc) + Radius), reach, 1e-3f);
+    }
+
+    [Fact]
+    public void A_rejected_nearer_hit_lets_a_farther_accepted_wall_stop_the_boom()
+    {
+        // A tree inside the house on the west wall's tile, between the pivot and the wall.
+        TileWorldDocument doc = TileRenderTestData.HouseWorld();
+        doc.AddObject("tree", TileRenderTestData.HouseMinX, TileRenderTestData.HouseMinZ, 0, 0);
+        using TileWorldView view = View(doc, out var bounds);
+        var origin = new Vector3(11.5f, 1.5f, -10.5f);
+        var hits = new List<TileObjectHit>();
+        Assert.True(view.PickObjects(0, origin, -Vector3.UnitX, Length, bounds, hits) > 0);
+        Assert.Equal("tree", doc.FindObject(hits[0].ObjectId)!.ArchetypeId);
 
         float reach = Reach(view, bounds, a => a.Id == "wall", origin, -Vector3.UnitX);
 

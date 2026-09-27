@@ -107,7 +107,7 @@ namespace KhaozEngine.Tests.Gpu
         public void A_still_box_over_the_textured_wall_under_a_sideways_camera_keeps_its_edges(TemporalUpscale preset,
             double maxEdgeError)
         {
-            // Measured: edge error 0.0373 and 0.0530, trail 6 and 10. Reprojecting by the centre texel's own motion
+            // Measured: edge error 0.0373 and 0.0530, trail 7 and 10. Reprojecting by the centre texel's own motion
             // wherever the two static surfaces moved apart left 18 and 19 trail pixels, and the resolve before
             // amendment 23 left 7 and 22.
             string message = Report(FastEdgeScene.ParallaxOverWall, preset);

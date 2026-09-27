@@ -47,8 +47,9 @@ namespace KhaozEngine.Tests.Gpu
             + $"age {t.OldestAge}. Two frames after: {t.Age(TemporalGhostingRuns.FirstAge)}";
 
         /// <summary>
-        /// A ridged, textured keyed box's pixels carry locks its motion releases only by a third at 2 display pixels a
-        /// frame, too little to fall within half of <c>LockDecay</c> of whole, so where it leaves the history drops.
+        /// A ridged, textured keyed box's pixels carry locks, and its motion at 2 display pixels a frame releases a
+        /// third of each, more than the half of <c>LockDecay</c> a lock may lose and still keep a mostly covered
+        /// footprint's history, so where it leaves the history drops.
         /// What stays is the column its trailing edge left two frames before, whose first samples took the box's colour
         /// through the reconstruction (https://github.com/APKiwiOrg/KhaozEngine/issues/1187).
         /// </summary>

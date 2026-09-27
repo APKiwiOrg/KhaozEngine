@@ -307,9 +307,9 @@ namespace KhaozEngine.Tests.Gpu
             // depths hold a run of three texels of line, too wide to count as narrow, so of step 3's exceptions for a
             // mostly covered footprint only the lock the pixel carries keeps its history. The line whose footprint
             // also reaches the wall is the right one at Native and the left one at Quality. The others see line in all
-            // four stored depths and drop their history at every version. Without the lock clause the right line
-            // averaged 13.8 percent at Native, changing by 43.8 percent a frame, and the left 18.4 percent at Quality,
-            // changing by 64.2.
+            // four stored depths and drop their history, as they did before amendment 23. Without the lock clause the
+            // right line averaged 13.8 percent at Native, changing by 43.8 percent a frame, and the left 18.4 percent
+            // at Quality, changing by 64.2.
             SubTexelRun[] runs = RunLines(preset, ahead: true, new[] { Line, Q(0.5f), Line });
             SubTexelRun outer = preset == TemporalUpscale.Native ? runs[2] : runs[0];
             string message = $"{preset}: left {runs[0]}, middle {runs[1]}, right {runs[2]}";

@@ -45,9 +45,9 @@ namespace KhaozEngine.ItemInstances;
 /// reads per tag position, a pick is a walk of at most
 /// <see cref="ModCandidateTables.MaxGenerationTagPositions"/> tag positions plus a walk of the dead entries
 /// behind the draw plus a binary search, and every working array is scratch this generator owns, sized at
-/// construction from the tables. The one thing a roll allocates is the payload and the
-/// <see cref="ItemInstancePayloadBuilder"/> that encodes it, which is the one encoder the payload has and
-/// is what makes canonical form free.
+/// construction from the tables. The one thing a warmed roll allocates is its final payload array. The
+/// generator owns and reuses the <see cref="ItemInstancePayloadBuilder"/> that encodes it, which keeps one
+/// canonical encoder shared with crafting without rebuilding the encoder's working storage per roll.
 /// </para>
 /// </summary>
 public sealed partial class ItemGenerator
@@ -76,6 +76,7 @@ public sealed partial class ItemGenerator
     readonly InstanceAffix[] _affixes;
     readonly InstanceSocket[] _sockets;
     readonly int[] _nameWords;
+    readonly ItemInstancePayloadBuilder _payloadBuilder;
 
     int _tagCount;
     int _groupCount;
@@ -130,6 +131,9 @@ public sealed partial class ItemGenerator
         _groupPlaced = new int[affixCeiling];
         _sockets = new InstanceSocket[_content.MaxSocketCount];
         _nameWords = new int[_content.NamePositionCount];
+        _payloadBuilder = new ItemInstancePayloadBuilder(
+            fieldCapacity: 9,
+            bodyCapacity: ItemInstancePayload.MaxInstancePayloadBytes);
     }
 
     /// <summary>

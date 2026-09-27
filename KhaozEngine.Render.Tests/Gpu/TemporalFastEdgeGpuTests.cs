@@ -54,9 +54,10 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        public void A_keyed_line_crossing_fast_leaves_no_trail_and_does_not_shimmer(TemporalUpscale preset)
+        [InlineData(TemporalUpscale.Native, 3)]
+        [InlineData(TemporalUpscale.Quality, 1)]
+        public void A_keyed_line_crossing_fast_leaves_no_trail_and_does_not_shimmer(TemporalUpscale preset,
+            int maxTrail)
         {
             // Measured: energy over the line's own coverage 1.052 and 0.968, which is 1.054 and 0.969 of MSAA 4x's
             // 0.999, summed over the band 1.09 and 1.14, 0.035 and 0.122 in the ring beside the line, fast flips 0.0190
@@ -64,14 +65,15 @@ namespace KhaozEngine.Tests.Gpu
             // 0.0194, no trail, temporal error over the band 0.00155 and 0.00228. Before the line's share took its
             // current colour (TemporalResolveTuning.MovingShareConfidence) it kept 0.260 and 0.257, and before
             // amendment 23 it smeared: 8 trail pixels at Native, own-coverage energy 1.06 and 0.94 with 0.39 and 0.12
-            // in the ring, summed 2.09 and 1.28. The trail bound of 3 sits well under the smear's 8. The energy is
-            // gated over the line's own coverage, not summed over the band, because the sum also counts luma the
-            // pixels the line left keep, where the reference shows only background. The floor of 0.8 lies a sixth
-            // under the Quality measurement and a quarter under Native's, far above the 0.26 without the rule.
+            // in the ring, summed 2.09 and 1.28. The trail bound of 3 at Native sits well under the smear's 8, and
+            // Quality, which left none then or since, is held to 1. The energy is gated over the line's own coverage,
+            // not summed over the band, because the sum also counts luma the pixels the line left keep, where the
+            // reference shows only background. The floor of 0.8 lies a sixth under the Quality measurement and a
+            // quarter under Native's, far above the 0.26 without the rule.
             string message = Report(FastEdgeScene.KeyedLine, preset);
             FastEdgeRun r = runs.Run(FastEdgeScene.KeyedLine, preset);
             FastEdgeRun msaa = runs.Run(FastEdgeScene.KeyedLine, preset, AntiAliasing.Msaa(4));
-            Assert.True(r.TrailOver <= 3, $"the line leaves a trail. {message}");
+            Assert.True(r.TrailOver <= maxTrail, $"the line leaves a trail. {message}");
             Assert.True(r.Flicker.FastFlips <= FastFlipBound(r.Flicker),
                 $"the line shimmers past {FastFlipBound(r.Flicker):0.00000}. {message}");
             Assert.True(r.CoverageEnergy >= MinLineCoverageEnergy, $"the line fades. {message}");

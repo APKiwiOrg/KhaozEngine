@@ -30,8 +30,10 @@ namespace KhaozEngine.Tests.Gpu
         // The tested sequence may take fast flips up to this share of the reference's raw flips, or up to
         // ReferenceFastFlipAllowance times the reference's own fast flips, whichever is larger. A fast line shows at a
         // pixel for about one frame, so the reference's own fast reversals are the signal, and only fast flips beyond
-        // them are shimmer. Against raw flips alone, the reference scaled to 0.30 and 0.20 of its contrast at Native
-        // and Quality was already at the bound, so a perfect output could keep only that share of the line's energy.
+        // them are shimmer. Against raw flips alone, the reference scaled about its background to a share of its own
+        // contrast held the bound only up to that share: 0.30 at Native, with 0.0079 fast flips against 0.0088, and
+        // 0.20 at Quality, with none against 0.0097, while 0.25 took 0.0100. So a perfect output could keep only that
+        // share of the line's energy.
         const double MaxFastFlipShare = 0.5;
         const double ReferenceFastFlipAllowance = 1.25;
 

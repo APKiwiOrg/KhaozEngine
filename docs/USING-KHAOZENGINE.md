@@ -16168,6 +16168,11 @@ actual base version, and a draft a publish holds frozen answers 409 naming the r
 reached by `GET` is refused 405 with `Allow: POST`. What the caller still owns is the console UI: the engine
 ships the actions and the payload shapes, not a screen.
 
+That frozen-draft remedy preserves a live publisher's marker. Wait for the publisher and read the draft
+again first. If the publisher process died before commit, confirm no publisher is live, then run
+`catalog-publish` for the current draft or call `IContentAuthoringStore.ClearDraftFreezeAsync` from a host
+recovery path. The explicit clear keeps the draft and every edit.
+
 A game whose catalog is bundle-derived registers the reads alone, instead of `Register`:
 
 ```csharp

@@ -224,3 +224,6 @@ and changed these details. Each group's "Contract amendments" block carries the 
     later render adds both in place, never by recreating targets an earlier render in the frame still reads, and they
     stay until temporal anti-aliasing turns off, so a host that captures every frame reallocates nothing per frame
     (group E).
+16. The frozen layer of the screen dissolve (`TransitionRenderer`) is captured from the internal colour before the post
+    chain in every mode, so under the resolve it holds an unresolved internal frame
+    ([#1166](https://github.com/APKiwiOrg/KhaozEngine/issues/1166)).

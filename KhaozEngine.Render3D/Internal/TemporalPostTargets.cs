@@ -13,6 +13,11 @@ namespace KhaozEngine.Render3D.Internal
     /// internal offset field, both from <see cref="RenderResources"/>, at normalised coordinates.</para>
     /// <para>Created on the first frame the resolve runs and released on the first frame it does not, so a scene that
     /// never selects temporal anti-aliasing allocates nothing here.</para>
+    /// <para><b>THE DRAINS ARE A FENCE.</b> <see cref="Ensure"/> and <see cref="Release"/> wait for the device before
+    /// freeing a texture. The scene calls both at the start of a render, before anything that reads these textures is
+    /// recorded in the current list, so waiting for the frames already submitted is all that freeing them needs. It is the
+    /// same fence <c>Scene3D.EnsureSize</c> and <c>RenderResources</c> use when they replace targets, and it costs
+    /// nothing on a steady frame, which replaces nothing.</para>
     /// </summary>
     internal sealed class TemporalPostTargets : IPostChainTargets, IDisposable
     {
@@ -60,7 +65,8 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>Size the display targets for <paramref name="displayWidth"/> by <paramref name="displayHeight"/> and the
         /// opaque copy for <paramref name="res"/>, in its colour format, keeping whatever already matches. Drains the device
-        /// before replacing a texture the last frame may still read.</summary>
+        /// before replacing a texture the last frame may still read, which is a sufficient fence because nothing in the
+        /// current list has read it yet.</summary>
         public void Ensure(RenderResources res, TemporalHistory history, int displayWidth, int displayHeight, bool bloomEnabled)
         {
             int w = Math.Max(1, displayWidth), h = Math.Max(1, displayHeight);
@@ -96,7 +102,8 @@ namespace KhaozEngine.Render3D.Internal
             cl.CopyTextureSubresource(res.ColorTex, 0, 0, opaque, (uint)res.Width, (uint)res.Height);
         }
 
-        /// <summary>Free every target. Drains the device first. Safe to call when nothing is allocated.</summary>
+        /// <summary>Free every target. Drains the device first, the same fence as <see cref="Ensure"/>. Safe to call when
+        /// nothing is allocated.</summary>
         public void Release()
         {
             if (_pingA is null && _opaque is null) return;

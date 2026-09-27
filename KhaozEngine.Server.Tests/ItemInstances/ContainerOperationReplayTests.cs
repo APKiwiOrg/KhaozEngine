@@ -191,6 +191,47 @@ public sealed class ContainerOperationReplayTests
         Assert.Equal(EncodePage(live, 0), EncodePage(replayed, 0));
     }
 
+    [Theory]
+    [InlineData(0L, 0L, 0L, 0L)]
+    [InlineData(40L, 11L, 11L, 11L)]
+    public void Released_v1_partial_merge_events_replay_their_exact_counts_and_instance_ids(
+        long destinationId,
+        long sourceId,
+        long expectedDestinationId,
+        long expectedSourceId)
+    {
+        ContainerOperation admitted = ContainerOperation.Merge(
+            Bank, slot: 1, destinationSlot: 0, sourceId, destinationId);
+        (int schemaVersion, byte[] body) = ContainerOperationEventCodec.Write(admitted);
+        Assert.Equal(1, schemaVersion);
+        Assert.True(ContainerOperationEventCodec.TryRead(
+            admitted.EventType, schemaVersion, body,
+            out ContainerOperation recorded, out string? readReason), readReason);
+
+        PagedItemContainer replayed = Container();
+        replayed.Seat(0, new ItemSlot(
+            new ItemStack(Potion, int.MaxValue - 1, destinationId), default, false));
+        replayed.Seat(1, new ItemSlot(new ItemStack(Potion, 5, sourceId), default, false));
+
+        Assert.True(ContainerOperationApplier.TryReplay(
+            Copies((Bank, replayed)), recorded, out string? replayReason), replayReason);
+        Assert.Equal(int.MaxValue, replayed.SlotAt(0).Stack.Count);
+        Assert.Equal(expectedDestinationId, replayed.SlotAt(0).Stack.InstanceId);
+        Assert.Equal(4, replayed.SlotAt(1).Stack.Count);
+        Assert.Equal(expectedSourceId, replayed.SlotAt(1).Stack.InstanceId);
+
+        PagedItemContainer live = Container();
+        live.Seat(0, new ItemSlot(
+            new ItemStack(Potion, int.MaxValue - 1, destinationId), default, false));
+        live.Seat(1, new ItemSlot(new ItemStack(Potion, 5, sourceId), default, false));
+        byte[] before = EncodePage(live, 0);
+
+        Assert.False(ContainerOperationApplier.TryApply(
+            Copies((Bank, live)), recorded, out string? liveReason));
+        Assert.Equal("merge-refused", liveReason);
+        Assert.Equal(before, EncodePage(live, 0));
+    }
+
     [Fact]
     public void Historical_grant_replays_after_container_capacity_is_reduced()
     {

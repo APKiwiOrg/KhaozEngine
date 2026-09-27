@@ -23,7 +23,8 @@ public static class ContainerOperationApplier
 
     /// <summary>Replays an admitted operation from stored events. A historical Merge or Grant
     /// uses the recorded operation's admission as proof of the then-current stackability, stack cap and
-    /// capacity rules, while still checking the slots, payloads and counts it names.</summary>
+    /// capacity rules, while still checking the slots, payloads and counts it names. Released version 1
+    /// partial Merge arithmetic is reconstructed exactly, including its retained remainder and lower id.</summary>
     public static bool TryReplay(
         IReadOnlyDictionary<string, IPagedContainerWorkingCopy> containers,
         in ContainerOperation operation,
@@ -164,13 +165,44 @@ public static class ContainerOperationApplier
             replay ? HistoricallyStackable : container.Stackable))
             return Refuse("merge-refused", out reason);
 
-        int cap = replay ? 0 : container.StackCap?.Invoke(destination.Stack.ItemId) ?? 0;
+        if (replay)
+        {
+            ItemSlot historical = ReplayHistoricalMerge(destination, source, out int historicalRemainder);
+            container.SetSlotAt(operation.DestinationSlot, historical);
+            if (historicalRemainder == 0) container.TakeSlotAt(operation.Slot);
+            else container.SetSlotAt(operation.Slot,
+                source with { Stack = source.Stack with { Count = historicalRemainder } });
+            reason = null;
+            return true;
+        }
+
+        int cap = container.StackCap?.Invoke(destination.Stack.ItemId) ?? 0;
         ItemSlot merged = InstanceStacking.Merge(destination, source, cap, out int remainder);
         if (remainder != 0) return Refuse("merge-refused", out reason);
         container.SetSlotAt(operation.DestinationSlot, merged);
         container.TakeSlotAt(operation.Slot);
         reason = null;
         return true;
+    }
+
+    /// <summary>
+    /// Reconstructs the released version 1 partial-merge arithmetic. That path always selected the lower
+    /// instance id even when an engine-ceiling remainder kept the source slot alive. Replay preserves those
+    /// exact bytes, while live admission above remains all-or-nothing.
+    /// </summary>
+    static ItemSlot ReplayHistoricalMerge(in ItemSlot destination, in ItemSlot source, out int remainder)
+    {
+        ItemSlot merged = InstanceStacking.Merge(destination, source, out remainder);
+        if (remainder == 0) return merged;
+
+        return merged with
+        {
+            Stack = merged.Stack with
+            {
+                InstanceId = ItemStack.MergeInstanceId(
+                    destination.Stack.InstanceId, source.Stack.InstanceId),
+            },
+        };
     }
 
     static bool Grant(IPagedContainerWorkingCopy container, in ContainerOperation operation, bool replay,

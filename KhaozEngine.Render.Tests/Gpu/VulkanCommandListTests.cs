@@ -275,6 +275,27 @@ namespace KhaozEngine.Tests.Gpu
         /// list at the HIGHEST value any of its slots was submitted at, and are destroyed once the counter passes
         /// it. No refcount, unlike the incumbent, because the retire list exists for resources anyway.
         /// </summary>
+        /// <summary>A list submission raises both submit high-waters and a setup flush raises only the full one, which
+        /// is how the uniform ring tells a submission that carried an open recording's writes from a flush in the
+        /// middle of that recording.</summary>
+        [Fact]
+        public void A_list_submission_raises_the_list_high_water_and_a_setup_flush_does_not()
+        {
+            using var fixture = new Fixture();
+            VulkanCommandList list = fixture.CreateList();
+
+            ulong listValue = fixture.RecordAndSubmit(list);
+            Assert.Equal(listValue, fixture.Timeline.LastListSubmitted);
+
+            IVulkanCommandApi api = fixture.Api;
+            ulong setupBuffer = api.AllocatePrimaryBuffer(api.CreatePool());
+            ulong setupValue = fixture.Submits.SubmitSetup(setupBuffer);
+            Assert.True(setupValue > listValue);
+            Assert.Equal(setupValue, fixture.Timeline.LastSubmitted);
+            Assert.Equal(listValue, fixture.Timeline.LastListSubmitted);
+            list.Dispose();
+        }
+
         [Fact]
         public void DisposalInFlight_RetiresThePoolsAtTheHighestSubmittedValue()
         {

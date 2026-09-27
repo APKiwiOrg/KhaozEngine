@@ -62,10 +62,23 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The whole allocation, segment by segment, exactly as the ring wrote it.</summary>
         internal byte[] Bytes => _bytes;
 
-        /// <summary>One accepted submission signalling <paramref name="value"/>, exactly as
-        /// <c>VulkanSubmitQueue</c> makes one: values allocated one at a time inside the lock, and registered only
-        /// after the submit succeeded.</summary>
+        /// <summary>One accepted LIST submission signalling <paramref name="value"/>, exactly as
+        /// <c>VulkanSubmitQueue.Submit</c> makes one: values allocated one at a time inside the lock, and registered
+        /// only after the submit succeeded, on both high-waters.</summary>
         internal void Submit(ulong value)
+        {
+            lock (SubmitLock)
+            {
+                while (Timeline.LastAllocated < value) Timeline.NextSubmitValue();
+                Timeline.RegisterSubmitted(value);
+                Timeline.RegisterListSubmitted(value);
+            }
+        }
+
+        /// <summary>One accepted SETUP flush signalling <paramref name="value"/>, as
+        /// <c>VulkanSubmitQueue.SubmitSetup</c> makes one from a <c>WaitForIdle</c>, a <c>Map</c> or an upload: it
+        /// raises the full submit high-water and never the list one.</summary>
+        internal void SubmitSetup(ulong value)
         {
             lock (SubmitLock)
             {

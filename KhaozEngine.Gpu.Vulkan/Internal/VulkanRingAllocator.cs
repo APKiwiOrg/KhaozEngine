@@ -76,9 +76,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // write owes after a submission (see BeforeRecordWrite). CurrentSegment is this modulo FramesInFlight.
         ulong _rotationIndex;
 
-        // Whether the current segment has taken a record-time write, and the timeline's registered submit high-water
-        // when the last one landed. A submission registered since then carried those writes out, so the next
-        // record-time write opens another segment. The flag is cleared when a segment is adopted, under the submit
+        // Whether the current segment has taken a record-time write, and the timeline's LIST submit high-water when
+        // the last one landed. A list submission registered since then carried those writes out, so the next
+        // record-time write opens another segment. A setup flush raises only the full high-water and never counts. The flag is cleared when a segment is adopted, under the submit
         // lock, and read by the record path without it, hence volatile. The high-water is the record path's alone,
         // and one recording is open at a time (GpuRecording).
         volatile bool _segmentWritten;
@@ -217,9 +217,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <para>
         /// THE WINDOWED FRAME IS UNCHANGED. Its one submission is followed by the present, whose rotation clears the
         /// owed one, so the next frame's writes open nothing. A submission that wrote no uniforms owes nothing
-        /// either. Detected from the timeline's registered submit high-water, so the submit path is untouched: a
-        /// submission registered since the segment's last record-time write is one that carried it. Allocates
-        /// nothing.
+        /// either. Detected from the timeline's LIST submit high-water (<see cref="VulkanTimeline.LastListSubmitted"/>):
+        /// a list submission registered since the segment's last record-time write is one that carried it. A setup
+        /// flush in the middle of a recording (a <c>WaitForIdle</c>, a <c>Map</c>, an upload into a non-uniform
+        /// buffer) raises only the full high-water, so it neither rotates the open recording's segment nor closes
+        /// it below that recording's own submission. Allocates nothing.
         /// </para>
         /// <para>
         /// A bind composes the segment current when it is recorded, so a recording writes its uniforms before it
@@ -230,7 +232,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         internal void BeforeRecordWrite()
         {
-            ulong submitted = _timeline.LastSubmitted;
+            ulong submitted = _timeline.LastListSubmitted;
             if (_segmentWritten && submitted != _submittedAtLastWrite)
             {
                 if (Monitor.IsEntered(_submitLock))

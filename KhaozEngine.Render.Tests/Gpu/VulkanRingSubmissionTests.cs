@@ -84,6 +84,32 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
+        public void A_setup_flush_during_an_open_writing_recording_neither_rotates_nor_lets_the_segment_go_early()
+        {
+            using var harness = new VulkanRingHarness(sizeInBytes: 256, framesInFlight: 2);
+
+            harness.Ring.Write(0, First);       // the frame's list writes into segment 0
+            harness.SubmitSetup(1);             // a WaitForIdle or a Map flushes the setup buffer mid-recording
+            harness.Ring.Write(0, Second);      // the same recording writes again
+
+            Assert.Equal(0, harness.Allocator.CurrentSegment);
+            Assert.Equal(Second, Segment(harness, 0));
+
+            harness.Submit(2);                  // the list itself
+            harness.Ring.Write(0, Third);       // next recording: segment 1, and segment 0 closes at the list's value
+            Assert.Equal(1, harness.Allocator.CurrentSegment);
+            Assert.Equal(2UL, harness.Allocator.SegmentOwner(0));
+
+            harness.Complete(1);                // the setup flush is done, the list is not
+            harness.Submit(3);
+            harness.Ring.Write(0, First);       // back to segment 0, which must wait for the list, not the flush
+
+            Assert.Equal(0, harness.Allocator.CurrentSegment);
+            Assert.Equal(1, harness.Semaphore.WaitCount);
+            Assert.Equal(2UL, harness.Semaphore.LastWaitValue);
+        }
+
+        [Fact]
         public void A_submission_that_wrote_no_uniforms_moves_nothing()
         {
             using var harness = new VulkanRingHarness(sizeInBytes: 256, framesInFlight: 3);

@@ -35,8 +35,10 @@ namespace KhaozEngine.Tests.Gpu
         const double MaxFastFlipShare = 0.5;
         const double ReferenceFastFlipAllowance = 1.25;
 
-        // The least share of its reference's energy the fast keyed line keeps over its own coverage.
-        const double MinLineCoverageEnergy = 0.2;
+        // The least share of its reference's energy the fast keyed line keeps over its own coverage, and the least
+        // share of MSAA 4x's coverage energy it keeps.
+        const double MinLineCoverageEnergy = 0.8;
+        const double MinLineShareOfMsaa = 0.7;
 
         static double FastFlipBound(FlickerStats f) =>
             Math.Max(MaxFastFlipShare * f.ReferenceFlips, ReferenceFastFlipAllowance * f.ReferenceFastFlips);
@@ -56,22 +58,25 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(TemporalUpscale.Quality)]
         public void A_keyed_line_crossing_fast_leaves_no_trail_and_does_not_shimmer(TemporalUpscale preset)
         {
-            // Measured: fast flips 0.0038 and 0.0060 against reference flips of 0.0175 and 0.0194, no trail, energy
-            // over the line's own coverage 0.260 and 0.257, summed over the band 0.27 and 0.31, 0.010 and 0.024 in the
-            // ring beside the line, temporal error over the band 0.00288 and 0.00376. Before amendment 23 the line
-            // smeared: 8 trail pixels at Native, fast flips 0.0124 and 0.0213, own-coverage energy 1.06 and 0.94 with
-            // 0.39 and 0.12 in the ring, summed 2.09 and 1.28, temporal error 0.00255 and 0.00220. The trail bound of 3
-            // sits well under the smear's 8. The energy is gated over the line's own coverage, not summed over the
-            // band, because the sum also counts luma the pixels the line left keep, where the reference shows only
-            // background: while the narrow exception kept their history the ring held 0.20 at Native and the sum read
-            // 0.69. The floor of 0.2 lies a fifth under the measured 0.26, which no resolve change this round moved by
-            // more than 0.003, and with the motion ignored the line keeps 0.09 and 0.08.
+            // Measured: energy over the line's own coverage 1.052 and 0.968, which is 1.054 and 0.969 of MSAA 4x's
+            // 0.999, summed over the band 1.09 and 1.14, 0.035 and 0.122 in the ring beside the line, fast flips 0.0190
+            // and 0.0224 against a bound of 0.0219 and 0.0242, 1.25 times the reference's fast flips of 0.0175 and
+            // 0.0194, no trail, temporal error over the band 0.00155 and 0.00228. Before the line's share took its
+            // current colour (TemporalResolveTuning.MovingShareConfidence) it kept 0.260 and 0.257, and before
+            // amendment 23 it smeared: 8 trail pixels at Native, own-coverage energy 1.06 and 0.94 with 0.39 and 0.12
+            // in the ring, summed 2.09 and 1.28. The trail bound of 3 sits well under the smear's 8. The energy is
+            // gated over the line's own coverage, not summed over the band, because the sum also counts luma the
+            // pixels the line left keep, where the reference shows only background. The floor of 0.8 lies a sixth
+            // under the Quality measurement and a quarter under Native's, far above the 0.26 without the rule.
             string message = Report(FastEdgeScene.KeyedLine, preset);
             FastEdgeRun r = runs.Run(FastEdgeScene.KeyedLine, preset);
+            FastEdgeRun msaa = runs.Run(FastEdgeScene.KeyedLine, preset, AntiAliasing.Msaa(4));
             Assert.True(r.TrailOver <= 3, $"the line leaves a trail. {message}");
             Assert.True(r.Flicker.FastFlips <= FastFlipBound(r.Flicker),
                 $"the line shimmers past {FastFlipBound(r.Flicker):0.00000}. {message}");
             Assert.True(r.CoverageEnergy >= MinLineCoverageEnergy, $"the line fades. {message}");
+            Assert.True(r.CoverageEnergy >= MinLineShareOfMsaa * msaa.CoverageEnergy,
+                $"the line keeps less than {MinLineShareOfMsaa} of MSAA 4x's {msaa.CoverageEnergy:0.000}. {message}");
         }
 
         [GpuTheory]
@@ -79,8 +84,8 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(TemporalUpscale.Quality)]
         public void A_keyed_box_crossing_fast_keeps_its_edges_close_to_the_reference(TemporalUpscale preset)
         {
-            // Measured: edge error 0.00145 and 0.00196, fast flips 0.00058 and 0.00168 against reference flips of
-            // 0.00176 and 0.00546, no trail, temporal error over the band 0.00207 and 0.00272. Before amendment 23 the
+            // Measured: edge error 0.00146 and 0.00183, fast flips 0.00068 and 0.00186 against reference flips of
+            // 0.00176 and 0.00546, no trail, temporal error over the band 0.00208 and 0.00270. Before amendment 23 the
             // edge error was 0.00083 and 0.00140 and the band's temporal error 0.00085 and 0.00168: an edge pixel whose
             // centre texel misses the box now reads its own history, not the box's edge carried along.
             string message = Report(FastEdgeScene.KeyedBoxEdge, preset);
@@ -145,13 +150,12 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void The_keyed_line_table_prints_the_resolve_against_msaa_4x_and_no_anti_aliasing()
         {
-            // Measured over the line's own coverage: the resolve 0.260 and 0.257, MSAA 4x 0.999 at both presets and
-            // no anti-aliasing 1.001 and 1.000, so the resolve keeps 0.26 of MSAA 4x's. Fast flips 0.0038, 0.0211 and
-            // 0.0117 at Native and 0.0060, 0.0222 and 0.0145 at Quality, against reference flips of 0.0175 and 0.0194,
-            // every one of them fast, because each pixel shows the line for about one frame. The resolve before
-            // amendment 23 kept 1.063 and 0.944 with fast flips of 0.0124 and 0.0213 and an 8 pixel trail at Native.
-            // The line fact's fast-flip bound, half the reference's flips, caps what any output keeps: the reference
-            // scaled to a share of its own contrast stays within it up to 0.30 at Native and 0.20 at Quality.
+            // Measured over the line's own coverage: the resolve 1.052 and 0.968, MSAA 4x 0.999 at both presets and
+            // no anti-aliasing 1.001 and 1.000. Fast flips 0.0190, 0.0211 and 0.0117 at Native and 0.0224, 0.0222 and
+            // 0.0145 at Quality, against reference flips of 0.0175 and 0.0194, every one of them fast, because each
+            // pixel shows the line for about one frame. Before the line's share took its current colour the resolve
+            // kept 0.260 and 0.257, and before amendment 23 1.063 and 0.944 with fast flips of 0.0124 and 0.0213 and
+            // an 8 pixel trail at Native.
             output.WriteLine("| Mode | Preset | Coverage energy | Share of MSAA 4x | Energy | Ring | Fast flips "
                 + "| Reference flips | Error | Trail |");
             output.WriteLine("|" + string.Concat(System.Linq.Enumerable.Repeat(" --- |", 10)));

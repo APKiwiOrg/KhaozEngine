@@ -217,6 +217,7 @@ public sealed class SqlServerWalletStoreTests
 
     /// <summary>Stress the atomic credit/debit update paths against a live server: many concurrent credits and
     /// debits, distinct idempotency keys, racing on the same account row under <c>IsolationLevel.Serializable</c>.
+    /// This regresses the missing-receipt range lock against balance-row lock cycle, which surfaced as error 1205.
     /// The final balance must equal the net of applied ops and must never go negative. Only runs when
     /// <c>KE_COMMERCE_SQLSERVER</c> is set; compiles and skips cleanly otherwise.</summary>
     [SqlServerFact]

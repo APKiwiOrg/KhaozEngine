@@ -16,7 +16,10 @@ CreditResult r = await store.CreditAsync(new AccountId("acct:1"), new CurrencyId
 Schema (`wallet_ledger`, `wallet_balance`, `grant_schedule`) is bootstrapped on construction via
 `IF OBJECT_ID(...) IS NULL` guards. Each credit/debit opens a fresh pooled `SqlConnection` and runs inside a
 `SqlTransaction` at `IsolationLevel.Serializable`; the database serializes concurrent operations, there is no
-in-process semaphore. Idempotency is enforced by a composite unique index on
+in-process semaphore. The initial receipt lookup uses `UPDLOCK`, so one transaction claims an overlapping
+idempotency-key range before proceeding to the shared balance row. This prevents a missing-receipt range lock from
+waiting on the balance row while the balance owner waits to insert its ledger row. Idempotency is enforced by a
+composite unique index on
 `(account_id, currency_id, idempotency_key)`: replaying an already-seen key for the same account and currency is a
 no-op that returns the prior balance when its signed amount and `LedgerReason` match. A different amount, reason,
 or direction returns `Conflict=true` and leaves the balance and ledger unchanged. The same key on a different
@@ -94,8 +97,8 @@ any database created after this pin.
 Run the gated tests (`KE_COMMERCE_SQLSERVER=<conn> dotnet test ...`) against a real (Azure) SQL instance before
 trusting this store with real money. They are skipped, not run, in a normal local/CI pass. This exercises the
 composite unique index, replay and conflict classification, the atomic-update paths for both credit and debit,
-and the 2601/2627 duplicate-key recovery under an actual server. It is also the point to watch for 1205 deadlocks
-under parallel load.
+and the 2601/2627 duplicate-key recovery under an actual server. Repeat the parallel credit and debit fact to
+exercise the receipt-range claim and balance update under sustained contention.
 
 Point the case-sensitivity row at a database whose DEFAULT collation is case-insensitive, which is the
 deployment the pinned column collation exists to protect. Against a database that was already created

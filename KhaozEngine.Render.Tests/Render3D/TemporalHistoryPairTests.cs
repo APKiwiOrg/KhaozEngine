@@ -3,8 +3,9 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Render3D
 {
-    /// <summary>The history's read and write pair: it flips once per frame index, and a second render inside the same
-    /// frame (an offscreen capture) resolves into the same pair rather than advancing it. No device needed.</summary>
+    /// <summary>The history's read and write pair: it flips once per frame index, and a repeated frame index keeps the
+    /// pair rather than advancing it. The scene resolves only on a frame's first render, so a later render inside the
+    /// frame, such as an offscreen capture, never reaches the pair. No device needed.</summary>
     public sealed class TemporalHistoryPairTests
     {
         [Fact]

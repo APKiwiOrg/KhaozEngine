@@ -97,9 +97,11 @@ namespace KhaozEngine.Render3D
             var (tw, th) = ComputeTargetSize(Post, viewportW, viewportH);
             bool wantMips = WantsMipDownsample(Post, viewportW, viewportH);
             int samples = ResolvedMsaaSamples();
-            // Under the resolve the post chain runs over the display targets, so the internal targets carry no bloom or ping
-            // pair until a later render of a resolving frame presents through them. A resolving frame adds or drops either
-            // pair in place, because recreating the targets would free ones an earlier render's commands still read.
+            // Under the resolve the post chain runs over the display targets, so the internal targets carry no bloom or
+            // ping pair until a later render of a resolving frame presents through them. At the same size a resolving
+            // frame adds or drops either pair in place, because recreating the targets would free ones an earlier
+            // render's commands still read. A later render at another size goes through Resize, which recreates them
+            // (#1167).
             bool bloom = InternalBloomWanted, pings = InternalPingsWanted;
             bool sampleChanged = _res.SampleCount != samples;
             bool bloomChanged = _res.BloomAllocated != bloom && !_frameResolves;

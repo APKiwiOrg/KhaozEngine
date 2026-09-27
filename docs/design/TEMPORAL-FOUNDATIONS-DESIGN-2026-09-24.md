@@ -121,6 +121,8 @@ reflection history later. It lives outside `RenderResources`, so the rebuilds th
 distortion toggle or a bloom change, no longer discard temporal state. History resets on:
 
 - a change of internal size or render scale, or of the anti-aliasing mode,
+- a change of the display size the frame presents at, which a capped or fixed internal size can hide, reported as
+  `Resize`,
 - a device or backend reset,
 - `Scene3D.CameraCut()`, for teleports, loading screens and cutscene cuts,
 - an automatic cut when the camera moves further than `Post.Temporal.CutDistanceMetres` (default 16) or turns more

@@ -95,7 +95,7 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
    single thin feature would be clipped away every frame, which is exactly distant grass. A per-pixel luma stability
    term, stored with the history confidence, holds such pixels against clipping while their reprojected history
    stays consistent, and releases them on disocclusion, reactive content or large motion, and at moving edges
-   (amendment 19).
+   (amendment 19) unless the pixel reprojected by its own motion and kept its history (amendment 23).
 7. **Reactive estimate.** The luma difference between the opaque-only copy and the final colour marks pixels that
    transparent content changed: particles, billboards, beams, trails, decals and water. Those pixels take a lower
    history weight, so a smoke puff or a splash does not leave a trail. An explicit reactive input can override the
@@ -338,7 +338,14 @@ and changed these details. Each group's "Contract amendments" block carries the 
     itself, scaled to a share of its own contrast, stayed within the bound only up to 0.30 at Native and 0.20 at
     Quality. So the fast-edge facts bound fast flips by the larger of half the reference's flips and 1.25 times its fast
     flips, 0.022 and 0.024 for the line, and `TemporalFastEdgeGpuTests` holds the line at 0.8 of its reference's and 0.7
-    of MSAA 4x's coverage energy.
+    of MSAA 4x's coverage energy. A pixel that reprojected by its own motion and kept its history also keeps its lock
+    at a moving edge, where step 6 released every lock (amendment 19), since the history it holds is its own. A still
+    line three eighths of a texel wide, with a keyed 30 display pixel box sliding past one internal texel away at 2
+    display pixels a frame, fell on its worst frame to 0.01 of its energy without the box at Native and to 0.00 to 0.25
+    at Quality, and was still at 0.43 to 0.69 sixteen frames after the box passed. It keeps 0.99 now. The stored moved
+    flag played no part: storing it only where a pixel followed the moving surface changed nothing. A pixel that
+    restarted still lets go, because the moving surface's colour can reach its ridge through the reconstruction, and
+    keeping that lock too left the ridged keyed box 6 and 8 trail pixels against 3 and 4.
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies

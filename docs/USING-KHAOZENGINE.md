@@ -5316,6 +5316,100 @@ scale or shear that skinning blends across vertices but a one-joint attachment w
 reflected joint stays reflected. A non-finite, collapsed, or linearly dependent basis throws `ArgumentException`
 because no rigid orientation can be recovered.
 
+### Skinned body contracts (any body shape)
+
+A game with more than one skinned body states each body's joints once as a `SkeletonContract` and checks every
+loaded skin against it. Each `ContractJoint` carries a glTF node name, its parent's name (`null` for the root) and
+whether it deforms the skin. The root comes first and each parent before its children. Construction refuses an
+empty table, an unnamed or repeated joint, a second root and a parent declared after its child, naming the joint.
+The table is copied, so a caller may reuse its list.
+
+```csharp
+var cow = new SkeletonContract(new[]
+{
+    new ContractJoint("root", null, Deforms: false),
+    new ContractJoint("hips", "root", Deforms: true),
+    new ContractJoint("spine", "hips", Deforms: true),
+    new ContractJoint("head", "spine", Deforms: true),
+    new ContractJoint("bell_socket", "head", Deforms: false),   // a zero-weight skin joint
+});
+
+byName.TryGetValue("stance", out AnimationClip? stance);
+var joints = new ContractJointMap(skeleton, cow, stance);   // a null stance keeps the bind rest as the base
+Vector3[] baseSkin = joints.SkinAtBase(mesh);              // load time only, it allocates
+
+// headModel is the head's posed model frame, the jointModel BoneSocket takes.
+Matrix4x4 bellWorld = bellLocal * joints.BodyAlignment(joints.Node("head"))
+    * BoneSocket.ComposeRigid(Matrix4x4.Identity, headModel, model);
+```
+
+`ContractJointMap` refuses a skeleton with more nodes than `SkinningMath.MaxBonesPerDraw`, two nodes of one name,
+and a contract joint that is missing, misparented or, other than the root, outside the skin. A misparent message
+names both parents. Unnamed nodes are left alone, as `Skeleton` leaves them. The base is the body's zero: an
+optional one-key stance clip sampled once, or the bind rest without one. A stance must carry the
+`stanceClipName` argument (`stance` by default), key each track exactly once, animate contract joints only and
+carry no scale track, or it is refused before it is sampled. `BaseLocal` is the base local pose per node.
+`BaseWorld`, `ParentBaseInverse` and `BodyAlignment` return a contract joint's base model frame, the inverse of its
+parent's, and the rotation that takes its base orientation back out. They refuse a node outside the contract
+rather than return a zero matrix. `Node` resolves any named node and `Bone` its skin bone.
+
+`ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only` throws
+on a second clip of one name. The other checks return null for a clean clip and a message otherwise, so a loader
+chains them and throws the first:
+
+```csharp
+AnimationClip walk = byName["Walk"];
+string? refusal = ClipRefusals.NoLength(walk, "locomotion")
+    ?? ClipRefusals.Unkeyed(walk, skeleton, turned: new[] { "hips", "spine" }, moved: new[] { "hips" }, "locomotion")
+    ?? ClipRefusals.Uncovered(walk, skeleton, stance, node => legs.Contains(node),
+        "A locomotion clip keys every channel the stance keys on the legs")
+    ?? ClipRefusals.Breach(walk, skeleton, hygieneOptions, "locomotion");
+if (refusal is not null) throw new InvalidDataException(refusal);
+```
+
+`Unkeyed` checks each `turned` joint's rotation, then its translation when `moved` names it too, then the joints
+only `moved` names, and throws for a joint name the skeleton lacks. `Uncovered` refuses a channel the stance keys
+and the clip leaves unkeyed on a node the filter takes, and returns null without a stance. `Breach` reports the
+first `ClipHygiene` finding of a policy. Each check allocates, so run them at load.
+
+`SkinnedGrounding.MinimumY` returns the lowest world y of the DEFORMED skin, not its rest box, so a body lowered
+into a crouch or lifted on a stride can be set on its ground each frame:
+
+```csharp
+var groundScratch = new Vector4[mesh.BoneCount];   // once per body
+float lowest = SkinnedGrounding.MinimumY(mesh.Vertices, mesh.InverseBind, pose, model, groundScratch);
+Matrix4x4 grounded = model * Matrix4x4.CreateTranslation(0f, groundY - lowest, 0f);
+```
+
+`pose` is the joint-WORLD palette `DrawSkinned` takes. The call allocates nothing. A vertex whose weights total
+under the threshold `SkinningMath.BlendSkinMatrix` and the skinned shader share draws through the model alone. An
+empty skin returns positive infinity.
+
+`MomentSchedule` decides when a standing body plays an idle moment and which one, as a pure function of the body's
+id and the clock. There is no random source to seed and no state to carry, so every machine agrees:
+
+```csharp
+var idle = new MomentSchedule(
+    new MomentScheduleOptions(SlotSeconds: 6.0, QuietSeconds: 0.5, EmptyShare: 0.4, MaxEmptySlots: 2, Salt: 7UL),
+    new[]
+    {
+        new MomentFamily("ear_flick", Weight: 3.0, LengthSeconds: 0.6, Mirrored: true),
+        new MomentFamily("tail_swish", Weight: 1.0, LengthSeconds: 1.2, Mirrored: false),
+    });
+
+Moment moment = idle.At(netId, clockSeconds, stoppedAt: lastBusySeconds);
+if (!moment.IsNone)
+    PlayIdle(moment.Family, moment.Side, moment.SecondsIn);
+```
+
+The clock is cut into slots. Each holds one moment or none, with `QuietSeconds` kept clear at both ends. A slot
+draws none at `EmptyShare`, but one after `MaxEmptySlots` empty draws holds a moment anyway. A family is drawn by
+weight, and a mirrored one plays `MomentSide.Left` or `Right` with even odds. The salt is XORed into the seed.
+Salt 0 over a glance and turn table reproduces Grimhollow's standing-player schedule to the bit. The overload with
+`stoppedAt` skips a moment that began before the body last stopped. `At` allocates nothing. `Moment.None`, family
+-1, is the default value. The constructor refuses an empty table, a weight or length out of range, and options
+that are not finite or out of range, naming the option or family.
+
 ### Layered / masked animation (attack while running)
 
 `LayeredAnimator` composites N `AnimationLayer`s into one final skeleton pose: a base locomotion layer below,
@@ -5327,7 +5421,10 @@ A `BoneMask` gates a layer per node: `BoneMask.Subtree(skeleton, spineRootNode, 
 its descendants (the torso + arms + head) at `weight`, everything else 0 - the upper-body-action shape.
 `BoneMask.Full` / `.Empty` are the constants; a name overload
 `BoneMask.Subtree(skeleton, "spine", weight)` resolves the root through `Skeleton.NodeNames`. The older overload
-that accepts an explicit name list remains available for code-driven rigs.
+that accepts an explicit name list remains available for code-driven rigs. When a body's groups are lists of joints
+rather than one subtree, `BoneMask.ForJoints(skeleton, new[] { "neck", "head" }, weight)` weighs exactly the named
+joints, never their descendants. A name listed twice is taken once, and a name the skeleton lacks throws
+`ArgumentException` naming it.
 
     var anim = new LayeredAnimator(skeleton);
     // Base: full-body locomotion (drive its clip/playhead however you like - e.g. from your own state machine).
@@ -7174,7 +7271,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.12.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.13.0" />
 ```
 
 ```csharp
@@ -13665,7 +13762,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.12.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.13.0" />
 ```
 
 ```csharp
@@ -13701,7 +13798,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.12.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.13.0" />
 ```
 
 ```csharp
@@ -13943,7 +14040,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.12.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.13.0" />
 ```
 
 ```csharp
@@ -17999,7 +18096,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.12.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.13.0" />
 </ItemGroup>
 ```
 

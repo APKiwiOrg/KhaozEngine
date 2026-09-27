@@ -5,6 +5,31 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.13.0
+
+- Render3D's animation layer takes a skinned body's joints as a contract, so a second body shape reuses the
+  checks and frames a humanoid relies on. `SkeletonContract` validates a table of `ContractJoint` entries, each
+  a named joint with its parent and whether it deforms the skin
+  ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+- `ContractJointMap` checks a loaded skeleton against a contract and refuses a missing, misparented or
+  duplicated joint by name. It derives each contract joint's base world frame, parent-base inverse and body
+  alignment from an optional one-key stance clip or the bind rest, and `SkinAtBase` deforms a skin to that
+  base on the CPU ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+- `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only`
+  throws on a second clip of one name. `NoLength`, `Unkeyed`, `Uncovered` and `Breach` return null for a clean
+  clip and a message otherwise. They cover a clip of no length, a required rotation or translation left
+  unkeyed, a stance channel left unkeyed and the first `ClipHygiene` finding
+  ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+- `BoneMask.ForJoints` weighs a list of named joints without their descendants and refuses a name the
+  skeleton does not carry ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+- `SkinnedGrounding.MinimumY` returns the lowest world height of a skin deformed by a bone palette and drawn
+  through a model, with a caller-lent scratch column per bone and no allocation
+  ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+- `MomentSchedule` picks a standing body's idle `Moment` from its id and the clock, with no state to carry.
+  It draws by weight over a table of `MomentFamily` entries under `MomentScheduleOptions`, and a mirrored
+  family's `MomentSide` is left or right with even odds. Salt 0 over a glance and turn table reproduces Grimhollow's
+  standing-player schedule to the bit ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+
 ## 20.12.0
 
 - `GroundItemPayloadProjection.Project` writes the safe `Everyone` payload for a ground drop through the

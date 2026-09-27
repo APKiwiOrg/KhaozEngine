@@ -1025,12 +1025,39 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     scale add `(sample - reference) * w`. The finite weight, optional `BoneMask`, and `[0, 1]` clamp follow
     `BlendInto`. A destination equal to the reference at unit weight reproduces the sample. `LayeredAnimator`'s
     additive layers run the same code. Warmed calls allocate no managed memory.
+  - `SkeletonContract` / `ContractJoint` state a skinned body's named joints, each with its parent and whether it
+    deforms the skin, the root first and each parent before its children. Construction refuses an empty table, an
+    unnamed or repeated joint, a second root and a parent declared after its child, naming the joint.
+  - `ContractJointMap(skeleton, contract, stance, stanceClipName)` checks a loaded skeleton against a contract. It
+    refuses more nodes than `SkinningMath.MaxBonesPerDraw`, two nodes of one name, and a contract joint that is
+    missing, misparented or, other than the root, outside the skin. Unnamed nodes are left alone. The base is an
+    optional one-key stance clip or the bind rest. A stance must carry `stanceClipName` (`stance` by default), key
+    each track once, animate contract joints only and carry no scale track. `BaseLocal`, `BaseWorld`,
+    `ParentBaseInverse` and `BodyAlignment` expose the base frames, and the frame accessors refuse a node outside
+    the contract. `BodyAlignment` pairs with `BoneSocket.ComposeRigid` to seat a piece authored in the body's axes.
+    `SkinAtBase` deforms a skin to the base on the CPU and allocates, so call it at load.
+  - `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only`
+    throws on a second clip of one name. `NoLength`, `Unkeyed`, `Uncovered` and `Breach` return null for a clean
+    clip and a message otherwise, so a loader chains them with `??` and throws the first. They cover a clip of no
+    length, a required rotation or translation left unkeyed, a stance channel left unkeyed on the nodes a filter
+    takes, and the first `ClipHygiene` finding. A joint name the skeleton lacks throws.
+  - `SkinnedGrounding.MinimumY(vertices, inverseBind, palette, model, scratch)` returns the lowest world y of the
+    DEFORMED skin, so a crouched or striding body can be set down on its ground. The caller lends one `Vector4`
+    scratch entry per bone and the call allocates nothing. An unweighted vertex draws through the model alone, as
+    the shader does. An empty skin returns positive infinity.
+  - `MomentSchedule` / `MomentScheduleOptions` / `MomentFamily` / `Moment` schedule a standing body's idle moments
+    as a pure function of its id and the clock. The clock is cut into slots that each hold one moment or none,
+    with quiet ends, an empty share, a cap on empty runs and a salt. A family is drawn by weight, and a mirrored
+    family plays left or right with even odds. `At(seed, seconds)` allocates nothing, and
+    `At(seed, seconds, stoppedAt)` skips a moment that began before the body last stopped. `Moment.None` is the
+    default value.
   - `LayeredAnimator` / `AnimationLayer` / `BoneMask` / `LayerMode` - N animation layers composited into one final
     skeleton pose: a base locomotion layer below, masked `Override` / `Additive` action layers above (attack while
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +
     a `LayerMode`. `BoneMask` is per-node weights 0..1 (`BoneMask.Full`/`.Empty`, `BoneMask.Subtree(skel, root, w)`
     for "this bone and all descendants at weight w" - the upper-body-action shape). The root may be a node index or
-    a retained glTF name. Override lerps toward the layer
+    a retained glTF name. `BoneMask.ForJoints(skel, jointNames, w)` weighs a named joint group without its
+    descendants and refuses a name the skeleton lacks. Override lerps toward the layer
     pose by `weight x mask`. Additive applies the clip's delta from its first frame (the reference), scaled by
     `weight x mask`: the rotation delta is both EXTRACTED and APPLIED in the joint's LOCAL frame
     (`delta = inverse(reference) * sample`, applied as `base * delta`), so a base equal to the reference reproduces

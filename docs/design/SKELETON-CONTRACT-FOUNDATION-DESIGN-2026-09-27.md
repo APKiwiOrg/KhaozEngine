@@ -2,9 +2,10 @@
 
 ## Status
 
-In progress under [#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182). `SkeletonContract`,
-`ContractJointMap`, `ClipRefusals`, `BoneMask.ForJoints`, `SkinnedGrounding` and `MomentSchedule` are in.
-The round ships as one minor release.
+Implemented for staged 20.13.0 under [#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182).
+`SkeletonContract`, `ContractJointMap`, `ClipRefusals`, `BoneMask.ForJoints`, `SkinnedGrounding` and
+`MomentSchedule` are available. Their use is documented in `docs/USING-KHAOZENGINE.md` and the Render3D package
+README. Grimhollow's adoption follows a released pin.
 
 ## Purpose
 

@@ -33,7 +33,7 @@ namespace KhaozEngine.Tests.Gpu
     {
         public const int W = 320, H = 180, StillFrames = 16, Last = StillFrames + 23;
         public const float StartPixels = 60f, HeightPixels = 30f;
-        const int BoxTexture = 32;
+        internal const int BoxTexture = 32;
         const uint BoxTextureSeed = 0x1234567u;
         const ulong Key = 51;
 
@@ -89,7 +89,7 @@ namespace KhaozEngine.Tests.Gpu
 
         // Trail pixels by age, the smallest k from FirstAge whose rectangle holds the pixel, never within one pixel of
         // the object now or inside its rectangle one frame ago, as TemporalAcceptance.Trail reads them.
-        static CrossingTrail Measure(string name, byte[] frame, byte[] wall, byte[][] floors,
+        internal static CrossingTrail Measure(string name, byte[] frame, byte[] wall, byte[][] floors,
             IReadOnlyList<PixelRect> footprints, double seconds)
         {
             const float Tolerance = TemporalGhostingRuns.Tolerance;
@@ -123,6 +123,23 @@ namespace KhaozEngine.Tests.Gpu
             return new CrossingTrail(name, total, ages, column, reach, oldest, seconds);
         }
 
+        /// <summary>The ridged box's texture, <see cref="BoxTexture"/> texels a side: independent greys from 64 to 255,
+        /// one a texel, so neighbouring texels differ and pixels take ridges.</summary>
+        internal static byte[] RidgedTexels()
+        {
+            var rgba = new byte[BoxTexture * BoxTexture * 4];
+            for (uint y = 0; y < BoxTexture; y++)
+                for (uint x = 0; x < BoxTexture; x++)
+                {
+                    uint h = x * 0x8DA6B343u ^ y * 0xD8163841u ^ BoxTextureSeed;
+                    h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
+                    int i = (int)(y * BoxTexture + x) * 4;
+                    rgba[i] = rgba[i + 1] = rgba[i + 2] = (byte)(64 + h % 192);
+                    rgba[i + 3] = 255;
+                }
+            return rgba;
+        }
+
         // One crossing on FrontStage's textured wall. Every setup loads the stage's meshes, then the textured box.
         sealed class Crossing
         {
@@ -151,7 +168,8 @@ namespace KhaozEngine.Tests.Gpu
             {
                 _stage.Setup(s, AntiAliasing.Temporal, preset);
                 s.Post.Hdr.Enabled = false;
-                _texturedBox = s.LoadMesh(MeshPrimitives.Box(1f), s.LoadTexture(BoxTexels(), BoxTexture, BoxTexture));
+                _texturedBox = s.LoadMesh(MeshPrimitives.Box(1f),
+                    s.LoadTexture(RidgedTexels(), BoxTexture, BoxTexture));
             }
 
             public void Background(Scene3D s, int n) => _stage.TexturedWall(s);
@@ -179,22 +197,6 @@ namespace KhaozEngine.Tests.Gpu
             {
                 PixelRect r = Rect(n);
                 return r.Area == 0 ? r : new PixelRect(r.X0, r.Y0, Math.Max(r.X1, Rect(n + 1).X0), r.Y1);
-            }
-
-            // Independent greys from 64 to 255, one a texel, so neighbouring texels differ and pixels take ridges.
-            static byte[] BoxTexels()
-            {
-                var rgba = new byte[BoxTexture * BoxTexture * 4];
-                for (uint y = 0; y < BoxTexture; y++)
-                    for (uint x = 0; x < BoxTexture; x++)
-                    {
-                        uint h = x * 0x8DA6B343u ^ y * 0xD8163841u ^ BoxTextureSeed;
-                        h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
-                        int i = (int)(y * BoxTexture + x) * 4;
-                        rgba[i] = rgba[i + 1] = rgba[i + 2] = (byte)(64 + h % 192);
-                        rgba[i + 3] = 255;
-                    }
-                return rgba;
             }
         }
     }

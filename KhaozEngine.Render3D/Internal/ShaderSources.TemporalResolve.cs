@@ -260,8 +260,8 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // frame's view space as if static, and PreviousProjection gives the UV it had there. On a static surface that UV
     // and the texel's own previous position agree up to float precision and the motion target's half-float rounding.
     // More than MovingSurfaceInternalPixels apart, plus MovingSurfaceMotionFraction of the motion for that rounding, the
-    // surface moved, and skips the depth test. So does one whose static point sat on or behind last frame's camera
-    // plane.
+    // surface moved, and skips the depth test. Under perspective so does one whose static point sat on or behind last
+    // frame's camera plane. Under orthographic that point keeps the test, which rejects it as not in front.
     vec2 ndcXY = vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
     vec2 previousUv = vec2(-1.0);
     float expectedDepth = BackgroundLinearDepth;

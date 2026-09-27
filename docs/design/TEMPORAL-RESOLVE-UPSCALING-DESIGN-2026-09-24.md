@@ -234,8 +234,10 @@ and changed these details. Each group's "Contract amendments" block carries the 
 17. Step 3's depth test is one-sided and its expected depth assumes a static point, so it runs only where the dilated
     texel's motion carries its own sample within `MovingSurfaceInternalPixels` (half an internal pixel), plus
     `MovingSurfaceMotionFraction` (1/1024) of that motion, of the UV the camera alone gives that point. A surface that
-    moved skips the test, and so does a static point on or behind last frame's camera plane. A surface moving out from
-    behind a static occluder therefore keeps no disocclusion test and relies on neighbourhood clipping (step 5).
+    moved skips the test. Under a perspective camera so does a static point on or behind last frame's camera plane. Under
+    an orthographic camera that point keeps the test and is rejected as disoccluded, because its expected depth is not in
+    front. A surface moving out from behind a static occluder therefore keeps no disocclusion test and relies on
+    neighbourhood clipping (step 5).
 18. Step 4's kernel is the product of two 1D Lanczos 2 weights, one per axis, not a radial Lanczos 2 on the distance.
     The same product at display scale gives the current sample's weight.
 19. Step 6's lock also releases at a moving edge, where the centre texel moves otherwise than the dilated nearest

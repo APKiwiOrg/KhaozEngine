@@ -7,14 +7,15 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// Group E's smoke over whole frames, ahead of group F's acceptance matrix: a still scene converges, the resolved image
+    /// A smoke over whole frames, ahead of the temporal acceptance tests: a still scene converges, the resolved image
     /// stays upright, the converged image is anti-aliased, keeps its brightness and is not one jittered frame, and the
     /// upscaling presets land close to native. Relative same-session measurements, no goldens. Measured on Metal: the
     /// frame-to-frame change falls from 1.393 to 0.119, the marker sits within half a row of the aliased frame, the
-    /// converged frame is 0.718 from the 4x supersampled reference against the aliased frame's 2.582, 2.139 from a single
-    /// jittered frame, and keeps a mean luma of 30.2, and Quality and UltraPerformance land 1.353 and 2.072 from native
-    /// with the marker on the same row. Every gate is a wide cross-backend margin over those values, and every message
-    /// prints the measured values.
+    /// converged frame is 0.718 from the reference supersampled 4x per axis against the aliased frame's 2.582, 2.139
+    /// from a single jittered frame, and keeps a mean luma of 30.2, and Quality and UltraPerformance land 1.353 and
+    /// 2.072 from native with the marker on the same row. Only Metal was measured. The anti-aliasing gate is the
+    /// tightest, 1.8x over its measured value (0.718 against a limit of 1.291), and every other gate leaves a wider
+    /// margin. Every message prints the measured values.
     /// </summary>
     public sealed class TemporalResolveSmokeGpuTests
     {
@@ -75,11 +76,11 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(MarkerRow(off) < H / 4.0, "the marker is not where the scene put it " + ctx);
             Assert.True(Math.Abs(MarkerRow(converged) - MarkerRow(off)) < 2.0, "the resolved image is not upright " + ctx);
             Assert.True(late < 1.5 && late <= 0.5 * early, "the history does not settle on a still scene " + ctx);
-            // Anti-aliasing is judged by the distance to a 4x supersampled reference, not by a count of mid-luma edge
-            // pixels. With anti-aliasing off the bars' interiors already sit inside the counted band, so every real
-            // anti-aliasing mode, the reference included at 1.092x, fell below a 1.15x count gate. The count stays in
-            // the message as a reported number. The strict convergence acceptance against 8x supersampling belongs to
-            // group F's acceptance tests.
+            // Anti-aliasing is judged by the distance to a reference supersampled 4x per axis, not by a count of
+            // mid-luma edge pixels. With anti-aliasing off the bars' interiors already sit inside the counted band, so
+            // every real anti-aliasing mode, the reference included at 1.092x, fell below a 1.15x count gate. The count
+            // stays in the message as a reported number. The strict convergence acceptance against 8x supersampling
+            // belongs to the temporal acceptance tests.
             Assert.True(taaFromReference < 0.5 * offFromReference, "the converged frame is not anti-aliased " + ctx);
             Assert.True(MeanAbs(converged, single) > 0.1, "the converged frame is still a single jittered frame " + ctx);
             Assert.True(Math.Abs(MeanLuma(converged) - MeanLuma(off)) < Math.Max(2.0, MeanLuma(off) * 0.05),
@@ -95,6 +96,7 @@ namespace KhaozEngine.Tests.Gpu
             string ctx = $"(quality={MeanAbs(quality, native):0.000} ultra={MeanAbs(ultra, native):0.000} "
                 + $"markerNative={MarkerRow(native):0.0} markerQuality={MarkerRow(quality):0.0} markerUltra={MarkerRow(ultra):0.0})";
 
+            Assert.True(MarkerRow(native) < H / 4.0, "the native frame is not upright " + ctx);
             Assert.True(MeanAbs(quality, native) < 8.0, "Quality drifted from native " + ctx);
             Assert.True(MeanAbs(ultra, native) < 16.0, "UltraPerformance drifted from native " + ctx);
             Assert.True(Math.Abs(MarkerRow(quality) - MarkerRow(native)) < 3.0, "Quality is not upright " + ctx);
@@ -111,7 +113,8 @@ namespace KhaozEngine.Tests.Gpu
             return sum / (a.Length / 4 * 3);
         }
 
-        // Pixels whose luma sits clearly between the dark background and the bright bars: the anti-aliased edge band.
+        // Pixels whose luma lies between 40 and 190. With anti-aliasing off the bars' interiors and the marker already
+        // fall inside this band, so the count is reported, never gated.
         static int MidCount(byte[] rgba)
         {
             int n = 0;

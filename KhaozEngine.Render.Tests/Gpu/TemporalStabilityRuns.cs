@@ -36,6 +36,13 @@ namespace KhaozEngine.Tests.Gpu
     /// the temporal resolve average the same display values (the resolve design's amendment 21). The sharpen stays at
     /// its shipped default of 0.25.
     /// </para>
+    /// <para>
+    /// By default only the runs the assertions read are rendered: the slow pan over the background at every preset,
+    /// the slow pan over the wall, the still fence and the zoom at Native and Quality, and the prop paths at Native,
+    /// each with MSAA 4x, no anti-aliasing and the lag control where a path has them. With
+    /// <see cref="TableVariable"/> set to 1 every run of the motion-clarity table is rendered as well: every preset,
+    /// the pans at 0.5 and 1.0 display pixels a frame, and the prop paths at Quality.
+    /// </para>
     /// </summary>
     public sealed class TemporalStabilityRuns
     {
@@ -61,8 +68,26 @@ namespace KhaozEngine.Tests.Gpu
 
         internal static readonly TemporalUpscale[] Presets = Enum.GetValues<TemporalUpscale>();
 
-        /// <summary>The presets the prop paths run under temporal anti-aliasing.</summary>
-        internal static readonly TemporalUpscale[] PropPresets = { TemporalUpscale.Native, TemporalUpscale.Quality };
+        /// <summary>The presets the assertions read, beside the slow pan's shimmer guard, which reads every
+        /// preset.</summary>
+        internal static readonly TemporalUpscale[] AssertedPresets =
+            { TemporalUpscale.Native, TemporalUpscale.Quality };
+
+        /// <summary>The environment variable that turns on the full motion-clarity table when it is 1.</summary>
+        public const string TableVariable = "KE_TEMPORAL_ACCEPTANCE_TABLE";
+
+        /// <summary>Whether this run renders the full motion-clarity table, not only the asserted runs.</summary>
+        internal static bool FullTable => Environment.GetEnvironmentVariable(TableVariable) == "1";
+
+        /// <summary>The pan speeds this run renders: every speed of the table, or the slow pan alone.</summary>
+        internal static IReadOnlyList<float> TableSpeeds => FullTable ? Speeds : new[] { SlowPan };
+
+        // Every preset for the table, or the asserted ones alone.
+        static IReadOnlyList<TemporalUpscale> TablePresets => FullTable ? Presets : AssertedPresets;
+
+        // The prop paths assert at Native and report Quality in the table.
+        static IReadOnlyList<TemporalUpscale> PropPresets =>
+            FullTable ? AssertedPresets : new[] { TemporalUpscale.Native };
 
         /// <summary>The prop mid-fade, half dissolved.</summary>
         public const float HalfDissolve = 0.5f;
@@ -79,15 +104,13 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Wall time spent rendering and measuring so far, in seconds.</summary>
         internal double Seconds { get; private set; }
 
-        internal PixelRect FenceRegion => _fence.Region;
-
         internal static PixelRect ZoomRegion => new(W / 10, H / 10, W * 9 / 10, H * 9 / 10);
 
         /// <summary>The pixels the prop covers at every pan of the window, frame 0 to the last.</summary>
         internal PixelRect PropRegion => _prop.Region((Warm + Measured) * FadeProp.PanPixelsPerFrame);
 
-        /// <summary>The fence over the dark background panning <paramref name="speed"/> display pixels a
-        /// frame.</summary>
+        /// <summary>The fence over the dark background panning <paramref name="speed"/> display pixels a frame, at
+        /// every preset.</summary>
         internal StabilityPath FencePan(float speed) => Cached(_fencePans, speed, () => Measure($"fence {speed:0.0}",
             flatBackground: true, FenceSetup, (s, n) => _fence.Draw(s, n * speed), _fence.Region, Warm, Measured,
             Presets));
@@ -95,12 +118,12 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The fence over the flat wall panning <paramref name="speed"/> display pixels a frame.</summary>
         internal StabilityPath WallPan(float speed) => Cached(_wallPans, speed, () => Measure(
             $"fence over wall {speed:0.0}", flatBackground: true, FenceSetup,
-            (s, n) => _fence.DrawOverWall(s, n * speed), _fence.Region, Warm, Measured, Presets));
+            (s, n) => _fence.DrawOverWall(s, n * speed), _fence.Region, Warm, Measured, TablePresets));
 
         /// <summary>The engine's default isometric camera zooming over the yard, from the end of its hold. Pixel
         /// (2, 2) is not flat background there.</summary>
         internal StabilityPath Zoom => _zoom ??= Timed(() => Measure("isometric zoom", flatBackground: false,
-            YardSetup, _yard.Draw, ZoomRegion, IsoYard.HoldFrames, ZoomMeasured, Presets));
+            YardSetup, _yard.Draw, ZoomRegion, IsoYard.HoldFrames, ZoomMeasured, TablePresets));
 
         /// <summary>The prop at half dissolve, or as a half LOD crossfade, under the slow pan. Its energy is not
         /// read.</summary>
@@ -109,8 +132,8 @@ namespace KhaozEngine.Tests.Gpu
             (s, n) => _prop.Draw(s, n * FadeProp.PanPixelsPerFrame, HalfDissolve, crossfade), PropRegion, Warm,
             Measured, PropPresets));
 
-        /// <summary>The fence under a still camera at every preset, frames 64 to 79, against one reference frame,
-        /// since nothing in the reference moves.</summary>
+        /// <summary>The fence under a still camera, frames 64 to 79, against one reference frame, since nothing in
+        /// the reference moves.</summary>
         internal IReadOnlyDictionary<TemporalUpscale, FlickerStats> Still => _still ??= Timed(() =>
         {
             const int First = Warm + Measured - StillMeasured;
@@ -119,7 +142,7 @@ namespace KhaozEngine.Tests.Gpu
                 FenceSetup(AntiAliasing.Off, TemporalUpscale.Native), Draw, First);
             byte[][] references = Enumerable.Repeat(reference, StillMeasured).ToArray();
             var still = new Dictionary<TemporalUpscale, FlickerStats>();
-            foreach (TemporalUpscale preset in Presets)
+            foreach (TemporalUpscale preset in TablePresets)
                 still[preset] = TemporalAcceptance.Flicker(TemporalAcceptance.Sequence(W, H,
                     FenceSetup(AntiAliasing.Temporal, preset), Draw, First, StillMeasured), references, W, H,
                     _fence.Region);
@@ -153,7 +176,7 @@ namespace KhaozEngine.Tests.Gpu
             Action<Scene3D> off = PropSetup(AntiAliasing.Off, TemporalUpscale.Native);
             byte[] Reference(Action<Scene3D, int> draw) => TemporalAcceptance.Supersampled(W, H,
                 TemporalAcceptance.SequenceReferenceFactor, off, draw, Last);
-            byte[] Aliased(Action<Scene3D, int> draw) => TemporalAcceptance.Sequence(W, H, off, draw, Last, 1)[0];
+            byte[] Aliased(Action<Scene3D, int> draw) => Frames(off, AntiAliasing.Off, draw, Last, 1)[0];
             return new HeldDissolve(coverage, Coverage(Reference(Half), Reference(Solid), Reference(Absent)),
                 Coverage(Aliased(Half), Aliased(Solid), Aliased(Absent)), flips.FlipsPerPixelPerFrame,
                 TemporalAcceptance.OwnChange(held, W, H, region));
@@ -193,6 +216,18 @@ namespace KhaozEngine.Tests.Gpu
             return result;
         }
 
+        // Frames first to first plus count minus 1 of a fresh fixture. Only temporal anti-aliasing carries anything
+        // from one frame to the next, so under any other mode the frames before the window are begun, not rendered.
+        static byte[][] Frames(Action<Scene3D> setup, AntiAliasing aa, Action<Scene3D, int> draw, int first, int count)
+        {
+            if (aa == AntiAliasing.Temporal) return TemporalAcceptance.Sequence(W, H, setup, draw, first, count);
+            using var fx = new TemporalFixture(W, H, setup);
+            fx.SkipFrames(first);
+            var frames = new byte[count][];
+            for (int i = 0; i < count; i++) frames[i] = fx.Frame(draw);
+            return frames;
+        }
+
         // The reference sequence starts one frame before the window, so the frame before it feeds the lag control.
         static StabilityPath Measure(string name, bool flatBackground,
             Func<AntiAliasing, TemporalUpscale, Action<Scene3D>> setup, Action<Scene3D, int> draw, PixelRect region,
@@ -204,7 +239,7 @@ namespace KhaozEngine.Tests.Gpu
             byte[][] reference = all[1..];
             byte[][] lagged = TemporalAcceptance.LaggedReference(reference, all[0]);
             FlickerStats Run(AntiAliasing aa, TemporalUpscale preset) => TemporalAcceptance.Flicker(
-                TemporalAcceptance.Sequence(W, H, setup(aa, preset), draw, warm, count), reference, W, H, region);
+                Frames(setup(aa, preset), aa, draw, warm, count), reference, W, H, region);
             var temporal = new Dictionary<TemporalUpscale, FlickerStats>();
             foreach (TemporalUpscale preset in presets) temporal[preset] = Run(AntiAliasing.Temporal, preset);
             FlickerStats msaa = Run(AntiAliasing.Msaa(4), TemporalUpscale.Native);

@@ -25,16 +25,24 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// The zoom is not compared with MSAA 4x at full resolution, where the resolve loses on error and added change by
     /// design (resampling under a flow of several pixels a frame, and the luma weighting's bias moving with the
-    /// content). Swimming is low-frequency, so it is measured after a 5 by 5 box low-pass against the one-frame-lag
-    /// control. Inside the prop MSAA 4x smooths nothing, because the dissolve's discard keeps or drops all of a
-    /// pixel's samples together, so there it equals no anti-aliasing and the prop paths compare temporal
-    /// anti-aliasing with no anti-aliasing. A held dissolve's coverage is checked against the supersampled
-    /// reference's coverage of the same scene, not against a fixed range, because a dissolve threshold of one half
-    /// does not leave half the prop visible.
+    /// content). Swimming is low-frequency, so it is measured after a 5 by 5 box low-pass, against the one-frame-lag
+    /// control (the reference sequence one frame late) and against no anti-aliasing, so that a late image, a history
+    /// reset every frame and no anti-aliasing all fail. Inside the prop MSAA 4x smooths nothing, because the
+    /// dissolve's discard keeps or drops all of a pixel's samples together, so there it equals no anti-aliasing and
+    /// the prop paths compare temporal anti-aliasing with no anti-aliasing. A held dissolve's coverage is checked
+    /// against the supersampled reference's coverage of the same scene, not against a fixed range around one half.
+    /// The model pipelines cull no faces, so the box's back face, whose noise is independent of the front face's,
+    /// shows through the front face's holes and about three quarters of the prop stays covered.
     /// </para>
     /// <para>
     /// HDR is off and the sharpen is at its default (<see cref="TemporalStabilityRuns"/>). Every bound is relative to
     /// runs of the same session, no image is stored, and every measured value is printed.
+    /// </para>
+    /// <para>
+    /// By default the class renders only the runs its assertions read, and the table test prints those. Set
+    /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> (<see cref="TemporalStabilityRuns.TableVariable"/>) beside
+    /// <c>KE_GPU_TESTS=1</c> to render and print the full motion-clarity table: every preset, the pans at 0.2, 0.5 and
+    /// 1.0 display pixels a frame over the background and over the wall, and the prop paths at Quality.
     /// </para>
     /// </summary>
     public sealed class TemporalStabilityGpuTests(TemporalStabilityRuns runs, ITestOutputHelper output)
@@ -55,7 +63,8 @@ namespace KhaozEngine.Tests.Gpu
         const double MaxErrorShareOfFrozen = 1.15;
 
         // The zoom does not swim: the 5 by 5 low-passed error at most this share of the one-frame-lag control's.
-        // Measured 0.25 at Native and 0.35 at Quality.
+        // Measured 0.25 at Native and 0.35 at Quality. A late image scores about 1.05. No anti-aliasing scores 0.48,
+        // so the per-preset bound against no anti-aliasing below is the one that fails it.
         const double MaxLowPassedShareOfLag = 0.5;
 
         // Mid-fade props: temporal added change against no anti-aliasing inside the prop at the slow pan.
@@ -66,7 +75,8 @@ namespace KhaozEngine.Tests.Gpu
 
         // A held half dissolve converges to the dissolve's true coverage: within this distance of the supersampled
         // reference's coverage, measured 0.026 (0.673 against 0.699). A fixed range around one half does not fit,
-        // because this scene's half dissolve leaves about 70 percent of the prop visible, not 50.
+        // because the box's back face shows through the front face's holes, so a half dissolve reads about 70 percent
+        // covered, not 50.
         const double MaxHeldCoverageError = 0.08;
 
         // The most a held dissolve's pixels may flip, per pixel per frame. Measured 0.
@@ -138,16 +148,22 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(share <= MaxErrorShareOfFrozen, $"the resolve shimmers. {ctx}");
         }
 
+        // The zoom's 5 by 5 low-passed error at most maxShareOfOff of no anti-aliasing's, which no anti-aliasing (1)
+        // and a history reset every frame fail. Measured on the zoom's 5x5 error as a share of no anti-aliasing's:
+        // Native 0.53, with a reset every frame 1.22. Quality 0.74, with a reset every frame 2.41. Each bound sits
+        // near the geometric mean of the preset's measured share and 1, so the passing and the failing margins match.
         [GpuTheory]
-        [InlineData(TemporalUpscale.Native)]
-        [InlineData(TemporalUpscale.Quality)]
-        public void TheDefaultIsometricCameraZoomingDoesNotSwim(TemporalUpscale preset)
+        [InlineData(TemporalUpscale.Native, 0.7)]
+        [InlineData(TemporalUpscale.Quality, 0.86)]
+        public void TheDefaultIsometricCameraZoomingDoesNotSwim(TemporalUpscale preset, double maxShareOfOff)
         {
             StabilityPath zoom = runs.Zoom;
-            FlickerStats taa = zoom.Temporal[preset], msaa = zoom.Msaa, lag = zoom.Lagged;
+            FlickerStats taa = zoom.Temporal[preset], msaa = zoom.Msaa, lag = zoom.Lagged, off = zoom.Off;
             double share = taa.LowPassedError / lag.LowPassedError;
+            double shareOfOff = taa.LowPassedError / off.LowPassedError;
             string ctx = $"{zoom.Name}, {Name(preset)}: 5x5 error {taa.LowPassedError:0.00000} against the one-frame "
-                + $"lag's {lag.LowPassedError:0.00000} ({share:0.000} of it, bound {MaxLowPassedShareOfLag}). "
+                + $"lag's {lag.LowPassedError:0.00000} ({share:0.000} of it, bound {MaxLowPassedShareOfLag}) and no "
+                + $"AA's {off.LowPassedError:0.00000} ({shareOfOff:0.000} of it, bound {maxShareOfOff}). "
                 + $"Reported: MSAA 4x 5x5 error {msaa.LowPassedError:0.00000} "
                 + $"({taa.LowPassedError / msaa.LowPassedError:0.000} times it), full-resolution error "
                 + $"{taa.TemporalError:0.00000} against MSAA 4x {msaa.TemporalError:0.00000}, added "
@@ -155,6 +171,8 @@ namespace KhaozEngine.Tests.Gpu
                 + $"against {msaa.Sharpness:0.000}";
             output.WriteLine(ctx);
             Assert.True(share <= MaxLowPassedShareOfLag, $"the zoom swims. {ctx}");
+            Assert.True(shareOfOff <= maxShareOfOff,
+                $"the zoom must sit clearly closer to the reference than no anti-aliasing. {ctx}");
         }
 
         // Temporal added change against no anti-aliasing's inside the prop.
@@ -198,11 +216,14 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact(RequiresFourSampleMsaa = true)]
-        public void TheMotionClarityTableCoversEveryPresetSpeedAndMode()
+        public void TheMotionClarityTablePrintsEveryRun()
         {
+            output.WriteLine(TemporalStabilityRuns.FullTable
+                ? "the full motion-clarity table"
+                : $"the asserted runs only. Set {TemporalStabilityRuns.TableVariable}=1 for the full table");
             var paths = new List<StabilityPath>();
-            foreach (float speed in TemporalStabilityRuns.Speeds) paths.Add(runs.FencePan(speed));
-            foreach (float speed in TemporalStabilityRuns.Speeds) paths.Add(runs.WallPan(speed));
+            foreach (float speed in TemporalStabilityRuns.TableSpeeds) paths.Add(runs.FencePan(speed));
+            foreach (float speed in TemporalStabilityRuns.TableSpeeds) paths.Add(runs.WallPan(speed));
             paths.Add(runs.Zoom);
             paths.Add(runs.PropPan(crossfade: false));
             paths.Add(runs.PropPan(crossfade: true));
@@ -216,8 +237,7 @@ namespace KhaozEngine.Tests.Gpu
                     .Append(("MSAA 4x", path.Msaa)).Append(("no AA", path.Off)).Append(("lag control", path.Lagged));
                 foreach (var (mode, f) in rows) output.WriteLine(Row(path, mode, f));
             }
-            foreach (TemporalUpscale preset in TemporalStabilityRuns.Presets)
-                output.WriteLine($"fence still, {Name(preset)}: {runs.Still[preset]}");
+            foreach (var (preset, f) in runs.Still) output.WriteLine($"fence still, {Name(preset)}: {f}");
             HeldDissolve held = runs.Held;
             output.WriteLine($"half dissolve held, TAA Native: coverage {held.Coverage:0.000}, reference "
                 + $"{held.ReferenceCoverage:0.000}, no AA {held.OffCoverage:0.000}, flips {held.Flips:0.00000}, own "

@@ -24,5 +24,26 @@ namespace KhaozEngine.Render3D;
 /// <param name="HistoryValid">Whether the frame had a previous frame to reproject from.</param>
 /// <param name="LastReset">Why the history was last reset. <see cref="TemporalResetReason.FirstFrame"/> while temporal
 /// rendering is off and on the first frame it is on.</param>
+/// <param name="InternalWidth">Width of the internal target the frame's first render rendered at. The four sizes
+/// read zero, and <see cref="UpscaleRatio"/> 1, on a frame whose first render had no display area, such as a
+/// minimised window, rather than the last display size beside the one pixel target such a render allocates.</param>
+/// <param name="InternalHeight">Height of the internal target the frame's first render rendered at.</param>
+/// <param name="DisplayWidth">Width of the target the frame's first render presented to.</param>
+/// <param name="DisplayHeight">Height of the target the frame's first render presented to.</param>
+/// <param name="Preset">The <see cref="TemporalSettings.Upscale"/> preset in force at the frame's first render,
+/// reported under every anti-aliasing mode.</param>
+/// <param name="UpscaleRatio">The effective internal to display width ratio, which shows an explicit
+/// <see cref="TemporalSettings.UpscaleRatio"/> and the render size caps. Under another anti-aliasing mode it is the
+/// same width ratio, 2 under 2x supersampling for one.</param>
+/// <param name="CountsFrameIndex">The frame the counts below were sampled on, minus 1 before the first
+/// <c>Scene3D.RequestTemporalCounts</c>.</param>
+/// <param name="DisoccludedPixels">Estimated display pixels whose history was rejected by depth or an off-screen
+/// reprojection, from a 32 by 18 grid of 16 samples a cell.</param>
+/// <param name="ReactivePixels">Estimated display pixels the reactive estimate marked, on the same grid.</param>
+/// <param name="ClippedPixels">Estimated display pixels whose history the variance clip moved, on the same
+/// grid.</param>
 public readonly record struct TemporalDiagnostics(long FrameIndex, int JitterPhase, Vector2 JitterPixels,
-    int KeyedRigid, int KeyedSkinned, int KeyCollisions, bool HistoryValid, TemporalResetReason LastReset);
+    int KeyedRigid, int KeyedSkinned, int KeyCollisions, bool HistoryValid, TemporalResetReason LastReset,
+    int InternalWidth = 0, int InternalHeight = 0, int DisplayWidth = 0, int DisplayHeight = 0,
+    TemporalUpscale Preset = TemporalUpscale.Native, float UpscaleRatio = 1f, long CountsFrameIndex = -1,
+    int DisoccludedPixels = 0, int ReactivePixels = 0, int ClippedPixels = 0);

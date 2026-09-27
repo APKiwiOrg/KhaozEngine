@@ -143,7 +143,7 @@ namespace KhaozEngine.Render3D
                 && TemporalHistory.IsValid)
             {
                 TemporalHistory.Invalidate(TemporalResetReason.Resize);
-                LastTemporalDiagnostics = LastTemporalDiagnostics with
+                _lastTemporalDiagnostics = _lastTemporalDiagnostics with
                 {
                     HistoryValid = false,
                     LastReset = TemporalHistory.LastReset,

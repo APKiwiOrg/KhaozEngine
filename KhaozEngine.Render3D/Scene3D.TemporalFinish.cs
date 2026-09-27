@@ -7,9 +7,10 @@ namespace KhaozEngine.Render3D
 {
     /// <summary>
     /// The finishing layer over the temporal resolve (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md,
-    /// sections 4 and 5, amendments 7 and 20): the sharpen's test seams and the material mip bias. The sharpen runs in
-    /// the display post chain, which only the first render of a resolving frame runs, so a later render's chain and a
-    /// frame without the resolve never build it. The mip bias follows the same rule. A partial of its own because
+    /// sections 4 to 6, amendments 7 and 20): the sharpen's test seams, the material mip bias, and the sizes, preset
+    /// and counts the diagnostics report. The sharpen runs in the display post chain, which only the first render of a
+    /// resolving frame runs, so a later render's chain and a frame without the resolve never build it. The mip bias
+    /// follows the same rule, and the diagnostics describe that first render. A partial of its own because
     /// <c>Scene3D.cs</c> is frozen by the file-size ratchet.
     /// </summary>
     public sealed partial class Scene3D
@@ -28,9 +29,19 @@ namespace KhaozEngine.Render3D
 
         // The internal and display sizes of the frame's first render, latched by MaterialLod, which every
         // render calls before it uploads the frame block. The diagnostics report them. A later render inside the frame
-        // leaves them alone, as it leaves the frame's other diagnostics alone.
+        // leaves them alone, as it leaves the frame's other diagnostics alone. All four are zero for a frame whose
+        // first render had no display area, whose display size would be the last nonzero one (_latchedDisplayWidth)
+        // beside the one pixel internal target such a render allocates.
         int _temporalDisplayWidth, _temporalDisplayHeight, _temporalInternalWidth, _temporalInternalHeight;
         long _temporalSizesFrame = -1;
+        // The upscale preset the frame's first render read, latched with the sizes, so a later render or a settings
+        // change after the frame leaves the reported preset alone.
+        TemporalUpscale _temporalPreset;
+
+        // The latest on-request counts, filled when a requested frame's grid is harvested. The frame is minus 1 and
+        // the counts zero until the first harvest.
+        long _countsFrame = -1;
+        int _countsDisoccluded = 0, _countsReactive = 0, _countsClipped = 0;
 
         /// <summary>
         /// This render's material mip bias for the frame block's <c>Params.z</c> and <c>Params.w</c>
@@ -39,21 +50,43 @@ namespace KhaozEngine.Render3D
         /// of a resolving frame. A later render inside that frame is unjittered and unresolved, so nothing absorbs a
         /// negative bias there, and it gets exact zeros, as does every render of a frame that does not resolve. The
         /// scale is the frame's latched display over internal scale, the unrounded one with the render cap included
-        /// that also set the frame's jitter cycle. On the frame's first render this also latches the sizes the
-        /// diagnostics report.
+        /// that also set the frame's jitter cycle. On the frame's first render this also latches the sizes and the
+        /// preset the diagnostics report.
         /// </summary>
         Vector2 MaterialLod()
         {
             if (_currentFrameView.FrameIndex != _temporalSizesFrame)
             {
                 _temporalSizesFrame = _currentFrameView.FrameIndex;
-                _temporalDisplayWidth = _latchedDisplayWidth;
-                _temporalDisplayHeight = _latchedDisplayHeight;
-                _temporalInternalWidth = _currentFrameView.Width;
-                _temporalInternalHeight = _currentFrameView.Height;
+                bool shown = _frameHasDisplayArea;
+                _temporalDisplayWidth = shown ? _latchedDisplayWidth : 0;
+                _temporalDisplayHeight = shown ? _latchedDisplayHeight : 0;
+                _temporalInternalWidth = shown ? _currentFrameView.Width : 0;
+                _temporalInternalHeight = shown ? _currentFrameView.Height : 0;
+                _temporalPreset = Post.Temporal.Upscale;
             }
             return TemporalMipBias.For(_resolveThisRender, _frameDisplayOverInternal, Post.Temporal.MipBiasOffset);
         }
+
+        /// <summary>The diagnostics <see cref="AdvanceTemporalHistory"/> published, with the frame's sizes, preset and
+        /// ratio and the latest counts composed in. A struct copy, so reading <see cref="LastTemporalDiagnostics"/>
+        /// still allocates nothing. Before the first render it is the published value unchanged, the default, which
+        /// <c>TemporalDiagnosticsTests.BeforeTheFirstRenderTheDiagnosticsAreDefault</c> pins.</summary>
+        TemporalDiagnostics WithRound2Diagnostics(in TemporalDiagnostics round1) => _temporalSizesFrame < 0
+            ? round1
+            : round1 with
+            {
+                InternalWidth = _temporalInternalWidth,
+                InternalHeight = _temporalInternalHeight,
+                DisplayWidth = _temporalDisplayWidth,
+                DisplayHeight = _temporalDisplayHeight,
+                Preset = _temporalPreset,
+                UpscaleRatio = _temporalDisplayWidth > 0 ? (float)_temporalInternalWidth / _temporalDisplayWidth : 1f,
+                CountsFrameIndex = _countsFrame,
+                DisoccludedPixels = _countsDisoccluded,
+                ReactivePixels = _countsReactive,
+                ClippedPixels = _countsClipped,
+            };
 
         /// <summary>The model pass's packed frame block as last uploaded. Internal, for the tests.</summary>
         internal ReadOnlySpan<byte> FrameImageForTests => _model.FrameImage;

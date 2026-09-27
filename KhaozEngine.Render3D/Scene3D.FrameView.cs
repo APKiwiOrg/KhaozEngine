@@ -31,6 +31,9 @@ namespace KhaozEngine.Render3D
         // The frame's debug view, fixed by its first render beside the temporal state (see DebugView). A view is only
         // drawn on a temporal frame, so its data exists whenever it is drawn.
         SceneDebugView _frameDebugView;
+        // Whether the frame's first render was given a display size, so the diagnostics never pair the last nonzero
+        // display size a zero-size render keeps with its internal size (Scene3D.TemporalFinish.cs).
+        bool _frameHasDisplayArea;
 
         /// <summary>This render's view snapshot. Default-valued before the first render.</summary>
         internal FrameView CurrentFrameView => _currentFrameView;
@@ -118,6 +121,7 @@ namespace KhaozEngine.Render3D
             _framePhaseCount = phaseCount;
             _frameDisplayOverInternal = displayOverInternal;
             _frameDebugView = _debugView;
+            _frameHasDisplayArea = displayWidth > 0 && displayHeight > 0;
             AdvanceTemporalHistory();
         }
     }

@@ -69,10 +69,15 @@ namespace KhaozEngine.Render3D
         /// A consumer reads null as no previous state, which for motion means zero motion.</summary>
         internal FrameView? PreviousFrameView => TemporalHistory.IsValid ? _previousFrameView : null;
 
-        /// <summary>The last rendered frame's temporal state: its index, jitter phase and offset, the keyed draws, and
-        /// whether history was valid with the reason it was last reset. Default-valued before the first render. See
+        /// <summary>The last rendered frame's temporal state: its index, jitter phase and offset, the keyed draws,
+        /// whether history was valid with the reason it was last reset, its internal and display sizes, the preset and
+        /// ratio, and the latest sampled counts. Default-valued before the first render. See
         /// <see cref="TemporalDiagnostics"/>.</summary>
-        public TemporalDiagnostics LastTemporalDiagnostics { get; private set; }
+        public TemporalDiagnostics LastTemporalDiagnostics => WithRound2Diagnostics(_lastTemporalDiagnostics);
+
+        // What AdvanceTemporalHistory published for the last rendered frame, with the history state the resolve left it
+        // in (PrepareTemporalResolve), before the sizes and counts are composed in.
+        TemporalDiagnostics _lastTemporalDiagnostics;
 
         /// <summary>Advance the history by one frame, from <see cref="LatchFrameView"/> on the frame's first render.</summary>
         void AdvanceTemporalHistory()
@@ -106,7 +111,7 @@ namespace KhaozEngine.Render3D
             _historyEye = eye;
             _historyForward = forward;
             (int keyedRigid, int keyedSkinned, int keyCollisions) = MotionKeyCounts;
-            LastTemporalDiagnostics = new TemporalDiagnostics(
+            _lastTemporalDiagnostics = new TemporalDiagnostics(
                 FrameIndex: view.FrameIndex,
                 JitterPhase: TemporalJitter.Phase(view.FrameIndex, _framePhaseCount),
                 JitterPixels: view.JitterPixels,

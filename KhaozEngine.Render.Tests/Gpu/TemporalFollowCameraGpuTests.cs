@@ -28,6 +28,9 @@ namespace KhaozEngine.Tests.Gpu
         // Acceptance 3's share of a trail region that may exceed its floor, never fewer than one pixel.
         const int AllowedOverOneIn = 200;
 
+        // The walks the table prints, in display pixels a frame.
+        static readonly float[] Speeds = { 0.5f, 1f, 1.5f, 2f, 2.5f, 3f };
+
         static readonly TemporalUpscale[] Presets =
         {
             TemporalUpscale.Native, TemporalUpscale.Quality, TemporalUpscale.Performance,
@@ -61,23 +64,28 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(t.Total.Excess <= Allowed(t.Total.Checked), $"the box's colour stays where it left. {ctx}");
         }
 
-        /// <summary>Every preset's trail, and by age at Native and Quality. Performance and UltraPerformance walk 1.25
-        /// and 0.83 internal pixels a frame, within the dilation's reach, where the pixels beside the trailing edge
-        /// read the box's own history and keep 172 and 171 of 510.</summary>
+        /// <summary>Every preset's trail at every walk speed, with the walk in internal pixels a frame, and by age at
+        /// Native and Quality at <see cref="WalkPixels"/>. Under DilationReachInternalPixels (1.25 internal pixels a
+        /// frame) the pixels beside the trailing edge take the box's motion by dilation and read its own history, and
+        /// the wall's pan carries it into a band behind the box.</summary>
         [GpuFact]
         public void The_follow_camera_table_prints_every_preset()
         {
-            output.WriteLine("| Preset | Checked | Excess | Acceptance 3 allows | Worst excess | Reach | Oldest "
-                + "| Age 2 excess |");
-            output.WriteLine("|" + string.Concat(Enumerable.Repeat(" --- |", 8)));
-            foreach (TemporalUpscale preset in Presets)
-            {
-                CrossingTrail c = runs.Run(preset, WalkPixels);
-                TrailTally t = c.Total, two = c.Age(TemporalGhostingRuns.FirstAge);
-                output.WriteLine($"| {preset} | {t.Checked} | {t.Excess} | {Allowed(t.Checked)} "
-                    + $"| {t.WorstExcess:0.000} | {c.Reach} | {c.OldestAge} | {two.Excess} of {two.Checked} |");
-                Assert.True(t.Checked > MinTrailPixels, $"{c.Name}: the trail region measured nothing");
-            }
+            output.WriteLine("| Speed | Preset | Internal | Checked | Excess | Acceptance 3 allows | Worst excess "
+                + "| Reach | Oldest | Age 2 excess |");
+            output.WriteLine("|" + string.Concat(Enumerable.Repeat(" --- |", 10)));
+            foreach (float speed in Speeds)
+                foreach (TemporalUpscale preset in Presets)
+                {
+                    CrossingTrail c = runs.Run(preset, speed);
+                    TrailTally t = c.Total, two = c.Age(TemporalGhostingRuns.FirstAge);
+                    float internalPixels = speed / TemporalSettings.DisplayOverInternal(preset);
+                    output.WriteLine($"| {speed} | {preset} | {internalPixels:0.00} | {t.Checked} | {t.Excess} "
+                        + $"| {Allowed(t.Checked)} | {t.WorstExcess:0.000} | {c.Reach} | {c.OldestAge} "
+                        + $"| {two.Excess} of {two.Checked} |");
+                    if (speed == WalkPixels)
+                        Assert.True(t.Checked > MinTrailPixels, $"{c.Name}: the trail region measured nothing");
+                }
             foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
             {
                 CrossingTrail c = runs.Run(preset, WalkPixels);

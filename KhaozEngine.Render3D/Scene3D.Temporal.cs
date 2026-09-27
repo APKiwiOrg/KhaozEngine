@@ -51,9 +51,11 @@ namespace KhaozEngine.Render3D
 
         /// <summary>The settings and the display size whose change resets history, as one frame saw them.
         /// <paramref name="ViewportScale"/> is what the viewport is scaled by, which a raw supersample factor does not
-        /// set under temporal anti-aliasing. <paramref name="UpscaleRatio"/> is the temporal ratio, whose change resets
-        /// even when a capped internal size holds. The display size is keyed because a capped internal size can hide a
-        /// display resize.</summary>
+        /// set under temporal anti-aliasing, so it carries a preset or ratio change even when a capped internal size
+        /// holds. <paramref name="UpscaleRatio"/> duplicates it: under temporal anti-aliasing the two are equal, and
+        /// otherwise the ratio is 1 and <paramref name="RenderScale"/> already differs from any temporal frame. It is
+        /// kept so the key names the temporal ratio. The display size is keyed because a capped or fixed internal size
+        /// can hide a display resize.</summary>
         readonly record struct TemporalFrameKey(AntiAliasing AntiAliasing, RenderScale RenderScale, float ViewportScale,
             bool HdrColor, float UpscaleRatio, int DisplayWidth, int DisplayHeight);
 

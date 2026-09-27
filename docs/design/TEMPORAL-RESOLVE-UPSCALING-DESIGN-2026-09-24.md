@@ -89,7 +89,8 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
 5. **Neighbourhood clipping.** Convert to YCoCg and build a variance box, mean plus or minus gamma times the standard
    deviation, over the 3x3 internal neighbourhood. Clip the history towards the box centre, not a clamp to its
    corners, which keeps colour. Gamma widens where the pixel's motion is small and tightens as it grows, so a still or
-   slowly moving view keeps more history. That is the stability-first choice.
+   slowly moving view keeps more history. That is the stability-first choice. Beside a fast narrow moving feature,
+   the feature's share of a pixel's own history takes its current colour (amendment 23).
 6. **Thin feature retention.** A pixel whose luma has been stable in history but falls outside a box built from a
    single thin feature would be clipped away every frame, which is exactly distant grass. A per-pixel luma stability
    term, stored with the history confidence, holds such pixels against clipping while their reprojected history
@@ -294,42 +295,50 @@ and changed these details. Each group's "Contract amendments" block carries the 
     edge: 63 and 180 of 840 trail pixels at Native and Quality passed a freshly revealed wall's difference by more than
     0.05, against 1 and 0 now. The cost falls on a moving object's edge pixels whose centre texel lies on the farther
     surface. They now read their own history, not the edge carried along. A keyed box tilted and crossing the flat wall
-    at 2 internal pixels a frame averages a luma error of 0.00145 and 0.00196 over its edges at Native and Quality
-    against 0.0008 and 0.0014, and the temporal error over the band it crosses rose from 0.00085 and 0.00168 to 0.00207
-    and 0.00272. A keyed line one internal pixel wide keeps 0.26 of its reference energy over its own coverage at both
-    presets, where dilation kept 1.06 and 0.94 but smeared it to 2.09 and 1.28 over the band with an 8 pixel trail at
-    Native, and its band's temporal error rose from 0.00255 and 0.00220 to 0.00288 and 0.00376. The energy summed over
-    the band, 0.27 and 0.31 now, is no measure of the line, because it also counts luma the pixels the line left keep,
-    where the reference shows only background: while the narrow exception kept their history it read 0.69 and 0.43. At
+    at 2 internal pixels a frame averages a luma error of 0.00146 and 0.00183 over its edges at Native and Quality
+    against 0.0008 and 0.0014, and the temporal error over the band it crosses rose from 0.00085 and 0.00168 to 0.00208
+    and 0.00270. A keyed line one internal pixel wide kept only 0.26 of its reference energy over its own coverage at
+    both presets, where dilation kept 1.06 and 0.94 but smeared it to 2.09 and 1.28 over the band with an 8 pixel trail
+    at Native, until the moving share's colour described below gave it back. The energy summed over the band is no
+    measure of the line, because it also counts luma the pixels the line left keep, where the reference shows only
+    background: while the narrow exception kept their history it read 0.69 and 0.43 against 0.26 over the coverage. At
     the moving edges of the 30 pixel box on the flat wall fast flips rose from 0.0000 and 0.0007 to 0.0061 and 0.0071 at
     Performance and UltraPerformance, with UltraPerformance's added change rising from 0.0034 to 0.0042. A keyed line
     one or two internal texels wide that moved on at 2 internal pixels a frame is as narrow as a still blade the jitter
     missed, and while the narrow exception took any narrow feature it kept the line's colour where it left over the
     textured wall: 128 and 177 trail pixels at Native and Quality for the line one texel wide and 50 and 136 for two,
-    against acceptance 3's 2 and 3. Now 11 and 23, and 0 and 3, pass a freshly revealed wall's difference by more than
-    0.05. The line one texel wide keeps its 11 and 23 because its colour reaches its neighbours through the
-    reconstruction, and over a grey texture the clip, whose chroma range is nothing, pulls such a pixel's luma to the
-    neighbourhood mean at full confidence ([#1186](https://github.com/APKiwiOrg/KhaozEngine/issues/1186)). A pixel right
+    against acceptance 3's 2 and 3. The stored state's veto brought them to 11 and 23, and 0 and 3, and the moving
+    share's colour to 0 and 8, and 0 and 0, passing a freshly revealed wall's difference by more than 0.05. The line one
+    texel wide keeps its 8 at Quality because its colour reaches its neighbours through the reconstruction, and over a
+    grey texture the clip, whose chroma range is nothing, pulls such a pixel's luma to the neighbourhood mean at full
+    confidence ([#1186](https://github.com/APKiwiOrg/KhaozEngine/issues/1186)). A pixel right
     behind a fast trailing edge that reprojects by its own motion was covered, so it restarts from the current sample,
     which the reconstruction tints with the object's colour on the jitter phases that put the object's edge texel within
     a pixel of it. The clip removes that tint over a flat or grey wall, but over a textured wall whose colour varies 6
     and 10 of the 840 trail pixels of a keyed box crossing at 4 display pixels a frame keep it two frames after the box
-    uncovered them at Native and Quality ([#1187](https://github.com/APKiwiOrg/KhaozEngine/issues/1187)). The fast
-    keyed line's 0.26 of its reference over its own coverage, against 0.999 under MSAA 4x at the display size and 1.00
-    without anti-aliasing, is what the line fact's fast-flip bound allows, not a cost of the rule alone. Where a
-    pixel's centre texel misses the line, the pixel reprojects by its own motion onto converged wall, the clip box
-    spans wall and line so it keeps that wall, and the current sample adds the line at about one sixteenth at Native
-    and one twentieth or less at Quality. A pixel whose centre texel is the line reads history along the line's motion
-    from a pixel that was as dim on the frame before. Replacing the line's share of such a pixel's own history by the
-    line's current colour, where the line is at most two texels wide, and storing no confidence there, so the pixel
-    restarts once the line has moved on, keeps 1.05 and 0.97 at Native and Quality with no trail. It leaves the
-    two-texel line crossing the textured wall 0 and 0 trail pixels and the one-texel line 0 and 8, and passes every
-    other gate. Its fast flips are 0.019 and 0.022, about MSAA 4x's 0.021 and 0.022, against the bound of half the
-    reference's flips, 0.0088 and 0.0097. Each pixel shows the line for about one frame, so every flip of the reference
-    is fast, and the reference itself scores twice the bound. Scaled to a share of its own contrast, the reference
-    stays within the bound up to 0.30 at Native and 0.20 at Quality, and at 0.7 it shows 0.017 and 0.019. No resolve
-    keeps 0.7 of MSAA 4x's coverage energy within that bound, so the resolve stays as it is until the bound is ruled
-    on. `TemporalFastEdgeGpuTests` prints the line under the resolve, MSAA 4x and no anti-aliasing.
+    uncovered them at Native and Quality ([#1187](https://github.com/APKiwiOrg/KhaozEngine/issues/1187)). Beside a
+    fast narrow feature the pixel's own history misses the feature. Where a pixel's centre texel misses a keyed line
+    one internal pixel wide crossing the flat wall at 2 internal pixels a frame, the pixel reprojects by its own motion
+    onto converged wall, the clip box spans wall and line so it keeps that wall, and the current sample adds the line at
+    about a sixteenth, while a pixel whose centre texel is the line reads history along the line's motion from a pixel
+    as dim on the frame before. The line kept 0.26 of its reference over its own coverage, against 0.999 under MSAA 4x
+    at the display size. So where the pixel reprojected by its own motion and the nearer surface is at most two texels
+    wide in this frame's depth, the share of the reconstruction weight on texels nearer than the pixel's own surface
+    takes their current colour in the clipped history before step 8's blend, and the pixel stores
+    `MovingShareConfidence`, no confidence, so it restarts once the feature has moved on. The line keeps 1.05 and 0.97
+    now, 1.054 and 0.969 of MSAA 4x's, and its band's temporal error is 0.00155 and 0.00228 against 0.00288 and 0.00376.
+    Kept whole, the confidence left the two-texel line 7 of its 630 trail pixels at Quality, and scaled by one minus the
+    share 6, against 0 now, because over a grey texture the clip pulls a pixel holding the line's colour to the
+    neighbourhood mean at full confidence. Beside any moving surface rather than a narrow one, the colour raised the
+    tilted box edge's fast flips at Native from 0.00058 to 0.00112. The rule costs two fetches for every pixel, the
+    centre texel's own depth and motion read before the 3x3, and sixteen for the narrow test behind rule 1's branch. The
+    emitted resolve grew from 33367 to 38106 bytes of HLSL, and its hardware cost is measured with the rest of the
+    resolve's. The line's fast flips are 0.019 and 0.022, about MSAA 4x's 0.021 and 0.022. Each pixel shows the line for
+    about one frame, so every flip of the reference is fast, and against half the reference's raw flips the reference
+    itself, scaled to a share of its own contrast, stayed within the bound only up to 0.30 at Native and 0.20 at
+    Quality. So the fast-edge facts bound fast flips by the larger of half the reference's flips and 1.25 times its fast
+    flips, 0.022 and 0.024 for the line, and `TemporalFastEdgeGpuTests` holds the line at 0.8 of its reference's and 0.7
+    of MSAA 4x's coverage energy.
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies

@@ -9801,9 +9801,9 @@ shared 260) now split independently, giving the grouped companion/scatter-layer 
 **Viewport rebuild performance.** Bounded terrain-height edits invalidate only loaded chunks overlapping
 the accumulated dirty region. Exclusion and scatter-override edits leave the field alone, so they refresh the
 captured generation configuration and re-serve only the props of the loaded chunks their jitter-padded shape
-bounds overlap (`ViewportWorld.RefreshLayerProps`), with no terrain re-mesh, every drag frame. Terrain scalars,
-biome bands and same-topology scatter or companion value edits refresh every loaded chunk without rebuilding
-the viewport.
+bounds overlap (`ViewportWorld.RefreshLayerProps`), with no terrain re-mesh, every drag frame. Shape-preserving
+scatter or companion value edits and override reorders use the same props-only seam across the whole loaded set.
+Terrain scalars, biome bands and a layer edit that changes sink shape retain the all-loaded terrain re-mesh.
 Pending asynchronous work is flushed before field or layer snapshots change. Layer-count, layer-kind,
 placement-layer, kit and HLOD topology changes retain the full rebuild path (#14). Full rebuilds are
 throttled to at most once per

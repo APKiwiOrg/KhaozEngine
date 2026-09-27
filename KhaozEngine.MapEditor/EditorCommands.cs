@@ -47,11 +47,11 @@ public abstract partial class EditorCommand : IEditorCommand
     internal virtual RectArea? DirtyRegion => null;
 
     /// <summary>True when the viewport must rebuild the sink's captured scatter and companion configs before
-    /// invalidating chunks.</summary>
+    /// re-serving props or invalidating chunks.</summary>
     internal virtual bool RefreshesLayerConfig => false;
 
-    /// <summary>True when every loaded chunk must be invalidated but sink topology can stay. False with a null
-    /// <see cref="DirtyRegion"/> means a full rebuild remains required.</summary>
+    /// <summary>True when every loaded chunk must refresh but sink topology can stay. Field-neutral edits may
+    /// re-serve props when layer shape stays fixed. False with a null <see cref="DirtyRegion"/> needs a full rebuild.</summary>
     internal virtual bool InvalidatesAllLoaded => false;
 
     /// <inheritdoc/>

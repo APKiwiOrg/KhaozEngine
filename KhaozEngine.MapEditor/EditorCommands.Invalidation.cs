@@ -13,10 +13,9 @@ public abstract partial class EditorCommand
     internal virtual bool ChangesPlacements => false;
 
     /// <summary>True unless the command is known to leave the terrain field unchanged. Only meaningful while
-    /// <see cref="AffectsWorld"/> is true. An exclusion or scatter-override edit changes nothing but the captured
-    /// scatter configs, so it reports false and its bounded region only needs its props re-served
-    /// (<see cref="ViewportWorld.RefreshLayerProps(MapDocument, RectArea)"/>), never a field swap or a terrain re-mesh. True is the safe
-    /// default for everything else.</summary>
+    /// <see cref="AffectsWorld"/> is true. Exclusion, scatter-override, scatter-layer and companion-layer edits
+    /// change captured prop-generation configs only, so they report false and use a props-only refresh whenever
+    /// the replacement keeps the sink's layer shape. True is the safe default for everything else.</summary>
     internal virtual bool ChangesField => true;
 }
 
@@ -158,12 +157,14 @@ public sealed partial class ReorderScatterOverrideCommand
 public sealed partial class EditScatterLayerCommand
 {
     internal override bool RefreshesLayerConfig => true;
+    internal override bool ChangesField => false;
     internal override bool InvalidatesAllLoaded => true;
 }
 
 public sealed partial class EditCompanionLayerCommand
 {
     internal override bool RefreshesLayerConfig => true;
+    internal override bool ChangesField => false;
     internal override bool InvalidatesAllLoaded => true;
 }
 

@@ -97,8 +97,8 @@ public sealed class EditorDocument
     public bool PendingLayerConfigRefresh => _pendingLayerConfigRefresh;
 
     /// <summary>True when some command in the pending batch may have changed the terrain field (see
-    /// <c>EditorCommand.ChangesField</c>). False means the batch changed captured scatter configs only (exclusion and
-    /// scatter-override edits), so the chunks it covers need their props re-served but keep their terrain mesh.</summary>
+    /// <c>EditorCommand.ChangesField</c>). False means the batch changed captured scatter or companion configs only,
+    /// so its bounded region or the whole loaded set can re-serve props while keeping every terrain mesh.</summary>
     public bool PendingFieldChange => _pendingFieldChange;
 
     /// <summary>True when the pending edit requires a full sink and streamer rebuild.</summary>

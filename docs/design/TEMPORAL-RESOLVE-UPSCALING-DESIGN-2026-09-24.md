@@ -299,8 +299,8 @@ and changed these details. Each group's "Contract amendments" block carries the 
     Native and Quality passed a freshly revealed wall's difference by more than 0.05, against 1 and 0 now. The cost
     falls on a moving object's edge pixels whose centre texel lies on the farther surface. They now read their own
     history, not the edge carried along. A keyed box tilted and crossing the flat wall at 2 internal pixels a frame
-    averages a luma error of 0.00146 and 0.00183 over its edges at Native and Quality against 0.0008 and 0.0014, and the
-    temporal error over the band it crosses rose from 0.00085 and 0.00168 to 0.00208 and 0.00270. A keyed line one
+    averages a luma error of 0.00146 and 0.00173 over its edges at Native and Quality against 0.0008 and 0.0014, and the
+    temporal error over the band it crosses rose from 0.00085 and 0.00168 to 0.00208 and 0.00260. A keyed line one
     internal pixel wide kept only 0.26 of its reference energy over its own coverage at both presets, where dilation
     kept 1.06 and 0.94 but smeared it to 2.09 and 1.28 over the band with an 8 pixel trail at Native, until the moving
     share's colour described below gave it back. The energy summed over the band is no measure of the line, because it

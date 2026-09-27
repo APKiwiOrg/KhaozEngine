@@ -102,8 +102,8 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(TemporalUpscale.Quality)]
         public void A_keyed_box_crossing_fast_keeps_its_edges_close_to_the_reference(TemporalUpscale preset)
         {
-            // Measured: edge error 0.00146 and 0.00183, fast flips 0.00068 and 0.00186 against reference flips of
-            // 0.00176 and 0.00546, no trail, temporal error over the band 0.00208 and 0.00270. Before amendment 23 the
+            // Measured: edge error 0.00146 and 0.00173, fast flips 0.00068 and 0.00178 against reference flips of
+            // 0.00176 and 0.00546, no trail, temporal error over the band 0.00208 and 0.00260. Before amendment 23 the
             // edge error was 0.00083 and 0.00140 and the band's temporal error 0.00085 and 0.00168: an edge pixel whose
             // centre texel misses the box now reads its own history, not the box's edge carried along.
             string message = Report(FastEdgeScene.KeyedBoxEdge, preset);

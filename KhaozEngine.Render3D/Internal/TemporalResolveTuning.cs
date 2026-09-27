@@ -158,13 +158,13 @@ namespace KhaozEngine.Render3D.Internal
         /// pixels a frame against the wall left 18 and 19 trail pixels at Native and Quality with the rule applied
         /// there, against 6 and 10, and against the sky its edges took 0.0035 and 0.0063 fast flips a pixel a frame
         /// against none. The cost, where a moving object's edge pixel has its centre texel on the farther surface: a
-        /// keyed box tilted and crossing the flat wall at 2 internal pixels a frame averages a luma error of 0.00145
-        /// and 0.00196 over its edges at Native and Quality against 0.0008 and 0.0014 with dilation, and its temporal
-        /// error over the band it crosses is 0.00207 and 0.00272 against 0.00085 and 0.00168. A keyed line one internal
+        /// keyed box tilted and crossing the flat wall at 2 internal pixels a frame averages a luma error of 0.00146
+        /// and 0.00173 over its edges at Native and Quality against 0.0008 and 0.0014 with dilation, and its temporal
+        /// error over the band it crosses is 0.00208 and 0.00260 against 0.00085 and 0.00168. A keyed line one internal
         /// pixel wide kept only 0.26 of its reference energy over its own coverage at both presets until the rule of
         /// <see cref="MovingShareConfidence"/> gave its pixels their current coverage: it keeps 1.05 and 0.97 now,
         /// where dilation kept 1.06 and 0.94 but smeared it to 2.09 and 1.28 over the band with a trail of 8 pixels at
-        /// Native, and its band's temporal error is 0.00155 and 0.00228 against 0.00255 and 0.00220. The 30 pixel box
+        /// Native, and its band's temporal error is 0.00155 and 0.00202 against 0.00255 and 0.00220. The 30 pixel box
         /// crossing the flat wall at 4 display pixels a frame shows 0.0029, 0.0025, 0.0061 and 0.0071 fast flips a
         /// pixel a frame at its moving edges at Quality, Balanced, Performance and UltraPerformance against 0.0001,
         /// 0.0000, 0.0000 and 0.0007, and its added change at UltraPerformance rises from 0.0034 to 0.0042.</summary>
@@ -196,7 +196,7 @@ namespace KhaozEngine.Render3D.Internal
         /// pixels a frame is as narrow as a missed still blade: taking any narrow feature, the narrow exception kept
         /// its colour where it left over the textured wall, 128 and 177 of the trail pixels for the line one texel wide
         /// and 50 and 136 for two, against 11 and 23, and 0 and 3, where the moving surface's stored state rules it
-        /// out, and 0 and 8, and 0 and 0, since the pixels beside such a line restart once it moves on
+        /// out, and 0 and 1, and 0 and 0, since the pixels beside such a line restart once it moves on
         /// (<see cref="MovingShareConfidence"/>). The still blades and lines hold as before. Where the stored state
         /// says a surface that travelled more than <see cref="DilationReachInternalPixels"/> against a static point
         /// showed there, neither exception applies, and any weight on a stored depth nearer than expected drops the
@@ -219,10 +219,10 @@ namespace KhaozEngine.Render3D.Internal
         /// kept 0.26 of its reference energy over its own coverage at Native and Quality, where MSAA 4x keeps 0.999:
         /// its pixels read converged wall and took the line at about a sixteenth a frame. It keeps 1.05 and 0.97 now,
         /// with fast flips of 0.019 and 0.022 against MSAA 4x's 0.021 and 0.022, and its band's temporal error is
-        /// 0.00155 and 0.00228 against 0.00288 and 0.00376. Keeping the confidence whole left a line two texels wide 7
+        /// 0.00155 and 0.00202 against 0.00288 and 0.00376. Keeping the confidence whole left a line two texels wide 7
         /// of its 630 trail pixels over the textured wall at Quality, and scaling it by one minus the share left 6,
         /// against 0 now, because over a grey texture the clip pulls a pixel holding the feature's colour to the
-        /// neighbourhood mean at full confidence. The line one texel wide leaves 0 and 8 against 11 and 23. Applied
+        /// neighbourhood mean at full confidence. The line one texel wide leaves 0 and 1 against 11 and 23. Applied
         /// beside any moving surface, the same colour raised a keyed box edge's fast flips at Native from 0.00058 to
         /// 0.00112, so it waits for a narrow feature. The narrow test reads the run through one texel, so it also fires
         /// where a wide object is one or two texels across in this frame's depth, at a corner's tip or on a face seen

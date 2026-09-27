@@ -17,9 +17,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// The line two texels wide at both presets and the line one texel wide at Native are asserted at acceptance 3's
     /// one pixel in 200 of the trail, and the ridged box against a bound that guards the lock clause. The line one
-    /// texel wide misses acceptance 3 at Quality, and the table test prints each case with its reason. HDR is off, the
-    /// sharpen is at its default, Native and Quality are measured, and the measured values in the comments are Metal
-    /// on Apple silicon.
+    /// texel wide at Quality, which missed acceptance 3 until a footprint a fast surface showed at kept its history
+    /// only whole, is printed, and the table test prints each case with its reason. HDR is off, the sharpen is at its
+    /// default, Native and Quality are measured, and the measured values in the comments are Metal on Apple silicon.
     /// </para>
     /// </summary>
     public sealed class TemporalNarrowCrossingGpuTests(TemporalNarrowCrossingRuns runs, ITestOutputHelper output)
@@ -91,8 +91,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// A keyed line one internal texel wide, at Native, where the pixels beside it that took its colour restart
         /// once it moves on. Measured 0 of 420 against the 2 acceptance 3 allows. The state's veto alone left 11, and
-        /// the narrow exception taking any narrow feature 128. Quality keeps 8 of 630 against 3, and the table test
-        /// prints it (https://github.com/APKiwiOrg/KhaozEngine/issues/1186).
+        /// the narrow exception taking any narrow feature 128. Quality kept 8 of 630 against 3 until a footprint a fast
+        /// surface showed at kept its history only whole, keeps 1 now, and the table test prints it
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/1186).
         /// </summary>
         [GpuFact]
         public void A_keyed_line_one_texel_wide_leaves_no_trail_where_it_left_at_native()

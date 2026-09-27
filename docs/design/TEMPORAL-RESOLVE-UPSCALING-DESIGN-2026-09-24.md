@@ -305,7 +305,12 @@ and changed these details. Each group's "Contract amendments" block carries the 
     and 0 and 3, but takes the keyed line crossing the flat wall under its energy floor, 0.27 of its reference at Native
     against 0.3. The line one texel wide keeps the rest because its colour reaches its neighbours through the
     reconstruction, and over a grey texture the clip, whose chroma range is nothing, pulls such a pixel's luma to the
-    neighbourhood mean at full confidence.
+    neighbourhood mean at full confidence ([#1186](https://github.com/APKiwiOrg/KhaozEngine/issues/1186)). A pixel right
+    behind a fast trailing edge that reprojects by its own motion was covered, so it restarts from the current sample,
+    which the reconstruction tints with the object's colour on the jitter phases that put the object's edge texel within
+    a pixel of it. The clip removes that tint over a flat or grey wall, but over a textured wall whose colour varies 6
+    and 10 of the 840 trail pixels of a keyed box crossing at 4 display pixels a frame keep it two frames after the box
+    uncovered them at Native and Quality ([#1187](https://github.com/APKiwiOrg/KhaozEngine/issues/1187)).
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies

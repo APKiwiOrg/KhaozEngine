@@ -431,10 +431,16 @@ implementation remains responsible for accepting valid writes. No replay path re
 instance id. `ItemGeneratedEvent` remains a readable audit body, and version 2 Craft still contains the
 unchanged `ItemCraftedEvent` audit body inside its envelope.
 
-**A live Merge is all-or-nothing.** Its version 1 event names the two slots and instance ids but no moved
+**A new live Merge is all-or-nothing.** Its version 1 event names the two slots and instance ids but no moved
 count, so admitting a partial capped move would let replay consume the whole source and reconstruct different
-page bytes. A nonzero remainder refuses before either slot changes. Every admitted Merge therefore consumes
-its source whole and replays byte identically under historical admission.
+page bytes. A nonzero remainder refuses before either slot changes. Every newly admitted Merge therefore
+consumes its source whole and replays byte identically under historical admission.
+
+Replay retains one released exception. Before the cap seam, a Merge whose destination was one below
+`int.MaxValue` admitted one unit and retained the source remainder. It also chose the lower instance id for
+the destination even though the source survived. `TryReplay` reconstructs that exact partial result from a
+stored version 1 event, including both counts and both ids. This compatibility branch is replay-only and
+cannot admit a new partial merge.
 
 ```csharp
 if (!ContainerOperationEventCodec.TryRead(stored.EventType, stored.EventSchemaVersion,

@@ -17093,9 +17093,12 @@ live builder uses `TryApply` and checks the current stackability, stack cap and 
 answer names a stored record the host must refuse or quarantine. A custom working-copy implementation is
 still responsible for accepting valid writes.
 
-A live journal Merge is atomic. Its version 1 event has no moved-count field, so a capped merge that would
-leave any source remainder is refused before either slot changes. Every admitted Merge consumes the source
-whole, and replay from the same prior pages produces the same encoded page bytes.
+A new live journal Merge is atomic. Its version 1 event has no moved-count field, so a capped merge that would
+leave any source remainder is refused before either slot changes. Every newly admitted Merge consumes the
+source whole, and replay from the same prior pages produces the same encoded page bytes. `TryReplay` also
+preserves the released engine-ceiling partial result: the destination gains the one unit that fit and takes
+the lower id, while the source keeps its remainder and its stored id. That branch reconstructs old version 1
+events only and is never live admission.
 
 ```csharp
 if (!ContainerOperationEventCodec.TryRead(stored.EventType, stored.EventSchemaVersion,

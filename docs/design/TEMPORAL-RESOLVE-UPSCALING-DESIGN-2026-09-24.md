@@ -314,7 +314,22 @@ and changed these details. Each group's "Contract amendments" block carries the 
     which the reconstruction tints with the object's colour on the jitter phases that put the object's edge texel within
     a pixel of it. The clip removes that tint over a flat or grey wall, but over a textured wall whose colour varies 6
     and 10 of the 840 trail pixels of a keyed box crossing at 4 display pixels a frame keep it two frames after the box
-    uncovered them at Native and Quality ([#1187](https://github.com/APKiwiOrg/KhaozEngine/issues/1187)).
+    uncovered them at Native and Quality ([#1187](https://github.com/APKiwiOrg/KhaozEngine/issues/1187)). The fast
+    keyed line's 0.26 of its reference over its own coverage, against 0.999 under MSAA 4x at the display size and 1.00
+    without anti-aliasing, is what the line fact's fast-flip bound allows, not a cost of the rule alone. Where a
+    pixel's centre texel misses the line, the pixel reprojects by its own motion onto converged wall, the clip box
+    spans wall and line so it keeps that wall, and the current sample adds the line at about one sixteenth at Native
+    and one twentieth or less at Quality. A pixel whose centre texel is the line reads history along the line's motion
+    from a pixel that was as dim on the frame before. Replacing the line's share of such a pixel's own history by the
+    line's current colour, where the line is at most two texels wide, and storing no confidence there, so the pixel
+    restarts once the line has moved on, keeps 1.05 and 0.97 at Native and Quality with no trail. It leaves the
+    two-texel line crossing the textured wall 0 and 0 trail pixels and the one-texel line 0 and 8, and passes every
+    other gate. Its fast flips are 0.019 and 0.022, about MSAA 4x's 0.021 and 0.022, against the bound of half the
+    reference's flips, 0.0088 and 0.0097. Each pixel shows the line for about one frame, so every flip of the reference
+    is fast, and the reference itself scores twice the bound. Scaled to a share of its own contrast, the reference
+    stays within the bound up to 0.30 at Native and 0.20 at Quality, and at 0.7 it shows 0.017 and 0.019. No resolve
+    keeps 0.7 of MSAA 4x's coverage energy within that bound, so the resolve stays as it is until the bound is ruled
+    on. `TemporalFastEdgeGpuTests` prints the line under the resolve, MSAA 4x and no anti-aliasing.
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies

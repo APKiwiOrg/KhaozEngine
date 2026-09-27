@@ -1455,7 +1455,7 @@ the 250 ms tile tick rather than at a 10 Hz one. Moving the sibling component on
 the obvious next optimisation and it is not v1: v1 ships the full-state cost with the budget that says
 what it is.
 
-The second row matters too. Option c needs no engine API change at all: the targeted message is exactly
+The second row matters too. Option c's targeted-message half needs no engine API change: the message is exactly
 the shape `SendCombatTo(slot, interest)` already is, a second non-snapshot per-viewer filtered send driven
 off the same interest set (`TileWorldServer.Tick.cs:248-259`), and `PickupState.OwnerNetId` is the
 existing precedent for the engine owning the TAG and not the RULE.
@@ -1469,11 +1469,12 @@ constraining every future kind assignment.
 
 **A GROUND item has no owner viewer in v1, and that is a rule rather than an omission.** A drop's entity
 is the drop, whose net id is nobody's, and the durable claim has not happened yet, so there is no viewer
-this document can call the owner of a ground stack. The host calls
+this document can call the owner of a ground stack. The host should call
 `GroundItemPayloadProjection.Project` on the stored payload before `SpawnGroundItem`, and the sibling
 component carries that `Everyone` view with no owner remainder. The helper uses the same core as
-`ContainerPageProjection.ProjectPayload`, so a game cannot accidentally send the stored bytes on the
-ground while filtering them in a container. A malformed live payload yields zero public bytes, while a
+`ContainerPageProjection.ProjectPayload`, giving a host one projection door for both routes.
+`TileWorldServer.SpawnGroundItem` still accepts opaque bytes, so the host must use that door before spawn.
+A malformed live payload yields zero public bytes, while a
 quarantined wrapper is hollowed to its reason and stamp with no original bytes. The consequence to be
 explicit about is the leak that does not happen: kind 6 `BoundTo` is `OwnerOnly` (3.3), so it is stripped
 before the component is written and a passer-by cannot read who a dropped item is bound to, which is a

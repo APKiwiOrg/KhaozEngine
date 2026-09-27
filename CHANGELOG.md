@@ -5,6 +5,19 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.11.0
+
+- `ContentPackReader.CreateLazy` gives long-lived row readers an explicit bound on decoded chunk
+  residency with least recently used eviction. The existing constructor keeps its snapshot contract, and
+  lazy mode refuses snapshot assembly rather than returning an incomplete result
+  ([#902](https://github.com/APKiwiOrg/KhaozEngine/issues/902)).
+- The item-instance and content contracts now match the shipped craft intent bytes, operation refusal,
+  rarity guard direction and unbiased bounded draws from both random sources
+  ([#1176](https://github.com/APKiwiOrg/KhaozEngine/issues/1176),
+  [#991](https://github.com/APKiwiOrg/KhaozEngine/issues/991),
+  [#989](https://github.com/APKiwiOrg/KhaozEngine/issues/989),
+  [#975](https://github.com/APKiwiOrg/KhaozEngine/issues/975)).
+
 ## 20.10.1
 
 - Client fetches now validate a KECC chunk's row table after its hash and before caching it. Malformed

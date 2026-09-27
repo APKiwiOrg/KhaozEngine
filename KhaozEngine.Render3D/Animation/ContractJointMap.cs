@@ -10,9 +10,9 @@ namespace KhaozEngine.Render3D
     /// the skin's one-frame stance clip when the skin ships one, and the bind rest otherwise, so a code-built skeleton
     /// or a rigged body with no stance keeps the bind pose as its zero. Every frame derived from the zero follows it:
     /// the base world frames, the parent-base inverses, the body alignment and <see cref="SkinAtBase"/>.
-    /// Construction refuses a skeleton with more nodes than a skinned draw takes, a duplicate node name, and a
-    /// contract joint that is missing, misparented or (other than the root) outside the skin. Pure presentation.
-    /// GPU-free.</remarks>
+    /// Construction refuses a skeleton with more nodes than a skinned draw takes, two nodes of one name, and a
+    /// contract joint that is missing, misparented or (other than the root) outside the skin. Unnamed nodes are
+    /// left alone, as <see cref="Skeleton"/> leaves them. Pure presentation. GPU-free.</remarks>
     public sealed class ContractJointMap
     {
         readonly Dictionary<string, int> _nodes = new(StringComparer.Ordinal);
@@ -20,6 +20,7 @@ namespace KhaozEngine.Render3D
         readonly Matrix4x4[] _baseWorld;
         readonly Matrix4x4[] _parentBaseInverse;
         readonly Matrix4x4[] _bodyAlignment;
+        readonly bool[] _isContract;
 
         /// <summary>Resolves the contract joints over a skeleton and computes their base frames.</summary>
         /// <param name="skeleton">The loaded skeleton, on <paramref name="contract"/>.</param>
@@ -45,10 +46,13 @@ namespace KhaozEngine.Render3D
             _baseWorld = new Matrix4x4[skeleton.NodeCount];
             _parentBaseInverse = new Matrix4x4[skeleton.NodeCount];
             _bodyAlignment = new Matrix4x4[skeleton.NodeCount];
+            _isContract = new bool[skeleton.NodeCount];
             for (int node = 0; node < skeleton.NodeCount; node++)
-                if (!_nodes.TryAdd(skeleton.NodeNames[node], node))
-                    throw new ArgumentException($"Duplicate contract joint '{skeleton.NodeNames[node]}'.",
-                        nameof(skeleton));
+            {
+                string nodeName = skeleton.NodeNames[node];
+                if (nodeName.Length > 0 && !_nodes.TryAdd(nodeName, node))
+                    throw new ArgumentException($"Duplicate skeleton node name '{nodeName}'.", nameof(skeleton));
+            }
 
             _baseLocal = stance is null
                 ? (JointPose[])skeleton.RestLocal.Clone()
@@ -79,6 +83,7 @@ namespace KhaozEngine.Render3D
                 if (!Matrix4x4.Invert(rigidBase, out Matrix4x4 inverseRigidBase))
                     throw new ArgumentException($"Joint '{name}' has a singular base frame.", nameof(skeleton));
                 _bodyAlignment[node] = Matrix4x4.CreateTranslation(rigidBase.Translation) * inverseRigidBase;
+                _isContract[node] = true;
             }
         }
 
@@ -88,12 +93,12 @@ namespace KhaozEngine.Render3D
         /// <summary>The contract the skeleton was checked against.</summary>
         public SkeletonContract Contract { get; }
 
-        /// <summary>The skeleton node of a named joint.</summary>
+        /// <summary>The skeleton node of a name, a contract joint or any other named node.</summary>
         /// <exception cref="KeyNotFoundException">The skeleton has no node of that name.</exception>
         public int Node(string name) =>
             _nodes.TryGetValue(name, out int node)
                 ? node
-                : throw new KeyNotFoundException($"Unknown contract joint '{name}'.");
+                : throw new KeyNotFoundException($"No skeleton node named '{name}'.");
 
         /// <summary>The skin bone of a named joint.</summary>
         /// <exception cref="KeyNotFoundException">The skeleton has no node of that name.</exception>
@@ -112,13 +117,15 @@ namespace KhaozEngine.Render3D
         public ReadOnlySpan<JointPose> BaseLocal => _baseLocal;
 
         /// <summary>A contract joint's model frame at the base (the stance, or the bind rest without one).</summary>
-        /// <param name="node">A contract joint's node. Other nodes read a zero matrix.</param>
-        public Matrix4x4 BaseWorld(int node) => _baseWorld[node];
+        /// <param name="node">A contract joint's node.</param>
+        /// <exception cref="ArgumentException">The node is not a contract joint.</exception>
+        public Matrix4x4 BaseWorld(int node) => _baseWorld[ContractNode(node)];
 
         /// <summary>The inverse of a contract joint's parent model frame at the base, which turns a model frame back
         /// into the joint's local pose.</summary>
-        /// <param name="node">A contract joint's node. Other nodes read a zero matrix.</param>
-        public Matrix4x4 ParentBaseInverse(int node) => _parentBaseInverse[node];
+        /// <param name="node">A contract joint's node.</param>
+        /// <exception cref="ArgumentException">The node is not a contract joint.</exception>
+        public Matrix4x4 ParentBaseInverse(int node) => _parentBaseInverse[ContractNode(node)];
 
         /// <summary>Takes a joint's base ORIENTATION back out, for a rigid piece authored in the body's own axes.
         /// </summary>
@@ -130,8 +137,9 @@ namespace KhaozEngine.Render3D
         /// This is <c>T(baseOffset) * inverse(jointBaseModel)</c>, taken off the rigid part of the base frame so it
         /// cancels exactly what <see cref="BoneSocket.ComposeRigid"/> keeps. A pure rotation, and the identity on a
         /// joint that sits at the body's axes at the base.</remarks>
-        /// <param name="node">A contract joint's node. Other nodes read a zero matrix.</param>
-        public Matrix4x4 BodyAlignment(int node) => _bodyAlignment[node];
+        /// <param name="node">A contract joint's node.</param>
+        /// <exception cref="ArgumentException">The node is not a contract joint.</exception>
+        public Matrix4x4 BodyAlignment(int node) => _bodyAlignment[ContractNode(node)];
 
         /// <summary>Every vertex of a skin on this map's skeleton, deformed to the base, in model space.</summary>
         /// <remarks>The same deform the shader applies: the base composed into joint model matrices, each after its
@@ -155,6 +163,19 @@ namespace KhaozEngine.Render3D
             for (int i = 0; i < positions.Length; i++)
                 positions[i] = SkinningMath.SkinVertex(mesh.Vertices[i], skin).Position;
             return positions;
+        }
+
+        // A node the frame accessors may read. The base frames exist for contract joints only, so any other node is
+        // refused rather than read as a zero matrix.
+        int ContractNode(int node)
+        {
+            if (node < 0 || node >= _isContract.Length)
+                throw new ArgumentOutOfRangeException(nameof(node), node,
+                    $"The skeleton has no node {node}. It has {_isContract.Length}.");
+            if (!_isContract[node])
+                throw new ArgumentException($"Node {node} '{Skeleton.NodeNames[node]}' is not a contract joint.",
+                    nameof(node));
+            return node;
         }
 
         // One local pose per node with the stance laid over the rest. A clip that could mislead a caller is refused

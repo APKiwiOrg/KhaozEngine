@@ -40,9 +40,10 @@ reuse its list.
 
 ## ContractJointMap
 
-The map refuses a skeleton with more nodes than `SkinningMath.MaxBonesPerDraw`, a duplicate node
+The map refuses a skeleton with more nodes than `SkinningMath.MaxBonesPerDraw`, two nodes of one
 name, and a contract joint that is missing, misparented or, other than the root, outside the skin.
-The misparent message names both the actual and the expected parent.
+The misparent message names both the actual and the expected parent. Unnamed nodes are left alone,
+as `Skeleton` leaves them, so helper nodes a rig exports without names cost nothing.
 
 The base is the body's zero. It is an optional one-key stance clip, sampled once, or the bind rest
 without one. The stance must carry the caller's clip name (`stance` by default), key each track
@@ -53,7 +54,9 @@ skews all of them.
 From the base the map derives each contract joint's model frame, its parent-base inverse, and a body
 alignment that takes the joint's base orientation back out so a rigid piece authored in the body's
 axes sits at the joint with those axes. `SkinAtBase` deforms a skin to the base on the CPU, the same
-deform the shader applies.
+deform the shader applies. The frames exist for contract joints only. `Node` resolves any named node,
+so the frame accessors refuse a node outside the contract, naming it, rather than hand back a zero
+matrix that would collapse an attached piece to the origin.
 
 The arithmetic runs in the same order as Grimhollow's `HumanoidJointMap`. The humanoid can then wrap
 this map and keep its palettes bit for bit. The humanoid's hip pivot is a humanoid fact and stays in

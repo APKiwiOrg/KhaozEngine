@@ -50,7 +50,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
             var outside = Assert.Throws<InvalidOperationException>(() => map.Bone("root"));
             Assert.Contains("'root'", outside.Message, StringComparison.Ordinal);
             var unknown = Assert.Throws<KeyNotFoundException>(() => map.Node("tail"));
-            Assert.Contains("'tail'", unknown.Message, StringComparison.Ordinal);
+            Assert.Contains("No skeleton node named 'tail'", unknown.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -84,12 +84,93 @@ namespace KhaozEngine.Tests.Render3D.Animation
         [Fact]
         public void RefusesDuplicateNodeNames()
         {
-            string[] names = (string[])Names.Clone();
-            names[6] = "spine";
+            string[] joint = (string[])Names.Clone();
+            joint[6] = "spine";
+            var onAJoint = Assert.Throws<ArgumentException>(() => new ContractJointMap(Build(names: joint), Contract));
+            Assert.Contains("Duplicate skeleton node name 'spine'", onAJoint.Message, StringComparison.Ordinal);
 
-            var error = Assert.Throws<ArgumentException>(() => new ContractJointMap(Build(names: names), Contract));
+            // A name the contract never mentions is still ambiguous, and the refusal says it is a node's name.
+            Skeleton plain = Build();
+            var twoLanterns = new Skeleton(
+                [.. plain.ParentIndices, 0],
+                [.. plain.RestLocal, JointPose.Identity],
+                [.. plain.NodeLogicalIndex, 17],
+                (int[])plain.JointToNode.Clone(),
+                [.. plain.NodeNames, "lantern"]);
+            var offTheContract = Assert.Throws<ArgumentException>(() => new ContractJointMap(twoLanterns, Contract));
+            Assert.Contains("Duplicate skeleton node name 'lantern'", offTheContract.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("contract joint", offTheContract.Message, StringComparison.Ordinal);
+        }
 
-            Assert.Contains("Duplicate contract joint 'spine'", error.Message, StringComparison.Ordinal);
+        [Fact]
+        public void LeavesUnnamedNodesAlone()
+        {
+            Skeleton plain = Build();
+            Skeleton helpers = new(
+                [.. plain.ParentIndices, HipsNode, 0],
+                [.. plain.RestLocal, Pose(new Vector3(0f, 0.1f, 0f), Quaternion.Identity), JointPose.Identity],
+                [.. plain.NodeLogicalIndex, 17, 18],
+                (int[])plain.JointToNode.Clone(),
+                [.. plain.NodeNames, "", ""]);
+
+            var map = new ContractJointMap(helpers, Contract);
+            var without = new ContractJointMap(plain, Contract);
+
+            foreach (ContractJoint joint in Contract.Joints)
+            {
+                int node = map.Node(joint.Name);
+                Assert.Equal(without.BaseWorld(node), map.BaseWorld(node));
+                Assert.Equal(without.ParentBaseInverse(node), map.ParentBaseInverse(node));
+                Assert.Equal(without.BodyAlignment(node), map.BodyAlignment(node));
+            }
+            Assert.Equal(helpers.RestLocal, map.BaseLocal.ToArray());
+            Assert.Throws<KeyNotFoundException>(() => map.Node(""));
+            var helper = Assert.Throws<ArgumentException>(() => map.BaseWorld(7));
+            Assert.Contains("Node 7 ''", helper.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void AnUnnamedSkeletonMissesItsRootRatherThanDuplicatingIt()
+        {
+            var error = Assert.Throws<ArgumentException>(
+                () => new ContractJointMap(Build(names: new string[Names.Length]), Contract));
+
+            Assert.Contains("Missing contract joint 'root'", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FrameAccessorsRefuseANonContractNodeNamingIt()
+        {
+            Skeleton skeleton = Build();
+            var map = new ContractJointMap(skeleton, Contract);
+            int lantern = map.Node("lantern");
+            var accessors = new Func<int, Matrix4x4>[] { map.BaseWorld, map.ParentBaseInverse, map.BodyAlignment };
+
+            foreach (Func<int, Matrix4x4> read in accessors)
+            {
+                var error = Assert.Throws<ArgumentException>(() => read(lantern));
+                Assert.Contains($"Node {lantern} 'lantern'", error.Message, StringComparison.Ordinal);
+                Assert.Contains("not a contract joint", error.Message, StringComparison.Ordinal);
+                Assert.Throws<ArgumentOutOfRangeException>(() => read(-1));
+                Assert.Throws<ArgumentOutOfRangeException>(() => read(skeleton.NodeCount));
+            }
+
+            // Every contract joint, sockets included, still reads the frames the map computed, bit for bit.
+            var world = new Matrix4x4[skeleton.NodeCount];
+            foreach (ContractJoint joint in Contract.Joints)
+            {
+                int node = map.Node(joint.Name);
+                int parent = skeleton.ParentIndices[node];
+                Matrix4x4 parentWorld = parent < 0 ? Matrix4x4.Identity : world[parent];
+                world[node] = skeleton.RestLocal[node].ToMatrix() * parentWorld;
+                Assert.True(Matrix4x4.Invert(parentWorld, out Matrix4x4 parentInverse));
+                Matrix4x4 rigid = BoneSocket.ComposeRigid(Matrix4x4.Identity, world[node], Matrix4x4.Identity);
+                Assert.True(Matrix4x4.Invert(rigid, out Matrix4x4 inverseRigid));
+
+                Assert.Equal(world[node], map.BaseWorld(node));
+                Assert.Equal(parentInverse, map.ParentBaseInverse(node));
+                Assert.Equal(Matrix4x4.CreateTranslation(rigid.Translation) * inverseRigid, map.BodyAlignment(node));
+            }
         }
 
         [Fact]

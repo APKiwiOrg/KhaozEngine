@@ -73,12 +73,13 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
 1. **Motion with dilation.** For each display pixel, find the internal pixel under it and take the motion vector of
    the closest depth in its 3x3 neighbourhood. Edges of moving objects then carry the object's motion rather than the
    background's, which is the main cause of edge ghosting. Background pixels, marked by round 1's sentinel, reproject
-   from camera rotation alone.
+   from camera rotation alone. Beside a fast edge a pixel on the farther surface keeps its own motion (amendment 23).
 2. **History fetch.** Sample the history at the reprojected position with a 5-tap Catmull-Rom filter. Bilinear history
    sampling blurs a little more every frame, and a stability-first filter keeps history for many frames.
 3. **Disocclusion.** Reproject the pixel's linear depth and compare it with the previous frame's depth at the
    reprojected position. Beyond a relative tolerance the pixel was hidden last frame, and its history weight drops to
-   zero. A reprojected position off screen does the same. A moving surface skips the test (amendment 17).
+   zero. A reprojected position off screen does the same. A moving surface skips the test (amendment 17). A mostly
+   covered footprint counts as hidden unless a thin feature covered it (amendment 23).
 4. **Current sample reconstruction.** Gather the 3x3 internal samples around the display pixel and weight each by a
    Lanczos 2 kernel on the distance from its jittered sample position to the display pixel centre, measured in
    internal pixels. That is what turns jittered low resolution frames into a higher resolution image, and at `Native`
@@ -270,3 +271,14 @@ and changed these details. Each group's "Contract amendments" block carries the 
     the frame-to-frame change the output makes and the reference does not, compared with MSAA 4x's. Sharpness floors
     guard the blur that added change cannot see. The zoom is asserted as its error after a 5 by 5 low-pass against a
     one-frame-lag control.
+23. Step 1's dilation and step 3's depth test give way beside a fast edge and around a revealed place. Where the centre
+    texel lies farther than the dilated nearest surface by more than the disocclusion tolerance, and the two move more
+    than `DilationReachInternalPixels` (1.25 internal pixels) apart, the dilated motion carries the pixel onto another
+    texel of the farther surface, so the pixel reprojects by its centre texel's own motion and depth. Step 3 also
+    disoccludes a pixel whose expected surface shows under less than `DisocclusionVisibleShare` (half) of the bilinear
+    weight of its four stored depths, unless the nearest of them is thin, apart in depth from both its neighbours along
+    a row or a column, as a sub-texel feature the jitter missed is. Before, a keyed box crossing a textured wall at 4
+    display pixels a frame left the column behind its trailing edge holding a wall texel 4 pixels away at full
+    confidence, and kept its own colour in the ring of pixels around its old place, whose footprints reached past its
+    edge: 63 and 180 of 840 trail pixels at Native and Quality passed a freshly revealed wall's difference by more than
+    0.05, against 1 and 0 now.

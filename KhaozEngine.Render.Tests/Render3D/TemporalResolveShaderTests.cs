@@ -44,6 +44,11 @@ namespace KhaozEngine.Tests.Render3D
             { "const float LockEdgeMotionFraction = 0.001953125;", TemporalResolveTuning.LockEdgeMotionFraction, 1f / 512f },
             { "const float LockEdgeFloorInternalPixels = 0.001;", TemporalResolveTuning.LockEdgeFloorInternalPixels, 1e-3f },
             { "const float ClipFlagMinimumMove = 0.0009765625;", TemporalResolveTuning.ClipFlagMinimumMove, 1f / 1024f },
+            {
+                "const float DilationReachInternalPixels = 1.25;", TemporalResolveTuning.DilationReachInternalPixels,
+                1.25f
+            },
+            { "const float DisocclusionVisibleShare = 0.5;", TemporalResolveTuning.DisocclusionVisibleShare, 0.5f },
         };
 
         [Theory]
@@ -92,32 +97,79 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void The_expected_depth_and_the_static_previous_position_are_the_CSharp_mirrors_in_GLSL()
         {
-            // TemporalResolveMath.ExpectedPreviousDepth and StaticPreviousUv, term for term, at the dilated texel's own
+            // TemporalResolveMath.ExpectedPreviousDepth and StaticPreviousUv, term for term, at a texel's own
             // unjittered sample position and depth, which is the point that texel's motion was written for.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("vec2 samplePosition = vec2(texel) + 0.5 - jitter;", core, StringComparison.Ordinal);
             Assert.Contains("closestSample = samplePosition;", core, StringComparison.Ordinal);
-            Assert.Contains("vec2 closestUv = closestSample / internalSize;", core, StringComparison.Ordinal);
-            Assert.Contains("vec2 closestNdc = vec2(closestUv.x * 2.0 - 1.0, 1.0 - closestUv.y * 2.0);", core,
+            Assert.Contains("vec2 sampleUv = sampleInternal / internalSize;", core, StringComparison.Ordinal);
+            Assert.Contains("vec2 sampleNdc = vec2(sampleUv.x * 2.0 - 1.0, 1.0 - sampleUv.y * 2.0);", core,
                 StringComparison.Ordinal);
-            Assert.Contains("float clipW = CurrentDepth.x > 0.5 ? closestDepth : 1.0;", core, StringComparison.Ordinal);
-            Assert.Contains("vec4 previousView = CurrentToPrevious * vec4(closestNdc * clipW, closestDepth, 1.0);", core,
+            Assert.Contains("float clipW = CurrentDepth.x > 0.5 ? depth : 1.0;", core, StringComparison.Ordinal);
+            Assert.Contains("vec4 previousView = CurrentToPrevious * vec4(sampleNdc * clipW, depth, 1.0);", core,
                 StringComparison.Ordinal);
             Assert.Contains("expectedDepth = -previousView.z;", core, StringComparison.Ordinal);
             Assert.Contains("vec4 staticClip = PreviousProjection * previousView;", core, StringComparison.Ordinal);
             Assert.Contains("if (staticClip.w > 1.0e-6) {", core, StringComparison.Ordinal);
             Assert.Contains("vec2 staticUv = vec2(staticClip.x / staticClip.w * 0.5 + 0.5, 0.5 - staticClip.y / staticClip.w * 0.5);",
                 core, StringComparison.Ordinal);
-            Assert.Contains("vec2 surfaceMotion = (staticUv - (closestUv - closestMotion)) * internalSize;", core,
+            Assert.Contains("vec2 surfaceMotion = (staticUv - (sampleUv - motion)) * internalSize;", core,
                 StringComparison.Ordinal);
-            Assert.Contains("float movingThreshold = MovingSurfaceInternalPixels + length(closestMotion * internalSize) "
-                + "* MovingSurfaceMotionFraction;", core, StringComparison.Ordinal);
+            Assert.Contains("float movingThreshold = MovingSurfaceInternalPixels", core, StringComparison.Ordinal);
+            Assert.Contains("+ length(motion * internalSize) * MovingSurfaceMotionFraction;", core,
+                StringComparison.Ordinal);
             Assert.Contains("depthTested = length(surfaceMotion) <= movingThreshold;", core, StringComparison.Ordinal);
             Assert.DoesNotContain("CurrentToPrevious * vec4(ndcXY", core, StringComparison.Ordinal);
 
-            // History is still read where the dilated motion carries the display pixel.
-            Assert.Contains("previousUv = uv - closestMotion;", core, StringComparison.Ordinal);
+            // History is read where the dilated motion carries the display pixel, from the dilated texel's own point.
+            Assert.Contains("previousUv = uv - motion;", core, StringComparison.Ordinal);
+            Assert.Contains("temporalReproject(uv, closestSample, closestMotion, closestDepth, closestIsBackground, "
+                + "internalSize, previousUv,", core, StringComparison.Ordinal);
             Assert.Contains("bool isBackground = abs(motion.x) > MotionSentinel;", core, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Beyond_the_dilation_reach_a_pixel_on_the_farther_surface_reprojects_by_its_own_centre_texel()
+        {
+            // Dilation reads history along the nearer surface's motion. Where the centre texel lies on the farther
+            // surface and the two move more than DilationReachInternalPixels apart, that history is another texel of
+            // the farther surface, so the pixel reprojects by its centre texel's own motion and depth, after the edge
+            // signal and before the depth test that reads what it reprojected.
+            string core = ShaderSources.TemporalResolveCoreGlsl;
+            Assert.Contains("centreDepth = viewDepth;", core, StringComparison.Ordinal);
+            Assert.Contains("centreSample = samplePosition;", core, StringComparison.Ordinal);
+            string own = "if (edgeMotion > DilationReachInternalPixels && centreDepth > closestDepth * (1.0 + "
+                + "DisocclusionTolerance)) {";
+            Assert.Contains(own, core, StringComparison.Ordinal);
+            Assert.Contains("temporalReproject(uv, centreSample, centreMotion, centreDepth, centreIsBackground, "
+                + "internalSize, previousUv,", core, StringComparison.Ordinal);
+            int edge = core.IndexOf("bool movingEdge = ", StringComparison.Ordinal);
+            int reach = core.IndexOf(own, StringComparison.Ordinal);
+            int test = core.IndexOf("DepthFootprint footprint = temporalDepthFootprint(previousUv,",
+                StringComparison.Ordinal);
+            Assert.True(edge >= 0 && reach > edge && test > reach,
+                "the own reprojection must follow the edge signal it reads and precede the depth test");
+        }
+
+        [Fact]
+        public void A_mostly_covered_footprint_is_disoccluded_unless_its_nearest_stored_depth_is_thin()
+        {
+            // All four stored depths nearer than expected, or the expected surface under less than
+            // DisocclusionVisibleShare of their bilinear weight while the nearest of them is no thin feature.
+            string core = ShaderSources.TemporalResolveCoreGlsl;
+            Assert.Contains("float weight = mix(1.0 - f.x, f.x, float(corner & 1)) "
+                + "* mix(1.0 - f.y, f.y, float(corner >> 1));", core, StringComparison.Ordinal);
+            Assert.Contains("if (!(stored < expectedDepth * (1.0 - DisocclusionTolerance))) "
+                + "footprint.visibleShare += weight;", core, StringComparison.Ordinal);
+            Assert.Contains("|| footprint.farthest < expectedDepth * (1.0 - DisocclusionTolerance)", core,
+                StringComparison.Ordinal);
+            Assert.Contains("|| (footprint.visibleShare < DisocclusionVisibleShare", core, StringComparison.Ordinal);
+            Assert.Contains("&& !temporalThinDepth(footprint.nearestTexel, footprint.nearest, maxTexel)));", core,
+                StringComparison.Ordinal);
+            Assert.Contains("bool leftApart = depth < left * limit || left < depth * limit;", core,
+                StringComparison.Ordinal);
+            Assert.Contains("return (leftApart && rightApart) || (upApart && downApart);", core,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -170,13 +222,14 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("bool movingEdge = edgeMotion > max(LockEdgeFloorInternalPixels, length(closestMotion * internalSize) "
                 + "* LockEdgeMotionFraction);", core, StringComparison.Ordinal);
             Assert.Contains("if (historyValid && onScreen && (depthTested || movingEdge)) {", core, StringComparison.Ordinal);
-            Assert.Contains("heldFromFarther = movingEdge && expectedDepth < nearest * (1.0 - DisocclusionTolerance);", core,
-                StringComparison.Ordinal);
+            Assert.Contains("heldFromFarther = movingEdge && expectedDepth < footprint.nearest "
+                + "* (1.0 - DisocclusionTolerance);", core, StringComparison.Ordinal);
             Assert.Contains("disoccluded = depthTested", core, StringComparison.Ordinal);
-            Assert.Contains("&& (!(expectedDepth > 1.0e-6) || farthest < expectedDepth * (1.0 - DisocclusionTolerance));", core,
+            Assert.Contains("disoccluded = depthTested && (!(expectedDepth > 1.0e-6)", core,
                 StringComparison.Ordinal);
             int edge = core.IndexOf("bool movingEdge = ", StringComparison.Ordinal);
-            int fetch = core.IndexOf("texelFetch(sampler2D(PrevDepth, LinearClamp)", StringComparison.Ordinal);
+            int fetch = core.IndexOf("DepthFootprint footprint = temporalDepthFootprint(previousUv,",
+                StringComparison.Ordinal);
             int refresh = core.IndexOf("if (ridge) lockValue = 1.0;", StringComparison.Ordinal);
             Assert.True(edge >= 0 && fetch > edge && refresh > fetch,
                 "the edge signal must come before the stored depths it gates, and the drop before the ridge refresh");

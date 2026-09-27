@@ -126,5 +126,37 @@ namespace KhaozEngine.Render3D.Internal
         /// under 1/4096. 1/1024 is a quarter of an 8-bit display step, far below anything visible, while a sharp
         /// change of colour between frames still flags nearly every pixel it reaches.</summary>
         public const float ClipFlagMinimumMove = 1f / 1024f;
+        /// <summary>Steps 1 and 3. The most motion, in internal pixels, between the dilated nearest surface and the
+        /// centre texel's own surface at which a pixel whose centre texel lies on the farther surface, by more than
+        /// <see cref="DisocclusionTolerance"/>, still reads history along the dilated motion. Past it that motion
+        /// carries the pixel beyond the nearer surface's edge, onto another texel of the farther surface, so the pixel
+        /// reprojects by its centre texel's own motion and depth instead. A 30 display pixel box keyed and crossing a
+        /// textured wall at 4 display pixels a frame, 4 internal pixels at Native and 2.7 at Quality, left 63 and 180
+        /// of its 840 trail pixels further from the bare wall than a freshly revealed wall is, because the column
+        /// behind its trailing edge read a wall texel 4 pixels away at full confidence each frame. With this and
+        /// <see cref="DisocclusionVisibleShare"/> it leaves 1 and 0. The keyed line facts move up to 0.9 internal
+        /// pixels a frame and the nearest-depth fact 1, and all keep the dilated history. 1.25 leaves a quarter pixel
+        /// over that for the half-float motion target and the float round trip of a background centre, and 1 measures
+        /// the same. At 0.5, the moving-surface threshold, the nearest-depth fact fails and a keyed line at 0.6
+        /// internal pixels a frame on Quality keeps 12 percent of its contrast against 74. At 1.5 the box at
+        /// UltraPerformance, 1.33 internal pixels a frame, leaves 233 pixels against 60.</summary>
+        public const float DilationReachInternalPixels = 1.25f;
+        /// <summary>Step 3. A depth-tested pixel whose expected surface shows under less than this share of the
+        /// bilinear weight of its four stored depths was mostly covered last frame, and drops its history, unless the
+        /// nearest of the four is thin: apart in depth, nearer or farther, from both its neighbours along a row or a
+        /// column by <see cref="DisocclusionTolerance"/>. Otherwise any one stored depth at the expected surface keeps
+        /// the history, which spares a sub-pixel edge, but it also kept the ring of pixels around a moving object's old
+        /// place, whose footprint reaches past the edge, from ever reading as revealed. The keyed box crossing a
+        /// textured wall kept its colour in its bottom row at Native, and in its top and bottom rows and its first
+        /// revealed column at Quality, and with <see cref="DilationReachInternalPixels"/> alone left 9 and 38 trail
+        /// pixels against 1 and 0 with both. A quarter leaves 17 at Quality. Three quarters make a flat crossing's
+        /// moving edges flip faster, 0.0082 and 0.014 fast flips per pixel a frame at Balanced and UltraPerformance
+        /// against 0.0025 and 0.0071, and a nearer surface crossing a held line on UltraPerformance ghosts 2 display
+        /// pixels. Without the thin exception a line a texel wide against the sky, or a blade over ground, drops its
+        /// history on the frames the jitter misses it: the sky line's centre averages 13.9 percent at Native against
+        /// its coverage of 37.5. Counting only a depth nearer than both neighbours as thin lets a line beside a nearer
+        /// surface lose it too: the sky line beside a still surface at UltraPerformance changes by up to 9.5 percent of
+        /// its contrast a frame against 2.6.</summary>
+        public const float DisocclusionVisibleShare = 0.5f;
     }
 }

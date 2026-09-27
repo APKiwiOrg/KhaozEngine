@@ -72,6 +72,8 @@ const float LockEdgeRelease = 1.0;
 const float LockEdgeMotionFraction = 0.001953125;
 const float LockEdgeFloorInternalPixels = 0.001;
 const float ClipFlagMinimumMove = 0.0009765625;
+const float DilationReachInternalPixels = 1.25;
+const float DisocclusionVisibleShare = 0.5;
 ";
 
         // ---- The resolve's core: bindings, uniforms and the per-pixel resolve, no stage inputs or outputs ----
@@ -149,6 +151,88 @@ vec4 sampleHistoryCatmullRom(vec2 uv, vec2 size) {
     return clamp(sum / weight, texelMin, texelMax);
 }
 
+// Steps 1 and 3 for one texel's surface point: where this display pixel was last frame if it moved as that point did,
+// and the depth the point had there if static. Background reprojects from camera rotation alone. A surface reads
+// history where its motion carries the display pixel. The expected depth and the moving-surface test use the texel's
+// own point, its unjittered sample at its own depth, which is the point the motion target wrote that motion for.
+// CurrentToPrevious takes it to last frame's view space as if static, and PreviousProjection gives the UV it had
+// there. On a static surface that UV and the texel's own previous position agree up to float precision and the motion
+// target's half-float rounding. More than MovingSurfaceInternalPixels apart, plus MovingSurfaceMotionFraction of the
+// motion for that rounding, the surface moved, and skips the depth test. Under perspective so does one whose static
+// point sat on or behind last frame's camera plane. Under orthographic that point keeps the test, which rejects it as
+// not in front.
+void temporalReproject(vec2 uv, vec2 sampleInternal, vec2 motion, float depth, bool isBackground, vec2 internalSize,
+    out vec2 previousUv, out float expectedDepth, out bool depthTested) {
+    vec2 ndcXY = vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+    previousUv = vec2(-1.0);
+    expectedDepth = BackgroundLinearDepth;
+    depthTested = true;
+    if (isBackground) {
+        vec4 previousClip = BackgroundToPrevious * vec4(ndcXY, 1.0, 1.0);
+        if (previousClip.w > 1.0e-6)
+            previousUv = vec2(previousClip.x / previousClip.w * 0.5 + 0.5, 0.5 - previousClip.y / previousClip.w * 0.5);
+    } else {
+        previousUv = uv - motion;
+        vec2 sampleUv = sampleInternal / internalSize;
+        vec2 sampleNdc = vec2(sampleUv.x * 2.0 - 1.0, 1.0 - sampleUv.y * 2.0);
+        float clipW = CurrentDepth.x > 0.5 ? depth : 1.0;
+        vec4 previousView = CurrentToPrevious * vec4(sampleNdc * clipW, depth, 1.0);
+        expectedDepth = -previousView.z;
+        vec4 staticClip = PreviousProjection * previousView;
+        depthTested = false;
+        if (staticClip.w > 1.0e-6) {
+            vec2 staticUv = vec2(staticClip.x / staticClip.w * 0.5 + 0.5, 0.5 - staticClip.y / staticClip.w * 0.5);
+            vec2 surfaceMotion = (staticUv - (sampleUv - motion)) * internalSize;
+            float movingThreshold = MovingSurfaceInternalPixels
+                + length(motion * internalSize) * MovingSurfaceMotionFraction;
+            depthTested = length(surfaceMotion) <= movingThreshold;
+        }
+    }
+}
+
+// Step 3's four stored depths around a previous position: the farthest, the nearest and where it lies, and the share
+// of the bilinear weight on those not nearer than the expected depth by the disocclusion tolerance.
+struct DepthFootprint { float farthest; float nearest; ivec2 nearestTexel; float visibleShare; };
+
+DepthFootprint temporalDepthFootprint(vec2 previousUv, vec2 internalSize, ivec2 maxTexel, float expectedDepth) {
+    vec2 position = previousUv * internalSize - 0.5;
+    ivec2 baseTexel = ivec2(floor(position));
+    vec2 f = position - vec2(baseTexel);
+    DepthFootprint footprint;
+    footprint.farthest = 0.0;
+    footprint.nearest = 2.0 * BackgroundLinearDepth;
+    footprint.nearestTexel = baseTexel;
+    footprint.visibleShare = 0.0;
+    for (int corner = 0; corner < 4; corner++) {
+        ivec2 texel = clamp(baseTexel + ivec2(corner & 1, corner >> 1), ivec2(0), maxTexel);
+        float stored = texelFetch(sampler2D(PrevDepth, LinearClamp), texel, 0).r;
+        footprint.farthest = max(footprint.farthest, stored);
+        if (stored < footprint.nearest) {
+            footprint.nearest = stored;
+            footprint.nearestTexel = texel;
+        }
+        float weight = mix(1.0 - f.x, f.x, float(corner & 1)) * mix(1.0 - f.y, f.y, float(corner >> 1));
+        if (!(stored < expectedDepth * (1.0 - DisocclusionTolerance))) footprint.visibleShare += weight;
+    }
+    return footprint;
+}
+
+// Whether the depth stored at a texel is a thin feature: apart from both its neighbours along a row or along a column,
+// nearer or farther, by the disocclusion tolerance, as a blade or a wire a texel wide stands apart from the sky behind
+// it and from a rock beside it.
+bool temporalThinDepth(ivec2 texel, float depth, ivec2 maxTexel) {
+    float left = texelFetch(sampler2D(PrevDepth, LinearClamp), clamp(texel - ivec2(1, 0), ivec2(0), maxTexel), 0).r;
+    float right = texelFetch(sampler2D(PrevDepth, LinearClamp), clamp(texel + ivec2(1, 0), ivec2(0), maxTexel), 0).r;
+    float up = texelFetch(sampler2D(PrevDepth, LinearClamp), clamp(texel - ivec2(0, 1), ivec2(0), maxTexel), 0).r;
+    float down = texelFetch(sampler2D(PrevDepth, LinearClamp), clamp(texel + ivec2(0, 1), ivec2(0), maxTexel), 0).r;
+    float limit = 1.0 - DisocclusionTolerance;
+    bool leftApart = depth < left * limit || left < depth * limit;
+    bool rightApart = depth < right * limit || right < depth * limit;
+    bool upApart = depth < up * limit || up < depth * limit;
+    bool downApart = depth < down * limit || down < depth * limit;
+    return (leftApart && rightApart) || (upApart && downApart);
+}
+
 ivec2 temporalDisplaySize() { return ivec2(Sizes.zw); }
 
 TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
@@ -181,6 +265,8 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     float reactiveDifference = 0.0;
     vec2 centreMotion = vec2(0.0);
     bool centreIsBackground = true;
+    float centreDepth = BackgroundLinearDepth;
+    vec2 centreSample = pixelCentre;
     float lumas[9];
 
     // Step 4's kernel is separable, and each axis of a clamped 3x3 texel depends on that axis alone. So three weights
@@ -229,11 +315,13 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             vec2 motion = texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg;
             float ndcDepth = texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r;
             bool isBackground = abs(motion.x) > MotionSentinel;
+            float viewDepth = isBackground ? BackgroundLinearDepth : temporalLinearDepth(ndcDepth, CurrentDepth);
             if (x == 0 && y == 0) {
                 centreMotion = motion;
                 centreIsBackground = isBackground;
+                centreDepth = viewDepth;
+                centreSample = samplePosition;
             }
-            float viewDepth = isBackground ? BackgroundLinearDepth : temporalLinearDepth(ndcDepth, CurrentDepth);
             if (viewDepth < closestDepth) {
                 closestDepth = viewDepth;
                 closestSample = samplePosition;
@@ -255,39 +343,13 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     current.xyz = clamp(current.xyz, neighbourMin, neighbourMax);   // the negative lobes cannot ring past the neighbourhood
     current.w = clamp(current.w, alphaMin, alphaMax);
 
-    // Steps 1 and 3: where this pixel was last frame, and the depth a static surface there had. Background reprojects
-    // from camera rotation alone. A surface reads history where the dilated motion carries this display pixel. The
-    // expected depth and the moving-surface test use the dilated texel's own surface point, its unjittered sample at its
-    // own depth, which is the point the motion target wrote that motion for. CurrentToPrevious takes it to last
-    // frame's view space as if static, and PreviousProjection gives the UV it had there. On a static surface that UV
-    // and the texel's own previous position agree up to float precision and the motion target's half-float rounding.
-    // More than MovingSurfaceInternalPixels apart, plus MovingSurfaceMotionFraction of the motion for that rounding, the
-    // surface moved, and skips the depth test. Under perspective so does one whose static point sat on or behind last
-    // frame's camera plane. Under orthographic that point keeps the test, which rejects it as not in front.
-    vec2 ndcXY = vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
-    vec2 previousUv = vec2(-1.0);
-    float expectedDepth = BackgroundLinearDepth;
-    bool depthTested = true;
-    if (closestIsBackground) {
-        vec4 previousClip = BackgroundToPrevious * vec4(ndcXY, 1.0, 1.0);
-        if (previousClip.w > 1.0e-6)
-            previousUv = vec2(previousClip.x / previousClip.w * 0.5 + 0.5, 0.5 - previousClip.y / previousClip.w * 0.5);
-    } else {
-        previousUv = uv - closestMotion;
-        vec2 closestUv = closestSample / internalSize;
-        vec2 closestNdc = vec2(closestUv.x * 2.0 - 1.0, 1.0 - closestUv.y * 2.0);
-        float clipW = CurrentDepth.x > 0.5 ? closestDepth : 1.0;
-        vec4 previousView = CurrentToPrevious * vec4(closestNdc * clipW, closestDepth, 1.0);
-        expectedDepth = -previousView.z;
-        vec4 staticClip = PreviousProjection * previousView;
-        depthTested = false;
-        if (staticClip.w > 1.0e-6) {
-            vec2 staticUv = vec2(staticClip.x / staticClip.w * 0.5 + 0.5, 0.5 - staticClip.y / staticClip.w * 0.5);
-            vec2 surfaceMotion = (staticUv - (closestUv - closestMotion)) * internalSize;
-            float movingThreshold = MovingSurfaceInternalPixels + length(closestMotion * internalSize) * MovingSurfaceMotionFraction;
-            depthTested = length(surfaceMotion) <= movingThreshold;
-        }
-    }
+    // Steps 1 and 3: where this pixel was last frame, and the depth a static surface there had, from the dilated
+    // texel's own surface point (temporalReproject).
+    vec2 previousUv;
+    float expectedDepth;
+    bool depthTested;
+    temporalReproject(uv, closestSample, closestMotion, closestDepth, closestIsBackground, internalSize, previousUv,
+        expectedDepth, depthTested);
     // Motion is clamped to two screens and a point behind last frame's camera is written two screens away, so any
     // such previous position falls outside [0, 1] here and is rejected like any other off-screen one.
     bool onScreen = all(greaterThanEqual(previousUv, vec2(0.0))) && all(lessThanEqual(previousUv, vec2(1.0)));
@@ -314,30 +376,42 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     }
     bool movingEdge = edgeMotion > max(LockEdgeFloorInternalPixels, length(closestMotion * internalSize) * LockEdgeMotionFraction);
 
-    // Step 3: disocclusion, one-sided. The farthest of the four stored depths around the reprojected position keeps a
-    // sub-pixel edge from reading as revealed. A background pixel expects BackgroundLinearDepth, so anything stored
-    // nearer there was covering it. A static surface on or behind last frame's camera had no history there. The
-    // footprint sits at the display pixel's previous position, where history is read, while the expected depth comes
-    // from the dilated texel's own point. That is safe: the dilated texel carries the nearest depth in the 3x3, and the
-    // test fires only on a stored depth nearer than expected, so the nearest expectation can only make it fire less.
-    // The same four depths tell step 6 whether a pixel at a moving edge reads history a farther surface left: every
-    // one of them farther than the moving surface's expected depth. That runs for a moving surface too, whose depth
-    // test is skipped, and costs no fetch beyond the four a depth-tested pixel already takes.
+    // Steps 1 and 3 beside a fast edge: dilation carries the nearer surface's motion so its edge keeps its history, but
+    // where the centre texel lies on the farther surface, by more than the disocclusion tolerance, and the two move
+    // more than DilationReachInternalPixels apart, that motion carries this pixel beyond the edge's reach, onto another
+    // texel of the farther surface. The pixel then reprojects by its centre texel's own motion and depth, so a pixel
+    // the nearer surface just uncovered finds it in the stored depths and is disoccluded, and one it never covered
+    // keeps its own history.
+    if (edgeMotion > DilationReachInternalPixels && centreDepth > closestDepth * (1.0 + DisocclusionTolerance)) {
+        temporalReproject(uv, centreSample, centreMotion, centreDepth, centreIsBackground, internalSize, previousUv,
+            expectedDepth, depthTested);
+        onScreen = all(greaterThanEqual(previousUv, vec2(0.0))) && all(lessThanEqual(previousUv, vec2(1.0)));
+        motionPixels = onScreen ? length((uv - previousUv) * displaySize) : 0.0;
+    }
+
+    // Step 3: disocclusion, one-sided. A pixel expects the depth of the surface it reprojected, and a stored depth
+    // nearer than that means something covered it last frame. All four stored depths around the reprojected position
+    // nearer drops the history. Where the expected surface shows under less than DisocclusionVisibleShare of their
+    // bilinear weight, the pixel was mostly covered and drops it too, unless the nearest stored depth is thin
+    // (temporalThinDepth): a feature a texel wide that the jitter missed this frame, whose history the thin-feature
+    // lock of step 6 holds. Any farther stored depth kept a sub-pixel edge from reading as revealed, and on its own it
+    // kept the ring of pixels around a moving object's old place, whose footprint reaches past its edge, from ever
+    // being disoccluded. A background pixel expects BackgroundLinearDepth, so anything stored nearer there was covering
+    // it. A static surface on or behind last frame's camera had no history there. The footprint sits at the display
+    // pixel's previous position, where history is read, while the expected depth comes from the reprojected texel's own
+    // point, the dilated nearest in the 3x3 unless the pixel reprojected by its own. The same four depths tell step 6
+    // whether a pixel at a moving edge reads history a farther surface left: every one of them farther than the moving
+    // surface's expected depth. That runs for a moving surface too, whose depth test is skipped, and costs no fetch
+    // beyond the four a depth-tested pixel already takes.
     bool disoccluded = false;
     bool heldFromFarther = false;
     if (historyValid && onScreen && (depthTested || movingEdge)) {
-        ivec2 baseTexel = ivec2(floor(previousUv * internalSize - 0.5));
-        float farthest = 0.0;
-        float nearest = 2.0 * BackgroundLinearDepth;
-        for (int corner = 0; corner < 4; corner++) {
-            ivec2 texel = clamp(baseTexel + ivec2(corner & 1, corner >> 1), ivec2(0), maxTexel);
-            float stored = texelFetch(sampler2D(PrevDepth, LinearClamp), texel, 0).r;
-            farthest = max(farthest, stored);
-            nearest = min(nearest, stored);
-        }
-        disoccluded = depthTested
-            && (!(expectedDepth > 1.0e-6) || farthest < expectedDepth * (1.0 - DisocclusionTolerance));
-        heldFromFarther = movingEdge && expectedDepth < nearest * (1.0 - DisocclusionTolerance);
+        DepthFootprint footprint = temporalDepthFootprint(previousUv, internalSize, maxTexel, expectedDepth);
+        disoccluded = depthTested && (!(expectedDepth > 1.0e-6)
+            || footprint.farthest < expectedDepth * (1.0 - DisocclusionTolerance)
+            || (footprint.visibleShare < DisocclusionVisibleShare
+                && !temporalThinDepth(footprint.nearestTexel, footprint.nearest, maxTexel)));
+        heldFromFarther = movingEdge && expectedDepth < footprint.nearest * (1.0 - DisocclusionTolerance);
     }
 
     // Step 2: Catmull-Rom history at the reprojected position. A NaN or an infinity never reaches the output, because

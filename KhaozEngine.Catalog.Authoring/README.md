@@ -216,8 +216,15 @@ one connection per call, and SQL Server's Serializable transaction covers step 1
 cancellation all release the draft. Two things recover a marker nothing cleared, which is what a killed
 process leaves. A marker naming a version the store has moved past is STALE, and
 `ReadPublishBaselineAsync` clears it, which is the read every publish starts with. A marker naming the
-version the store still stands at belongs to a publish that died before its commit, and the next publish's
-step 1 overwrites it, because a publish is exactly what an operator does to recover.
+version the store still stands at belongs to a publish that died before its commit. A later publish
+overwrites that marker at step 1 and clears it on exit.
+
+The same-version marker carries no publisher identity, so an edit or discard cannot tell a dead publisher
+from a live one and never clears it. After confirming no publisher is live, a host can call
+`IContentAuthoringStore.ClearDraftFreezeAsync` to release the marker and preserve every pending edit, so the
+operator can continue editing or intentionally discard the draft. Run `catalog-publish` only when the current
+draft is intentionally ready to publish, since it may commit that draft. Its step 1 replaces the marker and
+its exit clears it.
 
 Driving `ContentPublisher.PrepareAsync` on its own therefore leaves a frozen draft behind, deliberately: half
 a publish is the state the marker describes. Call `ClearDraftFreezeAsync` when standing in for the commit.
@@ -694,11 +701,12 @@ ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
    The minimum builds rise to at least the running build's ordinals and never fall below the baseline's.
 9. After ANY publish failure the run READS the ledger and reports the disposition the row holds, which is
    `Adopted` when a rival found the catalog already satisfied and published no version at all. It discards a
-   draft only under one of the two proofs below, and a `publish-in-progress` refusal means a rival is live,
-   so the draft is left alone and the run stands off. A refusal over a draft that is NOT this plan says
-   nothing about this plan, so that draft is resolved and the upgrade is tried again rather than blamed. An
-   exception thrown after the commit point and a refusal before it look identical from outside, and only the
-   ledger tells them apart.
+   draft only under one of the two proofs below, and a `publish-in-progress` refusal means a marker stands, so
+   the run treats the publisher as live, leaves the draft alone and stands off. A publisher that died before
+   commit leaves the same marker and needs the explicit recovery described above. A refusal over a draft that
+   is NOT this plan says nothing about this plan, so that draft is resolved and the upgrade is tried again
+   rather than blamed. An exception thrown after the commit point and a refusal before it look identical from
+   outside, and only the ledger tells them apart.
 10. `Preview` writes nothing. It plans the first pending definition exactly and says which disposition an
     APPLY would record, because a definition the catalog already carries publishes no version at all and a
     preview that called that a plan left an operator to find out by running the apply. The step state is

@@ -11,6 +11,19 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Connected full and shaped road tiles share exposed boundaries across region seams, while unmarked
   overlays keep hard edges. The default width is 0.2 metres and the underlying terrain, collision and
   picking stay unchanged.
+- SQL Server wallet mutations claim the idempotency receipt range before updating a shared balance row,
+  avoiding the deadlock reproduced by concurrent credits and debits ([#1168](https://github.com/APKiwiOrg/KhaozEngine/issues/1168)).
+- A frozen catalog draft refusal now distinguishes a draft intentionally ready to publish from one an
+  operator needs to keep editing, with a safe explicit marker-clear path after checking no publisher is live
+  ([#939](https://github.com/APKiwiOrg/KhaozEngine/issues/939)).
+- `RadialMenu` can opt into drawing enabled entry details beneath wedge labels in a separate theme color.
+  The default keeps existing rendering, and `DetailGap` now controls the existing two-pixel spacing
+  ([#893](https://github.com/APKiwiOrg/KhaozEngine/issues/893)).
+- The replication removal allocation regression measures three fresh views and keeps the lowest reading,
+  preserving its tight per-removal bound under loaded test runs
+  ([#1169](https://github.com/APKiwiOrg/KhaozEngine/issues/1169)).
+- The `PublicView` zero-allocation regression uses three measured windows so a one-time runtime allocation
+  does not fail the full ItemInstances suite ([#1072](https://github.com/APKiwiOrg/KhaozEngine/issues/1072)).
 
 ## 20.8.0
 

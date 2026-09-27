@@ -65,6 +65,8 @@ namespace KhaozEngine.Gui
         public bool IsOpen { get; private set; }
         /// <summary>Controls whether entry selection commits immediately or waits for a footer choice.</summary>
         public RadialMenuInteractionMode InteractionMode { get; set; }
+        /// <summary>Draws enabled entry detail beneath its wedge label. Disabled entry detail always draws there.</summary>
+        public bool ShowEnabledEntryDetails { get; set; }
         public int HoverIndex { get; private set; } = -1;
         public int ActiveIndex { get; private set; } = -1;
         public bool WasSelected { get; private set; }

@@ -249,13 +249,14 @@ public sealed class CatalogEditActionTests : IDisposable
     }
 
     /// <summary>
-    /// A draft a publish holds takes no edit and no discard: both are a 409 naming the reason and the way
-    /// out, because the change set the pipeline read at step 1 is the one the commit deletes.
+    /// A freeze marker left by a process death before commit takes no edit and no discard. Both are a 409
+    /// naming the safe console action and the explicit host release seam, and neither clears a marker that
+    /// could still belong to a live publisher.
     /// </summary>
     [Theory]
     [InlineData("catalog-edit")]
     [InlineData("catalog-discard")]
-    public async Task ADraftAPublishHolds_RefusesEveryWriteWithA409(string action)
+    public async Task AFreezeLeftByAPreCommitCrash_RefusesEveryWriteWithAnActionable409(string action)
     {
         await _harness.PublishThingsAsync("stone_sword");
         int sword = await _harness.IdOfAsync("stone_sword");
@@ -265,6 +266,8 @@ public sealed class CatalogEditActionTests : IDisposable
             CatalogAdminActions.Actor,
             CatalogActionHarness.Operator,
             "pending");
+        // This is the exact durable state a process death before commit leaves. The marker equals the active
+        // version, so stale-marker recovery cannot distinguish it from a publisher that is still running.
         await _harness.Store.FreezeDraftAsync(await _harness.Store.GetActiveVersionAsync());
 
         JsonElement body = await _harness.ConflictAsync(action, $$"""
@@ -273,7 +276,13 @@ public sealed class CatalogEditActionTests : IDisposable
         """);
 
         Assert.Equal(ContentAuthoringException.PublishInProgressReason, body.GetProperty("reason").GetString());
-        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("remedy").GetString()));
+        string remedy = Assert.IsType<string>(body.GetProperty("remedy").GetString());
+        Assert.Contains("catalog-publish", remedy, StringComparison.Ordinal);
+        Assert.Contains("IContentAuthoringStore.ClearDraftFreezeAsync", remedy, StringComparison.Ordinal);
+        Assert.Contains("no publisher is live", remedy, StringComparison.Ordinal);
+        Assert.Contains("preserve every pending edit", remedy, StringComparison.Ordinal);
+        Assert.Contains("only when the current draft is intentionally ready to publish", remedy, StringComparison.Ordinal);
+        Assert.True((await _harness.Store.GetOpenDraftAsync())?.IsFrozen);
     }
 
     /// <summary>

@@ -10,7 +10,9 @@ namespace KhaozEngine.Commerce.SqlServer;
 
 /// <summary>SQL Server / Azure SQL-backed wallet + grant-schedule store. A fresh pooled <see cref="SqlConnection"/>
 /// per call, no in-process semaphore: the database serializes concurrent operations via a
-/// <see cref="IsolationLevel.Serializable"/> transaction. Idempotency is enforced by a composite unique index on
+/// <see cref="IsolationLevel.Serializable"/> transaction. The receipt lookup takes an update lock before the
+/// balance mutation so overlapping missing-key ranges cannot deadlock against the shared balance row.
+/// Idempotency is enforced by a composite unique index on
 /// <c>(account_id, currency_id, idempotency_key)</c>: the same key used for a different account, or a different
 /// currency on the same account, is a distinct operation, not a replay. Within that scope, the stored ledger row's
 /// signed delta and reason distinguish an exact replay from an intent conflict.
@@ -113,8 +115,13 @@ CREATE TABLE dbo.grant_schedule (
         try
         {
             long signedDelta = isDebit ? -amount : amount;
+            // Claim the receipt key range before touching the shared balance row. A plain serializable read takes
+            // RangeS-S for a missing key, which lets several transactions reach the balance UPDATE. The winner then
+            // holds the balance X lock while waiting to convert its receipt range for INSERT, as the waiters retain
+            // RangeS-S and wait on that balance lock. UPDLOCK makes the initial range lock exclusive to one updater,
+            // preserving receipt-first replay checks while preventing that circular wait.
             Receipt? prior = await ReadReceiptAsync(conn, tx,
-                "SELECT delta, reason, post_balance FROM dbo.wallet_ledger WHERE account_id=@a AND currency_id=@c AND idempotency_key=@k",
+                "SELECT delta, reason, post_balance FROM dbo.wallet_ledger WITH (UPDLOCK) WHERE account_id=@a AND currency_id=@c AND idempotency_key=@k",
                 ct, ("@a", a.Value), ("@c", c.Value), ("@k", key)).ConfigureAwait(false);
             if (prior is Receipt receipt)
             {

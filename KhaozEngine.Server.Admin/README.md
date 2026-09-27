@@ -285,6 +285,13 @@ empty when the refusal is about the REQUEST rather than about the content. A 409
 whatever the race needs: a stale publish adds `expectedBaseVersion` and `actualBaseVersion`, a draft a publish
 is holding adds a `remedy`, and a blocked rollback adds `code`, `blockedByRules[]` and a `remedy`.
 
+The frozen-draft remedy first tells the operator to wait for the publisher and read the draft again. If the
+publisher process died before commit, the marker is indistinguishable from a live publisher's marker. After
+confirming no publisher is live, a host can call `IContentAuthoringStore.ClearDraftFreezeAsync` to release the
+marker and preserve every pending edit, letting the operator continue editing or intentionally discard the
+draft. Run `catalog-publish` only when the current draft is intentionally ready to publish. Neither
+`catalog-edit` nor `catalog-discard` clears the marker as a side effect.
+
 **The FIVE reads answer `{ error }` instead**, which is spec 10.2 and not an oversight: a read refuses for one
 reason at a time, an unknown type key or a page argument out of range, and there is no finding list to carry.
 A console that parses both shapes reads `error` from either.

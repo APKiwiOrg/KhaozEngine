@@ -61,7 +61,7 @@ namespace KhaozEngine.Gui
             0.035f,
             30f,
             0.82f,
-            10f,
+            2f,
             10f,
             new Vector2(56f, 30f),
             8f,

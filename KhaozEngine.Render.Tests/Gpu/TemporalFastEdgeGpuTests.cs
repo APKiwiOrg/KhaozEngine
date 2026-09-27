@@ -43,12 +43,15 @@ namespace KhaozEngine.Tests.Gpu
         static double FastFlipBound(FlickerStats f) =>
             Math.Max(MaxFastFlipShare * f.ReferenceFlips, ReferenceFastFlipAllowance * f.ReferenceFastFlips);
 
+        // A coverage energy or ring, or n/a where the scene's background is textured.
+        static string Share(double value) => double.IsNaN(value) ? "n/a" : $"{value:0.000}";
+
         string Report(FastEdgeScene scene, TemporalUpscale preset)
         {
             FastEdgeRun r = runs.Run(scene, preset);
             string line = $"{scene}, {preset}: {r.Flicker}, edge error {r.EdgeError:0.00000}, trail {r.TrailOver} of "
-                + $"{r.TrailChecked} (worst {r.TrailWorst:0.000}), coverage energy {r.CoverageEnergy:0.000}, ring "
-                + $"{r.RingEnergy:0.000}";
+                + $"{r.TrailChecked} (worst {r.TrailWorst:0.000}), coverage energy {Share(r.CoverageEnergy)}, ring "
+                + $"{Share(r.RingEnergy)}";
             output.WriteLine(line);
             return line;
         }
@@ -144,7 +147,7 @@ namespace KhaozEngine.Tests.Gpu
                         + $"| {f.AddedChange:0.00000} | {f.RemovedChange:0.00000} | {f.Sharpness:0.000} "
                         + $"| {f.Flips:0.00000} | {f.FastFlips:0.00000} | {f.ReferenceFlips:0.00000} "
                         + $"| {r.EdgeError:0.00000} | {r.TrailOver} of {r.TrailChecked} | {r.TrailWorst:0.000} "
-                        + $"| {f.Energy:0.000} | {r.CoverageEnergy:0.000} | {r.RingEnergy:0.000} |");
+                        + $"| {f.Energy:0.000} | {Share(r.CoverageEnergy)} | {Share(r.RingEnergy)} |");
                     Assert.True(r.TrailChecked > 0, $"{scene}, {preset}: the trail region measured nothing");
                 }
         }
@@ -201,7 +204,8 @@ namespace KhaozEngine.Tests.Gpu
     /// the pixels within 2 of the object's rectangle on each frame, the trail on the last frame, pixels the object
     /// covered two or more frames before that differ from the path without it by more than 0.05 in any channel, and
     /// the energy over the object's own reference coverage and the ring beside it
-    /// (<see cref="TemporalAcceptance.CoverageEnergy"/>).</summary>
+    /// (<see cref="TemporalAcceptance.CoverageEnergy"/>), NaN over the textured wall, where it measures
+    /// nothing.</summary>
     internal sealed record FastEdgeRun(FlickerStats Flicker, double EdgeError, int TrailOver, int TrailChecked,
         float TrailWorst, double CoverageEnergy, double RingEnergy);
 
@@ -339,8 +343,8 @@ namespace KhaozEngine.Tests.Gpu
                     Math.Max(band.Y1, r.Y1));
             }
             FlickerStats flicker = TemporalAcceptance.Flicker(frames, references, W, H, band.Inflate(3).Clip(W, H));
-            var (coverage, ring) = TemporalAcceptance.CoverageEnergy(frames, references, W, H,
-                band.Inflate(3).Clip(W, H));
+            var (coverage, ring) = scene == FastEdgeScene.ParallaxOverWall ? (double.NaN, double.NaN)
+                : TemporalAcceptance.CoverageEnergy(frames, references, W, H, band.Inflate(3).Clip(W, H));
 
             double edgeSum = 0;
             long edgeCount = 0;

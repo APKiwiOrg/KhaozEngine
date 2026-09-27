@@ -247,6 +247,11 @@ namespace KhaozEngine.Tests.Gpu
         /// <see cref="Flicker"/> sums the energy. <c>Ring</c> is the tested frames' luma above their background over
         /// each frame's ring as a share of the same reference sum: luma the result keeps where the reference has
         /// nothing, as a smear or a trail does. Both are NaN when the references cover nothing.
+        /// <para>
+        /// The background must be one luma. The coverage is every pixel whose reference luma differs from the
+        /// background pixel's, so over a textured background it takes in the texture, and neither value measures the
+        /// object. A scene over a textured background reports them as not applicable.
+        /// </para>
         /// </summary>
         public static (double Coverage, double Ring) CoverageEnergy(IReadOnlyList<byte[]> frames,
             IReadOnlyList<byte[]> references, int w, int h, PixelRect region, int backgroundX = 2, int backgroundY = 2)

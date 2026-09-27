@@ -2589,11 +2589,17 @@ refuses. One executor belongs to one craft loop or thread because its generator 
 ```
 [IntentVersion: byte = 1]
 [CurrencyId: varint int32]
-[TargetContainerId: varint uint16][TargetSlot: varint uint16]
-[SourceContainerId: varint uint16][SourceSlot: varint uint16]   // the currency's own slot
+[TargetContainerNameLength: varint][TargetContainerName: UTF8 bytes][TargetSlot: varint uint16]
+[SourceContainerNameLength: varint][SourceContainerName: UTF8 bytes][SourceSlot: varint uint16] // currency slot
 [TargetInstanceId: varint uint64]                               // 0 when the target is a plain stack
 [ExtraParameterCount: varint][ Extra: varint int32 ] * count    // a socket index, a selector choice
 ```
+
+The target and source containers are identified by their section NAMES, which are the durable values
+`ContainerSectionNames.Format` uses to file their pages. `ContainerOperation.WriteCanonical` writes each
+name as `[Length: varint][UTF8]`. The intent has no numeric container id or second container registry.
+The remaining field-order and slot-width differences in this sketch are tracked in
+[#1176](https://github.com/APKiwiOrg/KhaozEngine/issues/1176).
 
 **The target's INSTANCE ID is in the intent and that is the load bearing field.** Without it, a replayed
 craft whose slot has since been refilled by a different item would hash identically and apply to the wrong
@@ -2679,9 +2685,11 @@ public enum StatCombineKind : byte { Flat = 1, Increased = 2, More = 3 }
 
 public readonly record struct StatSourceKey(byte SourceKind, int Ordinal, long InstanceId);
 
-public readonly record struct StatContext(
-    ReadOnlyMemory<int> Tags, int ConditionMask, IStatConditionRegistry? Conditions);
+public readonly record struct StatContext(ReadOnlyMemory<int> Tags, int ConditionMask);
 ```
+
+`IStatConditionRegistry` is injected through the `ContentStatEvaluator` constructor in 11.6.
+`StatContext` carries only situation data.
 
 `Value` is in the stat's scaled units for `Flat` and in basis points for `Increased` and `More`
 (contracts 13.2, 8.4). The tag scope is a RANGE into one shared tag array the evaluator owns rather than
@@ -2722,13 +2730,20 @@ changing one changes a displayed number.
 
 | `SourceKind` | Source | In v1 | Ordinal within the kind |
 |---|---|---|---|
-| 1 | base and implicit lines of the worn item | yes | the worn slot index, ascending |
+| 1 | base and implicit lines built by the caller from the item definition, not the payload | yes | the worn slot index, ascending |
 | 2 | affixes of a worn item (kind 131) | yes | worn slot index, then affix index in the SORTED list |
 | 3 | enchantments of a worn item (kind 133) | yes | the same |
 | 4 | lines of an item SOCKETED into a worn item | yes | worn slot, then socket index in AUTHORED order |
 | 5 | passives | no, reserved | |
 | 6 | buffs and auras | no, reserved | |
 | 7 to 255 | game sources | by registration | the game's own, and it must be deterministic |
+
+For kinds 2, 3 and 4, `InstanceStatSourceKind.EntryOrdinal(wornSlot, entryIndex)` packs the two
+positions as `(wornSlot * 256) + entryIndex`. `EntryStride` is 256 because an affix count is one byte
+on the wire, so a list has at most 255 entries and adjacent worn slots cannot share an
+ordinal. Kinds 2 and 3 use the sorted entry index, while kind 4 uses the authored socket index.
+`WornSlotOf` and `EntryIndexOf` unpack that ordinal. Kind 1 uses
+`InstanceStatSourceKind.WornItemOrdinal(wornSlot)`, which is the slot without packing.
 
 **The fold order is (SourceKind, Ordinal, InstanceId, ModifierIndex), in that order, always.** The
 instance id is in the key so that two sources that somehow tie on kind and ordinal still order, which
@@ -2740,11 +2755,11 @@ A later passive tree adds a source kind and changes no fold, no format and no st
 #884's "sources: worn items and socketed items now, passives and buffs later" read as an ordering
 commitment rather than a feature list.
 
-**Socket order is authored and never sorted** (3.5), so kind 4's ordinal is the authored index. A player
+**Socket order is authored and never sorted** (3.5), so kind 4 packs the authored index. A player
 who rearranges two gems can move a displayed value by one unit, which is correct and is the price of
 integer rounding being honest.
 
-**`InstanceStatLines` is the producer between a payload and these lines.** Its constructor indexes one
+**`InstanceStatLines` produces kinds 2, 3 and 4 from a payload.** Its constructor indexes one
 content version's `mod_tier` and `stat_line` rows once. `Build` walks payload kinds 131, 133 and 132 into
 caller-provided line, tag and source spans without allocating. One stored roll position drives EVERY line
 on a tier through the single `RollPosition.Resolve` formula, so a two-line tier moves together. The
@@ -2773,7 +2788,7 @@ Contracts 13.2's formula verbatim, with the steps this document owns marked:
 
 ```
 1. Gather every line for this stat, in (SourceKind, Ordinal, InstanceId, ModifierIndex) order.   // 11.4
-2. Drop every line whose tag scope is not a subset of context.Tags.                              // 11.3
+2. Drop every line whose tag scope is not a subset of context.Tags UNION the stat row's tags.   // 11.3
 3. Drop every line whose ConditionId is non-zero and evaluates false.                            // 11.3
 4. flat      = Base + sum(Flat)                                  // long arithmetic
 5. increased = 10000 + sum(IncreasedBasisPoints)

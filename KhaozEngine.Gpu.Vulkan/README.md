@@ -361,7 +361,7 @@ write was both expensive AND under-synchronised for the usage every per-frame un
 
 **And it LANDS THE MOMENT IT IS MADE, which is the ring's one consequence for a renderer.** Recording no
 command means it is not ordered against the draws in the same list, so two writes to the same range inside one
-frame leave the second value for every draw of that frame, including the draws recorded between them. The
+recording leave the second value for every draw of that recording, including the draws recorded between them. The
 incumbent's render-pass split ordered it instead, so that was a real difference between the two Vulkan backends.
 Per-draw and per-pass uniforms are addressed by dynamic offset rather than by rewriting one range, which is what
 the engine's renderers do and what makes the ring possible at all.
@@ -374,7 +374,7 @@ What makes the writes visible with no flush is that the memory is `HOST_COHERENT
 `vkQueueSubmit` performs an implicit host-write availability operation for coherent memory. The only invariant
 left is the fence gate below.
 
-**A segment is recycled against a COMPLETION value, never a submit receipt.** Frame N writes segment
+**A segment is recycled against a COMPLETION value, never a submit receipt.** Rotation N writes segment
 `N % FramesInFlight`, and before handing that segment out the allocator waits until the timeline's counter has
 reached the value that segment's frame was closed at, counting the wait as backpressure. The owner value is the
 timeline's REGISTERED submit high-water read under the submit lock, which is exact because a submission
@@ -382,6 +382,16 @@ allocates and registers its value inside that same lock. It is deliberately not 
 submit that failed with a non-loss result took a value nothing will ever signal, and gating a segment on it
 would block that segment for good. The deferred-disposal retire list gates on the allocation high-water instead,
 for the opposite reason.
+
+**A queued submission keeps its segment.** The present rotates, and so does a record-time write that follows a
+submission which carried record-time writes, through the same close, gate and publish. The allocator sees that
+submission as a rise in the timeline's registered submit high-water since the segment's last record-time write, so
+the submit path is untouched and nothing allocates. Without the second rotation a headless loop, which never
+presents, wrote every frame into the one segment its queued frames were still reading, and each of them drew the
+newest frame's uniforms. A windowed frame with one submission is unchanged, because its present clears the owed
+rotation, and a submission that wrote no uniforms owes none. A bind composes the segment current when it is
+recorded, so a recording writes its uniforms before it binds them, which is the order every engine renderer uses.
+The Direct3D 11 backend rotates the same way, and the Metal backend gives each recording its own segment.
 
 **The descriptor's range is the BIND WINDOW, and it is never `VK_WHOLE_SIZE` and never the stride.**
 `VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979` requires the effective offset plus the range to stay inside

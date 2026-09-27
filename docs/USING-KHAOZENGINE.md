@@ -14433,8 +14433,11 @@ buffers instead. Nothing in the engine or in any game does this today, which is 
 `IGpuCommandList.UpdateBuffer` to a uniform buffer there is a memcpy straight into GPU-visible memory. On that
 backend the write it replaces was not a stall but a render-pass split plus a full pipeline flush plus a global
 memory barrier, so the same rule applies with a different cost behind it: two writes to the SAME range inside
-one frame leave the second value for every draw of that frame, including draws you recorded between them.
-Address per-draw uniforms by dynamic offset, which is what the engine's own renderers do.
+one recording leave the second value for every draw of that recording, including draws you recorded between them.
+A recording submitted with writes of its own keeps them, as on Direct3D 11: the next recording's writes go to
+another copy, so a headless loop that never presents still draws each frame with its own uniforms. A bind picks
+its copy when it is recorded, so write a recording's uniforms before you bind them. Address per-draw uniforms by
+dynamic offset, which is what the engine's own renderers do.
 
 **A one-shot write through `IGpuDevice.UpdateBuffer` IS preserved, the same as on every other backend.** It
 reaches every segment, so a value written once at load time or when a setting changes persists for the buffer's

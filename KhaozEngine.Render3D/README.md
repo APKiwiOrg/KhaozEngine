@@ -135,9 +135,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   - **The vertex contract, for this pipeline only.** `ModelVertex` is unchanged, so the upload path is the ordinary
     one, but the fields are repurposed: `Color` is the vertex's four weights, `Uv.x`, `Uv.y`, `Tangent.x` and
     `Tangent.y` are four material SLOTS as floats holding integers (constant across a triangle, so interpolation
-    cannot smear them), `Tangent.z` is a per-vertex brightness multiplier and `Tangent.w` is 0. The fragment reads
-    a slot as `int(x + 0.5)` clamped to 0..63, takes four `textureGrad` taps at
-    `worldXZ * TilesPerMetre[slot]`, renormalises the weights by their own sum (no fifth-layer remainder) and
+    cannot smear them), `Tangent.z` is a per-vertex brightness multiplier and `Tangent.w` is 0 for the ordinary
+    four-layer path. A positive value names an optional overlay slot plus one, whose weight is one minus the
+    sum of `Color`. The fragment reads a slot as `int(x + 0.5)` clamped to 0..63, takes up to five `textureGrad`
+    taps at `worldXZ * TilesPerMetre[slot]`, renormalises ordinary weights by their own sum (or preserves the
+    opted overlay remainder) and
     multiplies by the slot tint and the jitter. **The jitter is a MULTIPLIER, not an offset, so `Tangent.z` of 0
     renders that vertex BLACK**: write 1 for none. A mesh built for the model pipeline, where `Tangent` is a
     tangent frame, is not a tile-ground mesh.

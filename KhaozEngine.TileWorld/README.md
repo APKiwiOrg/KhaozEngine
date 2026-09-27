@@ -42,7 +42,7 @@ of its own and raises no events: every mutation marks its region `Dirty`, and th
   not exist at all, and both throw for one the manifest knows about but that is not in memory (creating it
   blind would let the next save overwrite authored terrain), so load that one through `TileWorldSource` first.
 - Tiles: `Get`/`Set` pairs for `Underlay`, `Overlay`, `OverlayShape`, `OverlayRotation` and `Settings`, where
-  `TileSettings` is `Blocked`, `Indoors`, `Bridge`, `NoDraw` and `TileOverlayShape` is `Full`, `DiagonalHalf`,
+  `TileSettings` is `Blocked`, `Indoors`, `Bridge`, `NoDraw`, `FeatherOverlay` and `TileOverlayShape` is `Full`, `DiagonalHalf`,
   `CornerQuarter`, `CornerThreeQuarter`. Reads outside a loaded region answer the default, writes require it.
 - Heights: `CornerHeightCm`/`CornerHeight` read the ONE GLOBAL LATTICE (the owning region, else edge-extended
   from the region west, south or south-west), `SetCornerHeightCm`/`TrySetCornerHeightCm` write it,

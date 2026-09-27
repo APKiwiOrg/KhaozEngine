@@ -33,7 +33,7 @@ public sealed class TileTools(QueryService query, MutationService mutate)
         [Description("Overlay material id from the catalog, 0 to 65535, or 0 for none. Null leaves it alone.")] int? overlay = null,
         [Description("How the overlay cuts the tile, by NAME: Full, DiagonalHalf, CornerQuarter or CornerThreeQuarter (case-insensitive). A number is refused. Null leaves it alone.")] string? shape = null,
         [Description("Overlay rotation in quarter turns clockwise, 0 to 3 (0 west, 1 north, 2 east, 3 south). Outside that range is refused. Null leaves it alone.")] int? rotation = null,
-        [Description("Authored flags as a comma list of NAMES: None, Blocked, Indoors, Bridge, NoDraw (case-insensitive). 'none' or an empty string clears every flag. A number is refused. Null leaves them alone.")] string? settings = null)
+        [Description("Authored flags as a comma list of NAMES: None, Blocked, Indoors, Bridge, NoDraw, FeatherOverlay (case-insensitive). 'none' or an empty string clears every flag. A number is refused. Null leaves them alone.")] string? settings = null)
         => ToolGuard.Guard(() => mutate.TilesFill(new TileRect(x, z, 1, 1), plane,
             ToolArgs.Material(underlay, nameof(underlay)), ToolArgs.Material(overlay, nameof(overlay)),
             ToolArgs.Shape(shape), ToolArgs.Rotation(rotation), ToolArgs.Settings(settings)));
@@ -50,7 +50,7 @@ public sealed class TileTools(QueryService query, MutationService mutate)
         [Description("Overlay material id from the catalog, 0 to 65535, or 0 for none. Null leaves it alone.")] int? overlay = null,
         [Description("How the overlay cuts each tile, by NAME: Full, DiagonalHalf, CornerQuarter or CornerThreeQuarter (case-insensitive). A number is refused. Null leaves it alone.")] string? shape = null,
         [Description("Overlay rotation in quarter turns clockwise, 0 to 3 (0 west, 1 north, 2 east, 3 south). Outside that range is refused. Null leaves it alone.")] int? rotation = null,
-        [Description("Authored flags as a comma list of NAMES: None, Blocked, Indoors, Bridge, NoDraw (case-insensitive). 'none' or an empty string clears every flag. A number is refused. Null leaves them alone.")] string? settings = null)
+        [Description("Authored flags as a comma list of NAMES: None, Blocked, Indoors, Bridge, NoDraw, FeatherOverlay (case-insensitive). 'none' or an empty string clears every flag. A number is refused. Null leaves them alone.")] string? settings = null)
         => ToolGuard.Guard(() => mutate.TilesFill(new TileRect(x, z, width, height), plane,
             ToolArgs.Material(underlay, nameof(underlay)), ToolArgs.Material(overlay, nameof(overlay)),
             ToolArgs.Shape(shape), ToolArgs.Rotation(rotation), ToolArgs.Settings(settings)));

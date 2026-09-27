@@ -26,11 +26,15 @@ public static partial class TileGroundMesher
     {
         Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
         int count = TileTriangulation.Triangulate(shape, rotation, splitSwNe, triangles);
+        bool feather = overlaySlot.HasValue
+            && (c.Doc.GetSettings(c.OriginX + lx, c.OriginZ + lz, c.Plane) & TileSettings.FeatherOverlay) != 0;
+        TileOverlayBoundary? boundary = feather
+            ? new TileOverlayBoundary(c.Doc, c.OriginX + lx, c.OriginZ + lz, c.Plane) : null;
 
         // A full overlay paints every triangle, so the tile's own corner materials are never read there and the
         // four walks that find them are skipped. A cut tile always needs them, because it always keeps some
         // ground.
-        TileCornerSlots slots = shape == TileOverlayShape.Full && overlaySlot.HasValue
+        TileCornerSlots slots = shape == TileOverlayShape.Full && overlaySlot.HasValue && !feather
             ? TileCornerSlots.Uniform(overlaySlot.Value)
             : TileSlots(c, lx, lz);
 
@@ -43,6 +47,12 @@ public static partial class TileGroundMesher
         {
             TileLatticeTriangle t = triangles[i];
             int? paint = t.Overlay ? overlaySlot : null;
+            if (paint.HasValue && boundary is not null)
+            {
+                TileOverlayFeatherMesh.Add(mesh, c, boundary, paint.Value,
+                    At(t.A, sw, se, nw, ne), At(t.B, sw, se, nw, ne), At(t.C, sw, se, nw, ne));
+                continue;
+            }
             AddTriangle(
                 mesh,
                 c,

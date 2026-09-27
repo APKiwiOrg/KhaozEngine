@@ -7164,7 +7164,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.8.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.9.0" />
 ```
 
 ```csharp
@@ -8883,6 +8883,17 @@ that size and another textured material of a different size throws rather than b
 one from the catalogs on its own unless `TileWorldViewOptions.GroundMaterials` hands it one, uploads it ONCE,
 points the mesher at it (the slots in a vertex only mean anything against the set the mesh is drawn with), and
 frees it on `Dispose`. So a colour-only world and a textured one take exactly the same path.
+
+**Feather selected overlay edges.** Author `TileSettings.FeatherOverlay` on the intended road tiles with
+`ke-tileedit` (`tile_set` or `tiles_fill`, `settings: "FeatherOverlay"`). Preserve other required flags in the
+comma list. Give those tiles the surrounding grass as their underlay and the road as their overlay.
+The renderer blends inward through 0.2 metres of the exposed full or shaped edge, including across region
+boundaries. Unmarked tiles keep hard edges, even if they use the same road material. Connected overlays of
+that material share their interior edges. Set `TileWorldViewOptions.Mesher.OverlayFeatherWidthMetres` before
+constructing the view to choose another positive finite width, capped to half a tile. This changes rendering
+only. The original terrain triangles still define the surface for picking and collision. See the
+[render package reference](../KhaozEngine.TileWorld.Render3D/README.md#ground-tilegroundmesher-itilegroundslotmap-tilecolors)
+for tessellation cost and sampling limits.
 
 **Texturing a world is two catalog fields.** Give a ground material a `texture` and, optionally, a
 `tilesPerMetre` (repeats per world metre, default 0.5, a 2 m repeat):
@@ -13639,7 +13650,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.8.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.9.0" />
 ```
 
 ```csharp
@@ -13675,7 +13686,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.8.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.9.0" />
 ```
 
 ```csharp
@@ -13917,7 +13928,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.8.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.9.0" />
 ```
 
 ```csharp
@@ -17940,7 +17951,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.8.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.9.0" />
 </ItemGroup>
 ```
 

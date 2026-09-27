@@ -33,13 +33,13 @@ nothing in the upload path moves.
 - **Four material slots per TILE, weights per vertex.** Every triangle of a tile carries the same four slots, one
   per corner in SW, SE, NW, NE order, as floats in `Uv.x`, `Uv.y`, `Tangent.x` and `Tangent.y`. `Color` is that
   vertex's four weights over them: one-hot at a corner, 0.5 and 0.5 at a mid-edge point of an overlay cut.
-  `Tangent.z` is the brightness jitter and `Tangent.w` is 0. Slots per tile rather than per triangle is what keeps
-  the ground continuous: a corner shared by four tiles is one-hot on the same material from all of them, and a
+  `Tangent.z` is the brightness jitter. `Tangent.w` is 0 for ordinary ground or the optional overlay slot
+  plus 1 for feathered overlays. Slots per tile rather than per triangle keep the ground continuous: a corner shared by four tiles is one-hot on the same material from all of them, and a
   shared edge interpolates the same pair from either side.
 - **The corner material is the most-shared visible underlay.** `TileGroundMesher.CornerMaterial(doc, x, z,
   plane)` counts the up-to-four tiles sharing a lattice corner and takes the id most of them carry, ties broken
-  by the LOWER id so every tile touching the corner picks the same one. Void tiles and underlays hidden by a
-  drawn full overlay are excluded, which keeps an exact overlay edge from grading into its hidden material. A
+  by the LOWER id so every tile touching the corner picks the same one. Void tiles and underlays hidden by an
+  unmarked full overlay are excluded, which keeps an exact overlay edge from grading into its hidden material. A
   `NoDraw` tile still contributes its underlay, so the ground does not step at the edge of a hole punched for an
   object floor. `TileGroundMesherOptions.Slots` (an `ITileGroundSlotMap`) turns the id into the
   material set's layer slot, and an id the set does not carry lands on its reserved `MissingSlot`, whose layer is
@@ -57,12 +57,28 @@ nothing in the upload path moves.
   colour surface, for a caller that wants a tile's colour without the textured pipeline behind it: a minimap, a
   2D painter, a tool query. The vertices do not carry it any more, and the mesher itself only calls
   `TileColors.Jitter`.
-- **Overlays are exact geometry, not an approximation.** The tile is cut by the shared
+- **Hard overlays use exact authored triangles.** The tile is cut by the shared
   `TileTriangulation.Triangulate` (two triangles for a plain tile or a diagonal half, four for a corner cut) and
   each triangle either names the overlay's slot in all four lanes at weight (1, 0, 0, 0) or is left to the tile's
   own corner materials. An overlay keeps the per-corner jitter, so a paved tile still varies softly rather than
   reading as one flat patch. The raycast in `KhaozEngine.TileWorld` calls the same function with the same inputs,
   so a click lands on the triangle that was drawn. A shape with no overlay material meshes as the plain pair.
+- **Narrow overlay edges are authored per tile.** Set `TileSettings.FeatherOverlay` on the selected overlay
+  tiles, leaving the surrounding ground as their underlay. `ke-tileedit` accepts `settings: "FeatherOverlay"`
+  or a comma list including existing flags. Only marked tiles blend, so another use of the same material can
+  remain hard. `TileGroundMesherOptions.OverlayFeatherWidthMetres` defaults to 0.2 metres and caps at half a
+  tile. The blend runs inward from exposed edges of the connected overlay shape, including diagonal and
+  quarter cuts. Adjacent same-material overlays and uncovered same-material ground count as continuations.
+  Mark the whole intended connected transition to avoid an abrupt change back to a hard edge.
+  Feathered full overlays expose their underlay to the corner-material vote. The four underlay slots retain
+  their normal weights, scaled by the inverse overlay coverage, and `Tangent.w` names the overlay slot plus
+  one. The shader assigns the remaining weight to that fifth layer. A road painted over itself cannot fade.
+  The mesher samples the transition on subdivisions of the original surface triangles, with no displacement,
+  additional pass or collision change. It uses a bounded power-of-two grid, at least two samples per width
+  up to 64 divisions per triangle edge. At the default width on one-metre tiles, an affected full tile has
+  up to 512 triangles. Triangles safely inside the overlay keep their original three vertices. Very narrow
+  widths below a 64th of a tile are limited by this sampling resolution. Global neighbour queries keep the
+  fade consistent at loaded region boundaries. Load neighbouring regions before meshing their shared edge.
 - **Seamless by construction.** Normals come from the GLOBAL height lattice by central differences
   (`TileGroundMesher.CornerNormal`), which reads ACROSS region borders, so two regions meeting at a corner compute
   the identical normal and a border has neither a crack nor a lighting step. Set `SmoothNormals = false` for one

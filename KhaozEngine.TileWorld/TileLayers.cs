@@ -2,7 +2,7 @@ using System;
 
 namespace KhaozEngine.TileWorld;
 
-/// <summary>Authored per-tile flags. Bits 4-7 are free. Collision is DERIVED from these plus objects, never
+/// <summary>Authored per-tile flags. Bits 5-7 are free. Collision is DERIVED from these plus objects, never
 /// authored here (see the collision baker).</summary>
 [Flags]
 public enum TileSettings : byte
@@ -16,6 +16,8 @@ public enum TileSettings : byte
     Bridge = 4,
     /// <summary>Skip the ground quad but keep the tile walkable (a plane whose floor is an object).</summary>
     NoDraw = 8,
+    /// <summary>Fade exposed overlay edges inward into the authored underlay. Rendering only.</summary>
+    FeatherOverlay = 16,
 }
 
 /// <summary>How an overlay material cuts a tile. Values are stable on disk, add new shapes by value.</summary>

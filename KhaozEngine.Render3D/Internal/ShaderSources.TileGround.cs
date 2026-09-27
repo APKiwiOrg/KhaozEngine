@@ -13,7 +13,7 @@ namespace KhaozEngine.Render3D.Internal
         //        Color     = the four blend weights over the tile's four corner material slots
         //        Uv.xy     = corner slots 0 and 1, as floats holding integers, CONSTANT across a triangle
         //        Tangent.x = corner slot 2, Tangent.y = corner slot 3
-        //        Tangent.z = the per-vertex brightness jitter, Tangent.w = 0 (unused)
+        //        Tangent.z = the per-vertex brightness jitter, Tangent.w = optional overlay slot + 1 (0 keeps the hard four-layer path)
         //        Normal    = the lattice normal, as today. No normal maps in R5, so the fragment lights off it.
         //      The mesher emits per-triangle vertices, so the four slots are the same at all three corners and
         //      interpolation cannot smear them. The fragment reads each back as int(x + 0.5), the same way the splat
@@ -35,7 +35,7 @@ namespace KhaozEngine.Render3D.Internal
         //      INTERPOLANT LAYOUT, and it is load-bearing on D3D11 (the FXC rule the terrain pass paid for): the
         //      fragment reads EVERY output this vertex declares, so the pixel-input semantics are gap-free from
         //      location 0 by construction and there is no declared-but-unused output for SPIRV-Cross to drop.
-        //        0 vWorldPos, 1 vNormalW, 2 vWeights, 3 vSlots, 4 vJitter, 5 vTint, 6 vEmissive
+        //        0 vWorldPos, 1 vNormalW, 2 vWeights, 3 vSlots, 4 vJitter, 5 vTint, 6 vEmissive, 7 vOverlaySlot
         //      Do NOT add an output here that the fragment does not read: a hole in that block miscompiles on
         //      FXC/WARP (the highest live interpolant reads garbage and blew the whole terrain to flat white, while
         //      Metal and Vulkan tolerated it). The VERTEX INPUT signature has the same rule from the other side, so
@@ -65,7 +65,7 @@ layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in vec4 Color;      // the four corner weights
 layout(location=3) in vec2 TexCoord;   // corner slots 0, 1
-layout(location=4) in vec4 Tangent;    // x,y = corner slots 2 and 3, then z = jitter and w = 0
+layout(location=4) in vec4 Tangent;    // x,y = corner slots 2 and 3, then z = jitter and w = optional overlay slot + 1
 layout(location=5) in vec4 IModel0;
 layout(location=6) in vec4 IModel1;
 layout(location=7) in vec4 IModel2;
@@ -79,6 +79,7 @@ layout(location=3) out vec4 vSlots;
 layout(location=4) out float vJitter;
 layout(location=5) out vec4 vTint;
 layout(location=6) out vec4 vEmissive;
+layout(location=7) out float vOverlaySlot;
 void main() {
     mat4 Model = mat4(IModel0, IModel1, IModel2, IModel3);
     vec4 world = Model * vec4(Position, 1.0);
@@ -90,19 +91,20 @@ void main() {
     vJitter = Tangent.z;
     vTint = ITint;
     vEmissive = IEmissive;
+    vOverlaySlot = Tangent.w;
 }";
 
         // ---- Tile-ground fragment shader. Pairs with TileGroundVert. Reads ONE albedo texture array (one layer per
-        //      catalog material, up to TileGroundMaterialConfig.MaxMaterials) plus a shared sampler, and blends FOUR
-        //      of its layers: the tile's four corner materials, weighted by this vertex's four weights.
+        //      catalog material, up to TileGroundMaterialConfig.MaxMaterials) plus a shared sampler. It blends the
+        //      four corner materials and, for opted feather meshes, the optional overlay layer.
         //
         //      WHY FOUR SLOTS PER TILE RATHER THAN A PALETTE PER TRIANGLE: continuity. The slots are fixed per TILE
         //      and a corner vertex is one-hot on its own corner's material, so a shared lattice corner samples the
         //      same material at weight 1 from every triangle touching it and a shared edge interpolates the same two
         //      materials from both sides. The surface is C0 continuous everywhere at four samples per fragment.
         //
-        //      THE WEIGHTS RENORMALISE BY THEIR OWN SUM. There is no one-minus-sum fifth layer here (the splat pass's
-        //      idiom does not apply): all four weights ride in Color and nothing is implied by the remainder.
+        //      Hard-mode weights renormalise by their own sum. A positive optional overlay slot switches to
+        //      five layers: Color carries underlay weights and the overlay takes their one-minus-sum remainder.
         //
         //      BINDINGS AND SAMPLE ORDER, in TWO sets since #727. Set 0 binding 0 is the SHARED frame block, the
         //      one the model pass binds, read by both stages. Everything the material owns is set 1: binding 0 the
@@ -161,6 +163,7 @@ layout(location=3) in vec4 vSlots;     // the tile's four corner material slots,
 layout(location=4) in float vJitter;   // per-vertex brightness jitter (the sharing-tile average)
 layout(location=5) in vec4 vTint;
 layout(location=6) in vec4 vEmissive;
+layout(location=7) in float vOverlaySlot;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -175,11 +178,13 @@ vec3 sampleSlot(int slot, vec2 uv, vec2 g0, vec2 g1) {
 void main() {
     vec3 Ngeo = normalize(vNormalW);
 
-    // Renormalise the four corner weights by THEIR OWN SUM. No fifth remainder layer: every weight is carried.
+    // Hard meshes retain their original normalization. Feather meshes reserve the remainder for the overlay.
     float a0 = vWeights.x, a1 = vWeights.y, a2 = vWeights.z, a3 = vWeights.w;
     float wsum = a0 + a1 + a2 + a3;
+    float overlayWeight = vOverlaySlot > 0.5 ? clamp(1.0 - wsum, 0.0, 1.0) : 0.0;
+    if (vOverlaySlot > 0.5) { wsum = max(1.0, wsum); }
     if (wsum > 1e-5) { a0/=wsum; a1/=wsum; a2/=wsum; a3/=wsum; } else { a0 = 1.0; a1 = a2 = a3 = 0.0; }
-    float w[4] = float[4](a0, a1, a2, a3);
+    float w[5] = float[5](a0, a1, a2, a3, overlayWeight);
 
     // The four corner slots. Held as floats and read back with the +0.5 round the splat pass uses, because a float
     // that carries an integer can arrive a hair under it and truncation would then pick the wrong material. The
@@ -187,8 +192,9 @@ void main() {
     // uniform bound and the last real texture layer, so a bad slot samples the last material rather than reading
     // past either resource. Misc.y is the validated layer count written when the material is loaded.
     int maxSlot = min(63, max(0, int(Misc.y + 0.5) - 1));
-    int slot[4] = int[4](clamp(int(vSlots.x + 0.5), 0, maxSlot), clamp(int(vSlots.y + 0.5), 0, maxSlot),
-                         clamp(int(vSlots.z + 0.5), 0, maxSlot), clamp(int(vSlots.w + 0.5), 0, maxSlot));
+    int slot[5] = int[5](clamp(int(vSlots.x + 0.5), 0, maxSlot), clamp(int(vSlots.y + 0.5), 0, maxSlot),
+                         clamp(int(vSlots.z + 0.5), 0, maxSlot), clamp(int(vSlots.w + 0.5), 0, maxSlot),
+                         clamp(int(vOverlaySlot - 0.5), 0, maxSlot));
 
     // Screen-space world derivatives, taken ONCE here in uniform control flow (before the loop's data-dependent
     // `continue`). The UV is wpAbs.xz * tile, so its texture-space gradient is the matching world derivative scaled
@@ -204,7 +210,7 @@ void main() {
     vec3 wpAbs = vWorldPos + RenderOrigin.xyz;
 
     vec3 albedo = vec3(0.0);
-    for (int L = 0; L < 4; L++) {
+    for (int L = 0; L < 5; L++) {
         float wl = w[L];
         if (wl <= 0.001) continue;
         int sl = slot[L];

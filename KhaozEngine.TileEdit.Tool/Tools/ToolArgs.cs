@@ -20,7 +20,7 @@ internal static class ToolArgs
     public const string ShapeNames = "Full, DiagonalHalf, CornerQuarter, CornerThreeQuarter";
 
     /// <summary>The tile setting flag names the <c>settings</c> argument accepts, comma separated.</summary>
-    public const string SettingNames = "None, Blocked, Indoors, Bridge, NoDraw";
+    public const string SettingNames = "None, Blocked, Indoors, Bridge, NoDraw, FeatherOverlay";
 
     /// <summary>A quarter-turn rotation, checked against the 0..3 range every verb description promises.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The rotation is outside 0..3.</exception>

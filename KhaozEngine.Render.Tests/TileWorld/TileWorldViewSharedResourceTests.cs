@@ -118,6 +118,7 @@ public sealed class TileWorldViewSharedResourceTests
         {
             JitterAmplitude = 0.25f,
             SmoothNormals = false,
+            OverlayFeatherWidthMetres = 0.15f,
             Slots = TileGroundMaterials.Build(TileRenderTestData.Catalogs),
         };
         TileGroundMesherOptions copy = source.Copy();
@@ -125,10 +126,11 @@ public sealed class TileWorldViewSharedResourceTests
         Assert.NotSame(source, copy);
         Assert.Equal(source.JitterAmplitude, copy.JitterAmplitude);
         Assert.Equal(source.SmoothNormals, copy.SmoothNormals);
+        Assert.Equal(source.OverlayFeatherWidthMetres, copy.OverlayFeatherWidthMetres);
         Assert.Same(source.Slots, copy.Slots);
         // The tripwire: a setting added to the options has to be added to Copy and to the checks above, or a view
         // silently builds without it.
-        Assert.Equal(new[] { "JitterAmplitude", "Slots", "SmoothNormals" },
+        Assert.Equal(new[] { "JitterAmplitude", "OverlayFeatherWidthMetres", "Slots", "SmoothNormals" },
             typeof(TileGroundMesherOptions).GetProperties(BindingFlags.Public | BindingFlags.Instance)
                 .Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal));
     }

@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.9.0
+
+- Tile overlays can opt into a narrow inward blend through the authored `FeatherOverlay` setting.
+  Connected full and shaped road tiles share exposed boundaries across region seams, while unmarked
+  overlays keep hard edges. The default width is 0.2 metres and the underlying terrain, collision and
+  picking stay unchanged.
+
 ## 20.8.0
 
 - Wallet credit and debit results now report a conflict when a scoped idempotency key is reused with a

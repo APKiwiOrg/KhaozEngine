@@ -135,7 +135,7 @@ hands its rows straight to `height_set` without flipping the terrain.
 | `tiles_get_rect(x, z, width, height, plane, layer)` | One layer of a rect as an ASCII map with the legend that decodes it. |
 
 `shape` is a NAME (`Full`, `DiagonalHalf`, `CornerQuarter`, `CornerThreeQuarter`, case-insensitive) and
-`settings` a comma list of NAMES (`None`, `Blocked`, `Indoors`, `Bridge`, `NoDraw`), with `none` or an empty
+`settings` a comma list of NAMES (`None`, `Blocked`, `Indoors`, `Bridge`, `NoDraw`, `FeatherOverlay`), with `none` or an empty
 string clearing every flag. A number is refused in both, so a wrong enum value cannot land silently.
 
 ### Cosmetic foliage

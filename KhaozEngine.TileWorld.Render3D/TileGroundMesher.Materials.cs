@@ -16,7 +16,7 @@ public static partial class TileGroundMesher
 
     /// <summary>The material at a lattice corner: the underlay id shared by the most of the up-to-four tiles
     /// that touch it, ties broken by the LOWER id, and 0 when none of them has a visible underlay. Void tiles and
-    /// underlays hidden by drawn full overlays are excluded, exactly as <see cref="CornerColor"/> excludes them.
+    /// underlays hidden by unmarked full overlays are excluded, exactly as <see cref="CornerColor"/> excludes them.
     /// A <see cref="TileSettings.NoDraw"/> tile still decides the material at the corners it touches and the ground
     /// stays continuous across a hole punched for an object floor. The rule reads the global grid and breaks its
     /// ties without reference to which tile is asking, so every tile sharing a corner picks the same material
@@ -87,12 +87,13 @@ public static partial class TileGroundMesher
 
     // The underlay seen by its neighbours. NoDraw remains visible for blending because another object supplies
     // that tile's surface. A drawn full overlay hides the underlay, so carrying it into a neighbouring tile would
-    // make an exact overlay boundary grade into the material below it.
+    // make an exact overlay boundary grade into the material below it. Feathered overlays expose that material.
     static ushort VisibleUnderlay(TileWorldDocument doc, int x, int z, int plane)
     {
         ushort underlay = doc.GetUnderlay(x, z, plane);
         if (underlay == 0) return 0;
         bool drawnFullOverlay = (doc.GetSettings(x, z, plane) & TileSettings.NoDraw) == 0
+            && (doc.GetSettings(x, z, plane) & TileSettings.FeatherOverlay) == 0
             && doc.GetOverlay(x, z, plane) != 0
             && doc.GetOverlayShape(x, z, plane) == TileOverlayShape.Full;
         return drawnFullOverlay ? (ushort)0 : underlay;

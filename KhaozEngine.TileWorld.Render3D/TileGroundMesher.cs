@@ -10,6 +10,16 @@ public sealed class TileGroundMesherOptions
 {
     ITileGroundSlotMap _slots = IdentitySlotMap.Instance;
     float _jitterAmplitude = TileColors.DefaultJitterAmplitude;
+    float _overlayFeatherWidthMetres = 0.2f;
+
+    /// <summary>Inward fade width for tiles marked <see cref="TileSettings.FeatherOverlay"/>. Positive finite
+    /// metres, capped to half the document's tile size. Unmarked overlays retain hard edges.</summary>
+    public float OverlayFeatherWidthMetres
+    {
+        get => _overlayFeatherWidthMetres;
+        set => _overlayFeatherWidthMetres = float.IsFinite(value) && value > 0f
+            ? value : throw new ArgumentOutOfRangeException(nameof(value));
+    }
 
     /// <summary>Per-tile brightness jitter, plus or minus this fraction of the material colour, from 0 (which
     /// disables it) up to but not including 1. The ceiling is load-bearing: the vertex carries the jitter as a
@@ -40,6 +50,7 @@ public sealed class TileGroundMesherOptions
         JitterAmplitude = JitterAmplitude,
         SmoothNormals = SmoothNormals,
         Slots = Slots,
+        OverlayFeatherWidthMetres = OverlayFeatherWidthMetres,
     };
 }
 
@@ -269,7 +280,7 @@ public static partial class TileGroundMesher
 
     /// <summary>Adds a triangle, replacing the three corner normals with the triangle's own when the options ask
     /// for flat shading.</summary>
-    static void AddTriangle(MeshAccumulator mesh, in TileMeshContext c, ModelVertex a, ModelVertex b, ModelVertex d)
+    internal static void AddTriangle(MeshAccumulator mesh, in TileMeshContext c, ModelVertex a, ModelVertex b, ModelVertex d)
     {
         if (!c.Options.SmoothNormals)
         {

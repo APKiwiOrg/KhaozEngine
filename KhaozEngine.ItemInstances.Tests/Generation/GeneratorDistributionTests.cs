@@ -33,12 +33,9 @@ namespace KhaozEngine.Tests.ItemInstances.Generation;
 /// reproducible stream can close it.
 /// </para>
 /// <para>
-/// Contracts 14.2's own prose says the seeded source uses MODULO and the cryptographic one uses rejection
-/// sampling. The shipped <see cref="SeededRandomSource"/> does not: its bounded draw is Lemire rejection
-/// sampling over <c>NextULong</c> rather than the wrapped <c>DeterministicRng.Next(int)</c>, so BOTH
-/// implementations are unbiased on a bounded draw and the contract's stated difference is narrower than the
-/// code's. That is https://github.com/APKiwiOrg/KhaozEngine/issues/975, filed rather than fixed here,
-/// because the code is the safer of the two readings and the prose is what is behind.
+/// Both implementations use rejection sampling for bounded draws. This class tests generator distributions
+/// with a seeded source. <c>RandomSourceTests</c> separately pins seeded reproducibility and the
+/// cryptographic source's narrow-range distribution.
 /// </para>
 /// <para>
 /// Every registry and every generator a fact builds is its OWN, so nothing here writes process-global state

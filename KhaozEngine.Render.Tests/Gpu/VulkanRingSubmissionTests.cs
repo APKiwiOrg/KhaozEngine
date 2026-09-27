@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -7,9 +8,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// A SUBMITTED RECORDING KEEPS ITS UNIFORMS on the native Vulkan backend, the same statement as
     /// <see cref="D3D11RingSubmissionTests"/> over this backend's mechanism. A record-time write is a memcpy into the
-    /// current ring segment, and a submission reads that segment when the GPU gets to it. So a record-time write that
-    /// follows a submission which carried record-time writes opens the next segment first, with the same close, gate and
-    /// publish the present applies, and never lands in memory a queued submission still has to read.
+    /// current ring segment, and a submission reads that segment when the GPU gets to it. So a record-time write
+    /// that follows a submission which carried record-time writes opens the next segment first, with the same close,
+    /// gate and publish the present applies, and never lands in memory a queued submission still has to read.
     /// <para>
     /// The present was the only rotation, and a headless loop never reaches it, so every frame of a
     /// <see cref="KhaozEngine.Render3D.Render3DSnapshot"/> capture wrote into the one segment its queued frames were
@@ -56,8 +57,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(First, Segment(harness, 0));
             Assert.Equal(Second, Segment(harness, 1));
             Assert.Equal(Third, Segment(harness, 2));
+            VulkanRingAllocator allocator = harness.Allocator;
             Assert.Equal(new[] { 1UL, 2UL, 0UL },
-                new[] { harness.Allocator.SegmentOwner(0), harness.Allocator.SegmentOwner(1), harness.Allocator.SegmentOwner(2) });
+                new[] { allocator.SegmentOwner(0), allocator.SegmentOwner(1), allocator.SegmentOwner(2) });
         }
 
         [Fact]
@@ -178,7 +180,8 @@ namespace KhaozEngine.Tests.Gpu
             harness.Submit(1);
 
             InvalidOperationException refused;
-            lock (harness.SubmitLock) refused = Assert.Throws<InvalidOperationException>(() => harness.Ring.Write(0, Second));
+            lock (harness.SubmitLock)
+                refused = Assert.Throws<InvalidOperationException>(() => harness.Ring.Write(0, Second));
 
             Assert.Contains("submit lock", refused.Message);
             Assert.Equal(0, harness.Allocator.CurrentSegment);

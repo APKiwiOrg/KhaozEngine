@@ -6,17 +6,17 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// A SUBMITTED RECORDING KEEPS ITS UNIFORMS. A record-time write is a memcpy into the current ring segment, and a
-    /// submission binds that segment when the GPU gets to it, which can be well after the submit returns. So a record-time
-    /// write that follows a submission which wrote uniforms starts the next segment, gated on completion exactly as the
-    /// present boundary gates it, and never lands in memory a queued submission still has to read.
+    /// A SUBMITTED RECORDING KEEPS ITS UNIFORMS. A record-time write is a memcpy into the current ring segment, and
+    /// a submission binds that segment when the GPU gets to it, which can be well after the submit returns. So a
+    /// record-time write that follows a submission which wrote uniforms starts the next segment, gated on completion
+    /// exactly as the present boundary gates it, and never lands in memory a queued submission still has to read.
     /// <para>
-    /// WHY THE PRESENT BOUNDARY ALONE WAS NOT ENOUGH. It is the only other place the segment moves, and a headless loop
-    /// never reaches it: every <see cref="KhaozEngine.Render3D.Render3DSnapshot"/> capture and every GPU fact submits frame
-    /// after frame with no present. Each frame's writes then landed in the one segment the queued frames were still
-    /// reading, so every queued frame drew the newest frame's uniforms. A temporal frame rasterised and resolved with the
-    /// newest frame's jitter, and its history accumulated one jittered frame over and over. A windowed frame that opens a
-    /// second recording after its first submit had the same exposure.
+    /// WHY THE PRESENT BOUNDARY ALONE WAS NOT ENOUGH. It is the only other place the segment moves, and a headless
+    /// loop never reaches it: every <see cref="KhaozEngine.Render3D.Render3DSnapshot"/> capture and every GPU fact
+    /// submits frame after frame with no present. Each frame's writes then landed in the one segment the queued
+    /// frames were still reading, so every queued frame drew the newest frame's uniforms. A temporal frame
+    /// rasterised and resolved with the newest frame's jitter, and its history accumulated one jittered frame over
+    /// and over. A windowed frame that opens a second recording after its first submit had the same exposure.
     /// </para>
     /// <para>
     /// A single present-bounded submission per frame is unchanged: its writes stay in the segment the present opened,
@@ -63,8 +63,9 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(First, Segment(harness, 0));
             Assert.Equal(Second, Segment(harness, 1));
             Assert.Equal(Third, Segment(harness, 2));
+            D3D11RingAllocator allocator = harness.Allocator;
             Assert.Equal(new[] { 1UL, 2UL, 3UL },
-                new[] { harness.Allocator.SegmentOwner(0), harness.Allocator.SegmentOwner(1), harness.Allocator.SegmentOwner(2) });
+                new[] { allocator.SegmentOwner(0), allocator.SegmentOwner(1), allocator.SegmentOwner(2) });
         }
 
         [Fact]
@@ -133,10 +134,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(timeline.LastFlushHeldTheSubmitLock);
             Assert.Equal(1, timeline.PollCountAtFirstFlush);
 
-            allocator.OnSubmitted(fences.SignalEndOfReplay(null));
+            // The gate never reaches the flush on a dead device, because a dead device answers every value complete
+            // and the first poll returns, so the subsystem's own dead-device guard is driven directly.
             liveness.IsDead = true;
-            allocator.BeginFrame();
-            allocator.BeginFrame();             // back to segment 0: a dead device answers complete, flushes nothing
+            fences.FlushSubmitted();
             Assert.Equal(1, timeline.FlushCount);
         }
 
@@ -200,7 +201,8 @@ namespace KhaozEngine.Tests.Gpu
             submitter.Submit();
 
             InvalidOperationException refused;
-            lock (harness.SubmitLock) refused = Assert.Throws<InvalidOperationException>(() => harness.Ring.Write(0, Second));
+            lock (harness.SubmitLock)
+                refused = Assert.Throws<InvalidOperationException>(() => harness.Ring.Write(0, Second));
 
             Assert.Contains("submit lock", refused.Message);
             Assert.Equal(0, harness.Allocator.CurrentSegment);

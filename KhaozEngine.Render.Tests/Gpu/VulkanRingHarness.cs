@@ -76,7 +76,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>One accepted SETUP flush signalling <paramref name="value"/>, as
-        /// <c>VulkanSubmitQueue.SubmitSetup</c> makes one from a <c>WaitForIdle</c>, a <c>Map</c> or an upload: it
+        /// <c>VulkanSubmitQueue.SubmitSetup</c> makes one from a <c>WaitForIdle</c> or a <c>Map</c>: it
         /// raises the full submit high-water and never the list one.</summary>
         internal void SubmitSetup(ulong value)
         {

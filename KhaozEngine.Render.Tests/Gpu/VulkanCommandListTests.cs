@@ -268,13 +268,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, fixture.Backpressure.Totals.Count);
         }
 
-        // ---- Disposal ----
-
-        /// <summary>
-        /// A LIST DISPOSED WITH SUBMISSIONS OUTSTANDING DESTROYS NOTHING YET. Its pools go to the device's retire
-        /// list at the HIGHEST value any of its slots was submitted at, and are destroyed once the counter passes
-        /// it. No refcount, unlike the incumbent, because the retire list exists for resources anyway.
-        /// </summary>
         /// <summary>A list submission raises both submit high-waters and a setup flush raises only the full one, which
         /// is how the uniform ring tells a submission that carried an open recording's writes from a flush in the
         /// middle of that recording.</summary>
@@ -296,6 +289,13 @@ namespace KhaozEngine.Tests.Gpu
             list.Dispose();
         }
 
+        // ---- Disposal ----
+
+        /// <summary>
+        /// A LIST DISPOSED WITH SUBMISSIONS OUTSTANDING DESTROYS NOTHING YET. Its pools go to the device's retire
+        /// list at the HIGHEST value any of its slots was submitted at, and are destroyed once the counter passes
+        /// it. No refcount, unlike the incumbent, because the retire list exists for resources anyway.
+        /// </summary>
         [Fact]
         public void DisposalInFlight_RetiresThePoolsAtTheHighestSubmittedValue()
         {

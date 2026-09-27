@@ -77,8 +77,8 @@ public static class InstanceStacking
     /// The ARITHMETIC of a merge with no content cap. This overload preserves the original engine ceiling
     /// for callers that do not configure <c>max_stack</c>. Ask <see cref="CanMerge"/> first.
     /// <para>
-    /// A merge DESTROYS an instance id, which is the one place this design weakens the contracts'
-    /// traceability argument. The mitigation is an event rather than a field: a merge emits
+    /// A complete merge DESTROYS an instance id, which is the one place this design weakens the contracts'
+    /// traceability argument. The mitigation is an event rather than a field: a complete merge emits
     /// <c>stack-merged</c> naming BOTH ids and the resulting count, so the destroyed id is answerable from
     /// the journal for the retention window.
     /// </para>
@@ -100,7 +100,8 @@ public static class InstanceStacking
     /// <para>
     /// A destination below the cap accepts only the units that fit. A destination at or above the cap accepts
     /// none, so a stored over-cap stack can shrink through other operations but can never grow. Once it is at
-    /// or below the cap, the ordinary cap applies.
+    /// or below the cap, the ordinary cap applies. A partial result keeps the destination instance id because
+    /// both entries still survive. A complete result keeps the numerically lower id.
     /// </para>
     /// </summary>
     /// <param name="destination">The entry that survives. Its payload is the merged entry's.</param>
@@ -120,13 +121,16 @@ public static class InstanceStacking
         int moved = room > 0 ? (int)Math.Min(room, source.Stack.Count) : 0;
         remainder = source.Stack.Count - moved;
         if (moved == 0) return destination;
+        long survivingInstanceId = remainder == 0
+            ? ItemStack.MergeInstanceId(destination.Stack.InstanceId, source.Stack.InstanceId)
+            : destination.Stack.InstanceId;
 
         return destination with
         {
             Stack = new ItemStack(
                 destination.Stack.ItemId,
                 destination.Stack.Count + moved,
-                ItemStack.MergeInstanceId(destination.Stack.InstanceId, source.Stack.InstanceId)),
+                survivingInstanceId),
         };
     }
 }

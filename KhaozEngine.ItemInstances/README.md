@@ -443,7 +443,9 @@ of instead of rewriting the whole thing. It splits the two concepts `ItemContain
   and refuses to open one anyway.
 - **`StackCap`** is the optional content-free `Func<int, int>` that supplies the current `max_stack`. It is
   called once per add and never cached. A new stack and a merge accept only the units within a positive cap.
-  Null or zero keeps the `int.MaxValue` engine ceiling. A negative answer is a caller error.
+  Anonymous grants return honest overflow. Identified grants are all-or-nothing because this layer cannot
+  mint a second durable id. Null or zero keeps the `int.MaxValue` engine ceiling. A negative answer is a
+  caller error.
 
 The four capacity rules, which are one consumer's bag model restated as engine behaviour:
 
@@ -508,16 +510,18 @@ comparison ONLY because the payload is canonical, so a decode inside it would be
 differing only in a field neither build understands do not merge, which is the conservative answer. On top of
 the four rules, an entry carrying durability (kind 5) or sockets (kind 132) never merges whatever the
 predicate says, because a definition can gain either AFTER its items exist and publish only sees the
-definitions it publishes. `InstanceStacking.Merge` is the arithmetic and never the rules: the surviving
-instance id is the numerically LOWER of the two, so a replay in either order agrees. Its existing overload
-uses the `int.MaxValue` engine ceiling. The cap overload takes the current `max_stack` as an integer, moves
-only the units that fit and returns the rest. Zero means no content cap and a negative value throws. A
-destination already at or above a positive cap accepts no units. Removal can shrink an over-cap stack, and
-ordinary capped growth resumes once the count is below it.
-An `Add` that opens a new stack seats only the units within a positive cap and returns the remainder. `Seat`
+definitions it publishes. `InstanceStacking.Merge` is the arithmetic and never the rules. A complete merge
+keeps the numerically LOWER instance id, so a replay in either order agrees. A partial merge keeps the
+destination id because both entries survive. Its existing overload uses the `int.MaxValue` engine ceiling.
+The cap overload takes the current `max_stack` as an integer, moves only the units that fit and returns the
+rest. Zero means no content cap and a negative value throws. A destination already at or above a positive
+cap accepts no units. Removal can shrink an over-cap stack, and ordinary capped growth resumes once the
+count is below it. `PagedItemContainer.Add` admits partial overflow only for an anonymous grant. An
+identified grant that cannot enter whole changes nothing, whether it found a stack or would open one. `Seat`
 and the load path may preserve an existing over-cap stack. The container reads the cap through `StackCap`
 for each operation, so `ItemInstances` stays free of catalog row types and observes catalog edits without a
-cache.
+cache. The exact legacy five-argument constructor remains, and the cap overload adds a required sixth
+argument after the two payload predicates.
 
 ## The remap pass
 

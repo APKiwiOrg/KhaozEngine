@@ -9,7 +9,8 @@ namespace KhaozEngine.Render3D
     /// <c>RenderInternal</c>, when the camera override, the render origin and the internal size are all final, and
     /// every pass after it reads <see cref="CurrentFrameView"/> instead of the camera.
     /// <para>
-    /// The jitter is zero unless <see cref="TemporalActive"/>. A zero jitter leaves every jittered matrix
+    /// The jitter is zero unless <see cref="TemporalActive"/>, and zero on a later render of a frame that runs the temporal
+    /// resolve, which is never resolved (Scene3D.TemporalResolve.cs). A zero jitter leaves every jittered matrix
     /// bit-identical to its unjittered twin, which is what keeps every committed golden unchanged with temporal
     /// rendering off.
     /// </para>
@@ -94,12 +95,16 @@ namespace KhaozEngine.Render3D
                 ? _framePhaseCount
                 : TemporalJitter.PhaseCount(DisplayOverInternalRatio);
             bool temporal = TemporalActive;
-            Vector2 jitter = temporal ? TemporalJitter.Offset(_frameIndex, phaseCount) : Vector2.Zero;
+            // A later render of a resolving frame is shown unresolved, so it renders unjittered. EnsureSize fixed
+            // _frameResolves before this latch.
+            bool jittered = temporal && !(_frameViewLatchedThisFrame && _frameResolves);
+            Vector2 jitter = jittered ? TemporalJitter.Offset(_frameIndex, phaseCount) : Vector2.Zero;
             _currentFrameView = new FrameView(view, cam.Projection, viewProjection, FrameAbsoluteViewProjection(),
                 _frameOrigin, _res.Width, _res.Height, _frameIndex, jitter);
             // History moves on a frame's first render only. A second render inside the same frame (an offscreen
             // capture, possibly at another size) latches matrices for its own viewport but keeps the frame's index,
-            // temporal state, jitter, previous view and history state (Scene3D.Temporal.cs).
+            // temporal state, jitter, previous view and history state (Scene3D.Temporal.cs). Under the resolve it keeps
+            // no jitter, since it is never resolved.
             if (_frameViewLatchedThisFrame) return;
             _frameViewLatchedThisFrame = true;
             _frameTemporalActive = temporal;

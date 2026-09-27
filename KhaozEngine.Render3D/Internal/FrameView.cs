@@ -58,7 +58,7 @@ internal readonly struct FrameView
     public Matrix4x4 JitteredViewProjection { get; }
 
     /// <summary>The jitter in internal pixels, x right and y down, each in <c>[-0.5, 0.5)</c>. Zero unless temporal
-    /// rendering is active.</summary>
+    /// rendering is active, and zero on a later render of a frame that runs the temporal resolve.</summary>
     public Vector2 JitterPixels { get; }
 
     /// <summary>The jitter as the clip-space translation <see cref="TemporalJitter.Apply"/> adds,

@@ -11,18 +11,23 @@ namespace KhaozEngine.Tests.Gpu
     /// The resolve inside a real frame: the post chain's bloom and distortion run on the display targets after it, and a
     /// transparent model-pass writer over the sky shows, because the background now draws ahead of it
     /// (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, plan amendment 5). A later render inside the frame
-    /// never resolves, and a Solid frame's opaque copy holds the cleared background.
+    /// never resolves and looks like a render without temporal anti-aliasing at the internal size, and a Solid frame's
+    /// opaque copy holds the cleared background.
     /// </summary>
     public sealed class TemporalResolveSceneGpuTests
     {
+        /// <summary>Each effect on its own against neither, so one cannot pass for the other.</summary>
         [GpuFact]
         public void Bloom_and_distortion_run_on_the_display_chain_after_the_resolve()
         {
-            byte[] plain = EffectsFrame(effects: false);
-            byte[] rgba = EffectsFrame(effects: true);
-            Assert.True(LumaDeviation(rgba) > 2.0, "the frame is not a flat fill");
-            double changed = MeanAbsDifference(rgba, plain);
-            Assert.True(changed > 0.5, $"bloom and the ripple changed nothing after the resolve: mean abs {changed:0.000}");
+            byte[] plain = EffectsFrame(bloom: false, distortion: false);
+            byte[] bloomed = EffectsFrame(bloom: true, distortion: false);
+            byte[] rippled = EffectsFrame(bloom: false, distortion: true);
+            Assert.True(LumaDeviation(plain) > 2.0, "the frame is not a flat fill");
+            double bloomChange = MeanAbsDifference(bloomed, plain);
+            Assert.True(bloomChange > 0.5, $"bloom changed nothing after the resolve: mean abs {bloomChange:0.000}");
+            double rippleChange = MeanAbsDifference(rippled, plain);
+            Assert.True(rippleChange > 0.5, $"the ripple changed nothing after the resolve: mean abs {rippleChange:0.000}");
         }
 
         [GpuFact]
@@ -43,20 +48,20 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1f, h.Scene.TemporalResolveRendererForTests!.LastUniforms.Jitter.W);
         }
 
-        // A bright box, and with effects on bloom and a distortion ripple over it, resolved at Quality.
-        static byte[] EffectsFrame(bool effects)
+        // A bright box, with bloom and a distortion ripple over it as asked, resolved at Quality.
+        static byte[] EffectsFrame(bool bloom, bool distortion)
         {
             using var h = new Harness(240, 160);
             h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             h.Scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
-            h.Scene.Post.Bloom.Enabled = effects;
+            h.Scene.Post.Bloom.Enabled = bloom;
             MeshHandle box = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
             byte[] rgba = Array.Empty<byte>();
             for (int i = 0; i < 4; i++)
                 rgba = h.Render(s =>
                 {
                     s.Draw(box, Matrix4x4.CreateScale(2f), new Color(3f, 2.5f, 1.5f, 1f));
-                    if (!effects) return;
+                    if (!distortion) return;
                     s.DrawDistortion(new DistortionSprite
                     {
                         Position = new Vector3(0f, 0f, 1.2f), Size = 2.2f, Shape = DistortionShape.Ripple,
@@ -65,12 +70,9 @@ namespace KhaozEngine.Tests.Gpu
                 });
 
             var post = h.Scene.TemporalPostTargetsForTests!;
-            Assert.Equal(effects, post.BloomAllocated);
-            if (effects)
-            {
-                Assert.Equal((120, 80), (post.BloomWidth, post.BloomHeight));
-                Assert.True(post.DistortAllocated);
-            }
+            Assert.Equal(bloom, post.BloomAllocated);
+            if (bloom) Assert.Equal((120, 80), (post.BloomWidth, post.BloomHeight));
+            Assert.Equal(distortion, post.DistortAllocated);
             return rgba;
         }
 
@@ -166,6 +168,86 @@ namespace KhaozEngine.Tests.Gpu
             return rgba;
         }
 
+        /// <summary>
+        /// A capture inside a resolving frame is unjittered and unresolved and runs the internal post chain with bloom,
+        /// so its own pixels are not blank, stand upright, and match the same view rendered without temporal
+        /// anti-aliasing at the capture's internal size and upscaled the same way.
+        /// </summary>
+        [GpuFact]
+        public void A_capture_inside_a_resolving_frame_looks_like_a_render_without_temporal_at_the_internal_size()
+        {
+            const int W = 160, H = 96;
+            byte[] capture;
+            int internalWidth, internalHeight;
+            using (var h = new Harness(W, H))
+            {
+                MeshHandle box = CaptureScene(h.Scene);
+                h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+                h.Scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
+                for (int i = 0; i < 3; i++) h.Render(s => DrawCaptureScene(s, box));
+                h.Scene.CameraOverride = CaptureCamera(W, H);
+                capture = h.RenderSecond(W, H);
+                Assert.Equal(System.Numerics.Vector2.Zero, h.Scene.CurrentFrameView.JitterPixels);
+                Assert.True(h.Scene.BloomAllocated, "the capture's internal chain has no bloom pair");
+                (internalWidth, internalHeight) = (h.Scene.RenderTargetWidth, h.Scene.RenderTargetHeight);
+            }
+            Assert.Equal((107, 64), (internalWidth, internalHeight));
+
+            byte[] reference = Array.Empty<byte>();
+            using (var h = new Harness(W, H))
+            {
+                MeshHandle box = CaptureScene(h.Scene);
+                h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Off;
+                h.Scene.Post.RenderScale = RenderScale.FixedInternal;
+                (h.Scene.Post.RenderWidth, h.Scene.Post.RenderHeight) = (internalWidth, internalHeight);
+                h.Scene.CameraOverride = CaptureCamera(W, H);
+                for (int i = 0; i < 3; i++) reference = h.Render(s => DrawCaptureScene(s, box));
+            }
+
+            Assert.True(LumaDeviation(capture) > 2.0, "the capture is a flat fill");
+            // The bright box sits above the view axis, so an upright image is brighter in its top half.
+            double top = MeanLuma(capture, W, 0, H / 2), bottom = MeanLuma(capture, W, H / 2, H);
+            Assert.True(top > bottom + 5.0, $"the capture is not upright: top half luma {top:0.0}, bottom {bottom:0.0}");
+            int worst = 0;
+            for (int i = 0; i < capture.Length; i++)
+                if ((i & 3) != 3) worst = Math.Max(worst, Math.Abs(capture[i] - reference[i]));
+            double mean = MeanAbsDifference(capture, reference);
+            Assert.True(mean <= 0.25 && worst <= 4,
+                $"the capture differs from the non-temporal render: mean abs {mean:0.000}, worst {worst}");
+        }
+
+        // Bloom on, and a bright box above a dim one, so the capture camera sees a lit upper half.
+        static MeshHandle CaptureScene(Scene3D scene)
+        {
+            scene.Post.Bloom.Enabled = true;
+            scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
+            return scene.LoadMesh(MeshPrimitives.Box(1f));
+        }
+
+        static void DrawCaptureScene(Scene3D s, MeshHandle box)
+        {
+            s.Draw(box, Matrix4x4.CreateScale(1.5f) * Matrix4x4.CreateTranslation(0f, 2.4f, 8f), new Color(3f, 2.6f, 2f, 1f));
+            s.Draw(box, Matrix4x4.CreateScale(1.2f) * Matrix4x4.CreateTranslation(1.5f, -0.4f, 8f), new Color(0.2f, 0.25f, 0.3f, 1f));
+        }
+
+        static FlyCamera3D CaptureCamera(int width, int height) => new()
+        {
+            Position = new Vector3(0f, 1f, 0f), Yaw = 0f, Pitch = 0f, AspectRatio = width / (float)height,
+            NearPlane = 0.1f, FarPlane = 100f,
+        };
+
+        static double MeanLuma(byte[] rgba, int width, int fromRow, int toRow)
+        {
+            double sum = 0;
+            for (int y = fromRow; y < toRow; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    int i = (y * width + x) * 4;
+                    sum += 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2];
+                }
+            return sum / ((toRow - fromRow) * width);
+        }
+
         /// <summary>A Solid background frame with nothing opaque still copies the cleared background, not the last
         /// frame's colour: the copy follows a framebuffer change that flushes the model pass's owed clear. The copy also
         /// excludes the transparent drawn after it.</summary>
@@ -233,8 +315,8 @@ namespace KhaozEngine.Tests.Gpu
             public IGpuDevice Device => _gd;
 
             /// <summary>A second render inside the frame the last <see cref="Render"/> began, with no Begin, into a
-            /// scratch target of another size, as an offscreen capture makes.</summary>
-            public void RenderSecond(int width, int height)
+            /// scratch target, as an offscreen capture makes. Returns the capture's pixels.</summary>
+            public byte[] RenderSecond(int width, int height)
             {
                 using IGpuTexture tex = _gd.Factory.CreateTexture(GpuTextureDescription.Texture2D((uint)width,
                     (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
@@ -242,6 +324,7 @@ namespace KhaozEngine.Tests.Gpu
                 using (GpuRecording.Open(_gd, _cl, nameof(TemporalResolveSceneGpuTests))) Scene.RenderInternal(_cl, width, height, fb);
                 _gd.Submit(_cl);
                 _gd.WaitForIdle();
+                return GpuReadback.ToRgba(_gd, tex, width, height);
             }
 
             public byte[] Render(Action<Scene3D> draw)

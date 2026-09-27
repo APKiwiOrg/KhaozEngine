@@ -87,18 +87,22 @@ namespace KhaozEngine.Tests.Render3D
 
         /// <summary>A later render inside the frame from another camera at the same size pairs its own view with the
         /// previous view the frame's first render latched, so it must not read history. It never resolves: the resolve's
-        /// uniforms, the pair and the targets stay the main render's, and it presents through the internal chain, whose
-        /// ping pair it brings into being and the next frame keeps.</summary>
+        /// uniforms, the pair and the targets stay the main render's. It renders unjittered and presents through the
+        /// internal chain on a post chain of its own, and adds that chain's bloom and ping pairs in place, without the
+        /// drain a recreation of the internal targets would take. The next frame keeps all of it.</summary>
         [Fact]
         public void A_later_render_from_another_camera_at_the_same_size_never_resolves()
         {
             using var rig = new HeadlessSceneRig();
             Scene3D scene = rig.Scene;
+            scene.Post.Bloom.Enabled = true;
             scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             rig.Frame(96, 64);
             rig.Frame(96, 64);
             Assert.True(scene.ResolvedLastRenderForTests);
             Assert.False(scene.InternalPingsAllocatedForTests);
+            Assert.False(scene.BloomAllocated);
+            Assert.False(scene.LaterRenderPostCreatedForTests);
             TemporalResolveUniforms main = scene.TemporalResolveRendererForTests!.LastUniforms;
             Assert.Equal(1f, main.Jitter.W);
             int read = scene.TemporalHistory.ReadIndex, generation = scene.TemporalHistory.TargetGeneration;
@@ -107,19 +111,30 @@ namespace KhaozEngine.Tests.Render3D
             {
                 Position = new Vector3(6f, 3f, 9f), Yaw = 0.7f, Pitch = -0.3f, AspectRatio = 96f / 64f,
             };
+            int drains = rig.Device.WaitForIdleCalls;
             rig.Render(96, 64);   // a capture from another camera inside the same frame
 
             Assert.False(scene.ResolvedLastRenderForTests);
+            Assert.Equal(Vector2.Zero, scene.CurrentFrameView.JitterPixels);
             Assert.Equal(main, scene.TemporalResolveRendererForTests!.LastUniforms);
             Assert.Equal((read, generation), (scene.TemporalHistory.ReadIndex, scene.TemporalHistory.TargetGeneration));
             Assert.True(scene.InternalPingsAllocatedForTests, "the capture had no internal chain to present through");
+            Assert.True(scene.BloomAllocated, "the capture's internal chain has no bloom pair");
+            Assert.True(scene.LaterRenderPostCreatedForTests);
+            Assert.Equal(drains, rig.Device.WaitForIdleCalls);   // added in place, nothing the first render reads was freed
 
             scene.CameraOverride = null;
             rig.Frame(96, 64);
             Assert.True(scene.ResolvedLastRenderForTests);
             Assert.True(scene.LastTemporalDiagnostics.HistoryValid, "the capture reset the main view's history");
             Assert.Equal(1f, scene.TemporalResolveRendererForTests!.LastUniforms.Jitter.W);
-            Assert.True(scene.InternalPingsAllocatedForTests, "a host that captures every frame would reallocate the pair");
+            Assert.True(scene.InternalPingsAllocatedForTests && scene.BloomAllocated && scene.LaterRenderPostCreatedForTests,
+                "a host that captures every frame would reallocate the internal chain every frame");
+
+            scene.Post.Quality.AntiAliasing = AntiAliasing.Off;   // the internal chain is _post's again
+            rig.Frame(96, 64);
+            Assert.False(scene.LaterRenderPostCreatedForTests);
+            Assert.True(scene.InternalPingsAllocatedForTests && scene.BloomAllocated);
         }
 
         /// <summary>The resolve's sets name only its four inputs and the history targets, so the distortion field coming

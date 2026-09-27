@@ -1432,11 +1432,11 @@ namespace KhaozEngine.Render3D
             // otherwise). Byte-neutral when never used. The apply-pass parity is stable from here through Run.
             bool distortionActive = _distortionSprites.Count > 0;
             _res.EnsureDistortion(distortionActive, DistortionQuality == DistortionQuality.Full ? 2 : 4);
-            IPostChainTargets postTargets = PrepareTemporalResolve(cl, viewportW, viewportH);   // _res unless this render resolves
-            _post.BindTargets(postTargets);
+            var (postChain, postTargets) = PrepareTemporalResolve(cl, viewportW, viewportH);   // _post over _res unless temporal
+            postChain.BindTargets(postTargets);
             // The edge pass's depth convention (perspective or ortho, near and far), from the unjittered projection.
             var camDepth = Internal.OutlineMath.ExtractCameraDepth(_currentFrameView.Projection);
-            _post.PrepareUniforms(cl, postTargets, Post, camDepth, runFxaa, distortionActive);
+            postChain.PrepareUniforms(cl, postTargets, Post, camDepth, runFxaa, distortionActive);
 
             // Frozen-frame capture for a screen crossfade must read the PREVIOUS frame (the origin view, before the
             // teleport cut). Snapshot ColorTex here, at the top of the frame, before the model pass overwrites it. No-op
@@ -1841,7 +1841,7 @@ namespace KhaozEngine.Render3D
             if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             RunTemporalResolve(cl);   // resolving renders only: internal to display history, then the depth store
-            _post.Run(cl, postTargets, target, Post, runFxaa, distortionActive);
+            postChain.Run(cl, postTargets, target, Post, runFxaa, distortionActive);
             DrawDebugView(cl, target);   // a development view replaces the final image (Scene3D.DebugView.cs)
             DrawTargetOutlines(cl, displayVp, target);
             if (EnableTiming) postMs = ElapsedMs(timingStart);

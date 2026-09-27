@@ -97,11 +97,12 @@ namespace KhaozEngine.Render3D
             var (tw, th) = ComputeTargetSize(Post, viewportW, viewportH);
             bool wantMips = WantsMipDownsample(Post, viewportW, viewportH);
             int samples = ResolvedMsaaSamples();
-            // Under the resolve the post chain runs over the display targets, so the internal targets carry no bloom pair,
-            // and a ping pair only once a later render in a resolving frame has presented through them.
+            // Under the resolve the post chain runs over the display targets, so the internal targets carry no bloom or ping
+            // pair until a later render of a resolving frame presents through them. A resolving frame adds or drops either
+            // pair in place, because recreating the targets would free ones an earlier render's commands still read.
             bool bloom = InternalBloomWanted, pings = InternalPingsWanted;
             bool sampleChanged = _res.SampleCount != samples;
-            bool bloomChanged = _res.BloomAllocated != bloom;
+            bool bloomChanged = _res.BloomAllocated != bloom && !_frameResolves;
             bool hdrChanged = _res.HdrColor != Post.Hdr.Enabled;
             // The motion attachment changes the model framebuffer's attachment COUNT, which every pipeline drawing into
             // it bakes, so gaining or losing it rebuilds them exactly like a sample-count or colour-format change.
@@ -115,12 +116,15 @@ namespace KhaozEngine.Render3D
                 bool rebuild = sampleChanged || hdrChanged || motionChanged;
                 if (rebuild) _gd.WaitForIdle();
                 _res.Resize(tw, th, wantMips, samples, bloom, Post.Hdr.Enabled, motion, pings);
-                if (!_resolveThisRender) _post.BindTargets(_res);   // a resolving render binds the display targets instead
+                if (!_frameResolves) _post.BindTargets(_res);   // a resolving frame keeps _post on the display targets
                 _transitions.BindTargets(_res);
                 if (rebuild) RebuildMrtRenderers();   // match the renderers' pipelines to the new MRT
             }
             else
+            {
                 _res.EnsurePings(pings);
+                _res.EnsureBloom(bloom);
+            }
             // Aspect uses the true viewport (the post target is blit-stretched to fill it), not the clamped target.
             Camera.AspectRatio = viewportH > 0 ? (float)viewportW / viewportH : Camera.AspectRatio;
         }

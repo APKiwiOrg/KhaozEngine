@@ -15,10 +15,17 @@ namespace KhaozEngine.Render3D
     /// A frame resolves on its first render only, which fixes the decision for the frame as it fixes the temporal state
     /// (<see cref="TemporalActive"/>). A later render inside the frame, such as an offscreen capture, may use another
     /// camera or size, while its motion pairs its own view with the previous view the frame's first render latched, so
-    /// reading history through that motion would smear. It never resolves. It presents its internal frame unresolved
-    /// through the internal post chain, without bloom, and leaves the history targets, their pair and their contents
-    /// alone (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, section 2: a second render does not advance
-    /// history).
+    /// reading history through that motion would smear. It never resolves and looks like a render without temporal
+    /// anti-aliasing at the internal size: unjittered (<see cref="LatchFrameView"/>), through the internal post chain,
+    /// bloom included, on a post chain of its own, so neither chain is rebound per frame. It leaves the history targets,
+    /// their pair and their contents alone (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, section 2: a second
+    /// render does not advance history).
+    /// </para>
+    /// <para>
+    /// Under the resolve the internal targets carry no bloom or ping pair, since the display chain has its own. The first
+    /// later render adds both in place, and they then stay until temporal anti-aliasing turns off, with that render's post
+    /// chain. A host that captures every frame then reallocates nothing per frame, and one that never captures pays for
+    /// neither (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md, plan amendments 14 and 15).
     /// </para>
     /// </summary>
     public sealed partial class Scene3D
@@ -68,8 +75,18 @@ namespace KhaozEngine.Render3D
         bool _resolveThisRender;
 
         // Whether a later render inside a resolving frame has presented through the internal chain. It keeps the internal
-        // ping pair until the resolve stops, so a host that captures every frame does not reallocate it every frame.
+        // bloom and ping pairs and _laterRenderPost until temporal anti-aliasing turns off, so a host that captures every
+        // frame does not reallocate them every frame.
         bool _internalChainKept;
+
+        // The post chain a later render of a resolving frame runs over the internal targets. _post stays on the display
+        // targets for as long as the resolve runs, so neither chain is rebound per frame. Created by the first later
+        // render and retired when temporal anti-aliasing turns off.
+        PixelPostProcess? _laterRenderPost;
+
+        /// <summary>Whether the later renders' post chain exists: from the first later render of a resolving frame until
+        /// temporal anti-aliasing turns off. Internal, for the tests.</summary>
+        internal bool LaterRenderPostCreatedForTests => _laterRenderPost is not null;
 
         /// <summary>Whether the last render ran the resolve. Internal, for the tests.</summary>
         internal bool ResolvedLastRenderForTests => _resolveThisRender;
@@ -77,10 +94,10 @@ namespace KhaozEngine.Render3D
         /// <summary>Whether the internal targets carry the post chain's ping pair. Internal, for the tests.</summary>
         internal bool InternalPingsAllocatedForTests => _res.PingsAllocated;
 
-        // The internal targets' bloom pair, which only the internal chain reads, so never while the frame resolves.
-        bool InternalBloomWanted => Post.Bloom.Enabled && !_frameResolves;
+        // The internal targets' bloom pair, which a resolving frame needs only for a later render's internal chain.
+        bool InternalBloomWanted => Post.Bloom.Enabled && (!_frameResolves || _internalChainKept);
 
-        // The internal targets' ping pair, which a resolving frame needs only for a later render's internal chain.
+        // The internal targets' ping pair, likewise.
         bool InternalPingsWanted => !_frameResolves || _internalChainKept;
 
         /// <summary>From <c>EnsureSize</c> at the start of every render, before anything is sized or latched: fix the
@@ -98,20 +115,22 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Before any framebuffer is bound this render: size the history and the display targets, choose the history
-        /// pair, bind the resolve's inputs and upload its uniforms, and hand back the targets the post chain runs over.
-        /// Every target the post chain reads is final when this returns, so the chain can bind them next and run them
+        /// pair, bind the resolve's inputs and upload its uniforms, and hand back the post chain and the targets it runs
+        /// over. Every target the chain reads is final when this returns, so it can bind them next and run them
         /// unchanged. On a frame without the resolve it lets go of whatever a previous resolving frame left and hands back
-        /// <c>_res</c>, the internal chain. A later render inside a resolving frame also hands back <c>_res</c> and leaves
-        /// the history alone.
+        /// <c>_post</c> over <c>_res</c>, the internal chain. A later render inside a resolving frame gets
+        /// <c>_laterRenderPost</c> over <c>_res</c> and leaves the history alone.
         /// </summary>
-        IPostChainTargets PrepareTemporalResolve(IGpuCommandList cl, int displayWidth, int displayHeight)
+        (PixelPostProcess Chain, IPostChainTargets Targets) PrepareTemporalResolve(IGpuCommandList cl, int displayWidth,
+            int displayHeight)
         {
             if (!_frameResolves)
             {
                 ReleaseTemporalResolve();
-                return _res;
+                return (_post, _res);
             }
-            if (!_resolveThisRender) return _res;
+            if (!_resolveThisRender)
+                return (_laterRenderPost ??= new PixelPostProcess(_gd, _res.PingAFB.Outputs, _targetOutput), _res);
 
             FrameView current = _currentFrameView;
             _temporalResolve ??= new TemporalResolveRenderer(_gd);
@@ -143,7 +162,7 @@ namespace KhaozEngine.Render3D
                 previous is { } last ? ViewInput(last) : null, current.JitterPixels, current.Width, current.Height,
                 displayWidth, displayHeight, TemporalHistory.IsValid);
             _temporalResolve.PrepareUniforms(cl, uniforms, TemporalResolveMath.BuildDepthStore(current.Projection));
-            return _temporalPost;
+            return (_post, _temporalPost);
         }
 
         /// <summary>
@@ -198,14 +217,17 @@ namespace KhaozEngine.Render3D
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
         }
 
-        // A frame without the resolve holds none of its targets. The history targets and the resolve's sets that name them
-        // go to the retire queue, since the last frame's commands may still read them. The resolve keeps its pipelines for
-        // the next time. The display targets drain and free.
+        // A frame without the resolve holds none of its targets. The history targets, the resolve's sets that name them
+        // and the later renders' post chain go to the retire queue, since the last frame's commands may still read them.
+        // The resolve keeps its pipelines for the next time. The display targets drain and free.
         void ReleaseTemporalResolve()
         {
             TemporalHistory.ReleaseTargets(_retired);
             _temporalResolve?.ReleaseSets(_retired);
             _temporalPost?.Release();
+            if (_laterRenderPost is null) return;
+            _retired.Retire(_laterRenderPost);
+            _laterRenderPost = null;
         }
 
         /// <summary>From <c>Dispose</c>, after the device drained and the retire queue was disposed, so the history is
@@ -214,6 +236,7 @@ namespace KhaozEngine.Render3D
         {
             _temporalPost?.Dispose();
             _temporalResolve?.Dispose();
+            _laterRenderPost?.Dispose();
             TemporalHistory.ReleaseTargets();
         }
 

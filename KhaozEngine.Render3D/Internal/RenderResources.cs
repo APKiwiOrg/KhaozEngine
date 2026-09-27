@@ -169,6 +169,22 @@ namespace KhaozEngine.Render3D.Internal
             Generation++;
         }
 
+        /// <summary>Add or drop the half-resolution bloom pair alone, at the current size and colour format, keeping every
+        /// other target, as <see cref="EnsurePings"/> does for the ping pair. <see cref="Resize"/> instead recreates
+        /// everything on a bloom change, which drains and frees targets an earlier render's recorded commands may still
+        /// read, so a render later in a frame adds the pair through this. A change bumps <see cref="Generation"/>.</summary>
+        public void EnsureBloom(bool wanted)
+        {
+            if (wanted == BloomAllocated) return;
+            if (wanted) CreateBloom();
+            else
+            {
+                _gd.WaitForIdle();
+                DisposeBloom();
+            }
+            Generation++;
+        }
+
         IGpuTexture Tex(uint w, uint h, GpuPixelFormat fmt, GpuTextureUsage usage, uint mipLevels = 1, uint samples = 1) =>
             _gd.Factory.CreateTexture(new GpuTextureDescription(w, h, fmt, usage, mipLevels, 1, samples));
 
@@ -227,21 +243,35 @@ namespace KhaozEngine.Render3D.Internal
             if (pings) CreatePings();
             else PingsAllocated = false;
 
-            BloomAllocated = bloomEnabled;
-            if (bloomEnabled)
-            {
-                var (bw, bh) = BloomMath.HalfResSize(w, h);
-                BloomWidth = bw; BloomHeight = bh;
-                uint ubw = (uint)bw, ubh = (uint)bh;
-                BloomA = Tex(ubw, ubh, colorFmt, rt);
-                BloomB = Tex(ubw, ubh, colorFmt, rt);
-                BloomAFB = _gd.Factory.CreateFramebuffer(null, BloomA);
-                BloomBFB = _gd.Factory.CreateFramebuffer(null, BloomB);
-            }
+            if (bloomEnabled) CreateBloom();
             else
             {
+                BloomAllocated = false;
                 BloomWidth = 0; BloomHeight = 0;
             }
+        }
+
+        // The half-resolution bloom pair, in the colour format and size Create recorded.
+        void CreateBloom()
+        {
+            var rt = GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled;
+            var colorFmt = HdrColor ? GpuPixelFormat.R16G16B16A16Float : GpuPixelFormat.R8G8B8A8UNorm;
+            var (bw, bh) = BloomMath.HalfResSize(Width, Height);
+            BloomWidth = bw; BloomHeight = bh;
+            uint ubw = (uint)bw, ubh = (uint)bh;
+            BloomA = Tex(ubw, ubh, colorFmt, rt);
+            BloomB = Tex(ubw, ubh, colorFmt, rt);
+            BloomAFB = _gd.Factory.CreateFramebuffer(null, BloomA);
+            BloomBFB = _gd.Factory.CreateFramebuffer(null, BloomB);
+            BloomAllocated = true;
+        }
+
+        void DisposeBloom()
+        {
+            BloomAFB?.Dispose(); BloomBFB?.Dispose(); BloomA?.Dispose(); BloomB?.Dispose();
+            BloomAFB = BloomBFB = null; BloomA = BloomB = null;
+            BloomWidth = 0; BloomHeight = 0;
+            BloomAllocated = false;
         }
 
         // The post chain's full-size ping pair, in the colour format, mip mode and size Create recorded.
@@ -364,8 +394,7 @@ namespace KhaozEngine.Render3D.Internal
             MotionTex?.Dispose();
             MotionTex = null;
             DisposePings();
-            BloomAFB?.Dispose(); BloomBFB?.Dispose(); BloomA?.Dispose(); BloomB?.Dispose();
-            BloomAFB = BloomBFB = null; BloomA = BloomB = null;
+            DisposeBloom();
         }
 
         // IPostChainTargets: the internal-resolution chain, whose one source is the lit colour. Width, Height,

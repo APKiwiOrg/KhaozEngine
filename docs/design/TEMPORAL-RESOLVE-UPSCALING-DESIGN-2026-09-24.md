@@ -215,3 +215,12 @@ and changed these details. Each group's "Contract amendments" block carries the 
 12. The release version is chosen at release time by the ride rule: an untagged staged minor is ridden (Task H5).
 13. The distortion offset field keeps its internal-relative size. Only its apply pass moves to the display resolution,
     after the resolve (group E).
+14. A frame resolves on its first render only. A later render inside the frame, such as an offscreen capture, may use
+    another camera or size while its motion pairs with the first render's previous view, so it is never resolved. It
+    renders unjittered and runs the internal post chain, bloom included, on a post chain of its own, so it looks like a
+    render without temporal anti-aliasing at the internal size. It leaves the history targets, their pair and their
+    contents untouched, and neither post chain is rebound per frame (group E).
+15. Under the resolve the internal targets carry no bloom or ping pair, because the display chain has its own. The first
+    later render adds both in place, never by recreating targets an earlier render in the frame still reads, and they
+    stay until temporal anti-aliasing turns off, so a host that captures every frame reallocates nothing per frame
+    (group E).

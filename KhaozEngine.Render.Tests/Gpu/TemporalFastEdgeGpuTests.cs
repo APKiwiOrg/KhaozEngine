@@ -226,8 +226,8 @@ namespace KhaozEngine.Tests.Gpu
     /// the pixels within 2 of the object's rectangle on each frame, the trail on the last frame, pixels the object
     /// covered two or more frames before that differ from the path without it by more than 0.05 in any channel, and
     /// the energy over the object's own reference coverage and the ring beside it
-    /// (<see cref="TemporalAcceptance.CoverageEnergy"/>), NaN over the textured wall, where it measures
-    /// nothing.</summary>
+    /// (<see cref="TemporalAcceptance.CoverageEnergy"/>), which the runs set to NaN over the textured wall, where it
+    /// measures nothing.</summary>
     internal sealed record FastEdgeRun(FlickerStats Flicker, double EdgeError, int TrailOver, int TrailChecked,
         float TrailWorst, double CoverageEnergy, double RingEnergy);
 

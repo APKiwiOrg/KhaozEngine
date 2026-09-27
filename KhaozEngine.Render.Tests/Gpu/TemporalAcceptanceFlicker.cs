@@ -250,7 +250,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <para>
         /// The background must be one luma. The coverage is every pixel whose reference luma differs from the
         /// background pixel's, so over a textured background it takes in the texture, and neither value measures the
-        /// object. A scene over a textured background reports them as not applicable.
+        /// object. The method cannot tell: it returns a number there all the same, so a caller whose scene has a
+        /// textured background passes NaN in its place and prints it as not applicable, as the fast-edge runs do for
+        /// the box over the textured wall.
         /// </para>
         /// </summary>
         public static (double Coverage, double Ring) CoverageEnergy(IReadOnlyList<byte[]> frames,

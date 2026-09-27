@@ -15,8 +15,11 @@ namespace KhaozEngine.Render3D
         /// and for no motion. Screen overlays drawn after the post chain still draw over it.</summary>
         MotionVectors,
         /// <summary>The resolve's history: black where history was just reset, white at the full accumulated
-        /// weight, green where thin feature retention holds a pixel against clipping. Takes effect only under
-        /// <see cref="AntiAliasing.Temporal"/>.</summary>
+        /// weight, green where thin feature retention holds a pixel against clipping. It shows the weight each pixel
+        /// stores for the next frame, so a pixel that took the current colour of a fast narrow moving feature beside it
+        /// shows black though it blended its own history this frame, since it stores none, while one whose thin
+        /// feature lock holds whole keeps its weight. Takes effect only under <see cref="AntiAliasing.Temporal"/>.
+        /// </summary>
         History,
         /// <summary>Red where the resolve rejected history because the pixel was hidden last frame or reprojected off
         /// screen, over the dimmed scene. Takes effect only under <see cref="AntiAliasing.Temporal"/>.</summary>

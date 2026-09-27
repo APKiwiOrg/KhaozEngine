@@ -24,7 +24,7 @@ void main() {
     int mode = int(Mode.x + 0.5);
     vec3 c;
     if (mode == 2) {
-        c = vec3(clamp(t.confidence, 0.0, 1.0));                          // black fresh, white full history
+        c = vec3(clamp(t.confidence, 0.0, 1.0));   // the weight stored for the next frame: black fresh, white full
         if (t.stability >= 0.5) c = mix(c, vec3(0.1, 0.95, 0.25), 0.6);   // held by thin feature retention
     } else if (mode == 3) {
         c = t.disocclusion >= 0.5 ? vec3(1.0, 0.1, 0.1) : context;

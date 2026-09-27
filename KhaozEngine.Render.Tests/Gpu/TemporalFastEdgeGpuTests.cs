@@ -48,15 +48,16 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(TemporalUpscale.Quality)]
         public void A_keyed_line_crossing_fast_leaves_no_trail_and_does_not_shimmer(TemporalUpscale preset)
         {
-            // Measured: fast flips 0.0015 and 0.0047 against reference flips of 0.0175 and 0.0194, trail 1 and 0,
-            // energy over the line's own coverage 0.257 and 0.256, summed over the band 0.69 and 0.43, and 0.20 and
-            // 0.04 in the ring beside the line, temporal error over the band 0.00374 and 0.00428. Before amendment 23
-            // the line smeared: 8 trail pixels at Native, fast flips 0.0124 and 0.0213, summed energy 2.09 and 1.28,
-            // temporal error 0.00255 and 0.00220. The trail bound leaves two pixels over the one measured, well under
-            // the smear's 8. The energy is gated over the line's own coverage, not summed over the band, because the
-            // sum also counts luma the pixels the line left keep, where the reference shows only background. The floor
-            // of 0.2 lies a fifth under the measured 0.26, and no resolve change this round moved that by more than
-            // 0.003.
+            // Measured: fast flips 0.0038 and 0.0060 against reference flips of 0.0175 and 0.0194, no trail, energy
+            // over the line's own coverage 0.260 and 0.257, summed over the band 0.27 and 0.31, 0.010 and 0.024 in the
+            // ring beside the line, temporal error over the band 0.00288 and 0.00376. Before amendment 23 the line
+            // smeared: 8 trail pixels at Native, fast flips 0.0124 and 0.0213, own-coverage energy 1.06 and 0.94 with
+            // 0.39 and 0.12 in the ring, summed 2.09 and 1.28, temporal error 0.00255 and 0.00220. The trail bound of 3
+            // sits well under the smear's 8. The energy is gated over the line's own coverage, not summed over the
+            // band, because the sum also counts luma the pixels the line left keep, where the reference shows only
+            // background: while the narrow exception kept their history the ring held 0.20 at Native and the sum read
+            // 0.69. The floor of 0.2 lies a fifth under the measured 0.26, which no resolve change this round moved by
+            // more than 0.003, and with the motion ignored the line keeps 0.09 and 0.08.
             string message = Report(FastEdgeScene.KeyedLine, preset);
             FastEdgeRun r = runs.Run(FastEdgeScene.KeyedLine, preset);
             Assert.True(r.TrailOver <= 3, $"the line leaves a trail. {message}");
@@ -70,8 +71,8 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(TemporalUpscale.Quality)]
         public void A_keyed_box_crossing_fast_keeps_its_edges_close_to_the_reference(TemporalUpscale preset)
         {
-            // Measured: edge error 0.00150 and 0.00204, fast flips 0.00057 and 0.00164 against reference flips of
-            // 0.00176 and 0.00546, no trail, temporal error over the band 0.00208 and 0.00274. Before amendment 23 the
+            // Measured: edge error 0.00145 and 0.00196, fast flips 0.00058 and 0.00168 against reference flips of
+            // 0.00176 and 0.00546, no trail, temporal error over the band 0.00207 and 0.00272. Before amendment 23 the
             // edge error was 0.00083 and 0.00140 and the band's temporal error 0.00085 and 0.00168: an edge pixel whose
             // centre texel misses the box now reads its own history, not the box's edge carried along.
             string message = Report(FastEdgeScene.KeyedBoxEdge, preset);

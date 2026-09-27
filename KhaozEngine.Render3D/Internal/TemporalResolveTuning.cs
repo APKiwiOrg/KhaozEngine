@@ -140,50 +140,55 @@ namespace KhaozEngine.Render3D.Internal
         /// texel's own motion and depth instead. A 30 display pixel box keyed and crossing a textured wall at 4 display
         /// pixels a frame, 4 internal pixels at Native and 2.7 at Quality, left 63 and 180 of its 840 trail pixels
         /// further from the bare wall than a freshly revealed wall is, because the column behind its trailing edge read
-        /// a wall texel 4 pixels away at full confidence each frame. With this and
-        /// <see cref="DisocclusionVisibleShare"/> it leaves 1 and 0. The keyed line facts move up to 0.9 internal
-        /// pixels a frame and the nearest-depth fact 1, and all keep the dilated history. 1.25 leaves a quarter pixel
-        /// over that for the half-float motion target and the float round trip of a background centre, and 1 measures
-        /// the same. At 0.5, the moving-surface threshold, the nearest-depth fact fails and a keyed line at 0.6
-        /// internal pixels a frame on Quality keeps 12 percent of its contrast against 74. At 1.5 the box at
-        /// UltraPerformance, 1.33 internal pixels a frame, leaves 233 pixels against 60. A still nearer surface keeps
-        /// dilation: a still box in front of the textured wall under a perspective camera stepping sideways 2 internal
-        /// pixels a frame against the wall left 18 and 19 trail pixels at Native and Quality with the rule applied
-        /// there, against 6 and 10, and against the sky its edges took 0.0035 and 0.0063 fast flips a pixel a frame
-        /// against none. The cost, where a moving object's edge pixel has its centre texel on the farther surface: a
-        /// keyed box tilted and crossing the flat wall at 2 internal pixels a frame averages a luma error of 0.0015 and
-        /// 0.0020 over its edges at Native and Quality against 0.0008 and 0.0014 with dilation, and its temporal error
-        /// over the band it crosses is 0.00208 and 0.00274 against 0.00085 and 0.00168. A keyed line one internal
-        /// pixel wide keeps 0.69 and 0.43 of its reference energy where dilation smeared it to 2.09 and 1.28 with a
-        /// trail of 8 pixels at Native, and its band's temporal error is 0.00374 and 0.00428 against 0.00255 and
-        /// 0.00220. The 30 pixel box crossing the flat wall at 4 display pixels a frame shows 0.0029, 0.0025,
-        /// 0.0061 and 0.0071 fast flips a pixel a frame at its moving edges at Quality, Balanced, Performance and
-        /// UltraPerformance against 0.0001, 0.0000, 0.0000 and 0.0007, and its added change at UltraPerformance rises
-        /// from 0.0034 to 0.0042.</summary>
+        /// a wall texel 4 pixels away at full confidence each frame. With this and <see
+        /// cref="DisocclusionVisibleShare"/> it leaves 1 and 0. The keyed line facts move up to 0.9 internal pixels a
+        /// frame and the nearest-depth fact 1, and all keep the dilated history. 1.25 leaves a quarter pixel over that
+        /// for the half-float motion target and the float round trip of a background centre, and 1 measures the same.
+        /// At 0.5, the moving-surface threshold, the nearest-depth fact fails and a keyed line at 0.6 internal pixels a
+        /// frame on Quality keeps 12 percent of its contrast against 74. At 1.5 the box at UltraPerformance, 1.33
+        /// internal pixels a frame, leaves 233 pixels against 60. A still nearer surface keeps dilation: a still box in
+        /// front of the textured wall under a perspective camera stepping sideways 2 internal pixels a frame against
+        /// the wall left 18 and 19 trail pixels at Native and Quality with the rule applied there, against 6 and 10,
+        /// and against the sky its edges took 0.0035 and 0.0063 fast flips a pixel a frame against none. The cost,
+        /// where a moving object's edge pixel has its centre texel on the farther surface: a keyed box tilted and
+        /// crossing the flat wall at 2 internal pixels a frame averages a luma error of 0.00145 and 0.00196 over its
+        /// edges at Native and Quality against 0.0008 and 0.0014 with dilation, and its temporal error over the band it
+        /// crosses is 0.00207 and 0.00272 against 0.00085 and 0.00168. A keyed line one internal pixel wide keeps 0.26
+        /// of its reference energy over its own coverage at both presets, where dilation kept 1.06 and 0.94 but smeared
+        /// it to 2.09 and 1.28 over the band with a trail of 8 pixels at Native, and its band's temporal error is
+        /// 0.00288 and 0.00376 against 0.00255 and 0.00220. The 30 pixel box crossing the flat wall at 4 display pixels
+        /// a frame shows 0.0029, 0.0025, 0.0061 and 0.0071 fast flips a pixel a frame at its moving edges at Quality,
+        /// Balanced, Performance and UltraPerformance against 0.0001, 0.0000, 0.0000 and 0.0007, and its added change
+        /// at UltraPerformance rises from 0.0034 to 0.0042.</summary>
         public const float DilationReachInternalPixels = 1.25f;
         /// <summary>Step 3. A depth-tested pixel whose expected surface shows under less than this share of the
         /// bilinear weight of its four stored depths was mostly covered last frame, and drops its history, unless the
         /// nearest of the four is narrow, its run of texels along a row or a column, apart in depth from those either
-        /// side by <see cref="DisocclusionTolerance"/>, at most two long, or the lock the pixel carries lies within
-        /// half of <see cref="LockDecay"/> of whole: a ridge refreshed it on the last frame and less than that was
-        /// released since. Otherwise any one stored depth at the expected surface keeps the history, which spares a
-        /// sub-pixel edge, but it also kept the ring of pixels around a moving object's old place, whose footprint
-        /// reaches past the edge, from ever reading as revealed. The keyed box crossing a textured wall kept its colour
-        /// in its bottom row at Native, and in its top and bottom rows and its first revealed column at Quality, and
-        /// with <see cref="DilationReachInternalPixels"/> alone left 9 and 38 trail pixels against 1 and 0 with both. A
-        /// quarter leaves 17 at Quality. Three quarters raise the moving edges' fast flips at Balanced and
-        /// UltraPerformance to 0.0082 and 0.014 from 0.0025 and 0.0071, and a nearer surface crossing a held line on
-        /// UltraPerformance ghosts 2 display pixels. Without either exception a still line narrower than a texel
-        /// against the sky, or a blade over ground, drops its history on the frames the jitter misses it: the sky
-        /// line's centre averages 13.9 percent at Native against its coverage of 37.5. Counting only a single texel as
-        /// narrow and taking no account of the lock, two still blades side by side lost the left one's history at
-        /// Quality, from 45.3 to 18.4 percent, and the right of three still blades side by side, which holds a lock,
-        /// fell from 41.8 to 13.8 at Native. Keeping the history for any lock whose hold on the clip is whole, at least
-        /// 1 / <see cref="LockHoldGain"/>, also kept it where a ridged, textured keyed box crossing the textured wall
-        /// at 2 display pixels a frame left, since its motion releases only a third of its locks there: 10 and 39 of
-        /// its 420 trail pixels at Native and Quality passed a freshly revealed wall's difference by more than 0.05,
-        /// against 3 and 4 with the lock within half a decay of whole. The three still blades hold as before, and a
-        /// teleported box's corners hold 7 and 9 of 144 pixels at Native and Quality against 8 and 12.</summary>
+        /// side by <see cref="DisocclusionTolerance"/>, at most two long, and the stored state says no moving surface
+        /// showed there last frame, or the lock the pixel carries lies within half of <see cref="LockDecay"/> of whole:
+        /// a ridge refreshed it on the last frame and less than that was released since. Otherwise any one stored depth
+        /// at the expected surface keeps the history, which spares a sub-pixel edge, but it also kept the ring of
+        /// pixels around a moving object's old place, whose footprint reaches past the edge, from ever reading as
+        /// revealed. The keyed box crossing a textured wall kept its colour in its bottom row at Native, and in its top
+        /// and bottom rows and its first revealed column at Quality, and with <see cref="DilationReachInternalPixels"/>
+        /// alone left 9 and 38 trail pixels against 1 and 0 with both. A quarter leaves 17 at Quality. Three quarters
+        /// raise the moving edges' fast flips at Balanced and UltraPerformance to 0.0082 and 0.014 from 0.0025 and
+        /// 0.0071, and a nearer surface crossing a held line on UltraPerformance ghosts 2 display pixels. Without
+        /// either exception a still line narrower than a texel against the sky, or a blade over ground, drops its
+        /// history on the frames the jitter misses it: the sky line's centre averages 13.9 percent at Native against
+        /// its coverage of 37.5. Counting only a single texel as narrow and taking no account of the lock, two still
+        /// blades side by side lost the left one's history at Quality, from 45.3 to 18.4 percent, and the right of
+        /// three still blades side by side, which holds a lock, fell from 41.8 to 13.8 at Native. Keeping the history
+        /// for any lock whose hold on the clip is whole, at least 1 / <see cref="LockHoldGain"/>, also kept it where a
+        /// ridged, textured keyed box crossing the textured wall at 2 display pixels a frame left, since its motion
+        /// releases only a third of its locks there: 10 and 39 of its 420 trail pixels at Native and Quality passed a
+        /// freshly revealed wall's difference by more than 0.05, against 3 and 4 with the lock within half a decay of
+        /// whole. The three still blades hold as before, and a teleported box's corners hold 7 and 9 of 144 pixels at
+        /// Native and Quality against 8 and 12. A keyed line one or two internal texels wide moving on at 2 internal
+        /// pixels a frame is as narrow as a missed still blade: taking any narrow feature, the narrow exception kept
+        /// its colour where it left over the textured wall, 128 and 177 of the trail pixels for the line one texel wide
+        /// and 50 and 136 for two, against 11 and 23, and 0 and 3, where the moving surface's stored state rules it
+        /// out. The still blades and lines hold as before.</summary>
         public const float DisocclusionVisibleShare = 0.5f;
     }
 }

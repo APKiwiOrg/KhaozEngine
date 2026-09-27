@@ -16,8 +16,11 @@ public class PagedItemContainerWorkingCopyTests
     const int PageSlots = ItemContainerPageCodec.ContainerPageSlots;
     const int Potion = 995;
 
+    static Func<int, int> StackCap => static _ => 20;
+
     static PagedItemContainer NewContainer() =>
-        new(pageCount: 3, capacity: 1_000, static id => id != 0, ItemInstancePayload.IsCanonical, QuarantineWrapper.Verify);
+        new(pageCount: 3, capacity: 1_000, static id => id != 0, ItemInstancePayload.IsCanonical,
+            QuarantineWrapper.Verify, StackCap);
 
     static ItemSlot Stack(int count) => new(new ItemStack(Potion, count), Array.Empty<byte>(), Quarantined: false);
 
@@ -66,6 +69,7 @@ public class PagedItemContainerWorkingCopyTests
 
         Assert.Equal(container.PageCount, copy.PageCount);
         Assert.Same(container.Stackable, copy.Stackable);
+        Assert.Same(container.StackCap, copy.StackCap);
         Assert.Equal(container.IsAtCapacity, copy.IsAtCapacity);
 
         Assert.True(copy.SetSlotAt(PageSlots + 2, Stack(6)));

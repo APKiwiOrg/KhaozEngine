@@ -40,6 +40,7 @@ public sealed partial class PagedItemContainer
 {
     readonly ItemContainerPage[] _pages;
     readonly Func<int, bool> _stackable;
+    readonly Func<int, int>? _stackCap;
 
     /// <summary>Builds an empty paged container.</summary>
     /// <param name="pageCount">How many pages of <see cref="ItemContainerPageCodec.ContainerPageSlots"/>
@@ -56,6 +57,9 @@ public sealed partial class PagedItemContainer
     /// <param name="quarantineWellFormed">Whether a quarantined slot's bytes are a well formed quarantine
     /// wrapper, which is <see cref="QuarantineWrapper.Verify(ReadOnlyMemory{byte})"/>. Left null, every
     /// non-empty quarantined payload is refused.</param>
+    /// <param name="stackCap">The game's current <c>max_stack</c> for a definition. It is consulted per
+    /// operation and never cached. Left null, or when it returns zero, adds use the engine ceiling. A
+    /// negative answer is a caller error.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageCount"/> is not positive or names
     /// a page the codec's header cannot, or <paramref name="capacity"/> is negative.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="stackable"/> is null.</exception>
@@ -64,7 +68,8 @@ public sealed partial class PagedItemContainer
         int capacity,
         Func<int, bool> stackable,
         Func<ReadOnlyMemory<byte>, bool>? payloadCanonical = null,
-        Func<ReadOnlyMemory<byte>, bool>? quarantineWellFormed = null)
+        Func<ReadOnlyMemory<byte>, bool>? quarantineWellFormed = null,
+        Func<int, int>? stackCap = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageCount);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(pageCount, ItemContainerPage.MaxPageIndex + 1);
@@ -72,6 +77,7 @@ public sealed partial class PagedItemContainer
         ArgumentNullException.ThrowIfNull(stackable);
 
         _stackable = stackable;
+        _stackCap = stackCap;
         _pages = new ItemContainerPage[pageCount];
         for (int index = 0; index < pageCount; index++)
             _pages[index] = new ItemContainerPage(index, stackable, payloadCanonical, quarantineWellFormed);
@@ -97,6 +103,14 @@ public sealed partial class PagedItemContainer
     /// so a caller that keeps it still sees catalog edits live.
     /// </summary>
     public Func<int, bool> Stackable => _stackable;
+
+    /// <summary>
+    /// The game's current <c>max_stack</c> rule, exposed so an operation above this container asks the same
+    /// question as <see cref="Add(int, int)"/>. Null means no content cap and a negative answer is a caller
+    /// error. The delegate is handed out rather than its answer so catalog edits are visible to the next
+    /// operation.
+    /// </summary>
+    public Func<int, int>? StackCap => _stackCap;
 
     /// <summary>How many slots hold an entry, which is the number <see cref="Capacity"/> gates.</summary>
     public int Occupancy

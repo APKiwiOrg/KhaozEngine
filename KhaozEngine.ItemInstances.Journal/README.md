@@ -201,7 +201,7 @@ leaves its pages owing the next commit a rewrite, which is the state the consume
 
 **The batch owns what it is opened over, from `Open` until `MarkCommitted`.** It holds each container by
 reference and every `Apply` writes through it, so between those two calls the containers are the batch's and
-nothing else writes them. It reads and writes through `IPagedContainerWorkingCopy` and nothing wider: ten
+nothing else writes them. It reads and writes through `IPagedContainerWorkingCopy` and nothing wider: eleven
 members, three of which write (`SetSlotAt`, `TakeSlotAt`, `MarkClean`), and no page object crosses it
 ([#1045](https://github.com/APKiwiOrg/KhaozEngine/issues/1045)). `Open` has two overloads. Handed the
 `PagedItemContainer`s themselves, the batch holds their real write doors. Handed a host's own
@@ -423,10 +423,10 @@ has no target slot and returns `legacy-location-omitted` for replay, while
 
 `ContainerOperationApplier.TryReplay` takes the decoded operation and a dictionary of caller-owned
 `IPagedContainerWorkingCopy` containers. It checks known invalid slots, instance ids, counts, payloads,
-currency and craft before state before changing a slot. A historical Merge or occupied Grant uses its
-admission as proof that the item was stackable then, so a later catalog retune cannot block replay. An
-admitted Grant also bypasses a later reduction in container capacity. The live builder uses `TryApply`,
-which still checks current stackability and capacity. The caller's working-copy
+currency and craft before state before changing a slot. A historical Merge or Grant uses its
+admission as proof that the item was stackable and within its stack cap then, so a later catalog retune
+cannot block replay. An admitted Grant also bypasses a later reduction in container capacity. The live
+builder uses `TryApply`, which checks current stackability, stack cap and capacity. The caller's working-copy
 implementation remains responsible for accepting valid writes. No replay path rerolls content or mints an
 instance id. `ItemGeneratedEvent` remains a readable audit body, and version 2 Craft still contains the
 unchanged `ItemCraftedEvent` audit body inside its envelope.

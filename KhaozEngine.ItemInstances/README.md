@@ -441,6 +441,9 @@ of instead of rewriting the whole thing. It splits the two concepts `ItemContain
   gate consulted by `Add` and by nothing else, and `IsAtCapacity` is the question it asks. `Occupancy` counts
   what it gates and `FreeSlots` counts the address space, so a container at capacity usually has free slots
   and refuses to open one anyway.
+- **`StackCap`** is the optional content-free `Func<int, int>` that supplies the current `max_stack`. It is
+  called once per add and never cached. A new stack and a merge accept only the units within a positive cap.
+  Null or zero keeps the `int.MaxValue` engine ceiling. A negative answer is a caller error.
 
 The four capacity rules, which are one consumer's bag model restated as engine behaviour:
 
@@ -476,8 +479,8 @@ whatever commit comes next rather than causing one.
 
 **`PagedItemContainer` is an `IPagedContainerWorkingCopy`**, the narrow door the commit builder in
 `KhaozEngine.ItemInstances.Journal` reads and writes a container through
-([#1045](https://github.com/APKiwiOrg/KhaozEngine/issues/1045)). It is ten members and no page object:
-`PageCount`, `Stackable`, `IsAtCapacity` and `SlotAt`, the three writes `SetSlotAt`, `TakeSlotAt` and
+([#1045](https://github.com/APKiwiOrg/KhaozEngine/issues/1045)). It is eleven members and no page object:
+`PageCount`, `Stackable`, `StackCap`, `IsAtCapacity` and `SlotAt`, the three writes `SetSlotAt`, `TakeSlotAt` and
 `MarkClean`, and the page reads by INDEX, `IsPageDirty`, `PageContentVersion` and `CopyPageEntriesTo`. A page
 is read by index because an `ItemContainerPage` carries write members of its own, so handing one out would be a
 second door around the first. The container implements the three page reads explicitly, because `Pages`
@@ -489,6 +492,7 @@ var bag = new PagedItemContainer(
     pageCount: 1,
     capacity: 30,
     stackable: definitionId => catalog.Item(definitionId).Stackable,
+    stackCap: definitionId => catalog.Item(definitionId).MaxStack,
     payloadCanonical: ItemInstancePayload.IsCanonical,
     quarantineWellFormed: QuarantineWrapper.Verify);
 
@@ -505,13 +509,15 @@ differing only in a field neither build understands do not merge, which is the c
 the four rules, an entry carrying durability (kind 5) or sockets (kind 132) never merges whatever the
 predicate says, because a definition can gain either AFTER its items exist and publish only sees the
 definitions it publishes. `InstanceStacking.Merge` is the arithmetic and never the rules: the surviving
-instance id is the numerically LOWER of the two, so a replay in either order agrees, and the count saturates
-at `int.MaxValue` rather than overflowing.
-
-**The stack cap of a lowered `max_stack` is the CALLER's**, applied above this kernel. The container reads no
-content, so it saturates at the engine ceiling and the load-time validator is what reports an over-cap count.
-Where that rule should live is
-[#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924).
+instance id is the numerically LOWER of the two, so a replay in either order agrees. Its existing overload
+uses the `int.MaxValue` engine ceiling. The cap overload takes the current `max_stack` as an integer, moves
+only the units that fit and returns the rest. Zero means no content cap and a negative value throws. A
+destination already at or above a positive cap accepts no units. Removal can shrink an over-cap stack, and
+ordinary capped growth resumes once the count is below it.
+An `Add` that opens a new stack seats only the units within a positive cap and returns the remainder. `Seat`
+and the load path may preserve an existing over-cap stack. The container reads the cap through `StackCap`
+for each operation, so `ItemInstances` stays free of catalog row types and observes catalog edits without a
+cache.
 
 ## The remap pass
 
@@ -1298,12 +1304,11 @@ every id space, every ordering rule, the stacking test, the paging shape, the pr
 byte passes through, the eighteen content types a roll and a craft read, and the three engines over them,
 which are the expensive things to change once data exists. What is absent is breadth, which is CONTENT: this
 package names no mod, no rarity, no currency and no tier, and a game authors every one of them. Beside that
-sit three named gaps on surfaces that already exist.
+sit two named gaps on surfaces that already exist.
 
 | Not here | Where it lands |
 |---|---|
 | a READER for the page delta, which ships the encoder alone while the fragmenter ships both halves | [#933](https://github.com/APKiwiOrg/KhaozEngine/issues/933) |
-| the lowered `max_stack` cap on the merge path, which saturates at `int.MaxValue` here and is reported after the fact by validator check 12 | [#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924) |
 | enforcement of spec 3.3's per-kind value widths, so the revealed mask is a full `ulong` at every door here | [#917](https://github.com/APKiwiOrg/KhaozEngine/issues/917) |
 
 The journal side of a paged container, the `<container>/p<NN>` section naming, the load path and the batched

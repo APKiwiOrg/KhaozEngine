@@ -9,15 +9,16 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// A STEADY FRAME THAT PRESENTS ALLOCATES NOTHING. Each frame renders a scene with staged uploads into an
-    /// offscreen target, submits, drains and then calls <see cref="IGpuDevice.Present"/>, which is the frame boundary
-    /// a windowed game crosses every frame.
+    /// A STEADY HEADLESS FRAME THROUGH PRESENT ALLOCATES NOTHING. Each frame renders a scene with staged uploads into
+    /// an offscreen target, submits, drains and then calls <see cref="IGpuDevice.Present"/>, which is the frame
+    /// boundary a windowed game crosses every frame.
     /// <para>
-    /// <b>HEADLESS, AND THAT IS STILL THE DEVICE'S HALF OF A PRESENT.</b> A headless device has no swapchain, so the
-    /// present itself is skipped, and what runs is the device's own frame boundary: the uniform ring opening its next
-    /// segment and, on the native Vulkan backend, the retire list draining every deferred destroy the timeline has
-    /// passed. That drain once built a closure on every call, 88 bytes per present, which no frame reading saw because
-    /// none of them presented.
+    /// <b>HEADLESS, SO ONLY THE DEVICE'S HALF OF A PRESENT.</b> A headless device has no swapchain, so the present
+    /// itself is skipped. On the native Vulkan and Direct3D 11 backends what runs is the device's own frame boundary:
+    /// the uniform ring opening its next segment and, on Vulkan, the retire list draining every deferred destroy the
+    /// timeline has passed. That drain once built a closure on every call, 88 bytes per present, which no frame reading
+    /// saw because none of them presented. On Metal a headless present does nothing, so there the reading covers the
+    /// render, the submit and the drain only. A windowed swapchain present is not measured by this test on any backend.
     /// </para>
     /// </summary>
     [Collection("AllocSensitive")]
@@ -26,7 +27,7 @@ namespace KhaozEngine.Tests.Gpu
         const int W = 320, H = 180, Warm = 8, Measured = 16;
 
         [GpuFact]
-        public void A_steady_frame_that_presents_allocates_nothing()
+        public void A_steady_headless_frame_through_present_allocates_nothing()
         {
             using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
             IGpuDevice gd = gpu.GpuDevice;

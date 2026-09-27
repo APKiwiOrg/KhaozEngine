@@ -264,3 +264,9 @@ and changed these details. Each group's "Contract amendments" block carries the 
     mid-contrast thin geometry gate compares with the plain box-filtered reference, and the high-contrast gate compares
     with a reference averaged the same way the resolve averages. Both gates hold on every frame from 32 to 48, not on
     one frame alone (group F).
+22. Acceptance 2 is not measured by the grass probe's flip metric, because raw flips reward blur: a thin feature
+    crossing a pixel flips it under every mode, and a blurred or lagging image flips less than an ideal filter. With HDR
+    off, stability is asserted as added change against a per-frame supersampled reference sequence of the same path,
+    the frame-to-frame change the output makes and the reference does not, compared with MSAA 4x's. Sharpness floors
+    guard the blur that added change cannot see. The zoom is asserted as its error after a 5 by 5 low-pass against a
+    one-frame-lag control.

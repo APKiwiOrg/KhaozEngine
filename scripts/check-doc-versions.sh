@@ -88,9 +88,30 @@ for csproj in KhaozEngine.*/KhaozEngine.*.csproj; do
   fi
 done
 
+# --- Foundation umbrella membership guard ----------------------------------
+# The Foundation csproj is the authority on the packages the umbrella carries.
+# Keep every reference visible in the Pulls in list shipped inside the package.
+foundation_project=KhaozEngine.Foundation/KhaozEngine.Foundation.csproj
+foundation_readme=KhaozEngine.Foundation/README.md
+foundation_pulls_in=$(awk '
+  /^Pulls in:$/ { found=1; next }
+  found && /^- / { started=1; print; next }
+  found && started && /^  / { print; next }
+  found && started { exit }
+' "$foundation_readme")
+
+while IFS= read -r reference; do
+  package=$(basename "$(dirname "$reference")")
+  needle="\`$package\`"
+  if ! grep -Fq "$needle" <<< "$foundation_pulls_in"; then
+    echo "FAIL  $foundation_readme: Pulls in list is missing $package from $foundation_project"
+    fail=1
+  fi
+done < <(sed -n 's#.*ProjectReference Include="\([^"]*\)".*#\1#p' "$foundation_project")
+
 if [ "$fail" -ne 0 ]; then
   echo
-  echo "Doc version drift detected. Bump the declarations above to $ver (or fix Directory.Build.props)." >&2
+  echo "Documentation drift detected. Fix the failures above." >&2
   exit 1
 fi
-echo "all engine-version declarations match $ver; package inventory is documented"
+echo "all engine-version declarations match $ver, and package inventory plus Foundation membership are documented"

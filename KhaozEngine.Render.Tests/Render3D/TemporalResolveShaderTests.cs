@@ -49,6 +49,7 @@ namespace KhaozEngine.Tests.Render3D
                 1.25f
             },
             { "const float DisocclusionVisibleShare = 0.5;", TemporalResolveTuning.DisocclusionVisibleShare, 0.5f },
+            { "const float MovingShareConfidence = 0.0;", TemporalResolveTuning.MovingShareConfidence, 0f },
         };
 
         [Theory]
@@ -151,6 +152,42 @@ namespace KhaozEngine.Tests.Render3D
                 StringComparison.Ordinal);
             Assert.True(edge >= 0 && reach > edge && test > reach,
                 "the own reprojection must follow the edge signal it reads and precede the depth test");
+        }
+
+        [Fact]
+        public void Beside_a_fast_narrow_feature_the_own_history_takes_the_feature_s_current_colour_for_its_share()
+        {
+            // Where the pixel reprojected by its own motion and the nearer surface is narrow in this frame's depth,
+            // the share of the reconstruction weight on texels nearer than the centre texel's own surface takes their
+            // current colour in the clipped history, before the blend, and the pixel stores MovingShareConfidence. The
+            // centre texel's own depth is read before the 3x3, so the nearer texels are summed in the loop.
+            string core = ShaderSources.TemporalResolveCoreGlsl;
+            Assert.Contains("vec2 ownMotion = texelFetch(sampler2D(MotionTex, LinearClamp), centreTexel, 0).rg;", core,
+                StringComparison.Ordinal);
+            Assert.Contains("if (ownDepth > viewDepth * (1.0 + DisocclusionTolerance)) {", core,
+                StringComparison.Ordinal);
+            Assert.Contains("nearerSum += vec4(ycc, sceneColor.a) * lanczosWeight;", core, StringComparison.Ordinal);
+            Assert.Contains("closestTexel = texel;", core, StringComparison.Ordinal);
+            Assert.Contains("narrowMoving = temporalNarrowCurrentDepth(closestTexel, closestDepth, maxTexel);", core,
+                StringComparison.Ordinal);
+            Assert.Contains("bool temporalNarrowCurrentDepth(ivec2 texel, float depth, ivec2 maxTexel) {", core,
+                StringComparison.Ordinal);
+            Assert.Contains("if (narrowMoving && nearerWeight > 1.0e-4) {", core, StringComparison.Ordinal);
+            Assert.Contains("movingShare = clamp(nearerWeight / max(reconstructionWeight, 1.0e-4), 0.0, 1.0);", core,
+                StringComparison.Ordinal);
+            Assert.Contains("clipped = mix(clipped, clamp(movingColor.xyz, neighbourMin, neighbourMax), movingShare);",
+                core, StringComparison.Ordinal);
+            Assert.Contains("result.confidence = movingShare > 0.0 ? MovingShareConfidence", core,
+                StringComparison.Ordinal);
+            int reach = core.IndexOf("if (!depthTested && edgeMotion > DilationReachInternalPixels",
+                StringComparison.Ordinal);
+            int narrow = core.IndexOf("narrowMoving = temporalNarrowCurrentDepth(", StringComparison.Ordinal);
+            int hold = core.IndexOf("clipped.x = mix(clipped.x, historyYcc.x, hold);", StringComparison.Ordinal);
+            int share = core.IndexOf("if (narrowMoving && nearerWeight > 1.0e-4) {", StringComparison.Ordinal);
+            int blend = core.IndexOf("vec3 resolvedYcc = mix(clipped, current.xyz, currentWeight);",
+                StringComparison.Ordinal);
+            Assert.True(reach >= 0 && narrow > reach && hold > narrow && share > hold && blend > share,
+                "the narrow test follows rule 1, and the colour replaces the clipped history before the blend");
         }
 
         [Fact]

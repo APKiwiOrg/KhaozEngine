@@ -106,7 +106,7 @@ namespace KhaozEngine.Render3D
             (int keyedRigid, int keyedSkinned, int keyCollisions) = MotionKeyCounts;
             LastTemporalDiagnostics = new TemporalDiagnostics(
                 FrameIndex: view.FrameIndex,
-                JitterPhase: TemporalJitter.Phase(view.FrameIndex, TemporalJitter.PhaseCount(DisplayOverInternalRatio)),
+                JitterPhase: TemporalJitter.Phase(view.FrameIndex, _framePhaseCount),
                 JitterPixels: view.JitterPixels,
                 KeyedRigid: keyedRigid, KeyedSkinned: keyedSkinned, KeyCollisions: keyCollisions,
                 HistoryValid: TemporalHistory.IsValid,

@@ -86,6 +86,53 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(fromPresetAlone, TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset)));
         }
 
+        /// <summary>A settings change between the main render and a capture in one frame waits for the next frame, as
+        /// the temporal state does: the capture keeps the main render's 18-phase jitter although the switch to FXAA would
+        /// give 8. Frame 20 is past index 8, so the two sequences give different offsets there.</summary>
+        [Fact]
+        public void A_capture_after_a_settings_change_keeps_the_frames_jitter_cycle()
+        {
+            using var rig = new HeadlessSceneRig();
+            rig.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+            rig.Scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
+            for (int i = 0; i < 20; i++) rig.Frame(240, 240);
+            FrameView main = rig.Scene.CurrentFrameView;
+            Assert.Equal(20, main.FrameIndex);
+            Assert.Equal(TemporalJitter.Offset(20, 18), main.JitterPixels);
+            Assert.NotEqual(TemporalJitter.Offset(20, 8), main.JitterPixels);
+
+            rig.Scene.Post.Quality.AntiAliasing = AntiAliasing.Fxaa;
+            rig.Render(240, 240);   // a capture inside the same frame
+            Assert.Equal(main.FrameIndex, rig.Scene.CurrentFrameView.FrameIndex);
+            Assert.Equal(main.JitterPixels, rig.Scene.CurrentFrameView.JitterPixels);
+            Assert.Equal(TemporalJitter.Phase(20, 18), rig.Scene.LastTemporalDiagnostics.JitterPhase);
+        }
+
+        /// <summary>A capture at another display size inside the frame keeps the frame's jitter, and leaves the frame's
+        /// display size latched: a later latch that passes no size still reads the main render's 5120 by 2880, whose
+        /// capped scale needs 15 phases where 1920 by 1080 needs 8. Frames 10 and 11 are past index 8, so the two
+        /// sequences give different offsets there.</summary>
+        [Fact]
+        public void A_capture_at_another_display_size_keeps_the_frames_jitter_and_display_size()
+        {
+            using var rig = new HeadlessSceneRig();
+            rig.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+            for (int i = 0; i < 10; i++) rig.Frame(5120, 2880);
+            FrameView main = rig.Scene.CurrentFrameView;
+            Assert.Equal(TemporalJitter.Offset(10, 15), main.JitterPixels);
+            Assert.NotEqual(TemporalJitter.Offset(10, 8), main.JitterPixels);
+
+            rig.Render(1920, 1080);   // a capture inside the same frame
+            Assert.Equal((1920, 1080), (rig.Scene.RenderTargetWidth, rig.Scene.RenderTargetHeight));
+            Assert.Equal(main.JitterPixels, rig.Scene.CurrentFrameView.JitterPixels);
+
+            rig.Scene.BeginFrameView();
+            rig.Scene.LatchFrameView();
+            Assert.Equal(11, rig.Scene.CurrentFrameView.FrameIndex);
+            Assert.Equal(TemporalJitter.Offset(11, 15), rig.Scene.CurrentFrameView.JitterPixels);
+            Assert.NotEqual(TemporalJitter.Offset(11, 8), rig.Scene.CurrentFrameView.JitterPixels);
+        }
+
         [Fact]
         public void A_preset_change_resets_history_as_a_render_scale_change()
         {

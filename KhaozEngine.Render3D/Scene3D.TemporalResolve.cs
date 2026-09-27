@@ -20,8 +20,9 @@ namespace KhaozEngine.Render3D
         internal bool TemporalResolveActive => Post.EffectiveAaMode == AntiAliasingMode.Temporal;
 
         /// <summary>The display over internal scale per axis for the latched display size, which sets the jitter
-        /// sequence length. <see cref="LatchFrameView"/> and <see cref="LastTemporalDiagnostics"/> read it. 1 unless
-        /// temporal anti-aliasing is in effect.</summary>
+        /// sequence length. <see cref="LatchFrameView"/> reads it on the frame's first render and fixes the sequence
+        /// length it gives for the frame, which <see cref="LastTemporalDiagnostics"/> reports. 1 unless temporal
+        /// anti-aliasing is in effect.</summary>
         float DisplayOverInternalRatio => TemporalDisplayOverInternal(_latchedDisplayWidth, _latchedDisplayHeight);
 
         /// <summary>The display over internal scale per axis for a display of <paramref name="displayWidth"/> by

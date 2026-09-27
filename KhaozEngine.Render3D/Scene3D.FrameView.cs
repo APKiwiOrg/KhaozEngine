@@ -21,6 +21,9 @@ namespace KhaozEngine.Render3D
         bool _frameViewLatchedThisFrame;
         // The frame's temporal state, fixed by its first render (see TemporalActive).
         bool _frameTemporalActive;
+        // The frame's jitter sequence length, fixed by its first render beside the temporal state, so a later render
+        // inside the frame jitters by the same offset whatever its size or a settings change since.
+        int _framePhaseCount = TemporalJitter.NativePhaseCount;
         // The frame's debug view, fixed by its first render beside the temporal state (see DebugView). A view is only
         // drawn on a temporal frame, so its data exists whenever it is drawn.
         SceneDebugView _frameDebugView;
@@ -61,6 +64,7 @@ namespace KhaozEngine.Render3D
             _frameIndex++;
             _frameViewLatchedThisFrame = false;
             _frameTemporalActive = false;
+            _framePhaseCount = TemporalJitter.NativePhaseCount;
             _frameDebugView = SceneDebugView.None;
         }
 
@@ -71,14 +75,13 @@ namespace KhaozEngine.Render3D
         /// frame. A camera that cannot take an origin but was swapped in after <see cref="Begin"/> latched one gets the
         /// translation composed onto its view, as the fallback in <see cref="FrameViewProjection"/> does for its
         /// view-projection. The frame's first render also fixes its temporal state (<see cref="TemporalActive"/>), its
-        /// debug view (<see cref="DebugView"/>) and its display size, <paramref name="displayWidth"/> by
-        /// <paramref name="displayHeight"/>, which sets the jitter cycle under temporal anti-aliasing
-        /// (<see cref="DisplayOverInternalRatio"/>) and joins the history key.
+        /// debug view (<see cref="DebugView"/>), its display size, <paramref name="displayWidth"/> by
+        /// <paramref name="displayHeight"/>, which joins the history key, and its jitter cycle, which that display size
+        /// sets under temporal anti-aliasing (<see cref="DisplayOverInternalRatio"/>).
         /// </summary>
         internal void LatchFrameView(int displayWidth = 0, int displayHeight = 0)
         {
-            // A later render inside the frame keeps the frame's display size, so it keeps the frame's jitter too. A call
-            // without a size keeps the last one.
+            // A later render inside the frame keeps the frame's display size. A call without a size keeps the last one.
             if (!_frameViewLatchedThisFrame && displayWidth > 0 && displayHeight > 0)
                 (_latchedDisplayWidth, _latchedDisplayHeight) = (displayWidth, displayHeight);
             IIsoCamera3D cam = ActiveCamera;
@@ -86,8 +89,10 @@ namespace KhaozEngine.Render3D
             Matrix4x4 view = cam is not IRenderOriginAware && _frameOriginActive
                 ? Matrix4x4.CreateTranslation(_frameOrigin) * cam.View
                 : cam.View;
-            int phaseCount = TemporalJitter.PhaseCount(DisplayOverInternalRatio);
-            // The live requesters on the frame's first render, the value that render fixed on any later one.
+            // The live requesters and settings on the first render, the values that render fixed on any later one.
+            int phaseCount = _frameViewLatchedThisFrame
+                ? _framePhaseCount
+                : TemporalJitter.PhaseCount(DisplayOverInternalRatio);
             bool temporal = TemporalActive;
             Vector2 jitter = temporal ? TemporalJitter.Offset(_frameIndex, phaseCount) : Vector2.Zero;
             _currentFrameView = new FrameView(view, cam.Projection, viewProjection, FrameAbsoluteViewProjection(),
@@ -98,6 +103,7 @@ namespace KhaozEngine.Render3D
             if (_frameViewLatchedThisFrame) return;
             _frameViewLatchedThisFrame = true;
             _frameTemporalActive = temporal;
+            _framePhaseCount = phaseCount;
             _frameDebugView = _debugView;
             AdvanceTemporalHistory();
         }

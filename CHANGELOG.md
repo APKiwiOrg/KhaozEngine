@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.10.0
+
+- Catalog runtimes now expose `Indexes.References.Ids` for direct reverse lookup of authored key references.
+  Results are sorted, distinct row IDs and the flat index includes retired rows for caller filtering. Catalog
+  benchmarks now measure the fifth index at 50,000 one-to-one references ([#1005](https://github.com/APKiwiOrg/KhaozEngine/issues/1005)).
+- Journal admission gauges use admission-ordered indexes instead of scanning all in-flight operations on
+  each transition. Counts and oldest admission reads now take constant work ([#871](https://github.com/APKiwiOrg/KhaozEngine/issues/871)).
+- The Metal copy-buffer call-site test prunes nested worktrees before scanning source files, preventing
+  duplicate call sites and false failures in a shared checkout ([#1170](https://github.com/APKiwiOrg/KhaozEngine/issues/1170)).
+- Local-feed packing builds into a fresh sibling directory, refreshes the guarded current version and
+  removes obsolete same-version package files while preserving older versions ([#1172](https://github.com/APKiwiOrg/KhaozEngine/issues/1172)).
+- The item-instance design now names the boot-time craft plan index, craft executor and payload-to-stat-line
+  producer, including their ordering and random-source rules ([#999](https://github.com/APKiwiOrg/KhaozEngine/issues/999)).
+
 ## 20.9.0
 
 - Tile overlays can opt into a narrow inward blend through the authored `FeatherOverlay` setting.

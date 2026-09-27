@@ -22,29 +22,46 @@ namespace KhaozEngine.Tests.Gpu
     /// HDR is off in every render, the reference included, so the chain has no tonemap and the order of averaging and
     /// tonemapping cannot matter. The chart is white on a dark ground, so the resolve's luma-weighted blend darkens its
     /// thinnest bars by design. Both compared images are temporal outputs and share that bias, so the gate stays
-    /// against the plain box average. The distance to the luma-weighted average of the same samples, the bias and
-    /// each bar group's retained contrast are printed, not asserted.
+    /// against the plain box average. The distance to the luma-weighted average of the same samples and the bias are
+    /// printed, not asserted.
+    /// </para>
+    /// <para>
+    /// The whole-chart mean is dominated by flat area and cannot see the finest groups turn grey, so the share of each
+    /// fine group's reference contrast Quality keeps is held too, at about 0.7 of its measured value. Quality's
+    /// internal pixel is 1.5 display pixels, so groups finer than 1.5 internal pixels (the 1.2 and 1 pixel bars) are
+    /// past its internal Nyquist. They are held on the contrast they keep, not on resolving as separate bars.
+    /// </para>
+    /// <para>
+    /// Both temporal images run the default sharpen (Sharpness 0.25) after the resolve, so the sharpen is part of what
+    /// is measured. A control row prints Quality with Sharpness 0.
     /// </para>
     /// </summary>
     public sealed class TemporalUpscalingGoldenTests(ITestOutputHelper output)
     {
         const int W = 320, H = 180, IW = 213, IH = 120, Factor = 8, Frames = 48;
 
-        // Acceptance threshold, a first estimate the first real-Metal run retunes in one place: Quality's error
-        // against native, as a share of the bilinear upscale's.
+        // Acceptance threshold: Quality's error against native, as a share of the bilinear upscale's.
         const double MaxErrorShareOfBilinear = 0.85;
+
+        // Regression floors on the share of a fine group's reference contrast Quality keeps, vertical and horizontal
+        // bars, about 0.7 of the measured value: 1.5 px 0.699 and 0.703, 1.2 px 0.599 and 0.624, 1 px 0.359 and 0.489.
+        static readonly (float Bar, double Vertical, double Horizontal)[] MinKept =
+            { (1.5f, 0.49, 0.49), (1.2f, 0.42, 0.44), (1f, 0.25, 0.34) };
 
         // The chart sits a quarter of a display pixel off the pixel grid on both axes. On the grid the 1 pixel bars'
         // edges fall on pixel centres, so the reference averages that whole group to one flat grey and the finest
         // group would reward blur instead of measuring it.
         const float OffsetPixels = 0.25f;
 
-        const float Px = 4.5f / H;
+        readonly FrontStage _stage = new(W, H, 4.5f);
+
+        float Px => _stage.PixelWorld;
+
         static readonly float[] BarPixels = { 3f, 2f, 1.5f, 1.2f, 1f };
 
         // Five groups of five bars, bar and gap equal at 3, 2, 1.5, 1.2 and 1 display pixel: vertical bars on the top
         // row, horizontal bars on the bottom row, and a square turned 20 degrees between them.
-        static void Chart(FrontStage stage, Scene3D s)
+        void Chart(Scene3D s)
         {
             var white = new Color(0.95f, 0.95f, 0.95f, 1f);
             float shift = OffsetPixels * Px;
@@ -54,47 +71,48 @@ namespace KhaozEngine.Tests.Gpu
                 for (int b = 0; b < 5; b++)
                 {
                     float o = left + b * 2f * bar;
-                    s.Draw(stage.Box, Matrix4x4.CreateScale(bar, 1.2f, 0.1f)
+                    s.Draw(_stage.Box, Matrix4x4.CreateScale(bar, 1.2f, 0.1f)
                         * Matrix4x4.CreateTranslation(o, 1.2f, 0f), white);
-                    s.Draw(stage.Box, Matrix4x4.CreateScale(1.2f, bar, 0.1f)
+                    s.Draw(_stage.Box, Matrix4x4.CreateScale(1.2f, bar, 0.1f)
                         * Matrix4x4.CreateTranslation(left + 0.6f, -1.8f - shift + b * 2f * bar, 0f), white);
                 }
             }
-            s.Draw(stage.Box, Matrix4x4.CreateScale(0.9f, 0.9f, 0.1f) * Matrix4x4.CreateRotationZ(0.35f)
+            s.Draw(_stage.Box, Matrix4x4.CreateScale(0.9f, 0.9f, 0.1f) * Matrix4x4.CreateRotationZ(0.35f)
                 * Matrix4x4.CreateTranslation(0f, -0.2f, 0f), white);
         }
 
-        static Action<Scene3D> Setup(FrontStage stage, AntiAliasing aa, TemporalUpscale preset) => s =>
+        Action<Scene3D> Setup(AntiAliasing aa, TemporalUpscale preset, float sharpness = 0.25f) => s =>
         {
-            stage.Setup(s, aa, preset);
+            _stage.Setup(s, aa, preset, sharpness);
             s.Post.Hdr.Enabled = false;   // the legacy chain, no tonemap, see the class summary
         };
 
         [GpuFact]
         public void QualityUpscalingBeatsABilinearUpscaleOfTheSameFrame()
         {
-            var stage = new FrontStage(W, H, 4.5f);
-            void Draw(Scene3D s, int _) => Chart(stage, s);
+            void Draw(Scene3D s, int _) => Chart(s);
 
             // Both references average the same anti-aliasing off samples.
             byte[] samples = TemporalAcceptance.Supersampled(W * Factor, H * Factor, 1,
-                Setup(stage, AntiAliasing.Off, TemporalUpscale.Native), Draw);
+                Setup(AntiAliasing.Off, TemporalUpscale.Native), Draw);
             byte[] native = Rgba8Stats.BoxDownsample(samples, W * Factor, H * Factor, Factor);
             byte[] weighted = LumaWeightedReference.Downsample(samples, W * Factor, H * Factor, Factor);
 
-            byte[] quality;
-            TemporalDiagnostics d;
-            using (var fx = new TemporalFixture(W, H, Setup(stage, AntiAliasing.Temporal, TemporalUpscale.Quality)))
+            (byte[] Image, TemporalDiagnostics Diagnostics) Quality(float sharpness)
             {
+                using var fx = new TemporalFixture(W, H, Setup(AntiAliasing.Temporal, TemporalUpscale.Quality,
+                    sharpness));
                 fx.Frames(Frames - 1, Draw);
-                quality = fx.Frame(Draw);
-                d = fx.Scene.LastTemporalDiagnostics;
+                byte[] image = fx.Frame(Draw);
+                return (image, fx.Scene.LastTemporalDiagnostics);
             }
+            var (quality, d) = Quality(0.25f);
+            byte[] unsharpened = Quality(0f).Image;
             // The scene camera takes the display's aspect, 213 by 120 here, while Quality's internal target keeps the
             // 320 by 180 view. The stage's own camera as the override frames that view on the small display.
-            Action<Scene3D> smallSetup = Setup(stage, AntiAliasing.Temporal, TemporalUpscale.Native);
+            Action<Scene3D> smallSetup = Setup(AntiAliasing.Temporal, TemporalUpscale.Native);
             byte[] small;
-            using (var fx = new TemporalFixture(IW, IH, s => { smallSetup(s); s.CameraOverride = stage.Camera(); }))
+            using (var fx = new TemporalFixture(IW, IH, s => { smallSetup(s); s.CameraOverride = _stage.Camera(); }))
             {
                 fx.Frames(Frames - 1, Draw);
                 small = fx.Frame(Draw);
@@ -112,12 +130,21 @@ namespace KhaozEngine.Tests.Gpu
                 + $"{TemporalAcceptance.MeanAbsLuma(quality, weighted, W, all):0.00000}, bilinear upscale "
                 + $"{TemporalAcceptance.MeanAbsLuma(bilinear, weighted, W, all):0.00000}");
             PrintBias(native, weighted, quality, bilinear, all);
-            PrintGroups(native, quality, bilinear);
+            var kept = PrintGroups(native, quality, bilinear);
+            double e0 = TemporalAcceptance.MeanAbsLuma(unsharpened, native, W, all);
+            output.WriteLine($"control, Sharpness 0: Quality upscale {e0:0.00000}, share {e0 / eb:0.0000}");
+            PrintGroups(native, unsharpened, bilinear);
 
-            Assert.InRange(d.InternalWidth, IW - 1, IW + 1);
-            Assert.InRange(d.InternalHeight, IH - 1, IH + 1);
-            Assert.True(eq < MaxErrorShareOfBilinear * eb, "Quality must be at least 15% closer to native than a "
-                + $"bilinear upscale: {eq:0.0000} against {eb:0.0000}");
+            Assert.Equal(IW, d.InternalWidth);
+            Assert.Equal(IH, d.InternalHeight);
+            Assert.True(eq < MaxErrorShareOfBilinear * eb, $"Quality must be at least {1 - MaxErrorShareOfBilinear:0%} "
+                + $"closer to native than a bilinear upscale: {eq:0.0000} against {eb:0.0000}");
+            foreach (var (bar, vertical, horizontal) in MinKept)
+            {
+                var (v, h) = kept[Array.IndexOf(BarPixels, bar)];
+                Assert.True(v >= vertical && h >= horizontal, $"{bar} px bars must keep at least {vertical} and "
+                    + $"{horizontal} of the reference contrast at Quality: {v:0.000} and {h:0.000}");
+            }
             GoldenCompare.AssertOrUpdate("temporal_upscale_quality_chart", quality, W, H);
         }
 
@@ -147,9 +174,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>Each bar group's local contrast in the reference, and the share of it Quality and the bilinear
-        /// upscale keep. A group whose bars resolve keeps most of it.</summary>
-        void PrintGroups(byte[] native, byte[] quality, byte[] bilinear)
+        /// upscale keep. A group whose bars resolve keeps most of it. Returns Quality's share per group, vertical and
+        /// horizontal, in <see cref="BarPixels"/> order.</summary>
+        (double Vertical, double Horizontal)[] PrintGroups(byte[] native, byte[] quality, byte[] bilinear)
         {
+            var kept = new (double, double)[BarPixels.Length];
             float shift = OffsetPixels * Px;
             for (int g = 0; g < BarPixels.Length; g++)
             {
@@ -158,20 +187,24 @@ namespace KhaozEngine.Tests.Gpu
                     Row(0.7f));
                 var horizontal = new PixelRect(Col(left + 0.1f), Row(bottom + 8.5f * bar) - 1, Col(left + 1.1f),
                     Row(bottom - bar / 2f) + 1);
-                output.WriteLine($"{BarPixels[g]} px bars: vertical {Kept(vertical)}, horizontal {Kept(horizontal)}");
+                output.WriteLine($"{BarPixels[g]} px bars: vertical {Kept(vertical, out double v)}, horizontal "
+                    + $"{Kept(horizontal, out double h)}");
+                kept[g] = (v, h);
             }
+            return kept;
 
-            string Kept(PixelRect r)
+            string Kept(PixelRect r, out double share)
             {
                 double n = TemporalAcceptance.LocalContrast(native, W, H, r);
                 double q = TemporalAcceptance.LocalContrast(quality, W, H, r);
                 double b = TemporalAcceptance.LocalContrast(bilinear, W, H, r);
+                share = q / n;
                 return $"reference contrast {n:0.0000}, Quality keeps {q / n:0.000}, bilinear keeps {b / n:0.000}";
             }
         }
 
-        static int Col(float x) => (int)MathF.Round((x + W * Px / 2f) / Px);
+        int Col(float x) => (int)MathF.Round((x + W * Px / 2f) / Px);
 
-        static int Row(float y) => (int)MathF.Round((H * Px / 2f - y) / Px);
+        int Row(float y) => (int)MathF.Round((H * Px / 2f - y) / Px);
     }
 }

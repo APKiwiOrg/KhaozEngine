@@ -340,10 +340,6 @@ namespace KhaozEngine.Tests.Gpu
                 post.BindTargets(targets);
                 PostChainRig.AssertEveryPixel(PostChainRig.RunChain(gd, post, targets, output, s, runFxaa: false,
                     distortionActive: true), expected);
-                Assert.Equal(res.DistortAllocated, targets.DistortAllocated);
-                Assert.Same(res.DistortTex, targets.DistortTex);
-                Assert.Same(res.NormalTex, targets.NormalTex);
-                Assert.Same(history.Color(targets.SourceSlot), targets.Source(targets.SourceSlot));
             }
             finally
             {

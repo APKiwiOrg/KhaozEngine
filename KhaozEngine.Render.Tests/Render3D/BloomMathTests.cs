@@ -132,17 +132,37 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void GaussianWeights_IntoABuffer_MatchesTheArrayBitForBit_AndLeavesTheRestAlone()
+        public void GaussianWeights_AtRadiusFour_KeepTheirBitPatterns()
+        {
+            // Radius 4's nine taps, 0.0276 at the ends to 0.2042 at the centre. The array overload fills through the
+            // span overload, so comparing the two cannot catch a change to their shared arithmetic. These literals can.
+            int[] radiusFour =
+            {
+                0x3CE25976, 0x3D87BEFC, 0x3DFD9B63, 0x3E387F7C, 0x3E511049,
+                0x3E387F7C, 0x3DFD9B63, 0x3D87BEFC, 0x3CE25976,
+            };
+            float[] array = BloomMath.GaussianWeights(4);
+            var buffer = new float[2 * BloomMath.MaxRadius + 1];
+            BloomMath.GaussianWeights(4, buffer);
+            Assert.Equal(radiusFour.Length, array.Length);
+            for (int i = 0; i < radiusFour.Length; i++)
+            {
+                Assert.Equal(radiusFour[i], BitConverter.SingleToInt32Bits(array[i]));
+                Assert.Equal(radiusFour[i], BitConverter.SingleToInt32Bits(buffer[i]));
+            }
+        }
+
+        [Fact]
+        public void GaussianWeights_IntoABuffer_WritesOnlyItsTaps()
         {
             var buffer = new float[2 * BloomMath.MaxRadius + 2];
             for (int radius = 0; radius <= BloomMath.MaxRadius; radius++)
             {
                 Array.Fill(buffer, -1f);
                 BloomMath.GaussianWeights(radius, buffer);
-                float[] expected = BloomMath.GaussianWeights(radius);
-                for (int i = 0; i < expected.Length; i++)
-                    Assert.Equal(BitConverter.SingleToInt32Bits(expected[i]), BitConverter.SingleToInt32Bits(buffer[i]));
-                for (int i = expected.Length; i < buffer.Length; i++) Assert.Equal(-1f, buffer[i]);
+                int taps = 2 * radius + 1;
+                for (int i = 0; i < taps; i++) Assert.True(buffer[i] > 0f, $"radius {radius} left tap {i} unwritten");
+                for (int i = taps; i < buffer.Length; i++) Assert.Equal(-1f, buffer[i]);
             }
             Assert.Throws<ArgumentException>(() => BloomMath.GaussianWeights(2, new float[4]));
             Assert.Throws<ArgumentOutOfRangeException>(() => BloomMath.GaussianWeights(-1, buffer));

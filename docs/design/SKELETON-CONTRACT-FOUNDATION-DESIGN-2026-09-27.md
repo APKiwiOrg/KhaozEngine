@@ -2,8 +2,9 @@
 
 ## Status
 
-In progress under [#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182). `SkeletonContract` and
-`ContractJointMap` are in. The other four pieces follow, and the round ships as one minor release.
+In progress under [#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182). `SkeletonContract`,
+`ContractJointMap`, `ClipRefusals`, `BoneMask.ForJoints` and `SkinnedGrounding` are in. `MomentSchedule`
+follows, and the round ships as one minor release.
 
 ## Purpose
 
@@ -66,10 +67,20 @@ the game.
 
 `ClipRefusals` returns a message for two clips of one name, a clip of no length, a required joint's
 rotation or a named joint's translation left unkeyed, a channel the stance keys left unkeyed on the
-nodes a filter takes, and the first `ClipHygiene` finding.
+nodes a filter takes, and the first `ClipHygiene` finding. The messages keep Grimhollow's wording,
+with the caller's clip family and rule in place of the player's own. `Unkeyed` walks the turned joints
+in order, each rotation and then its translation when the moved list names it too, then the joints
+only the moved list names. A loader that lists its joints as the player does therefore meets the
+player's first refusal. The humanoid clause of the player's message, which names its first contract,
+stays in the game. A joint name the skeleton lacks is the caller's error and throws.
 
-`BoneMask.ForJoints` builds the named-group masks a layered animator composites through.
+`BoneMask.ForJoints` builds the named-group masks a layered animator composites through. It weighs
+the named joints only, never their descendants, and refuses a name the skeleton does not carry.
+
 `SkinnedGrounding.MinimumY` finds where a posed skin meets the floor without a per-frame allocation.
+The caller lends one scratch column per bone. A vertex whose weights total under the threshold
+`SkinningMath.BlendSkinMatrix` and the skinned shader share draws through the model alone. An empty
+skin returns positive infinity.
 
 `MomentSchedule` takes a slot length, quiet ends, an empty share, an empty-run cap and a salt, over a
 weighted table of moment families that are single or mirrored left and right. It is pure per body id

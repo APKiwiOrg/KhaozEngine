@@ -80,6 +80,29 @@ namespace KhaozEngine.Render3D
             return Subtree(skel, skel.IndexOf(rootBoneName), weight);
         }
 
+        /// <summary>A joint mask: each node named in <paramref name="jointNames"/> gets <paramref name="weight"/> and
+        /// every other node gets 0, descendants included. This is the named-group shape a body's layers composite
+        /// through, where a group is a list of joints rather than one subtree. A name listed twice is taken once.
+        /// </summary>
+        /// <param name="skel">The skeleton the mask covers.</param>
+        /// <param name="jointNames">The joints the mask takes, each a node name the skeleton carries.</param>
+        /// <param name="weight">The weight of a named joint, clamped to [0,1].</param>
+        /// <exception cref="ArgumentException">A name is not in the skeleton. The message names it.</exception>
+        public static BoneMask ForJoints(Skeleton skel, IReadOnlyList<string> jointNames, float weight = 1f)
+        {
+            if (skel is null) throw new ArgumentNullException(nameof(skel));
+            if (jointNames is null) throw new ArgumentNullException(nameof(jointNames));
+            float w = Math.Clamp(weight, 0f, 1f);
+            var weights = new float[skel.NodeCount];
+            foreach (string name in jointNames)
+            {
+                if (name is null || !skel.TryIndexOf(name, out int node))
+                    throw new ArgumentException($"The skeleton has no joint named '{name}'.", nameof(jointNames));
+                weights[node] = w;
+            }
+            return new BoneMask(weights);
+        }
+
         /// <summary>A subtree mask keyed by bone NAME: resolves <paramref name="rootBoneName"/> to a node via
         /// <paramref name="boneNames"/> (one name per skeleton node, in node order) then defers to
         /// <see cref="Subtree(Skeleton, int, float)"/>. Throws if the name is not found. Use the index overload in a

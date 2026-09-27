@@ -5,6 +5,19 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.10.1
+
+- Client fetches now validate a KECC chunk's row table after its hash and before caching it. Malformed
+  rows refuse early without a second decompression ([#954](https://github.com/APKiwiOrg/KhaozEngine/issues/954)).
+- Warm item generation reuses the canonical payload builder's working storage. A rare generation now
+  allocates only its final payload array, down from 944 bytes in the measured case
+  ([#972](https://github.com/APKiwiOrg/KhaozEngine/issues/972)).
+- The item-instance design now states the shipped container-name encoding, stat source ordinal packing,
+  caller-owned base lines, tag-scope union and condition-registry home
+  ([#997](https://github.com/APKiwiOrg/KhaozEngine/issues/997),
+  [#998](https://github.com/APKiwiOrg/KhaozEngine/issues/998),
+  [#985](https://github.com/APKiwiOrg/KhaozEngine/issues/985)).
+
 ## 20.10.0
 
 - Catalog runtimes now expose `Indexes.References.Ids` for direct reverse lookup of authored key references.

@@ -3,7 +3,7 @@
 # This is the sanctioned way to run the ritual's pack, and AGENTS.md names it instead of the bare
 # dotnet command it wraps:
 #
-#   scripts/pack-local-feed.sh              # guard, then dotnet pack -c Release -o <feed>
+#   scripts/pack-local-feed.sh              # guard, pack fresh, then replace generated files in <feed>
 #   scripts/pack-local-feed.sh --dry-run    # guard only, print the command it would run
 #   PACK_RELEASED_OK=1 scripts/pack-local-feed.sh    # pack anyway over a released version
 #   KHAOZENGINE_FEED=DIR scripts/pack-local-feed.sh  # pack into DIR instead
@@ -96,4 +96,45 @@ if [ "$dry" = 1 ]; then
   exit 0
 fi
 mkdir -p "$feed"
-exec dotnet pack -c Release -o "$feed" "$@"
+
+# Pack through an empty sibling directory. The SDK's Pack target is incremental over PackageOutputPath,
+# so handing it a feed that already carries this version can leave the old nupkg and snupkg untouched while
+# returning success. An empty output forces fresh package bytes, and a sibling keeps the final moves on the
+# same filesystem. Only the guarded current version's generated artifacts are promoted. Every other version
+# in the feed remains byte for byte as it stood.
+pack_parent=$(dirname "$feed")
+pack_name=$(basename "$feed")
+pack_stage=$(mktemp -d "$pack_parent/.$pack_name.pack.XXXXXX") || {
+  echo "pack-local-feed: could not create a fresh package output beside $feed." >&2
+  exit 1
+}
+cleanup_pack_stage() { rm -rf "$pack_stage"; }
+trap cleanup_pack_stage EXIT
+trap 'exit 1' HUP INT TERM
+
+echo "pack-local-feed: building through fresh output $pack_stage"
+dotnet pack -c Release "$@" -o "$pack_stage"
+
+pack_count=0
+for package in "$pack_stage"/*.nupkg "$pack_stage"/*.snupkg; do
+  [ -f "$package" ] || continue
+  package_name=$(basename "$package")
+  case "$package_name" in
+    *."$ver".nupkg|*."$ver".snupkg) ;;
+    *)
+      echo "pack-local-feed: refusing unexpected package '$package_name' because it is not version $ver." >&2
+      exit 1
+      ;;
+  esac
+  pack_count=$((pack_count + 1))
+done
+[ "$pack_count" -gt 0 ] || {
+  echo "pack-local-feed: dotnet pack produced no nupkg or snupkg for version $ver." >&2
+  exit 1
+}
+
+for package in "$pack_stage"/*.nupkg "$pack_stage"/*.snupkg; do
+  [ -f "$package" ] || continue
+  mv -f "$package" "$feed/$(basename "$package")"
+done
+echo "pack-local-feed: refreshed $pack_count package file(s) for $ver in $feed"

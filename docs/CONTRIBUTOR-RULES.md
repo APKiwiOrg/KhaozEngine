@@ -122,7 +122,10 @@ Packing is cumulative and occurs on every package-bearing finish. `scripts/pack-
 to overwrite a released version unless the tree is exactly that clean tagged commit. It also refuses
 to write the shared feed until HEAD is an ancestor of current `origin/main` and the tree is clean. A
 `KHAOZENGINE_FEED` that resolves outside the shared feed is the private path for a deliberate branch
-build. The pack standard lives in `scripts/pack-standard.sh` and is covered by
+build. Once those guards pass, the wrapper packs through a fresh sibling directory and promotes only the
+guarded current version's generated `nupkg` and `snupkg` files. A repeated pack therefore refreshes stale
+same-version outputs while leaving every other version untouched. The pack standard lives in
+`scripts/pack-standard.sh` and is covered by
 `scripts/tests/pack-local-feed.test.sh`. Run `scripts/check-local-feed.sh` before a consumer vendors
 packages.
 

@@ -1629,7 +1629,7 @@ namespace KhaozEngine.Render3D
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
             BuildAndUploadPointLightClusters(cl, vp, eye);
             _model.BeginModelPass(cl, _res, Post);
-            _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights), _frameOrigin);
+            _model.SetFrameUniforms(cl, vp, eye, Post, CollectionsMarshal.AsSpan(_lights), _frameOrigin, MaterialLod());
             _model.BindPass(cl);
 
             if (_instanceData.Count > 0)

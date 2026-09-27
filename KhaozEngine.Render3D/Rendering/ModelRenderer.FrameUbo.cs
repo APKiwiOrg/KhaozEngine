@@ -26,9 +26,15 @@ namespace KhaozEngine.Render3D.Rendering
         /// fragment can reconstruct absolute world positions for world-anchored texturing and noise). The light
         /// reduction happens here rather than at the caller so the queue it hands in stays absolute.
         /// <see cref="Vector3.Zero"/> (the default) is the pre-floating-origin behaviour, bit for bit.
+        /// </para>
+        /// <para>
+        /// <paramref name="materialLod"/> is the temporal material mip bias (x, into <c>Params.z</c>) and
+        /// <c>exp2(bias) - 1</c> (y, into <c>Params.w</c>), see <c>TemporalMipBias</c>. The default zero pair leaves
+        /// the block byte-identical.
         /// </para></summary>
         public void SetFrameUniforms(IGpuCommandList cl, Matrix4x4 viewProj, Vector3 cameraPos,
-            PixelPostProcessSettings s, ReadOnlySpan<PointLightData> lights, Vector3 renderOrigin = default)
+            PixelPostProcessSettings s, ReadOnlySpan<PointLightData> lights, Vector3 renderOrigin = default,
+            Vector2 materialLod = default)
         {
             int count = BuildLightArrays(lights, _lightPosRadius, _lightColorIntensity, renderOrigin);
             UploadPointLights(cl, lights, renderOrigin);
@@ -45,7 +51,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Dir = new Vector4(Vector3.Normalize(s.LightDirection), 0f),
                 Color = s.LightColor,
                 Ambient = s.AmbientColor,
-                Params = new Vector4(s.CelBands, count, 0, 0),
+                Params = new Vector4(s.CelBands, count, materialLod.X, materialLod.Y),
                 FillDir = new Vector4(Vector3.Normalize(s.FillLightDirection), 0f),
                 FillColor = s.FillLightColor,
                 CameraPos = new Vector4(cameraPos, 1f),

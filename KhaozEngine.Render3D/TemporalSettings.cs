@@ -6,15 +6,16 @@ namespace KhaozEngine.Render3D
     /// <summary>
     /// Settings for temporal rendering, reachable as <see cref="PixelPostProcessSettings.Temporal"/> beside
     /// <see cref="PixelPostProcessSettings.Bloom"/> and <see cref="PixelPostProcessSettings.Water"/>. It carries the
-    /// camera-cut thresholds, the upscale preset or ratio and the sharpness. The preset and ratio size the internal
-    /// target whenever <see cref="RenderScale.Temporal"/> is in effect, which <see cref="AntiAliasing.Temporal"/>
-    /// forces and which a game can also pick directly with no temporal rendering at all. The thresholds cost nothing
-    /// until something asks for temporal rendering. They decide when a camera move is a cut: a frame whose camera moved
-    /// further than <see cref="CutDistanceMetres"/> or turned more than <see cref="CutAngleDegrees"/> since the last
-    /// frame drops its temporal history, exactly as an explicit <see cref="Scene3D.CameraCut"/> does. A render origin
-    /// jump the previous frame cannot be rebased across triggers the same automatic cut, whatever the thresholds, as
-    /// <see cref="TemporalResetReason.CameraCutDetected"/> describes. The two cuts differ only in the reason they
-    /// report: <see cref="TemporalResetReason.CameraCutDetected"/> for the automatic one and
+    /// camera-cut thresholds, the upscale preset or ratio, the sharpness and the mip bias offset. The preset and ratio
+    /// size the internal target whenever <see cref="RenderScale.Temporal"/> is in effect, which
+    /// <see cref="AntiAliasing.Temporal"/> forces and which a game can also pick directly with no temporal rendering at
+    /// all. The thresholds cost nothing until something asks for temporal rendering. They decide when a camera move is
+    /// a cut: a frame whose camera moved further than <see cref="CutDistanceMetres"/> or turned more than
+    /// <see cref="CutAngleDegrees"/> since the last frame drops its temporal history, exactly as an explicit
+    /// <see cref="Scene3D.CameraCut"/> does. A render origin jump the previous frame cannot be rebased across triggers
+    /// the same automatic cut, whatever the thresholds, as <see cref="TemporalResetReason.CameraCutDetected"/>
+    /// describes. The two cuts differ only in the reason they report:
+    /// <see cref="TemporalResetReason.CameraCutDetected"/> for the automatic one and
     /// <see cref="TemporalResetReason.CameraCutRequested"/> for the explicit call.
     /// </summary>
     public sealed class TemporalSettings
@@ -76,5 +77,13 @@ namespace KhaozEngine.Render3D
         /// <summary>The sharpness the pass is given: <see cref="Sharpness"/> clamped to 0 to 1, with NaN as 0, by the
         /// mapping the pass and its CPU mirror share (<see cref="TemporalSharpenMath.ResolvedSharpness"/>).</summary>
         internal float ResolvedSharpness => TemporalSharpenMath.ResolvedSharpness(Sharpness);
+
+        /// <summary>Added to the automatic texture mip bias of log2(internal / display) while temporal anti-aliasing
+        /// runs. The default minus 0.5 keeps a little more texture detail than the internal resolution alone would,
+        /// which the jittered history resolves without shimmer. Clamped to minus 2 to plus 1, and a NaN or infinite
+        /// value counts as 0. It applies to models, foliage, splat terrain and tile ground on the frame's first render
+        /// only, the one the temporal resolve accumulates. A later render inside the frame, such as an offscreen
+        /// capture, takes no bias, and neither does any render while temporal anti-aliasing is off.</summary>
+        public float MipBiasOffset = -.5f;
     }
 }

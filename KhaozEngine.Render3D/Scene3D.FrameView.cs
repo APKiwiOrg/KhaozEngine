@@ -25,6 +25,9 @@ namespace KhaozEngine.Render3D
         // The frame's jitter sequence length, fixed by its first render beside the temporal state, so a later render
         // inside the frame jitters by the same offset whatever its size or a settings change since.
         int _framePhaseCount = TemporalJitter.NativePhaseCount;
+        // The display over internal scale that sequence length came from, fixed with it, which the frame's material
+        // mip bias reads (Scene3D.TemporalFinish.cs).
+        float _frameDisplayOverInternal = 1f;
         // The frame's debug view, fixed by its first render beside the temporal state (see DebugView). A view is only
         // drawn on a temporal frame, so its data exists whenever it is drawn.
         SceneDebugView _frameDebugView;
@@ -66,6 +69,7 @@ namespace KhaozEngine.Render3D
             _frameViewLatchedThisFrame = false;
             _frameTemporalActive = false;
             _framePhaseCount = TemporalJitter.NativePhaseCount;
+            _frameDisplayOverInternal = 1f;
             _frameDebugView = SceneDebugView.None;
         }
 
@@ -91,9 +95,12 @@ namespace KhaozEngine.Render3D
                 ? Matrix4x4.CreateTranslation(_frameOrigin) * cam.View
                 : cam.View;
             // The live requesters and settings on the first render, the values that render fixed on any later one.
+            float displayOverInternal = _frameViewLatchedThisFrame
+                ? _frameDisplayOverInternal
+                : DisplayOverInternalRatio;
             int phaseCount = _frameViewLatchedThisFrame
                 ? _framePhaseCount
-                : TemporalJitter.PhaseCount(DisplayOverInternalRatio);
+                : TemporalJitter.PhaseCount(displayOverInternal);
             bool temporal = TemporalActive;
             // A later render of a resolving frame is shown unresolved, so it renders unjittered. EnsureSize fixed
             // _frameResolves before this latch.
@@ -109,6 +116,7 @@ namespace KhaozEngine.Render3D
             _frameViewLatchedThisFrame = true;
             _frameTemporalActive = temporal;
             _framePhaseCount = phaseCount;
+            _frameDisplayOverInternal = displayOverInternal;
             _frameDebugView = _debugView;
             AdvanceTemporalHistory();
         }

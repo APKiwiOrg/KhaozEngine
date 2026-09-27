@@ -139,8 +139,8 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>The resolve's uniforms for one frame. <paramref name="previous"/> is the previous frame view rebased to
         /// this frame's origin, or null when there is none. Both views are unjittered, as the motion target's clip
         /// positions are, so the static previous UV and the motion agree. History is readable only when it is valid and a
-        /// previous view exists and both reprojections invert. The previous projection and depth parameters are the
-        /// current ones when it is not. <see cref="TemporalResolveUniforms.Params"/> is reserved and written as 0.</summary>
+        /// previous view exists and both reprojections invert. The previous projection is the current one when it is
+        /// not. <see cref="TemporalResolveUniforms.Params"/> is reserved and written as 0.</summary>
         public static TemporalResolveUniforms BuildUniforms(in TemporalViewInput current, TemporalViewInput? previous,
             Vector2 jitterPixels, int internalWidth, int internalHeight, int displayWidth, int displayHeight,
             bool historyValid)
@@ -161,7 +161,6 @@ namespace KhaozEngine.Render3D.Internal
                 Sizes = new Vector4(iw, ih, dw, dh),
                 Jitter = new Vector4(jitterPixels.X, jitterPixels.Y, displayOverInternal, readable ? 1f : 0f),
                 CurrentDepth = currentDepth,
-                PreviousDepth = DepthParams(previousProjection),
                 Params = Vector4.Zero,
             };
         }

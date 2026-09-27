@@ -133,7 +133,6 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(new Vector4(0.25f, -0.125f, 1.5f, 1f), u.Jitter);
             Assert.Equal(Vector4.Zero, u.Params);
             Assert.Equal(TemporalResolveMath.DepthParams(current.Projection), u.CurrentDepth);
-            Assert.Equal(u.CurrentDepth, u.PreviousDepth);
             Assert.Equal(current.Projection, u.PreviousProjection);
             Assert.Equal(u.CurrentDepth, TemporalResolveMath.BuildDepthStore(current.Projection).CurrentDepth);
         }
@@ -171,7 +170,6 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(0f, u.CurrentDepth.X);
             Assert.Equal(0.5, u.CurrentDepth.Y, 4);
             Assert.Equal(200.0, u.CurrentDepth.Z, 2);
-            Assert.Equal(u.CurrentDepth, u.PreviousDepth);
 
             var world = new Vector4(2.5f, 1f, -3f, 1f);
             Vector4 clip = Vector4.Transform(world, viewNow * ortho);   // w is 1
@@ -195,7 +193,6 @@ namespace KhaozEngine.Tests.Render3D
             var previous = new TemporalViewInput(viewThen, zoomed);
             TemporalResolveUniforms u = Build(current, previous);
             Assert.Equal(zoomed, u.PreviousProjection);
-            Assert.Equal(TemporalResolveMath.DepthParams(zoomed), u.PreviousDepth);
 
             foreach (Vector4 world in new[] { new Vector4(1.2f, 0.7f, -3f, 1f), new Vector4(-2.5f, 3.1f, 1f, 1f),
                 new Vector4(0.3f, 0.1f, -40f, 1f), new Vector4(6f, -1f, -120f, 1f) })

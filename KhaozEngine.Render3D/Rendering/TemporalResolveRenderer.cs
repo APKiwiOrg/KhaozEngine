@@ -31,7 +31,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// such as a temporal debug view, that re-evaluate the resolve through <c>ShaderSources.TemporalResolveCoreGlsl</c>
     /// over the set it bound. No pass reads them yet.</para>
     /// </summary>
-    internal sealed partial class TemporalResolveRenderer : IDisposable
+    internal sealed class TemporalResolveRenderer : IDisposable
     {
         /// <summary>The draws <see cref="Run"/> records: the resolve and the depth store.</summary>
         internal const int DrawCallsPerFrame = 2;

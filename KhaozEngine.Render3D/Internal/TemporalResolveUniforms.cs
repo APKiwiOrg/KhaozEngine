@@ -5,14 +5,14 @@ namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
     /// The temporal resolve's uniform block, mirroring <c>Resolve</c> in <c>ShaderSources.TemporalResolveCoreGlsl</c>.
-    /// std140: three mat4 then five vec4, 272 bytes. Built once per frame by <see cref="TemporalResolveMath.BuildUniforms"/>
+    /// std140: three mat4 then four vec4, 256 bytes. Built once per frame by <see cref="TemporalResolveMath.BuildUniforms"/>
     /// and uploaded before any framebuffer is bound. Every matrix is System.Numerics bytes, which the shader applies as
     /// <c>M * v</c>.
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     internal struct TemporalResolveUniforms
     {
-        public const uint SizeInBytes = 272;
+        public const uint SizeInBytes = 256;
 
         /// <summary>The block's members in GLSL, in field order, which the resolve shader declares inside its
         /// <c>Resolve</c> block. <c>TemporalUboLayoutTests</c> holds them to the fields.</summary>
@@ -23,7 +23,6 @@ namespace KhaozEngine.Render3D.Internal
     vec4 Sizes;
     vec4 Jitter;
     vec4 CurrentDepth;
-    vec4 PreviousDepth;
     vec4 Params;
 ";
 
@@ -47,17 +46,13 @@ namespace KhaozEngine.Render3D.Internal
         public Matrix4x4 PreviousProjection;
         /// <summary>(internal width, internal height, display width, display height).</summary>
         public Vector4 Sizes;
-        /// <summary>(jitter x, jitter y in internal pixels, display over internal per axis, 1 when history may be read).</summary>
+        /// <summary>(jitter x, jitter y in internal pixels, the larger of the two axes' display over internal ratios,
+        /// 1 when history may be read).</summary>
         public Vector4 Jitter;
         /// <summary>(1 for a perspective projection else 0, near, far, 0) of this frame.</summary>
         public Vector4 CurrentDepth;
-        /// <summary>The same of last frame, which the stored previous depth was linearised with. The resolve does not
-        /// read it: the expected depth comes from <see cref="CurrentToPrevious"/> in last frame's view space, which
-        /// needs no depth parameters. It is kept so the block layout stays fixed, and for a later reader of the stored
-        /// depth, such as a debug view, that needs last frame's near and far.</summary>
-        public Vector4 PreviousDepth;
-        /// <summary>x: reserved, written as 0. The thin feature lock decays by
-        /// <see cref="TemporalResolveTuning.LockDecay"/> at every preset, so it reads no per-frame decay. yzw reserved.</summary>
+        /// <summary>Reserved, and every lane is written as 0 today. The y lane is held for a per-frame flag that a
+        /// screen-fixed starfield background's motion will read.</summary>
         public Vector4 Params;
     }
 

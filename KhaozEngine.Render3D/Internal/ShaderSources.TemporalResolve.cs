@@ -15,8 +15,9 @@ namespace KhaozEngine.Render3D.Internal
     /// <see cref="TemporalResolveUniforms.GlslMembers"/> and <see cref="TemporalDepthStoreUniforms.GlslMembers"/>, so the
     /// text cannot drift from the fields, and the fields carry the meaning.</para>
     /// <para><b>A MOVING SURFACE SKIPS THE DEPTH TEST.</b> <see cref="TemporalResolveUniforms.CurrentToPrevious"/> maps a
-    /// static point, so the expected depth is only meaningful where the dilated texel's motion carries its own sample
-    /// within <see cref="TemporalResolveTuning.MovingSurfaceInternalPixels"/>, plus
+    /// static point, so the expected depth is only meaningful where the motion of the texel that reprojects the pixel,
+    /// the dilated nearest or, beside a fast edge, the centre texel, carries its own sample within
+    /// <see cref="TemporalResolveTuning.MovingSurfaceInternalPixels"/>, plus
     /// <see cref="TemporalResolveTuning.MovingSurfaceMotionFraction"/> of that motion, of that sample's static previous
     /// UV. The motion target wrote the motion for exactly that surface point, so a static surface agrees up to float
     /// precision and the target's half-float rounding. Elsewhere the surface moved and neighbourhood clipping handles
@@ -217,20 +218,39 @@ DepthFootprint temporalDepthFootprint(vec2 previousUv, vec2 internalSize, ivec2 
     return footprint;
 }
 
-// Whether the depth stored at a texel is a thin feature: apart from both its neighbours along a row or along a column,
-// nearer or farther, by the disocclusion tolerance, as a blade or a wire a texel wide stands apart from the sky behind
-// it and from a rock beside it.
-bool temporalThinDepth(ivec2 texel, float depth, ivec2 maxTexel) {
-    float left = texelFetch(sampler2D(PrevDepth, LinearClamp), clamp(texel - ivec2(1, 0), ivec2(0), maxTexel), 0).r;
-    float right = texelFetch(sampler2D(PrevDepth, LinearClamp), clamp(texel + ivec2(1, 0), ivec2(0), maxTexel), 0).r;
-    float up = texelFetch(sampler2D(PrevDepth, LinearClamp), clamp(texel - ivec2(0, 1), ivec2(0), maxTexel), 0).r;
-    float down = texelFetch(sampler2D(PrevDepth, LinearClamp), clamp(texel + ivec2(0, 1), ivec2(0), maxTexel), 0).r;
+// Whether the depth stored at a texel is a narrow feature: along a row or a column, the run of texels at its depth
+// through it, apart from the depths either side by the disocclusion tolerance, nearer or farther, is at most two
+// texels long, as a blade narrower than a texel is, or two side by side, whether against the sky, over ground or
+// beside a rock.
+bool temporalNarrowDepth(ivec2 texel, float depth, ivec2 maxTexel) {
     float limit = 1.0 - DisocclusionTolerance;
-    bool leftApart = depth < left * limit || left < depth * limit;
-    bool rightApart = depth < right * limit || right < depth * limit;
-    bool upApart = depth < up * limit || up < depth * limit;
-    bool downApart = depth < down * limit || down < depth * limit;
-    return (leftApart && rightApart) || (upApart && downApart);
+    bool run[8];   // left 1 and 2, right 1 and 2, up 1 and 2, down 1 and 2: the texel there is at this depth
+    for (int i = 0; i < 8; i++) {
+        int stride = (i & 1) + 1;
+        ivec2 offset = i < 2 ? ivec2(-stride, 0) : i < 4 ? ivec2(stride, 0)
+            : i < 6 ? ivec2(0, -stride) : ivec2(0, stride);
+        float stored = texelFetch(sampler2D(PrevDepth, LinearClamp), clamp(texel + offset, ivec2(0), maxTexel), 0).r;
+        run[i] = !(depth < stored * limit || stored < depth * limit);
+    }
+    bool narrowRow = !(run[0] && run[2]) && !(run[0] && run[1]) && !(run[2] && run[3]);
+    bool narrowColumn = !(run[4] && run[6]) && !(run[4] && run[5]) && !(run[6] && run[7]);
+    return narrowRow || narrowColumn;
+}
+
+// The thin-feature lock history carries at a previous position: the largest of the four state texels around it that
+// carry bilinear weight, as step 2's state fetch reads it.
+float temporalCarriedLock(vec2 previousUv, vec2 displaySize) {
+    vec2 position = previousUv * displaySize - 0.5;
+    ivec2 base = ivec2(floor(position));
+    vec2 f = position - vec2(base);
+    ivec2 lastState = ivec2(displaySize) - ivec2(1);
+    float carried = 0.0;
+    for (int corner = 0; corner < 4; corner++) {
+        float weight = mix(1.0 - f.x, f.x, float(corner & 1)) * mix(1.0 - f.y, f.y, float(corner >> 1));
+        ivec2 texel = clamp(base + ivec2(corner & 1, corner >> 1), ivec2(0), lastState);
+        if (weight > 1.0e-3) carried = max(carried, texelFetch(sampler2D(HistoryConfidence, LinearClamp), texel, 0).g);
+    }
+    return carried;
 }
 
 ivec2 temporalDisplaySize() { return ivec2(Sizes.zw); }
@@ -377,12 +397,15 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     bool movingEdge = edgeMotion > max(LockEdgeFloorInternalPixels, length(closestMotion * internalSize) * LockEdgeMotionFraction);
 
     // Steps 1 and 3 beside a fast edge: dilation carries the nearer surface's motion so its edge keeps its history, but
-    // where the centre texel lies on the farther surface, by more than the disocclusion tolerance, and the two move
-    // more than DilationReachInternalPixels apart, that motion carries this pixel beyond the edge's reach, onto another
-    // texel of the farther surface. The pixel then reprojects by its centre texel's own motion and depth, so a pixel
-    // the nearer surface just uncovered finds it in the stored depths and is disoccluded, and one it never covered
-    // keeps its own history.
-    if (edgeMotion > DilationReachInternalPixels && centreDepth > closestDepth * (1.0 + DisocclusionTolerance)) {
+    // where that surface moved (its depth test is skipped), the centre texel lies on a farther surface, by more than
+    // the disocclusion tolerance, and the two move more than DilationReachInternalPixels apart, that motion carries
+    // this pixel beyond the edge's reach, onto another texel of the farther surface. The pixel then reprojects by its
+    // centre texel's own motion and depth, so a pixel the nearer surface just uncovered finds it in the stored depths
+    // and is disoccluded, and one it never covered keeps its own history. A still nearer surface keeps dilation
+    // whatever the camera does: under a camera's translation, and against the sky, both surfaces are static and the
+    // dilated history is valid.
+    if (!depthTested && edgeMotion > DilationReachInternalPixels
+        && centreDepth > closestDepth * (1.0 + DisocclusionTolerance)) {
         temporalReproject(uv, centreSample, centreMotion, centreDepth, centreIsBackground, internalSize, previousUv,
             expectedDepth, depthTested);
         onScreen = all(greaterThanEqual(previousUv, vec2(0.0))) && all(lessThanEqual(previousUv, vec2(1.0)));
@@ -392,17 +415,18 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // Step 3: disocclusion, one-sided. A pixel expects the depth of the surface it reprojected, and a stored depth
     // nearer than that means something covered it last frame. All four stored depths around the reprojected position
     // nearer drops the history. Where the expected surface shows under less than DisocclusionVisibleShare of their
-    // bilinear weight, the pixel was mostly covered and drops it too, unless the nearest stored depth is thin
-    // (temporalThinDepth): a feature a texel wide that the jitter missed this frame, whose history the thin-feature
-    // lock of step 6 holds. Any farther stored depth kept a sub-pixel edge from reading as revealed, and on its own it
-    // kept the ring of pixels around a moving object's old place, whose footprint reaches past its edge, from ever
-    // being disoccluded. A background pixel expects BackgroundLinearDepth, so anything stored nearer there was covering
-    // it. A static surface on or behind last frame's camera had no history there. The footprint sits at the display
-    // pixel's previous position, where history is read, while the expected depth comes from the reprojected texel's own
-    // point, the dilated nearest in the 3x3 unless the pixel reprojected by its own. The same four depths tell step 6
-    // whether a pixel at a moving edge reads history a farther surface left: every one of them farther than the moving
-    // surface's expected depth. That runs for a moving surface too, whose depth test is skipped, and costs no fetch
-    // beyond the four a depth-tested pixel already takes.
+    // bilinear weight, the pixel was mostly covered and drops it too, unless the nearest stored depth is narrow
+    // (temporalNarrowDepth), a feature narrower than a texel, or two side by side, that the jitter missed this frame,
+    // or the pixel carries a lock whose hold on the clip is whole (temporalCarriedLock), which step 6 keeps for such a
+    // feature. Any farther stored depth kept a sub-pixel edge from reading as revealed, and on its own it kept the ring
+    // of pixels around a moving object's old place, whose footprint reaches past its edge, from ever being disoccluded.
+    // A background pixel expects BackgroundLinearDepth, so anything stored nearer there was covering it. A static
+    // surface on or behind last frame's camera had no history there. The footprint sits at the display pixel's previous
+    // position, where history is read, while the expected depth comes from the reprojected texel's own point, the
+    // dilated nearest in the 3x3 unless the pixel reprojected by its own. The same four depths tell step 6 whether a
+    // pixel at a moving edge reads history a farther surface left: every one of them farther than the moving surface's
+    // expected depth. That runs for a moving surface too, whose depth test is skipped, and costs no fetch beyond the
+    // four a depth-tested pixel already takes.
     bool disoccluded = false;
     bool heldFromFarther = false;
     if (historyValid && onScreen && (depthTested || movingEdge)) {
@@ -410,7 +434,8 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         disoccluded = depthTested && (!(expectedDepth > 1.0e-6)
             || footprint.farthest < expectedDepth * (1.0 - DisocclusionTolerance)
             || (footprint.visibleShare < DisocclusionVisibleShare
-                && !temporalThinDepth(footprint.nearestTexel, footprint.nearest, maxTexel)));
+                && temporalCarriedLock(previousUv, displaySize) * LockHoldGain < 1.0
+                && !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel)));
         heldFromFarther = movingEdge && expectedDepth < footprint.nearest * (1.0 - DisocclusionTolerance);
     }
 

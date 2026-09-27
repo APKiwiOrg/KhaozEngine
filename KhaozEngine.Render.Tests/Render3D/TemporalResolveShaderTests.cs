@@ -131,16 +131,18 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void Beyond_the_dilation_reach_a_pixel_on_the_farther_surface_reprojects_by_its_own_centre_texel()
         {
-            // Dilation reads history along the nearer surface's motion. Where the centre texel lies on the farther
-            // surface and the two move more than DilationReachInternalPixels apart, that history is another texel of
-            // the farther surface, so the pixel reprojects by its centre texel's own motion and depth, after the edge
-            // signal and before the depth test that reads what it reprojected.
+            // Dilation reads history along the nearer surface's motion. Where that surface moved, the centre texel
+            // lies on a farther surface and the two move more than DilationReachInternalPixels apart, that history is
+            // another texel of the farther surface, so the pixel reprojects by its centre texel's own motion and depth,
+            // after the edge signal and before the depth test that reads what it reprojected. A still nearer surface,
+            // under a camera's translation or against the sky, keeps dilation.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("centreDepth = viewDepth;", core, StringComparison.Ordinal);
             Assert.Contains("centreSample = samplePosition;", core, StringComparison.Ordinal);
-            string own = "if (edgeMotion > DilationReachInternalPixels && centreDepth > closestDepth * (1.0 + "
-                + "DisocclusionTolerance)) {";
+            string own = "if (!depthTested && edgeMotion > DilationReachInternalPixels";
             Assert.Contains(own, core, StringComparison.Ordinal);
+            Assert.Contains("&& centreDepth > closestDepth * (1.0 + DisocclusionTolerance)) {", core,
+                StringComparison.Ordinal);
             Assert.Contains("temporalReproject(uv, centreSample, centreMotion, centreDepth, centreIsBackground, "
                 + "internalSize, previousUv,", core, StringComparison.Ordinal);
             int edge = core.IndexOf("bool movingEdge = ", StringComparison.Ordinal);
@@ -152,10 +154,11 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void A_mostly_covered_footprint_is_disoccluded_unless_its_nearest_stored_depth_is_thin()
+        public void A_mostly_covered_footprint_is_disoccluded_unless_a_narrow_feature_or_a_whole_lock_covered_it()
         {
             // All four stored depths nearer than expected, or the expected surface under less than
-            // DisocclusionVisibleShare of their bilinear weight while the nearest of them is no thin feature.
+            // DisocclusionVisibleShare of their bilinear weight while the pixel carries no lock whose hold is whole
+            // and the nearest of them is no narrow feature, a run of at most two texels along a row or a column.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("float weight = mix(1.0 - f.x, f.x, float(corner & 1)) "
                 + "* mix(1.0 - f.y, f.y, float(corner >> 1));", core, StringComparison.Ordinal);
@@ -164,12 +167,17 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("|| footprint.farthest < expectedDepth * (1.0 - DisocclusionTolerance)", core,
                 StringComparison.Ordinal);
             Assert.Contains("|| (footprint.visibleShare < DisocclusionVisibleShare", core, StringComparison.Ordinal);
-            Assert.Contains("&& !temporalThinDepth(footprint.nearestTexel, footprint.nearest, maxTexel)));", core,
+            Assert.Contains("&& temporalCarriedLock(previousUv, displaySize) * LockHoldGain < 1.0", core,
                 StringComparison.Ordinal);
-            Assert.Contains("bool leftApart = depth < left * limit || left < depth * limit;", core,
+            Assert.Contains("&& !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel)));", core,
                 StringComparison.Ordinal);
-            Assert.Contains("return (leftApart && rightApart) || (upApart && downApart);", core,
+            Assert.Contains("run[i] = !(depth < stored * limit || stored < depth * limit);", core,
                 StringComparison.Ordinal);
+            Assert.Contains("bool narrowRow = !(run[0] && run[2]) && !(run[0] && run[1]) && !(run[2] && run[3]);", core,
+                StringComparison.Ordinal);
+            Assert.Contains("return narrowRow || narrowColumn;", core, StringComparison.Ordinal);
+            Assert.Contains("if (weight > 1.0e-3) carried = max(carried, texelFetch(sampler2D(HistoryConfidence, "
+                + "LinearClamp), texel, 0).g);", core, StringComparison.Ordinal);
         }
 
         [Fact]

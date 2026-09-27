@@ -23,17 +23,19 @@ namespace KhaozEngine.Render3D.Internal
         /// expected depth by more than it, the history there is a farther surface's, and the lock read with it is
         /// dropped. It is also the least depth step that separates two surfaces elsewhere: a centre texel farther than
         /// the dilated nearest by it may reproject by its own motion (<see cref="DilationReachInternalPixels"/>), and a
-        /// stored depth apart from both its neighbours along a row or a column by it is a thin feature
-        /// (<see cref="DisocclusionVisibleShare"/>).</summary>
+        /// stored depth whose run of texels along a row or a column, apart from the depths either side by it, is at
+        /// most two long is a narrow feature (<see cref="DisocclusionVisibleShare"/>).</summary>
         public const float DisocclusionTolerance = 0.02f;
-        /// <summary>Step 3. <see cref="TemporalResolveUniforms.CurrentToPrevious"/> assumes a static point, so the depth
-        /// test runs only where the dilated texel's motion carries its own unjittered sample within this many internal
-        /// pixels, plus <see cref="MovingSurfaceMotionFraction"/> of that motion, of the UV that sample's surface point had
-        /// last frame if it did not move (<see cref="TemporalResolveMath.StaticPreviousUv"/>). The motion was written for
-        /// that same point, so a static surface agrees up to float precision and the target's rounding. Farther than that
-        /// the surface moved, the static expected depth says nothing about it, and the test is skipped. Neighbourhood
-        /// clipping (step 5) handles the pixel instead. A static point on or behind last frame's camera plane counts as
-        /// moving, and the motion target already sends such a point off screen.</summary>
+        /// <summary>Step 3. <see cref="TemporalResolveUniforms.CurrentToPrevious"/> assumes a static point, so the
+        /// depth test runs only where the motion of the texel that reprojects the pixel, the dilated nearest or, beside
+        /// a fast edge, the centre texel (<see cref="DilationReachInternalPixels"/>), carries its own unjittered sample
+        /// within this many internal pixels, plus <see cref="MovingSurfaceMotionFraction"/> of that motion, of the UV
+        /// that sample's surface point had last frame if it did not move
+        /// (<see cref="TemporalResolveMath.StaticPreviousUv"/>). The motion was written for that same point, so a
+        /// static surface agrees up to float precision and the target's rounding. Farther than that the surface moved,
+        /// the static expected depth says nothing about it, and the test is skipped. Neighbourhood clipping (step 5)
+        /// handles the pixel instead. A static point on or behind last frame's camera plane counts as moving, and the
+        /// motion target already sends such a point off screen.</summary>
         public const float MovingSurfaceInternalPixels = 0.5f;
         /// <summary>Step 3. The share of the dilated texel's motion length, in internal pixels, added to
         /// <see cref="MovingSurfaceInternalPixels"/>. The motion target is RG16F, whose 10-bit mantissa puts one unit
@@ -132,35 +134,48 @@ namespace KhaozEngine.Render3D.Internal
         public const float ClipFlagMinimumMove = 1f / 1024f;
         /// <summary>Steps 1 and 3. The most motion, in internal pixels, between the dilated nearest surface and the
         /// centre texel's own surface at which a pixel whose centre texel lies on the farther surface, by more than
-        /// <see cref="DisocclusionTolerance"/>, still reads history along the dilated motion. Past it that motion
-        /// carries the pixel beyond the nearer surface's edge, onto another texel of the farther surface, so the pixel
-        /// reprojects by its centre texel's own motion and depth instead. A 30 display pixel box keyed and crossing a
-        /// textured wall at 4 display pixels a frame, 4 internal pixels at Native and 2.7 at Quality, left 63 and 180
-        /// of its 840 trail pixels further from the bare wall than a freshly revealed wall is, because the column
-        /// behind its trailing edge read a wall texel 4 pixels away at full confidence each frame. With this and
+        /// <see cref="DisocclusionTolerance"/>, still reads history along the dilated motion. It applies only where the
+        /// nearer surface moved, so that its depth test is skipped. Past it that motion carries the pixel beyond the
+        /// nearer surface's edge, onto another texel of the farther surface, so the pixel reprojects by its centre
+        /// texel's own motion and depth instead. A 30 display pixel box keyed and crossing a textured wall at 4 display
+        /// pixels a frame, 4 internal pixels at Native and 2.7 at Quality, left 63 and 180 of its 840 trail pixels
+        /// further from the bare wall than a freshly revealed wall is, because the column behind its trailing edge read
+        /// a wall texel 4 pixels away at full confidence each frame. With this and
         /// <see cref="DisocclusionVisibleShare"/> it leaves 1 and 0. The keyed line facts move up to 0.9 internal
         /// pixels a frame and the nearest-depth fact 1, and all keep the dilated history. 1.25 leaves a quarter pixel
         /// over that for the half-float motion target and the float round trip of a background centre, and 1 measures
         /// the same. At 0.5, the moving-surface threshold, the nearest-depth fact fails and a keyed line at 0.6
         /// internal pixels a frame on Quality keeps 12 percent of its contrast against 74. At 1.5 the box at
-        /// UltraPerformance, 1.33 internal pixels a frame, leaves 233 pixels against 60.</summary>
+        /// UltraPerformance, 1.33 internal pixels a frame, leaves 233 pixels against 60. A still nearer surface keeps
+        /// dilation: a still box in front of the textured wall under a perspective camera stepping sideways 2 internal
+        /// pixels a frame against the wall left 18 and 19 trail pixels at Native and Quality with the rule applied
+        /// there, against 6 and 10, and against the sky its edges took 0.0035 and 0.0063 fast flips a pixel a frame
+        /// against none. The cost, where a moving object's edge pixel has its centre texel on the farther surface: a
+        /// keyed box tilted and crossing the flat wall at 2 internal pixels a frame averages a luma error of 0.0016 and
+        /// 0.0020 over its edges against 0.0008 and 0.0014 with dilation, and a keyed line one internal pixel wide
+        /// keeps 0.69 and 0.43 of its reference energy where dilation smeared it to 2.09 and 1.28 with a trail of 8
+        /// pixels at Native. The 30 pixel box crossing the flat wall at 4 display pixels a frame shows 0.0029, 0.0025,
+        /// 0.0061 and 0.0071 fast flips a pixel a frame at its moving edges at Quality, Balanced, Performance and
+        /// UltraPerformance against 0.0001, 0.0000, 0.0000 and 0.0007, and its added change at UltraPerformance rises
+        /// from 0.0034 to 0.0042.</summary>
         public const float DilationReachInternalPixels = 1.25f;
         /// <summary>Step 3. A depth-tested pixel whose expected surface shows under less than this share of the
         /// bilinear weight of its four stored depths was mostly covered last frame, and drops its history, unless the
-        /// nearest of the four is thin: apart in depth, nearer or farther, from both its neighbours along a row or a
-        /// column by <see cref="DisocclusionTolerance"/>. Otherwise any one stored depth at the expected surface keeps
-        /// the history, which spares a sub-pixel edge, but it also kept the ring of pixels around a moving object's old
+        /// nearest of the four is narrow, its run of texels along a row or a column, apart in depth from those either
+        /// side by <see cref="DisocclusionTolerance"/>, at most two long, or the pixel carries a lock whose hold on the
+        /// clip is whole (<see cref="LockHoldGain"/>). Otherwise any one stored depth at the expected surface keeps the
+        /// history, which spares a sub-pixel edge, but it also kept the ring of pixels around a moving object's old
         /// place, whose footprint reaches past the edge, from ever reading as revealed. The keyed box crossing a
         /// textured wall kept its colour in its bottom row at Native, and in its top and bottom rows and its first
         /// revealed column at Quality, and with <see cref="DilationReachInternalPixels"/> alone left 9 and 38 trail
-        /// pixels against 1 and 0 with both. A quarter leaves 17 at Quality. Three quarters make a flat crossing's
-        /// moving edges flip faster, 0.0082 and 0.014 fast flips per pixel a frame at Balanced and UltraPerformance
-        /// against 0.0025 and 0.0071, and a nearer surface crossing a held line on UltraPerformance ghosts 2 display
-        /// pixels. Without the thin exception a line a texel wide against the sky, or a blade over ground, drops its
-        /// history on the frames the jitter misses it: the sky line's centre averages 13.9 percent at Native against
-        /// its coverage of 37.5. Counting only a depth nearer than both neighbours as thin lets a line beside a nearer
-        /// surface lose it too: the sky line beside a still surface at UltraPerformance changes by up to 9.5 percent of
-        /// its contrast a frame against 2.6.</summary>
+        /// pixels against 1 and 0 with both. A quarter leaves 17 at Quality. Three quarters raise the moving edges'
+        /// fast flips at Balanced and UltraPerformance to 0.0082 and 0.014 from 0.0025 and 0.0071, and a nearer surface
+        /// crossing a held line on UltraPerformance ghosts 2 display pixels. Without either exception a still line
+        /// narrower than a texel against the sky, or a blade over ground, drops its history on the frames the jitter
+        /// misses it: the sky line's centre averages 13.9 percent at Native against its coverage of 37.5. Counting only
+        /// a single texel as narrow and taking no account of the lock, two still blades side by side lost the left
+        /// one's history at Quality, from 45.3 to 18.4 percent, and the right of three still blades side by side, which
+        /// holds a lock, fell from 41.8 to 13.8 at Native.</summary>
         public const float DisocclusionVisibleShare = 0.5f;
     }
 }

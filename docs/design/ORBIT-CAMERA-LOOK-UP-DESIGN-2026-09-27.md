@@ -78,6 +78,8 @@ The camera keeps a shortfall, the metres the boom is currently held short of its
 - `AdvanceBoom(dt)` decays the held shortfall by `exp(-BoomRecoveryRate * dt)`, frame-rate independent.
   `FollowCameraController.Update` calls it beside `AdvanceTarget`.
 - `Warp` and `SnapToTarget` clear the held shortfall, so a teleport never eases out from the old site.
+- The `Distance` setter clears it too. A zoom during recovery would otherwise lurch the eye to the minimum
+  distance, and a real obstruction re-imposes itself on the next read anyway.
 - The held shortfall joins the eye cache key.
 
 Tracking a shortfall instead of an eased length keeps zoom instant. Scrolling out in the open changes the full

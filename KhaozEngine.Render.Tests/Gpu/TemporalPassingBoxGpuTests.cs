@@ -54,7 +54,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The passing-box runs, rendered on first use and kept for the test class. The box's centre passes the middle of
     /// the measured rows on frame <see cref="PassFrame"/>, so it is beside them from about frame 27 to 47, and the
-    /// window runs <see cref="Total"/> frames after <see cref="Warm"/>.
+    /// window runs <see cref="Total"/> frames after <see cref="Warm"/>. The run without the box and the reference,
+    /// which neither side changes, are rendered once a preset.
     /// </summary>
     public sealed class TemporalPassingBoxRuns
     {
@@ -65,39 +66,29 @@ namespace KhaozEngine.Tests.Gpu
         const ulong Key = 41;
 
         readonly Dictionary<(TemporalUpscale, int), PassingBoxRun> _runs = new();
+        readonly Dictionary<TemporalUpscale, StillLine> _still = new();
+
+        // The line's supersampled coverage in the measured rows, its wanted energy, and its energy on each frame of the
+        // run without the box.
+        sealed record StillLine(List<(int X, int Y)> Pixels, double Wanted, double[] Energies);
 
         internal PassingBoxRun Run(TemporalUpscale preset, int side)
         {
             if (_runs.TryGetValue((preset, side), out PassingBoxRun? cached)) return cached;
-            var stage = new FrontStage(W, H, OrthoSize);
-            float factor = TemporalSettings.DisplayOverInternal(preset), pw = stage.PixelWorld;
-            float lineWidth = LineTexels * factor * pw, lineLeft = LineOffsetPixels * pw, box = BoxPixels * pw;
-            float gap = GapTexels * factor * pw;
-            float boxX = side > 0 ? lineLeft + lineWidth + gap + box / 2f : lineLeft - gap - box / 2f;
+            var scene = new Passing(preset);
+            StillLine still = Still(scene);
+            byte[][] with = scene.Frames(side);
+            var shares = new double[with.Length];
+            for (int t = 0; t < with.Length; t++) shares[t] = Energy(with[t], still.Pixels) / still.Energies[t];
+            int worst = Array.IndexOf(shares, shares.Min());
+            return _runs[(preset, side)] = new PassingBoxRun(shares, shares[worst], Warm + worst, still.Wanted,
+                still.Pixels.Count);
+        }
 
-            void Draw(Scene3D s, int n, bool withBox)
-            {
-                stage.Wall(s);
-                s.Draw(stage.Box, Matrix4x4.CreateScale(lineWidth, 3.6f, 0.05f)
-                    * Matrix4x4.CreateTranslation(lineLeft + lineWidth / 2f, 0f, LineZ), new Color(1f, 1f, 1f, 1f));
-                if (!withBox) return;
-                Matrix4x4 world = Matrix4x4.CreateScale(box, box, 0.5f)
-                    * Matrix4x4.CreateTranslation(boxX, (PassFrame - n) * PixelsPerFrame * pw, 0f);
-                s.Draw(new RigidInstanceDraw(stage.Box, world)
-                {
-                    Tint = new Color(1f, 0.25f, 0.2f, 1f), Motion = MotionKey.From(Key),
-                });
-            }
-            Action<Scene3D> Setup(AntiAliasing aa) => s =>
-            {
-                stage.Setup(s, aa, preset);
-                s.Post.Hdr.Enabled = false;
-            };
-            byte[][] Frames(bool withBox) => TemporalAcceptance.Sequence(W, H, Setup(AntiAliasing.Temporal),
-                (s, n) => Draw(s, n, withBox), Warm, Total - Warm);
-
-            byte[] reference = TemporalAcceptance.Supersampled(W, H, TemporalAcceptance.SequenceReferenceFactor,
-                Setup(AntiAliasing.Off), (s, n) => Draw(s, n, false));
+        StillLine Still(Passing scene)
+        {
+            if (_still.TryGetValue(scene.Preset, out StillLine? cached)) return cached;
+            byte[] reference = scene.Reference();
             float background = TemporalAcceptance.Luma(reference, W, 2, 2);
             var line = new List<(int X, int Y)>();
             double wanted = 0;
@@ -109,17 +100,61 @@ namespace KhaozEngine.Tests.Gpu
                     line.Add((x, y));
                     wanted += above;
                 }
+            double[] energies = scene.Frames(0).Select(f => Energy(f, line)).ToArray();
+            return _still[scene.Preset] = new StillLine(line, wanted, energies);
+        }
 
-            byte[][] with = Frames(true), without = Frames(false);
-            double Energy(byte[] frame)
+        static double Energy(byte[] frame, List<(int X, int Y)> line)
+        {
+            float bg = TemporalAcceptance.Luma(frame, W, 2, 2);
+            return line.Sum(p => TemporalAcceptance.Luma(frame, W, p.X, p.Y) - bg);
+        }
+
+        // The scene at one preset: the still line ahead of the flat wall, and the box beside it on one side or none.
+        sealed class Passing
+        {
+            readonly FrontStage _stage = new(W, H, OrthoSize);
+            readonly float _lineWidth, _lineLeft, _box, _gap;
+
+            public Passing(TemporalUpscale preset)
             {
-                float bg = TemporalAcceptance.Luma(frame, W, 2, 2);
-                return line.Sum(p => TemporalAcceptance.Luma(frame, W, p.X, p.Y) - bg);
+                Preset = preset;
+                float factor = TemporalSettings.DisplayOverInternal(preset), pw = _stage.PixelWorld;
+                _lineWidth = LineTexels * factor * pw;
+                _lineLeft = LineOffsetPixels * pw;
+                _box = BoxPixels * pw;
+                _gap = GapTexels * factor * pw;
             }
-            var shares = new double[with.Length];
-            for (int t = 0; t < with.Length; t++) shares[t] = Energy(with[t]) / Energy(without[t]);
-            int worst = Array.IndexOf(shares, shares.Min());
-            return _runs[(preset, side)] = new PassingBoxRun(shares, shares[worst], Warm + worst, wanted, line.Count);
+
+            public TemporalUpscale Preset { get; }
+
+            // Side 1 puts the box right of the line, -1 left, and 0 draws none.
+            void Draw(Scene3D s, int n, int side)
+            {
+                _stage.Wall(s);
+                s.Draw(_stage.Box, Matrix4x4.CreateScale(_lineWidth, 3.6f, 0.05f)
+                    * Matrix4x4.CreateTranslation(_lineLeft + _lineWidth / 2f, 0f, LineZ), new Color(1f, 1f, 1f, 1f));
+                if (side == 0) return;
+                float boxX = side > 0 ? _lineLeft + _lineWidth + _gap + _box / 2f : _lineLeft - _gap - _box / 2f;
+                Matrix4x4 world = Matrix4x4.CreateScale(_box, _box, 0.5f)
+                    * Matrix4x4.CreateTranslation(boxX, (PassFrame - n) * PixelsPerFrame * _stage.PixelWorld, 0f);
+                s.Draw(new RigidInstanceDraw(_stage.Box, world)
+                {
+                    Tint = new Color(1f, 0.25f, 0.2f, 1f), Motion = MotionKey.From(Key),
+                });
+            }
+
+            Action<Scene3D> Setup(AntiAliasing aa) => s =>
+            {
+                _stage.Setup(s, aa, Preset);
+                s.Post.Hdr.Enabled = false;
+            };
+
+            public byte[][] Frames(int side) => TemporalAcceptance.Sequence(W, H, Setup(AntiAliasing.Temporal),
+                (s, n) => Draw(s, n, side), Warm, Total - Warm);
+
+            public byte[] Reference() => TemporalAcceptance.Supersampled(W, H,
+                TemporalAcceptance.SequenceReferenceFactor, Setup(AntiAliasing.Off), (s, n) => Draw(s, n, 0));
         }
     }
 }

@@ -174,6 +174,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetPipeline(_storePipeline);
             cl.SetGraphicsResourceSet(0, _storeSet!);
             cl.Draw(3);
+            RecordFinishProbe(cl);   // an armed temporal count request, over the set this run bound (Finish partial)
         }
 
         void DisposeSets()

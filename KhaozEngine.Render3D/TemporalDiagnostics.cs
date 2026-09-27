@@ -3,11 +3,14 @@ using System.Numerics;
 namespace KhaozEngine.Render3D;
 
 /// <summary>
-/// The last rendered frame's temporal state, read via <see cref="Scene3D.LastTemporalDiagnostics"/>. A value snapshot in
-/// the shape of <see cref="ShadowPassDiagnostics"/>: always on, allocation-free to read, and written once per frame on
-/// the frame's first render. Before the first render the whole value is <c>default</c>, so <see cref="UpscaleRatio"/>
-/// and <see cref="CountsFrameIndex"/> read 0 there rather than the parameter defaults below. Read it on the render
-/// thread after the frame renders.
+/// The last rendered frame's temporal state, read via <see cref="Scene3D.LastTemporalDiagnostics"/>. A value snapshot
+/// in the shape of <see cref="ShadowPassDiagnostics"/>: always on and allocation-free to read. Every field but the
+/// counts is written once per frame, on the frame's first render. The counts, <see cref="CountsFrameIndex"/> and the
+/// three pixel counts after it, are sampled only on <see cref="Scene3D.RequestTemporalCounts"/> and land at the
+/// <see cref="Scene3D.PrepareFrame"/> after the frame they were sampled on. They stay until the next request lands, so
+/// from the next render on they name an earlier frame than <see cref="FrameIndex"/>. Before the first render the whole
+/// value is <c>default</c>, so <see cref="UpscaleRatio"/> and <see cref="CountsFrameIndex"/> read 0 there rather than
+/// the parameter defaults below. Read it on the render thread after the frame renders.
 /// </summary>
 /// <param name="FrameIndex">The frame's index, advanced once per <see cref="Scene3D.Begin"/>.</param>
 /// <param name="JitterPhase">Where the frame index falls in the jitter sequence, from 0, reported whether or not the
@@ -41,7 +44,7 @@ namespace KhaozEngine.Render3D;
 /// an explicit <see cref="TemporalSettings.UpscaleRatio"/> and the render size caps, and 1 on any other frame, such as
 /// one under another anti-aliasing mode, whatever its internal size.</param>
 /// <param name="CountsFrameIndex">The frame the counts below were sampled on, minus 1 from the first render until the
-/// first <c>Scene3D.RequestTemporalCounts</c>.</param>
+/// first <see cref="Scene3D.RequestTemporalCounts"/> is sampled and read back.</param>
 /// <param name="DisoccludedPixels">Estimated display pixels whose history was rejected by depth or an off-screen
 /// reprojection, from a 32 by 18 grid of 16 samples a cell.</param>
 /// <param name="ReactivePixels">Estimated display pixels the reactive estimate marked, on the same grid.</param>

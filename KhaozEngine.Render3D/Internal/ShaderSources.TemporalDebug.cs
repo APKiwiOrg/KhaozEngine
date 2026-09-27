@@ -1,8 +1,8 @@
 namespace KhaozEngine.Render3D.Internal
 {
-    /// <summary>The temporal resolve's debug view program. Part of the <see cref="ShaderSources"/> partial. It splices
-    /// the resolve's own per-pixel function, so it shows exactly the decisions the resolve made rather than a second
-    /// derivation that could drift from it.</summary>
+    /// <summary>The temporal resolve's debug view and count probe programs. Part of the <see cref="ShaderSources"/>
+    /// partial. Each splices the resolve's own per-pixel function, so it shows exactly the decisions the resolve made
+    /// rather than a second derivation that could drift from it.</summary>
     internal static partial class ShaderSources
     {
         // ---- The History, Disocclusion and Reactive debug views: one fullscreen pass over the final target that
@@ -32,6 +32,29 @@ void main() {
         c = mix(context, vec3(1.0, 0.85, 0.1), clamp(t.reactive, 0.0, 1.0));
     }
     oColor = vec4(c, 1.0);
+}";
+
+        // ---- The on-request count probe: one texel per cell of a 32 by 18 grid over the display, each the share of
+        //      16 evenly spread samples the resolve treated as disoccluded (r), reactive (g) or clipped (b). The
+        //      resolve's own function is evaluated at each sample over this frame's resolve set, so the counts are
+        //      the resolve's decisions. Read back on request only (TemporalCountProbe). ----
+        public const string TemporalProbeFrag = @"#version 450
+" + TemporalResolveCoreGlsl + @"
+layout(location=0) in vec2 vUv;
+layout(location=0) out vec4 oCounts;
+void main() {
+    ivec2 size = temporalDisplaySize();
+    vec2 cell = floor(vec2(vUv.x, 1.0 - vUv.y) * vec2(32.0, 18.0));
+    vec3 hits = vec3(0.0);
+    for (int sy = 0; sy < 4; sy++) {
+        for (int sx = 0; sx < 4; sx++) {
+            vec2 at = (cell + (vec2(float(sx), float(sy)) + 0.5) / 4.0) / vec2(32.0, 18.0);
+            ivec2 p = clamp(ivec2(at * vec2(size)), ivec2(0), size - ivec2(1));
+            TemporalPixel t = temporalResolvePixel(p);
+            hits += vec3(t.disocclusion >= 0.5 ? 1.0 : 0.0, t.reactive >= 0.5 ? 1.0 : 0.0, t.clip >= 0.5 ? 1.0 : 0.0);
+        }
+    }
+    oCounts = vec4(hits / 16.0, 1.0);
 }";
     }
 }

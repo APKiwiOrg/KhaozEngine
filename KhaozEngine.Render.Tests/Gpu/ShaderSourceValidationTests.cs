@@ -32,6 +32,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <item>FullscreenVert+TemporalSharpenFrag (TemporalSharpenPass)</item>
     /// <item>FullscreenVert+TemporalDebugFrag (TemporalDebugViewPass, the History, Disocclusion and Reactive debug
     /// views)</item>
+    /// <item>FullscreenVert+TemporalProbeFrag (TemporalCountProbe, the on-request temporal counts)</item>
     /// <item>SpriteBatch VertSrc+FragSrc (Render2D)</item>
     /// <item>The temporal motion variants of the model, skinned, CPU-skinned, foliage, splat and tile-ground passes
     /// and the five motion-preserving transparent fragments (built only against a model target with the motion
@@ -151,6 +152,11 @@ namespace KhaozEngine.Tests.Gpu
         public void TemporalDebugView()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TemporalDebugFrag,
                 "TemporalDebugView");
+
+        [Fact]
+        public void TemporalCountProbe()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TemporalProbeFrag,
+                "TemporalCountProbe");
 
         [Fact]
         public void PostBloomBright()

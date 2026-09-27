@@ -258,6 +258,8 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalResolveRenderer resolve", ["Temporal.resolve"]),
             ("TemporalResolveRenderer depth store", ["Temporal.depthStore"]),
             ("TemporalResolveRenderer debug view", ["Temporal.resolve", "Temporal.debugMode"]),
+            // The count probe binds the resolve's own layout alone, so it adds a pipeline and no layout.
+            ("TemporalResolveRenderer count probe", ["Temporal.resolve"]),
             // The four rigid point-shadow pipelines (three caster variants and the row clear) are one row, the way
             // the cascade pass's three depth variants are: they differ in blend, depth state and shaders, and a
             // pipeline is in this table for its LAYOUT ARRAY, which is the same single set for all of them.
@@ -289,7 +291,7 @@ namespace KhaozEngine.Tests.Gpu
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
             Assert.Equal(54, ShippedLayouts.Count);
-            Assert.Equal(57, ShippedPipelines.Count);
+            Assert.Equal(58, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

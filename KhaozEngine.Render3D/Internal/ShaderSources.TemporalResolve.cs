@@ -9,8 +9,8 @@ namespace KhaozEngine.Render3D.Internal
     /// chain's flip parities stay what they were.</para>
     /// <para><b>THE CORE IS SHARED.</b> <see cref="TemporalResolveCoreGlsl"/> holds the bindings, the uniform block and
     /// the per-pixel resolve as a function with no stage inputs or outputs, so the temporal debug views
-    /// (<see cref="TemporalDebugFrag"/>) and the planned sampled temporal counts can re-evaluate exactly what the
-    /// resolve decided, through the resource set it bound.</para>
+    /// (<see cref="TemporalDebugFrag"/>) and the sampled temporal counts (<see cref="TemporalProbeFrag"/>) can
+    /// re-evaluate exactly what the resolve decided, through the resource set it bound.</para>
     /// <para><b>THE UNIFORM BLOCKS ARE THE C# STRUCTS.</b> Each block's members are spliced from
     /// <see cref="TemporalResolveUniforms.GlslMembers"/> and <see cref="TemporalDepthStoreUniforms.GlslMembers"/>, so the
     /// text cannot drift from the fields, and the fields carry the meaning.</para>

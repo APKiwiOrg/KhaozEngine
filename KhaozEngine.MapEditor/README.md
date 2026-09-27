@@ -940,26 +940,27 @@ Procedural setup editing below.
 `CheckWorldRebuild` -> `UpdateStreaming`. `CheckWorldRebuild` dispatches a pending edit to one of four paths,
 cheapest first:
 
-- **Props only** (`ViewportWorld.RefreshLayerProps`), for a bounded batch that changed captured scatter configs
-  and left the terrain field alone (`EditorDocument.PendingFieldChange` false), which is every exclusion and
-  scatter-override edit. The viewport hands the sink the document's rebuilt layer list
-  (`Scene3DChunkSink.UpdateLayers`) and re-serves every prop layer of the loaded chunks the region overlaps
-  (`TerrainStreamer.RefreshProps`). The field is not rebuilt, no terrain is re-meshed and no authored placement
-  is re-snapped, so a gizmo drag on an exclusion or override costs the scatter work of the chunks it covers every
-  frame.
+- **Props only** (`ViewportWorld.RefreshLayerProps`), for a batch that changed captured scatter configs and left
+  the terrain field alone (`EditorDocument.PendingFieldChange` false). Exclusion and scatter-override shape edits
+  re-serve the loaded chunks their bounded region overlaps. Scatter-layer and companion-layer value edits plus an
+  override reorder re-serve the whole loaded set. Both forms hand the sink the document's rebuilt layer list,
+  require `Scene3DChunkSink.KeepsLayerShape`, and call `TerrainStreamer.RefreshProps`. The field is not rebuilt, no
+  terrain is re-meshed and no authored placement is re-snapped.
 - **Bounded re-mesh** (`ViewportWorld.PartialRebuild`), for any other bounded batch: features, sculpt strokes,
   and a batch that mixes one of those with an exclusion or override edit. It swaps the field, refreshes the
   captured configs when the batch needs it, and re-meshes the chunks the region overlaps.
-- **All loaded** (`ViewportWorld.RefreshLoaded`), for terrain scalars, biome bands and same-topology scatter or
-  companion layer edits. It refreshes the field and captured configs, then re-meshes every loaded chunk.
+- **All loaded re-mesh** (`ViewportWorld.RefreshLoaded`), for terrain scalars, biome bands and a field-neutral
+  layer edit whose replacement does not keep the sink's layer shape. It refreshes the field and captured configs,
+  then re-meshes every loaded chunk.
 - **Full** (`ViewportWorld.Rebuild`), for layer-count and other topology changes.
 
 A bounded path refreshes only some chunks, so every chunk outside its region keeps the placement arrays, prop
-clusters and HLOD handles it has, indexed by layer. The two bounded paths therefore take a new layer list only
-when it differs from the sink's current one in nothing but each layer's scatter and companion configs
+clusters and HLOD handles it has, indexed by layer. The bounded props path and whole-loaded props path therefore
+take a new layer list only when it differs from the sink's current one in nothing but its generation configs
 (`Scene3DChunkSink.KeepsLayerShape`): the same count, kinds, companion hosts, HLOD, meshes, radii and identity.
-They decline anything else, touching nothing: a declined props-only refresh falls back to the bounded
-re-mesh, and a declined bounded re-mesh falls back to the full rebuild. The commands
+They decline anything else, touching nothing: a declined bounded props refresh falls back to the bounded
+re-mesh, a declined whole-loaded props refresh falls back to the all-loaded re-mesh, and a declined bounded
+re-mesh falls back to the full rebuild. The commands
 make the other half of the guarantee: an exclusion or override command pads its shape bounds with the document's
 largest scatter jitter, because a candidate belongs to the chunk of its un-jittered cell centre while the shape
 test reads its jittered position. After every drag frame and after the drag ends, every loaded chunk therefore

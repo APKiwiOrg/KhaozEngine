@@ -64,7 +64,7 @@ namespace KhaozEngine.Render3D
 
             float scroll = input.ScrollDelta;
             if (scroll != 0f)
-                Camera.Distance *= MathF.Pow(ZoomStep, -scroll);   // setter clamps; +scroll -> closer
+                Camera.Distance *= MathF.Pow(ZoomStep, -scroll);   // setter clamps, and +scroll -> closer
 
             Camera.AdvanceTarget(dt);   // drives the opt-in target damping (no-op while disabled)
             Camera.AdvanceBoom(dt);     // eases the boom back out after an obstruction clears (no-op at rate 0)

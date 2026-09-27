@@ -254,6 +254,29 @@ applies its own gates (a hidden roof, a non-interactive archetype). `TileObjectB
 `BoundsSource` to hand it: the per-archetype vertex AABB measured once from the SAME `ITileMeshResolver` the
 view draws through, greybox fallback included.
 
+### Camera boom probe (`TileWorldCameraProbe`)
+
+`new TileWorldCameraProbe(view, bounds, blocks)` is the `ICameraBoomProbe` for a tile world. Hand it to
+`FollowCamera3D.BoomProbe` and the camera boom stops at what the view draws instead of passing through walls and
+roofs. `bounds` is normally `TileObjectBoundsCache.TryGetBounds` over the resolver the view draws with. `blocks`
+is the consumer's rule for which archetypes stop the camera. Tags are game content, so the engine names none.
+
+- **Terrain.** `PickSurface` on the observer's plane, so drawn terrain, water and walk surfaces stop the boom and
+  undrawn tiles do not. The hit distance is reduced by the sphere radius. Planes above the observer are not tested
+  for terrain, and the camera's `GroundHeight` clearance stays the guard against grazing hits.
+- **Objects.** `PickObjects` on the observer's plane and the plane above it, where roofs stand, against every
+  model box grown by the radius on each axis, which gives the boom a sphere's clearance rather than a ray's. Hits
+  are walked nearest first and the first that passes stops the boom. A box that already contains the origin is
+  skipped, so a subject pressed against a wall does not collapse its own boom.
+- **Roofs.** A roof `IsRoofHidden` reports hidden never stops the boom, whatever `blocks` says, because an
+  invisible ceiling must never stop a camera. The authored archetype decides, as in object picking, not a look
+  override.
+- **Result.** The nearer of the terrain and object distances, capped at the requested length.
+- **Cost.** One surface pick and up to two object picks per call, and the camera calls once per computed eye. The
+  probe reuses one hit list and one bounds delegate, so it allocates nothing itself, but the object pick walks the
+  document through the `ObjectsIn` iterator, which does allocate
+  ([#1183](https://github.com/APKiwiOrg/KhaozEngine/issues/1183)). Not thread-safe, like the view it reads.
+
 ### Real meshes (`GltfMeshResolver`)
 
 `GltfMeshResolver(string rootDirectory, ITileMeshResolver? fallback = null, Action<string>? log = null)` is the

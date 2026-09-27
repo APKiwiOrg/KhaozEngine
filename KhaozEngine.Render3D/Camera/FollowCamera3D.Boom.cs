@@ -19,9 +19,11 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Rate, per second, at which the boom eases back out after an obstruction clears. A pull-in is always
         /// instant, because an eased pull-in would put the eye inside the occluder. Once the probe reports more
-        /// room, the boom recovers the metres it is held short by <c>exp(-BoomRecoveryRate * dt)</c> per
-        /// <see cref="AdvanceBoom"/> call, frame-rate independent. Zero (the default) follows the probe both ways at
-        /// once.
+        /// room, each <see cref="AdvanceBoom"/> call multiplies the metres the boom is held short by
+        /// <c>exp(-BoomRecoveryRate * dt)</c>, so the shortfall decays frame-rate independently. Zero (the default)
+        /// follows the probe both ways at once. Setting <see cref="Distance"/> drops the held shortfall, so a
+        /// consumer that writes <see cref="Distance"/> every frame gets no easing. Write it only when the zoom
+        /// changes.
         /// </summary>
         public float BoomRecoveryRate = 0f;
 

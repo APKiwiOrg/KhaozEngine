@@ -29,6 +29,18 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   It draws by weight over a table of `MomentFamily` entries under `MomentScheduleOptions`, and a mirrored
   family's `MomentSide` is left or right with even odds. Salt 0 over a glance and turn table reproduces Grimhollow's
   standing-player schedule to the bit ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+- `FollowCamera3D.PivotHeight` lifts the orbit centre and look-at point above the target. `HeightOffset` still
+  raises only the eye. A negative `MinPitch` now looks up from below the pivot, bounded by `PitchLimit`
+  (85 degrees) ([design](docs/design/ORBIT-CAMERA-LOOK-UP-DESIGN-2026-09-27.md)).
+- `ICameraBoomProbe` and `FollowCamera3D.BoomProbe` stop the boom through any probe. The `Occlusion` physics
+  sweep runs through the same path, the shorter reach wins, and `BoomProbeCount` counts probe calls
+  ([design](docs/design/ORBIT-CAMERA-LOOK-UP-DESIGN-2026-09-27.md)).
+- `FollowCamera3D.BoomRecoveryRate` and `AdvanceBoom` pull the boom in at once and ease it back out, while zoom
+  stays instant. `FollowCameraController.Update` advances it. All defaults keep existing cameras unchanged
+  ([design](docs/design/ORBIT-CAMERA-LOOK-UP-DESIGN-2026-09-27.md)).
+- `TileWorldCameraProbe` stops a camera boom at drawn terrain, water and walk surfaces, and at objects a consumer
+  filter accepts on the observer's plane and the one above. It skips roofs the view hides
+  ([design](docs/design/ORBIT-CAMERA-LOOK-UP-DESIGN-2026-09-27.md)).
 
 ## 20.12.0
 

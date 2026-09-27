@@ -28,6 +28,20 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   in, terrain deforms) is never answered with last frame's eye. Drive the camera without a `Scene3D` and you call
   `BeginFrame()` (or `FollowCamera3D.InvalidateEye()`) once a frame yourself. `OcclusionSweepCount` /
   `EyeComputeCount` are cumulative-since-construction counters for watching the load.
+- `FollowCamera3D.PivotHeight` / `Pivot` / `PitchLimit` (since 20.13.0). The camera orbits and looks at `Pivot`,
+  which is `EffectiveTarget` raised by `PivotHeight` (default 0). `HeightOffset` still raises only the eye. A
+  negative `MinPitch` puts the eye below the pivot looking up, and `Pitch` clamps to `[-PitchLimit, PitchLimit]`
+  (85 degrees) after `[MinPitch, MaxPitch]`, so the view never degenerates against world up.
+- `ICameraBoomProbe` / `FollowCamera3D.BoomProbe` (since 20.13.0). Any probe can stop the boom. The camera asks
+  `Reach(origin, direction, length, radius)` once per computed eye, from the pivot toward the geometric eye, and
+  places the eye at that reach less `OcclusionSkin`, floored at `MinOcclusionDistance`. The `Occlusion` physics
+  sweep runs through the same path, the shorter reach wins, and `GroundHeight` clearance still runs last.
+  `BoomProbeCount` counts probe calls cumulatively. `KhaozEngine.TileWorld.Render3D` ships `TileWorldCameraProbe`.
+- `FollowCamera3D.BoomRecoveryRate` / `AdvanceBoom(dt)` (since 20.13.0). A pull-in stays instant and the boom
+  eases back out as `AdvanceBoom` decays the held shortfall by `exp(-BoomRecoveryRate * dt)`.
+  `FollowCameraController.Update` calls it. Zoom stays instant. `Warp`, `SnapToTarget` and the `Distance` setter
+  drop the shortfall, so a consumer writes `Distance` only when the zoom changes. The default rate of 0 follows
+  the probe both ways at once. See docs/USING-KHAOZENGINE.md.
 - Teleport transitions (`ITransition` + `HardBlink` / `CameraDissolve` / `CharDissolve`, since 10.65.0) - a phased
   cover -> swap -> optional streaming hold -> reveal state machine (pure timing) that masks a teleport swap +
   destination pop-in. A teleport is a hard cut, so `HardBlink` defaults to an instant, reveal-only cover (opaque on the

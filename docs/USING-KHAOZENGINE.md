@@ -6246,12 +6246,12 @@ own `TerrainSculpt` if you are not going through a document. The map editor's sc
 ## Third-person follow camera + character controller (`FollowCamera3D` / `CharacterController3D`)
 
 For a walkable 3D world, pair `FollowCamera3D` (`KhaozEngine.Render3D`) with `CharacterController3D`
-(`KhaozEngine.Game.Render3D`). The camera is a perspective sibling of `IsoCamera3D`: it orbits behind a `Target`
-at a clamped `Pitch`/`Distance` and always looks at the target (same Y-up convention, same `Eye`/`Forward`/
-`ScreenToGround`; it implements `IIsoCamera3D`). Drive it from the input snapshot with `FollowCameraController`
-(hold the orbit button - right mouse by default, matching the fly camera and leaving left-drag free for
-gameplay - and drag to swing yaw/pitch, scroll to zoom; set `FollowCameraController.OrbitButton` to change it).
-To render through it, set
+(`KhaozEngine.Game.Render3D`). The camera is a perspective sibling of `IsoCamera3D`: it orbits a `Pivot` above
+its `Target` at a clamped `Pitch`/`Distance` and always looks at that pivot (same Y-up convention, same `Eye`/
+`Forward`/`ScreenToGround`, and it implements `IIsoCamera3D`). Drive it from the input snapshot with
+`FollowCameraController`: hold the orbit button (right mouse by default, matching the fly camera and leaving
+left-drag free for gameplay) and drag to swing yaw/pitch, and scroll to zoom. Set
+`FollowCameraController.OrbitButton` to change the button. To render through it, set
 `Scene3D.CameraOverride` (null = the built-in iso `Camera`) and feed the override its aspect ratio each frame:
 
 ```csharp
@@ -6326,27 +6326,74 @@ character off this controller's movement state (see "Animated characters" above)
 
 **Optional target damping (off by default).** Set `FollowCamera3D.EnableTargetDamping = true` (rate
 `TargetDampingRate`, default 10/s) to have the camera follow a smoothed `EffectiveTarget` that eases toward
-`Target` each frame instead of snapping 1:1 - belt-and-suspenders against residual avatar jitter on a remote
-server. `FollowCameraController.Update(input, dt)` drives it (so pass the real frame `dt`); with damping off the
-camera reads `Target` directly and is unchanged. Read `EffectiveTarget` for the smoothed look-at point.
+`Target` each frame instead of snapping 1:1, a belt-and-suspenders guard against residual avatar jitter on a
+remote server. `FollowCameraController.Update(input, dt)` drives it, so pass the real frame `dt`. With damping off
+the camera reads `Target` directly and is unchanged. Read `EffectiveTarget` for the smoothed follow point and
+`Pivot` for the look-at point above it.
+
+**Pivot and looking up (since 20.13.0, off by default).** `PivotHeight` (default 0) lifts the orbit centre above
+`EffectiveTarget`, and `Pivot` reads the result. The eye orbits the pivot and `View`/`Forward` look at it, so a
+camera with `PivotHeight` at head height orbits the head instead of staring at the feet. `HeightOffset` keeps its
+meaning: it raises the eye alone and never moves the look-at point, so a camera that orbits a head sets
+`PivotHeight` and leaves `HeightOffset` at zero. `MinPitch` may be negative. Below zero the eye drops under the
+pivot and the view tilts up toward the sky. The `Pitch` setter clamps to `[MinPitch, MaxPitch]` and then to
+`[-PitchLimit, PitchLimit]`, where the constant `PitchLimit` is 85 degrees, so the view never degenerates against
+world up. The default `MaxPitch` is 81 degrees, so no existing camera reaches the limit.
+
+```csharp
+camera.PivotHeight = 1.6f;                  // orbit and look at the head
+camera.HeightOffset = 0f;                   // the eye rides the orbit alone
+camera.MinPitch = -60f * MathF.PI / 180f;   // drag down past the horizon to look up
+```
 
 **Optional occlusion spring-arm (off by default).** Set `FollowCamera3D.Occlusion` to an `IPhysicsWorld` and the
-camera sweeps a sphere probe (radius `OcclusionRadius`, default 0.25) from the target along the boom toward the
+camera sweeps a sphere probe (radius `OcclusionRadius`, default 0.25) from the pivot along the boom toward the
 geometric eye and pulls the eye in to the first static hit, so the eye never clips through a wall or a ceiling
-between the target and the desired eye (the roofed-dungeon case). `OcclusionSkin` (default 0.05) keeps the
+between the pivot and the desired eye (the roofed-dungeon case). `OcclusionSkin` (default 0.05) keeps the
 pulled-in eye just off the surface, and `MinOcclusionDistance` (default 0.2) floors how far in the boom is ever
-pulled so the eye can never collapse onto the target. The sweep hits statics only, and it runs before the
-`GroundHeight` clamp, so a ground dip still lifts the already pulled-in eye. Null (the default) leaves the eye
-purely geometric, so existing cameras are unchanged.
+pulled so the eye can never collapse onto the pivot. The sweep hits statics only, and it runs before the
+`GroundHeight` clamp, so a ground dip still lifts the already pulled-in eye. Null (the default) sweeps nothing, so
+existing cameras are unchanged. The same three knobs govern the boom probe below.
+
+**Optional boom probe (since 20.13.0, off by default).** An `ICameraBoomProbe` answers
+`Reach(origin, direction, length, radius)`, how far a boom can extend before it meets something. Set
+`FollowCamera3D.BoomProbe` and the camera asks it once per computed eye, from the pivot toward the geometric eye
+with `OcclusionRadius`, in absolute world coordinates. A probe over a rebased world converts on its own side, as the physics sweep does with
+`IPhysicsWorld.Origin`. The `Occlusion` sweep runs through the same path, so a camera may set both and the
+shorter reach wins. A short reach puts the eye that far along the boom less `OcclusionSkin`, floored at
+`MinOcclusionDistance`, and `GroundHeight` clearance still runs last. A blocked boom shortens along its own line
+instead of lifting, so a looking-up boom that meets the ground slides the eye in toward the pivot while the view
+keeps tilting up. `BoomProbeCount` is the cumulative count of probe calls, in the same shape as
+`OcclusionSweepCount`, and one per rendered frame is the healthy reading. A tile world uses the shipped
+`TileWorldCameraProbe` (`KhaozEngine.TileWorld.Render3D`, whose README gives its rules):
+
+```csharp
+var bounds = new TileObjectBoundsCache(resolver);   // the resolver the view draws with
+camera.BoomProbe = new TileWorldCameraProbe(view, bounds.TryGetBounds,
+    archetype => archetype.Tags?.Contains("camera-blocker") == true);   // the game's rule and tag
+```
+
+**Eased boom recovery (since 20.13.0, off by default).** `BoomRecoveryRate` (per second, default 0) eases the
+boom back out after an obstruction clears. A pull-in is always instant, because an eased pull-in would put the
+eye inside the occluder. The camera holds the metres the boom is short of its full length, and `AdvanceBoom(dt)`
+multiplies that shortfall by `exp(-BoomRecoveryRate * dt)`, frame-rate independent. `FollowCameraController.Update`
+calls it after `AdvanceTarget`, so a camera driven by the controller needs only the rate. A camera driven without
+the controller calls `camera.AdvanceBoom(dt)` once a frame. Zoom stays instant, because the shortfall is measured
+against the full length and scrolling out in the open leaves it at zero. `Warp` and `SnapToTarget` drop the held
+shortfall, so a teleport never eases out from the old site. **The `Distance` setter drops it too**, so a consumer
+that writes `Distance` every frame gets no easing at all. Write it only when the zoom changes, as
+`FollowCameraController` does. A zero or non-finite rate follows the probe both ways at once.
 
 **The eye is computed once a frame, not once a read (since 17.37.0).** `Eye` is the expensive property here, and
 `Forward`, `View`, `ViewProjection`, `AbsoluteViewProjection`, `WorldToScreen`, `ScreenToRay` and `ScreenToGround`
 all funnel back through it, so one `Scene3D.Render` reads it over thirty times. It caches, keyed on the inputs the
-last computation read, which means writing any knob (`Target`, `Yaw`, `Pitch`, `Distance`, `HeightOffset`, the
-occlusion knobs, `GroundHeight`, `GroundClearance`) between two reads recomputes on the next one, as it must.
+last computation read, which means writing any knob (`Target`, `Yaw`, `Pitch`, `Distance`, `HeightOffset`,
+`PivotHeight`, the occlusion knobs, `BoomProbe`, `BoomRecoveryRate`, `GroundHeight`, `GroundClearance`) between
+two reads recomputes on the next one, as it must.
 
-What the camera cannot see is the world moving underneath it: a wall slides in, terrain deforms, and no camera
-field changed. `IIsoCamera3D.BeginFrame()` is the boundary that bounds the cache at one frame.
+What the camera cannot see is the world moving underneath it: a wall slides in, terrain deforms, whatever a
+`BoomProbe` reads changes, and no camera field changed. `IIsoCamera3D.BeginFrame()` is the boundary that bounds
+the cache at one frame.
 **`Scene3D.Begin()` calls it on the active camera for you**, so a game that renders through a scene needs no
 adoption at all. A consumer that drives a `FollowCamera3D` with no `Scene3D` (a headless projection pass, a tool)
 calls `camera.BeginFrame()` once a frame itself, or `camera.InvalidateEye()` at the moment it moves an occluder.

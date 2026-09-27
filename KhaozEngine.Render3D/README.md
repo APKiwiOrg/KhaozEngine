@@ -1045,10 +1045,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     DEFORMED skin, so a crouched or striding body can be set down on its ground. The caller lends one `Vector4`
     scratch entry per bone and the call allocates nothing. An unweighted vertex draws through the model alone, as
     the shader does. An empty skin returns positive infinity.
-  - `MomentSchedule` / `MomentScheduleOptions` / `MomentFamily` / `Moment` schedule a standing body's idle moments
-    as a pure function of its id and the clock. The clock is cut into slots that each hold one moment or none,
-    with quiet ends, an empty share, a cap on empty runs and a salt. A family is drawn by weight, and a mirrored
-    family plays left or right with even odds. `At(seed, seconds)` allocates nothing, and
+  - `MomentSchedule` / `MomentScheduleOptions` / `MomentFamily` / `Moment` / `MomentSide` schedule a standing
+    body's idle moments as a pure function of its id and the clock. The clock is cut into slots that each hold
+    one moment or none, with quiet ends, an empty share, a cap on empty runs and a salt. A family is drawn by
+    weight, and a mirrored family plays left or right with even odds. `At(seed, seconds)` allocates nothing, and
     `At(seed, seconds, stoppedAt)` skips a moment that began before the body last stopped. `Moment.None` is the
     default value.
   - `LayeredAnimator` / `AnimationLayer` / `BoneMask` / `LayerMode` - N animation layers composited into one final

@@ -84,6 +84,40 @@ namespace KhaozEngine.Tests.Render3D.Animation
 
             // Two independent schedules agree only where both slots are empty, about 7 percent of them.
             Assert.True(differ > Slots * 0.85, $"Salts 0 and 1 disagree on only {differ} of {Slots} slots.");
+
+            // The salt goes into the seed before the hash, so salt s at seed n is salt 0 at seed n ^ s.
+            foreach (ulong salt in new[] { 1UL, 0xC0FFEEUL, 0x8000000000000001UL })
+            {
+                var moved = new MomentSchedule(TurnOptions with { Salt = salt }, Turns);
+                foreach (long seed in new[] { 1L, 7L, -3L, long.MaxValue })
+                {
+                    long unsaltedSeed = unchecked((long)((ulong)seed ^ salt));
+                    for (int step = 0; step < 4000; step++)
+                        Assert.Equal(plain.At(unsaltedSeed, step * Step), moved.At(seed, step * Step));
+                }
+            }
+        }
+
+        [Fact]
+        public void WeightsAreSharesOfTheirTotal()
+        {
+            // Three to one is the humanoid's 0.75 and 0.25 exactly, so the schedule is the same to the bit.
+            MomentFamily[] threeToOne = { Turns[Glance] with { Weight = 3.0 }, Turns[Turn] with { Weight = 1.0 } };
+            var weighed = new MomentSchedule(TurnOptions, threeToOne);
+            var shares = new MomentSchedule(TurnOptions, Turns);
+            int turns = 0;
+            for (long seed = 1; seed <= 50; seed++)
+            {
+                for (int step = 0; step < 3600 * 4; step++)
+                {
+                    double seconds = step * Step;
+                    Moment expected = shares.At(seed, seconds), actual = weighed.At(seed, seconds);
+                    if (expected != actual)
+                        Assert.Fail($"Seed {seed} at {seconds} s: shares give {expected}, three to one {actual}.");
+                    if (actual.Family == Turn) turns++;
+                }
+            }
+            Assert.True(turns > 1000, $"Three to one turned the body only {turns} times.");
         }
 
         [Fact]

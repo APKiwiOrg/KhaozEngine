@@ -26,8 +26,9 @@ namespace KhaozEngine.Render3D
     /// <c>EmptyShare * (1 - EmptyShare^MaxEmptySlots)</c>.</param>
     /// <param name="MaxEmptySlots">The most slots in a row that hold no moment. A slot whose this many slots before
     /// it all drew none on their own draws holds a moment whatever its own draw says. Zero or more.</param>
-    /// <param name="Salt">Mixed into each body's seed, so two schedules over the same bodies, such as two kinds of
-    /// body, draw independently. Salt 0 leaves the seed as it is.</param>
+    /// <param name="Salt">XORed into each body's seed before the hash, so one body's schedule under one salt is
+    /// unrelated to its schedule under another. Across a population a salt only permutes which seed gets which
+    /// schedule: salt s at seed n is salt 0 at seed n XOR s. Salt 0 leaves the seed as it is.</param>
     public sealed record MomentScheduleOptions(double SlotSeconds, double QuietSeconds, double EmptyShare,
         int MaxEmptySlots, ulong Salt = 0);
 
@@ -203,8 +204,10 @@ namespace KhaozEngine.Render3D
             if (!double.IsFinite(total))
                 throw new ArgumentException($"The moment families' weights total {Text(total)}, which is not a finite"
                     + " number.", nameof(families));
-            // The running weight over the total, not a running sum of shares, so a table whose weights already total
-            // 1 compares its draw against its own weights. A glance of 0.75 over a total of 1 draws below exactly 0.75.
+            // The running weight over the total, not a running sum of shares. Where every running sum and the total
+            // are exact in binary, as the humanoid's 0.75 and 1 (or 3 and 4) are, each cut is the exact share and
+            // splits the 65536 draws exactly where the table says. Otherwise the rounded sums can move a cut by one
+            // draw in 65536.
             for (int index = 0; index < count; index++)
                 _thresholds[index] /= total;
         }

@@ -87,17 +87,20 @@ weighted table of moment families that are single or mirrored left and right. It
 and clock. Its hash, its empty draw, its family draw (bits 32 to 47), its side bit (31) and its start
 offset (the low 31 bits) are exactly those of `IdleTurns`, so salt 0 over a glance and turn table
 reproduces the player's schedule to the bit. The salt is XORed into the seed before the first finalizer,
-so salt 0 leaves the seed alone. The family draw compares against each family's running weight over the
-table's total, not a running sum of divided shares, so a glance weighing 0.75 of a total of 1 draws below
-exactly 0.75. The last family takes any draw rounding leaves over.
+so salt 0 leaves the seed alone and salt s at seed n is salt 0 at seed n XOR s. One body draws unrelated
+schedules under two salts, but across a population a salt only permutes which seed gets which schedule.
+The family draw compares against each family's running weight over the table's total, not a running sum
+of divided shares. Where the running sums and the total are exact in binary, as 0.75 and 1 or 3 and 4
+are, each cut is the exact share. Otherwise rounding can move a cut by one draw in 65536. The last family
+takes any draw rounding leaves over.
 
 The table is copied at construction and `At` allocates nothing. The constructor refuses an empty table, a
 weight that is not finite and above zero, weights whose total is not finite, and a length that is not
 finite and above zero or does not fit between a slot's quiet ends. It refuses a slot length that is not
 finite and above zero, a quiet end that is not finite and at least zero, an empty share that is not
-finite, below 0 or at least 1, and a negative cap. No moment is `Moment.None`, which is the default `Moment` and reads family -1. The
-struct keeps the family one up, so a value type built without a moment carries none, as a default
-`IdleTurn` does.
+finite, below 0 or at least 1, and a negative cap. The none moment, family -1, is `Moment.None`, and it
+is the default `Moment`. The struct keeps the family one up, so a value type built without a moment
+carries none, as a default `IdleTurn` does.
 
 ## What stays in games
 

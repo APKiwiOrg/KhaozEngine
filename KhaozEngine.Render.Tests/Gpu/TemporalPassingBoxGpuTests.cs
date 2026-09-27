@@ -37,12 +37,39 @@ namespace KhaozEngine.Tests.Gpu
             // moved flag the pixels store plays no part: storing it only where a pixel followed the box changed
             // nothing.
             PassingBoxRun r = runs.Run(preset, side);
-            string shares = string.Join(" ", r.Shares.Select((s, t) => $"{TemporalPassingBoxRuns.Warm + t}:{s:0.00}"));
-            string message = $"{preset}, box {(side > 0 ? "right" : "left")}: worst {r.Worst:0.000} on frame "
-                + $"{r.WorstFrame}, the line's reference sum {r.ReferenceSum:0.000} over {r.Pixels} pixels. {shares}";
+            string message = Describe(r, preset, side, 0);
             output.WriteLine(message);
             Assert.True(r.Pixels > 0, $"the line covered nothing. {message}");
             Assert.True(r.Worst >= MinShareOfStill, $"the line blinks out beside the box. {message}");
+        }
+
+        /// <summary>
+        /// The same line while a keyed passer one or two internal texels wide and as tall as the box slides past it
+        /// half an internal texel away, as a thin sword passes grass, so its texels carry weight in the line's
+        /// reconstruction on most jitter phases. The passer is narrow in this frame's depth, so the line's pixels take
+        /// its current colour where they reproject by their own motion (amendment 23), and they store no confidence
+        /// for the next frame, which then shows the raw sample: the line blinks out on the frames the jitter misses
+        /// it. Printed, not asserted.
+        /// </summary>
+        [GpuFact]
+        public void The_narrow_passers_print_the_line_s_worst_frame()
+        {
+            foreach (int passer in new[] { 1, 2 })
+                foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
+                    foreach (int side in new[] { 1, -1 })
+                    {
+                        PassingBoxRun r = runs.Run(preset, side, passer);
+                        output.WriteLine(Describe(r, preset, side, passer));
+                        Assert.True(r.Pixels > 0, $"the line covered nothing. {Describe(r, preset, side, passer)}");
+                    }
+        }
+
+        static string Describe(PassingBoxRun r, TemporalUpscale preset, int side, int passerTexels)
+        {
+            string what = passerTexels > 0 ? $"passer {passerTexels} texel{(passerTexels > 1 ? "s" : "")} wide" : "box";
+            string shares = string.Join(" ", r.Shares.Select((s, t) => $"{TemporalPassingBoxRuns.Warm + t}:{s:0.00}"));
+            return $"{preset}, {what} {(side > 0 ? "right" : "left")}: worst {r.Worst:0.000} on frame "
+                + $"{r.WorstFrame}, the line's reference sum {r.ReferenceSum:0.000} over {r.Pixels} pixels. {shares}";
         }
     }
 
@@ -62,27 +89,30 @@ namespace KhaozEngine.Tests.Gpu
         public const int W = 320, H = 180, Warm = 16, Total = 64, PassFrame = 36;
         const int RowsTop = 84, RowsBottom = 96, ColumnsLeft = 150, ColumnsRight = 170;
         const float OrthoSize = 4.5f, LineTexels = 0.375f, LineOffsetPixels = 0.3f, LineZ = -1f, BoxPixels = 30f;
-        const float PixelsPerFrame = 2f, GapTexels = 1f;
+        const float PixelsPerFrame = 2f, GapTexels = 1f, PasserGapTexels = 0.5f;
         const ulong Key = 41;
 
-        readonly Dictionary<(TemporalUpscale, int), PassingBoxRun> _runs = new();
+        readonly Dictionary<(TemporalUpscale, int, int), PassingBoxRun> _runs = new();
         readonly Dictionary<TemporalUpscale, StillLine> _still = new();
 
         // The line's supersampled coverage in the measured rows, its wanted energy, and its energy on each frame of the
         // run without the box.
         sealed record StillLine(List<(int X, int Y)> Pixels, double Wanted, double[] Energies);
 
-        internal PassingBoxRun Run(TemporalUpscale preset, int side)
+        /// <summary>The run with the box on <paramref name="side"/>, or with a passer
+        /// <paramref name="passerTexels"/> internal texels wide and as tall as the box in its place when that is more
+        /// than 0.</summary>
+        internal PassingBoxRun Run(TemporalUpscale preset, int side, int passerTexels = 0)
         {
-            if (_runs.TryGetValue((preset, side), out PassingBoxRun? cached)) return cached;
+            if (_runs.TryGetValue((preset, side, passerTexels), out PassingBoxRun? cached)) return cached;
             var scene = new Passing(preset);
             StillLine still = Still(scene);
-            byte[][] with = scene.Frames(side);
+            byte[][] with = scene.Frames(side, passerTexels);
             var shares = new double[with.Length];
             for (int t = 0; t < with.Length; t++) shares[t] = Energy(with[t], still.Pixels) / still.Energies[t];
             int worst = Array.IndexOf(shares, shares.Min());
-            return _runs[(preset, side)] = new PassingBoxRun(shares, shares[worst], Warm + worst, still.Wanted,
-                still.Pixels.Count);
+            return _runs[(preset, side, passerTexels)] = new PassingBoxRun(shares, shares[worst], Warm + worst,
+                still.Wanted, still.Pixels.Count);
         }
 
         StillLine Still(Passing scene)
@@ -100,7 +130,7 @@ namespace KhaozEngine.Tests.Gpu
                     line.Add((x, y));
                     wanted += above;
                 }
-            double[] energies = scene.Frames(0).Select(f => Energy(f, line)).ToArray();
+            double[] energies = scene.Frames(0, 0).Select(f => Energy(f, line)).ToArray();
             return _still[scene.Preset] = new StillLine(line, wanted, energies);
         }
 
@@ -114,29 +144,31 @@ namespace KhaozEngine.Tests.Gpu
         sealed class Passing
         {
             readonly FrontStage _stage = new(W, H, OrthoSize);
-            readonly float _lineWidth, _lineLeft, _box, _gap;
+            readonly float _factor, _lineWidth, _lineLeft, _box;
 
             public Passing(TemporalUpscale preset)
             {
                 Preset = preset;
                 float factor = TemporalSettings.DisplayOverInternal(preset), pw = _stage.PixelWorld;
+                _factor = factor;
                 _lineWidth = LineTexels * factor * pw;
                 _lineLeft = LineOffsetPixels * pw;
                 _box = BoxPixels * pw;
-                _gap = GapTexels * factor * pw;
             }
 
             public TemporalUpscale Preset { get; }
 
-            // Side 1 puts the box right of the line, -1 left, and 0 draws none.
-            void Draw(Scene3D s, int n, int side)
+            // Side 1 puts the box or the passer right of the line, -1 left, and 0 draws neither.
+            void Draw(Scene3D s, int n, int side, int passerTexels)
             {
                 _stage.Wall(s);
                 s.Draw(_stage.Box, Matrix4x4.CreateScale(_lineWidth, 3.6f, 0.05f)
                     * Matrix4x4.CreateTranslation(_lineLeft + _lineWidth / 2f, 0f, LineZ), new Color(1f, 1f, 1f, 1f));
                 if (side == 0) return;
-                float boxX = side > 0 ? _lineLeft + _lineWidth + _gap + _box / 2f : _lineLeft - _gap - _box / 2f;
-                Matrix4x4 world = Matrix4x4.CreateScale(_box, _box, 0.5f)
+                float width = passerTexels > 0 ? passerTexels * _factor * _stage.PixelWorld : _box;
+                float gap = (passerTexels > 0 ? PasserGapTexels : GapTexels) * _factor * _stage.PixelWorld;
+                float boxX = side > 0 ? _lineLeft + _lineWidth + gap + width / 2f : _lineLeft - gap - width / 2f;
+                Matrix4x4 world = Matrix4x4.CreateScale(width, _box, 0.5f)
                     * Matrix4x4.CreateTranslation(boxX, (PassFrame - n) * PixelsPerFrame * _stage.PixelWorld, 0f);
                 s.Draw(new RigidInstanceDraw(_stage.Box, world)
                 {
@@ -150,11 +182,11 @@ namespace KhaozEngine.Tests.Gpu
                 s.Post.Hdr.Enabled = false;
             };
 
-            public byte[][] Frames(int side) => TemporalAcceptance.Sequence(W, H, Setup(AntiAliasing.Temporal),
-                (s, n) => Draw(s, n, side), Warm, Total - Warm);
+            public byte[][] Frames(int side, int passerTexels) => TemporalAcceptance.Sequence(W, H,
+                Setup(AntiAliasing.Temporal), (s, n) => Draw(s, n, side, passerTexels), Warm, Total - Warm);
 
             public byte[] Reference() => TemporalAcceptance.Supersampled(W, H,
-                TemporalAcceptance.SequenceReferenceFactor, Setup(AntiAliasing.Off), (s, n) => Draw(s, n, 0));
+                TemporalAcceptance.SequenceReferenceFactor, Setup(AntiAliasing.Off), (s, n) => Draw(s, n, 0, 0));
         }
     }
 }

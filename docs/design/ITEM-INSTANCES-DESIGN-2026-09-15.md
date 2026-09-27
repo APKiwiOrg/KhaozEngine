@@ -2595,9 +2595,10 @@ refuses. One executor belongs to one craft loop or thread because its generator 
 [ExtraParameterCount: varint][ Extra: varint int32 ] * count    // a socket index, a selector choice
 ```
 
-The target and source containers are identified by their section NAMES, which are the durable values
-`ContainerSectionNames.Format` uses to file their pages. `ContainerOperation.WriteCanonical` writes each
-name as `[Length: varint][UTF8]`. The intent has no numeric container id or second container registry.
+The target and source containers are identified by their base container NAMES, such as `bank`.
+`ContainerSectionNames.Format` appends a page suffix when filing a page, so the canonical intent names
+`bank` rather than `bank/p00`. `ContainerOperation.WriteCanonical` writes each name as
+`[Length: varint][UTF8]`. The intent has no numeric container id or second container registry.
 The remaining field-order and slot-width differences in this sketch are tracked in
 [#1176](https://github.com/APKiwiOrg/KhaozEngine/issues/1176).
 

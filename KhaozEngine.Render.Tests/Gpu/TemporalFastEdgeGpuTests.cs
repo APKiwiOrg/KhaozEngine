@@ -27,11 +27,19 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class TemporalFastEdgeGpuTests(TemporalFastEdgeRuns runs, ITestOutputHelper output)
         : IClassFixture<TemporalFastEdgeRuns>
     {
-        // At most this share of the reference's raw flips may be fast flips of the tested sequence.
+        // The tested sequence may take fast flips up to this share of the reference's raw flips, or up to
+        // ReferenceFastFlipAllowance times the reference's own fast flips, whichever is larger. A fast line shows at a
+        // pixel for about one frame, so the reference's own fast reversals are the signal, and only fast flips beyond
+        // them are shimmer. Against raw flips alone, the reference scaled to 0.30 and 0.20 of its contrast at Native
+        // and Quality was already at the bound, so a perfect output could keep only that share of the line's energy.
         const double MaxFastFlipShare = 0.5;
+        const double ReferenceFastFlipAllowance = 1.25;
 
         // The least share of its reference's energy the fast keyed line keeps over its own coverage.
         const double MinLineCoverageEnergy = 0.2;
+
+        static double FastFlipBound(FlickerStats f) =>
+            Math.Max(MaxFastFlipShare * f.ReferenceFlips, ReferenceFastFlipAllowance * f.ReferenceFastFlips);
 
         string Report(FastEdgeScene scene, TemporalUpscale preset)
         {
@@ -61,8 +69,8 @@ namespace KhaozEngine.Tests.Gpu
             string message = Report(FastEdgeScene.KeyedLine, preset);
             FastEdgeRun r = runs.Run(FastEdgeScene.KeyedLine, preset);
             Assert.True(r.TrailOver <= 3, $"the line leaves a trail. {message}");
-            Assert.True(r.Flicker.FastFlips <= MaxFastFlipShare * r.Flicker.ReferenceFlips,
-                $"the line shimmers. {message}");
+            Assert.True(r.Flicker.FastFlips <= FastFlipBound(r.Flicker),
+                $"the line shimmers past {FastFlipBound(r.Flicker):0.00000}. {message}");
             Assert.True(r.CoverageEnergy >= MinLineCoverageEnergy, $"the line fades. {message}");
         }
 
@@ -78,8 +86,8 @@ namespace KhaozEngine.Tests.Gpu
             string message = Report(FastEdgeScene.KeyedBoxEdge, preset);
             FastEdgeRun r = runs.Run(FastEdgeScene.KeyedBoxEdge, preset);
             Assert.True(r.EdgeError <= 0.003, $"the box's edges stray from the reference. {message}");
-            Assert.True(r.Flicker.FastFlips <= MaxFastFlipShare * r.Flicker.ReferenceFlips,
-                $"the edges shimmer. {message}");
+            Assert.True(r.Flicker.FastFlips <= FastFlipBound(r.Flicker),
+                $"the edges shimmer past {FastFlipBound(r.Flicker):0.00000}. {message}");
             Assert.True(r.TrailOver == 0, $"the box leaves a trail. {message}");
         }
 

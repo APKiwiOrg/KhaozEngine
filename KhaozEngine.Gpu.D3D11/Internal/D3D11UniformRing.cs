@@ -161,6 +161,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (data.Length == 0) return;
 
+            _allocator.BeforeRecordWrite();   // a segment a queued submission reads is never written
+
             if (_allocator.MapScope == D3D11RingMapScope.PerWrite)
             {
                 _allocator.WriteUnderPerWriteScope(this, offsetBytes, data);

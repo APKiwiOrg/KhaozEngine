@@ -47,10 +47,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// into, the fence gate that decides when a segment may be reused, the mapped-ring registry the next
     /// <c>Submit</c> unmaps, and the M3 backpressure counters.
     /// <para>
-    /// SEGMENT ROTATION IS DEVICE-WIDE. Frame N writes segment <c>N % FramesInFlight</c> in EVERY ring at once,
+    /// SEGMENT ROTATION IS DEVICE-WIDE. Rotation N writes segment <c>N % FramesInFlight</c> in EVERY ring at once,
     /// so this type holds the segment index and each <see cref="D3D11UniformRing"/> multiplies it by its own
-    /// stride. One index rather than one per buffer is what makes a frame's uniforms consistent: a bind computes
-    /// its first constant from the same segment every write in that frame went to.
+    /// stride. One index rather than one per buffer is what makes a submission's uniforms consistent: a bind
+    /// computes its first constant from the same segment every write before it went to. The present rotates, and
+    /// so does a record-time write that follows a submission which carried record-time writes
+    /// (D3D11RingAllocator.Submissions.cs), so a submission still queued keeps its segment.
     /// </para>
     /// <para>
     /// THE GATE IS A COMPLETION READ AND NOTHING ELSE (decision U5, and the dependency work-breakdown row 8 waited
@@ -107,7 +109,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// that contract, because the recording half of the pair is any-thread by design.
     /// </para>
     /// </summary>
-    internal sealed class D3D11RingAllocator
+    internal sealed partial class D3D11RingAllocator
     {
         readonly ID3D11CompletionRead _completion;
         readonly object _submitLock;
@@ -197,8 +199,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// Deliberately not the segment the GPU is executing (section 6.4).</summary>
         internal int CurrentSegment => _segment;
 
-        /// <summary>Frames begun since the device was created. <see cref="CurrentSegment"/> is this modulo
-        /// <see cref="FramesInFlight"/>, and the wrap is the whole mechanism.</summary>
+        /// <summary>Frames begun since the device was created, one per present. Each also rotates the segment, and
+        /// so does a record-time write that follows a submission which carried record-time writes (see
+        /// <see cref="BeforeRecordWrite"/>), so <see cref="CurrentSegment"/> is the rotation count, not this, modulo
+        /// <see cref="FramesInFlight"/>.</summary>
         internal ulong FrameIndex => _frameIndex;
 
         /// <summary>How many rings currently hold a mapping, which is how many unmaps the next submit owes.
@@ -206,15 +210,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal int MappedRingCount => _mappedRings.Count;
 
         /// <summary>The backpressure of the frame that has ENDED. Rolled by <see cref="BeginFrame"/>. This is the
-        /// M3 measurement, and it counts frame-boundary segment stalls ALONE (see
-        /// <see cref="OffTimelinePatches"/>).</summary>
+        /// M3 measurement, and it counts segment stalls ALONE, at a frame boundary or at a rotation a record-time
+        /// write owed (see <see cref="OffTimelinePatches"/>).</summary>
         internal D3D11BackpressureStats LastFrameBackpressure => _lastFrame;
 
         /// <summary>
         /// The SAME segment stalls accumulated since the device was created, which is the half a telemetry session
         /// can carry. <see cref="BeginFrame"/> never rolls it, so M3's exit criterion reads as one subtraction
         /// across the capture window instead of a bet that the sampler happened to land on the stalling frame.
-        /// Still frame-boundary stalls ALONE, so it is no more foldable with <see cref="OffTimelinePatches"/> than
+        /// Still segment stalls ALONE, so it is no more foldable with <see cref="OffTimelinePatches"/> than
         /// the per-frame roll is. See <see cref="WaitTotals"/>.
         /// <para>
         /// READ A FIELD AT A TIME, because a telemetry sampler is on whatever thread the consumer runs it on while
@@ -339,29 +343,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _stallTicks = 0L;
 
             _frameIndex++;
-            int next = (int)(_frameIndex % (ulong)FramesInFlight);
-            AcquireSegment(next);
-            AdoptSegmentUnderLock(next);
-        }
-
-        /// <summary>
-        /// RECORD WHICH SUBMISSION THE CURRENT SEGMENT WAS LAST USED BY, from the value that submission signalled.
-        /// Called by the submit path right after the end-of-replay signal, inside the submit lock.
-        /// <para>
-        /// This is the other half of the gate. Without it a segment carries no target, so it is handed back out
-        /// with no wait and the ring behaves exactly like the corruption U5 exists to prevent. A submit that
-        /// signalled nothing (value 0) records nothing, which is why the drivers refuse a ring allocator handed to
-        /// a submit with no signal sink.
-        /// </para>
-        /// <para>
-        /// The value is monotonic, so the last submission of a frame is the highest, and taking the maximum keeps
-        /// that true even if a caller records them out of order.
-        /// </para>
-        /// </summary>
-        internal void OnSubmitted(ulong completionValue)
-        {
-            if (completionValue == 0) return;
-            if (completionValue > _segmentOwner[_segment]) _segmentOwner[_segment] = completionValue;
+            Rotate();
         }
 
         /// <summary>
@@ -776,6 +758,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 }
 
                 _segment = segment;
+                _currentSegmentSubmitted = false;
             }
         }
     }

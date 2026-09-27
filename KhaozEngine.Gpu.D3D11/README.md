@@ -740,7 +740,7 @@ than for the call count: milestone M1 A/Bs the two drivers on a real frame and d
 maps twice per uniform write on one arm and once per submit on the other measures a handicap rather than the
 recording model.
 
-**A segment is recycled against a COMPLETION fence, never a submit receipt.** Frame N writes segment
+**A segment is recycled against a COMPLETION fence, never a submit receipt.** Rotation N writes segment
 `N % FramesInFlight`, and before handing that segment out the allocator reads the completion value the submission
 that last used it was signalled under and blocks while the GPU has not reached it. `FramesInFlight` is 3, and
 `KE_D3D11_FRAMES_IN_FLIGHT=<n>` moves it (1 to 16, an unparseable or out-of-range value warns and keeps 3). The
@@ -749,6 +749,13 @@ stall time are recorded: a non-zero count means the number is wrong for that mac
 ring gated on a submit receipt instead would hand back a segment the moment the CPU finished asking for the work
 rather than when the GPU finished doing it, and would overwrite uniforms a draw in flight is still reading, with
 nothing thrown and nothing logged.
+
+**A queued submission keeps its segment.** The present rotates, and so does a record-time write that follows a
+submission which carried record-time writes, behind the same gate. A submission reads its segment when the GPU gets
+to it, so without the second rotation a headless loop, which never presents, wrote every frame into the one segment
+its queued frames were still reading, and each of them drew the newest frame's uniforms. A windowed frame with one
+submission is unchanged, because its present clears the owed rotation, and a submission that wrote no uniforms owes
+none. The segment is the uniform version one submission reads, which is what the Metal backend gives each recording.
 
 **BACKEND-DIVERGENT CREATION FAILURE: a uniform buffer combined with any other bindable usage throws here.**
 `UniformBuffer | StructuredBufferReadOnly` (or either read-write structured bit, or the vertex, index or indirect

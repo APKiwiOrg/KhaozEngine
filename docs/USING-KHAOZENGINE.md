@@ -14386,8 +14386,10 @@ in any game does this today, which is why the refusal is safe to have.
 
 **A uniform write lands when you make it, not when the list is submitted.** On that backend a record-time
 `IGpuCommandList.UpdateBuffer` to a uniform buffer is a memcpy straight into GPU-visible memory, which is what
-removes the per-write stall the other Direct3D 11 backend pays. So two writes to the SAME range inside one frame
-leave the second value for every draw of that frame, including draws you recorded between them. Address per-draw
+removes the per-write stall the other Direct3D 11 backend pays. So two writes to the SAME range inside one recording
+leave the second value for every draw of that recording, including draws you recorded between them. A recording
+submitted with writes of its own keeps them: the next recording's writes go to another copy, so a headless loop that
+never presents still draws each frame with its own uniforms. Address per-draw
 uniforms by dynamic offset (`GpuBufferRange` plus the offset overload of `SetGraphicsResourceSet`), which is what
 the engine's own renderers do. Writing off-timeline through `IGpuDevice.UpdateBuffer` and expecting an
 already-recorded bind to see the old value was never supported on any backend and is quieter here.

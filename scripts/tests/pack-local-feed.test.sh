@@ -12,8 +12,9 @@
 #
 # Fixture-only by construction: every repo, tag and package below is scratch, made with git init and
 # touch under mktemp. Nothing here reads or writes the real checkout, the real local-feed, or a real
-# tag, and --dry-run means dotnet is never invoked. Each fixture is its own main checkout, and every run
-# clears an inherited KHAOZENGINE_FEED, so the resolved feed is always a scratch one.
+# tag. Most wrapper cases use --dry-run. The refresh regression invokes a scratch fake dotnet that
+# reproduces the SDK's incremental skip over an existing package output. Each fixture is its own main
+# checkout, and every run clears an inherited KHAOZENGINE_FEED, so the resolved feed is always scratch.
 #
 # Run it from anywhere:  sh scripts/tests/pack-local-feed.test.sh
 set -eu
@@ -115,6 +116,49 @@ packrun() {
   set -e
 }
 
+# packrun_actual <fake-package-source> <fake-log> [fail] -> runs the fixture wrapper against a fake dotnet. The
+# fake copies only package names absent from the output directory, reproducing the stale same-version
+# output that #1172 observed from the SDK's incremental pack target.
+packrun_actual() {
+  _source=$1
+  _log=$2
+  _fail=${3:-0}
+  _fakebin="$TMPROOT/fake-dotnet-bin"
+  mkdir -p "$_fakebin"
+  cat > "$_fakebin/dotnet" <<'EOF'
+#!/bin/sh
+set -eu
+out=''
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o|--output) out=$2; shift 2 ;;
+    -o=*|--output=*) out=${1#*=}; shift ;;
+    *) shift ;;
+  esac
+done
+[ -n "$out" ] || { echo "fake dotnet: no output directory" >&2; exit 2; }
+mkdir -p "$out"
+printf '%s\n' "$out" > "$FAKE_PACK_LOG"
+[ "${FAKE_PACK_FAIL:-0}" = 0 ] || exit 17
+for artifact in "$FAKE_PACK_SOURCE"/*; do
+  [ -f "$artifact" ] || continue
+  target="$out/$(basename "$artifact")"
+  [ -e "$target" ] || cp "$artifact" "$target"
+done
+EOF
+  chmod +x "$_fakebin/dotnet"
+
+  set +e
+  (
+    cd "$AT" || exit 2
+    env -u PACK_RELEASED_OK -u KHAOZENGINE_FEED \
+      PATH="$_fakebin:$PATH" FAKE_PACK_SOURCE="$_source" FAKE_PACK_LOG="$_log" FAKE_PACK_FAIL="$_fail" \
+      sh scripts/pack-local-feed.sh
+  ) >"$OUTFILE" 2>&1
+  rc=$?
+  set -e
+}
+
 # feedrun [VAR=VALUE ...] [args...] -> the fixture's feed report from $AT.
 feedrun() {
   set +e
@@ -200,6 +244,54 @@ packrun
 check "wrapper succeeds with no override" 0 "$rc"
 says "reproduces the released bytes";  check "  says why it is allowed" 0 "$r"
 says "dotnet pack";                    check "  reaches the pack command" 0 "$r"
+
+echo "== at-tag refresh: stale same-version outputs are rebuilt and other versions remain =="
+newfixture refresh 2.0.0
+OLD_COMMIT=$(cd "$REPO" && git rev-parse HEAD)
+package KhaozEngine.App 2.0.0 "$OLD_COMMIT"
+package KhaozEngine.Gui 2.0.0 "$OLD_COMMIT"
+cp "$FEED/KhaozEngine.App.2.0.0.nupkg" "$FEED/KhaozEngine.App.2.0.0.snupkg"
+cp "$FEED/KhaozEngine.Gui.2.0.0.nupkg" "$FEED/KhaozEngine.Gui.2.0.0.snupkg"
+package KhaozEngine.Legacy 2.0.0 "$OLD_COMMIT"
+cp "$FEED/KhaozEngine.Legacy.2.0.0.nupkg" "$FEED/KhaozEngine.Legacy.2.0.0.snupkg"
+package KhaozEngine.App 1.9.0 "$OLD_COMMIT"
+OLDER_SUM=$(cksum "$FEED/KhaozEngine.App.1.9.0.nupkg")
+STALE_SUM=$(cksum "$FEED/KhaozEngine.App.2.0.0.nupkg")
+
+advance
+tagit 2.0.0
+TAG_COMMIT=$(cd "$REPO" && git rev-parse 'refs/tags/v2.0.0^{commit}')
+FRESH="$TMPROOT/refresh-fresh"
+mkdir -p "$FRESH"
+package KhaozEngine.App 2.0.0 "$TAG_COMMIT" "$FRESH"
+package KhaozEngine.Gui 2.0.0 "$TAG_COMMIT" "$FRESH"
+cp "$FRESH/KhaozEngine.App.2.0.0.nupkg" "$FRESH/KhaozEngine.App.2.0.0.snupkg"
+cp "$FRESH/KhaozEngine.Gui.2.0.0.nupkg" "$FRESH/KhaozEngine.Gui.2.0.0.snupkg"
+FAKE_LOG="$TMPROOT/refresh-output"
+
+packrun_actual "$FRESH" "$FAKE_LOG" 1
+check "failed pack is refused" 17 "$rc"
+[ "$(cksum "$FEED/KhaozEngine.App.2.0.0.nupkg")" = "$STALE_SUM" ] && r=0 || r=1
+check "  failed pack leaves the feed unchanged" 0 "$r"
+[ ! -d "$(cat "$FAKE_LOG")" ] && r=0 || r=1
+check "  failed pack removes its scratch directory" 0 "$r"
+
+packrun_actual "$FRESH" "$FAKE_LOG"
+check "wrapper succeeds over stale outputs" 0 "$rc"
+[ "$(cat "$FAKE_LOG" 2>/dev/null || true)" != "$REAL/local-feed" ] && r=0 || r=1
+check "  packs through a fresh output directory" 0 "$r"
+[ ! -d "$(cat "$FAKE_LOG")" ] && r=0 || r=1
+check "  successful pack removes its scratch directory" 0 "$r"
+unzip -p "$FEED/KhaozEngine.App.2.0.0.snupkg" '*.nuspec' | grep -qF "$TAG_COMMIT" && r=0 || r=1
+check "  refreshes the symbol package" 0 "$r"
+[ ! -e "$FEED/KhaozEngine.Legacy.2.0.0.nupkg" ] && [ ! -e "$FEED/KhaozEngine.Legacy.2.0.0.snupkg" ] && r=0 || r=1
+check "  removes obsolete current-version packages" 0 "$r"
+[ "$OLDER_SUM" = "$(cksum "$FEED/KhaozEngine.App.1.9.0.nupkg")" ] && r=0 || r=1
+check "  preserves every other version" 0 "$r"
+feedrun --strict
+check "  refreshed feed passes the strict report" 0 "$rc"
+says "RELEASED   2.0.0  commit $TAG_COMMIT"
+check "  and current packages carry the tag commit" 0 "$r"
 
 echo "== at-tag-dirty: same commit, dirty tree, so the pack would not reproduce those bytes =="
 ( cd "$REPO" && echo "uncommitted" >> README.md )

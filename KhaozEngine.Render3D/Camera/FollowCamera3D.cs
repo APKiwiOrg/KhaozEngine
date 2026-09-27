@@ -145,9 +145,11 @@ namespace KhaozEngine.Render3D
         /// static hit, so the follow camera never clips through a wall or ceiling between the pivot and the
         /// desired eye. Mirrors <c>CharacterMovement</c>'s own swept collide-and-slide: a zero-length capsule
         /// (a sphere of radius <see cref="OcclusionRadius"/>) is swept via <see cref="IPhysicsWorld.SweepCapsule"/>
-        /// against statics only (<see cref="QueryFilter.StaticsOnly"/>). Applied BEFORE <see cref="GroundHeight"/>
-        /// clearance, so a ground dip can still lift the (already pulled-in) eye clear of the terrain. Null (the
-        /// default) leaves the eye purely geometric - existing consumers that never set this are unchanged.
+        /// against statics only (<see cref="QueryFilter.StaticsOnly"/>). It runs through the same boom path as
+        /// <see cref="BoomProbe"/>, and when both are set the shorter reach wins. Applied BEFORE
+        /// <see cref="GroundHeight"/> clearance, so a ground dip can still lift the (already pulled-in) eye clear of
+        /// the terrain. Null (the default) leaves the eye purely geometric - existing consumers that never set this
+        /// are unchanged.
         /// </summary>
         public IPhysicsWorld? Occlusion;
         /// <summary>Sphere-probe radius (metres) used by the <see cref="Occlusion"/> sweep. Default 0.25.</summary>
@@ -209,27 +211,29 @@ namespace KhaozEngine.Render3D
         // more sweep, deliberately: the caller changed the camera, so the second read must not answer with the
         // pre-change eye.
         //
-        // WHAT THE KEY CANNOT SEE is the physics world's contents and whatever the ground delegate samples. A
-        // wall slides in or terrain deforms, and nothing about the camera changed. That is what BeginFrame is
-        // for (IIsoCamera3D.BeginFrame): Scene3D.Begin drops the cache at the top of every frame, before
-        // LatchRenderOrigin takes this frame's first read.
+        // WHAT THE KEY CANNOT SEE is the physics world's contents and whatever the boom probe or the ground
+        // delegate samples. A wall slides in or terrain deforms, and nothing about the camera changed. That is
+        // what BeginFrame is for (IIsoCamera3D.BeginFrame): Scene3D.Begin drops the cache at the top of every
+        // frame, before LatchRenderOrigin takes this frame's first read.
         //
         // Single-threaded by construction, exactly like every other field on this class. A camera is a frame
         // object owned by the thread that renders it, so there are no locks here and none are wanted.
 
         /// <summary>
         /// The inputs <see cref="Eye"/> reads, snapshotted so a later read can tell whether recomputing could
-        /// possibly produce anything different. The two seam members compare by <c>Equals</c>: reference equality
-        /// for the physics world, and method-plus-target equality for the ground delegate, so two separately
-        /// allocated delegates over the same instance method count as the same sampler (they are). Both are
-        /// conservative in the safe direction, since the worst a false difference costs is one recompute.
+        /// possibly produce anything different. The three seam members compare by <c>Equals</c>: reference
+        /// equality for the physics world and the boom probe, and method-plus-target equality for the ground
+        /// delegate, so two separately allocated delegates over the same instance method count as the same sampler
+        /// (they are). All are conservative in the safe direction, since the worst a false difference costs is one
+        /// recompute.
         /// <see cref="OcclusionOrigin"/> is in here because a rebased world moves the frame the sweep start is
         /// expressed in without any camera field changing.
         /// </summary>
         readonly record struct EyeInputs(
             Vector3 Target, float Yaw, float Pitch, float Distance, float HeightOffset, float PivotHeight,
             IPhysicsWorld? Occlusion, Vector3 OcclusionOrigin, float OcclusionRadius, float OcclusionSkin,
-            float MinOcclusionDistance, Func<float, float, float>? GroundHeight, float GroundClearance);
+            float MinOcclusionDistance, ICameraBoomProbe? BoomProbe, Func<float, float, float>? GroundHeight,
+            float GroundClearance);
 
         EyeInputs _eyeInputs;
         Vector3 _eye;
@@ -276,7 +280,8 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// The absolute world-space eye position: the geometric boom position, pulled in by the optional
-        /// <see cref="Occlusion"/> sweep and then lifted by the optional <see cref="GroundHeight"/> clearance.
+        /// <see cref="Occlusion"/> sweep and <see cref="BoomProbe"/> and then lifted by the optional
+        /// <see cref="GroundHeight"/> clearance.
         /// Computed once per distinct set of inputs per frame and cached, so reading it (or anything built on it)
         /// repeatedly across one frame costs one sweep, not one per read.
         /// </summary>
@@ -297,35 +302,13 @@ namespace KhaozEngine.Render3D
         EyeInputs CurrentEyeInputs() => new(
             EffectiveTarget, Yaw, _pitch, _distance, HeightOffset, PivotHeight,
             Occlusion, Occlusion?.Origin ?? Vector3.Zero, OcclusionRadius, OcclusionSkin, MinOcclusionDistance,
-            GroundHeight, GroundClearance);
+            BoomProbe, GroundHeight, GroundClearance);
 
         /// <summary>The uncached geometry, byte for byte what the getter used to run on every read.</summary>
         Vector3 ComputeEye()
         {
             Vector3 pivot = Pivot;
-            Vector3 eye = pivot + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f);
-            if (Occlusion is { } world)
-            {
-                // Sweep a sphere probe (a zero-length capsule) from the pivot toward the desired eye along the
-                // boom. The first static hit clamps how far out the boom can extend, mirroring the
-                // hit.Distance - skin convention CharacterMovement uses for its own swept collide-and-slide. The
-                // pull-in is floored at MinOcclusionDistance so a static right at the pivot never collapses the
-                // eye onto it (which would leave Forward/View with a zero-length look direction).
-                Vector3 toEye = eye - pivot;
-                float dist = toEye.Length();
-                if (dist > 1e-6f)
-                {
-                    // The sweep START is a query coordinate, so it is expressed in the physics world's own space
-                    // (IPhysicsWorld.Origin): the camera speaks absolute, and against a rebased world an
-                    // unreduced start silently stops finding anything. The DIRECTION and the returned distance
-                    // are frame-invariant, so only this one operand converts.
-                    Vector3 dir = toEye / dist;
-                    _occlusionSweeps++;
-                    if (world.SweepCapsule(new CapsuleShape(OcclusionRadius, 0f), Pose.At(pivot - world.Origin), dir, dist,
-                            out SweepHit hit, QueryFilter.StaticsOnly))
-                        eye = pivot + dir * MathF.Max(MinOcclusionDistance, hit.Distance - OcclusionSkin);
-                }
-            }
+            Vector3 eye = ConstrainBoom(pivot, pivot + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f));
             if (GroundHeight is { } ground)
             {
                 float floor = ground(eye.X, eye.Z) + GroundClearance;

@@ -256,3 +256,11 @@ and changed these details. Each group's "Contract amendments" block carries the 
     to a pixel with a tap above 1 in its cross, and the clamp cuts that overshoot to 1, which the 8-bit ping the pass
     writes would cut anyway. In both orders it precedes palette quantize and the edge outline, so it never sharpens a
     palette step or an outline, and it counts in both flip parities (group F).
+21. Acceptance 1 is measured with HDR off, on the legacy chain, which has no tonemap. The resolve, MSAA and the 8x
+    supersampled reference then all average the same display values, so the order of averaging and tonemapping cannot
+    matter. The resolve blends in the luma-weighted space `c / (1 + luma)` as its firefly protection, so a high-contrast
+    thin feature converges to the luma-weighted average of its samples, which is darker than their box average. A white
+    bar a third of a pixel wide on black reads about 0.2 where the box average gives 0.33. That is by design. So the
+    mid-contrast thin geometry gate compares with the plain box-filtered reference, and the high-contrast gate compares
+    with a reference averaged the same way the resolve averages. Both gates hold on every frame from 32 to 48, not on
+    one frame alone (group F).

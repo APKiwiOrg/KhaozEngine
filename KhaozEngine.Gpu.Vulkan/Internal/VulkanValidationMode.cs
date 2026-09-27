@@ -89,9 +89,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             switch (envValue.Trim().ToLowerInvariant())
             {
-                case "0": case "false": case "no": case "off":
+                case "0":
+                case "false":
+                case "no":
+                case "off":
                     return VulkanValidationMode.Off;
-                case "1": case "true": case "yes": case "on":
+                case "1":
+                case "true":
+                case "yes":
+                case "on":
                     return VulkanValidationMode.On;
                 case "strict":
                     return VulkanValidationMode.Strict;

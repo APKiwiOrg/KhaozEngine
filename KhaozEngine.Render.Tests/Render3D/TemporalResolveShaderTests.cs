@@ -164,16 +164,17 @@ namespace KhaozEngine.Tests.Render3D
             // pixel stores MovingShareConfidence. A pixel whose hold is whole keeps its own history and confidence. The
             // centre texel's own depth is read before the 3x3, so the nearer texels are summed in the loop.
             string core = ShaderSources.TemporalResolveCoreGlsl;
-            Assert.Contains("vec2 ownMotion = texelFetch(sampler2D(MotionTex, LinearClamp), centreTexel, 0).rg;", core,
-                StringComparison.Ordinal);
+            Assert.Contains("float ownDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), "
+                + "centreTexel, 0).rg,", core, StringComparison.Ordinal);
             Assert.Contains("if (ownDepth > viewDepth * (1.0 + DisocclusionTolerance)) {", core,
                 StringComparison.Ordinal);
             Assert.Contains("nearerSum += vec4(ycc, sceneColor.a) * lanczosWeight;", core, StringComparison.Ordinal);
             Assert.Contains("closestTexel = texel;", core, StringComparison.Ordinal);
-            Assert.Contains("narrowMoving = temporalNarrowCurrentDepth(closestTexel, closestDepth, maxTexel);", core,
+            Assert.Contains("narrowMoving = temporalNarrowDepth(closestTexel, closestDepth, maxTexel, true);", core,
                 StringComparison.Ordinal);
-            Assert.Contains("bool temporalNarrowCurrentDepth(ivec2 texel, float depth, ivec2 maxTexel) {", core,
+            Assert.Contains("bool temporalNarrowDepth(ivec2 texel, float depth, ivec2 maxTexel, bool current) {", core,
                 StringComparison.Ordinal);
+            Assert.DoesNotContain("temporalNarrowCurrentDepth", core, StringComparison.Ordinal);
             Assert.Contains("if (narrowMoving && nearerWeight > 1.0e-4) {", core, StringComparison.Ordinal);
             Assert.Contains("movingShare = clamp(nearerWeight / max(reconstructionWeight, 1.0e-4), 0.0, 1.0) * (1.0 - "
                 + "hold);", core, StringComparison.Ordinal);
@@ -183,7 +184,7 @@ namespace KhaozEngine.Tests.Render3D
                 StringComparison.Ordinal);
             int reach = core.IndexOf("if (!depthTested && edgeMotion > DilationReachInternalPixels",
                 StringComparison.Ordinal);
-            int narrow = core.IndexOf("narrowMoving = temporalNarrowCurrentDepth(", StringComparison.Ordinal);
+            int narrow = core.IndexOf("narrowMoving = temporalNarrowDepth(", StringComparison.Ordinal);
             int hold = core.IndexOf("clipped.x = mix(clipped.x, historyYcc.x, hold);", StringComparison.Ordinal);
             int share = core.IndexOf("if (narrowMoving && nearerWeight > 1.0e-4) {", StringComparison.Ordinal);
             int blend = core.IndexOf("vec3 resolvedYcc = mix(clipped, current.xyz, currentWeight);",
@@ -210,8 +211,8 @@ namespace KhaozEngine.Tests.Render3D
                 StringComparison.Ordinal);
             Assert.Contains(": footprint.visibleShare < DisocclusionVisibleShare", core, StringComparison.Ordinal);
             Assert.Contains("&& fetchedState.y <= 1.0 - 0.5 * LockDecay", core, StringComparison.Ordinal);
-            Assert.Contains("&& (carriedMoved || !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, "
-                + "maxTexel))));", core, StringComparison.Ordinal);
+            Assert.Contains("|| !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel, false))));",
+                core, StringComparison.Ordinal);
             Assert.Contains("return fast ? -3.0 - lockValue : moved ? -1.0 - lockValue : lockValue;", core,
                 StringComparison.Ordinal);
             Assert.Contains("bool temporalStoredMoved(float stored) { return stored < -0.5; }", core,
@@ -226,7 +227,7 @@ namespace KhaozEngine.Tests.Render3D
                 Assert.Contains($"{texel}.y = temporalStoredLock({texel}.y);", core, StringComparison.Ordinal);
                 Assert.Contains($"temporalStoredMoved({texel}.y)", core, StringComparison.Ordinal);
             }
-            Assert.Contains("run[i] = !(depth < stored * limit || stored < depth * limit);", core,
+            Assert.Contains("run[i] = !(depth < there * limit || there < depth * limit);", core,
                 StringComparison.Ordinal);
             Assert.Contains("bool narrowRow = !(run[0] && run[2]) && !(run[0] && run[1]) && !(run[2] && run[3]);", core,
                 StringComparison.Ordinal);

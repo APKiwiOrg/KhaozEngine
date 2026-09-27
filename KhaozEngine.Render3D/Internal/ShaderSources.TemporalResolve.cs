@@ -226,29 +226,17 @@ DepthFootprint temporalDepthFootprint(vec2 previousUv, vec2 internalSize, ivec2 
     return footprint;
 }
 
-// Whether the depth stored at a texel is a narrow feature: along a row or a column, the run of texels at its depth
-// through it, apart from the depths either side by the disocclusion tolerance, nearer or farther, is at most two
-// texels long, as a blade narrower than a texel is, or two side by side, whether against the sky, over ground or
-// beside a rock.
-bool temporalNarrowDepth(ivec2 texel, float depth, ivec2 maxTexel) {
-    float limit = 1.0 - DisocclusionTolerance;
-    bool run[8];   // left 1 and 2, right 1 and 2, up 1 and 2, down 1 and 2: the texel there is at this depth
-    for (int i = 0; i < 8; i++) {
-        int stride = (i & 1) + 1;
-        ivec2 offset = i < 2 ? ivec2(-stride, 0) : i < 4 ? ivec2(stride, 0)
-            : i < 6 ? ivec2(0, -stride) : ivec2(0, stride);
-        float stored = texelFetch(sampler2D(PrevDepth, LinearClamp), clamp(texel + offset, ivec2(0), maxTexel), 0).r;
-        run[i] = !(depth < stored * limit || stored < depth * limit);
-    }
-    bool narrowRow = !(run[0] && run[2]) && !(run[0] && run[1]) && !(run[2] && run[3]);
-    bool narrowColumn = !(run[4] && run[6]) && !(run[4] && run[5]) && !(run[6] && run[7]);
-    return narrowRow || narrowColumn;
+// A texel's view distance from its motion and its NDC depth. Background is read from the motion sentinel on the x
+// channel alone, because the depth attachment is cleared to the background colour, not to the far plane.
+float temporalViewDepth(vec2 motion, float ndcDepth) {
+    return abs(motion.x) > MotionSentinel ? BackgroundLinearDepth : temporalLinearDepth(ndcDepth, CurrentDepth);
 }
 
-// Whether this frame's surface at a texel is a narrow feature, by temporalNarrowDepth's rule over this frame's depth:
-// along a row or a column, the run of texels at its depth through it is at most two long. Background is read from the
-// motion sentinel, since the depth attachment is cleared to the background colour.
-bool temporalNarrowCurrentDepth(ivec2 texel, float depth, ivec2 maxTexel) {
+// Whether the surface at a texel is a narrow feature: along a row or a column, the run of texels at its depth through
+// it, apart from the depths either side by the disocclusion tolerance, nearer or farther, is at most two texels long,
+// as a blade narrower than a texel is, or two side by side, whether against the sky, over ground or beside a rock. It
+// reads the depths last frame stored, or with current this frame's (temporalViewDepth).
+bool temporalNarrowDepth(ivec2 texel, float depth, ivec2 maxTexel, bool current) {
     float limit = 1.0 - DisocclusionTolerance;
     bool run[8];   // left 1 and 2, right 1 and 2, up 1 and 2, down 1 and 2: the texel there is at this depth
     for (int i = 0; i < 8; i++) {
@@ -256,9 +244,9 @@ bool temporalNarrowCurrentDepth(ivec2 texel, float depth, ivec2 maxTexel) {
         ivec2 offset = i < 2 ? ivec2(-stride, 0) : i < 4 ? ivec2(stride, 0)
             : i < 6 ? ivec2(0, -stride) : ivec2(0, stride);
         ivec2 at = clamp(texel + offset, ivec2(0), maxTexel);
-        float there = abs(texelFetch(sampler2D(MotionTex, LinearClamp), at, 0).x) > MotionSentinel
-            ? BackgroundLinearDepth
-            : temporalLinearDepth(texelFetch(sampler2D(SceneDepth, LinearClamp), at, 0).r, CurrentDepth);
+        float there = current ? temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), at, 0).rg,
+                texelFetch(sampler2D(SceneDepth, LinearClamp), at, 0).r)
+            : texelFetch(sampler2D(PrevDepth, LinearClamp), at, 0).r;
         run[i] = !(depth < there * limit || there < depth * limit);
     }
     bool narrowRow = !(run[0] && run[2]) && !(run[0] && run[1]) && !(run[2] && run[3]);
@@ -337,9 +325,8 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
 
     // Step 5's narrow moving feature reads the reconstruction over the texels nearer than the centre texel's own
     // surface by the disocclusion tolerance, so that surface's depth is read first.
-    vec2 ownMotion = texelFetch(sampler2D(MotionTex, LinearClamp), centreTexel, 0).rg;
-    float ownDepth = abs(ownMotion.x) > MotionSentinel ? BackgroundLinearDepth
-        : temporalLinearDepth(texelFetch(sampler2D(SceneDepth, LinearClamp), centreTexel, 0).r, CurrentDepth);
+    float ownDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), centreTexel, 0).rg,
+        texelFetch(sampler2D(SceneDepth, LinearClamp), centreTexel, 0).r);
     vec4 nearerSum = vec4(0.0);
     float nearerWeight = 0.0;
 
@@ -373,7 +360,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             vec2 motion = texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg;
             float ndcDepth = texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r;
             bool isBackground = abs(motion.x) > MotionSentinel;
-            float viewDepth = isBackground ? BackgroundLinearDepth : temporalLinearDepth(ndcDepth, CurrentDepth);
+            float viewDepth = temporalViewDepth(motion, ndcDepth);
             if (ownDepth > viewDepth * (1.0 + DisocclusionTolerance)) {
                 nearerSum += vec4(ycc, sceneColor.a) * lanczosWeight;
                 nearerWeight += lanczosWeight;
@@ -453,7 +440,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     bool ownReprojected = false;
     if (!depthTested && edgeMotion > DilationReachInternalPixels
         && centreDepth > closestDepth * (1.0 + DisocclusionTolerance)) {
-        narrowMoving = temporalNarrowCurrentDepth(closestTexel, closestDepth, maxTexel);
+        narrowMoving = temporalNarrowDepth(closestTexel, closestDepth, maxTexel, true);
         ownReprojected = true;
         temporalReproject(uv, centreSample, centreMotion, centreDepth, centreIsBackground, internalSize, previousUv,
             expectedDepth, depthTested, travel);
@@ -536,7 +523,8 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             || (carriedFast ? footprint.visibleShare < 1.0 - 1.0e-3
                 : footprint.visibleShare < DisocclusionVisibleShare
                     && fetchedState.y <= 1.0 - 0.5 * LockDecay
-                    && (carriedMoved || !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel))));
+                    && (carriedMoved
+                        || !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel, false))));
         heldFromFarther = movingEdge && expectedDepth < footprint.nearest * (1.0 - DisocclusionTolerance);
     }
 

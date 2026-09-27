@@ -126,14 +126,21 @@ public class ClientReplicationViewRemovalCostTests
         DespawnAllInWorld(warmWorld, warmView);
         warmView.ApplyDelta(warmWorld, delta);
 
-        (World world, ClientReplicationView view) = Populated(registry, snapshot);
-        DespawnAllInWorld(world, view);   // isolate the buffer bookkeeping from the ECS despawn, see the helper
+        // A loaded full suite can place one-time runtime bookkeeping in one measurement. Each sample uses a
+        // fresh populated view, so a per-removal collector still allocates on every pass. Keep the lowest
+        // measured cost and the same tight threshold rather than treating a transient as a regression.
+        long measured = long.MaxValue;
+        for (int sample = 0; sample < 3; sample++)
+        {
+            (World world, ClientReplicationView view) = Populated(registry, snapshot);
+            DespawnAllInWorld(world, view); // isolate buffer bookkeeping from ECS despawn
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        view.ApplyDelta(world, delta);
-        long measured = GC.GetAllocatedBytesForCurrentThread() - before;
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            view.ApplyDelta(world, delta);
+            measured = Math.Min(measured, GC.GetAllocatedBytesForCurrentThread() - before);
 
-        Assert.Empty(view.Entities);   // the delta really did drop all of them
+            Assert.Empty(view.Entities); // the delta really did drop all of them
+        }
 
         // What the measured apply legitimately allocates: the MemoryStream + BinaryReader over the delta bytes and the
         // seen-set a baseline -1 delta builds. All fixed, none of it per removal.

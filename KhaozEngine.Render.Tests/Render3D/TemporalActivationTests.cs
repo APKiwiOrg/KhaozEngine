@@ -56,13 +56,15 @@ namespace KhaozEngine.Tests.Render3D
         /// The jitter cycle reads the unrounded display over internal scale with the render cap included, the rule on
         /// <see cref="TemporalJitter.PhaseCount"/>. The ratio of the rounded sizes takes a phase too many on
         /// <see cref="TemporalUpscale.Quality"/> and <see cref="TemporalUpscale.UltraPerformance"/>, and the preset's
-        /// ratio alone takes too few on <see cref="TemporalUpscale.Native"/> once the cap bites. The frames run to the
-        /// index where the right sequence first wraps, the first index whose jitter tells it from a longer one.
+        /// ratio alone takes too few on <see cref="TemporalUpscale.Native"/> once the cap bites, by width on a landscape
+        /// display and by height on a portrait one. The frames run to the index where the right sequence first wraps, the
+        /// first index whose jitter tells it from a longer one.
         /// </summary>
         [Theory]
         [InlineData(TemporalUpscale.Quality, 3456, 2234, 2304, 1489, 18, 19, 18)]
         [InlineData(TemporalUpscale.UltraPerformance, 2560, 1600, 853, 533, 72, 73, 72)]
         [InlineData(TemporalUpscale.Native, 5120, 2880, 3840, 2160, 15, 15, 8)]
+        [InlineData(TemporalUpscale.Native, 2160, 4000, 1166, 2160, 28, 28, 8)]
         public void The_jitter_cycle_reads_the_unrounded_scale_with_the_render_cap(TemporalUpscale preset,
             int displayWidth, int displayHeight, int internalWidth, int internalHeight, int phases,
             int fromRoundedSizes, int fromPresetAlone)
@@ -82,28 +84,6 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(fromRoundedSizes, TemporalJitter.PhaseCount(
                 TemporalResolveMath.DisplayOverInternal(displayWidth, displayHeight, internalWidth, internalHeight)));
             Assert.Equal(fromPresetAlone, TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset)));
-        }
-
-        /// <summary>The ratio re-derives the cap <c>Scene3D.ComputeTargetSize</c> applies, so it has to keep agreeing
-        /// with the internal size that method returns: within one internal pixel per axis, with and without the cap, on
-        /// a display whose aspect differs from the cap's.</summary>
-        [Theory]
-        [InlineData(TemporalUpscale.Native, 5120, 2880)]
-        [InlineData(TemporalUpscale.Native, 7680, 3000)]
-        [InlineData(TemporalUpscale.Quality, 7680, 4320)]
-        [InlineData(TemporalUpscale.Balanced, 3456, 2234)]
-        [InlineData(TemporalUpscale.Performance, 1001, 777)]
-        [InlineData(TemporalUpscale.UltraPerformance, 2560, 1600)]
-        public void The_ratio_matches_the_internal_size_to_within_one_pixel(TemporalUpscale preset, int displayWidth,
-            int displayHeight)
-        {
-            using var rig = new HeadlessSceneRig();
-            rig.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
-            rig.Scene.Post.Temporal.Upscale = preset;
-            float ratio = rig.Scene.TemporalDisplayOverInternal(displayWidth, displayHeight);
-            var (internalWidth, internalHeight) = Scene3D.ComputeTargetSize(rig.Scene.Post, displayWidth, displayHeight);
-            Assert.InRange(internalWidth - displayWidth / ratio, -1f, 1f);
-            Assert.InRange(internalHeight - displayHeight / ratio, -1f, 1f);
         }
 
         [Fact]

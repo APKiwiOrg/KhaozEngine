@@ -1288,36 +1288,6 @@ namespace KhaozEngine.Render3D
         internal int BloomTargetHeight => _res.BloomHeight;
 
         /// <summary>
-        /// The internal render-target size for a given post config + viewport. <see cref="RenderScale.FixedInternal"/>
-        /// returns <see cref="PixelPostProcessSettings.RenderWidth"/>/<c>RenderHeight</c> unchanged (the historical
-        /// path). <see cref="RenderScale.MatchViewport"/> tracks the viewport, clamped to
-        /// <see cref="PixelPostProcessSettings.MaxRenderWidth"/>/<c>MaxRenderHeight</c> with aspect preserved, each
-        /// dimension at least 1. Pure + headless-testable (no GPU). Stable once the viewport is at/over the cap for a
-        /// fixed aspect, so <see cref="EnsureSize"/> doesn't thrash.
-        /// </summary>
-        internal static (int W, int H) ComputeTargetSize(PixelPostProcessSettings s, int viewportW, int viewportH)
-        {
-            // Read the AA-resolved sizing (AntiAliasing.Ssaa forces MatchViewport + its factor); AntiAliasing.Off
-            // leaves these equal to the raw RenderScale/Supersample fields, so existing callers are unchanged.
-            if (s.EffectiveRenderScale == RenderScale.FixedInternal)
-                return (s.RenderWidth, s.RenderHeight);
-
-            // MatchViewport renders at the framebuffer size x the supersample factor (SSAA), Temporal at the framebuffer
-            // size x the upscale ratio, both capped (aspect-preserving downscale) so a huge window or big factor doesn't
-            // allocate an unbounded target. Guard against a zero/negative viewport during startup/minimise.
-            float ss = s.EffectiveViewportScale;
-            int vw = Math.Max(1, (int)MathF.Round(Math.Max(1, viewportW) * ss));
-            int vh = Math.Max(1, (int)MathF.Round(Math.Max(1, viewportH) * ss));
-            int maxW = Math.Max(1, s.MaxRenderWidth);
-            int maxH = Math.Max(1, s.MaxRenderHeight);
-            if (vw <= maxW && vh <= maxH) return (vw, vh);
-            float scale = ViewportMath.Fit(vw, vh, maxW, maxH);
-            int w = Math.Max(1, (int)MathF.Round(vw * scale));
-            int h = Math.Max(1, (int)MathF.Round(vh * scale));
-            return (w, h);
-        }
-
-        /// <summary>
         /// Whether the final internal-target -> viewport blit is a genuine DOWNSCALE that should be filtered with a
         /// mip chain (a correct multi-tap box) rather than the historical single bilinear tap. True under
         /// <see cref="RenderScale.MatchViewport"/> supersampling (or a cap-forced downscale), and ALSO under

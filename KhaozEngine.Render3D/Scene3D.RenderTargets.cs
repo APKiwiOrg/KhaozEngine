@@ -1,4 +1,6 @@
+using System;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Render3D
 {
@@ -45,6 +47,48 @@ namespace KhaozEngine.Render3D
             _starfield.SetOutputs(_res.ColorDepthFB.Outputs);
             _water.SetOutputs(_res.ColorDepthFB.Outputs);
             _depthLines.SetOutputs(_res.ColorDepthFB.Outputs);
+        }
+
+        /// <summary>
+        /// The internal render-target size for a given post config + viewport. <see cref="RenderScale.FixedInternal"/>
+        /// returns <see cref="PixelPostProcessSettings.RenderWidth"/>/<c>RenderHeight</c> unchanged (the historical
+        /// path). <see cref="RenderScale.MatchViewport"/> tracks the viewport, clamped to
+        /// <see cref="PixelPostProcessSettings.MaxRenderWidth"/>/<c>MaxRenderHeight</c> with aspect preserved, each
+        /// dimension at least 1. Pure + headless-testable (no GPU). Stable once the viewport is at/over the cap for a
+        /// fixed aspect, so <see cref="EnsureSize"/> doesn't thrash.
+        /// </summary>
+        internal static (int W, int H) ComputeTargetSize(PixelPostProcessSettings s, int viewportW, int viewportH)
+        {
+            // Read the AA-resolved sizing (AntiAliasing.Ssaa forces MatchViewport + its factor). AntiAliasing.Off
+            // leaves these equal to the raw RenderScale/Supersample fields, so existing callers are unchanged.
+            if (s.EffectiveRenderScale == RenderScale.FixedInternal)
+                return (s.RenderWidth, s.RenderHeight);
+
+            var (vw, vh, capScale) = ScaledViewport(s, viewportW, viewportH);
+            if (capScale == 1f) return (vw, vh);
+            int w = Math.Max(1, (int)MathF.Round(vw * capScale));
+            int h = Math.Max(1, (int)MathF.Round(vh * capScale));
+            return (w, h);
+        }
+
+        /// <summary>
+        /// The viewport scaled by <see cref="PixelPostProcessSettings.EffectiveViewportScale"/> and rounded to whole
+        /// pixels, with the <see cref="ViewportMath.Fit"/> scale that meets
+        /// <see cref="PixelPostProcessSettings.MaxRenderWidth"/> by <see cref="PixelPostProcessSettings.MaxRenderHeight"/>,
+        /// or a <c>CapScale</c> of 1 when the cap does not bite. <see cref="ComputeTargetSize"/> rounds the scaled size
+        /// by it, and the temporal jitter cycle reads it unrounded (<see cref="TemporalDisplayOverInternal"/>).
+        /// </summary>
+        static (int W, int H, float CapScale) ScaledViewport(PixelPostProcessSettings s, int viewportW, int viewportH)
+        {
+            // MatchViewport renders at the framebuffer size x the supersample factor (SSAA), Temporal at the framebuffer
+            // size x the upscale ratio, both capped (aspect-preserving downscale) so a huge window or big factor doesn't
+            // allocate an unbounded target. Guard against a zero/negative viewport during startup/minimise.
+            float ss = s.EffectiveViewportScale;
+            int vw = Math.Max(1, (int)MathF.Round(Math.Max(1, viewportW) * ss));
+            int vh = Math.Max(1, (int)MathF.Round(Math.Max(1, viewportH) * ss));
+            int maxW = Math.Max(1, s.MaxRenderWidth);
+            int maxH = Math.Max(1, s.MaxRenderHeight);
+            return (vw, vh, vw <= maxW && vh <= maxH ? 1f : ViewportMath.Fit(vw, vh, maxW, maxH));
         }
 
         void EnsureSize(int viewportW, int viewportH)

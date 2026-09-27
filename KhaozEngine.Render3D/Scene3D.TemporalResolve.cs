@@ -1,5 +1,3 @@
-using System;
-using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D
@@ -33,21 +31,7 @@ namespace KhaozEngine.Render3D
         internal float TemporalDisplayOverInternal(int displayWidth, int displayHeight)
         {
             if (!TemporalResolveActive || displayWidth <= 0 || displayHeight <= 0) return 1f;
-            return 1f / (Post.EffectiveUpscaleRatio * RenderCapScale(Post, displayWidth, displayHeight));
-        }
-
-        /// <summary>The <see cref="ViewportMath.Fit"/> scale <see cref="ComputeTargetSize"/> applies to the scaled
-        /// viewport to meet <see cref="PixelPostProcessSettings.MaxRenderWidth"/> by
-        /// <see cref="PixelPostProcessSettings.MaxRenderHeight"/>, before it rounds to whole pixels, or 1 when the cap
-        /// does not bite. It repeats that method's arithmetic line for line, so a change to one belongs in both.</summary>
-        static float RenderCapScale(PixelPostProcessSettings s, int viewportW, int viewportH)
-        {
-            float ss = s.EffectiveViewportScale;
-            int vw = Math.Max(1, (int)MathF.Round(Math.Max(1, viewportW) * ss));
-            int vh = Math.Max(1, (int)MathF.Round(Math.Max(1, viewportH) * ss));
-            int maxW = Math.Max(1, s.MaxRenderWidth);
-            int maxH = Math.Max(1, s.MaxRenderHeight);
-            return vw <= maxW && vh <= maxH ? 1f : ViewportMath.Fit(vw, vh, maxW, maxH);
+            return 1f / (Post.EffectiveUpscaleRatio * ScaledViewport(Post, displayWidth, displayHeight).CapScale);
         }
     }
 }

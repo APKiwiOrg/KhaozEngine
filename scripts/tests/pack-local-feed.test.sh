@@ -116,12 +116,13 @@ packrun() {
   set -e
 }
 
-# packrun_actual <fake-package-source> <fake-log> -> runs the fixture wrapper against a fake dotnet. The
+# packrun_actual <fake-package-source> <fake-log> [fail] -> runs the fixture wrapper against a fake dotnet. The
 # fake copies only package names absent from the output directory, reproducing the stale same-version
 # output that #1172 observed from the SDK's incremental pack target.
 packrun_actual() {
   _source=$1
   _log=$2
+  _fail=${3:-0}
   _fakebin="$TMPROOT/fake-dotnet-bin"
   mkdir -p "$_fakebin"
   cat > "$_fakebin/dotnet" <<'EOF'
@@ -138,6 +139,7 @@ done
 [ -n "$out" ] || { echo "fake dotnet: no output directory" >&2; exit 2; }
 mkdir -p "$out"
 printf '%s\n' "$out" > "$FAKE_PACK_LOG"
+[ "${FAKE_PACK_FAIL:-0}" = 0 ] || exit 17
 for artifact in "$FAKE_PACK_SOURCE"/*; do
   [ -f "$artifact" ] || continue
   target="$out/$(basename "$artifact")"
@@ -150,7 +152,7 @@ EOF
   (
     cd "$AT" || exit 2
     env -u PACK_RELEASED_OK -u KHAOZENGINE_FEED \
-      PATH="$_fakebin:$PATH" FAKE_PACK_SOURCE="$_source" FAKE_PACK_LOG="$_log" \
+      PATH="$_fakebin:$PATH" FAKE_PACK_SOURCE="$_source" FAKE_PACK_LOG="$_log" FAKE_PACK_FAIL="$_fail" \
       sh scripts/pack-local-feed.sh
   ) >"$OUTFILE" 2>&1
   rc=$?
@@ -250,8 +252,11 @@ package KhaozEngine.App 2.0.0 "$OLD_COMMIT"
 package KhaozEngine.Gui 2.0.0 "$OLD_COMMIT"
 cp "$FEED/KhaozEngine.App.2.0.0.nupkg" "$FEED/KhaozEngine.App.2.0.0.snupkg"
 cp "$FEED/KhaozEngine.Gui.2.0.0.nupkg" "$FEED/KhaozEngine.Gui.2.0.0.snupkg"
+package KhaozEngine.Legacy 2.0.0 "$OLD_COMMIT"
+cp "$FEED/KhaozEngine.Legacy.2.0.0.nupkg" "$FEED/KhaozEngine.Legacy.2.0.0.snupkg"
 package KhaozEngine.App 1.9.0 "$OLD_COMMIT"
 OLDER_SUM=$(cksum "$FEED/KhaozEngine.App.1.9.0.nupkg")
+STALE_SUM=$(cksum "$FEED/KhaozEngine.App.2.0.0.nupkg")
 
 advance
 tagit 2.0.0
@@ -264,12 +269,23 @@ cp "$FRESH/KhaozEngine.App.2.0.0.nupkg" "$FRESH/KhaozEngine.App.2.0.0.snupkg"
 cp "$FRESH/KhaozEngine.Gui.2.0.0.nupkg" "$FRESH/KhaozEngine.Gui.2.0.0.snupkg"
 FAKE_LOG="$TMPROOT/refresh-output"
 
+packrun_actual "$FRESH" "$FAKE_LOG" 1
+check "failed pack is refused" 17 "$rc"
+[ "$(cksum "$FEED/KhaozEngine.App.2.0.0.nupkg")" = "$STALE_SUM" ] && r=0 || r=1
+check "  failed pack leaves the feed unchanged" 0 "$r"
+[ ! -d "$(cat "$FAKE_LOG")" ] && r=0 || r=1
+check "  failed pack removes its scratch directory" 0 "$r"
+
 packrun_actual "$FRESH" "$FAKE_LOG"
 check "wrapper succeeds over stale outputs" 0 "$rc"
 [ "$(cat "$FAKE_LOG" 2>/dev/null || true)" != "$REAL/local-feed" ] && r=0 || r=1
 check "  packs through a fresh output directory" 0 "$r"
+[ ! -d "$(cat "$FAKE_LOG")" ] && r=0 || r=1
+check "  successful pack removes its scratch directory" 0 "$r"
 unzip -p "$FEED/KhaozEngine.App.2.0.0.snupkg" '*.nuspec' | grep -qF "$TAG_COMMIT" && r=0 || r=1
 check "  refreshes the symbol package" 0 "$r"
+[ ! -e "$FEED/KhaozEngine.Legacy.2.0.0.nupkg" ] && [ ! -e "$FEED/KhaozEngine.Legacy.2.0.0.snupkg" ] && r=0 || r=1
+check "  removes obsolete current-version packages" 0 "$r"
 [ "$OLDER_SUM" = "$(cksum "$FEED/KhaozEngine.App.1.9.0.nupkg")" ] && r=0 || r=1
 check "  preserves every other version" 0 "$r"
 feedrun --strict

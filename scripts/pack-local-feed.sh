@@ -100,8 +100,8 @@ mkdir -p "$feed"
 # Pack through an empty sibling directory. The SDK's Pack target is incremental over PackageOutputPath,
 # so handing it a feed that already carries this version can leave the old nupkg and snupkg untouched while
 # returning success. An empty output forces fresh package bytes, and a sibling keeps the final moves on the
-# same filesystem. Only the guarded current version's generated artifacts are promoted. Every other version
-# in the feed remains byte for byte as it stood.
+# same filesystem. Only the guarded current version's generated artifacts are promoted. Obsolete artifacts
+# of that version are removed after promotion. Every other version remains byte for byte as it stood.
 pack_parent=$(dirname "$feed")
 pack_name=$(basename "$feed")
 pack_stage=$(mktemp -d "$pack_parent/.$pack_name.pack.XXXXXX") || {
@@ -116,6 +116,8 @@ echo "pack-local-feed: building through fresh output $pack_stage"
 dotnet pack -c Release "$@" -o "$pack_stage"
 
 pack_count=0
+pack_manifest="$pack_stage/.package-names"
+: > "$pack_manifest"
 for package in "$pack_stage"/*.nupkg "$pack_stage"/*.snupkg; do
   [ -f "$package" ] || continue
   package_name=$(basename "$package")
@@ -126,6 +128,7 @@ for package in "$pack_stage"/*.nupkg "$pack_stage"/*.snupkg; do
       exit 1
       ;;
   esac
+  printf '%s\n' "$package_name" >> "$pack_manifest"
   pack_count=$((pack_count + 1))
 done
 [ "$pack_count" -gt 0 ] || {
@@ -136,5 +139,12 @@ done
 for package in "$pack_stage"/*.nupkg "$pack_stage"/*.snupkg; do
   [ -f "$package" ] || continue
   mv -f "$package" "$feed/$(basename "$package")"
+done
+for package in "$feed"/*."$ver".nupkg "$feed"/*."$ver".snupkg; do
+  if [ ! -e "$package" ] && [ ! -L "$package" ]; then continue; fi
+  package_name=$(basename "$package")
+  if ! grep -Fxq "$package_name" "$pack_manifest"; then
+    rm -f "$package"
+  fi
 done
 echo "pack-local-feed: refreshed $pack_count package file(s) for $ver in $feed"

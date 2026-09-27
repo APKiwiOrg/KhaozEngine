@@ -123,8 +123,9 @@ to overwrite a released version unless the tree is exactly that clean tagged com
 to write the shared feed until HEAD is an ancestor of current `origin/main` and the tree is clean. A
 `KHAOZENGINE_FEED` that resolves outside the shared feed is the private path for a deliberate branch
 build. Once those guards pass, the wrapper packs through a fresh sibling directory and promotes only the
-guarded current version's generated `nupkg` and `snupkg` files. A repeated pack therefore refreshes stale
-same-version outputs while leaving every other version untouched. The pack standard lives in
+guarded current version's generated `nupkg` and `snupkg` files, then removes same-version files the fresh
+pack no longer generates. A repeated pack refreshes stale outputs while leaving every other version
+untouched. The pack standard lives in
 `scripts/pack-standard.sh` and is covered by
 `scripts/tests/pack-local-feed.test.sh`. Run `scripts/check-local-feed.sh` before a consumer vendors
 packages.

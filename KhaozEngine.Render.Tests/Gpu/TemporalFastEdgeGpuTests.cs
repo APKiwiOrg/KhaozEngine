@@ -36,9 +36,11 @@ namespace KhaozEngine.Tests.Gpu
         const double ReferenceFastFlipAllowance = 1.25;
 
         // The least share of its reference's energy the fast keyed line keeps over its own coverage, and the least
-        // share of MSAA 4x's coverage energy it keeps.
+        // share of MSAA 4x's coverage energy it keeps. MSAA 4x keeps 0.999, so 0.85 of it asks 0.849, above the floor
+        // of 0.8, and the share fails on its own wherever the line keeps from 0.8 to 0.849. At 0.7 it asked 0.699
+        // and could only ever fail with the floor. Measured 1.054 and 0.969 of MSAA 4x at Native and Quality.
         const double MinLineCoverageEnergy = 0.8;
-        const double MinLineShareOfMsaa = 0.7;
+        const double MinLineShareOfMsaa = 0.85;
 
         // The most the fast keyed line's local contrast may stray from its reference's, |sharpness - 1|, as a share
         // of no anti-aliasing's on the same path. No anti-aliasing draws the line with hard steps each frame, which

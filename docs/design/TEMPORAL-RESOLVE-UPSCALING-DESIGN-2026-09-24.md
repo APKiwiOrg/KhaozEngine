@@ -346,7 +346,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
     every flip of the reference is fast, and against half the reference's raw flips the reference itself, scaled to a
     share of its own contrast, stayed within the bound only up to 0.30 at Native and 0.20 at Quality. So the fast-edge
     facts bound fast flips by the larger of half the reference's flips and 1.25 times its fast flips, 0.022 and 0.024
-    for the line, and `TemporalFastEdgeGpuTests` holds the line at 0.8 of its reference's and 0.7 of MSAA 4x's coverage
+    for the line, and `TemporalFastEdgeGpuTests` holds the line at 0.8 of its reference's and 0.85 of MSAA 4x's coverage
     energy. A pixel that reprojected by its own motion and kept its history also keeps its lock at a moving edge, where
     step 6 released every lock (amendment 19), since the history it holds is its own, a fast surface's footprint keeping
     its history only whole, as below. A still line three eighths of a texel wide, with a keyed 30 display pixel box

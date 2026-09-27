@@ -24,6 +24,7 @@ public sealed class MutationJournalExecutor
     private readonly Dictionary<string, Guid> quarantineByStream = new(StringComparer.Ordinal);
     private readonly Dictionary<Guid, HashSet<string>> quarantineGroups = new();
     private readonly JournalAdmittedState admittedState;
+    private readonly JournalAdmissionIndex admissionIndex = new();
     private readonly Task[] workers;
     private bool stopping;
     private long nextSequence;
@@ -65,6 +66,8 @@ public sealed class MutationJournalExecutor
     }
 
     public MutationJournalExecutorMetrics Metrics { get; }
+
+    internal int LastAdmissionGaugeInspectedOperations { get; private set; }
 
     public JournalSubmission Submit(JournalCommit commit)
     {
@@ -169,6 +172,7 @@ public sealed class MutationJournalExecutor
             admittedState.Release(operation, promote, released);
             foreach (JournalStreamMutation stream in operation.Commit.StreamMutations)
                 reservedStreams.Remove(stream.StreamKey);
+            admissionIndex.Acknowledge(operation);
             admitted.Remove(operationId);
             admittedBytes -= operation.OwnedByteCount;
             foreach (AdmittedJournalOperation next in released) Start(next);
@@ -246,6 +250,7 @@ public sealed class MutationJournalExecutor
 
         operation = new AdmittedJournalOperation(owned, nextSequence++, bytes, timeProvider.GetUtcNow());
         admitted.Add(operationId, operation);
+        admissionIndex.Admit(operation);
         admittedBytes += bytes;
         foreach (JournalStreamMutation stream in owned.StreamMutations) reservedStreams.Add(stream.StreamKey);
         admittedState.Admit(operation);
@@ -371,6 +376,7 @@ public sealed class MutationJournalExecutor
 
             var completion = new JournalCompletion(operation.Commit, result, failure, correction);
             operation.Completion = completion;
+            admissionIndex.Complete(operation);
             completions.Enqueue(completion);
             Metrics.CompletionQueued();
 
@@ -388,6 +394,7 @@ public sealed class MutationJournalExecutor
     {
         var completion = new JournalCompletion(dependant.Commit, null, null, null, failedOperationId);
         dependant.Completion = completion;
+        admissionIndex.Complete(dependant);
         completions.Enqueue(completion);
         Metrics.CompletionQueued();
     }
@@ -420,18 +427,17 @@ public sealed class MutationJournalExecutor
 
     private void UpdateAdmissionGauges()
     {
-        DateTimeOffset? oldest = null;
-        DateTimeOffset? oldestUncommitted = null;
-        long uncommitted = 0;
-        foreach (AdmittedJournalOperation operation in admitted.Values)
-        {
-            if (oldest is null || operation.AdmittedAtUtc < oldest) oldest = operation.AdmittedAtUtc;
-            if (operation.Completion is not null) continue;
-            uncommitted++;
-            if (oldestUncommitted is null || operation.AdmittedAtUtc < oldestUncommitted) oldestUncommitted = operation.AdmittedAtUtc;
-        }
-        Metrics.SetAdmissionGauges(admitted.Count, admittedBytes, reservedStreams.Count, oldest);
-        Metrics.SetAdmittedGauges(uncommitted, admittedState.PeakStreamDepth, oldestUncommitted);
+        JournalAdmissionGaugeSnapshot snapshot = admissionIndex.Snapshot();
+        LastAdmissionGaugeInspectedOperations = snapshot.InspectedOperations;
+        Metrics.SetAdmissionGauges(
+            snapshot.AdmittedOperations,
+            admittedBytes,
+            reservedStreams.Count,
+            snapshot.OldestAdmission);
+        Metrics.SetAdmittedGauges(
+            snapshot.UncommittedOperations,
+            admittedState.PeakStreamDepth,
+            snapshot.OldestUncommitted);
     }
 
     private JournalAdmittedStreamHead[] AdmittedHeads(AdmittedJournalOperation operation)
@@ -446,8 +452,7 @@ public sealed class MutationJournalExecutor
     {
         lock (gate)
         {
-            Guid[] ids = admitted.Values.OrderBy(operation => operation.Sequence).Select(operation => operation.Commit.Identity.OperationId).ToArray();
-            return new JournalShutdownResult(ids, admittedBytes);
+            return new JournalShutdownResult(admissionIndex.OperationIdsInOrder(), admittedBytes);
         }
     }
 

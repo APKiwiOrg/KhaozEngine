@@ -78,6 +78,7 @@ public sealed class MutationJournalExecutorMetrics
     public TimeSpan ProjectionLatencyTotal => TimeSpan.FromTicks(Interlocked.Read(ref projectionLatencyTicks));
     public long ProjectionReadCount => Interlocked.Read(ref projectionReadCount);
 
+    /// <summary>How long the oldest admitted operation has been retained, including a terminal result awaiting acknowledgement.</summary>
     public TimeSpan OldestPendingAge => AgeSince(ref oldestAdmittedUtcTicks);
 
     /// <summary>How long the oldest admitted operation that has not reached a terminal result has been waiting.</summary>

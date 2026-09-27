@@ -316,6 +316,13 @@ uncommitted depth with its per-stream peak and oldest age, correction and supers
 histogram, recovery tail readings, compaction lag, and projection latency and section readings. Payloads,
 results, display names, and raw account IDs do not belong in logs or metric labels.
 
+The executor maintains all-admitted and uncommitted indexes in admission sequence. Admission appends to both.
+Terminal completion removes only the uncommitted node, and acknowledgement removes the retained admitted node.
+The live counts and oldest ages therefore update in constant work even when completions and acknowledgements arrive
+out of order. `OldestPendingAge` includes a terminal completion until acknowledgement.
+`AdmittedUncommittedPeakPerStream` is a lifetime high-water mark. It is not a live maximum, which would require a
+depth-indexed structure or a scan across tracked streams.
+
 `GetRetryCount` reads one failure-kind counter. `GetCommitLatencyHistogram` returns a
 `JournalCommitLatencyHistogram` whose upper bounds and bucket counts are copied read-only collections.
 `RecordLoad` and `RecordProjectionRead` let host recovery and admin paths add their readings to the same metrics

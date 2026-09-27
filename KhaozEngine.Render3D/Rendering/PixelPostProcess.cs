@@ -8,14 +8,16 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>
-    /// The toggleable fullscreen post chain on the low-res target. Two orders, selected by <see cref="HdrSettings"/>:
+    /// The toggleable fullscreen post chain at the size of its targets. Two orders, selected by <see cref="HdrSettings"/>:
     /// HDR (the default) runs bloom (over-range, pre-tonemap) -> ACES tonemap -> palette quantize -> edge outline ->
     /// FXAA -> point-upscale to the swapchain, so the float16 scene is compressed to LDR after the highlights have
     /// bloomed. Legacy (<c>Hdr.Enabled = false</c>) keeps the historical quantize -> outline -> bloom -> FXAA ->
     /// upscale order, byte-identical to the pre-HDR output. Stages ping-pong between PingA/PingB (and, for bloom, the
-    /// half-res BloomA/BloomB pair) so no pass reads its own output.
+    /// half-res BloomA/BloomB pair) so no pass reads its own output. The targets arrive as an
+    /// <see cref="IPostChainTargets"/>: the internal <see cref="RenderResources"/>, or the display-resolution
+    /// <see cref="TemporalPostTargets"/> after the temporal resolve, whose source alternates between two history targets.
     /// </summary>
-    internal sealed class PixelPostProcess : IDisposable
+    internal sealed partial class PixelPostProcess : IDisposable
     {
         // The typed post UBOs (internal so UboLayoutTests can size-check them against the GPU allocations).
         internal struct EdgeUbo { public Vector4 OutlineColor; public Vector4 Texel; public Vector4 Thresh; public Vector4 Fade; }
@@ -72,24 +74,6 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuPipeline _blitPipe;
         readonly IGpuBuffer _palBuf, _edgeBuf, _finalBuf, _fxaaBuf, _toneBuf;
         readonly IGpuBuffer _brightBuf, _blurBufH, _blurBufV, _compositeBuf, _applyBuf;
-        // The ping framebuffers' colour format the ping pipelines were last built for (compared in BindTargets to
-        // detect the HDR toggle). Seeded to the ctor's pingOutput so the first BindTargets sees no change.
-        GpuOutputDescription _pingOutput;
-
-        IGpuResourceSet _paletteFromColor = null!, _paletteFromPingA = null!, _paletteFromPingB = null!;
-        IGpuResourceSet _edgeFromColor = null!, _edgeFromPingA = null!, _edgeFromPingB = null!;
-        IGpuResourceSet _toneFromColor = null!, _toneFromPingA = null!, _toneFromPingB = null!; // tonemap reads (linear)
-        IGpuResourceSet _blitColorP = null!, _blitPingAP = null!, _blitPingBP = null!; // point sampler
-        IGpuResourceSet _blitColorL = null!, _blitPingAL = null!, _blitPingBL = null!; // linear sampler
-        IGpuResourceSet _fxaaFromColor = null!, _fxaaFromPingA = null!, _fxaaFromPingB = null!; // FXAA reads (linear)
-        // Bloom resource sets, only built while RenderResources.BloomAllocated (the half-res targets exist).
-        IGpuResourceSet? _brightFromColor, _brightFromPingA, _brightFromPingB;   // bright-pass reads the full-res src (linear)
-        IGpuResourceSet? _blurHFromBloomA, _blurVFromBloomB;                     // horizontal BloomA->BloomB (via _blurBufH), vertical BloomB->BloomA (via _blurBufV)
-        IGpuResourceSet? _compositeColorBloomA, _compositePingABloomA, _compositePingBBloomA; // composite reads (full-res src, BloomA)
-        // Distortion apply set, only built while RenderResources.DistortAllocated (the offset field exists). The
-        // apply pass is always the chain's FIRST pass, so its source is always ColorTex - one set, not three.
-        IGpuResourceSet? _applyFromColor;
-        RenderResources? _bound;
         readonly float[] _palScratch = new float[PaletteScratchFloats]; // reused per frame: 64 vec4 palette + count/dither
         readonly float[] _blurScratchH = new float[BlurScratchFloats];  // reused per frame: Texel + Params(dir=horizontal) + Weights
         readonly float[] _blurScratchV = new float[BlurScratchFloats];  // reused per frame: Texel + Params(dir=vertical) + Weights
@@ -188,114 +172,16 @@ namespace KhaozEngine.Render3D.Rendering
                 Outputs = outputs,
             });
 
-        /// <summary>Build the per-target resource sets. Call on construction and whenever the targets resize (incl.
-        /// a bloom enable/disable toggle, which (re)allocates or frees <see cref="RenderResources.BloomA"/>/
-        /// <see cref="RenderResources.BloomB"/>).</summary>
-        public void BindTargets(RenderResources res)
-        {
-            // Rebuild the ping-output pipelines first if the ping colour format flipped (HDR float16 <-> legacy UNorm),
-            // independent of the resource-set guard below (a pure format toggle keeps the same size/bloom state).
-            RebuildPingPipelinesIfFormatChanged(res);
-            // Generation-based guard: any recreate of the targets bumps it, including same-size recreates (MSAA
-            // sample-count / bloom / HDR toggles), so the sets can never outlive the textures they reference.
-            if (ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
-            DisposeSets();
-            var f = _gd.Factory;
-            var samp = _gd.PointSampler;
-
-            var lin = _gd.LinearSampler;
-            // Palette quantize samples 1:1 with the point sampler (a colour-snap, not a filter). Built for all three
-            // possible sources: legacy runs it first from ColorTex, the HDR chain runs it after tonemap from a ping.
-            _paletteFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_palLayout, res.ColorTex, samp, _palBuf));
-            _paletteFromPingA = f.CreateResourceSet(new GpuResourceSetDescription(_palLayout, res.PingA, samp, _palBuf));
-            _paletteFromPingB = f.CreateResourceSet(new GpuResourceSetDescription(_palLayout, res.PingB, samp, _palBuf));
-            // Edge outline reads the colour source + the (format-fixed) normal/linear-depth MRT attachments. The PingB
-            // source only arises in the HDR chain (after tonemap+quantize). Legacy only ever feeds it ColorTex/PingA.
-            _edgeFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_edgeLayout, res.ColorTex, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
-            _edgeFromPingA = f.CreateResourceSet(new GpuResourceSetDescription(_edgeLayout, res.PingA, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
-            _edgeFromPingB = f.CreateResourceSet(new GpuResourceSetDescription(_edgeLayout, res.PingB, res.NormalTex, res.DepthColorTex, samp, _edgeBuf));
-            // Tonemap reads its input 1:1 with the linear sampler (matches the FXAA/blit-linear precedent for a 1:1
-            // read). Built for all three sources: after bloom the src is a ping, with bloom off it is still ColorTex.
-            _toneFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_toneLayout, res.ColorTex, lin, _toneBuf));
-            _toneFromPingA = f.CreateResourceSet(new GpuResourceSetDescription(_toneLayout, res.PingA, lin, _toneBuf));
-            _toneFromPingB = f.CreateResourceSet(new GpuResourceSetDescription(_toneLayout, res.PingB, lin, _toneBuf));
-            _blitColorP = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.ColorTex, samp, _finalBuf));
-            _blitPingAP = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.PingA, samp, _finalBuf));
-            _blitPingBP = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.PingB, samp, _finalBuf));
-            _blitColorL = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.ColorTex, lin, _finalBuf));
-            _blitPingAL = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.PingA, lin, _finalBuf));
-            _blitPingBL = f.CreateResourceSet(new GpuResourceSetDescription(_blitLayout, res.PingB, lin, _finalBuf));
-            // FXAA samples its input bilinearly (the diagonal blend taps land between texels).
-            _fxaaFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_fxaaLayout, res.ColorTex, lin, _fxaaBuf));
-            _fxaaFromPingA = f.CreateResourceSet(new GpuResourceSetDescription(_fxaaLayout, res.PingA, lin, _fxaaBuf));
-            _fxaaFromPingB = f.CreateResourceSet(new GpuResourceSetDescription(_fxaaLayout, res.PingB, lin, _fxaaBuf));
-
-            if (res.BloomAllocated)
-            {
-                // Bright-pass reads whichever full-res target holds the current chain source, bilinearly (a soft
-                // half-res downsample tap, matching the FXAA/blit-linear precedent) - built for all three possible
-                // sources (ColorTex/PingA/PingB) so Run can pick the right one without a runtime resource-set build.
-                _brightFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_brightLayout, res.ColorTex, lin, _brightBuf));
-                _brightFromPingA = f.CreateResourceSet(new GpuResourceSetDescription(_brightLayout, res.PingA, lin, _brightBuf));
-                _brightFromPingB = f.CreateResourceSet(new GpuResourceSetDescription(_brightLayout, res.PingB, lin, _brightBuf));
-                // Separable blur ping-pongs within the half-res pair: horizontal BloomA->BloomB (direction baked
-                // into _blurBufH), vertical BloomB->BloomA (direction baked into _blurBufV) - two buffers because
-                // both draws happen inside Run's active render pass, where UBOs cannot be re-uploaded mid-pass.
-                _blurHFromBloomA = f.CreateResourceSet(new GpuResourceSetDescription(_blurLayout, res.BloomA!, lin, _blurBufH));
-                _blurVFromBloomB = f.CreateResourceSet(new GpuResourceSetDescription(_blurLayout, res.BloomB!, lin, _blurBufV));
-                // Composite reads the full-res chain source (Src) + the blurred half-res bloom (BloomA, the blur's
-                // final write target) and writes to a full-res ping; built for all three possible Src sources.
-                _compositeColorBloomA = f.CreateResourceSet(new GpuResourceSetDescription(_compositeLayout, res.ColorTex, res.BloomA!, lin, _compositeBuf));
-                _compositePingABloomA = f.CreateResourceSet(new GpuResourceSetDescription(_compositeLayout, res.PingA, res.BloomA!, lin, _compositeBuf));
-                _compositePingBBloomA = f.CreateResourceSet(new GpuResourceSetDescription(_compositeLayout, res.PingB, res.BloomA!, lin, _compositeBuf));
-            }
-
-            if (res.DistortAllocated)
-            {
-                // Apply reads the chain source (always ColorTex, the first pass) + the half/quarter-res offset field,
-                // bilinearly (the offset upsample + the warped colour resample), writing to a full-res ping. Built
-                // only while the offset field exists, so a distortion-free frame allocates no apply set.
-                _applyFromColor = f.CreateResourceSet(new GpuResourceSetDescription(_applyLayout, res.ColorTex, res.DistortTex!, lin, _applyBuf));
-            }
-
-            _bound = res; _boundGen = res.Generation;
-        }
-        int _boundGen;
-
-        // Whether two ping output descriptions carry the same colour attachment format. The ping targets are always
-        // one colour attachment, no depth, single-sample, so the first colour format is the only field that moves on
-        // an HDR toggle.
-        static bool SamePingFormat(in GpuOutputDescription a, in GpuOutputDescription b) =>
-            a.Colour.Length == b.Colour.Length && a.Colour.Length > 0 && a.Colour[0] == b.Colour[0];
-
-        // Rebuild every ping-output pipeline when the ping colour format flips (HDR float16 <-> legacy UNorm). A
-        // pipeline bakes its target's colour format, so all seven ping writers must be recreated. The shaders,
-        // layouts, and buffers are format-agnostic and survive. The blit pipeline targets the swapchain (format-fixed)
-        // and is untouched. The caller idles the GPU before a format change (Scene3D.EnsureSize), so no pipeline is in
-        // flight here.
-        void RebuildPingPipelinesIfFormatChanged(RenderResources res)
-        {
-            var pingOut = res.PingAFB.Outputs;
-            if (SamePingFormat(pingOut, _pingOutput)) return;
-            var f = _gd.Factory;
-            _palPipe.Dispose(); _edgePipe.Dispose(); _fxaaPipe.Dispose(); _tonePipe.Dispose();
-            _brightPipe.Dispose(); _blurPipe.Dispose(); _compositePipe.Dispose(); _applyPipe.Dispose();
-            _palPipe = FullscreenPipeline(f, _palFrag, _palLayout, pingOut);
-            _edgePipe = FullscreenPipeline(f, _edgeFrag, _edgeLayout, pingOut);
-            _fxaaPipe = FullscreenPipeline(f, _fxaaFrag, _fxaaLayout, pingOut);
-            _tonePipe = FullscreenPipeline(f, _toneFrag, _toneLayout, pingOut);
-            _brightPipe = FullscreenPipeline(f, _brightFrag, _brightLayout, pingOut);
-            _blurPipe = FullscreenPipeline(f, _blurFrag, _blurLayout, pingOut);
-            _compositePipe = FullscreenPipeline(f, _compositeFrag, _compositeLayout, pingOut);
-            _applyPipe = FullscreenPipeline(f, _applyFrag, _applyLayout, pingOut);
-            _pingOutput = pingOut;
-        }
+        // The bloom blur weights for the radius they were last built for. Rebuilt only when the radius changes, so a
+        // steady frame with bloom on uploads them without allocating.
+        readonly float[] _blurWeights = new float[2 * BloomMath.MaxRadius + 1];
+        int _blurWeightsRadius = -1;
 
         /// <summary>Upload post UBOs. Call BEFORE any SetFramebuffer this frame (no active render pass).
         /// <paramref name="runFxaa"/> is the caps-resolved FXAA decision from the scene (so an MSAA request the device
         /// can't honour can fall back to FXAA); it must match the value passed to <see cref="Run"/> so the flip parity
         /// lines up.</summary>
-        public void PrepareUniforms(IGpuCommandList cl, RenderResources res, PixelPostProcessSettings s, in CameraDepth cam, bool runFxaa, bool distortionActive)
+        public void PrepareUniforms(IGpuCommandList cl, IPostChainTargets res, PixelPostProcessSettings s, in CameraDepth cam, bool runFxaa, bool distortionActive)
         {
             var pal = _palScratch;
             // Zero the colour region (MaxPaletteColors vec4 = 256 floats) so stale colors from a larger previous
@@ -334,7 +220,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 OutlineColor = s.OutlineColor,
                 // Texel.xy = 1/size; .z = isPerspective (gates the Fix C linearization); .w = distance-fade on.
-                Texel = new Vector4(1f / res.Width, 1f / res.Height,
+                Texel = new Vector4(1f / res.NormalTex.Width, 1f / res.NormalTex.Height,   // the steps cross the normal/depth attachments
                                     cam.IsPerspective ? 1f : 0f,
                                     (cam.IsPerspective && s.OutlineDistanceFade) ? 1f : 0f),
                 // Thresh.x = depth threshold; .y = normal threshold; .z = near; .w = far.
@@ -344,7 +230,7 @@ namespace KhaozEngine.Render3D.Rendering
             };
             cl.UpdateBuffer(_edgeBuf, 0, in edge);
 
-            // FXAA reads the internal target's texel size (1/size) to place its neighbourhood taps.
+            // FXAA reads the chain's own texel size (1/size) to place its neighbourhood taps.
             var rcp = new Vector4(1f / res.Width, 1f / res.Height, 0f, 0f);
             cl.UpdateBuffer(_fxaaBuf, 0, in rcp);
 
@@ -355,7 +241,12 @@ namespace KhaozEngine.Render3D.Rendering
                 cl.UpdateBuffer(_brightBuf, 0, in bright);
 
                 int radius = Math.Clamp(s.Bloom.Radius, 0, BloomMath.MaxRadius);
-                float[] weights = BloomMath.GaussianWeights(radius); // length 2*radius+1, symmetric about the centre
+                if (radius != _blurWeightsRadius)
+                {
+                    BloomMath.GaussianWeights(radius, _blurWeights);
+                    _blurWeightsRadius = radius;
+                }
+                float[] weights = _blurWeights; // the first 2*radius+1 entries, symmetric about the centre
                 // Weights[i].x = weight for tap i (i=0 = centre = weights[radius] in the symmetric array).
                 const int weightsBase = 8; // Texel (4 floats) + Params (4 floats)
                 void FillBlurScratch(float[] scratch, float dirX, float dirY)
@@ -414,19 +305,29 @@ namespace KhaozEngine.Render3D.Rendering
             cl.UpdateBuffer(_finalBuf, 0, in final);
         }
 
-        public void Run(IGpuCommandList cl, RenderResources res, IGpuFramebuffer swapchainFB, PixelPostProcessSettings s, bool runFxaa, bool distortionActive)
+        public void Run(IGpuCommandList cl, IPostChainTargets res, IGpuFramebuffer swapchainFB, PixelPostProcessSettings s, bool runFxaa, bool distortionActive)
         {
-            IGpuTexture src = res.ColorTex;
+            // Every set belongs to the targets BindTargets last bound, at the generation it bound them.
+            if (!ReferenceEquals(res, _bound) || res.Generation != _boundGen)
+                throw new InvalidOperationException(
+                    "PixelPostProcess.Run was handed post chain targets BindTargets has not bound at their current "
+                    + "generation. Call BindTargets with the targets this run reads first.");
+            // The chain source this frame and the sets built over it (IPostChainTargets explains the slot).
+            int slot = res.SourceSlot;
+            IGpuTexture color = res.Source(slot);
+            SourceSets fromSource = _fromSource[slot] ?? throw new InvalidOperationException(
+                "PixelPostProcess.Run was handed a post chain source slot BindTargets did not build.");
+            IGpuTexture src = color;
             bool bloomRuns = s.Bloom.Enabled && res.BloomAllocated;
             bool distortionRuns = distortionActive && res.DistortAllocated;
 
             // Shared free-ping ping-pong for the single-input passes (tonemap / quantize / outline / FXAA): each
-            // writes to the ping NOT holding src so no pass reads its own output. ColorTex/PingB -> PingA, PingA ->
+            // writes to the ping NOT holding src so no pass reads its own output. Source/PingB -> PingA, PingA ->
             // PingB. The resource set already carries the right textures per source, so the pass logic is uniform.
             void Simple(IGpuPipeline pipe, IGpuResourceSet fromColor, IGpuResourceSet fromPingA, IGpuResourceSet fromPingB)
             {
                 bool fromA = ReferenceEquals(src, res.PingA);
-                IGpuResourceSet set = ReferenceEquals(src, res.ColorTex) ? fromColor : fromA ? fromPingA : fromPingB;
+                IGpuResourceSet set = ReferenceEquals(src, color) ? fromColor : fromA ? fromPingA : fromPingB;
                 cl.SetFramebuffer(fromA ? res.PingBFB : res.PingAFB);
                 cl.SetPipeline(pipe);
                 cl.SetGraphicsResourceSet(0, set);
@@ -434,19 +335,19 @@ namespace KhaozEngine.Render3D.Rendering
                 src = fromA ? res.PingB : res.PingA;
             }
 
-            void RunQuantize() => Simple(_palPipe, _paletteFromColor, _paletteFromPingA, _paletteFromPingB);
-            void RunOutline() => Simple(_edgePipe, _edgeFromColor, _edgeFromPingA, _edgeFromPingB);
-            void RunTonemap() => Simple(_tonePipe, _toneFromColor, _toneFromPingA, _toneFromPingB);
-            void RunFxaa() => Simple(_fxaaPipe, _fxaaFromColor, _fxaaFromPingA, _fxaaFromPingB);
+            void RunQuantize() => Simple(_palPipe, fromSource.Palette, _paletteFromPingA, _paletteFromPingB);
+            void RunOutline() => Simple(_edgePipe, fromSource.Edge, _edgeFromPingA, _edgeFromPingB);
+            void RunTonemap() => Simple(_tonePipe, fromSource.Tone, _toneFromPingA, _toneFromPingB);
+            void RunFxaa() => Simple(_fxaaPipe, fromSource.Fxaa, _fxaaFromPingA, _fxaaFromPingB);
 
             // Bloom: bright-pass -> separable blur (half-res) -> additive composite back into a full-res ping. Runs
-            // only when RenderResources.BloomAllocated (Scene3D requests the half-res targets only while
+            // only when the targets report BloomAllocated (Scene3D requests the half-res targets only while
             // Bloom.Enabled), so bloom off costs exactly zero extra passes. In HDR mode this runs FIRST, reading the
             // raw float16 scene so over-range cores halo before the tonemap compresses them. In legacy mode it runs
             // third, reading the already-LDR post src.
             void RunBloom()
             {
-                IGpuResourceSet brightSet = ReferenceEquals(src, res.ColorTex) ? _brightFromColor!
+                IGpuResourceSet brightSet = ReferenceEquals(src, color) ? fromSource.Bright!
                                           : ReferenceEquals(src, res.PingA) ? _brightFromPingA! : _brightFromPingB!;
                 cl.SetFramebuffer(res.BloomAFB!);
                 cl.SetPipeline(_brightPipe);
@@ -467,13 +368,13 @@ namespace KhaozEngine.Render3D.Rendering
                 cl.SetGraphicsResourceSet(0, _blurVFromBloomB!);
                 cl.Draw(3);
 
-                bool compFromColor = ReferenceEquals(src, res.ColorTex);
+                bool compFromColor = ReferenceEquals(src, color);
                 bool compFromPingA = ReferenceEquals(src, res.PingA);
-                IGpuResourceSet compositeSet = compFromColor ? _compositeColorBloomA!
+                IGpuResourceSet compositeSet = compFromColor ? fromSource.Composite!
                                              : compFromPingA ? _compositePingABloomA! : _compositePingBBloomA!;
                 // Write to the ping NOT currently holding src (mirrors the FXAA ping-pong), so composite never reads
                 // its own output.
-                bool toPingB = compFromPingA;                 // PingA->PingB; ColorTex/PingB->PingA
+                bool toPingB = compFromPingA;                 // PingA->PingB, Source/PingB->PingA
                 cl.SetFramebuffer(toPingB ? res.PingBFB : res.PingAFB);
                 cl.SetPipeline(_compositePipe);
                 cl.SetGraphicsResourceSet(0, compositeSet);
@@ -481,15 +382,15 @@ namespace KhaozEngine.Render3D.Rendering
                 src = toPingB ? res.PingB : res.PingA;
             }
 
-            // Distortion apply: the chain's FIRST pass in BOTH modes. Re-samples the resolved scene (src is ColorTex
-            // here) through the accumulated offset field, so every camera-response pass that follows (bloom, tonemap,
-            // quantize, outline, fxaa) sees the warped image. Writes ColorTex -> PingA, then src follows the ping-pong
-            // like any other pass. The FinalUbo/EdgeUbo parities already counted this pass in PrepareUniforms.
+            // Distortion apply: the chain's FIRST pass in BOTH modes. Re-samples the chain source through the
+            // accumulated offset field, so every camera-response pass that follows (bloom, tonemap, quantize, outline,
+            // fxaa) sees the warped image. Writes Source -> PingA, then src follows the ping-pong like any other pass.
+            // The FinalUbo/EdgeUbo parities already counted this pass in PrepareUniforms.
             if (distortionRuns)
             {
                 cl.SetFramebuffer(res.PingAFB);
                 cl.SetPipeline(_applyPipe);
-                cl.SetGraphicsResourceSet(0, _applyFromColor!);
+                cl.SetGraphicsResourceSet(0, fromSource.Apply!);
                 cl.Draw(3);
                 src = res.PingA;
             }
@@ -523,8 +424,8 @@ namespace KhaozEngine.Render3D.Rendering
             }
 
             IGpuResourceSet blit = s.Pixelated
-                ? (ReferenceEquals(src, res.ColorTex) ? _blitColorP : ReferenceEquals(src, res.PingA) ? _blitPingAP : _blitPingBP)
-                : (ReferenceEquals(src, res.ColorTex) ? _blitColorL : ReferenceEquals(src, res.PingA) ? _blitPingAL : _blitPingBL);
+                ? (ReferenceEquals(src, color) ? fromSource.BlitPoint : ReferenceEquals(src, res.PingA) ? _blitPingAP : _blitPingBP)
+                : (ReferenceEquals(src, color) ? fromSource.BlitLinear : ReferenceEquals(src, res.PingA) ? _blitPingAL : _blitPingBL);
 
             // Downscale: the blit source carries a mip chain (RenderResources.Mipped) only when Scene3D.WantsMipDownsample
             // decided this frame is a genuine downscale with a non-pixelated blit - a MatchViewport supersample, or a
@@ -532,35 +433,17 @@ namespace KhaozEngine.Render3D.Rendering
             // opted in. Regenerating it here lets the trilinear LinearSampler auto-pick LOD ~= log2(downscale ratio) - a
             // correct multi-tap box at ANY factor, where the single bilinear tap under-samples above 2:1. GenerateMipmaps
             // ends the current render pass, and the blit re-binds the swapchain below. Never fires for Pixelated, a 1:1-or-
-            // upscale blit, or a FixedInternal downscale with the opt-in flag off (all single-mip), so those stay
-            // byte-identical.
+            // upscale blit, a FixedInternal downscale with the opt-in flag off, or the temporal display chain (all
+            // single-mip), so those stay byte-identical.
             if (src.MipLevels > 1) cl.GenerateMipmaps(src);
 
             cl.SetFramebuffer(swapchainFB);
             // Transparent clear when compositing offscreen, else opaque black. (The fullscreen blit overwrites
-            // every pixel via OverrideBlend, so this mainly documents intent; the alpha is set in the shader.)
+            // every pixel via OverrideBlend, so this mainly documents intent. The alpha is set in the shader.)
             cl.ClearColorTarget(0, s.TransparentBackground ? Color.Transparent : Color.Black);
             cl.SetPipeline(_blitPipe);
             cl.SetGraphicsResourceSet(0, blit);
             cl.Draw(3);
-        }
-
-        void DisposeSets()
-        {
-            _paletteFromColor?.Dispose(); _paletteFromPingA?.Dispose(); _paletteFromPingB?.Dispose();
-            _edgeFromColor?.Dispose(); _edgeFromPingA?.Dispose(); _edgeFromPingB?.Dispose();
-            _toneFromColor?.Dispose(); _toneFromPingA?.Dispose(); _toneFromPingB?.Dispose();
-            _blitColorP?.Dispose(); _blitPingAP?.Dispose(); _blitPingBP?.Dispose();
-            _blitColorL?.Dispose(); _blitPingAL?.Dispose(); _blitPingBL?.Dispose();
-            _fxaaFromColor?.Dispose(); _fxaaFromPingA?.Dispose(); _fxaaFromPingB?.Dispose();
-            _brightFromColor?.Dispose(); _brightFromPingA?.Dispose(); _brightFromPingB?.Dispose();
-            _blurHFromBloomA?.Dispose(); _blurVFromBloomB?.Dispose();
-            _compositeColorBloomA?.Dispose(); _compositePingABloomA?.Dispose(); _compositePingBBloomA?.Dispose();
-            _applyFromColor?.Dispose();
-            _brightFromColor = _brightFromPingA = _brightFromPingB = null;
-            _blurHFromBloomA = _blurVFromBloomB = null;
-            _compositeColorBloomA = _compositePingABloomA = _compositePingBBloomA = null;
-            _applyFromColor = null;
         }
 
         public void Dispose()

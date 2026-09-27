@@ -6,7 +6,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D;
 
 /// <summary><c>Scene3D.LastTemporalDiagnostics</c>: one value per frame, written on the frame's first render, and a
-/// latch plus history advance that allocates nothing (acceptance 4).</summary>
+/// latch plus history advance that allocates nothing (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md,
+/// acceptance 4).</summary>
 [Collection("AllocSensitive")]
 public sealed class TemporalDiagnosticsTests
 {
@@ -131,6 +132,28 @@ public sealed class TemporalDiagnosticsTests
         MeterLatchAndAdvance(scene, "latching the frame view and advancing temporal history with temporal off");
         Assert.False(scene.LastTemporalDiagnostics.HistoryValid, "the measured loop ran with temporal rendering on");
         Assert.Equal(TemporalResetReason.FirstFrame, scene.LastTemporalDiagnostics.LastReset);
+    }
+
+    /// <summary>Under temporal anti-aliasing the latch also derives the jitter cycle from the display size, and the
+    /// history key carries the upscale ratio and the display size. The measured latches keep the 240 by 240 display the
+    /// warm frames rendered at, so each one runs the upscaled cycle of 18 phases on the valid-history path.</summary>
+    [Fact]
+    public void LatchingAndAdvancingHistoryUnderTemporalAntiAliasingAllocatesNothing()
+    {
+        using var rig = new HeadlessSceneRig();
+        Scene3D scene = rig.Scene;
+        scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+        scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
+        for (int i = 0; i < 4; i++)   // warm every path once, the reset precedence's rank table included
+        {
+            if (i == 2) scene.CameraCut();
+            rig.Frame(240, 240);
+        }
+
+        MeterLatchAndAdvance(scene, "latching the frame view and advancing temporal history under temporal anti-aliasing");
+        Assert.True(scene.LastTemporalDiagnostics.HistoryValid, "the measured loop never ran the valid-history path");
+        FrameView view = scene.CurrentFrameView;
+        Assert.Equal(TemporalJitter.Offset(view.FrameIndex, 18), view.JitterPixels);
     }
 
     static void MeterLatchAndAdvance(Scene3D scene, string description)

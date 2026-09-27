@@ -98,7 +98,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <para>
         /// WHAT A CONSUMER CAN SEE FROM THIS, stated because it is a real behaviour difference rather than an
         /// implementation detail. A record-time uniform write lands the moment it is made, so two writes to the
-        /// SAME range inside one frame leave the second value for every draw of that frame, including draws
+        /// SAME range inside one recording leave the second value for every draw of that recording, including draws
         /// recorded between them. Per-draw uniforms are addressed by dynamic offset rather than by rewriting one
         /// range, which is what the whole renderer already does and what makes the ring possible at all.
         /// </para>

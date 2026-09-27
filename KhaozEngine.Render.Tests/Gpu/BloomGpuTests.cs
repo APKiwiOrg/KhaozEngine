@@ -107,6 +107,51 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void Retuning_the_radius_on_a_chain_that_already_ran_blurs_like_a_fresh_chain_at_the_new_radius()
+        {
+            // The post chain refills its blur weights only when the clamped radius changes, so a chain that ran at
+            // radius 4 and is then retuned to 6 must render what a chain that only ever ran at 6 renders.
+            byte[] retuned = CaptureBloomRadius(firstFrame: 4, secondFrame: 6);
+            byte[] fresh = CaptureBloomRadius(firstFrame: 6, secondFrame: 6);
+            byte[] four = CaptureBloomRadius(firstFrame: 4, secondFrame: 4);
+
+            int radiusShows = DifferingBytes(four, fresh);
+            Assert.True(radiusShows > 0, "radius 4 and radius 6 render alike, so this cannot tell stale weights apart");
+            int stale = DifferingBytes(retuned, fresh);
+            Assert.True(stale == 0, $"the retuned chain differs from a fresh radius-6 chain in {stale} bytes "
+                + $"(radius 4 against 6: {radiusShows})");
+        }
+
+        static byte[] CaptureBloomRadius(int firstFrame, int secondFrame)
+        {
+            MeshHandle sphere = default;
+            int frame = 0;
+            return Render3DSnapshot.Capture(96, 96,
+                setup: scene =>
+                {
+                    sphere = scene.LoadMesh(MeshPrimitives.Sphere(0.3f));
+                    scene.Post.Starfield = false;
+                    scene.Post.Bloom.Enabled = true;
+                    scene.Camera.Frame(Vector3.Zero, new Vector3(2.2f, 2.2f, 2.2f));
+                },
+                drawFrame: scene =>
+                {
+                    scene.Post.Bloom.Radius = frame++ == 0 ? firstFrame : secondFrame;
+                    scene.Draw(sphere, Matrix4x4.Identity,
+                        new Color(1f, 1f, 0.9f, 1f), Material.Glowing(new Color(1f, 1f, 0.9f, 1f)));
+                },
+                frames: 2);
+        }
+
+        static int DifferingBytes(byte[] a, byte[] b)
+        {
+            Assert.Equal(a.Length, b.Length);
+            int n = 0;
+            for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) n++;
+            return n;
+        }
+
+        [GpuFact]
         public void Bloom_preserves_transparent_background_alpha()
         {
             // Bloom must never resurrect an alpha-0 background pixel into an opaque one (BloomCompositeFrag

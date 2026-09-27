@@ -112,13 +112,17 @@ exact. Row 4 is a float32 sum at the magnitude of the step, so a still scene rea
 
 The frame index advances once per `Begin`. A second render in the same frame, such as an offscreen capture, re-latches
 its own matrices for its viewport with the same frame index and jitter, and leaves the history, the previous view and
-the diagnostics untouched (amendment 4 below).
+the diagnostics untouched (amendment 4 below). A frame that runs the temporal resolve is the exception on jitter: its
+later renders are unjittered
+([resolve design amendment 14](TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md#plan-amendments)).
 
 A new internal `TemporalHistory` owns every cross-frame target: round 2's colour history now, and motion blur or
 reflection history later. It lives outside `RenderResources`, so the rebuilds that already happen there, a
 distortion toggle or a bloom change, no longer discard temporal state. History resets on:
 
 - a change of internal size or render scale, or of the anti-aliasing mode,
+- a change of the display size the frame presents at, which a capped or fixed internal size can hide, reported as
+  `Resize`,
 - a device or backend reset,
 - `Scene3D.CameraCut()`, for teleports, loading screens and cutscene cuts,
 - an automatic cut when the camera moves further than `Post.Temporal.CutDistanceMetres` (default 16) or turns more
@@ -271,7 +275,8 @@ and changed these details. Each group's "Contract amendments" block carries the 
    across a 128 m step, a third of the acceptance line (group B).
 3. `DeviceReset` means the colour-format rebuild `EnsureSize` performs, the one backend reset a live scene has (group B).
 4. A second render in one frame keeps the frame's temporal identity and re-latches the matrices, because it may target
-   another viewport (group B).
+   another viewport (group B). In a frame that runs the temporal resolve it renders unjittered, per the resolve design's
+   amendment 14.
 5. The distortion offset field reads the unjittered matrix (group B).
 6. Skinned motion records carry the previous model matrix as well as the palette. `MotionHistory.Reset()` runs on
    temporal-off frames, and a shadow-only draw ignores its key (group C).

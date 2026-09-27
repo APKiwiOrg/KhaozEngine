@@ -20,6 +20,12 @@ namespace KhaozEngine.Render3D
         /// windows / zoomed-out views. <see cref="PixelPostProcessSettings.RenderWidth"/>/<c>RenderHeight</c> are
         /// ignored in this mode.</summary>
         MatchViewport,
+        /// <summary>Size the internal target to the viewport times the temporal upscale ratio per axis
+        /// (<see cref="TemporalSettings.Upscale"/> or <see cref="TemporalSettings.UpscaleRatio"/>, 0.33 to 1), clamped to
+        /// <see cref="PixelPostProcessSettings.MaxRenderWidth"/> x <see cref="PixelPostProcessSettings.MaxRenderHeight"/>.
+        /// Forced while <see cref="AntiAliasing.Temporal"/> is active, as SSAA forces <see cref="MatchViewport"/>. Chosen
+        /// directly without temporal anti-aliasing, it renders at that size and the final blit upscales it.</summary>
+        Temporal,
     }
 
     /// <summary>
@@ -30,8 +36,9 @@ namespace KhaozEngine.Render3D
     public sealed class PixelPostProcessSettings
     {
         /// <summary>Internal render target sizing. Default <see cref="Render3D.RenderScale.FixedInternal"/> keeps the
-        /// historical fixed-resolution path (and the retro look); <see cref="Render3D.RenderScale.MatchViewport"/>
-        /// tracks the framebuffer to avoid upscale blur on large windows.</summary>
+        /// historical fixed-resolution path (and the retro look). <see cref="Render3D.RenderScale.MatchViewport"/>
+        /// tracks the framebuffer to avoid upscale blur on large windows, and
+        /// <see cref="Render3D.RenderScale.Temporal"/> tracks it times the temporal upscale ratio.</summary>
         public RenderScale RenderScale = RenderScale.FixedInternal;
 
         /// <summary>Graphics-quality knobs for the scene - today the anti-aliasing selection
@@ -72,8 +79,9 @@ namespace KhaozEngine.Render3D
         /// <see cref="HdrSettings"/> for exposure, the operator choices, and the unclamped-Color authoring note.</summary>
         public HdrSettings Hdr = new();
 
-        /// <summary>Temporal rendering settings, such as the camera-cut thresholds that decide when a camera move drops
-        /// temporal history. Inert until something asks for temporal rendering. See <see cref="TemporalSettings"/>.</summary>
+        /// <summary>Temporal rendering settings: the camera-cut thresholds that decide when a camera move drops
+        /// temporal history, and the upscale preset or ratio that sizes the internal target under
+        /// <see cref="Render3D.RenderScale.Temporal"/>. See <see cref="TemporalSettings"/>.</summary>
         public TemporalSettings Temporal = new();
 
         /// <summary>Internal render width (used only when <see cref="RenderScale"/> is
@@ -84,15 +92,17 @@ namespace KhaozEngine.Render3D
         public int RenderHeight = 900;
 
         /// <summary>Upper bound on the internal target width when <see cref="RenderScale"/> is
-        /// <see cref="Render3D.RenderScale.MatchViewport"/>, so giant windows don't allocate unbounded targets. The
-        /// viewport is scaled down to fit this cap, aspect preserved.</summary>
+        /// <see cref="Render3D.RenderScale.MatchViewport"/> or <see cref="Render3D.RenderScale.Temporal"/>, so giant
+        /// windows don't allocate unbounded targets. The viewport is scaled down to fit this cap, aspect
+        /// preserved.</summary>
         public int MaxRenderWidth = 3840;
         /// <summary>Upper bound on the internal target height when <see cref="RenderScale"/> is
-        /// <see cref="Render3D.RenderScale.MatchViewport"/> (see <see cref="MaxRenderWidth"/>).</summary>
+        /// <see cref="Render3D.RenderScale.MatchViewport"/> or <see cref="Render3D.RenderScale.Temporal"/> (see
+        /// <see cref="MaxRenderWidth"/>).</summary>
         public int MaxRenderHeight = 2160;
 
-        /// <summary>Supersampling factor for <see cref="Render3D.RenderScale.MatchViewport"/> (ignored for
-        /// FixedInternal). The internal 3D target is rendered at framebuffer x this factor per axis, then downsampled
+        /// <summary>Supersampling factor for <see cref="Render3D.RenderScale.MatchViewport"/> (ignored for FixedInternal
+        /// and Temporal). The internal 3D target is rendered at framebuffer x this factor per axis, then downsampled
         /// to the framebuffer by the final blit - anti-aliasing BOTH geometry edges AND shaded texture interiors
         /// (unlike MSAA, which only covers geometry). 1 = off; 2 = 2x per axis (4x the pixels), the same effective AA
         /// a 2x/Retina display gives for free, which fixes high-frequency-terrain / thin-foliage shimmer on a
@@ -209,10 +219,27 @@ namespace KhaozEngine.Render3D
         internal AntiAliasingMode EffectiveAaMode => Pixelated ? AntiAliasingMode.None : Quality.AntiAliasing.Mode;
 
         /// <summary>Render-target sizing after the AA selection: <see cref="Render3D.AntiAliasingMode.Ssaa"/> forces
-        /// <see cref="Render3D.RenderScale.MatchViewport"/> (SSAA supersamples the viewport); otherwise the raw
-        /// <see cref="RenderScale"/>.</summary>
-        internal RenderScale EffectiveRenderScale =>
-            EffectiveAaMode == AntiAliasingMode.Ssaa ? RenderScale.MatchViewport : RenderScale;
+        /// <see cref="Render3D.RenderScale.MatchViewport"/> (SSAA supersamples the viewport),
+        /// <see cref="Render3D.AntiAliasingMode.Temporal"/> forces <see cref="Render3D.RenderScale.Temporal"/>, otherwise
+        /// the raw <see cref="RenderScale"/>.</summary>
+        internal RenderScale EffectiveRenderScale => EffectiveAaMode switch
+        {
+            AntiAliasingMode.Ssaa => RenderScale.MatchViewport,
+            AntiAliasingMode.Temporal => RenderScale.Temporal,
+            _ => RenderScale,
+        };
+
+        /// <summary>The temporal upscale ratio in effect: <see cref="TemporalSettings.ResolvedUpscaleRatio"/> under
+        /// <see cref="Render3D.RenderScale.Temporal"/>, else 1. The temporal history's reset key reads it, so a change
+        /// reports <see cref="TemporalResetReason.RenderScale"/>.</summary>
+        internal float EffectiveUpscaleRatio =>
+            EffectiveRenderScale == RenderScale.Temporal ? Temporal.ResolvedUpscaleRatio : 1f;
+
+        /// <summary>What the viewport is scaled by per axis, before the cap, under a viewport-tracking scale: the temporal
+        /// ratio under <see cref="Render3D.RenderScale.Temporal"/>, else the supersample factor, at least 1.</summary>
+        internal float EffectiveViewportScale => EffectiveRenderScale == RenderScale.Temporal
+            ? EffectiveUpscaleRatio
+            : System.MathF.Max(1f, EffectiveSupersample);
 
         /// <summary>Supersample factor after the AA selection: <see cref="Render3D.AntiAliasingMode.Ssaa"/> uses its
         /// factor (>= 1); otherwise the raw <see cref="Supersample"/> field (so a consumer setting

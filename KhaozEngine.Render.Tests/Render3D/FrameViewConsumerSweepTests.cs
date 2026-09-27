@@ -12,8 +12,8 @@ namespace KhaozEngine.Tests.Render3D;
 /// THE FRAME VIEW IS THE ONLY CAMERA READ (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, section 1 and risk
 /// 1). Every pass in KhaozEngine.Render3D reads its matrices from <c>Scene3D.CurrentFrameView</c>, which carries the
 /// jitter for everything rasterised into the internal target and the unjittered matrices for everything else. A pass
-/// that reads the camera instead draws unjittered, which round 2 would show as one layer shimmering against the rest,
-/// so a new one fails here rather than on a player's screen.
+/// that reads the camera instead draws unjittered, which the temporal resolve shows as one layer shimmering against the
+/// rest, so a new one fails here rather than on a player's screen.
 /// <para>
 /// A text sweep in the style of <c>MetalCopyBufferCallSiteTests</c>: it blanks comments, then looks for a camera
 /// matrix member (<c>View</c>, <c>Projection</c>, <c>ViewProjection</c>, <c>AbsoluteViewProjection</c>) read off
@@ -117,7 +117,7 @@ public sealed class FrameViewConsumerSweepTests
 
     /// <summary>
     /// Every call in the frame that is handed a camera matrix, and the side of the snapshot it takes. Rasterised into
-    /// the internal target: jittered. Drawn at display size after post, or applied after the resolve in round 2:
+    /// the internal target: jittered. Drawn at display size after post, or applied after the temporal resolve:
     /// unjittered. CPU spatial work: unjittered. A new matrix-carrying pass adds its row here, and
     /// <see cref="EveryMatrixUseInScene3DHasACallSiteRow"/> fails on a matrix use that has none.
     /// </summary>
@@ -130,7 +130,7 @@ public sealed class FrameViewConsumerSweepTests
         new("Scene3D.cs", "_decalRenderer.Draw(", 2, @"\bvp\b", RasterForbidden, "blob shadows and ground decals"),
         new("Scene3D.cs", "DrawOverlayMeshes(", 1, @"\bvp\b", RasterForbidden, "overlay meshes in the model target"),
         new("Scene3D.cs", "DrawSilhouettes(", 1, @"\bvp\b", RasterForbidden, "silhouette hulls in the model target"),
-        new("Scene3D.cs", "_sky.Draw(", 1, @"^(?=.*" + Snapshot + @"\.View\b)(?=.*" + Snapshot + @"\.JitteredProjection\b)",
+        new("Scene3D.TemporalResolve.cs", "_sky.Draw(", 1, @"^(?=.*" + Snapshot + @"\.View\b)(?=.*" + Snapshot + @"\.JitteredProjection\b)",
             RasterForbidden, "the sky, which rebuilds NDC from gl_FragCoord through the projection"),
         new("Scene3D.cs", "_water.Draw(", 1, @"\bvp\b", RasterForbidden, "water"),
         new("Scene3D.cs", "_particleRenderer.Draw(", 1, @"\bvp\b", RasterForbidden, "particles"),
@@ -142,7 +142,7 @@ public sealed class FrameViewConsumerSweepTests
         new("Scene3D.cs", "_trails.SetFrameUniforms(", 1, Snapshot + @"\.JitteredViewProjection\b", RasterForbidden,
             "trails in the model target"),
         new("Scene3D.cs", "_distortionRenderer.Draw(", 1, @"\bdisplayVp\b", DisplayForbidden,
-            "the distortion field, applied after the temporal resolve in round 2"),
+            "the distortion field, applied after the temporal resolve"),
         new("Scene3D.cs", "DrawTargetOutlines(", 1, @"\bdisplayVp\b", DisplayForbidden, "target outlines after post"),
         new("Scene3D.cs", "_fills.Draw(", 1, @"\bdisplayVp\b", DisplayForbidden, "filled overlays after post"),
         new("Scene3D.cs", "_lines.Draw(", 1, @"\bdisplayVp\b", DisplayForbidden, "debug lines after post"),
@@ -153,6 +153,9 @@ public sealed class FrameViewConsumerSweepTests
             "the cascade fit"),
         new("Scene3D.cs", "FrustumCulling ? FrustumPlanes.Extract(", 1, @"\babsVp\b", CpuForbidden,
             "the camera frustum every CPU cull reads"),
+        new("Scene3D.TemporalResolve.cs", "TemporalResolveMath.BuildUniforms(", 1,
+            @"^(?=.*ViewInput\(current\))(?=.*ViewInput\(last\))", CpuForbidden,
+            "the resolve reprojects with the unjittered views, the jitter handed separately"),
         new("Scene3D.Foliage.cs", "MetresPerPixel(", 1, Snapshot + @"\.Projection\b", CpuForbidden,
             "the foliage pixel scale"),
         new("Scene3D.PointLightClusters.cs", "_model.BuildAndUploadPointLightClusters(", 1,

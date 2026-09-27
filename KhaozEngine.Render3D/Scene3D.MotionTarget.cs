@@ -27,9 +27,9 @@ public sealed partial class Scene3D
         return (record.Motion, record.MeshIndex, record.VertexCount);
     }
 
-    /// <summary>Whether this frame has a previous frame to measure motion against. Group B's
-    /// <see cref="PreviousFrameView"/> is null on the first temporal frame and after every reset, and every temporal
-    /// variant then writes exactly zero.</summary>
+    /// <summary>Whether this frame has a previous frame to measure motion against. <see cref="PreviousFrameView"/> is
+    /// null on the first temporal frame and after every reset, and every temporal variant then writes exactly
+    /// zero.</summary>
     bool MotionHistoryValid => PreviousFrameView is not null;
 
     /// <summary>The history previous object state is read from this frame, or null when there is none to read.</summary>
@@ -55,9 +55,9 @@ public sealed partial class Scene3D
         || _overlayMeshes.HoldsMotionShadersForTests || _silhouettes.HoldsMotionShadersForTests;
 
     /// <summary>Upload this frame's motion block and the rigid motion slots, before the model pass. The block carries
-    /// this frame's unjittered view-projection and last frame's, which group B has already rebased to this frame's
-    /// origin, or this frame's again with the flag at zero when there is no valid history, which makes every variant
-    /// write exactly zero. Both count toward the rigid instance stream's upload.</summary>
+    /// this frame's unjittered view-projection and last frame's, which the frame's first render has already rebased to
+    /// this frame's origin, or this frame's again with the flag at zero when there is no valid history, which makes
+    /// every variant write exactly zero. Both count toward the rigid instance stream's upload.</summary>
     internal void PrepareMotionFrame(IGpuCommandList cl)
     {
         if (!_res.MotionAllocated) return;
@@ -119,7 +119,7 @@ public sealed partial class Scene3D
 
     /// <summary>Pack every GPU-skinned caster's last frame into its <c>SkinnedMotionPalette</c> slot and upload them in
     /// one write. A draw with no key, a key with no last frame, a previous palette of another length (the key moved to
-    /// another mesh, group C amendment 1) or a frame with no valid history packs this frame's own, which is camera-only
+    /// another mesh) or a frame with no valid history packs this frame's own, which is camera-only
     /// motion. The upload counts toward the GPU-skinning uniforms.</summary>
     void PrepareGpuSkinnedMotion(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> boneSpan)
     {

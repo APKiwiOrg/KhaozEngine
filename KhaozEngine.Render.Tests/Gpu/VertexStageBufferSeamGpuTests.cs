@@ -12,16 +12,16 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
-/// THE SEAM THE RIGID MOTION VARIANT STANDS ON (temporal foundations plan, Task D1). The variant reads each keyed
-/// instance's previous transform from a read-only structured buffer in the VERTEX stage, at an index that arrives as an
-/// instance-rate attribute. No shipped program reads a structured buffer in the vertex stage, so this proves on each
-/// backend's own leg that the buffer binds to that stage, that an instance-rate attribute is offset by the draw's first
-/// instance, and that the fetched value indexes the buffer.
+/// THE SEAM THE RIGID MOTION VARIANT STANDS ON (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, section 3). The
+/// variant reads each keyed instance's previous transform from a read-only structured buffer in the VERTEX stage, at an
+/// index that arrives as an instance-rate attribute. No shipped program reads a structured buffer in the vertex stage,
+/// so this proves on each backend's own leg that the buffer binds to that stage, that an instance-rate attribute is
+/// offset by the draw's first instance, and that the fetched value indexes the buffer.
 /// <para>
 /// <see cref="TheRigidMotionVariantsTwoSetShapeIndexesTheBufferFromTheSlotAtLocationFifteen"/> repeats the proof in the
-/// exact binding shape Task D5 builds: the model layout at set 0, the motion block and the buffer at set 1, the model
-/// pass's vertex and instance streams at slots 0 and 1, and the slot at location 15 on slot 2. On Direct3D 11 that
-/// puts the buffer at vertex register t8, which
+/// exact binding shape the model renderer's rigid motion variant uses: the model layout at set 0, the motion block and
+/// the buffer at set 1, the model pass's vertex and instance streams at slots 0 and 1, and the slot at location 15 on
+/// slot 2. On Direct3D 11 that puts the buffer at vertex register t8, which
 /// <see cref="TheRigidMotionShapePutsThePreviousTransformsAtVertexRegisterT8OnDirect3D11"/> pins on every leg.
 /// </para>
 /// <para>
@@ -292,8 +292,8 @@ void main() {
     {
         CrossCompiledPair pair = SpirvCrossCompile.GlslPairToHlsl(RigidVert, RigidFrag, "rigid motion seam");
 
-        // Set 0 takes b0, t0 to t7, s0 and s1, so set 1's block is b1 and its buffer t8, the numbering plan Task D5
-        // adds to D3D11RegisterNumberingTests for the CPU side. The optimised module keeps no block names, so each
+        // Set 0 takes b0, t0 to t7, s0 and s1, so set 1's block is b1 and its buffer t8, the numbering
+        // D3D11RegisterNumberingTests pins for the CPU side. The optimised module keeps no block names, so each
         // stage is read as the set of registers it names, plus the one ByteAddressBuffer's own register.
         Match buffer = Regex.Match(pair.VertexSource, @"ByteAddressBuffer\s+\w+\s*:\s*register\((\w+)\)");
         string vertex = Registers(pair.VertexSource), fragment = Registers(pair.FragmentSource);

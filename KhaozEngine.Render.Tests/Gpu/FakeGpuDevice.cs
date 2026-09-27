@@ -53,7 +53,15 @@ namespace KhaozEngine.Tests.Gpu
         /// thing a resource transaction does, so a test asserting that a retry was skipped asserts on this.</summary>
         internal int WaitForIdleCalls { get; private set; }
 
-        public void WaitForIdle() => WaitForIdleCalls++;
+        /// <summary>Runs inside every <see cref="WaitForIdle"/>, so a test can read what was already freed when a
+        /// drain began and pin that the drain came first.</summary>
+        internal Action? OnWaitForIdle { get; set; }
+
+        public void WaitForIdle()
+        {
+            WaitForIdleCalls++;
+            OnWaitForIdle?.Invoke();
+        }
 
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, ReadOnlySpan<T> data) where T : unmanaged { }
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, T[] data) where T : unmanaged { }

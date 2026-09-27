@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.InteropServices;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -172,19 +173,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
 
             List<OpenBlock> open = _open[_slot];
+            Span<OpenBlock> blocks = CollectionsMarshal.AsSpan(open);
 
-            for (int i = open.Count - 1; i >= 0; i--)
+            for (int i = blocks.Length - 1; i >= 0; i--)
             {
-                if (open[i].TryBump(sizeBytes, alignment, out VulkanStagingLease lease))
-                {
-                    return lease;
-                }
+                if (TryBump(ref blocks[i], sizeBytes, alignment, out VulkanStagingLease lease)) return lease;
             }
 
-            var opened = new OpenBlock(TakeBlock(sizeBytes, alignment));
-            open.Add(opened);
+            open.Add(new OpenBlock(TakeBlock(sizeBytes, alignment)));
 
-            if (opened.TryBump(sizeBytes, alignment, out VulkanStagingLease fresh)) return fresh;
+            // THE SPAN IS TAKEN AGAIN AFTER THE ADD, because the Add may have grown the list and moved its backing
+            // array out from under the one read above.
+            ref OpenBlock opened = ref CollectionsMarshal.AsSpan(open)[open.Count - 1];
+            if (TryBump(ref opened, sizeBytes, alignment, out VulkanStagingLease fresh)) return fresh;
 
             throw new InvalidOperationException(
                 "A native Vulkan staging block of "
@@ -328,28 +329,36 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             BlocksDestroyed++;
         }
 
-        // One block plus how far it has been bumped. A class rather than a struct because the list holds it and a
-        // bump has to be visible to the next Take through that list.
-        sealed class OpenBlock
+        // ONE BLOCK PLUS HOW FAR IT HAS BEEN BUMPED, held INLINE in the slot's list rather than as an object per
+        // block. A class cost 48 bytes every time a slot opened a block, and a list's Begin reopens its slot on
+        // every recording, so a steady frame with any staged upload paid it once per render. The list's backing
+        // array is already the storage a struct needs, and Clear keeps its capacity across frames.
+        struct OpenBlock
         {
-            ulong _used;
-
-            internal OpenBlock(VulkanStagingBlock block) => Block = block;
-
-            internal VulkanStagingBlock Block { get; }
-
-            internal bool TryBump(ulong sizeBytes, ulong alignment, out VulkanStagingLease lease)
+            internal OpenBlock(VulkanStagingBlock block)
             {
-                lease = default;
-
-                if (!VulkanMemoryFreeList.TryAlignUp(_used, alignment, out ulong offset)) return false;
-                if (offset > Block.SizeBytes || sizeBytes > Block.SizeBytes - offset) return false;
-
-                lease = new VulkanStagingLease(
-                    Block.Buffer, offset, Block.Mapped + (nint)offset, sizeBytes);
-                _used = offset + sizeBytes;
-                return true;
+                Block = block;
+                Used = 0;
             }
+
+            internal readonly VulkanStagingBlock Block;
+            internal ulong Used;
+        }
+
+        // A STATIC TAKING THE RECORD BY REF, so a bump on a copy (a List indexer, a foreach variable) is a compile
+        // error rather than a lease that silently overlaps the next one. A mutating instance method would compile
+        // against either and only one of them would move the bump.
+        static bool TryBump(ref OpenBlock block, ulong sizeBytes, ulong alignment, out VulkanStagingLease lease)
+        {
+            lease = default;
+
+            if (!VulkanMemoryFreeList.TryAlignUp(block.Used, alignment, out ulong offset)) return false;
+            if (offset > block.Block.SizeBytes || sizeBytes > block.Block.SizeBytes - offset) return false;
+
+            lease = new VulkanStagingLease(
+                block.Block.Buffer, offset, block.Block.Mapped + (nint)offset, sizeBytes);
+            block.Used = offset + sizeBytes;
+            return true;
         }
     }
 }

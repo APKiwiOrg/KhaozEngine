@@ -10,8 +10,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// A real-device <see cref="Scene3D"/> driven frame after frame the way a game drives it: Begin, a deterministic effect
 /// clock, the caller's draws, PrepareFrame, one recording into the fixture's own display target, Submit and a drain.
 /// The internal size follows the display size (<see cref="RenderScale.MatchViewport"/>), the render origin is pinned at
-/// zero until a test moves it, and the camera looks at the world origin. Round 2 renders its acceptance scenes through
-/// it (TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24).
+/// zero until a test moves it, and the camera looks at the world origin. The temporal resolve's acceptance scenes
+/// render through it (TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24, section 7).
 /// </summary>
 public sealed class TemporalFixture : IDisposable
 {
@@ -84,6 +84,20 @@ public sealed class TemporalFixture : IDisposable
         Device.Submit(_commands);
         Device.WaitForIdle();
         LastSubmitMilliseconds = Stopwatch.GetElapsedTime(submitted).TotalMilliseconds;
+    }
+
+    /// <summary>A later render inside the frame the last <see cref="Frame"/> began, with no Begin, into a scratch
+    /// target of <paramref name="width"/> x <paramref name="height"/>, as an offscreen capture makes. Returns its RGBA8
+    /// pixels.</summary>
+    public byte[] RenderSecond(int width, int height)
+    {
+        using IGpuTexture texture = CreateTarget(Device.Factory, width, height);
+        using IGpuFramebuffer target = Device.Factory.CreateFramebuffer(null, texture);
+        using (GpuRecording.Open(Device, _commands, "TemporalFixture.RenderSecond"))
+            Scene.RenderInternal(_commands, width, height, target);
+        Device.Submit(_commands);
+        Device.WaitForIdle();
+        return GpuReadback.ToRgba(Device, texture, width, height);
     }
 
     /// <summary>Begin <paramref name="count"/> frames without rendering them, so a fresh fixture can meet another at

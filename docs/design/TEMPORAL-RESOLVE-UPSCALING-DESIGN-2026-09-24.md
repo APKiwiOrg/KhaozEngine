@@ -55,10 +55,12 @@ A new `RenderScale.Temporal` sizing mode, forced while `AntiAliasing.Temporal` i
 | `Quality` | 1 / 1.5 | 44% |
 | `Balanced` | 1 / 1.7 | 35% |
 | `Performance` | 1 / 2.0 | 25% |
+| `UltraPerformance` | 1 / 3.0 | 11% |
 
-`Post.Temporal.Upscale` takes a preset or an explicit ratio from 0.5 to 1.0. A ratio change resets history, per round
-1. Dynamic resolution, which would change the ratio every frame without a reset, is out of scope, and the resolve's
-inputs are sized per frame so it can be added later.
+`Post.Temporal.Upscale` takes a preset. `Post.Temporal.UpscaleRatio`, when set, overrides it with an explicit ratio
+from 0.33 to 1.0. A change of the ratio in effect resets history, per round 1. Dynamic resolution, which would change
+the ratio every frame without a reset, is out of scope, and the resolve's inputs are sized per frame so it can be added
+later.
 
 ## 3. The resolve
 
@@ -76,11 +78,11 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
    sampling blurs a little more every frame, and a stability-first filter keeps history for many frames.
 3. **Disocclusion.** Reproject the pixel's linear depth and compare it with the previous frame's depth at the
    reprojected position. Beyond a relative tolerance the pixel was hidden last frame, and its history weight drops to
-   zero. A reprojected position off screen does the same.
+   zero. A reprojected position off screen does the same. A moving surface skips the test (amendment 17).
 4. **Current sample reconstruction.** Gather the 3x3 internal samples around the display pixel and weight each by a
    Lanczos 2 kernel on the distance from its jittered sample position to the display pixel centre, measured in
    internal pixels. That is what turns jittered low resolution frames into a higher resolution image, and at `Native`
-   it reduces to plain temporal anti-aliasing.
+   it reduces to plain temporal anti-aliasing. The kernel is separable (amendment 18).
 5. **Neighbourhood clipping.** Convert to YCoCg and build a variance box, mean plus or minus gamma times the standard
    deviation, over the 3x3 internal neighbourhood. Clip the history towards the box centre, not a clamp to its
    corners, which keeps colour. Gamma widens where the pixel's motion is small and tightens as it grows, so a still or
@@ -88,7 +90,8 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
 6. **Thin feature retention.** A pixel whose luma has been stable in history but falls outside a box built from a
    single thin feature would be clipped away every frame, which is exactly distant grass. A per-pixel luma stability
    term, stored with the history confidence, holds such pixels against clipping while their reprojected history
-   stays consistent, and releases them on disocclusion, reactive content or large motion.
+   stays consistent, and releases them on disocclusion, reactive content or large motion, and at moving edges
+   (amendment 19).
 7. **Reactive estimate.** The luma difference between the opaque-only copy and the final colour marks pixels that
    transparent content changed: particles, billboards, beams, trails, decals and water. Those pixels take a lower
    history weight, so a smoke puff or a splash does not leave a trail. An explicit reactive input can override the
@@ -121,8 +124,9 @@ unchanged.
 
 - `AntiAliasing.Temporal`, a new mode, and `AntiAliasingMode.Temporal`. Anti-aliasing resolution refuses it with
   Pixelated and never combines it with MSAA.
-- `Post.Temporal.Upscale` (`TemporalUpscale.Native`, `Quality`, `Balanced`, `Performance`, or a ratio),
-  `Post.Temporal.Sharpness` and `Post.Temporal.MipBiasOffset`, beside round 1's cut thresholds.
+- `Post.Temporal.Upscale` (`TemporalUpscale.Native`, `Quality`, `Balanced`, `Performance` or `UltraPerformance`), the
+  nullable `Post.Temporal.UpscaleRatio` that overrides it, `Post.Temporal.Sharpness` and
+  `Post.Temporal.MipBiasOffset`, beside round 1's cut thresholds.
 - `Scene3D.LastTemporalDiagnostics` gains the internal and display sizes, the preset, and per-frame counts of
   disoccluded, reactive and clipped pixels, sampled on a coarse grid so reading them costs nothing measurable.
 - `Scene3D.DebugView` gains `History`, `Disocclusion` and `Reactive`.
@@ -212,3 +216,32 @@ and changed these details. Each group's "Contract amendments" block carries the 
     accumulated rather than jittered. A non-black outline colour mixes before the tonemap there (Task F16b).
 11. Round 3 keys carcasses, which move through their 0.9 s collapse (group I).
 12. The release version is chosen at release time by the ride rule: an untagged staged minor is ridden (Task H5).
+13. The distortion offset field keeps its internal-relative size. Only its apply pass moves to the display resolution,
+    after the resolve (group E).
+14. A frame resolves on its first render only. A later render inside the frame, such as an offscreen capture, may use
+    another camera or size while its motion pairs with the first render's previous view, so it is never resolved. It
+    renders unjittered and runs the internal post chain, bloom included, on a post chain of its own, so it looks like a
+    render without temporal anti-aliasing at the internal size. It leaves the history targets, their pair and their
+    contents untouched, and neither post chain is rebound per frame (group E).
+15. Under the resolve the internal targets carry no bloom or ping pair, because the display chain has its own. The first
+    later render at the same internal size adds both in place, never by recreating targets an earlier render in the
+    frame still reads, and they stay until temporal anti-aliasing turns off, so a host that captures every frame at that
+    size reallocates nothing per frame. A later render at another size resizes the internal targets, which recreates
+    them ([#1167](https://github.com/APKiwiOrg/KhaozEngine/issues/1167)) (group E).
+16. The frozen layer of the screen dissolve (`TransitionRenderer`) is captured from the internal colour before the post
+    chain in every mode, so under the resolve it holds an unresolved internal frame
+    ([#1166](https://github.com/APKiwiOrg/KhaozEngine/issues/1166)).
+17. Step 3's depth test is one-sided and its expected depth assumes a static point, so it runs only where the dilated
+    texel's motion carries its own sample within `MovingSurfaceInternalPixels` (half an internal pixel), plus
+    `MovingSurfaceMotionFraction` (1/1024) of that motion, of the UV the camera alone gives that point. A surface that
+    moved skips the test. Under a perspective camera so does a static point on or behind last frame's camera plane. Under
+    an orthographic camera that point keeps the test and is rejected as disoccluded, because its expected depth is not in
+    front. A surface moving out from behind a static occluder therefore keeps no disocclusion test and relies on
+    neighbourhood clipping (step 5).
+18. Step 4's kernel is the product of two 1D Lanczos 2 weights, one per axis, not a radial Lanczos 2 on the distance.
+    The same product at display scale gives the current sample's weight.
+19. Step 6's lock also releases at a moving edge, where the centre texel moves otherwise than the dilated nearest
+    surface: it is scaled down by `LockEdgeRelease` per internal pixel of that difference. Where the difference passes
+    `LockEdgeMotionFraction` of the dilated motion and `LockEdgeFloorInternalPixels`, and all four stored previous
+    depths lie farther than the moving surface's expected depth by more than the disocclusion tolerance, the history
+    there is a farther surface's, and the lock read with it is dropped before a ridge can refresh it.

@@ -47,10 +47,12 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// into, the fence gate that decides when a segment may be reused, the mapped-ring registry the next
     /// <c>Submit</c> unmaps, and the M3 backpressure counters.
     /// <para>
-    /// SEGMENT ROTATION IS DEVICE-WIDE. Frame N writes segment <c>N % FramesInFlight</c> in EVERY ring at once,
+    /// SEGMENT ROTATION IS DEVICE-WIDE. Rotation N writes segment <c>N % FramesInFlight</c> in EVERY ring at once,
     /// so this type holds the segment index and each <see cref="D3D11UniformRing"/> multiplies it by its own
-    /// stride. One index rather than one per buffer is what makes a frame's uniforms consistent: a bind computes
-    /// its first constant from the same segment every write in that frame went to.
+    /// stride. One index rather than one per buffer is what makes a submission's uniforms consistent: a bind
+    /// computes its first constant from the same segment every write before it went to. The present rotates, and
+    /// so does a record-time write that follows a submission which carried record-time writes
+    /// (D3D11RingAllocator.Submissions.cs), so a submission still queued keeps its segment.
     /// </para>
     /// <para>
     /// THE GATE IS A COMPLETION READ AND NOTHING ELSE (decision U5, and the dependency work-breakdown row 8 waited
@@ -107,7 +109,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// that contract, because the recording half of the pair is any-thread by design.
     /// </para>
     /// </summary>
-    internal sealed class D3D11RingAllocator
+    internal sealed partial class D3D11RingAllocator
     {
         readonly ID3D11CompletionRead _completion;
         readonly object _submitLock;
@@ -197,8 +199,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// Deliberately not the segment the GPU is executing (section 6.4).</summary>
         internal int CurrentSegment => _segment;
 
-        /// <summary>Frames begun since the device was created. <see cref="CurrentSegment"/> is this modulo
-        /// <see cref="FramesInFlight"/>, and the wrap is the whole mechanism.</summary>
+        /// <summary>Frames begun since the device was created, one per present. Each also rotates the segment, and
+        /// so does a record-time write that follows a submission which carried record-time writes (see
+        /// <see cref="BeforeRecordWrite"/>), so <see cref="CurrentSegment"/> is the rotation count, not this, modulo
+        /// <see cref="FramesInFlight"/>.</summary>
         internal ulong FrameIndex => _frameIndex;
 
         /// <summary>How many rings currently hold a mapping, which is how many unmaps the next submit owes.
@@ -206,15 +210,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         internal int MappedRingCount => _mappedRings.Count;
 
         /// <summary>The backpressure of the frame that has ENDED. Rolled by <see cref="BeginFrame"/>. This is the
-        /// M3 measurement, and it counts frame-boundary segment stalls ALONE (see
-        /// <see cref="OffTimelinePatches"/>).</summary>
+        /// M3 measurement, and it counts segment stalls ALONE, at a frame boundary or at a rotation a record-time
+        /// write owed (see <see cref="OffTimelinePatches"/>).</summary>
         internal D3D11BackpressureStats LastFrameBackpressure => _lastFrame;
 
         /// <summary>
         /// The SAME segment stalls accumulated since the device was created, which is the half a telemetry session
         /// can carry. <see cref="BeginFrame"/> never rolls it, so M3's exit criterion reads as one subtraction
         /// across the capture window instead of a bet that the sampler happened to land on the stalling frame.
-        /// Still frame-boundary stalls ALONE, so it is no more foldable with <see cref="OffTimelinePatches"/> than
+        /// Still segment stalls ALONE, so it is no more foldable with <see cref="OffTimelinePatches"/> than
         /// the per-frame roll is. See <see cref="WaitTotals"/>.
         /// <para>
         /// READ A FIELD AT A TIME, because a telemetry sampler is on whatever thread the consumer runs it on while
@@ -330,8 +334,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 throw new InvalidOperationException(
                     "BeginFrame was called on the native Direct3D 11 ring allocator while the caller held the "
                     + "submit lock. Opening a frame waits for the GPU to finish with the segment it opens, which "
-                    + "is up to a frame, and decision W4 holds the submit lock for microseconds. Call it after "
-                    + "the present has released the lock, not inside it.");
+                    + "is up to a frame, and the submit lock is held for microseconds, never across a GPU wait. "
+                    + "Call it after the present has released the lock, not inside it.");
             }
 
             _lastFrame = new D3D11BackpressureStats(_stallCount, _stallTicks * 1000d / Stopwatch.Frequency);
@@ -339,29 +343,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _stallTicks = 0L;
 
             _frameIndex++;
-            int next = (int)(_frameIndex % (ulong)FramesInFlight);
-            AcquireSegment(next);
-            AdoptSegmentUnderLock(next);
-        }
-
-        /// <summary>
-        /// RECORD WHICH SUBMISSION THE CURRENT SEGMENT WAS LAST USED BY, from the value that submission signalled.
-        /// Called by the submit path right after the end-of-replay signal, inside the submit lock.
-        /// <para>
-        /// This is the other half of the gate. Without it a segment carries no target, so it is handed back out
-        /// with no wait and the ring behaves exactly like the corruption U5 exists to prevent. A submit that
-        /// signalled nothing (value 0) records nothing, which is why the drivers refuse a ring allocator handed to
-        /// a submit with no signal sink.
-        /// </para>
-        /// <para>
-        /// The value is monotonic, so the last submission of a frame is the highest, and taking the maximum keeps
-        /// that true even if a caller records them out of order.
-        /// </para>
-        /// </summary>
-        internal void OnSubmitted(ulong completionValue)
-        {
-            if (completionValue == 0) return;
-            if (completionValue > _segmentOwner[_segment]) _segmentOwner[_segment] = completionValue;
+            Rotate();
         }
 
         /// <summary>
@@ -669,6 +651,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// invisible in. See <see cref="D3D11DrainSpin"/>.
         /// </para>
         /// <para>
+        /// IT FLUSHES ONCE BEFORE IT SPINS, and only when it has to wait. The completion poll never flushes, and a
+        /// signal still buffered on the immediate context is a point the GPU may never reach. A swapchain present used
+        /// to be the only way in here, and it flushes. A headless present rotates without flushing, and a record-time
+        /// write's owed rotation arrives with no present at all, so the gate hands the submitted work to the driver
+        /// itself, the same one flush the drain makes after its signal. A free segment costs one poll and no flush.
+        /// </para>
+        /// <para>
         /// The blocking wait the primary timeline offers is deliberately NOT used here. It belongs to the drain
         /// alone, it is the one member callable without the submit lock, and a segment wait is meant to be so rare
         /// that arming an event for it would cost more than the spin it replaces.
@@ -679,6 +668,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             ulong target = _segmentOwner[segment];
             if (target == 0) return;
             if (_completion.CompletedValue >= target) return;
+
+            // A wait is owed, so flush ONCE before spinning, as the drain does after its signal. The poll never
+            // flushes, and without a present in between (every headless loop) nothing else hands the awaited
+            // submission's signal to the driver, so the spin could wait for a point the GPU never reaches.
+            _completion.FlushSubmitted();
 
             long start = Stopwatch.GetTimestamp();
             var spin = new SpinWait();
@@ -728,8 +722,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <summary>
         /// APPLY THE SEGMENT'S PENDING PATCHES AND THEN PUBLISH IT AS CURRENT, in ONE hold of the submit lock.
-        /// Called by <see cref="BeginFrame"/> after <see cref="AcquireSegment"/> has proved the GPU is finished
-        /// with it, which is what makes the copies safe.
+        /// Called by every rotation, the frame boundary's <see cref="BeginFrame"/> and a record-time write's owed one
+        /// (<see cref="BeforeRecordWrite"/>), after <see cref="AcquireSegment"/> has proved the GPU is finished with
+        /// it, which is what makes the copies safe.
         /// <para>
         /// THE TWO STEPS ARE ONE CRITICAL SECTION ON PURPOSE, and the order inside it is load-bearing. An
         /// off-timeline write that observes this segment as current copies into it directly, so if it could
@@ -776,6 +771,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 }
 
                 _segment = segment;
+                _currentSegmentSubmitted = false;
             }
         }
     }

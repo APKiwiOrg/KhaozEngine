@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Render3D;
 /// its temporal state at its first render, so a requester changed after that render takes effect on the next frame.</summary>
 public sealed class SceneDebugViewTests
 {
-    /// <summary>The two round 1 requesters of temporal rendering.</summary>
+    /// <summary>The two requesters of temporal rendering other than temporal anti-aliasing.</summary>
     public enum Requester
     {
         DebugView,

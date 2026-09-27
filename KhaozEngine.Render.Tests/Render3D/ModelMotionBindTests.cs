@@ -12,7 +12,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Render3D;
 
 /// <summary>What the model renderer's skinned and ground draw paths bind under the base and the temporal model target,
-/// read off a recording list over a fake device. The CPU-skinned facts pin the fix for the defect D5 left behind: a
+/// read off a recording list over a fake device. The CPU-skinned facts pin the fix for an earlier defect: a
 /// temporal target made the rigid pipeline the rigid motion variant, and CPU-skinned draws kept binding it with neither
 /// its set 1 nor its vertex slot 2.</summary>
 public sealed class ModelMotionBindTests

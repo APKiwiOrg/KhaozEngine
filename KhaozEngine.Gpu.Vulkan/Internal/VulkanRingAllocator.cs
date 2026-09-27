@@ -11,9 +11,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// the completion gate that decides when a segment may be reused, the off-timeline write's pending-patch queue,
     /// and the backpressure this row folds into MV3's accumulator.
     ///
-    /// <para><b>SEGMENT ROTATION IS DEVICE-WIDE.</b> Frame N writes segment <c>N % FramesInFlight</c> in EVERY ring
-    /// at once, so this type holds the index and each <see cref="VulkanUniformRing"/> multiplies it by its own
-    /// stride. One index rather than one per buffer is what makes a frame's uniforms consistent. It is NOT the
+    /// <para><b>SEGMENT ROTATION IS DEVICE-WIDE.</b> Rotation N writes segment <c>N % FramesInFlight</c> in EVERY
+    /// ring at once, so this type holds the index and each <see cref="VulkanUniformRing"/> multiplies it by its own
+    /// stride. One index rather than one per buffer is what makes a submission's uniforms consistent. The present
+    /// rotates, and so does a record-time write that follows a submission which carried record-time writes (see
+    /// <see cref="BeforeRecordWrite"/>), so a submission still queued keeps its segment. It is NOT the
     /// command list's pool slot, which advances per <c>Begin</c> and belongs to one list: one depth, two indexes
     /// (see <see cref="VulkanFramesInFlight"/>).</para>
     ///
@@ -39,10 +41,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <see cref="VulkanTimeline.CompletedValue"/> answers with everything ever allocated once liveness has
     /// flipped, so a segment wait during teardown finds its target already reached and returns.</para>
     ///
-    /// <para><b>THE OFF-TIMELINE WRITE NEVER WAITS FOR ANYTHING</b>, which is what keeps
-    /// <see cref="BeginFrame"/> the only member here that can block, and what makes a caller who already holds the
-    /// submit lock LEGAL: the lock is a <see cref="Monitor"/>, so the acquisition inside is a free re-entry, and
-    /// there is nothing inside that could wait for work only another thread could do.</para>
+    /// <para><b>THE OFF-TIMELINE WRITE NEVER WAITS FOR ANYTHING</b>, which is what keeps the rotations
+    /// (<see cref="BeginFrame"/> and <see cref="BeforeRecordWrite"/>) the only members here that can block, and what
+    /// makes a caller who already holds the submit lock LEGAL: the lock is a <see cref="Monitor"/>, so the
+    /// acquisition inside is a free re-entry, and there is nothing inside that could wait for work only another
+    /// thread could do.</para>
     ///
     /// <para><b>EVERYTHING HERE IS DEVICE-FREE.</b> The timeline is behind
     /// <see cref="IVulkanTimelineSemaphore"/> and there is no other native surface at all: the writes are memcpys
@@ -68,6 +71,19 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly List<VulkanUniformRing> _patchedRings = new();
 
         ulong _frameIndex;
+
+        // Segment rotations since the device was created: one per frame boundary and one per rotation a record-time
+        // write owes after a submission (see BeforeRecordWrite). CurrentSegment is this modulo FramesInFlight.
+        ulong _rotationIndex;
+
+        // Whether the current segment has taken a record-time write, and the timeline's LIST submit high-water when
+        // the last one landed. A list submission registered since then carried those writes out, so the next
+        // record-time write opens another segment. A setup flush raises only the full high-water and never counts.
+        // The flag is cleared when a segment is adopted, under the submit lock, and read by the record path without
+        // it, hence volatile. The high-water is the record path's alone, and one recording is open at a time
+        // (GpuRecording).
+        volatile bool _segmentWritten;
+        ulong _submittedAtLastWrite;
 
         // The segment the next submit binds. WRITTEN under the submit lock even though only the frame thread
         // advances it, because the off-timeline write reads it under that lock and the pair has to be exact. The
@@ -124,8 +140,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// Deliberately not the segment the GPU is executing.</summary>
         internal int CurrentSegment => _segment;
 
-        /// <summary>Frames begun since the device was created. <see cref="CurrentSegment"/> is this modulo
-        /// <see cref="FramesInFlight"/>, and the wrap is the whole mechanism.</summary>
+        /// <summary>Frames begun since the device was created, one per present. Each also rotates the segment, and
+        /// so does a record-time write that follows a submission which carried record-time writes (see
+        /// <see cref="BeforeRecordWrite"/>), so <see cref="CurrentSegment"/> is the rotation count, not this, modulo
+        /// <see cref="FramesInFlight"/>.</summary>
         internal ulong FrameIndex => _frameIndex;
 
         /// <summary>
@@ -177,14 +195,75 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 throw new InvalidOperationException(
                     "BeginFrame was called on the native Vulkan ring allocator while the caller held the submit "
                     + "lock. Opening a frame waits for the GPU to finish with the segment it opens, which is up to "
-                    + "a frame, and decision V-W8 holds the submit lock for microseconds. Call it after the present "
-                    + "has released the lock, not inside it.");
+                    + "a frame, and the submit lock is held for microseconds, never across a GPU wait. Call it after "
+                    + "the present has released the lock, not inside it.");
             }
 
+            _frameIndex++;
+            Rotate();
+        }
+
+        /// <summary>
+        /// BEFORE EVERY RECORD-TIME WRITE, from <see cref="VulkanUniformRing.Write"/>: once a submission has carried
+        /// record-time writes out of the current segment, open the next segment before this write lands, behind the
+        /// same close, gate and publish the frame boundary applies.
+        /// <para>
+        /// A SUBMISSION READS ITS SEGMENT WHEN THE GPU GETS TO IT, which can be well after the submit returned, and
+        /// a record-time write is a memcpy into coherent memory. So a write into the segment a queued submission
+        /// reads is the data race the gate exists to prevent. The frame boundary is the only other rotation, and a
+        /// headless loop never reaches it: every <c>Render3DSnapshot</c> capture and every GPU fact submits frame
+        /// after frame with no present, and each queued frame drew the newest frame's uniforms. A windowed frame
+        /// that opens a second recording after its first submit had the same exposure.
+        /// </para>
+        /// <para>
+        /// THE WINDOWED FRAME IS UNCHANGED. Its one submission is followed by the present, whose rotation clears the
+        /// owed one, so the next frame's writes open nothing. A submission that wrote no uniforms owes nothing
+        /// either. Detected from the timeline's LIST submit high-water
+        /// (<see cref="VulkanTimeline.LastListSubmitted"/>): a list submission registered since the segment's last
+        /// record-time write is one that carried it. A setup flush in the middle of a recording (from a
+        /// <c>WaitForIdle</c> or a <c>Map</c>, since an upload only appends to the setup buffer) raises only the
+        /// full high-water, so it neither rotates the open recording's segment nor closes it below that recording's
+        /// own submission. Allocates nothing.
+        /// </para>
+        /// <para>
+        /// A bind composes the segment current when its draw is recorded, so a recording's first uniform write comes
+        /// before its first draw or dispatch, which is the engine's order (every renderer uploads before its first
+        /// pass). A sealed recording that wrote uniforms is submitted before another list submission is followed by
+        /// a later uniform write, and no list is submitted while a recording that has written uniforms is open.
+        /// Called with the submit lock free, and refused otherwise, for the reason <see cref="BeginFrame"/> is: the
+        /// gate can wait for the GPU.
+        /// </para>
+        /// </summary>
+        internal void BeforeRecordWrite()
+        {
+            ulong submitted = _timeline.LastListSubmitted;
+            if (_segmentWritten && submitted != _submittedAtLastWrite)
+            {
+                if (Monitor.IsEntered(_submitLock))
+                {
+                    throw new InvalidOperationException(
+                        "A record-time uniform write on the native Vulkan ring owed a segment rotation while the "
+                        + "caller held the submit lock. The rotation waits for the GPU to finish with the segment it "
+                        + "opens, and the submit lock is held for microseconds, never across a GPU wait. Record "
+                        + "outside the lock.");
+                }
+
+                Rotate();
+            }
+
+            _submittedAtLastWrite = submitted;
+            if (!_segmentWritten) _segmentWritten = true;
+        }
+
+        // Close the outgoing segment, advance, wait there while the GPU still reads it, then apply its pending
+        // patches and publish it. The frame boundary and a record-time write's owed rotation both come here, in the
+        // order BeginFrame's remarks give.
+        void Rotate()
+        {
             CloseCurrentSegmentUnderLock();
 
-            _frameIndex++;
-            int next = (int)(_frameIndex % (ulong)FramesInFlight);
+            _rotationIndex++;
+            int next = (int)(_rotationIndex % (ulong)FramesInFlight);
 
             AcquireSegment(next);
             AdoptSegmentUnderLock(next);
@@ -374,6 +453,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 }
 
                 _segment = segment;
+                _segmentWritten = false;
             }
         }
     }

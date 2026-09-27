@@ -20,8 +20,10 @@ namespace KhaozEngine.Tests.Gpu
     /// this reading hands the recorder a struct of its own, which an interface parameter would box the same way.
     /// </para>
     /// <para>
-    /// <b>ONE OPEN SLOT, AND THAT BOUND IS DELIBERATE.</b> Every upload measured here bumps the block the warm-up
-    /// opened, so the reading is the recorder's own. The arena's slot rotation is outside it.
+    /// <b>ONE OPEN SLOT, AND THAT BOUND IS DELIBERATE.</b> Every upload measured by
+    /// <see cref="AStagedUploadAllocatesNothing"/> bumps the block the warm-up opened, so that reading is the
+    /// recorder's own. <see cref="ASteadyRotationOfArenaSlotsAllocatesNothing"/> is the arena's slot rotation, which
+    /// is what every list <c>Begin</c> does before the frame's first staged upload.
     /// </para>
     /// <para>
     /// <b>THE SINKS AND THE SCOPE ARE LOCAL AND SILENT</b>, because the shared fakes log every call into a growing
@@ -63,6 +65,46 @@ namespace KhaozEngine.Tests.Gpu
                 "fewer copies were recorded than uploads were made, so the reading above measured less than it claims");
             Assert.Equal(2 * counts.Copies, counts.Barriers);
             Assert.Equal(counts.Copies, scope.Ended);
+        }
+
+        /// <summary>
+        /// Each frame opens the next slot, as a list <c>Begin</c> does, and stages uploads into it. The slot gives
+        /// its block back to the pool and the first upload takes it out again, so after the warm-up no block is
+        /// created and the measured frames must allocate nothing. A per-block record held as an object cost one
+        /// allocation every time a slot reopened, which is once per recording on a steady frame.
+        /// </summary>
+        [Fact]
+        public void ASteadyRotationOfArenaSlotsAllocatesNothing()
+        {
+            const int FramesInFlight = 3, MeasuredFrames = 24;
+            using var source = new NativeStagingSource();
+            using var arena = new VulkanStagingArena(source, FramesInFlight, blockBytes: BlockBytes);
+
+            var counts = new Counts();
+            var scope = new CountingScope();
+            var destination = new FakeVulkanUploadBuffer(0xDEAD, DestinationBytes, GpuBufferUsage.VertexBuffer);
+            int frame = 0;
+
+            void Frames(int count)
+            {
+                for (int i = 0; i < count; i++, frame++)
+                {
+                    arena.BeginSlot(frame % FramesInFlight);
+                    Pass(arena, counts, scope, destination);
+                }
+            }
+
+            Frames(FramesInFlight * 2);
+
+            AllocAssert.NoPerCallAllocation($"{MeasuredFrames} frames of arena slot rotation with staged uploads",
+                () => Frames(MeasuredFrames));
+
+            // One block per slot, recycled through the pool ever after, so the reading above is about the per-block
+            // records rather than about blocks being created.
+            Assert.Equal(FramesInFlight, arena.BlocksCreated);
+            Assert.Equal(FramesInFlight, arena.OpenBlockCount);
+            Assert.True(counts.Copies >= UploadsPerPass * MeasuredFrames,
+                "fewer copies were recorded than uploads were made, so the reading above measured less than it claims");
         }
 
         void Pass(VulkanStagingArena arena, Counts counts, CountingScope scope, FakeVulkanUploadBuffer destination)

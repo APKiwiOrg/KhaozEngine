@@ -6,6 +6,7 @@ using KhaozEngine.Gpu.D3D11;
 using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
@@ -401,6 +402,8 @@ namespace KhaozEngine.Tests.Gpu
                 ("PixelPostProcess composite", PixelPostProcess.CompositeBufferBytes),
                 ("PixelPostProcess tone", PixelPostProcess.ToneBufferBytes),
                 ("PixelPostProcess apply", PixelPostProcess.ApplyBufferBytes),
+                ("TemporalResolveRenderer resolve UBO", TemporalResolveUniforms.SizeInBytes),
+                ("TemporalResolveRenderer depth store UBO", TemporalDepthStoreUniforms.SizeInBytes),
                 ("DistortionRenderer frame UBO", DistortionRenderer.FrameBufferBytes),
                 ("SkyRenderer UBO", SkyRenderer.UboBytes),
                 ("StarfieldRenderer UBO", StarfieldRenderer.UboBytes),

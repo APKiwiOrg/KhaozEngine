@@ -5,7 +5,7 @@ namespace KhaozEngine.Render3D.Internal
     /// <summary>
     /// Pure bloom math shared between the C# host (settings plumbing + headless tests) and the GLSL
     /// <c>BloomBrightFrag</c>/<c>BloomBlurFrag</c>, which mirror <see cref="KneeWeight"/> and
-    /// <see cref="GaussianWeights"/> exactly (keep in sync, like <c>OutlineMath</c> mirrors <c>EdgeFrag</c>). No GPU
+    /// <see cref="GaussianWeights(int)"/> exactly (keep in sync, like <c>OutlineMath</c> mirrors <c>EdgeFrag</c>). No GPU
     /// state, no allocations beyond the returned weight array.
     /// </summary>
     internal static class BloomMath
@@ -45,9 +45,22 @@ namespace KhaozEngine.Render3D.Internal
         public static float[] GaussianWeights(int radius)
         {
             if (radius < 0) throw new ArgumentOutOfRangeException(nameof(radius), "radius must be >= 0.");
+            var w = new float[2 * radius + 1];
+            GaussianWeights(radius, w);
+            return w;
+        }
+
+        /// <summary>The weights of <see cref="GaussianWeights(int)"/>, written into the first <c>2 * radius + 1</c>
+        /// entries of <paramref name="destination"/> without allocating. The post chain keeps one buffer of
+        /// <c>2 * MaxRadius + 1</c> and refills it only when the radius changes.</summary>
+        public static void GaussianWeights(int radius, Span<float> destination)
+        {
+            if (radius < 0) throw new ArgumentOutOfRangeException(nameof(radius), "radius must be >= 0.");
             int taps = 2 * radius + 1;
-            var w = new float[taps];
-            if (radius == 0) { w[0] = 1f; return w; }
+            if (destination.Length < taps)
+                throw new ArgumentException($"A radius of {radius} needs {taps} weights.", nameof(destination));
+            Span<float> w = destination[..taps];
+            if (radius == 0) { w[0] = 1f; return; }
 
             float sigma = MathF.Max(radius / 2f, 1e-4f);
             float twoSigma2 = 2f * sigma * sigma;
@@ -61,7 +74,6 @@ namespace KhaozEngine.Render3D.Internal
             }
             float invSum = (float)(1.0 / sum);
             for (int i = 0; i < taps; i++) w[i] *= invSum;
-            return w;
         }
 
         /// <summary>The largest blur radius (taps per side) the shader's fixed-size unroll supports (see

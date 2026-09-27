@@ -66,6 +66,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         // success and never by the allocation. See LastSubmitted for why the two are different fields.
         ulong _submitted;
 
+        // The highest value a LIST submission's vkQueueSubmit accepted, raised by RegisterListSubmitted beside
+        // RegisterSubmitted and never by a setup flush. See LastListSubmitted.
+        ulong _listSubmitted;
+
         long _totalDrainCount;
         long _totalDrainTicks;
 
@@ -220,6 +224,23 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         internal void RegisterSubmitted(ulong value)
         {
             if (value > Volatile.Read(ref _submitted)) Volatile.Write(ref _submitted, value);
+        }
+
+        /// <summary>
+        /// The highest value a COMMAND LIST submission's <c>vkQueueSubmit</c> accepted, 0 before any. A subset of
+        /// <see cref="LastSubmitted"/>: the device's setup flushes (from a <c>WaitForIdle</c> or a <c>Map</c>, and
+        /// ahead of a list in <c>Submit</c>) raise that one and never this. The uniform ring reads it to tell a
+        /// submission that carried an open recording's record-time writes, which only a list can, from a setup flush
+        /// in the middle of that recording, which carries none of them.
+        /// </summary>
+        internal ulong LastListSubmitted => Volatile.Read(ref _listSubmitted);
+
+        /// <summary>Record that a LIST submission signalling <paramref name="value"/> was accepted, right after
+        /// <see cref="RegisterSubmitted"/> on the list path and under the same submit lock. Setup flushes do not
+        /// call it.</summary>
+        internal void RegisterListSubmitted(ulong value)
+        {
+            if (value > Volatile.Read(ref _listSubmitted)) Volatile.Write(ref _listSubmitted, value);
         }
 
         /// <summary>

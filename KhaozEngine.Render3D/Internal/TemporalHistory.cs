@@ -4,16 +4,17 @@ namespace KhaozEngine.Render3D.Internal;
 
 /// <summary>
 /// The owner of everything a temporal technique carries from one frame to the next, and of whether that state can be
-/// trusted this frame (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, section 2). Round 1 holds only the
-/// validity. Round 2 adds the history targets, created while temporal rendering is active and dropped by
-/// <see cref="Invalidate"/>.
+/// trusted this frame (docs/design/TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md, section 2). It holds the validity, and
+/// the temporal resolve's history targets (TemporalHistory.Targets.cs). The targets are created while the resolve runs
+/// and kept across <see cref="Invalidate"/>, which only stops them being read for a frame. They are released when the
+/// resolve stops and recreated when a size changes.
 /// <para>
 /// It lives with <c>Scene3D</c>'s per-frame state rather than in <c>RenderResources</c>, so the resource rebuilds that
 /// change nothing temporal (a bloom toggle, the distortion field coming and going) do not discard it. The scene decides
 /// when to reset and hands over one reason per frame. This type only records it.
 /// </para>
 /// </summary>
-internal sealed class TemporalHistory
+internal sealed partial class TemporalHistory
 {
     /// <summary>Whether the previous frame's state can be read this frame. False until a frame has completed, and for
     /// the one frame after every reset.</summary>

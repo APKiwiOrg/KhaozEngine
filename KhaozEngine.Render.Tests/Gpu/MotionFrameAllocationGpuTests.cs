@@ -13,15 +13,20 @@ public sealed class MotionFrameAllocationGpuTests(ITestOutputHelper output)
 {
     const int W = 320, H = 180, Warm = 8, Measured = 16;
 
+    // The resolve rows select temporal anti-aliasing, so the steady frames also resolve, copy the opaque colour and run
+    // the post chain, bloom included, over the display targets.
     [GpuTheory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void ASteadyTemporalFrameAllocatesNoMoreThanTheSameFrameWithoutIt(bool gpuSkinning)
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void ASteadyTemporalFrameAllocatesNoMoreThanTheSameFrameWithoutIt(bool gpuSkinning, bool resolve)
     {
         using var fx = new TemporalFixture(W, H, s =>
         {
             s.UseGpuSkinning = gpuSkinning;
             s.Camera.OrthoSize = 10f;
+            s.Post.Bloom.Enabled = true;   // the bloom passes run on the steady frames too
         });
         Scene3D scene = fx.Scene;
         MeshHandle box = scene.LoadMesh(MeshPrimitives.Box(1f));
@@ -48,14 +53,19 @@ public sealed class MotionFrameAllocationGpuTests(ITestOutputHelper output)
         long without = Math.Min(Allocated(() => fx.Frames(Measured, draw)),
             Allocated(() => fx.Frames(Measured, draw)));
 
-        scene.ForceTemporalForTests = true;
+        if (resolve) scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+        else scene.ForceTemporalForTests = true;
         fx.Frames(Warm, draw);   // the first temporal frames build the target, the variants and the history
         Assert.NotNull(scene.MotionResourcesForTests);
+        Assert.Equal(resolve, scene.ResolvedLastRenderForTests);
+        if (resolve) Assert.True(scene.TemporalPostTargetsForTests!.BloomAllocated, "the display chain ran without bloom");
         long with = Allocated(() => fx.Frames(Measured, draw));
         if (with > without) with = Allocated(() => fx.Frames(Measured, draw));   // one retry, as AllocAssert allows
 
-        output.WriteLine($"{Measured} steady frames: {without} bytes without temporal rendering, {with} bytes with it");
+        output.WriteLine($"{Measured} steady frames: {without} bytes without temporal rendering, {with} bytes with it"
+            + (resolve ? " and the resolve" : ""));
         MotionFrameAllocationTests.AssertEveryPathRan(scene, gpuSkinning);
+        Assert.True(without == 0, $"{Measured} steady frames without temporal rendering allocated {without} bytes");
         Assert.True(with <= without,
             $"{Measured} steady temporal frames allocated {with} bytes, and the same frames without temporal rendering {without}");
     }

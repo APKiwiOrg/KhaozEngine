@@ -165,6 +165,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             }
         }
 
+        /// <summary>
+        /// Flush the immediate context under the submit lock, which is the drain's one flush without its signal.
+        /// <see cref="ID3D11CompletionRead"/>'s half for the constant-buffer ring: a segment wait targets a value an
+        /// earlier submission signalled, and on a headless loop nothing else hands that signal to the driver. A dead
+        /// device has nothing to flush and is not touched.
+        /// </summary>
+        public void FlushSubmitted()
+        {
+            if (_liveness.IsDead) return;
+
+            lock (_submitLock) _timeline.Flush();
+        }
+
         /// <summary>A fresh, unarmed fence. The seam's <c>IGpuResourceFactory.CreateFence</c> lands here, and
         /// unlike the Veldrid device there is no capability gate in front of it, because
         /// <see cref="SupportsCompletionFences"/> is unconditionally true.</summary>

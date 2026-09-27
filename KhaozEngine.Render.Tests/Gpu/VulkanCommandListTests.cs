@@ -268,6 +268,27 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(0, fixture.Backpressure.Totals.Count);
         }
 
+        /// <summary>A list submission raises both submit high-waters and a setup flush raises only the full one, which
+        /// is how the uniform ring tells a submission that carried an open recording's writes from a flush in the
+        /// middle of that recording.</summary>
+        [Fact]
+        public void A_list_submission_raises_the_list_high_water_and_a_setup_flush_does_not()
+        {
+            using var fixture = new Fixture();
+            VulkanCommandList list = fixture.CreateList();
+
+            ulong listValue = fixture.RecordAndSubmit(list);
+            Assert.Equal(listValue, fixture.Timeline.LastListSubmitted);
+
+            IVulkanCommandApi api = fixture.Api;
+            ulong setupBuffer = api.AllocatePrimaryBuffer(api.CreatePool());
+            ulong setupValue = fixture.Submits.SubmitSetup(setupBuffer);
+            Assert.True(setupValue > listValue);
+            Assert.Equal(setupValue, fixture.Timeline.LastSubmitted);
+            Assert.Equal(listValue, fixture.Timeline.LastListSubmitted);
+            list.Dispose();
+        }
+
         // ---- Disposal ----
 
         /// <summary>

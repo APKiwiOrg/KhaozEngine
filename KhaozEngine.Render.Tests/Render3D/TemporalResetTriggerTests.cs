@@ -61,6 +61,32 @@ public sealed class TemporalResetTriggerTests
     public void AChangeOfInternalSizeIsAResize()
         => AssertResetsForOneFrame(TemporalResetReason.Resize, _ => { }, width: 80);
 
+    /// <summary>A fixed internal size hides a window resize from the internal size check, so the display size is keyed
+    /// too, and the resize drops history for one frame.</summary>
+    [Fact]
+    public void AWindowResizeUnderAFixedInternalSizeIsAResize()
+    {
+        using var rig = new HeadlessSceneRig();
+        Scene3D scene = rig.Scene;
+        scene.Post.RenderScale = RenderScale.FixedInternal;
+        scene.Post.RenderWidth = HeadlessSceneRig.Width;
+        scene.Post.RenderHeight = HeadlessSceneRig.Height;
+        scene.DebugView = SceneDebugView.MotionVectors;
+        rig.Frame();
+        rig.Frame();
+        Assert.True(scene.TemporalHistory.IsValid, "the history must be valid before the change, or the reset proves nothing");
+
+        rig.Frame(80, HeadlessSceneRig.Height);
+        Assert.Equal((HeadlessSceneRig.Width, HeadlessSceneRig.Height), (scene.RenderTargetWidth, scene.RenderTargetHeight));
+        Assert.False(scene.TemporalHistory.IsValid);
+        Assert.Equal(TemporalResetReason.Resize, scene.TemporalHistory.LastReset);
+        Assert.Null(scene.PreviousFrameView);
+
+        rig.Frame(80, HeadlessSceneRig.Height);
+        Assert.True(scene.TemporalHistory.IsValid, "a reset drops history for one frame, not for good");
+        Assert.NotNull(scene.PreviousFrameView);
+    }
+
     [Fact]
     public void ABloomToggleOrADistortionFieldKeepsHistory()
     {

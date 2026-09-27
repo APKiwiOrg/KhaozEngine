@@ -155,9 +155,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// WRITE INTO THE CURRENT SEGMENT, which is what a record-time <c>UpdateBuffer</c> on a uniform buffer
         /// becomes: <c>memcpy(mapped + frameBase + offsetBytes, data, n)</c> and nothing else.
         /// <para>
-        /// LOCK-FREE ON THE HOT PATH, and here that is unqualified rather than nearly true. There is no mapping to
-        /// acquire, so this path takes no lock at all, ever. Two writes into one segment are two writes into plain
-        /// memory.
+        /// LOCK-FREE ON THE HOT PATH. There is no mapping to acquire, so a write takes no lock. Two writes into one
+        /// segment are two writes into plain memory. The one exception is the first write after a submission that
+        /// carried record-time writes, which opens the next segment first (see
+        /// <see cref="VulkanRingAllocator.BeforeRecordWrite"/>) and takes the lock for that rotation's close and
+        /// publish, so it never writes memory a queued submission reads.
         /// </para>
         /// <para>
         /// THE OFFSET IS AGAINST THE LOGICAL BUFFER and a write that runs past its end is refused. Without the
@@ -180,6 +182,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (data.Length == 0) return;
 
+            _allocator.BeforeRecordWrite();   // a segment a queued submission reads is never written
             CopyInto(_mapped, CurrentFrameBaseBytes + offsetBytes, data);
         }
 

@@ -181,6 +181,11 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
 
+            // Nothing is buffered here, so there is nothing to hand over.
+            public void FlushSubmitted()
+            {
+            }
+
             internal void ArmStallRelease(ulong releaseTo)
             {
                 _releaseTo = releaseTo;

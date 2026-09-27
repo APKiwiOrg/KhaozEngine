@@ -740,15 +740,54 @@ than for the call count: milestone M1 A/Bs the two drivers on a real frame and d
 maps twice per uniform write on one arm and once per submit on the other measures a handicap rather than the
 recording model.
 
-**A segment is recycled against a COMPLETION fence, never a submit receipt.** Frame N writes segment
+**A segment is recycled against a COMPLETION fence, never a submit receipt.** Rotation N writes segment
 `N % FramesInFlight`, and before handing that segment out the allocator reads the completion value the submission
 that last used it was signalled under and blocks while the GPU has not reached it. `FramesInFlight` is 3, and
-`KE_D3D11_FRAMES_IN_FLIGHT=<n>` moves it (1 to 16, an unparseable or out-of-range value warns and keeps 3). The
-bet is that three segments mean this never blocks at all, so the per-frame backpressure stall count and the total
-stall time are recorded: a non-zero count means the number is wrong for that machine, not that the design is. A
+`KE_D3D11_FRAMES_IN_FLIGHT=<n>` moves it (1 to 16, an unparseable or out-of-range value warns and keeps 3). Each
+submission that writes uniforms uses one segment. A windowed frame with one such submission uses one per frame, and
+the bet is that three segments mean that frame never blocks, so the per-frame backpressure stall count and the total
+stall time are recorded: a non-zero count in a windowed soak means the number is wrong for that machine, not that
+the design is. A headless loop has no present to space its submissions, so it is backpressured by design (its
+fourth writing submission waits for its first), and a frame with more than `FramesInFlight` writing submissions
+waits too. A
 ring gated on a submit receipt instead would hand back a segment the moment the CPU finished asking for the work
 rather than when the GPU finished doing it, and would overwrite uniforms a draw in flight is still reading, with
 nothing thrown and nothing logged.
+
+**A queued submission keeps its segment.** The present rotates, and so does a record-time write that follows a
+submission which carried record-time writes, behind the same gate. A submission reads its segment when the GPU gets
+to it, so without the second rotation a headless loop, which never presents, wrote every frame into the one segment
+its queued frames were still reading, and each of them drew the newest frame's uniforms. A windowed frame with one
+submission is unchanged, because its present clears the owed rotation, and a submission that wrote no uniforms owes
+none. The segment is the uniform version one submission reads, which is what the Metal backend gives each recording.
+A wait on a segment flushes the submitted work to the driver once before it spins, since without a present nothing
+else hands the awaited signal over, and a free segment costs one poll and no flush.
+
+Three ordering rules follow, and **submit** in them means `IGpuDevice.Submit` of a command list. The device's
+own internal flushes are not submissions: on Vulkan the setup buffer, which a `WaitForIdle` or a `Map` flushes to
+the queue and a `Submit` flushes ahead of its own list, never moves the copy. An upload only appends to it.
+
+1. Once a recording that wrote uniforms is sealed, submit it before any other submission that a uniform write
+   follows. Otherwise that write opens a fresh copy while the sealed recording is still unsubmitted, and its
+   uniforms stop being tied to its own submission: the deferred Direct3D 11 driver binds it to the fresh copy, and on
+   Vulkan and the immediate driver the copy it already bound can be reused while it is still queued.
+2. On Vulkan, and on Direct3D 11 under `KE_D3D11_RECORD=immediate`, make a recording's first uniform write before
+   its first draw or dispatch. Those drivers fix the copy a draw reads when the draw is recorded, and the first
+   write after a submission is the one that opens the fresh copy, so a draw recorded ahead of it reads the previous
+   copy. The default deferred Direct3D 11 driver binds at submit and has no such rule.
+3. Submit nothing while a recording that has written uniforms is still open. A submission in that window counts as
+   carrying the open recording's writes, so that recording's next write opens a fresh copy, and its earlier and
+   later writes land in copies it cannot bind together.
+
+**The fresh copy is read as well as written.** Once a recording that follows a writing submission makes its first
+uniform write, every ring-backed uniform buffer it binds is read from the fresh copy, including buffers it never
+wrote, which still hold whatever that copy held several writing submissions ago. So write each uniform buffer a
+recording reads inside that recording, or once through `IGpuDevice.UpdateBuffer`, which reaches every copy. A
+camera buffer written in a shadow list and then read unwritten in the main list gives the main list a stale camera.
+
+Each uniform-writing submission takes one copy, so a headless loop is backpressured by design (its fourth writing
+submission waits for its first to finish on the GPU) and so is a frame with more writing submissions than frames in
+flight.
 
 **BACKEND-DIVERGENT CREATION FAILURE: a uniform buffer combined with any other bindable usage throws here.**
 `UniformBuffer | StructuredBufferReadOnly` (or either read-write structured bit, or the vertex, index or indirect
@@ -833,7 +872,8 @@ that does keep climbing means patches are piling up for a segment nothing acquir
 off-timeline to a range a recording has ALREADY recorded a bind for, and then expecting that recorded bind to see
 the old value. It never worked, and the seam already documents that the CPU runs several frames ahead of the GPU.
 For the same reason, a record-time uniform write lands the moment it is made, so two writes to the same range
-inside one frame leave the second value for every draw of that frame, including draws recorded between them.
+inside one recording leave the second value for every draw of that recording, including draws recorded between
+them.
 Per-draw uniforms are addressed by dynamic offset rather than by rewriting one range, which is what the renderers
 already do and what makes the ring possible at all.
 

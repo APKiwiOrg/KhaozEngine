@@ -1280,49 +1280,19 @@ namespace KhaozEngine.Render3D
         internal int RenderTargetWidth => _res.Width;
         internal int RenderTargetHeight => _res.Height;
 
-        // Bloom half-res target state. Exposed for tests to assert bloom off allocates nothing, bloom on allocates
-        // exactly BloomMath.HalfResSize(RenderTargetWidth, RenderTargetHeight), and a resize/RenderScale change
-        // re-derives it; not part of the public surface.
+        // The internal chain's bloom half-res targets, for tests: none with bloom off, and none while the temporal resolve
+        // runs the chain over its display targets, else exactly BloomMath.HalfResSize(RenderTargetWidth,
+        // RenderTargetHeight), re-derived on a resize or RenderScale change. Not part of the public surface.
         internal bool BloomAllocated => _res.BloomAllocated;
         internal int BloomTargetWidth => _res.BloomWidth;
         internal int BloomTargetHeight => _res.BloomHeight;
-
-        /// <summary>
-        /// The internal render-target size for a given post config + viewport. <see cref="RenderScale.FixedInternal"/>
-        /// returns <see cref="PixelPostProcessSettings.RenderWidth"/>/<c>RenderHeight</c> unchanged (the historical
-        /// path). <see cref="RenderScale.MatchViewport"/> tracks the viewport, clamped to
-        /// <see cref="PixelPostProcessSettings.MaxRenderWidth"/>/<c>MaxRenderHeight</c> with aspect preserved, each
-        /// dimension at least 1. Pure + headless-testable (no GPU). Stable once the viewport is at/over the cap for a
-        /// fixed aspect, so <see cref="EnsureSize"/> doesn't thrash.
-        /// </summary>
-        internal static (int W, int H) ComputeTargetSize(PixelPostProcessSettings s, int viewportW, int viewportH)
-        {
-            // Read the AA-resolved sizing (AntiAliasing.Ssaa forces MatchViewport + its factor); AntiAliasing.Off
-            // leaves these equal to the raw RenderScale/Supersample fields, so existing callers are unchanged.
-            if (s.EffectiveRenderScale == RenderScale.FixedInternal)
-                return (s.RenderWidth, s.RenderHeight);
-
-            // MatchViewport: render at the framebuffer size x the supersample factor (SSAA), capped
-            // (aspect-preserving downscale) so a huge window / big factor doesn't allocate an unbounded target.
-            // Guard against a zero/negative viewport during startup/minimise.
-            float ss = MathF.Max(1f, s.EffectiveSupersample);
-            int vw = Math.Max(1, (int)MathF.Round(Math.Max(1, viewportW) * ss));
-            int vh = Math.Max(1, (int)MathF.Round(Math.Max(1, viewportH) * ss));
-            int maxW = Math.Max(1, s.MaxRenderWidth);
-            int maxH = Math.Max(1, s.MaxRenderHeight);
-            if (vw <= maxW && vh <= maxH) return (vw, vh);
-            float scale = ViewportMath.Fit(vw, vh, maxW, maxH);
-            int w = Math.Max(1, (int)MathF.Round(vw * scale));
-            int h = Math.Max(1, (int)MathF.Round(vh * scale));
-            return (w, h);
-        }
 
         /// <summary>
         /// Whether the final internal-target -> viewport blit is a genuine DOWNSCALE that should be filtered with a
         /// mip chain (a correct multi-tap box) rather than the historical single bilinear tap. True under
         /// <see cref="RenderScale.MatchViewport"/> supersampling (or a cap-forced downscale), and ALSO under
         /// <see cref="RenderScale.FixedInternal"/> when <see cref="PixelPostProcessSettings.MipFilterFixedInternalDownscale"/>
-        /// is opted in and the window is smaller than the fixed internal target in either axis - both share the
+        /// is opted in and the window is smaller than the fixed internal target in either axis. Both share the
         /// same "internal target strictly larger than the viewport" test, just gated by a different gate per scale
         /// mode. Always false with a Pixelated blit (retro stays single-mip point-sampled) or (for FixedInternal)
         /// when the opt-in flag is off, so every existing consumer and GPU golden stays byte-identical unless it
@@ -1451,7 +1421,7 @@ namespace KhaozEngine.Render3D
             // and a re-render never double-counts.
             _frameStats.Reset();
             EnsureSize(viewportW, viewportH);
-            LatchFrameView();   // this render's view snapshot, now that the size and the camera are final
+            LatchFrameView(viewportW, viewportH);   // this render's view snapshot, now that the size and the camera are final
             // The caps-resolved FXAA decision (FXAA alone, opted in after MSAA, or an unsupported MSAA request
             // falling back to FXAA). Must be the same value for PrepareUniforms (flip parity) and Run.
             bool runFxaa = ResolvedAa().UsesFxaa;
@@ -1462,11 +1432,11 @@ namespace KhaozEngine.Render3D
             // otherwise). Byte-neutral when never used. The apply-pass parity is stable from here through Run.
             bool distortionActive = _distortionSprites.Count > 0;
             _res.EnsureDistortion(distortionActive, DistortionQuality == DistortionQuality.Full ? 2 : 4);
-            _post.BindTargets(_res);
-            // Edge pass needs the camera's depth convention (perspective vs ortho + near/far) to linearize depth
-            // under perspective; derived from the projection matrix so no camera-interface change is required.
+            var (postChain, postTargets) = PrepareTemporalResolve(cl, viewportW, viewportH);   // _post over _res unless the frame resolves
+            postChain.BindTargets(postTargets);
+            // The edge pass's depth convention (perspective or ortho, near and far), from the unjittered projection.
             var camDepth = Internal.OutlineMath.ExtractCameraDepth(_currentFrameView.Projection);
-            _post.PrepareUniforms(cl, _res, Post, camDepth, runFxaa, distortionActive);
+            postChain.PrepareUniforms(cl, postTargets, Post, camDepth, runFxaa, distortionActive);
 
             // Frozen-frame capture for a screen crossfade must read the PREVIOUS frame (the origin view, before the
             // teleport cut). Snapshot ColorTex here, at the top of the frame, before the model pass overwrites it. No-op
@@ -1750,6 +1720,7 @@ namespace KhaozEngine.Render3D
 
             if (EnableTiming) modelMs = ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
+            CaptureOpaqueForTemporal(cl);   // resolving renders only: the background, then the opaque-only copy
 
             // Textured billboards: drawn into the SAME model framebuffer (still bound), after the meshes, with the
             // depth test on (no write). This is what gives mesh/sprite depth interleaving; then the whole MRT
@@ -1776,25 +1747,9 @@ namespace KhaozEngine.Render3D
             // and is complete by this line. Nothing after it does. No-op when not multisampled.
             _res.ResolveDepthNormal(cl);
 
-            // Background pass, before the decals: whichever mode is selected paints the no-geometry pixels and marks
-            // them alpha 1. Mutually exclusive by construction (Post.Background derives the sky-over-starfield
-            // precedence), so at most one of these runs, and Solid runs neither. The far-plane sky triangle passes
-            // the Equal read-only depth test ONLY where the stored depth still EQUALS the cleared far plane
-            // (background where no mesh drew), so it fills the gradient + sun there and geometry pixels (depth < 1)
-            // reject it. Both passes write only the colour attachment (never the MRT normal/linear-depth the outline
-            // pass reads) with alpha 1, marking those pixels as opaque painted background. Fully skipped when
-            // Solid, so a Solid frame renders byte-identical to before this pass existed.
-            switch (Post.Background)
-            {
-                case BackgroundMode.Sky:
-                    _sky.Draw(cl, _res, _currentFrameView.View, _currentFrameView.JitteredProjection, Post.LightDirection, Post.Sky);
-                    _frameStats.DrawCalls++;
-                    break;
-                case BackgroundMode.Starfield:
-                    _starfield.Draw(cl, _res, Post.BackgroundColor);
-                    _frameStats.DrawCalls++;
-                    break;
-            }
+            // Background pass, before the decals (Scene3D.TemporalResolve.cs). When this render resolves it already ran,
+            // before the transparent model-pass writers, so the opaque-only copy holds it.
+            if (!_resolveThisRender) DrawBackground(cl);
 
             // Ground decals: after the model pass wrote depth (meshes + textured billboards + beams), paint the
             // queued decals onto the reconstructed surface into ColorTex, BEFORE post - so they conform to the
@@ -1885,7 +1840,8 @@ namespace KhaozEngine.Render3D
             // WaterSyncMs still reports it, from the same measured span (#423).
             if (EnableTiming) transparentsMs += ElapsedMs(timingStart);
             timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-            _post.Run(cl, _res, target, Post, runFxaa, distortionActive);
+            RunTemporalResolve(cl);   // resolving renders only: internal to display history, then the depth store
+            postChain.Run(cl, postTargets, target, Post, runFxaa, distortionActive);
             DrawDebugView(cl, target);   // a development view replaces the final image (Scene3D.DebugView.cs)
             DrawTargetOutlines(cl, displayVp, target);
             if (EnableTiming) postMs = ElapsedMs(timingStart);
@@ -2211,6 +2167,7 @@ namespace KhaozEngine.Render3D
             DisposeSplatMaterials();
             DisposeMotionVectorsView();
             DisposeTileGroundAndPointShadowResources();
+            DisposeTemporalResolve();
         }
 
         /// <summary>A contiguous run of instances of one mesh handle inside the flat instance array.</summary>

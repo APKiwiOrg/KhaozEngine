@@ -384,14 +384,34 @@ would block that segment for good. The deferred-disposal retire list gates on th
 for the opposite reason.
 
 **A queued submission keeps its segment.** The present rotates, and so does a record-time write that follows a
-submission which carried record-time writes, through the same close, gate and publish. The allocator sees that
-submission as a rise in the timeline's registered submit high-water since the segment's last record-time write, so
-the submit path is untouched and nothing allocates. Without the second rotation a headless loop, which never
-presents, wrote every frame into the one segment its queued frames were still reading, and each of them drew the
-newest frame's uniforms. A windowed frame with one submission is unchanged, because its present clears the owed
-rotation, and a submission that wrote no uniforms owes none. A bind composes the segment current when it is
-recorded, so a recording writes its uniforms before it binds them, which is the order every engine renderer uses.
-The Direct3D 11 backend rotates the same way, and the Metal backend gives each recording its own segment.
+LIST submission which carried record-time writes, through the same close, gate and publish. The allocator sees that
+submission as a rise in the timeline's list submit high-water (`VulkanTimeline.LastListSubmitted`) since the
+segment's last record-time write, and nothing allocates. A setup-buffer flush raises only the full submit
+high-water, so a `WaitForIdle`, a `Map` or an upload in the middle of a recording neither rotates that recording's
+segment nor closes it below that recording's own submission. Without the second rotation a headless loop, which
+never presents, wrote every frame into the one segment its queued frames were still reading, and each of them drew
+the newest frame's uniforms. A windowed frame with one submission is unchanged, because its present clears the owed
+rotation, and a submission that wrote no uniforms owes none. The Direct3D 11 backend rotates the same way, and the
+Metal backend gives each recording its own segment.
+
+Three ordering rules follow, and **submit** in them means `IGpuDevice.Submit` of a command list. The device's
+own internal flushes are not submissions: on Vulkan the setup buffer that a `WaitForIdle`, a `Map` or an upload
+hands to the queue never moves the copy.
+
+1. Submit a sealed recording that wrote uniforms before another submission is followed by a later uniform write.
+   Otherwise that later write opens a fresh copy while the sealed recording is still unsubmitted, and its uniforms
+   stop being tied to its own submission: the deferred Direct3D 11 driver binds it to the fresh copy, and on
+   Vulkan and the immediate driver the copy it already bound can be reused while it is still queued.
+2. Make a recording's first uniform write before its first draw or dispatch. A bind composes its dynamic offset
+   when the draw is recorded, and the first write after a submission is the one that opens the fresh copy, so a
+   draw recorded ahead of it reads the previous copy.
+3. Submit nothing while a recording that has written uniforms is still open. A submission in that window counts as
+   carrying the open recording's writes, so that recording's next write opens a fresh copy, and its earlier and
+   later writes land in copies it cannot bind together.
+
+Each uniform-writing submission takes one copy, so a headless loop is backpressured by design (its fourth writing
+submission waits for its first to finish on the GPU) and so is a frame with more writing submissions than frames in
+flight.
 
 **The descriptor's range is the BIND WINDOW, and it is never `VK_WHOLE_SIZE` and never the stride.**
 `VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979` requires the effective offset plus the range to stay inside
@@ -496,12 +516,14 @@ buffer with `ONE_TIME_SUBMIT`. `End` calls `vkEndCommandBuffer` and seals. `Subm
 the value it signalled back into the slot the record came from.
 
 **The DEPTH is shared with the uniform ring and the INDEX is not, and conflating them is the mistake available
-here.** The pool slot is PER LIST and advances on every `Begin`. The ring segment is PER FRAME and advances at
-the frame boundary. A list begun twice in one frame therefore takes two different pool slots while both of its
-records write the SAME ring segment, which is correct in both directions: two records must not share a command
-buffer that is still in flight, and two records in one frame must see one frame's uniform values. A list begun
-more times per frame than `FramesInFlight` wraps onto its own oldest slot and waits on that slot's recorded
-value, which is real backpressure and is counted as such.
+here.** The pool slot is PER LIST and advances on every `Begin`. The ring segment is PER WRITING SUBMISSION: it
+advances at the frame boundary and at the first uniform write after a list submission that carried uniform
+writes. A list begun twice in one frame therefore takes two different pool slots, and when its first record wrote
+uniforms and was submitted, its second record's first uniform write takes the next ring segment. That is correct
+in both directions: two records must not share a command buffer that is still in flight, and a record still in
+flight must keep the uniform values it was submitted with. A list begun more times per frame than
+`FramesInFlight` wraps onto its own oldest slot and waits on that slot's recorded value, which is real
+backpressure and is counted as such.
 
 **N lists record CONCURRENTLY on this backend, and the portable seam contract is unchanged.** `IGpuCommandList`
 documents exactly one open recording per device, that is what portable code is written against, and

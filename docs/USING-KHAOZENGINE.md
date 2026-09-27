@@ -14389,10 +14389,30 @@ in any game does this today, which is why the refusal is safe to have.
 removes the per-write stall the other Direct3D 11 backend pays. So two writes to the SAME range inside one recording
 leave the second value for every draw of that recording, including draws you recorded between them. A recording
 submitted with writes of its own keeps them: the next recording's writes go to another copy, so a headless loop that
-never presents still draws each frame with its own uniforms. Address per-draw
-uniforms by dynamic offset (`GpuBufferRange` plus the offset overload of `SetGraphicsResourceSet`), which is what
-the engine's own renderers do. Writing off-timeline through `IGpuDevice.UpdateBuffer` and expecting an
-already-recorded bind to see the old value was never supported on any backend and is quieter here.
+never presents still draws each frame with its own uniforms. Address per-draw uniforms by dynamic offset
+(`GpuBufferRange` plus the offset overload of `SetGraphicsResourceSet`), which is what the engine's own renderers
+do. Writing off-timeline through `IGpuDevice.UpdateBuffer` and expecting an already-recorded bind to see the old
+value was never supported on any backend and is quieter here.
+
+Three ordering rules follow, and **submit** in them means `IGpuDevice.Submit` of a command list. The device's
+own internal flushes are not submissions: on Vulkan the setup buffer that a `WaitForIdle`, a `Map` or an upload
+hands to the queue never moves the copy.
+
+1. Submit a sealed recording that wrote uniforms before another submission is followed by a later uniform write.
+   Otherwise that later write opens a fresh copy while the sealed recording is still unsubmitted, and its uniforms
+   stop being tied to its own submission: the deferred Direct3D 11 driver binds it to the fresh copy, and on
+   Vulkan and the immediate driver the copy it already bound can be reused while it is still queued.
+2. On Vulkan, and on Direct3D 11 under `KE_D3D11_RECORD=immediate`, make a recording's first uniform write before
+   its first draw or dispatch. Those drivers fix the copy a draw reads when the draw is recorded, and the first
+   write after a submission is the one that opens the fresh copy, so a draw recorded ahead of it reads the previous
+   copy. The default deferred Direct3D 11 driver binds at submit and has no such rule.
+3. Submit nothing while a recording that has written uniforms is still open. A submission in that window counts as
+   carrying the open recording's writes, so that recording's next write opens a fresh copy, and its earlier and
+   later writes land in copies it cannot bind together.
+
+Each uniform-writing submission takes one copy, so a headless loop is backpressured by design (its fourth writing
+submission waits for its first to finish on the GPU) and so is a frame with more writing submissions than frames in
+flight.
 
 **A one-shot write through `IGpuDevice.UpdateBuffer` IS preserved, the same as on every other backend.** A uniform
 buffer there holds one segment per frame in flight, and a device-level write reaches all of them, so a value
@@ -14435,9 +14455,12 @@ backend the write it replaces was not a stall but a render-pass split plus a ful
 memory barrier, so the same rule applies with a different cost behind it: two writes to the SAME range inside
 one recording leave the second value for every draw of that recording, including draws you recorded between them.
 A recording submitted with writes of its own keeps them, as on Direct3D 11: the next recording's writes go to
-another copy, so a headless loop that never presents still draws each frame with its own uniforms. A bind picks
-its copy when it is recorded, so write a recording's uniforms before you bind them. Address per-draw uniforms by
-dynamic offset, which is what the engine's own renderers do.
+another copy, so a headless loop that never presents still draws each frame with its own uniforms. Address
+per-draw uniforms by dynamic offset, which is what the engine's own renderers do. The three ordering rules in the
+Direct3D 11 section above apply here unchanged, and rule 2 always applies, because a Vulkan draw fixes its copy
+when it is recorded: make a recording's first uniform write before its first draw or dispatch. A setup-buffer
+flush from a `WaitForIdle`, a `Map` or an upload in the middle of a recording is not a submission and moves
+nothing.
 
 **A one-shot write through `IGpuDevice.UpdateBuffer` IS preserved, the same as on every other backend.** It
 reaches every segment, so a value written once at load time or when a setting changes persists for the buffer's

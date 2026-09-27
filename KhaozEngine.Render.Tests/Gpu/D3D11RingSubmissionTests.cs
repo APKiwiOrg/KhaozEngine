@@ -171,6 +171,43 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
+        public void Two_writing_submissions_then_a_present_leave_the_next_frames_first_write_where_the_present_put_it()
+        {
+            using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 3);
+            harness.Completion.Completed = 10;
+            var submitter = new Submitter(harness);
+
+            submitter.Record(First);
+            submitter.Submit();                 // the frame's first writing submission, segment 0
+            submitter.Record(Second);           // a second recording in the same frame: segment 1
+            submitter.Submit();
+            harness.Allocator.BeginFrame();     // the present: segment 2
+            submitter.Record(Third);            // the next frame's first write does not rotate again
+
+            Assert.Equal(2, harness.Allocator.CurrentSegment);
+            Assert.Equal(First, Segment(harness, 0));
+            Assert.Equal(Second, Segment(harness, 1));
+            Assert.Equal(Third, Segment(harness, 2));
+        }
+
+        [Fact]
+        public void An_owed_rotation_under_the_submit_lock_is_refused_by_name()
+        {
+            using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 3);
+            var submitter = new Submitter(harness);
+
+            submitter.Record(First);
+            submitter.Submit();
+
+            InvalidOperationException refused;
+            lock (harness.SubmitLock) refused = Assert.Throws<InvalidOperationException>(() => harness.Ring.Write(0, Second));
+
+            Assert.Contains("submit lock", refused.Message);
+            Assert.Equal(0, harness.Allocator.CurrentSegment);
+            Assert.Equal(First, Segment(harness, 0));
+        }
+
+        [Fact]
         public void Writes_inside_one_recording_still_share_its_segment()
         {
             using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 3);

@@ -224,10 +224,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// it below that recording's own submission. Allocates nothing.
         /// </para>
         /// <para>
-        /// A bind composes the segment current when it is recorded, so a recording writes its uniforms before it
-        /// binds them, which is the engine's order (every renderer uploads before its first pass), and a sealed
-        /// recording is submitted before a later recording writes uniforms. Called with the submit lock free, and
-        /// refused otherwise, for the reason <see cref="BeginFrame"/> is: the gate can wait for the GPU.
+        /// A bind composes the segment current when its draw is recorded, so a recording's first uniform write comes
+        /// before its first draw or dispatch, which is the engine's order (every renderer uploads before its first
+        /// pass). A sealed recording that wrote uniforms is submitted before another list submission is followed by
+        /// a later uniform write, and no list is submitted while a recording that has written uniforms is open.
+        /// Called with the submit lock free, and refused otherwise, for the reason <see cref="BeginFrame"/> is: the
+        /// gate can wait for the GPU.
         /// </para>
         /// </summary>
         internal void BeforeRecordWrite()
@@ -240,7 +242,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     throw new InvalidOperationException(
                         "A record-time uniform write on the native Vulkan ring owed a segment rotation while the "
                         + "caller held the submit lock. The rotation waits for the GPU to finish with the segment it "
-                        + "opens, and decision V-W8 holds the submit lock for microseconds. Record outside the lock.");
+                        + "opens, and the submit lock is held for microseconds, never across a GPU wait. Record outside "
+                        + "the lock.");
                 }
 
                 Rotate();

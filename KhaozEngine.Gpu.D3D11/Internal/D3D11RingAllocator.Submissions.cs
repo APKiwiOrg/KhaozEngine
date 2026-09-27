@@ -16,9 +16,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         // Whether record-time writes have landed since the last submission, and whether a submission has since
         // carried such writes out of the current segment. Volatile, because the record path reads both without the
-        // submit lock and OnSubmitted writes them under it. One thread records and submits (decision W5), so on the
-        // shipped path the pair says exactly whether the next record-time write would land in memory a queued
-        // submission reads.
+        // submit lock and OnSubmitted writes them under it. With one thread recording a list and then submitting it,
+        // the pair says exactly whether the next record-time write would land in memory a queued submission reads.
         volatile bool _writtenSinceSubmit;
         volatile bool _currentSegmentSubmitted;
 
@@ -67,10 +66,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// which is the versioning the Metal backend applies at every recording.
         /// </para>
         /// <para>
-        /// A replay binds the segment current when it runs, so a recording that writes uniforms is submitted before
-        /// a later recording writes uniforms after another submission. That is the order one thread recording and
-        /// submitting (decision W5) already gives. Called with the submit lock free, and refused otherwise, for the
-        /// reason <see cref="BeginFrame"/> is: the gate can wait for the GPU.
+        /// The deferred driver's replay binds the segment current when it runs, and under
+        /// <c>KE_D3D11_RECORD=immediate</c> a bind resolves at each draw's record-time flush instead. So a sealed
+        /// recording that wrote uniforms is submitted before another submission is followed by a later uniform write,
+        /// nothing is submitted while a recording that has written uniforms is open, and under the immediate driver a
+        /// recording's first uniform write comes before its first draw or dispatch. One thread that records a list and
+        /// then submits it keeps all three. Called with the submit lock free, and refused otherwise, for the reason
+        /// <see cref="BeginFrame"/> is: the gate can wait for the GPU.
         /// </para>
         /// </summary>
         internal void BeforeRecordWrite()
@@ -82,7 +84,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     throw new InvalidOperationException(
                         "A record-time uniform write on the native Direct3D 11 ring owed a segment rotation while the "
                         + "caller held the submit lock. The rotation waits for the GPU to finish with the segment it "
-                        + "opens, and decision W4 holds the submit lock for microseconds. Record outside the lock.");
+                        + "opens, and the submit lock is held for microseconds, never across a GPU wait. Record outside "
+                        + "the lock.");
                 }
 
                 Rotate();

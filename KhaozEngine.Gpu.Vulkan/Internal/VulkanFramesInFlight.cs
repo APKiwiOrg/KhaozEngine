@@ -6,14 +6,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 {
     /// <summary>
     /// <c>KE_VULKAN_FRAMES_IN_FLIGHT</c>, MV3'S KNOB: the ONE depth this backend pipelines at, governing BOTH the
-    /// command-buffer pool slots every list owns (this row) and the per-frame segments every uniform ring is cut
-    /// into (row 8, https://github.com/APKiwiOrg/KhaozEngine/issues/518).
+    /// command-buffer pool slots every list owns (this row) and the segments every uniform ring is cut into (row 8,
+    /// https://github.com/APKiwiOrg/KhaozEngine/issues/518).
     /// <para>
     /// ONE NUMBER, TWO INDEXES, and conflating them is the mistake available here. The POOL SLOT is per list and
-    /// advances on every <c>Begin</c>. The RING SEGMENT is per frame and advances at the frame boundary. A list
-    /// begun twice in one frame takes two different pool slots while both records write the SAME ring segment,
-    /// which is correct in both directions: two records must not share a command buffer still in flight, and two
-    /// records in one frame must see one frame's uniform values. What is shared is the DEPTH, because a deeper
+    /// advances on every <c>Begin</c>. The RING SEGMENT is per writing submission: it advances at the frame boundary
+    /// and at the first uniform write after a list submission that carried uniform writes. A list begun twice in one
+    /// frame takes two different pool slots, and when its first record wrote uniforms and was submitted, its second
+    /// record's first uniform write takes the next segment. That is correct in both directions: two records must not
+    /// share a command buffer still in flight, and a record still in flight must keep the uniform values it was
+    /// submitted with. What is shared is the DEPTH, because a deeper
     /// command-buffer ring behind a shallower uniform gate is dead capacity, so there is one number to move if MV3
     /// says 3 is wrong (section 6.1).
     /// </para>

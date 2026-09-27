@@ -138,6 +138,26 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
+        public void Two_writing_submissions_then_a_present_leave_the_next_frames_first_write_where_the_present_put_it()
+        {
+            using var harness = new VulkanRingHarness(sizeInBytes: 256, framesInFlight: 3);
+            harness.Complete(10);
+
+            harness.Ring.Write(0, First);
+            harness.Submit(1);                  // the frame's first writing submission, segment 0
+            harness.Ring.Write(0, Second);      // a second recording in the same frame: segment 1
+            harness.Submit(2);
+            harness.Allocator.BeginFrame();     // the present: segment 2
+            harness.Ring.Write(0, Third);       // the next frame's first write does not rotate again
+
+            Assert.Equal(2, harness.Allocator.CurrentSegment);
+            Assert.Equal(First, Segment(harness, 0));
+            Assert.Equal(Second, Segment(harness, 1));
+            Assert.Equal(Third, Segment(harness, 2));
+            Assert.Equal(2UL, harness.Allocator.SegmentOwner(1));
+        }
+
+        [Fact]
         public void Writes_inside_one_recording_still_share_its_segment()
         {
             using var harness = new VulkanRingHarness(sizeInBytes: 256, framesInFlight: 3);

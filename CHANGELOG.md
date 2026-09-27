@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.12.0
+
+- `GroundItemPayloadProjection.Project` writes the safe `Everyone` payload for a ground drop through the
+  same projection core as container sync. It strips private nested fields and hollows quarantine wrappers
+  without adding an ItemInstances dependency to TileWorld.Netcode
+  ([#1095](https://github.com/APKiwiOrg/KhaozEngine/issues/1095)).
+- Scatter, companion and override-order edits in MapEditor now re-serve props across loaded chunks
+  without re-meshing terrain when layer shape is unchanged. Shape and field changes retain the
+  all-loaded remesh path ([#1106](https://github.com/APKiwiOrg/KhaozEngine/issues/1106)).
+- The item-instance design now identifies structural row IDs and keys, the registered row-size caps,
+  and all five inputs to the candidate table build
+  ([#958](https://github.com/APKiwiOrg/KhaozEngine/issues/958),
+  [#959](https://github.com/APKiwiOrg/KhaozEngine/issues/959),
+  [#965](https://github.com/APKiwiOrg/KhaozEngine/issues/965)).
+
 ## 20.11.0
 
 - `ContentPackReader.CreateLazy` gives long-lived row readers an explicit bound on decoded chunk

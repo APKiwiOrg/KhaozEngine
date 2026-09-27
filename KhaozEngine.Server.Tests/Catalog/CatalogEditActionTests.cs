@@ -280,6 +280,8 @@ public sealed class CatalogEditActionTests : IDisposable
         Assert.Contains("catalog-publish", remedy, StringComparison.Ordinal);
         Assert.Contains("IContentAuthoringStore.ClearDraftFreezeAsync", remedy, StringComparison.Ordinal);
         Assert.Contains("no publisher is live", remedy, StringComparison.Ordinal);
+        Assert.Contains("preserve every pending edit", remedy, StringComparison.Ordinal);
+        Assert.Contains("only when the current draft is intentionally ready to publish", remedy, StringComparison.Ordinal);
         Assert.True((await _harness.Store.GetOpenDraftAsync())?.IsFrozen);
     }
 

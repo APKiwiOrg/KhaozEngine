@@ -216,14 +216,15 @@ one connection per call, and SQL Server's Serializable transaction covers step 1
 cancellation all release the draft. Two things recover a marker nothing cleared, which is what a killed
 process leaves. A marker naming a version the store has moved past is STALE, and
 `ReadPublishBaselineAsync` clears it, which is the read every publish starts with. A marker naming the
-version the store still stands at belongs to a publish that died before its commit, and the next publish's
-step 1 overwrites it, because a publish is exactly what an operator does to recover.
+version the store still stands at belongs to a publish that died before its commit. A later publish
+overwrites that marker at step 1 and clears it on exit.
 
 The same-version marker carries no publisher identity, so an edit or discard cannot tell a dead publisher
-from a live one and never clears it. After confirming no publisher is live, an operator can run
-`catalog-publish` for the current draft, whose step 1 replaces the marker and whose exit clears it. A host can
-instead call `IContentAuthoringStore.ClearDraftFreezeAsync` after the same check. That explicit release keeps
-the draft and every edit intact.
+from a live one and never clears it. After confirming no publisher is live, a host can call
+`IContentAuthoringStore.ClearDraftFreezeAsync` to release the marker and preserve every pending edit, so the
+operator can continue editing or intentionally discard the draft. Run `catalog-publish` only when the current
+draft is intentionally ready to publish, since it may commit that draft. Its step 1 replaces the marker and
+its exit clears it.
 
 Driving `ContentPublisher.PrepareAsync` on its own therefore leaves a frozen draft behind, deliberately: half
 a publish is the state the marker describes. Call `ClearDraftFreezeAsync` when standing in for the commit.

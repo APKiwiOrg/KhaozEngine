@@ -80,7 +80,7 @@ internal static class CatalogRefusal
 {
     /// <summary>What an operator does about a draft a publish is holding.</summary>
     public const string PublishInProgressRemedy =
-        "wait for the publish in flight to finish, then read the draft again. If the publisher process died before commit, first confirm no publisher is live, then run catalog-publish for the current draft. Its step 1 replaces the abandoned marker and every exit clears it. A host can instead call IContentAuthoringStore.ClearDraftFreezeAsync after the same check.";
+        "wait for the publish in flight to finish, then read the draft again. If the publisher process died before commit, first confirm no publisher is live. To release the marker and preserve every pending edit so editing or an intentional discard can continue, have the host call IContentAuthoringStore.ClearDraftFreezeAsync. Run catalog-publish only when the current draft is intentionally ready to publish. Its step 1 replaces the abandoned marker and every exit clears it.";
 
     /// <summary>What an operator does about a draft that already holds another intent for the row.</summary>
     public const string EditCollisionRemedy =

@@ -210,9 +210,11 @@ step 1 writes `catalog_draft.frozen_for_base_version`, and `ApplyEditsAsync` and
 while it stands, with reason `publish-in-progress`. The publish clears it on every exit path, a marker naming
 a version the database has moved past is a dead publish's leftover that the next baseline read clears, and
 a marker naming the current version may belong to a live publisher or one that died before commit. Draft
-writes never clear that ambiguous marker. After proving no publisher is live, run `catalog-publish` for the
-current draft or call `IContentAuthoringStore.ClearDraftFreezeAsync` from a host recovery path. The explicit
-clear preserves the draft and its edits. The draft delete at step 10 is scoped to the edits step 1 froze.
+writes never clear that ambiguous marker. After proving no publisher is live, call
+`IContentAuthoringStore.ClearDraftFreezeAsync` from a host recovery path to release the marker and preserve
+every pending edit, so editing or an intentional discard can continue. Run `catalog-publish` only when the
+current draft is intentionally ready to publish. The draft delete at step 10 is scoped to the edits step 1
+froze.
 
 **A serialization failure carries that same reason.** SQL error 1205 (deadlock victim) and 3960 (snapshot
 update conflict) both mean what a moved base version means to a caller: the plan was built over a state that is

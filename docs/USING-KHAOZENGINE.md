@@ -16169,9 +16169,10 @@ reached by `GET` is refused 405 with `Allow: POST`. What the caller still owns i
 ships the actions and the payload shapes, not a screen.
 
 That frozen-draft remedy preserves a live publisher's marker. Wait for the publisher and read the draft
-again first. If the publisher process died before commit, confirm no publisher is live, then run
-`catalog-publish` for the current draft or call `IContentAuthoringStore.ClearDraftFreezeAsync` from a host
-recovery path. The explicit clear keeps the draft and every edit.
+again first. If the publisher process died before commit, confirm no publisher is live, then call
+`IContentAuthoringStore.ClearDraftFreezeAsync` from a host recovery path. It releases the marker and preserves
+every pending edit, so editing or an intentional discard can continue. Run `catalog-publish` only when the
+current draft is intentionally ready to publish.
 
 A game whose catalog is bundle-derived registers the reads alone, instead of `Register`:
 

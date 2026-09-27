@@ -651,6 +651,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// invisible in. See <see cref="D3D11DrainSpin"/>.
         /// </para>
         /// <para>
+        /// IT FLUSHES ONCE BEFORE IT SPINS, and only when it has to wait. The completion poll never flushes, and a
+        /// signal still buffered on the immediate context is a point the GPU may never reach. A present used to be
+        /// the only way in here, and it flushes, but a record-time write's owed rotation arrives with no present
+        /// behind it on a headless loop, so the gate hands the submitted work to the driver itself, the same one
+        /// flush the drain makes after its signal. A free segment costs one poll and no flush.
+        /// </para>
+        /// <para>
         /// The blocking wait the primary timeline offers is deliberately NOT used here. It belongs to the drain
         /// alone, it is the one member callable without the submit lock, and a segment wait is meant to be so rare
         /// that arming an event for it would cost more than the spin it replaces.
@@ -661,6 +668,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             ulong target = _segmentOwner[segment];
             if (target == 0) return;
             if (_completion.CompletedValue >= target) return;
+
+            // A wait is owed, so flush ONCE before spinning, as the drain does after its signal. The poll never
+            // flushes, and without a present in between (every headless loop) nothing else hands the awaited
+            // submission's signal to the driver, so the spin could wait for a point the GPU never reaches.
+            _completion.FlushSubmitted();
 
             long start = Stopwatch.GetTimestamp();
             var spin = new SpinWait();

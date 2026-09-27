@@ -30,5 +30,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// a segment early.
         /// </summary>
         ulong CompletedValue { get; }
+
+        /// <summary>
+        /// Hand every command submitted so far to the driver, so a completion value a waiter then polls for is one
+        /// the GPU can reach. <see cref="CompletedValue"/> never flushes, and a signal still buffered on the
+        /// immediate context is a point the GPU may never get to, so a wait that polls without this first can spin
+        /// forever. The ring calls it ONCE before a segment wait that would otherwise spin, and never when the
+        /// segment is already free, the same bargain the drain strikes. Takes the submit lock itself, so the caller
+        /// must not hold it. A dead device flushes nothing.
+        /// </summary>
+        void FlushSubmitted();
     }
 }

@@ -246,6 +246,18 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Polls made with <see cref="SubmitLock"/> free, which is where a wait belongs.</summary>
         internal int PollsWithTheSubmitLockFree { get; private set; }
 
+        /// <summary>How many times <see cref="FlushSubmitted"/> ran. A segment wait owes exactly one, and a free
+        /// segment owes none.</summary>
+        internal int FlushCount { get; private set; }
+
+        /// <summary>What <see cref="PollCount"/> stood at when the first flush arrived, or null before one. One
+        /// means the gate polled once, found the segment busy, and flushed before its spin began.</summary>
+        internal int? PollCountAtFirstFlush { get; private set; }
+
+        /// <summary>Whether the last flush ran with <see cref="SubmitLock"/> held by the caller. The flush takes the
+        /// lock itself in production, so a caller holding it would be the forbidden nesting.</summary>
+        internal bool? LastFlushCallerHeldTheSubmitLock { get; private set; }
+
         /// <summary>When set, the timeline jumps to <see cref="CompleteTo"/> once it has been polled this many
         /// times, which is how a test makes a stall end.</summary>
         internal int? CompleteAfterPolls { get; set; }
@@ -289,6 +301,14 @@ namespace KhaozEngine.Tests.Gpu
 
                 return Completed;
             }
+        }
+
+        /// <inheritdoc/>
+        public void FlushSubmitted()
+        {
+            FlushCount++;
+            PollCountAtFirstFlush ??= PollCount;
+            if (SubmitLock is object submitLock) LastFlushCallerHeldTheSubmitLock = Monitor.IsEntered(submitLock);
         }
     }
 }

@@ -104,7 +104,13 @@ namespace KhaozEngine.Tests.Gpu
         {
             FlushCount++;
             PollCountAtFirstFlush ??= PollCount;
+            if (SubmitLock is object submitLock) LastFlushHeldTheSubmitLock = Monitor.IsEntered(submitLock);
         }
+
+        /// <summary>Whether the last flush ran with <see cref="SubmitLock"/> held. Null until something flushes, and
+        /// always null while <see cref="SubmitLock"/> is unset. A flush is a context call, so it owes the lock.
+        /// </summary>
+        internal bool? LastFlushHeldTheSubmitLock { get; private set; }
 
         /// <inheritdoc/>
         public bool TryWaitForValue(ulong value, int timeoutMilliseconds)

@@ -91,6 +91,56 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
+        public void A_segment_wait_flushes_the_submitted_work_once_before_it_spins_and_a_free_segment_flushes_nothing()
+        {
+            using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 2);
+            harness.Completion.SubmitLock = harness.SubmitLock;
+            var submitter = new Submitter(harness);
+
+            submitter.Record(First);
+            submitter.Submit();                 // segment 0, value 1
+            submitter.Record(Second);           // segment 1 is free: one poll at most, no flush
+            submitter.Submit();                 // value 2
+            Assert.Equal(0, harness.Completion.FlushCount);
+
+            int pollsBefore = harness.Completion.PollCount;
+            harness.Completion.CompleteAfterPolls = pollsBefore + 3;
+            harness.Completion.CompleteTo = 1;
+            submitter.Record(Third);            // segment 0 waits for value 1
+
+            Assert.Equal(1, harness.Completion.FlushCount);
+            Assert.Equal(pollsBefore + 1, harness.Completion.PollCountAtFirstFlush);
+            Assert.False(harness.Completion.LastFlushCallerHeldTheSubmitLock);
+            Assert.Equal(Third, Segment(harness, 0));
+        }
+
+        [Fact]
+        public void The_flush_before_a_segment_wait_reaches_the_timeline_under_the_submit_lock_and_a_dead_device_skips_it()
+        {
+            var timeline = new FakeD3D11FenceTimeline { AutoCompleteAfterPolls = 3 };
+            var liveness = new FakeD3D11DeviceLiveness();
+            object submitLock = new();
+            timeline.SubmitLock = submitLock;
+            using var fences = new D3D11FenceSubsystem(timeline, submitLock, liveness);
+            var allocator = new D3D11RingAllocator(2, fences, submitLock);
+
+            allocator.OnSubmitted(fences.SignalEndOfReplay(null));
+            allocator.BeginFrame();             // segment 1, never used: no flush
+            Assert.Equal(0, timeline.FlushCount);
+
+            allocator.BeginFrame();             // segment 0, owned by a value the GPU has not reached
+            Assert.Equal(1, timeline.FlushCount);
+            Assert.True(timeline.LastFlushHeldTheSubmitLock);
+            Assert.Equal(1, timeline.PollCountAtFirstFlush);
+
+            allocator.OnSubmitted(fences.SignalEndOfReplay(null));
+            liveness.IsDead = true;
+            allocator.BeginFrame();
+            allocator.BeginFrame();             // back to segment 0: a dead device answers complete, flushes nothing
+            Assert.Equal(1, timeline.FlushCount);
+        }
+
+        [Fact]
         public void A_submission_that_wrote_no_uniforms_moves_nothing()
         {
             using var harness = new D3D11RingHarness(sizeInBytes: 256, framesInFlight: 3);

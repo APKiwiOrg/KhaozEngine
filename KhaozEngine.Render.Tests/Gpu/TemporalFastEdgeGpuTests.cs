@@ -133,6 +133,38 @@ namespace KhaozEngine.Tests.Gpu
                     Assert.True(r.TrailChecked > 0, $"{scene}, {preset}: the trail region measured nothing");
                 }
         }
+
+        [GpuFact]
+        public void The_keyed_line_table_prints_the_resolve_against_msaa_4x_and_no_anti_aliasing()
+        {
+            // Measured over the line's own coverage: the resolve 0.260 and 0.257, MSAA 4x 0.999 at both presets and
+            // no anti-aliasing 1.001 and 1.000, so the resolve keeps 0.26 of MSAA 4x's. Fast flips 0.0038, 0.0211 and
+            // 0.0117 at Native and 0.0060, 0.0222 and 0.0145 at Quality, against reference flips of 0.0175 and 0.0194,
+            // every one of them fast, because each pixel shows the line for about one frame. The resolve before
+            // amendment 23 kept 1.063 and 0.944 with fast flips of 0.0124 and 0.0213 and an 8 pixel trail at Native.
+            // The line fact's fast-flip bound, half the reference's flips, caps what any output keeps: the reference
+            // scaled to a share of its own contrast stays within it up to 0.30 at Native and 0.20 at Quality.
+            output.WriteLine("| Mode | Preset | Coverage energy | Share of MSAA 4x | Energy | Ring | Fast flips "
+                + "| Reference flips | Error | Trail |");
+            output.WriteLine("|" + string.Concat(System.Linq.Enumerable.Repeat(" --- |", 10)));
+            foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
+            {
+                FastEdgeRun msaa = runs.Run(FastEdgeScene.KeyedLine, preset, AntiAliasing.Msaa(4));
+                foreach ((string mode, AntiAliasing aa) in new[]
+                {
+                    ("TAA", AntiAliasing.Temporal), ("MSAA 4x", AntiAliasing.Msaa(4)), ("no AA", AntiAliasing.Off),
+                })
+                {
+                    FastEdgeRun r = runs.Run(FastEdgeScene.KeyedLine, preset, aa);
+                    FlickerStats f = r.Flicker;
+                    output.WriteLine($"| {mode} | {preset} | {r.CoverageEnergy:0.000} "
+                        + $"| {r.CoverageEnergy / msaa.CoverageEnergy:0.000} | {f.Energy:0.000} | {r.RingEnergy:0.000} "
+                        + $"| {f.FastFlips:0.00000} | {f.ReferenceFlips:0.00000} | {f.TemporalError:0.00000} "
+                        + $"| {r.TrailOver} of {r.TrailChecked} |");
+                    Assert.True(double.IsFinite(r.CoverageEnergy), $"{mode}, {preset}: the line covered nothing");
+                }
+            }
+        }
     }
 
     /// <summary>The scenes of <see cref="TemporalFastEdgeRuns"/>.</summary>
@@ -163,7 +195,9 @@ namespace KhaozEngine.Tests.Gpu
     /// The fast-edge runs, rendered on first use and kept for the test class. Every surface pair moves
     /// <see cref="InternalPixelsPerFrame"/> apart: the keyed objects cross the still wall at that speed, and the
     /// perspective camera steps sideways so the box moves that much against the wall behind it, or against the sky,
-    /// which only rotation moves. The window is <see cref="Measured"/> frames after <see cref="Warm"/>.
+    /// which only rotation moves. The window is <see cref="Measured"/> frames after <see cref="Warm"/>. A run is
+    /// temporal unless another anti-aliasing mode is asked for, and every mode of one scene and preset is read
+    /// against the same reference sequence.
     /// </summary>
     public sealed class TemporalFastEdgeRuns
     {
@@ -179,11 +213,20 @@ namespace KhaozEngine.Tests.Gpu
         static readonly Vector3 BoxSize = new(1f, 1.5f, 0.5f), ParallaxBox = new(2f, 1.5f, 0.5f);
         static readonly Color Tint = new(1f, 0.25f, 0.2f, 1f);
 
-        readonly Dictionary<(FastEdgeScene, TemporalUpscale), FastEdgeRun> _runs = new();
+        readonly Dictionary<(FastEdgeScene, TemporalUpscale, AntiAliasingMode, int), FastEdgeRun> _runs = new();
+        readonly Dictionary<(FastEdgeScene, TemporalUpscale), byte[][]> _references = new();
 
-        internal FastEdgeRun Run(FastEdgeScene scene, TemporalUpscale preset)
+        internal FastEdgeRun Run(FastEdgeScene scene, TemporalUpscale preset) =>
+            Run(scene, preset, AntiAliasing.Temporal);
+
+        /// <summary>The run under <paramref name="aa"/>. Any mode other than temporal renders the preset's scene at
+        /// the display size, and since only temporal anti-aliasing carries anything from one frame to the next, its
+        /// warm frames are begun, not rendered.</summary>
+        internal FastEdgeRun Run(FastEdgeScene scene, TemporalUpscale preset, AntiAliasing aa)
         {
-            if (_runs.TryGetValue((scene, preset), out FastEdgeRun? cached)) return cached;
+            var key = (scene, preset, aa.Mode, aa.MsaaSamples);
+            if (_runs.TryGetValue(key, out FastEdgeRun? cached)) return cached;
+            bool temporal = aa.Mode == AntiAliasingMode.Temporal;
             var stage = new FrontStage(W, H, OrthoSize);
             float factor = TemporalSettings.DisplayOverInternal(preset);
             bool parallax = scene is FastEdgeScene.ParallaxOverWall or FastEdgeScene.ParallaxOverSky;
@@ -246,18 +289,31 @@ namespace KhaozEngine.Tests.Gpu
                     c + new Vector3(hx, hy, size.Z / 2f), W, H);
             }
 
-            Action<Scene3D> Setup(AntiAliasing aa) => s =>
+            Action<Scene3D> Setup(AntiAliasing mode) => s =>
             {
-                stage.Setup(s, aa, preset);
+                stage.Setup(s, mode, preset);
                 s.Post.Hdr.Enabled = false;
             };
-            byte[][] frames = TemporalAcceptance.Sequence(W, H, Setup(AntiAliasing.Temporal), Draw, Warm, Measured);
-            byte[][] references = TemporalAcceptance.ReferenceSequence(W, H, Setup(AntiAliasing.Off), Draw, Warm,
-                Measured);
-            byte[] background;
-            using (var fx = new TemporalFixture(W, H, Setup(AntiAliasing.Temporal)))
+            byte[][] frames;
+            if (temporal)
             {
-                fx.Frames(total - 1, Background);
+                frames = TemporalAcceptance.Sequence(W, H, Setup(aa), Draw, Warm, Measured);
+            }
+            else
+            {
+                using var plain = new TemporalFixture(W, H, Setup(aa));
+                plain.SkipFrames(Warm);
+                frames = new byte[Measured][];
+                for (int i = 0; i < Measured; i++) frames[i] = plain.Frame(Draw);
+            }
+            if (!_references.TryGetValue((scene, preset), out byte[][]? references))
+                _references[(scene, preset)] = references = TemporalAcceptance.ReferenceSequence(W, H,
+                    Setup(AntiAliasing.Off), Draw, Warm, Measured);
+            byte[] background;
+            using (var fx = new TemporalFixture(W, H, Setup(aa)))
+            {
+                if (temporal) fx.Frames(total - 1, Background);
+                else fx.SkipFrames(total - 1);
                 background = fx.Frame(Background);
             }
 
@@ -293,7 +349,7 @@ namespace KhaozEngine.Tests.Gpu
                 PixelDifference.MaxChannel);
             var run = new FastEdgeRun(flicker, edgeCount == 0 ? 0 : edgeSum / edgeCount, over, check, worst, coverage,
                 ring);
-            return _runs[(scene, preset)] = run;
+            return _runs[key] = run;
         }
     }
 }

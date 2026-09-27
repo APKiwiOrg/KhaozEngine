@@ -214,13 +214,13 @@ public class AuthExchangeOutcomeTests
     {
         // A validator doing synchronous I/O before its first await never hands back a task to wait on, so a deadline
         // applied to that task alone starts only once the block is over.
-        using var release = new ManualResetEventSlim();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var blocking = new ScriptedValidator("discord", (_, _) =>
         {
             entered.TrySetResult();
-            release.Wait();
+            release.Task.GetAwaiter().GetResult();
             exited.TrySetResult();
             return Task.FromResult(IdentityValidation.Verified(
                 new VerifiedIdentity("1", "discord", "Wren", new Dictionary<string, string>())));
@@ -251,7 +251,9 @@ public class AuthExchangeOutcomeTests
         }
         finally
         {
-            release.Set();
+            release.TrySetResult();
+            if (entered.Task.IsCompleted)
+                await exited.Task.WaitAsync(TimeSpan.FromSeconds(15));
         }
     }
 

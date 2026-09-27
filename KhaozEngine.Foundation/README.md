@@ -14,7 +14,11 @@ Pulls in:
 - `KhaozEngine.Catalog` - the tunable-content catalog's read half: the frozen content type registry with its
   field schemas and the seven engine content types, the content-addressed pack formats, the `IPackStore` seam,
   the `IContentSnapshot` read side and the pure validator. No third-party dependency.
+- `KhaozEngine.Catalog.GameTypes` - thirteen game-shaped content types for food, equipment, stores, drops,
+  gathering, crafting, tools, skill curves and game tuning, with stable schemas, codecs and validators.
 - `KhaozEngine.Persistence` - tamper-deterrent saves, atomic writes, `SettingsManager<T>`, `GameStorage`.
+- `KhaozEngine.Items` - the game-agnostic fixed-slot item container kernel with stack arithmetic, instance
+  payloads and a versioned durable and wire codec.
 - `KhaozEngine.ItemInstances` - the per-item instance record over `Items` and `Catalog`: the canonical tagged
   property payload an owned item carries beyond its definition id, the property registry that gives every kind a
   band, a visibility, a fixed identification mask bit and a field shape, the `KECQ` quarantine wrapper, container
@@ -28,12 +32,24 @@ Pulls in:
   `ItemContainerPageCodec.EncodeProjected` write through, and `ContainerPageSyncRequest`. Also references
   `Diagnostics`, for the validator's one injected log line.
 - `KhaozEngine.Diagnostics` - logging (sinks, categories, crash hooks) + `FrameStats` telemetry.
+- `KhaozEngine.Http` - bounded HTTP send-with-retry over a caller-supplied `HttpClient`, with per-attempt
+  timeouts, retryable status handling and injectable backoff.
 - `KhaozEngine.Ecs` - struct-based archetype `World`/`Entity`/`ISystem` ECS with `ParallelForEach`.
 - `KhaozEngine.Identity` - pluggable player-identity seam: provider sign-in + server-side verified-subject
   validation + HMAC session tokens, via the exchange model. OIDC and Discord providers are opt-in siblings.
 - `KhaozEngine.Collision` - deterministic 2D collision + broadphase + walkable surfaces.
 - `KhaozEngine.Physics` - the dependency-free 3D physics seam (`IPhysicsWorld`, shapes, queries).
 - `KhaozEngine.Locomotion` - render-free character movement (`CharacterMovement.Step`, `MoveTuning`).
+- `KhaozEngine.Navigation` - deterministic clearance-grid walkability, A* planning and per-tick path following.
+- `KhaozEngine.SegmentRig` - render-free procedural pose, gait and action strokes for rigid-segment characters.
+- `KhaozEngine.Dungeon` - deterministic multi-level dungeon generation with an always-on solver and render-free
+  sinks for map documents and runtime stamps.
+- `KhaozEngine.Objectives` - deterministic signal, counter and condition tracking with idempotent completion.
+- `KhaozEngine.Progression` - wall-clock reward scheduling that is non-stacking and persistence-agnostic.
+- `KhaozEngine.ServerStatus` - tolerant status reports, polling, evaluation and heartbeat seams for live games.
+- `KhaozEngine.Social` - the provider-neutral rich presence, identity and join or invite seam.
+- `KhaozEngine.Skills` - the game-agnostic experience, level, award and skill-book kernel.
+- `KhaozEngine.Stats` - deterministic stat channels and source-keyed modifier folding.
 - `KhaozEngine.Terrain` - render-free analytic terrain field (height/normal/biome from `(x, z, seed)`).
 - `KhaozEngine.MapDoc` - the zone/map document format: load/save/validate/migrate a versioned JSON model
   (terrain with parametric features, scatter and companion layers, exclusion/override shapes, authored
@@ -43,9 +59,13 @@ Pulls in:
   global tile-corner height lattice, ground/overlay materials and settings flags, tile-anchored objects and
   named markers, a hash-checked directory file form, catalogs, a validator, the derived per-edge collision
   map and its baker, a deterministic BFS pathfinder, a lattice raycast and prefabs.
+- `KhaozEngine.TileWorld.Editing` - reversible tile-world commands, undo and redo, gesture coalescing and
+  collision-map dirty tracking without a renderer.
 - `KhaozEngine.Determinism` - `DeterministicFpScope` FP-environment pinning for lockstep sims.
 - `KhaozEngine.Platform` - cross-platform `Clipboard` facade.
 - `KhaozEngine.Updates` - delta auto-update pipeline.
+- `KhaozEngine.CodeHealth.Analyzers` - compile-time file-size ratchet diagnostics and `buildTransitive` baseline
+  discovery. The umbrella packs it with `PrivateAssets="none"` so both assets flow to consumers.
 
 The old Localization and Pooling packages were absorbed into `App` and `Primitives` in 9.0.0,
 so they no longer appear as separate references.

@@ -24,9 +24,9 @@ public sealed class JournalProjectionWrite
     public int ProjectionSchemaVersion { get; }
     public ReadOnlyMemory<byte> Data => JournalValidation.CopyForRead(data);
     public ReadOnlyMemory<byte> DataChecksum => JournalValidation.CopyForRead(dataChecksum);
+    public ReadOnlySpan<byte> DataSpan => data;
+    public ReadOnlySpan<byte> DataChecksumSpan => dataChecksum;
     public int OwnedByteCount => data.Length;
-
-    internal ReadOnlySpan<byte> DataSpan => data;
 
     public void Validate(JournalLimits? limits = null)
     {

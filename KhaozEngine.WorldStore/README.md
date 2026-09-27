@@ -137,6 +137,18 @@ All request and result objects own their byte arrays. Constructors copy caller b
 copies through `ReadOnlyMemory<byte>`. Collections are copied, validated, and exposed read-only. Mutating the source
 array or list after construction cannot change a fingerprint, capacity charge, stored operation, or returned value.
 
+Hot request reads use the additive `ReadOnlySpan<byte>` accessors without making another copy. The existing
+`ReadOnlyMemory<byte>` properties keep their CLR shape and defensive-copy behavior. A span is a scoped read-only
+view over the object's owned storage, so it cannot expose a mutable array or be retained on the heap.
+
+| Type | Zero-copy accessors |
+|---|---|
+| `JournalOperationIdentity` | `NormalizedIntentSpan` |
+| `JournalEvent` | `PayloadSpan`, `PayloadChecksumSpan` |
+| `JournalProjectionWrite` | `DataSpan`, `DataChecksumSpan` |
+| `JournalCommit` | `ResultDataSpan`, `ResultChecksumSpan` |
+| `JournalCompaction` | `SnapshotDataSpan`, `SnapshotChecksumSpan` |
+
 | Type | Meaning |
 |---|---|
 | `JournalOperationIdentity` | Stable `Guid` operation ID, authenticated scope, action kind, and normalized intent bytes. The same intent must keep all four values across retries. |

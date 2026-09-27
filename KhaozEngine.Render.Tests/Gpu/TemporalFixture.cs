@@ -86,6 +86,20 @@ public sealed class TemporalFixture : IDisposable
         LastSubmitMilliseconds = Stopwatch.GetElapsedTime(submitted).TotalMilliseconds;
     }
 
+    /// <summary>A later render inside the frame the last <see cref="Frame"/> began, with no Begin, into a scratch
+    /// target of <paramref name="width"/> x <paramref name="height"/>, as an offscreen capture makes. Returns its RGBA8
+    /// pixels.</summary>
+    public byte[] RenderSecond(int width, int height)
+    {
+        using IGpuTexture texture = CreateTarget(Device.Factory, width, height);
+        using IGpuFramebuffer target = Device.Factory.CreateFramebuffer(null, texture);
+        using (GpuRecording.Open(Device, _commands, "TemporalFixture.RenderSecond"))
+            Scene.RenderInternal(_commands, width, height, target);
+        Device.Submit(_commands);
+        Device.WaitForIdle();
+        return GpuReadback.ToRgba(Device, texture, width, height);
+    }
+
     /// <summary>Begin <paramref name="count"/> frames without rendering them, so a fresh fixture can meet another at
     /// the same frame index and jitter phase.</summary>
     public void SkipFrames(int count)

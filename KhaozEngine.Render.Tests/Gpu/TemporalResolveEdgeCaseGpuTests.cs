@@ -151,7 +151,6 @@ namespace KhaozEngine.Tests.Gpu
             // camera the motion skips the depth test, which this fact does not need, and the current ramp holds no
             // ridge, so no lock takes part.
             const int Shift = (int)TemporalResolveTuning.GammaMotionPixels;
-            static float Ramp(int x) => Q(0.1f + 0.05f * x);
             (float Mean, float Deviation) Box(int x)
             {
                 float a = Weighted(Ramp(x - 1)), b = Weighted(Ramp(x)), c = Weighted(Ramp(x + 1));

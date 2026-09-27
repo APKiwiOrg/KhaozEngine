@@ -30,6 +30,7 @@ namespace KhaozEngine.Tests.Gpu
         private protected static float SceneLinear => TemporalResolveMath.LinearDepth(SceneNdc, Depth);
 
         private protected static float Q(float v) => (float)(Half)v;   // what a half float texel holds
+        private protected static float Ramp(int x) => Q(0.1f + 0.05f * x);   // a grey ramp across the columns
         private protected static float Weighted(float grey) => TemporalResolveMath.ToWeighted(new Vector3(grey)).X;
         private protected static float Unweighted(float y) => y / (1f - y);   // FromWeighted for grey
         private protected static int At(int x, int y) => y * N + x;

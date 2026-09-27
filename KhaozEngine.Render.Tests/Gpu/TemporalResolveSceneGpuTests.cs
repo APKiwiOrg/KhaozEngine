@@ -4,6 +4,7 @@ using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using Xunit;
+using static KhaozEngine.Tests.Gpu.Rgba8Stats;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -24,24 +25,24 @@ namespace KhaozEngine.Tests.Gpu
             byte[] bloomed = EffectsFrame(bloom: true, distortion: false);
             byte[] rippled = EffectsFrame(bloom: false, distortion: true);
             Assert.True(LumaDeviation(plain) > 2.0, "the frame is not a flat fill");
-            double bloomChange = MeanAbsDifference(bloomed, plain);
+            double bloomChange = MeanAbs(bloomed, plain);
             Assert.True(bloomChange > 0.5, $"bloom changed nothing after the resolve: mean abs {bloomChange:0.000}");
-            double rippleChange = MeanAbsDifference(rippled, plain);
+            double rippleChange = MeanAbs(rippled, plain);
             Assert.True(rippleChange > 0.5, $"the ripple changed nothing after the resolve: mean abs {rippleChange:0.000}");
         }
 
         [GpuFact]
         public void A_second_render_at_another_size_leaves_the_history_valid()
         {
-            using var h = new Harness(240, 160);
+            using var h = new TemporalFixture(240, 160);
             h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             MeshHandle box = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
             void Draw(Scene3D s) => s.Draw(box, Matrix4x4.CreateScale(2f), new Color(0.8f, 0.6f, 0.4f, 1f));
 
-            h.Render(Draw);
+            h.Frame((s, _) => Draw(s));
             h.RenderSecond(96, 64);   // an offscreen capture inside the same frame, at another size
             Assert.Equal((240, 160), (h.Scene.TemporalHistory.DisplayWidth, h.Scene.TemporalHistory.DisplayHeight));
-            h.Render(Draw);
+            h.Frame((s, _) => Draw(s));
 
             Assert.True(h.Scene.TemporalHistory.IsValid, $"the capture reset the history: {h.Scene.TemporalHistory.LastReset}");
             Assert.True(h.Scene.LastTemporalDiagnostics.HistoryValid);
@@ -51,14 +52,14 @@ namespace KhaozEngine.Tests.Gpu
         // A bright box, with bloom and a distortion ripple over it as asked, resolved at Quality.
         static byte[] EffectsFrame(bool bloom, bool distortion)
         {
-            using var h = new Harness(240, 160);
+            using var h = new TemporalFixture(240, 160);
             h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             h.Scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
             h.Scene.Post.Bloom.Enabled = bloom;
             MeshHandle box = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
             byte[] rgba = Array.Empty<byte>();
             for (int i = 0; i < 4; i++)
-                rgba = h.Render(s =>
+                rgba = h.Frame((s, _) =>
                 {
                     s.Draw(box, Matrix4x4.CreateScale(2f), new Color(3f, 2.5f, 1.5f, 1f));
                     if (!distortion) return;
@@ -74,14 +75,6 @@ namespace KhaozEngine.Tests.Gpu
             if (bloom) Assert.Equal((120, 80), (post.BloomWidth, post.BloomHeight));
             Assert.Equal(distortion, post.DistortAllocated);
             return rgba;
-        }
-
-        static double MeanAbsDifference(byte[] a, byte[] b)
-        {
-            double sum = 0;
-            for (int i = 0; i < a.Length; i++)
-                if ((i & 3) != 3) sum += Math.Abs(a[i] - b[i]);
-            return sum / (a.Length / 4 * 3);
         }
 
         [GpuFact]
@@ -102,7 +95,7 @@ namespace KhaozEngine.Tests.Gpu
 
         static byte[] SkyFrame(bool beam)
         {
-            using var h = new Harness(160, 96);
+            using var h = new TemporalFixture(160, 96);
             h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             h.Scene.Post.Starfield = false;
             h.Scene.Post.Sky.Enabled = true;
@@ -114,7 +107,7 @@ namespace KhaozEngine.Tests.Gpu
             MeshHandle ground = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
             byte[] rgba = Array.Empty<byte>();
             for (int i = 0; i < 6; i++)
-                rgba = h.Render(s =>
+                rgba = h.Frame((s, _) =>
                 {
                     s.Draw(ground, Matrix4x4.CreateScale(200f, 0.2f, 200f) * Matrix4x4.CreateTranslation(0f, -0.1f, 60f),
                         new Color(0.3f, 0.35f, 0.25f, 1f));
@@ -141,7 +134,7 @@ namespace KhaozEngine.Tests.Gpu
         // same size inside the third when asked.
         static byte[] CaptureRun(bool capture)
         {
-            using var h = new Harness(160, 96);
+            using var h = new TemporalFixture(160, 96);
             h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             h.Scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
             h.Scene.Post.Quality.Shadows.Mode = ShadowMode.Off;
@@ -154,7 +147,7 @@ namespace KhaozEngine.Tests.Gpu
             for (int i = 0; i < 5; i++)
             {
                 h.Scene.Camera.Target = new Vector3(0.07f * i, 0f, 0f);
-                rgba = h.Render(s =>
+                rgba = h.Frame((s, _) =>
                 {
                     s.Draw(box, Matrix4x4.CreateScale(200f, 0.2f, 200f) * Matrix4x4.CreateTranslation(0f, -0.6f, 0f),
                         new Color(0.3f, 0.35f, 0.25f, 1f));
@@ -179,12 +172,12 @@ namespace KhaozEngine.Tests.Gpu
             const int W = 160, H = 96;
             byte[] capture;
             int internalWidth, internalHeight;
-            using (var h = new Harness(W, H))
+            using (var h = new TemporalFixture(W, H))
             {
                 MeshHandle box = CaptureScene(h.Scene);
                 h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
                 h.Scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
-                for (int i = 0; i < 3; i++) h.Render(s => DrawCaptureScene(s, box));
+                for (int i = 0; i < 3; i++) h.Frame((s, _) => DrawCaptureScene(s, box));
                 h.Scene.CameraOverride = CaptureCamera(W, H);
                 capture = h.RenderSecond(W, H);
                 Assert.Equal(System.Numerics.Vector2.Zero, h.Scene.CurrentFrameView.JitterPixels);
@@ -194,14 +187,14 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal((107, 64), (internalWidth, internalHeight));
 
             byte[] reference = Array.Empty<byte>();
-            using (var h = new Harness(W, H))
+            using (var h = new TemporalFixture(W, H))
             {
                 MeshHandle box = CaptureScene(h.Scene);
                 h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Off;
                 h.Scene.Post.RenderScale = RenderScale.FixedInternal;
                 (h.Scene.Post.RenderWidth, h.Scene.Post.RenderHeight) = (internalWidth, internalHeight);
                 h.Scene.CameraOverride = CaptureCamera(W, H);
-                for (int i = 0; i < 3; i++) reference = h.Render(s => DrawCaptureScene(s, box));
+                for (int i = 0; i < 3; i++) reference = h.Frame((s, _) => DrawCaptureScene(s, box));
             }
 
             Assert.True(LumaDeviation(capture) > 2.0, "the capture is a flat fill");
@@ -211,7 +204,7 @@ namespace KhaozEngine.Tests.Gpu
             int worst = 0;
             for (int i = 0; i < capture.Length; i++)
                 if ((i & 3) != 3) worst = Math.Max(worst, Math.Abs(capture[i] - reference[i]));
-            double mean = MeanAbsDifference(capture, reference);
+            double mean = MeanAbs(capture, reference);
             Assert.True(mean <= 0.25 && worst <= 4,
                 $"the capture differs from the non-temporal render: mean abs {mean:0.000}, worst {worst}");
         }
@@ -236,32 +229,21 @@ namespace KhaozEngine.Tests.Gpu
             NearPlane = 0.1f, FarPlane = 100f,
         };
 
-        static double MeanLuma(byte[] rgba, int width, int fromRow, int toRow)
-        {
-            double sum = 0;
-            for (int y = fromRow; y < toRow; y++)
-                for (int x = 0; x < width; x++)
-                {
-                    int i = (y * width + x) * 4;
-                    sum += 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2];
-                }
-            return sum / ((toRow - fromRow) * width);
-        }
-
         /// <summary>A Solid background frame with nothing opaque still copies the cleared background, not the last
         /// frame's colour: the copy follows a framebuffer change that flushes the model pass's owed clear. The copy also
         /// excludes the transparent drawn after it.</summary>
         [GpuFact]
         public void A_solid_background_frame_with_nothing_opaque_copies_the_cleared_background()
         {
-            using var h = new Harness(96, 64);
+            using var h = new TemporalFixture(96, 64);
             h.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             h.Scene.Post.BackgroundColor = new Color(0.2f, 0.4f, 0.6f, 1f);
             Assert.Equal(BackgroundMode.Solid, h.Scene.Post.Background);
             Assert.True(h.Scene.Post.Hdr.Enabled);
             MeshHandle box = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
-            h.Render(s => s.Draw(box, Matrix4x4.CreateScale(200f, 0.2f, 200f), new Color(1f, 0f, 0f, 1f)));
-            byte[] rgba = h.Render(s => s.DrawBeam(new Vector3(-3f, 0.5f, 0f), new Vector3(3f, 0.5f, 0f), 0.6f, Color.White));
+            h.Frame((s, _) => s.Draw(box, Matrix4x4.CreateScale(200f, 0.2f, 200f), new Color(1f, 0f, 0f, 1f)));
+            byte[] rgba = h.Frame((s, _) =>
+                s.DrawBeam(new Vector3(-3f, 0.5f, 0f), new Vector3(3f, 0.5f, 0f), 0.6f, Color.White));
 
             Assert.True(LumaDeviation(rgba) > 1.0, "the beam did not draw, so the copy excluding it proves nothing");
             float[] copy = TemporalTextureIo.Read(h.Device, h.Scene.TemporalPostTargetsForTests!.OpaqueColor);
@@ -271,81 +253,6 @@ namespace KhaozEngine.Tests.Gpu
                     || MathF.Abs(copy[p + 2] - 0.6f) > 2e-3f)
                     wrong++;
             Assert.True(wrong == 0, $"{wrong} of {copy.Length / 4} opaque copy pixels are not the cleared background");
-        }
-
-        static double LumaDeviation(byte[] rgba)
-        {
-            double sum = 0, sq = 0;
-            int n = rgba.Length / 4;
-            for (int p = 0; p < n; p++)
-            {
-                double l = 0.299 * rgba[p * 4] + 0.587 * rgba[p * 4 + 1] + 0.114 * rgba[p * 4 + 2];
-                sum += l;
-                sq += l * l;
-            }
-            double mean = sum / n;
-            return Math.Sqrt(Math.Max(0, sq / n - mean * mean));
-        }
-
-        sealed class Harness : IDisposable
-        {
-            readonly GpuDeviceContext _gpu;
-            readonly IGpuDevice _gd;
-            readonly IGpuTexture _tex;
-            readonly IGpuFramebuffer _fb;
-            readonly IGpuCommandList _cl;
-            readonly int _w, _h;
-
-            public Harness(int width, int height)
-            {
-                _w = width;
-                _h = height;
-                _gpu = GpuDeviceContext.CreateHeadless();
-                _gd = _gpu.GpuDevice;
-                _tex = _gd.Factory.CreateTexture(GpuTextureDescription.Texture2D((uint)width, (uint)height,
-                    GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-                _fb = _gd.Factory.CreateFramebuffer(null, _tex);
-                Scene = new Scene3D(_gd, _fb.Outputs);
-                Scene.Post.UseSmoothPreset();
-                _cl = _gd.Factory.CreateCommandList();
-            }
-
-            public Scene3D Scene { get; }
-
-            public IGpuDevice Device => _gd;
-
-            /// <summary>A second render inside the frame the last <see cref="Render"/> began, with no Begin, into a
-            /// scratch target, as an offscreen capture makes. Returns the capture's pixels.</summary>
-            public byte[] RenderSecond(int width, int height)
-            {
-                using IGpuTexture tex = _gd.Factory.CreateTexture(GpuTextureDescription.Texture2D((uint)width,
-                    (uint)height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-                using IGpuFramebuffer fb = _gd.Factory.CreateFramebuffer(null, tex);
-                using (GpuRecording.Open(_gd, _cl, nameof(TemporalResolveSceneGpuTests))) Scene.RenderInternal(_cl, width, height, fb);
-                _gd.Submit(_cl);
-                _gd.WaitForIdle();
-                return GpuReadback.ToRgba(_gd, tex, width, height);
-            }
-
-            public byte[] Render(Action<Scene3D> draw)
-            {
-                Scene.Begin();
-                draw(Scene);
-                Scene.PrepareFrame();
-                using (GpuRecording.Open(_gd, _cl, nameof(TemporalResolveSceneGpuTests))) Scene.RenderInternal(_cl, _w, _h, _fb);
-                _gd.Submit(_cl);
-                _gd.WaitForIdle();
-                return GpuReadback.ToRgba(_gd, _tex, _w, _h);
-            }
-
-            public void Dispose()
-            {
-                Scene.Dispose();
-                _cl.Dispose();
-                _fb.Dispose();
-                _tex.Dispose();
-                _gpu.Dispose();
-            }
         }
     }
 }

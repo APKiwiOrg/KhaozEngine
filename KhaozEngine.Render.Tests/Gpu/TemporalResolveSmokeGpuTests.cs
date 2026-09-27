@@ -3,6 +3,7 @@ using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using Xunit;
+using static KhaozEngine.Tests.Gpu.Rgba8Stats;
 
 namespace KhaozEngine.Tests.Gpu
 {
@@ -103,16 +104,6 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(Math.Abs(MarkerRow(ultra) - MarkerRow(native)) < 4.0, "UltraPerformance is not upright " + ctx);
         }
 
-        static double Luma(byte[] p, int i) => 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2];
-
-        static double MeanAbs(byte[] a, byte[] b)
-        {
-            double sum = 0;
-            for (int i = 0; i < a.Length; i++)
-                if ((i & 3) != 3) sum += Math.Abs(a[i] - b[i]);
-            return sum / (a.Length / 4 * 3);
-        }
-
         // Pixels whose luma lies between 40 and 190. With anti-aliasing off the bars' interiors and the marker already
         // fall inside this band, so the count is reported, never gated.
         static int MidCount(byte[] rgba)
@@ -124,14 +115,6 @@ namespace KhaozEngine.Tests.Gpu
                 if (l > 40 && l < 190) n++;
             }
             return n;
-        }
-
-        static double MeanLuma(byte[] rgba)
-        {
-            double s = 0;
-            int n = rgba.Length / 4;
-            for (int p = 0; p < n; p++) s += Luma(rgba, p * 4);
-            return s / n;
         }
 
         // The mean row of the red marker's pixels, row 0 at the top of the image.

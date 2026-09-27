@@ -14,8 +14,6 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalResolveRendererGpuTests : TemporalResolveGpuFacts
     {
-        static float Ramp(int x) => Q(0.1f + 0.05f * x);
-
         [GpuFact]
         public void A_reset_frame_outputs_the_current_frame_and_stores_linear_depth_with_background_marked()
         {

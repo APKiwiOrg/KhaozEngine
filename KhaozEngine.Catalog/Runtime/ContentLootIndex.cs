@@ -33,7 +33,7 @@ public readonly record struct ContentLootEntry(
     int Sort);
 
 /// <summary>
-/// The loot candidate arrays of spec 9.4, fourth of the engine's four: per <c>loot_table</c>, its resolved
+/// The loot candidate arrays of spec 9.4, fifth of the engine's five: per <c>loot_table</c>, its resolved
 /// entry list with the weights PREFIX SUMMED, plus the candidate item ids a <c>required_tags</c> entry draws
 /// uniformly from.
 /// <para>

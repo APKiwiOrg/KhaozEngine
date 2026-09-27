@@ -15771,7 +15771,7 @@ registry.RegisterContentType(
     ]),
     defaultVisibility: ContentVisibility.Client,
     chunkSlots: 1024,
-    loadIndex: new RecipeByOutputIndex());          // built eagerly at load, beside the engine's four
+    loadIndex: new RecipeByOutputIndex());          // built eagerly at load, beside the engine's five
 ```
 
 ### Authoring: the store seam and the publisher
@@ -16000,11 +16000,17 @@ holder.TryGetCurrent(out ContentRuntime content);
 ```
 
 `ContentRuntime` is arrays indexed by id: `TryGetRow`, `TryGetId`, `Rows`, `Body`, `Key`, `IsRetired` and the
-typed `TryGetItem`. Four indexes are built EAGERLY beside it, because each is walked inside gameplay and a
-lazy build inside a tick is the latency spike the design exists to refuse: key to id per type, `ContentTagIndex`,
-`ContentFamilyIndex` and the prefix-summed `ContentLootIndex`, plus whatever a type registered through
-`IContentLoadIndex`. A version change builds a whole new runtime beside the old one and `ContentRuntimeHolder`
-swaps it in, so a reader mid-frame keeps reading the version it started on.
+typed `TryGetItem`. Five indexes are built EAGERLY beside it, because each is walked inside gameplay and a
+lazy build inside a tick is the latency spike the design exists to refuse: key to id per type,
+`ContentReferenceIndex`, `ContentTagIndex`, `ContentFamilyIndex` and the prefix-summed `ContentLootIndex`, plus
+whatever a type registered through `IContentLoadIndex`. A version change builds a whole new runtime beside the
+old one and `ContentRuntimeHolder` swaps it in, so a reader mid-frame keeps reading the version it started on.
+
+Use `content.Indexes.References.Ids(itemType, itemId, foodType)` when a satellite row such as `food` declares
+a `KeyReference` to `item`. The result is a read-only span of referencing row ids in ascending order, built
+once when the runtime loads. It includes retired targets and retired referencing rows, so a gameplay reader
+checks `IsRetired` before using a result. A missing target answers an empty span. A consumer replacing a row
+scan should probe the returned ids with `TryGetRow` and apply its ordinary retirement rule.
 
 `loot_entry.weight` and each live table's non-guaranteed weighted pool are bounded from zero through
 `int.MaxValue`. `KEC0043` refuses a publish or boot that would make `ContentLootIndex` clamp a weight or

@@ -281,6 +281,10 @@ public sealed class CatalogBenchmarkTests
         Assert.NotNull(result.LoadTotalMs);
         Assert.NotNull(result.RuntimeHeapBytes);
         Assert.NotNull(result.RuntimeApproximateBytes);
+        Assert.Equal(512, result.ReferenceIndexEdges);
+        Assert.True(result.ReferenceIndexApproximateBytes > 0);
+        Assert.True(result.ReferenceIndexBuildMilliseconds >= 0);
+        Assert.True(result.ReferenceIndexBuildAllocatedBytes > 0);
         Assert.Equal(0, result.ValidatorFindings);
         Assert.True(result.ValidatorRowsSwept > 0);
         Assert.NotNull(result.LookupNanoseconds);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace KhaozEngine.Benchmarks.Catalog;
 
@@ -10,18 +11,30 @@ public readonly record struct FamilyBlock(ushort TypeId, int Base, int Size)
 }
 
 /// <summary>
-/// The four derived indexes the engine builds once at load, spec section 9.4: key to id per type, tag to
-/// ids, family membership, and the loot candidate arrays with their weights prefix summed. All four are
-/// flat arrays rather than a collection per row, because at the stress figure a dictionary per table is
-/// a hundred thousand allocations for four entries each. The first of the four lives on the type table it
-/// indexes (<see cref="ContentTypeTable.KeyIds"/>), because it is keyed on a slice of that table's blob.
+/// The five derived indexes the engine builds once at load, spec section 9.4: key to id per type, reverse
+/// references, tag to ids, family membership, and the loot candidate arrays with their weights prefix
+/// summed. All five are flat arrays after construction. The first lives on the type table it indexes
+/// (<see cref="ContentTypeTable.KeyIds"/>), because it is keyed on a slice of that table's blob.
+/// <para>
+/// The reverse-reference stress arm creates one synthetic satellite edge per item row. That is 50,000
+/// one-to-one buckets at the owner figure and measures the allocation shape #1005 exposed without changing
+/// the pack-size fixture the other budgets use.
+/// </para>
 /// </summary>
 public sealed class ContentIndexes
 {
+    private const ushort ReferenceSatelliteType = ushort.MaxValue;
+
     public static readonly ContentIndexes Empty = new();
 
     private ContentIndexes()
     {
+        ReferenceTargetTypes = [];
+        ReferenceTargetIds = [];
+        ReferenceSourceTypes = [];
+        ReferenceRowStarts = [];
+        ReferenceRowCounts = [];
+        ReferenceRows = [];
         TagToItemIds = [];
         Families = [];
         LootTableStart = [];
@@ -30,6 +43,29 @@ public sealed class ContentIndexes
         LootEntryNested = [];
         LootEntryPrefixWeight = [];
     }
+
+    public ushort[] ReferenceTargetTypes { get; private init; }
+
+    public int[] ReferenceTargetIds { get; private init; }
+
+    public ushort[] ReferenceSourceTypes { get; private init; }
+
+    public int[] ReferenceRowStarts { get; private init; }
+
+    public int[] ReferenceRowCounts { get; private init; }
+
+    public int[] ReferenceRows { get; private init; }
+
+    public int ReferenceEdgeCount => ReferenceRows.Length;
+
+    public double ReferenceBuildMilliseconds { get; private init; }
+
+    public long ReferenceBuildAllocatedBytes { get; private init; }
+
+    public long ReferenceApproximateBytes =>
+        ((long)(ReferenceTargetTypes.Length + ReferenceSourceTypes.Length) * 2)
+        + ((long)(ReferenceTargetIds.Length + ReferenceRowStarts.Length
+            + ReferenceRowCounts.Length + ReferenceRows.Length) * 4);
 
     public Dictionary<int, int[]> TagToItemIds { get; private init; }
 
@@ -50,16 +86,30 @@ public sealed class ContentIndexes
     {
         ArgumentNullException.ThrowIfNull(runtime);
         // Key to id is the per-type KeyIds table of section 9.1 rather than an index held here, but it is
-        // still built at load and it is still one of 9.4's four, so it is built in this pass and timed with
-        // the other three.
+        // still built at load and it is still one of 9.4's five, so it is built in this pass and timed with
+        // the other four.
         foreach (KeyValuePair<ushort, ContentTypeTable> pair in runtime.Tables) pair.Value.EnsureKeyIndex();
 
+        long referenceAllocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        long referenceStarted = Stopwatch.GetTimestamp();
+        (ushort[] targetTypes, int[] targetIds, ushort[] sourceTypes, int[] rowStarts, int[] rowCounts, int[] rows)
+            = BuildReferenceIndex(runtime);
+        double referenceMilliseconds = Stopwatch.GetElapsedTime(referenceStarted).TotalMilliseconds;
+        long referenceAllocatedBytes = GC.GetAllocatedBytesForCurrentThread() - referenceAllocatedBefore;
         Dictionary<int, int[]> tagToItems = BuildTagIndex(runtime);
         (int[] start, int[] count, int[] item, int[] nested, int[] prefix) = BuildLootIndex(runtime);
         FamilyBlock[] families = BuildFamilies(runtime);
 
         return new ContentIndexes
         {
+            ReferenceTargetTypes = targetTypes,
+            ReferenceTargetIds = targetIds,
+            ReferenceSourceTypes = sourceTypes,
+            ReferenceRowStarts = rowStarts,
+            ReferenceRowCounts = rowCounts,
+            ReferenceRows = rows,
+            ReferenceBuildMilliseconds = referenceMilliseconds,
+            ReferenceBuildAllocatedBytes = referenceAllocatedBytes,
             TagToItemIds = tagToItems,
             Families = families,
             LootTableStart = start,
@@ -73,10 +123,62 @@ public sealed class ContentIndexes
     public long ApproximateBytes()
     {
         // The key to id index is not counted here: it lives on ContentTypeTable and is counted there.
-        long bytes = (long)(LootTableStart.Length + LootTableCount.Length + LootEntryItem.Length
-            + LootEntryNested.Length + LootEntryPrefixWeight.Length) * 4;
+        long bytes = ReferenceApproximateBytes
+            + ((long)(LootTableStart.Length + LootTableCount.Length + LootEntryItem.Length
+                + LootEntryNested.Length + LootEntryPrefixWeight.Length) * 4);
         foreach (KeyValuePair<int, int[]> pair in TagToItemIds) bytes += (pair.Value.LongLength * 4) + 32;
         return bytes + (Families.LongLength * 16);
+    }
+
+    private static (ushort[] TargetTypes, int[] TargetIds, ushort[] SourceTypes,
+        int[] RowStarts, int[] RowCounts, int[] Rows) BuildReferenceIndex(ContentRuntime runtime)
+    {
+        if (!runtime.Tables.TryGetValue(ContentTypes.Item, out ContentTypeTable? table))
+            return ([], [], [], [], [], []);
+
+        var edges = new List<ReferenceEdge>(table.RowCount);
+        for (int id = 1; id < table.Offsets.Length; id++)
+        {
+            if (table.Offsets[id] >= 0)
+                edges.Add(new ReferenceEdge(ContentTypes.Item, id, ReferenceSatelliteType, id));
+        }
+        if (edges.Count == 0) return ([], [], [], [], [], []);
+
+        edges.Sort(static (left, right) => left.CompareTo(right));
+        int edgeCount = 1;
+        for (int read = 1; read < edges.Count; read++)
+        {
+            ReferenceEdge edge = edges[read];
+            if (edge != edges[edgeCount - 1]) edges[edgeCount++] = edge;
+        }
+
+        int entryCount = 1;
+        for (int i = 1; i < edgeCount; i++)
+            if (!edges[i].SameBucket(edges[i - 1])) entryCount++;
+
+        var targetTypes = new ushort[entryCount];
+        var targetIds = new int[entryCount];
+        var sourceTypes = new ushort[entryCount];
+        var rowStarts = new int[entryCount];
+        var rowCounts = new int[entryCount];
+        var rows = new int[edgeCount];
+        int entry = -1;
+        for (int i = 0; i < edgeCount; i++)
+        {
+            ReferenceEdge edge = edges[i];
+            if (i == 0 || !edge.SameBucket(edges[i - 1]))
+            {
+                entry++;
+                targetTypes[entry] = edge.TargetType;
+                targetIds[entry] = edge.TargetId;
+                sourceTypes[entry] = edge.SourceType;
+                rowStarts[entry] = i;
+            }
+            rowCounts[entry]++;
+            rows[i] = edge.RowId;
+        }
+
+        return (targetTypes, targetIds, sourceTypes, rowStarts, rowCounts, rows);
     }
 
     private static Dictionary<int, int[]> BuildTagIndex(ContentRuntime runtime)
@@ -181,5 +283,25 @@ public sealed class ContentIndexes
             }
         }
         return blocks.ToArray();
+    }
+
+    private readonly record struct ReferenceEdge(
+        ushort TargetType,
+        int TargetId,
+        ushort SourceType,
+        int RowId)
+    {
+        public int CompareTo(ReferenceEdge other)
+        {
+            int targetType = TargetType.CompareTo(other.TargetType);
+            if (targetType != 0) return targetType;
+            int targetId = TargetId.CompareTo(other.TargetId);
+            if (targetId != 0) return targetId;
+            int sourceType = SourceType.CompareTo(other.SourceType);
+            return sourceType != 0 ? sourceType : RowId.CompareTo(other.RowId);
+        }
+
+        public bool SameBucket(ReferenceEdge other) =>
+            TargetType == other.TargetType && TargetId == other.TargetId && SourceType == other.SourceType;
     }
 }

@@ -8,8 +8,8 @@ namespace KhaozEngine.Catalog;
 /// The rules that make it safe, and where each one is enforced.
 /// </para>
 /// <list type="bullet">
-/// <item><description>It runs at boot step 7b, AFTER the engine's own four and BEFORE the validator.
-/// <see cref="ContentRuntime.FromSnapshot"/> builds the four, so an index cannot run before them, and
+/// <item><description>It runs at boot step 7b, AFTER the engine's own five and BEFORE the validator.
+/// <see cref="ContentRuntime.FromSnapshot"/> builds the five, so an index cannot run before them, and
 /// <see cref="ContentRuntime.BuildLoadIndexes"/> is the separate step the boot sequences.</description></item>
 /// <item><description>In TYPE ID ORDER, so an index over engine rows is built before one over a later
 /// band's and the order never depends on what a host registered first.</description></item>

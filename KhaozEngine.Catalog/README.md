@@ -300,9 +300,9 @@ process, and it implements the same `IContentSnapshot` seam over arrays indexed 
   read is the same slice one varint further in and a key costs only its bucket. `Body`, `Key`, `TryGetItem`,
   `TryGetId` over raw UTF-8 and the seven seam members all answer out of those arrays. The hand-off from the
   snapshot SHARES its per-type body blob rather than copying it, so the two hold one copy of the catalog
-  between them. `FromSnapshot` is boot step 7 and derives the four indexes below with it. `BuildLoadIndexes`
+  between them. `FromSnapshot` is boot step 7 and derives the five indexes below with it. `BuildLoadIndexes`
   is step 7b and runs whatever the registered types declared, which `ContentBoot` sequences separately
-  because it falls between the engine's four and the validator.
+  because it falls between the engine's five and the validator.
 - `ContentRuntimeHolder` - the ONE field the active runtime lives in, published at boot step 9 with a
   `Volatile.Write` and read with a `Volatile.Read`, and no lock anywhere. A reader takes the reference once at the top of an
   operation and uses that instance throughout, so a swap cannot hand it a half-old half-new answer, which
@@ -311,14 +311,21 @@ process, and it implements the same `IContentSnapshot` seam over arrays indexed 
   later live-apply phase. An unloaded holder THROWS rather than serving a default catalog, because there is
   no fallback to code defaults anywhere in this package.
 
-## The four derived indexes
+## The five derived indexes
 
 `ContentDerivedIndexes` is built eagerly in the runtime's own constructor, so a runtime never exists with its
-engine indexes missing. None of the four is built lazily, because each is walked inside gameplay and a lazy
+engine indexes missing. None of the five is built lazily, because each is walked inside gameplay and a lazy
 build inside a tick is a latency spike.
 
 - **Key to id, per type.** The open-addressed `int[]` on the type table itself, because it is keyed on a slice
   of that table's own blob. Read through `ContentRuntime.TryGetId`.
+- `ContentReferenceIndex` - every `KeyReference` field reversed from `(target type, target id, referencing
+  type)` to the referencing row ids. `Ids` returns a read-only span sorted by row id and does no row walk or
+  allocation. Its load build collects one flat value record per edge, sorts and deduplicates those records,
+  then compacts them into the lookup arrays in two passes. It creates no dictionary or list per target bucket.
+  Multiple fields on one row naming the same target contribute that row once. Retired target and referencing
+  rows stay indexed for stored-data and admin reads, so gameplay filters retirement explicitly. A reference
+  to a missing target row is left to validation and creates no lookup bucket.
 - `ContentTagIndex` - tag id to the sorted, distinct ids of the rows carrying it, per content type. Flat
   arrays sliced three deep rather than a dictionary of lists, so a lookup is two searches over small sorted
   runs and hands back a span. It covers EVERY registered type declaring a tag-list field rather than just
@@ -730,7 +737,7 @@ loads before the world and both load before the door opens.
 4. **Step 6, both type lists, before a single chunk is fetched**, then `Freeze()` on the registry. A
    manifest naming a type this build does not register has no codec for its rows, and a registered type
    absent from the version is the same failure from the other side.
-5. **Steps 7 and 7b**, the runtime and its four engine indexes, then every registered `IContentLoadIndex` in
+5. **Steps 7 and 7b**, the runtime and its five engine indexes, then every registered `IContentLoadIndex` in
    type id order.
 6. **Step 8**, the one validator with `previous` null. **Step 9**, one `Volatile.Write` into the holder.
    **Step 11**, every world-to-content key resolved by KEY against the loaded version.

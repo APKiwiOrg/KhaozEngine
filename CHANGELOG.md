@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.7.0
+
+- Item instance adds and live journal merges now honor a caller-supplied stack cap without making the
+  container depend on catalog content. Existing over-cap stacks may shrink, and replay keeps historical
+  admission rules ([#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924)).
+- The Foundation package README now names every project it carries, and the doc guard checks its
+  membership against the csproj ([#915](https://github.com/APKiwiOrg/KhaozEngine/issues/915)).
+- Item-crafted event comments now describe the shipped body and point the netcode test at the full
+  server route coverage ([#992](https://github.com/APKiwiOrg/KhaozEngine/issues/992)).
+- The journal SQLite benchmark README identifies 698.46 operations per second as offered load rather
+  than measured store capacity ([#895](https://github.com/APKiwiOrg/KhaozEngine/issues/895)).
+- The CI manual-dispatch comment now describes a hosted runner check, matching the engine's GitHub-hosted
+  workflow jobs ([#1164](https://github.com/APKiwiOrg/KhaozEngine/issues/1164)).
+
 ## 20.6.6
 
 - `ContentBundleJson.ReadFormatVersion` reads a bundle's format version using the same JSON rules as the

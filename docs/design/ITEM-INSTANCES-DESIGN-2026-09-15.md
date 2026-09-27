@@ -2337,12 +2337,12 @@ Two claims a test has to hold the generator to (17.6), both falsifiable:
   distribution through 6.4's formula is uniform over the tier's range up to rounding, and the test asserts
   both ends are reachable, which is the property contracts 6.4's worked table demonstrates.
 
-**Modulo bias is the one real trap and the contract already handles it.** `CryptographicRandomSource` uses
-rejection sampling rather than modulo (contracts 14.2), because modulo bias on an affix pool is farmable.
-`SeededRandomSource` wraps `DeterministicRng`, whose own `Next(int)` uses modulo and says so
-(`DeterministicRng.cs:70-76`, "negligible bias for game ranges"). That is fine for a test and would not be
-fine in production, which is exactly why the two implementations differ and why gate 0 decision 11 makes
-running the seeded source on a hosted server log a Warning on every boot.
+**Modulo bias is the one real trap and both sources avoid it.** `CryptographicRandomSource.NextInt` and
+`SeededRandomSource.NextInt` use rejection sampling over 64-bit draws (contracts 14.2), because modulo
+bias on an affix pool is farmable. The seeded source reads `DeterministicRng.NextULong` and does not call
+its modulo-based `Next(int)` helper. The two sources differ in entropy and reproducibility, not bounded
+draw bias. A predictable seeded stream is still unsuitable as the hosted default, which is why gate 0
+decision 11 makes a hosted server log a Warning on every boot that opts into it.
 
 ## 10. Crafting framework
 
@@ -2403,7 +2403,7 @@ guard rather than a message.
 | Kind | Guard | Parameters | True when |
 |---|---|---|---|
 | 1 | `RarityIs` | rarity id | kind 130 equals it |
-| 2 | `RarityIsAtMost` | rarity id | kind 130's `upgrade_from` chain reaches it |
+| 2 | `RarityIsAtMost` | rarity id | the named rarity's `upgrade_from` chain reaches kind 130 |
 | 3 | `AffixCountAtMost` | mod kind, count | the item carries at most that many of that kind |
 | 4 | `AffixCountAtLeast` | mod kind, count | likewise |
 | 5 | `HasMod` | mod id | kind 131 or 133 carries it |
@@ -2558,8 +2558,10 @@ rather than by a rule in prose, which is the same caller-band argument 3.3 makes
 **A game operation gets the working copy and the same refusal vocabulary, and it gets NO new powers.** It
 cannot write an unregistered property kind, cannot exceed `MaxInstancePayloadBytes`, cannot produce a
 non-canonical payload and cannot allocate an instance id, because the working copy is a builder rather
-than a byte array and the encode at the end enforces all four. An operation that violates one of them
-throws at encode, which is a game bug caught at the first test rather than a corrupt item in a page.
+than a byte array and the encode at the end enforces all four. `CraftWorkingCopy.Write` refuses an
+unregistered kind with `PropertyKindUnregistered` before seating the field, and a payload that would
+exceed the cap is refused with `PayloadTooLong`. `TryEncode` returns false after either refusal. A game
+test should assert that refusal, so the bug is visible without throwing from a server tick.
 
 **An operation is not durable and is not versioned by the pack.** A currency row names its id, so an
 operation the process does not have registered makes that currency refuse with `operation-unregistered`
@@ -2583,24 +2585,31 @@ refuses. One executor belongs to one craft loop or thread because its generator 
 **Action kind.** A durable string, `item-craft`, never renamed and never switched on, following
 `ProcessingActionKinds`' stated rule (`b-grimhollow.md:569-604`).
 
-**The normalized intent**, which is what the journal hashes to detect a conflicting replay
-(`JournalValidation.Hash`, `JournalLimits.cs:135`):
+**The normalized intent** is what the journal hashes to detect a conflicting replay
+(`JournalValidation.Hash`, `JournalLimits.cs:135`). For a client-headed craft it is exactly
+`ContainerOperation.Craft`'s canonical encoding from `WriteCanonical`:
 
 ```
-[IntentVersion: byte = 1]
-[CurrencyId: varint int32]
-[TargetContainerNameLength: varint][TargetContainerName: UTF8 bytes][TargetSlot: varint uint16]
-[SourceContainerNameLength: varint][SourceContainerName: UTF8 bytes][SourceSlot: varint uint16] // currency slot
-[TargetInstanceId: varint uint64]                               // 0 when the target is a plain stack
-[ExtraParameterCount: varint][ Extra: varint int32 ] * count    // a socket index, a selector choice
+[Kind: varint = 6]
+[TargetContainerNameLength: varint][TargetContainerName: UTF8 bytes]
+[TargetSlot: varint nonnegative int32]
+[CurrencyContainerNameLength: varint][CurrencyContainerName: UTF8 bytes]
+[CurrencySlot: varint nonnegative int32]
+[CurrencyDefinitionId: varint nonnegative int32][CurrencyCount: varint nonnegative int32]
+[TargetInstanceId: varint uint64]   // nonzero, because a craft targets an owned item
 ```
 
-The target and source containers are identified by their base container NAMES, such as `bank`.
+The target and currency containers are identified by their base container NAMES, such as `bank`.
 `ContainerSectionNames.Format` appends a page suffix when filing a page, so the canonical intent names
 `bank` rather than `bank/p00`. `ContainerOperation.WriteCanonical` writes each name as
-`[Length: varint][UTF8]`. The intent has no numeric container id or second container registry.
-The remaining field-order and slot-width differences in this sketch are tracked in
-[#1176](https://github.com/APKiwiOrg/KhaozEngine/issues/1176).
+`[Length: varint][UTF8]`. The intent has no numeric container id or second container registry. A craft
+that consumes no currency supplies no currency container, and the encoder writes the target name again
+followed by zero for the currency slot, definition and count. The plan's `CurrencyId` is recorded in the
+`ItemCraftedEvent` audit body, not these canonical bytes. A possible replay collision across different
+plans with the same operation fields is tracked in [#1177](https://github.com/APKiwiOrg/KhaozEngine/issues/1177).
+
+A server-minted batch instead prefixes `[OperationCount: varint]` and concatenates each operation's
+canonical encoding. Neither form has a separate intent-version byte or extra-parameter tail.
 
 **The target's INSTANCE ID is in the intent and that is the load bearing field.** Without it, a replayed
 craft whose slot has since been refilled by a different item would hash identically and apply to the wrong
@@ -3167,9 +3176,9 @@ Four doors, and the journal closes three of them before this document starts.
 
 - **Replay of a craft against a refilled slot.** The normalized intent carries the target's INSTANCE ID
   (10.6), so the same operation id against a different item hashes differently and resolves
-  `OperationConflict` rather than applying twice. Without that field the intent is (currency, slot) and a
-  resubmit after the slot refilled would apply to the new item. Test: 17.10, a replay with the slot
-  refilled, asserting `OperationConflict` and an untouched page.
+  `OperationConflict` rather than applying twice. Without that field a resubmit after the target slot
+  refilled could carry the same canonical bytes while naming a different item. Test: 17.10, a replay
+  with the slot refilled, asserting `OperationConflict` and an untouched page.
 - **Crash between admission and commit.** Nothing is written, so nothing is duplicated (13, row 3). The
   ids the batch allocated are burned. Test: the existing `--journal-crash-probe` harness
   (`KhaozEngine.Benchmarks/README.md:238-243`) extended with an item batch, asserting the page bytes and
@@ -3258,9 +3267,10 @@ gate 0 decision 11's boot Warning able to see it at all.
 
 **Modulo bias is the subtle half and it is farmable.** A weighted pick with modulo over a weight total
 that does not divide the generator's range biases the low candidates by a fraction a patient player can
-measure over a million drops. Rejection sampling removes it. Test: 17.6's distribution test run against
-both sources, asserting the cryptographic one is within bound and asserting the seeded one is deterministic
-rather than unbiased, which is the honest assertion for it.
+measure over a million drops. Rejection sampling removes it in both sources.
+`RandomSourceTests.CryptographicSourceHasNoModuloBiasOverANarrowRange` checks the cryptographic bounded
+draw, while `RandomSourceTests.SameSeedSameSequence` pins seeded reproducibility. Spec 17 row 6 measures
+item-generation distributions with the seeded source only.
 
 ### 15.6 Socket nesting and oversize denial of service
 

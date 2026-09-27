@@ -1900,7 +1900,9 @@ bias on a crafting roll is a real edge a player can farm.
 (`KhaozEngine.Primitives/DeterministicRng.cs:16-72`) rather than reimplementing a generator, so the
 engine keeps exactly one seeded stream definition and the two known vectors already pinning that stream in
 the test suite keep doing their job. Its constructor takes the seed. The seed is not readable back off the
-instance, so a test that wants to assert on a seed asserts on the one it passed in.
+instance, so a test that wants to assert on a seed asserts on the one it passed in. Its bounded `NextInt`
+uses rejection sampling over the wrapped generator's `NextULong`, just as the cryptographic source does.
+The implementations differ in entropy source and reproducibility, not in bounded-draw bias.
 
 ### 14.3 The journal rule
 

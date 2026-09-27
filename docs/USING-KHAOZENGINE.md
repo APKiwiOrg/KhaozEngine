@@ -16245,6 +16245,10 @@ address before it is kept), retries with capped jittered exponential backoff, an
 chunk is written to a temporary name and moved. What the caller still owns is the pack HOSTING and the build
 ordinals: the engine reads a build number, it does not mint one.
 
+For `KECC`, matching the content address is necessary but not sufficient for cache admission. Verification
+also walks the row table for count, order, duplicate, range and body bounds failures before the bytes are kept.
+It reuses the decompressed body without allocating decoded row arrays. Row body decoding remains lazy.
+
 On a `WorldClient` both refusals arrive TYPED, so a float head knows which one it got without parsing anything. A
 token starting `ke:content-mismatch:` is `DisconnectReason.ContentVersionMismatch`, and one starting
 `ke:content-client-too-old:` is `DisconnectReason.ContentClientTooOld`. Both are terminal like

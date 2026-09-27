@@ -226,9 +226,10 @@ mismatch refuses the WHOLE record with a reason token. Every decode entry point 
   same order. A row's offset is not stored, it is the running sum. `Encode` produces the canonical bytes, the
   content address and the stored file, storing uncompressed whenever Brotli does not shrink the body.
   `TryReadHeader` takes every refusal derivable from the header alone and allocates nothing, `TryDecode`
-  walks the table, and `TryVerify` checks a stored file against an address without decoding its rows.
-  `TryDecodeVerified` is the load path's one pass, doing both over a SINGLE decompression and comparing the
-  digest before it walks a row, so nothing escapes a buffer that has not been verified.
+  walks the table, and `TryVerify` checks a stored file against an address then walks the table without
+  allocating row arrays or decoding row bodies. `TryDecodeVerified` is the load path's one pass, doing both
+  over a SINGLE decompression and comparing the digest before it trusts the table, so nothing escapes a
+  buffer that has not been verified.
 - `ContentChunk`, `ContentChunkRow`, `ContentChunkHeader` and `EncodedContentChunk` - the decoded chunk with
   its walked table, one row on its way in, the 36 header bytes as a value, and the encode result carrying the
   canonical bytes, the hash and the stored file. `IsRetired(id)` is answered from the table with no row
@@ -437,11 +438,13 @@ if (!roller.TryRoll(tableId, drops, out int written))
   VERIFIES, writes through to local and returns. `ExistsAsync` asks local then remote. `PutAsync`, `ListAsync`
   and the pruning half are the CACHE's alone, so one client's eviction policy can never reach the origin.
   The verification is the whole value of it and it is not optional: bytes that do not digest to the name they
-  were fetched under are discarded, never cached and never returned. It verifies on every READ from the cache
-  and not only on write, which is what makes a local file replaced with attacker bytes self-healing, and a
-  failed cache read is DELETED before the refetch, because a content-addressed `PutAsync` is a no-op when the
-  name already exists. Every discard is reported as `(hash, reason)` through the optional callback, which is
-  how a fetch loop says `hash-mismatch` without this type knowing what a fetch loop is.
+  were fetched under are discarded, never cached and never returned. A matching-hash `KECC` chunk must also
+  pass the structural row-table walk before caching, including row count, order, duplicate, range and body
+  bounds checks. The walk reuses the decompressed body and does not allocate decoded row arrays. Verification
+  runs on every READ from the cache and not only on write, which is what makes a local file replaced with
+  attacker bytes self-healing, and a failed cache read is DELETED before the refetch, because a content-addressed
+  `PutAsync` is a no-op when the name already exists. Every discard is reported as `(hash, reason)` through the
+  optional callback, which is how a fetch loop says `hash-mismatch` without this type knowing what a fetch loop is.
 - `ContentPackReader` - the ONE reader, shared by the server and the client, which differ only in when they
   call it. `ReadAllAsync` is the server's eager boot path, `ReadRowAsync` is the client's lazy one and
   touches at most the chunk whose slots cover the id, and `ReadChunkAsync` never refetches a chunk it holds.
@@ -497,8 +500,9 @@ else
   restart refuses its whole population at once, so an undrawn curve moves that population together and
   arrives as one spike at every step of it. `BackoffBase` of zero runs the attempts back to back, and
   `ContentFetchOptions.Delay` is the wait itself, `Task.Delay` in a client and a recorder in a test.
-- **Decode is LAZY and the loop stores BYTES.** No row is decoded and no decompressed body is kept: the one
-  decompression a chunk pays is the verify's, inside the store pair, and its result is dropped. A client
+- **Decode is LAZY and the loop stores BYTES.** No row body is decoded and no decompressed body is kept: the one
+  decompression a chunk pays is the verify's, inside the store pair, where its row table is walked structurally
+  before the result is dropped. A client
   that later reads one item id through `ContentPackReader.ReadRowAsync` decompresses the one chunk whose
   slots cover it and leaves every other chunk compressed in the cache, which is what makes the cold start a
   download budget rather than a decode budget.

@@ -27,8 +27,8 @@ namespace KhaozEngine.Catalog;
 /// <see cref="ContentPackReader.TryVerify"/>: the declared uncompressed length is checked against
 /// <see cref="ContentPackFormat.MaxChunkUncompressedBytes"/> and the stored length against the body that
 /// arrived BEFORE a buffer is allocated, the buffer is exactly the declared length, and the decompressor
-/// refuses the first byte that would overrun it. Only bytes that survive all of that are hashed, and only
-/// bytes whose hash matches are cached.
+/// refuses the first byte that would overrun it. Only bytes that survive all of that are hashed. A matching
+/// <c>KECC</c> chunk is also walked through its structural row table before it can be cached.
 /// </para>
 /// </summary>
 public sealed class CachingPackStore : IPackStore, IPackStorePruning

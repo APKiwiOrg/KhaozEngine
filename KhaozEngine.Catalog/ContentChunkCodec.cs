@@ -342,15 +342,15 @@ public static class ContentChunkCodec
     }
 
     /// <summary>
-    /// Verifies a stored file against a content address without decoding its rows: decompress, rebuild the
-    /// canonical header, digest. That is one header rewrite of 36 bytes per verification, which is the
-    /// price of a hash that a compressor change cannot move.
+    /// Verifies a stored file against a content address without decoding its row bodies: decompress, rebuild
+    /// the canonical header, digest, then walk the structural row table. Verification uses the same
+    /// decompressed body for both checks and does not allocate the decoded chunk's row arrays.
     /// </summary>
     public static bool TryVerify(ReadOnlySpan<byte> file, string expectedHash, out string? reason)
     {
         ArgumentNullException.ThrowIfNull(expectedHash);
         if (!TryReadHeader(file, out ContentChunkHeader header, out reason)
-            || !CheckLengths(header, file.Length, out reason))
+            || !CheckRange(header, file.Length, registry: null, out reason))
         {
             return false;
         }
@@ -361,7 +361,8 @@ public static class ContentChunkCodec
             return false;
         }
 
-        return MatchesHash(file, header, body, expectedHash, out reason);
+        return MatchesHash(file, header, body, expectedHash, out reason)
+            && TryWalkRowTable(body, header, ids: null, offsets: null, lengths: null, retired: null, out reason);
     }
 
     /// <summary>
@@ -601,17 +602,18 @@ public static class ContentChunkCodec
     static bool TryWalkRowTable(
         ReadOnlySpan<byte> body,
         in ContentChunkHeader header,
-        int[] ids,
-        int[] offsets,
-        int[] lengths,
-        bool[] retired,
+        int[]? ids,
+        int[]? offsets,
+        int[]? lengths,
+        bool[]? retired,
         out string? reason)
     {
         long slotBase = header.SlotBase;
         long slotLimit = slotBase + header.SlotCount;
         int cursor = 0;
         long previousId = -1;
-        for (int i = 0; i < ids.Length; i++)
+        long rowBodyBytes = 0;
+        for (int i = 0; i < header.RowCount; i++)
         {
             if (!ContentVarint.TryRead(body, ref cursor, out uint rawId, out reason))
             {
@@ -661,27 +663,36 @@ public static class ContentChunkCodec
             }
 
             previousId = rawId;
-            ids[i] = (int)rawId;
-            lengths[i] = (int)rawLength;
-            retired[i] = (flags & 1) != 0;
-        }
-
-        long running = cursor;
-        for (int i = 0; i < ids.Length; i++)
-        {
-            offsets[i] = (int)running;
-            running += lengths[i];
-            if (running > body.Length)
+            rowBodyBytes += rawLength;
+            if (ids is not null)
             {
-                reason = ReasonRowOverflow;
-                return false;
+                ids[i] = (int)rawId;
+                lengths![i] = (int)rawLength;
+                retired![i] = (flags & 1) != 0;
             }
         }
 
-        if (running != body.Length)
+        long bodyEnd = cursor + rowBodyBytes;
+        if (bodyEnd > body.Length)
+        {
+            reason = ReasonRowOverflow;
+            return false;
+        }
+
+        if (bodyEnd != body.Length)
         {
             reason = ReasonTrailingBytes;
             return false;
+        }
+
+        if (offsets is not null)
+        {
+            int running = cursor;
+            for (int i = 0; i < offsets.Length; i++)
+            {
+                offsets[i] = running;
+                running += lengths![i];
+            }
         }
 
         reason = null;

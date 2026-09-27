@@ -245,3 +245,14 @@ and changed these details. Each group's "Contract amendments" block carries the 
     `LockEdgeMotionFraction` of the dilated motion and `LockEdgeFloorInternalPixels`, and all four stored previous
     depths lie farther than the moving surface's expected depth by more than the disocclusion tolerance, the history
     there is a farther surface's, and the lock read with it is dropped before a ridge can refresh it.
+20. The sharpen runs only on the display chain of a resolving frame. A later render inside the frame runs the internal
+    chain and is never sharpened, and neither is a frame with temporal anti-aliasing off or with a sharpness of 0, so
+    their output is byte-identical to a chain without the pass. `Sharpness` above 1 counts as 1, and a negative or NaN
+    value as 0. The pass limits its lobe so that input in 0 to 1 stays there, and clamps its output to 0 to 1. In the
+    HDR order it runs directly after the tonemap, whose three operators all leave colour in 0 to 1, so it reads the
+    display-referred image RCAS expects and its clamp changes nothing. The legacy order has no tonemap, so there it runs
+    first, after the distortion apply. Its scene colour is 8-bit and already display-referred, but the resolve writes
+    half float floored at 0 and not clamped at 1, so it can leave a channel slightly above 1. The limiter gives no lobe
+    to a pixel with a tap above 1 in its cross, and the clamp cuts that overshoot to 1, which the 8-bit ping the pass
+    writes would cut anyway. In both orders it precedes palette quantize and the edge outline, so it never sharpens a
+    palette step or an outline, and it counts in both flip parities (group F).

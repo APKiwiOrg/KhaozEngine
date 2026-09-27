@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Gpu
     /// A STEADY RESOLVING FRAME WITH A CAPTURE IN IT ALLOCATES NOTHING. Each frame renders the main view, which resolves
     /// and runs the display chain, then a capture from another camera at the same size, which runs the internal chain on
     /// its own post chain, both with bloom on. Neither chain is rebound, and nothing is added or recreated, once the first
-    /// capture has brought the internal chain's targets into being.
+    /// capture has brought the internal chain's targets into being. The display chain runs the default sharpen.
     /// </summary>
     [Collection("AllocSensitive")]
     public sealed class TemporalResolveCaptureAllocationGpuTests(ITestOutputHelper output)
@@ -67,6 +67,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(scene.ResolvedLastRenderForTests);   // the last render was the capture
             Assert.True(scene.LaterRenderPostCreatedForTests && scene.BloomAllocated && scene.InternalPingsAllocatedForTests);
             Assert.True(scene.TemporalPostTargetsForTests!.BloomAllocated);
+            Assert.True(scene.TemporalSharpenBuiltForTests && !scene.LaterRenderSharpenBuiltForTests,
+                "the measured frames must run the default sharpen on the display chain and not on the capture's");
             Assert.True(scene.LastTemporalDiagnostics.HistoryValid);
 
             long first = Allocated(() => Frames(Measured));

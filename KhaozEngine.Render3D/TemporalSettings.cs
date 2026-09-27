@@ -5,13 +5,13 @@ namespace KhaozEngine.Render3D
     /// <summary>
     /// Settings for temporal rendering, reachable as <see cref="PixelPostProcessSettings.Temporal"/> beside
     /// <see cref="PixelPostProcessSettings.Bloom"/> and <see cref="PixelPostProcessSettings.Water"/>. It carries the
-    /// camera-cut thresholds and the upscale preset or ratio. The preset and ratio size the internal target whenever
-    /// <see cref="RenderScale.Temporal"/> is in effect, which <see cref="AntiAliasing.Temporal"/> forces and which a
-    /// game can also pick directly with no temporal rendering at all. The thresholds cost nothing until something asks
-    /// for temporal rendering. They decide when a camera move is a cut: a frame whose camera moved further than
-    /// <see cref="CutDistanceMetres"/> or turned more than <see cref="CutAngleDegrees"/> since the last frame drops its
-    /// temporal history, exactly as an explicit <see cref="Scene3D.CameraCut"/> does. A render origin jump the previous
-    /// frame cannot be rebased across triggers the same automatic cut, whatever the thresholds, as
+    /// camera-cut thresholds, the upscale preset or ratio and the sharpness. The preset and ratio size the internal
+    /// target whenever <see cref="RenderScale.Temporal"/> is in effect, which <see cref="AntiAliasing.Temporal"/>
+    /// forces and which a game can also pick directly with no temporal rendering at all. The thresholds cost nothing
+    /// until something asks for temporal rendering. They decide when a camera move is a cut: a frame whose camera moved
+    /// further than <see cref="CutDistanceMetres"/> or turned more than <see cref="CutAngleDegrees"/> since the last
+    /// frame drops its temporal history, exactly as an explicit <see cref="Scene3D.CameraCut"/> does. A render origin
+    /// jump the previous frame cannot be rebased across triggers the same automatic cut, whatever the thresholds, as
     /// <see cref="TemporalResetReason.CameraCutDetected"/> describes. The two cuts differ only in the reason they
     /// report: <see cref="TemporalResetReason.CameraCutDetected"/> for the automatic one and
     /// <see cref="TemporalResetReason.CameraCutRequested"/> for the explicit call.
@@ -60,5 +60,20 @@ namespace KhaozEngine.Render3D
         internal float ResolvedUpscaleRatio => UpscaleRatio is float ratio && float.IsFinite(ratio)
             ? Math.Clamp(ratio, MinUpscaleRatio, 1f)
             : 1f / DisplayOverInternal(Upscale);
+
+        /// <summary>Strength of the contrast adaptive sharpen that runs after the tonemap while temporal
+        /// anti-aliasing is on, from 0 (the pass does not run) to 1. The default 0.25 is light, in keeping with
+        /// stability over crispness. The sharpen limits each pixel by its four neighbours, so it leaves an edge
+        /// already at full contrast alone and sharpens an isolated pixel at most half as hard.
+        /// <para>It sharpens the display image the temporal resolve produced, on the frame's first render only. A
+        /// later render inside the frame, such as an offscreen capture, is never sharpened. The legacy order
+        /// (<see cref="HdrSettings.Enabled"/> off) has no tonemap, and there the sharpen is the chain's first pass
+        /// after the distortion apply. A value above 1 counts as 1, and a negative or NaN value as 0, so NaN never
+        /// reaches the pass.</para></summary>
+        public float Sharpness = .25f;
+
+        /// <summary>The sharpness the pass is given: <see cref="Sharpness"/> clamped to 0 to 1, with NaN as
+        /// 0.</summary>
+        internal float ResolvedSharpness => Sharpness > 0f ? MathF.Min(Sharpness, 1f) : 0f;
     }
 }

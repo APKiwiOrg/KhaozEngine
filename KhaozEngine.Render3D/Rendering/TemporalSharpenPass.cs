@@ -46,8 +46,13 @@ namespace KhaozEngine.Render3D.Rendering
             _pipeline = BuildPipeline(output);
         }
 
-        IGpuPipeline BuildPipeline(GpuOutputDescription output) =>
-            _gd.Factory.CreateGraphicsPipeline(new GpuPipelineDescription
+        /// <summary>The colour format the pipeline was last built for. Internal, for the tests.</summary>
+        internal GpuPixelFormat OutputFormat { get; private set; }
+
+        IGpuPipeline BuildPipeline(GpuOutputDescription output)
+        {
+            OutputFormat = output.Colour[0];
+            return _gd.Factory.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,
                 BlendAttachments = new[] { GpuBlendAttachment.OverrideBlend },
@@ -60,6 +65,7 @@ namespace KhaozEngine.Render3D.Rendering
                 VertexLayouts = new List<GpuVertexLayoutDescription>(),
                 Outputs = output,
             });
+        }
 
         /// <summary>Rebuild the pipeline for a new ping colour format (the HDR toggle). The caller has idled the
         /// GPU.</summary>
@@ -95,6 +101,9 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetGraphicsResourceSet(0, set);
             cl.Draw(3);
         }
+
+        /// <summary>The textures the pass holds a cached set over. Internal, for the tests.</summary>
+        internal IReadOnlyCollection<IGpuTexture> CachedSources => _sets.Keys;
 
         /// <summary>Dispose every cached set. Call when the textures they reference are rebuilt.</summary>
         public void ReleaseSets()

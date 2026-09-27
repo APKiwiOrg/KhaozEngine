@@ -16,6 +16,9 @@ namespace KhaozEngine.Render3D.Rendering
     /// half-res BloomA/BloomB pair) so no pass reads its own output. The targets arrive as an
     /// <see cref="IPostChainTargets"/>: the internal <see cref="RenderResources"/>, or the display-resolution
     /// <see cref="TemporalPostTargets"/> after the temporal resolve, whose source alternates between two history targets.
+    /// <para>On the display targets alone the chain adds the temporal sharpen (<see cref="SharpenRuns"/>): directly
+    /// after the tonemap in the HDR order, and first in the legacy order, which has no tonemap. Either way it precedes
+    /// quantize and the outline. No other chain builds or runs it, so their output is unchanged.</para>
     /// </summary>
     internal sealed partial class PixelPostProcess : IDisposable
     {
@@ -77,6 +80,26 @@ namespace KhaozEngine.Render3D.Rendering
         readonly float[] _palScratch = new float[PaletteScratchFloats]; // reused per frame: 64 vec4 palette + count/dither
         readonly float[] _blurScratchH = new float[BlurScratchFloats];  // reused per frame: Texel + Params(dir=horizontal) + Weights
         readonly float[] _blurScratchV = new float[BlurScratchFloats];  // reused per frame: Texel + Params(dir=vertical) + Weights
+
+        // The temporal sharpen, built on the first frame temporal anti-aliasing sharpens (TemporalSharpenPass), so a
+        // chain that never runs it owns none of its objects.
+        TemporalSharpenPass? _sharpen;
+
+        /// <summary>Whether the chain has built the temporal sharpen. Internal, for the tests.</summary>
+        internal bool SharpenBuilt => _sharpen != null;
+
+        /// <summary>The temporal sharpen, null until the chain builds it. Internal, for the tests.</summary>
+        internal TemporalSharpenPass? SharpenForTests => _sharpen;
+
+        /// <summary>Whether the sharpen runs on a chain over <paramref name="res"/> this frame: the targets are the
+        /// display targets after the temporal resolve (<see cref="TemporalPostTargets"/>), temporal anti-aliasing is
+        /// the effective mode and <see cref="TemporalSettings.ResolvedSharpness"/> is above zero, which a NaN
+        /// sharpness is not. The scene hands the display targets only to the first render of a resolving frame, so
+        /// the internal chain, which a frame without the resolve and a later render inside a resolving frame both
+        /// run, never sharpens and stays byte-identical to a chain without the pass.</summary>
+        internal static bool SharpenRuns(PixelPostProcessSettings s, IPostChainTargets res) =>
+            res is TemporalPostTargets && s.EffectiveAaMode == AntiAliasingMode.Temporal
+            && s.Temporal.ResolvedSharpness > 0f;
 
         public PixelPostProcess(IGpuDevice gd, GpuOutputDescription pingOutput, GpuOutputDescription swapchainOutput)
         {
@@ -202,16 +225,26 @@ namespace KhaozEngine.Render3D.Rendering
             // bloomRuns pattern). It is the chain's FIRST pass in both modes, so it precedes the outline pass and the
             // blit and is counted in BOTH parities below.
             bool distortionRuns = distortionActive && res.DistortAllocated;
+            // The temporal sharpen runs directly after the tonemap in the HDR order and first in the legacy order.
+            // Either way it precedes the outline pass, so it joins both parities below. Its uniform write sits here
+            // with the chain's own, before any framebuffer is bound this frame, and its draw comes later in the same
+            // recording, in Run.
+            bool sharpenRuns = SharpenRuns(s, res);
+            if (sharpenRuns)
+            {
+                _sharpen ??= new TemporalSharpenPass(_gd, _pingOutput);
+                _sharpen.Prepare(cl, res.PingA.Width, res.PingA.Height, s.Temporal.ResolvedSharpness);
+            }
 
             // MRT-flip parity for the edge pass: every fullscreen chain pass flips the image vertically, but the
             // NormalTex/DepthColorTex the edge pass ALSO reads are raw MRT attachments that never pass through the
             // chain. When an ODD number of chain passes precede the outline pass (mirrors Run's per-mode order:
-            // bloom + tonemap + quantize in HDR, quantize alone in legacy), the chain content arrives vertically
-            // flipped relative to those raw textures, so the edge pass must flip its normal/depth sampling to match
-            // (Fade.z, consumed by EdgeFrag). The historical golden-covered configs (legacy, quantize off) compute 0
-            // here and stay byte-identical. This also fixes the latent legacy quantize+outline mirror, where the
-            // edge field rendered upside down relative to the palette-quantized image.
-            int passesBeforeOutline = (distortionRuns ? 1 : 0) + (s.Hdr.Enabled
+            // bloom + tonemap + sharpen + quantize in HDR, sharpen + quantize in legacy), the chain content arrives
+            // vertically flipped relative to those raw textures, so the edge pass must flip its normal/depth sampling
+            // to match (Fade.z, consumed by EdgeFrag). The historical golden-covered configs (legacy, quantize off)
+            // compute 0 here and stay byte-identical. This also fixes the latent legacy quantize+outline mirror, where
+            // the edge field rendered upside down relative to the palette-quantized image.
+            int passesBeforeOutline = (distortionRuns ? 1 : 0) + (sharpenRuns ? 1 : 0) + (s.Hdr.Enabled
                 ? (bloomRuns ? 1 : 0) + 1 + (s.Quantize ? 1 : 0)
                 : (s.Quantize ? 1 : 0));
             float mrtFlip = (passesBeforeOutline & 1) == 1 ? 1f : 0f;
@@ -293,9 +326,9 @@ namespace KhaozEngine.Render3D.Rendering
             // BloomCompositeFrag's fixed internal un-flip) and do not add to the main chain's parity. This rule
             // depends only on the settings, matching Run's pass sequence exactly in BOTH the HDR and legacy orders.
             // The distortion apply pass adds exactly one net main-chain pass (the FIRST pass, before either mode's
-            // branch), so it joins the blit flip parity too.
-            int precedingPasses = (distortionRuns ? 1 : 0) + (s.Hdr.Enabled ? 1 : 0) + (s.Quantize ? 1 : 0) + (s.Outline ? 1 : 0)
-                                + (bloomRuns ? 1 : 0) + (runFxaa ? 1 : 0);
+            // branch), so it joins the blit flip parity too, and so does the temporal sharpen.
+            int precedingPasses = (distortionRuns ? 1 : 0) + (sharpenRuns ? 1 : 0) + (s.Hdr.Enabled ? 1 : 0)
+                                + (s.Quantize ? 1 : 0) + (s.Outline ? 1 : 0) + (bloomRuns ? 1 : 0) + (runFxaa ? 1 : 0);
             float flipV = (precedingPasses % 2) == 0 ? 1f : 0f;
 
             var final = new FinalUbo
@@ -320,6 +353,7 @@ namespace KhaozEngine.Render3D.Rendering
             IGpuTexture src = color;
             bool bloomRuns = s.Bloom.Enabled && res.BloomAllocated;
             bool distortionRuns = distortionActive && res.DistortAllocated;
+            bool sharpenRuns = SharpenRuns(s, res);
 
             // Shared free-ping ping-pong for the single-input passes (tonemap / quantize / outline / FXAA): each
             // writes to the ping NOT holding src so no pass reads its own output. Source/PingB -> PingA, PingA ->
@@ -339,6 +373,15 @@ namespace KhaozEngine.Render3D.Rendering
             void RunOutline() => Simple(_edgePipe, fromSource.Edge, _edgeFromPingA, _edgeFromPingB);
             void RunTonemap() => Simple(_tonePipe, fromSource.Tone, _toneFromPingA, _toneFromPingB);
             void RunFxaa() => Simple(_fxaaPipe, fromSource.Fxaa, _fxaaFromPingA, _fxaaFromPingB);
+
+            // The temporal sharpen picks its target as Simple does. Its input is the chain source (a history colour,
+            // so at most two textures) or a ping, and TemporalSharpenPass caches one set per texture it is handed.
+            void RunSharpen()
+            {
+                bool fromA = ReferenceEquals(src, res.PingA);
+                _sharpen!.Draw(cl, src, fromA ? res.PingBFB : res.PingAFB);
+                src = fromA ? res.PingB : res.PingA;
+            }
 
             // Bloom: bright-pass -> separable blur (half-res) -> additive composite back into a full-res ping. Runs
             // only when the targets report BloomAllocated (Scene3D requests the half-res targets only while
@@ -400,9 +443,13 @@ namespace KhaozEngine.Render3D.Rendering
                 // HDR order: bloom the over-range cores FIRST (float16, pre-tonemap) so hot values halo, then tonemap
                 // the scene to LDR, then run the retro/AA passes on the tonemapped [0,1] result. The bloom-before-
                 // quantize swap vs legacy is deliberate (see HdrSettings / the design record): retro palette games
-                // that need bloom AFTER quantize stay on legacy mode.
+                // that need bloom AFTER quantize stay on legacy mode. The temporal sharpen reads the tonemapped
+                // image, which every operator leaves in 0 to 1, the display-referred range RCAS works in, so its final
+                // clamp changes nothing. It runs ahead of quantize and outline, so it never sharpens a palette step or
+                // a line.
                 if (bloomRuns) RunBloom();
                 RunTonemap();
+                if (sharpenRuns) RunSharpen();
                 if (s.Quantize) RunQuantize();
                 if (s.Outline) RunOutline();
                 if (runFxaa) RunFxaa();
@@ -417,6 +464,12 @@ namespace KhaozEngine.Render3D.Rendering
                 //    the silhouette line.
                 //  - bloom BEFORE fxaa so fxaa also polishes the bloom composite's soft edges instead of adding an
                 //    unaliased halo on top of an already-anti-aliased image.
+                // The temporal sharpen runs first, since this order has no tonemap to follow: the scene colour is 8-bit
+                // and already display-referred. The resolve's half-float output is floored at 0 but not clamped at 1,
+                // so it can overshoot 1 slightly. The limiter gives no lobe to a pixel with a tap above 1 in its cross,
+                // and the final clamp cuts that overshoot to 1, as the 8-bit ping it writes would anyway. Every pass
+                // after it then reads an image in 0 to 1, as it does without the resolve.
+                if (sharpenRuns) RunSharpen();
                 if (s.Quantize) RunQuantize();
                 if (s.Outline) RunOutline();
                 if (bloomRuns) RunBloom();
@@ -449,6 +502,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             DisposeSets();
+            _sharpen?.Dispose();
             _palPipe.Dispose(); _edgePipe.Dispose(); _blitPipe.Dispose(); _fxaaPipe.Dispose(); _tonePipe.Dispose();
             _brightPipe.Dispose(); _blurPipe.Dispose(); _compositePipe.Dispose(); _applyPipe.Dispose();
             _palLayout.Dispose(); _edgeLayout.Dispose(); _blitLayout.Dispose(); _fxaaLayout.Dispose(); _toneLayout.Dispose();

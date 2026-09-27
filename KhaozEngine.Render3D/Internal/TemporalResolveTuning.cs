@@ -146,21 +146,21 @@ namespace KhaozEngine.Render3D.Internal
         /// texel's own motion and depth instead. A 30 display pixel box keyed and crossing a textured wall at 4 display
         /// pixels a frame, 4 internal pixels at Native and 2.7 at Quality, left 63 and 180 of its 840 trail pixels
         /// further from the bare wall than a freshly revealed wall is, because the column behind its trailing edge read
-        /// a wall texel 4 pixels away at full confidence each frame. With this and <see
-        /// cref="DisocclusionVisibleShare"/> it leaves 1 and 0. The keyed line facts move up to 0.9 internal pixels a
-        /// frame and the nearest-depth fact 1, and all keep the dilated history. 1.25 leaves a quarter pixel over that
-        /// for the half-float motion target and the float round trip of a background centre, and 1 measures the same.
-        /// At 0.5, the moving-surface threshold, the nearest-depth fact fails and a keyed line at 0.6 internal pixels a
-        /// frame on Quality keeps 12 percent of its contrast against 74. At 1.5 the box at UltraPerformance, 1.33
-        /// internal pixels a frame, leaves 233 pixels against 60. A still nearer surface keeps dilation: a still box in
-        /// front of the textured wall under a perspective camera stepping sideways 2 internal pixels a frame against
-        /// the wall left 18 and 19 trail pixels at Native and Quality with the rule applied there, against 6 and 10,
-        /// and against the sky its edges took 0.0035 and 0.0063 fast flips a pixel a frame against none. The cost,
-        /// where a moving object's edge pixel has its centre texel on the farther surface: a keyed box tilted and
-        /// crossing the flat wall at 2 internal pixels a frame averages a luma error of 0.00145 and 0.00196 over its
-        /// edges at Native and Quality against 0.0008 and 0.0014 with dilation, and its temporal error over the band it
-        /// crosses is 0.00207 and 0.00272 against 0.00085 and 0.00168. A keyed line one internal pixel wide kept only
-        /// 0.26 of its reference energy over its own coverage at both presets until the rule of
+        /// a wall texel 4 pixels away at full confidence each frame. With this and
+        /// <see cref="DisocclusionVisibleShare"/> it leaves 1 and 0. The keyed line facts move up to 0.9 internal
+        /// pixels a frame and the nearest-depth fact 1, and all keep the dilated history. 1.25 leaves a quarter pixel
+        /// over that for the half-float motion target and the float round trip of a background centre, and 1 measures
+        /// the same. At 0.5, the moving-surface threshold, the nearest-depth fact fails and a keyed line at 0.6
+        /// internal pixels a frame on Quality keeps 12 percent of its contrast against 74. At 1.5 the box at
+        /// UltraPerformance, 1.33 internal pixels a frame, leaves 233 pixels against 60. A still nearer surface keeps
+        /// dilation: a still box in front of the textured wall under a perspective camera stepping sideways 2 internal
+        /// pixels a frame against the wall left 18 and 19 trail pixels at Native and Quality with the rule applied
+        /// there, against 6 and 10, and against the sky its edges took 0.0035 and 0.0063 fast flips a pixel a frame
+        /// against none. The cost, where a moving object's edge pixel has its centre texel on the farther surface: a
+        /// keyed box tilted and crossing the flat wall at 2 internal pixels a frame averages a luma error of 0.00145
+        /// and 0.00196 over its edges at Native and Quality against 0.0008 and 0.0014 with dilation, and its temporal
+        /// error over the band it crosses is 0.00207 and 0.00272 against 0.00085 and 0.00168. A keyed line one internal
+        /// pixel wide kept only 0.26 of its reference energy over its own coverage at both presets until the rule of
         /// <see cref="MovingShareConfidence"/> gave its pixels their current coverage: it keeps 1.05 and 0.97 now,
         /// where dilation kept 1.06 and 0.94 but smeared it to 2.09 and 1.28 over the band with a trail of 8 pixels at
         /// Native, and its band's temporal error is 0.00155 and 0.00228 against 0.00255 and 0.00220. The 30 pixel box

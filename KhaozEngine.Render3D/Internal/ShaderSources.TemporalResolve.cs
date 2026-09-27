@@ -262,9 +262,10 @@ bool temporalNarrowCurrentDepth(ivec2 texel, float depth, ivec2 maxTexel) {
     return narrowRow || narrowColumn;
 }
 
-// Step 6's stored lock carries one fact more: where the pixel's dilated nearest surface moved, so that its depth test
-// was skipped, the state holds minus one minus the lock. A lock lies in [0, 1], so the stored value then lies in
-// [-2, -1], the lock reads back unchanged, and the next frame knows a moving surface showed there. Step 3 reads it.
+// Step 6's stored lock carries one fact more: where history was valid and the pixel's dilated nearest surface moved,
+// so that its depth test was skipped, the state holds minus one minus the lock. A frame with no valid history stores
+// the lock plain. A lock lies in [0, 1], so the stored value then lies in [-2, -1], the lock reads back unchanged, and
+// the next frame knows a moving surface showed there. Step 3 reads it.
 float temporalStoreLock(float lockValue, bool moved) { return moved ? -1.0 - lockValue : lockValue; }
 bool temporalStoredMoved(float stored) { return stored < -0.5; }
 float temporalStoredLock(float stored) { return temporalStoredMoved(stored) ? -1.0 - stored : stored; }

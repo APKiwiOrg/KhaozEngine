@@ -18,9 +18,9 @@ namespace KhaozEngine.Render3D.Internal
         public const GpuPixelFormat HistoryColor = GpuPixelFormat.R16G16B16A16Float;
 
         /// <summary>The two display-resolution confidence and stability targets: the accumulated sample weight over its
-        /// cap in red, the thin feature lock in green. Where the pixel's dilated nearest surface moved, green holds
-        /// minus one minus the lock, so the next frame reads the lock back and knows a moving surface showed
-        /// there.</summary>
+        /// cap in red, the thin feature lock in green. Where history was valid and the pixel's dilated nearest surface
+        /// moved, green holds minus one minus the lock, so the next frame reads the lock back and knows a moving
+        /// surface showed there. A frame with no valid history stores the lock plain.</summary>
         public const GpuPixelFormat HistoryConfidence = GpuPixelFormat.R16G16Float;
 
         /// <summary>The two internal-resolution previous depth targets: linear view depth, background at 1e30.</summary>

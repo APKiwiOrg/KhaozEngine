@@ -25,6 +25,9 @@ Pulls in:
 - `KhaozEngine.Particles.Render3D` - the 3D draw layer for the deterministic particle sim.
 - `KhaozEngine.Physics` - the dependency-free physics seam (already in Foundation, referenced
   here so the seam is explicit for 3D character/world collision wiring).
+- `KhaozEngine.CodeHealth.Analyzers` - the KESIZE file-size ratchet. The direct dependency uses
+  `PrivateAssets="none"` so its analyzer assembly and `buildTransitive` baseline discovery props both flow
+  through the packed umbrella and run in the consuming project's build.
 
 No graphics backend is opt-in any more: the three above ride in through `Game2D`, so a repinned game
 drops any `KhaozEngineMetal.Register()` / `KhaozEngineD3D11.Register()` / `KhaozEngineVulkan.Register()`

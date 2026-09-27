@@ -88,7 +88,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <param name="completedValue">The timeline's completed value, from
         /// <see cref="VulkanTimeline.CompletedValue"/>.</param>
         /// <returns>How many destroys ran.</returns>
-        internal int Drain(ulong completedValue) => Release(e => e.Value <= completedValue);
+        internal int Drain(ulong completedValue) => Release(completedValue);
 
         /// <summary>
         /// Run EVERY held destroy regardless of its value. The teardown drain, and legal in exactly one place: the
@@ -96,7 +96,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// idle by definition, so every recorded value has been passed and the values have nothing left to say.
         /// </summary>
         /// <returns>How many destroys ran.</returns>
-        internal int DrainAll() => Release(static _ => true);
+        internal int DrainAll() => Release(ulong.MaxValue);
 
         /// <summary>
         /// Drop every held destroy WITHOUT running it, and report how many were dropped. For the one case where
@@ -116,10 +116,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
         }
 
-        // The shared body of both drains: take the ready entries off the list under the lock, then invoke them
-        // with the lock released. Order is preserved, so destroys run in the order they were retired, which is the
-        // order a reader of a native call log expects.
-        int Release(Func<Entry, bool> ready)
+        // The shared body of both drains: take every entry whose value is at or below the ceiling off the list under
+        // the lock, then invoke them with the lock released. Order is preserved, so destroys run in the order they
+        // were retired, which is the order a reader of a native call log expects.
+        //
+        // A CEILING RATHER THAN A PREDICATE. Drain runs at every present, and a lambda capturing the completed value
+        // cost a closure and a delegate, 88 bytes, on every call whether or not anything was due. The teardown drain
+        // passes ulong.MaxValue, which every value is at or below.
+        int Release(ulong ceiling)
         {
             List<Entry>? due = null;
 
@@ -127,7 +131,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             {
                 for (int i = _entries.Count - 1; i >= 0; i--)
                 {
-                    if (!ready(_entries[i])) continue;
+                    if (_entries[i].Value > ceiling) continue;
 
                     (due ??= new List<Entry>()).Add(_entries[i]);
                     _entries.RemoveAt(i);

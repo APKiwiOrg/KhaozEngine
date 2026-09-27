@@ -99,7 +99,7 @@ public class PagedItemContainerTests
     }
 
     [Fact]
-    public void A_positive_stack_cap_limits_a_new_stack_through_both_add_doors()
+    public void A_positive_stack_cap_limits_a_plain_new_stack_and_refuses_to_split_an_identified_one()
     {
         PagedItemContainer plain = NewContainer(
             pageCount: 1, capacity: 1, stackCap: _ => 10);
@@ -108,10 +108,44 @@ public class PagedItemContainerTests
 
         PagedItemContainer whole = NewContainer(
             pageCount: 1, capacity: 1, stackCap: _ => 10);
-        Assert.Equal(10, whole.Add(Slot(Potion, 15, 11, Level(68))));
-        Assert.Equal(10, whole.SlotAt(0).Stack.Count);
-        Assert.Equal(11, whole.SlotAt(0).Stack.InstanceId);
-        Assert.Equal(Level(68), whole.SlotAt(0).Payload.ToArray());
+        Assert.Equal(0, whole.Add(Slot(Potion, 15, 11, Level(68))));
+        Assert.True(whole.SlotAt(0).IsEmpty);
+        Assert.Equal(0, whole.DirtyPageCount);
+    }
+
+    [Fact]
+    public void An_identified_partial_merge_is_refused_without_splitting_its_instance_id()
+    {
+        PagedItemContainer container = NewContainer(
+            pageCount: 1, capacity: 1, stackCap: _ => 10);
+        container.Seat(0, Slot(Potion, 8, 40, Level(68)));
+        ItemSlot grant = Slot(Potion, 5, 11, Level(68));
+
+        Assert.Equal(0, container.Add(grant));
+        Assert.Equal(8, container.SlotAt(0).Stack.Count);
+        Assert.Equal(40, container.SlotAt(0).Stack.InstanceId);
+        Assert.Equal(11, grant.Stack.InstanceId);
+        Assert.NotEqual(grant.Stack.InstanceId, container.SlotAt(0).Stack.InstanceId);
+        Assert.Equal(0, container.DirtyPageCount);
+    }
+
+    [Fact]
+    public void The_legacy_five_argument_constructor_and_additive_stack_cap_overload_both_exist()
+    {
+        Type memoryPredicate = typeof(Func<ReadOnlyMemory<byte>, bool>);
+        ConstructorInfo? legacy = typeof(PagedItemContainer).GetConstructor(
+            [typeof(int), typeof(int), typeof(Func<int, bool>), memoryPredicate, memoryPredicate]);
+        ConstructorInfo? capped = typeof(PagedItemContainer).GetConstructor(
+            [typeof(int), typeof(int), typeof(Func<int, bool>), memoryPredicate, memoryPredicate,
+                typeof(Func<int, int>)]);
+
+        Assert.NotNull(legacy);
+        Assert.NotNull(capped);
+        Assert.True(legacy.GetParameters()[3].IsOptional);
+        Assert.True(legacy.GetParameters()[4].IsOptional);
+        Assert.False(capped.GetParameters()[3].IsOptional);
+        Assert.False(capped.GetParameters()[4].IsOptional);
+        Assert.False(capped.GetParameters()[5].IsOptional);
     }
 
     [Fact]

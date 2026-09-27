@@ -17031,7 +17031,10 @@ tick, so a journal that never sees the server tick opens every batch at the defa
 `stackCap` is a content-free seam. A positive value limits the units a new stack or merge accepts, while zero
 or no delegate keeps the `int.MaxValue` ceiling. A negative value is a caller error. The delegate is read
 once per operation and never cached. `Seat` and the load path may preserve a stored over-cap stack, which
-refuses growth until removal brings it below the current cap.
+refuses growth until removal brings it below the current cap. Anonymous `Add` grants may enter partially and
+return the remainder. An identified grant enters whole or changes nothing, because the container cannot mint
+an id for a split remainder. The exact five-argument constructor remains for compiled consumers, and the
+stack-cap overload adds a required sixth argument after the two payload predicates.
 
 **The batch owns what it is opened over, from `Open` until `MarkCommitted`.** It holds each container by
 reference and writes through it on every `Apply`, through `IPagedContainerWorkingCopy` and nothing wider. The
@@ -17089,6 +17092,10 @@ even if the current catalog changed. It also allows an admitted Grant after a la
 live builder uses `TryApply` and checks the current stackability, stack cap and capacity. A false
 answer names a stored record the host must refuse or quarantine. A custom working-copy implementation is
 still responsible for accepting valid writes.
+
+A live journal Merge is atomic. Its version 1 event has no moved-count field, so a capped merge that would
+leave any source remainder is refused before either slot changes. Every admitted Merge consumes the source
+whole, and replay from the same prior pages produces the same encoded page bytes.
 
 ```csharp
 if (!ContainerOperationEventCodec.TryRead(stored.EventType, stored.EventSchemaVersion,

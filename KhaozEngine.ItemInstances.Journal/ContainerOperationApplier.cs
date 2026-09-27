@@ -166,10 +166,9 @@ public static class ContainerOperationApplier
 
         int cap = replay ? 0 : container.StackCap?.Invoke(destination.Stack.ItemId) ?? 0;
         ItemSlot merged = InstanceStacking.Merge(destination, source, cap, out int remainder);
-        if (remainder == source.Stack.Count) return Refuse("merge-refused", out reason);
+        if (remainder != 0) return Refuse("merge-refused", out reason);
         container.SetSlotAt(operation.DestinationSlot, merged);
-        if (remainder == 0) container.TakeSlotAt(operation.Slot);
-        else container.SetSlotAt(operation.Slot, source with { Stack = source.Stack with { Count = remainder } });
+        container.TakeSlotAt(operation.Slot);
         reason = null;
         return true;
     }

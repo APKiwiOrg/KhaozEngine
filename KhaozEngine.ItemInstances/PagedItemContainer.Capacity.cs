@@ -82,8 +82,9 @@ public sealed partial class PagedItemContainer
 
     /// <summary>
     /// Adds one entry, payload and instance id included: the grant an owned item arrives through. It merges
-    /// into the first entry spec 4.6 says it may merge with, and otherwise opens ONE slot. A stackable entry
-    /// is limited to the current positive stack cap and the remainder stays with the caller.
+    /// into the first entry spec 4.6 says it may merge with, and otherwise opens ONE slot. An anonymous
+    /// stackable entry is limited to the current positive stack cap and the remainder stays with the caller.
+    /// An identified grant is all-or-nothing because this type cannot mint a second durable identity.
     /// <para>
     /// A grant that finds a mergeable stack never opens a slot as well, even when that stack saturated
     /// before the grant was spent. One stack per container is the rule, and the remainder is the caller's.
@@ -112,8 +113,11 @@ public sealed partial class PagedItemContainer
                 ItemSlot arriving = grant with { Stack = grant.Stack with { Count = remaining } };
                 if (!InstanceStacking.CanMerge(existing, arriving, _stackable)) continue;
 
+                ItemSlot merged = InstanceStacking.Merge(existing, arriving, cap, out int afterMerge);
+                if (grant.Stack.HasInstance && afterMerge != 0) return 0;
                 sawStack = true;
-                page.Write(slot, InstanceStacking.Merge(existing, arriving, cap, out remaining));
+                page.Write(slot, merged);
+                remaining = afterMerge;
             }
 
             if (remaining == 0) break;
@@ -124,6 +128,7 @@ public sealed partial class PagedItemContainer
             int entering = cap > 0 && InstanceStacking.CanMerge(grant, grant, _stackable)
                 ? Math.Min(remaining, cap)
                 : remaining;
+            if (grant.Stack.HasInstance && entering != remaining) return 0;
             opened.Write(free, grant with { Stack = grant.Stack with { Count = entering } });
             remaining -= entering;
         }

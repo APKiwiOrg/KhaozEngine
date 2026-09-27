@@ -208,6 +208,20 @@ public class InstanceStackingTests
     }
 
     [Fact]
+    public void A_partial_capped_merge_keeps_the_destination_instance_id_distinct_from_the_remainder()
+    {
+        ItemSlot destination = Slot(Potion, 8, 40);
+        ItemSlot source = Slot(Potion, 5, 11);
+
+        ItemSlot merged = InstanceStacking.Merge(destination, source, cap: 10, out int remainder);
+
+        Assert.Equal(10, merged.Stack.Count);
+        Assert.Equal(40, merged.Stack.InstanceId);
+        Assert.Equal(3, remainder);
+        Assert.NotEqual(source.Stack.InstanceId, merged.Stack.InstanceId);
+    }
+
+    [Fact]
     public void An_existing_over_cap_stack_refuses_every_unit_of_a_merge()
     {
         ItemSlot overCap = Slot(Potion, 15, 11);

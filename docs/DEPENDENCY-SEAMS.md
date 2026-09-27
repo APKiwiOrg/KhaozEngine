@@ -881,7 +881,9 @@ as a leaf, and a consumer that wants plain stacks and nothing else never pulls t
 `PagedItemContainer` keeps `max_stack` behind the same content-free shape. Its optional `Func<int, int>`
 `stackCap` returns the current cap for a definition on each operation. A consumer can close that delegate over
 its catalog runtime, while `KhaozEngine.ItemInstances` stores no row and names no catalog row type. Null or a
-zero answer keeps the engine ceiling. A negative answer is a caller error.
+zero answer keeps the engine ceiling. A negative answer is a caller error. The legacy five-argument
+constructor remains for binary compatibility. The additive overload takes the cap as its required sixth
+argument, after the two payload-door predicates, so existing three-to-five-argument calls are unambiguous.
 
 ### The content types, the generator, crafting and the stat evaluator add NO edge
 

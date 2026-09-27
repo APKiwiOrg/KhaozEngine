@@ -57,9 +57,6 @@ public sealed partial class PagedItemContainer
     /// <param name="quarantineWellFormed">Whether a quarantined slot's bytes are a well formed quarantine
     /// wrapper, which is <see cref="QuarantineWrapper.Verify(ReadOnlyMemory{byte})"/>. Left null, every
     /// non-empty quarantined payload is refused.</param>
-    /// <param name="stackCap">The game's current <c>max_stack</c> for a definition. It is consulted per
-    /// operation and never cached. Left null, or when it returns zero, adds use the engine ceiling. A
-    /// negative answer is a caller error.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageCount"/> is not positive or names
     /// a page the codec's header cannot, or <paramref name="capacity"/> is negative.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="stackable"/> is null.</exception>
@@ -68,8 +65,29 @@ public sealed partial class PagedItemContainer
         int capacity,
         Func<int, bool> stackable,
         Func<ReadOnlyMemory<byte>, bool>? payloadCanonical = null,
-        Func<ReadOnlyMemory<byte>, bool>? quarantineWellFormed = null,
-        Func<int, int>? stackCap = null)
+        Func<ReadOnlyMemory<byte>, bool>? quarantineWellFormed = null)
+        : this(pageCount, capacity, stackable, payloadCanonical, quarantineWellFormed, null)
+    {
+    }
+
+    /// <summary>Builds an empty paged container with a live content stack-cap seam.</summary>
+    /// <param name="pageCount">How many full pages, fixed for the container's life.</param>
+    /// <param name="capacity">The occupied-slot gate.</param>
+    /// <param name="stackable">The game's live stackability rule.</param>
+    /// <param name="payloadCanonical">Whether an instance payload is canonical.</param>
+    /// <param name="quarantineWellFormed">Whether quarantine bytes are well formed.</param>
+    /// <param name="stackCap">The game's current <c>max_stack</c> for a definition. It is consulted per
+    /// operation and never cached. Null or zero uses the engine ceiling. A negative answer is a caller error.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="pageCount"/> is not positive or names
+    /// a page the codec's header cannot, or <paramref name="capacity"/> is negative.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="stackable"/> is null.</exception>
+    public PagedItemContainer(
+        int pageCount,
+        int capacity,
+        Func<int, bool> stackable,
+        Func<ReadOnlyMemory<byte>, bool>? payloadCanonical,
+        Func<ReadOnlyMemory<byte>, bool>? quarantineWellFormed,
+        Func<int, int>? stackCap)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageCount);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(pageCount, ItemContainerPage.MaxPageIndex + 1);

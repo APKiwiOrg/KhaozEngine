@@ -30,11 +30,15 @@ namespace KhaozEngine.Tests.Gpu
         // At most this share of the reference's raw flips may be fast flips of the tested sequence.
         const double MaxFastFlipShare = 0.5;
 
+        // The least share of its reference's energy the fast keyed line keeps over its own coverage.
+        const double MinLineCoverageEnergy = 0.2;
+
         string Report(FastEdgeScene scene, TemporalUpscale preset)
         {
             FastEdgeRun r = runs.Run(scene, preset);
             string line = $"{scene}, {preset}: {r.Flicker}, edge error {r.EdgeError:0.00000}, trail {r.TrailOver} of "
-                + $"{r.TrailChecked} (worst {r.TrailWorst:0.000})";
+                + $"{r.TrailChecked} (worst {r.TrailWorst:0.000}), coverage energy {r.CoverageEnergy:0.000}, ring "
+                + $"{r.RingEnergy:0.000}";
             output.WriteLine(line);
             return line;
         }
@@ -45,16 +49,20 @@ namespace KhaozEngine.Tests.Gpu
         public void A_keyed_line_crossing_fast_leaves_no_trail_and_does_not_shimmer(TemporalUpscale preset)
         {
             // Measured: fast flips 0.0015 and 0.0047 against reference flips of 0.0175 and 0.0194, trail 1 and 0,
-            // energy 0.69 and 0.43, temporal error over the band 0.00374 and 0.00428. Before amendment 23 the line
-            // smeared: 8 trail pixels at Native, fast flips 0.0124 and 0.0213, energy 2.09 and 1.28, temporal error
-            // 0.00255 and 0.00220. It is dimmer now, and the energy floor keeps it from fading further. The trail bound
-            // leaves two pixels over the one measured, well under the smear's 8.
+            // energy over the line's own coverage 0.257 and 0.256, summed over the band 0.69 and 0.43, and 0.20 and
+            // 0.04 in the ring beside the line, temporal error over the band 0.00374 and 0.00428. Before amendment 23
+            // the line smeared: 8 trail pixels at Native, fast flips 0.0124 and 0.0213, summed energy 2.09 and 1.28,
+            // temporal error 0.00255 and 0.00220. The trail bound leaves two pixels over the one measured, well under
+            // the smear's 8. The energy is gated over the line's own coverage, not summed over the band, because the
+            // sum also counts luma the pixels the line left keep, where the reference shows only background. The floor
+            // of 0.2 lies a fifth under the measured 0.26, and no resolve change this round moved that by more than
+            // 0.003.
             string message = Report(FastEdgeScene.KeyedLine, preset);
             FastEdgeRun r = runs.Run(FastEdgeScene.KeyedLine, preset);
             Assert.True(r.TrailOver <= 3, $"the line leaves a trail. {message}");
             Assert.True(r.Flicker.FastFlips <= MaxFastFlipShare * r.Flicker.ReferenceFlips,
                 $"the line shimmers. {message}");
-            Assert.True(r.Flicker.Energy >= 0.3, $"the line fades. {message}");
+            Assert.True(r.CoverageEnergy >= MinLineCoverageEnergy, $"the line fades. {message}");
         }
 
         [GpuTheory]
@@ -109,8 +117,8 @@ namespace KhaozEngine.Tests.Gpu
         public void The_fast_edge_table_prints_every_run()
         {
             output.WriteLine("| Scene | Preset | Error | Frozen | Added | Removed | Sharp | Flips | Fast flips "
-                + "| Reference flips | Edge error | Trail | Trail worst | Energy |");
-            output.WriteLine("|" + string.Concat(System.Linq.Enumerable.Repeat(" --- |", 14)));
+                + "| Reference flips | Edge error | Trail | Trail worst | Energy | Coverage energy | Ring |");
+            output.WriteLine("|" + string.Concat(System.Linq.Enumerable.Repeat(" --- |", 16)));
             foreach (FastEdgeScene scene in Enum.GetValues<FastEdgeScene>())
                 foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
                 {
@@ -120,7 +128,7 @@ namespace KhaozEngine.Tests.Gpu
                         + $"| {f.AddedChange:0.00000} | {f.RemovedChange:0.00000} | {f.Sharpness:0.000} "
                         + $"| {f.Flips:0.00000} | {f.FastFlips:0.00000} | {f.ReferenceFlips:0.00000} "
                         + $"| {r.EdgeError:0.00000} | {r.TrailOver} of {r.TrailChecked} | {r.TrailWorst:0.000} "
-                        + $"| {f.Energy:0.000} |");
+                        + $"| {f.Energy:0.000} | {r.CoverageEnergy:0.000} | {r.RingEnergy:0.000} |");
                     Assert.True(r.TrailChecked > 0, $"{scene}, {preset}: the trail region measured nothing");
                 }
         }
@@ -143,11 +151,12 @@ namespace KhaozEngine.Tests.Gpu
     }
 
     /// <summary>One run: the flicker over the band the object crosses, the mean luma error from the reference over
-    /// the pixels within 2 of the object's rectangle on each frame, and the trail on the last frame, pixels the object
-    /// covered two or more frames before that differ from the path without it by more than 0.05 in any
-    /// channel.</summary>
+    /// the pixels within 2 of the object's rectangle on each frame, the trail on the last frame, pixels the object
+    /// covered two or more frames before that differ from the path without it by more than 0.05 in any channel, and
+    /// the energy over the object's own reference coverage and the ring beside it
+    /// (<see cref="TemporalAcceptance.CoverageEnergy"/>).</summary>
     internal sealed record FastEdgeRun(FlickerStats Flicker, double EdgeError, int TrailOver, int TrailChecked,
-        float TrailWorst);
+        float TrailWorst, double CoverageEnergy, double RingEnergy);
 
     /// <summary>
     /// The fast-edge runs, rendered on first use and kept for the test class. Every surface pair moves
@@ -259,6 +268,8 @@ namespace KhaozEngine.Tests.Gpu
                     Math.Max(band.Y1, r.Y1));
             }
             FlickerStats flicker = TemporalAcceptance.Flicker(frames, references, W, H, band.Inflate(3).Clip(W, H));
+            var (coverage, ring) = TemporalAcceptance.CoverageEnergy(frames, references, W, H,
+                band.Inflate(3).Clip(W, H));
 
             double edgeSum = 0;
             long edgeCount = 0;
@@ -279,7 +290,8 @@ namespace KhaozEngine.Tests.Gpu
             for (int k = 0; k < footprints.Length; k++) footprints[k] = Footprint(total - 1 - k);
             var (over, check, worst) = TemporalAcceptance.Trail(frames[^1], background, W, H, footprints, 0.05f,
                 PixelDifference.MaxChannel);
-            var run = new FastEdgeRun(flicker, edgeCount == 0 ? 0 : edgeSum / edgeCount, over, check, worst);
+            var run = new FastEdgeRun(flicker, edgeCount == 0 ? 0 : edgeSum / edgeCount, over, check, worst, coverage,
+                ring);
             return _runs[(scene, preset)] = run;
         }
     }

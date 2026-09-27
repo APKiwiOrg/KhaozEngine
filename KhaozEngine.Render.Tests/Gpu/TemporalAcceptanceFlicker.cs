@@ -234,6 +234,57 @@ namespace KhaozEngine.Tests.Gpu
                 : LumaAboveBackground(frame, w, h, region, backgroundX, backgroundY) / wanted;
         }
 
+        /// <summary>A reference pixel whose luma differs from its background pixel's by more than this is covered by
+        /// the object: half an 8-bit step, above the rounding of the reference's box filter.</summary>
+        public const float CoverageLumaStep = 0.5f / 255f;
+
+        /// <summary>
+        /// The energy over each reference frame's own coverage, and over the ring around it. A frame's coverage is
+        /// the pixels of <paramref name="region"/> whose reference luma differs from the reference's background pixel
+        /// by more than <see cref="CoverageLumaStep"/>, and its ring the pixels next to the coverage along a row, a
+        /// column or a diagonal, where the reference shows only background. <c>Coverage</c> is the tested frames' luma
+        /// above their background over each frame's coverage as a share of the references', summed over the frames as
+        /// <see cref="Flicker"/> sums the energy. <c>Ring</c> is the tested frames' luma above their background over
+        /// each frame's ring as a share of the same reference sum: luma the result keeps where the reference has
+        /// nothing, as a smear or a trail does. Both are NaN when the references cover nothing.
+        /// </summary>
+        public static (double Coverage, double Ring) CoverageEnergy(IReadOnlyList<byte[]> frames,
+            IReadOnlyList<byte[]> references, int w, int h, PixelRect region, int backgroundX = 2, int backgroundY = 2)
+        {
+            PixelRect r = region.Clip(w, h);
+            var inside = new bool[w * h];
+            double covered = 0, ring = 0, wanted = 0;
+            for (int t = 0; t < frames.Count; t++)
+            {
+                float tested = Luma(frames[t], w, backgroundX, backgroundY);
+                float background = Luma(references[t], w, backgroundX, backgroundY);
+                Array.Clear(inside);
+                for (int y = r.Y0; y < r.Y1; y++)
+                    for (int x = r.X0; x < r.X1; x++)
+                        inside[y * w + x] = MathF.Abs(Luma(references[t], w, x, y) - background) > CoverageLumaStep;
+                for (int y = r.Y0; y < r.Y1; y++)
+                    for (int x = r.X0; x < r.X1; x++)
+                    {
+                        double above = Luma(frames[t], w, x, y) - tested;
+                        if (inside[y * w + x])
+                        {
+                            covered += above;
+                            wanted += Luma(references[t], w, x, y) - background;
+                            continue;
+                        }
+                        bool beside = false;
+                        for (int dy = -1; dy <= 1 && !beside; dy++)
+                            for (int dx = -1; dx <= 1 && !beside; dx++)
+                            {
+                                int ny = Math.Clamp(y + dy, r.Y0, r.Y1 - 1), nx = Math.Clamp(x + dx, r.X0, r.X1 - 1);
+                                beside = inside[ny * w + nx];
+                            }
+                        if (beside) ring += above;
+                    }
+            }
+            return wanted == 0 ? (double.NaN, double.NaN) : (covered / wanted, ring / wanted);
+        }
+
         /// <summary>
         /// Every flicker measure of <paramref name="frames"/> against <paramref name="references"/> over
         /// <paramref name="region"/>. See <see cref="FlickerStats"/>. Sharpness and energy are ratios of sums over the

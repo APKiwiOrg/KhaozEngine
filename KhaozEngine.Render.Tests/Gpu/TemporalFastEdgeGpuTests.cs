@@ -40,6 +40,11 @@ namespace KhaozEngine.Tests.Gpu
         const double MinLineCoverageEnergy = 0.8;
         const double MinLineShareOfMsaa = 0.7;
 
+        // The most the fast keyed line's local contrast may stray from its reference's, |sharpness - 1|, as a share
+        // of no anti-aliasing's on the same path. No anti-aliasing draws the line with hard steps each frame, which
+        // its fast flips, coverage energy, temporal error and edge error all match the resolve on.
+        const double MaxContrastErrorShareOfNoAa = 0.5;
+
         static double FastFlipBound(FlickerStats f) =>
             Math.Max(MaxFastFlipShare * f.ReferenceFlips, ReferenceFastFlipAllowance * f.ReferenceFastFlips);
 
@@ -63,25 +68,33 @@ namespace KhaozEngine.Tests.Gpu
             int maxTrail)
         {
             // Measured: energy over the line's own coverage 1.052 and 0.968, which is 1.054 and 0.969 of MSAA 4x's
-            // 0.999, summed over the band 1.09 and 1.14, 0.035 and 0.122 in the ring beside the line, fast flips 0.0190
-            // and 0.0224 against a bound of 0.0219 and 0.0242, 1.25 times the reference's fast flips of 0.0175 and
-            // 0.0194, no trail, temporal error over the band 0.00155 and 0.00228. Before the line's share took its
-            // current colour (TemporalResolveTuning.MovingShareConfidence) it kept 0.260 and 0.257, and before
-            // amendment 23 it smeared: 8 trail pixels at Native, own-coverage energy 1.06 and 0.94 with 0.39 and 0.12
-            // in the ring, summed 2.09 and 1.28. The trail bound of 3 at Native sits well under the smear's 8, and
-            // Quality, which left none then or since, is held to 1. The energy is gated over the line's own coverage,
-            // not summed over the band, because the sum also counts luma the pixels the line left keep, where the
-            // reference shows only background. The floor of 0.8 lies a sixth under the Quality measurement and a
-            // quarter under Native's, far above the 0.26 without the rule.
+            // 0.999, summed over the band 1.087 and 1.065, 0.035 and 0.096 in the ring beside the line, fast flips
+            // 0.0190 and 0.0224 against a bound of 0.0219 and 0.0242, 1.25 times the reference's fast flips of 0.0175
+            // and 0.0194, no trail, temporal error over the band 0.00155 and 0.00202, local contrast 1.223 and 0.985 of
+            // the reference's, an error of 0.223 and 0.015 against no anti-aliasing's 0.707 and 0.551. Before the
+            // line's share took its current colour (TemporalResolveTuning.MovingShareConfidence) it kept 0.260 and
+            // 0.257, and before amendment 23 it smeared: 8 trail pixels at Native, own-coverage energy 1.06 and 0.94
+            // with 0.39 and 0.12 in the ring, summed 2.09 and 1.28. The trail bound of 3 at Native sits well under the
+            // smear's 8, and Quality, which left none then or since, is held to 1. The energy is gated over the line's
+            // own coverage, not summed over the band, because the sum also counts luma the pixels the line left keep,
+            // where the reference shows only background. The floor of 0.8 lies a sixth under the Quality measurement
+            // and a quarter under Native's, far above the 0.26 without the rule. No anti-aliasing passes every other
+            // assertion here, and the local contrast is what tells them apart.
             string message = Report(FastEdgeScene.KeyedLine, preset);
             FastEdgeRun r = runs.Run(FastEdgeScene.KeyedLine, preset);
             FastEdgeRun msaa = runs.Run(FastEdgeScene.KeyedLine, preset, AntiAliasing.Msaa(4));
+            FastEdgeRun off = runs.Run(FastEdgeScene.KeyedLine, preset, AntiAliasing.Off);
+            double contrastError = Math.Abs(r.Flicker.Sharpness - 1);
+            double offContrastError = Math.Abs(off.Flicker.Sharpness - 1);
             Assert.True(r.TrailOver <= maxTrail, $"the line leaves a trail. {message}");
             Assert.True(r.Flicker.FastFlips <= FastFlipBound(r.Flicker),
                 $"the line shimmers past {FastFlipBound(r.Flicker):0.00000}. {message}");
             Assert.True(r.CoverageEnergy >= MinLineCoverageEnergy, $"the line fades. {message}");
             Assert.True(r.CoverageEnergy >= MinLineShareOfMsaa * msaa.CoverageEnergy,
                 $"the line keeps less than {MinLineShareOfMsaa} of MSAA 4x's {msaa.CoverageEnergy:0.000}. {message}");
+            Assert.True(contrastError <= MaxContrastErrorShareOfNoAa * offContrastError,
+                $"the line's local contrast strays {contrastError:0.000} from its reference's, against "
+                + $"{offContrastError:0.000} with no anti-aliasing. {message}");
         }
 
         [GpuTheory]
@@ -155,15 +168,19 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void The_keyed_line_table_prints_the_resolve_against_msaa_4x_and_no_anti_aliasing()
         {
-            // Measured over the line's own coverage: the resolve 1.052 and 0.968, MSAA 4x 0.999 at both presets and
-            // no anti-aliasing 1.001 and 1.000. Fast flips 0.0190, 0.0211 and 0.0117 at Native and 0.0224, 0.0222 and
+            // Measured over the line's own coverage: the resolve 1.052 and 0.968, MSAA 4x 0.999 at both presets and no
+            // anti-aliasing 1.001 and 1.000. Fast flips 0.0190, 0.0211 and 0.0117 at Native and 0.0224, 0.0222 and
             // 0.0145 at Quality, against reference flips of 0.0175 and 0.0194, every one of them fast, because each
-            // pixel shows the line for about one frame. Before the line's share took its current colour the resolve
-            // kept 0.260 and 0.257, and before amendment 23 1.063 and 0.944 with fast flips of 0.0124 and 0.0213 and
-            // an 8 pixel trail at Native.
+            // pixel shows the line for about one frame. Temporal error 0.00155, 0.00072 and 0.00185 at Native and
+            // 0.00202, 0.00060 and 0.00154 at Quality, and edge error 0.00043, 0.00018 and 0.00054, and 0.00073,
+            // 0.00021 and 0.00052: on a line this fast the resolve's error is no anti-aliasing's. Local contrast 1.223,
+            // 1.103 and 1.707 of the reference's at Native and 0.985, 1.116 and 1.551 at Quality. Before the line's
+            // share took its current colour the resolve kept 0.260 and 0.257, and before amendment 23 1.063 and 0.944
+            // with fast flips of 0.0124 and 0.0213 and an 8 pixel trail at Native.
             output.WriteLine("| Mode | Preset | Coverage energy | Share of MSAA 4x | Energy | Ring | Fast flips "
-                + "| Reference flips | Error | Trail |");
-            output.WriteLine("|" + string.Concat(System.Linq.Enumerable.Repeat(" --- |", 10)));
+                + "| Reference flips | Error | Trail | Frozen | Added | Removed | Sharp | Flips | 5x5 error "
+                + "| Edge error | Trail worst |");
+            output.WriteLine("|" + string.Concat(System.Linq.Enumerable.Repeat(" --- |", 18)));
             foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
             {
                 FastEdgeRun msaa = runs.Run(FastEdgeScene.KeyedLine, preset, AntiAliasing.Msaa(4));
@@ -177,7 +194,10 @@ namespace KhaozEngine.Tests.Gpu
                     output.WriteLine($"| {mode} | {preset} | {r.CoverageEnergy:0.000} "
                         + $"| {r.CoverageEnergy / msaa.CoverageEnergy:0.000} | {f.Energy:0.000} | {r.RingEnergy:0.000} "
                         + $"| {f.FastFlips:0.00000} | {f.ReferenceFlips:0.00000} | {f.TemporalError:0.00000} "
-                        + $"| {r.TrailOver} of {r.TrailChecked} |");
+                        + $"| {r.TrailOver} of {r.TrailChecked} | {f.ReferenceChange:0.00000} "
+                        + $"| {f.AddedChange:0.00000} | {f.RemovedChange:0.00000} | {f.Sharpness:0.000} "
+                        + $"| {f.Flips:0.00000} "
+                        + $"| {f.LowPassedError:0.00000} | {r.EdgeError:0.00000} | {r.TrailWorst:0.000} |");
                     Assert.True(double.IsFinite(r.CoverageEnergy), $"{mode}, {preset}: the line covered nothing");
                 }
             }

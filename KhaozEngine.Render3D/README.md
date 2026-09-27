@@ -38,10 +38,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   sweep runs through the same path, the shorter reach wins, and `GroundHeight` clearance still runs last.
   `BoomProbeCount` counts probe calls cumulatively. `KhaozEngine.TileWorld.Render3D` ships `TileWorldCameraProbe`.
 - `FollowCamera3D.BoomRecoveryRate` / `AdvanceBoom(dt)` (since 20.13.0). A pull-in stays instant and the boom
-  eases back out as `AdvanceBoom` decays the held shortfall by `exp(-BoomRecoveryRate * dt)`.
-  `FollowCameraController.Update` calls it. Zoom stays instant. `Warp`, `SnapToTarget` and the `Distance` setter
-  drop the shortfall, so a consumer writes `Distance` only when the zoom changes. The default rate of 0 follows
-  the probe both ways at once. See docs/USING-KHAOZENGINE.md.
+  eases back out as `AdvanceBoom` multiplies the held shortfall by `exp(-BoomRecoveryRate * dt)`.
+  `FollowCameraController.Update` calls it. `Warp`, `SnapToTarget` and the `Distance` setter clear the shortfall,
+  and the `Distance` one keeps zoom instant. Write `Distance` only when the zoom changes, because a consumer that
+  writes it every frame gets no easing. The default rate of 0 follows the probe both ways at once. See
+  docs/USING-KHAOZENGINE.md.
 - Teleport transitions (`ITransition` + `HardBlink` / `CameraDissolve` / `CharDissolve`, since 10.65.0) - a phased
   cover -> swap -> optional streaming hold -> reveal state machine (pure timing) that masks a teleport swap +
   destination pop-in. A teleport is a hard cut, so `HardBlink` defaults to an instant, reveal-only cover (opaque on the

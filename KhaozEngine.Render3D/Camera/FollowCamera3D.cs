@@ -97,11 +97,16 @@ namespace KhaozEngine.Render3D
         /// up, bounded by <see cref="PitchLimit"/>. Default ~6 deg.
         /// </summary>
         public float MinPitch = MathF.PI / 30f;
-        /// <summary>Upper clamp for <see cref="Pitch"/>, radians, bounded by <see cref="PitchLimit"/>. Default ~81 deg.</summary>
+        /// <summary>
+        /// Upper clamp for <see cref="Pitch"/>, radians, bounded by <see cref="PitchLimit"/>. Default ~81 deg, which
+        /// never reaches the limit. A value above 85 deg is capped there.
+        /// </summary>
         public float MaxPitch = MathF.PI * 0.45f;
         /// <summary>
         /// Hard bound on the magnitude of <see cref="Pitch"/>, 85 deg, applied after <see cref="MinPitch"/> and
-        /// <see cref="MaxPitch"/> so the look direction never nears world up and LookAt never degenerates.
+        /// <see cref="MaxPitch"/> so the look direction never nears world up and LookAt never degenerates. A camera
+        /// at the default <see cref="MaxPitch"/> never reaches it, and a <see cref="MaxPitch"/> above 85 deg is
+        /// capped here.
         /// </summary>
         public const float PitchLimit = 85f * MathF.PI / 180f;
         /// <summary>Nearest the eye may sit to the pivot. Default 2.</summary>
@@ -238,7 +243,7 @@ namespace KhaozEngine.Render3D
         /// recompute.
         /// <see cref="OcclusionOrigin"/> is in here because a rebased world moves the frame the sweep start is
         /// expressed in without any camera field changing. <see cref="HeldShortfall"/> is in here because
-        /// <see cref="AdvanceBoom"/> moves the eye by decaying it, with no public input assigned.
+        /// <see cref="AdvanceBoom"/> moves the eye by decaying the held shortfall, with no public input assigned.
         /// </summary>
         readonly record struct EyeInputs(
             Vector3 Target, float Yaw, float Pitch, float Distance, float HeightOffset, float PivotHeight,

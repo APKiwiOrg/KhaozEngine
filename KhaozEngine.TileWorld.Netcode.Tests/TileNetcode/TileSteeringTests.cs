@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.TileNetcode;
 /// x and world x agree (KhaozEngine.TileWorld/TileWorldSpace.cs:15).</para>
 /// <para>TWO: the engine's cameras are right handed with y up, so screen right of a camera whose ground forward
 /// is world f is world (-f.Z, 0, f.X). <c>FollowCamera3D.View</c> looks from the eye at the pivot,
-/// <c>Matrix4x4.CreateLookAt(Eye, Pivot, Vector3.UnitY)</c> (KhaozEngine.Render3D/Camera/FollowCamera3D.cs:339),
+/// <c>Matrix4x4.CreateLookAt(Eye, Pivot, Vector3.UnitY)</c> (KhaozEngine.Render3D/Camera/FollowCamera3D.cs:344),
 /// whose right-handed basis puts world +x on the LEFT of a camera facing world +z, exactly as
 /// KhaozEngine.TileWorld/TileWorldSpace.cs:5 says. Looking tile north is looking world -z, and screen right there
 /// is world +x, which is tile east.</para>

@@ -31,7 +31,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   standing-player schedule to the bit ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
 - `FollowCamera3D.PivotHeight` lifts the orbit centre and look-at point above the target. `HeightOffset` still
   raises only the eye. A negative `MinPitch` now looks up from below the pivot, bounded by `PitchLimit`
-  (85 degrees) ([design](docs/design/ORBIT-CAMERA-LOOK-UP-DESIGN-2026-09-27.md)).
+  (85 degrees). A camera at the default `MaxPitch` never reaches the limit, and a `MaxPitch` above 85 degrees is
+  now capped there ([design](docs/design/ORBIT-CAMERA-LOOK-UP-DESIGN-2026-09-27.md)).
 - `ICameraBoomProbe` and `FollowCamera3D.BoomProbe` stop the boom through any probe. The `Occlusion` physics
   sweep runs through the same path, the shorter reach wins, and `BoomProbeCount` counts probe calls
   ([design](docs/design/ORBIT-CAMERA-LOOK-UP-DESIGN-2026-09-27.md)).

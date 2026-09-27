@@ -6338,7 +6338,8 @@ meaning: it raises the eye alone and never moves the look-at point, so a camera 
 `PivotHeight` and leaves `HeightOffset` at zero. `MinPitch` may be negative. Below zero the eye drops under the
 pivot and the view tilts up toward the sky. The `Pitch` setter clamps to `[MinPitch, MaxPitch]` and then to
 `[-PitchLimit, PitchLimit]`, where the constant `PitchLimit` is 85 degrees, so the view never degenerates against
-world up. The default `MaxPitch` is 81 degrees, so no existing camera reaches the limit.
+world up. A camera at the default `MaxPitch` of 81 degrees never reaches the limit, and a `MaxPitch` above
+85 degrees is now capped there.
 
 ```csharp
 camera.PivotHeight = 1.6f;                  // orbit and look at the head
@@ -6358,12 +6359,12 @@ existing cameras are unchanged. The same three knobs govern the boom probe below
 **Optional boom probe (since 20.13.0, off by default).** An `ICameraBoomProbe` answers
 `Reach(origin, direction, length, radius)`, how far a boom can extend before it meets something. Set
 `FollowCamera3D.BoomProbe` and the camera asks it once per computed eye, from the pivot toward the geometric eye
-with `OcclusionRadius`, in absolute world coordinates. A probe over a rebased world converts on its own side, as the physics sweep does with
-`IPhysicsWorld.Origin`. The `Occlusion` sweep runs through the same path, so a camera may set both and the
-shorter reach wins. A short reach puts the eye that far along the boom less `OcclusionSkin`, floored at
-`MinOcclusionDistance`, and `GroundHeight` clearance still runs last. A blocked boom shortens along its own line
-instead of lifting, so a looking-up boom that meets the ground slides the eye in toward the pivot while the view
-keeps tilting up. `BoomProbeCount` is the cumulative count of probe calls, in the same shape as
+with `OcclusionRadius`, in absolute world coordinates. A probe over a rebased world converts on its own side, as
+the physics sweep does with `IPhysicsWorld.Origin`. The `Occlusion` sweep runs through the same path, so a camera
+may set both and the shorter reach wins. A short reach puts the eye that far along the boom less `OcclusionSkin`,
+floored at `MinOcclusionDistance`, and `GroundHeight` clearance still runs last. A blocked boom shortens along its
+own line instead of lifting, so a looking-up boom that meets the ground slides the eye in toward the pivot while
+the view keeps tilting up. `BoomProbeCount` is the cumulative count of probe calls, in the same shape as
 `OcclusionSweepCount`, and one per rendered frame is the healthy reading. A tile world uses the shipped
 `TileWorldCameraProbe` (`KhaozEngine.TileWorld.Render3D`, whose README gives its rules):
 
@@ -6378,11 +6379,11 @@ boom back out after an obstruction clears. A pull-in is always instant, because 
 eye inside the occluder. The camera holds the metres the boom is short of its full length, and `AdvanceBoom(dt)`
 multiplies that shortfall by `exp(-BoomRecoveryRate * dt)`, frame-rate independent. `FollowCameraController.Update`
 calls it after `AdvanceTarget`, so a camera driven by the controller needs only the rate. A camera driven without
-the controller calls `camera.AdvanceBoom(dt)` once a frame. Zoom stays instant, because the shortfall is measured
-against the full length and scrolling out in the open leaves it at zero. `Warp` and `SnapToTarget` drop the held
-shortfall, so a teleport never eases out from the old site. **The `Distance` setter drops it too**, so a consumer
-that writes `Distance` every frame gets no easing at all. Write it only when the zoom changes, as
-`FollowCameraController` does. A zero or non-finite rate follows the probe both ways at once.
+the controller calls `camera.AdvanceBoom(dt)` once a frame. `Warp` and `SnapToTarget` clear the held shortfall, so
+a teleport never eases out from the old site. **The `Distance` setter clears it too**, which is what keeps zoom
+instant: the eye moves to the new length at once, and a real obstruction re-imposes itself on the next read. The
+cost is that a consumer that writes `Distance` every frame gets no easing at all. Write it only when the zoom
+changes, as `FollowCameraController` does. A zero or non-finite rate follows the probe both ways at once.
 
 **The eye is computed once a frame, not once a read (since 17.37.0).** `Eye` is the expensive property here, and
 `Forward`, `View`, `ViewProjection`, `AbsoluteViewProjection`, `WorldToScreen`, `ScreenToRay` and `ScreenToGround`

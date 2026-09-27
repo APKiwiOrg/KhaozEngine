@@ -52,6 +52,50 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Pivot_height_zero_reproduces_the_look_at_target_geometry()
+        {
+            // Old formula inline: eye = target + dirToEye * d + (0, h, 0), look-at = target.
+            foreach (var (yaw, pitch, d, h) in new[] { (0f, 0.5f, 8f, 1f), (1.3f, 1.1f, 12f, 1.2f), (-2f, 0.2f, 4f, 0f) })
+            {
+                var cam = new FollowCamera3D { Target = new Vector3(3f, 0.5f, -7f), Yaw = yaw, HeightOffset = h };
+                cam.Pitch = pitch; cam.Distance = d;
+                Vector3 dir = Vector3.Normalize(new(MathF.Cos(pitch) * MathF.Sin(yaw), MathF.Sin(pitch), MathF.Cos(pitch) * MathF.Cos(yaw)));
+                Vector3 eye = cam.Target + dir * d + new Vector3(0f, h, 0f);
+                Assert.Equal(eye, cam.Eye);
+                Assert.Equal(Matrix4x4.CreateLookAt(eye, cam.Target, Vector3.UnitY), cam.View);
+            }
+        }
+
+        [Fact]
+        public void Pivot_height_lifts_the_orbit_centre_and_the_look_at_point_together()
+        {
+            var cam = new FollowCamera3D { Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = 0f, PivotHeight = 1.5f };
+            cam.Pitch = 0f; cam.Distance = 10f;
+            Assert.Equal(new Vector3(0f, 1.5f, 0f), cam.Pivot);
+            Assert.True(Vector3.Distance(cam.Eye, new Vector3(0f, 1.5f, 10f)) < 1e-4f, cam.Eye.ToString());
+            Assert.True(Vector3.Distance(cam.Forward, new Vector3(0f, 0f, -1f)) < 1e-4f, cam.Forward.ToString());
+        }
+
+        [Fact]
+        public void Negative_pitch_puts_the_eye_under_the_pivot_looking_up()
+        {
+            var cam = new FollowCamera3D { Target = Vector3.Zero, HeightOffset = 0f, PivotHeight = 1.5f, MinPitch = -1.4f };
+            cam.Pitch = -0.5f; cam.Distance = 4f;
+            Assert.Equal(1.5f - 4f * MathF.Sin(0.5f), cam.Eye.Y, 4);
+            Assert.Equal(MathF.Sin(0.5f), cam.Forward.Y, 4);
+        }
+
+        [Fact]
+        public void The_pitch_limit_holds_whatever_the_stops_allow()
+        {
+            var cam = new FollowCamera3D { MinPitch = -2f, MaxPitch = 2f };
+            cam.Pitch = -2f;
+            Assert.Equal(-FollowCamera3D.PitchLimit, cam.Pitch);
+            cam.Pitch = 2f;
+            Assert.Equal(FollowCamera3D.PitchLimit, cam.Pitch);
+        }
+
+        [Fact]
         public void Distance_clamps_to_min_max()
         {
             var cam = new FollowCamera3D();

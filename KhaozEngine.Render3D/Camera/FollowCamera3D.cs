@@ -5,16 +5,17 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// Third-person follow camera: a perspective camera that orbits behind a moving <see cref="Target"/> at a
-    /// clamped <see cref="Pitch"/> and <see cref="Distance"/>, always looking at the target. Sibling of
-    /// <see cref="IsoCamera3D"/> (same Y-up right-handed convention, same Eye/Forward/ScreenToGround helpers) but
-    /// perspective so scroll-zoom-via-distance reads naturally. Pure System.Numerics, no GPU and no input types;
+    /// Third-person follow camera: a perspective camera that orbits a <see cref="Pivot"/> above a moving
+    /// <see cref="Target"/> at a clamped <see cref="Pitch"/> and <see cref="Distance"/>, always looking at the
+    /// pivot. Sibling of <see cref="IsoCamera3D"/> (same Y-up right-handed convention, same
+    /// Eye/Forward/ScreenToGround helpers) but perspective so scroll-zoom-via-distance reads naturally. Pure System.Numerics, no GPU and no input types;
     /// drive it with a <see cref="FollowCameraController"/> or set the fields directly.
     ///
     /// Convention (matches IsoCamera3D): dirToEye = normalize(cosP*sinYaw, sinP, cosP*cosYaw),
-    /// Eye = Target + dirToEye*Distance + (0, HeightOffset, 0), looking at Target.
+    /// Pivot = Target + (0, PivotHeight, 0), Eye = Pivot + dirToEye*Distance + (0, HeightOffset, 0), looking at
+    /// Pivot. With <see cref="PivotHeight"/> at its default of zero the pivot is the target.
     /// </summary>
-    public sealed class FollowCamera3D : IIsoCamera3D, IRenderOriginAware
+    public sealed partial class FollowCamera3D : IIsoCamera3D, IRenderOriginAware
     {
         /// <summary>World-space point the camera follows (the character position).</summary>
         public Vector3 Target = Vector3.Zero;
@@ -87,16 +88,38 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public void SnapToTarget() => Warp(Target);
 
-        /// <summary>Lower clamp for <see cref="Pitch"/>, radians (kept &gt; 0 so the view never goes flat). Default ~6 deg.</summary>
+        /// <summary>
+        /// Lower clamp for <see cref="Pitch"/>, radians. A negative value lets the eye drop below the pivot and look
+        /// up, bounded by <see cref="PitchLimit"/>. Default ~6 deg.
+        /// </summary>
         public float MinPitch = MathF.PI / 30f;
-        /// <summary>Upper clamp for <see cref="Pitch"/>, radians (kept &lt; 90 deg so LookAt never degenerates). Default ~80 deg.</summary>
+        /// <summary>Upper clamp for <see cref="Pitch"/>, radians, bounded by <see cref="PitchLimit"/>. Default ~81 deg.</summary>
         public float MaxPitch = MathF.PI * 0.45f;
-        /// <summary>Nearest the eye may sit to the target. Default 2.</summary>
+        /// <summary>
+        /// Hard bound on the magnitude of <see cref="Pitch"/>, 85 deg, applied after <see cref="MinPitch"/> and
+        /// <see cref="MaxPitch"/> so the look direction never nears world up and LookAt never degenerates.
+        /// </summary>
+        public const float PitchLimit = 85f * MathF.PI / 180f;
+        /// <summary>Nearest the eye may sit to the pivot. Default 2.</summary>
         public float MinDistance = 2f;
-        /// <summary>Farthest the eye may sit from the target. Default 30.</summary>
+        /// <summary>Farthest the eye may sit from the pivot. Default 30.</summary>
         public float MaxDistance = 30f;
-        /// <summary>Eye height added above the target so the camera looks slightly down at the character. Default 1.</summary>
+        /// <summary>
+        /// Height added to the eye alone, after the orbit, so the camera looks slightly down at the character. It
+        /// raises the eye only and never moves the look-at point. Use <see cref="PivotHeight"/> to lift what the
+        /// camera orbits and looks at. Default 1.
+        /// </summary>
         public float HeightOffset = 1f;
+        /// <summary>
+        /// Height of the orbit centre above <see cref="EffectiveTarget"/>. The camera orbits and looks at
+        /// <see cref="Pivot"/>, so raising this lifts the eye and the look-at point together (orbit a head rather
+        /// than the feet). Default 0, which makes the pivot the target.
+        /// </summary>
+        public float PivotHeight = 0f;
+
+        /// <summary>The point the camera orbits and looks at: <see cref="EffectiveTarget"/> raised by
+        /// <see cref="PivotHeight"/>.</summary>
+        public Vector3 Pivot => EffectiveTarget + new Vector3(0f, PivotHeight, 0f);
 
         /// <summary>Vertical field of view, radians. Default 60 deg.</summary>
         public float FieldOfView = MathF.PI / 3f;
@@ -118,8 +141,8 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Optional occlusion sweep. When set, <see cref="Eye"/> sweeps a sphere probe from
-        /// <see cref="EffectiveTarget"/> toward the geometric eye (the boom) and pulls the eye in to the first
-        /// static hit, so the follow camera never clips through a wall or ceiling between the target and the
+        /// <see cref="Pivot"/> toward the geometric eye (the boom) and pulls the eye in to the first
+        /// static hit, so the follow camera never clips through a wall or ceiling between the pivot and the
         /// desired eye. Mirrors <c>CharacterMovement</c>'s own swept collide-and-slide: a zero-length capsule
         /// (a sphere of radius <see cref="OcclusionRadius"/>) is swept via <see cref="IPhysicsWorld.SweepCapsule"/>
         /// against statics only (<see cref="QueryFilter.StaticsOnly"/>). Applied BEFORE <see cref="GroundHeight"/>
@@ -134,7 +157,7 @@ namespace KhaozEngine.Render3D
         /// it. Default 0.05.</summary>
         public float OcclusionSkin = 0.05f;
         /// <summary>The closest the <see cref="Occlusion"/> sweep is ever allowed to pull the boom (metres), so the
-        /// eye never collapses onto the target and leave <see cref="Forward"/>/<see cref="View"/> degenerate (a
+        /// eye never collapses onto the pivot and leave <see cref="Forward"/>/<see cref="View"/> degenerate (a
         /// zero-length look direction). A static within a skin of the target (e.g. a character pressed flush against
         /// a wall) is clamped to this floor instead. Default 0.2.</summary>
         public float MinOcclusionDistance = 0.2f;
@@ -142,14 +165,16 @@ namespace KhaozEngine.Render3D
         float _pitch = MathF.PI / 6f;   // 30 deg, a comfortable default tilt
         float _distance = 8f;
 
-        /// <summary>Tilt above the horizontal, radians, clamped to [<see cref="MinPitch"/>, <see cref="MaxPitch"/>].</summary>
+        /// <summary>Tilt above the horizontal, radians, clamped to [<see cref="MinPitch"/>, <see cref="MaxPitch"/>]
+        /// and then to [-<see cref="PitchLimit"/>, <see cref="PitchLimit"/>]. Negative puts the eye below the pivot
+        /// looking up.</summary>
         public float Pitch
         {
             get => _pitch;
-            set => _pitch = Math.Clamp(value, MinPitch, MaxPitch);
+            set => _pitch = Math.Clamp(Math.Clamp(value, MinPitch, MaxPitch), -PitchLimit, PitchLimit);
         }
 
-        /// <summary>Eye distance from the target, clamped to [<see cref="MinDistance"/>, <see cref="MaxDistance"/>].</summary>
+        /// <summary>Eye distance from the pivot, clamped to [<see cref="MinDistance"/>, <see cref="MaxDistance"/>].</summary>
         public float Distance
         {
             get => _distance;
@@ -202,7 +227,7 @@ namespace KhaozEngine.Render3D
         /// expressed in without any camera field changing.
         /// </summary>
         readonly record struct EyeInputs(
-            Vector3 Target, float Yaw, float Pitch, float Distance, float HeightOffset,
+            Vector3 Target, float Yaw, float Pitch, float Distance, float HeightOffset, float PivotHeight,
             IPhysicsWorld? Occlusion, Vector3 OcclusionOrigin, float OcclusionRadius, float OcclusionSkin,
             float MinOcclusionDistance, Func<float, float, float>? GroundHeight, float GroundClearance);
 
@@ -270,23 +295,23 @@ namespace KhaozEngine.Render3D
         }
 
         EyeInputs CurrentEyeInputs() => new(
-            EffectiveTarget, Yaw, _pitch, _distance, HeightOffset,
+            EffectiveTarget, Yaw, _pitch, _distance, HeightOffset, PivotHeight,
             Occlusion, Occlusion?.Origin ?? Vector3.Zero, OcclusionRadius, OcclusionSkin, MinOcclusionDistance,
             GroundHeight, GroundClearance);
 
         /// <summary>The uncached geometry, byte for byte what the getter used to run on every read.</summary>
         Vector3 ComputeEye()
         {
-            Vector3 target = EffectiveTarget;
-            Vector3 eye = target + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f);
+            Vector3 pivot = Pivot;
+            Vector3 eye = pivot + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f);
             if (Occlusion is { } world)
             {
-                // Sweep a sphere probe (a zero-length capsule) from the target toward the desired eye along the
+                // Sweep a sphere probe (a zero-length capsule) from the pivot toward the desired eye along the
                 // boom. The first static hit clamps how far out the boom can extend, mirroring the
                 // hit.Distance - skin convention CharacterMovement uses for its own swept collide-and-slide. The
-                // pull-in is floored at MinOcclusionDistance so a static right at the target never collapses the
+                // pull-in is floored at MinOcclusionDistance so a static right at the pivot never collapses the
                 // eye onto it (which would leave Forward/View with a zero-length look direction).
-                Vector3 toEye = eye - target;
+                Vector3 toEye = eye - pivot;
                 float dist = toEye.Length();
                 if (dist > 1e-6f)
                 {
@@ -296,9 +321,9 @@ namespace KhaozEngine.Render3D
                     // are frame-invariant, so only this one operand converts.
                     Vector3 dir = toEye / dist;
                     _occlusionSweeps++;
-                    if (world.SweepCapsule(new CapsuleShape(OcclusionRadius, 0f), Pose.At(target - world.Origin), dir, dist,
+                    if (world.SweepCapsule(new CapsuleShape(OcclusionRadius, 0f), Pose.At(pivot - world.Origin), dir, dist,
                             out SweepHit hit, QueryFilter.StaticsOnly))
-                        eye = target + dir * MathF.Max(MinOcclusionDistance, hit.Distance - OcclusionSkin);
+                        eye = pivot + dir * MathF.Max(MinOcclusionDistance, hit.Distance - OcclusionSkin);
                 }
             }
             if (GroundHeight is { } ground)
@@ -309,20 +334,20 @@ namespace KhaozEngine.Render3D
             return eye;
         }
 
-        public Vector3 Forward => Vector3.Normalize(EffectiveTarget - Eye);
+        public Vector3 Forward => Vector3.Normalize(Pivot - Eye);
 
-        /// <summary>The render origin eye and target are expressed against when building <see cref="View"/>. See
+        /// <summary>The render origin eye and pivot are expressed against when building <see cref="View"/>. See
         /// <see cref="IRenderOriginAware"/>. <see cref="Vector3.Zero"/> (the default) is the pre-floating-origin
         /// camera, bit for bit.</summary>
         public Vector3 RenderOrigin { get; set; }
 
-        public Matrix4x4 View => Matrix4x4.CreateLookAt(Eye - RenderOrigin, EffectiveTarget - RenderOrigin, Vector3.UnitY);
+        public Matrix4x4 View => Matrix4x4.CreateLookAt(Eye - RenderOrigin, Pivot - RenderOrigin, Vector3.UnitY);
         public Matrix4x4 Projection => Matrix4x4.CreatePerspectiveFieldOfView(FieldOfView, AspectRatio, NearPlane, FarPlane);
         public Matrix4x4 ViewProjection => View * Projection;
 
         /// <summary>The pre-shift view-projection. See <see cref="IRenderOriginAware.AbsoluteViewProjection"/>.</summary>
         public Matrix4x4 AbsoluteViewProjection =>
-            Matrix4x4.CreateLookAt(Eye, EffectiveTarget, Vector3.UnitY) * Projection;
+            Matrix4x4.CreateLookAt(Eye, Pivot, Vector3.UnitY) * Projection;
 
         /// <summary>Project a world point to a screen pixel (forward inverse of <see cref="ScreenToRay"/>); false
         /// when the point is not in front of the camera. See <see cref="IIsoCamera3D.WorldToScreen(Vector3, int, int, out Vector2)"/>.</summary>

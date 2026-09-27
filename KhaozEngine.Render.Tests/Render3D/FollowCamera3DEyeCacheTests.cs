@@ -169,6 +169,9 @@ namespace KhaozEngine.Tests.Render3D
                 ("Pitch", c => c.Pitch = 0.5f),
                 ("Distance", c => c.Distance = 4f),
                 ("HeightOffset", c => c.HeightOffset = 2f),
+                // A pivot lift is purely vertical and the ground clamp below holds the eye at Y 3.5, so the
+                // step must clear 3.5 to move the eye. A 0.5 lift is swallowed by the clamp.
+                ("PivotHeight", c => c.PivotHeight += 5f),
                 ("OcclusionRadius", c => c.OcclusionRadius = 0.75f),
                 ("OcclusionSkin", c => c.OcclusionSkin = 1.5f),
                 ("MinOcclusionDistance", c => c.MinOcclusionDistance = 9f),

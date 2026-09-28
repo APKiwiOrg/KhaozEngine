@@ -349,8 +349,9 @@ and changed these details. Each group's "Contract amendments" block carries the 
     with the centre texel's own depth and motion read first. Summed in the 3x3 every pixel runs, those five accumulators
     made the whole program spill on Metal and cost every pixel about half a millisecond at 2560x1440 on an M2 Max. The
     emitted resolve grew from 33367 to 38149 bytes of HLSL with it and the kept lock below, to 41801 with the fast flag
-    and the held share, and to 42551 with the whole-footprint rule on every moving surface and the band. Section 7's
-    cost acceptance measures its hardware cost with the rest of the resolve's. The line's fast flips are 0.019 and
+    and the held share, to 42551 with the whole-footprint rule on every moving surface and the band, to 44650 with
+    the nearer texels summed in the narrow moving branch alone, and to 44995 with the 3x3 read a texel ahead. Section
+    7's cost acceptance measures its hardware cost with the rest of the resolve's. The line's fast flips are 0.019 and
     0.022, about MSAA 4x's 0.021 and 0.022. Each pixel shows the line for about one frame, so
     every flip of the reference is fast, and against half the reference's raw flips the reference itself, scaled to a
     share of its own contrast, stayed within the bound only up to 0.30 at Native and 0.20 at Quality. So the fast-edge
@@ -523,10 +524,11 @@ and changed these details. Each group's "Contract amendments" block carries the 
     at 0.25 internal pixels a frame on Native its edge error from 0.01729 to 0.01728, and at 0.5 on Quality its
     temporal error from 0.01115 to 0.01114, its fast flips from 0.03913 to 0.03914 and its edge error from 0.02222 to
     0.02219. Every reset case, the reveal, and every still camera over still content are byte-identical. The emitted
-    resolve fell from 44995 to 44851 bytes of HLSL. At 2560 by 1440 on an M2 Max the twelve keyed boxes cost the same,
-    about 2.00 ms at Quality, and the moving thin field about 0.05 ms more, 2.36 against 2.30 ms at Native and 2.26
-    against 2.21 at Quality, since the swaying blades the pan follows now pass the band's world test and run its narrow
-    test.
+    resolve fell from 44995 to 44851 bytes of HLSL, and to 42685 once the carried marks were read from one least state
+    and the centre-farther test shared, which changed no output. At 2560 by 1440 on an M2 Max the twelve keyed boxes
+    cost the same, about 2.00 ms at Quality, and the moving thin field about 0.05 ms more, 2.36 against 2.30 ms at
+    Native and 2.26 against 2.21 at Quality, since the swaying blades the pan follows now pass the band's world test and
+    run its narrow test.
 
     The followed surface's own pixels read the mark they stored when it stops. On the frame its travel falls under
     `WorldMotionMetres`, stopping with the camera or turning back through zero travel, its dilated nearest did not move

@@ -20,6 +20,10 @@ namespace KhaozEngine.Tests.Gpu
     {
         internal const float ThreeEighths = 0.375f, OneQuarter = 0.25f;
 
+        /// <summary>The share of its energy without the box a still line keeps on its worst frame under the
+        /// orthographic follow walk, as the still-camera passers hold it.</summary>
+        const double MinShare = 0.85;
+
         static readonly float[] Speeds = { 0.5f, 1f, 1.5f, 2f, 2.5f, 3f };
 
         internal static (LineMeasure Across, LineMeasure Along) Run(TemporalFollowLinesRuns runs, bool perspective,
@@ -46,8 +50,38 @@ namespace KhaozEngine.Tests.Gpu
                             yield return (perspective, preset, speed, texels);
         }
 
+        /// <summary>
+        /// Under the orthographic follow walk each still line keeps at least <see cref="MinShare"/> of its energy
+        /// without the box on its worst frame, across the box's trailing path and along its edge, at Native and
+        /// Quality: 0.915 at worst, the line along the edge a quarter texel wide at 1.5 display pixels a frame on
+        /// Quality, among the frames it lies past the band's reach and the box did not hide it. The perspective
+        /// blades are printed only: along the box's edge they keep 0.77 to 0.85 at Quality from 1 to 2 display pixels
+        /// a frame, since dropping the band's history as a blade leaves the band shows its raw sample and keeping it
+        /// carries the box's colour under the lock
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1191">#1191</see>). It holds half a pixel and 2
+        /// at three eighths of a texel, and with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every walk and both widths.
+        /// </summary>
+        [GpuFact]
+        public void A_still_line_keeps_its_energy_beside_a_box_the_orthographic_camera_follows()
+        {
+            var under = new List<string>();
+            foreach (var (perspective, preset, speed, texels) in TableRuns())
+            {
+                if (perspective) continue;
+                var (across, along) = Run(runs, perspective, preset, speed, texels);
+                foreach (var (name, m) in new[] { ("across", across), ("along", along) })
+                {
+                    string what = $"orthographic {preset} {speed} {texels} {name}";
+                    Assert.False(double.IsNaN(m.Worst), $"{what}: the line covered nothing near the box");
+                    if (!(m.Worst >= MinShare)) under.Add(Describe(what, m));
+                }
+            }
+            foreach (string line in under) output.WriteLine(line);
+            Assert.True(under.Count == 0, $"a still line blinked out beside the band: {string.Join(". ", under)}");
+        }
+
         /// <summary>Each line's worst frame's share of its energy without the box, and its trail two or more frames
-        /// after the band left it. Report only. With <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> it prints every walk from
+        /// after the band left it. With <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> it prints every walk from
         /// half a display pixel a frame to three and both widths.</summary>
         [GpuFact]
         public void The_follow_lines_table_prints_every_walk()

@@ -40,6 +40,28 @@ namespace KhaozEngine.Tests.Gpu
                 yield return (path, true, TemporalUpscale.Native, WideW, WideH);
         }
 
+        /// <summary>
+        /// No still surface stores the band mark on any frame the table renders, warm or measured, orbiting fast or
+        /// slowly, strafing or creeping, near the origin or across a render-origin step, and without a stored mark no
+        /// pixel drops a band history. The world-motion test is in metres (WorldMotionMetres, 1 mm), 4.7 times the
+        /// worst static travel measured, 0.211 mm on the far fast orbit at Quality, where a fixed 0.05 internal pixels
+        /// had no margin at 3840 wide (0.075). With <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> it holds every run of the
+        /// table.
+        /// </summary>
+        [GpuFact]
+        public void No_still_surface_stores_the_band_mark_under_an_orbit_a_strafe_or_a_creep()
+        {
+            bool full = TemporalStabilityRuns.FullTable;
+            foreach (var (path, far, preset, w, h) in TableRuns())
+            {
+                StaticRun r = runs.Run(path, far, preset, w, h, full);
+                output.WriteLine($"{r.Name}: band marks {r.BandMarks.Sum()} over the measured frames, "
+                    + $"{r.WarmBandMarks} over the warm ones");
+                Assert.True(r.BandMarks.Sum() == 0 && r.WarmBandMarks == 0,
+                    $"{r.Name}: a still surface stored the band mark, so a pixel can drop a band history");
+            }
+        }
+
         /// <summary>Band and moved marks per run, the eye's nearest pass to a tower, and with
         /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every path, near and far, Native and Quality at 2560 by 1440 and
         /// Native at 3840 by 2160 with the static travel's distribution. Report only.</summary>

@@ -15,9 +15,10 @@ namespace KhaozEngine.Tests.Gpu
 
     /// <summary>What one still-field run stored: per measured frame, the display pixels whose state holds the band
     /// mark and the moved mark (<c>temporalStoreLock</c>), and when asked the static travel of every internal texel.
-    /// The eye's least distance to a tower's surface over the measured frames, in metres.</summary>
+    /// The eye's least distance to a tower's surface over the measured frames, in metres. WarmBandMarks counts the
+    /// band marks over the warm frames, whose last one the first measured frame reads back.</summary>
     internal sealed record StaticRun(string Name, int[] BandMarks, int[] MovedMarks, StaticTravel? Travel,
-        float NearestTower, bool[] OriginSteps, double Seconds);
+        float NearestTower, bool[] OriginSteps, double Seconds, int WarmBandMarks);
 
     /// <summary>
     /// The static travel of every internal texel over the measured frames: how far its sample's motion carries it
@@ -90,6 +91,7 @@ namespace KhaozEngine.Tests.Gpu
             var field = new StillField(w, h, path, far);
             var band = new int[Measured];
             var moved = new int[Measured];
+            int warmBand = 0;
             StaticTravel? stats = travel ? new StaticTravel() : null;
             float nearest = float.MaxValue;
             var steps = new bool[Measured];
@@ -101,10 +103,15 @@ namespace KhaozEngine.Tests.Gpu
                     fx.Frames(1, field.Draw);
                     bool stepped = n > 0 && fx.Scene.RenderOrigin != origin;
                     origin = fx.Scene.RenderOrigin ?? default;
-                    if (n < Warm) continue;
-                    steps[n - Warm] = stepped;
                     TemporalHistory history = fx.Scene.TemporalHistory;
                     float[] state = TemporalTextureIo.Read(fx.Device, history.Confidence(history.WriteIndex));
+                    if (n < Warm)
+                    {
+                        for (int i = 1; i < state.Length; i += 2)
+                            if (state[i] < -2.5f) warmBand++;
+                        continue;
+                    }
+                    steps[n - Warm] = stepped;
                     for (int i = 1; i < state.Length; i += 2)
                     {
                         if (state[i] < -2.5f) band[n - Warm]++;
@@ -116,7 +123,7 @@ namespace KhaozEngine.Tests.Gpu
             }
             string name = $"{path}, {(far ? "far" : "near")} origin, {preset}, {w}x{h}";
             var run = new StaticRun(name, band, moved, stats, nearest, steps,
-                Stopwatch.GetElapsedTime(started).TotalSeconds);
+                Stopwatch.GetElapsedTime(started).TotalSeconds, warmBand);
             Seconds += run.Seconds;
             return _runs[key] = run;
         }

@@ -22,46 +22,59 @@ namespace KhaozEngine.Tests.Gpu
         static readonly StaticPath[] Paths =
             { StaticPath.FastOrbit, StaticPath.SlowOrbit, StaticPath.Strafe, StaticPath.Creep };
 
-        const float Boot = TemporalStaticOrbitRuns.BootPitch, Grazing = TemporalStaticOrbitRuns.GrazingPitch;
+        const float Boot = TemporalStaticOrbitRuns.BootPitch, Grazing = TemporalStaticOrbitRuns.GrazingPitch,
+            Steep = TemporalStaticOrbitRuns.SteepPitch, Near = GroundStage.Distance;
 
         // Every run of the table, or with the table switch off the far fast orbit, strafe and creep at Quality and the
-        // far fast orbit at Quality from the grazing pitch.
-        static IEnumerable<(StaticPath Path, bool Far, TemporalUpscale Preset, int W, int H, float Pitch)> TableRuns()
+        // far fast orbit at Quality from the grazing pitch 12 and 30 metres away.
+        static IEnumerable<(StaticPath Path, bool Far, TemporalUpscale Preset, int W, int H, float Pitch,
+            float Distance)> TableRuns()
         {
             if (!TemporalStabilityRuns.FullTable)
             {
-                yield return (StaticPath.FastOrbit, true, TemporalUpscale.Quality, W, H, Boot);
-                yield return (StaticPath.Strafe, true, TemporalUpscale.Quality, W, H, Boot);
-                yield return (StaticPath.Creep, true, TemporalUpscale.Quality, W, H, Boot);
-                yield return (StaticPath.FastOrbit, true, TemporalUpscale.Quality, W, H, Grazing);
+                yield return (StaticPath.FastOrbit, true, TemporalUpscale.Quality, W, H, Boot, Near);
+                yield return (StaticPath.Strafe, true, TemporalUpscale.Quality, W, H, Boot, Near);
+                yield return (StaticPath.Creep, true, TemporalUpscale.Quality, W, H, Boot, Near);
+                yield return (StaticPath.FastOrbit, true, TemporalUpscale.Quality, W, H, Grazing, Near);
+                yield return (StaticPath.FastOrbit, true, TemporalUpscale.Quality, W, H, Grazing,
+                    TemporalStaticOrbitRuns.MaxZoom);
                 yield break;
             }
+            var presets = new[] { TemporalUpscale.Native, TemporalUpscale.Quality };
+            foreach (float distance in new[] { Near, TemporalStaticOrbitRuns.FarZoom, TemporalStaticOrbitRuns.MaxZoom })
+                foreach (float pitch in new[] { Boot, Grazing, Steep })
+                    foreach (StaticPath path in Paths)
+                        foreach (bool far in new[] { false, true })
+                            foreach (TemporalUpscale preset in presets)
+                                yield return (path, far, preset, W, H, pitch, distance);
             foreach (float pitch in new[] { Boot, Grazing })
                 foreach (StaticPath path in Paths)
-                    foreach (bool far in new[] { false, true })
-                        foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
-                            yield return (path, far, preset, W, H, pitch);
-            foreach (StaticPath path in Paths)
-                yield return (path, true, TemporalUpscale.Native, WideW, WideH, Boot);
+                    yield return (path, true, TemporalUpscale.Native, WideW, WideH, pitch, Near);
         }
 
         /// <summary>
         /// No still surface stores the band mark on any frame the table renders, warm or measured, orbiting fast or
-        /// slowly, strafing or creeping, near the origin or across a render-origin step, from the boot pitch or the
-        /// grazing one, and without a stored mark no pixel drops a band history. The world-motion test is in metres
+        /// slowly, strafing or creeping, near the origin or across a render-origin step, from the boot pitch, the
+        /// grazing one or a steep one, 12, 22 or 30 metres away, and at 3840 by 2160 from the boot and grazing
+        /// pitches, and without a stored mark no pixel drops a band history. The world-motion test is in metres
         /// (WorldMotionMetres, 1 mm), where a fixed 0.05 internal pixels had no margin at 3840 wide (0.075). The worst
-        /// static travel measured is 0.211 mm at the boot pitch, depths to 28 m, and 0.508 mm from the grazing pitch of
-        /// 0.26 radians, depths to the 500 m far plane, on the fast orbit near the origin at Native, so 1 mm is about
-        /// twice it. By default it holds the far fast orbit, strafe and creep at Quality and the far fast orbit from
-        /// the grazing pitch, and with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every run of the table.
+        /// static travel measured from the boot pitch is 0.211, 0.374 and 0.466 mm at 12, 22 and 30 metres, from the
+        /// grazing pitch of 0.26 radians 0.508 mm 12 metres away, at a depth of 10.7 m, 0.778 and 1.23 mm, and from
+        /// the steep pitch of 1.36 at most 0.058 mm, each on the fast orbit. So 1 mm is 1.3 times the worst to 22
+        /// metres, and 30 metres away from the grazing pitch the fast orbit, its eye moving 1.5 metres a frame, reads
+        /// up to 0.24 percent of its texels as moved in the world. None stores the mark, which also needs the texel to
+        /// travel more than FollowedTravelRatio times its motion on screen, or a farther centre moving more on screen
+        /// beside a nearer edge. By default it holds the far fast orbit, strafe and creep at Quality and the far fast
+        /// orbit from the grazing pitch 12 and 30 metres away, and with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every run
+        /// of the table.
         /// </summary>
         [GpuFact]
         public void No_still_surface_stores_the_band_mark_under_an_orbit_a_strafe_or_a_creep()
         {
             bool full = TemporalStabilityRuns.FullTable;
-            foreach (var (path, far, preset, w, h, pitch) in TableRuns())
+            foreach (var (path, far, preset, w, h, pitch, distance) in TableRuns())
             {
-                StaticRun r = runs.Run(path, far, preset, w, h, full, pitch);
+                StaticRun r = runs.Run(path, far, preset, w, h, full, pitch, distance);
                 output.WriteLine($"{r.Name}: band marks {r.BandMarks.Sum()} over the measured frames, "
                     + $"{r.WarmBandMarks} over the warm ones");
                 Assert.True(r.BandMarks.Sum() == 0 && r.WarmBandMarks == 0,
@@ -70,8 +83,9 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>Band and moved marks per run, the eye's nearest pass to a tower, and with
-        /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every path, near and far, Native and Quality at 2560 by 1440 and
-        /// Native at 3840 by 2160 with the static travel's distribution. Report only.</summary>
+        /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every path, near and far, Native and Quality at 2560 by 1440 from
+        /// each pitch and distance, and Native at 3840 by 2160 from the boot and grazing pitches, with the static
+        /// travel's distribution and the texels past the world-motion test. Report only.</summary>
         [GpuFact]
         public void The_still_field_table_prints_the_band_marks_and_the_static_travel()
         {
@@ -79,9 +93,9 @@ namespace KhaozEngine.Tests.Gpu
             output.WriteLine("| Run | Band marks (most in a frame, total) | Moved marks (most) | Nearest tower m "
                 + "| Travel |");
             output.WriteLine("| --- | --- | --- | --- | --- |");
-            foreach (var (path, far, preset, w, h, pitch) in TableRuns())
+            foreach (var (path, far, preset, w, h, pitch, distance) in TableRuns())
             {
-                StaticRun r = runs.Run(path, far, preset, w, h, full, pitch);
+                StaticRun r = runs.Run(path, far, preset, w, h, full, pitch, distance);
                 output.WriteLine($"| {r.Name} | {r.BandMarks.Max()}, {r.BandMarks.Sum()} | {r.MovedMarks.Max()} "
                     + $"| {r.NearestTower:0.00} | {r.Travel?.ToString() ?? "not read"} |");
                 Assert.True(r.NearestTower < 1f, $"{r.Name}: the eye passed no tower within a metre");
@@ -90,8 +104,8 @@ namespace KhaozEngine.Tests.Gpu
                         t.FrameMaxExcess.Select((e, i) => $"{e:0.0000}{(r.OriginSteps[i] ? "*" : "")}")));
             }
             output.WriteLine(full ? "the full table"
-                : "the far fast orbit, strafe and creep at Quality, and the far fast orbit from the grazing pitch, "
-                    + $"only. Set {TemporalStabilityRuns.TableVariable}=1 for the full table");
+                : "the far fast orbit, strafe and creep at Quality, and the far fast orbit from the grazing pitch 12 "
+                    + $"and 30 metres away, only. Set {TemporalStabilityRuns.TableVariable}=1 for the full table");
             output.WriteLine($"every run: {runs.Seconds:0.0} s");
         }
     }

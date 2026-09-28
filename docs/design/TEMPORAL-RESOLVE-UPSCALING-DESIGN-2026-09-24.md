@@ -478,11 +478,17 @@ and changed these details. Each group's "Contract amendments" block carries the 
     orthographic one. That is 6 centimetres a second at 60 frames a second, 4.7 times that figure, and the slowest walk
     still stores 315 and 360 band marks on its measured frame at the two pitches. From the grazing pitch of 0.26
     radians, whose ground reaches the camera's 500 metre far plane, the static travel reached 0.508 millimetres, on the
-    fast orbit near the origin at Native 10.7 metres away, so over pitches from 0.26 to 0.75 radians and depths to 500
-    metres the millimetre is about twice the largest static travel measured, and no still run stores a band mark there
-    either. On the orthographic wall it is 0.04 internal pixels at Native and 0.013 at UltraPerformance. The error does
-    not peak on the frames that cross a render-origin step, and no still run stores a band mark on any frame, so none
-    drops a band history.
+    fast orbit near the origin at Native at a depth of 10.7 metres. Farther out, as a follow camera zooms to 22 metres
+    in a game and 30 by `FollowCamera3D.MaxDistance`'s default, the fast orbit's eye moves faster: at 22 and 30 metres
+    the static travel reached 0.374 and 0.466 millimetres from the boot pitch and 0.778 and 1.23 from the grazing one,
+    and from a steep pitch of 1.36 radians 0.058 at most. At 3840 by 2160 from the grazing pitch 12 metres away it
+    reached 0.368. So to 22 metres the millimetre is 1.3 times the largest static travel measured. At 30 metres from the
+    grazing pitch the fast orbit, its eye moving 1.5 metres a frame, passes it on up to 0.24 percent of its texels,
+    60898 of 25.3 million at Quality, and still no still run stores a band mark, which also needs the texel to travel
+    more than `FollowedTravelRatio` times its motion on screen, or a farther centre moving more on screen beside a
+    nearer edge. On the orthographic wall it is 0.04 internal pixels at Native and 0.013 at UltraPerformance. The error
+    does not peak on the frames that cross a render-origin step, and no still run stores a band mark on any frame, so
+    none drops a band history.
 
     Native and Quality meet acceptance 3 on 64 of the 72 walks at both pitches, away from the camera, sideways and
     towards it at half a display pixel a frame to 3, against 27 before, the worst 5 pixels against 55. The other 8 stay

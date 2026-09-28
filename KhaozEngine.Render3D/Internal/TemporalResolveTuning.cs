@@ -211,10 +211,14 @@ namespace KhaozEngine.Render3D.Internal
         /// the depth's reconstruction, one distance in the world that more pixels show at a higher resolution or a
         /// nearer depth. Orbiting, strafing and creeping past still crates and towers under a perspective camera, near
         /// the origin and 10 km out, it reached 0.075 internal pixels at 3840 wide, past the 0.05 a fixed pixel
-        /// threshold allowed. In the world it was 0.211 mm at most at the boot pitch of 0.75 radians, whose ground ends
-        /// 28 m away, and 0.508 mm from the grazing pitch of 0.26 radians, whose ground reaches the camera's 500 m far
-        /// plane: the fast orbit near the origin at Native, 10.7 m away. So over pitches from 0.26 to 0.75 radians and
-        /// depths to 500 m, 1 mm is about twice the largest static travel measured. The slowest follow measured, half a
+        /// threshold allowed. In the world it was at most 0.211, 0.374 and 0.466 mm from the boot pitch of 0.75
+        /// radians 12, 22 and 30 m away, 0.508, 0.778 and 1.23 mm from the grazing pitch of 0.26 radians, whose ground
+        /// reaches the camera's 500 m far plane, and 0.058 mm from a steep pitch of 1.36, each on the fast orbit, the
+        /// 0.508 mm near the origin at Native at a depth of 10.7 m. So 1 mm is 1.3 times the largest static travel to
+        /// 22 m. 30 m away from the grazing pitch the fast orbit, its eye moving 1.5 m a frame, passes it on up to 0.24
+        /// percent of its texels, and no still surface stores the band there, since a band pixel also travels more
+        /// than <see cref="FollowedTravelRatio"/> times its motion on screen or lies beside a nearer edge whose farther
+        /// centre moves more on screen. The slowest follow measured, half a
         /// display pixel a frame on UltraPerformance, 0.17 internal pixels, still marks the band. Under the perspective
         /// follow camera the band on the avatar's own pixels takes the ground trail of a walk away from the camera at
         /// the boot pitch from 17 to 55 pixels at Native and Quality to none.

@@ -277,6 +277,9 @@ on:
       # sample document RenderServiceTests and ViewportWorldDisposeOrderGpuTests render (#198).
       - 'KhaozEngine.MapEditor.Tests/**'
       - '.github/workflows/cross-platform-gpu.yml'
+      # Every graphics package version lives here (Vortice, Silk, SPIRV-Cross), and a bump can change a struct
+      # the backends hand to a driver by address (#1192), so a push that only moves a pin still runs the legs.
+      - 'Directory.Packages.props'
   # No paths filter here (deliberate): pull_request already runs on every path unconditionally, a strict
   # superset of the push list above, so it already "agrees" with push and needs no separate #198 fix.
   pull_request:

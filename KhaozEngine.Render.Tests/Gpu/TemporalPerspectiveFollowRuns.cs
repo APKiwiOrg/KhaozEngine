@@ -174,6 +174,9 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The metres a frame the box walks.</summary>
         public float Step => _step;
 
+        /// <summary>The unit direction along the ground the box walks.</summary>
+        public Vector3 Direction => _direction;
+
         /// <summary>Where the box stands on frame <paramref name="n"/>, the camera's target.</summary>
         public Vector3 Foot(int n) => _direction * (_step * Math.Max(0, n - _still));
 

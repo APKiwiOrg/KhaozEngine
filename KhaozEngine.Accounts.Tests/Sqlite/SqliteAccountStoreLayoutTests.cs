@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Accounts;
 using KhaozEngine.Accounts.Sqlite;
@@ -9,9 +10,9 @@ using Xunit;
 namespace KhaozEngine.Tests.Accounts.Sqlite;
 
 /// <summary>
-/// What the SQLite store does to a table it did not create, and to the file it opens: Grimhollow's two layouts
-/// with rows already in them, the subject key's collation, the configured table name, the identifier rule, and the
-/// release on dispose. These
+/// What the SQLite store does to a table it did not create, and to the file it opens: Grimhollow's layouts with
+/// rows already in them, the subject key's collation, the configured table name, the identifier rule, the times
+/// either store writes, and the release on dispose. These
 /// read the table raw, which the conformance suite never does, because the claims are about the table.
 /// </summary>
 public sealed class SqliteAccountStoreLayoutTests : IDisposable
@@ -22,25 +23,39 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
 
     private static readonly DateTimeOffset Now = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
     private static readonly string[] EngineColumns =
-        { "subject", "display_name", "whitelisted", "banned", "ban_reason", "ban_until" };
+    {
+        "subject", "display_name", "whitelisted", "banned", "ban_reason", "ban_until", "created_at_utc", "updated_at_utc",
+    };
+
+    // Grimhollow's widened table, which added debug before the times existed, so the times follow it.
+    private static readonly string[] WidenedColumns =
+    {
+        "subject", "display_name", "whitelisted", "banned", "ban_reason", "ban_until", "debug", "created_at_utc",
+        "updated_at_utc",
+    };
+
+    private const string TimesByRow = "SELECT subject, debug, created_at_utc, updated_at_utc FROM accounts ORDER BY subject;";
 
     private readonly SqliteScratch scratch = new();
+    private readonly ManualClock clock = new(Now);
 
     public void Dispose() => scratch.Dispose();
 
     private SqliteAccountStore Open(string path, bool whitelistOnCreate = false, AccountTableOptions? table = null) =>
-        scratch.Own(new SqliteAccountStore(SqliteScratch.ConnectionString(path), whitelistOnCreate, table));
+        scratch.Own(new SqliteAccountStore(SqliteScratch.ConnectionString(path), whitelistOnCreate,
+            (table ?? new AccountTableOptions()) with { TimeProvider = clock }));
 
     private static AccountSignIn SignIn(string providerSubject, string? displayName) =>
         new("discord", providerSubject, displayName, new System.Collections.Generic.Dictionary<string, string>(), Now);
 
     [Fact]
-    public async Task TheOriginalFourColumnTable_IsRead_WidenedWithTheBanPairOnly_AndBannable()
+    public async Task TheOriginalFourColumnTable_IsRead_WidenedWithTheBanPairAndTheTimes_AndBannable()
     {
         string path = scratch.NewDatabase(GrimhollowSqliteLayout.Original +
             "INSERT INTO accounts VALUES ('discord:1', 'Ferret', 1, 0), ('discord:2', 'Weasel', 0, 1);");
 
-        using (var store = new SqliteAccountStore(SqliteScratch.ConnectionString(path), whitelistOnCreate: false))
+        using (var store = new SqliteAccountStore(SqliteScratch.ConnectionString(path), whitelistOnCreate: false,
+            new AccountTableOptions { TimeProvider = clock }))
         {
             Assert.Equal(new AccountRecord("discord:1", "Ferret", true, null), await store.FindAsync("discord:1"));
             // A legacy filing with no reason reads as an empty reason, since a ban's reason is never null.
@@ -51,14 +66,16 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
             await store.BanAsync("discord:1", "griefing", Now.AddDays(1));
         }
 
+        // The ban is a change, so it stamps the update time. The creation time stays NULL: nothing proves it.
         using SqliteAccountStore reopened = Open(path);
-        Assert.Equal(new AccountRecord("discord:1", "Ferret", true, new AccountBan("griefing", Now.AddDays(1))),
+        Assert.Equal(
+            new AccountRecord("discord:1", "Ferret", true, new AccountBan("griefing", Now.AddDays(1))) { UpdatedAtUtc = Now },
             await reopened.FindAsync("discord:1"));
         Assert.Equal(EngineColumns, SqliteScratch.Columns(path, "accounts"));
     }
 
     [Fact]
-    public async Task TheWidenedTable_IsAdoptedAsItIs_AndEveryWriteLeavesDebugAlone()
+    public async Task TheWidenedTable_IsAdopted_AndEveryWriteLeavesDebugAlone()
     {
         string path = scratch.NewDatabase(GrimhollowSqliteLayout.Widened +
             "INSERT INTO accounts VALUES ('discord:1', 'Ferret', 1, 0, NULL, NULL, 1), " +
@@ -80,7 +97,118 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
         Assert.Equal(
             new[] { "discord:1|1", "discord:2|0", "discord:3|0" },
             SqliteScratch.Query(path, "SELECT subject, debug FROM accounts ORDER BY subject;"));
-        Assert.Equal(EngineColumns.Append("debug"), SqliteScratch.Columns(path, "accounts"));
+        Assert.Equal(WidenedColumns, SqliteScratch.Columns(path, "accounts"));
+    }
+
+    [Fact]
+    public async Task Grimhollow_layout_table_gains_the_two_columns_and_keeps_debug()
+    {
+        string path = scratch.NewDatabase(GrimhollowSqliteLayout.Widened +
+            "INSERT INTO accounts VALUES ('discord:1', 'Ferret', 1, 0, NULL, NULL, 1), " +
+            "('discord:2', 'Weasel', 0, 1, 'cheating', NULL, 0);");
+        SqliteAccountStore store = Open(path);
+
+        // A row older than the times has no provable creation or update time, so both read NULL rather than a guess.
+        Assert.Equal(new AccountRecord("discord:1", "Ferret", true, null), await store.FindAsync("discord:1"));
+        Assert.Equal(new AccountRecord("discord:2", "Weasel", false, new AccountBan("cheating", null)),
+            await store.FindAsync("discord:2"));
+        Assert.Equal(WidenedColumns, SqliteScratch.Columns(path, "accounts"));
+        Assert.Equal(new[] { "created_at_utc|TEXT|0|NULL", "updated_at_utc|TEXT|0|NULL" },
+            SqliteScratch.Query(path, "SELECT name, type, \"notnull\", dflt_value FROM pragma_table_info('accounts') " +
+                "WHERE name IN ('created_at_utc', 'updated_at_utc') ORDER BY cid;"));
+        Assert.Equal(new[] { "discord:1|1|NULL|NULL", "discord:2|0|NULL|NULL" }, SqliteScratch.Query(path, TimesByRow));
+    }
+
+    [Fact]
+    public async Task ATableGrimhollowAlreadyTimestamped_ReadsItsTimes_AndIsWrittenInItsEncoding()
+    {
+        // Grimhollow's own store writes round-trip UTC text, which is what this store writes, so each reads the
+        // other's rows. A time written at another offset reads back as the same instant with offset zero.
+        string path = scratch.NewDatabase(GrimhollowSqliteLayout.Timestamped +
+            "INSERT INTO accounts VALUES " +
+            "('discord:1', 'Ferret', 1, 0, NULL, NULL, 1, '2025-12-31T09:30:00.1234567+00:00', '2025-12-31T10:00:00.7654321+00:00'), " +
+            "('discord:3', 'Stoat', 0, 0, NULL, NULL, 0, '2026-01-01T09:00:00.0000000+11:00', '2026-01-01T09:00:00.0000000+11:00');");
+        SqliteAccountStore store = Open(path);
+
+        AccountRecord? ferret = await store.FindAsync("discord:1");
+        AccountRecord? stoat = await store.FindAsync("discord:3");
+        Assert.Equal(new DateTimeOffset(2025, 12, 31, 9, 30, 0, TimeSpan.Zero).AddTicks(1_234_567), ferret!.CreatedAtUtc);
+        Assert.Equal(new DateTimeOffset(2025, 12, 31, 10, 0, 0, TimeSpan.Zero).AddTicks(7_654_321), ferret.UpdatedAtUtc);
+        Assert.Equal(new DateTimeOffset(2025, 12, 31, 22, 0, 0, TimeSpan.Zero), stoat!.CreatedAtUtc);
+        Assert.Equal(TimeSpan.Zero, stoat.CreatedAtUtc!.Value.Offset);
+        Assert.Equal(TimeSpan.Zero, stoat.UpdatedAtUtc!.Value.Offset);
+
+        clock.Advance(TimeSpan.FromTicks(1_234_567));
+        await store.BanAsync("discord:1", "griefing", null);
+        await store.FindOrCreateAsync(SignIn("2", "Weasel"));
+
+        Assert.Equal(WidenedColumns, SqliteScratch.Columns(path, "accounts"));
+        Assert.Equal(
+            new[]
+            {
+                "discord:1|1|2025-12-31T09:30:00.1234567+00:00|2026-01-01T12:00:00.1234567+00:00",
+                "discord:2|0|2026-01-01T12:00:00.1234567+00:00|2026-01-01T12:00:00.1234567+00:00",
+                "discord:3|0|2026-01-01T09:00:00.0000000+11:00|2026-01-01T09:00:00.0000000+11:00",
+            },
+            SqliteScratch.Query(path, TimesByRow));
+    }
+
+    [Fact]
+    public async Task ATimeThatIsNotADate_IsRefused_NamingTheColumn_WithoutEchoingIt()
+    {
+        string path = scratch.NewDatabase(GrimhollowSqliteLayout.Timestamped +
+            "INSERT INTO accounts VALUES ('discord:1', 'Ferret', 1, 0, NULL, NULL, 0, 'last tuesday', NULL);");
+        SqliteAccountStore store = Open(path);
+
+        InvalidOperationException refusal =
+            await Assert.ThrowsAsync<InvalidOperationException>(() => store.FindAsync("discord:1"));
+
+        Assert.Contains("created_at_utc", refusal.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("tuesday", refusal.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ConcurrentOpenersOfAnOlderFile_WidenItOnce()
+    {
+        // The ensure reads the columns and adds the missing ones in one immediate transaction, so a second opener
+        // waits for the first one's write lock, then reads the widened table and adds nothing. Two check-then-adds
+        // outside one would both read the narrow table, and the slower ALTER would fail on a duplicate column.
+        const int openers = 8;
+        string path = scratch.NewDatabase(GrimhollowSqliteLayout.Original);
+        using var start = new Barrier(openers);
+
+        Task<SqliteAccountStore>[] opening = Enumerable.Range(0, openers).Select(_ => Task.Factory.StartNew(
+            () =>
+            {
+                start.SignalAndWait();
+                return new SqliteAccountStore(SqliteScratch.ConnectionString(path), whitelistOnCreate: false);
+            },
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)).ToArray();
+        try
+        {
+            await Task.WhenAll(opening);
+        }
+        finally
+        {
+            foreach (Task<SqliteAccountStore> opened in opening)
+            {
+                if (opened.IsCompletedSuccessfully) scratch.Own(await opened);
+            }
+        }
+
+        Assert.Equal(EngineColumns, SqliteScratch.Columns(path, "accounts"));
+    }
+
+    [Fact]
+    public void ANullClock_IsRefused_BeforeTheFileIsOpened()
+    {
+        string path = scratch.NewPath();
+
+        Assert.Throws<ArgumentNullException>(() => new SqliteAccountStore(SqliteScratch.ConnectionString(path), false,
+            new AccountTableOptions { TimeProvider = null! }));
+
+        Assert.False(File.Exists(path));
+        Assert.Same(TimeProvider.System, new AccountTableOptions().TimeProvider);
     }
 
     [Fact]
@@ -223,8 +351,9 @@ public sealed class SqliteAccountStoreLayoutTests : IDisposable
         SqliteScratch.Execute(path,
             "DROP TABLE accounts;" +
             "CREATE TABLE accounts (subject TEXT NOT NULL COLLATE NOCASE PRIMARY KEY, display_name TEXT NULL, " +
-            "whitelisted INTEGER NOT NULL, banned INTEGER NOT NULL, ban_reason TEXT NULL, ban_until TEXT NULL);" +
-            "INSERT INTO accounts VALUES ('discord:Alice', 'Alice', 1, 0, NULL, NULL);");
+            "whitelisted INTEGER NOT NULL, banned INTEGER NOT NULL, ban_reason TEXT NULL, ban_until TEXT NULL, " +
+            "created_at_utc TEXT NULL, updated_at_utc TEXT NULL);" +
+            "INSERT INTO accounts VALUES ('discord:Alice', 'Alice', 1, 0, NULL, NULL, NULL, NULL);");
 
         InvalidOperationException refusal = await Assert.ThrowsAsync<InvalidOperationException>(
             () => store.FindOrCreateAsync(SignIn("alice", "Mallory")));

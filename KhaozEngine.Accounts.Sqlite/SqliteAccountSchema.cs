@@ -11,16 +11,19 @@ namespace KhaozEngine.Accounts.Sqlite;
 /// <remarks>
 /// <para>
 /// <b>The layout is Grimhollow's</b>, so its database migrates in place: <c>subject</c>, <c>display_name</c>,
-/// <c>whitelisted</c>, <c>banned</c>, <c>ban_reason</c> and <c>ban_until</c>. A FRESH table differs in two places
+/// <c>whitelisted</c>, <c>banned</c>, <c>ban_reason</c>, <c>ban_until</c>, <c>created_at_utc</c> and
+/// <c>updated_at_utc</c>, every time as round-trip UTC text. A FRESH table differs in two places
 /// only. <c>display_name</c> is nullable, because a provider that gave no name stores none, and <c>subject</c> is
 /// <c>NOT NULL</c> with its collation spelled out. <c>BINARY</c> is SQLite's default, so the spelling documents
 /// rather than changes it, and every statement the store runs repeats it on the comparison anyway.
 /// </para>
 /// <para>
 /// <b>The ensure is additive only.</b> An existing table must already carry the four original columns, since a
-/// table without them is some other table that happens to share the name. A missing <c>ban_reason</c> or
-/// <c>ban_until</c> is added as a nullable column, which is Grimhollow's own widening. Nothing is renamed,
-/// dropped, backfilled or selected beyond the six owned columns, so a game's own column (Grimhollow's
+/// table without them is some other table that happens to share the name. A missing <c>ban_reason</c>,
+/// <c>ban_until</c>, <c>created_at_utc</c> or <c>updated_at_utc</c> is added as a nullable <c>TEXT</c> column with
+/// no default, which is Grimhollow's own widening. A row older than the times has no provable creation or update
+/// time, so both stay <c>NULL</c> until a write changes the row, which stamps the update time only. Nothing is
+/// renamed, dropped, backfilled or selected beyond the eight owned columns, so a game's own column (Grimhollow's
 /// <c>debug</c>) survives untouched and keeps its default on every row this store inserts.
 /// </para>
 /// <para>
@@ -41,13 +44,18 @@ internal static class SqliteAccountSchema
     // The four a Grimhollow table has had since its first build. The store cannot adopt a table missing one.
     private static readonly string[] CoreColumns = { "subject", "display_name", "whitelisted", "banned" };
 
+    // The columns the ensure adds to a table without them, in the order it adds them. Constants, never input.
+    private static readonly string[] AddedColumns = { "ban_reason", "ban_until", "created_at_utc", "updated_at_utc" };
+
     /// <summary>Every column the store reads, in the order it unpacks them.</summary>
-    internal const string ReadColumns = "subject, display_name, whitelisted, banned, ban_reason, ban_until";
+    internal const string ReadColumns =
+        "subject, display_name, whitelisted, banned, ban_reason, ban_until, created_at_utc, updated_at_utc";
 
     /// <summary>
     /// Creates the table when absent and widens it when present, in one immediate transaction so two processes
-    /// opening one file cannot both add the same column. Runs from the store's constructor, before the store is
-    /// published, so no other operation can hold the connection.
+    /// opening one file cannot both add the same column: the second waits for the first one's write lock, then reads
+    /// the widened table and adds nothing. Runs from the store's constructor, before the store is published, so no
+    /// other operation can hold the connection.
     /// </summary>
     /// <returns>Whether <c>display_name</c> is <c>NOT NULL</c>, which only a legacy table declares.</returns>
     /// <exception cref="InvalidOperationException">The table exists without one of the four original columns, or
@@ -62,7 +70,9 @@ internal static class SqliteAccountSchema
                 whitelisted INTEGER NOT NULL,
                 banned INTEGER NOT NULL,
                 ban_reason TEXT NULL,
-                ban_until TEXT NULL);
+                ban_until TEXT NULL,
+                created_at_utc TEXT NULL,
+                updated_at_utc TEXT NULL);
             """);
 
         Dictionary<string, bool> notNullByColumn = ReadNotNullByColumn(db, tx, table);
@@ -81,10 +91,11 @@ internal static class SqliteAccountSchema
                 "whose subject differs only in case or padding and be handed that account. Rebuild the table with a " +
                 "BINARY subject key, or name a different table in AccountTableOptions.");
 
-        if (!notNullByColumn.ContainsKey("ban_reason"))
-            Execute(db, tx, $"ALTER TABLE {quoted} ADD COLUMN ban_reason TEXT NULL;");
-        if (!notNullByColumn.ContainsKey("ban_until"))
-            Execute(db, tx, $"ALTER TABLE {quoted} ADD COLUMN ban_until TEXT NULL;");
+        foreach (string column in AddedColumns)
+        {
+            if (!notNullByColumn.ContainsKey(column))
+                Execute(db, tx, $"ALTER TABLE {quoted} ADD COLUMN {column} TEXT NULL;");
+        }
 
         tx.Commit();
         return notNullByColumn["display_name"];

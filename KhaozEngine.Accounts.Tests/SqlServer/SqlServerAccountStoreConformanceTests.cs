@@ -24,7 +24,7 @@ public sealed class SqlServerAccountStoreConformanceTests : AccountStoreConforma
     /// <inheritdoc />
     protected override IAccountStore NewStore(bool whitelistOnCreate) =>
         new SqlServerAccountStore(Database.ConnectionString, whitelistOnCreate,
-            new SqlServerAccountStoreOptions(Table: Database.NewTableName()));
+            new SqlServerAccountStoreOptions(Table: Database.NewTableName()) { TimeProvider = Clock });
 
     public void Dispose() => database?.Dispose();
 
@@ -154,4 +154,20 @@ public sealed class SqlServerAccountStoreConformanceTests : AccountStoreConforma
     /// <inheritdoc />
     [AccountsSqlServerFact]
     public override Task ValuesAtTheLimits_RoundTripExactly() => base.ValuesAtTheLimits_RoundTripExactly();
+
+    /// <inheritdoc />
+    [AccountsSqlServerFact]
+    public override Task Created_account_reports_its_creation_time() => base.Created_account_reports_its_creation_time();
+
+    /// <inheritdoc />
+    [AccountsSqlServerFact]
+    public override Task Changing_an_account_moves_only_its_update_time() => base.Changing_an_account_moves_only_its_update_time();
+
+    /// <inheritdoc />
+    [AccountsSqlServerFact]
+    public override Task Every_write_that_changes_a_stored_value_moves_the_update_time() => base.Every_write_that_changes_a_stored_value_moves_the_update_time();
+
+    /// <inheritdoc />
+    [AccountsSqlServerFact]
+    public override Task A_write_that_changes_nothing_moves_neither_time() => base.A_write_that_changes_nothing_moves_neither_time();
 }

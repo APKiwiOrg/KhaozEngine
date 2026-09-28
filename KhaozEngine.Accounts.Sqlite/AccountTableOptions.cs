@@ -3,7 +3,7 @@ using System;
 namespace KhaozEngine.Accounts.Sqlite;
 
 /// <summary>
-/// Where a <see cref="SqliteAccountStore"/> keeps its accounts.
+/// Where a <see cref="SqliteAccountStore"/> keeps its accounts, and the clock it stamps their times from.
 /// </summary>
 /// <remarks>
 /// The name is configuration, never SQL: the store refuses anything but a plain identifier (ASCII letters, digits
@@ -11,7 +11,11 @@ namespace KhaozEngine.Accounts.Sqlite;
 /// the statement text as anything but a table name.
 /// </remarks>
 /// <param name="Table">The table name. <c>accounts</c>, Grimhollow's table, by default.</param>
-public sealed record AccountTableOptions(string Table = "accounts");
+public sealed record AccountTableOptions(string Table = "accounts")
+{
+    /// <summary>The clock an account's creation and update times are stamped from. The system clock by default.</summary>
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+}
 
 /// <summary>The one identifier rule the SQLite store applies to a configured table name.</summary>
 internal static class SqliteAccountIdentifier

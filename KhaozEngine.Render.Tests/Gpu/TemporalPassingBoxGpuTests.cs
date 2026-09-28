@@ -80,8 +80,10 @@ namespace KhaozEngine.Tests.Gpu
         /// after. Its lock, refreshed by a ridge on a hit, loses <c>LockDecay</c> a frame, so from the fifth miss its
         /// hold is under whole, and beside a narrow passer that pixel takes the passer's colour in the share its hold
         /// does not keep and stores no confidence (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23), so it restarts.
-        /// Report only: it prints the line's worst frame beside a passer one and two texels wide on either side, which
-        /// a redesign of the held share is read against.
+        /// Report only: it prints the line's highest and lowest frames beside a passer one and two texels wide on
+        /// either side, which a redesign of the held share is read against. A restarted pixel shows its raw sample, so
+        /// with the passer on the right the line flares on the frames after a hit, 1.20 to 1.33 of its energy without
+        /// the passer, while its lowest frame stays over 0.9.
         /// </summary>
         [GpuFact]
         public void A_quarter_texel_line_missed_five_frames_running_prints_its_worst_frame_beside_a_narrow_passer()
@@ -95,6 +97,10 @@ namespace KhaozEngine.Tests.Gpu
                 foreach (int side in new[] { 1, -1 })
                 {
                     PassingBoxRun r = runs.Run(TemporalUpscale.Native, side, passerTexels, Texels, Offset);
+                    int flare = Array.IndexOf(r.Shares, r.Shares.Max());
+                    output.WriteLine($"passer {passerTexels} texel{(passerTexels > 1 ? "s" : "")} wide "
+                        + $"{(side > 0 ? "right" : "left")}: flares to {r.Shares[flare]:0.000} on frame "
+                        + $"{TemporalPassingBoxRuns.Warm + flare}, lowest {r.Worst:0.000} on frame {r.WorstFrame}");
                     output.WriteLine(Describe(r, TemporalUpscale.Native, side, passerTexels));
                     Assert.True(r.Pixels > 0, "the line covered nothing");
                 }

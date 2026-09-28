@@ -24,11 +24,11 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class TemporalHeldBackgroundGpuTests(TemporalHeldBackgroundRuns runs, ITestOutputHelper output)
         : IClassFixture<TemporalHeldBackgroundRuns>
     {
+        const int First = TemporalHeldBackgroundRuns.Warm;
+
         /// <summary>The line's worst and mean energy share over the textured wall and over the flat one, at Native and
         /// Quality, with the share of the wall's pixels in its path whose hold was whole before it arrived, and the
         /// share on each frame. A redesign of the held share is read against it.</summary>
-        const int First = TemporalHeldBackgroundRuns.Warm;
-
         [GpuFact]
         public void A_fast_narrow_line_over_a_held_textured_wall_prints_its_energy()
         {

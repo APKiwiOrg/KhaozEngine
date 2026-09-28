@@ -225,14 +225,14 @@ namespace KhaozEngine.Tests.Gpu
                 Motion = MotionKey.From(key),
             });
 
-        /// <summary>The pixels of frame <paramref name="last"/> whose ground point the box hid on frame
-        /// <paramref name="n"/>, by the ray through each pixel centre.</summary>
         /// <summary>Whether the box hid the ground point pixel (<paramref name="x"/>, <paramref name="y"/>) of frame
         /// <paramref name="last"/> shows on frame <paramref name="n"/>.</summary>
         public bool Hides(int n, int last, int x, int y) =>
             GroundRays.GroundPoint(Camera(last), _stage.W, _stage.H, x, y) is Vector3 g
             && GroundRays.Hides(Camera(n).Eye, g, Foot(n), _size, GroundStage.Yaw);
 
+        /// <summary>The pixels of frame <paramref name="last"/> whose ground point the box hid on frame
+        /// <paramref name="n"/>, by the ray through each pixel centre.</summary>
         public bool[] Hidden(int n, int last)
         {
             int w = _stage.W, h = _stage.H;

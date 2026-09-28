@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.13.1
+
+- On Windows every texture now uses its mip chain. The native Direct3D 11 backend handed the driver Vortice's
+  sampler description, whose layout put a maximum LOD of 0 where the driver reads it, so every sampler read mip
+  level 0 only. Distant textures stop aliasing, the ground's anisotropic filtering and mip bias work as designed,
+  and explicit LOD and material mip bias take effect. The backend now passes a 52-byte description in the
+  header's layout, and tests pin that layout and the size of every Vortice struct still passed to the driver.
+  Some Direct3D 11 goldens baked on WARP through the old clamp may be re-baked
+  ([#1192](https://github.com/APKiwiOrg/KhaozEngine/issues/1192)).
+
 ## 20.13.0
 
 - Render3D's animation layer takes a skinned body's joints as a contract, so a second body shape reuses the

@@ -76,7 +76,7 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
    from camera rotation alone. Beside a fast edge, where the nearer surface itself moved, a pixel on the farther
    surface keeps its own motion. Under that reach, beside a wide nearer surface that moved while the farther one moves
    more on screen, as under a camera following an avatar, the pixel keeps the dilated motion and marks its history
-   as the edge's, and so does a pixel of the followed surface itself (amendment 23).
+   as the edge's, and a pixel of the followed surface itself marks its history as that surface's own (amendment 23).
 2. **History fetch.** Sample the history at the reprojected position with a 5-tap Catmull-Rom filter. Bilinear history
    sampling blurs a little more every frame, and a stability-first filter keeps history for many frames.
 3. **Disocclusion.** Reproject the pixel's linear depth and compare it with the previous frame's depth at the
@@ -85,7 +85,8 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
    covered footprint counts as hidden unless a still narrow feature covered it or the pixel carries a lock a ridge
    refreshed on the last frame, and one a moving surface showed at counts as hidden unless it is whole. A
    depth-tested pixel whose nearest surface did not move in the world, ground panning under a follow camera included,
-   drops a history marked as a followed surface's (amendment 23).
+   drops a history marked as a followed surface's edge, and one the followed surface's own pixels marked where a
+   surface moving otherwise on screen shows around it now (amendment 23).
 4. **Current sample reconstruction.** Gather the 3x3 internal samples around the display pixel and weight each by a
    Lanczos 2 kernel on the distance from its jittered sample position to the display pixel centre, measured in
    internal pixels. That is what turns jittered low resolution frames into a higher resolution image, and at `Native`
@@ -515,6 +516,29 @@ and changed these details. Each group's "Contract amendments" block carries the 
     about 2.00 ms at Quality, and the moving thin field about 0.05 ms more, 2.36 against 2.30 ms at Native and 2.26
     against 2.21 at Quality, since the swaying blades the pan follows now pass the band's world test and run its narrow
     test.
+
+    The followed surface's own pixels read the mark they stored when it stops. On the frame its travel falls under
+    `WorldMotionMetres`, stopping with the camera or turning back through zero travel, its dilated nearest did not move
+    in the world, the depth test passes and every stored depth equals the expected one, so the drop fired on every
+    pixel of the avatar, which showed one jittered sample and settled over about 15 frames
+    (`TemporalFollowStopGpuTests`). Its pixels farther inside its outline than the reconstruction's reach read up to
+    3.7 and 3.0 times a kept history's error against the 4x reference at Native and Quality on the orthographic follow
+    walk, and 1.2 and 1.5 times on the perspective one. Those pixels now store a mark of their own, minus five minus
+    the lock, and a pixel whose nearest surface did not move drops a history that carries it only where one of the
+    nine current texels around the history position moves on screen otherwise than the pixel reprojected, by more than
+    `FollowedHistoryMotionFraction`, half, of that motion. The ground the avatar uncovers pans past the avatar, which
+    stays put on screen, so it still drops the avatar's history. The avatar's own pixels read it in place when it
+    stops, and where the same avatar shows moving with them under a camera that eases on after it, as
+    `FollowCamera3D`'s target damping does, and keep it. The inner pixels read the kept history's error on every frame
+    after a stop or a reversal, and within 0.00011 of it under the damped camera, which resamples the history at
+    fractional offsets. Keyed only on the pixel having moved on screen, the stop and the reversal held, but the damped
+    stop kept the drop, up to 1.43 times on its turn frame, and applied to the band beside an edge too, a still pixel
+    kept a band history. Reading only the texel at the history position, or the four around it, left the ground the
+    box's colour where it stood, up to 8 pixels at Quality, and the orthographic follow at Performance 18 of 90
+    against 3. Every walk cell holds, and the low pitch walking away at 2.5 display pixels a frame on Quality goes
+    from 5 to 4. The perspective blades beside the box move both ways, the worst share at Quality 1.5 along from 0.769
+    to 0.722. Every reset case, the reveal, and every still camera over still content are byte-identical. The emitted
+    resolve grew from 42685 to 44875 bytes of HLSL, most of it the fourth level's store and its four decodes.
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies

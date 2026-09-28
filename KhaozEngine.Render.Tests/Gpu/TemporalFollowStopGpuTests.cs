@@ -26,8 +26,8 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>How far over the kept history's error a frame may read: a luma step of 1/255 on one pixel in
         /// twenty of the inner set. Under the damped camera the history is resampled at fractional offsets, so the
-        /// inner pixels read a little of the outline's, which the rule for the ground under the avatar's feet
-        /// restarts during the walk: 0.00011 over at most, measured.</summary>
+        /// inner pixels read a little of the outline's, where the rules for the ground beside and under the avatar
+        /// act: 0.00011 over at most, measured.</summary>
         const double Allowance = 0.0002;
 
         // The walks: the boot pitch away and sideways and the orthographic walk at 1 display pixel a frame, and with
@@ -63,7 +63,7 @@ namespace KhaozEngine.Tests.Gpu
         /// read up to 3.7 and 3.0 times that on the orthographic walk at Native and Quality, 1.2 and 1.5 on the
         /// perspective one, and settled over the 15 frames. Every pixel showing the avatar is printed by the table,
         /// and reads up to 2.4 percent over the kept history after a stop or a reversal and 4.5 under the damped
-        /// camera, from its lowest row, which the rule for the ground under its feet restarts during the walk.
+        /// camera, on the outline's pixels, where the rules for the ground beside and under the avatar act.
         /// </summary>
         [GpuFact]
         public void A_followed_avatar_keeps_its_own_history_when_it_stops_or_turns_back()

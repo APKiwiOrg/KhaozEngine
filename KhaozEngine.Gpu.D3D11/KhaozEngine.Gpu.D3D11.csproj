@@ -11,11 +11,14 @@
          KhaozEngine.Gpu's own D3D11ThreadingProbe already proves keeps the Vortice assembly off the load path on
          macOS and Linux. With warnings as errors, CA1416 turns that boundary into a compiler-enforced rule rather
          than a convention. -->
-    <!-- ONE unsafe block in the whole package: the constant-buffer ring's copy into its mapped segment
-         (D3D11UniformRing.CopyInto). A write into memory the driver handed back as a raw pointer is a raw-pointer
-         write, and the alternatives are worse rather than safer: a byte[] round trip allocates per write on the
-         hottest path the backend has, and the ref-arithmetic spelling of the same thing is unsafe in fact while
-         reading as though it is not. Same flag KhaozEngine.Gpu, Render2D and Render3D already carry. -->
+    <!-- TWO unsafe blocks in the whole package. The first is the constant-buffer ring's copy into its mapped
+         segment (D3D11UniformRing.CopyInto). A write into memory the driver handed back as a raw pointer is a
+         raw-pointer write, and the alternatives are worse rather than safer: a byte[] round trip allocates per
+         write on the hottest path the backend has, and the ref-arithmetic spelling of the same thing is unsafe in
+         fact while reading as though it is not. The second is D3D11Sampler.CreateWindows, which calls
+         ID3D11Device::CreateSamplerState through the vtable with the engine's own D3D11SamplerDesc, because
+         Vortice's SamplerDescription does not have the native layout (issue #1192). Same flag KhaozEngine.Gpu,
+         Render2D and Render3D already carry. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>Engine-owned native Direct3D 11 backend for the KhaozEngine.Gpu seam, and the DEFAULT backend on Windows since 17.40.0 (carried by the KhaozEngine.Game2D and KhaozEngine.Game3D umbrellas since 18.0.0, along with its two siblings, because KhaozEngine.Gpu builds no device of its own any more). Registers an IGpuBackendProvider for GpuBackendKind.Direct3D11Native through the one public entry point KhaozEngineD3D11.Register(), so a consumer outside those umbrellas opts in with a package reference plus one line at startup rather than a module initializer the CLR may never run. Targets net10.0 (not net10.0-windows) with [SupportedOSPlatformGuard("windows")] entry points over NoInlining Vortice bodies, so the assembly compiles and its device-free tests run on Linux and macOS while the Vortice.Direct3D11 interop stays off the load path there. The machine-capability probe checks the two hard device requirements the backend cannot work without, ConstantBufferOffsetting and MapNoOverwriteOnDynamicConstantBuffer. Declares no shader-toolchain package of its own: the SPIRV-Cross path stays behind an internal cross-compile helper in KhaozEngine.Gpu whose signatures name no toolchain type. That rule was written as "Veldrid-free", and it binds unchanged since the toolchain became Silk.NET.SPIRV.Cross in 18.0.0.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

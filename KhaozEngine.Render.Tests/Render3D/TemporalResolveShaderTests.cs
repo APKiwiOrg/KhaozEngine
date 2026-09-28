@@ -164,7 +164,7 @@ namespace KhaozEngine.Tests.Render3D
             // the share of the reconstruction weight on texels nearer than the centre texel's own surface takes their
             // current colour in the clipped history, before the blend, save the share the pixel's lock holds, and the
             // pixel stores MovingShareConfidence. A pixel whose hold is whole keeps its own history and confidence. The
-            // centre texel's own depth is read before the 3x3, so the nearer texels are summed in the loop.
+            // nearer texels are summed inside that branch alone, so the 3x3 every pixel runs carries no sum for them.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("float ownDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), "
                 + "centreTexel, 0).rg,", core, StringComparison.Ordinal);
@@ -178,7 +178,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("bool temporalNarrowDepth(ivec2 texel, float depth, ivec2 maxTexel, bool current) {", core,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("temporalNarrowCurrentDepth", core, StringComparison.Ordinal);
-            Assert.Contains("if (narrowMoving && nearerWeight > 1.0e-4) {", core, StringComparison.Ordinal);
+            Assert.Contains("if (nearerWeight > 1.0e-4) {", core, StringComparison.Ordinal);
             Assert.Contains("movingShare = clamp(nearerWeight / max(reconstructionWeight, 1.0e-4), 0.0, 1.0) * (1.0 - "
                 + "hold);", core, StringComparison.Ordinal);
             Assert.Contains("clipped = mix(clipped, clamp(movingColor.xyz, neighbourMin, neighbourMax), movingShare);",
@@ -189,11 +189,15 @@ namespace KhaozEngine.Tests.Render3D
                 StringComparison.Ordinal);
             int narrow = core.IndexOf("bool narrowMoving = ownReprojected && nearerNarrow;", StringComparison.Ordinal);
             int hold = core.IndexOf("clipped.x = mix(clipped.x, historyYcc.x, hold);", StringComparison.Ordinal);
-            int share = core.IndexOf("if (narrowMoving && nearerWeight > 1.0e-4) {", StringComparison.Ordinal);
+            int share = core.IndexOf("if (narrowMoving) {", StringComparison.Ordinal);
+            int own = core.IndexOf("float ownDepth = ", StringComparison.Ordinal);
+            int sum = core.IndexOf("nearerSum += ", StringComparison.Ordinal);
             int blend = core.IndexOf("vec3 resolvedYcc = mix(clipped, current.xyz, currentWeight);",
                 StringComparison.Ordinal);
             Assert.True(reach >= 0 && narrow > reach && hold > narrow && share > hold && blend > share,
                 "the narrow test follows rule 1, and the colour replaces the clipped history before the blend");
+            Assert.True(own > share && sum > own && blend > sum,
+                "the nearer texels are summed inside the narrow moving branch, not in the 3x3 every pixel runs");
         }
 
         [Fact]

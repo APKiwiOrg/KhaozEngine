@@ -325,13 +325,6 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         displayKernelY[i] = lanczos2(toSample.y * displayOverInternal);
     }
 
-    // Step 5's narrow moving feature reads the reconstruction over the texels nearer than the centre texel's own
-    // surface by the disocclusion tolerance, so that surface's depth is read first.
-    float ownDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), centreTexel, 0).rg,
-        texelFetch(sampler2D(SceneDepth, LinearClamp), centreTexel, 0).r);
-    vec4 nearerSum = vec4(0.0);
-    float nearerWeight = 0.0;
-
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             ivec2 texel = clamp(centreTexel + ivec2(x, y), ivec2(0), maxTexel);
@@ -364,10 +357,6 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             float ndcDepth = texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r;
             bool isBackground = abs(motion.x) > MotionSentinel;
             float viewDepth = temporalViewDepth(motion, ndcDepth);
-            if (ownDepth > viewDepth * (1.0 + DisocclusionTolerance)) {
-                nearerSum += vec4(ycc, sceneColor.a) * lanczosWeight;
-                nearerWeight += lanczosWeight;
-            }
             if (x == 0 && y == 0) {
                 centreMotion = motion;
                 centreIsBackground = isBackground;
@@ -629,13 +618,35 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // feature, which the next frame needs whole on the frames the jitter misses it. A surface wider than two texels
     // keeps its own history at its edge, where the same colour flickered with the jitter. The narrow test reads the run
     // through the nearest texel alone, so a wide object is narrow where it is one or two texels across in this frame's
-    // depth, at a corner's tip or on a face seen at a grazing angle, and its colour is taken there too.
+    // depth, at a corner's tip or on a face seen at a grazing angle, and its colour is taken there too. The nearer
+    // texels are summed here, where they are needed, rather than in the 3x3 every pixel runs: the sum is the same, and
+    // five more accumulators carried through that loop made the whole program spill for every pixel.
     float movingShare = 0.0;
-    if (narrowMoving && nearerWeight > 1.0e-4) {
-        movingShare = clamp(nearerWeight / max(reconstructionWeight, 1.0e-4), 0.0, 1.0) * (1.0 - hold);
-        vec4 movingColor = nearerSum / nearerWeight;
-        clipped = mix(clipped, clamp(movingColor.xyz, neighbourMin, neighbourMax), movingShare);
-        historyAlpha = mix(historyAlpha, clamp(movingColor.w, alphaMin, alphaMax), movingShare);
+    if (narrowMoving) {
+        float ownDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), centreTexel, 0).rg,
+            texelFetch(sampler2D(SceneDepth, LinearClamp), centreTexel, 0).r);
+        vec4 nearerSum = vec4(0.0);
+        float nearerWeight = 0.0;
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+                ivec2 texel = clamp(centreTexel + ivec2(x, y), ivec2(0), maxTexel);
+                vec4 sceneColor = texelFetch(sampler2D(SceneColor, LinearClamp), texel, 0);
+                vec3 ycc = rgbToYCoCg(toWeighted(min(max(sceneColor.rgb, vec3(0.0)), vec3(HalfMax))));
+                float lanczosWeight = kernelX[x + 1] * kernelY[y + 1];
+                float viewDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg,
+                    texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r);
+                if (ownDepth > viewDepth * (1.0 + DisocclusionTolerance)) {
+                    nearerSum += vec4(ycc, sceneColor.a) * lanczosWeight;
+                    nearerWeight += lanczosWeight;
+                }
+            }
+        }
+        if (nearerWeight > 1.0e-4) {
+            movingShare = clamp(nearerWeight / max(reconstructionWeight, 1.0e-4), 0.0, 1.0) * (1.0 - hold);
+            vec4 movingColor = nearerSum / nearerWeight;
+            clipped = mix(clipped, clamp(movingColor.xyz, neighbourMin, neighbourMax), movingShare);
+            historyAlpha = mix(historyAlpha, clamp(movingColor.w, alphaMin, alphaMax), movingShare);
+        }
     }
 
     // Step 8, second half: blend in the weighted space. The current weight is 1 on a reset and falls to

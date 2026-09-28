@@ -101,7 +101,7 @@ namespace KhaozEngine.Render3D.Internal
         /// frame over still ground on Quality, whose summed coverage falls from 22.1 percent to 20.8 and 13.1, where 0
         /// to 1 all keep 22.1. So 1 is the smallest factor that leaves one trailing pixel at 5 percent, and the largest
         /// measured that costs that blade nothing. A pixel that reprojected by its own motion
-        /// (<see cref="DilationReachInternalPixels"/>) and kept its history holds its own, since where a fast surface
+        /// (<see cref="DilationReachInternalPixels"/>) and kept its history holds its own, since where a moving surface
         /// showed step 3 keeps a history only whole (<see cref="DisocclusionVisibleShare"/>), and keeps its lock. A
         /// still line three eighths of a texel wide, with a keyed 30 display pixel box sliding past one internal texel
         /// away at 2 display pixels a frame, fell on its worst frame to 0.01 of its energy without the box at Native
@@ -169,6 +169,42 @@ namespace KhaozEngine.Render3D.Internal
         /// pixel a frame at its moving edges at Quality, Balanced, Performance and UltraPerformance against 0.0001,
         /// 0.0000, 0.0000 and 0.0007, and its added change at UltraPerformance rises from 0.0034 to 0.0042.</summary>
         public const float DilationReachInternalPixels = 1.25f;
+        /// <summary>
+        /// Steps 1 and 3, the band. A pixel whose centre texel lies on a farther surface takes by dilation the motion
+        /// of a nearer one. Where that nearer surface moved in the world, its own sample landing more than this many
+        /// internal pixels, plus <see cref="MovingSurfaceMotionFraction"/> of its motion, from where a static point
+        /// would have been, is wide, and moves less on screen than the farther surface, as an avatar does under a
+        /// camera that follows it, the pixel's history follows the avatar's edge, which stays put on screen while the
+        /// ground passes under it. Its colour is the edge's anti-aliased coverage over a mix of the ground that passed,
+        /// and dilation keeps it for the edge. The pixel stores that it is a band pixel, and a depth-tested pixel off
+        /// any moving edge that carries it drops the history, so the ground pixel clear of the edge restarts rather
+        /// than carrying the avatar's colour off with the pan. The avatar's own edge pixel, whose 3x3 also holds the
+        /// ground, and a nearer surface reading the band where its edge was, whose stored depths all lie farther, keep
+        /// it.
+        /// <para>
+        /// A keyed box with ridged pixels, the camera following it across the textured wall under the reach, kept its
+        /// luma in 20 and 32 of the 90 wall pixels it uncovered at 0.5 display pixels a frame at Native and Quality, 45
+        /// and 87 of 210 at 1, and 101 of 300 at 1.5 on Quality, and the band leaves 0 at each. At Performance it
+        /// leaves 3 of 90 and 2 of 210 against 35 and 109 at 0.5 and 1, and 0 from 1.5 on against 168 to 213. At
+        /// UltraPerformance it leaves 15 to 36 against 35 to 182: there the reconstruction spreads the box's texel 6
+        /// display pixels onto the wall, which the bare-wall floor never shows, and a restart gathers display-scale
+        /// sample weight slowly. Over the box's own edges it lowers the edge error against the 4x reference at 0.25,
+        /// 0.5 and 1 internal pixel a frame, from 0.0197, 0.0218 and 0.0169 to 0.0173, 0.0175 and 0.0115 at Native, and
+        /// its fast flips stay under the reference's but at 0.25 internal pixels a frame on Native, 0.0003 against 0.
+        /// </para>
+        /// <para>
+        /// Each condition is measured. Reprojecting such a pixel by its own motion instead shimmers the edge, fast
+        /// flips 0.0134 and 0.0275 at 0.25 internal pixels a frame against the reference's 0 and 0.0069. A surface that
+        /// moves more on screen than what lies behind it, a keyed object crossing a still view, keeps its band history
+        /// where it leaves it: restarting the pixels it uncovers made a revealed sub-texel line show its raw sample,
+        /// brighter than its converged value, in up to 3 display pixels against the lock fact's bound of 1. A still
+        /// nearer surface keeps it too: under a zoom the farther surface moves more on screen beside a still object. A
+        /// narrow nearer surface, a swaying blade or a thin line, is held by the thin-feature lock instead. A static
+        /// surface's travel is float rounding, far below this, and the slowest follow measured, 0.17 internal pixels a
+        /// frame, is well above it.
+        /// </para>
+        /// </summary>
+        public const float WorldMotionInternalPixels = 0.05f;
         /// <summary>Step 3. A depth-tested pixel whose expected surface shows under less than this share of the
         /// bilinear weight of its four stored depths was mostly covered last frame, and drops its history, unless the
         /// nearest of the four is narrow, its run of texels along a row or a column, apart in depth from those either
@@ -198,16 +234,19 @@ namespace KhaozEngine.Render3D.Internal
         /// and 50 and 136 for two, against 11 and 23, and 0 and 3, where the moving surface's stored state rules it
         /// out, and 0 and 1, and 0 and 0, since the pixels beside such a line restart once it moves on
         /// (<see cref="MovingShareConfidence"/>). The still blades and lines hold as before. Where the stored state
-        /// says a surface that travelled more than <see cref="DilationReachInternalPixels"/> against a static point
-        /// showed there, neither exception applies, and any weight on a stored depth nearer than expected drops the
-        /// history. A keyed box with ridged pixels walking across the textured wall at 2.5 display pixels a frame while
-        /// the camera follows it, as a third-person camera follows an avatar, kept its luma in 38 and 22 of the 510
-        /// wall pixels it uncovered at Native and Quality, against 0 and 0 now: its pixels hold locks near whole, and a
-        /// footprint it covered in half kept a history half its colour. The keyed box crossing the textured wall at 4
-        /// display pixels a frame leaves 6 and 12 of 840 at Performance and UltraPerformance against 17 and 63. Applied
-        /// to every moving surface, the rule also cost the lock facts: a dark surface crossing a held line at 0.2
-        /// internal pixels a frame on UltraPerformance showed one revealed pixel at half the line's contrast, from its
-        /// first raw sample, against none. So a slower surface keeps both exceptions.</summary>
+        /// says a moving surface showed there, neither exception applies, and any weight on a stored depth nearer than
+        /// expected drops the history. A keyed box with ridged pixels walking across the textured wall at 2.5 display
+        /// pixels a frame while the camera follows it, as a third-person camera follows an avatar, kept its luma in 38
+        /// and 22 of the 510 wall pixels it uncovered at Native and Quality, against 0 and 0 now: its pixels hold locks
+        /// near whole, and a footprint it covered in half kept a history half its colour. At 1.5 display pixels a frame
+        /// on Quality, 1 internal pixel, it kept 101 of 300 with the rule held to surfaces past
+        /// <see cref="DilationReachInternalPixels"/>, and 5 with it on every moving surface. The keyed box crossing the
+        /// textured wall at 4 display pixels a frame leaves 6 and 12 of 840 at Performance and UltraPerformance against
+        /// 17 and 63. On every moving surface the rule moves two lock facts' printed lines, both within their bounds: a
+        /// dark surface crossing a held line at 0.6 internal pixels a frame on UltraPerformance shows one revealed
+        /// pixel at half the line's contrast, from its first raw sample, against none, and a keyed line at 0.9 display
+        /// pixels a frame on Quality keeps at least 63 percent of its still contrast against 59, and no longer trails
+        /// its 1 pixel at 17 percent.</summary>
         public const float DisocclusionVisibleShare = 0.5f;
         /// <summary>Steps 5 and 8. Beside a keyed feature at most two texels wide in this frame's depth that moves more
         /// than <see cref="DilationReachInternalPixels"/> against the surface behind it, a pixel that reprojected by

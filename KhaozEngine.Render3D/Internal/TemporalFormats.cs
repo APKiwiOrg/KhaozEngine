@@ -19,10 +19,10 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>The two display-resolution confidence and stability targets: the accumulated sample weight over its
         /// cap in red, the thin feature lock in green. Where history was valid and the surface the pixel reprojected by
-        /// moved, green holds minus one minus the lock, and minus three minus the lock where that surface travelled
-        /// more than <see cref="TemporalResolveTuning.DilationReachInternalPixels"/>, so the next frame reads the lock
-        /// back and knows a moving surface, or a fast one, showed there. A frame with no valid history stores the lock
-        /// plain.</summary>
+        /// moved, green holds minus one minus the lock, and minus three minus the lock where the pixel followed a
+        /// nearer surface's edge (<see cref="TemporalResolveTuning.WorldMotionInternalPixels"/>), so the next frame
+        /// reads the lock back and knows a moving surface showed there, and whether that history followed an edge. A
+        /// frame with no valid history stores the lock plain.</summary>
         public const GpuPixelFormat HistoryConfidence = GpuPixelFormat.R16G16Float;
 
         /// <summary>The two internal-resolution previous depth targets: linear view depth, background at 1e30.</summary>

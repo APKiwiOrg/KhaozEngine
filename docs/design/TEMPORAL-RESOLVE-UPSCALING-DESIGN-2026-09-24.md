@@ -74,15 +74,17 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
    the closest depth in its 3x3 neighbourhood. Edges of moving objects then carry the object's motion rather than the
    background's, which is the main cause of edge ghosting. Background pixels, marked by round 1's sentinel, reproject
    from camera rotation alone. Beside a fast edge, where the nearer surface itself moved, a pixel on the farther
-   surface keeps its own motion (amendment 23).
+   surface keeps its own motion. Under that reach, beside a wide nearer surface that moved while the farther one moves
+   more on screen, as under a camera following an avatar, the pixel keeps the dilated motion and marks its history
+   as the edge's (amendment 23).
 2. **History fetch.** Sample the history at the reprojected position with a 5-tap Catmull-Rom filter. Bilinear history
    sampling blurs a little more every frame, and a stability-first filter keeps history for many frames.
 3. **Disocclusion.** Reproject the pixel's linear depth and compare it with the previous frame's depth at the
    reprojected position. Beyond a relative tolerance the pixel was hidden last frame, and its history weight drops to
    zero. A reprojected position off screen does the same. A moving surface skips the test (amendment 17). A mostly
    covered footprint counts as hidden unless a still narrow feature covered it or the pixel carries a lock a ridge
-   refreshed on the last frame, and one a fast moving surface showed at counts as hidden unless it is whole
-   (amendment 23).
+   refreshed on the last frame, and one a moving surface showed at counts as hidden unless it is whole. A still
+   pixel clear of any edge drops a history marked as an edge's (amendment 23).
 4. **Current sample reconstruction.** Gather the 3x3 internal samples around the display pixel and weight each by a
    Lanczos 2 kernel on the distance from its jittered sample position to the display pixel centre, measured in
    internal pixels. That is what turns jittered low resolution frames into a higher resolution image, and at `Native`
@@ -289,8 +291,8 @@ and changed these details. Each group's "Contract amendments" block carries the 
     frame, or the lock the pixel carries lies within half of `LockDecay` of whole, which a ridge refreshed on the last
     frame, as a still blade's is on the frame after the jitter showed it. The stored lock records that fact: where the
     surface the pixel reprojected by moved, the dilated nearest or, beside a fast edge, the centre texel's own, the
-    confidence and stability target holds minus one minus the lock, and minus three minus the lock where that surface
-    travelled more than `DilationReachInternalPixels` against a static point, and both read back unchanged. Any lock
+    confidence and stability target holds minus one minus the lock, and minus three minus the lock where the pixel
+    followed a nearer surface's edge (the band, below), and both read back unchanged. Any lock
     whose hold is whole also kept the history where a ridged, textured keyed box crossing the textured wall at 2 display
     pixels a frame left, since its motion releases only a third of its locks: 10 and 39 of 420 trail pixels at Native
     and Quality, against 3 and 4 now. Before, a keyed box crossing a textured wall at 4 display pixels a frame left the
@@ -315,7 +317,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
     colour to 0 and 8, and 0 and 0, passing a freshly revealed wall's difference by more than 0.05. The line one texel
     wide kept 8 at Quality because its colour reaches its neighbours through the reconstruction, and over a grey texture
     the clip, whose chroma range is nothing, pulls such a pixel's luma to the neighbourhood mean at full confidence
-    ([#1186](https://github.com/APKiwiOrg/KhaozEngine/issues/1186)). It keeps 1 since a fast surface's footprint holds
+    ([#1186](https://github.com/APKiwiOrg/KhaozEngine/issues/1186)). It keeps 1 since a moving surface's footprint holds
     its history only whole, as below. A pixel right behind a fast trailing edge that reprojects by its own motion was
     covered, so it restarts from the current sample, which the reconstruction tints with the object's colour on the
     jitter phases that put the object's edge texel within a pixel of it. The clip removes that tint over a flat or grey
@@ -340,7 +342,8 @@ and changed these details. Each group's "Contract amendments" block carries the 
     box's fast flips from 0.00058 to 0.00068 at Native and from 0.00168 to 0.00186 at Quality, within the bounds of
     0.00088 and 0.00273. The rule costs two fetches for every pixel, the centre texel's own depth and motion read before
     the 3x3, and sixteen for the narrow test behind rule 1's branch. The emitted resolve grew from 33367 to 38149 bytes
-    of HLSL with it and the kept lock below, and to 41801 with the fast flag and the held share. Its hardware cost has
+    of HLSL with it and the kept lock below, to 41801 with the fast flag and the held share, and to 42551 with the
+    whole-footprint rule on every moving surface and the band. Its hardware cost has
     not been measured: section 7's cost acceptance measures it with the rest of the resolve's (group F, F15). The line's
     fast flips are 0.019 and 0.022, about MSAA 4x's 0.021 and 0.022. Each pixel shows the line for about one frame, so
     every flip of the reference is fast, and against half the reference's raw flips the reference itself, scaled to a
@@ -348,39 +351,89 @@ and changed these details. Each group's "Contract amendments" block carries the 
     facts bound fast flips by the larger of half the reference's flips and 1.25 times its fast flips, 0.022 and 0.024
     for the line, and `TemporalFastEdgeGpuTests` holds the line at 0.8 of its reference's and 0.85 of MSAA 4x's coverage
     energy. A pixel that reprojected by its own motion and kept its history also keeps its lock at a moving edge, where
-    step 6 released every lock (amendment 19), since the history it holds is its own, a fast surface's footprint keeping
-    its history only whole, as below. A still line three eighths of a texel wide, with a keyed 30 display pixel box
-    sliding past one internal texel away at 2 display pixels a frame, fell on its worst frame to 0.01 of its energy
-    without the box at Native and to 0.00 to 0.25 at Quality, and was still at 0.43 to 0.69 sixteen frames after the box
-    passed. It keeps 0.99 now. The stored moved flag played no part there: storing it only where a pixel followed the
-    moving surface changed nothing. A pixel that restarted still lets go, because the moving surface's colour can reach
-    its ridge through the reconstruction, and keeping that lock too left the ridged keyed box 6 and 8 trail pixels
-    against 3 and 4. Where a fast moving surface left, its history could still be kept. A keyed box with ridged pixels
-    walking across the textured wall at 2.5 display pixels a frame while the camera follows it, as a third-person camera
-    follows an avatar, is still on screen while the wall pans under it, so each wall pixel it uncovers reprojects by its
-    own motion onto the box's stored depths and state. The lock exception kept the box's history there, since its ridged
-    pixels hold locks near whole, and a footprint half on the box kept a history half its colour, which the clip leaves
-    over a textured background: 38 and 22 of 510 wall pixels at Native and Quality passed a freshly revealed wall's
-    difference by more than 0.05. So the stored state also marks a surface that travelled more than
-    `DilationReachInternalPixels` against a static point, and where any texel carrying weight holds that mark, neither
-    exception applies and any weight on a stored depth nearer than expected drops the history. The follow camera leaves
-    0 and 0, the box crossing the textured wall at 4 display pixels a frame 6 and 12 of 840 at Performance and
-    UltraPerformance against 17 and 63, and every lock fact prints what it did. Applied to every moving surface the rule
-    also changed the lock facts: a dark surface crossing a held line at 0.2 internal pixels a frame on UltraPerformance
-    showed one revealed pixel at half the line's contrast from its first raw sample. At Performance and UltraPerformance
-    the walk lies within the reach, 1.25 and 0.83 internal pixels a frame, and the pixels beside the trailing edge read
-    the box's own history by dilation: 172 and 171 of 510, as before the lock was kept. Beside a keyed passer one or two
-    texels wide sliding past a held still line half a texel away, the moving share's colour and its missing confidence
-    dropped the line's history on the frames the jitter missed it, so the line blinked out: 0.02 of its energy at Native
-    and 0.00 at Quality on its worst frame. The colour now takes only the share the pixel's lock does not hold, and a
-    pixel whose hold is whole keeps its own history and confidence: the line keeps 0.91 and 0.94. Output with no
-    anti-aliasing passes every other check of the fast keyed line: its fast flips of 0.012 and 0.015 fall under the
-    bound and its coverage energy is 1.00. Its temporal error, 0.00185 and 0.00154 against the resolve's 0.00155 and
-    0.00202, and its edge error, 0.00054 and 0.00052 against 0.00043 and 0.00073, do not tell the two apart: on a thin
-    line moving 2 internal pixels a frame the resolve's error is no anti-aliasing's, where MSAA 4x holds 0.00072 and
-    0.00060. That is a finding for the motion-clarity check against MSAA 4x. The local contrast against the reference
-    does tell them apart, 1.223 and 0.985 of the reference's against 1.707 and 1.551, and `TemporalFastEdgeGpuTests`
-    holds the resolve's departure from 1 under half of no anti-aliasing's.
+    step 6 released every lock (amendment 19), since the history it holds is its own, a moving surface's footprint
+    keeping its history only whole, as below. A still line three eighths of a texel wide, with a keyed 30 display
+    pixel box sliding past one internal texel away at 2 display pixels a frame, fell on its worst frame to 0.01 of its
+    energy without the box at Native and to 0.00 to 0.25 at Quality, and was still at 0.43 to 0.69 sixteen frames after
+    the box passed. It keeps 0.99 now. The stored moved flag played no part there: storing it only where a pixel
+    followed the moving surface changed nothing. A pixel that restarted still lets go, because the moving surface's
+    colour can reach its ridge through the reconstruction, and keeping that lock too left the ridged keyed box 6 and 8
+    trail pixels against 3 and 4. Where a moving surface left, its history could still be kept. A keyed box with ridged
+    pixels walking across the textured wall at 2.5 display pixels a frame while the camera follows it, as a third-person
+    camera follows an avatar, is still on screen while the wall pans under it, so each wall pixel it uncovers reprojects
+    by its own motion onto the box's stored depths and state. The lock exception kept the box's history there, since its
+    ridged pixels hold locks near whole, and a footprint half on the box kept a history half its colour, which the clip
+    leaves over a textured background: 38 and 22 of 510 wall pixels at Native and Quality passed a freshly revealed
+    wall's difference by more than 0.05. So where any texel carrying weight holds the moved mark, neither exception
+    applies and any weight on a stored depth nearer than expected drops the history. The follow camera leaves 0 and 0
+    there, and the box crossing the textured wall at 4 display pixels a frame 6 and 12 of 840 at Performance and
+    UltraPerformance against 17 and 63. The rule first held only where the surface travelled past
+    `DilationReachInternalPixels`, and at 1.5 display pixels a frame on Quality, 1 internal pixel, the follow camera
+    kept 101 of 300 against 5 with it on every moving surface, where it holds now. Three printed lines of the lock and
+    reset facts move with it, each within its fact's bounds. The keyed line at 0.9 display pixels a frame on Quality
+    (the two keyed thin feature facts) trailed 1 pixel at 17 percent of its contrast, kept at least 59 percent of its
+    still contrast and 74 on average, and now trails none and keeps 63 and 75, because the pixels it leaves drop a
+    history it covered in part. The dark surface crossing a held line at 0.6 internal pixels a frame on UltraPerformance
+    showed no ghost, peaking at 2 percent, and now shows one revealed pixel at 50 percent on its last frame, within the
+    fact's bound of one: the line's first raw sample after the restart. The reset facts' mip bias and sharpness changes
+    without a reset, whose keyed body drifts 0.8 display pixels a frame, move their mean from 13.2413 to 13.2596 and
+    from 17.4340 to 17.4266 steps, and every reset case stays byte-identical.
+
+    Under the reach the follow camera still trailed. The pixels beside the box's trailing edge take its motion by
+    dilation and read their own spot's history every frame, which holds the box's anti-aliased edge over a mix of the
+    wall that passed under it. The wall pixel just clear of the edge reprojected onto that history by its own motion,
+    passed the depth test on the band's own wall depth, and carried the box's luma out with the pan for up to 8 frames.
+    At 0.5 display pixels a frame on Quality the box travels 0.33 internal pixels, under `MovingSurfaceInternalPixels`,
+    so it counted as still and stored no mark at all. Once every moving surface takes the whole-footprint rule the
+    stored state's fast level says nothing the moved level does not, so minus three minus the lock now marks a band
+    pixel: one that took by dilation the motion of a nearer surface that moved in the world, its own sample more than
+    `WorldMotionInternalPixels` (0.05 internal pixels) plus the rounding fraction from a static point's, that is wide by
+    step 5's narrow test, and that moves less on screen than the farther surface its centre texel shows. The band still
+    counts as moved. A depth-tested pixel off any moving edge that carries the mark drops the history, unless every
+    stored depth lies farther than expected, a nearer surface reading the band where its edge was, or its own 3x3 holds
+    a surface farther than its centre, the nearer surface's own edge pixel on a frame the jitter centres it on the box.
+    The follow camera, excess pixels of those checked, before and now:
+
+    | Walk, display px a frame (checked) | Native | Quality | Performance | UltraPerformance |
+    | --- | --- | --- | --- | --- |
+    | 0.5 (90) | 20, 0 | 32, 0 | 35, 3 | 35, 36 |
+    | 1 (210) | 45, 0 | 87, 0 | 109, 2 | 86, 35 |
+    | 1.5 (300) | 0, 0 | 101, 0 | 168, 0 | 111, 15 |
+    | 2 (420) | 0, 0 | 2, 2 | 213, 0 | 182, 35 |
+    | 2.5 (510) | 0, 0 | 0, 0 | 172, 0 | 171, 23 |
+    | 3 (630) | 0, 0 | 0, 0 | 0, 0 | 180, 23 |
+
+    Native and Quality meet acceptance 3 at every walk, and `TemporalFollowCameraGpuTests` holds them there, Performance
+    from 1.5 display pixels a frame. Below that Performance holds its measured 3 and 2 at 5 and 4, and UltraPerformance
+    its measured 36, 35, 15, 35, 23 and 23 at 45, 44, 19, 44, 29 and 29, about a quarter over each. There the
+    reconstruction spreads the box's texel over 6 display pixels of wall, which the bare-wall floor never shows, and a
+    restarted pixel gathers display-scale sample weight slowly. At 0.5 display pixels a frame on UltraPerformance the
+    band does no better than before, 36 against 35, and its bound cannot tell the rule apart. The box's own edges keep
+    their anti-aliasing: the same tilted keyed box followed across the textured wall at 0.25, 0.5 and 1 internal pixel a
+    frame (`TemporalFastEdgeGpuTests`, report only) averages an edge error against the 4x reference of 0.0173, 0.0175
+    and 0.0115 at Native and 0.0216, 0.0222 and 0.0234 at Quality, against 0.0197, 0.0218, 0.0169, 0.0271, 0.0305 and
+    0.0359 before, and its fast flips stay under the reference's but at 0.25 internal pixels a frame on Native, 0.0003
+    against 0. Crossing the flat wall under a still camera at the same speeds it does not change. Set aside on the
+    numbers: reprojecting such a pixel by its own motion under the reach, as past it, shimmers the followed box's edge,
+    fast flips 0.0134 and 0.0275 at 0.25 internal pixels a frame against the reference's 0 and 0.0069. The band where
+    the nearer surface moves more on screen, a keyed object crossing a still view, restarts a revealed sub-texel line on
+    a frame the jitter hits it, so its raw sample shows brighter than its converged value in up to 3 display pixels
+    against the lock fact's bound of one. Without the world-motion test the isometric zoom's lines move, since under a
+    zoom the farther surface can move more beside a still object, and a still box under a perspective camera stepping
+    sideways keeps dilation there too. A narrow nearer surface, a swaying blade or a thin line, is left to the lock. A
+    keyed object crossing a still view under the reach keeps the trail it had.
+
+    Beside a keyed passer one or two texels wide sliding past a held still line half a texel away, the moving share's
+    colour and its missing confidence dropped the line's history on the frames the jitter missed it, so the line blinked
+    out: 0.02 of its energy at Native and 0.00 at Quality on its worst frame. The colour now takes only the share the
+    pixel's lock does not hold, and a pixel whose hold is whole keeps its own history and confidence: the line keeps
+    0.91 and 0.94. Output with no anti-aliasing passes every other check of the fast keyed line: its fast flips of 0.012
+    and 0.015 fall under the bound and its coverage energy is 1.00. Its temporal error, 0.00185 and 0.00154 against the
+    resolve's 0.00155 and 0.00202, and its edge error, 0.00054 and 0.00052 against 0.00043 and 0.00073, do not tell the
+    two apart: on a thin line moving 2 internal pixels a frame the resolve's error is no anti-aliasing's, where MSAA 4x
+    holds 0.00072 and 0.00060. That is a finding for the motion-clarity check against MSAA 4x. The local contrast
+    against the reference does tell them apart, 1.223 and 0.985 of the reference's against 1.707 and 1.551, and
+    `TemporalFastEdgeGpuTests` holds the resolve's departure from 1 under half of no anti-aliasing's.
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies

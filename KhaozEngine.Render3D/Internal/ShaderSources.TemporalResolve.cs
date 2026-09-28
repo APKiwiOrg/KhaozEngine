@@ -74,6 +74,7 @@ const float LockEdgeMotionFraction = 0.001953125;
 const float LockEdgeFloorInternalPixels = 0.001;
 const float ClipFlagMinimumMove = 0.0009765625;
 const float DilationReachInternalPixels = 1.25;
+const float WorldMotionInternalPixels = 0.05;
 const float DisocclusionVisibleShare = 0.5;
 const float MovingShareConfidence = 0.0;
 ";
@@ -255,19 +256,19 @@ bool temporalNarrowDepth(ivec2 texel, float depth, ivec2 maxTexel, bool current)
 }
 
 // Step 6's stored lock carries two facts more. Where history was valid and the surface the pixel reprojected by moved,
-// so that its depth test was skipped, the state holds minus one minus the lock, and where that surface also travelled
-// more than DilationReachInternalPixels (temporalReproject), minus three minus the lock. The surface is the dilated
-// nearest, or the centre texel's own where the pixel reprojected by its own motion beside a fast edge. A frame with no
-// valid history stores the lock plain. A lock lies in [0, 1], so the stored value lies in [-2, -1] or [-4, -3], the
-// lock reads back within the half float's rounding, and the next frame knows a moving surface showed there, and whether
-// it was a fast one. Step 3 reads both.
-float temporalStoreLock(float lockValue, bool moved, bool fast) {
-    return fast ? -3.0 - lockValue : moved ? -1.0 - lockValue : lockValue;
+// so that its depth test was skipped, the state holds minus one minus the lock. The surface is the dilated nearest, or
+// the centre texel's own where the pixel reprojected by its own motion beside a fast edge. Where the pixel followed a
+// nearer surface's edge (the band, step 1), the state holds minus three minus the lock, and the band counts as moved
+// too. A frame with no valid history stores the lock plain. A lock lies in [0, 1], so the stored value lies in [-2, -1]
+// or [-4, -3], the lock reads back within the half float's rounding, and the next frame knows a moving surface showed
+// there, and whether the history there followed a nearer surface's edge. Step 3 reads both.
+float temporalStoreLock(float lockValue, bool moved, bool band) {
+    return band ? -3.0 - lockValue : moved ? -1.0 - lockValue : lockValue;
 }
 bool temporalStoredMoved(float stored) { return stored < -0.5; }
-bool temporalStoredFast(float stored) { return stored < -2.5; }
+bool temporalStoredBand(float stored) { return stored < -2.5; }
 float temporalStoredLock(float stored) {
-    return temporalStoredFast(stored) ? -3.0 - stored : temporalStoredMoved(stored) ? -1.0 - stored : stored;
+    return temporalStoredBand(stored) ? -3.0 - stored : temporalStoredMoved(stored) ? -1.0 - stored : stored;
 }
 
 ivec2 temporalDisplaySize() { return ivec2(Sizes.zw); }
@@ -296,6 +297,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     float reconstructionWeight = 0.0;
     float sampleWeight = 0.0;
     float closestDepth = 2.0 * BackgroundLinearDepth;
+    float farthestDepth = 0.0;
     vec2 closestSample = pixelCentre;
     ivec2 closestTexel = centreTexel;
     vec2 closestMotion = vec2(0.0);
@@ -356,7 +358,8 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             // Step 1: the nearest surface in the neighbourhood carries the motion, and its unjittered sample position is
             // the surface point that motion was written for. Background is the motion sentinel on the x channel alone,
             // because the depth attachment is cleared to the background colour, not to the far plane. A clamped or
-            // off-screen motion is finite and far below the sentinel, so it is never background.
+            // off-screen motion is finite and far below the sentinel, so it is never background. The farthest depth
+            // tells step 3 whether the pixel lies on the edge of a nearer surface.
             vec2 motion = texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg;
             float ndcDepth = texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r;
             bool isBackground = abs(motion.x) > MotionSentinel;
@@ -371,6 +374,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
                 centreDepth = viewDepth;
                 centreSample = samplePosition;
             }
+            farthestDepth = max(farthestDepth, viewDepth);
             if (viewDepth < closestDepth) {
                 closestDepth = viewDepth;
                 closestSample = samplePosition;
@@ -412,8 +416,10 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // such edge. A background centre moves by the camera's rotation alone. An edge counts once the two motions differ
     // by more than LockEdgeMotionFraction of the dilated motion, past the motion target's rounding, and by more than
     // LockEdgeFloorInternalPixels, past the float rounding of a background centre's round trip through NDC, which is
-    // not exact below a quarter of the screen even when the camera is still.
+    // not exact below a quarter of the screen even when the camera is still. centreScreenMotion is how far the centre
+    // texel's own surface moved on screen, in internal pixels.
     float edgeMotion = 0.0;
+    float centreScreenMotion = 0.0;
     if (!closestIsBackground) {
         vec2 centreOwn = centreMotion;
         if (centreIsBackground) {
@@ -424,6 +430,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
                 : vec2(2.0);   // behind last frame's camera: as far apart as motion goes
         }
         edgeMotion = length((closestMotion - centreOwn) * internalSize);
+        centreScreenMotion = length(centreOwn * internalSize);
     }
     bool movingEdge = edgeMotion > max(LockEdgeFloorInternalPixels, length(closestMotion * internalSize) * LockEdgeMotionFraction);
 
@@ -436,12 +443,28 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // whatever the camera does: under a camera's translation, and against the sky, both surfaces are static and the
     // dilated history is valid. Where the nearer surface is also narrow in this frame's depth, step 5 below gives the
     // pixel's history that surface's current colour.
-    bool narrowMoving = false;
-    bool ownReprojected = false;
-    if (!depthTested && edgeMotion > DilationReachInternalPixels
-        && centreDepth > closestDepth * (1.0 + DisocclusionTolerance)) {
-        narrowMoving = temporalNarrowDepth(closestTexel, closestDepth, maxTexel, true);
-        ownReprojected = true;
+    //
+    // Step 1's band, under the reach: a pixel that took by dilation the motion of a wide nearer surface that moved in
+    // the world, more than WorldMotionInternalPixels plus the motion target's rounding against a static point, while
+    // its centre texel lies on a farther surface that moves more on screen than the nearer one, as under a camera
+    // following the nearer one. Its history followed the nearer surface's edge, which stays put on screen while the
+    // farther surface passes under it, so it holds the edge's colour over a mix of the farther surface. The band keeps
+    // the edge's anti-aliasing, and step 3 keeps a farther-surface pixel clear of the edge from taking that history on.
+    // A narrow nearer surface, a blade or a line, is held by the thin-feature lock instead. A surface crossing a still
+    // view leaves its history where it passed, as before: restarting the pixels it uncovers there would show a
+    // sub-texel feature's raw sample, brighter than its converged value. Both read the one narrow test of the nearer
+    // surface, and the band reads the dilated surface's travel before the pixel's own motion replaces it.
+    bool ownReprojected = !depthTested && edgeMotion > DilationReachInternalPixels
+        && centreDepth > closestDepth * (1.0 + DisocclusionTolerance);
+    float closestScreenMotion = length(closestMotion * internalSize);
+    bool band = historyValid && movingEdge && !ownReprojected
+        && (!depthTested || travel > WorldMotionInternalPixels + closestScreenMotion * MovingSurfaceMotionFraction)
+        && centreScreenMotion > closestScreenMotion
+        && centreDepth > closestDepth * (1.0 + DisocclusionTolerance);
+    bool nearerNarrow = (ownReprojected || band) && temporalNarrowDepth(closestTexel, closestDepth, maxTexel, true);
+    bool narrowMoving = ownReprojected && nearerNarrow;
+    band = band && !nearerNarrow;
+    if (ownReprojected) {
         temporalReproject(uv, centreSample, centreMotion, centreDepth, centreIsBackground, internalSize, previousUv,
             expectedDepth, depthTested, travel);
         onScreen = all(greaterThanEqual(previousUv, vec2(0.0))) && all(lessThanEqual(previousUv, vec2(1.0)));
@@ -453,10 +476,10 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // motion is blended with unlocked neighbours every frame and ran out about three times faster than LockDecay, so
     // a moving sub-texel feature lost its hold. At a texel centre only that texel carries weight, so a still lock
     // reads back unchanged and never spreads. carriedMoved is whether any texel that carries weight stored the lock
-    // of a moving surface (temporalStoreLock), and carriedFast whether any stored that of a fast one.
+    // of a moving surface (temporalStoreLock), and carriedBand whether any stored that of a band pixel.
     vec2 fetchedState = vec2(0.0);
     bool carriedMoved = false;
-    bool carriedFast = false;
+    bool carriedBand = false;
     if (historyValid && onScreen) {
         vec2 statePosition = previousUv * displaySize - 0.5;
         ivec2 stateBase = ivec2(floor(statePosition));
@@ -477,10 +500,10 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             || (carried.y > 0.5 && temporalStoredMoved(s10.y))
             || (carried.z > 0.5 && temporalStoredMoved(s01.y))
             || (carried.w > 0.5 && temporalStoredMoved(s11.y));
-        carriedFast = (carried.x > 0.5 && temporalStoredFast(s00.y))
-            || (carried.y > 0.5 && temporalStoredFast(s10.y))
-            || (carried.z > 0.5 && temporalStoredFast(s01.y))
-            || (carried.w > 0.5 && temporalStoredFast(s11.y));
+        carriedBand = (carried.x > 0.5 && temporalStoredBand(s00.y))
+            || (carried.y > 0.5 && temporalStoredBand(s10.y))
+            || (carried.z > 0.5 && temporalStoredBand(s01.y))
+            || (carried.w > 0.5 && temporalStoredBand(s11.y));
         s00.y = temporalStoredLock(s00.y);
         s10.y = temporalStoredLock(s10.y);
         s01.y = temporalStoredLock(s01.y);
@@ -501,10 +524,14 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // still sub-texel feature's has on the frame after the jitter showed it, and step 6 keeps its hold whole. Step 6
     // releases a lock by motion from LockMotionStartPixels on, so a feature moving more than a sixteenth of the way
     // from there to LockMotionEndPixels, about 1.2 display pixels a frame, leaves no such lock where it was. Where the
-    // state says a fast moving surface showed there, one that travelled past DilationReachInternalPixels, neither
-    // exception holds, and any stored depth nearer than expected that carries more than rounding of the weight drops
-    // the history: that surface's ridged pixels hold locks near whole, as an avatar the camera follows keeps its own,
-    // and a history it covered in part holds its colour in that part, which the clip leaves over a textured background.
+    // state says a moving surface showed there, neither exception holds, and any stored depth nearer than expected that
+    // carries more than rounding of the weight drops the history: that surface's ridged pixels hold locks near whole,
+    // as an avatar the camera follows keeps its own, and a history it covered in part holds its colour in that part,
+    // which the clip leaves over a textured background. Where the state says a band pixel stored the history (step 1),
+    // a pixel off any moving edge drops it, unless every stored depth is farther than expected or the pixel's own 3x3
+    // holds a surface farther than its centre. The band followed a nearer surface's edge, and a farther-surface pixel
+    // clear of that edge would carry the edge's colour away with it. The nearer surface's own edge pixel, which sees
+    // the farther surface beside it, and a nearer surface reading the band where its edge was keep it.
     // Any farther stored depth kept a sub-pixel edge from reading as revealed, and on its own it kept the ring of
     // pixels around a moving object's old place, whose footprint reaches past its edge, from ever being disoccluded. A
     // background pixel expects BackgroundLinearDepth, so anything stored nearer there was covering it. A static surface
@@ -520,11 +547,12 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         DepthFootprint footprint = temporalDepthFootprint(previousUv, internalSize, maxTexel, expectedDepth);
         disoccluded = depthTested && (!(expectedDepth > 1.0e-6)
             || footprint.farthest < expectedDepth * (1.0 - DisocclusionTolerance)
-            || (carriedFast ? footprint.visibleShare < 1.0 - 1.0e-3
+            || (carriedBand && !movingEdge && !(expectedDepth < footprint.nearest * (1.0 - DisocclusionTolerance))
+                && !(farthestDepth > centreDepth * (1.0 + DisocclusionTolerance)))
+            || (carriedMoved ? footprint.visibleShare < 1.0 - 1.0e-3
                 : footprint.visibleShare < DisocclusionVisibleShare
                     && fetchedState.y <= 1.0 - 0.5 * LockDecay
-                    && (carriedMoved
-                        || !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel, false))));
+                    && !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel, false)));
         heldFromFarther = movingEdge && expectedDepth < footprint.nearest * (1.0 - DisocclusionTolerance);
     }
 
@@ -554,12 +582,12 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // Step 6: thin features. A ridge through the centre texel refreshes the lock, which decays by LockDecay a frame
     // whatever the preset. Large motion and reactive content release it, and so does motion at an edge, where the pixel
     // holds a moving feature's history, not its own. A pixel that reprojected by its own motion and kept its history
-    // holds its own, because where a fast moving surface showed last frame step 3 keeps a history only where no stored
-    // depth carrying weight lies nearer than the pixel's own surface. So a still sub-texel feature beside a fast
-    // surface keeps its lock, while one that restarted lets go of a ridge the moving surface's colour may have given
-    // it. At a moving edge whose history a farther surface left, the lock read with that history belongs to that
-    // surface, and a nearer surface crossing a held thin feature would carry it onward, so it is dropped before a ridge
-    // can refresh it. A thin feature taking a ridge keeps its own lock, and so does one beside a still nearer surface,
+    // holds its own, because where a moving surface showed last frame step 3 keeps a history only where no stored depth
+    // carrying weight lies nearer than the pixel's own surface. So a still sub-texel feature beside a fast surface
+    // keeps its lock, while one that restarted lets go of a ridge the moving surface's colour may have given it. At a
+    // moving edge whose history a farther surface left, the lock read with that history belongs to that surface, and a
+    // nearer surface crossing a held thin feature would carry it onward, so it is dropped before a ridge can refresh
+    // it. A thin feature taking a ridge keeps its own lock, and so does one beside a still nearer surface,
     // which is no moving edge. The hold on the clip stays whole while the lock is at least 1 / LockHoldGain, so a
     // sub-texel feature missed for a few frames keeps its luma, and it lets go over the rest of the lock.
     float centreLuma = lumas[4];
@@ -622,7 +650,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     result.confidence = movingShare > 0.0 ? MovingShareConfidence
         : min(accumulated + sampleWeight, motionCap) / MaxAccumulation;
     result.stability = lockValue;
-    result.moved = historyValid && !depthTested ? (travel > DilationReachInternalPixels ? 2.0 : 1.0) : 0.0;
+    result.moved = band ? 2.0 : historyValid && !depthTested ? 1.0 : 0.0;
     result.disocclusion = historyValid && (!onScreen || disoccluded) ? 1.0 : 0.0;
     result.reactive = reactive;
     result.clip = useHistory && clipScale > 1.0 && length(clipped - historyYcc) > ClipFlagMinimumMove ? 1.0 : 0.0;

@@ -29,11 +29,16 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   a compaction with a prune boundary runs, and a snapshot-only compaction leaves it. The update times that already
   existed keep their meaning, so `world_store.updated_at` is still the time of the last save
   ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+- On SQL Server a grant instant, `grant_schedule.next_available_utc`, is now bound and stored at the column's full
+  `DATETIME2` precision instead of being rounded to 1/300 s on the way in, so an unchanged rewrite no longer
+  compares unequal and moves `updated_at`. Existing rows keep their rounded values.
 - **A database on journal or catalog schema version 3 is refused by an older engine, so rolling a game back past
   this pin bump needs a database restore.** Version 2 was the same
   ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
 - Upgrade steps. A hosted catalog that opens `ValidateOnly` is refused at version 2, so its deploy runs its catalog
-  schema migration step, one `AutoCreate` open under a migration identity, before the server starts. A
+  schema migration step, one `AutoCreate` open under a migration identity, before the server starts. A journal
+  opened `ValidateOnly` or `ReadOnly` on a version 2 journal, such as an admin tool pointed at a hosted database
+  before the server's first 20.15.0 boot, is refused with `SchemaMismatch` until one `AutoCreate` open migrates it. A
   `ValidateOnly` accounts host is refused until one `AutoCreate` open adds `created_at_utc` and `updated_at_utc` to
   the account table. The first construction of `SqlServerWalletStore` and `SqlServerWorldStore` after the upgrade
   adds their new columns with `ALTER TABLE`, so it needs `ALTER` rights, and two hosts constructing at once against

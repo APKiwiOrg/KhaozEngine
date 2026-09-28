@@ -17,10 +17,10 @@ namespace KhaozEngine.Accounts.SqlServer;
 /// NVARCHAR(128)</c>, <c>display_name NVARCHAR(128)</c>, <c>whitelisted BIT</c>, <c>banned BIT</c>, <c>ban_reason
 /// NVARCHAR(256)</c>, <c>ban_until DATETIMEOFFSET</c>, <c>created_at_utc DATETIMEOFFSET(7) NULL</c> and
 /// <c>updated_at_utc DATETIMEOFFSET(7) NULL</c>, the widths being the <see cref="AccountStoreRules"/> limits. The two
-/// times are the same columns Grimhollow's own store adds, so either store reads the other's rows. A FRESH table
-/// differs in two places only: <c>display_name</c> is nullable, and <c>subject</c> pins
-/// <c>Latin1_General_100_BIN2</c>, the <c>Commerce</c> and <c>Catalog</c> precedent, instead of inheriting a
-/// database default that is usually case-insensitive. An existing table keeps its collation, which is why every
+/// times are part of the shared layout Grimhollow's own store is to write, so once it does either store reads the
+/// other's rows. A FRESH table differs in two places only: <c>display_name</c> is nullable, and <c>subject</c> pins
+/// <c>Latin1_General_100_BIN2</c>, the <c>Commerce</c> and <c>Catalog</c> precedent, instead of inheriting a database
+/// default that is usually case-insensitive. An existing table keeps its collation, which is why every
 /// statement the store runs names the binary collation on the comparison as well.
 /// </para>
 /// <para>

@@ -57,10 +57,10 @@ One flat table, Grimhollow's layout, so an existing `dbo.accounts` is adopted in
 | `updated_at_utc` | `DATETIMEOFFSET(7) NULL` | when a write last changed a stored value, in UTC |
 
 The widths are the `AccountStoreRules` limits, which the store also applies before every write. The two times are
-the columns Grimhollow's own store writes, so either store reads the other's rows. Find-or-create stamps both on a
-new row, and every write sets the update time in the same statement, to the clock when a written value differs from
-the stored one and to itself otherwise. A text compares under `Latin1_General_100_BIN2` and by length, so a change
-of case or of trailing spaces counts. The creation time is never written again.
+part of the shared layout Grimhollow's own store is to write, so once it does either store reads the other's rows.
+Find-or-create stamps both on a new row, and every write sets the update time in the same statement, to the clock when
+a written value differs from the stored one and to itself otherwise. A text compares under `Latin1_General_100_BIN2`
+and by length, so a change of case or of trailing spaces counts. The creation time is never written again.
 
 The ensure is additive only, guarded by `OBJECT_ID` and `COL_LENGTH`. Nothing is renamed, dropped or backfilled,
 and no column the store does not own is read or written, so a game's own column (Grimhollow's `debug`) keeps its

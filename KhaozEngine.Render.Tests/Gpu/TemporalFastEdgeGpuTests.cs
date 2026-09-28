@@ -158,6 +158,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach (FastEdgeScene scene in Enum.GetValues<FastEdgeScene>())
                 foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
                 {
+                    if (scene == FastEdgeScene.FollowedBox) continue;   // under the reach, its own table
                     FastEdgeRun r = runs.Run(scene, preset);
                     FlickerStats f = r.Flicker;
                     output.WriteLine($"| {scene} | {preset} | {f.TemporalError:0.00000} | {f.ReferenceChange:0.00000} "
@@ -167,6 +168,28 @@ namespace KhaozEngine.Tests.Gpu
                         + $"| {f.Energy:0.000} | {Share(r.CoverageEnergy)} | {Share(r.RingEnergy)} |");
                     Assert.True(r.TrailChecked > 0, $"{scene}, {preset}: the trail region measured nothing");
                 }
+        }
+
+        /// <summary>The tilted keyed box's own edges under the dilation's reach, at 0.25, 0.5 and 1 internal pixel a
+        /// frame: crossing the flat wall under a still camera, and followed by the camera across the textured wall, so
+        /// the wall pans past its edges (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). Report only.</summary>
+        [GpuFact]
+        public void The_box_edge_table_prints_the_walks_under_the_reach()
+        {
+            output.WriteLine("| Scene | Internal px | Preset | Error | Fast flips | Reference fast flips | Edge error "
+                + "| Sharp |");
+            output.WriteLine("|" + string.Concat(System.Linq.Enumerable.Repeat(" --- |", 8)));
+            foreach (FastEdgeScene scene in new[] { FastEdgeScene.KeyedBoxEdge, FastEdgeScene.FollowedBox })
+                foreach (float speed in new[] { 0.25f, 0.5f, 1f })
+                    foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
+                    {
+                        FastEdgeRun r = runs.Run(scene, preset, AntiAliasing.Temporal, speed);
+                        FlickerStats f = r.Flicker;
+                        output.WriteLine($"| {scene} | {speed} | {preset} | {f.TemporalError:0.00000} "
+                            + $"| {f.FastFlips:0.00000} | {f.ReferenceFastFlips:0.00000} | {r.EdgeError:0.00000} "
+                            + $"| {f.Sharpness:0.000} |");
+                        Assert.True(double.IsFinite(r.EdgeError) && r.EdgeError > 0, $"{scene}, {preset}: no edge");
+                    }
         }
 
         [GpuFact]
@@ -222,6 +245,10 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The same box against the sky.</summary>
         ParallaxOverSky,
+
+        /// <summary>The tilted keyed box walking across the textured wall with the camera following it, so it stays
+        /// on screen while the wall pans under it.</summary>
+        FollowedBox,
     }
 
     /// <summary>One run: the flicker over the band the object crosses, the mean luma error from the reference over
@@ -235,7 +262,8 @@ namespace KhaozEngine.Tests.Gpu
 
     /// <summary>
     /// The fast-edge runs, rendered on first use and kept for the test class. Every surface pair moves
-    /// <see cref="InternalPixelsPerFrame"/> apart: the keyed objects cross the still wall at that speed, and the
+    /// <see cref="InternalPixelsPerFrame"/> apart unless a run asks for another speed: the keyed objects cross the
+    /// still wall at that speed, the followed box walks that fast with the camera over the textured wall, and the
     /// perspective camera steps sideways so the box moves that much against the wall behind it, or against the sky,
     /// which only rotation moves. The window is <see cref="Measured"/> frames after <see cref="Warm"/>. A run is
     /// temporal unless another anti-aliasing mode is asked for, and every mode of one scene and preset is read
@@ -255,8 +283,8 @@ namespace KhaozEngine.Tests.Gpu
         static readonly Vector3 BoxSize = new(1f, 1.5f, 0.5f), ParallaxBox = new(2f, 1.5f, 0.5f);
         static readonly Color Tint = new(1f, 0.25f, 0.2f, 1f);
 
-        readonly Dictionary<(FastEdgeScene, TemporalUpscale, AntiAliasingMode, int), FastEdgeRun> _runs = new();
-        readonly Dictionary<(FastEdgeScene, TemporalUpscale), byte[][]> _references = new();
+        readonly Dictionary<(FastEdgeScene, TemporalUpscale, AntiAliasingMode, int, float), FastEdgeRun> _runs = new();
+        readonly Dictionary<(FastEdgeScene, TemporalUpscale, float), byte[][]> _references = new();
 
         internal FastEdgeRun Run(FastEdgeScene scene, TemporalUpscale preset) =>
             Run(scene, preset, AntiAliasing.Temporal);
@@ -264,15 +292,17 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The run under <paramref name="aa"/>. Any mode other than temporal renders the preset's scene at
         /// the display size, and since only temporal anti-aliasing carries anything from one frame to the next, its
         /// warm frames are begun, not rendered.</summary>
-        internal FastEdgeRun Run(FastEdgeScene scene, TemporalUpscale preset, AntiAliasing aa)
+        internal FastEdgeRun Run(FastEdgeScene scene, TemporalUpscale preset, AntiAliasing aa,
+            float internalPixelsPerFrame = InternalPixelsPerFrame)
         {
-            var key = (scene, preset, aa.Mode, aa.MsaaSamples);
+            var key = (scene, preset, aa.Mode, aa.MsaaSamples, internalPixelsPerFrame);
             if (_runs.TryGetValue(key, out FastEdgeRun? cached)) return cached;
             bool temporal = aa.Mode == AntiAliasingMode.Temporal;
             var stage = new FrontStage(W, H, OrthoSize);
             float factor = TemporalSettings.DisplayOverInternal(preset);
             bool parallax = scene is FastEdgeScene.ParallaxOverWall or FastEdgeScene.ParallaxOverSky;
-            float displayPerFrame = InternalPixelsPerFrame * factor;
+            bool followed = scene == FastEdgeScene.FollowedBox;
+            float displayPerFrame = internalPixelsPerFrame * factor;
             // Display pixels one world unit of sideways camera step moves a point this far ahead, for the 60 degree
             // vertical field of view.
             float PixelsPerUnit(float depth) => H / 2f / (depth * MathF.Tan(MathF.PI / 6f));
@@ -286,17 +316,24 @@ namespace KhaozEngine.Tests.Gpu
                 FieldOfView = MathF.PI / 3f, AspectRatio = (float)W / H, NearPlane = 0.1f, FarPlane = 100f,
             };
             Vector3 ObjectAt(int n) => new(-2f + n * displayPerFrame * stage.PixelWorld, 0f, 0f);
+            float CameraX(int n) => followed ? ObjectAt(n).X + 2f : 0f;
             Vector3 size = scene switch
             {
                 FastEdgeScene.KeyedLine => new Vector3(factor * stage.PixelWorld, LineHeight, LineDepth),
-                FastEdgeScene.KeyedBoxEdge => BoxSize,
+                FastEdgeScene.KeyedBoxEdge or FastEdgeScene.FollowedBox => BoxSize,
                 _ => ParallaxBox,
             };
             float tilt = scene == FastEdgeScene.KeyedLine ? LineTilt
-                : scene == FastEdgeScene.KeyedBoxEdge ? BoxTilt : 0f;
+                : scene is FastEdgeScene.KeyedBoxEdge or FastEdgeScene.FollowedBox ? BoxTilt : 0f;
 
             void Background(Scene3D s, int n)
             {
+                if (followed)
+                {
+                    s.Camera.Target = new Vector3(CameraX(n), 0f, 0f);
+                    stage.TexturedWall(s);
+                    return;
+                }
                 if (!parallax)
                 {
                     stage.Wall(s);
@@ -327,7 +364,7 @@ namespace KhaozEngine.Tests.Gpu
                 Vector3 c = ObjectAt(n);
                 float hx = MathF.Cos(tilt) * size.X / 2f + MathF.Sin(tilt) * size.Y / 2f;
                 float hy = MathF.Sin(tilt) * size.X / 2f + MathF.Cos(tilt) * size.Y / 2f;
-                return TemporalAcceptance.Footprint(stage.Camera(), c - new Vector3(hx, hy, size.Z / 2f),
+                return TemporalAcceptance.Footprint(stage.Camera(CameraX(n)), c - new Vector3(hx, hy, size.Z / 2f),
                     c + new Vector3(hx, hy, size.Z / 2f), W, H);
             }
 
@@ -348,8 +385,9 @@ namespace KhaozEngine.Tests.Gpu
                 frames = new byte[Measured][];
                 for (int i = 0; i < Measured; i++) frames[i] = plain.Frame(Draw);
             }
-            if (!_references.TryGetValue((scene, preset), out byte[][]? references))
-                _references[(scene, preset)] = references = TemporalAcceptance.ReferenceSequence(W, H,
+            var referenceKey = (scene, preset, internalPixelsPerFrame);
+            if (!_references.TryGetValue(referenceKey, out byte[][]? references))
+                _references[referenceKey] = references = TemporalAcceptance.ReferenceSequence(W, H,
                     Setup(AntiAliasing.Off), Draw, Warm, Measured);
             byte[] background;
             using (var fx = new TemporalFixture(W, H, Setup(aa)))
@@ -367,7 +405,8 @@ namespace KhaozEngine.Tests.Gpu
                     Math.Max(band.Y1, r.Y1));
             }
             FlickerStats flicker = TemporalAcceptance.Flicker(frames, references, W, H, band.Inflate(3).Clip(W, H));
-            var (coverage, ring) = scene == FastEdgeScene.ParallaxOverWall ? (double.NaN, double.NaN)
+            var (coverage, ring) = scene is FastEdgeScene.ParallaxOverWall or FastEdgeScene.FollowedBox
+                ? (double.NaN, double.NaN)
                 : TemporalAcceptance.CoverageEnergy(frames, references, W, H, band.Inflate(3).Clip(W, H));
 
             double edgeSum = 0;

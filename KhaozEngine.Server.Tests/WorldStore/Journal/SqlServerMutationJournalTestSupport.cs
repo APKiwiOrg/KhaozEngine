@@ -137,7 +137,9 @@ internal sealed class SqlServerJournalPrefixStore : IMutationJournalStore, IMuta
                 Map(query.KeyPrefix),
                 query.AfterStreamKey is null ? null : Map(query.AfterStreamKey)),
             cancellationToken);
-        JournalStreamEntry[] streams = page.Streams.Select(value => new JournalStreamEntry(Unmap(value.StreamKey), value.HeadVersion)).ToArray();
+        JournalStreamEntry[] streams = page.Streams
+            .Select(value => new JournalStreamEntry(Unmap(value.StreamKey), value.HeadVersion, value.CreatedAtUtc, value.UpdatedAtUtc))
+            .ToArray();
         return new JournalStreamPage(streams, page.ContinuationKey is null ? null : Unmap(page.ContinuationKey));
     }
 

@@ -19,7 +19,11 @@ public sealed partial class InMemoryMutationJournalStore : IMutationJournalStrea
                 .Where(pair => query.Includes(pair.Key))
                 .OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 .Take(query.MaxStreams + 1)
-                .Select(pair => new JournalStreamEntry(pair.Key, pair.Value.HeadVersion))
+                .Select(pair => new JournalStreamEntry(
+                    pair.Key,
+                    pair.Value.HeadVersion,
+                    pair.Value.CreatedAtUtc.ToOffset(TimeSpan.Zero),
+                    pair.Value.UpdatedAtUtc.ToOffset(TimeSpan.Zero)))
                 .ToList();
             return Task.FromResult(JournalStreamPage.FromOrderedRows(rows, query));
         }

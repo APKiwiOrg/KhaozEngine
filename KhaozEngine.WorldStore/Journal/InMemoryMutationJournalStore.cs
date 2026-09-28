@@ -101,7 +101,7 @@ public sealed partial class InMemoryMutationJournalStore : IMutationJournalStore
                 projections.Add(write.SectionName, CreateProjection(write, 0, now));
             Invoke(JournalTestHookPhase.AfterProjectionWrites);
 
-            var stream = new StreamState(0, 0, snapshot, Array.Empty<JournalStoredEvent>(), projections, now);
+            var stream = new StreamState(0, 0, snapshot, Array.Empty<JournalStoredEvent>(), projections, now, now);
             var range = new JournalStreamVersionRange(initialization.AbsentStreamKey, 0, 0, 0);
             var receipt = new JournalCommitReceipt(
                 initialization.Identity.OperationId,
@@ -331,7 +331,13 @@ public sealed partial class InMemoryMutationJournalStore : IMutationJournalStore
             }
             var streams = new Dictionary<string, StreamState>(state.Streams, StringComparer.Ordinal)
             {
-                [compaction.StreamKey] = current with { RetainedFloor = retainedFloor, Snapshot = snapshot, Events = events, UpdatedAtUtc = now },
+                [compaction.StreamKey] = current with
+                {
+                    RetainedFloor = retainedFloor,
+                    Snapshot = snapshot,
+                    Events = events,
+                    UpdatedAtUtc = compaction.PruneThroughVersion is null ? current.UpdatedAtUtc : now,
+                },
             };
             Invoke(JournalTestHookPhase.BeforeCommit);
             state = new StoreState(state.StoreEpoch, streams, state.Operations);
@@ -499,6 +505,7 @@ public sealed partial class InMemoryMutationJournalStore : IMutationJournalStore
         JournalSnapshot Snapshot,
         IReadOnlyList<JournalStoredEvent> Events,
         IReadOnlyDictionary<string, JournalProjectionSection> Projections,
+        DateTimeOffset CreatedAtUtc,
         DateTimeOffset UpdatedAtUtc);
 
     private sealed record OperationState(

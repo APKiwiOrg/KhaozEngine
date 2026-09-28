@@ -40,18 +40,39 @@ public sealed class JournalStreamQuery
             && (AfterStreamKey is null || StringComparer.Ordinal.Compare(streamKey, AfterStreamKey) > 0);
 }
 
-/// <summary>One listed stream: its key and its current head version.</summary>
+/// <summary>One listed stream: its key, its current head version and, when known, when it was created and when
+/// its stream row last changed. Both times are UTC. A null time is unknown, never guessed: a stream that predates
+/// creation times has none, and the two-argument constructor knows neither.</summary>
 public sealed class JournalStreamEntry
 {
     public JournalStreamEntry(string streamKey, long headVersion)
+        : this(streamKey, headVersion, null, null)
+    {
+    }
+
+    public JournalStreamEntry(string streamKey, long headVersion, DateTimeOffset? createdAtUtc, DateTimeOffset? updatedAtUtc)
     {
         StreamKey = JournalValidation.StreamKey(streamKey);
         JournalValidation.NonNegative(headVersion, nameof(headVersion));
         HeadVersion = headVersion;
+        CreatedAtUtc = Utc(createdAtUtc, nameof(createdAtUtc));
+        UpdatedAtUtc = Utc(updatedAtUtc, nameof(updatedAtUtc));
     }
 
     public string StreamKey { get; }
     public long HeadVersion { get; }
+
+    /// <summary>When the stream was initialized, or null when the store cannot prove it.</summary>
+    public DateTimeOffset? CreatedAtUtc { get; }
+
+    /// <summary>When the stream was initialized, last gained events or last had its retained floor moved by
+    /// compaction. A snapshot-only compaction does not move it.</summary>
+    public DateTimeOffset? UpdatedAtUtc { get; }
+
+    private static DateTimeOffset? Utc(DateTimeOffset? value, string paramName)
+        => value is DateTimeOffset time && time.Offset != TimeSpan.Zero
+            ? throw new ArgumentException("A stream time must be UTC with a zero offset.", paramName)
+            : value;
 }
 
 /// <summary>One page of streams in ordinal stream-key order. <see cref="ContinuationKey"/> is the last listed key
@@ -88,15 +109,16 @@ public sealed class JournalStreamPage
         return new JournalStreamPage(rows, rows[^1].StreamKey);
     }
 
-    /// <summary><see cref="FromOrderedRows"/> for rows a provider read back. A stored key that is not a valid
-    /// stream key, or rows out of ordinal order, mean the store cannot be listed, so they fail as corrupt data for
-    /// the whole store.</summary>
-    internal static JournalStreamPage FromStoredRows(IReadOnlyList<(string StreamKey, long HeadVersion)> rows, JournalStreamQuery query)
+    /// <summary><see cref="FromOrderedRows"/> for rows a provider read back, with times already normalised to UTC.
+    /// A stored key that is not a valid stream key, or rows out of ordinal order, mean the store cannot be listed, so
+    /// they fail as corrupt data for the whole store.</summary>
+    internal static JournalStreamPage FromStoredRows(IReadOnlyList<JournalStoredStreamRow> rows, JournalStreamQuery query)
     {
         try
         {
             var entries = new List<JournalStreamEntry>(rows.Count);
-            foreach ((string streamKey, long headVersion) in rows) entries.Add(new JournalStreamEntry(streamKey, headVersion));
+            foreach (JournalStoredStreamRow row in rows)
+                entries.Add(new JournalStreamEntry(row.StreamKey, row.HeadVersion, row.CreatedAtUtc, row.UpdatedAtUtc));
             return FromOrderedRows(entries, query);
         }
         catch (ArgumentException exception)
@@ -111,6 +133,13 @@ public sealed class JournalStreamPage
         }
     }
 }
+
+/// <summary>One <c>journal_stream</c> row as a provider read it, before validation.</summary>
+internal readonly record struct JournalStoredStreamRow(
+    string StreamKey,
+    long HeadVersion,
+    DateTimeOffset? CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc);
 
 /// <summary>The key range a provider scans for a <see cref="JournalStreamQuery"/>. Stream keys are ASCII from a
 /// closed set, so every key with the prefix sorts at or after the prefix and before the prefix whose last character

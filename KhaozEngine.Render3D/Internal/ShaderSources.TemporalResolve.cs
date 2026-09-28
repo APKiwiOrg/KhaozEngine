@@ -188,7 +188,7 @@ void temporalReproject(vec2 uv, vec2 sampleInternal, vec2 motion, float depth, b
         expectedDepth = -previousView.z;
         vec4 staticClip = PreviousProjection * previousView;
         depthTested = false;
-        travel = BackgroundLinearDepth;
+        travel = 1.0e30;   // beyond every bound, in internal pixels
         if (staticClip.w > 1.0e-6) {
             vec2 staticUv = vec2(staticClip.x / staticClip.w * 0.5 + 0.5, 0.5 - staticClip.y / staticClip.w * 0.5);
             vec2 surfaceMotion = (staticUv - (sampleUv - motion)) * internalSize;
@@ -460,14 +460,14 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // it uncovers there would show a sub-texel feature's raw sample, brighter than its converged value. Both read the
     // one narrow test of the nearer surface, and the band reads the dilated surface's travel before the pixel's own
     // motion replaces it.
-    bool ownReprojected = !depthTested && edgeMotion > DilationReachInternalPixels
-        && centreDepth > closestDepth * (1.0 + DisocclusionTolerance);
+    bool centreFarther = centreDepth > closestDepth * (1.0 + DisocclusionTolerance);
+    bool ownReprojected = !depthTested && edgeMotion > DilationReachInternalPixels && centreFarther;
     float closestScreenMotion = length(closestMotion * internalSize);
     bool nearerMoved = !depthTested || travel > WorldMotionMetres * PreviousProjection[0][0] * internalSize.x * 0.5
         / (CurrentDepth.x > 0.5 ? closestDepth : 1.0) + closestScreenMotion * MovingSurfaceMotionFraction;
     bool band = historyValid && !ownReprojected && nearerMoved
-        && (movingEdge ? centreScreenMotion > closestScreenMotion
-            && centreDepth > closestDepth * (1.0 + DisocclusionTolerance) : travel > 2.0 * closestScreenMotion);
+        && (movingEdge ? centreScreenMotion > closestScreenMotion && centreFarther
+            : travel > 2.0 * closestScreenMotion);
     bool nearerNarrow = (ownReprojected || band) && temporalNarrowDepth(closestTexel, closestDepth, maxTexel, true);
     bool narrowMoving = ownReprojected && nearerNarrow;
     band = band && !nearerNarrow;
@@ -503,14 +503,12 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         vec4 bilinear = vec4(g.x * g.y, stateFraction.x * g.y, g.x * stateFraction.y,
             stateFraction.x * stateFraction.y);
         vec4 carried = step(vec4(1.0e-3), bilinear);   // texels whose weight is more than rounding
-        carriedMoved = (carried.x > 0.5 && temporalStoredMoved(s00.y))
-            || (carried.y > 0.5 && temporalStoredMoved(s10.y))
-            || (carried.z > 0.5 && temporalStoredMoved(s01.y))
-            || (carried.w > 0.5 && temporalStoredMoved(s11.y));
-        carriedBand = (carried.x > 0.5 && temporalStoredBand(s00.y))
-            || (carried.y > 0.5 && temporalStoredBand(s10.y))
-            || (carried.z > 0.5 && temporalStoredBand(s01.y))
-            || (carried.w > 0.5 && temporalStoredBand(s11.y));
+        // The least state a carrying texel stored: the moved and band marks lie below every plain lock, and the
+        // band's below the moved one's, so one least value answers both.
+        float carriedLeast = min(min(carried.x > 0.5 ? s00.y : 0.0, carried.y > 0.5 ? s10.y : 0.0),
+            min(carried.z > 0.5 ? s01.y : 0.0, carried.w > 0.5 ? s11.y : 0.0));
+        carriedMoved = temporalStoredMoved(carriedLeast);
+        carriedBand = temporalStoredBand(carriedLeast);
         s00.y = temporalStoredLock(s00.y);
         s10.y = temporalStoredLock(s10.y);
         s01.y = temporalStoredLock(s01.y);

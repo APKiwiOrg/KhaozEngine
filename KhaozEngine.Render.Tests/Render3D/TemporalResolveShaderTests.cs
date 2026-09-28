@@ -147,8 +147,9 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("vec2 centreSample = vec2(centreTexel) + 0.5 - jitter;", core, StringComparison.Ordinal);
             string own = "bool ownReprojected = !depthTested && edgeMotion > DilationReachInternalPixels";
             Assert.Contains(own, core, StringComparison.Ordinal);
-            Assert.Contains("&& centreDepth > closestDepth * (1.0 + DisocclusionTolerance);", core,
+            Assert.Contains("bool centreFarther = centreDepth > closestDepth * (1.0 + DisocclusionTolerance);", core,
                 StringComparison.Ordinal);
+            Assert.Contains(own + " && centreFarther;", core, StringComparison.Ordinal);
             Assert.Contains("if (ownReprojected) {", core, StringComparison.Ordinal);
             Assert.Contains("temporalReproject(uv, centreSample, centreMotion, centreDepth, centreIsBackground, "
                 + "internalSize, previousUv,", core, StringComparison.Ordinal);
@@ -234,11 +235,12 @@ namespace KhaozEngine.Tests.Render3D
             Assert.DoesNotContain("result.moved = historyValid && nearerMoved", core, StringComparison.Ordinal);
             Assert.Contains("result.moved = band ? 2.0 : historyValid && !depthTested ? 1.0 : 0.0;", core,
                 StringComparison.Ordinal);
-            foreach (string texel in new[] { "s00", "s10", "s01", "s11" })
+            foreach (var (texel, weight) in new[] { ("s00", "x"), ("s10", "y"), ("s01", "z"), ("s11", "w") })
             {
                 Assert.Contains($"{texel}.y = temporalStoredLock({texel}.y);", core, StringComparison.Ordinal);
-                Assert.Contains($"temporalStoredMoved({texel}.y)", core, StringComparison.Ordinal);
+                Assert.Contains($"carried.{weight} > 0.5 ? {texel}.y : 0.0", core, StringComparison.Ordinal);
             }
+            Assert.Contains("carriedMoved = temporalStoredMoved(carriedLeast);", core, StringComparison.Ordinal);
             Assert.Contains("run[i] = !(depth < there * limit || there < depth * limit);", core,
                 StringComparison.Ordinal);
             Assert.Contains("bool narrowRow = !(run[0] && run[2]) && !(run[0] && run[1]) && !(run[2] && run[3]);", core,
@@ -267,12 +269,13 @@ namespace KhaozEngine.Tests.Render3D
                 core, StringComparison.Ordinal);
             Assert.Contains("travel = length(surfaceMotion);", core, StringComparison.Ordinal);
             Assert.Contains("depthTested = travel <= movingThreshold;", core, StringComparison.Ordinal);
-            Assert.Contains("travel = BackgroundLinearDepth;", core, StringComparison.Ordinal);
+            Assert.Contains("travel = 1.0e30;   // beyond every bound, in internal pixels", core,
+                StringComparison.Ordinal);
             Assert.Contains("|| (carriedMoved ? footprint.visibleShare < 1.0 - 1.0e-3", core, StringComparison.Ordinal);
             Assert.DoesNotContain("carriedFast", core, StringComparison.Ordinal);
             Assert.DoesNotContain("temporalStoredFast", core, StringComparison.Ordinal);
             Assert.Equal(2, core.Split("expectedDepth, depthTested, travel);").Length - 1);
-            int moved = core.IndexOf("carriedMoved = (carried.x > 0.5", StringComparison.Ordinal);
+            int moved = core.IndexOf("carriedMoved = temporalStoredMoved(carriedLeast);", StringComparison.Ordinal);
             int lockRead = core.IndexOf("s00.y = temporalStoredLock(s00.y);", StringComparison.Ordinal);
             int test = core.IndexOf("|| (carriedMoved ? footprint.visibleShare", StringComparison.Ordinal);
             Assert.True(moved >= 0 && lockRead > moved && test > lockRead,
@@ -304,13 +307,12 @@ namespace KhaozEngine.Tests.Render3D
             Assert.DoesNotContain("farthestDepth", core, StringComparison.Ordinal);
             Assert.Contains("|| (carriedBand && !nearerMoved && !(expectedDepth < footprint.nearest "
                 + "* (1.0 - DisocclusionTolerance)))", core, StringComparison.Ordinal);
-            foreach (string texel in new[] { "s00", "s10", "s01", "s11" })
-                Assert.Contains($"temporalStoredBand({texel}.y)", core, StringComparison.Ordinal);
+            Assert.Contains("carriedBand = temporalStoredBand(carriedLeast);", core, StringComparison.Ordinal);
             int own = core.IndexOf("bool ownReprojected = ", StringComparison.Ordinal);
             int moved = core.IndexOf("bool nearerMoved = ", StringComparison.Ordinal);
             int band = core.IndexOf("bool band = historyValid", StringComparison.Ordinal);
             int reproject = core.IndexOf("if (ownReprojected) {", StringComparison.Ordinal);
-            int carried = core.IndexOf("carriedBand = (carried.x > 0.5", StringComparison.Ordinal);
+            int carried = core.IndexOf("carriedBand = temporalStoredBand(carriedLeast);", StringComparison.Ordinal);
             int lockRead = core.IndexOf("s00.y = temporalStoredLock(s00.y);", StringComparison.Ordinal);
             int test = core.IndexOf("|| (carriedBand && !nearerMoved", StringComparison.Ordinal);
             Assert.True(own >= 0 && moved > own && band > moved && reproject > band && carried > reproject

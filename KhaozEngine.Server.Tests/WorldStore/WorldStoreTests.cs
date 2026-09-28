@@ -222,7 +222,9 @@ public sealed class SqlServerWorldStoreConformanceTests
 
     /// <summary>A table an older build created gains a nullable <c>created_at</c> in place, and its row keeps NULL
     /// after a later save. The fact drops and rebuilds <c>dbo.world_store</c>, so like the journal facts that rebuild
-    /// their tables it runs only against a database named for journal tests.</summary>
+    /// their tables it runs only against a database named for journal tests. The rebuild and the row are two batches,
+    /// because SQL Server compiles a whole batch against the table the other facts left behind, and the old shape is
+    /// checked before the store opens.</summary>
     [SqlServerFact]
     public async Task World_store_table_from_an_older_build_gains_created_at()
     {
@@ -230,8 +232,10 @@ public sealed class SqlServerWorldStoreConformanceTests
         await SqlServerTableProbe.ExecuteAsync(cs, """
             IF OBJECT_ID(N'dbo.world_store', N'U') IS NOT NULL DROP TABLE dbo.world_store;
             CREATE TABLE dbo.world_store ([key] NVARCHAR(450) NOT NULL PRIMARY KEY, data VARBINARY(MAX) NOT NULL, updated_at DATETIME2 NOT NULL);
-            INSERT INTO dbo.world_store ([key], data, updated_at) VALUES (N'legacy', 0x01, '2026-01-01T00:00:00');
             """);
+        Assert.Null(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "world_store", "created_at"));
+        await SqlServerTableProbe.ExecuteAsync(cs,
+            "INSERT INTO dbo.world_store ([key], data, updated_at) VALUES (N'legacy', 0x01, '2026-01-01T00:00:00');");
 
         IWorldStore widened = New();
         Assert.True(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "world_store", "created_at"));

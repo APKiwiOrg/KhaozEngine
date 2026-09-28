@@ -323,13 +323,17 @@ public sealed class SqlServerWalletStoreTests
     /// <summary>Tables an older build created gain the nullable columns in place. Their rows keep a NULL creation
     /// time after later writes, and the schedule row's unknown update time is filled only by a write that changes it.
     /// The fact drops and rebuilds both tables with the key collation they always had, so it runs only against a
-    /// database named for commerce tests.</summary>
+    /// database named for commerce tests.
+    /// <para>The rebuild and the rows are two batches. SQL Server compiles a whole batch before it runs any of it, so
+    /// an insert batched with the rebuild binds to the widened tables the other facts left behind, and a positional
+    /// insert then fails to compile and takes the drops down with it. The old shape is checked before the store
+    /// opens, so the widening is what the fact proves.</para></summary>
     [SqlServerFact]
     public async Task Wallet_tables_from_an_older_build_gain_the_new_columns()
     {
         string cs = SqlServerTableProbe.RequireMarkedDatabase(ConnectionString, "-commerce-test-");
         AccountId legacy = FreshAccount();
-        await SqlServerTableProbe.ExecuteAsync(cs, $"""
+        await SqlServerTableProbe.ExecuteAsync(cs, """
             IF OBJECT_ID(N'dbo.wallet_balance', N'U') IS NOT NULL DROP TABLE dbo.wallet_balance;
             IF OBJECT_ID(N'dbo.grant_schedule', N'U') IS NOT NULL DROP TABLE dbo.grant_schedule;
             CREATE TABLE dbo.wallet_balance (
@@ -342,8 +346,15 @@ public sealed class SqlServerWalletStoreTests
               reward_id NVARCHAR(200) COLLATE Latin1_General_100_BIN2 NOT NULL,
               next_available_utc DATETIME2 NOT NULL,
               PRIMARY KEY(account_id, reward_id));
-            INSERT INTO dbo.wallet_balance VALUES (N'{legacy.Value}', N'{Currency.Value}', 7, '2026-01-01T00:00:00');
-            INSERT INTO dbo.grant_schedule VALUES (N'{legacy.Value}', N'{Reward}', '2026-01-02T00:00:00');
+            """);
+        Assert.Null(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "wallet_balance", "created_at"));
+        Assert.Null(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "grant_schedule", "created_at"));
+        Assert.Null(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "grant_schedule", "updated_at"));
+        await SqlServerTableProbe.ExecuteAsync(cs, $"""
+            INSERT INTO dbo.wallet_balance (account_id, currency_id, amount, updated_at)
+              VALUES (N'{legacy.Value}', N'{Currency.Value}', 7, '2026-01-01T00:00:00');
+            INSERT INTO dbo.grant_schedule (account_id, reward_id, next_available_utc)
+              VALUES (N'{legacy.Value}', N'{Reward}', '2026-01-02T00:00:00');
             """);
 
         SqlServerWalletStore widened = NewStore();
@@ -372,6 +383,42 @@ public sealed class SqlServerWalletStoreTests
 
         _ = NewStore();
         Assert.True(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "grant_schedule", "updated_at"));
+    }
+
+    /// <summary>A schedule instant off the <c>datetime</c> grid. The store binds the instant as <c>datetime</c>, so it
+    /// is rounded to a 1/300 s tick on the way in, and the update time's no-change check compares that rounding with
+    /// what is stored. A rewrite of the same instant must compare equal and leave the update time alone, whether the
+    /// caller passes the instant it wrote or the one it read back. A real change on the same grid still moves it.</summary>
+    [SqlServerFact]
+    public async Task Grant_schedule_rewrite_of_a_sub_second_instant_keeps_the_update_time()
+    {
+        string cs = ConnectionString!;
+        SqlServerWalletStore store = NewStore();
+        AccountId account = FreshAccount();
+        // 1.7 ms past the second, between the datetime ticks at .000 and .00333.
+        DateTimeOffset instant = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero).AddTicks(17_000);
+
+        DateTime before = await SqlServerTableProbe.ServerNowAsync(cs);
+        await store.SetNextAvailableAsync(account, Reward, instant);
+        DateTime after = await SqlServerTableProbe.ServerNowAsync(cs);
+        (DateTime? created, DateTime? updated) = await ScheduleTimesAsync(cs, account);
+        Assert.Equal(updated, created);
+        Assert.InRange(created ?? DateTime.MinValue, before, after);
+        DateTimeOffset readBack = (await store.GetNextAvailableAsync(account, Reward))!.Value;
+        Assert.NotEqual(instant, readBack);   // the rounding this fact is about did happen
+
+        await SqlServerTableProbe.WaitForServerClockPastAsync(cs, after);
+        await store.SetNextAvailableAsync(account, Reward, instant);
+        Assert.Equal((created, updated), await ScheduleTimesAsync(cs, account));
+        await store.SetNextAvailableAsync(account, Reward, readBack);
+        Assert.Equal((created, updated), await ScheduleTimesAsync(cs, account));
+
+        before = await SqlServerTableProbe.ServerNowAsync(cs);
+        await store.SetNextAvailableAsync(account, Reward, instant.AddMilliseconds(5));
+        after = await SqlServerTableProbe.ServerNowAsync(cs);
+        (DateTime? keptCreated, DateTime? moved) = await ScheduleTimesAsync(cs, account);
+        Assert.Equal(created, keptCreated);
+        Assert.InRange(moved ?? DateTime.MinValue, before, after);
     }
 
     private static Task<(DateTime? First, DateTime? Second)> BalanceTimesAsync(string cs, AccountId account)

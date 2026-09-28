@@ -7,10 +7,11 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The confidence and stability target's green channel as step 6 reads it back
     /// (<see cref="TemporalFormats.HistoryConfidence"/>): where the surface the pixel reprojected by moved, the resolve
-    /// stores minus one minus the lock, and minus three minus the lock where the pixel followed a nearer surface that
-    /// moved (the band, <see cref="TemporalResolveTuning.WorldMotionMetres"/>), and the next frame must read the lock
-    /// unchanged wherever it keeps the history. A still pixel whose nearest surface did not move drops a history that
-    /// carries the band. Same rig and still camera as <see cref="TemporalResolveLockGpuTests"/>, through
+    /// stores minus one minus the lock, minus three minus the lock where the pixel followed a nearer surface's edge
+    /// that moved (the band, <see cref="TemporalResolveTuning.WorldMotionMetres"/>), and minus five minus the lock on
+    /// the followed surface itself, and the next frame must read the lock unchanged wherever it keeps the history. A
+    /// still pixel whose nearest surface did not move drops a history that carries the band. Same rig and still camera
+    /// as <see cref="TemporalResolveLockGpuTests"/>, through
     /// <see cref="TemporalResolveGpuFacts"/>.
     /// </summary>
     public sealed class TemporalStoredLockGpuTests : TemporalResolveGpuFacts

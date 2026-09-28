@@ -216,6 +216,26 @@ namespace KhaozEngine.Render3D.Internal
         /// </para>
         /// </summary>
         public const float WorldMotionMetres = 0.001f;
+        /// <summary>
+        /// Step 3 beside a followed surface. The avatar's own pixels store the followed mark while the camera follows
+        /// it (<see cref="WorldMotionMetres"/>), and a pixel whose nearest surface did not move in the world drops a
+        /// history that carries it only where one of the nine current texels around the history position moves on
+        /// screen otherwise than the pixel reprojected, by more than this share of the pixel's own motion. The avatar
+        /// stays put on screen while the ground it uncovers pans at the walk's speed, so a ground pixel reading the
+        /// avatar's history there drops it. On the frame the avatar stops in the world, or turns back through zero
+        /// travel, its pixels read their own history in place, and under a damped camera that eases on after it,
+        /// where the same avatar shows moving with them, apart only by its parallax, and keep it.
+        /// <para>
+        /// Dropped there, every pixel of the avatar showed one jittered sample on that frame and took 15 frames to
+        /// settle: its pixels inside the reconstruction's reach from its outline read 3.7 and 3.0 times the error
+        /// against the 4x reference of a kept history at Native and Quality on the orthographic follow walk, and 1.2
+        /// and 1.5 times on the perspective one. With the rule they read the same as a kept history on every frame
+        /// after a stop or a reversal, and within half a percent of it under the damped camera. Only the texel at the
+        /// history position, or the four around it, left the ground an avatar uncovers its colour: up to 8 pixels at
+        /// Quality where the walk left none, and the orthographic follow at Performance 18 of 90 against 3.
+        /// </para>
+        /// </summary>
+        public const float FollowedHistoryMotionFraction = 0.5f;
         /// <summary>Step 3. A depth-tested pixel whose expected surface shows under less than this share of the
         /// bilinear weight of its four stored depths was mostly covered last frame, and drops its history, unless the
         /// nearest of the four is narrow, its run of texels along a row or a column, apart in depth from those either

@@ -69,7 +69,8 @@ namespace KhaozEngine.Tests.Gpu
         internal int BandMarks(TemporalUpscale preset, float pixelsPerFrame, float pitch, FollowHeading heading) =>
             _bandMarks[(preset, pixelsPerFrame, pitch, heading)];
 
-        // Stored states below minus 2.5 are band marks (the resolve's temporalStoreLock).
+        // Stored states below minus 2.5 are band marks, beside the edge or on the followed surface (the resolve's
+        // temporalStoreLock).
         static int BandMarks(TemporalFixture fx)
         {
             var history = fx.Scene.TemporalHistory;

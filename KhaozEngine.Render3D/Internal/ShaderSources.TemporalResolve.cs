@@ -75,6 +75,7 @@ const float LockEdgeFloorInternalPixels = 0.001;
 const float ClipFlagMinimumMove = 0.0009765625;
 const float DilationReachInternalPixels = 1.25;
 const float WorldMotionMetres = 0.001;
+const float FollowedHistoryMotionFraction = 0.5;
 const float DisocclusionVisibleShare = 0.5;
 const float MovingShareConfidence = 0.0;
 ";
@@ -255,20 +256,25 @@ bool temporalNarrowDepth(ivec2 texel, float depth, ivec2 maxTexel, bool current)
     return narrowRow || narrowColumn;
 }
 
-// Step 6's stored lock carries two facts more. Where history was valid and the surface the pixel reprojected by moved,
-// so that its depth test was skipped, the state holds minus one minus the lock. The surface is the dilated nearest, or
-// the centre texel's own where the pixel reprojected by its own motion beside a fast edge. Where the pixel followed a
-// nearer surface's edge (the band, step 1), the state holds minus three minus the lock, and the band counts as moved
-// too. A frame with no valid history stores the lock plain. A lock lies in [0, 1], so the stored value lies in [-2, -1]
-// or [-4, -3], the lock reads back within the half float's rounding, and the next frame knows a moving surface showed
-// there, and whether the history there followed a nearer surface's edge. Step 3 reads both.
-float temporalStoreLock(float lockValue, bool moved, bool band) {
-    return band ? -3.0 - lockValue : moved ? -1.0 - lockValue : lockValue;
+// Step 6's stored lock carries three facts more. Where history was valid and the surface the pixel reprojected by
+// moved, so that its depth test was skipped, the state holds minus one minus the lock. The surface is the dilated
+// nearest, or the centre texel's own where the pixel reprojected by its own motion beside a fast edge. Where the pixel
+// followed a nearer surface's edge (the band, step 1), the state holds minus three minus the lock, and on a pixel of
+// the followed surface itself (the followed mark, step 1) minus five minus the lock. Both count as moved too. A frame
+// with no valid history stores the lock plain. A lock lies in [0, 1], so the stored value lies in [-2, -1], [-4, -3]
+// or [-6, -5], the lock reads back within the half float's rounding, and the next frame knows a moving surface showed
+// there, whether the history there followed one, and whether that surface's own pixels stored it. Step 3 reads them.
+// moved is TemporalPixel's: 1 moved, 2 the band, 3 the followed mark.
+float temporalStoreLock(float lockValue, float moved) {
+    return moved > 2.5 ? -5.0 - lockValue : moved > 1.5 ? -3.0 - lockValue : moved > 0.5 ? -1.0 - lockValue
+        : lockValue;
 }
 bool temporalStoredMoved(float stored) { return stored < -0.5; }
 bool temporalStoredBand(float stored) { return stored < -2.5; }
+bool temporalStoredFollowed(float stored) { return stored < -4.5; }
 float temporalStoredLock(float stored) {
-    return temporalStoredBand(stored) ? -3.0 - stored : temporalStoredMoved(stored) ? -1.0 - stored : stored;
+    return temporalStoredFollowed(stored) ? -5.0 - stored : temporalStoredBand(stored) ? -3.0 - stored
+        : temporalStoredMoved(stored) ? -1.0 - stored : stored;
 }
 
 ivec2 temporalDisplaySize() { return ivec2(Sizes.zw); }
@@ -454,8 +460,10 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // with it, a pixel whose surface travelled in the world more than twice its motion on screen is followed, not
     // crossing a still view. Its history is its own colour, and a farther surface its lowest pixels touch, as the
     // ground under an avatar's feet lies within the disocclusion tolerance of them, takes that colour on where it is
-    // uncovered. The band keeps the edge's anti-aliasing, and step 3 keeps a pixel whose nearest surface did not move
-    // from taking the band's history on. A narrow nearer surface, a blade or a line, is held by the thin-feature lock
+    // uncovered. That pixel stores the followed mark rather than the band's, because once the surface stops its own
+    // pixels read the same history and keep it (step 3). The band keeps the edge's anti-aliasing, and step 3 keeps a
+    // pixel whose nearest surface did not move from taking either history on. A narrow nearer surface, a blade or a
+    // line, is held by the thin-feature lock
     // instead. A surface crossing a still view leaves its history where it passed, as before: restarting the pixels
     // it uncovers there would show a sub-texel feature's raw sample, brighter than its converged value. Both read the
     // one narrow test of the nearer surface, and the band reads the dilated surface's travel before the pixel's own
@@ -471,6 +479,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     bool nearerNarrow = (ownReprojected || band) && temporalNarrowDepth(closestTexel, closestDepth, maxTexel, true);
     bool narrowMoving = ownReprojected && nearerNarrow;
     band = band && !nearerNarrow;
+    bool followed = band && !movingEdge;
     if (ownReprojected) {
         temporalReproject(uv, centreSample, centreMotion, centreDepth, centreIsBackground, internalSize, previousUv,
             expectedDepth, depthTested, travel);
@@ -483,10 +492,12 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // motion is blended with unlocked neighbours every frame and ran out about three times faster than LockDecay, so
     // a moving sub-texel feature lost its hold. At a texel centre only that texel carries weight, so a still lock
     // reads back unchanged and never spreads. carriedMoved is whether any texel that carries weight stored the lock
-    // of a moving surface (temporalStoreLock), and carriedBand whether any stored that of a band pixel.
+    // of a moving surface (temporalStoreLock), carriedBand whether any stored that of a band pixel, and
+    // carriedFollowed whether that was the followed surface's own.
     vec2 fetchedState = vec2(0.0);
     bool carriedMoved = false;
     bool carriedBand = false;
+    bool carriedFollowed = false;
     if (historyValid && onScreen) {
         vec2 statePosition = previousUv * displaySize - 0.5;
         ivec2 stateBase = ivec2(floor(statePosition));
@@ -503,12 +514,13 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         vec4 bilinear = vec4(g.x * g.y, stateFraction.x * g.y, g.x * stateFraction.y,
             stateFraction.x * stateFraction.y);
         vec4 carried = step(vec4(1.0e-3), bilinear);   // texels whose weight is more than rounding
-        // The least state a carrying texel stored: the moved and band marks lie below every plain lock, and the
-        // band's below the moved one's, so one least value answers both.
+        // The least state a carrying texel stored: the moved, band and followed marks lie below every plain lock,
+        // each below the one before, so one least value answers all three.
         float carriedLeast = min(min(carried.x > 0.5 ? s00.y : 0.0, carried.y > 0.5 ? s10.y : 0.0),
             min(carried.z > 0.5 ? s01.y : 0.0, carried.w > 0.5 ? s11.y : 0.0));
         carriedMoved = temporalStoredMoved(carriedLeast);
         carriedBand = temporalStoredBand(carriedLeast);
+        carriedFollowed = temporalStoredFollowed(carriedLeast);
         s00.y = temporalStoredLock(s00.y);
         s10.y = temporalStoredLock(s10.y);
         s01.y = temporalStoredLock(s01.y);
@@ -536,7 +548,13 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // a pixel whose dilated nearest surface did not move in the world (nearerMoved) drops it, unless every stored
     // depth is farther than expected. The band followed a moving nearer surface, beside its edge or on it, and a pixel
     // of a still surface would carry that surface's colour away with it. A pixel beside or on the moving surface, and
-    // a nearer surface reading the band where its edge was, keep it. Keyed on a moving edge instead, the drop never
+    // a nearer surface reading the band where its edge was, keep it. A history the followed surface's own pixels
+    // stored (the followed mark) drops only where one of the nine current texels around its position moves on screen
+    // otherwise than the pixel reprojected, by more than FollowedHistoryMotionFraction of that motion: the followed
+    // surface still shows there while the pixel's own surface passes, as the ground an avatar uncovers does under a
+    // camera that follows it. A surface that stopped in the world, or turned back through zero travel, reads its own
+    // pixels' history in place, or where the same surface shows moving with it under a camera that eases on after
+    // it, and keeps it. Keyed on a moving edge instead, the drop never
     // fired on ground under a perspective camera, whose neighbouring texels move apart on screen by their depth step so
     // that every ground pixel reads as a moving edge. Sparing a pixel whose 3x3 holds a surface farther than its centre
     // spared every ground pixel at a grazing angle, where each ground texel lies farther than the one below it by more
@@ -550,13 +568,28 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // pixel at a moving edge reads history a farther surface left: every one of them farther than the moving surface's
     // expected depth. That runs for a moving surface too, whose depth test is skipped, and costs no fetch beyond the
     // four a depth-tested pixel already takes.
+    bool followedElsewhere = true;
+    if (carriedFollowed && !nearerMoved) {
+        vec2 ownMotion = (uv - previousUv) * internalSize;
+        ivec2 historyTexel = ivec2(floor(previousUv * internalSize + jitter));
+        float apart = 0.0;
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+                vec2 shown = texelFetch(sampler2D(MotionTex, LinearClamp),
+                    clamp(historyTexel + ivec2(x, y), ivec2(0), maxTexel), 0).rg;
+                apart = max(apart, length(shown * internalSize - ownMotion));
+            }
+        }
+        followedElsewhere = apart > FollowedHistoryMotionFraction * length(ownMotion);
+    }
     bool disoccluded = false;
     bool heldFromFarther = false;
     if (historyValid && onScreen && (depthTested || movingEdge)) {
         DepthFootprint footprint = temporalDepthFootprint(previousUv, internalSize, maxTexel, expectedDepth);
         disoccluded = depthTested && (!(expectedDepth > 1.0e-6)
             || footprint.farthest < expectedDepth * (1.0 - DisocclusionTolerance)
-            || (carriedBand && !nearerMoved && !(expectedDepth < footprint.nearest * (1.0 - DisocclusionTolerance)))
+            || (carriedBand && !nearerMoved && !(expectedDepth < footprint.nearest * (1.0 - DisocclusionTolerance))
+                && followedElsewhere)
             || (carriedMoved ? footprint.visibleShare < 1.0 - 1.0e-3
                 : footprint.visibleShare < DisocclusionVisibleShare
                     && fetchedState.y <= 1.0 - 0.5 * LockDecay
@@ -680,7 +713,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     result.confidence = movingShare > 0.0 ? MovingShareConfidence
         : min(accumulated + sampleWeight, motionCap) / MaxAccumulation;
     result.stability = lockValue;
-    result.moved = band ? 2.0 : historyValid && !depthTested ? 1.0 : 0.0;
+    result.moved = followed ? 3.0 : band ? 2.0 : historyValid && !depthTested ? 1.0 : 0.0;
     result.disocclusion = historyValid && (!onScreen || disoccluded) ? 1.0 : 0.0;
     result.reactive = reactive;
     result.clip = useHistory && clipScale > 1.0 && length(clipped - historyYcc) > ClipFlagMinimumMove ? 1.0 : 0.0;
@@ -696,7 +729,7 @@ layout(location=1) out vec4 oState;
 void main() {
     TemporalPixel p = temporalResolvePixel(ivec2(gl_FragCoord.xy));
     oColor = vec4(p.color, p.alpha + vUv.x * 1.0e-30);   // the vUv read changes no output, see the class summary
-    oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved > 0.5, p.moved > 1.5), 0.0, 1.0);
+    oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), 0.0, 1.0);
 }";
 
         // ---- The depth store: this frame's linear view depth for next frame's disocclusion test ----

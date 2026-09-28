@@ -49,6 +49,10 @@ namespace KhaozEngine.Tests.Render3D
                 1.25f
             },
             { "const float WorldMotionMetres = 0.001;", TemporalResolveTuning.WorldMotionMetres, 0.001f },
+            {
+                "const float FollowedHistoryMotionFraction = 0.5;",
+                TemporalResolveTuning.FollowedHistoryMotionFraction, 0.5f
+            },
             { "const float DisocclusionVisibleShare = 0.5;", TemporalResolveTuning.DisocclusionVisibleShare, 0.5f },
             { "const float MovingShareConfidence = 0.0;", TemporalResolveTuning.MovingShareConfidence, 0f },
         };
@@ -213,8 +217,9 @@ namespace KhaozEngine.Tests.Render3D
             // row or a column, where the state says no moving surface showed there last frame. The lock and that fact
             // are read from the state texels step 2 reads, fetched once before the test. The stored lock is minus one
             // minus the lock where the surface the pixel reprojected by moved, minus three minus the lock where the
-            // pixel followed a nearer surface that moved, beside its edge or on it, and reads back unchanged. The moved
-            // mark is the reprojected surface's own depth test, not the band's world test of the nearer surface.
+            // pixel followed a nearer surface's edge that moved, minus five minus the lock on a pixel of the followed
+            // surface itself, and reads back unchanged. The moved mark is the reprojected surface's own depth test, not
+            // the band's world test of the nearer surface.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("float weight = mix(1.0 - f.x, f.x, float(corner & 1)) "
                 + "* mix(1.0 - f.y, f.y, float(corner >> 1));", core, StringComparison.Ordinal);
@@ -226,15 +231,16 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("&& fetchedState.y <= 1.0 - 0.5 * LockDecay", core, StringComparison.Ordinal);
             Assert.Contains("&& !temporalNarrowDepth(footprint.nearestTexel, footprint.nearest, maxTexel, false)));",
                 core, StringComparison.Ordinal);
-            Assert.Contains("return band ? -3.0 - lockValue : moved ? -1.0 - lockValue : lockValue;", core,
-                StringComparison.Ordinal);
+            Assert.Contains("return moved > 2.5 ? -5.0 - lockValue : moved > 1.5 ? -3.0 - lockValue : moved > 0.5 ? "
+                + "-1.0 - lockValue\n        : lockValue;", core, StringComparison.Ordinal);
             Assert.Contains("bool temporalStoredMoved(float stored) { return stored < -0.5; }", core,
                 StringComparison.Ordinal);
-            Assert.Contains("return temporalStoredBand(stored) ? -3.0 - stored : temporalStoredMoved(stored) ? -1.0 - "
-                + "stored : stored;", core, StringComparison.Ordinal);
-            Assert.DoesNotContain("result.moved = historyValid && nearerMoved", core, StringComparison.Ordinal);
-            Assert.Contains("result.moved = band ? 2.0 : historyValid && !depthTested ? 1.0 : 0.0;", core,
+            Assert.Contains("return temporalStoredFollowed(stored) ? -5.0 - stored : temporalStoredBand(stored) ? "
+                + "-3.0 - stored\n        : temporalStoredMoved(stored) ? -1.0 - stored : stored;", core,
                 StringComparison.Ordinal);
+            Assert.DoesNotContain("result.moved = historyValid && nearerMoved", core, StringComparison.Ordinal);
+            Assert.Contains("result.moved = followed ? 3.0 : band ? 2.0 : historyValid && !depthTested ? 1.0 : 0.0;",
+                core, StringComparison.Ordinal);
             foreach (var (texel, weight) in new[] { ("s00", "x"), ("s10", "y"), ("s01", "z"), ("s11", "w") })
             {
                 Assert.Contains($"{texel}.y = temporalStoredLock({texel}.y);", core, StringComparison.Ordinal);
@@ -260,10 +266,10 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void A_footprint_a_moving_surface_showed_at_keeps_its_history_only_where_it_is_whole()
         {
-            // Where the surface the pixel reprojected by moved, the state stores minus one minus the lock, and a band
-            // pixel minus three, which counts as moved too. Where any texel carrying weight holds either, neither the
-            // narrow nor the lock exception applies, and any weight on a nearer stored depth drops the history. The
-            // narrow and lock exceptions keep their rule elsewhere.
+            // Where the surface the pixel reprojected by moved, the state stores minus one minus the lock, a band pixel
+            // minus three and a followed one minus five, which count as moved too. Where any texel carrying weight
+            // holds one, neither the narrow nor the lock exception applies, and any weight on a nearer stored depth
+            // drops the history. The narrow and lock exceptions keep their rule elsewhere.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("out vec2 previousUv, out float expectedDepth, out bool depthTested, out float travel) {",
                 core, StringComparison.Ordinal);
@@ -287,9 +293,12 @@ namespace KhaozEngine.Tests.Render3D
         {
             // The band: a pixel beside or on a wide nearer surface that moved in the world, past WorldMotionMetres at
             // its depth through last frame's projection and the rounding fraction. Beside its edge the farther centre
-            // moves more on screen, on it the surface travelled more than twice its screen motion. It stores minus
-            // three minus the lock. A depth-tested pixel whose nearest surface did not move drops a history that
-            // carries it, unless every stored depth is farther. No 3x3 farthest depth spares it.
+            // moves more on screen, on it the surface travelled more than twice its screen motion. Beside the edge it
+            // stores minus three minus the lock, on the surface minus five minus the lock. A depth-tested pixel whose
+            // nearest surface did not move drops a history that carries either, unless every stored depth is farther,
+            // or the followed surface's own pixels stored it and none of the nine current texels around the history
+            // position moves on screen otherwise than the pixel by more than FollowedHistoryMotionFraction of its
+            // motion. No 3x3 farthest depth spares it, and the nine texels are read outside the 3x3 every pixel runs.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("bool temporalStoredBand(float stored) { return stored < -2.5; }", core,
                 StringComparison.Ordinal);
@@ -306,8 +315,28 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("centreScreenMotion = length(centreOwn * internalSize);", core, StringComparison.Ordinal);
             Assert.DoesNotContain("farthestDepth", core, StringComparison.Ordinal);
             Assert.Contains("|| (carriedBand && !nearerMoved && !(expectedDepth < footprint.nearest "
-                + "* (1.0 - DisocclusionTolerance)))", core, StringComparison.Ordinal);
+                + "* (1.0 - DisocclusionTolerance))\n                && followedElsewhere)", core,
+                StringComparison.Ordinal);
             Assert.Contains("carriedBand = temporalStoredBand(carriedLeast);", core, StringComparison.Ordinal);
+            Assert.Contains("bool followed = band && !movingEdge;", core, StringComparison.Ordinal);
+            Assert.Contains("bool temporalStoredFollowed(float stored) { return stored < -4.5; }", core,
+                StringComparison.Ordinal);
+            Assert.Contains("carriedFollowed = temporalStoredFollowed(carriedLeast);", core, StringComparison.Ordinal);
+            Assert.Contains("if (carriedFollowed && !nearerMoved) {", core, StringComparison.Ordinal);
+            Assert.Contains("ivec2 historyTexel = ivec2(floor(previousUv * internalSize + jitter));", core,
+                StringComparison.Ordinal);
+            Assert.Contains("apart = max(apart, length(shown * internalSize - ownMotion));", core,
+                StringComparison.Ordinal);
+            Assert.Contains("followedElsewhere = apart > FollowedHistoryMotionFraction * length(ownMotion);", core,
+                StringComparison.Ordinal);
+            int loopEnd = core.IndexOf("float reactive = clamp(reactiveDifference", StringComparison.Ordinal);
+            int nine = core.IndexOf("if (carriedFollowed && !nearerMoved) {", StringComparison.Ordinal);
+            int followedRead = core.IndexOf("carriedFollowed = temporalStoredFollowed(carriedLeast);",
+                StringComparison.Ordinal);
+            int footprintRead = core.IndexOf("DepthFootprint footprint = temporalDepthFootprint(",
+                StringComparison.Ordinal);
+            Assert.True(loopEnd >= 0 && followedRead > loopEnd && nine > followedRead && footprintRead > nine,
+                "the nine texels are read after the 3x3 and the carried state, and before the depth test");
             int own = core.IndexOf("bool ownReprojected = ", StringComparison.Ordinal);
             int moved = core.IndexOf("bool nearerMoved = ", StringComparison.Ordinal);
             int band = core.IndexOf("bool band = historyValid", StringComparison.Ordinal);
@@ -457,8 +486,8 @@ namespace KhaozEngine.Tests.Render3D
             Assert.StartsWith("#version 450\n" + ShaderSources.TemporalResolveCoreGlsl, frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=0) out vec4 oColor;", frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=1) out vec4 oState;", frag, StringComparison.Ordinal);
-            Assert.Contains("oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved > 0.5, p.moved > 1.5), "
-                + "0.0, 1.0);", frag, StringComparison.Ordinal);
+            Assert.Contains("oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), 0.0, 1.0);", frag,
+                StringComparison.Ordinal);
             Assert.Contains("temporalResolvePixel(ivec2(gl_FragCoord.xy))", frag, StringComparison.Ordinal);
         }
 

@@ -511,6 +511,7 @@ public sealed partial class TileWorldClient : IDisposable
         goneLatest.Clear();
         liveLatest.Clear();
         decodedCombat.Clear();
+        ClearPreparations();
     }
 
     // The stepper the PREDICTION runs: <see cref="Simulator"/> with this client's own net id bound to it. The

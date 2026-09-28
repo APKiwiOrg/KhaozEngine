@@ -55,6 +55,7 @@ public sealed partial class TileWorldServer
     static PreparationRuntime? CreatePreparationRuntime(TileWorldServerConfig config, ReplicationRegistry registry)
     {
         if (config.CombatPreparationRules is null) return null;
+        ValidatePreparationBudgets(config);
         if (!registry.IsRegistered(TileProtocol.TileCombatPreparationStateTypeId))
             throw new ArgumentException("Enabled preparation requires TileCombatPreparationState registration.", nameof(registry));
         return new PreparationRuntime();

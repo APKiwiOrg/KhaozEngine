@@ -144,6 +144,7 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
         // spawned. See TileWorldServer.Bans.cs.
         if (RefuseBannedJoin(slot, accountId)) return;
         SpawnPlayer(slot, accountId, displayName);
+        JoinPreparationViewer(slot);
         // A connection that arrives DURING a drain is admitted and told, rather than refused: the grace is what a
         // player needs to finish what they are doing, and a rejoin inside it (a reconnect after a drop) is exactly
         // the case that needs the announcement it missed. The broadcast in BeginDrain went out before this session
@@ -193,6 +194,7 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
     // every Remove below is already a no-op on a missing key.
     void OnLeave(int slot, bool force = false)
     {
+        preparationViewers?.Remove(slot);
         // A player who was in combat is NOT removed at once: the body lingers in world, still stepped, still served
         // and still attackable, until the window lapses. That is what stops a losing fight being escaped by pulling
         // the plug. FORCED for an operator kick, for a drain and for a seat being recycled by a new connection,

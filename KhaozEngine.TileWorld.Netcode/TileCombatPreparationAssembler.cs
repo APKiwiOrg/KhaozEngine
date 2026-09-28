@@ -14,6 +14,8 @@ internal sealed class TileCombatPreparationAssembler
     ushort chunks;
     int nextChunk;
 
+    internal bool HasPending => tag != 0;
+
     public bool TryAddState(in TilePreparationChunkHeader header, IReadOnlyList<TileCombatPreparation> records,
         out TilePreparationStateFrame? complete)
     {

@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.14.0
+
+- `FollowCamera3D.FrameClock` lets a camera read in the update step and again through the render compute its
+  eye once a frame. A game that moved the target and then read the eye in update paid two eye computations and
+  two `BoomProbe` calls a frame, because `Scene3D.Begin` dropped the update's eye at render time. With a
+  per-frame id set, each computed eye is stamped with it, a read reuses the eye only under the same id and
+  inputs, and `BeginFrame` keeps an eye computed earlier in the same frame. A camera whose inputs never change
+  still recomputes once a frame, so the world moving behind its probe is seen on the next frame. A clock that
+  stops advancing falls back to the plain latch. Null, the default, leaves the camera unchanged
+  ([#1189](https://github.com/APKiwiOrg/KhaozEngine/issues/1189)).
+- `GameClock.FrameCount` counts `Update` calls, paused or not. `GameApp` ticks its clock once at the head of each
+  frame, before `OnUpdate`, so `() => Clock.FrameCount` is one id for a whole frame's update and draw
+  ([#1189](https://github.com/APKiwiOrg/KhaozEngine/issues/1189)).
+
 ## 20.13.0
 
 - Render3D's animation layer takes a skinned body's joints as a contract, so a second body shape reuses the

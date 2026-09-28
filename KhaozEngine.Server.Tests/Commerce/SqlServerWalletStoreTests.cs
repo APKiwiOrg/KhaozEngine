@@ -385,10 +385,11 @@ public sealed class SqlServerWalletStoreTests
         Assert.True(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "grant_schedule", "updated_at"));
     }
 
-    /// <summary>A schedule instant off the <c>datetime</c> grid. The store binds the instant as <c>datetime</c>, so it
-    /// is rounded to a 1/300 s tick on the way in, and the update time's no-change check compares that rounding with
-    /// what is stored. A rewrite of the same instant must compare equal and leave the update time alone, whether the
-    /// caller passes the instant it wrote or the one it read back. A real change on the same grid still moves it.</summary>
+    /// <summary>A schedule instant off the legacy <c>datetime</c> grid. The store binds the instant as
+    /// <c>DATETIME2(7)</c>, the column's own type, so it round trips exactly, and a rewrite of the same instant
+    /// compares equal and moves neither time. Bound as <c>datetime</c>, the instant was rounded to a 1/300 s tick and
+    /// an unchanged rewrite moved the update time, which is what this fact caught on a real server. A real change of
+    /// a few milliseconds still moves it.</summary>
     [SqlServerFact]
     public async Task Grant_schedule_rewrite_of_a_sub_second_instant_keeps_the_update_time()
     {
@@ -404,13 +405,11 @@ public sealed class SqlServerWalletStoreTests
         (DateTime? created, DateTime? updated) = await ScheduleTimesAsync(cs, account);
         Assert.Equal(updated, created);
         Assert.InRange(created ?? DateTime.MinValue, before, after);
-        DateTimeOffset readBack = (await store.GetNextAvailableAsync(account, Reward))!.Value;
-        Assert.NotEqual(instant, readBack);   // the rounding this fact is about did happen
+        // DATETIME2(7) holds 100 ns, a DateTimeOffset tick, so the column's precision is exact equality here.
+        Assert.Equal(instant, (await store.GetNextAvailableAsync(account, Reward))!.Value);
 
         await SqlServerTableProbe.WaitForServerClockPastAsync(cs, after);
         await store.SetNextAvailableAsync(account, Reward, instant);
-        Assert.Equal((created, updated), await ScheduleTimesAsync(cs, account));
-        await store.SetNextAvailableAsync(account, Reward, readBack);
         Assert.Equal((created, updated), await ScheduleTimesAsync(cs, account));
 
         before = await SqlServerTableProbe.ServerNowAsync(cs);

@@ -11,12 +11,16 @@ namespace KhaozEngine.Tests.Gpu
     /// zero.</summary>
     public enum FollowEnding { Stop, DampedStop, Reversal }
 
-    /// <summary>One run: the avatar's own pixels on each frame from the one before the turn frame to
-    /// <see cref="TemporalFollowStopRuns.After"/> frames after it, their mean luma error against the 4x reference, the
-    /// temporal error (flicker) and added change over the frame steps of that window, and the avatar's pixels on the
-    /// turn frame.</summary>
-    internal sealed record StopRun(string Name, double[] Errors, double Flicker, double Added, int Pixels,
-        double Seconds);
+    /// <summary>A set of the avatar's pixels in one run: their mean luma error against the 4x reference on each frame
+    /// from the one before the turn frame to <see cref="TemporalFollowStopRuns.After"/> frames after it, the temporal
+    /// error (flicker) and added change over the frame steps of that window, and the pixels on the turn
+    /// frame.</summary>
+    internal sealed record StopMeasure(double[] Errors, double Flicker, double Added, int Pixels);
+
+    /// <summary>One run: every pixel whose centre shows the avatar (<see cref="Whole"/>), and those more than the
+    /// reconstruction's reach inside its outline (<see cref="Inner"/>), whose own history no neighbouring surface's
+    /// rule touches.</summary>
+    internal sealed record StopRun(string Name, StopMeasure Whole, StopMeasure Inner, double Seconds);
 
     /// <summary>
     /// A followed avatar that stops, or turns back, after a walk (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). The
@@ -72,25 +76,38 @@ namespace KhaozEngine.Tests.Gpu
                 _references[scene.Name] = references = TemporalAcceptance.ReferenceSequence(W, H,
                     s => scene.Setup(s, TemporalUpscale.Native), scene.Draw, first, count);
             byte[][] frames = TemporalAcceptance.Sequence(W, H, s => scene.Setup(s, preset), scene.Draw, first, count);
-            var errors = new double[count];
+            var masks = new bool[count][];
+            for (int k = 0; k < count; k++) masks[k] = scene.Mask(first + k);
+            int reach = TemporalFollowCameraRuns.SpillPixels(preset);
+            var inner = new bool[count][];
+            for (int k = 0; k < count; k++) inner[k] = Erode(masks[k], reach);
+            double seconds = Stopwatch.GetElapsedTime(started).TotalSeconds;
+            Seconds += seconds;
+            return _runs[name] = new StopRun(name, Measure(frames, references, masks),
+                Measure(frames, references, inner), seconds);
+        }
+
+        // Each frame's mean luma error over its mask, and over each frame step the change against the reference's on
+        // the pixels in both frames' masks.
+        static StopMeasure Measure(byte[][] frames, byte[][] references, bool[][] masks)
+        {
+            var errors = new double[frames.Length];
             double flicker = 0, added = 0;
             long steps = 0;
             int pixels = 0;
-            bool[]? before = null;
-            for (int k = 0; k < count; k++)
+            for (int k = 0; k < frames.Length; k++)
             {
-                bool[] mask = scene.Mask(first + k);
                 double sum = 0;
                 int shown = 0;
-                for (int i = 0; i < mask.Length; i++)
+                for (int i = 0; i < masks[k].Length; i++)
                 {
-                    if (!mask[i]) continue;
+                    if (!masks[k][i]) continue;
                     int x = i % W, y = i / W;
                     float f = TemporalAcceptance.Luma(frames[k], W, x, y);
                     float r = TemporalAcceptance.Luma(references[k], W, x, y);
                     sum += MathF.Abs(f - r);
                     shown++;
-                    if (before is null || !before[i]) continue;
+                    if (k == 0 || !masks[k - 1][i]) continue;
                     float df = f - TemporalAcceptance.Luma(frames[k - 1], W, x, y);
                     float dr = r - TemporalAcceptance.Luma(references[k - 1], W, x, y);
                     flicker += MathF.Abs(df - dr);
@@ -99,12 +116,27 @@ namespace KhaozEngine.Tests.Gpu
                 }
                 errors[k] = shown == 0 ? 0 : sum / shown;
                 if (k == 1) pixels = shown;
-                before = mask;
             }
-            double seconds = Stopwatch.GetElapsedTime(started).TotalSeconds;
-            Seconds += seconds;
-            return _runs[name] = new StopRun(name, errors, steps == 0 ? 0 : flicker / steps,
-                steps == 0 ? 0 : added / steps, pixels, seconds);
+            return new StopMeasure(errors, steps == 0 ? 0 : flicker / steps, steps == 0 ? 0 : added / steps, pixels);
+        }
+
+        // The pixels of the mask whose every neighbour within reach, rows and columns, is in it.
+        static bool[] Erode(bool[] mask, int reach)
+        {
+            var inner = new bool[mask.Length];
+            for (int i = 0; i < mask.Length; i++)
+            {
+                int x = i % W, y = i / W;
+                bool all = mask[i];
+                for (int dy = -reach; dy <= reach && all; dy++)
+                    for (int dx = -reach; dx <= reach && all; dx++)
+                    {
+                        int xx = x + dx, yy = y + dy;
+                        all = xx >= 0 && xx < W && yy >= 0 && yy < H && mask[yy * W + xx];
+                    }
+                inner[i] = all;
+            }
+            return inner;
         }
 
         /// <summary>A followed walk and its ending: how far the box has walked and the camera's target has moved by

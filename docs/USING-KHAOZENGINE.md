@@ -1009,7 +1009,9 @@ here localizes.
   screen below (it reduces to `DesignBounds` when unletterboxed).
 - `GameClock`: `TimeScale`, `Pause()`/`Resume()`, `RealDeltaSeconds`/`ScaledDeltaSeconds`,
   `RealWallGapSeconds`/`LastRealTimestamp` (the suspend-robust wall-clock gap that drives `GameApp.OnResume`),
-  `Paused`/`Resumed` events. `GameApp.Clock` is updated for you each frame.
+  `Paused`/`Resumed` events, and `FrameCount` (since 20.14.0: one per `Update`, paused or not, the per-frame id a
+  `FollowCamera3D.FrameClock` reads). `GameApp.Clock` is updated for you once at the head of each frame, before
+  `OnUpdate`, so update and draw see the same `FrameCount`.
 
 ---
 
@@ -6403,12 +6405,47 @@ wrote yourself inherit a no-op and are completely unaffected. One ordering to kn
 render time, so a gameplay read of `Eye` (or `ScreenToRay`) taken in your update step, BEFORE that frame's `Begin`,
 answers from the last computation. With `Occlusion` set and no camera knob changed since, that is the previous
 frame's sweep. A follow camera whose target moves every frame recomputes anyway. If yours can stand still while
-the world moves around it and you pick from the update step, call `InvalidateEye()` after stepping physics.
+the world moves around it and you pick from the update step, call `InvalidateEye()` after stepping physics, or set
+a `FrameClock` (below), which makes the first read of every frame compute a fresh eye.
+
+**One computation for update and render reads (since 20.14.0, off by default).** A game that moves the target in
+its update step and then reads the eye there (an audio listener, keyboard steering, a cursor pick) pays twice a
+frame without help: its own read computes, then `Scene3D.Begin` drops that eye at render time and computes it
+again, with a second `BoomProbe` call. Set `FollowCamera3D.FrameClock` to a per-frame id and the pair costs one.
+`GameApp` updates `Clock` once at the head of each frame, before `OnUpdate`, so `GameClock.FrameCount` is the id to
+use, and update, the world prepare and the draw all read the same value:
+
+```csharp
+camera.FrameClock = () => Clock.FrameCount;   // once, where the camera is built
+```
+
+Each computed eye is stamped with the id. A read reuses the cached eye only under the same id and the same inputs,
+and `BeginFrame` keeps an eye computed earlier in the same frame. The staleness bound holds through the stamp: a
+clock that advances once per frame, BEFORE the frame's first camera read, such as `GameClock.FrameCount` under
+`GameApp`, never returns an eye from an earlier frame, so a camera whose inputs never change still recomputes once
+a frame and a wall that slides in behind the probe is seen on the next frame. The tick point is part of the
+contract. A counter that advances once per frame but between update and render (ticked in `OnPrepareWorld` or a
+draw callback) lets the next frame's update read reuse the previous render's eye. An extra advance later in a frame
+whose clock already ticked before its first read costs a recompute and nothing worse.
+
+A clock that stops advancing breaks that contract. `BeginFrame` can spot a stall only by comparing with the
+previous latch, so the next latch after a stall can keep an eye computed before it. A constant clock on a still
+camera read only in update for a few frames, then made the active camera, hands its first latch the eye from the
+first of those frames. Only the latches after that drop the cache as a camera with no clock does. The clock is
+called on every read, so keep it cheap and allocation-free. `InvalidateEye()` still drops the eye at once.
+
+The saving needs the update's reads to come after its last camera write, `FollowCameraController.Update`
+included. A camera read in update BEFORE it advances costs two computations a frame with a clock, where it costs
+one without: the clock makes that read compute a fresh eye instead of reusing last frame's, and the move then costs
+the render another. Leave `FrameClock` null there, or move the read after the camera's update. A camera read only
+through the render costs one computation a frame either way.
 
 Two cumulative counters (never reset, in the same shape as `GpuDeviceCounters`) show the load:
 `OcclusionSweepCount` is the sweeps this camera has issued, and `EyeComputeCount` is full eye computations whether
 or not the spring-arm is on. A healthy game shows one of each per rendered frame. A sweep count climbing much
-faster than the frame count means something is writing a camera knob between reads.
+faster than the frame count means something is writing a camera knob between reads. Two a frame from a camera read
+in update after it moves is the cost `FrameClock` removes. A clocked camera read in update before it moves also
+shows two a frame, which is that shape's cost under a clock (above), not a fault.
 
 ```csharp
 scene.CameraOverride = camera;   // set the camera first: Begin latches the ACTIVE one
@@ -7319,7 +7356,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.13.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.14.0" />
 ```
 
 ```csharp
@@ -13810,7 +13847,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.13.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.14.0" />
 ```
 
 ```csharp
@@ -13846,7 +13883,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.13.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.14.0" />
 ```
 
 ```csharp
@@ -14088,7 +14125,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.13.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.14.0" />
 ```
 
 ```csharp
@@ -18144,7 +18181,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.13.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.14.0" />
 </ItemGroup>
 ```
 

@@ -233,6 +233,13 @@ namespace KhaozEngine.Render3D
         // what BeginFrame is for (IIsoCamera3D.BeginFrame): Scene3D.Begin drops the cache at the top of every
         // frame, before LatchRenderOrigin takes this frame's first read.
         //
+        // That latch runs at render time, so an eye a consumer computed in its update step, after moving the
+        // target, is dropped and computed again (#1189). FrameClock is the opt-in cure, in
+        // FollowCamera3D.FrameClock.cs: the eye is stamped with a per-frame id the host ticks before update, a
+        // read only reuses an eye stamped with the current id, and BeginFrame keeps this frame's eye. The stamp is
+        // what tells the update's eye in frame N from the render's eye in frame N-1. "Keep it if anything was
+        // computed since the last latch" cannot, because the render's own read always was.
+        //
         // Single-threaded by construction, exactly like every other field on this class. A camera is a frame
         // object owned by the thread that renders it, so there are no locks here and none are wanted.
 
@@ -284,17 +291,10 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Drop the cached <see cref="Eye"/>, so the next read recomputes it. Idempotent and cheap. Call it after
         /// changing something the camera cannot see (moving an occluder, deforming the ground under the eye) if
-        /// that happens mid-frame. <see cref="BeginFrame"/> is the once-a-frame form and is what
-        /// <see cref="Scene3D"/> calls.
+        /// that happens mid-frame. It drops the eye with or without a <see cref="FrameClock"/>.
+        /// <see cref="BeginFrame"/> is the once-a-frame latch <see cref="Scene3D"/> calls.
         /// </summary>
         public void InvalidateEye() => _eyeValid = false;
-
-        /// <summary>
-        /// A new frame has started: drop the cached <see cref="Eye"/>. See
-        /// <see cref="IIsoCamera3D.BeginFrame"/> for the contract, and call it yourself once per frame if you drive
-        /// this camera without a <see cref="Scene3D"/>.
-        /// </summary>
-        public void BeginFrame() => InvalidateEye();
 
         /// <summary>
         /// The absolute world-space eye position: the geometric boom position, pulled in by the optional
@@ -307,11 +307,12 @@ namespace KhaozEngine.Render3D
         {
             get
             {
-                if (_eyeValid && CurrentEyeInputs() == _eyeInputs) return _eye;
+                if (_eyeValid && EyeIsFromThisFrame() && CurrentEyeInputs() == _eyeInputs) return _eye;
                 _eye = ComputeEye();
                 // Keyed AFTER the computation, which can raise the held shortfall. A key taken before it would
                 // miss on the next read and pay a second probe call in the same frame.
                 _eyeInputs = CurrentEyeInputs();
+                StampEyeFrame();
                 _eyeValid = true;
                 _eyeComputes++;
                 return _eye;

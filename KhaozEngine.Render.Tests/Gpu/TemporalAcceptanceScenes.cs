@@ -98,7 +98,7 @@ namespace KhaozEngine.Tests.Gpu
             return new GltfMesh(v, new ushort[] { 0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2 });
         }
 
-        static byte[] NoiseTexture()
+        internal static byte[] NoiseTexture()
         {
             var rgba = new byte[TextureSize * TextureSize * 4];
             for (uint y = 0; y < TextureSize; y++)

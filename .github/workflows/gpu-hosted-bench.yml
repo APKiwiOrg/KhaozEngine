@@ -8,9 +8,13 @@
 # file on main and nothing else. A dispatch names the ref to test, so the file never has to live on a branch.
 #
 # THE ADAPTER IS PINNED to the NVIDIA device on both APIs (KE_D3D11_ADAPTER and KE_VULKAN_DEVICE take a name
-# substring) and Vulkan is required (KE_VULKAN_REQUIRED), so a runner that only offers WARP or a software Vulkan
-# device fails loudly instead of timing a software rasterizer. The first step on each machine prints what the
-# driver exposes: a Tesla driver in TCC mode on Windows offers compute only, and Direct3D and Vulkan need WDDM.
+# substring) and Vulkan is required on the Vulkan legs (KE_VULKAN_REQUIRED). An unmet Direct3D 11 pin still lets
+# DXGI pick, which on a machine without a graphics driver is the Microsoft Basic Render Driver, so every leg first
+# runs the device report and fails unless it names the NVIDIA GPU. Nothing is timed on a software rasterizer.
+#
+# THE WINDOWS IMAGE SHIPS THE T4 IN TCC, the driver model that offers compute only (first probe, run 36380480461:
+# driver 471.11, Direct3D 11 on the Basic Render Driver, no Vulkan device). Direct3D and Vulkan need WDDM, so the
+# Windows legs ask the driver for WDDM and restart the device before building.
 #
 # Example: gh workflow run gpu-hosted-bench.yml -f ref=main -f filter=FullyQualifiedName~GpuCapabilitiesDiagTests
 name: gpu-hosted-bench
@@ -69,6 +73,7 @@ jobs:
       KE_VULKAN_DEVICE: NVIDIA
       KE_VULKAN_REQUIRED: ${{ matrix.backend == 'vulkan-native' && '1' || '' }}
       FILTER: ${{ inputs.filter }}
+      DEVICE_REPORT: FullyQualifiedName~GpuCapabilitiesDiagTests.LiveDeviceReportsNameAndSamplerFeatures
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -78,16 +83,26 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: GPU and driver (Windows)
+      - name: GPU, driver model and WDDM (Windows)
         if: runner.os == 'Windows'
         continue-on-error: true
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'
-          Get-CimInstance Win32_VideoController | Format-List Name, DriverVersion, AdapterCompatibility, Status
+          Get-CimInstance Win32_VideoController | Format-List Name, DriverVersion, Status
           & nvidia-smi
-          & nvidia-smi -q | Select-String -Pattern 'Product Name|Driver Version|Driver Model' -Context 0,2
-          Get-ChildItem "$env:SystemRoot\System32\vulkan-1.dll" -ErrorAction SilentlyContinue
+          $model = (& nvidia-smi --query-gpu=driver_model.current --format=csv,noheader) -join ''
+          Write-Host "driver model: $model"
+          if ($model -match 'TCC') {
+            & nvidia-smi -g 0 -dm 0
+            Get-PnpDevice -Class Display -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -like '*NVIDIA*' } | ForEach-Object {
+              Write-Host "restarting $($_.InstanceId)"
+              & pnputil /restart-device "$($_.InstanceId)"
+            }
+            Start-Sleep -Seconds 15
+            Write-Host "after the restart: $((& nvidia-smi --query-gpu=driver_model.current,driver_model.pending --format=csv,noheader) -join '')"
+            Get-CimInstance Win32_VideoController | Format-List Name, Status
+          }
 
       - name: GPU, driver and Vulkan devices (Linux)
         if: runner.os == 'Linux'
@@ -98,31 +113,55 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq libvulkan1 vulkan-tools
           ls -la /usr/share/vulkan/icd.d /etc/vulkan/icd.d 2>/dev/null || true
-          if ! ls /usr/share/vulkan/icd.d/nvidia_icd*.json /etc/vulkan/icd.d/nvidia_icd*.json >/dev/null 2>&1; then
-            major=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1 | cut -d. -f1)
-            echo "no NVIDIA Vulkan ICD, trying libnvidia-gl-${major}-server then libnvidia-gl-${major}"
-            sudo apt-get install -y -qq "libnvidia-gl-${major}-server" || sudo apt-get install -y -qq "libnvidia-gl-${major}" || true
-          fi
           vulkaninfo --summary 2>&1 | head -60 || true
 
-      - name: Build and test (Windows)
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force local-feed | Out-Null
+          & dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+          exit $LASTEXITCODE
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p local-feed
+          dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+
+      - name: Confirm the NVIDIA adapter (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'
-          New-Item -ItemType Directory -Force local-feed | Out-Null
-          & dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $report = & dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$env:DEVICE_REPORT" --logger "console;verbosity=detailed" *>&1
+          $report | Out-Host
+          $line = ($report | Select-String "device='" | Select-Object -First 1)
+          if (-not ("$line" -match 'NVIDIA|Tesla')) { Write-Host "::error::$env:KE_GRAPHICS_BACKEND is not on the NVIDIA GPU: $line"; exit 1 }
+
+      - name: Confirm the NVIDIA adapter (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          report=$(dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$DEVICE_REPORT" --logger "console;verbosity=detailed" 2>&1 || true)
+          echo "$report"
+          line=$(echo "$report" | grep -m1 "device='" || true)
+          if ! echo "$line" | grep -Eq 'NVIDIA|Tesla'; then echo "::error::$KE_GRAPHICS_BACKEND is not on the NVIDIA GPU: $line"; exit 1; fi
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
           & dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$env:FILTER" --logger "console;verbosity=detailed" *>&1 | Tee-Object -FilePath bench-output.log
           exit $LASTEXITCODE
 
-      - name: Build and test (Linux)
+      - name: Test (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -o pipefail
-          mkdir -p local-feed
-          dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
           dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$FILTER" --logger "console;verbosity=detailed" 2>&1 | tee bench-output.log
 
       - name: Upload the output

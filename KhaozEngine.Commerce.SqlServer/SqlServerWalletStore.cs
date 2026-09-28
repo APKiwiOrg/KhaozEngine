@@ -19,7 +19,12 @@ namespace KhaozEngine.Commerce.SqlServer;
 /// <para>Keys are CASE SENSITIVE, matching the InMemory and SQLite backends: tables this store creates pin their
 /// key columns to <c>Latin1_General_100_BIN2</c> instead of inheriting a database default that is usually
 /// case-insensitive. A database whose tables predate that pin keeps its own collation, so see the package README
-/// for the migration.</para></summary>
+/// for the migration.</para>
+/// <para>Every time is <c>DATETIME2</c> from the database clock. A <c>wallet_balance</c> row carries
+/// <c>created_at</c> beside the <c>updated_at</c> every credit and debit moves. A <c>grant_schedule</c> row carries
+/// <c>created_at</c> and an <c>updated_at</c> that moves only when a write changes the stored instant. The creation
+/// time is written by an insert alone. Tables an older build created gain these as nullable columns in place, and
+/// their rows keep NULL where no write since knows the time.</para></summary>
 public sealed class SqlServerWalletStore : IWalletStore, IGrantScheduleStore
 {
     private readonly string connectionString;
@@ -68,12 +73,18 @@ IF OBJECT_ID(N'dbo.wallet_balance', N'U') IS NULL
 CREATE TABLE dbo.wallet_balance (
   account_id NVARCHAR(200) {KeyCollation} NOT NULL, currency_id NVARCHAR(100) {KeyCollation} NOT NULL,
   amount BIGINT NOT NULL,
-  updated_at DATETIME2 NOT NULL, PRIMARY KEY(account_id, currency_id));
+  updated_at DATETIME2 NOT NULL, created_at DATETIME2 NULL, PRIMARY KEY(account_id, currency_id));
 IF OBJECT_ID(N'dbo.grant_schedule', N'U') IS NULL
 CREATE TABLE dbo.grant_schedule (
   account_id NVARCHAR(200) {KeyCollation} NOT NULL, reward_id NVARCHAR(200) {KeyCollation} NOT NULL,
-  next_available_utc DATETIME2 NOT NULL,
-  PRIMARY KEY(account_id, reward_id));";
+  next_available_utc DATETIME2 NOT NULL, created_at DATETIME2 NULL, updated_at DATETIME2 NULL,
+  PRIMARY KEY(account_id, reward_id));
+IF COL_LENGTH(N'dbo.wallet_balance', N'created_at') IS NULL
+ALTER TABLE dbo.wallet_balance ADD created_at DATETIME2 NULL;
+IF COL_LENGTH(N'dbo.grant_schedule', N'created_at') IS NULL
+ALTER TABLE dbo.grant_schedule ADD created_at DATETIME2 NULL;
+IF COL_LENGTH(N'dbo.grant_schedule', N'updated_at') IS NULL
+ALTER TABLE dbo.grant_schedule ADD updated_at DATETIME2 NULL;";
         cmd.ExecuteNonQuery();
     }
 
@@ -194,8 +205,10 @@ CREATE TABLE dbo.grant_schedule (
                     await updReader.DisposeAsync().ConfigureAwait(false);
                     await using SqlCommand ins = conn.CreateCommand();
                     ins.Transaction = tx;
-                    ins.CommandText = @"INSERT INTO dbo.wallet_balance(account_id, currency_id, amount, updated_at)
-                                         VALUES (@a, @c, @amt, SYSUTCDATETIME());";
+                    // One read of the clock, so the new row's creation and update times are the same instant.
+                    ins.CommandText = @"DECLARE @now DATETIME2 = SYSUTCDATETIME();
+                                         INSERT INTO dbo.wallet_balance(account_id, currency_id, amount, updated_at, created_at)
+                                         VALUES (@a, @c, @amt, @now, @now);";
                     Bind(ins, ("@a", a.Value), ("@c", c.Value), ("@amt", amount));
                     await ins.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                     newBal = amount;
@@ -289,12 +302,15 @@ CREATE TABLE dbo.grant_schedule (
         await using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
         await using SqlCommand cmd = conn.CreateCommand();
+        // A write of the instant already stored changes nothing, so it leaves the row, and its update time, alone.
         cmd.CommandText = @"
+DECLARE @now DATETIME2 = SYSUTCDATETIME();
 MERGE dbo.grant_schedule WITH (HOLDLOCK) AS t
 USING (SELECT @a AS account_id, @r AS reward_id) AS s
   ON t.account_id = s.account_id AND t.reward_id = s.reward_id
-WHEN MATCHED THEN UPDATE SET next_available_utc = @v
-WHEN NOT MATCHED THEN INSERT (account_id, reward_id, next_available_utc) VALUES (@a, @r, @v);";
+WHEN MATCHED AND t.next_available_utc <> @v THEN UPDATE SET next_available_utc = @v, updated_at = @now
+WHEN NOT MATCHED THEN INSERT (account_id, reward_id, next_available_utc, created_at, updated_at)
+  VALUES (@a, @r, @v, @now, @now);";
         Bind(cmd, ("@a", account.Value), ("@r", rewardId), ("@v", nextUtc.UtcDateTime));
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }

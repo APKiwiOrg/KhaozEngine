@@ -15,29 +15,67 @@ namespace KhaozEngine.WorldStore.Sqlite;
 public sealed record SqliteWorldStoreOptions(string ConnectionString);
 
 /// <summary>
-/// SQLite-backed <see cref="IWorldStore"/> over Microsoft.Data.Sqlite. One <c>world_store(key, data, updated_at)</c>
-/// table, bootstrapped on construction; upsert via <c>INSERT ... ON CONFLICT(key) DO UPDATE</c>; raw parameterized
-/// async ADO.NET, no EF/ORM. The embedded dev/test and single-node backend.
+/// SQLite-backed <see cref="IWorldStore"/> over Microsoft.Data.Sqlite. One
+/// <c>world_store(key, data, updated_at, created_at)</c> table, bootstrapped on construction; upsert via
+/// <c>INSERT ... ON CONFLICT(key) DO UPDATE</c>; raw parameterized async ADO.NET, no EF/ORM. The embedded dev/test and
+/// single-node backend.
+/// <para>Both times are unix milliseconds. <c>updated_at</c> is the last save's. <c>created_at</c> is written by the
+/// insert arm of the upsert alone, so a later save never moves it. A table an older build created gains a nullable
+/// <c>created_at</c> in place, and its rows keep NULL there, because no save after the insert knows when the row was
+/// created.</para>
 /// <para>The connection, the operation gate and the dispose are <see cref="SqliteStoreConnection"/>'s, shared with
 /// every other SQLite store in the engine. That is where the unpooled open and the dispose live, and why this store no
 /// longer carries its own copy of them (#731). What stays here is the schema and the SQL.</para>
 /// </summary>
 public sealed class SqliteWorldStore : IWorldStore, IEnumerableWorldStore, IDisposable
 {
-    private const string Bootstrap =
+    private const string CreateTable =
         "CREATE TABLE IF NOT EXISTS world_store (" +
-        "key TEXT PRIMARY KEY, data BLOB NOT NULL, updated_at INTEGER NOT NULL);";
+        "key TEXT PRIMARY KEY, data BLOB NOT NULL, updated_at INTEGER NOT NULL, created_at INTEGER NULL);";
+
+    private const string Upsert =
+        "INSERT INTO world_store (key, data, updated_at, created_at) VALUES ($k, $d, $t, $t) " +
+        "ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at;";
 
     private readonly SqliteStoreConnection db;
 
     public SqliteWorldStore(SqliteWorldStoreOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        db = new SqliteStoreConnection(options.ConnectionString, Bootstrap);
+        db = new SqliteStoreConnection(options.ConnectionString, string.Empty);
+        try
+        {
+            EnsureSchema(db);
+        }
+        catch
+        {
+            db.Dispose();
+            throw;
+        }
     }
 
     /// <summary>Convenience ctor taking the raw connection string.</summary>
     public SqliteWorldStore(string connectionString) : this(new SqliteWorldStoreOptions(connectionString)) { }
+
+    // Creates the table, or adds created_at to one an older build created, in one immediate transaction. Two processes
+    // opening one legacy file at once would otherwise both read the column as missing and the second add would fail
+    // on a duplicate column. BEGIN IMMEDIATE takes the write lock before the read, so the second waits and then finds
+    // the column. Runs from the constructor, before the store is published, so nothing else holds the connection.
+    private static void EnsureSchema(SqliteStoreConnection db)
+    {
+        using SqliteTransaction tx = db.Connection.BeginTransaction(deferred: false);
+        using SqliteCommand cmd = db.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = CreateTable;
+        cmd.ExecuteNonQuery();
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('world_store') WHERE name = 'created_at';";
+        if ((long)cmd.ExecuteScalar()! == 0)
+        {
+            cmd.CommandText = "ALTER TABLE world_store ADD COLUMN created_at INTEGER NULL;";
+            cmd.ExecuteNonQuery();
+        }
+        tx.Commit();
+    }
 
     public async Task<byte[]?> LoadAsync(string key, CancellationToken cancellationToken = default)
     {
@@ -56,9 +94,7 @@ public sealed class SqliteWorldStore : IWorldStore, IEnumerableWorldStore, IDisp
         ArgumentNullException.ThrowIfNull(data);
         using SqliteStoreLease _ = await db.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteCommand cmd = db.CreateCommand();
-        cmd.CommandText =
-            "INSERT INTO world_store (key, data, updated_at) VALUES ($k, $d, $t) " +
-            "ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at;";
+        cmd.CommandText = Upsert;
         cmd.Parameters.AddWithValue("$k", key);
         cmd.Parameters.AddWithValue("$d", data);
         cmd.Parameters.AddWithValue("$t", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
@@ -80,9 +116,7 @@ public sealed class SqliteWorldStore : IWorldStore, IEnumerableWorldStore, IDisp
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             using SqliteCommand cmd = db.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText =
-                "INSERT INTO world_store (key, data, updated_at) VALUES ($k, $d, $t) " +
-                "ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at;";
+            cmd.CommandText = Upsert;
             SqliteParameter pk = cmd.Parameters.Add("$k", SqliteType.Text);
             SqliteParameter pd = cmd.Parameters.Add("$d", SqliteType.Blob);
             cmd.Parameters.AddWithValue("$t", now);

@@ -104,11 +104,13 @@ Journal and catalog follow the version 1 to 2 pattern exactly, on both backends:
 
 - `journal_stream.created_at_utc`. Every stream is created by `InitializeAsync`, which in one statement inserts
   the stream, an initialization snapshot at `through_version = 0` and an initialization operation whose
-  `journal_operation_stream` row has `before_version = 0`, `after_version = 0` and `event_count = 0`. Its
-  creation time is therefore exactly either:
-  - the snapshot's `created_at_utc` while that snapshot has never been replaced (`through_version = 0`), or
-  - the initialization operation's `journal_operation.committed_at_utc` while that operation is retained.
-  Otherwise it is NULL.
+  `journal_operation_stream` row has `before_version = 0`, `after_version = 0` and `event_count = 0`. While
+  that snapshot has never been replaced (`through_version = 0`), its `created_at_utc` is exactly the stream's
+  creation time. Otherwise the column is NULL.
+  The initialization OPERATION is not used as a second source. Its result schema is the caller's, so nothing
+  marks it, and a commit may touch a fresh stream with no events. Once the initialization operation is purged,
+  such a commit has the same `before_version = 0`, `after_version = 0`, `event_count = 0` shape and a later
+  time, so taking the earliest retained operation could misdate the stream.
 - `journal_operation_stream.created_at_utc` is its operation's `committed_at_utc`, which is written in the same
   statement. A row whose operation was purged cannot exist, because purge deletes both.
 - `catalog_row`, `catalog_row_field`, `catalog_chunk` and `catalog_remap_rule` are written in the publish
@@ -122,9 +124,9 @@ Journal and catalog follow the version 1 to 2 pattern exactly, on both backends:
 
 Additive only. Every game repository has test fakes of `IMutationJournalStore`, so no member is added to it.
 
-- `JournalStreamEntry` from `IMutationJournalStreamListing` gains `CreatedAtUtc` (`DateTimeOffset?`) and
-  `UpdatedAtUtc` (`DateTimeOffset`), through a new constructor that keeps the existing one. The SQL Server,
-  SQLite and in-memory stores fill both.
+- `JournalStreamEntry` from `IMutationJournalStreamListing` gains `CreatedAtUtc` and `UpdatedAtUtc`, both
+  `DateTimeOffset?`, through a new constructor that keeps the existing one. The kept constructor leaves both
+  null rather than inventing a time. The SQL Server, SQLite and in-memory stores always fill `UpdatedAtUtc`.
 - `AccountRecord` gains optional `CreatedAtUtc` and `UpdatedAtUtc` (`DateTimeOffset?`) with null defaults, so
   existing constructions compile unchanged.
 - Commerce balance reads gain the same pair where a read record exists for the row.

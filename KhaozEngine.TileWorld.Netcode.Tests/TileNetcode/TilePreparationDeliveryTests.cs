@@ -293,6 +293,107 @@ public class TilePreparationDeliveryTests
         Assert.Equal(before.ImpactTick + 1, ended[0].ServerTick);
     }
 
+    [Theory]
+    [InlineData("target")]
+    [InlineData("attacker")]
+    [InlineData("kick")]
+    public void Cannot_reach_removal_after_a_result_does_not_create_a_conflicting_successor_terminal(string removal)
+    {
+        using var f = new PreparationDeliveryScenario();
+        var observer = f.AddClient();
+        (long attacker, long target) = f.Fight();
+        if (removal == "kick")
+        {
+            target = f.Client.LocalNetId;
+            Assert.True(f.Server.SetHealth(target, new TileHealth { Current = 100, Max = 100 }));
+            TileCombatResolveTests.Lock(f.Server, attacker, target);
+        }
+        f.Step();
+        Assert.True(f.Server.TryGetCombatPreparation(attacker, out var attempt));
+        f.Through(attempt.ImpactTick - 1);
+        int awards = 0, refusals = 0;
+        var results = new List<PreparedCombatEvent>();
+        var ended = new List<CombatPreparationEnded>();
+        f.Server.OnCombatEvent += _ => awards++;
+        observer.PreparedCombatEvent += results.Add;
+        observer.CombatPreparationEnded += ended.Add;
+        f.Server.OnCannotReach += (slot, missing) =>
+        {
+            Assert.Equal(1, slot);
+            Assert.Equal(long.MaxValue, missing);
+            Assert.Equal(1, awards);
+            refusals++;
+            if (removal == "kick") f.Server.Kick(0, TileServerReason.Kicked);
+            else Assert.True(f.Server.DespawnActor(removal == "target" ? target : attacker));
+        };
+        f.Server.Enqueue(1, 1, TileCommand.Attack(long.MaxValue, TileMoveMode.Walk));
+        f.Step();
+        Assert.Equal(1, refusals);
+        Assert.True(observer.IsJoined);
+        Assert.Equal(attempt.AttackId, Assert.Single(results).AttackId);
+        Assert.Equal(attempt.ImpactTick, results[0].ImpactTick);
+        Assert.Empty(ended);
+        Assert.False(f.Server.TryGetCombatPreparation(attacker, out _));
+        Assert.False(observer.TryGetCombatPreparation(attacker, out _));
+        f.Step();
+        Assert.Single(results);
+        Assert.Empty(ended);
+    }
+
+    [Fact]
+    public void Cannot_reach_callback_delay_is_included_in_the_first_announced_successor()
+    {
+        using var f = new PreparationDeliveryScenario();
+        (long attacker, _) = f.Fight();
+        f.Step();
+        Assert.True(f.Server.TryGetCombatPreparation(attacker, out var attempt));
+        f.Through(attempt.ImpactTick - 1);
+        int refusals = 0;
+        var results = new List<PreparedCombatEvent>();
+        f.Client.PreparedCombatEvent += results.Add;
+        f.Server.OnCannotReach += (_, _) =>
+        {
+            refusals++;
+            Assert.False(f.Server.TryGetCombatPreparation(attacker, out _));
+            Assert.True(f.Server.TryGetAttackReadyTick(attacker, out long ready));
+            Assert.Equal(attempt.ImpactTick + 14, ready);
+            Assert.True(f.Server.DelayAttack(attacker, 3));
+        };
+        f.Server.Enqueue(0, 1, TileCommand.Attack(long.MaxValue, TileMoveMode.Walk));
+        f.Step();
+        Assert.Equal(1, refusals);
+        Assert.Equal(attempt.AttackId, Assert.Single(results).AttackId);
+        Assert.True(f.Client.TryGetCombatPreparation(attacker, out var successor));
+        Assert.Equal(attempt.AttackId + 1, successor.AttackId);
+        Assert.Equal(1U, successor.Revision);
+        Assert.Equal(attempt.ImpactTick + 17, successor.ImpactTick);
+        Assert.Equal(successor.ImpactTick - 3, successor.PrepareTick);
+    }
+
+    [Fact]
+    public void Death_still_cancels_other_preparations_before_serving_the_killing_result()
+    {
+        using var f = new PreparationDeliveryScenario();
+        (long attacker, long target) = f.Fight();
+        long other = f.Server.SpawnActor(new TileCoord(20, 23, 0), new TileActorSpawn(1000, 14, TileDirection.S));
+        TileCombatResolveTests.Lock(f.Server, other, target);
+        Assert.True(f.Server.DelayAttack(other, 5));
+        f.Rules.Damage = 1000;
+        f.Step();
+        Assert.True(f.Server.TryGetCombatPreparation(attacker, out var attempt));
+        var results = new List<PreparedCombatEvent>();
+        var ended = new List<CombatPreparationEnded>();
+        f.Client.PreparedCombatEvent += results.Add;
+        f.Client.CombatPreparationEnded += ended.Add;
+        f.Through(attempt.ImpactTick);
+        Assert.True(Assert.Single(results).Outcome.Killed);
+        Assert.Equal(other, Assert.Single(ended).AttackerNetId);
+        Assert.Equal(attempt.ImpactTick, ended[0].ServerTick);
+        Assert.Equal(TileCombatPreparationEndReason.ParticipantUnavailable, ended[0].Reason);
+        Assert.False(f.Client.TryGetCombatPreparation(attacker, out _));
+        Assert.False(f.Client.TryGetCombatPreparation(other, out _));
+    }
+
     sealed class Oversized<T> : IReadOnlyList<T>
     {
         public int Count => TileProtocol.MaxPreparationRecords + 1;

@@ -206,8 +206,9 @@ public sealed partial class TileWorldServer
 
     void FinishPreparationCombat()
     {
-        if (preparation is null) return;
-        // Any future attempt affected by a death or a game's apply callback ends before this tick is served.
+        // Preserve ResolveCombat's no-roll early return while deferring its final work past broken-lock callbacks.
+        if (preparation is null || rollOrder.Count == 0) return;
+        // Recheck after deaths, apply callbacks and broken-lock callbacks, before this tick is served.
         foreach (long netId in actorNetIds) RecheckPreparation(netId);
         foreach (long netId in netIdBySlot.Values) RecheckPreparation(netId);
         foreach (PreparedCombatEvent result in preparation.Results)

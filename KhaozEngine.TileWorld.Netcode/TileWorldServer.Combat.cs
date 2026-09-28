@@ -331,7 +331,6 @@ public sealed partial class TileWorldServer
             // COLLECTED here and despawned after the serve. See ReapDeadActors for the whole reason.
             if (slot < 0 && actorNetIds.Contains(netId)) deadActors.Add(netId);
         }
-        FinishPreparationCombat();
     }
 
     // Tick step 5b: the despawn half of an ACTOR's death, held back until every client has been served.

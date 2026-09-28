@@ -213,6 +213,9 @@ public sealed partial class TileWorldServer
         //     out of every viewer's frame. See ReapDeadActors.
         ResolveCombat();
         ReportBrokenLocks();
+        // CannotReach callbacks may remove participants or delay the next attack. Create successors only after
+        // those callbacks, so an unannounced successor cannot be cancelled ahead of this tick's older result.
+        FinishPreparationCombat();
 
         // 5. Serve each client its home-cell area of interest, filtered to its own plane.
         long serveEpoch = ++interestServeEpoch;

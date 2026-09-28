@@ -42,6 +42,12 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   observable.
 - Player-facing text resolves through `StringId` and the localization catalog. Prefer `LocalizedText`
   at GUI sinks. Developer-only output and non-localizable tokens use the explicit raw escape hatch.
+- Every engine table records when each row was created, and every table whose rows change after insert
+  also records when each row last changed. The store sets both in the statement that writes the row,
+  from the clock it stamps its other times with, never through a column default. A column that already
+  holds the insert time is the creation time. A migration gives a legacy row an exact time it can prove
+  or NULL, never a guess. `journal_snapshot`, replaced whole by compaction, is the one exception. See
+  [`design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md`](design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md).
 
 ### File-size ratchet
 

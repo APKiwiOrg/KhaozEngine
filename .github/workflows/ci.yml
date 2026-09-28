@@ -308,11 +308,12 @@ jobs:
   # KE_SQLSERVER_TEST_CONNSTRING and KE_COMMERCE_SQLSERVER every one of them SKIPS, so build-test-pack proves
   # nothing about KhaozEngine.WorldStore.SqlServer or KhaozEngine.Commerce.SqlServer. The journal facts reset the
   # whole journal and rotate database-global state, so they insist on "-journal-test-" in the database name, and
-  # the world store conformance shares that database. The commerce facts have no name guard and get a database
-  # of their own. The service's default collation is case-insensitive, which is the deployment the wallet's
-  # pinned column collation exists for. Same gating and standing as catalog-sqlserver: tags and manual dispatch
-  # always run it, a push or a pull request only when the diff touches the world store or commerce packages,
-  # their server tests, the package pins or this workflow, and it does not gate the publish leg.
+  # the world store conformance shares that database. The commerce facts get a database of their own, and the one
+  # that rebuilds the wallet tables insists on "-commerce-test-" in its name. The service's default collation is
+  # case-insensitive, which is the deployment the wallet's pinned column collation exists for. Same gating and
+  # standing as catalog-sqlserver: tags and manual dispatch always run it, a push or a pull request only when the
+  # diff touches the world store or commerce packages, their server tests, the package pins or this workflow, and
+  # it does not gate the publish leg.
   server-sqlserver:
     runs-on: ubuntu-26.04
     timeout-minutes: 20

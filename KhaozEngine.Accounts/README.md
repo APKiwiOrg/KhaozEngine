@@ -13,11 +13,11 @@ HTTP and no third-party dependency. Durable backends are opt-in sibling packages
 | Type | What it does |
 |---|---|
 | `IAccountStore` | `FindOrCreateAsync(AccountSignIn)`, `FindAsync(subject)`, `ListAsync(afterSubject, limit)` (keyset pages in ordinal order), `ListBannedAsync()` (every FILED ban, lapsed included), and the writes `SetWhitelistedAsync`, `BanAsync`, `UnbanAsync`. |
-| `AccountRecord` | `Subject`, `DisplayName` (null when the provider never gave one), `Whitelisted`, `Ban` (the filed ban or null), and `IsBanActive(now)`. |
+| `AccountRecord` | `Subject`, `DisplayName` (null when the provider never gave one), `Whitelisted`, `Ban` (the filed ban or null), `CreatedAtUtc` and `UpdatedAtUtc` (UTC, null on a row older than the store recording them), and `IsBanActive(now)`. |
 | `AccountBan` | `Reason`, `Until` (null is permanent, UTC in the engine stores), and `IsActive(now)`. |
 | `AccountSignIn` | What a VERIFIED sign-in hands the store: `ProviderId`, `ProviderSubject`, `DisplayName`, `Claims`, `At`. |
 | `AccountStoreRules` | The rules every engine store applies alike: `MintSubject`, `ValidateBanReason`, `IsAdmissibleSubject`, the reserved `guest:` prefix and the length limits. |
-| `InMemoryAccountStore` | The dependency-free reference store for tests, tools and a local development host. |
+| `InMemoryAccountStore` | The dependency-free reference store for tests, tools and a local development host. Its `TimeProvider` init property is the clock its row times come from. |
 | `AccountBanStore` | The ONE `IBanStore` over an account store: a cached `IsBanned` for the host thread, writes to the store first, and `LoadAsync` to reload. |
 
 ## The store contract
@@ -32,6 +32,11 @@ HTTP and no third-party dependency. Durable backends are opt-in sibling packages
 - **A timed ban stays filed after it lapses.** `AccountRecord.Ban` is the filed ban and `IsBanActive(now)` is the
   gate, so a lapsed ban admits the player with no unban and the operator still sees the history. `UnbanAsync`
   clears the reason and the expiry. `BanAsync` on a banned account replaces both.
+- **Row times.** A new account's `CreatedAtUtc` and `UpdatedAtUtc` are one instant from the store's clock. The
+  creation time is never written again. The update time moves only when a write changes a stored value, so a repeat
+  sign-in under the same name, or a whitelist or ban write that changes nothing, moves neither time. A row older than
+  the time columns reads both as null until a write changes it, which sets the update time only. Both times take
+  part in `AccountRecord` equality, so a record read back from a store does not equal one built by hand without them.
 - **Subjects compare by code point.** Two subjects differing only in case are two accounts, and listings run in
   ordinal order. Page with `ListAsync(afterSubject: lastPage[^1].Subject)` until a page comes back empty.
 - **Refusals are `ArgumentException`**, thrown before anything is written, and their messages never echo the

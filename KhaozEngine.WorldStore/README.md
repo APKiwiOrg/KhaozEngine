@@ -92,7 +92,7 @@ provider's tables. The in-memory, SQLite, and SQL Server stores implement it. Fe
 
 | Method | Contract |
 |---|---|
-| `ListStreamsAsync(query, ct)` | Reads one bounded page of stream keys and head versions in ordinal key order, optionally restricted to an ordinal, case-sensitive key prefix. Listing never writes. |
+| `ListStreamsAsync(query, ct)` | Reads one bounded page of stream keys, head versions, and creation and update times in ordinal key order, optionally restricted to an ordinal, case-sensitive key prefix. Listing never writes. |
 
 ```csharp
 var query = new JournalStreamQuery(maxStreams: 500, keyPrefix: "player/");
@@ -110,6 +110,14 @@ while (true)
 back as `afterStreamKey` with the same prefix. Pages are keyset continuations rather than one snapshot, so a stream
 created ahead of the continuation key appears on a later page and one created behind it does not. A page holds at
 most `JournalStreamQuery.MaximumStreamsPerPage` (1,000) streams.
+
+Each `JournalStreamEntry` also carries `CreatedAtUtc` and `UpdatedAtUtc`, both nullable UTC times. The creation time
+is when `InitializeAsync` created the stream. It is null for a stream older than journal schema version 3 whose
+initialization snapshot compaction had already replaced, and for one an older writer created during the upgrade,
+because nothing proves when those were created. The update time moves when the stream is initialized, when a commit
+appends events to it, and when a compaction with a prune boundary runs over it. An eventless read constraint and a
+snapshot-only compaction leave it alone. The in-memory, SQLite, and SQL Server stores always fill it, so it is null
+only from the two-argument constructor a test fake may still use.
 
 A sweep usually points at a source that must not be written to. Both SQL providers open read only with
 `SchemaMode = ReadOnly` (`SqliteJournalSchemaMode.ReadOnly` or `SqlServerJournalSchemaMode.ReadOnly`). That mode
@@ -191,7 +199,7 @@ uses the `KJIF`, `KJEF`, and `KJNF` tagged binary envelopes. A game should not i
 | `JournalResetResult` | The store epoch a journal reset kept, and the rows it deleted from each of the six data tables. `RowsDeleted` totals them and `Summary` is one operator line. |
 | `JournalStreamQuery` | Page size from 1 through 1,000, optional key prefix, and optional exclusive `afterStreamKey` continuation. |
 | `JournalStreamPage` | Streams in ordinal key order and a continuation key, which is null when the listing is complete. |
-| `JournalStreamEntry` | Stream key and current head version. |
+| `JournalStreamEntry` | Stream key, current head version, and the nullable UTC creation and update times. |
 
 Recovery loads the latest snapshot, verifies it, then reads events in bounded pages. The first page captures a
 fixed `ThroughVersion`. Every continuation repeats that value. A sequence gap, checksum failure, or unsupported
@@ -433,10 +441,10 @@ continuity, reconcile external consumers, then reopen writers. This makes every 
 ### Journal reset
 
 A release that wipes all game data empties the journal with `SqliteJournalReset.ResetAsync` or
-`SqlServerJournalReset.ResetAsync`. Each takes a connection string, validates the version-two schema without creating
+`SqlServerJournalReset.ResetAsync`. Each takes a connection string, validates the version-three schema without creating
 or migrating it, and deletes every row of `journal_stream`, `journal_event`, `journal_snapshot`,
 `journal_projection`, `journal_operation`, and `journal_operation_stream` in one transaction. `journal_metadata` is
-left exactly as it was, so the schema version, the store epoch, and the metadata timestamp survive.
+left exactly as it was, so the schema version, the store epoch, and the metadata row's times survive.
 
 ```csharp
 JournalResetResult reset = await SqlServerJournalReset.ResetAsync(connectionString);

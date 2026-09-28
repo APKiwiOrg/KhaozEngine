@@ -11,8 +11,11 @@ await store.SaveAsync("player:42", bytes);
 byte[]? loaded = await store.LoadAsync("player:42");
 ```
 
-One `world_store(key, data, updated_at)` table, bootstrapped on construction; upsert via
-`INSERT ... ON CONFLICT(key) DO UPDATE`; raw parameterized async ADO.NET (no EF/ORM). Dispose the store to
+One `world_store(key, data, updated_at, created_at)` table, bootstrapped on construction, with an upsert through
+`INSERT ... ON CONFLICT(key) DO UPDATE` and raw parameterized async ADO.NET (no EF/ORM). Both times are Unix
+milliseconds. `updated_at` is the last save's, and `created_at` is written only by the insert, so a later save never
+moves it. Construction adds a nullable `created_at` to a table an older build created, in one immediate transaction,
+and the rows already there keep NULL in it because nothing proves when they were created. Dispose the store to
 close the connection. The connection is never pooled, so the OS handle on the database file is genuinely released
 on dispose rather than parked in the provider's pool, and the file can be deleted, rotated or exclusively opened
 straight after (since 17.41.0). For production / Azure SQL use
@@ -29,7 +32,8 @@ epoch, stream heads, immutable events, current projection sections, snapshots, r
 ranges in normalized tables. Writes use one immediate transaction under the connection lease. Auto-create enables
 WAL only for an absent journal or after validating an existing supported schema. Validate-only verifies WAL without
 changing the journal mode. Foreign keys and a configurable busy timeout are enabled for the held connection.
-`ListStreamsAsync` reads one bounded page from the `journal_stream` key range the prefix selects.
+`ListStreamsAsync` reads one bounded page from the `journal_stream` key range the prefix selects, with each stream's
+creation and update times.
 
 ```csharp
 using KhaozEngine.WorldStore.Journal;
@@ -45,22 +49,36 @@ using var journal = new SqliteMutationJournalStore(
     });
 ```
 
-The default `AutoCreate` schema mode creates a fresh version-two journal for development and new deployments. It
-also migrates a valid version-one journal by adding a database-owned operation-retention timestamp. Existing replay
-rows start a fresh retention horizon at migration time, so upgrade cannot expire one early.
-The migrated schema also stamps inserts from an already-running version-one writer with SQLite time. Restarted hosts
-must support version two. A database trigger rejects operation deletion unless current maintenance opens its
-connection-local guard inside the purge transaction. A still-running version-one maintenance host therefore rolls
-back both its child and parent deletes after migration.
+The default `AutoCreate` schema mode creates a fresh version-three journal for development and new deployments. It
+also migrates an older valid journal in place, version one through version two to version three in one open. The
+version-one step adds a database-owned operation-retention timestamp. Existing replay rows start a fresh retention
+horizon at migration time, so upgrade cannot expire one early.
+The migrated schema also stamps inserts from an already-running version-one writer with SQLite time. A database
+trigger rejects operation deletion unless current maintenance opens its connection-local guard inside the purge
+transaction. A still-running version-one maintenance host therefore rolls back both its child and parent deletes
+after migration.
+
+Migration `sqlite-journal-v3-row-timestamps` gives every journal table a row creation time. It adds a nullable
+`created_at_utc` in Unix milliseconds to `journal_metadata`, `journal_stream`, `journal_operation_stream`, and
+`journal_projection`, backfills, and moves the schema version last, in one immediate transaction.
+`journal_event.committed_at_utc` and `journal_operation.committed_at_utc` already are their rows' insert times.
+`journal_snapshot` is the one exception: compaction replaces its row whole, so its `created_at_utc` is when the held
+snapshot was taken. The tables whose rows change, `journal_metadata`, `journal_stream`, and `journal_projection`,
+already carry `updated_at_utc`. A legacy row gets an exact time or NULL. A stream takes its initialization snapshot's
+time only while compaction has never replaced that snapshot, a receipt stream range takes its operation's commit
+time, and every other legacy row stays NULL. A version-two writer still running during the upgrade keeps working,
+and the rows it inserts have no creation time. Restarted hosts must support version three, because an older engine
+refuses a version-three journal, so rolling back past this upgrade needs a restore.
+
 Production hosts can select `SqliteJournalSchemaMode.ValidateOnly` through
 `SqliteMutationJournalStoreOptions.SchemaMode` when the application identity has no DDL permission. Missing or
-unsupported schemas fail startup with `SchemaMismatch` and name the required migration. Version-two validation
+unsupported schemas fail startup with `SchemaMismatch` and name the required migration. Version-three validation
 checks the complete table and index definitions before normal store mutation. Operation retention is independent
 from event retention, so purging replay receipts leaves committed events in place.
 
 `SqliteJournalSchemaMode.ReadOnly` is for operator tools that read a database which must not change, such as a copy
 of production loaded by a release rehearsal. The store opens its connection with `Mode=ReadOnly` whatever the
-connection string says, so SQLite itself rejects a write. It validates the version-two schema with no DDL. A missing
+connection string says, so SQLite itself rejects a write. It validates the version-three schema with no DDL. A missing
 file fails with `Unavailable` and creates no file. A missing, older, or newer schema fails with `SchemaMismatch` and
 is never created or migrated. The WAL check is skipped because only a writer depends on it, and the journal mode is
 left as it is. `InitializeAsync`, `CommitAsync`, `CompactAsync`, `PurgeOperationsAsync`, `PurgeOperationsByAgeAsync`,
@@ -70,14 +88,14 @@ and `ListStreamsAsync` work as usual. The database file is never written. On a W
 
 `BusyTimeout` controls how long the held connection waits on a locked database. `MinimumRetryHorizon` prevents
 maintenance from deleting replay rows which may still be retried. `Limits` can lower any core journal maximum.
-`TimeProvider` controls public journal timestamps for deterministic hosts and tests. It does not control
-`PurgeOperationsByAgeAsync`, whose retention timestamps and cutoff come from SQLite. The older cutoff purge is also
-clipped to SQLite UTC minus `MinimumRetryHorizon`. Dispose the journal to close its connection and release the
-database file.
+`TimeProvider` controls public journal timestamps and the row times a write stamps, for deterministic hosts and
+tests. It does not control `PurgeOperationsByAgeAsync`, whose retention timestamps and cutoff come from SQLite. The
+older cutoff purge is also clipped to SQLite UTC minus `MinimumRetryHorizon`. Dispose the journal to close its
+connection and release the database file.
 
 A writing store's process identity needs read, write, create, lock, and rename access to the database, WAL, and
 shared-memory files. A `ReadOnly` store needs read access to the database file, plus existing or creatable `-wal` and `-shm` files
-when the database is in WAL mode. In `ValidateOnly`, deploy the version-two schema with a controlled migration process before boot and keep the
+when the database is in WAL mode. In `ValidateOnly`, deploy the version-three schema with a controlled migration process before boot and keep the
 runtime directory writable for SQLite transactions. A missing, partial, older, or newer schema stops startup with
 `JournalStoreException` kind `SchemaMismatch`.
 
@@ -103,7 +121,7 @@ JournalResetResult reset = await SqliteJournalReset.ResetAsync(
     lockTimeout: TimeSpan.FromSeconds(5));
 ```
 
-The reset opens its own connection and validates the version-two schema first, as `ValidateOnly` does. A missing file
+The reset opens its own connection and validates the version-three schema first, as `ValidateOnly` does. A missing file
 fails with `Unavailable` and no file is created. A file with no journal, or an older one, fails with `SchemaMismatch`
 and is never created or migrated. A plain `Data Source=:memory:` database belongs to the connection that opened it,
 so the reset finds no journal there. The reset takes the file's write lock, the lock every journal writer holds for

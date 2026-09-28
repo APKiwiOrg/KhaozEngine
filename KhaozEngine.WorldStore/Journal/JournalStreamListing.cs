@@ -65,8 +65,8 @@ public sealed class JournalStreamEntry
     /// <summary>When the stream was initialized, or null when the store cannot prove it.</summary>
     public DateTimeOffset? CreatedAtUtc { get; }
 
-    /// <summary>When the stream was initialized, last gained events or last had its retained floor moved by
-    /// compaction. A snapshot-only compaction does not move it.</summary>
+    /// <summary>When the stream was initialized, last gained events or last went through a compaction with a prune
+    /// boundary, whether or not that moved its retained floor. A snapshot-only compaction does not move it.</summary>
     public DateTimeOffset? UpdatedAtUtc { get; }
 
     private static DateTimeOffset? Utc(DateTimeOffset? value, string paramName)

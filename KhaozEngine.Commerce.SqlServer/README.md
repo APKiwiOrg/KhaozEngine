@@ -33,6 +33,15 @@ ledger row. The only `MERGE ... WITH (HOLDLOCK)` in the store is in `SetNextAvai
 not on either wallet path. A duplicate-key race on the ledger insert (`SqlException` 2601/2627) reads the winning
 receipt's signed delta, reason, and `post_balance`, then returns either an exact replay or a conflict.
 
+Every row time is `DATETIME2` from the database clock. `wallet_ledger.created_at` is each append's time. A
+`wallet_balance` row carries `created_at` beside the `updated_at` every credit and debit moves, and a
+`grant_schedule` row carries `created_at` and an `updated_at` that moves only when a write changes the stored
+instant. Construction adds any of those three columns a table an older build created lacks, as nullable columns
+behind `IF COL_LENGTH(...) IS NULL` guards, and the rows already there keep NULL where no write since knows the
+time. The first construction after that upgrade therefore needs `ALTER` rights on both tables. Start one host
+first, because two hosts constructing the store at once against older tables can race the column add
+([#1195](https://github.com/APKiwiOrg/KhaozEngine/issues/1195)).
+
 Opt-in: pulls `Microsoft.Data.SqlClient` without touching the dependency-free `KhaozEngine.Commerce` core. Not
 bundled in the `Server` umbrella.
 
@@ -95,7 +104,11 @@ any database created after this pin.
 ## Before first real-money use
 
 Run the gated tests (`KE_COMMERCE_SQLSERVER=<conn> dotnet test ...`) against a real (Azure) SQL instance before
-trusting this store with real money. They are skipped, not run, in a normal local/CI pass. This exercises the
+trusting this store with real money. CI's `server-sqlserver` job runs them against a disposable SQL Server 2022
+service on tags, manual runs, and pushes or pull requests that touch the world store or commerce packages, and fails
+unless every selected fact executed. Elsewhere they skip. Point the variable at a database whose name contains
+`-commerce-test-`, such as `khaoz-commerce-test-local`, because the fact that proves the column adds on older
+tables drops and rebuilds `wallet_balance` and `grant_schedule` and refuses any other database. This exercises the
 composite unique index, replay and conflict classification, the atomic-update paths for both credit and debit,
 and the 2601/2627 duplicate-key recovery under an actual server. Repeat the parallel credit and debit fact to
 exercise the receipt-range claim and balance update under sustained contention.

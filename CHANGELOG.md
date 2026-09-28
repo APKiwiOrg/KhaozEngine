@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.14.1
+## 20.15.0
 
 - On Windows every texture now samples its mip chain, so distant textures stop aliasing and the ground filters as
   designed through the anisotropy and mip bias of `TerrainSamplerConfig`. The native Direct3D 11 backend handed the
@@ -16,6 +16,49 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   and Metal. The backend now passes the driver a 52-byte description in the header's layout. One test pins that
   layout, and another pins the size of every Vortice struct passed to the driver by address. The engine re-baked
   six of its Direct3D 11 goldens ([#1192](https://github.com/APKiwiOrg/KhaozEngine/issues/1192)).
+- Every engine table now records when each row was created, and every table whose rows change after insert also
+  records when each row last changed. The store sets both in the statement that writes the row, from the clock it
+  already stamps its other times with, and a column that already held the insert time, such as
+  `journal_event.committed_at_utc` or `catalog_version.published_at_utc`, serves as the creation time. The journal
+  moves to schema version 3 through migrations `sqlserver-journal-v3-row-timestamps` and
+  `sqlite-journal-v3-row-timestamps`, and the catalog moves to schema version 3 through `catalog-v3-row-timestamps`
+  on both backends. `AutoCreate` migrates a version 1 or 2 database in place in one open, and `ValidateOnly`, like the
+  journal's `ReadOnly`, refuses it by naming the migration. The accounts, commerce and world store tables widen in
+  place with guarded nullable column adds ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+- A legacy row gets an exact time or NULL, never a guess. `journal_stream.created_at_utc` comes only from the
+  stream's initialization snapshot, and only while compaction has never replaced it. `journal_operation_stream` rows
+  take their operation's commit time. `catalog_row`, `catalog_row_field`, `catalog_chunk` and `catalog_remap_rule`
+  rows take the publish time of the version that wrote them, and a closed catalog row's update time is the publish
+  time of the version that replaced it. Every other new column on an existing row is NULL. `journal_snapshot` is the
+  one table left as it is, because compaction overwrites its row whole and its `created_at_utc` is already when the
+  held snapshot was taken ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+- A new update time moves only when a write changes a stored value, so a repeat sign-in under the same name, an
+  account write that changes nothing, a grant schedule write of the instant already stored and a boot that syncs
+  unchanged catalog types move no time. A journal stream's update time moves when a commit appends events and when
+  a compaction with a prune boundary runs, and a snapshot-only compaction leaves it. The update times that already
+  existed keep their meaning, so `world_store.updated_at` is still the time of the last save
+  ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+- **A database on journal or catalog schema version 3 is refused by an older engine, so rolling a game back past
+  this pin bump needs a database restore.** Version 2 was the same
+  ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+- Upgrade steps. A hosted catalog that opens `ValidateOnly` is refused at version 2, so its deploy runs its catalog
+  schema migration step, one `AutoCreate` open under a migration identity, before the server starts. A
+  `ValidateOnly` accounts host is refused until one `AutoCreate` open adds `created_at_utc` and `updated_at_utc` to
+  the account table. The first construction of `SqlServerWalletStore` and `SqlServerWorldStore` after the upgrade
+  adds their new columns with `ALTER TABLE`, so it needs `ALTER` rights, and two hosts constructing at once against
+  older tables can race that add ([#1195](https://github.com/APKiwiOrg/KhaozEngine/issues/1195)). The journal and
+  catalog backfills rewrite whole tables inside the schema transaction. On SQL Server each journal migration
+  statement runs under `CommandTimeout`, 30 seconds by default, so a very large journal may need a longer
+  `CommandTimeout` for the one open that migrates it, and each catalog migration statement runs under the schema's
+  fixed 60-second timeout ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+- The API change is additive. `JournalStreamEntry`, returned by `IMutationJournalStreamListing`, gains nullable
+  `CreatedAtUtc` and `UpdatedAtUtc` and a four-argument constructor. The kept two-argument constructor leaves both
+  null, so a game's test fake compiles unchanged, and the in-memory, SQLite and SQL Server listings always fill
+  `UpdatedAtUtc`. `AccountRecord` gains `CreatedAtUtc` and `UpdatedAtUtc` init properties, null by default, which
+  also take part in its record equality, so a record read back from a store no longer equals one built by hand
+  without them. `InMemoryAccountStore.TimeProvider`, `AccountTableOptions.TimeProvider` and
+  `SqlServerAccountStoreOptions.TimeProvider` set the clock the account times come from, the system clock by
+  default ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
 
 ## 20.14.0
 

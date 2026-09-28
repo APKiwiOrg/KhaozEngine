@@ -39,13 +39,28 @@ never point at a version that does not exist.
 `ContentAuthoringSchemaMode.ValidateOnly` refuses an empty or mismatched database rather than creating
 anything, which is what a production host sets so a typo in a connection string cannot silently create a
 second empty catalog and serve it. A mismatch throws `ContentAuthoringException` with reason
-`schema-mismatch`, naming the object and the migration `catalog-v2-content-upgrade-ledger`.
+`schema-mismatch`, naming the object and the migration `catalog-v3-row-timestamps`.
 
-Schema version 2 adds `catalog_content_upgrade`, the content upgrade ledger behind `IContentUpgradeLedger`.
-A version 1 file opened under `AutoCreate` is MIGRATED in place, in one transaction that adds that one table
-and changes nothing else, so the rows, the history, the audit, the open draft, the pin and the store epoch all
-survive it unchanged. Under `ValidateOnly` a version 1 file is refused instead, naming the migration. An
+Schema version 2 adds `catalog_content_upgrade`, the content upgrade ledger behind `IContentUpgradeLedger`. An
 applied ledger row is written inside the publish commit, so a duplicate upgrade id refuses the whole publish.
+
+Schema version 3 gives every catalog table a row creation time and every table whose rows change an update time,
+as nullable `INTEGER` Unix milliseconds named `created_at_utc` and `updated_at_utc`. A column that already is the
+insert time serves as the creation time with no twin: `catalog_version.published_at_utc`,
+`catalog_audit.occurred_at_utc`, `catalog_content_upgrade.recorded_at_utc` and `catalog_draft.opened_at_utc`.
+`catalog_draft_edit.edited_at_utc` is rewritten by every re-edit, so it is that table's update time. The store sets
+each time in the statement that writes the row. The rows a publish writes carry the version's publish time, and a
+type sync, an id mark or a draft write that changes no stored value moves no update time.
+
+An older file opened under `AutoCreate` is MIGRATED in place, version 1 through version 2 to version 3 in one open,
+each step one transaction. Version 1 to 2 adds the ledger table and changes nothing else. Migration
+`catalog-v3-row-timestamps` adds the time columns, backfills, and moves the version last. A legacy row gets an
+exact time or NULL. `catalog_row`, `catalog_row_field`, `catalog_chunk` and `catalog_remap_rule` take the publish
+time of the version that wrote them, a closed row's update time is the publish time of the version that replaced
+it, and every other new column stays NULL, because nothing records when a family, a block, a mark, a draft or an
+edit was written. The rows, the history, the audit, the open draft, the pin and the store epoch all survive both
+steps. Under `ValidateOnly` a version 1 or 2 file is refused instead, naming the migration. An older engine refuses
+a version 3 file, so rolling back past this upgrade needs a restore.
 
 `InitializeAsync` also writes the registry's types into `catalog_type`, which pins each type id to its key. A
 rename and a reassignment are both refused, because either one repoints every row already stored under the
@@ -132,12 +147,12 @@ row is gone, is the same case whatever stands, every table included: refused und
 
 **The schema version decides the rest, whenever it can be read.** A catalog at an OLDER schema version than
 this build writes is reset like any other and comes back at this build's version, because the recreate runs
-this build's script: a whole version 1 catalog, without the `catalog_content_upgrade` table version 2 added,
-is a whole catalog rather than a partial one, and needs no `force`. A catalog at a NEWER schema version is
-refused with `schema-mismatch` before anything is dropped, force or no force, because recreating an older
-schema over it would move the database backwards. The refusal names the remedy, which is a reset from a build
-that writes that version. The result carries both numbers, `PriorSchemaVersion` and `SchemaVersion`, and
-`reset.Summary` says both.
+this build's script. A whole version 1 catalog, without the `catalog_content_upgrade` table version 2 added, is a
+whole catalog rather than a partial one and needs no `force`, and neither does a version 2 catalog, which lacks
+only the version 3 columns. A catalog at a NEWER schema version is refused with `schema-mismatch` before anything is dropped, force
+or no force, because recreating an older schema over it would move the database backwards. The refusal names the
+remedy, which is a reset from a build that writes that version. The result carries both numbers,
+`PriorSchemaVersion` and `SchemaVersion`, and `reset.Summary` says both.
 
 `actor`, `operatorId` and `note` are checked against the caps `catalog_audit` declares (1 to 128, 128 and
 1024 characters) BEFORE the transaction opens, and an argument outside them is an `ArgumentException` with

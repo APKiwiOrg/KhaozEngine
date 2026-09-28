@@ -33,8 +33,8 @@ the store holds no connection between calls.
 Fifteen tables: `catalog_metadata`, `catalog_type`, `catalog_version`, `catalog_row`, `catalog_row_field`,
 `catalog_family`, `catalog_family_block`, `catalog_id_high_water`, `catalog_draft`, `catalog_draft_edit`,
 `catalog_draft_edit_field`, `catalog_audit`, `catalog_remap_rule`, `catalog_chunk` and
-`catalog_content_upgrade`, shipped as the embedded resource `CatalogSchemaV2.sql`. The first fourteen are
-version 1 and the ledger is what version 2 adds. Every key column is
+`catalog_content_upgrade`, shipped as the embedded resource `CatalogSchemaV3.sql`. The first fourteen are
+version 1, the ledger is what version 2 adds, and version 3 adds the row time columns. Every key column is
 `nvarchar(N) COLLATE Latin1_General_100_BIN2`, because
 content keys compare ordinally and never case insensitively, and a SQL Server database default usually is case
 insensitive. Every size cap is a `CHECK`, `LEN` for text and `DATALENGTH` for binary, and every foreign key is
@@ -57,17 +57,36 @@ validates it, under an exclusive application lock inside one transaction, so two
 race. `ContentAuthoringSchemaMode.ValidateOnly` refuses an empty or mismatched database rather than creating
 anything, which is what a production host sets so a typo in a connection string cannot silently create a second
 empty catalog and serve it. A mismatch throws `ContentAuthoringException` with reason `schema-mismatch`, naming
-the object and the migration `catalog-v2-content-upgrade-ledger`. Only SQL Server errors 207 and 208 from a
+the object and the migration `catalog-v3-row-timestamps`. Only SQL Server errors 207 and 208 from a
 schema read become the unreadable mismatch. Lock timeouts, deadlocks, permission failures, cancellations and
 failed creates or migrations surface as their original provider or cancellation exception.
 
-Schema version 2 adds `catalog_content_upgrade`, the content upgrade ledger behind `IContentUpgradeLedger`.
-`CatalogSchemaV2.sql` is what a fresh create runs, so a new database is version 2 directly, and
-`CatalogSchemaV1.sql` ships beside it as the operator's record of the shape the migration moves. A version 1
-database opened under `AutoCreate` is migrated behind the same application lock the create takes, in one
-transaction that adds that one table and changes nothing else. Under `ValidateOnly` it is refused instead,
-naming the migration. An applied ledger row is written inside the publish commit, so a duplicate upgrade id
-refuses the whole publish.
+Schema version 2 adds `catalog_content_upgrade`, the content upgrade ledger behind `IContentUpgradeLedger`. An
+applied ledger row is written inside the publish commit, so a duplicate upgrade id refuses the whole publish.
+
+Schema version 3 gives every catalog table a row creation time and every table whose rows change an update time,
+as nullable `datetimeoffset(7)` columns named `created_at_utc` and `updated_at_utc`. A column that already is the
+insert time serves as the creation time with no twin: `catalog_version.published_at_utc`,
+`catalog_audit.occurred_at_utc`, `catalog_content_upgrade.recorded_at_utc` and `catalog_draft.opened_at_utc`.
+`catalog_draft_edit.edited_at_utc` is rewritten by every re-edit, so it is that table's update time. The store sets
+each time in the statement that writes the row. The rows a publish writes carry the version's publish time, and a
+type sync, an id mark or a draft write that changes no stored value moves no update time. Validation checks every
+time column's type and nullability as well as the object names.
+
+`CatalogSchemaV3.sql` is what a fresh create runs, so a new database is version 3 directly, and
+`CatalogSchemaV1.sql` and `CatalogSchemaV2.sql` ship beside it as the operator's record of the shapes the
+migrations move. An older database opened under `AutoCreate` is migrated behind the same application lock the
+create takes, version 1 through version 2 to version 3 in one open, each step one transaction. Version 1 to 2 adds
+the ledger table and changes nothing else. Migration `catalog-v3-row-timestamps` adds the time columns, each add
+guarded by `COL_LENGTH`, backfills, and moves the version last. A legacy row gets an exact time or NULL.
+`catalog_row`, `catalog_row_field`, `catalog_chunk` and `catalog_remap_rule` take the publish time of the version
+that wrote them, a closed row's update time is the publish time of the version that replaced it, and every other
+new column stays NULL, because nothing records when a family, a block, a mark, a draft or an edit was written. The
+backfill rewrites those four tables whole, and each migration statement runs under the schema's fixed 60-second
+command timeout. Under `ValidateOnly` a version 1 or 2 database is refused instead, naming the migration, so a
+hosted catalog runs its schema migration step, one `AutoCreate` open under the migration credential, before a
+`ValidateOnly` server on this version starts. An older engine refuses a version 3 database, so rolling back past
+this upgrade needs a restore.
 
 `InitializeAsync` also writes the registry's types into `catalog_type`, which pins each type id to its key. A
 rename and a reassignment are both refused, because either one repoints every row already stored under the old
@@ -103,7 +122,7 @@ a half-dropped catalog refuses the next open outright: the initializer creates o
 catalog tables and validates every object by name otherwise.
 
 **The drop names the schema's own INVENTORY, not a name pattern.** It is the same set
-`SqlServerCatalogSchemaDriftTests` pins against `CatalogSchemaV2.sql`, intersected with what `sys.tables`
+`SqlServerCatalogSchemaDriftTests` pins against `CatalogSchemaV3.sql`, intersected with what `sys.tables`
 holds, so a table added to the schema is dropped without anyone having to remember it here and a table this
 build does not declare is never touched. A pattern could not do that job: a host table named
 `catalog_overrides_by_host` matches every name rule an engine could write while belonging to nobody here. Keep
@@ -143,12 +162,12 @@ row is gone, is the same case whatever stands, every table included: refused und
 
 **The schema version decides the rest, whenever it can be read.** A catalog at an OLDER schema version than
 this build writes is reset like any other and comes back at this build's version, because the recreate runs
-this build's script: a whole version 1 catalog, without the `catalog_content_upgrade` table version 2 added,
-is a whole catalog rather than a partial one, and needs no `force`. A catalog at a NEWER schema version is
-refused with `schema-mismatch` before anything is dropped, force or no force, because recreating an older
-schema over it would move the database backwards. The refusal names the remedy, which is a reset from a build
-that writes that version. The result carries both numbers, `PriorSchemaVersion` and `SchemaVersion`, and
-`reset.Summary` says both.
+this build's script. A whole version 1 catalog, without the `catalog_content_upgrade` table version 2 added, is a
+whole catalog rather than a partial one and needs no `force`, and neither does a version 2 catalog, which lacks
+only the version 3 columns. A catalog at a NEWER schema version is refused with `schema-mismatch` before anything is dropped, force
+or no force, because recreating an older schema over it would move the database backwards. The refusal names the
+remedy, which is a reset from a build that writes that version. The result carries both numbers,
+`PriorSchemaVersion` and `SchemaVersion`, and `reset.Summary` says both.
 
 `actor`, `operatorId` and `note` are checked against the caps `dbo.catalog_audit` declares (1 to 128, 128 and
 1024 characters) BEFORE the transaction opens, and an argument outside them is an `ArgumentException` with
@@ -241,7 +260,7 @@ application login should have.
 `SqlServerCatalogReset.ResetAsync` needs DDL rights plus `EXECUTE` on both `sys.sp_executesql` and
 `sys.sp_getapplock`, so give it the migration credential rather than the application login. It takes the SAME
 exclusive application lock the schema create takes, on the same resource name, as the first statement of its
-transaction, and so does the version 1 migration. A lock one side holds and the other does not is not a lock:
+transaction, and so do the migrations. A lock one side holds and the other does not is not a lock:
 without it a reset could drop every catalog table while a starting host was half way through creating or
 migrating them. The schema modification locks each
 statement takes for itself do not cover that, because they serialize one statement at a time and not the

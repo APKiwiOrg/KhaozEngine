@@ -12,9 +12,16 @@ await store.SaveAsync("player:42", bytes);
 byte[]? loaded = await store.LoadAsync("player:42");
 ```
 
-One `world_store([key], data, updated_at)` table, bootstrapped on construction; upsert via
-`MERGE ... WITH (HOLDLOCK)`; raw parameterized async ADO.NET (no EF/ORM); a short-lived pooled connection per
+One `world_store([key], data, updated_at, created_at)` table, bootstrapped on construction, with an upsert through
+`MERGE ... WITH (HOLDLOCK)`, raw parameterized async ADO.NET (no EF/ORM) and a short-lived pooled connection per
 operation. For dev/test use `KhaozEngine.WorldStore.Sqlite` against the same contract.
+
+Both times are `DATETIME2` from the database clock. `updated_at` is the last save's, and `created_at` is written only
+by the `MERGE`'s insert arm, so a later save never moves it. Construction adds a nullable `created_at` to a table an
+older build created, and the rows already there keep NULL in it because nothing proves when they were created. The
+first construction after that upgrade therefore needs `ALTER` rights on the table. Start one host first, because two
+hosts constructing the store at once against an older table can race the column add
+([#1195](https://github.com/APKiwiOrg/KhaozEngine/issues/1195)).
 
 `SqlServerWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.2): `EnumerateAsync(keyPrefix?)` streams
 `WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQL Server cursor, optionally filtered by key
@@ -33,7 +40,7 @@ transaction, so it is still one connection's worth of setup instead of one per r
 uses serializable SQL transactions, binary collations for stream and section identity, checksummed event and
 snapshot payloads, replay receipts, projection cursors, compaction, operation retention, and store epoch rotation.
 `ListStreamsAsync` is one `SELECT TOP` over the `journal_stream` key range the prefix selects, ordered by the
-binary stream key.
+binary stream key, with each stream's creation and update times.
 
 ```csharp
 using KhaozEngine.WorldStore.Journal;
@@ -49,18 +56,34 @@ var journal = new SqlServerMutationJournalStore(
     });
 ```
 
-`AutoCreate` creates version two when no journal objects exist. It also migrates a valid version-one journal by
-adding a database-owned operation-retention timestamp through separate commands in one transaction. Existing replay
-rows start a fresh retention horizon at migration time, so upgrade cannot expire one early. A database default also
-stamps inserts from an already-running version-one writer during rollout. A database trigger rejects operation
-deletion unless current maintenance opens its transaction-local guard. A still-running version-one maintenance
-host therefore rolls back both its child and parent deletes after migration. Restarted hosts must support version
-two. `ValidateOnly` performs no DDL and is the production mode when
-the application principal does not have schema permissions. A partial, malformed, older, or newer journal schema
-fails with `SchemaMismatch` and names the required migration.
+`AutoCreate` creates version three when no journal objects exist. It also migrates an older valid journal in place
+behind the schema application lock, version one through version two to version three in one open, each step
+through separate commands in the one transaction. The version-one step adds a database-owned operation-retention
+timestamp. Existing replay rows start a fresh retention horizon at migration time, so upgrade cannot expire one
+early. A database default also stamps inserts from an already-running version-one writer during rollout. A database
+trigger rejects operation deletion unless current maintenance opens its transaction-local guard. A still-running
+version-one maintenance host therefore rolls back both its child and parent deletes after migration.
+
+Migration `sqlserver-journal-v3-row-timestamps` gives every journal table a row creation time. It adds a nullable
+`created_at_utc datetimeoffset(7)` to `journal_metadata`, `journal_stream`, `journal_operation_stream`, and
+`journal_projection`, each add guarded by `COL_LENGTH`, backfills, and moves the schema version last.
+`journal_event.committed_at_utc` and `journal_operation.committed_at_utc` already are their rows' insert times.
+`journal_snapshot` is the one exception: compaction replaces its row whole, so its `created_at_utc` is when the held
+snapshot was taken. The tables whose rows change, `journal_metadata`, `journal_stream`, and `journal_projection`,
+already carry `updated_at_utc`. A legacy row gets an exact time or NULL. A stream takes its initialization snapshot's
+time only while compaction has never replaced that snapshot, a receipt stream range takes its operation's commit
+time, and every other legacy row stays NULL. The backfill rewrites `journal_stream` and `journal_operation_stream`
+whole, and each statement runs under `CommandTimeout`, so give the one open that migrates a very large journal a
+longer `CommandTimeout`. A version-two writer still running during the upgrade keeps working, and the rows it inserts
+have no creation time. Restarted hosts must support version three, because an older engine refuses a version-three
+journal, so rolling back past this upgrade needs a restore.
+
+`ValidateOnly` performs no DDL and is the production mode when the application principal does not have schema
+permissions. A partial, malformed, older, or newer journal schema fails with `SchemaMismatch` and names the required
+migration.
 
 `ReadOnly` is for operator tools that read a database which must not change, such as a copy of production loaded
-by a release rehearsal. It validates the version-two schema with catalog and metadata `SELECT`s only, inside one read
+by a release rehearsal. It validates the version-three schema with catalog and metadata `SELECT`s only, inside one read
 committed transaction that is always rolled back. It takes no application lock and issues no DDL. A missing, older,
 or newer schema fails with `SchemaMismatch` and is never created or migrated. `InitializeAsync`, `CommitAsync`,
 `CompactAsync`, `PurgeOperationsAsync`, `PurgeOperationsByAgeAsync`, and `RotateStoreEpochAsync` then throw
@@ -70,12 +93,14 @@ store leaves the connection string as given. Add `ApplicationIntent=ReadOnly` to
 secondary, and for a guarantee the server enforces, connect as a principal that holds only database connect,
 `VIEW DEFINITION`, and `SELECT` on the seven journal tables.
 
-The package embeds `JournalSchemaV2.sql` for fresh deployments and retains `JournalSchemaV1.sql` for controlled
-upgrade tooling and compatibility tests. Deployments apply the version-two script before starting a validate-only
-host. Initialization is serialized with a transaction-owned SQL application lock. Normal writes share a
-maintenance gate, while compaction, replay retention, and epoch rotation take the exclusive side.
+The package embeds `JournalSchemaV3.sql` for fresh deployments and retains `JournalSchemaV1.sql` and
+`JournalSchemaV2.sql` for controlled upgrade tooling and compatibility tests. Deployments apply the version-three
+script to a new database, or run one `AutoCreate` boot over an older journal, before starting a validate-only host.
+Initialization is serialized with a transaction-owned SQL application lock. Normal writes share a maintenance gate,
+while compaction, replay retention, and epoch rotation take the exclusive side.
 
-Use a migration identity with schema DDL rights to create version two or run one `AutoCreate` boot over version one.
+Use a migration identity with schema DDL rights to create version three or run one `AutoCreate` boot over version
+one or two.
 A `ValidateOnly` runtime identity
 does not need DDL. It needs database connect, `VIEW DEFINITION` on every journal table for schema validation, membership in the `public`
 fixed database role used by `sys.sp_getapplock`, and `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on every
@@ -119,9 +144,9 @@ seen. Recovery on a separate connection after a duplicate key is not counted.
 
 `CommandTimeout` applies to commands and schema locking. `MinimumRetryHorizon` prevents maintenance from deleting
 replay rows which may still be retried. `Limits` can lower any core journal maximum. `TimeProvider` controls public
-journal timestamps for deterministic hosts and tests. It does not control `PurgeOperationsByAgeAsync`, whose
-retention timestamps and cutoff come from SQL Server. The older cutoff purge is also clipped to SQL Server UTC
-minus `MinimumRetryHorizon`. Each operation uses a short-lived pooled SQL connection.
+journal timestamps and the row times a write stamps, for deterministic hosts and tests. It does not control
+`PurgeOperationsByAgeAsync`, whose retention timestamps and cutoff come from SQL Server. The older cutoff purge is
+also clipped to SQL Server UTC minus `MinimumRetryHorizon`. Each operation uses a short-lived pooled SQL connection.
 
 Back up every journal table as one unit. After a point-in-time restore, stop all journal hosts, rotate the epoch with
 `IMutationJournalMaintenance.RotateStoreEpochAsync`, verify snapshot checksums and stream continuity, reconcile any
@@ -145,7 +170,7 @@ JournalResetResult reset = await SqlServerJournalReset.ResetAsync(
     lockTimeout: TimeSpan.FromSeconds(30));
 ```
 
-The reset validates the version-two schema first under the schema application lock, as `ValidateOnly` does, so a
+The reset validates the version-three schema first under the schema application lock, as `ValidateOnly` does, so a
 missing, older, or malformed journal fails with `SchemaMismatch` and is never created or migrated. That check
 compares every trigger on a journal table, so a game trigger on one is refused there. The validation waits for the
 schema lock, and runs each of its statements, for no longer than the lock timeout rounded up to whole seconds, and it

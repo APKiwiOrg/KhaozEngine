@@ -18,10 +18,10 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// pointer LAST. A reader that sees the new active version is guaranteed to see everything of it.
 /// </para>
 /// <para>
-/// <b>Every row time this commit writes is the version's own publish time</b>, the value
-/// <c>catalog_version.published_at_utc</c> holds: a row, its fields, a close, a rule, a chunk and a draft rebase
-/// are all part of the one change that version is. It is also exactly what the version 3 migration fills a
-/// legacy row of the same tables with.
+/// <b>Every row, field row, close, rule, chunk and draft rebase this commit writes carries the version's own
+/// publish time</b>, the value <c>catalog_version.published_at_utc</c> holds, because each is part of the one
+/// change that version is. It is also what the version 3 migration fills a legacy row, field, chunk or rule
+/// with. The active pointer, the audit rows and the applied upgrade row read the clock as they always have.
 /// </para>
 /// <para>
 /// <b>The number is CONFIRMED rather than trusted.</b> This store leases its connection per call, so no LOCK

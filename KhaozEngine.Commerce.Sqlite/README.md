@@ -21,6 +21,12 @@ or direction returns `Conflict=true` and leaves the balance and ledger unchanged
 account, or a different currency on the same account, is a distinct operation. The existing ledger row already
 holds the signed delta and reason, so this needs no extra fingerprint table or schema migration.
 
+Every row time is Unix milliseconds. `wallet_ledger.created_at` is each append's time. A `wallet_balance` row
+carries `created_at` beside the `updated_at` every credit and debit moves, and a `grant_schedule` row carries
+`created_at` and an `updated_at` that moves only when a write changes the stored instant. Construction adds any of
+those three columns a table an older build created lacks, as nullable columns in one immediate transaction, and the
+rows already there keep NULL where no write since knows the time.
+
 Opt-in: pulls `Microsoft.Data.Sqlite` without touching the dependency-free `KhaozEngine.Commerce` core. Not
 bundled in the `Server` umbrella. Dispose the store to close the connection. The connection is never pooled, so the OS
 handle on the database file is genuinely released on dispose rather than parked in the provider's pool, and the

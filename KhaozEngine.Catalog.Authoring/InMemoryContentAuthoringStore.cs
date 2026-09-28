@@ -28,8 +28,9 @@ namespace KhaozEngine.Catalog.Authoring;
 public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringStore, IContentIdPersistence
 {
     /// <summary>
-    /// The schema version this store reports, matching the version the providers carry: 2, which is the
-    /// content upgrade ledger this store holds as a dictionary and they hold as a table.
+    /// The schema version this store reports: 2, the version that added the content upgrade ledger this store
+    /// holds as a dictionary and the providers hold as a table. The providers are on 3, which adds only row
+    /// times, and this store keeps none, so it stays at 2.
     /// </summary>
     public const int SchemaVersion = 2;
 

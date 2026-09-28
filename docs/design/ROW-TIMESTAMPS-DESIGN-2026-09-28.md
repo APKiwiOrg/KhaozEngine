@@ -127,9 +127,12 @@ Additive only. Every game repository has test fakes of `IMutationJournalStore`, 
 - `JournalStreamEntry` from `IMutationJournalStreamListing` gains `CreatedAtUtc` and `UpdatedAtUtc`, both
   `DateTimeOffset?`, through a new constructor that keeps the existing one. The kept constructor leaves both
   null rather than inventing a time. The SQL Server, SQLite and in-memory stores always fill `UpdatedAtUtc`.
-- `AccountRecord` gains optional `CreatedAtUtc` and `UpdatedAtUtc` (`DateTimeOffset?`) with null defaults, so
-  existing constructions compile unchanged.
-- Commerce balance reads gain the same pair where a read record exists for the row.
+- `AccountRecord` gains optional `CreatedAtUtc` and `UpdatedAtUtc` (`DateTimeOffset?`) init properties with null
+  defaults, so existing constructions compile unchanged. They take part in the record's equality.
+- `InMemoryAccountStore`, `AccountTableOptions` and `SqlServerAccountStoreOptions` gain a `TimeProvider` init
+  property, the system clock by default, which the account times are stamped from.
+- Commerce balance reads gain the same pair where a read record exists for the row. None does, so commerce
+  gains no API.
 
 ## Verification
 
@@ -147,7 +150,7 @@ Additive only. Every game repository has test fakes of `IMutationJournalStore`, 
 
 ## Rollout
 
-- Engine 20.14.0, a minor: two schema versions and new API surface. The CHANGELOG names the three migrations
+- Engine 20.15.0, a minor: two schema versions and new API surface. The CHANGELOG names the three migrations
   and the one way door.
 - One way door. Once a database is on version 3, a build on an older engine refuses it, so rolling a game back
   past its pin bump needs a database restore. Version 2 was the same.

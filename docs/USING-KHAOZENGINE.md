@@ -7356,7 +7356,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.14.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.15.0" />
 ```
 
 ```csharp
@@ -13847,7 +13847,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.14.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.15.0" />
 ```
 
 ```csharp
@@ -13883,7 +13883,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.14.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.15.0" />
 ```
 
 ```csharp
@@ -14125,7 +14125,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.14.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.15.0" />
 ```
 
 ```csharp
@@ -16290,9 +16290,12 @@ the fix: a game ships ordered `ContentUpgradeDefinition`s in its server assembly
 Migration history is its own ledger, the `catalog_content_upgrade` table added by catalog schema version 2.
 An engine package version does not say which upgrades ran, and neither does a published version number. An
 `applied` row commits inside the publish transaction, so a version and its history land together or not at
-all. A SQLite file at schema version 1 migrates in place when opened under `AutoCreate`. SQL Server ships
-`CatalogSchemaV2.sql` as the operator script for migration `catalog-v2-content-upgrade-ledger`, and
-`ValidateOnly` refuses a version 1 database by naming it.
+all. Schema version 3 adds a row creation time to every catalog table and an update time to every table whose rows
+change, through migration `catalog-v3-row-timestamps` on both providers. A SQLite or SQL Server catalog at schema
+version 1 or 2 migrates in place, in one open, when opened under `AutoCreate`, and `ValidateOnly` refuses it by
+naming that migration, so a hosted `ValidateOnly` catalog runs its schema migration step before the server starts.
+An older engine refuses a version 3 catalog. Each provider README lists the columns and the exact-or-NULL
+backfill.
 
 ```csharp
 static readonly ContentUpgradeSet Upgrades = new(
@@ -17629,10 +17632,12 @@ The ASP.NET Core names come from a web project's implicit usings. What a game ch
   `SigningSecret.CreateEphemeral()` gives a key that dies with the process. Never a source constant.
 - **The store.** `InMemoryAccountStore` for tests and a local host, `SqliteAccountStore` for a single node, and
   `SqlServerAccountStore` for production, where `AccountSchemaMode.ValidateOnly` lets the runtime identity run without
-  DDL rights. The engine stores keep one flat `accounts` table and mint `{ProviderId}:{ProviderSubject}`, for example
-  `discord:80351110224678912`. A game with its own schema implements `IAccountStore` over it and mints what it likes,
-  provided `AccountStoreRules.IsAdmissibleSubject` accepts the result. Each store's README has its table and the
-  contract.
+  DDL rights once one `AutoCreate` run under a migration identity has brought the table to the engine layout,
+  including the `created_at_utc` and `updated_at_utc` columns behind `AccountRecord.CreatedAtUtc` and
+  `UpdatedAtUtc`. The engine stores keep one flat `accounts` table and mint `{ProviderId}:{ProviderSubject}`, for
+  example `discord:80351110224678912`. A game with its own schema implements `IAccountStore` over it and mints what
+  it likes, provided `AccountStoreRules.IsAdmissibleSubject` accepts the result. Each store's README has its table
+  and the contract.
 - **The whitelist.** `whitelistOnCreate` on the store is what a new account row says, so every reader of the row agrees.
   `AuthExchangeOptions.RequireWhitelist` (true by default) is whether the exchange refuses an unwhitelisted account.
   `false` is the policy of an open game, or of a local host bound to a throwaway in-memory store.
@@ -18181,7 +18186,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.14.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.15.0" />
 </ItemGroup>
 ```
 
@@ -19762,8 +19767,8 @@ record shape stay in your store. `BeginTransaction()` is there for a multi-state
 held for the whole transaction. Both engine SQLite backends are built on it, and it is opt-in and in no umbrella,
 so reference it directly.
 
-Both bootstrap one `world_store(key, data, updated_at)` table on construction, upsert via dialect SQL (SQLite
-`ON CONFLICT`, SQL Server `MERGE WITH (HOLDLOCK)`), raw parameterized async ADO.NET, no EF/ORM. The same
+Both bootstrap one `world_store(key, data, updated_at, created_at)` table on construction, upsert via dialect SQL
+(SQLite `ON CONFLICT`, SQL Server `MERGE WITH (HOLDLOCK)`), raw parameterized async ADO.NET, no EF/ORM. The same
 contract, so dev and prod differ only in which line you construct:
 
 ```csharp
@@ -19963,9 +19968,9 @@ transaction, and enforce the longer of the requested age or `MinimumRetryHorizon
 to schema version two by assigning every existing receipt the migration time, which conservatively restarts its
 retention horizon. `JournalOperationPurgeResult.EvaluatedAtUtc` and `EffectiveCutoffUtc` support retention metrics.
 The older cutoff API remains available for compatibility with controlled maintenance code. Durable providers clip
-its cutoff to database UTC minus `MinimumRetryHorizon`. Their version-two schemas also reject operation deletion
-unless current maintenance opens a transaction-local guard. This forces a still-running version-one maintenance
-host to roll back its child and parent deletes after migration.
+its cutoff to database UTC minus `MinimumRetryHorizon`. Their schemas from version two on also reject operation
+deletion unless current maintenance opens a transaction-local guard. This forces a still-running version-one
+maintenance host to roll back its child and parent deletes after migration.
 
 Every executor needs explicit positive operation-count and owned-byte capacities. Accepted work remains charged and
 its streams remain reserved until acknowledgement. `StopAsync` rejects new work, gives admitted work a bounded drain
@@ -19993,9 +19998,11 @@ all-player polling endpoint and no inventory, bank, skill, or quest snapshot on 
 An operator tool that sweeps a whole store (a copy, a release rehearsal, an audit, or a migration check) lists
 streams through `IMutationJournalStreamListing.ListStreamsAsync` instead of querying the provider's tables. Each call
 reads one bounded page in ordinal key order, optionally by key prefix, and returns a continuation key until the
-listing is complete. Load each listed stream through the ordinary snapshot, event, and projection reads. Open the
-SQLite or SQL Server store with `SchemaMode = ReadOnly` when the source must not be written to. That mode issues no
-DDL, reports a missing or older schema as `SchemaMismatch` instead of repairing it, and makes every write path throw
+listing is complete. Each `JournalStreamEntry` carries the stream's `CreatedAtUtc` and `UpdatedAtUtc`, null where
+nothing proves the time, such as the creation of a stream that predates journal schema version 3 and was compacted.
+Load each listed stream through the ordinary snapshot, event, and projection reads. Open the SQLite or SQL Server
+store with `SchemaMode = ReadOnly` when the source must not be written to. That mode issues no DDL, reports a
+missing or older schema as `SchemaMismatch` instead of repairing it, and makes every write path throw
 `NotSupportedException`. Do not hand a read only store to `MutationJournalExecutor`.
 
 A release that wipes all game data empties the journal with `SqliteJournalReset.ResetAsync` or

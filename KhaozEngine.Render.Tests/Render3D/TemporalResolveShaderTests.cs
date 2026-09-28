@@ -221,7 +221,8 @@ namespace KhaozEngine.Tests.Render3D
             // pixel followed a nearer surface's edge that moved, minus five minus the lock on a pixel of the followed
             // surface itself, and reads back unchanged. The moved mark is the reprojected surface's own depth test, not
             // the band's world test of the nearer surface.
-            string core = ShaderSources.TemporalResolveCoreGlsl;
+            // A Windows checkout has CRLF line ends, and a pin below spans two lines of the shader.
+            string core = ShaderSources.TemporalResolveCoreGlsl.Replace("\r\n", "\n", StringComparison.Ordinal);
             Assert.Contains("float weight = mix(1.0 - f.x, f.x, float(corner & 1)) "
                 + "* mix(1.0 - f.y, f.y, float(corner >> 1));", core, StringComparison.Ordinal);
             Assert.Contains("if (!(stored < expectedDepth * (1.0 - DisocclusionTolerance))) "
@@ -299,7 +300,8 @@ namespace KhaozEngine.Tests.Render3D
             // or the followed surface's own pixels stored it and none of the nine current texels around the history
             // position moves on screen otherwise than the pixel by more than FollowedHistoryMotionFraction of its
             // motion. No 3x3 farthest depth spares it, and the nine texels are read outside the 3x3 every pixel runs.
-            string core = ShaderSources.TemporalResolveCoreGlsl;
+            // A Windows checkout has CRLF line ends, and a pin below spans two lines of the shader.
+            string core = ShaderSources.TemporalResolveCoreGlsl.Replace("\r\n", "\n", StringComparison.Ordinal);
             Assert.Contains("bool temporalStoredBand(float stored) { return stored < -2.5; }", core,
                 StringComparison.Ordinal);
             Assert.Contains("bool nearerMoved = !depthTested || travel > WorldMotionMetres * PreviousProjection[0][0] "

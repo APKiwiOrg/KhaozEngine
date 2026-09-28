@@ -33,13 +33,14 @@ namespace KhaozEngine.Render3D.Rendering
     /// </summary>
     internal sealed partial class TemporalResolveRenderer : IDisposable
     {
-        /// <summary>The draws <see cref="Run"/> records: the resolve and the depth store.</summary>
+        /// <summary>The draws <see cref="Run"/> records: the fused resolve and the depth store, or the split's two
+        /// passes.</summary>
         internal const int DrawCallsPerFrame = 2;
 
         readonly IGpuDevice _gd;
-        readonly IGpuShaderSet _resolveShaders, _storeShaders;
         readonly IGpuResourceLayout _resolveLayout, _storeLayout;
-        readonly IGpuPipeline _resolvePipeline, _storePipeline;
+        IGpuShaderSet? _resolveShaders, _storeShaders;
+        IGpuPipeline? _resolvePipeline, _storePipeline;
         readonly IGpuBuffer _resolveBuffer, _storeBuffer;
         readonly IGpuSampler _clampSampler;
         readonly IGpuResourceSet?[] _resolveSets = new IGpuResourceSet?[2];
@@ -52,8 +53,6 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _gd = gd;
             IGpuResourceFactory f = gd.Factory;
-            _resolveShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalResolveFrag);
-            _storeShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalDepthStoreFrag);
             _resolveLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
                 T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve")));
@@ -62,6 +61,16 @@ namespace KhaozEngine.Render3D.Rendering
             _resolveBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalResolveUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
             _storeBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalDepthStoreUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
             _clampSampler = f.CreateSampler(GpuSamplerDescription.Linear);
+        }
+
+        // The fused entry point's programs and pipelines, built on the first frame that records it, so a backend and
+        // preset that picks the split never compiles them.
+        void EnsureFused()
+        {
+            if (_resolvePipeline is not null) return;
+            IGpuResourceFactory f = _gd.Factory;
+            _resolveShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalResolveFrag);
+            _storeShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalDepthStoreFrag);
             _resolvePipeline = Fullscreen(f, _resolveShaders, _resolveLayout,
                 new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence));
             _storePipeline = Fullscreen(f, _storeShaders, _storeLayout,
@@ -83,7 +92,7 @@ namespace KhaozEngine.Render3D.Rendering
         static GpuResourceLayoutElement S(string n) => new(n, GpuResourceKind.Sampler, GpuShaderStages.Fragment);
         static GpuResourceLayoutElement U(string n) => new(n, GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment);
 
-        static IGpuPipeline Fullscreen(IGpuResourceFactory f, IGpuShaderSet shaders, IGpuResourceLayout layout,
+        internal static IGpuPipeline Fullscreen(IGpuResourceFactory f, IGpuShaderSet shaders, IGpuResourceLayout layout,
             GpuOutputDescription outputs)
         {
             var blends = new GpuBlendAttachment[outputs.Colour.Length];
@@ -107,9 +116,13 @@ namespace KhaozEngine.Render3D.Rendering
         internal bool HoldsSetsForTests => _storeSet is not null;
 
         /// <summary>Build the resolve sets for both read indices and the depth store set, unless the four input textures
-        /// are the very ones already bound and the history targets are the same generation of the same owner.</summary>
-        public void BindInputs(in TemporalResolveInputs inputs, TemporalHistory history)
+        /// are the very ones already bound and the history targets are the same generation of the same owner. The
+        /// fused sets are built on either entry point, since the debug views and counts re-evaluate through them, and
+        /// the chosen entry point's own objects first (Entry partial). What the split replaces goes to
+        /// <paramref name="retired"/>, or through a drain without one.</summary>
+        public void BindInputs(in TemporalResolveInputs inputs, TemporalHistory history, GpuRetireQueue? retired = null)
         {
+            BindEntry(inputs, history, retired);
             if (_storeSet is not null && SameInputs(inputs, _boundInputs) && ReferenceEquals(history, _boundHistory)
                 && history.TargetGeneration == _boundTargets)
                 return;
@@ -127,7 +140,7 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         // By reference: the sets name these objects, and holding them keeps a replacement from ever being the same one.
-        static bool SameInputs(in TemporalResolveInputs a, in TemporalResolveInputs b)
+        internal static bool SameInputs(in TemporalResolveInputs a, in TemporalResolveInputs b)
             => ReferenceEquals(a.SceneColor, b.SceneColor) && ReferenceEquals(a.OpaqueColor, b.OpaqueColor)
                 && ReferenceEquals(a.SceneDepth, b.SceneDepth) && ReferenceEquals(a.Motion, b.Motion);
 
@@ -136,6 +149,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// finished may still bind them. The next <see cref="BindInputs"/> builds them again.</summary>
         public void ReleaseSets(GpuRetireQueue retired)
         {
+            _split?.ReleaseTargets(retired);   // a frame without the resolve holds none of the split's targets either
             if (_storeSet is null) return;
             for (int i = 0; i < 2; i++)
             {
@@ -159,19 +173,26 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Record the resolve into <see cref="TemporalHistory.WriteIndex"/>'s colour and confidence, reading
         /// <see cref="TemporalHistory.ReadIndex"/>'s history and previous depth, then store this frame's depth into the
         /// write index's previous depth. The read targets are left untouched, so a later pass can re-evaluate the resolve
-        /// through <see cref="CurrentSet"/> and see exactly what it saw.</summary>
+        /// through <see cref="CurrentSet"/> and see exactly what it saw. The split entry point records its two passes
+        /// in their place, into the same targets (Entry partial).</summary>
         public void Run(IGpuCommandList cl, TemporalHistory history)
         {
             IGpuResourceSet set = _resolveSets[history.ReadIndex]
                 ?? throw new InvalidOperationException("TemporalResolveRenderer.Run was called before BindInputs.");
             CurrentSet = set;
+            LastEntry = Entry;
+            if (RunSplit(cl, history))
+            {
+                RecordFinishProbe(cl);
+                return;
+            }
             cl.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
-            cl.SetPipeline(_resolvePipeline);
+            cl.SetPipeline(_resolvePipeline!);
             cl.SetGraphicsResourceSet(0, set);
             cl.Draw(3);
 
             cl.SetFramebuffer(history.PreviousDepthFramebuffer(history.WriteIndex));
-            cl.SetPipeline(_storePipeline);
+            cl.SetPipeline(_storePipeline!);
             cl.SetGraphicsResourceSet(0, _storeSet!);
             cl.Draw(3);
             RecordFinishProbe(cl);   // an armed temporal count request, over the set this run bound (Finish partial)
@@ -200,13 +221,14 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             DisposeFinish();
+            _split?.Dispose();
             DisposeSets();
-            _resolvePipeline.Dispose();
-            _storePipeline.Dispose();
+            _resolvePipeline?.Dispose();
+            _storePipeline?.Dispose();
             _resolveLayout.Dispose();
             _storeLayout.Dispose();
-            _resolveShaders.Dispose();
-            _storeShaders.Dispose();
+            _resolveShaders?.Dispose();
+            _storeShaders?.Dispose();
             _resolveBuffer.Dispose();
             _storeBuffer.Dispose();
             _clampSampler.Dispose();

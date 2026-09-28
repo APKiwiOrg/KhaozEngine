@@ -4,8 +4,8 @@ namespace KhaozEngine.Render3D.Internal
     /// The temporal resolve's PER-TEXEL PREPARATION (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3): every rule the
     /// resolve derives from one internal texel alone, as GLSL functions with no stage inputs or outputs. Both entry
     /// points call them. The fused resolve (<see cref="TemporalResolveFrag"/>) prepares its 3x3 and its centre texel
-    /// inline, and the split's first pass (<c>TemporalPrepareFrag</c>) prepares each internal texel once into
-    /// the targets its second pass reads (<c>TemporalSplitFormats</c>).
+    /// inline, and the split's first pass (<see cref="TemporalPrepareFrag"/>) prepares each internal texel once into
+    /// the targets its second pass reads (<see cref="TemporalSplitFormats"/>).
     /// <para>A program that includes it declares <c>SceneDepth</c>, <c>MotionTex</c>, <c>LinearClamp</c> and the
     /// <c>Resolve</c> block, and defines <c>temporalNarrowThere</c>, the depth the narrow test reads at a texel, before
     /// it (<see cref="TemporalNarrowBothGlsl"/> or <see cref="TemporalNarrowCurrentGlsl"/>).</para>

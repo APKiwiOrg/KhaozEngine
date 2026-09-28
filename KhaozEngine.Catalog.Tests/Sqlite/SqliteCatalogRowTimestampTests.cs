@@ -185,6 +185,15 @@ public sealed partial class SqliteCatalogRowTimestampTests
             long t7 = clock.Tick();
             await store.ClearDraftFreezeAsync();
             Assert.Equal((t2, t7), DraftTimes(database));
+
+            // A marker naming a base the catalog no longer stands at is a dead publish's leftover, and the next
+            // baseline read clears it.
+            clock.Tick();
+            await store.FreezeDraftAsync(0);
+            long cleared = clock.Tick();
+            await store.ReadPublishBaselineAsync();
+            Assert.Null(Value(database, "SELECT frozen_for_base_version FROM catalog_draft;"));
+            Assert.Equal((t2, cleared), DraftTimes(database));
             long t8 = clock.Tick();
             await store.SetPinnedVersionAsync(1, Actor, Operator);
             Assert.Equal((metadataCreated, t8), Pair(database, "SELECT created_at_utc, updated_at_utc FROM catalog_metadata;"));

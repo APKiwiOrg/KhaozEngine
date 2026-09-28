@@ -77,6 +77,7 @@ const float DilationReachInternalPixels = 1.25;
 const float WorldMotionMetres = 0.001;
 const float FollowedTravelRatio = 2.0;
 const float FollowedHistoryMotionFraction = 0.5;
+const float FollowedStillDisplayPixels = 0.1;
 const float DisocclusionVisibleShare = 0.5;
 const float MovingShareConfidence = 0.0;
 ";
@@ -551,12 +552,14 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // depth is farther than expected. The band followed a moving nearer surface, beside its edge or on it, and a pixel
     // of a still surface would carry that surface's colour away with it. A pixel beside or on the moving surface, and
     // a nearer surface reading the band where its edge was, keep it. A history the followed surface's own pixels
-    // stored (the followed mark) drops only where one of the nine current texels around its position moves on screen
-    // otherwise than the pixel reprojected, by more than FollowedHistoryMotionFraction of that motion: the followed
-    // surface still shows there while the pixel's own surface passes, as the ground an avatar uncovers does under a
-    // camera that follows it. A surface that stopped in the world, or turned back through zero travel, reads its own
-    // pixels' history in place, or where the same surface shows moving with it under a camera that eases on after
-    // it, and keeps it. Keyed on a moving edge instead, the drop never
+    // stored (the followed mark) drops only where the pixel moved on screen more than FollowedStillDisplayPixels and
+    // one of the nine current texels around its position moves on screen otherwise than the pixel reprojected, by
+    // more than FollowedHistoryMotionFraction of that motion: the followed surface still shows there while the
+    // pixel's own surface passes, as the ground an avatar uncovers does under a camera that follows it. A background
+    // texel, whose motion is the sentinel, is never the followed surface and is left out. A surface that stopped in
+    // the world, or turned back through zero travel, reads its own pixels' history in place, whatever passes beside
+    // it, or where the same surface shows moving with it under a camera that eases on after it, and keeps it. Keyed on
+    // a moving edge instead, the drop never
     // fired on ground under a perspective camera, whose neighbouring texels move apart on screen by their depth step so
     // that every ground pixel reads as a moving edge. Sparing a pixel whose 3x3 holds a surface farther than its centre
     // spared every ground pixel at a grazing angle, where each ground texel lies farther than the one below it by more
@@ -570,8 +573,8 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // pixel at a moving edge reads history a farther surface left: every one of them farther than the moving surface's
     // expected depth. That runs for a moving surface too, whose depth test is skipped, and costs no fetch beyond the
     // four a depth-tested pixel already takes.
-    bool followedElsewhere = true;
-    if (carriedFollowed && !nearerMoved) {
+    bool followedElsewhere = !carriedFollowed;
+    if (carriedFollowed && !nearerMoved && motionPixels > FollowedStillDisplayPixels) {
         vec2 ownMotion = (uv - previousUv) * internalSize;
         ivec2 historyTexel = ivec2(floor(previousUv * internalSize + jitter));
         float apart = 0.0;
@@ -579,7 +582,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             for (int x = -1; x <= 1; x++) {
                 vec2 shown = texelFetch(sampler2D(MotionTex, LinearClamp),
                     clamp(historyTexel + ivec2(x, y), ivec2(0), maxTexel), 0).rg;
-                apart = max(apart, length(shown * internalSize - ownMotion));
+                if (!(abs(shown.x) > MotionSentinel)) apart = max(apart, length(shown * internalSize - ownMotion));
             }
         }
         followedElsewhere = apart > FollowedHistoryMotionFraction * length(ownMotion);

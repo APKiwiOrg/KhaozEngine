@@ -230,12 +230,13 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>
         /// Step 3 beside a followed surface. The avatar's own pixels store the followed mark while the camera follows
         /// it (<see cref="WorldMotionMetres"/>), and a pixel whose nearest surface did not move in the world drops a
-        /// history that carries it only where one of the nine current texels around the history position moves on
-        /// screen otherwise than the pixel reprojected, by more than this share of the pixel's own motion. The avatar
-        /// stays put on screen while the ground it uncovers pans at the walk's speed, so a ground pixel reading the
-        /// avatar's history there drops it. On the frame the avatar stops in the world, or turns back through zero
-        /// travel, its pixels read their own history in place, and under a damped camera that eases on after it,
-        /// where the same avatar shows moving with them, apart only by its parallax, and keep it.
+        /// history that carries it only where one of the nine current texels around the history position, background
+        /// aside, moves on screen otherwise than the pixel reprojected, by more than this share of the pixel's own
+        /// motion, and the pixel moved more than <see cref="FollowedStillDisplayPixels"/>. The avatar stays put on
+        /// screen while the ground it uncovers pans at the walk's speed, so a ground pixel reading the avatar's
+        /// history there drops it. On the frame the avatar stops in the world, or turns back through zero travel, its
+        /// pixels read their own history in place, and under a damped camera that eases on after it, where the same
+        /// avatar shows moving with them, apart only by its parallax, and keep it.
         /// <para>
         /// Dropped there, every pixel of the avatar showed one jittered sample on that frame and took 15 frames to
         /// settle: its pixels inside the reconstruction's reach from its outline read 3.7 and 3.0 times the error
@@ -247,6 +248,19 @@ namespace KhaozEngine.Render3D.Internal
         /// </para>
         /// </summary>
         public const float FollowedHistoryMotionFraction = 0.5f;
+        /// <summary>
+        /// Step 3 beside a followed surface. A pixel that moved on screen no more than this many display pixels since
+        /// the last frame reads a history carrying the followed mark where it shows it, and keeps it, whatever moves
+        /// among the nine texels (<see cref="FollowedHistoryMotionFraction"/>). On the frame an avatar stops with the
+        /// camera, or turns back through zero travel, its pixels move exactly nothing on screen, so a share of that
+        /// motion was no threshold, and a second keyed box walking past behind the avatar at 1 display pixel a frame
+        /// dropped the history of the outline beside it, up to 1.12 times a kept history's error on the orthographic
+        /// walk at Native. A floor on the share holds nothing under the passer's speed, and at one internal pixel, the
+        /// passer's speed at Quality, it let the ground a walk uncovers keep the avatar's colour. A reversal ramping
+        /// through zero passes 0.125 display pixels a frame at the slowest walk measured, where a floor of 0.25 left
+        /// some of that ground its history.
+        /// </summary>
+        public const float FollowedStillDisplayPixels = 0.1f;
         /// <summary>Step 3. A depth-tested pixel whose expected surface shows under less than this share of the
         /// bilinear weight of its four stored depths was mostly covered last frame, and drops its history, unless the
         /// nearest of the four is narrow, its run of texels along a row or a column, apart in depth from those either

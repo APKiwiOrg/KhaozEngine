@@ -54,6 +54,9 @@ namespace KhaozEngine.Tests.Render3D
                 "const float FollowedHistoryMotionFraction = 0.5;",
                 TemporalResolveTuning.FollowedHistoryMotionFraction, 0.5f
             },
+            {
+                "const float FollowedStillDisplayPixels = 0.1;", TemporalResolveTuning.FollowedStillDisplayPixels, 0.1f
+            },
             { "const float DisocclusionVisibleShare = 0.5;", TemporalResolveTuning.DisocclusionVisibleShare, 0.5f },
             { "const float MovingShareConfidence = 0.0;", TemporalResolveTuning.MovingShareConfidence, 0f },
         };
@@ -297,9 +300,10 @@ namespace KhaozEngine.Tests.Render3D
             // moves more on screen, on it the surface travelled more than twice its screen motion. Beside the edge it
             // stores minus three minus the lock, on the surface minus five minus the lock. A depth-tested pixel whose
             // nearest surface did not move drops a history that carries either, unless every stored depth is farther,
-            // or the followed surface's own pixels stored it and none of the nine current texels around the history
-            // position moves on screen otherwise than the pixel by more than FollowedHistoryMotionFraction of its
-            // motion. No 3x3 farthest depth spares it, and the nine texels are read outside the 3x3 every pixel runs.
+            // or the followed surface's own pixels stored it and the pixel moved on screen no more than
+            // FollowedStillDisplayPixels, or none of the nine current texels around the history position, background
+            // aside, moves on screen otherwise than the pixel by more than FollowedHistoryMotionFraction of its motion.
+            // No 3x3 farthest depth spares it, and the nine texels are read outside the 3x3 every pixel runs.
             // A Windows checkout has CRLF line ends, and a pin below spans two lines of the shader.
             string core = ShaderSources.TemporalResolveCoreGlsl.Replace("\r\n", "\n", StringComparison.Ordinal);
             Assert.Contains("bool temporalStoredBand(float stored) { return stored < -2.5; }", core,
@@ -324,21 +328,26 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("bool temporalStoredFollowed(float stored) { return stored < -4.5; }", core,
                 StringComparison.Ordinal);
             Assert.Contains("carriedFollowed = temporalStoredFollowed(carriedLeast);", core, StringComparison.Ordinal);
-            Assert.Contains("if (carriedFollowed && !nearerMoved) {", core, StringComparison.Ordinal);
+            Assert.Contains("bool followedElsewhere = !carriedFollowed;", core, StringComparison.Ordinal);
+            Assert.Contains("if (carriedFollowed && !nearerMoved && motionPixels > FollowedStillDisplayPixels) {", core,
+                StringComparison.Ordinal);
             Assert.Contains("ivec2 historyTexel = ivec2(floor(previousUv * internalSize + jitter));", core,
                 StringComparison.Ordinal);
-            Assert.Contains("apart = max(apart, length(shown * internalSize - ownMotion));", core,
-                StringComparison.Ordinal);
+            Assert.Contains("if (!(abs(shown.x) > MotionSentinel)) apart = max(apart, length(shown * internalSize "
+                + "- ownMotion));", core, StringComparison.Ordinal);
             Assert.Contains("followedElsewhere = apart > FollowedHistoryMotionFraction * length(ownMotion);", core,
                 StringComparison.Ordinal);
             int loopEnd = core.IndexOf("float reactive = clamp(reactiveDifference", StringComparison.Ordinal);
-            int nine = core.IndexOf("if (carriedFollowed && !nearerMoved) {", StringComparison.Ordinal);
+            int nine = core.IndexOf("if (carriedFollowed && !nearerMoved && motionPixels", StringComparison.Ordinal);
+            int lastMotion = core.LastIndexOf("motionPixels = onScreen ?", StringComparison.Ordinal);
             int followedRead = core.IndexOf("carriedFollowed = temporalStoredFollowed(carriedLeast);",
                 StringComparison.Ordinal);
             int footprintRead = core.IndexOf("DepthFootprint footprint = temporalDepthFootprint(",
                 StringComparison.Ordinal);
-            Assert.True(loopEnd >= 0 && followedRead > loopEnd && nine > followedRead && footprintRead > nine,
-                "the nine texels are read after the 3x3 and the carried state, and before the depth test");
+            Assert.True(loopEnd >= 0 && followedRead > loopEnd && nine > followedRead && nine > lastMotion
+                && footprintRead > nine,
+                "the nine texels are read after the 3x3, the carried state and the pixel's own motion, "
+                + "and before the depth test");
             int own = core.IndexOf("bool ownReprojected = ", StringComparison.Ordinal);
             int moved = core.IndexOf("bool nearerMoved = ", StringComparison.Ordinal);
             int band = core.IndexOf("bool band = historyValid", StringComparison.Ordinal);

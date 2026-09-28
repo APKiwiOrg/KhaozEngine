@@ -149,6 +149,32 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(r.TrailOver <= 3, $"the box leaves a trail. {message}");
         }
 
+        /// <summary>
+        /// The tilted keyed box's own edges while the camera follows it across the textured wall under the dilation's
+        /// reach, the pixels the band marks (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23), keep their anti-aliasing
+        /// and do not shimmer: the edge error against the 4x reference stays under a regression floor below what the
+        /// resolve gave before the band, and the fast flips under the bound the other fast edges take against their
+        /// reference.
+        /// </summary>
+        [GpuTheory]
+        [InlineData(TemporalUpscale.Native, 0.25f, 0.019)]
+        [InlineData(TemporalUpscale.Native, 0.5f, 0.020)]
+        [InlineData(TemporalUpscale.Native, 1f, 0.014)]
+        [InlineData(TemporalUpscale.Quality, 0.25f, 0.025)]
+        [InlineData(TemporalUpscale.Quality, 0.5f, 0.026)]
+        [InlineData(TemporalUpscale.Quality, 1f, 0.028)]
+        public void A_followed_keyed_box_keeps_its_own_edges_under_the_reach(TemporalUpscale preset, float speed,
+            double maxEdgeError)
+        {
+            FastEdgeRun r = runs.Run(FastEdgeScene.FollowedBox, preset, AntiAliasing.Temporal, speed);
+            FlickerStats f = r.Flicker;
+            string message = $"followed box, {preset}, {speed} internal px a frame: {f}, edge error "
+                + $"{r.EdgeError:0.00000}, fast flip bound {FastFlipBound(f):0.00000}";
+            output.WriteLine(message);
+            Assert.True(r.EdgeError <= maxEdgeError, $"the box's edges stray from the reference. {message}");
+            Assert.True(f.FastFlips <= FastFlipBound(f), $"the box's edges shimmer. {message}");
+        }
+
         [GpuFact]
         public void The_fast_edge_table_prints_every_run()
         {

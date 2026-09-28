@@ -160,6 +160,8 @@ public sealed partial class TileWorldClient
             return;
         }
 
+        ObservePreparationSnapshot(serverTick);
+
         // THE HONEST READ's capture, and this is the ONE instant it can be taken. Apply has just written the newest
         // server state for every entity in the snapshot into World, and the next AdvancePresentation overwrites all
         // of it with the delayed timeline's answer, so a pass taken anywhere else reads the delayed value back.

@@ -12,8 +12,21 @@ public sealed partial class TileWorldClient
     {
         internal readonly TileCombatPreparationAssembler Assembler = new();
         internal readonly TileCombatPreparationLedger Ledger = new();
+        internal readonly TileCombatPresentationClock Clock = new();
         internal readonly List<TileCombatPreparation> States = new();
         internal readonly List<TileCombatTerminal> Terminals = new();
+    }
+
+    /// <summary>Fractional combat presentation time from the newest applied movement snapshot, capped at one tick
+    /// beyond it. Returns -1 before a valid snapshot, after disconnect, or when preparation is disabled.
+    /// This clock predicts no outcome and is independent of the remote movement interpolation timeline.</summary>
+    public double CombatPresentationTick => combatPreparation?.Clock.Tick ?? -1d;
+
+    void ObservePreparationSnapshot(long serverTick)
+    {
+        if (!config.CombatPreparationEnabled || !IsJoined || serverTick < 0) return;
+        combatPreparation ??= new();
+        combatPreparation.Clock.Observe(serverTick);
     }
 
     /// <summary>Raised after a complete preparation snapshot is applied, carrying its authoritative server tick.</summary>
@@ -98,6 +111,7 @@ public sealed partial class TileWorldClient
     void ClearPreparations()
     {
         preparationGeneration++;
+        combatPreparation?.Clock.Clear();
         combatPreparation?.Assembler.Clear();
         combatPreparation?.Ledger.Clear();
         combatPreparation?.States.Clear();

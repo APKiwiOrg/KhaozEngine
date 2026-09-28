@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Netcode;
 using Xunit;
@@ -154,6 +155,67 @@ public class TilePreparationClockTests
         foreach (byte[] frame in f.Payloads().Where(x => x[0] == 5)) f.Inject(frame);
         f.Client.Poll();
         Assert.Single(generatedOutcomes);
+    }
+
+    [Theory]
+    [InlineData(9007199254740994L, 9007199254740994d)]
+    [InlineData(long.MaxValue - 14, 9223372036854774784d)]
+    public void Rounded_clock_never_exceeds_the_exact_one_tick_bound(long anchor, double expected)
+    {
+        var clock = new TileCombatPresentationClock();
+        clock.Observe(anchor);
+        clock.Advance(.25f, .25f);
+        Assert.Equal(expected, clock.Tick);
+        Assert.True(new BigInteger(clock.Tick) <= new BigInteger(anchor) + 1);
+        clock.Advance(float.MaxValue, .25f);
+        Assert.Equal(expected, clock.Tick);
+    }
+
+    [Theory]
+    [InlineData(9007199254740988L)]
+    [InlineData(long.MaxValue - 15)]
+    public void Adjacent_large_anchors_remain_monotonic_and_mathematically_bounded(long first)
+    {
+        var clock = new TileCombatPresentationClock();
+        double previous = -1d;
+        for (int i = 0; i < 16; i++)
+        {
+            long anchor = first + i;
+            clock.Observe(anchor);
+            Assert.True(clock.Tick >= previous);
+            Assert.True(new BigInteger(clock.Tick) <= new BigInteger(anchor) + 1);
+            previous = clock.Tick;
+            clock.Advance(.125f, .25f);
+            Assert.True(clock.Tick >= previous);
+            Assert.True(new BigInteger(clock.Tick) <= new BigInteger(anchor) + 1);
+            previous = clock.Tick;
+            clock.Advance(.125f, .25f);
+            Assert.True(clock.Tick >= previous);
+            Assert.True(new BigInteger(clock.Tick) <= new BigInteger(anchor) + 1);
+            previous = clock.Tick;
+            clock.Observe(anchor - 1);
+            clock.Observe(anchor);
+            Assert.Equal(previous, clock.Tick);
+        }
+    }
+
+    [Theory]
+    [InlineData(9007199254740994L, TileCombatPreparationStage.Prepare)]
+    [InlineData(long.MaxValue - 14, TileCombatPreparationStage.Hold)]
+    public void Large_client_clock_does_not_sample_an_impact_two_ticks_away(long anchor, TileCombatPreparationStage expected)
+    {
+        using var f = new PreparationDeliveryScenario();
+        byte[] initial = f.Payloads().First(x => x[0] == TileProtocol.ServerFrameSnapshot);
+        Assert.True(TileProtocol.TryDecodeSnapshotFrame(initial, out long local, out int ack, out _, out byte[] body));
+        var preparation = new TileCombatPreparation(100, 101, 1, 1, 7, anchor, anchor + 2, 1, 2);
+        f.Inject(TileProtocol.EncodeSnapshotFrame(local, ack, anchor, body));
+        f.Inject(TileProtocol.EncodePreparationChunk(new(anchor, 0, 1), new[] { preparation }, 0, 1));
+        f.Client.Poll();
+        f.Client.AdvancePresentation(.25f);
+        Assert.True(f.Client.TryGetCombatPreparation(100, out var received));
+        Assert.Equal(new TileCombatPreparationSample(expected, 0),
+            TileCombatPreparationSampler.Sample(received, f.Client.CombatPresentationTick));
+        Assert.True(new BigInteger(f.Client.CombatPresentationTick) <= new BigInteger(anchor) + 1);
     }
 
     [Fact]

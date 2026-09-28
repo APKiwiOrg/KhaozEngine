@@ -6421,15 +6421,21 @@ camera.FrameClock = () => Clock.FrameCount;   // once, where the camera is built
 
 Each computed eye is stamped with the id. A read reuses the cached eye only under the same id and the same inputs,
 and `BeginFrame` keeps an eye computed earlier in the same frame. The staleness bound holds through the stamp: a
-camera whose inputs never change still recomputes once a frame, so a wall that slides in behind the probe is seen
-on the next frame. A clock that stops advancing falls back to the plain latch at every `BeginFrame` after the
-first, a clock that advances mid-frame costs a recompute, and neither ever answers with an older eye. The clock is
+clock that advances once per frame, such as `GameClock.FrameCount`, never returns an eye from an earlier frame, so
+a camera whose inputs never change still recomputes once a frame and a wall that slides in behind the probe is seen
+on the next frame. A clock that advances mid-frame costs a recompute and nothing worse.
+
+A clock that stops advancing breaks that contract. `BeginFrame` can spot a stall only by comparing with the
+previous latch, so the next latch after a stall can keep an eye computed before it. A constant clock on a still
+camera read only in update for a few frames, then made the active camera, hands its first latch the eye from the
+first of those frames. Only the latches after that drop the cache as a camera with no clock does. The clock is
 called on every read, so keep it cheap and allocation-free. `InvalidateEye()` still drops the eye at once.
 
 The saving needs the update's reads to come after its last camera write, `FollowCameraController.Update`
-included. A camera read in update BEFORE it advances gains nothing: with a clock that read computes a fresh eye
-instead of reusing last frame's, and the move then costs the render another. Leave `FrameClock` null there, or move
-the read after the camera's update. A camera read only through the render costs one computation a frame either way.
+included. A camera read in update BEFORE it advances costs two computations a frame with a clock, where it costs
+one without: the clock makes that read compute a fresh eye instead of reusing last frame's, and the move then costs
+the render another. Leave `FrameClock` null there, or move the read after the camera's update. A camera read only
+through the render costs one computation a frame either way.
 
 Two cumulative counters (never reset, in the same shape as `GpuDeviceCounters`) show the load:
 `OcclusionSweepCount` is the sweeps this camera has issued, and `EyeComputeCount` is full eye computations whether

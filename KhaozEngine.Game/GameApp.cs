@@ -557,11 +557,13 @@ namespace KhaozEngine.Game
         /// <summary>
         /// The head of every frame's prepare phase: the focus auto-pause, then the frame's one
         /// <see cref="GameClock.Update"/>, then <paramref name="rest"/>, which is everything from the input latch
-        /// through <see cref="OnUpdate"/> to <see cref="OnPrepareWorld"/>. Ticking here, before any game callback
-        /// and nowhere else, is what makes <see cref="GameClock.FrameCount"/> one id for the whole frame: update, the
-        /// world prepare and the record phase all read the same value, which is what a
-        /// <c>FollowCamera3D.FrameClock</c> needs. Static and delegate-parameterized so that order is assertable
-        /// headless, the way <c>GameApp3D.PrepareScene</c> makes the scene order assertable.
+        /// through <see cref="OnUpdate"/> to <see cref="OnPrepareWorld"/>. The tick happens here and nowhere else,
+        /// before <paramref name="rest"/> runs, so <see cref="OnUpdate"/>, <see cref="OnPrepareWorld"/> and the record
+        /// phase all read one <see cref="GameClock.FrameCount"/>, which is what a <c>FollowCamera3D.FrameClock</c>
+        /// needs. The focus auto-pause runs before the tick and can raise the clock's <see cref="GameClock.Paused"/>
+        /// or <see cref="GameClock.Resumed"/> event, so a handler on either sees the previous frame's count. Static
+        /// and delegate-parameterized so that order is assertable headless, the way <c>GameApp3D.PrepareScene</c>
+        /// makes the scene order assertable.
         /// </summary>
         internal static void StartFrame(FocusAutoPause autoPause, GameClock clock, Frame frame, Action<Frame> rest)
         {

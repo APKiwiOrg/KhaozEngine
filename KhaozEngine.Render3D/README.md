@@ -32,9 +32,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `GameApp`) that stamps each computed eye. A read reuses the eye only under the same id and inputs, and
   `BeginFrame` keeps an eye computed earlier in the same frame, so a game that reads the eye in update after moving
   the target, and again through the render, pays one computation and one `BoomProbe` call a frame instead of two.
-  A still camera still recomputes once a frame, so the world moving behind the probe is never answered with last
-  frame's eye. A clock that stops advancing falls back to the plain latch. Null keeps the previous behaviour. See
-  docs/USING-KHAOZENGINE.md.
+  A camera read in update BEFORE it moves pays two computations a frame with a clock, where it pays one without, so
+  leave the clock null for that shape. A clock that advances once per frame never returns an eye from an earlier
+  frame, so a still camera still recomputes once a frame and sees the world move behind the probe. A clock that
+  stops advancing breaks that contract and can hand the next latch an eye from before the stall. Null keeps the
+  previous behaviour. See docs/USING-KHAOZENGINE.md.
 - `FollowCamera3D.PivotHeight` / `Pivot` / `PitchLimit` (since 20.13.0). The camera orbits and looks at `Pivot`,
   which is `EffectiveTarget` raised by `PivotHeight` (default 0). `HeightOffset` still raises only the eye. A
   negative `MinPitch` puts the eye below the pivot looking up, and `Pitch` clamps to `[-PitchLimit, PitchLimit]`

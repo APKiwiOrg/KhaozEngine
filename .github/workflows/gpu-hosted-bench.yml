@@ -13,8 +13,10 @@
 # runs the device report and fails unless it names the NVIDIA GPU. Nothing is timed on a software rasterizer.
 #
 # THE WINDOWS IMAGE SHIPS THE T4 IN TCC, the driver model that offers compute only (first probe, run 36380480461:
-# driver 471.11, Direct3D 11 on the Basic Render Driver, no Vulkan device). Direct3D and Vulkan need WDDM, so the
-# Windows legs ask the driver for WDDM and restart the device before building.
+# datacenter driver 471.11, Direct3D 11 on the Basic Render Driver, no Vulkan device). Direct3D and Vulkan need
+# WDDM, and that driver refuses the switch (`nvidia-smi -dm 0` answers Not Supported, run 36382124195). So the
+# Windows legs install Microsoft's Azure GRID driver for the T4 silently, without the reboot its docs recommend,
+# and the device report says whether it took.
 #
 # Example: gh workflow run gpu-hosted-bench.yml -f ref=main -f filter=FullyQualifiedName~GpuCapabilitiesDiagTests
 name: gpu-hosted-bench
@@ -83,24 +85,29 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: GPU, driver model and WDDM (Windows)
+      - name: GPU, driver model and the GRID driver (Windows)
         if: runner.os == 'Windows'
         continue-on-error: true
         shell: powershell
+        env:
+          # Microsoft's redistribution for NCasT4_v3 on Windows Server 2022 (vGPU 20.2), licensed for Azure. From
+          # learn.microsoft.com/azure/virtual-machines/windows/n-series-driver-setup.
+          GRID_URL: https://download.microsoft.com/download/0f21fd13-2390-4c79-876a-87ae3dc724c6/596.86_grid_win10_win11_server2022_server2025_dch_64bit_international_azure_swl.exe
         run: |
           $ErrorActionPreference = 'Continue'
+          $ProgressPreference = 'SilentlyContinue'
           Get-CimInstance Win32_VideoController | Format-List Name, DriverVersion, Status
           & nvidia-smi
           $model = (& nvidia-smi --query-gpu=driver_model.current --format=csv,noheader) -join ''
           Write-Host "driver model: $model"
           if ($model -match 'TCC') {
-            & nvidia-smi -g 0 -dm 0
-            Get-PnpDevice -Class Display -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -like '*NVIDIA*' } | ForEach-Object {
-              Write-Host "restarting $($_.InstanceId)"
-              & pnputil /restart-device "$($_.InstanceId)"
-            }
+            $exe = Join-Path $env:RUNNER_TEMP 'grid.exe'
+            Invoke-WebRequest -Uri $env:GRID_URL -OutFile $exe -UseBasicParsing
+            $p = Start-Process -FilePath $exe -ArgumentList '-s', '-noreboot', '-clean', '-noeula' -Wait -PassThru
+            Write-Host "GRID installer exit code: $($p.ExitCode)"
             Start-Sleep -Seconds 15
-            Write-Host "after the restart: $((& nvidia-smi --query-gpu=driver_model.current,driver_model.pending --format=csv,noheader) -join '')"
+            & nvidia-smi
+            Write-Host "after the install: $((& nvidia-smi --query-gpu=driver_model.current,driver_model.pending --format=csv,noheader) -join '')"
             Get-CimInstance Win32_VideoController | Format-List Name, Status
           }
 

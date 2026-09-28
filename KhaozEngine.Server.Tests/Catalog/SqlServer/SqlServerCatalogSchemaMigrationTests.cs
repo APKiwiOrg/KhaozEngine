@@ -9,9 +9,9 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog.SqlServer;
 
 /// <summary>
-/// The version 1 to version 2 migration on SQL Server, driven against a POPULATED version 1 database: the
-/// embedded <c>CatalogSchemaV1.sql</c> created as it shipped, with two published versions, the temporal
-/// history they left, an open draft, a pin and audit rows already in it.
+/// The version 1 migration on SQL Server, driven against a POPULATED version 1 database: the embedded
+/// <c>CatalogSchemaV1.sql</c> created as it shipped, with two published versions, the temporal history they
+/// left, an open draft, a pin and audit rows already in it. One open chains it through version 2 to version 3.
 /// <para>
 /// <b>The version 1 script is the EMBEDDED one rather than a copy</b>, which is the difference from the SQLite
 /// leg: this provider ships both scripts as resources, so the file a test builds from is the same file an
@@ -131,7 +131,7 @@ public class SqlServerCatalogSchemaMigrationTests
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(2, await store.GetSchemaVersionAsync());
+        Assert.Equal(3, await store.GetSchemaVersionAsync());
         Assert.Equal(Epoch, await store.GetStoreEpochAsync());
         Assert.Equal(2, await store.GetActiveVersionAsync());
         Assert.Equal(1, await store.GetPinnedVersionAsync());
@@ -202,7 +202,7 @@ public class SqlServerCatalogSchemaMigrationTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v2-content-upgrade-ledger", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v3-row-timestamps", refused.Message, StringComparison.Ordinal);
         Assert.Contains("version '1'", refused.Message, StringComparison.Ordinal);
 
         // Refused means REFUSED: the database is still version 1 and still carries no ledger table.
@@ -216,11 +216,11 @@ public class SqlServerCatalogSchemaMigrationTests
     }
 
     /// <summary>
-    /// Reopening a version 2 database is a NO-OP under both modes. A migration that ran again would be a
+    /// Reopening a migrated database is a NO-OP under both modes. A migration that ran again would be a
     /// migration that could fail on its second run, which is how a database ends up neither version.
     /// </summary>
     [CatalogSqlServerFact]
-    public async Task ReopeningAVersionTwoDatabaseChangesNothing()
+    public async Task ReopeningAMigratedDatabaseChangesNothing()
     {
         using var database = new SqlServerCatalogDatabase();
         WriteVersionOne(database);
@@ -238,7 +238,7 @@ public class SqlServerCatalogSchemaMigrationTests
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
         await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
 
-        Assert.Equal(2, await store.GetSchemaVersionAsync());
+        Assert.Equal(3, await store.GetSchemaVersionAsync());
         Assert.Equal(epoch, await store.GetStoreEpochAsync());
         Assert.Single(await store.ListUpgradesAsync());
     }

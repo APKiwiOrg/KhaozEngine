@@ -27,14 +27,15 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// <para>
 /// Validation compares the NAMES of every catalog table, every named index, every check constraint, every
 /// foreign key and every default constraint against what the declared version says, both directions, because a
-/// missing object and an extra one are each a schema this build cannot write to safely. A mismatch names the object and the required migration, since an operator can
-/// act on those two facts and cannot act on "schema is wrong".
+/// missing object and an extra one are each a schema this build cannot write to safely. It compares every row
+/// time column with its type and nullability the same way. A mismatch names the object and the required
+/// migration, since an operator can act on those two facts and cannot act on "schema is wrong".
 /// </para>
 /// <para>
-/// <b>A version 1 database is MIGRATED under AutoCreate and refused under ValidateOnly</b>, which is the
-/// journal's split per provider and per mode. The migration runs behind the same application lock the create
-/// takes and re-reads the version inside it, so two hosts starting at once are one migration and one host that
-/// finds the work already done.
+/// <b>A version 1 or version 2 database is MIGRATED under AutoCreate and refused under ValidateOnly</b>, which
+/// is the journal's split per provider and per mode. Version 1 chains through version 2 to version 3 in one
+/// open. Each migration runs behind the same application lock the create takes and re-reads the version inside
+/// it, so two hosts starting at once are one migration and one host that finds the work already done.
 /// </para>
 /// </summary>
 internal static class SqlServerCatalogSchemaValidation
@@ -88,7 +89,26 @@ internal static class SqlServerCatalogSchemaValidation
                 throw Mismatch("at unsupported version '1'");
             }
 
-            await MigrateVersionOneAsync(connection, cancellationToken).ConfigureAwait(false);
+            await MigrateAsync(connection, 1, SqlServerCatalogSchema.VersionOneMigrationSql, cancellationToken)
+                .ConfigureAwait(false);
+            version = await ReadAsync(() => ReadSchemaVersionAsync(connection, cancellationToken))
+                .ConfigureAwait(false);
+        }
+
+        if (version == 2)
+        {
+            // Read after the version, like every validation here, so a version 1 database this open just
+            // migrated, or a version 2 one another host is migrating, is judged on what it holds now. The
+            // version 2 check accepts a version 3 column in its exact shape, which is what a half-finished
+            // migration or a host that migrated in between leaves.
+            await ValidateObjectsAsync(connection, 2, cancellationToken).ConfigureAwait(false);
+            if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+            {
+                throw Mismatch("at unsupported version '2'");
+            }
+
+            await MigrateAsync(connection, 2, SqlServerCatalogSchema.VersionTwoMigrationSql, cancellationToken)
+                .ConfigureAwait(false);
             version = await ReadAsync(() => ReadSchemaVersionAsync(connection, cancellationToken))
                 .ConfigureAwait(false);
         }
@@ -186,7 +206,7 @@ internal static class SqlServerCatalogSchemaValidation
     /// naming the lock code if it cannot be had.
     /// <para>
     /// <b>Every statement that reshapes this schema takes it, on this one resource name:</b> the create, the
-    /// version 1 migration and the reset. A lock one of them holds and another does not is not a lock: the two
+    /// migrations and the reset. A lock one of them holds and another does not is not a lock: the two
     /// would interleave, and a reset that drops every catalog table while a starting host is creating or
     /// migrating them is a database neither of them can describe.
     /// The lock is held for the transaction and released with it, however it ends.
@@ -232,23 +252,30 @@ internal static class SqlServerCatalogSchemaValidation
     }
 
     /// <summary>
-    /// The version 1 to version 2 migration, behind the SAME exclusive application lock the create takes and
-    /// inside one transaction: the ledger table, its index, and the metadata row moved to 2. Two hosts
-    /// starting at once against one database is the ordinary deployment here, so the second one waits and then
-    /// finds the version already moved, which is why the version is re-read INSIDE the lock.
+    /// One migration, behind the SAME exclusive application lock the create takes and inside one transaction,
+    /// each statement its own batch: version 1 to 2 adds the ledger table, and version 2 to 3 adds the row time
+    /// columns and backfills them. Two hosts starting at once against one database is the ordinary deployment
+    /// here, so the second one waits and then finds the version already moved, which is why the version is
+    /// re-read INSIDE the lock. A second run would also overwrite times a version 3 writer has stamped since.
     /// </summary>
     /// <param name="connection">An open connection.</param>
+    /// <param name="from">The version the statements move a database from.</param>
+    /// <param name="statements">The migration, each statement run as its own batch and the version moved last.</param>
     /// <param name="cancellationToken">Cancels the migration.</param>
-    static async Task MigrateVersionOneAsync(SqlConnection connection, CancellationToken cancellationToken)
+    static async Task MigrateAsync(
+        SqlConnection connection,
+        int from,
+        IReadOnlyList<string> statements,
+        CancellationToken cancellationToken)
     {
         await using SqlTransaction transaction = (SqlTransaction)await connection
             .BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
 
         await TakeSchemaLockAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
 
-        if (await ReadSchemaVersionAsync(connection, transaction, cancellationToken).ConfigureAwait(false) == 1)
+        if (await ReadSchemaVersionAsync(connection, transaction, cancellationToken).ConfigureAwait(false) == from)
         {
-            foreach (string sql in SqlServerCatalogSchema.VersionOneMigrationSql)
+            foreach (string sql in statements)
             {
                 await using SqlCommand command = connection.CreateCommand();
                 command.Transaction = transaction;
@@ -280,9 +307,9 @@ internal static class SqlServerCatalogSchemaValidation
     }
 
     /// <summary>
-    /// The five name sets read back and compared against what the given version declares. Tables outside the
-    /// <c>catalog_</c> namespace are invisible here on purpose: a host may keep its own tables in the same
-    /// database, and this schema has no opinion about them.
+    /// The five name sets and the row time columns read back and compared against what the given version
+    /// declares. Tables outside the <c>catalog_</c> namespace are invisible here on purpose: a host may keep its
+    /// own tables in the same database, and this schema has no opinion about them.
     /// </summary>
     static async Task ValidateObjectsAsync(
         SqlConnection connection,
@@ -370,6 +397,27 @@ internal static class SqlServerCatalogSchemaValidation
             "default constraint",
             defaults,
             versionOne ? SqlServerCatalogSchemaExpectations.DefaultsV1 : SqlServerCatalogSchemaExpectations.Defaults,
+            expectedVersion);
+
+        // Version 3 is columns and nothing else, so a database that says version 3 without them, or version 2
+        // with one of them in a shape the migration would not have left, is caught only here.
+        IReadOnlySet<string> timeColumns = await ReadAsync(() => ReadNamesAsync(
+                connection,
+                """
+                SELECT t.name + N'.' + c.name + N'|' + ty.name + N'|' + CONVERT(nvarchar(3), c.scale) + N'|'
+                    + CASE c.is_nullable WHEN 1 THEN N'NULL' ELSE N'NOT NULL' END
+                FROM sys.columns c
+                JOIN sys.tables t ON t.object_id = c.object_id
+                JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+                WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%'
+                  AND c.name IN (N'created_at_utc', N'updated_at_utc');
+                """,
+                cancellationToken))
+            .ConfigureAwait(false);
+        Compare(
+            "row time column",
+            SqlServerCatalogSchemaExpectations.JudgedTimeColumns(timeColumns, expectedVersion),
+            SqlServerCatalogSchemaExpectations.TimeColumnsFor(expectedVersion),
             expectedVersion);
     }
 

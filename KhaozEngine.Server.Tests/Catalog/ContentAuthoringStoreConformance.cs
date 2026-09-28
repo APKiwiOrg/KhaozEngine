@@ -50,10 +50,10 @@ public abstract partial class ContentAuthoringStoreConformance
     protected static ContentTypeId Capped => CatalogFixtures.Capped;
 
     /// <summary>The migration a schema refusal names, which is per provider and identical in both so far.</summary>
-    protected virtual string RequiredMigration => "catalog-v2-content-upgrade-ledger";
+    protected virtual string RequiredMigration => "catalog-v3-row-timestamps";
 
     /// <summary>The schema version this build creates, which every provider reports after an AutoCreate.</summary>
-    protected virtual int CurrentSchemaVersion => 2;
+    protected virtual int CurrentSchemaVersion => 3;
 
     /// <summary>
     /// A store over an EMPTY, UNINITIALIZED database, which is what facts 1 and 2 need: the schema is the

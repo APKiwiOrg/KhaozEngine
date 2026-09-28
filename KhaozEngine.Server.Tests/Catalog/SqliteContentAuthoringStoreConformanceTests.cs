@@ -30,13 +30,6 @@ public sealed class SqliteContentAuthoringStoreConformanceTests : ContentAuthori
     int _databases;
 
     /// <inheritdoc />
-    /// <remarks>SQLite is at schema version 3, with row creation and update times.</remarks>
-    protected override string RequiredMigration => "catalog-v3-row-timestamps";
-
-    /// <inheritdoc />
-    protected override int CurrentSchemaVersion => 3;
-
-    /// <inheritdoc />
     protected override IContentAuthoringStore NewStore()
     {
         _databases++;

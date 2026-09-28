@@ -199,10 +199,13 @@ public sealed partial class SqlServerContentAuthoringStore
         return byRow;
     }
 
-    /// <summary>One row revision and its field rows. The caller owns the transaction.</summary>
+    /// <summary>
+    /// One row revision and its field rows, stamped with the publish time. The caller owns the transaction.
+    /// </summary>
     async Task InsertRowAsync(
         SqlServerCatalogScope scope,
         ContentRowInsert insert,
+        DateTimeOffset at,
         CancellationToken cancellationToken)
     {
         ContentRow row = insert.Row;
@@ -211,10 +214,11 @@ public sealed partial class SqlServerContentAuthoringStore
             """
             INSERT INTO dbo.catalog_row(
                 type_id, definition_id, valid_from_version, replaced_in_version, content_key, parent_id,
-                family_id, retired)
-            VALUES (@type, @id, @from, NULL, @key, @parent, @family, @retired);
+                family_id, retired, created_at_utc, updated_at_utc)
+            VALUES (@type, @id, @from, NULL, @key, @parent, @family, @retired, @at, @at);
             """))
         {
+            BindTime(command, "@at", at);
             BindInt(command, "@type", (int)row.Type.Value);
             BindInt(command, "@id", row.Id);
             BindInt(command, "@from", insert.ValidFromVersion);
@@ -240,9 +244,10 @@ public sealed partial class SqlServerContentAuthoringStore
                 """
                 INSERT INTO dbo.catalog_row_field(
                     type_id, definition_id, valid_from_version, field_name, field_kind,
-                    int_value, text_value, blob_value)
-                VALUES (@type, @id, @from, @name, @kind, @int, NULL, @blob);
+                    int_value, text_value, blob_value, created_at_utc)
+                VALUES (@type, @id, @from, @name, @kind, @int, NULL, @blob, @at);
                 """);
+            BindTime(command, "@at", at);
             BindInt(command, "@type", (int)row.Type.Value);
             BindInt(command, "@id", row.Id);
             BindInt(command, "@from", insert.ValidFromVersion);
@@ -254,19 +259,24 @@ public sealed partial class SqlServerContentAuthoringStore
         }
     }
 
-    /// <summary>One row revision closed at the new version. The caller owns the transaction.</summary>
+    /// <summary>
+    /// One row revision closed at the new version, at that version's publish time. The caller owns the
+    /// transaction.
+    /// </summary>
     static async Task CloseRowAsync(
         SqlServerCatalogScope scope,
         ContentRowClose close,
+        DateTimeOffset at,
         CancellationToken cancellationToken)
     {
         await using SqlCommand command = Command(
             scope,
             """
-            UPDATE dbo.catalog_row SET replaced_in_version = @replaced
+            UPDATE dbo.catalog_row SET replaced_in_version = @replaced, updated_at_utc = @at
             WHERE type_id = @type AND definition_id = @id AND valid_from_version = @from
               AND replaced_in_version IS NULL;
             """);
+        BindTime(command, "@at", at);
         BindInt(command, "@replaced", close.ReplacedInVersion);
         BindInt(command, "@type", (int)close.Type.Value);
         BindInt(command, "@id", close.DefinitionId);

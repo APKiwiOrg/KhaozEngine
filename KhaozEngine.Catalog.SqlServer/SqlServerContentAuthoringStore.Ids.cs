@@ -93,10 +93,12 @@ public sealed partial class SqlServerContentAuthoringStore
                 await using SqlCommand insert = Command(
                     scope,
                     """
-                    INSERT INTO dbo.catalog_family(type_id, family_key, block_size, retired, created_in_version)
-                    VALUES (@type, @key, @size, 0, @created);
+                    INSERT INTO dbo.catalog_family(
+                        type_id, family_key, block_size, retired, created_in_version, created_at_utc)
+                    VALUES (@type, @key, @size, 0, @created, @at);
                     SELECT CAST(SCOPE_IDENTITY() AS bigint);
                     """);
+                BindTime(insert, "@at", _clock());
                 BindInt(insert, "@type", (int)type.Value);
                 BindText(insert, "@key", familyKey);
                 BindInt(insert, "@size", blockSize);
@@ -177,7 +179,8 @@ public sealed partial class SqlServerContentAuthoringStore
 
     /// <inheritdoc />
     /// <remarks>ONE statement that compares and advances, so two takes on one type queue on the row rather
-    /// than each reading it and then deadlocking on the upgrade to a write.</remarks>
+    /// than each reading it and then deadlocking on the upgrade to a write. A take always moves the issued mark,
+    /// so it always moves the update time.</remarks>
     public Task<int> CommitIssueAsync(
         ContentTypeId type,
         int count,
@@ -191,12 +194,13 @@ public sealed partial class SqlServerContentAuthoringStore
                     scope,
                     """
                     UPDATE dbo.catalog_id_high_water
-                    SET issued_through = issued_through + @count
+                    SET issued_through = issued_through + @count, updated_at_utc = @now
                     OUTPUT deleted.issued_through
                     WHERE type_id = @type AND reserved_through - issued_through >= @count;
                     """);
                 BindInt(take, "@type", (int)type.Value);
                 BindInt(take, "@count", count);
+                BindTime(take, "@now", _clock());
                 object? before = await take.ExecuteScalarAsync(token).ConfigureAwait(false);
                 return before is int issued ? issued + 1 : 0;
             },
@@ -221,7 +225,8 @@ public sealed partial class SqlServerContentAuthoringStore
     /// One mark raised to at least a value in ONE statement, which compares and writes under the key lock
     /// <c>HOLDLOCK</c> takes, so two raises of one type queue rather than deadlock. The seeding write raises
     /// the issued mark only after the reserved one covers the same id, and the reserved mark never falls, so
-    /// the issued mark cannot pass it here.
+    /// the issued mark cannot pass it here. A raise that would not move the mark writes nothing, so the update
+    /// time moves only with the mark.
     /// </summary>
     Task<bool> RaiseMarkAsync(
         ContentTypeId type,
@@ -238,22 +243,25 @@ public sealed partial class SqlServerContentAuthoringStore
                           MERGE dbo.catalog_id_high_water WITH (HOLDLOCK) AS target
                           USING (SELECT @type AS type_id) AS source ON target.type_id = source.type_id
                           WHEN MATCHED AND target.issued_through < @value THEN
-                              UPDATE SET issued_through = @value
-                          WHEN NOT MATCHED THEN INSERT (type_id, reserved_through, issued_through)
-                              VALUES (@type, @value, @value)
+                              UPDATE SET issued_through = @value, updated_at_utc = @now
+                          WHEN NOT MATCHED THEN INSERT (
+                              type_id, reserved_through, issued_through, created_at_utc, updated_at_utc)
+                              VALUES (@type, @value, @value, @now, @now)
                           OUTPUT $action;
                           """
                         : """
                           MERGE dbo.catalog_id_high_water WITH (HOLDLOCK) AS target
                           USING (SELECT @type AS type_id) AS source ON target.type_id = source.type_id
                           WHEN MATCHED AND target.reserved_through < @value THEN
-                              UPDATE SET reserved_through = @value
-                          WHEN NOT MATCHED THEN INSERT (type_id, reserved_through, issued_through)
-                              VALUES (@type, @value, 0)
+                              UPDATE SET reserved_through = @value, updated_at_utc = @now
+                          WHEN NOT MATCHED THEN INSERT (
+                              type_id, reserved_through, issued_through, created_at_utc, updated_at_utc)
+                              VALUES (@type, @value, 0, @now, @now)
                           OUTPUT $action;
                           """);
                 BindInt(raise, "@type", (int)type.Value);
                 BindInt(raise, "@value", value);
+                BindTime(raise, "@now", _clock());
                 return await raise.ExecuteScalarAsync(token).ConfigureAwait(false) is not null;
             },
             cancellationToken);
@@ -291,15 +299,18 @@ public sealed partial class SqlServerContentAuthoringStore
 
                 var block = new ContentFamilyBlock(
                     familyId, family.Blocks.Count, baseId, family.BlockSize, baseId, active + 1);
+                DateTimeOffset now = _clock();
 
                 await using (SqlCommand insert = Command(
                     scope,
                     """
                     INSERT INTO dbo.catalog_family_block(
-                        family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version)
-                    VALUES (@family, @blockOrdinal, @base, @size, @next, @version);
+                        family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version,
+                        created_at_utc, updated_at_utc)
+                    VALUES (@family, @blockOrdinal, @base, @size, @next, @version, @now, @now);
                     """))
                 {
+                    BindTime(insert, "@now", now);
                     BindBigInt(insert, "@family", familyId);
                     BindInt(insert, "@blockOrdinal", block.BlockOrdinal);
                     BindInt(insert, "@base", block.BaseId);
@@ -312,7 +323,7 @@ public sealed partial class SqlServerContentAuthoringStore
                 // The advance rides with the insert, because a block row written without it leaves the plain
                 // counter walking into the new block.
                 await WriteHighWaterAsync(
-                    scope, family.Type, WithIssued(family.Type, mark, issuedThrough), token)
+                    scope, family.Type, WithIssued(family.Type, mark, issuedThrough), now, token)
                     .ConfigureAwait(false);
 
                 return block;
@@ -332,12 +343,13 @@ public sealed partial class SqlServerContentAuthoringStore
                     scope,
                     """
                     UPDATE dbo.catalog_family_block
-                    SET next_free_id = next_free_id + 1
+                    SET next_free_id = next_free_id + 1, updated_at_utc = @now
                     OUTPUT deleted.next_free_id
                     WHERE family_id = @family AND block_ordinal = @blockOrdinal
                       AND next_free_id < base_id + block_size;
                     """))
                 {
+                    BindTime(take, "@now", _clock());
                     BindBigInt(take, "@family", familyId);
                     BindInt(take, "@blockOrdinal", blockOrdinal);
                     if (await take.ExecuteScalarAsync(token).ConfigureAwait(false) is int id)
@@ -536,10 +548,20 @@ public sealed partial class SqlServerContentAuthoringStore
             : default;
     }
 
+    /// <summary>
+    /// The type's two marks written. An existing row is updated, and its <c>updated_at_utc</c> moved, only when a
+    /// mark actually changes. The caller owns the transaction.
+    /// </summary>
+    /// <param name="scope">The caller's connection and transaction.</param>
+    /// <param name="type">The type whose marks these are.</param>
+    /// <param name="mark">The two marks.</param>
+    /// <param name="at">The time a new row is created at and a changed row is updated at.</param>
+    /// <param name="cancellationToken">Cancels the statement.</param>
     static async Task WriteHighWaterAsync(
         SqlServerCatalogScope scope,
         ContentTypeId type,
         ContentIdHighWater mark,
+        DateTimeOffset at,
         CancellationToken cancellationToken)
     {
         await using SqlCommand command = Command(
@@ -547,15 +569,19 @@ public sealed partial class SqlServerContentAuthoringStore
             """
             MERGE dbo.catalog_id_high_water WITH (HOLDLOCK) AS target
             USING (SELECT @type AS type_id) AS source ON target.type_id = source.type_id
-            WHEN MATCHED THEN UPDATE SET
-                reserved_through = @reserved,
-                issued_through = @issued
-            WHEN NOT MATCHED THEN INSERT (type_id, reserved_through, issued_through)
-                VALUES (@type, @reserved, @issued);
+            WHEN MATCHED AND (target.reserved_through <> @reserved OR target.issued_through <> @issued) THEN
+                UPDATE SET
+                    reserved_through = @reserved,
+                    issued_through = @issued,
+                    updated_at_utc = @at
+            WHEN NOT MATCHED THEN INSERT (
+                type_id, reserved_through, issued_through, created_at_utc, updated_at_utc)
+                VALUES (@type, @reserved, @issued, @at, @at);
             """);
         BindInt(command, "@type", (int)type.Value);
         BindInt(command, "@reserved", mark.ReservedThrough);
         BindInt(command, "@issued", mark.IssuedThrough);
+        BindTime(command, "@at", at);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 

@@ -9,9 +9,10 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// <summary>
 /// The content authoring schema as SQL Server holds it (spec 4.5): the fifteen tables of spec 4.4 and the
 /// content upgrade ledger, with the type and constraint idioms swapped, shipped as the EMBEDDED RESOURCE
-/// <c>CatalogSchemaV2.sql</c>, plus the version and migration this build supports.
+/// <c>CatalogSchemaV3.sql</c>, plus the version and migration this build supports.
 /// <para>
-/// This file holds the two constants and the resource load and NOTHING else. Creating and validating a
+/// This file holds the two constants, the resource loads and the version 1 migration. The version 2 to 3
+/// migration is <c>SqlServerCatalogSchema.VersionThree.cs</c>. Creating and validating a
 /// database against it is <see cref="SqlServerCatalogSchemaValidation"/>, the same split the SQLite provider
 /// and the journal both carry, and the DDL itself is a file rather than a <c>const string</c> because that is
 /// the shape <c>KhaozEngine.WorldStore.SqlServer/JournalSchemaV1.sql</c> established.
@@ -40,23 +41,33 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// publish every imported retired row as live.
 /// </para>
 /// </summary>
-internal static class SqlServerCatalogSchema
+internal static partial class SqlServerCatalogSchema
 {
     /// <summary>The schema version this build writes and the only one it accepts.</summary>
-    internal const int CurrentVersion = 2;
+    internal const int CurrentVersion = 3;
 
     /// <summary>The migration an operator is told to apply when the database does not match.</summary>
-    internal const string RequiredMigration = "catalog-v2-content-upgrade-ledger";
-
-    /// <summary>The whole schema, as one batch, exactly as the embedded file gives it.</summary>
-    internal static string SchemaSql { get; } = Load("CatalogSchemaV2.sql");
+    internal const string RequiredMigration = "catalog-v3-row-timestamps";
 
     /// <summary>
-    /// Version 1's script, kept EMBEDDED beside version 2's rather than deleted. It is what a test builds a
+    /// The whole schema, as one batch, exactly as the embedded file gives it. The metadata seed takes one
+    /// database clock reading for both of its times, which is where <c>updated_at_utc</c> has always come from
+    /// here: the script runs with no store behind it, a reset included.
+    /// </summary>
+    internal static string SchemaSql { get; } = Load("CatalogSchemaV3.sql");
+
+    /// <summary>
+    /// Version 1's script, kept EMBEDDED beside the current one rather than deleted. It is what a test builds a
     /// version 1 database from, and it is the operator-facing record of the shape the migration below moves,
-    /// which is the same pair <c>KhaozEngine.WorldStore.SqlServer</c> ships for the journal.
+    /// which is the same set <c>KhaozEngine.WorldStore.SqlServer</c> ships for the journal.
     /// </summary>
     internal static string VersionOneSchemaSql { get; } = Load("CatalogSchemaV1.sql");
+
+    /// <summary>
+    /// Version 2's script, kept EMBEDDED for the same two reasons: a test builds a version 2 database from it,
+    /// and it records the shape the version 3 migration moves.
+    /// </summary>
+    internal static string VersionTwoSchemaSql { get; } = Load("CatalogSchemaV2.sql");
 
     /// <summary>
     /// The version 1 to version 2 migration as one statement per batch: the ledger table, its index, and the

@@ -231,9 +231,10 @@ public static class SqlServerCatalogReset
     /// describe, and <paramref name="force"/> repairs it. A whole catalog is read.
     /// </para>
     /// <para>
-    /// A version 1 catalog is WHOLE when it stands at version 1's own set, which lacks the table version 2
-    /// added. Judged against this build's set alone it would read as partial, and a plain reset of a store
-    /// that is merely older would be refused.
+    /// An older catalog is WHOLE when it stands at its own version's set: version 1's lacks the table version 2
+    /// added, and version 2's is version 3's, which added only columns. Judged against this build's set alone a
+    /// version 1 catalog would read as partial, and a plain reset of a store that is merely older would be
+    /// refused.
     /// </para>
     /// </summary>
     static async Task<Stood> ReadBeforeAsync(
@@ -350,7 +351,7 @@ public static class SqlServerCatalogReset
 
     /// <summary>
     /// The audit row's own CHECK constraints, mirrored from <c>dbo.catalog_audit</c> in
-    /// <c>CatalogSchemaV2.sql</c> and applied BEFORE anything is opened or dropped.
+    /// <c>CatalogSchemaV3.sql</c> and applied BEFORE anything is opened or dropped.
     /// <para>
     /// The insert is the last statement of the reset, so without this an empty actor dropped the whole
     /// catalog, recreated it, and then failed on its own argument list with a raw provider exception. The
@@ -524,6 +525,7 @@ public static class SqlServerCatalogReset
         IReadOnlySet<string>? declared = version switch
         {
             1 => SqlServerCatalogSchemaExpectations.TablesV1,
+            2 => SqlServerCatalogSchemaExpectations.Tables,
             SqlServerCatalogSchema.CurrentVersion => SqlServerCatalogSchemaExpectations.Tables,
             _ => null,
         };

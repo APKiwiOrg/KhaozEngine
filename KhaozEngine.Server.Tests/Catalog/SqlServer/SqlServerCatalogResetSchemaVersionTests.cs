@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.SqlServer;
@@ -13,9 +14,10 @@ namespace KhaozEngine.Tests.Catalog.SqlServer;
 /// <c>catalog_content_upgrade</c>, so these are also the facts that the ledger table is inside the reset's
 /// inventory.
 /// <para>
-/// The version 1 catalog here is a real store taken back to version 1's shape: the ledger table dropped and
-/// the metadata row set to 1. The provider's own validator is asked to confirm that shape before each reset,
-/// because it compares every version 1 object by name before it names the migration.
+/// The older catalogs here are a real store taken back to an older shape: version 2 without the row time
+/// columns version 3 added, and version 1 without the ledger table as well, with the metadata row set to match.
+/// The provider's own validator is asked to confirm that shape before each reset, because it compares every
+/// object of that version before it names the migration.
 /// </para>
 /// </summary>
 [Collection(SqlServerCatalogCollection.Name)]
@@ -56,7 +58,7 @@ public class SqlServerCatalogResetSchemaVersionTests
         using var database = new SqlServerCatalogDatabase();
         await SeedAsync(database);
         TakeBackToVersionOne(database);
-        await AssertIsVersionOneAsync(database);
+        await AssertIsVersionAsync(database, 1);
 
         // No force: an older catalog is a whole catalog, not a partial one.
         ContentCatalogResetResult reset = await SqlServerCatalogReset.ResetAsync(
@@ -82,6 +84,38 @@ public class SqlServerCatalogResetSchemaVersionTests
         Assert.Equal(0, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_content_upgrade;"));
         Assert.Equal(
             SqlServerCatalogSchemaExpectations.Tables.Count, SqlServerCatalogResetHarness.CountTables(database));
+    }
+
+    [CatalogSqlServerFact]
+    public async Task AVersionTwoCatalogIsResetAndComesBackAtTheBuildsVersion()
+    {
+        using var database = new SqlServerCatalogDatabase();
+        await SeedAsync(database);
+        TakeBackToVersionTwo(database);
+        await AssertIsVersionAsync(database, 2);
+
+        // No force: version 3 added columns and no table, so a version 2 catalog stands at its whole table set.
+        ContentCatalogResetResult reset = await SqlServerCatalogReset.ResetAsync(
+            database.ConnectionString, Actor, Operator, "content release");
+
+        Assert.Equal(ContentCatalogPriorState.Read, reset.PriorState);
+        Assert.Equal(2, reset.PriorSchemaVersion);
+        Assert.Equal(Current, reset.SchemaVersion);
+        Assert.Equal(1, reset.ActiveVersion);
+        Assert.Equal(2, reset.RowsDropped);
+
+        var reopened = new SqlServerContentAuthoringStore(
+            database.ConnectionString, SqlServerCatalogResetHarness.Registry(), database.Pack());
+        await reopened.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
+        Assert.Equal(Current, await reopened.GetSchemaVersionAsync());
+        Assert.Equal(
+            SqlServerCatalogSchema.VersionThreeColumns.Count,
+            database.Scalar(
+                """
+                SELECT COUNT(*) FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id
+                WHERE t.schema_id = SCHEMA_ID(N'dbo') AND t.name LIKE N'catalog[_]%'
+                  AND c.name IN (N'created_at_utc', N'updated_at_utc') AND c.is_nullable = 1;
+                """));
     }
 
     [CatalogSqlServerFact]
@@ -159,24 +193,37 @@ public class SqlServerCatalogResetSchemaVersionTests
         return store;
     }
 
-    /// <summary>Version 2 undone: the one table it added gone and the metadata row back at 1.</summary>
-    static void TakeBackToVersionOne(SqlServerCatalogDatabase database) => database.Execute(
-        """
-        DROP TABLE dbo.catalog_content_upgrade;
-        UPDATE dbo.catalog_metadata SET schema_version = 1 WHERE metadata_key = 1;
-        """);
+    /// <summary>Version 3 undone: the columns it added gone and the metadata row back at 2.</summary>
+    static void TakeBackToVersionTwo(SqlServerCatalogDatabase database)
+    {
+        database.Execute(string.Concat(SqlServerCatalogSchema.VersionThreeColumns.Select(
+            static added => $"ALTER TABLE dbo.{added.Table} DROP COLUMN {added.Column};\n")));
+        database.Execute("UPDATE dbo.catalog_metadata SET schema_version = 2 WHERE metadata_key = 1;");
+    }
+
+    /// <summary>Versions 3 and 2 undone: the columns and the one table they added gone and the metadata row back at 1.</summary>
+    static void TakeBackToVersionOne(SqlServerCatalogDatabase database)
+    {
+        TakeBackToVersionTwo(database);
+        database.Execute(
+            """
+            DROP TABLE dbo.catalog_content_upgrade;
+            UPDATE dbo.catalog_metadata SET schema_version = 1 WHERE metadata_key = 1;
+            """);
+    }
 
     /// <summary>
-    /// The provider's own verdict that this is version 1 and nothing else: ValidateOnly compares every
-    /// version 1 object by name and only then refuses by naming the version.
+    /// The provider's own verdict that this is the given older version and nothing else: ValidateOnly compares
+    /// every object of that version and only then refuses by naming the version.
     /// </summary>
-    static async Task AssertIsVersionOneAsync(SqlServerCatalogDatabase database)
+    static async Task AssertIsVersionAsync(SqlServerCatalogDatabase database, int version)
     {
         var store = new SqlServerContentAuthoringStore(
             database.ConnectionString, SqlServerCatalogResetHarness.Registry(), database.Pack());
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
-        Assert.Contains("at unsupported version '1'", refused.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            FormattableString.Invariant($"at unsupported version '{version}'"), refused.Message, StringComparison.Ordinal);
     }
 
     /// <summary>Every row and every table of the seeded catalog where it was, down to the epoch.</summary>

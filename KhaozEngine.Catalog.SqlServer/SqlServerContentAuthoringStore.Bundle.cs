@@ -88,8 +88,9 @@ public sealed partial class SqlServerContentAuthoringStore
                     RequireTypesAgree(bundle);
 
                     staged = true;
-                    await RestoreFamiliesAsync(scope, bundle, token).ConfigureAwait(false);
-                    await SeedMarksAsync(scope, bundle, token).ConfigureAwait(false);
+                    DateTimeOffset at = _clock();
+                    await RestoreFamiliesAsync(scope, bundle, at, token).ConfigureAwait(false);
+                    await SeedMarksAsync(scope, bundle, at, token).ConfigureAwait(false);
 
                     _importRules = Restamp(bundle);
                     return await EditsAsync(scope, bundle, token).ConfigureAwait(false);
@@ -275,11 +276,13 @@ public sealed partial class SqlServerContentAuthoringStore
     /// <summary>
     /// The families and their blocks VERBATIM, ids included, because a family is what makes a row's id
     /// membership answerable and an import that reallocated blocks would move every id in one. The identity
-    /// column is turned off for the duration and back on afterwards.
+    /// column is turned off for the duration and back on afterwards. Their row times are this import's, because
+    /// that is when these rows were inserted.
     /// </summary>
     async Task RestoreFamiliesAsync(
         SqlServerCatalogScope scope,
         ContentBundle bundle,
+        DateTimeOffset at,
         CancellationToken cancellationToken)
     {
         if (bundle.Families.Count == 0)
@@ -300,10 +303,11 @@ public sealed partial class SqlServerContentAuthoringStore
                     scope,
                     """
                     INSERT INTO dbo.catalog_family(
-                        family_id, type_id, family_key, block_size, retired, created_in_version)
-                    VALUES (@family, @type, @key, @size, @retired, @created);
+                        family_id, type_id, family_key, block_size, retired, created_in_version, created_at_utc)
+                    VALUES (@family, @type, @key, @size, @retired, @created, @at);
                     """))
                 {
+                    BindTime(insert, "@at", at);
                     BindBigInt(insert, "@family", family.FamilyId);
                     BindInt(insert, "@type", (int)family.Type.Value);
                     BindText(insert, "@key", family.FamilyKey);
@@ -320,9 +324,11 @@ public sealed partial class SqlServerContentAuthoringStore
                         scope,
                         """
                         INSERT INTO dbo.catalog_family_block(
-                            family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version)
-                        VALUES (@family, @blockOrdinal, @base, @size, @next, @version);
+                            family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version,
+                            created_at_utc, updated_at_utc)
+                        VALUES (@family, @blockOrdinal, @base, @size, @next, @version, @at, @at);
                         """);
+                    BindTime(insert, "@at", at);
                     BindBigInt(insert, "@family", family.FamilyId);
                     BindInt(insert, "@blockOrdinal", block.BlockOrdinal);
                     BindInt(insert, "@base", block.BaseId);
@@ -352,6 +358,7 @@ public sealed partial class SqlServerContentAuthoringStore
     static async Task SeedMarksAsync(
         SqlServerCatalogScope scope,
         ContentBundle bundle,
+        DateTimeOffset at,
         CancellationToken cancellationToken)
     {
         var highest = new Dictionary<ushort, int>();
@@ -383,6 +390,7 @@ public sealed partial class SqlServerContentAuthoringStore
                 type,
                 new ContentIdHighWater(
                     Math.Max(held.ReservedThrough, mark.Value), Math.Max(held.IssuedThrough, mark.Value)),
+                at,
                 cancellationToken).ConfigureAwait(false);
         }
     }

@@ -255,7 +255,13 @@ public sealed partial class SqlServerContentAuthoringStore
 
     /// <summary>
     /// Opens the draft against the active version when none is open, and otherwise carries the standing one
-    /// forward, replacing its note when this call brought one. The caller owns the transaction.
+    /// forward, replacing its note when this call brought a different one. The caller owns the transaction.
+    /// <para>
+    /// The draft row's <c>updated_at_utc</c> moves only with the note: an edit is a row of its own, with its own
+    /// times, and adding one changes nothing in this row. The note comparison adds the byte length, because
+    /// SQL Server pads the shorter string before it compares, and a note that differs only in trailing blanks is
+    /// still a different value.
+    /// </para>
     /// </summary>
     async Task OpenDraftAsync(
         SqlServerCatalogScope scope,
@@ -270,9 +276,11 @@ public sealed partial class SqlServerContentAuthoringStore
             """
             MERGE dbo.catalog_draft WITH (HOLDLOCK) AS target
             USING (SELECT 1 AS draft_key) AS source ON target.draft_key = source.draft_key
-            WHEN MATCHED AND @note <> N'' THEN UPDATE SET note = @note
-            WHEN NOT MATCHED THEN INSERT (draft_key, base_version, opened_by, opened_at_utc, note)
-                VALUES (1, @base, @actor, @at, @note);
+            WHEN MATCHED AND @note <> N''
+                AND (target.note <> @note OR DATALENGTH(target.note) <> DATALENGTH(@note)) THEN
+                UPDATE SET note = @note, updated_at_utc = @at
+            WHEN NOT MATCHED THEN INSERT (draft_key, base_version, opened_by, opened_at_utc, note, updated_at_utc)
+                VALUES (1, @base, @actor, @at, @note, @at);
             """);
         BindInt(command, "@base", active);
         BindText(command, "@actor", actor);
@@ -301,11 +309,14 @@ public sealed partial class SqlServerContentAuthoringStore
                 ContentAuthoringException.EditTargetCollisionReason);
         }
 
+        // One reading per edit, shared by the edit row and its field rows, which are written together.
+        DateTimeOffset at = _clock();
         long ordinal;
         if (standing is { } replace)
         {
             // Same target, same operation: the newer edit wins the slot the older one already holds, so the
-            // draft never carries two intents for one row and the edit keeps its place in the order.
+            // draft never carries two intents for one row and the edit keeps its place in the order. It keeps
+            // its creation time too, and edited_at_utc is its update time.
             ordinal = replace.Ordinal;
             await using (SqlCommand update = Command(
                 scope,
@@ -317,7 +328,7 @@ public sealed partial class SqlServerContentAuthoringStore
                 WHERE edit_ordinal = @ordinal;
                 """))
             {
-                BindEdit(update, edit, actor);
+                BindEdit(update, edit, actor, at);
                 BindBigInt(update, "@ordinal", ordinal);
                 await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -334,12 +345,12 @@ public sealed partial class SqlServerContentAuthoringStore
                 """
                 INSERT INTO dbo.catalog_draft_edit(
                     type_id, definition_id, content_key, operation, retire_policy, replacement_id, fork_key,
-                    fork_flag_field, family_id, imported_retired, edited_by, edited_at_utc)
+                    fork_flag_field, family_id, imported_retired, edited_by, edited_at_utc, created_at_utc)
                 VALUES (@type, @id, @key, @operation, @policy, @replacement, @forkKey, @forkFlag, @family,
-                        @importedRetired, @actor, @at);
+                        @importedRetired, @actor, @at, @at);
                 SELECT CAST(SCOPE_IDENTITY() AS bigint);
                 """);
-            BindEdit(insert, edit, actor);
+            BindEdit(insert, edit, actor, at);
             BindInt(insert, "@type", (int)edit.Type.Value);
             BindInt(insert, "@id", edit.DefinitionId);
             BindText(insert, "@key", edit.Key.ToString());
@@ -361,10 +372,11 @@ public sealed partial class SqlServerContentAuthoringStore
                 scope,
                 """
                 INSERT INTO dbo.catalog_draft_edit_field(
-                    edit_ordinal, field_name, field_kind, int_value, text_value, blob_value)
-                VALUES (@ordinal, @name, @kind, @int, NULL, @blob);
+                    edit_ordinal, field_name, field_kind, int_value, text_value, blob_value, created_at_utc)
+                VALUES (@ordinal, @name, @kind, @int, NULL, @blob, @at);
                 """);
             BindBigInt(command, "@ordinal", ordinal);
+            BindTime(command, "@at", at);
             BindText(command, "@name", field.Name);
             BindInt(command, "@kind", (int)field.Value.Kind);
             BindBigInt(
@@ -404,7 +416,7 @@ public sealed partial class SqlServerContentAuthoringStore
             : null;
     }
 
-    void BindEdit(SqlCommand command, ContentEdit edit, string actor)
+    static void BindEdit(SqlCommand command, ContentEdit edit, string actor, DateTimeOffset at)
     {
         BindInt(command, "@policy", (int)edit.RetirePolicy);
         BindInt(command, "@replacement", edit.ReplacementId);
@@ -413,7 +425,7 @@ public sealed partial class SqlServerContentAuthoringStore
         BindBigInt(command, "@family", edit.FamilyId);
         BindInt(command, "@importedRetired", edit.ImportedAsRetired ? 1 : 0);
         BindText(command, "@actor", actor);
-        BindTime(command, "@at", _clock());
+        BindTime(command, "@at", at);
     }
 
     /// <summary>

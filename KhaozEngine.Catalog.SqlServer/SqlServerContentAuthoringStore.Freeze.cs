@@ -24,6 +24,11 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// refuse every edit forever, so the baseline read every publish starts with clears it.
 /// </para>
 /// <para>
+/// Each statement here moves <c>catalog_draft.updated_at_utc</c> when it changes the row and leaves it alone
+/// when it does not: a freeze at the base the marker already names, and a release of a draft nothing holds,
+/// are both no change.
+/// </para>
+/// <para>
 /// <b>Unexercised.</b> No SQL Server is reachable from the build this landed in, so every statement here is
 /// written to mirror the SQLite provider's, which the conformance suite does run. The SQL Server conformance
 /// class overrides the same facts under its gated attribute, so they run the moment an instance is there.
@@ -40,11 +45,20 @@ public sealed partial class SqlServerContentAuthoringStore
             async (scope, token) =>
             {
                 // It OVERWRITES rather than refusing an already frozen draft. A marker a dead publish left
-                // behind must not block the retry, and the retry is what an operator does to recover.
+                // behind must not block the retry, and the retry is what an operator does to recover. The row
+                // count is the open-draft check, so the update time is decided inside the SET rather than in
+                // the WHERE. Every SET expression reads the row as it stood, and a NULL marker is never equal to
+                // the base, so a first freeze always stamps.
                 await using SqlCommand command = Command(
                     scope,
-                    "UPDATE dbo.catalog_draft SET frozen_for_base_version = @base WHERE draft_key = 1;");
+                    """
+                    UPDATE dbo.catalog_draft
+                    SET frozen_for_base_version = @base,
+                        updated_at_utc = CASE WHEN frozen_for_base_version = @base THEN updated_at_utc ELSE @now END
+                    WHERE draft_key = 1;
+                    """);
                 BindInt(command, "@base", baseVersion);
+                BindTime(command, "@now", _clock());
                 if (await command.ExecuteNonQueryAsync(token).ConfigureAwait(false) == 0)
                 {
                     throw new ContentAuthoringException(
@@ -61,13 +75,22 @@ public sealed partial class SqlServerContentAuthoringStore
     public Task ClearDraftFreezeAsync(CancellationToken cancellationToken = default)
         => WriteAsync((scope, token) => ClearFreezeAsync(scope, token), cancellationToken);
 
-    /// <summary>The freeze released, leaving the draft and its edits alone. The caller owns the scope.</summary>
+    /// <summary>
+    /// The freeze released, leaving the draft and its edits alone. A draft nothing holds is left untouched, so
+    /// the release a publish runs after its commit, or any second release, is the no-op it looks like. The
+    /// caller owns the scope.
+    /// </summary>
     /// <param name="scope">The caller's connection and transaction.</param>
     /// <param name="cancellationToken">Cancels the statement.</param>
-    static async Task ClearFreezeAsync(SqlServerCatalogScope scope, CancellationToken cancellationToken)
+    async Task ClearFreezeAsync(SqlServerCatalogScope scope, CancellationToken cancellationToken)
     {
         await using SqlCommand command = Command(
-            scope, "UPDATE dbo.catalog_draft SET frozen_for_base_version = NULL WHERE draft_key = 1;");
+            scope,
+            """
+            UPDATE dbo.catalog_draft SET frozen_for_base_version = NULL, updated_at_utc = @now
+            WHERE draft_key = 1 AND frozen_for_base_version IS NOT NULL;
+            """);
+        BindTime(command, "@now", _clock());
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -84,12 +107,13 @@ public sealed partial class SqlServerContentAuthoringStore
                 await using SqlCommand command = Command(
                     scope,
                     """
-                    UPDATE dbo.catalog_draft SET frozen_for_base_version = NULL
+                    UPDATE dbo.catalog_draft SET frozen_for_base_version = NULL, updated_at_utc = @now
                     WHERE draft_key = 1
                       AND frozen_for_base_version IS NOT NULL
                       AND frozen_for_base_version <>
                           (SELECT active_version FROM dbo.catalog_metadata WHERE metadata_key = 1);
                     """);
+                BindTime(command, "@now", _clock());
                 await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
             },
             cancellationToken);
@@ -137,10 +161,12 @@ public sealed partial class SqlServerContentAuthoringStore
     /// </summary>
     /// <param name="scope">The commit's connection and transaction.</param>
     /// <param name="plan">The plan committing, whose frozen edits leave the draft.</param>
+    /// <param name="at">The version's publish time, which a rebase stamps as the draft's update time.</param>
     /// <param name="cancellationToken">Cancels the statements.</param>
     static async Task DeleteFrozenEditsAsync(
         SqlServerCatalogScope scope,
         ContentPublishPlan plan,
+        DateTimeOffset at,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<ContentEdit> frozen = plan.FrozenEdits;
@@ -171,10 +197,12 @@ public sealed partial class SqlServerContentAuthoringStore
         await using SqlCommand rebase = Command(
             scope,
             """
-            UPDATE dbo.catalog_draft SET base_version = @version, frozen_for_base_version = NULL
+            UPDATE dbo.catalog_draft
+            SET base_version = @version, frozen_for_base_version = NULL, updated_at_utc = @at
             WHERE draft_key = 1;
             """);
         BindInt(rebase, "@version", plan.VersionNumber);
+        BindTime(rebase, "@at", at);
         await rebase.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 }

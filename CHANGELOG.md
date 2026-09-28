@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.14.1
+
+- On Windows every texture now samples its mip chain, so distant textures stop aliasing and the ground filters as
+  designed through the anisotropy and mip bias of `TerrainSamplerConfig`. The native Direct3D 11 backend handed the
+  driver Vortice's sampler description, whose layout put a maximum LOD of 0 where the driver reads it, so every
+  sampler read mip level 0 only and an explicit LOD or a material mip bias changed nothing. A consumer's own
+  Direct3D 11 goldens will move where they draw a mipmapped texture below its full size. A texture created with a
+  mip chain whose lower levels were never filled now shows those levels on Windows, as it already did on Vulkan
+  and Metal. The backend now passes the driver a 52-byte description in the header's layout. One test pins that
+  layout, and another pins the size of every Vortice struct passed to the driver by address. The engine re-baked
+  six of its Direct3D 11 goldens ([#1192](https://github.com/APKiwiOrg/KhaozEngine/issues/1192)).
+
 ## 20.14.0
 
 - `FollowCamera3D.FrameClock` lets a camera read in the update step and again through the render compute its

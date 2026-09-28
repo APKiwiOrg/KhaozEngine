@@ -1005,11 +1005,11 @@ none of them so a caller cannot ask for anything else. The incumbent's anisotrop
 forcing of `MipLodBias` to 0 are NOT reproduced, because both read capabilities that are constants here, so both
 branches are unreachable and carrying them would mean shipping a fallback nothing can enter.
 
-**The driver reads the engine's own `D3D11SamplerDesc`, not Vortice's `SamplerDescription` (since 20.13.1,
+**The driver reads the engine's own `D3D11SamplerDesc`, not Vortice's `SamplerDescription` (since 20.14.1,
 [#1192](https://github.com/APKiwiOrg/KhaozEngine/issues/1192)).** Vortice.Mathematics stores `Color4` as one
 `Vector128<float>`, so Vortice's struct is 64 bytes with the border colour at 32, against the header's 52 bytes
 with it at 28, and Vortice passes the managed struct's address with no marshalling. The driver read a maximum LOD
-of 0, so before 20.13.1 every sampler on this backend sampled mip level 0 only, on WARP and on hardware. The
+of 0, so before 20.14.1 every sampler on this backend sampled mip level 0 only, on WARP and on hardware. The
 backend now calls `ID3D11Device::CreateSamplerState` through the vtable with a pointer to a 52-byte engine
 struct of plain fields. `D3D11SamplerDescLayoutTests` pins its offsets on every OS,
 `D3D11VorticeStructLayoutTests` pins the size of every Vortice struct still passed by address on Windows, and

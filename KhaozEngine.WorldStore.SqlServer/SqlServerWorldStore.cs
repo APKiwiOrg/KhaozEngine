@@ -16,10 +16,14 @@ public sealed record SqlServerWorldStoreOptions(string ConnectionString);
 
 /// <summary>
 /// SQL Server / Azure SQL <see cref="IWorldStore"/> over Microsoft.Data.SqlClient. One
-/// <c>world_store([key], data, updated_at)</c> table, bootstrapped on construction; upsert via
+/// <c>world_store([key], data, updated_at, created_at)</c> table, bootstrapped on construction; upsert via
 /// <c>MERGE ... WITH (HOLDLOCK)</c> (race-safe single-row upsert); raw parameterized async ADO.NET, no EF/ORM.
 /// Opens a short-lived pooled connection per operation (SqlClient pools by connection string). The production
 /// backend; identical contract to the SQLite dev/test backend.
+/// <para>Both times are <c>DATETIME2</c> from the database clock. <c>updated_at</c> is the last save's.
+/// <c>created_at</c> is named only in the MERGE's insert arm, so a later save never moves it. A table an older build
+/// created gains a nullable <c>created_at</c> in place, and its rows keep NULL there, because no save after the insert
+/// knows when the row was created.</para>
 /// </summary>
 public sealed class SqlServerWorldStore : IWorldStore, IEnumerableWorldStore
 {
@@ -46,7 +50,10 @@ public sealed class SqlServerWorldStore : IWorldStore, IEnumerableWorldStore
             "CREATE TABLE dbo.world_store (" +
             "[key] NVARCHAR(450) NOT NULL PRIMARY KEY, " +
             "data VARBINARY(MAX) NOT NULL, " +
-            "updated_at DATETIME2 NOT NULL);";
+            "updated_at DATETIME2 NOT NULL, " +
+            "created_at DATETIME2 NULL); " +
+            "IF COL_LENGTH(N'dbo.world_store', N'created_at') IS NULL " +
+            "ALTER TABLE dbo.world_store ADD created_at DATETIME2 NULL;";
         cmd.ExecuteNonQuery();
     }
 
@@ -69,11 +76,13 @@ public sealed class SqlServerWorldStore : IWorldStore, IEnumerableWorldStore
         await using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using SqlCommand cmd = conn.CreateCommand();
+        // One read of the clock, so an inserted row's creation and update times are the same instant.
         cmd.CommandText =
+            "DECLARE @now DATETIME2 = SYSUTCDATETIME(); " +
             "MERGE dbo.world_store WITH (HOLDLOCK) AS t " +
             "USING (SELECT @k AS [key]) AS s ON t.[key] = s.[key] " +
-            "WHEN MATCHED THEN UPDATE SET data = @d, updated_at = SYSUTCDATETIME() " +
-            "WHEN NOT MATCHED THEN INSERT ([key], data, updated_at) VALUES (@k, @d, SYSUTCDATETIME());";
+            "WHEN MATCHED THEN UPDATE SET data = @d, updated_at = @now " +
+            "WHEN NOT MATCHED THEN INSERT ([key], data, updated_at, created_at) VALUES (@k, @d, @now, @now);";
         cmd.Parameters.AddWithValue("@k", key);
         SqlParameter d = cmd.Parameters.Add("@d", SqlDbType.VarBinary, -1);   // -1 = MAX
         d.Value = data;
@@ -105,6 +114,7 @@ public sealed class SqlServerWorldStore : IWorldStore, IEnumerableWorldStore
                 await using SqlCommand cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 var sql = new StringBuilder();
+                sql.Append("DECLARE @now DATETIME2 = SYSUTCDATETIME(); ");
                 sql.Append("MERGE dbo.world_store WITH (HOLDLOCK) AS t USING (VALUES ");
                 for (int i = 0; i < count; i++)
                 {
@@ -112,8 +122,8 @@ public sealed class SqlServerWorldStore : IWorldStore, IEnumerableWorldStore
                     sql.Append('(').Append('@').Append('k').Append(i).Append(',').Append('@').Append('d').Append(i).Append(')');
                 }
                 sql.Append(") AS s([key], data) ON t.[key] = s.[key] " +
-                    "WHEN MATCHED THEN UPDATE SET data = s.data, updated_at = SYSUTCDATETIME() " +
-                    "WHEN NOT MATCHED THEN INSERT ([key], data, updated_at) VALUES (s.[key], s.data, SYSUTCDATETIME());");
+                    "WHEN MATCHED THEN UPDATE SET data = s.data, updated_at = @now " +
+                    "WHEN NOT MATCHED THEN INSERT ([key], data, updated_at, created_at) VALUES (s.[key], s.data, @now, @now);");
                 cmd.CommandText = sql.ToString();
                 for (int i = 0; i < count; i++)
                 {

@@ -105,6 +105,47 @@ namespace KhaozEngine.Tests.Gpu
             output.WriteLine($"every run: {runs.Seconds:0.0} s");
         }
 
+        // The avatar over the clear colour and with a passer behind it: the orthographic walk and the boot pitch away
+        // at 1 display pixel a frame, and with the table switch sideways and 0.5 and 2 display pixels a frame too.
+        IEnumerable<StopRun> Surrounded()
+        {
+            bool full = TemporalStabilityRuns.FullTable;
+            float[] speeds = full ? new[] { 0.5f, 1f, 2f } : new[] { 1f };
+            FollowHeading[] headings = full
+                ? new[] { FollowHeading.Away, FollowHeading.Sideways }
+                : new[] { FollowHeading.Away };
+            foreach (StopSurround surround in new[] { StopSurround.ClearColour, StopSurround.Passer })
+                foreach (FollowEnding ending in Endings)
+                    foreach (TemporalUpscale preset in Presets)
+                    {
+                        foreach (float speed in speeds)
+                            yield return runs.Orthographic(ending, preset, speed, surround);
+                        foreach (FollowHeading heading in headings)
+                            foreach (float speed in speeds)
+                                yield return runs.Perspective(ending, preset, speed, BootPitch, heading, surround);
+                    }
+        }
+
+        /// <summary>The table of <see cref="The_follow_stop_table_prints_the_avatars_own_error_around_the_turn"/>
+        /// for the avatar stopping with the clear colour beside and behind its whole outline, and with a second keyed
+        /// box walking past behind it as it stops, at <see cref="TemporalFollowStopRuns.PasserPixels"/> display
+        /// pixels a frame, showing beside its outline.</summary>
+        [GpuFact]
+        public void The_follow_stop_table_prints_the_avatar_beside_the_clear_colour_and_a_passer()
+        {
+            output.WriteLine("| Walk | Pixels | Set | Before | Turn | "
+                + string.Join(" | ", Enumerable.Range(1, TemporalFollowStopRuns.After).Select(k => $"+{k}"))
+                + " | Flicker | Added |");
+            output.WriteLine("|" + string.Concat(Enumerable.Repeat(" --- |", TemporalFollowStopRuns.After + 7)));
+            foreach (StopRun r in Surrounded())
+            {
+                output.WriteLine(Row(r.Name, "whole", r.Whole));
+                output.WriteLine(Row(r.Name, "inner", r.Inner));
+                Assert.True(r.Whole.Pixels > 0 && r.Inner.Pixels > 0, $"{r.Name}: the avatar shows no pixels");
+            }
+            output.WriteLine($"every run: {runs.Seconds:0.0} s");
+        }
+
         static string Row(string name, string set, StopMeasure m) =>
             $"| {name} | {m.Pixels} | {set} | " + string.Join(" | ", m.Errors.Select(e => $"{e:0.00000}"))
             + $" | {m.Flicker:0.00000} | {m.Added:0.00000} |";

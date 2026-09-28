@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Tests.Gpu
@@ -10,6 +11,11 @@ namespace KhaozEngine.Tests.Gpu
     /// damped camera eases on after it, or the avatar slows, turns and walks back, its travel passing through
     /// zero.</summary>
     public enum FollowEnding { Stop, DampedStop, Reversal }
+
+    /// <summary>What stands behind the followed avatar: the textured ground or wall, nothing (the clear colour beside
+    /// and behind its whole outline), or the ground or wall with a second keyed box walking past behind the avatar as
+    /// it stops, showing beside its outline.</summary>
+    public enum StopSurround { Ground, ClearColour, Passer }
 
     /// <summary>A set of the avatar's pixels in one run: their mean luma error against the 4x reference on each frame
     /// from the one before the turn frame to <see cref="TemporalFollowStopRuns.After"/> frames after it, the temporal
@@ -31,7 +37,9 @@ namespace KhaozEngine.Tests.Gpu
     /// frame whose travel is zero. A stop holds the box still from there. A damped stop moves the camera's target as
     /// <see cref="FollowCamera3D.EnableTargetDamping"/> does at its default rate and 60 frames a second, so the camera
     /// lags the walk and eases on after the box stops. A reversal slows the box over <see cref="RampFrames"/> frames,
-    /// to zero travel on the turn frame, and back to the walk's speed the other way. The measure reads the pixels whose
+    /// to zero travel on the turn frame, and back to the walk's speed the other way. Either scene can leave out the
+    /// ground or wall, so the clear colour lies beside and behind the box's whole outline, or add a second keyed box
+    /// walking past behind the box as it stops (<see cref="StopSurround"/>). The measure reads the pixels whose
     /// centre shows the box on each frame, by casting the pixel centre's ray, against the same frame of the
     /// supersampled reference (<see cref="TemporalAcceptance.ReferenceSequence"/>). HDR is off and the sharpen is at
     /// its default.
@@ -58,13 +66,28 @@ namespace KhaozEngine.Tests.Gpu
         /// at the screen centre, at <paramref name="pitch"/> radians, heading <paramref name="heading"/>, ending as
         /// <paramref name="ending"/> says.</summary>
         internal StopRun Perspective(FollowEnding ending, TemporalUpscale preset, float pixelsPerFrame, float pitch,
-            FollowHeading heading) =>
-            Run(new PerspectiveStop(ending, pixelsPerFrame, pitch, heading), preset);
+            FollowHeading heading, StopSurround surround = StopSurround.Ground) =>
+            Run(new PerspectiveStop(ending, pixelsPerFrame, pitch, heading, surround), preset);
 
         /// <summary>The orthographic walk at <paramref name="pixelsPerFrame"/> display pixels a frame, ending as
         /// <paramref name="ending"/> says.</summary>
-        internal StopRun Orthographic(FollowEnding ending, TemporalUpscale preset, float pixelsPerFrame) =>
-            Run(new OrthographicStop(ending, pixelsPerFrame), preset);
+        internal StopRun Orthographic(FollowEnding ending, TemporalUpscale preset, float pixelsPerFrame,
+            StopSurround surround = StopSurround.Ground) =>
+            Run(new OrthographicStop(ending, pixelsPerFrame, surround), preset);
+
+        /// <summary>The passer's speed across the screen once the camera stops, in display pixels a frame.</summary>
+        public const float PasserPixels = 1f;
+
+        const ulong PasserKey = 83;
+
+        static readonly Color PasserTint = new(0.95f, 0.85f, 0.55f, 1f);
+
+        static string Suffix(StopSurround surround) => surround switch
+        {
+            StopSurround.ClearColour => ", over the clear colour",
+            StopSurround.Passer => $", a passer at {PasserPixels} px a frame behind",
+            _ => "",
+        };
 
         StopRun Run(StopScene scene, TemporalUpscale preset)
         {
@@ -145,9 +168,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             readonly float[] _walked = new float[Turn + After + 2], _target = new float[Turn + After + 2];
 
-            protected StopScene(FollowEnding ending, float step)
+            protected StopScene(FollowEnding ending, float step, StopSurround surround)
             {
                 Ending = ending;
+                Surround = surround;
                 for (int n = 1; n < _walked.Length; n++)
                 {
                     float travel = n <= StillFrames ? 0f
@@ -161,6 +185,8 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             public FollowEnding Ending { get; }
+
+            public StopSurround Surround { get; }
 
             public abstract string Name { get; }
 
@@ -182,6 +208,14 @@ namespace KhaozEngine.Tests.Gpu
 
             protected static RigidInstanceDraw Keyed(MeshHandle box, Matrix4x4 world) =>
                 new(box, world) { Tint = CrossingScene.Tint, Motion = MotionKey.From(Key) };
+
+            /// <summary>The passer, the same ridged box keyed and tinted apart, at <paramref name="world"/>, drawn
+            /// only where the surround has one.</summary>
+            protected void DrawPasser(Scene3D s, MeshHandle box, Matrix4x4 world)
+            {
+                if (Surround == StopSurround.Passer)
+                    s.Draw(new RigidInstanceDraw(box, world) { Tint = PasserTint, Motion = MotionKey.From(PasserKey) });
+            }
         }
 
         // The perspective walk of TemporalPerspectiveFollowRuns, with the ending's path.
@@ -192,17 +226,25 @@ namespace KhaozEngine.Tests.Gpu
             readonly Vector3 _direction;
             MeshHandle _box;
 
-            public PerspectiveStop(FollowEnding ending, float speed, float pitch, FollowHeading heading)
-                : this(ending, new PerspectiveWalk(W, H, pitch, heading, speed, StillFrames, Size),
-                    $"perspective {heading} at pitch {pitch}, {speed} px a frame, {ending}")
+            // The passer walks across the camera's view this far behind the avatar, its centre this far to the right
+            // of the avatar's on the turn frame, so it shows beside the avatar's right edge and over its top.
+            const float PasserBehind = 1f, PasserRight = 0.45f;
+            readonly float _passerStep;
+
+            public PerspectiveStop(FollowEnding ending, float speed, float pitch, FollowHeading heading,
+                StopSurround surround)
+                : this(ending, new PerspectiveWalk(W, H, pitch, heading, speed, StillFrames, Size), surround,
+                    $"perspective {heading} at pitch {pitch}, {speed} px a frame, {ending}{Suffix(surround)}")
             {
             }
 
-            PerspectiveStop(FollowEnding ending, PerspectiveWalk walk, string name) : base(ending, walk.Step)
+            PerspectiveStop(FollowEnding ending, PerspectiveWalk walk, StopSurround surround, string name)
+                : base(ending, walk.Step, surround)
             {
                 _stage = walk.Stage;
                 _direction = walk.Direction;
                 Name = name;
+                _passerStep = PasserStep();
             }
 
             public override string Name { get; }
@@ -210,6 +252,25 @@ namespace KhaozEngine.Tests.Gpu
             Vector3 Foot(int n) => _direction * Walked(n);
 
             FollowCamera3D Camera(int n) => _stage.Camera(_direction * Target(n));
+
+            Vector3 PasserFoot(int n) => Foot(Turn) + GroundStage.Forward * PasserBehind
+                + GroundStage.Right * (PasserRight - _passerStep * (n - Turn));
+
+            // The metres a frame that move the passer's middle PasserPixels across the screen on the turn frame.
+            float PasserStep()
+            {
+                FollowCamera3D camera = Camera(Turn);
+                Vector3 middle = PasserFoot(Turn) + new Vector3(0f, Size.Y / 2f, 0f);
+                camera.WorldToScreen(middle, W, H, out Vector2 at);
+                float lo = 0f, hi = 2f;
+                for (int i = 0; i < 48; i++)
+                {
+                    float mid = 0.5f * (lo + hi);
+                    camera.WorldToScreen(middle - GroundStage.Right * mid, W, H, out Vector2 moved);
+                    if (Vector2.Distance(moved, at) < PasserPixels) lo = mid; else hi = mid;
+                }
+                return 0.5f * (lo + hi);
+            }
 
             public override void Setup(Scene3D s, TemporalUpscale preset)
             {
@@ -220,7 +281,8 @@ namespace KhaozEngine.Tests.Gpu
             public override void Draw(Scene3D s, int n)
             {
                 ((FollowCamera3D)s.CameraOverride!).Target = _stage.Offset + _direction * Target(n);
-                _stage.DrawGround(s);
+                if (Surround != StopSurround.ClearColour) _stage.DrawGround(s);
+                DrawPasser(s, _box, _stage.Standing(PasserFoot(n), Size));
                 s.Draw(Keyed(_box, _stage.Standing(Foot(n), Size)));
             }
 
@@ -230,8 +292,13 @@ namespace KhaozEngine.Tests.Gpu
                 Vector3 eye = camera.Eye, foot = Foot(n);
                 var mask = new bool[W * H];
                 for (int i = 0; i < mask.Length; i++)
-                    mask[i] = GroundRays.GroundPoint(camera, W, H, i % W, i / W) is Vector3 g
-                        && GroundRays.Hides(eye, g, foot, Size, GroundStage.Yaw);
+                {
+                    // Where the ray meets no ground, its point a kilometre out stands in for the ground behind.
+                    int x = i % W, y = i / W;
+                    Vector3 behind = GroundRays.GroundPoint(camera, W, H, x, y)
+                        ?? eye + camera.ScreenToRay(new Vector2(x + 0.5f, y + 0.5f), W, H).Direction * 1000f;
+                    mask[i] = GroundRays.Hides(eye, behind, foot, Size, GroundStage.Yaw);
+                }
                 return mask;
             }
         }
@@ -243,14 +310,20 @@ namespace KhaozEngine.Tests.Gpu
             readonly FrontStage _stage = new(W, H, OrthoSize);
             MeshHandle _box;
 
-            public OrthographicStop(FollowEnding ending, float speed) : base(ending, speed * OrthoSize / H) =>
-                Name = $"orthographic, {speed} px a frame, {ending}";
+            public OrthographicStop(FollowEnding ending, float speed, StopSurround surround)
+                : base(ending, speed * OrthoSize / H, surround) =>
+                Name = $"orthographic, {speed} px a frame, {ending}{Suffix(surround)}";
 
             public override string Name { get; }
 
             Vector3 Size => new(Side * _stage.PixelWorld, Side * _stage.PixelWorld, 0.5f);
 
             Vector3 Centre(int n) => new((Left + Side / 2f - W / 2f) * _stage.PixelWorld + Walked(n), 0f, 0f);
+
+            // Halfway between the box and the wall, walking left, its centre half the box's side to the right of the
+            // box's and a third of it above on the turn frame, so it shows beside the box's right edge and top.
+            Vector3 PasserCentre(int n) => Centre(Turn)
+                + new Vector3(Size.X * (0.5f - PasserPixels * (n - Turn) / Side), Size.Y * 0.3f, -1f);
 
             public override void Setup(Scene3D s, TemporalUpscale preset)
             {
@@ -262,7 +335,8 @@ namespace KhaozEngine.Tests.Gpu
             public override void Draw(Scene3D s, int n)
             {
                 s.Camera.Target = new Vector3(Target(n), 0f, 0f);
-                _stage.TexturedWall(s);
+                if (Surround != StopSurround.ClearColour) _stage.TexturedWall(s);
+                DrawPasser(s, _box, Matrix4x4.CreateScale(Size) * Matrix4x4.CreateTranslation(PasserCentre(n)));
                 s.Draw(Keyed(_box, Matrix4x4.CreateScale(Size) * Matrix4x4.CreateTranslation(Centre(n))));
             }
 

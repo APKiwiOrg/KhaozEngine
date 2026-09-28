@@ -243,10 +243,10 @@ and changed these details. Each group's "Contract amendments" block carries the 
 17. Step 3's depth test is one-sided and its expected depth assumes a static point, so it runs only where the dilated
     texel's motion carries its own sample within `MovingSurfaceInternalPixels` (half an internal pixel), plus
     `MovingSurfaceMotionFraction` (1/1024) of that motion, of the UV the camera alone gives that point. A surface that
-    moved skips the test. Under a perspective camera so does a static point on or behind last frame's camera plane. Under
-    an orthographic camera that point keeps the test and is rejected as disoccluded, because its expected depth is not in
-    front. A surface moving out from behind a static occluder therefore keeps no disocclusion test and relies on
-    neighbourhood clipping (step 5).
+    moved skips the test. Under a perspective camera so does a static point on or behind last frame's camera plane.
+    Under an orthographic camera that point keeps the test and is rejected as disoccluded, because its expected depth
+    is not in front. A surface moving out from behind a static occluder therefore keeps no disocclusion test and relies
+    on neighbourhood clipping (step 5).
 18. Step 4's kernel is the product of two 1D Lanczos 2 weights, one per axis, not a radial Lanczos 2 on the distance.
     The same product at display scale gives the current sample's weight.
 19. Step 6's lock also releases at a moving edge, where the centre texel moves otherwise than the dilated nearest
@@ -320,11 +320,12 @@ and changed these details. Each group's "Contract amendments" block carries the 
     the clip, whose chroma range is nothing, pulls such a pixel's luma to the neighbourhood mean at full confidence
     ([#1186](https://github.com/APKiwiOrg/KhaozEngine/issues/1186)). It keeps 1 since a moving surface's footprint holds
     its history only whole, as below, and `TemporalNarrowCrossingGpuTests` holds it at acceptance 3 at both presets.
-    A pixel right behind a fast trailing edge that reprojects by its own motion was
-    covered, so it restarts from the current sample, which the reconstruction tints with the object's colour on the
-    jitter phases that put the object's edge texel within a pixel of it. The clip removes that tint over a flat or grey
-    wall, but over a textured wall whose colour varies 6 and 10 of the 840 trail pixels of a keyed box crossing at 4
-    display pixels a frame keep it two frames after the box uncovered them at Native and Quality
+    Its table no longer prints the line at Quality as a known shortfall, 1 excess pixel of 630 then, since the fact's
+    own line prints it. A pixel right behind a fast trailing edge that reprojects by its own motion was covered, so it
+    restarts from the current sample, which the reconstruction tints with the object's colour on the jitter phases that
+    put the object's edge texel within a pixel of it. The clip removes that tint over a flat or grey wall, but over a
+    textured wall whose colour varies 6 and 10 of the 840 trail pixels of a keyed box crossing at 4 display pixels a
+    frame keep it two frames after the box uncovered them at Native and Quality
     ([#1187](https://github.com/APKiwiOrg/KhaozEngine/issues/1187)). Beside a fast narrow feature the pixel's own
     history misses the feature. Where a pixel's centre texel misses a keyed line one internal pixel wide crossing the
     flat wall at 2 internal pixels a frame, the pixel reprojects by its own motion onto converged wall, the clip box
@@ -342,14 +343,14 @@ and changed these details. Each group's "Contract amendments" block carries the 
     to 0.00112. The narrow test reads the run through one texel, so it also fires where a wide object is one or two
     texels across in this frame's depth, at a corner's tip or on a face seen at a grazing angle: it raised the tilted
     box's fast flips from 0.00058 to 0.00068 at Native and from 0.00168 to 0.00186 at Quality, within the bounds of
-    0.00088 and 0.00273. The rule costs sixteen fetches for the narrow test behind rule 1's branch, and inside the
-    narrow moving branch alone a second pass over the 3x3 that sums the nearer texels, with the centre texel's own depth
-    and motion read first. Summed in the 3x3 every pixel runs, those five accumulators made the whole program spill on
-    Metal and cost every pixel about half a millisecond at 2560x1440 on an M2 Max. The emitted resolve grew from 33367
-    to 38149 bytes of HLSL with it and the kept lock below, to 41801 with the fast flag and the held share, and to
-    42551 with the whole-footprint rule on every moving surface and the band. Its hardware cost has
-    not been measured: section 7's cost acceptance measures it with the rest of the resolve's (group F, F15). The line's
-    fast flips are 0.019 and 0.022, about MSAA 4x's 0.021 and 0.022. Each pixel shows the line for about one frame, so
+    0.00088 and 0.00273. The rule costs sixteen fetches for the narrow test, behind rule 1's branch and the band's,
+    which share it, and inside the narrow moving branch alone a second pass over the 3x3 that sums the nearer texels,
+    with the centre texel's own depth and motion read first. Summed in the 3x3 every pixel runs, those five accumulators
+    made the whole program spill on Metal and cost every pixel about half a millisecond at 2560x1440 on an M2 Max. The
+    emitted resolve grew from 33367 to 38149 bytes of HLSL with it and the kept lock below, to 41801 with the fast flag
+    and the held share, and to 42551 with the whole-footprint rule on every moving surface and the band. Section 7's
+    cost acceptance measures its hardware cost with the rest of the resolve's. The line's fast flips are 0.019 and
+    0.022, about MSAA 4x's 0.021 and 0.022. Each pixel shows the line for about one frame, so
     every flip of the reference is fast, and against half the reference's raw flips the reference itself, scaled to a
     share of its own contrast, stayed within the bound only up to 0.30 at Native and 0.20 at Quality. So the fast-edge
     facts bound fast flips by the larger of half the reference's flips and 1.25 times its fast flips, 0.022 and 0.024
@@ -373,7 +374,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
     there, and the box crossing the textured wall at 4 display pixels a frame 6 and 12 of 840 at Performance and
     UltraPerformance against 17 and 63. The rule first held only where the surface travelled past
     `DilationReachInternalPixels`, and at 1.5 display pixels a frame on Quality, 1 internal pixel, the follow camera
-    kept 101 of 300 against 5 with it on every moving surface, where it holds now. Three printed lines of the lock and
+    kept 101 of 300 against 5 with it on every moving surface, where it holds now. Five printed lines of the lock and
     reset facts move with it, each within its fact's bounds. The keyed line at 0.9 display pixels a frame on Quality
     (the two keyed thin feature facts) trailed 1 pixel at 17 percent of its contrast, kept at least 59 percent of its
     still contrast and 74 on average, and now trails none and keeps 63 and 75, because the pixels it leaves drop a

@@ -138,6 +138,8 @@ namespace KhaozEngine.Tests.Gpu
                 ["TemporalDepthStore"] = "TemporalResolveRenderer depth store",
                 ["TemporalDebugView"] = "TemporalResolveRenderer debug view",
                 ["TemporalCountProbe"] = "TemporalResolveRenderer count probe",
+                ["TemporalPrepare"] = "TemporalSplitResolve prepare",
+                ["TemporalSplit"] = "TemporalSplitResolve split",
             };
 
         /// <summary>
@@ -227,7 +229,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(70, catalog.Length);
+            Assert.Equal(72, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

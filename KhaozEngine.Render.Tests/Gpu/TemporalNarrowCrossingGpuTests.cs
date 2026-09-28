@@ -15,11 +15,10 @@ namespace KhaozEngine.Tests.Gpu
     /// the crossing, by the excess over a floor that restarts the bare wall on the frame the object uncovered the
     /// pixel.
     /// <para>
-    /// The line two texels wide at both presets and the line one texel wide at Native are asserted at acceptance 3's
-    /// one pixel in 200 of the trail, and the ridged box against a bound that guards the lock clause. The line one
-    /// texel wide at Quality, which missed acceptance 3 until a footprint a fast surface showed at kept its history
-    /// only whole, is printed, and the table test prints each case with its reason. HDR is off, the sharpen is at its
-    /// default, Native and Quality are measured, and the measured values in the comments are Metal on Apple silicon.
+    /// The lines one and two texels wide are asserted at acceptance 3's one pixel in 200 of the trail at both presets,
+    /// and the ridged box against a bound that guards the lock clause, and the table test prints each case with its
+    /// reason. HDR is off, the sharpen is at its default, Native and Quality are measured, and the measured values in
+    /// the comments are Metal on Apple silicon.
     /// </para>
     /// </summary>
     public sealed class TemporalNarrowCrossingGpuTests(TemporalNarrowCrossingRuns runs, ITestOutputHelper output)
@@ -36,9 +35,8 @@ namespace KhaozEngine.Tests.Gpu
         // 211.
         const int MaxRidgedBoxExcess = 7;
 
-        /// <summary>The issues that track what the line one texel wide and the ridged box keep.</summary>
-        const string ThinLineIssue = "https://github.com/APKiwiOrg/KhaozEngine/issues/1186",
-            FreshTintIssue = "https://github.com/APKiwiOrg/KhaozEngine/issues/1187";
+        /// <summary>The issue that tracks what the ridged box keeps.</summary>
+        const string FreshTintIssue = "https://github.com/APKiwiOrg/KhaozEngine/issues/1187";
 
         static int Allowed(int count) => Math.Max(1, count / AllowedOverOneIn);
 
@@ -89,16 +87,19 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// A keyed line one internal texel wide, at Native, where the pixels beside it that took its colour restart
-        /// once it moves on. Measured 0 of 420 against the 2 acceptance 3 allows. The state's veto alone left 11, and
-        /// the narrow exception taking any narrow feature 128. Quality kept 8 of 630 against 3 until a footprint a fast
-        /// surface showed at kept its history only whole, keeps 1 now, and the table test prints it
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/1186).
+        /// A keyed line one internal texel wide, where the pixels beside it that took its colour restart once it moves
+        /// on. Measured 0 of 420 at Native and 1 of 630 at Quality, against the 2 and 3 acceptance 3 allows. The
+        /// state's veto alone left 11 at Native, and the narrow exception taking any narrow feature 128. Quality kept
+        /// 8, its colour reaching the pixels around it through the reconstruction, where over a grey texture the clip,
+        /// whose chroma range is nothing, pulls such a pixel's luma to the neighbourhood mean at full confidence, until
+        /// a footprint a moving surface showed at kept its history only whole.
         /// </summary>
-        [GpuFact]
-        public void A_keyed_line_one_texel_wide_leaves_no_trail_where_it_left_at_native()
+        [GpuTheory]
+        [InlineData(TemporalUpscale.Native)]
+        [InlineData(TemporalUpscale.Quality)]
+        public void A_keyed_line_one_texel_wide_leaves_no_trail_where_it_left(TemporalUpscale preset)
         {
-            CrossingTrail t = runs.Run(NarrowCrossing.LineOneTexel, TemporalUpscale.Native);
+            CrossingTrail t = runs.Run(NarrowCrossing.LineOneTexel, preset);
             string ctx = Describe(t);
             output.WriteLine(ctx);
             Assert.True(t.Total.Checked > MinTrailPixels,
@@ -106,8 +107,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(t.Total.Excess <= Allowed(t.Total.Checked), $"the line's colour stays where it left. {ctx}");
         }
 
-        /// <summary>Every crossing at Native and Quality, by age at Native, and the reason the line one texel wide
-        /// at Quality and the ridged box miss acceptance 3.</summary>
+        /// <summary>Every crossing at Native and Quality, by age at Native, and the reason the ridged box misses
+        /// acceptance 3.</summary>
         [GpuFact]
         public void The_narrow_crossing_table_prints_every_case()
         {
@@ -130,10 +131,6 @@ namespace KhaozEngine.Tests.Gpu
                     output.WriteLine($"{c.Name}, age {age}: {c.Age(age)}");
             }
             output.WriteLine("Reported, not asserted against acceptance 3:");
-            output.WriteLine($"line one texel wide at Quality ({ThinLineIssue}): its colour reaches the pixels around "
-                + "it through the reconstruction, and over a grey texture the clip, whose chroma range is nothing, "
-                + "pulls such a pixel's luma to the neighbourhood mean at full confidence, where a ridge of the "
-                + "texture can hold it. " + Describe(runs.Run(NarrowCrossing.LineOneTexel, TemporalUpscale.Quality)));
             foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
             {
                 output.WriteLine($"ridged box ({FreshTintIssue}): the column its trailing edge left two frames "

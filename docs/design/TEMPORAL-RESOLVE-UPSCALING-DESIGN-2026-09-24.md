@@ -318,7 +318,8 @@ and changed these details. Each group's "Contract amendments" block carries the 
     wide kept 8 at Quality because its colour reaches its neighbours through the reconstruction, and over a grey texture
     the clip, whose chroma range is nothing, pulls such a pixel's luma to the neighbourhood mean at full confidence
     ([#1186](https://github.com/APKiwiOrg/KhaozEngine/issues/1186)). It keeps 1 since a moving surface's footprint holds
-    its history only whole, as below. A pixel right behind a fast trailing edge that reprojects by its own motion was
+    its history only whole, as below, and `TemporalNarrowCrossingGpuTests` holds it at acceptance 3 at both presets.
+    A pixel right behind a fast trailing edge that reprojects by its own motion was
     covered, so it restarts from the current sample, which the reconstruction tints with the object's colour on the
     jitter phases that put the object's edge texel within a pixel of it. The clip removes that tint over a flat or grey
     wall, but over a textured wall whose colour varies 6 and 10 of the 840 trail pixels of a keyed box crossing at 4

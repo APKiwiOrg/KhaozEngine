@@ -12444,7 +12444,9 @@ using var client = new TileWorldClient(clientTransport, preparedClientConfig, ma
 `ConnectionGate` is in `KhaozEngine.Netcode`. It compares the consumer's protocol string. The engine
 cannot detect a game that incorrectly assigns the same string to incompatible modes. An old decoder
 ignoring unfamiliar tags is not a compatibility strategy. A custom replication registry must include
-the migration-only preparation codec registered by `TileProtocol.CreateRegistry`.
+the migration-only preparation codec registered by `TileProtocol.CreateRegistry`. Enabled server startup
+requires the exact preparation component at its reserved id with exactly `ReplicationChannels.Migrate`.
+Another component at that id, a missing migration channel, or extra replication/persistence channels is refused.
 
 For an eligible tick T, the first impact is `max(T + LeadTicks, readyTick)`. Thus a ready, in-range
 3/1 attacker has two preparation ticks and one strike tick before T+3. At six ticks per second that
@@ -19711,6 +19713,16 @@ r.Register<Aggro>(MoveProtocol.FirstConsumerTypeId + 1,
 r.Register<PrivateStats>(MoveProtocol.FirstConsumerTypeId + 2,
     write: (s, bw) => bw.Write(s.Health), read: br => new PrivateStats { Health = br.ReadInt32() },
     channels: ReplicationChannels.Default | ReplicationChannels.OwnerOnly);
+```
+
+Since 20.14.1, a startup contract can check an id, component type and exact channel set without running
+its codec. Extra flags do not match. The existing `IsRegistered(id)` still checks numeric presence only.
+This is a metadata check, not verification of custom serialization code.
+
+```csharp
+if (!r.IsRegistered<Aggro>(MoveProtocol.FirstConsumerTypeId + 1,
+    ReplicationChannels.Persist | ReplicationChannels.Migrate))
+    throw new InvalidOperationException("Aggro registration must preserve server-only state across handoff and restart.");
 ```
 
 `WorldServer` / `ShardedWorldServer` / `MmoServer` thread the serving channel and the receiving client's own player

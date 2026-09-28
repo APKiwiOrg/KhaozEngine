@@ -56,8 +56,9 @@ public sealed partial class TileWorldServer
     {
         if (config.CombatPreparationRules is null) return null;
         ValidatePreparationBudgets(config);
-        if (!registry.IsRegistered(TileProtocol.TileCombatPreparationStateTypeId))
-            throw new ArgumentException("Enabled preparation requires TileCombatPreparationState registration.", nameof(registry));
+        if (!registry.IsRegistered<TileCombatPreparationState>(TileProtocol.TileCombatPreparationStateTypeId,
+            ReplicationChannels.Migrate))
+            throw new ArgumentException("Enabled preparation requires TileCombatPreparationState at its reserved id with Migrate-only channels.", nameof(registry));
         return new PreparationRuntime();
     }
 

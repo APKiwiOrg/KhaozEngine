@@ -876,8 +876,9 @@ Malformed or interrupted preparation sets preserve the client's published cache 
 `RejectedCombatPreparationFrameCount`. Duplicate/stale traffic cannot repeat terminal callbacks.
 `InvalidCombatPreparationCount` reports refused profile/deadline values and
 `ExhaustedCombatPreparationIdentityCount` reports exhausted identities. A custom replication registry
-must include `TileProtocol.TileCombatPreparationStateTypeId`. Start from `TileProtocol.CreateRegistry`
-and add game components. This private schedule state migrates between cells and does not persist or replicate as an ECS component.
+must bind `TileProtocol.TileCombatPreparationStateTypeId` to the exact preparation component with exactly
+`ReplicationChannels.Migrate`. Enabled startup refuses another type, missing migration or extra channels.
+Start from `TileProtocol.CreateRegistry` and add game components. This private schedule state migrates between cells and does not persist or replicate as an ECS component.
 
 See the [consumer guide](../docs/USING-KHAOZENGINE.md#authoritative-attack-preparation-20141) for the
 profile implementation, matching protocol setup, callbacks, readiness and sampler examples. Clients

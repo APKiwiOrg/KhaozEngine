@@ -7,6 +7,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.14.1
 
+- `ReplicationRegistry.IsRegistered<T>(id, expectedChannels)` checks the exact component type and channel set
+  without executing a codec. Prepared tile combat uses this at startup to reject a custom registry that binds
+  its reserved state id to another component or to channels other than Migrate-only, preventing silent state
+  loss at handoff and accidental replication or persistence of preparation internals.
 - Tile combat supports opt-in authoritative attack preparation. `ITileCombatPreparationRules` supplies a
   game's lead, final-strike duration and public presentation key, while the server schedules and revises
   attempts without predicting damage. Existing cooldown and food delay overlap the lead, continuing hits

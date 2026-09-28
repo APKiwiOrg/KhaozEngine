@@ -26,6 +26,59 @@ public class TilePreparationMigrationTests
             TileMoveSimulatorTests.Bake(doc), registry: new ReplicationRegistry());
     }
 
+    [Fact]
+    public void Enabled_custom_registry_rejects_another_component_at_the_preparation_id()
+    {
+        var registry = new ReplicationRegistry();
+        registry.Register<NetId>(TileProtocol.TileCombatPreparationStateTypeId,
+            (_, _) => throw new InvalidOperationException("Boot validation must not execute codecs."),
+            _ => throw new InvalidOperationException("Boot validation must not execute codecs."),
+            channels: ReplicationChannels.Migrate);
+        AssertInvalidPreparationRegistry(registry);
+    }
+
+    [Theory]
+    [InlineData(ReplicationChannels.None)]
+    [InlineData(ReplicationChannels.Replicate)]
+    [InlineData(ReplicationChannels.Persist)]
+    [InlineData(ReplicationChannels.Replicate | ReplicationChannels.Persist)]
+    [InlineData(ReplicationChannels.Migrate | ReplicationChannels.Replicate)]
+    [InlineData(ReplicationChannels.Migrate | ReplicationChannels.Persist)]
+    [InlineData(ReplicationChannels.Default)]
+    [InlineData(ReplicationChannels.Default | ReplicationChannels.OwnerOnly)]
+    public void Enabled_custom_registry_requires_exactly_migrate_only_channels(ReplicationChannels channels)
+    {
+        var registry = new ReplicationRegistry();
+        registry.Register<TileCombatPreparationState>(TileProtocol.TileCombatPreparationStateTypeId,
+            (_, _) => throw new InvalidOperationException("Boot validation must not execute codecs."),
+            _ => throw new InvalidOperationException("Boot validation must not execute codecs."), channels: channels);
+        AssertInvalidPreparationRegistry(registry);
+    }
+
+    [Fact]
+    public void Enabled_custom_registry_accepts_the_real_preparation_registration()
+    {
+        var hub = new InMemoryTransportHub();
+        var config = TileWorldServerTickTests.Config(new TileCoord(20, 20, 0)) with
+        { CombatPreparationRules = new PreparationScenario.Profiles() };
+        using var server = new TileWorldServer(hub.Server, config,
+            TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld()), registry: TileProtocol.CreateRegistry());
+        Assert.Equal(0, server.TickCount);
+    }
+
+    static void AssertInvalidPreparationRegistry(ReplicationRegistry registry)
+    {
+        var hub = new InMemoryTransportHub();
+        var map = TileMoveSimulatorTests.Bake(TileMoveSimulatorTests.FlatWorld());
+        var config = TileWorldServerTickTests.Config(new TileCoord(20, 20, 0)) with
+        { CombatPreparationRules = new PreparationScenario.Profiles() };
+        ArgumentException error = Assert.Throws<ArgumentException>(() =>
+            new TileWorldServer(hub.Server, config, map, registry: registry));
+        Assert.Equal("registry", error.ParamName);
+        using var disabled = new TileWorldServer(hub.Server, config with { CombatPreparationRules = null }, map,
+            registry: registry);
+    }
+
     [Theory]
     [InlineData(ReplicationChannels.Migrate, true)]
     [InlineData(ReplicationChannels.Replicate, false)]

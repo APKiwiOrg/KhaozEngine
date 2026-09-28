@@ -250,7 +250,11 @@ public sealed partial class SqliteContentAuthoringStore
 
     /// <summary>
     /// Opens the draft against the active version when none is open, and otherwise carries the standing one
-    /// forward, replacing its note when this call brought one. The caller owns the transaction.
+    /// forward, replacing its note when this call brought a different one. The caller owns the transaction.
+    /// <para>
+    /// The draft row's <c>updated_at_utc</c> moves only with the note: an edit is a row of its own, with its
+    /// own times, and adding one changes nothing in this row.
+    /// </para>
     /// </summary>
     async Task OpenDraftAsync(
         string actor,
@@ -264,9 +268,10 @@ public sealed partial class SqliteContentAuthoringStore
 
         using SqliteCommand command = Command(
             """
-            INSERT INTO catalog_draft(draft_key, base_version, opened_by, opened_at_utc, note)
-            VALUES (1, $base, $actor, $at, $note)
-            ON CONFLICT(draft_key) DO UPDATE SET note = CASE WHEN $note = '' THEN note ELSE $note END;
+            INSERT INTO catalog_draft(draft_key, base_version, opened_by, opened_at_utc, note, updated_at_utc)
+            VALUES (1, $base, $actor, $at, $note, $at)
+            ON CONFLICT(draft_key) DO UPDATE SET note = excluded.note, updated_at_utc = excluded.updated_at_utc
+            WHERE excluded.note <> '' AND excluded.note <> catalog_draft.note;
             """,
             transaction);
         Bind(command, "$base", active);
@@ -296,11 +301,14 @@ public sealed partial class SqliteContentAuthoringStore
                 ContentAuthoringException.EditTargetCollisionReason);
         }
 
+        // One reading per edit, shared by the edit row and its field rows, which are written together.
+        long at = Millis(_clock());
         long ordinal;
         if (standing is { } replace)
         {
             // Same target, same operation: the newer edit wins the slot the older one already holds, so the
-            // draft never carries two intents for one row and the edit keeps its place in the order.
+            // draft never carries two intents for one row and the edit keeps its place in the order. It keeps
+            // its creation time too, and edited_at_utc is its update time.
             ordinal = replace.Ordinal;
             using SqliteCommand update = Command(
                 """
@@ -311,7 +319,7 @@ public sealed partial class SqliteContentAuthoringStore
                 WHERE edit_ordinal = $ordinal;
                 """,
                 transaction);
-            BindEdit(update, edit, actor);
+            BindEdit(update, edit, actor, at);
             Bind(update, "$ordinal", ordinal);
             await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
@@ -326,12 +334,12 @@ public sealed partial class SqliteContentAuthoringStore
                 """
                 INSERT INTO catalog_draft_edit(
                     type_id, definition_id, content_key, operation, retire_policy, replacement_id, fork_key,
-                    fork_flag_field, family_id, imported_retired, edited_by, edited_at_utc)
+                    fork_flag_field, family_id, imported_retired, edited_by, edited_at_utc, created_at_utc)
                 VALUES ($type, $id, $key, $operation, $policy, $replacement, $forkKey, $forkFlag, $family,
-                        $importedRetired, $actor, $at);
+                        $importedRetired, $actor, $at, $at);
                 """,
                 transaction);
-            BindEdit(insert, edit, actor);
+            BindEdit(insert, edit, actor, at);
             Bind(insert, "$type", (long)edit.Type.Value);
             Bind(insert, "$id", (long)edit.DefinitionId);
             Bind(insert, "$key", edit.Key.ToString());
@@ -347,11 +355,12 @@ public sealed partial class SqliteContentAuthoringStore
             using SqliteCommand command = Command(
                 """
                 INSERT INTO catalog_draft_edit_field(
-                    edit_ordinal, field_name, field_kind, int_value, text_value, blob_value)
-                VALUES ($ordinal, $name, $kind, $int, NULL, $blob);
+                    edit_ordinal, field_name, field_kind, int_value, text_value, blob_value, created_at_utc)
+                VALUES ($ordinal, $name, $kind, $int, NULL, $blob, $at);
                 """,
                 transaction);
             Bind(command, "$ordinal", ordinal);
+            Bind(command, "$at", at);
             Bind(command, "$name", field.Name);
             Bind(command, "$kind", (long)field.Value.Kind);
             Bind(
@@ -391,7 +400,7 @@ public sealed partial class SqliteContentAuthoringStore
             : null;
     }
 
-    void BindEdit(SqliteCommand command, ContentEdit edit, string actor)
+    static void BindEdit(SqliteCommand command, ContentEdit edit, string actor, long at)
     {
         Bind(command, "$policy", (long)edit.RetirePolicy);
         Bind(command, "$replacement", (long)edit.ReplacementId);
@@ -400,7 +409,7 @@ public sealed partial class SqliteContentAuthoringStore
         Bind(command, "$family", edit.FamilyId);
         Bind(command, "$importedRetired", edit.ImportedAsRetired ? 1L : 0L);
         Bind(command, "$actor", actor);
-        Bind(command, "$at", Millis(_clock()));
+        Bind(command, "$at", at);
     }
 
     async Task<int> CountEditsAsync(SqliteTransaction transaction, CancellationToken cancellationToken)

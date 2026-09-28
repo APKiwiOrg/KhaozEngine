@@ -99,11 +99,13 @@ public sealed partial class SqliteContentAuthoringStore
 
             using (SqliteCommand insert = Command(
                 """
-                INSERT INTO catalog_family(type_id, family_key, block_size, retired, created_in_version)
-                VALUES ($type, $key, $size, 0, $created);
+                INSERT INTO catalog_family(
+                    type_id, family_key, block_size, retired, created_in_version, created_at_utc)
+                VALUES ($type, $key, $size, 0, $created, $at);
                 """,
                 transaction))
             {
+                Bind(insert, "$at", Millis(_clock()));
                 Bind(insert, "$type", (long)type.Value);
                 Bind(insert, "$key", familyKey);
                 Bind(insert, "$size", (long)blockSize);
@@ -195,8 +197,11 @@ public sealed partial class SqliteContentAuthoringStore
         }
 
         await WriteHighWaterAsync(
-            type, mark with { IssuedThrough = mark.IssuedThrough + count }, transaction, cancellationToken)
-            .ConfigureAwait(false);
+            type,
+            mark with { IssuedThrough = mark.IssuedThrough + count },
+            Millis(_clock()),
+            transaction,
+            cancellationToken).ConfigureAwait(false);
         transaction.Commit();
         return mark.IssuedThrough + 1;
     }
@@ -237,7 +242,8 @@ public sealed partial class SqliteContentAuthoringStore
             return false;
         }
 
-        await WriteHighWaterAsync(type, raised, transaction, cancellationToken).ConfigureAwait(false);
+        await WriteHighWaterAsync(type, raised, Millis(_clock()), transaction, cancellationToken)
+            .ConfigureAwait(false);
         transaction.Commit();
         return true;
     }
@@ -277,15 +283,18 @@ public sealed partial class SqliteContentAuthoringStore
 
         var block = new ContentFamilyBlock(
             familyId, family.Blocks.Count, baseId, family.BlockSize, baseId, (int)active + 1);
+        long now = Millis(_clock());
 
         using (SqliteCommand insert = Command(
             """
             INSERT INTO catalog_family_block(
-                family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version)
-            VALUES ($family, $ordinal, $base, $size, $next, $version);
+                family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version,
+                created_at_utc, updated_at_utc)
+            VALUES ($family, $ordinal, $base, $size, $next, $version, $now, $now);
             """,
             transaction))
         {
+            Bind(insert, "$now", now);
             Bind(insert, "$family", familyId);
             Bind(insert, "$ordinal", (long)block.BlockOrdinal);
             Bind(insert, "$base", (long)block.BaseId);
@@ -298,7 +307,7 @@ public sealed partial class SqliteContentAuthoringStore
         // The advance rides with the insert, because a block row written without it leaves the plain counter
         // walking into the new block.
         await WriteHighWaterAsync(
-            family.Type, WithIssued(family.Type, mark, issuedThrough), transaction, cancellationToken)
+            family.Type, WithIssued(family.Type, mark, issuedThrough), now, transaction, cancellationToken)
             .ConfigureAwait(false);
 
         transaction.Commit();
@@ -323,12 +332,13 @@ public sealed partial class SqliteContentAuthoringStore
 
         using (SqliteCommand update = Command(
             """
-            UPDATE catalog_family_block SET next_free_id = $next
+            UPDATE catalog_family_block SET next_free_id = $next, updated_at_utc = $now
             WHERE family_id = $family AND block_ordinal = $ordinal;
             """,
             transaction))
         {
             Bind(update, "$next", (long)block.NextFreeId + 1);
+            Bind(update, "$now", Millis(_clock()));
             Bind(update, "$family", familyId);
             Bind(update, "$ordinal", (long)blockOrdinal);
             await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -476,24 +486,34 @@ public sealed partial class SqliteContentAuthoringStore
             : default;
     }
 
+    /// <summary>
+    /// The type's two marks written. An existing row is updated, and its <c>updated_at_utc</c> moved, only
+    /// when a mark actually changes. The caller holds the lease and owns the transaction.
+    /// </summary>
     async Task WriteHighWaterAsync(
         ContentTypeId type,
         ContentIdHighWater mark,
+        long at,
         SqliteTransaction transaction,
         CancellationToken cancellationToken)
     {
         using SqliteCommand command = Command(
             """
-            INSERT INTO catalog_id_high_water(type_id, reserved_through, issued_through)
-            VALUES ($type, $reserved, $issued)
+            INSERT INTO catalog_id_high_water(
+                type_id, reserved_through, issued_through, created_at_utc, updated_at_utc)
+            VALUES ($type, $reserved, $issued, $at, $at)
             ON CONFLICT(type_id) DO UPDATE SET
                 reserved_through = excluded.reserved_through,
-                issued_through = excluded.issued_through;
+                issued_through = excluded.issued_through,
+                updated_at_utc = excluded.updated_at_utc
+            WHERE catalog_id_high_water.reserved_through <> excluded.reserved_through
+               OR catalog_id_high_water.issued_through <> excluded.issued_through;
             """,
             transaction);
         Bind(command, "$type", (long)type.Value);
         Bind(command, "$reserved", (long)mark.ReservedThrough);
         Bind(command, "$issued", (long)mark.IssuedThrough);
+        Bind(command, "$at", at);
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 

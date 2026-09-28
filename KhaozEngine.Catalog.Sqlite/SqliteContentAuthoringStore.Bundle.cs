@@ -83,9 +83,10 @@ public sealed partial class SqliteContentAuthoringStore
                 RequireTypesAgree(bundle);
 
                 staged = true;
+                long at = Millis(_clock());
                 using SqliteTransaction stage = _connection.BeginTransaction();
-                await RestoreFamiliesAsync(bundle, stage, cancellationToken).ConfigureAwait(false);
-                await SeedMarksAsync(bundle, stage, cancellationToken).ConfigureAwait(false);
+                await RestoreFamiliesAsync(bundle, at, stage, cancellationToken).ConfigureAwait(false);
+                await SeedMarksAsync(bundle, at, stage, cancellationToken).ConfigureAwait(false);
                 stage.Commit();
 
                 _importRules = Restamp(bundle);
@@ -252,10 +253,12 @@ public sealed partial class SqliteContentAuthoringStore
 
     /// <summary>
     /// The families and their blocks VERBATIM, ids included, because a family is what makes a row's id
-    /// membership answerable and an import that reallocated blocks would move every id in one.
+    /// membership answerable and an import that reallocated blocks would move every id in one. Their row times
+    /// are this import's, because that is when these rows were inserted.
     /// </summary>
     async Task RestoreFamiliesAsync(
         ContentBundle bundle,
+        long at,
         SqliteTransaction transaction,
         CancellationToken cancellationToken)
     {
@@ -267,11 +270,12 @@ public sealed partial class SqliteContentAuthoringStore
             using (SqliteCommand insert = Command(
                 """
                 INSERT INTO catalog_family(
-                    family_id, type_id, family_key, block_size, retired, created_in_version)
-                VALUES ($family, $type, $key, $size, $retired, $created);
+                    family_id, type_id, family_key, block_size, retired, created_in_version, created_at_utc)
+                VALUES ($family, $type, $key, $size, $retired, $created, $at);
                 """,
                 transaction))
             {
+                Bind(insert, "$at", at);
                 Bind(insert, "$family", family.FamilyId);
                 Bind(insert, "$type", (long)family.Type.Value);
                 Bind(insert, "$key", family.FamilyKey);
@@ -287,10 +291,12 @@ public sealed partial class SqliteContentAuthoringStore
                 using SqliteCommand insert = Command(
                     """
                     INSERT INTO catalog_family_block(
-                        family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version)
-                    VALUES ($family, $ordinal, $base, $size, $next, $version);
+                        family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version,
+                        created_at_utc, updated_at_utc)
+                    VALUES ($family, $ordinal, $base, $size, $next, $version, $at, $at);
                     """,
                     transaction);
+                Bind(insert, "$at", at);
                 Bind(insert, "$family", family.FamilyId);
                 Bind(insert, "$ordinal", (long)block.BlockOrdinal);
                 Bind(insert, "$base", (long)block.BaseId);
@@ -313,6 +319,7 @@ public sealed partial class SqliteContentAuthoringStore
     /// </summary>
     async Task SeedMarksAsync(
         ContentBundle bundle,
+        long at,
         SqliteTransaction transaction,
         CancellationToken cancellationToken)
     {
@@ -344,6 +351,7 @@ public sealed partial class SqliteContentAuthoringStore
                 type,
                 new ContentIdHighWater(
                     Math.Max(held.ReservedThrough, mark.Value), Math.Max(held.IssuedThrough, mark.Value)),
+                at,
                 transaction,
                 cancellationToken).ConfigureAwait(false);
         }

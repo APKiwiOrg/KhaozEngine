@@ -1,4 +1,3 @@
-using System;
 using KhaozEngine.Catalog.Authoring;
 
 namespace KhaozEngine.Catalog.Sqlite;
@@ -7,9 +6,11 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// The content authoring schema as SQLite holds it (spec 4.4): the fifteen tables, their indexes and the
 /// metadata seed, as one idempotent DDL script, plus the version and migration this build supports.
 /// <para>
-/// This file holds the DDL and the two constants and NOTHING else. Validating a database against it is
-/// <see cref="SqliteCatalogSchemaValidation"/>, which is the journal's split between its schema and its
-/// validation helpers, and it is here from the first release because the DDL alone is most of a file.
+/// This file holds the DDL and the two constants and NOTHING else. The older versions this build migrates
+/// from, and the version 3 column adds and backfill, are <c>SqliteCatalogSchema.VersionThree.cs</c>.
+/// Validating a database against it is <see cref="SqliteCatalogSchemaValidation"/>, which is the journal's
+/// split between its schema and its validation helpers, and it is here from the first release because the
+/// DDL alone is most of a file.
 /// </para>
 /// <para>
 /// <b>It is the JOURNAL's style rather than the wallet's.</b> A wallet-style inline bootstrap with no
@@ -32,13 +33,13 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// rules adds the trigger with it.
 /// </para>
 /// </summary>
-internal static class SqliteCatalogSchema
+internal static partial class SqliteCatalogSchema
 {
     /// <summary>The schema version this build writes and the only one it accepts.</summary>
-    internal const int CurrentVersion = 2;
+    internal const int CurrentVersion = 3;
 
     /// <summary>The migration an operator is told to apply when the database does not match.</summary>
-    internal const string RequiredMigration = "catalog-v2-content-upgrade-ledger";
+    internal const string RequiredMigration = "catalog-v3-row-timestamps";
 
     /// <summary>
     /// The bootstrap the held connection runs on open. Foreign keys are OFF by default in SQLite, and every
@@ -66,10 +67,18 @@ internal static class SqliteCatalogSchema
     /// released this schema yet, so there is no deployed database for a migration to move.
     /// </para>
     /// <para>
-    /// <b>This constant is every table version 1 declared</b>, unchanged. The ledger table version 2 adds is
-    /// <see cref="UpgradeLedgerTable"/> and the metadata seed is <see cref="MetadataSeed"/>. Keeping the three
-    /// apart is what lets <see cref="VersionOneTables"/> be this script minus one table rather than a second
-    /// transcription of it, and lets the migration be that one table on its own.
+    /// <b>This constant is every table version 1 declared</b>, with the version 3 row times. The ledger table
+    /// version 2 adds is <see cref="UpgradeLedgerTable"/> and the metadata seed is <see cref="MetadataSeed"/>.
+    /// Keeping the three apart is what lets <see cref="VersionTwoTables"/> and <see cref="VersionOneTables"/>
+    /// be this script with the version 3 columns taken out, and without the ledger for version 1, rather than
+    /// second transcriptions of it, and lets the version 2 migration be that one table on its own.
+    /// </para>
+    /// <para>
+    /// <b>Every version 3 column is <c>INTEGER NULL</c> and stands last among its table's columns</b>, ahead of
+    /// any table constraint, because that is where <c>ALTER TABLE ADD COLUMN</c> puts it. A migrated table then
+    /// reads back as the shape a fresh one declares. <c>created_at_utc</c> is when the row was inserted and
+    /// nothing writes it again. <c>updated_at_utc</c> equals it on insert and moves with every statement that
+    /// changes a value in the row. A legacy row holds a time the migration could prove, or NULL.
     /// </para>
     /// </summary>
     internal const string CoreTables = """
@@ -79,7 +88,8 @@ internal static class SqliteCatalogSchema
             store_epoch TEXT COLLATE BINARY NOT NULL CHECK (length(store_epoch) IN (32, 36)),
             active_version INTEGER NOT NULL DEFAULT 0 CHECK (active_version >= 0),
             pinned_version INTEGER NULL CHECK (pinned_version IS NULL OR pinned_version >= 1),
-            updated_at_utc INTEGER NOT NULL);
+            updated_at_utc INTEGER NOT NULL,
+            created_at_utc INTEGER NULL);
 
         CREATE TABLE IF NOT EXISTS catalog_type (
             type_id INTEGER NOT NULL PRIMARY KEY CHECK (type_id BETWEEN 1 AND 65535),
@@ -87,7 +97,9 @@ internal static class SqliteCatalogSchema
             chunk_slots INTEGER NOT NULL CHECK (chunk_slots BETWEEN 256 AND 65536),
             default_visibility INTEGER NOT NULL CHECK (default_visibility IN (0, 1)),
             max_definition_id INTEGER NULL CHECK (max_definition_id IS NULL OR max_definition_id >= 1),
-            first_seen_version INTEGER NOT NULL CHECK (first_seen_version >= 0));
+            first_seen_version INTEGER NOT NULL CHECK (first_seen_version >= 0),
+            created_at_utc INTEGER NULL,
+            updated_at_utc INTEGER NULL);
         CREATE UNIQUE INDEX IF NOT EXISTS ux_catalog_type_key ON catalog_type(type_key);
 
         CREATE TABLE IF NOT EXISTS catalog_version (
@@ -112,6 +124,8 @@ internal static class SqliteCatalogSchema
             parent_id INTEGER NOT NULL DEFAULT 0 CHECK (parent_id >= 0),
             family_id INTEGER NULL,
             retired INTEGER NOT NULL DEFAULT 0 CHECK (retired IN (0, 1)),
+            created_at_utc INTEGER NULL,
+            updated_at_utc INTEGER NULL,
             PRIMARY KEY (type_id, definition_id, valid_from_version),
             FOREIGN KEY (type_id) REFERENCES catalog_type(type_id),
             FOREIGN KEY (valid_from_version) REFERENCES catalog_version(version_number),
@@ -129,6 +143,7 @@ internal static class SqliteCatalogSchema
             int_value INTEGER NULL,
             text_value TEXT COLLATE BINARY NULL CHECK (text_value IS NULL OR length(text_value) <= 192),
             blob_value BLOB NULL CHECK (blob_value IS NULL OR length(blob_value) <= 4096),
+            created_at_utc INTEGER NULL,
             PRIMARY KEY (type_id, definition_id, valid_from_version, field_name),
             FOREIGN KEY (type_id, definition_id, valid_from_version)
                 REFERENCES catalog_row(type_id, definition_id, valid_from_version));
@@ -140,6 +155,7 @@ internal static class SqliteCatalogSchema
             block_size INTEGER NOT NULL CHECK (block_size BETWEEN 16 AND 65536),
             retired INTEGER NOT NULL DEFAULT 0 CHECK (retired IN (0, 1)),
             created_in_version INTEGER NOT NULL CHECK (created_in_version >= 1),
+            created_at_utc INTEGER NULL,
             FOREIGN KEY (type_id) REFERENCES catalog_type(type_id));
         CREATE UNIQUE INDEX IF NOT EXISTS ux_catalog_family_key ON catalog_family(type_id, family_key);
 
@@ -150,6 +166,8 @@ internal static class SqliteCatalogSchema
             block_size INTEGER NOT NULL CHECK (block_size BETWEEN 16 AND 65536),
             next_free_id INTEGER NOT NULL CHECK (next_free_id >= base_id),
             reserved_in_version INTEGER NOT NULL CHECK (reserved_in_version >= 1),
+            created_at_utc INTEGER NULL,
+            updated_at_utc INTEGER NULL,
             PRIMARY KEY (family_id, block_ordinal),
             FOREIGN KEY (family_id) REFERENCES catalog_family(family_id),
             CHECK (base_id % block_size = 0),
@@ -159,6 +177,8 @@ internal static class SqliteCatalogSchema
             type_id INTEGER NOT NULL PRIMARY KEY,
             reserved_through INTEGER NOT NULL CHECK (reserved_through >= 0),
             issued_through INTEGER NOT NULL CHECK (issued_through >= 0 AND issued_through <= reserved_through),
+            created_at_utc INTEGER NULL,
+            updated_at_utc INTEGER NULL,
             FOREIGN KEY (type_id) REFERENCES catalog_type(type_id));
 
         CREATE TABLE IF NOT EXISTS catalog_draft (
@@ -168,7 +188,8 @@ internal static class SqliteCatalogSchema
             opened_at_utc INTEGER NOT NULL,
             note TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(note) <= 1024),
             frozen_for_base_version INTEGER NULL CHECK (frozen_for_base_version IS NULL
-                OR frozen_for_base_version >= 0));
+                OR frozen_for_base_version >= 0),
+            updated_at_utc INTEGER NULL);
 
         CREATE TABLE IF NOT EXISTS catalog_draft_edit (
             edit_ordinal INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -184,6 +205,7 @@ internal static class SqliteCatalogSchema
             imported_retired INTEGER NOT NULL DEFAULT 0 CHECK (imported_retired IN (0, 1)),
             edited_by TEXT COLLATE BINARY NOT NULL CHECK (length(edited_by) BETWEEN 1 AND 128),
             edited_at_utc INTEGER NOT NULL,
+            created_at_utc INTEGER NULL,
             FOREIGN KEY (type_id) REFERENCES catalog_type(type_id));
         CREATE UNIQUE INDEX IF NOT EXISTS ux_catalog_draft_edit_target
             ON catalog_draft_edit(type_id, definition_id, content_key);
@@ -195,6 +217,7 @@ internal static class SqliteCatalogSchema
             int_value INTEGER NULL,
             text_value TEXT COLLATE BINARY NULL CHECK (text_value IS NULL OR length(text_value) <= 192),
             blob_value BLOB NULL CHECK (blob_value IS NULL OR length(blob_value) <= 4096),
+            created_at_utc INTEGER NULL,
             PRIMARY KEY (edit_ordinal, field_name),
             FOREIGN KEY (edit_ordinal) REFERENCES catalog_draft_edit(edit_ordinal) ON DELETE CASCADE);
 
@@ -223,6 +246,7 @@ internal static class SqliteCatalogSchema
             from_id INTEGER NOT NULL CHECK (from_id >= 1),
             to_id INTEGER NOT NULL DEFAULT 0 CHECK (to_id >= 0),
             payload BLOB NOT NULL DEFAULT x'' CHECK (length(payload) <= 64),
+            created_at_utc INTEGER NULL,
             FOREIGN KEY (type_id) REFERENCES catalog_type(type_id),
             FOREIGN KEY (introduced_in) REFERENCES catalog_version(version_number));
 
@@ -235,6 +259,7 @@ internal static class SqliteCatalogSchema
             uncompressed_bytes INTEGER NOT NULL CHECK (uncompressed_bytes >= 0),
             stored_bytes INTEGER NOT NULL CHECK (stored_bytes >= 0),
             visibility INTEGER NOT NULL CHECK (visibility IN (0, 1)),
+            created_at_utc INTEGER NULL,
             PRIMARY KEY (version_number, type_id, chunk_index, visibility),
             FOREIGN KEY (version_number) REFERENCES catalog_version(version_number),
             FOREIGN KEY (type_id) REFERENCES catalog_type(type_id));
@@ -270,23 +295,17 @@ internal static class SqliteCatalogSchema
 
     /// <summary>
     /// The metadata row a fresh create seeds, at the version this build writes. It is ignored rather than
-    /// replaced, so a create that runs twice leaves the epoch of the first one alone.
+    /// replaced, so a create that runs twice leaves the epoch of the first one alone. The script runs with no
+    /// store behind it, a reset included, so both of its times come from the database clock, which is where
+    /// <c>updated_at_utc</c> has always come from here.
     /// </summary>
     internal const string MetadataSeed = """
-        INSERT OR IGNORE INTO catalog_metadata(metadata_key, schema_version, store_epoch, active_version, pinned_version, updated_at_utc)
-        VALUES (1, 2, lower(hex(randomblob(16))), 0, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+        INSERT OR IGNORE INTO catalog_metadata(metadata_key, schema_version, store_epoch, active_version, pinned_version, updated_at_utc, created_at_utc)
+        VALUES (1, 3, lower(hex(randomblob(16))), 0, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
         """;
 
     /// <summary>The whole schema at the current version, which a fresh create runs as one script.</summary>
     internal const string Tables = CoreTables + "\n" + UpgradeLedgerTable + "\n" + MetadataSeed;
-
-    /// <summary>
-    /// The schema exactly as version 1 declared it, which is what a version 1 database is validated against
-    /// BEFORE it is migrated. It is derived rather than transcribed, so the two can never drift: a database
-    /// this build refuses to migrate is one that does not match the shape version 1 really created.
-    /// </summary>
-    internal static string VersionOneTables { get; } =
-        CoreTables + "\n" + MetadataSeed.Replace("VALUES (1, 2,", "VALUES (1, 1,", StringComparison.Ordinal);
 
     /// <summary>
     /// The migration from version 1 to version 2, which a held connection runs in ONE transaction: the one

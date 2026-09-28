@@ -1,4 +1,6 @@
 using System;
+using System.Globalization;
+using System.Text;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.Sqlite;
@@ -12,9 +14,10 @@ namespace KhaozEngine.Tests.Catalog.Sqlite;
 /// dropped, forced or not. Version 2 added <c>catalog_content_upgrade</c>, so these are also the facts that
 /// the ledger table is inside the reset's inventory.
 /// <para>
-/// The version 1 catalog here is a real store taken back to version 1's shape: the ledger table dropped and
-/// the metadata row set to 1. The provider's own validator is asked to confirm that shape before each reset,
-/// because it compares every version 1 object by name before it names the migration.
+/// An older catalog here is a real store taken back to that version's shape: the version 3 row time columns
+/// dropped, for version 1 the ledger table too, and the metadata row set to the version. The provider's own
+/// validator is asked to confirm that shape before each reset, because it compares every object by name
+/// before it names the migration.
 /// </para>
 /// </summary>
 public class SqliteCatalogResetSchemaVersionTests
@@ -57,7 +60,7 @@ public class SqliteCatalogResetSchemaVersionTests
         using var database = new TemporaryCatalogDatabase();
         (await SeedAsync(database)).Dispose();
         TakeBackToVersionOne(database);
-        await AssertIsVersionOneAsync(database);
+        await AssertIsOlderVersionAsync(database, 1);
 
         // No force: an older catalog is a whole catalog, not a partial one.
         ContentCatalogResetResult reset = await SqliteCatalogReset.ResetAsync(
@@ -83,6 +86,31 @@ public class SqliteCatalogResetSchemaVersionTests
         Assert.Equal(0L, database.Scalar("SELECT COUNT(*) FROM catalog_content_upgrade;"));
         Assert.Equal(
             SqliteCatalogSchemaInventory.Tables.Count, SqliteCatalogResetHarness.Tables(database).Count);
+    }
+
+    [Fact]
+    public async Task AVersionTwoCatalogIsResetAndComesBackAtTheBuildsVersion()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        (await SeedAsync(database)).Dispose();
+        TakeBackToVersionTwo(database);
+        await AssertIsOlderVersionAsync(database, 2);
+
+        // No force: version 2 declares the same tables as version 3, so its catalog is whole.
+        ContentCatalogResetResult reset = await SqliteCatalogReset.ResetAsync(
+            database.ConnectionString, Actor, Operator, "content release");
+
+        Assert.Equal(ContentCatalogPriorState.Read, reset.PriorState);
+        Assert.Equal(2, reset.PriorSchemaVersion);
+        Assert.Equal(Current, reset.SchemaVersion);
+        Assert.Equal(1, reset.VersionsDropped);
+        Assert.Equal(2, reset.RowsDropped);
+
+        using var reopened = new SqliteContentAuthoringStore(
+            database.ConnectionString, SqliteCatalogResetHarness.Registry(), database.Pack());
+        await reopened.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
+        Assert.Equal(Current, await reopened.GetSchemaVersionAsync());
+        Assert.Equal(0, await reopened.GetActiveVersionAsync());
     }
 
     [Fact]
@@ -162,24 +190,42 @@ public class SqliteCatalogResetSchemaVersionTests
         return store;
     }
 
-    /// <summary>Version 2 undone: the one table it added gone and the metadata row back at 1.</summary>
-    static void TakeBackToVersionOne(TemporaryCatalogDatabase database) => database.Execute(
-        """
-        DROP TABLE catalog_content_upgrade;
-        UPDATE catalog_metadata SET schema_version = 1 WHERE metadata_key = 1;
-        """);
+    /// <summary>Version 3 undone: every row time column it added dropped and the metadata row back at 2.</summary>
+    static void TakeBackToVersionTwo(TemporaryCatalogDatabase database)
+    {
+        var undo = new StringBuilder();
+        foreach ((string table, string column, _) in SqliteCatalogSchema.VersionThreeColumns)
+        {
+            undo.Append(CultureInfo.InvariantCulture, $"ALTER TABLE {table} DROP COLUMN {column};\n");
+        }
+
+        undo.Append("UPDATE catalog_metadata SET schema_version = 2 WHERE metadata_key = 1;");
+        database.Execute(undo.ToString());
+    }
+
+    /// <summary>Versions 3 and 2 undone: the row time columns and the ledger table gone, the metadata row at 1.</summary>
+    static void TakeBackToVersionOne(TemporaryCatalogDatabase database)
+    {
+        TakeBackToVersionTwo(database);
+        database.Execute(
+            """
+            DROP TABLE catalog_content_upgrade;
+            UPDATE catalog_metadata SET schema_version = 1 WHERE metadata_key = 1;
+            """);
+    }
 
     /// <summary>
-    /// The provider's own verdict that this is version 1 and nothing else: ValidateOnly compares every
-    /// version 1 object by name and only then refuses by naming the version.
+    /// The provider's own verdict that this is the named older version and nothing else: ValidateOnly compares
+    /// every object of that version by name and only then refuses by naming the version.
     /// </summary>
-    static async Task AssertIsVersionOneAsync(TemporaryCatalogDatabase database)
+    static async Task AssertIsOlderVersionAsync(TemporaryCatalogDatabase database, int version)
     {
         using var store = new SqliteContentAuthoringStore(
             database.ConnectionString, SqliteCatalogResetHarness.Registry(), database.Pack());
         ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
-        Assert.Contains("at unsupported version '1'", refused.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            FormattableString.Invariant($"at unsupported version '{version}'"), refused.Message, StringComparison.Ordinal);
     }
 
     /// <summary>Every row and every table of the seeded catalog where it was, down to the epoch.</summary>

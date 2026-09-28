@@ -259,6 +259,10 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
     /// columns are a RECORD of the declaration this process carries and are refreshed, since the registry is
     /// the authority the publish actually reads them from.
     /// </para>
+    /// <para>
+    /// A refresh is an UPDATE only when one of the three differs, so <c>updated_at_utc</c> is when the
+    /// declaration last changed rather than when a host last booted.
+    /// </para>
     /// </summary>
     async Task SyncTypesAsync(CancellationToken cancellationToken)
     {
@@ -266,6 +270,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
         long active = await ReadLongAsync(
             "SELECT active_version FROM catalog_metadata WHERE metadata_key = 1;", transaction, cancellationToken)
             .ConfigureAwait(false);
+        long now = Millis(_clock());
 
         IReadOnlyList<ContentTypeRegistration> registrations = _registry.ByTypeId;
         for (int i = 0; i < registrations.Count; i++)
@@ -276,12 +281,17 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
             using SqliteCommand upsert = Command(
                 """
                 INSERT INTO catalog_type(
-                    type_id, type_key, chunk_slots, default_visibility, max_definition_id, first_seen_version)
-                VALUES ($type, $key, $slots, $visibility, $ceiling, $firstSeen)
+                    type_id, type_key, chunk_slots, default_visibility, max_definition_id, first_seen_version,
+                    created_at_utc, updated_at_utc)
+                VALUES ($type, $key, $slots, $visibility, $ceiling, $firstSeen, $now, $now)
                 ON CONFLICT(type_id) DO UPDATE SET
                     chunk_slots = excluded.chunk_slots,
                     default_visibility = excluded.default_visibility,
-                    max_definition_id = excluded.max_definition_id;
+                    max_definition_id = excluded.max_definition_id,
+                    updated_at_utc = excluded.updated_at_utc
+                WHERE catalog_type.chunk_slots IS NOT excluded.chunk_slots
+                   OR catalog_type.default_visibility IS NOT excluded.default_visibility
+                   OR catalog_type.max_definition_id IS NOT excluded.max_definition_id;
                 """,
                 transaction);
             Bind(upsert, "$type", (long)registration.Type.Value);
@@ -290,6 +300,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentAuthoringStore
             Bind(upsert, "$visibility", (long)registration.DefaultVisibility);
             Bind(upsert, "$ceiling", registration.MaxDefinitionId);
             Bind(upsert, "$firstSeen", active);
+            Bind(upsert, "$now", now);
             await upsert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 

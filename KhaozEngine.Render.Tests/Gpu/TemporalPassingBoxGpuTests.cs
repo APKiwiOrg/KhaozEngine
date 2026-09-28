@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -73,6 +74,32 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(r.Worst >= MinShareOfStill, $"the line blinks out beside the passer. {message}");
         }
 
+        /// <summary>
+        /// A still line a quarter of an internal texel wide at Native, its left edge a fifth of the way into its
+        /// texel, so the jitter's samples fall on it on 2 of the 8 phases, 2 frames apart, and miss it for the 5 frames
+        /// after. Its lock, refreshed by a ridge on a hit, loses <c>LockDecay</c> a frame, so from the fifth miss its
+        /// hold is under whole, and beside a narrow passer that pixel takes the passer's colour in the share its hold
+        /// does not keep and stores no confidence (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23), so it restarts.
+        /// Report only: it prints the line's worst frame beside a passer one and two texels wide on either side, which
+        /// a redesign of the held share is read against.
+        /// </summary>
+        [GpuFact]
+        public void A_quarter_texel_line_missed_five_frames_running_prints_its_worst_frame_beside_a_narrow_passer()
+        {
+            const float Texels = 0.25f, Offset = 0.2f;
+            int[] hits = TemporalPassingBoxRuns.HitPhases(Texels, Offset);
+            output.WriteLine($"the jitter's samples fall on the line on phases {string.Join(", ", hits)} of "
+                + $"{TemporalPassingBoxRuns.NativePhases}, the longest run of misses "
+                + $"{TemporalPassingBoxRuns.LongestMissRun(hits)} frames");
+            foreach (int passerTexels in new[] { 1, 2 })
+                foreach (int side in new[] { 1, -1 })
+                {
+                    PassingBoxRun r = runs.Run(TemporalUpscale.Native, side, passerTexels, Texels, Offset);
+                    output.WriteLine(Describe(r, TemporalUpscale.Native, side, passerTexels));
+                    Assert.True(r.Pixels > 0, "the line covered nothing");
+                }
+        }
+
         static string Describe(PassingBoxRun r, TemporalUpscale preset, int side, int passerTexels)
         {
             string what = passerTexels > 0 ? $"passer {passerTexels} texel{(passerTexels > 1 ? "s" : "")} wide" : "box";
@@ -101,8 +128,8 @@ namespace KhaozEngine.Tests.Gpu
         const float PixelsPerFrame = 2f, GapTexels = 1f, PasserGapTexels = 0.5f;
         const ulong Key = 41;
 
-        readonly Dictionary<(TemporalUpscale, int, int), PassingBoxRun> _runs = new();
-        readonly Dictionary<TemporalUpscale, StillLine> _still = new();
+        readonly Dictionary<(TemporalUpscale, int, int, float, float), PassingBoxRun> _runs = new();
+        readonly Dictionary<(TemporalUpscale, float, float), StillLine> _still = new();
 
         // The line's supersampled coverage in the measured rows, its wanted energy, and its energy on each frame of the
         // run without the box.
@@ -110,23 +137,57 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The run with the box on <paramref name="side"/>, or with a passer
         /// <paramref name="passerTexels"/> internal texels wide and as tall as the box in its place when that is more
-        /// than 0.</summary>
-        internal PassingBoxRun Run(TemporalUpscale preset, int side, int passerTexels = 0)
+        /// than 0. The line is <paramref name="lineTexels"/> internal texels wide, its left edge
+        /// <paramref name="lineOffsetPixels"/> display pixels right of the screen centre.</summary>
+        internal PassingBoxRun Run(TemporalUpscale preset, int side, int passerTexels = 0,
+            float lineTexels = LineTexels, float lineOffsetPixels = LineOffsetPixels)
         {
-            if (_runs.TryGetValue((preset, side, passerTexels), out PassingBoxRun? cached)) return cached;
-            var scene = new Passing(preset);
+            var key = (preset, side, passerTexels, lineTexels, lineOffsetPixels);
+            if (_runs.TryGetValue(key, out PassingBoxRun? cached)) return cached;
+            var scene = new Passing(preset, lineTexels, lineOffsetPixels);
             StillLine still = Still(scene);
             byte[][] with = scene.Frames(side, passerTexels);
             var shares = new double[with.Length];
             for (int t = 0; t < with.Length; t++) shares[t] = Energy(with[t], still.Pixels) / still.Energies[t];
             int worst = Array.IndexOf(shares, shares.Min());
-            return _runs[(preset, side, passerTexels)] = new PassingBoxRun(shares, shares[worst], Warm + worst,
-                still.Wanted, still.Pixels.Count);
+            return _runs[key] = new PassingBoxRun(shares, shares[worst], Warm + worst, still.Wanted,
+                still.Pixels.Count);
+        }
+
+        /// <summary>The jitter phases at Native.</summary>
+        internal const int NativePhases = 8;
+
+        /// <summary>The jitter phases at Native whose sample falls on a vertical line <paramref name="lineTexels"/>
+        /// internal texels wide whose left edge lies <paramref name="lineOffsetPixels"/> right of a texel
+        /// edge.</summary>
+        internal static int[] HitPhases(float lineTexels, float lineOffsetPixels)
+        {
+            float left = lineOffsetPixels - MathF.Floor(lineOffsetPixels);
+            var hits = new List<int>();
+            for (int n = 0; n < NativePhases; n++)
+            {
+                float sample = 0.5f - TemporalJitter.Offset(n, NativePhases).X;
+                if (sample >= left && sample < left + lineTexels) hits.Add(n);
+            }
+            return hits.ToArray();
+        }
+
+        /// <summary>The longest run of phases, cyclically, that <paramref name="hits"/> leaves out.</summary>
+        internal static int LongestMissRun(int[] hits)
+        {
+            int longest = 0;
+            for (int i = 0; i < hits.Length; i++)
+            {
+                int next = i + 1 < hits.Length ? hits[i + 1] : hits[0] + NativePhases;
+                longest = Math.Max(longest, next - hits[i] - 1);
+            }
+            return hits.Length == 0 ? NativePhases : longest;
         }
 
         StillLine Still(Passing scene)
         {
-            if (_still.TryGetValue(scene.Preset, out StillLine? cached)) return cached;
+            var key = (scene.Preset, scene.LineTexels, scene.LineOffsetPixels);
+            if (_still.TryGetValue(key, out StillLine? cached)) return cached;
             byte[] reference = scene.Reference();
             float background = TemporalAcceptance.Luma(reference, W, 2, 2);
             var line = new List<(int X, int Y)>();
@@ -140,7 +201,7 @@ namespace KhaozEngine.Tests.Gpu
                     wanted += above;
                 }
             double[] energies = scene.Frames(0, 0).Select(f => Energy(f, line)).ToArray();
-            return _still[scene.Preset] = new StillLine(line, wanted, energies);
+            return _still[key] = new StillLine(line, wanted, energies);
         }
 
         static double Energy(byte[] frame, List<(int X, int Y)> line)
@@ -155,17 +216,23 @@ namespace KhaozEngine.Tests.Gpu
             readonly FrontStage _stage = new(W, H, OrthoSize);
             readonly float _factor, _lineWidth, _lineLeft, _box;
 
-            public Passing(TemporalUpscale preset)
+            public Passing(TemporalUpscale preset, float lineTexels, float lineOffsetPixels)
             {
                 Preset = preset;
+                LineTexels = lineTexels;
+                LineOffsetPixels = lineOffsetPixels;
                 float factor = TemporalSettings.DisplayOverInternal(preset), pw = _stage.PixelWorld;
                 _factor = factor;
-                _lineWidth = LineTexels * factor * pw;
-                _lineLeft = LineOffsetPixels * pw;
+                _lineWidth = lineTexels * factor * pw;
+                _lineLeft = lineOffsetPixels * pw;
                 _box = BoxPixels * pw;
             }
 
             public TemporalUpscale Preset { get; }
+
+            public float LineTexels { get; }
+
+            public float LineOffsetPixels { get; }
 
             // Side 1 puts the box or the passer right of the line, -1 left, and 0 draws neither.
             void Draw(Scene3D s, int n, int side, int passerTexels)

@@ -416,7 +416,7 @@ public sealed class MutationJournalDatabaseClockPurgeTests
         JournalOperationPurgeResult result = await store.PurgeOperationsByAgeAsync(
             new JournalOperationAgePurge(TimeSpan.Zero, 10));
 
-        Assert.Equal(2, database.ScalarLong(path, "SELECT schema_version FROM journal_metadata WHERE metadata_key = 1;"));
+        Assert.Equal(3, database.ScalarLong(path, "SELECT schema_version FROM journal_metadata WHERE metadata_key = 1;"));
         Assert.Equal(1, database.ScalarLong(path, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'trg_journal_operation_delete_guard';"));
         Assert.Equal(0, result.DeletedCount);
         Assert.Equal(2, database.ScalarLong(path, "SELECT COUNT(*) FROM journal_operation;"));
@@ -446,6 +446,11 @@ public sealed class MutationJournalDatabaseClockPurgeTests
         Assert.Equal(0, database.ScalarLong(path,
             "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('ix_journal_operation_retention', " +
             "'trg_journal_operation_retention', 'trg_journal_operation_delete_guard');"));
+        Assert.Equal(0, database.ScalarLong(path,
+            "SELECT COUNT(*) FROM (SELECT name FROM pragma_table_info('journal_metadata') " +
+            "UNION ALL SELECT name FROM pragma_table_info('journal_stream') " +
+            "UNION ALL SELECT name FROM pragma_table_info('journal_operation_stream') " +
+            "UNION ALL SELECT name FROM pragma_table_info('journal_projection')) WHERE name = 'created_at_utc';"));
     }
 
     [Fact]

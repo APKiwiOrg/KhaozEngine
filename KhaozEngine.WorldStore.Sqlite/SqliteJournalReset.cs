@@ -42,7 +42,7 @@ public static class SqliteJournalReset
     /// <param name="cancellationToken">Cancels the work. Nothing is committed on the way out.</param>
     /// <returns>The rows deleted from each data table, and the store epoch that was kept.</returns>
     /// <exception cref="ArgumentException"><paramref name="connectionString"/> is null, empty or whitespace.</exception>
-    /// <exception cref="JournalStoreException">The file is missing (<c>Unavailable</c>), carries no journal or not the version-two journal, or a host key or trigger the deletes would fire (<c>SchemaMismatch</c>), another connection held the write lock past the timeout (<c>Timeout</c>), or a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>).</exception>
+    /// <exception cref="JournalStoreException">The file is missing (<c>Unavailable</c>), carries no journal or not the version-three journal, or a host key or trigger the deletes would fire (<c>SchemaMismatch</c>), another connection held the write lock past the timeout (<c>Timeout</c>), or a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>).</exception>
     public static Task<JournalResetResult> ResetAsync(string connectionString, CancellationToken cancellationToken = default)
         => ResetAsync(connectionString, DefaultLockTimeout, cancellationToken);
 
@@ -51,7 +51,7 @@ public static class SqliteJournalReset
     /// keeps <c>journal_metadata</c> untouched.
     /// <para>
     /// <b>It validates before it deletes.</b> The journal is opened with <see cref="SqliteJournalSchemaMode.ValidateOnly"/>,
-    /// so a file with no journal, a version-one journal or a malformed one is refused with <c>SchemaMismatch</c> and
+    /// so a file with no journal, a version-one or version-two journal or a malformed one is refused with <c>SchemaMismatch</c> and
     /// is never created, migrated or repaired. A missing file is refused with <c>Unavailable</c> and no file is
     /// created: a mistyped path does not leave an empty database behind.
     /// </para>
@@ -82,7 +82,7 @@ public static class SqliteJournalReset
     /// <returns>The rows deleted from each data table, and the store epoch that was kept.</returns>
     /// <exception cref="ArgumentException"><paramref name="connectionString"/> is null, empty or whitespace.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="lockTimeout"/> is not positive or does not fit SQLite's millisecond timeout.</exception>
-    /// <exception cref="JournalStoreException">The file is missing (<c>Unavailable</c>), carries no journal or not the version-two journal, or a host key or trigger the deletes would fire (<c>SchemaMismatch</c>), another connection held the write lock past the timeout (<c>Timeout</c>), or a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>).</exception>
+    /// <exception cref="JournalStoreException">The file is missing (<c>Unavailable</c>), carries no journal or not the version-three journal, or a host key or trigger the deletes would fire (<c>SchemaMismatch</c>), another connection held the write lock past the timeout (<c>Timeout</c>), or a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>).</exception>
     public static async Task<JournalResetResult> ResetAsync(
         string connectionString,
         TimeSpan lockTimeout,

@@ -253,7 +253,7 @@ public sealed partial class SqliteMutationJournalStore
         SqliteTransaction transaction,
         CancellationToken cancellationToken)
     {
-        using (SqliteCommand stream = CreateCommand(transaction, "INSERT INTO journal_stream(stream_key, current_version, retained_floor, updated_at_utc) VALUES ($stream, 0, 0, $now);"))
+        using (SqliteCommand stream = CreateCommand(transaction, "INSERT INTO journal_stream(stream_key, current_version, retained_floor, updated_at_utc, created_at_utc) VALUES ($stream, 0, 0, $now, $now);"))
         {
             Add(stream, "$stream", initialization.AbsentStreamKey);
             Add(stream, "$now", Timestamp(now));
@@ -337,8 +337,8 @@ public sealed partial class SqliteMutationJournalStore
         using SqliteCommand command = CreateCommand(transaction, """
             INSERT INTO journal_projection(
                 stream_key, section_name, source_version, projection_schema,
-                projection_schema_version, data, data_sha256, updated_at_utc)
-            VALUES ($stream, $section, $version, $schema, $schemaVersion, $data, $checksum, $now)
+                projection_schema_version, data, data_sha256, updated_at_utc, created_at_utc)
+            VALUES ($stream, $section, $version, $schema, $schemaVersion, $data, $checksum, $now, $now)
             ON CONFLICT(stream_key, section_name) DO UPDATE SET
                 source_version = excluded.source_version,
                 projection_schema = excluded.projection_schema,
@@ -398,14 +398,15 @@ public sealed partial class SqliteMutationJournalStore
         foreach (JournalStreamVersionRange range in ranges)
         {
             using SqliteCommand child = CreateCommand(transaction, """
-                INSERT INTO journal_operation_stream(operation_id, stream_key, before_version, after_version, event_count)
-                VALUES ($id, $stream, $before, $after, $count);
+                INSERT INTO journal_operation_stream(operation_id, stream_key, before_version, after_version, event_count, created_at_utc)
+                VALUES ($id, $stream, $before, $after, $count, $now);
                 """);
             Add(child, "$id", OperationId(identity.OperationId));
             Add(child, "$stream", range.StreamKey);
             Add(child, "$before", range.BeforeVersion);
             Add(child, "$after", range.AfterVersion);
             Add(child, "$count", range.EventCount);
+            Add(child, "$now", Timestamp(now));
             await child.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
     }

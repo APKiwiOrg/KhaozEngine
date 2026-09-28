@@ -11,30 +11,32 @@ public enum SqliteJournalSchemaMode
     AutoCreate,
     ValidateOnly,
 
-    /// <summary>Opens the database file read only at the connection level, validates the version-two schema with
+    /// <summary>Opens the database file read only at the connection level, validates the version-three schema with
     /// no DDL, and makes the store refuse every write path with <see cref="System.NotSupportedException"/>. A
     /// missing or older schema is refused with <c>SchemaMismatch</c>, never created or migrated. The WAL requirement
     /// is not checked because only a writer depends on it.</summary>
     ReadOnly,
 }
 
-internal static class SqliteJournalSchema
+internal static partial class SqliteJournalSchema
 {
-    internal const int CurrentVersion = 2;
-    internal const string RequiredMigration = "sqlite-journal-v2-operation-retention";
+    internal const int CurrentVersion = 3;
+    internal const string RequiredMigration = "sqlite-journal-v3-row-timestamps";
 
     private const string Tables = """
         CREATE TABLE IF NOT EXISTS journal_metadata (
             metadata_key INTEGER NOT NULL PRIMARY KEY CHECK (metadata_key = 1),
             schema_version INTEGER NOT NULL CHECK (schema_version >= 1),
             store_epoch TEXT COLLATE BINARY NOT NULL CHECK (length(store_epoch) IN (32, 36)),
-            updated_at_utc INTEGER NOT NULL);
+            updated_at_utc INTEGER NOT NULL,
+            created_at_utc INTEGER);
 
         CREATE TABLE IF NOT EXISTS journal_stream (
             stream_key TEXT COLLATE BINARY NOT NULL PRIMARY KEY,
             current_version INTEGER NOT NULL CHECK (current_version >= 0),
             retained_floor INTEGER NOT NULL DEFAULT 0 CHECK (retained_floor >= 0 AND retained_floor <= current_version),
-            updated_at_utc INTEGER NOT NULL);
+            updated_at_utc INTEGER NOT NULL,
+            created_at_utc INTEGER);
 
         CREATE TABLE IF NOT EXISTS journal_event (
             stream_key TEXT COLLATE BINARY NOT NULL,
@@ -86,6 +88,7 @@ internal static class SqliteJournalSchema
             before_version INTEGER NOT NULL CHECK (before_version >= 0),
             after_version INTEGER NOT NULL CHECK (after_version >= before_version),
             event_count INTEGER NOT NULL CHECK (event_count >= 0 AND after_version - before_version = event_count),
+            created_at_utc INTEGER,
             PRIMARY KEY (operation_id, stream_key),
             FOREIGN KEY (operation_id) REFERENCES journal_operation(operation_id),
             FOREIGN KEY (stream_key) REFERENCES journal_stream(stream_key));
@@ -109,12 +112,13 @@ internal static class SqliteJournalSchema
             data BLOB NOT NULL CHECK (length(data) <= 2097152),
             data_sha256 BLOB NOT NULL CHECK (length(data_sha256) = 32),
             updated_at_utc INTEGER NOT NULL,
+            created_at_utc INTEGER,
             PRIMARY KEY (stream_key, section_name),
             FOREIGN KEY (stream_key) REFERENCES journal_stream(stream_key));
         CREATE INDEX IF NOT EXISTS ix_journal_projection_version ON journal_projection(stream_key, source_version);
 
-        INSERT OR IGNORE INTO journal_metadata(metadata_key, schema_version, store_epoch, updated_at_utc)
-        VALUES (1, 2, lower(hex(randomblob(16))), CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+        INSERT OR IGNORE INTO journal_metadata(metadata_key, schema_version, store_epoch, updated_at_utc, created_at_utc)
+        VALUES (1, 3, lower(hex(randomblob(16))), CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
         """;
 
     internal static string VersionOneSchemaSqlForTest => VersionOneTables;
@@ -122,10 +126,10 @@ internal static class SqliteJournalSchema
     internal static string VersionOneSchemaSqlForTestWithLineEndings(string lineEndings)
     {
         ArgumentException.ThrowIfNullOrEmpty(lineEndings);
-        return CreateVersionOneTables(Tables.ReplaceLineEndings(lineEndings));
+        return CreateVersionOneTables(CreateVersionTwoTables(Tables.ReplaceLineEndings(lineEndings)));
     }
 
-    private static string VersionOneTables => CreateVersionOneTables(Tables);
+    private static string VersionOneTables => CreateVersionOneTables(VersionTwoTables);
 
     private static string CreateVersionOneTables(string tables)
     {
@@ -183,6 +187,14 @@ END;
                 ValidateSchemaObjects(actual, VersionOneTables, 1);
                 if (mode != SqliteJournalSchemaMode.AutoCreate) throw Mismatch("unsupported version '1'");
                 MigrateVersionOne(connection);
+                actual = ReadSchemaObjects(connection);
+                version = ReadSchemaVersion(connection);
+            }
+            if (version == 2)
+            {
+                ValidateVersionTwoObjects(actual);
+                if (mode != SqliteJournalSchemaMode.AutoCreate) throw Mismatch("unsupported version '2'");
+                MigrateVersionTwo(connection);
                 actual = ReadSchemaObjects(connection);
                 version = ReadSchemaVersion(connection);
             }
@@ -279,14 +291,7 @@ END;
         string expectedTables,
         int expectedVersion)
     {
-        using var reference = new SqliteConnection("Data Source=:memory:");
-        reference.Open();
-        using (SqliteCommand create = reference.CreateCommand())
-        {
-            create.CommandText = expectedTables;
-            create.ExecuteNonQuery();
-        }
-        IReadOnlyDictionary<string, string> expected = ReadSchemaObjects(reference);
+        IReadOnlyDictionary<string, string> expected = ReadReferenceObjects(expectedTables);
         if (actual.Count != expected.Count)
             throw Mismatch("partial or contains unexpected journal objects");
         foreach ((string name, string expectedSql) in expected)
@@ -294,6 +299,18 @@ END;
             if (!actual.TryGetValue(name, out string? actualSql) || !StringComparer.Ordinal.Equals(actualSql, expectedSql))
                 throw Mismatch($"version {expectedVersion} object '{name}' does not match the supported shape");
         }
+    }
+
+    private static IReadOnlyDictionary<string, string> ReadReferenceObjects(string tables)
+    {
+        using var reference = new SqliteConnection("Data Source=:memory:");
+        reference.Open();
+        using (SqliteCommand create = reference.CreateCommand())
+        {
+            create.CommandText = tables;
+            create.ExecuteNonQuery();
+        }
+        return ReadSchemaObjects(reference);
     }
 
     private static string NormalizeSql(string sql)

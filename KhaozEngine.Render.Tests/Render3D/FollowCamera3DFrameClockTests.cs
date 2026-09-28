@@ -228,11 +228,12 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void A_stalled_clock_falls_back_to_the_scene_latch()
+        public void A_clock_stalled_after_the_first_latch_falls_back_to_the_scene_latch()
         {
-            // A clock that is wired but never ticked gives the camera no frame boundary of its own. The scene latch
-            // must then behave exactly as it does for a camera with no clock: from the second latch on, drop the
-            // cache every time, so the render still sees a wall that slid in under a camera that did not move.
+            // A clock that is wired but never ticked gives the camera no frame boundary of its own. After the first
+            // latch, the scene latch must behave exactly as it does for a camera with no clock: drop the cache every
+            // time, so the render still sees a wall that slid in under a camera that did not move. The first latch
+            // is the warm frame and is not compared: a stall before it cannot be seen, which the docs state.
             var stalledProbe = new FixedReachProbe();
             var bareProbe = new FixedReachProbe();
             FollowCamera3D stalled = Camera(stalledProbe, () => 7L);

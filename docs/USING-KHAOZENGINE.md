@@ -6421,9 +6421,12 @@ camera.FrameClock = () => Clock.FrameCount;   // once, where the camera is built
 
 Each computed eye is stamped with the id. A read reuses the cached eye only under the same id and the same inputs,
 and `BeginFrame` keeps an eye computed earlier in the same frame. The staleness bound holds through the stamp: a
-clock that advances once per frame, such as `GameClock.FrameCount`, never returns an eye from an earlier frame, so
-a camera whose inputs never change still recomputes once a frame and a wall that slides in behind the probe is seen
-on the next frame. A clock that advances mid-frame costs a recompute and nothing worse.
+clock that advances once per frame, BEFORE the frame's first camera read, such as `GameClock.FrameCount` under
+`GameApp`, never returns an eye from an earlier frame, so a camera whose inputs never change still recomputes once
+a frame and a wall that slides in behind the probe is seen on the next frame. The tick point is part of the
+contract. A counter that advances once per frame but between update and render (ticked in `OnPrepareWorld` or a
+draw callback) lets the next frame's update read reuse the previous render's eye. An extra advance later in a frame
+whose clock already ticked before its first read costs a recompute and nothing worse.
 
 A clock that stops advancing breaks that contract. `BeginFrame` can spot a stall only by comparing with the
 previous latch, so the next latch after a stall can keep an eye computed before it. A constant clock on a still
@@ -6441,7 +6444,8 @@ Two cumulative counters (never reset, in the same shape as `GpuDeviceCounters`) 
 `OcclusionSweepCount` is the sweeps this camera has issued, and `EyeComputeCount` is full eye computations whether
 or not the spring-arm is on. A healthy game shows one of each per rendered frame. A sweep count climbing much
 faster than the frame count means something is writing a camera knob between reads. Two a frame from a camera read
-in update after it moves is the cost `FrameClock` removes.
+in update after it moves is the cost `FrameClock` removes. A clocked camera read in update before it moves also
+shows two a frame, which is that shape's cost under a clock (above), not a fault.
 
 ```csharp
 scene.CameraOverride = camera;   // set the camera first: Begin latches the ACTIVE one

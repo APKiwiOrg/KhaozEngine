@@ -12,8 +12,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   two `BoomProbe` calls a frame, because `Scene3D.Begin` dropped the update's eye at render time. With a
   per-frame id set, each computed eye is stamped with it, a read reuses the eye only under the same id and
   inputs, and `BeginFrame` keeps an eye computed earlier in the same frame. Under a clock that advances once per
-  frame, a camera whose inputs never change still recomputes once a frame, so the world moving behind its probe
-  is seen on the next frame. A clock that stops advancing can hand the next latch an eye from before the stall. A
+  frame, before the frame's first camera read, a camera whose inputs never change still recomputes once a frame,
+  so the world moving behind its probe is seen on the next frame. A clock ticked between update and render lets
+  the next update read reuse the previous render's eye, and one that stops advancing can hand the next latch an
+  eye from before the stall. A
   camera read in update before it moves pays two computations a frame with a clock, one more than without. Null,
   the default, leaves the camera unchanged ([#1189](https://github.com/APKiwiOrg/KhaozEngine/issues/1189)).
 - `GameClock.FrameCount` counts `Update` calls, paused or not. `GameApp` ticks its clock once at the head of each

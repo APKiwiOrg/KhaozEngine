@@ -45,8 +45,10 @@ namespace KhaozEngine.Windowing
         /// <summary>
         /// Frames this clock has advanced: one per <see cref="Update"/>, paused or not, starting at 0 before the
         /// first. <c>GameApp</c> updates its clock once at the head of each frame, before <c>OnUpdate</c>, so update,
-        /// the world prepare and the draw all read one value for the frame. That makes it the frame id a
-        /// <c>FollowCamera3D.FrameClock</c> reads (<c>() =&gt; Clock.FrameCount</c>).
+        /// the world prepare and the draw all read one value for the frame. The focus auto-pause runs just before
+        /// that tick and can raise <see cref="Paused"/> or <see cref="Resumed"/>, so a handler on either sees the
+        /// previous frame's count. That makes it the frame id a <c>FollowCamera3D.FrameClock</c> reads
+        /// (<c>() =&gt; Clock.FrameCount</c>).
         /// </summary>
         public long FrameCount { get; private set; }
 

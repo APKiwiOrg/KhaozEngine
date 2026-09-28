@@ -19,12 +19,14 @@ namespace KhaozEngine.Render3D
         /// </para>
         /// <para>
         /// Null (the default) leaves the camera exactly as it was: <see cref="BeginFrame"/> drops the cache every time.
-        /// The guarantee needs a clock that advances once per frame. Under one, no read returns an eye from an earlier
-        /// frame, and a clock that advances mid-frame costs a recompute and nothing worse. A clock that stops
-        /// advancing breaks the contract. <see cref="BeginFrame"/> can spot a stall only by comparing with the
-        /// previous latch, so the next latch after a stall can keep an eye computed before it, and only the latches
-        /// after that drop the cache as a camera with no clock does. The clock is called on every read, so it must be
-        /// cheap and must not allocate. The payoff needs the update's reads to come after its last camera write: a
+        /// The guarantee needs a clock that advances once per frame, before the frame's first camera read. Under one,
+        /// no read returns an eye from an earlier frame, and an extra advance later in the frame costs a recompute and
+        /// nothing worse. A clock whose only tick sits between update and render advances once per frame too late:
+        /// the next frame's update read reuses the previous render's eye. A clock that stops advancing breaks the
+        /// contract. <see cref="BeginFrame"/> can spot a stall only by comparing with the previous latch, so the next
+        /// latch after a stall can keep an eye computed before it, and only the latches after that drop the cache as
+        /// a camera with no clock does. The clock is called on every read, so it must be cheap and must not
+        /// allocate. The payoff needs the update's reads to come after its last camera write: a
         /// knob written after an update read still costs the render a recompute, as it always has, so a camera read
         /// in update before it moves pays two computations a frame with a clock, one more than without.
         /// </para>

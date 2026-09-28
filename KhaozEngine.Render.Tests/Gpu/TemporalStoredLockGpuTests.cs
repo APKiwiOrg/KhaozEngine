@@ -9,9 +9,10 @@ namespace KhaozEngine.Tests.Gpu
     /// (<see cref="TemporalFormats.HistoryConfidence"/>): where the surface the pixel reprojected by moved, the resolve
     /// stores minus one minus the lock, minus three minus the lock where the pixel followed a nearer surface's edge
     /// that moved (the band, <see cref="TemporalResolveTuning.WorldMotionMetres"/>), and minus five minus the lock on
-    /// the followed surface itself, and the next frame must read the lock unchanged wherever it keeps the history. A
-    /// still pixel whose nearest surface did not move drops a history that carries the band. Same rig and still camera
-    /// as <see cref="TemporalResolveLockGpuTests"/>, through
+    /// the followed surface itself, and the next frame must read the lock unchanged, within the half float's step at
+    /// that level, wherever it keeps the history. A still pixel whose nearest surface did not move drops a history that
+    /// carries the band, and keeps one the followed surface stored (<see cref="TemporalFollowedHistoryGpuTests"/>).
+    /// Same rig and still camera as <see cref="TemporalResolveLockGpuTests"/>, through
     /// <see cref="TemporalResolveGpuFacts"/>.
     /// </summary>
     public sealed class TemporalStoredLockGpuTests : TemporalResolveGpuFacts
@@ -40,6 +41,22 @@ namespace KhaozEngine.Tests.Gpu
             float lockAfter = -3f - stored - TemporalResolveTuning.LockDecay;
             Assert.Equal(0.67578f, lockAfter, 1e-5);
             HeldLineKeepsItsLock(stored, lockAfter, SceneLinear * 1.5f);
+        }
+
+        [GpuFact]
+        public void A_lock_stored_by_the_followed_surface_reads_back_unchanged_where_it_stopped()
+        {
+            // The same lock stored on the followed surface itself is Q(-5.8) = -5.80078, a half float's step of 1/256
+            // at that level against 1/1024 at the moved mark's, and reads back as the remainder over two of
+            // -1 - (-5.80078), 0.80078, which decays to 0.67578. The pixel moved nothing on screen, as the avatar's own
+            // pixels on the frame it stops, so the history is kept over the scene's own stored depths, where the band's
+            // drops. A decode that read it as a band texel would take 2.80078, a whole lock, and store 0.875, and one
+            // that read it as a plain moved texel 4.80078.
+            float stored = Q(-5.8f);
+            Assert.Equal(-5.80078f, stored, 1e-5);
+            float lockAfter = (-1f - stored) % 2f - TemporalResolveTuning.LockDecay;
+            Assert.Equal(0.67578f, lockAfter, 1e-5);
+            HeldLineKeepsItsLock(stored, lockAfter);
         }
 
         [GpuFact]

@@ -83,7 +83,7 @@ namespace KhaozEngine.Render3D.Rendering
         static GpuResourceLayoutElement S(string n) => new(n, GpuResourceKind.Sampler, GpuShaderStages.Fragment);
         static GpuResourceLayoutElement U(string n) => new(n, GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment);
 
-        static IGpuPipeline Fullscreen(IGpuResourceFactory f, IGpuShaderSet shaders, IGpuResourceLayout layout,
+        internal static IGpuPipeline Fullscreen(IGpuResourceFactory f, IGpuShaderSet shaders, IGpuResourceLayout layout,
             GpuOutputDescription outputs)
         {
             var blends = new GpuBlendAttachment[outputs.Colour.Length];
@@ -110,6 +110,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// are the very ones already bound and the history targets are the same generation of the same owner.</summary>
         public void BindInputs(in TemporalResolveInputs inputs, TemporalHistory history)
         {
+            BindSplit(inputs, history);   // nothing unless the two-pass resolve is selected (Split partial)
             if (_storeSet is not null && SameInputs(inputs, _boundInputs) && ReferenceEquals(history, _boundHistory)
                 && history.TargetGeneration == _boundTargets)
                 return;
@@ -127,7 +128,7 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         // By reference: the sets name these objects, and holding them keeps a replacement from ever being the same one.
-        static bool SameInputs(in TemporalResolveInputs a, in TemporalResolveInputs b)
+        internal static bool SameInputs(in TemporalResolveInputs a, in TemporalResolveInputs b)
             => ReferenceEquals(a.SceneColor, b.SceneColor) && ReferenceEquals(a.OpaqueColor, b.OpaqueColor)
                 && ReferenceEquals(a.SceneDepth, b.SceneDepth) && ReferenceEquals(a.Motion, b.Motion);
 
@@ -136,6 +137,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// finished may still bind them. The next <see cref="BindInputs"/> builds them again.</summary>
         public void ReleaseSets(GpuRetireQueue retired)
         {
+            _split?.ReleaseSets(retired);
             if (_storeSet is null) return;
             for (int i = 0; i < 2; i++)
             {
@@ -165,6 +167,11 @@ namespace KhaozEngine.Render3D.Rendering
             IGpuResourceSet set = _resolveSets[history.ReadIndex]
                 ?? throw new InvalidOperationException("TemporalResolveRenderer.Run was called before BindInputs.");
             CurrentSet = set;
+            if (RunSplit(cl, history))   // the two-pass resolve, when selected (Split partial)
+            {
+                RecordFinishProbe(cl);
+                return;
+            }
             cl.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
             cl.SetPipeline(_resolvePipeline);
             cl.SetGraphicsResourceSet(0, set);
@@ -200,6 +207,7 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             DisposeFinish();
+            _split?.Dispose();
             DisposeSets();
             _resolvePipeline.Dispose();
             _storePipeline.Dispose();

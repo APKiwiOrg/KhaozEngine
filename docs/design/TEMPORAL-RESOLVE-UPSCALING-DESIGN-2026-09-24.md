@@ -481,18 +481,22 @@ and changed these details. Each group's "Contract amendments" block carries the 
 
     Native and Quality meet acceptance 3 on 64 of the 72 walks at both pitches, away from the camera, sideways and
     towards it at half a display pixel a frame to 3, against 27 before, the worst 5 pixels against 55. The other 8 stay
-    1 to 4 pixels over, on pixels the drop restarted on the measured frame, read against a floor restarted on the frame
+    1 to 3 pixels over, on pixels the drop restarted on the measured frame, read against a floor restarted on the frame
     the box uncovered them over textured ground, and on the feet row behind a sideways walk: at the boot pitch 2 of 311
     sideways at 2 display pixels a frame and 2 of 60 towards at 1 on Quality, and at the low pitch 5 of 436 away at 2.5
     on Quality, 2 and 3 of 71 sideways at half a pixel and 3 and 3 of 160 at 1 at Native and Quality, and 2 of 92
     towards at 3 on Quality. Performance meets acceptance 3 on 21 of 36 walks, the worst 7 against 63, and
     UltraPerformance on 5, the worst 42 against 48, the reconstruction's spill. `TemporalPerspectiveFollowGpuTests`
-    holds acceptance 3 where it is met and the measured excess and about a quarter more, at least 2, elsewhere. The
-    rule left 14 walks slightly worse: at the boot pitch on UltraPerformance away at 3 from 2 to 4 and towards at 1.5,
-    2, 2.5 and 3 from 7, 13, 6 and 3 to 8, 18, 7 and 7, and at the low pitch away at 2.5 and 3 from 0 and 0 to 4 and 6
-    on Performance and from 23 and 4 to 25 and 7 on UltraPerformance, sideways at half a pixel from 1 to 2 at Native and
-    from 15 to 16 on UltraPerformance, at 1 and 2.5 on UltraPerformance from 24 and 10 to 27 and 14, and towards at 3
-    from 0 to 2 on Quality.
+    holds acceptance 3 where it is met and the measured excess and about a quarter more, at least 2, elsewhere. Of those
+    54 bounds, 32 fail on the resolve before the band: 28 where it left more than the bound, and 4 set under what it
+    left where that still leaves the measured value a margin. Three cannot, where it left one pixel more than this
+    resolve, and 19 where it left no more, 15 of them on UltraPerformance. By default the fact holds six walks, the boot
+    pitch walking away at half a display pixel a frame, 1 and 2, at Native and Quality, and the rest only with
+    `KE_TEMPORAL_ACCEPTANCE_TABLE=1`. The rule left 14 walks slightly worse: at the boot pitch on UltraPerformance away
+    at 3 from 2 to 4 and towards at 1.5, 2, 2.5 and 3 from 7, 13, 6 and 3 to 8, 18, 7 and 7, and at the low pitch away
+    at 2.5 and 3 from 0 and 0 to 4 and 6 on Performance and from 23 and 4 to 25 and 7 on UltraPerformance, sideways at
+    half a pixel from 1 to 2 at Native and from 15 to 16 on UltraPerformance, at 1 and 2.5 on UltraPerformance from 24
+    and 10 to 27 and 14, and towards at 3 from 0 to 2 on Quality.
 
     Still lines three eighths and a quarter of a texel wide on the walk's ground (`TemporalFollowLinesGpuTests`) keep
     at least 0.915 of their energy without the box on their worst frame under the orthographic follow, and the fact

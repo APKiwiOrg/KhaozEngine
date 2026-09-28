@@ -42,14 +42,18 @@ namespace KhaozEngine.Tests.Gpu
             P = TemporalUpscale.Performance, U = TemporalUpscale.UltraPerformance;
 
         /// <summary>Every walk the resolve leaves over acceptance 3, and its bound: the measured excess and about a
-        /// quarter more, at least 2 (amendment 23), the measured value in the comment. Every other walk holds
-        /// acceptance 3.</summary>
+        /// quarter more, at least 2 (amendment 23), the measured value in the comment. Where the resolve before the
+        /// band left more, and a bound under that still leaves the measured value a margin, the bound sits under it, so
+        /// four more bounds fail on that resolve. Three cannot: at the boot pitch away at half a display pixel a frame
+        /// on UltraPerformance, 23 against 24, and at 3 on Performance, 2 against 3, and at the low pitch sideways at
+        /// half a pixel on Performance, 2 against 3, it left one pixel more, so a bound under it would be the measured
+        /// value itself. Every other walk holds acceptance 3.</summary>
         static readonly (float Pitch, FollowHeading Heading, float Speed, TemporalUpscale Preset, int Bound)[]
             Residuals =
         {
             (BootPitch, FollowHeading.Away, 0.5f, U, 28),              // measured 23 of 36
             (BootPitch, FollowHeading.Away, 1f, U, 46),                // measured 37 of 96
-            (BootPitch, FollowHeading.Away, 1.5f, U, 52),              // measured 42 of 144
+            (BootPitch, FollowHeading.Away, 1.5f, U, 47),              // measured 42 of 144, 48 before the band
             (BootPitch, FollowHeading.Away, 2f, U, 22),                // measured 18 of 222
             (BootPitch, FollowHeading.Away, 2.5f, U, 21),              // measured 17 of 284
             (BootPitch, FollowHeading.Away, 3f, P, 4),                 // measured 2 of 368
@@ -67,7 +71,7 @@ namespace KhaozEngine.Tests.Gpu
             (BootPitch, FollowHeading.Sideways, 3f, U, 28),            // measured 23 of 464
             (BootPitch, FollowHeading.Towards, 0.5f, U, 6),            // measured 4 of 24
             (BootPitch, FollowHeading.Towards, 1f, Q, 4),              // measured 2 of 60
-            (BootPitch, FollowHeading.Towards, 1f, P, 6),              // measured 4 of 60
+            (BootPitch, FollowHeading.Towards, 1f, P, 5),              // measured 4 of 60, 6 before the band
             (BootPitch, FollowHeading.Towards, 1f, U, 8),              // measured 6 of 60
             (BootPitch, FollowHeading.Towards, 1.5f, U, 10),           // measured 8 of 96
             (BootPitch, FollowHeading.Towards, 2f, U, 22),             // measured 18 of 132
@@ -79,7 +83,7 @@ namespace KhaozEngine.Tests.Gpu
             (LowPitch, FollowHeading.Away, 1.5f, U, 36),               // measured 29 of 184
             (LowPitch, FollowHeading.Away, 2f, P, 5),                  // measured 3 of 268
             (LowPitch, FollowHeading.Away, 2f, U, 26),                 // measured 21 of 268
-            (LowPitch, FollowHeading.Away, 2.5f, Q, 7),                // measured 5 of 436
+            (LowPitch, FollowHeading.Away, 2.5f, Q, 5),                // measured 4 of 436, 6 before the band
             (LowPitch, FollowHeading.Away, 2.5f, P, 6),                // measured 4 of 436
             (LowPitch, FollowHeading.Away, 2.5f, U, 31),               // measured 25 of 436
             (LowPitch, FollowHeading.Away, 3f, P, 8),                  // measured 6 of 548
@@ -95,7 +99,7 @@ namespace KhaozEngine.Tests.Gpu
             (LowPitch, FollowHeading.Sideways, 1.5f, P, 4),            // measured 2 of 226
             (LowPitch, FollowHeading.Sideways, 1.5f, U, 16),           // measured 13 of 226
             (LowPitch, FollowHeading.Sideways, 2f, P, 9),              // measured 7 of 313
-            (LowPitch, FollowHeading.Sideways, 2f, U, 22),             // measured 18 of 313
+            (LowPitch, FollowHeading.Sideways, 2f, U, 21),             // measured 18 of 313, 22 before the band
             (LowPitch, FollowHeading.Sideways, 2.5f, P, 9),            // measured 7 of 393
             (LowPitch, FollowHeading.Sideways, 2.5f, U, 17),           // measured 14 of 393
             (LowPitch, FollowHeading.Sideways, 3f, U, 9),              // measured 7 of 468
@@ -130,14 +134,16 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// The ground the avatar uncovers keeps none of its colour at Native and Quality on 64 of the 72 walks, half a
         /// display pixel a frame to three at both pitches and every heading, where walking away at the boot pitch kept
-        /// 17 to 55 pixels before the avatar's own pixels stored the band mark. The other 8 stay 1 to 4 pixels over,
+        /// 17 to 55 pixels before the avatar's own pixels stored the band mark. The other 8 stay 1 to 2 pixels over,
         /// on pixels the band drop restarted on the measured frame, read against a floor restarted on the frame the
         /// avatar uncovered them, and on the feet row behind a sideways walk
         /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1191">#1191</see>). Performance meets acceptance
         /// 3 on 21 walks and UltraPerformance on 5, where the reconstruction spreads the avatar's texel over the
         /// ground. Every walk over acceptance 3 holds its measured excess and about a quarter more
-        /// (<see cref="Residuals"/>). It holds the boot pitch walking away at Native and Quality, and with
-        /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every walk of the table.
+        /// (<see cref="Residuals"/>). By default it holds the six walks at the boot pitch walking away at half a
+        /// display pixel a frame, 1 and 2, at Native and Quality. The rest of the table, 138 walks at both pitches,
+        /// every heading, speed and preset, every bound in <see cref="Residuals"/> among them, runs only with
+        /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c>, which no workflow sets.
         /// </summary>
         [GpuFact]
         public void A_followed_avatar_leaves_no_trail_on_the_ground_it_uncovers()

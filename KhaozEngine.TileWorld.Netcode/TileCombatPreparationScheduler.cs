@@ -86,6 +86,63 @@ internal static class TileCombatPreparationScheduler
         return true;
     }
 
+    public static bool TryDelay(ref TileCombatPreparationState state, long tick, byte ticks, long cooldownReadyTick,
+        out byte acceptedTicks, out TilePreparationFailure failure)
+    {
+        acceptedTicks = 0;
+        failure = TilePreparationFailure.None;
+        if (ticks == 0) return true;
+
+        long ready, prepare = 0;
+        byte accepted;
+        try
+        {
+            long basis = Math.Max(tick, Math.Max(cooldownReadyTick, state.ReadyNotBeforeTick));
+            if (state.HasActive) basis = Math.Max(basis, state.Active.ImpactTick);
+            long remaining = checked(basis - tick);
+            if (remaining >= byte.MaxValue) return true;
+            accepted = (byte)Math.Min(ticks, byte.MaxValue - remaining);
+            ready = checked(basis + accepted);
+            if (state.HasActive)
+            {
+                long shift = checked(ready - state.Active.ImpactTick);
+                prepare = checked(state.Active.PrepareTick + shift);
+                _ = checked(ready + state.Active.CadenceTicks);
+            }
+        }
+        catch (OverflowException)
+        {
+            failure = TilePreparationFailure.TickOverflow;
+            return false;
+        }
+
+        TileCombatPreparation active = state.Active;
+        ulong lastId = state.LastAttackId;
+        if (state.HasActive)
+        {
+            uint revision = active.Revision;
+            ulong id = active.AttackId;
+            if (revision == uint.MaxValue)
+            {
+                if (lastId == ulong.MaxValue)
+                {
+                    failure = TilePreparationFailure.IdentityExhausted;
+                    return false;
+                }
+                id = ++lastId;
+                revision = 1;
+            }
+            else revision++;
+            active = active with { AttackId = id, Revision = revision, PrepareTick = prepare, ImpactTick = ready };
+        }
+
+        state.Active = active;
+        state.LastAttackId = lastId;
+        state.ReadyNotBeforeTick = ready;
+        acceptedTicks = accepted;
+        return true;
+    }
+
     static void ClearActive(ref TileCombatPreparationState state)
     {
         state.HasActive = false;

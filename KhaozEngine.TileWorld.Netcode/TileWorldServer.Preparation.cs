@@ -62,6 +62,7 @@ public sealed partial class TileWorldServer
 
     void BeginPreparationTick()
     {
+        ResetCombatCountdown();
         if (preparation is null) return;
         preparation.BufferTick = TickCount;
         preparation.Results.Clear();
@@ -130,13 +131,15 @@ public sealed partial class TileWorldServer
         if (previous is { } completed && (completed.TargetNetId != move.CombatTarget
             || !SamePreparationProfile(completed, profile, cadence))) return false;
 
-        if (TickCount > long.MaxValue - combat.CooldownRemaining)
+        long ready;
+        try { ready = AttackReadyTick(attacker, combat, state); }
+        catch (OverflowException)
         {
             InvalidCombatPreparationCount++;
             return false;
         }
         if (!TileCombatPreparationScheduler.TryCreate(ref state, TickCount, attacker, move.CombatTarget,
-            profile, cadence, TickCount + combat.CooldownRemaining, move.TeleportEpoch, target.TeleportEpoch,
+            profile, cadence, ready, move.TeleportEpoch, target.TeleportEpoch,
             out TilePreparationFailure failure))
         {
             if (failure == TilePreparationFailure.IdentityExhausted) ExhaustedCombatPreparationIdentityCount++;

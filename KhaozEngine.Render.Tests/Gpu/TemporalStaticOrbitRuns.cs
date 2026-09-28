@@ -9,8 +9,9 @@ using KhaozEngine.Render3D.Internal;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>How the camera moves over the still field: orbiting its target a few degrees a frame or slowly, as a
-    /// middle-drag orbits it, or strafing sideways at a run.</summary>
-    public enum StaticPath { FastOrbit, SlowOrbit, Strafe }
+    /// middle-drag orbits it, strafing sideways at a run, or creeping sideways by less than a millimetre a frame, as a
+    /// damped camera settles, which far from the origin moves the eye in steps of its float spacing.</summary>
+    public enum StaticPath { FastOrbit, SlowOrbit, Strafe, Creep }
 
     /// <summary>What one still-field run stored: per measured frame, the display pixels whose state holds the band
     /// mark and the moved mark (<c>temporalStoreLock</c>), and when asked the static travel of every internal texel.
@@ -72,7 +73,8 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class TemporalStaticOrbitRuns
     {
         public const int Warm = 4, Measured = 20;
-        const float FastDegrees = 3f, SlowDegrees = 0.3f, StrafeMetres = 0.15f, TowerInside = 0.9f;
+        const float FastDegrees = 3f, SlowDegrees = 0.3f, StrafeMetres = 0.15f, CreepMetres = 0.0004f;
+        const float TowerInside = 0.9f;
 
         readonly Dictionary<(StaticPath, bool, TemporalUpscale, int, bool), StaticRun> _runs = new();
 
@@ -160,22 +162,22 @@ namespace KhaozEngine.Tests.Gpu
                 // Far from the origin the eye crosses a render-origin step on x mid-run, and the orbits cross one on z
                 // too, where the local coordinates are at their largest.
                 _stage = new GroundStage(w, h, 0.75f, far ? new Vector3(10000f, 0f, 10000f) : Vector3.Zero);
-                // Half way between the anchors 78 and 79 grid cells out, where the nearest one changes.
-                float step = 78.5f * WorldFrame.Grid - 10000f + 0.013f;
+                // Half way between the anchors 78 and 79 grid cells out, where the nearest one changes, and a creep
+                // crosses it within its few millimetres.
+                float step = 78.5f * WorldFrame.Grid - 10000f + (path == StaticPath.Creep ? 0.0005f : 0.013f);
                 _start = far ? new Vector3(step - Eye(Warm + Measured / 2).X, 0f, step - Eye(Warm + 5).Z)
                     : Vector3.Zero;
                 float radius = GroundStage.Distance * MathF.Cos(_stage.Pitch) - TowerInside;
                 int[] frames = path switch
                 {
                     StaticPath.FastOrbit => new[] { Warm + 2, Warm + 7, Warm + 12, Warm + 17 },
-                    StaticPath.SlowOrbit => new[] { Warm + Measured / 2 },
+                    StaticPath.SlowOrbit or StaticPath.Creep => new[] { Warm + Measured / 2 },
                     _ => new[] { Warm + 2, Warm + 12 },
                 };
                 foreach (int frame in frames)
                 {
-                    if (path == StaticPath.Strafe)
-                        _towers.Add(_start + Horizontal(GroundStage.Yaw) * radius
-                            + GroundStage.Right * (StrafeMetres * frame));
+                    if (path is StaticPath.Strafe or StaticPath.Creep)
+                        _towers.Add(Target(frame) + Horizontal(GroundStage.Yaw) * radius);
                     else
                         _towers.Add(_start + Horizontal(Yaw(frame)) * radius);
                 }
@@ -195,8 +197,12 @@ namespace KhaozEngine.Tests.Gpu
                 _ => 0f,
             };
 
-            Vector3 Target(int n) => _path == StaticPath.Strafe ? _start + GroundStage.Right * (StrafeMetres * n)
-                : _start;
+            Vector3 Target(int n) => _path switch
+            {
+                StaticPath.Strafe => _start + GroundStage.Right * (StrafeMetres * n),
+                StaticPath.Creep => _start + GroundStage.Right * (CreepMetres * n),
+                _ => _start,
+            };
 
             FollowCamera3D Camera(int n) => _stage.Camera(Target(n), YawOffset(n));
 

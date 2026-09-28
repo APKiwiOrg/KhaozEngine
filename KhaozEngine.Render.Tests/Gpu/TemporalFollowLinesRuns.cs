@@ -26,14 +26,20 @@ namespace KhaozEngine.Tests.Gpu
         /// <paramref name="n"/>.</summary>
         bool[] Hidden(int n, int last);
 
+        /// <summary>Whether the box hid the ground point pixel (<paramref name="x"/>, <paramref name="y"/>) of frame
+        /// <paramref name="last"/> shows on frame <paramref name="n"/>, or that of a pixel beside it.</summary>
+        bool HidNear(int n, int last, int x, int y);
+
         /// <summary>Which line a pixel of frame <paramref name="n"/> lies near: 0 for none, 1 across the box's path,
         /// 2 along its edge.</summary>
         int LineAt(int n, int x, int y);
     }
 
     /// <summary>One line's measure: its energy share of the walk without the box on each measured frame and the worst,
-    /// and its pixels' trail two or more frames after the box's band left them.</summary>
-    internal sealed record LineMeasure(double[] Shares, double Worst, int WorstFrame, TrailTally Trail);
+    /// and its pixels' trail two or more frames after the box's band left them, those the box never hid within the
+    /// trail's frames (<see cref="Trail"/>) and those it hid and revealed (<see cref="Revealed"/>).</summary>
+    internal sealed record LineMeasure(double[] Shares, double Worst, int WorstFrame, TrailTally Trail,
+        TrailTally Revealed);
 
     /// <summary>
     /// Still lines narrower than a texel on the ground a followed box walks over: one across its trailing path, which
@@ -41,11 +47,12 @@ namespace KhaozEngine.Tests.Gpu
     /// amendment 23, the band). Three runs of the same camera path: with the box and the lines, the lines alone, and
     /// the ground alone. A line's pixels on a frame are those the lines alone lift over the ground alone by more than
     /// <see cref="CoverageStep"/> within <see cref="NearPixels"/> of the box and past the band's reach from it, two
-    /// internal texels and a pixel, where the box's own edge no longer reaches through the reconstruction. Its energy
-    /// is their luma over the ground alone, and its share that energy with the box over that without it, as <see
-    /// cref="TemporalPassingBoxGpuTests"/> reads a still line. Its trail is read on the last frame over its pixels that
-    /// the box, grown by the band's reach, left two to eight frames before, by the excess over a floor that restarts
-    /// the lines alone on the frame it left them, as the follow walks read the ground.
+    /// internal texels and a pixel, where the box's own edge no longer reaches through the reconstruction, and that the
+    /// box did not hide within the trail's frames, where the line restarts from nothing as any revealed feature does.
+    /// Its energy is their luma over the ground alone, and its share that energy with the box over that without it, as
+    /// <see cref="TemporalPassingBoxGpuTests"/> reads a still line. Its trail is read on the last frame over its pixels
+    /// that the box, grown by the band's reach, left two to eight frames before, by the excess over a floor that
+    /// restarts the lines alone on the frame it left them, as the follow walks read the ground.
     /// </summary>
     public sealed class TemporalFollowLinesRuns
     {
@@ -93,7 +100,7 @@ namespace KhaozEngine.Tests.Gpu
                     {
                         if (!near[i] || band[i] || walk.LineAt(n, i % w, i / w) != line) continue;
                         float lifted = Luma(lines[t], i) - Luma(ground[t], i);
-                        if (lifted <= CoverageStep) continue;
+                        if (lifted <= CoverageStep || Revealed(n, i % w, i / w)) continue;
                         still += lifted;
                         energy += Luma(with[t], i) - Luma(ground[t], i);
                     }
@@ -103,10 +110,10 @@ namespace KhaozEngine.Tests.Gpu
                 for (int t = 0; t < count; t++)
                     if (!double.IsNaN(shares[t]) && (worst < 0 || shares[t] < shares[worst])) worst = t;
                 return new LineMeasure(shares, worst < 0 ? double.NaN : shares[worst], StillFrames + worst,
-                    Trail(line));
+                    Trail(line, false), Trail(line, true));
             }
 
-            TrailTally Trail(int line)
+            TrailTally Trail(int line, bool revealed)
             {
                 // Now and one frame ago as the follow walks exclude them, then the band's reach around the box.
                 var left = new bool[TemporalGhostingRuns.TrailFrames][];
@@ -121,7 +128,7 @@ namespace KhaozEngine.Tests.Gpu
                     int age = 0;
                     for (int k = TemporalGhostingRuns.FirstAge; k < left.Length && age == 0; k++)
                         if (left[k][i]) age = k;
-                    if (age == 0) continue;
+                    if (age == 0 || Revealed(Last, i % w, i / w) != revealed) continue;
                     int x = i % w, y = i / w;
                     tally.Add(TemporalAcceptance.Difference(with[count - 1], lines[count - 1], w, x, y,
                             PixelDifference.MaxChannel),
@@ -134,6 +141,15 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             float Luma(byte[] frame, int i) => TemporalAcceptance.Luma(frame, w, i % w, i / w);
+
+            // Whether the box hid the line there within the trail's frames, so the line restarted from nothing when
+            // the box uncovered it, as any disoccluded feature does. Their trail is read apart.
+            bool Revealed(int n, int x, int y)
+            {
+                for (int k = 0; k < TemporalGhostingRuns.TrailFrames; k++)
+                    if (walk.HidNear(n - k, n, x, y)) return true;
+                return false;
+            }
         }
 
         static byte[][] Sequence(IFollowLinesWalk walk, TemporalUpscale preset, bool box, bool lines) =>
@@ -214,6 +230,14 @@ namespace KhaozEngine.Tests.Gpu
             return mask;
         }
 
+        public bool HidNear(int n, int last, int x, int y)
+        {
+            float size = SizePixels * _stage.PixelWorld;
+            Vector3 c = Centre(n), half = new(size / 2f, size / 2f, 0.25f);
+            return TemporalAcceptance.Footprint(_stage.Camera(Walked(last)), c - half, c + half, W, H).Inflate(1)
+                .Contains(x, y);
+        }
+
         public int LineAt(int n, int x, int y)
         {
             float pw = _stage.PixelWorld;
@@ -226,9 +250,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The perspective follow walk of <see cref="TemporalPerspectiveFollowRuns"/>, away from the camera at the boot
     /// pitch, with still white blades standing on the ground, <see cref="BladeHeight"/> metres tall and as wide and
-    /// deep as the line's share of an internal texel where the box stands: a row across its path where it stands <see
-    /// cref="OrthoFollowLines.Uncovered"/> frames before the last, which it walks through, and a row along its right
-    /// edge an internal texel out, which it walks past.
+    /// deep as the line's share of an internal texel where the box stands: a row across its path where it stands
+    /// <see cref="OrthoFollowLines.Uncovered"/> frames before the last, which it walks through, and a row along its
+    /// right edge an internal texel out, which it walks past.
     /// </summary>
     internal sealed class PerspectiveFollowLines : IFollowLinesWalk
     {
@@ -272,6 +296,14 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         public bool[] Hidden(int n, int last) => _walk.Hidden(n, last);
+
+        public bool HidNear(int n, int last, int x, int y)
+        {
+            for (int yy = Math.Max(0, y - 1); yy <= Math.Min(H - 1, y + 1); yy++)
+                for (int xx = Math.Max(0, x - 1); xx <= Math.Min(W - 1, x + 1); xx++)
+                    if (_walk.Hides(n, last, xx, yy)) return true;
+            return false;
+        }
 
         public int LineAt(int n, int x, int y)
         {

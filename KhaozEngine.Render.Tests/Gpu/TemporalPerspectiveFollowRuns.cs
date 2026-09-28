@@ -33,6 +33,7 @@ namespace KhaozEngine.Tests.Gpu
         const ulong Key = 67;
 
         readonly Dictionary<(TemporalUpscale, float, float, FollowHeading), CrossingTrail> _runs = new();
+        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading), int> _bandMarks = new();
         readonly Dictionary<(TemporalUpscale, float, float, FollowHeading), (byte[] Ground, byte[][] Floors)> _bare =
             new();
 
@@ -53,6 +54,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 fx.Frames(Last, (s, n) => walk.Draw(s, n, Key));
                 frame = fx.Frame((s, n) => walk.Draw(s, n, Key));
+                _bandMarks[key] = BandMarks(fx);
             }
             int[] ages = walk.Ages(Last, TemporalGhostingRuns.TrailFrames, out PixelRect now);
             CrossingTrail trail = Measure($"perspective follow at {pixelsPerFrame} px a frame, pitch {pitch}, "
@@ -60,6 +62,21 @@ namespace KhaozEngine.Tests.Gpu
                 Stopwatch.GetElapsedTime(started).TotalSeconds);
             Seconds += trail.Seconds;
             return _runs[key] = trail;
+        }
+
+        /// <summary>The display pixels whose stored state holds the band mark on the measured frame of the walk, which
+        /// <see cref="Run"/> rendered.</summary>
+        internal int BandMarks(TemporalUpscale preset, float pixelsPerFrame, float pitch, FollowHeading heading) =>
+            _bandMarks[(preset, pixelsPerFrame, pitch, heading)];
+
+        // Stored states below minus 2.5 are band marks (the resolve's temporalStoreLock).
+        static int BandMarks(TemporalFixture fx)
+        {
+            var history = fx.Scene.TemporalHistory;
+            float[] state = TemporalTextureIo.Read(fx.Device, history.Confidence(history.WriteIndex));
+            int marks = 0;
+            for (int i = 1; i < state.Length; i += 2) if (state[i] < -2.5f) marks++;
+            return marks;
         }
 
         // The converged bare ground at the measured frame on the same camera path, and each age's floor.
@@ -191,6 +208,12 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The pixels of frame <paramref name="last"/> whose ground point the box hid on frame
         /// <paramref name="n"/>, by the ray through each pixel centre.</summary>
+        /// <summary>Whether the box hid the ground point pixel (<paramref name="x"/>, <paramref name="y"/>) of frame
+        /// <paramref name="last"/> shows on frame <paramref name="n"/>.</summary>
+        public bool Hides(int n, int last, int x, int y) =>
+            GroundRays.GroundPoint(Camera(last), _stage.W, _stage.H, x, y) is Vector3 g
+            && GroundRays.Hides(Camera(n).Eye, g, Foot(n), _size, GroundStage.Yaw);
+
         public bool[] Hidden(int n, int last)
         {
             int w = _stage.W, h = _stage.H;

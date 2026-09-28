@@ -34,7 +34,7 @@ namespace KhaozEngine.Tests.Gpu
 
         internal static string Describe(string what, LineMeasure m) =>
             $"{what}: worst share {m.Worst:0.000} on frame {m.WorstFrame}, trail {m.Trail}, acceptance 3 allows "
-            + $"{TemporalPerspectiveFollowGpuTests.Allowed(m.Trail.Checked)}";
+            + $"{TemporalPerspectiveFollowGpuTests.Allowed(m.Trail.Checked)}, revealed {m.Revealed}";
 
         static IEnumerable<(bool Perspective, TemporalUpscale Preset, float Speed, float Texels)> TableRuns()
         {
@@ -53,8 +53,8 @@ namespace KhaozEngine.Tests.Gpu
         public void The_follow_lines_table_prints_every_walk()
         {
             output.WriteLine("| Projection | Preset | Speed | Width texels | Line | Worst share | Frame | Checked "
-                + "| Excess | Allows | Worst excess |");
-            output.WriteLine("|" + string.Concat(Enumerable.Repeat(" --- |", 11)));
+                + "| Excess | Allows | Worst excess | Revealed excess of checked |");
+            output.WriteLine("|" + string.Concat(Enumerable.Repeat(" --- |", 12)));
             foreach (var (perspective, preset, speed, texels) in TableRuns())
             {
                 var (across, along) = Run(runs, perspective, preset, speed, texels);
@@ -63,7 +63,7 @@ namespace KhaozEngine.Tests.Gpu
                     output.WriteLine($"| {(perspective ? "perspective" : "orthographic")} | {preset} | {speed} "
                         + $"| {texels} | {name} | {m.Worst:0.000} | {m.WorstFrame} | {m.Trail.Checked} "
                         + $"| {m.Trail.Excess} | {TemporalPerspectiveFollowGpuTests.Allowed(m.Trail.Checked)} "
-                        + $"| {m.Trail.WorstExcess:0.000} |");
+                        + $"| {m.Trail.WorstExcess:0.000} | {m.Revealed.Excess} of {m.Revealed.Checked} |");
                     Assert.False(double.IsNaN(m.Worst), $"{name}: the line covered nothing near the box");
                     if (m.Worst < 0.9)
                         output.WriteLine($"    shares by frame from {TemporalFollowLinesRuns.StillFrames}: "

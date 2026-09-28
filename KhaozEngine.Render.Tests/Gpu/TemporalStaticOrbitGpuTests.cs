@@ -8,10 +8,10 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// The band of TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23 marks a pixel beside a nearer surface that moved in
-    /// the world. Under the perspective follow camera orbiting or strafing a still field (<see
-    /// cref="TemporalStaticOrbitRuns"/>) nothing moved, so no pixel may store the mark, and without a stored mark no
-    /// pixel drops a band history. The world-motion test reads the static travel of the dilated texel, which on still
-    /// content is the motion target's and the reprojection's own error, printed here with its distribution. The
+    /// the world. Under the perspective follow camera orbiting or strafing a still field
+    /// (<see cref="TemporalStaticOrbitRuns"/>) nothing moved, so no pixel may store the mark, and without a stored mark
+    /// no pixel drops a band history. The world-motion test reads the static travel of the dilated texel, which on
+    /// still content is the motion target's and the reprojection's own error, printed here with its distribution. The
     /// measured values in the comments are Metal on Apple silicon.
     /// </summary>
     public sealed class TemporalStaticOrbitGpuTests(TemporalStaticOrbitRuns runs, ITestOutputHelper output)
@@ -19,7 +19,8 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int W = 2560, H = 1440, WideW = 3840, WideH = 2160;
 
-        static readonly StaticPath[] Paths = { StaticPath.FastOrbit, StaticPath.SlowOrbit, StaticPath.Strafe };
+        static readonly StaticPath[] Paths =
+            { StaticPath.FastOrbit, StaticPath.SlowOrbit, StaticPath.Strafe, StaticPath.Creep };
 
         // Every run of the table, or with the table switch off the far fast orbit and strafe at Quality.
         static IEnumerable<(StaticPath Path, bool Far, TemporalUpscale Preset, int W, int H)> TableRuns()
@@ -28,6 +29,7 @@ namespace KhaozEngine.Tests.Gpu
             {
                 yield return (StaticPath.FastOrbit, true, TemporalUpscale.Quality, W, H);
                 yield return (StaticPath.Strafe, true, TemporalUpscale.Quality, W, H);
+                yield return (StaticPath.Creep, true, TemporalUpscale.Quality, W, H);
                 yield break;
             }
             foreach (StaticPath path in Paths)

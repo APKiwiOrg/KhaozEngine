@@ -10,11 +10,11 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23 under the perspective follow camera a game uses: a keyed
     /// avatar-sized box with ridged pixels walks over the textured ground while <see cref="FollowCamera3D"/> keeps it
-    /// at the screen centre (<see cref="TemporalPerspectiveFollowRuns"/>). Unlike the orthographic wall of <see
-    /// cref="TemporalFollowCameraGpuTests"/>, the ground's motion changes with its depth, so neighbouring ground texels
-    /// move apart on screen. Each trail is read by the excess over a floor that restarts the bare ground on the frame
-    /// the box uncovered the pixel. HDR is off, the sharpen is at its default, and the measured values in the comments
-    /// are Metal on Apple silicon.
+    /// at the screen centre (<see cref="TemporalPerspectiveFollowRuns"/>). Unlike the orthographic wall of
+    /// <see cref="TemporalFollowCameraGpuTests"/>, the ground's motion changes with its depth, so neighbouring ground
+    /// texels move apart on screen. Each trail is read by the excess over a floor that restarts the bare ground on the
+    /// frame the box uncovered the pixel. HDR is off, the sharpen is at its default, and the measured values in the
+    /// comments are Metal on Apple silicon.
     /// </summary>
     public sealed class TemporalPerspectiveFollowGpuTests(TemporalPerspectiveFollowRuns runs,
         ITestOutputHelper output) : IClassFixture<TemporalPerspectiveFollowRuns>
@@ -61,8 +61,8 @@ namespace KhaozEngine.Tests.Gpu
         public void The_perspective_follow_table_prints_every_walk()
         {
             output.WriteLine("| Pitch | Heading | Speed | Preset | Internal | Checked | Excess | Acceptance 3 allows "
-                + "| Worst excess | Reach | Oldest | Age 2 excess |");
-            output.WriteLine("|" + string.Concat(Enumerable.Repeat(" --- |", 12)));
+                + "| Worst excess | Reach | Oldest | Age 2 excess | Band marks |");
+            output.WriteLine("|" + string.Concat(Enumerable.Repeat(" --- |", 13)));
             foreach (var (pitch, heading, speed, preset) in TableWalks())
             {
                 CrossingTrail c = runs.Run(preset, speed, pitch, heading);
@@ -70,7 +70,7 @@ namespace KhaozEngine.Tests.Gpu
                 float internalPixels = speed / TemporalSettings.DisplayOverInternal(preset);
                 output.WriteLine($"| {pitch} | {heading} | {speed} | {preset} | {internalPixels:0.00} | {t.Checked} "
                     + $"| {t.Excess} | {Allowed(t.Checked)} | {t.WorstExcess:0.000} | {c.Reach} | {c.OldestAge} "
-                    + $"| {two.Excess} of {two.Checked} |");
+                    + $"| {two.Excess} of {two.Checked} | {runs.BandMarks(preset, speed, pitch, heading)} |");
                 Assert.True(t.Checked > 0, $"{c.Name}: the trail region measured nothing");
             }
             output.WriteLine(TemporalStabilityRuns.FullTable ? "the full table"

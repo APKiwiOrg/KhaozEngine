@@ -159,6 +159,67 @@ public class TilePreparationAssemblyTests
         Assert.False(assembler.TryAddTerminals(new(100, 1, 2), [Cancellation(9)], out _));
     }
 
+    [Theory]
+    [InlineData(2UL, 1UL)]
+    [InlineData(1UL, 1UL)]
+    [InlineData(ulong.MaxValue, 1UL)]
+    public void Cancellation_attack_ids_must_increase_across_chunks(ulong first, ulong second)
+    {
+        var assembler = new TileCombatPreparationAssembler();
+        Assert.True(assembler.TryAddTerminals(new(100, 0, 2), [Cancellation(10) with { AttackId = first }], out _));
+
+        Assert.False(assembler.TryAddTerminals(new(100, 1, 2),
+            [Cancellation(10) with { AttackId = second, Revision = 9 }], out TilePreparationTerminalFrame? complete));
+
+        Assert.Null(complete);
+        Assert.True(assembler.TryAddTerminals(new(101, 0, 1), [Terminal(10, 101)], out complete));
+        Assert.Single(complete!.Records);
+    }
+
+    [Theory]
+    [InlineData(1U)]
+    [InlineData(9U)]
+    public void Cancellation_and_resolution_cannot_share_an_attack_id_across_chunks(uint revision)
+    {
+        var assembler = new TileCombatPreparationAssembler();
+        Assert.True(assembler.TryAddTerminals(new(100, 0, 3), [Cancellation(10)], out _));
+        Assert.True(assembler.TryAddTerminals(new(100, 1, 3), [Cancellation(20)], out _));
+
+        Assert.False(assembler.TryAddTerminals(new(100, 2, 3),
+            [Terminal(10) with { Revision = revision }], out TilePreparationTerminalFrame? complete));
+
+        Assert.Null(complete);
+        Assert.True(assembler.TryAddTerminals(new(101, 0, 1), [Terminal(10, 101)], out complete));
+        Assert.Single(complete!.Records);
+    }
+
+    [Fact]
+    public void Valid_terminal_identity_tracking_preserves_roll_order_and_resets_after_completion()
+    {
+        var assembler = new TileCombatPreparationAssembler();
+        TileCombatTerminal[] first = [Cancellation(10) with { AttackId = 2 }, Cancellation(20) with { AttackId = 7 }];
+        TileCombatTerminal[] last = [Terminal(30), Terminal(20) with { AttackId = 8 }, Terminal(10) with { AttackId = 3 }];
+        Assert.True(assembler.TryAddTerminals(new(100, 0, 2), first, out _));
+        Assert.True(assembler.TryAddTerminals(new(100, 1, 2), last, out TilePreparationTerminalFrame? complete));
+        Assert.Equal(new long[] { 10, 20, 30, 20, 10 }, complete!.Records.Select(x => x.AttackerNetId));
+        Assert.True(assembler.TryAddTerminals(new(100, 0, 2), first, out _));
+        Assert.True(assembler.TryAddTerminals(new(100, 1, 2), last, out TilePreparationTerminalFrame? repeated));
+        Assert.Equal(complete.Records, repeated!.Records);
+    }
+
+    [Theory]
+    [InlineData(2UL, 1UL, false)]
+    [InlineData(1UL, 1UL, false)]
+    [InlineData(1UL, 1UL, true)]
+    public void Invalid_terminal_identities_are_rejected_within_one_assembly_chunk(ulong first, ulong second, bool resolved)
+    {
+        var assembler = new TileCombatPreparationAssembler();
+        TileCombatTerminal later = (resolved ? Terminal(10) : Cancellation(10)) with { AttackId = second, Revision = 9 };
+        Assert.False(assembler.TryAddTerminals(new(100, 0, 1),
+            [Cancellation(10) with { AttackId = first }, later], out TilePreparationTerminalFrame? complete));
+        Assert.Null(complete);
+    }
+
     sealed class UnreadableList<T>(int count) : IReadOnlyList<T>
     {
         public int Count => count;

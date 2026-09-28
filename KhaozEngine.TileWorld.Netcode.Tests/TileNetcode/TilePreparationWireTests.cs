@@ -267,6 +267,80 @@ public class TilePreparationWireTests
         Assert.Empty(into);
     }
 
+    [Theory]
+    [InlineData(2UL, 1UL)]
+    [InlineData(1UL, 1UL)]
+    [InlineData(ulong.MaxValue, 1UL)]
+    public void Terminal_encoders_reject_reversed_or_duplicate_cancellation_ids(ulong first, ulong second)
+    {
+        TileCombatTerminal[] records =
+        [
+            Cancellation(10) with { AttackId = first },
+            Cancellation(10) with { AttackId = second, Revision = 9 }
+        ];
+        Assert.ThrowsAny<ArgumentException>(() =>
+            TileProtocol.EncodePreparationTerminalChunk(new(100, 0, 1), records, 0, 2));
+    }
+
+    [Theory]
+    [InlineData(2UL, 1UL)]
+    [InlineData(1UL, 1UL)]
+    [InlineData(ulong.MaxValue, 1UL)]
+    public void Terminal_decoders_reject_reversed_or_duplicate_cancellation_ids(ulong first, ulong second)
+    {
+        TileCombatTerminal[] valid = [Cancellation(10), Cancellation(10) with { AttackId = 2, Revision = 9 }];
+        byte[] bytes = TileProtocol.EncodePreparationTerminalChunk(new(100, 0, 1), valid, 0, 2);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32, 8), first);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(78, 8), second);
+        var into = new List<TileCombatTerminal> { Terminal(99) };
+
+        Assert.False(TileProtocol.TryDecodePreparationTerminalChunk(bytes, out TilePreparationChunkHeader header, into));
+
+        Assert.Empty(into);
+        Assert.Equal(default, header);
+    }
+
+    [Theory]
+    [InlineData(1U)]
+    [InlineData(9U)]
+    public void Terminal_encoders_refuse_cancellation_and_resolution_of_one_attack_id(uint revision)
+    {
+        TileCombatTerminal[] records = [Cancellation(10), Terminal(10) with { Revision = revision }];
+        Assert.ThrowsAny<ArgumentException>(() =>
+            TileProtocol.EncodePreparationTerminalChunk(new(100, 0, 1), records, 0, 2));
+    }
+
+    [Theory]
+    [InlineData(1U)]
+    [InlineData(9U)]
+    public void Terminal_decoders_refuse_cancellation_and_resolution_of_one_attack_id(uint revision)
+    {
+        TileCombatTerminal[] valid = [Cancellation(10), Terminal(10) with { AttackId = 2, Revision = revision }];
+        byte[] bytes = TileProtocol.EncodePreparationTerminalChunk(new(100, 0, 1), valid, 0, 2);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(78, 8), 1);
+        var into = new List<TileCombatTerminal> { Terminal(99) };
+
+        Assert.False(TileProtocol.TryDecodePreparationTerminalChunk(bytes, out TilePreparationChunkHeader header, into));
+
+        Assert.Empty(into);
+        Assert.Equal(default, header);
+    }
+
+    [Fact]
+    public void Per_attacker_transition_checks_preserve_the_existing_order_of_other_attackers_results()
+    {
+        TileCombatTerminal[] records =
+        [
+            Cancellation(10) with { AttackId = 2 },
+            Cancellation(20) with { AttackId = 7 },
+            Terminal(30), Terminal(20) with { AttackId = 8 }, Terminal(10) with { AttackId = 3 }
+        ];
+        byte[] bytes = TileProtocol.EncodePreparationTerminalChunk(new(100, 0, 1), records, 0, records.Length);
+        var into = new List<TileCombatTerminal>();
+        Assert.True(TileProtocol.TryDecodePreparationTerminalChunk(bytes, out _, into));
+        Assert.Equal(records, into);
+    }
+
     [Fact]
     public void Encoders_refuse_invalid_local_arguments_and_noncanonical_empty_sets()
     {

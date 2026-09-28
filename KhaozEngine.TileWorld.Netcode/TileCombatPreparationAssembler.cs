@@ -8,13 +8,11 @@ internal sealed class TileCombatPreparationAssembler
 {
     readonly List<TileCombatPreparation> states = new();
     readonly List<TileCombatTerminal> terminals = new();
+    readonly TileCombatTerminalOrder terminalOrder = new(TileProtocol.MaxPreparationRecords);
     byte tag;
     long tick;
     ushort chunks;
     int nextChunk;
-    bool resolved;
-    bool cancelled;
-    long lastCancelled;
 
     public bool TryAddState(in TilePreparationChunkHeader header, IReadOnlyList<TileCombatPreparation> records,
         out TilePreparationStateFrame? complete)
@@ -48,7 +46,7 @@ internal sealed class TileCombatPreparationAssembler
         {
             TileCombatTerminal record = records[i];
             if (!TileProtocol.ValidPreparationTerminal(record, header.ServerTick)
-                || !TileProtocol.AdvancePreparationTerminalOrder(record, ref resolved, ref cancelled, ref lastCancelled)) return Reject();
+                || !terminalOrder.TryAdd(record)) return Reject();
             terminals.Add(record);
         }
         nextChunk++;
@@ -98,8 +96,6 @@ internal sealed class TileCombatPreparationAssembler
         tick = 0;
         chunks = 0;
         nextChunk = 0;
-        resolved = false;
-        cancelled = false;
-        lastCancelled = 0;
+        terminalOrder.Clear();
     }
 }

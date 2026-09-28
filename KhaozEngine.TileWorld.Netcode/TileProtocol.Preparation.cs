@@ -72,14 +72,13 @@ public static partial class TileProtocol
         IReadOnlyList<TileCombatTerminal> records, int start, int count)
     {
         ValidatePreparationSlice(header, records, start, count, terminal: true);
-        bool resolved = false, cancelled = false;
-        long lastCancelled = 0;
+        var order = new TileCombatTerminalOrder(count);
         for (int i = 0; i < count; i++)
         {
             TileCombatTerminal record = records[start + i];
             if (!ValidPreparationTerminal(record, header.ServerTick)
-                || !AdvancePreparationTerminalOrder(record, ref resolved, ref cancelled, ref lastCancelled))
-                throw new ArgumentException("Terminal records must be valid and keep cancellations before results.", nameof(records));
+                || !order.TryAdd(record))
+                throw new ArgumentException("Terminal records must be valid and preserve category and attack transition order.", nameof(records));
         }
 
         byte[] bytes = CreatePreparationChunk(header, count, ServerFrameCombatPreparationTerminal, PreparationTerminalRecordSize);
@@ -106,8 +105,7 @@ public static partial class TileProtocol
         into.Clear();
         if (!TryReadPreparationHeader(data, ServerFrameCombatPreparationTerminal, PreparationTerminalRecordSize,
             terminal: true, out TilePreparationChunkHeader candidate, out int count)) return false;
-        bool resolved = false, cancelled = false;
-        long lastCancelled = 0;
+        var order = new TileCombatTerminalOrder(count);
         for (int i = 0; i < count; i++)
         {
             ReadOnlySpan<byte> row = data.Slice(PreparationHeaderSize + i * PreparationTerminalRecordSize, PreparationTerminalRecordSize);
@@ -117,7 +115,7 @@ public static partial class TileProtocol
                 BinaryPrimitives.ReadInt64LittleEndian(row.Slice(32, 8)), (TileCombatTerminalKind)row[40],
                 (TileCombatPreparationEndReason)row[41], BinaryPrimitives.ReadUInt16LittleEndian(row.Slice(42, 2)), row[44], row[45]);
             if (!ValidPreparationTerminal(record, candidate.ServerTick)
-                || !AdvancePreparationTerminalOrder(record, ref resolved, ref cancelled, ref lastCancelled))
+                || !order.TryAdd(record))
             {
                 into.Clear();
                 return false;
@@ -154,16 +152,6 @@ public static partial class TileProtocol
                 and <= TileCombatPreparationEndReason.RulesUnavailable && record.Amount == 0 && record.HitKind == 0 && record.Flags == 0,
             _ => false
         };
-    }
-
-    internal static bool AdvancePreparationTerminalOrder(in TileCombatTerminal record,
-        ref bool resolved, ref bool cancelled, ref long lastCancelled)
-    {
-        if (record.Kind == TileCombatTerminalKind.Resolved) { resolved = true; return true; }
-        if (resolved || (cancelled && record.AttackerNetId < lastCancelled)) return false;
-        cancelled = true;
-        lastCancelled = record.AttackerNetId;
-        return true;
     }
 
     static void ValidatePreparationSlice<T>(in TilePreparationChunkHeader header,

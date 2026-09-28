@@ -126,6 +126,28 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(cam.EyeComputeCount, cam.BoomProbeCount);   // the camera's own counter agrees
         }
 
+        [Fact]
+        public void With_a_clock_a_read_before_the_move_costs_two_computes_a_frame()
+        {
+            // The shape the clock does not help, pinned so the documented cost stays true. Without a clock the
+            // update's read reuses last frame's eye for free. With one, that read computes this frame's eye, and the
+            // move that follows makes the render compute again.
+            var clockedProbe = new FixedReachProbe { ReachAt = 6f };
+            long frame = 0;
+            FollowCamera3D clocked = Camera(clockedProbe, () => frame);
+            var bareProbe = new FixedReachProbe { ReachAt = 6f };
+            FollowCamera3D bare = Camera(bareProbe, null);
+
+            (double clockedComputes, double clockedCalls) =
+                PerFrame(clocked, clockedProbe, Shape.ReadBeforeMove, () => frame++);
+            (double bareComputes, double bareCalls) = PerFrame(bare, bareProbe, Shape.ReadBeforeMove, () => { });
+
+            Assert.Equal(2.0, clockedComputes);
+            Assert.Equal(2.0, clockedCalls);
+            Assert.Equal(1.0, bareComputes);
+            Assert.Equal(1.0, bareCalls);
+        }
+
         [Theory]
         [InlineData(false)]
         [InlineData(true)]

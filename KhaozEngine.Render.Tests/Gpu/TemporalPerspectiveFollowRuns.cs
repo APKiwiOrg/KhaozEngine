@@ -34,6 +34,7 @@ namespace KhaozEngine.Tests.Gpu
 
         readonly Dictionary<(TemporalUpscale, float, float, FollowHeading), CrossingTrail> _runs = new();
         readonly Dictionary<(TemporalUpscale, float, float, FollowHeading), int> _bandMarks = new();
+        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading), CrossingTrail> _beyond = new();
         readonly Dictionary<(TemporalUpscale, float, float, FollowHeading), (byte[] Ground, byte[][] Floors)> _bare =
             new();
 
@@ -57,11 +58,25 @@ namespace KhaozEngine.Tests.Gpu
                 _bandMarks[key] = BandMarks(fx);
             }
             int[] ages = walk.Ages(Last, TemporalGhostingRuns.TrailFrames, out PixelRect now);
-            CrossingTrail trail = Measure($"perspective follow at {pixelsPerFrame} px a frame, pitch {pitch}, "
-                + $"{heading}, {preset}", frame, ground, floors, ages, now,
+            string name = $"perspective follow at {pixelsPerFrame} px a frame, pitch {pitch}, {heading}, {preset}";
+            CrossingTrail trail = Measure(name, frame, ground, floors, ages, now,
                 Stopwatch.GetElapsedTime(started).TotalSeconds);
+            int spill = TemporalFollowCameraRuns.SpillPixels(preset);
+            int[] beyond = walk.Ages(Last, TemporalGhostingRuns.TrailFrames, out PixelRect grown, spill);
+            _beyond[key] = Measure($"{name}, past {spill} px", frame, ground, floors, beyond, grown, 0);
             Seconds += trail.Seconds;
             return _runs[key] = trail;
+        }
+
+        /// <summary>The walk's trail past the reconstruction's reach from the box: only the ground pixels more than
+        /// <see cref="TemporalFollowCameraRuns.SpillPixels"/> from the pixels showing it now, where the reconstruction
+        /// cannot spread its texel and only a history kept from it can leave its colour. The reach is counted from
+        /// there.</summary>
+        internal CrossingTrail BeyondSpill(TemporalUpscale preset, float pixelsPerFrame, float pitch,
+            FollowHeading heading)
+        {
+            Run(preset, pixelsPerFrame, pitch, heading);
+            return _beyond[(preset, pixelsPerFrame, pitch, heading)];
         }
 
         /// <summary>The display pixels whose stored state holds the band mark on the measured frame of the walk, which
@@ -232,9 +247,10 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>For each pixel of frame <paramref name="last"/>, the frames since the box last hid the ground
         /// point it shows, from 2 up to <paramref name="frames"/> less one, and 0 where the pixel shows the box now or
-        /// within a pixel of it, the box hid it one frame ago, it hid it on none of those frames, or the pixel shows no
-        /// ground. <paramref name="now"/> is the rectangle around the pixels showing the box now.</summary>
-        public int[] Ages(int last, int frames, out PixelRect now)
+        /// lies within <paramref name="reach"/> pixels of one that does, the box hid it one frame ago, it hid it on
+        /// none of those frames, or the pixel shows no ground. <paramref name="now"/> is the rectangle around the
+        /// pixels showing the box now, grown by <paramref name="reach"/>.</summary>
+        public int[] Ages(int last, int frames, out PixelRect now, int reach = 2)
         {
             int w = _stage.W, h = _stage.H;
             FollowCamera3D measured = Camera(last);
@@ -247,7 +263,7 @@ namespace KhaozEngine.Tests.Gpu
                 var mask = new bool[w * h];
                 for (int i = 0; i < w * h; i++)
                     mask[i] = ground[i] is Vector3 g && GroundRays.Hides(eye, g, foot, _size, GroundStage.Yaw);
-                hidden[k] = Grow(mask, w, h, k == 0 ? 2 : 1);
+                hidden[k] = Grow(mask, w, h, k == 0 ? reach : 1);
             }
             int x0 = w, y0 = h, x1 = 0, y1 = 0;
             var ages = new int[w * h];

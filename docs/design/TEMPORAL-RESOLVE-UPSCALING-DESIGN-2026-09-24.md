@@ -492,11 +492,14 @@ and changed these details. Each group's "Contract amendments" block carries the 
     left where that still leaves the measured value a margin. Three cannot, where it left one pixel more than this
     resolve, and 19 where it left no more, 15 of them on UltraPerformance. By default the fact holds six walks, the boot
     pitch walking away at half a display pixel a frame, 1 and 2, at Native and Quality, and the rest only with
-    `KE_TEMPORAL_ACCEPTANCE_TABLE=1`. The rule left 14 walks slightly worse: at the boot pitch on UltraPerformance away
-    at 3 from 2 to 4 and towards at 1.5, 2, 2.5 and 3 from 7, 13, 6 and 3 to 8, 18, 7 and 7, and at the low pitch away
-    at 2.5 and 3 from 0 and 0 to 4 and 6 on Performance and from 23 and 4 to 25 and 7 on UltraPerformance, sideways at
-    half a pixel from 1 to 2 at Native and from 15 to 16 on UltraPerformance, at 1 and 2.5 on UltraPerformance from 24
-    and 10 to 27 and 14, and towards at 3 from 0 to 2 on Quality.
+    `KE_TEMPORAL_ACCEPTANCE_TABLE=1`. On UltraPerformance the whole trail mostly measures the reconstruction's spread of
+    the box's texel, so the fact also holds the trail past its reach, 6 display pixels from the box, where only a kept
+    history can leave its colour: 13 of the 28 walks with ground there fail on the resolve before the band, and the same
+    13 with the band drop removed. The rule left 14 walks slightly worse: at the boot pitch on UltraPerformance away at
+    3 from 2 to 4 and towards at 1.5, 2, 2.5 and 3 from 7, 13, 6 and 3 to 8, 18, 7 and 7, and at the low pitch away at
+    2.5 and 3 from 0 and 0 to 4 and 6 on Performance and from 23 and 4 to 25 and 7 on UltraPerformance, sideways at half
+    a pixel from 1 to 2 at Native and from 15 to 16 on UltraPerformance, at 1 and 2.5 on UltraPerformance from 24 and 10
+    to 27 and 14, and towards at 3 from 0 to 2 on Quality.
 
     Still lines three eighths and a quarter of a texel wide on the walk's ground (`TemporalFollowLinesGpuTests`) keep
     at least 0.915 of their energy without the box on their worst frame under the orthographic follow, and the fact

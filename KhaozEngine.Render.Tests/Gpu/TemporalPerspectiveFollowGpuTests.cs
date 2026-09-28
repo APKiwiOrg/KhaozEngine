@@ -107,6 +107,42 @@ namespace KhaozEngine.Tests.Gpu
             (LowPitch, FollowHeading.Towards, 3f, Q, 4),               // measured 2 of 92
         };
 
+        /// <summary>Every UltraPerformance walk with ground past the reconstruction's reach on its measured frame, and
+        /// the bound on its trail there (<see cref="TemporalPerspectiveFollowRuns.BeyondSpill"/>): acceptance 3 where
+        /// it is met, else the measured excess and about a quarter more, at least 2, or one under what the resolve
+        /// before the band left where that still leaves the measured value a margin.</summary>
+        static readonly (float Pitch, FollowHeading Heading, float Speed, int Bound)[] PastTheReach =
+        {
+            (BootPitch, FollowHeading.Away, 1f, 20),                   // measured 16 of 48
+            (BootPitch, FollowHeading.Away, 1.5f, 25),                 // measured 21 of 100, 26 before the band
+            (BootPitch, FollowHeading.Away, 2f, 16),                   // measured 13 of 178, 29 before the band
+            (BootPitch, FollowHeading.Away, 2.5f, 18),                 // measured 15 of 252, 23 before the band
+            (BootPitch, FollowHeading.Away, 3f, 4),                    // measured 2 of 336, 1 before the band
+            (BootPitch, FollowHeading.Sideways, 1f, 10),               // measured 8 of 68, 14 before the band
+            (BootPitch, FollowHeading.Sideways, 1.5f, 22),             // measured 18 of 155, 30 before the band
+            (BootPitch, FollowHeading.Sideways, 2f, 26),               // measured 21 of 242, 32 before the band
+            (BootPitch, FollowHeading.Sideways, 2.5f, 28),             // measured 23 of 329, 39 before the band
+            (BootPitch, FollowHeading.Sideways, 3f, 16),               // measured 13 of 418, 14 before the band
+            (BootPitch, FollowHeading.Towards, 1f, 1),                 // measured 0 of 12
+            (BootPitch, FollowHeading.Towards, 1.5f, 6),               // measured 4 of 48, 5 before the band
+            (BootPitch, FollowHeading.Towards, 2f, 17),                // measured 14 of 84, 7 before the band
+            (BootPitch, FollowHeading.Towards, 2.5f, 9),               // measured 7 of 108, 4 before the band
+            (BootPitch, FollowHeading.Towards, 3f, 5),                 // measured 3 of 144
+            (LowPitch, FollowHeading.Away, 1f, 1),                     // measured 0 of 70, 12 before the band
+            (LowPitch, FollowHeading.Away, 1.5f, 17),                  // measured 14 of 140, 23 before the band
+            (LowPitch, FollowHeading.Away, 2f, 8),                     // measured 6 of 224, 15 before the band
+            (LowPitch, FollowHeading.Away, 2.5f, 7),                   // measured 5 of 368, 10 before the band
+            (LowPitch, FollowHeading.Away, 3f, 2),                     // measured 0 of 480
+            (LowPitch, FollowHeading.Sideways, 1f, 7),                 // measured 5 of 56, 4 before the band
+            (LowPitch, FollowHeading.Sideways, 1.5f, 10),              // measured 8 of 146, 17 before the band
+            (LowPitch, FollowHeading.Sideways, 2f, 13),                // measured 12 of 235, 14 before the band
+            (LowPitch, FollowHeading.Sideways, 2.5f, 11),              // measured 9 of 324, 5 before the band
+            (LowPitch, FollowHeading.Sideways, 3f, 5),                 // measured 3 of 414
+            (LowPitch, FollowHeading.Towards, 2f, 1),                  // measured 0 of 12
+            (LowPitch, FollowHeading.Towards, 2.5f, 1),                // measured 1 of 34
+            (LowPitch, FollowHeading.Towards, 3f, 1),                  // measured 0 of 44
+        };
+
         static int Bound(float pitch, FollowHeading heading, float speed, TemporalUpscale preset, int count)
         {
             foreach (var r in Residuals)
@@ -163,6 +199,34 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(over.Count == 0, $"the avatar's colour stays where it left: {string.Join(". ", over)}");
         }
 
+        /// <summary>
+        /// Past the reconstruction's reach on UltraPerformance, 6 display pixels from the pixels showing the avatar,
+        /// where it cannot spread the avatar's texel and only a history kept from it can leave its colour, each walk
+        /// holds its bound in <see cref="PastTheReach"/>. The whole trail's bounds above mostly measure that spread:
+        /// the resolve before the band cannot fail 15 of them. Here 13 of the 28 walks with ground past the reach fail
+        /// on it, and the same 13 with the band drop removed. At half a display pixel a frame no ground lies past the
+        /// reach on the measured frame. By default it holds the boot pitch walking away at 1.5 and 2 display pixels a
+        /// frame, and the rest only with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c>, which no workflow sets.
+        /// </summary>
+        [GpuFact]
+        public void A_followed_avatar_leaves_no_trail_past_the_reconstruction_at_UltraPerformance()
+        {
+            var over = new List<string>();
+            int walks = 0;
+            foreach (var (pitch, heading, speed, bound) in PastTheReach)
+            {
+                if (!TemporalStabilityRuns.FullTable
+                    && !(pitch == BootPitch && heading == FollowHeading.Away && speed is 1.5f or 2f)) continue;
+                CrossingTrail c = runs.BeyondSpill(U, speed, pitch, heading);
+                Assert.True(c.Total.Checked > 0, $"{c.Name}: no ground past the reach");
+                if (c.Total.Excess > bound) over.Add($"{Describe(c)}, bound {bound}");
+                walks++;
+            }
+            foreach (string line in over) output.WriteLine(line);
+            output.WriteLine($"{walks - over.Count} of {walks} walks within their bounds past the reach");
+            Assert.True(over.Count == 0, $"the avatar's colour stays past the reach: {string.Join(". ", over)}");
+        }
+
         /// <summary>Every walk's trail, with the walk in internal pixels a frame. With
         /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> it prints both pitches, every heading, speed and preset.</summary>
         [GpuFact]
@@ -180,6 +244,14 @@ namespace KhaozEngine.Tests.Gpu
                     + $"| {t.Excess} | {Allowed(t.Checked)} | {t.WorstExcess:0.000} | {c.Reach} | {c.OldestAge} "
                     + $"| {two.Excess} of {two.Checked} | {runs.BandMarks(preset, speed, pitch, heading)} |");
                 Assert.True(t.Checked > 0, $"{c.Name}: the trail region measured nothing");
+            }
+            output.WriteLine("| Pitch | Heading | Speed | Preset | Past the reach, display px | Checked | Excess |");
+            output.WriteLine("|" + string.Concat(Enumerable.Repeat(" --- |", 7)));
+            foreach (var (pitch, heading, speed, preset) in TableWalks())
+            {
+                TrailTally b = runs.BeyondSpill(preset, speed, pitch, heading).Total;
+                output.WriteLine($"| {pitch} | {heading} | {speed} | {preset} "
+                    + $"| {TemporalFollowCameraRuns.SpillPixels(preset)} | {b.Checked} | {b.Excess} |");
             }
             output.WriteLine(TemporalStabilityRuns.FullTable ? "the full table"
                 : $"the boot pitch walking away only. Set {TemporalStabilityRuns.TableVariable}=1 for the full table");

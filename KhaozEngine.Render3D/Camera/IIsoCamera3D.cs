@@ -22,7 +22,9 @@ namespace KhaozEngine.Render3D
         /// The default body does nothing, which is exactly right for a camera that is pure arithmetic over its own
         /// fields: <see cref="IsoCamera3D"/>, <see cref="FlyCamera3D"/>, and every consumer camera written before
         /// this member existed. <see cref="FollowCamera3D"/> is the only implementation that overrides it today, to
-        /// drop the eye its occlusion sweep produced. It is a DEFAULT interface member rather than the separate
+        /// drop its cached eye. With a <see cref="FollowCamera3D.FrameClock"/> set it keeps an eye already computed
+        /// in the same clock frame, so a consumer that read the eye in its update before this call does not pay for
+        /// it twice. It is a DEFAULT interface member rather than the separate
         /// opt-in interface <see cref="IRenderOriginAware"/> had to be, because a no-op needs no backing storage:
         /// adding it here breaks no existing implementer and costs a camera that ignores it nothing at all.
         /// </para>

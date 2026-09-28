@@ -258,7 +258,8 @@ Windowing + input foundation for the custom MonoGame-free stack.
   exposes zero vibration motors (GLFW has no haptics API), so rumble is a graceful no-op today; the wiring is correct
   and a future SDL-backed window lights up through the same seam. On-device feel needs a physical smoke test.**
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
-  that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`
+  that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume, and `FrameCount`
+  since 20.14.0, one per `Update` paused or not, the per-frame id `FollowCamera3D.FrameClock` reads), `DesignViewport`
   / `AdaptiveViewport` (letterbox/fill/stretch + responsive). All expose `WindowBounds` (10.38.0) - the whole
   window in design space (`DesignBounds` + the letterbox bars) for full-window scrims/backgrounds; `DesignViewport`
   carries the letterbox formula, the always-edge-to-edge viewports return `DesignBounds`.

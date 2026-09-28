@@ -28,6 +28,13 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   in, terrain deforms) is never answered with last frame's eye. Drive the camera without a `Scene3D` and you call
   `BeginFrame()` (or `FollowCamera3D.InvalidateEye()`) once a frame yourself. `OcclusionSweepCount` /
   `EyeComputeCount` are cumulative-since-construction counters for watching the load.
+- `FollowCamera3D.FrameClock` (since 20.14.0, off by default). A per-frame id (`() => Clock.FrameCount` over a
+  `GameApp`) that stamps each computed eye. A read reuses the eye only under the same id and inputs, and
+  `BeginFrame` keeps an eye computed earlier in the same frame, so a game that reads the eye in update after moving
+  the target, and again through the render, pays one computation and one `BoomProbe` call a frame instead of two.
+  A still camera still recomputes once a frame, so the world moving behind the probe is never answered with last
+  frame's eye. A clock that stops advancing falls back to the plain latch. Null keeps the previous behaviour. See
+  docs/USING-KHAOZENGINE.md.
 - `FollowCamera3D.PivotHeight` / `Pivot` / `PitchLimit` (since 20.13.0). The camera orbits and looks at `Pivot`,
   which is `EffectiveTarget` raised by `PivotHeight` (default 0). `HeightOffset` still raises only the eye. A
   negative `MinPitch` puts the eye below the pivot looking up, and `Pitch` clamps to `[-PitchLimit, PitchLimit]`

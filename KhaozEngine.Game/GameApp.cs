@@ -47,6 +47,10 @@ namespace KhaozEngine.Game
         // refocus. Constructed either way and inert when the option is off.
         readonly FocusAutoPause _focusAutoPause;
 
+        // The prepare phase after the clock tick, as a delegate built ONCE in the ctor rather than per frame:
+        // StartFrame takes it as a parameter so the tick-then-update order is a headless-testable unit.
+        readonly Action<Frame> _prepareAfterTick;
+
         InputState _input = InputState.Empty;
         int _frameWidth, _frameHeight;
         int _lastW = -1, _lastH = -1;
@@ -122,6 +126,7 @@ namespace KhaozEngine.Game
 
             _resumeGapThresholdSeconds = options.ResumeGapThresholdSeconds;
             _focusAutoPause = new FocusAutoPause(options.PauseOnFocusLoss);
+            _prepareAfterTick = PrepareAfterTick;
             _jobSchedulerDisabled = options.DisableJobScheduler;
             _jobSchedulerDegreeOfParallelism = options.JobSchedulerDegreeOfParallelism;
 
@@ -546,11 +551,31 @@ namespace KhaozEngine.Game
                 _window.RequestForeground();
             }
 
+            StartFrame(_focusAutoPause, _clock, frame, _prepareAfterTick);
+        }
+
+        /// <summary>
+        /// The head of every frame's prepare phase: the focus auto-pause, then the frame's one
+        /// <see cref="GameClock.Update"/>, then <paramref name="rest"/>, which is everything from the input latch
+        /// through <see cref="OnUpdate"/> to <see cref="OnPrepareWorld"/>. Ticking here, before any game callback
+        /// and nowhere else, is what makes <see cref="GameClock.FrameCount"/> one id for the whole frame: update, the
+        /// world prepare and the record phase all read the same value, which is what a
+        /// <c>FollowCamera3D.FrameClock</c> needs. Static and delegate-parameterized so that order is assertable
+        /// headless, the way <c>GameApp3D.PrepareScene</c> makes the scene order assertable.
+        /// </summary>
+        internal static void StartFrame(FocusAutoPause autoPause, GameClock clock, Frame frame, Action<Frame> rest)
+        {
             // Before the clock update, so a frame that loses focus already reports a zero scaled delta.
             // Inert unless GameAppOptions.PauseOnFocusLoss is set, and it only lifts a pause it took itself.
-            _focusAutoPause.Update(frame.Input.WindowFocused, _clock);
+            autoPause.Update(frame.Input.WindowFocused, clock);
 
-            _clock.Update(frame.Dt);
+            clock.Update(frame.Dt);
+            rest(frame);
+        }
+
+        /// <summary>The prepare phase after the clock tick. See <see cref="StartFrame"/>.</summary>
+        void PrepareAfterTick(Frame frame)
+        {
             _input = frame.Input;
             _dt = _clock.ScaledDeltaSeconds;
 

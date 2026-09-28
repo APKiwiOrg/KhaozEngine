@@ -1009,7 +1009,9 @@ here localizes.
   screen below (it reduces to `DesignBounds` when unletterboxed).
 - `GameClock`: `TimeScale`, `Pause()`/`Resume()`, `RealDeltaSeconds`/`ScaledDeltaSeconds`,
   `RealWallGapSeconds`/`LastRealTimestamp` (the suspend-robust wall-clock gap that drives `GameApp.OnResume`),
-  `Paused`/`Resumed` events. `GameApp.Clock` is updated for you each frame.
+  `Paused`/`Resumed` events, and `FrameCount` (since 20.14.0: one per `Update`, paused or not, the per-frame id a
+  `FollowCamera3D.FrameClock` reads). `GameApp.Clock` is updated for you once at the head of each frame, before
+  `OnUpdate`, so update and draw see the same `FrameCount`.
 
 ---
 
@@ -6403,12 +6405,37 @@ wrote yourself inherit a no-op and are completely unaffected. One ordering to kn
 render time, so a gameplay read of `Eye` (or `ScreenToRay`) taken in your update step, BEFORE that frame's `Begin`,
 answers from the last computation. With `Occlusion` set and no camera knob changed since, that is the previous
 frame's sweep. A follow camera whose target moves every frame recomputes anyway. If yours can stand still while
-the world moves around it and you pick from the update step, call `InvalidateEye()` after stepping physics.
+the world moves around it and you pick from the update step, call `InvalidateEye()` after stepping physics, or set
+a `FrameClock` (below), which makes the first read of every frame compute a fresh eye.
+
+**One computation for update and render reads (since 20.14.0, off by default).** A game that moves the target in
+its update step and then reads the eye there (an audio listener, keyboard steering, a cursor pick) pays twice a
+frame without help: its own read computes, then `Scene3D.Begin` drops that eye at render time and computes it
+again, with a second `BoomProbe` call. Set `FollowCamera3D.FrameClock` to a per-frame id and the pair costs one.
+`GameApp` updates `Clock` once at the head of each frame, before `OnUpdate`, so `GameClock.FrameCount` is the id to
+use, and update, the world prepare and the draw all read the same value:
+
+```csharp
+camera.FrameClock = () => Clock.FrameCount;   // once, where the camera is built
+```
+
+Each computed eye is stamped with the id. A read reuses the cached eye only under the same id and the same inputs,
+and `BeginFrame` keeps an eye computed earlier in the same frame. The staleness bound holds through the stamp: a
+camera whose inputs never change still recomputes once a frame, so a wall that slides in behind the probe is seen
+on the next frame. A clock that stops advancing falls back to the plain latch at every `BeginFrame` after the
+first, a clock that advances mid-frame costs a recompute, and neither ever answers with an older eye. The clock is
+called on every read, so keep it cheap and allocation-free. `InvalidateEye()` still drops the eye at once.
+
+The saving needs the update's reads to come after its last camera write, `FollowCameraController.Update`
+included. A camera read in update BEFORE it advances gains nothing: with a clock that read computes a fresh eye
+instead of reusing last frame's, and the move then costs the render another. Leave `FrameClock` null there, or move
+the read after the camera's update. A camera read only through the render costs one computation a frame either way.
 
 Two cumulative counters (never reset, in the same shape as `GpuDeviceCounters`) show the load:
 `OcclusionSweepCount` is the sweeps this camera has issued, and `EyeComputeCount` is full eye computations whether
 or not the spring-arm is on. A healthy game shows one of each per rendered frame. A sweep count climbing much
-faster than the frame count means something is writing a camera knob between reads.
+faster than the frame count means something is writing a camera knob between reads. Two a frame from a camera read
+in update after it moves is the cost `FrameClock` removes.
 
 ```csharp
 scene.CameraOverride = camera;   // set the camera first: Begin latches the ACTIVE one

@@ -42,6 +42,14 @@ namespace KhaozEngine.Windowing
         /// <summary>True when explicitly paused or <see cref="TimeScale"/> is 0.</summary>
         public bool IsPaused => _paused || _timeScale == 0f;
 
+        /// <summary>
+        /// Frames this clock has advanced: one per <see cref="Update"/>, paused or not, starting at 0 before the
+        /// first. <c>GameApp</c> updates its clock once at the head of each frame, before <c>OnUpdate</c>, so update,
+        /// the world prepare and the draw all read one value for the frame. That makes it the frame id a
+        /// <c>FollowCamera3D.FrameClock</c> reads (<c>() =&gt; Clock.FrameCount</c>).
+        /// </summary>
+        public long FrameCount { get; private set; }
+
         /// <summary>Last frame's unscaled delta in seconds.</summary>
         public float RealDeltaSeconds { get; private set; }
 
@@ -77,6 +85,7 @@ namespace KhaozEngine.Windowing
         /// <summary>Advance once per frame, before consumers read the deltas. <paramref name="dtSeconds"/> is the raw frame delta.</summary>
         public void Update(float dtSeconds)
         {
+            FrameCount++;
             RealDeltaSeconds = dtSeconds;
             ScaledDeltaSeconds = IsPaused ? 0f : dtSeconds * _timeScale;
             ElapsedRealSeconds += RealDeltaSeconds;

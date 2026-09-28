@@ -32,6 +32,19 @@ public readonly record struct AccountBan(string Reason, DateTimeOffset? Until)
 /// <param name="Ban">The filed ban, or <c>null</c> when none is filed.</param>
 public sealed record AccountRecord(string Subject, string? DisplayName, bool Whitelisted, AccountBan? Ban)
 {
+    /// <summary>
+    /// When the store created the account, with offset zero, or <c>null</c> when the row predates the store
+    /// recording it. Written once, by the first sign-in, and never again.
+    /// </summary>
+    public DateTimeOffset? CreatedAtUtc { get; init; }
+
+    /// <summary>
+    /// When a write last changed a stored value of the account, with offset zero, or <c>null</c> when no write has
+    /// since the store began recording it. Equal to <see cref="CreatedAtUtc"/> on a new account. A sign-in or an
+    /// operator write that leaves every value as it was moves neither time.
+    /// </summary>
+    public DateTimeOffset? UpdatedAtUtc { get; init; }
+
     /// <summary>Whether a ban is filed and in force at <paramref name="now"/>.</summary>
     /// <param name="now">The clock, passed in so expiry is testable without waiting for one.</param>
     public bool IsBanActive(DateTimeOffset now) => Ban is { } ban && ban.IsActive(now);

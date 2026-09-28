@@ -81,8 +81,8 @@ public abstract partial class AccountStoreConformance
         Assert.Equal(
             new[]
             {
-                new AccountRecord("discord:1", "Ferret", true, null),
-                new AccountRecord("discord:2", null, true, new AccountBan("griefing", Now.AddDays(1))),
+                CreatedAtNow(new AccountRecord("discord:1", "Ferret", true, null)),
+                CreatedAtNow(new AccountRecord("discord:2", null, true, new AccountBan("griefing", Now.AddDays(1)))),
             },
             all);
     }

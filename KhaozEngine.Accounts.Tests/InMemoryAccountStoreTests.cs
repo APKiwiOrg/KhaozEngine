@@ -21,10 +21,19 @@ public class InMemoryAccountStoreTests
     }
 
     [Fact]
+    public void TheClock_IsTheSystemClockByDefault_AndNeverNull()
+    {
+        Assert.Same(TimeProvider.System, new InMemoryAccountStore(whitelistOnCreate: true).TimeProvider);
+        Assert.Throws<ArgumentNullException>(() => new InMemoryAccountStore(whitelistOnCreate: true) { TimeProvider = null! });
+    }
+
+    [Fact]
     public async Task ACancelledToken_Throws_AndWritesNothing()
     {
-        var store = new InMemoryAccountStore(whitelistOnCreate: true);
+        var clock = new ManualClock(DateTimeOffset.UnixEpoch);
+        var store = new InMemoryAccountStore(whitelistOnCreate: true) { TimeProvider = clock };
         await store.FindOrCreateAsync(Ferret);
+        clock.Advance(TimeSpan.FromMinutes(1));
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
 
@@ -36,7 +45,13 @@ public class InMemoryAccountStoreTests
             () => store.SetWhitelistedAsync("discord:1", false, cancelled.Token));
 
         AccountRecord only = Assert.Single(await store.ListAsync());
-        Assert.Equal(new AccountRecord("discord:1", "Ferret", true, null), only);
+        Assert.Equal(
+            new AccountRecord("discord:1", "Ferret", true, null)
+            {
+                CreatedAtUtc = DateTimeOffset.UnixEpoch,
+                UpdatedAtUtc = DateTimeOffset.UnixEpoch,
+            },
+            only);
     }
 
     [Fact]

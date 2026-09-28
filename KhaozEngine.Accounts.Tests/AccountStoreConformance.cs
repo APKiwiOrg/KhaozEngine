@@ -28,18 +28,31 @@ namespace KhaozEngine.Tests.Accounts;
 /// </summary>
 public abstract partial class AccountStoreConformance
 {
-    /// <summary>A fixed instant. The stores are clock-free, so expiry is asserted against instants around it.</summary>
+    /// <summary>A fixed instant, where <see cref="Clock"/> starts. Expiry is asserted against instants around it.</summary>
     protected static readonly DateTimeOffset Now = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
 
     /// <summary>No further claims. The engine stores keep none either way.</summary>
     protected static readonly IReadOnlyDictionary<string, string> NoClaims = new Dictionary<string, string>();
 
+    private readonly ManualClock clock = new(Now);
+
+    /// <summary>
+    /// The clock every store <see cref="NewStore"/> builds stamps its times from. It reads <see cref="Now"/> until a
+    /// fact moves it, so a fact that never moves it sees every time equal <see cref="Now"/>.
+    /// </summary>
+    protected TimeProvider Clock => clock;
+
     /// <summary>
     /// A store over EMPTY backing data, a fresh one on every call, that whitelists the accounts it creates when
-    /// <paramref name="whitelistOnCreate"/> is set. A leg owning a database gives each call its own table or file and
-    /// cleans up when the test instance is disposed.
+    /// <paramref name="whitelistOnCreate"/> is set and stamps its times from <see cref="Clock"/>. A leg owning a
+    /// database gives each call its own table or file and cleans up when the test instance is disposed.
     /// </summary>
     protected abstract IAccountStore NewStore(bool whitelistOnCreate);
+
+    /// <summary><paramref name="account"/> as a store holds it when it was created at <see cref="Now"/> and the clock
+    /// has not moved since.</summary>
+    protected static AccountRecord CreatedAtNow(AccountRecord account) =>
+        account with { CreatedAtUtc = Now, UpdatedAtUtc = Now };
 
     /// <summary>A verified Discord sign-in, which the engine stores mint as <c>discord:{providerSubject}</c>.</summary>
     protected static AccountSignIn SignIn(string providerSubject, string? displayName = "Ferret", string provider = "discord") =>

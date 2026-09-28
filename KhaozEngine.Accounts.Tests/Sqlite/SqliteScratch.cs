@@ -97,7 +97,7 @@ internal sealed class SqliteScratch : IDisposable
 
 /// <summary>
 /// Grimhollow's accounts table as its builds left it, transcribed from its SQLite store: the original four
-/// columns, then the widening that added the ban pair and the per-account <c>debug</c> flag.
+/// columns, then the widening that added the ban pair and the per-account <c>debug</c> flag, then the times.
 /// </summary>
 internal static class GrimhollowSqliteLayout
 {
@@ -111,4 +111,10 @@ internal static class GrimhollowSqliteLayout
         "ALTER TABLE accounts ADD COLUMN ban_reason TEXT NULL;" +
         "ALTER TABLE accounts ADD COLUMN ban_until TEXT NULL;" +
         "ALTER TABLE accounts ADD COLUMN debug INTEGER NOT NULL DEFAULT 0;";
+
+    /// <summary>The table once Grimhollow's own store has added the creation and update times, as round-trip UTC
+    /// text.</summary>
+    public const string Timestamped = Widened +
+        "ALTER TABLE accounts ADD COLUMN created_at_utc TEXT NULL;" +
+        "ALTER TABLE accounts ADD COLUMN updated_at_utc TEXT NULL;";
 }

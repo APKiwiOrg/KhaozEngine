@@ -15,8 +15,10 @@ namespace KhaozEngine.Accounts.SqlServer;
 /// <para>
 /// <b>The layout is Grimhollow's</b> (<c>dbo.accounts</c>), so its database migrates in place: <c>subject
 /// NVARCHAR(128)</c>, <c>display_name NVARCHAR(128)</c>, <c>whitelisted BIT</c>, <c>banned BIT</c>, <c>ban_reason
-/// NVARCHAR(256)</c> and <c>ban_until DATETIMEOFFSET</c>, the widths being the <see cref="AccountStoreRules"/>
-/// limits. A FRESH table differs in two places only: <c>display_name</c> is nullable, and <c>subject</c> pins
+/// NVARCHAR(256)</c>, <c>ban_until DATETIMEOFFSET</c>, <c>created_at_utc DATETIMEOFFSET(7) NULL</c> and
+/// <c>updated_at_utc DATETIMEOFFSET(7) NULL</c>, the widths being the <see cref="AccountStoreRules"/> limits. The two
+/// times are the same columns Grimhollow's own store adds, so either store reads the other's rows. A FRESH table
+/// differs in two places only: <c>display_name</c> is nullable, and <c>subject</c> pins
 /// <c>Latin1_General_100_BIN2</c>, the <c>Commerce</c> and <c>Catalog</c> precedent, instead of inheriting a
 /// database default that is usually case-insensitive. An existing table keeps its collation, which is why every
 /// statement the store runs names the binary collation on the comparison as well.
@@ -24,8 +26,9 @@ namespace KhaozEngine.Accounts.SqlServer;
 /// <para>
 /// <b>The widening is additive only</b>, guarded by <c>OBJECT_ID</c> and <c>COL_LENGTH</c>, and runs under an
 /// exclusive application lock so two hosts starting at once cannot both add a column. Nothing is renamed, dropped,
-/// backfilled or selected beyond the six owned columns, so a game's own column (Grimhollow's <c>debug</c>) keeps its
-/// values and its default.
+/// backfilled or selected beyond the eight owned columns, so a game's own column (Grimhollow's <c>debug</c>) keeps
+/// its values and its default. A row older than the times has no provable creation or update time, so both stay
+/// <c>NULL</c> until a write changes the row, which stamps the update time only.
 /// </para>
 /// <para>
 /// <b>The check</b> reads <c>sys.columns</c> and refuses a table missing an owned column or declaring one with a type
@@ -38,7 +41,8 @@ internal static class SqlServerAccountSchema
     internal const string SubjectCollation = "Latin1_General_100_BIN2";
 
     /// <summary>Every column the store reads, in the order it unpacks them.</summary>
-    internal const string ReadColumns = "subject, display_name, whitelisted, banned, ban_reason, ban_until";
+    internal const string ReadColumns =
+        "subject, display_name, whitelisted, banned, ban_reason, ban_until, created_at_utc, updated_at_utc";
 
     private const string LockResource = "KhaozEngine.Accounts.Schema";
     private const int LockTimeoutMilliseconds = 30_000;
@@ -52,7 +56,12 @@ internal static class SqlServerAccountSchema
         ("banned", "bit", 0),
         ("ban_reason", "nvarchar", AccountStoreRules.MaxBanReasonChars * 2),
         ("ban_until", "datetimeoffset", 0),
+        ("created_at_utc", "datetimeoffset", 0),
+        ("updated_at_utc", "datetimeoffset", 0),
     };
+
+    // The owned columns the widening adds to an existing table without them. Every other one must already be there.
+    private static readonly string[] AddedColumns = { "ban_reason", "ban_until", "created_at_utc", "updated_at_utc" };
 
     /// <summary>
     /// Brings the table to the engine layout under <paramref name="mode"/> and checks it.
@@ -76,9 +85,9 @@ internal static class SqlServerAccountSchema
 
         if (mode == AccountSchemaMode.AutoCreate)
         {
-            // An existing table is checked BEFORE any DDL, tolerating only the ban pair the widening adds, so a table
+            // An existing table is checked BEFORE any DDL, tolerating only the columns the widening adds, so a table
             // the store would refuse anyway is refused as it was found rather than half widened.
-            if (tableExists) await CheckAsync(connection, qualified, mode, banPairMayBeMissing: true, ct).ConfigureAwait(false);
+            if (tableExists) await CheckAsync(connection, qualified, mode, addedMayBeMissing: true, ct).ConfigureAwait(false);
             await CreateOrWidenAsync(connection, qualified, ct).ConfigureAwait(false);
         }
         else if (!tableExists)
@@ -88,7 +97,7 @@ internal static class SqlServerAccountSchema
                 "AutoCreate with an identity that holds DDL rights, or create the table from the package README.");
         }
 
-        return await CheckAsync(connection, qualified, mode, banPairMayBeMissing: false, ct).ConfigureAwait(false);
+        return await CheckAsync(connection, qualified, mode, addedMayBeMissing: false, ct).ConfigureAwait(false);
     }
 
     private static async Task<(bool SchemaExists, bool TableExists)> ProbeAsync(SqlConnection connection,
@@ -128,11 +137,17 @@ internal static class SqlServerAccountSchema
                     whitelisted BIT NOT NULL,
                     banned BIT NOT NULL,
                     ban_reason NVARCHAR(256) NULL,
-                    ban_until DATETIMEOFFSET(7) NULL);
+                    ban_until DATETIMEOFFSET(7) NULL,
+                    created_at_utc DATETIMEOFFSET(7) NULL,
+                    updated_at_utc DATETIMEOFFSET(7) NULL);
             IF COL_LENGTH(@table, N'ban_reason') IS NULL
                 ALTER TABLE {qualified} ADD ban_reason NVARCHAR(256) NULL;
             IF COL_LENGTH(@table, N'ban_until') IS NULL
                 ALTER TABLE {qualified} ADD ban_until DATETIMEOFFSET(7) NULL;
+            IF COL_LENGTH(@table, N'created_at_utc') IS NULL
+                ALTER TABLE {qualified} ADD created_at_utc DATETIMEOFFSET(7) NULL;
+            IF COL_LENGTH(@table, N'updated_at_utc') IS NULL
+                ALTER TABLE {qualified} ADD updated_at_utc DATETIMEOFFSET(7) NULL;
             COMMIT TRANSACTION;
             """;
         cmd.Parameters.Add("@resource", SqlDbType.NVarChar, 255).Value = LockResource;
@@ -142,7 +157,7 @@ internal static class SqlServerAccountSchema
     }
 
     private static async Task<bool> CheckAsync(SqlConnection connection, string qualified, AccountSchemaMode mode,
-        bool banPairMayBeMissing, CancellationToken ct)
+        bool addedMayBeMissing, CancellationToken ct)
     {
         var found = new Dictionary<string, (string Type, int MaxBytes, bool Nullable)>(StringComparer.OrdinalIgnoreCase);
         await using (SqlCommand cmd = connection.CreateCommand())
@@ -161,7 +176,7 @@ internal static class SqlServerAccountSchema
         {
             if (!found.TryGetValue(name, out (string Type, int MaxBytes, bool Nullable) column))
             {
-                if (!banPairMayBeMissing || name is not ("ban_reason" or "ban_until")) problems.Add($"'{name}' is missing");
+                if (!addedMayBeMissing || Array.IndexOf(AddedColumns, name) < 0) problems.Add($"'{name}' is missing");
             }
             else if (!string.Equals(column.Type, type, StringComparison.OrdinalIgnoreCase))
                 problems.Add($"'{name}' is {column.Type} where {type} is expected");
@@ -174,7 +189,7 @@ internal static class SqlServerAccountSchema
                 "The account table does not match the engine layout: " + string.Join(", ", problems) + ". " +
                 (mode == AccountSchemaMode.ValidateOnly
                     ? "ValidateOnly never alters it, so run the store once under AutoCreate with an identity that holds DDL rights."
-                    : "AutoCreate adds only a missing ban column, so correct the table by hand."));
+                    : "AutoCreate adds only a missing ban or time column, so correct the table by hand."));
 
         return !found["display_name"].Nullable;
     }

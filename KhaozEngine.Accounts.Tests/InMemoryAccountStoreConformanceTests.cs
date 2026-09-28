@@ -10,5 +10,6 @@ namespace KhaozEngine.Tests.Accounts;
 public sealed class InMemoryAccountStoreConformanceTests : AccountStoreConformance
 {
     /// <inheritdoc />
-    protected override IAccountStore NewStore(bool whitelistOnCreate) => new InMemoryAccountStore(whitelistOnCreate);
+    protected override IAccountStore NewStore(bool whitelistOnCreate) =>
+        new InMemoryAccountStore(whitelistOnCreate) { TimeProvider = Clock };
 }

@@ -31,6 +31,9 @@ namespace KhaozEngine.Tests.Gpu
     {
         public long Texels;
         public float Max, MaxExcess, NearMaxExcess, MaxExcessDepth, MaxExcessScreen, MaxWorldExcess;
+
+        /// <summary>The depth of the texel with the largest excess in metres, and the deepest texel read.</summary>
+        public float MaxWorldExcessDepth, MaxDepth;
         public readonly long[] OverExcess = new long[Bounds.Length];
         public readonly float[] FrameMaxExcess = new float[TemporalStaticOrbitRuns.Measured];
 
@@ -48,7 +51,12 @@ namespace KhaozEngine.Tests.Gpu
             Max = MathF.Max(Max, travel);
             float excess = travel - screen * TemporalResolveTuning.MovingSurfaceMotionFraction;
             FrameMaxExcess[frame] = MathF.Max(FrameMaxExcess[frame], excess);
-            MaxWorldExcess = MathF.Max(MaxWorldExcess, excess * metresPerPixel);
+            MaxDepth = MathF.Max(MaxDepth, depth);
+            if (excess * metresPerPixel > MaxWorldExcess)
+            {
+                MaxWorldExcess = excess * metresPerPixel;
+                MaxWorldExcessDepth = depth;
+            }
             if (excess > MaxExcess) { MaxExcess = excess; MaxExcessDepth = depth; MaxExcessScreen = screen; }
             if (depth < NearDepth) NearMaxExcess = MathF.Max(NearMaxExcess, excess);
             for (int i = 0; i < Bounds.Length; i++) if (excess > Bounds[i]) OverExcess[i]++;
@@ -57,19 +65,21 @@ namespace KhaozEngine.Tests.Gpu
         public override string ToString() =>
             $"{Texels} texels, travel max {Max:0.00000}, excess max {MaxExcess:0.00000} "
             + $"(depth {MaxExcessDepth:0.00} m, "
-            + $"screen {MaxExcessScreen:0.00} px), in metres {MaxWorldExcess:0.0000000}, near {NearDepth} m "
+            + $"screen {MaxExcessScreen:0.00} px), in metres {MaxWorldExcess:0.0000000} at {MaxWorldExcessDepth:0.0} m "
+            + $"of {MaxDepth:0.0} m deepest, near {NearDepth} m "
             + $"{NearMaxExcess:0.00000}, over "
             + string.Join(", ", Array.ConvertAll(Bounds, b => b.ToString("0.000")))
             + $": {string.Join(", ", OverExcess)}";
     }
 
     /// <summary>
-    /// The follow camera with no mover over a still field on <see cref="GroundStage"/>: 81 textured crates a metre a
-    /// side every 3 metres around the target, and towers 12 metres tall placed so the eye passes 0.6 metres from one,
-    /// as a camera orbiting or strafing passes a pillar. The camera orbits its target a few degrees a frame or slowly,
-    /// or strafes sideways at a run, near the world origin or far from it, where it crosses a render-origin step
-    /// (<c>WorldFrame.Grid</c>). Every surface is still, so no pixel may store the band mark
-    /// (<c>TemporalResolveTuning.WorldMotionMetres</c>), and no pixel can drop a band history without one.
+    /// The follow camera with no mover over a still field on <see cref="GroundStage"/>, from the boot pitch or the
+    /// grazing one, where the ground reaches the camera's far plane: 81 textured crates a metre a side every 3 metres
+    /// around the target, and towers 12 metres tall placed so the eye passes 0.6 metres from one, as a camera orbiting
+    /// or strafing passes a pillar. The camera orbits its target a few degrees a frame or slowly, or strafes sideways
+    /// at a run, near the world origin or far from it, where it crosses a render-origin step (<c>WorldFrame.Grid</c>).
+    /// Every surface is still, so no pixel may store the band mark (<c>TemporalResolveTuning.WorldMotionMetres</c>),
+    /// and no pixel can drop a band history without one.
     /// </summary>
     public sealed class TemporalStaticOrbitRuns
     {
@@ -77,18 +87,24 @@ namespace KhaozEngine.Tests.Gpu
         const float FastDegrees = 3f, SlowDegrees = 0.3f, StrafeMetres = 0.15f, CreepMetres = 0.0004f;
         const float TowerInside = 0.9f;
 
-        readonly Dictionary<(StaticPath, bool, TemporalUpscale, int, bool), StaticRun> _runs = new();
+        /// <summary>The follow camera's pitch the field is seen from by default, and the grazing one, in
+        /// radians.</summary>
+        public const float BootPitch = 0.75f, GrazingPitch = 0.26f;
+
+        readonly Dictionary<(StaticPath, bool, TemporalUpscale, int, bool, float), StaticRun> _runs = new();
 
         internal double Seconds { get; private set; }
 
         /// <summary>One run at <paramref name="w"/> by <paramref name="h"/> display, far from the world origin when
-        /// <paramref name="far"/>, reading every texel's static travel when <paramref name="travel"/>.</summary>
-        internal StaticRun Run(StaticPath path, bool far, TemporalUpscale preset, int w, int h, bool travel)
+        /// <paramref name="far"/>, reading every texel's static travel when <paramref name="travel"/>, seen from
+        /// <paramref name="pitch"/> radians.</summary>
+        internal StaticRun Run(StaticPath path, bool far, TemporalUpscale preset, int w, int h, bool travel,
+            float pitch = BootPitch)
         {
-            var key = (path, far, preset, w, travel);
+            var key = (path, far, preset, w, travel, pitch);
             if (_runs.TryGetValue(key, out StaticRun? cached)) return cached;
             long started = Stopwatch.GetTimestamp();
-            var field = new StillField(w, h, path, far);
+            var field = new StillField(w, h, path, far, pitch);
             var band = new int[Measured];
             var moved = new int[Measured];
             int warmBand = 0;
@@ -121,7 +137,8 @@ namespace KhaozEngine.Tests.Gpu
                     if (stats is not null) AddTravel(fx, stats, n - Warm);
                 }
             }
-            string name = $"{path}, {(far ? "far" : "near")} origin, {preset}, {w}x{h}";
+            string name = $"{path}, {(far ? "far" : "near")} origin, {preset}, {w}x{h}"
+                + (pitch == BootPitch ? "" : $", pitch {pitch}");
             var run = new StaticRun(name, band, moved, stats, nearest, steps,
                 Stopwatch.GetElapsedTime(started).TotalSeconds, warmBand);
             Seconds += run.Seconds;
@@ -163,12 +180,12 @@ namespace KhaozEngine.Tests.Gpu
             readonly Vector3 _start;
             MeshHandle _crate;
 
-            public StillField(int w, int h, StaticPath path, bool far)
+            public StillField(int w, int h, StaticPath path, bool far, float pitch)
             {
                 _path = path;
                 // Far from the origin the eye crosses a render-origin step on x mid-run, and the orbits cross one on z
                 // too, where the local coordinates are at their largest.
-                _stage = new GroundStage(w, h, 0.75f, far ? new Vector3(10000f, 0f, 10000f) : Vector3.Zero);
+                _stage = new GroundStage(w, h, pitch, far ? new Vector3(10000f, 0f, 10000f) : Vector3.Zero);
                 // Half way between the anchors 78 and 79 grid cells out, where the nearest one changes, and a creep
                 // crosses it within its few millimetres.
                 float step = 78.5f * WorldFrame.Grid - 10000f + (path == StaticPath.Creep ? 0.0005f : 0.013f);

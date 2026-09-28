@@ -205,14 +205,17 @@ namespace KhaozEngine.Render3D.Internal
         /// narrow nearer surface, a swaying blade or a thin line, is held by the thin-feature lock instead.
         /// </para>
         /// <para>
-        /// A static surface's travel is the motion target's float error on positions relative to the render origin
-        /// and the depth's reconstruction, one distance in the world that more pixels show at a higher resolution or a
+        /// A static surface's travel is the motion target's float error on positions relative to the render origin and
+        /// the depth's reconstruction, one distance in the world that more pixels show at a higher resolution or a
         /// nearer depth. Orbiting, strafing and creeping past still crates and towers under a perspective camera, near
         /// the origin and 10 km out, it reached 0.075 internal pixels at 3840 wide, past the 0.05 a fixed pixel
-        /// threshold allowed, but never more than 0.211 mm, so 1 mm has 4.7 times that margin. The slowest follow
-        /// measured, half a display pixel a frame on UltraPerformance, 0.17 internal pixels, still marks the band.
-        /// Under the perspective follow camera the band on the avatar's own pixels takes the ground trail of a walk
-        /// away from the camera at the boot pitch from 17 to 55 pixels at Native and Quality to none.
+        /// threshold allowed. In the world it was 0.211 mm at most at the boot pitch of 0.75 radians, whose ground ends
+        /// 28 m away, and 0.508 mm from the grazing pitch of 0.26 radians, whose ground reaches the camera's 500 m far
+        /// plane: the fast orbit near the origin at Native, 10.7 m away. So over pitches from 0.26 to 0.75 radians and
+        /// depths to 500 m, 1 mm is about twice the largest static travel measured. The slowest follow measured, half a
+        /// display pixel a frame on UltraPerformance, 0.17 internal pixels, still marks the band. Under the perspective
+        /// follow camera the band on the avatar's own pixels takes the ground trail of a walk away from the camera at
+        /// the boot pitch from 17 to 55 pixels at Native and Quality to none.
         /// </para>
         /// </summary>
         public const float WorldMotionMetres = 0.001f;

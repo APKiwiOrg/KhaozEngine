@@ -465,19 +465,23 @@ and changed these details. Each group's "Contract amendments" block carries the 
 
     The world test was 0.05 internal pixels. A static surface's travel is the motion target's float error on positions
     relative to the render origin, up to about 90 metres from it with Y never rebased, and the depth's reconstruction:
-    one distance in the world, seen through more pixels at a higher resolution or a nearer depth. Orbiting its target
-    3 or 0.3 degrees a frame, strafing 0.15 metres a frame or creeping 0.4 millimetres a frame past crates and 12 metre
-    towers whose side the eye passes 0.6 metres from, near the origin and 10 km out across a render-origin step, at
-    2560 by 1440 and 3840 by 2160 (`TemporalStaticOrbitGpuTests`), it reached 0.075 internal pixels on a tower side
-    0.81 metres away at 3840 wide. No fixed pixel threshold has three times that while the slowest follow, half a
-    display pixel a frame on UltraPerformance, moves the box 0.167 internal pixels. In the world it was 0.211
-    millimetres at most. So the test compares the travel with `WorldMotionMetres` times last frame's `P00` times the
-    internal width over twice the clip w, the internal pixels 1 millimetre spans at the nearest texel's depth, clip w
-    being that depth under a perspective camera and 1 under an orthographic one. That is 6 centimetres a second at 60
-    frames a second, 4.7 times the worst static figure, and the slowest walk still stores 315 and 360 band marks on its
-    measured frame at the two pitches. On the orthographic wall it is 0.04 internal pixels at Native and 0.013 at
-    UltraPerformance. The error does not peak on the frames that cross a render-origin step, and no still run stores a
-    band mark on any frame, so none drops a band history.
+    one distance in the world, seen through more pixels at a higher resolution or a nearer depth. Orbiting its target 3
+    or 0.3 degrees a frame, strafing 0.15 metres a frame or creeping 0.4 millimetres a frame past crates and 12 metre
+    towers whose side the eye passes 0.6 metres from, near the origin and 10 km out across a render-origin step, at 2560
+    by 1440 and 3840 by 2160 (`TemporalStaticOrbitGpuTests`), it reached 0.075 internal pixels on a tower side 0.81
+    metres away at 3840 wide. No fixed pixel threshold has three times that while the slowest follow, half a display
+    pixel a frame on UltraPerformance, moves the box 0.167 internal pixels. In the world it was 0.211 millimetres at
+    most at that pitch, 0.75 radians, whose ground ends 28 metres away. So the test compares the travel with
+    `WorldMotionMetres` times last frame's `P00` times the internal width over twice the clip w, the internal pixels 1
+    millimetre spans at the nearest texel's depth, clip w being that depth under a perspective camera and 1 under an
+    orthographic one. That is 6 centimetres a second at 60 frames a second, 4.7 times that figure, and the slowest walk
+    still stores 315 and 360 band marks on its measured frame at the two pitches. From the grazing pitch of 0.26
+    radians, whose ground reaches the camera's 500 metre far plane, the static travel reached 0.508 millimetres, on the
+    fast orbit near the origin at Native 10.7 metres away, so over pitches from 0.26 to 0.75 radians and depths to 500
+    metres the millimetre is about twice the largest static travel measured, and no still run stores a band mark there
+    either. On the orthographic wall it is 0.04 internal pixels at Native and 0.013 at UltraPerformance. The error does
+    not peak on the frames that cross a render-origin step, and no still run stores a band mark on any frame, so none
+    drops a band history.
 
     Native and Quality meet acceptance 3 on 64 of the 72 walks at both pitches, away from the camera, sideways and
     towards it at half a display pixel a frame to 3, against 27 before, the worst 5 pixels against 55. The other 8 stay

@@ -22,39 +22,46 @@ namespace KhaozEngine.Tests.Gpu
         static readonly StaticPath[] Paths =
             { StaticPath.FastOrbit, StaticPath.SlowOrbit, StaticPath.Strafe, StaticPath.Creep };
 
-        // Every run of the table, or with the table switch off the far fast orbit and strafe at Quality.
-        static IEnumerable<(StaticPath Path, bool Far, TemporalUpscale Preset, int W, int H)> TableRuns()
+        const float Boot = TemporalStaticOrbitRuns.BootPitch, Grazing = TemporalStaticOrbitRuns.GrazingPitch;
+
+        // Every run of the table, or with the table switch off the far fast orbit, strafe and creep at Quality and the
+        // far fast orbit at Quality from the grazing pitch.
+        static IEnumerable<(StaticPath Path, bool Far, TemporalUpscale Preset, int W, int H, float Pitch)> TableRuns()
         {
             if (!TemporalStabilityRuns.FullTable)
             {
-                yield return (StaticPath.FastOrbit, true, TemporalUpscale.Quality, W, H);
-                yield return (StaticPath.Strafe, true, TemporalUpscale.Quality, W, H);
-                yield return (StaticPath.Creep, true, TemporalUpscale.Quality, W, H);
+                yield return (StaticPath.FastOrbit, true, TemporalUpscale.Quality, W, H, Boot);
+                yield return (StaticPath.Strafe, true, TemporalUpscale.Quality, W, H, Boot);
+                yield return (StaticPath.Creep, true, TemporalUpscale.Quality, W, H, Boot);
+                yield return (StaticPath.FastOrbit, true, TemporalUpscale.Quality, W, H, Grazing);
                 yield break;
             }
+            foreach (float pitch in new[] { Boot, Grazing })
+                foreach (StaticPath path in Paths)
+                    foreach (bool far in new[] { false, true })
+                        foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
+                            yield return (path, far, preset, W, H, pitch);
             foreach (StaticPath path in Paths)
-                foreach (bool far in new[] { false, true })
-                    foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
-                        yield return (path, far, preset, W, H);
-            foreach (StaticPath path in Paths)
-                yield return (path, true, TemporalUpscale.Native, WideW, WideH);
+                yield return (path, true, TemporalUpscale.Native, WideW, WideH, Boot);
         }
 
         /// <summary>
         /// No still surface stores the band mark on any frame the table renders, warm or measured, orbiting fast or
-        /// slowly, strafing or creeping, near the origin or across a render-origin step, and without a stored mark no
-        /// pixel drops a band history. The world-motion test is in metres (WorldMotionMetres, 1 mm), 4.7 times the
-        /// worst static travel measured, 0.211 mm on the far fast orbit at Quality, where a fixed 0.05 internal pixels
-        /// had no margin at 3840 wide (0.075). With <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> it holds every run of the
-        /// table.
+        /// slowly, strafing or creeping, near the origin or across a render-origin step, from the boot pitch or the
+        /// grazing one, and without a stored mark no pixel drops a band history. The world-motion test is in metres
+        /// (WorldMotionMetres, 1 mm), where a fixed 0.05 internal pixels had no margin at 3840 wide (0.075). The worst
+        /// static travel measured is 0.211 mm at the boot pitch, depths to 28 m, and 0.508 mm from the grazing pitch of
+        /// 0.26 radians, depths to the 500 m far plane, on the fast orbit near the origin at Native, so 1 mm is about
+        /// twice it. By default it holds the far fast orbit, strafe and creep at Quality and the far fast orbit from
+        /// the grazing pitch, and with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every run of the table.
         /// </summary>
         [GpuFact]
         public void No_still_surface_stores_the_band_mark_under_an_orbit_a_strafe_or_a_creep()
         {
             bool full = TemporalStabilityRuns.FullTable;
-            foreach (var (path, far, preset, w, h) in TableRuns())
+            foreach (var (path, far, preset, w, h, pitch) in TableRuns())
             {
-                StaticRun r = runs.Run(path, far, preset, w, h, full);
+                StaticRun r = runs.Run(path, far, preset, w, h, full, pitch);
                 output.WriteLine($"{r.Name}: band marks {r.BandMarks.Sum()} over the measured frames, "
                     + $"{r.WarmBandMarks} over the warm ones");
                 Assert.True(r.BandMarks.Sum() == 0 && r.WarmBandMarks == 0,
@@ -72,9 +79,9 @@ namespace KhaozEngine.Tests.Gpu
             output.WriteLine("| Run | Band marks (most in a frame, total) | Moved marks (most) | Nearest tower m "
                 + "| Travel |");
             output.WriteLine("| --- | --- | --- | --- | --- |");
-            foreach (var (path, far, preset, w, h) in TableRuns())
+            foreach (var (path, far, preset, w, h, pitch) in TableRuns())
             {
-                StaticRun r = runs.Run(path, far, preset, w, h, full);
+                StaticRun r = runs.Run(path, far, preset, w, h, full, pitch);
                 output.WriteLine($"| {r.Name} | {r.BandMarks.Max()}, {r.BandMarks.Sum()} | {r.MovedMarks.Max()} "
                     + $"| {r.NearestTower:0.00} | {r.Travel?.ToString() ?? "not read"} |");
                 Assert.True(r.NearestTower < 1f, $"{r.Name}: the eye passed no tower within a metre");
@@ -83,8 +90,8 @@ namespace KhaozEngine.Tests.Gpu
                         t.FrameMaxExcess.Select((e, i) => $"{e:0.0000}{(r.OriginSteps[i] ? "*" : "")}")));
             }
             output.WriteLine(full ? "the full table"
-                : $"the far fast orbit and strafe at Quality only. Set {TemporalStabilityRuns.TableVariable}=1 for "
-                    + "the full table");
+                : "the far fast orbit, strafe and creep at Quality, and the far fast orbit from the grazing pitch, "
+                    + $"only. Set {TemporalStabilityRuns.TableVariable}=1 for the full table");
             output.WriteLine($"every run: {runs.Seconds:0.0} s");
         }
     }

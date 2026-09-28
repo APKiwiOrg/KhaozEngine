@@ -5,9 +5,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Game
 {
     // GameApp.Run needs a real window, so the auto-pause DECISION is factored into the pure FocusAutoPause
-    // helper the loop drives off frame.Input.WindowFocused, and that helper is what these cover. The loop
-    // wiring itself (one call before the clock update, fed the ctor's stored option) is the sample-verified
-    // line in GameApp.PreparePhase.
+    // helper the loop drives off frame.Input.WindowFocused, and that helper is what these cover. Its place, one
+    // call before the clock update, is GameApp.StartFrame, fed the ctor's stored option by the prepare phase.
     public class GameAppFocusAutoPauseTests
     {
         // A focus history driven into the helper, returning the clock's paused flag after each frame.

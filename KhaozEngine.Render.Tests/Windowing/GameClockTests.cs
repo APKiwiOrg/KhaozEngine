@@ -213,5 +213,26 @@ namespace KhaozEngine.Tests.Windowing
             Assert.Equal(0f, c.ScaledDeltaSeconds);         // paused: no sim advance
             Assert.Equal(90.0, c.RealWallGapSeconds, 6);    // wall gap still observed
         }
+
+        [Fact]
+        public void FrameCount_AdvancesOncePerUpdate_PausedOrNot()
+        {
+            // A frame id, not a sim-time measure: a paused or zero-scale frame is still a frame, and the id is
+            // what FollowCamera3D.FrameClock reads to tell this frame's eye from the last one's.
+            var c = new GameClock();
+            Assert.Equal(0L, c.FrameCount);
+
+            c.Update(1f / 60f);
+            Assert.Equal(1L, c.FrameCount);
+
+            c.Pause();
+            c.Update(1f / 60f);
+            Assert.Equal(2L, c.FrameCount);
+
+            c.Resume();
+            c.TimeScale = 0f;
+            c.Update(0f);
+            Assert.Equal(3L, c.FrameCount);
+        }
     }
 }

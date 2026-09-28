@@ -311,7 +311,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             _memory.Unmap();
         }
 
-        // The one raw-pointer write in the package, and the reason the project allows unsafe blocks. Everything
+        // The one raw-pointer write in the package, and one of its two unsafe blocks (the csproj says why). Everything
         // above it is arithmetic and everything below it is the driver's memory. Bounds are the caller's: Write
         // has already refused anything that would leave the frame's own segment.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

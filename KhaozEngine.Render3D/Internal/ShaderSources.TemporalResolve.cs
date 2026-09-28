@@ -298,15 +298,8 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     float sampleWeight = 0.0;
     float closestDepth = 2.0 * BackgroundLinearDepth;
     float farthestDepth = 0.0;
-    vec2 closestSample = pixelCentre;
     ivec2 closestTexel = centreTexel;
-    vec2 closestMotion = vec2(0.0);
-    bool closestIsBackground = true;
     float reactiveDifference = 0.0;
-    vec2 centreMotion = vec2(0.0);
-    bool centreIsBackground = true;
-    float centreDepth = BackgroundLinearDepth;
-    vec2 centreSample = pixelCentre;
     float lumas[9];
 
     // Step 4's kernel is separable, and each axis of a clamped 3x3 texel depends on that axis alone. So three weights
@@ -325,10 +318,26 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         displayKernelY[i] = lanczos2(toSample.y * displayOverInternal);
     }
 
+    // The 3x3 reads each texel one step ahead. The compiler keeps the loop rolled, so a texel read at the top of its
+    // own step stalls that step, while one read a step earlier arrives behind the arithmetic of the step before. The
+    // texels, and the order of every sum over them, are unchanged. The last step reads its own texel again.
+    ivec2 nextTexel = clamp(centreTexel + ivec2(-1), ivec2(0), maxTexel);
+    vec4 nextScene = texelFetch(sampler2D(SceneColor, LinearClamp), nextTexel, 0);
+    vec2 nextMotion = texelFetch(sampler2D(MotionTex, LinearClamp), nextTexel, 0).rg;
+    float nextDepth = texelFetch(sampler2D(SceneDepth, LinearClamp), nextTexel, 0).r;
+    vec3 nextOpaque = texelFetch(sampler2D(OpaqueColor, LinearClamp), nextTexel, 0).rgb;
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
-            ivec2 texel = clamp(centreTexel + ivec2(x, y), ivec2(0), maxTexel);
-            vec4 sceneColor = texelFetch(sampler2D(SceneColor, LinearClamp), texel, 0);
+            ivec2 texel = nextTexel;
+            vec4 sceneColor = nextScene;
+            vec2 motion = nextMotion;
+            float ndcDepth = nextDepth;
+            vec3 opaqueColor = nextOpaque;
+            nextTexel = clamp(centreTexel + (x == 1 ? ivec2(-1, min(y + 1, 1)) : ivec2(x + 1, y)), ivec2(0), maxTexel);
+            nextScene = texelFetch(sampler2D(SceneColor, LinearClamp), nextTexel, 0);
+            nextMotion = texelFetch(sampler2D(MotionTex, LinearClamp), nextTexel, 0).rg;
+            nextDepth = texelFetch(sampler2D(SceneDepth, LinearClamp), nextTexel, 0).r;
+            nextOpaque = texelFetch(sampler2D(OpaqueColor, LinearClamp), nextTexel, 0).rgb;
             vec3 weightedColor = toWeighted(min(max(sceneColor.rgb, vec3(0.0)), vec3(HalfMax)));
             vec3 ycc = rgbToYCoCg(weightedColor);
             lumas[(y + 1) * 3 + (x + 1)] = ycc.x;
@@ -342,7 +351,6 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             // Step 4: Lanczos 2 on the distance from this texel's jittered sample to the pixel centre, in internal
             // pixels, as its column's weight times its row's. How close the nearest sample lands in display pixels is
             // what this frame is worth to the pixel.
-            vec2 samplePosition = vec2(texel) + 0.5 - jitter;
             float lanczosWeight = kernelX[x + 1] * kernelY[y + 1];
             reconstruction += vec4(ycc, sceneColor.a) * lanczosWeight;
             reconstructionWeight += lanczosWeight;
@@ -352,28 +360,16 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             // the surface point that motion was written for. Background is the motion sentinel on the x channel alone,
             // because the depth attachment is cleared to the background colour, not to the far plane. A clamped or
             // off-screen motion is finite and far below the sentinel, so it is never background. The farthest depth
-            // tells step 3 whether the pixel lies on the edge of a nearer surface.
-            vec2 motion = texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg;
-            float ndcDepth = texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r;
-            bool isBackground = abs(motion.x) > MotionSentinel;
+            // tells step 3 whether the pixel lies on the edge of a nearer surface. The loop carries the nearest texel
+            // and its depth alone, and its motion and sample position are read back after it.
             float viewDepth = temporalViewDepth(motion, ndcDepth);
-            if (x == 0 && y == 0) {
-                centreMotion = motion;
-                centreIsBackground = isBackground;
-                centreDepth = viewDepth;
-                centreSample = samplePosition;
-            }
             farthestDepth = max(farthestDepth, viewDepth);
             if (viewDepth < closestDepth) {
                 closestDepth = viewDepth;
-                closestSample = samplePosition;
                 closestTexel = texel;
-                closestMotion = motion;
-                closestIsBackground = isBackground;
             }
 
             // Step 7: how much the transparent passes changed this texel.
-            vec3 opaqueColor = texelFetch(sampler2D(OpaqueColor, LinearClamp), texel, 0).rgb;
             reactiveDifference = max(reactiveDifference,
                 abs(temporalLuma(weightedColor) - temporalLuma(toWeighted(min(max(opaqueColor, vec3(0.0)), vec3(HalfMax))))));
         }
@@ -385,6 +381,22 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     vec4 current = reconstruction / max(reconstructionWeight, 1.0e-4);
     current.xyz = clamp(current.xyz, neighbourMin, neighbourMax);   // the negative lobes cannot ring past the neighbourhood
     current.w = clamp(current.w, alphaMin, alphaMax);
+
+    // The nearest texel's sample position and motion, and the centre texel's own, read back as the loop saw them. A
+    // 3x3 with no depth below the starting bound took no nearest texel, and keeps the pixel centre and no motion.
+    vec2 closestSample = pixelCentre;
+    vec2 closestMotion = vec2(0.0);
+    bool closestIsBackground = true;
+    if (closestDepth < 2.0 * BackgroundLinearDepth) {
+        closestSample = vec2(closestTexel) + 0.5 - jitter;
+        closestMotion = texelFetch(sampler2D(MotionTex, LinearClamp), closestTexel, 0).rg;
+        closestIsBackground = abs(closestMotion.x) > MotionSentinel;
+    }
+    vec2 centreSample = vec2(centreTexel) + 0.5 - jitter;
+    vec2 centreMotion = texelFetch(sampler2D(MotionTex, LinearClamp), centreTexel, 0).rg;
+    bool centreIsBackground = abs(centreMotion.x) > MotionSentinel;
+    float centreDepth = temporalViewDepth(centreMotion,
+        texelFetch(sampler2D(SceneDepth, LinearClamp), centreTexel, 0).r);
 
     // Steps 1 and 3: where this pixel was last frame, and the depth a static surface there had, from the dilated
     // texel's own surface point (temporalReproject).

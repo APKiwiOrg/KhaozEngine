@@ -102,8 +102,8 @@ namespace KhaozEngine.Tests.Render3D
             // TemporalResolveMath.ExpectedPreviousDepth and StaticPreviousUv, term for term, at a texel's own
             // unjittered sample position and depth, which is the point that texel's motion was written for.
             string core = ShaderSources.TemporalResolveCoreGlsl;
-            Assert.Contains("vec2 samplePosition = vec2(texel) + 0.5 - jitter;", core, StringComparison.Ordinal);
-            Assert.Contains("closestSample = samplePosition;", core, StringComparison.Ordinal);
+            Assert.Contains("closestSample = vec2(closestTexel) + 0.5 - jitter;", core, StringComparison.Ordinal);
+            Assert.Contains("closestTexel = texel;", core, StringComparison.Ordinal);
             Assert.Contains("vec2 sampleUv = sampleInternal / internalSize;", core, StringComparison.Ordinal);
             Assert.Contains("vec2 sampleNdc = vec2(sampleUv.x * 2.0 - 1.0, 1.0 - sampleUv.y * 2.0);", core,
                 StringComparison.Ordinal);
@@ -128,7 +128,10 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("previousUv = uv - motion;", core, StringComparison.Ordinal);
             Assert.Contains("temporalReproject(uv, closestSample, closestMotion, closestDepth, closestIsBackground, "
                 + "internalSize, previousUv,", core, StringComparison.Ordinal);
-            Assert.Contains("bool isBackground = abs(motion.x) > MotionSentinel;", core, StringComparison.Ordinal);
+            Assert.Contains("closestMotion = texelFetch(sampler2D(MotionTex, LinearClamp), closestTexel, 0).rg;", core,
+                StringComparison.Ordinal);
+            Assert.Contains("closestIsBackground = abs(closestMotion.x) > MotionSentinel;", core,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -140,8 +143,8 @@ namespace KhaozEngine.Tests.Render3D
             // after the edge signal and before the depth test that reads what it reprojected. A still nearer surface,
             // under a camera's translation or against the sky, keeps dilation.
             string core = ShaderSources.TemporalResolveCoreGlsl;
-            Assert.Contains("centreDepth = viewDepth;", core, StringComparison.Ordinal);
-            Assert.Contains("centreSample = samplePosition;", core, StringComparison.Ordinal);
+            Assert.Contains("float centreDepth = temporalViewDepth(centreMotion,", core, StringComparison.Ordinal);
+            Assert.Contains("vec2 centreSample = vec2(centreTexel) + 0.5 - jitter;", core, StringComparison.Ordinal);
             string own = "bool ownReprojected = !depthTested && edgeMotion > DilationReachInternalPixels";
             Assert.Contains(own, core, StringComparison.Ordinal);
             Assert.Contains("&& centreDepth > closestDepth * (1.0 + DisocclusionTolerance);", core,

@@ -7,10 +7,13 @@
 # workflow_dispatch only, each runner is capped at one machine, and the org runner group `gpu-bench` admits this
 # file on main and nothing else. A dispatch names the ref to test, so the file never has to live on a branch.
 #
-# THE ADAPTER IS PINNED to the NVIDIA device on both APIs (KE_D3D11_ADAPTER and KE_VULKAN_DEVICE take a name
-# substring) and Vulkan is required on the Vulkan legs (KE_VULKAN_REQUIRED). An unmet Direct3D 11 pin still lets
-# DXGI pick, which on a machine without a graphics driver is the Microsoft Basic Render Driver, so every leg first
-# runs the device report and fails unless it names the NVIDIA GPU. Nothing is timed on a software rasterizer.
+# THE ADAPTER IS PINNED to the NVIDIA device on both APIs, and Vulkan is required on the Vulkan legs
+# (KE_VULKAN_REQUIRED). Direct3D 11 takes a name substring, and its adapter is named "NVIDIA Tesla T4". Vulkan's
+# device is named "Tesla T4" with no vendor in it, so a name pin of NVIDIA matched nothing and silently took the
+# first eligible device, and the Linux runner also carries llvmpipe. Vulkan is pinned by type (discrete) instead.
+# An unmet pin still falls back on both APIs, which on a machine without a graphics driver is the Microsoft Basic
+# Render Driver or llvmpipe, so every leg first runs the device report and fails unless it names the NVIDIA GPU.
+# Nothing is timed on a software rasterizer.
 #
 # THE WINDOWS IMAGE SHIPS THE T4 IN TCC, the driver model that offers compute only (first probe, run 36380480461:
 # datacenter driver 471.11, Direct3D 11 on the Basic Render Driver, no Vulkan device). Direct3D and Vulkan need
@@ -72,7 +75,7 @@ jobs:
       KE_GPU_TESTS: '1'
       KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
       KE_D3D11_ADAPTER: NVIDIA
-      KE_VULKAN_DEVICE: NVIDIA
+      KE_VULKAN_DEVICE: discrete
       KE_VULKAN_REQUIRED: ${{ matrix.backend == 'vulkan-native' && '1' || '' }}
       FILTER: ${{ inputs.filter }}
       DEVICE_REPORT: FullyQualifiedName~GpuCapabilitiesDiagTests.LiveDeviceReportsNameAndSamplerFeatures

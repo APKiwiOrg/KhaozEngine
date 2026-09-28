@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Gpu
     /// avatar (<see cref="TemporalFollowCameraRuns"/>). The wall pans under the box. Past the dilation's reach each
     /// wall pixel at its trailing edge reprojects by its own motion onto the box's stored depths and state. Under it
     /// the pixels beside the box's edge take the box's motion by dilation, and the wall pixel clear of the edge drops
-    /// the history they left (TemporalResolveTuning.WorldMotionInternalPixels). Each trail is read as
+    /// the history they left (TemporalResolveTuning.WorldMotionMetres). Each trail is read as
     /// <see cref="TemporalNarrowCrossingGpuTests"/> reads a crossing, by the excess over a floor that restarts the bare
     /// wall on the frame the box uncovered the pixel. HDR is off, the sharpen is at its default, and the measured
     /// values in the comments are Metal on Apple silicon.

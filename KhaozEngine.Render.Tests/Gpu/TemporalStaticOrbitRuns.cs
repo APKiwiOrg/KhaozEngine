@@ -24,7 +24,7 @@ namespace KhaozEngine.Tests.Gpu
     /// from where a static point there stood last frame, in internal pixels, as the resolve measures it
     /// (<c>temporalReproject</c>). On still content it is the motion target's and the reprojection's own error. The
     /// excess is the travel less <see cref="TemporalResolveTuning.MovingSurfaceMotionFraction"/> of the texel's screen
-    /// motion, the part the band's world-motion test compares with <c>WorldMotionInternalPixels</c>.
+    /// motion, the part the band's world-motion test compares with <c>WorldMotionMetres</c> at the texel's depth.
     /// </summary>
     internal sealed class StaticTravel
     {
@@ -68,7 +68,7 @@ namespace KhaozEngine.Tests.Gpu
     /// as a camera orbiting or strafing passes a pillar. The camera orbits its target a few degrees a frame or slowly,
     /// or strafes sideways at a run, near the world origin or far from it, where it crosses a render-origin step
     /// (<c>WorldFrame.Grid</c>). Every surface is still, so no pixel may store the band mark
-    /// (<c>TemporalResolveTuning.WorldMotionInternalPixels</c>), and no pixel can drop a band history without one.
+    /// (<c>TemporalResolveTuning.WorldMotionMetres</c>), and no pixel can drop a band history without one.
     /// </summary>
     public sealed class TemporalStaticOrbitRuns
     {

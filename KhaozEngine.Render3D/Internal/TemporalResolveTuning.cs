@@ -170,17 +170,20 @@ namespace KhaozEngine.Render3D.Internal
         /// 0.0000, 0.0000 and 0.0007, and its added change at UltraPerformance rises from 0.0034 to 0.0042.</summary>
         public const float DilationReachInternalPixels = 1.25f;
         /// <summary>
-        /// Steps 1 and 3, the band. A pixel whose centre texel lies on a farther surface takes by dilation the motion
-        /// of a nearer one. Where that nearer surface moved in the world, its own sample landing more than this many
-        /// internal pixels, plus <see cref="MovingSurfaceMotionFraction"/> of its motion, from where a static point
-        /// would have been, is wide, and moves less on screen than the farther surface, as an avatar does under a
-        /// camera that follows it, the pixel's history follows the avatar's edge, which stays put on screen while the
-        /// ground passes under it. Its colour is the edge's anti-aliased coverage over a mix of the ground that passed,
-        /// and dilation keeps it for the edge. The pixel stores that it is a band pixel, and a depth-tested pixel off
-        /// any moving edge that carries it drops the history, so the ground pixel clear of the edge restarts rather
-        /// than carrying the avatar's colour off with the pan. The avatar's own edge pixel, whose 3x3 also holds the
-        /// ground, and a nearer surface reading the band where its edge was, whose stored depths all lie farther, keep
-        /// it.
+        /// Steps 1 and 3, the band, in metres. A pixel whose centre texel lies on a farther surface takes by dilation
+        /// the motion of a nearer one. Where that nearer surface moved in the world, its own sample landing more than
+        /// this many metres, as internal pixels at its depth through last frame's projection, plus
+        /// <see cref="MovingSurfaceMotionFraction"/> of its motion, from where a static point would have been, is
+        /// wide, and moves less on screen than the farther surface, as an avatar does under a camera that follows it,
+        /// the pixel's history follows the avatar's edge, which stays put on screen while the ground passes under it.
+        /// Its colour is the edge's anti-aliased coverage over a mix of the ground that passed, and dilation keeps it
+        /// for the edge. A pixel on the avatar itself, whose surface travelled in the world more than twice its motion
+        /// on screen, is a band pixel too, since the ground its feet stand on lies within the disocclusion tolerance of
+        /// its lowest pixels and would take their colour on where the avatar uncovers it. The pixel stores that it is
+        /// a band pixel, and a depth-tested pixel whose dilated nearest surface did not move in the world drops a
+        /// history that carries it, so the ground restarts rather than carrying the avatar's colour off with the pan.
+        /// A pixel beside or on the avatar, and a nearer surface reading the band where its edge was, whose stored
+        /// depths all lie farther, keep it.
         /// <para>
         /// A keyed box with ridged pixels, the camera following it across the textured wall under the reach, kept its
         /// luma in 20 and 32 of the 90 wall pixels it uncovered at 0.5 display pixels a frame at Native and Quality, 45
@@ -199,12 +202,20 @@ namespace KhaozEngine.Render3D.Internal
         /// where it leaves it: restarting the pixels it uncovers made a revealed sub-texel line show its raw sample,
         /// brighter than its converged value, in up to 3 display pixels against the lock fact's bound of 1. A still
         /// nearer surface keeps it too: under a zoom the farther surface moves more on screen beside a still object. A
-        /// narrow nearer surface, a swaying blade or a thin line, is held by the thin-feature lock instead. A static
-        /// surface's travel is float rounding, far below this, and the slowest follow measured, 0.17 internal pixels a
-        /// frame, is well above it.
+        /// narrow nearer surface, a swaying blade or a thin line, is held by the thin-feature lock instead.
+        /// </para>
+        /// <para>
+        /// A static surface's travel is the motion target's float error on positions relative to the render origin
+        /// and the depth's reconstruction, one distance in the world that more pixels show at a higher resolution or a
+        /// nearer depth. Orbiting, strafing and creeping past still crates and towers under a perspective camera, near
+        /// the origin and 10 km out, it reached 0.075 internal pixels at 3840 wide, past the 0.05 a fixed pixel
+        /// threshold allowed, but never more than 0.211 mm, so 1 mm has 4.7 times that margin. The slowest follow
+        /// measured, half a display pixel a frame on UltraPerformance, 0.17 internal pixels, still marks the band.
+        /// Under the perspective follow camera the band on the avatar's own pixels takes the ground trail of a walk
+        /// away from the camera at the boot pitch from 17 to 55 pixels at Native and Quality to none.
         /// </para>
         /// </summary>
-        public const float WorldMotionInternalPixels = 0.05f;
+        public const float WorldMotionMetres = 0.001f;
         /// <summary>Step 3. A depth-tested pixel whose expected surface shows under less than this share of the
         /// bilinear weight of its four stored depths was mostly covered last frame, and drops its history, unless the
         /// nearest of the four is narrow, its run of texels along a row or a column, apart in depth from those either

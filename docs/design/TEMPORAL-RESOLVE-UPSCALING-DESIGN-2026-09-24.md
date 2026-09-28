@@ -548,9 +548,10 @@ and changed these details. Each group's "Contract amendments" block carries the 
     `FollowedHistoryMotionFraction`, half, of that motion. The ground the avatar uncovers pans past the avatar, which
     stays put on screen, so it still drops the avatar's history. The avatar's own pixels read it in place when it
     stops, and where the same avatar shows moving with them under a camera that eases on after it, as
-    `FollowCamera3D`'s target damping does, and keep it. The inner pixels read the kept history's error on every frame
-    after a stop or a reversal, and within 0.00011 of it under the damped camera, which resamples the history at
-    fractional offsets. Keyed only on the pixel having moved on screen, the stop and the reversal held, but the damped
+    `FollowCamera3D`'s target damping does, and keep it. The inner pixels read exactly the error of the same avatar
+    standing still in the world on every frame after a stop or a reversal, and under the damped camera, which resamples
+    the history at fractional offsets, at most 0.3 percent more than they read over it while walking (below). Keyed
+    only on the pixel having moved on screen, the stop and the reversal held, but the damped
     stop kept the drop, up to 1.43 times on its turn frame, and applied to the band beside an edge too, a still pixel
     kept a band history. Reading only the texel at the history position, or the four around it, left the ground the
     box's colour where it stood, up to 8 pixels at Quality, and the orthographic follow at Performance 18 of 90
@@ -560,6 +561,42 @@ and changed these details. Each group's "Contract amendments" block carries the 
     resolve grew from 42685 to 44875 bytes of HLSL, most of it the fourth level's store and its four decodes, and fell
     to 43424 with the lock read back as the remainder over two of minus one minus the stored value, exact for a half
     float, in place of a branch per level.
+
+    The nine texels were first read without the motion target's background test, so a background texel read as about
+    60000 UV of motion, and an avatar stopping with the clear colour beside its outline dropped the outline's history:
+    every pixel showing it read up to 1.39 times its error when the avatar's own pixels stored only the moved mark. A
+    background texel is left out now, as it is never the followed surface. On a hard stop the pixel's own motion is
+    exactly zero, so any texel with motion, as a second avatar walking past behind, dropped the outline beside it, up to
+    1.12 times on the orthographic walk at Native. A pixel that moved on screen no more than
+    `FollowedStillDisplayPixels`, a tenth of a display pixel, reads none of the nine and keeps the history. A floor on
+    the share instead held nothing under the passer's speed and, at one internal pixel, brought back the ground trail
+    the walks bound. Leaving out every texel farther than the pixel's nearest depth also held the damped passer, but
+    would keep a followed history on a still pillar the avatar walks behind. A damped stop beside a passer still drops
+    the outline where the passer shows, up to 6.1 percent over a still avatar's error at Quality on the orthographic
+    walk, since the easing avatar moves on screen past the floor and the passer moves otherwise. Under the damped camera
+    an outline pixel whose nine texels reach ground more than twice the avatar's depth drops too, that ground moving
+    less than half the avatar's motion on screen.
+
+    The stop facts hold every pixel showing the avatar to a control rendered in the same run: the same walk with the
+    avatar standing still in the world while the camera and the passer keep their paths relative to it, which keeps its
+    own history by construction. Values measured on one backend did not hold on another, three NVIDIA legs reading up to
+    3.3 percent over Metal's under the damped camera. The same run's frames before the turn are no reference either: the
+    error still drifts up as the history converges, from 0.00437 to 0.00475 over 28 frames on the orthographic walk at
+    Native, in the control too. Past the most they read over the control before the turn, the inner pixels read at most
+    0.3 percent of its error more under the damped camera, and every pixel showing the avatar 0.8 percent after a stop
+    or a reversal and 2.5 under the damped camera, where the ground or wall passes behind the outline during the walk
+    and holds still in the control. The facts allow 1, 2 and 5 percent, and the gate covers the avatar over the clear
+    colour and beside a passer too, except the damped stop beside a passer.
+
+    The ring of pixels beside the outline, on the ground or wall, drops the band's history when the avatar stops, since
+    its nearest surface no longer moves. Kept on a pixel that moved less than the floor, the ring read 1.21 to 1.40
+    times its error at worst over the turn frame and the 15 after on the perspective stops and 1.28 to 1.76 on the
+    orthographic ones, and every pixel showing the avatar up to 1.028, and 1.057 beside a passer, while the ring's
+    flicker fell from 0.00506 to 0.00219 on the orthographic stop at Native. The band's history holds the edge's colour
+    over the ground that passed under it, so the ring restarts on a stop, nearer the reference.
+
+    A footprint whose carrying texels stored both marks reads as the followed mark, which takes a fractional position
+    across the outline under the damped camera. The emitted resolve grew from 43424 to 43661 bytes of HLSL.
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies

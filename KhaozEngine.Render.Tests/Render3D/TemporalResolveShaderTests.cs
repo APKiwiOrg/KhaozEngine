@@ -132,10 +132,14 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("depthTested = travel <= movingThreshold;", core, StringComparison.Ordinal);
             Assert.DoesNotContain("CurrentToPrevious * vec4(ndcXY", core, StringComparison.Ordinal);
 
-            // History is read where the dilated motion carries the display pixel, from the dilated texel's own point.
+            // History is read where the dilated motion carries the display pixel, from the dilated texel's own point,
+            // which the centre texel's surface holds unless the pixel reprojects by its own.
             Assert.Contains("previousUv = uv - motion;", core, StringComparison.Ordinal);
-            Assert.Contains("temporalReproject(uv, closestSample, closestMotion, closestDepth, closestIsBackground, "
-                + "internalSize, previousUv,", core, StringComparison.Ordinal);
+            Assert.Contains("temporalReprojectSurface(closestSample, closestMotion, closestDepth, closestIsBackground, "
+                + "internalSize,", core, StringComparison.Ordinal);
+            Assert.Contains("surface.motion = closestMotion;", core, StringComparison.Ordinal);
+            Assert.Contains("vec2 previousUv = temporalPreviousUv(uv, surface.motion, surface.background);", core,
+                StringComparison.Ordinal);
             Assert.Contains("closestMotion = texelFetch(sampler2D(MotionTex, LinearClamp), closestTexel, 0).rg;", core,
                 StringComparison.Ordinal);
             Assert.Contains("closestIsBackground = abs(closestMotion.x) > MotionSentinel;", core,
@@ -159,8 +163,9 @@ namespace KhaozEngine.Tests.Render3D
                 StringComparison.Ordinal);
             Assert.Contains(own + " && centreFarther;", core, StringComparison.Ordinal);
             Assert.Contains("if (ownReprojected) {", core, StringComparison.Ordinal);
-            Assert.Contains("temporalReproject(uv, centreSample, centreMotion, centreDepth, centreIsBackground, "
-                + "internalSize, previousUv,", core, StringComparison.Ordinal);
+            Assert.Contains("temporalReprojectSurface(centreSample, centreMotion, centreDepth, centreIsBackground, "
+                + "internalSize,", core, StringComparison.Ordinal);
+            Assert.Contains("surface.motion = centreMotion;", core, StringComparison.Ordinal);
             int edge = core.IndexOf("bool movingEdge = ", StringComparison.Ordinal);
             int reach = core.IndexOf(own, StringComparison.Ordinal);
             int test = core.IndexOf("DepthFootprint footprint = temporalDepthFootprint(previousUv,",
@@ -275,8 +280,8 @@ namespace KhaozEngine.Tests.Render3D
             // holds one, neither the narrow nor the lock exception applies, and any weight on a nearer stored depth
             // drops the history. The narrow and lock exceptions keep their rule elsewhere.
             string core = ShaderSources.TemporalResolveCoreGlsl;
-            Assert.Contains("out vec2 previousUv, out float expectedDepth, out bool depthTested, out float travel) {",
-                core, StringComparison.Ordinal);
+            Assert.Contains("out float expectedDepth, out bool depthTested, out float travel) {", core,
+                StringComparison.Ordinal);
             Assert.Contains("travel = length(surfaceMotion);", core, StringComparison.Ordinal);
             Assert.Contains("depthTested = travel <= movingThreshold;", core, StringComparison.Ordinal);
             Assert.Contains("travel = 1.0e30;   // beyond every bound, in internal pixels", core,
@@ -337,7 +342,7 @@ namespace KhaozEngine.Tests.Render3D
                 + "- ownMotion));", core, StringComparison.Ordinal);
             Assert.Contains("followedElsewhere = apart > FollowedHistoryMotionFraction * length(ownMotion);", core,
                 StringComparison.Ordinal);
-            int loopEnd = core.IndexOf("float reactive = clamp(reactiveDifference", StringComparison.Ordinal);
+            int loopEnd = core.IndexOf("float reactive = clamp(n.reactiveDifference", StringComparison.Ordinal);
             int nine = core.IndexOf("if (carriedFollowed && !nearerMoved && motionPixels", StringComparison.Ordinal);
             int lastMotion = core.LastIndexOf("motionPixels = onScreen ?", StringComparison.Ordinal);
             int followedRead = core.IndexOf("carriedFollowed = temporalStoredFollowed(carriedLeast);",
@@ -407,8 +412,10 @@ namespace KhaozEngine.Tests.Render3D
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("float lockValue = useHistory && !heldFromFarther "
                 + "? max(historyState.y - LockDecay, 0.0) : 0.0;", core, StringComparison.Ordinal);
-            Assert.Contains("bool movingEdge = edgeMotion > max(LockEdgeFloorInternalPixels, length(closestMotion * internalSize) "
-                + "* LockEdgeMotionFraction);", core, StringComparison.Ordinal);
+            Assert.Contains("bool movingEdge = edgeMotion > max(LockEdgeFloorInternalPixels,", core,
+                StringComparison.Ordinal);
+            Assert.Contains("length(closestMotion * internalSize) * LockEdgeMotionFraction);", core,
+                StringComparison.Ordinal);
             Assert.Contains("if (historyValid && onScreen && (depthTested || movingEdge)) {", core, StringComparison.Ordinal);
             Assert.Contains("heldFromFarther = movingEdge && expectedDepth < footprint.nearest "
                 + "* (1.0 - DisocclusionTolerance);", core, StringComparison.Ordinal);
@@ -441,8 +448,11 @@ namespace KhaozEngine.Tests.Render3D
         {
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Contains("const float HalfMax = 65504.0;", core, StringComparison.Ordinal);
-            Assert.Contains("toWeighted(min(max(sceneColor.rgb, vec3(0.0)), vec3(HalfMax)))", core, StringComparison.Ordinal);
-            Assert.Contains("toWeighted(min(max(opaqueColor, vec3(0.0)), vec3(HalfMax)))", core, StringComparison.Ordinal);
+            // One rule for both, and every scene colour the 3x3 and the moving share weight goes through it.
+            Assert.Contains("vec3 temporalWeighted(vec3 c) { return toWeighted(min(max(c, vec3(0.0)), "
+                + "vec3(HalfMax))); }", core, StringComparison.Ordinal);
+            Assert.Equal(2, core.Split("temporalWeighted(sceneColor.rgb)").Length - 1);
+            Assert.Contains("temporalLuma(temporalWeighted(opaqueColor))", core, StringComparison.Ordinal);
             Assert.DoesNotContain("toWeighted(max(", core, StringComparison.Ordinal);
         }
 
@@ -454,8 +464,11 @@ namespace KhaozEngine.Tests.Render3D
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Equal(5, core.Split("lanczos2(").Length - 1);
             Assert.Contains("for (int i = 0; i < 3; i++) {", core, StringComparison.Ordinal);
-            Assert.Contains("float lanczosWeight = kernelX[x + 1] * kernelY[y + 1];", core, StringComparison.Ordinal);
-            Assert.Contains("clamp(displayKernelX[x + 1] * displayKernelY[y + 1], 0.0, 1.0)", core, StringComparison.Ordinal);
+            Assert.Contains("{ return kernels.x[x] * kernels.y[y]; }", core, StringComparison.Ordinal);
+            Assert.Contains("float lanczosWeight = temporalLanczosWeight(kernels, x, y);", core,
+                StringComparison.Ordinal);
+            Assert.Contains("clamp(kernels.displayX[x] * kernels.displayY[y], 0.0, 1.0)", core,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -474,7 +487,7 @@ namespace KhaozEngine.Tests.Render3D
                 + "float reactive; float clip;", core, StringComparison.Ordinal);
             Assert.Contains("TemporalPixel temporalResolvePixel(ivec2 displayPixel) {", core, StringComparison.Ordinal);
             Assert.Contains("ivec2 temporalDisplaySize() {", core, StringComparison.Ordinal);
-            Assert.Contains("vec2 uv = (vec2(displayPixel) + 0.5) / displaySize;", core, StringComparison.Ordinal);
+            Assert.Contains("uv = (vec2(displayPixel) + 0.5) / Sizes.zw;", core, StringComparison.Ordinal);
         }
 
         /// <summary>The clip flag the debug views and counts read marks a clip that moved the history, as blended, by

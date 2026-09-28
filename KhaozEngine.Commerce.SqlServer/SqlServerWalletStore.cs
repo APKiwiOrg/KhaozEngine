@@ -311,7 +311,14 @@ USING (SELECT @a AS account_id, @r AS reward_id) AS s
 WHEN MATCHED AND t.next_available_utc <> @v THEN UPDATE SET next_available_utc = @v, updated_at = @now
 WHEN NOT MATCHED THEN INSERT (account_id, reward_id, next_available_utc, created_at, updated_at)
   VALUES (@a, @r, @v, @now, @now);";
-        Bind(cmd, ("@a", account.Value), ("@r", rewardId), ("@v", nextUtc.UtcDateTime));
+        Bind(cmd, ("@a", account.Value), ("@r", rewardId));
+        // The instant is typed as the column is, DATETIME2(7), for the stored value and the comparison alike.
+        // AddWithValue types a DateTime as the legacy datetime, which rounds it to a 1/300 s tick on the way in, and a
+        // sub-second instant stored from that rounding then compared unequal to the same instant, so an unchanged
+        // rewrite moved the update time.
+        SqlParameter next = cmd.Parameters.Add("@v", SqlDbType.DateTime2);
+        next.Scale = 7;
+        next.Value = nextUtc.UtcDateTime;
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 

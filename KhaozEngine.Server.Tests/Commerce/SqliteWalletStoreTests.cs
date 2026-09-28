@@ -105,8 +105,13 @@ public sealed class SqliteWalletStoreTests : WalletStoreContract, IDisposable
     {
         using var legacy = new SqliteScratchFile("ke-wallet-legacy-");
         legacy.Execute(LegacyTables +
-            $"INSERT INTO wallet_balance VALUES ('{Legacy.Value}', '{Shard.Value}', 7, {LegacyUpdatedAt});" +
-            $"INSERT INTO grant_schedule VALUES ('{Legacy.Value}', '{Reward}', {LegacyUpdatedAt});");
+            "INSERT INTO wallet_balance (account_id, currency_id, amount, updated_at) " +
+            $"VALUES ('{Legacy.Value}', '{Shard.Value}', 7, {LegacyUpdatedAt});" +
+            "INSERT INTO grant_schedule (account_id, reward_id, next_available_utc) " +
+            $"VALUES ('{Legacy.Value}', '{Reward}', {LegacyUpdatedAt});");
+        Assert.Equal(0, legacy.Column("wallet_balance", "created_at").Count);
+        Assert.Equal(0, legacy.Column("grant_schedule", "created_at").Count);
+        Assert.Equal(0, legacy.Column("grant_schedule", "updated_at").Count);
 
         using (var widened = new SqliteWalletStore(legacy.ConnectionString))
         {
@@ -136,6 +141,42 @@ public sealed class SqliteWalletStoreTests : WalletStoreContract, IDisposable
 
         using var reopened = new SqliteWalletStore(legacy.ConnectionString);
         Assert.Equal(1, legacy.Column("grant_schedule", "updated_at").Count);
+    }
+
+    /// <summary>A schedule instant off the millisecond grid. This backend stores the instant as unix milliseconds,
+    /// so it is truncated on the way in, and the update time's no-change check compares that truncation with what is
+    /// stored. A rewrite of the same instant must compare equal and leave the update time alone, whether the caller
+    /// passes the instant it wrote or the one it read back. A real change on the same grid still moves it.</summary>
+    [Fact]
+    public async Task Grant_schedule_rewrite_of_a_sub_second_instant_keeps_the_update_time()
+    {
+        using var file = new SqliteScratchFile("ke-wallet-grid-");
+        using var backend = new SqliteWalletStore(file.ConnectionString);
+        var account = new AccountId("acct:grid");
+        // 1.7 ms past the second, between the stored millisecond ticks.
+        DateTimeOffset instant = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero).AddTicks(17_000);
+
+        long before = SqliteScratchFile.NowMilliseconds();
+        await backend.SetNextAvailableAsync(account, Reward, instant);
+        long after = SqliteScratchFile.NowMilliseconds();
+        (long? created, long? updated) = ScheduleTimes(file, account);
+        Assert.Equal(updated, created);
+        Assert.InRange(created ?? -1, before, after);
+        DateTimeOffset readBack = (await backend.GetNextAvailableAsync(account, Reward))!.Value;
+        Assert.NotEqual(instant, readBack);   // the truncation this fact is about did happen
+
+        await SqliteScratchFile.WaitForClockPastAsync(after);
+        await backend.SetNextAvailableAsync(account, Reward, instant);
+        Assert.Equal((created, updated), ScheduleTimes(file, account));
+        await backend.SetNextAvailableAsync(account, Reward, readBack);
+        Assert.Equal((created, updated), ScheduleTimes(file, account));
+
+        before = SqliteScratchFile.NowMilliseconds();
+        await backend.SetNextAvailableAsync(account, Reward, instant.AddMilliseconds(5));
+        after = SqliteScratchFile.NowMilliseconds();
+        (long? keptCreated, long? moved) = ScheduleTimes(file, account);
+        Assert.Equal(created, keptCreated);
+        Assert.InRange(moved ?? -1, before, after);
     }
 
     /// <summary>Two processes opening one legacy file at once must not both add a column. The loser of that race

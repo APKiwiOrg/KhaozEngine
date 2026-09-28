@@ -145,6 +145,7 @@ public sealed partial class TileWorldServer : IDisposable
 
         this.config = config;
         this.registry = registry ?? TileProtocol.CreateRegistry(config.PlaneCount);
+        preparation = CreatePreparationRuntime(config, this.registry);
         interactionTargets = targets;
         entityTargets = entityInteractionReachPolicy is null
             ? combatTargets

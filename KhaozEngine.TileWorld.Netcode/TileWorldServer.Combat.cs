@@ -212,6 +212,12 @@ public sealed partial class TileWorldServer
             // or not it ever fought. Guarded, an idle world costs two comparisons per entity and no writes at all.
             if (moved) cell.World.Set(e, combat);
 
+            if (preparation is not null)
+            {
+                if (PreparationIsDue(netId, cell, e, state, combat))
+                    rollOrder.Add((combat.TargetSinceTick, netId, state.CombatTarget));
+                continue;
+            }
             if (state.CombatTarget == 0 || combat.CooldownRemaining != 0) continue;
             // COUNTED, and only for an ABSENT component. Everything that reaches this line wants to swing and is off
             // cooldown, so a missing TileHealth here is a game that never wrote one, which is silent in every other
@@ -264,6 +270,7 @@ public sealed partial class TileWorldServer
 
             // The SAME two rects the reach check just read, handed on rather than resolved a second time, so a rule
             // that measures geometry itself cannot disagree with the check that admitted the swing.
+            CapturePreparedRoll(attacker);
             TileAttackOutcome outcome = CombatRules.Roll(new TileAttackContext(
                 attacker, attackerState.Tile, attackerHealth, target, targetState.Tile, targetHealth, TickCount,
                 attackerFootprint, targetFootprint));
@@ -298,6 +305,7 @@ public sealed partial class TileWorldServer
 
             var ev = new TileCombatEvent(attacker, target, outcome.Damage, outcome.Kind, outcome.Landed, killed);
             combatEvents.Add(ev);
+            CompletePreparedSwing(ev);
             OnCombatEvent?.Invoke(ev);
         }
 
@@ -317,6 +325,7 @@ public sealed partial class TileWorldServer
             // COLLECTED here and despawned after the serve. See ReapDeadActors for the whole reason.
             if (slot < 0 && actorNetIds.Contains(netId)) deadActors.Add(netId);
         }
+        FinishPreparationCombat();
     }
 
     // Tick step 5b: the despawn half of an ACTOR's death, held back until every client has been served.
@@ -374,7 +383,8 @@ public sealed partial class TileWorldServer
     {
         if (!host.TryGetOwner(attacker, out CellSim cell, out Entity e)) return;
         cell.World.TryGet(e, out TileCombatState combat);
-        byte ticks = CombatRules?.AttackTicks(attacker) ?? 0;
+        byte ticks = PreparedRollCadence(attacker);
+        if (ticks == 0) ticks = CombatRules?.AttackTicks(attacker) ?? 0;
         if (ticks == 0) ticks = combat.AttackTicks;
         combat.CooldownRemaining = ticks == 0 ? (byte)1 : ticks;
         combat.LastCombatTick = TickCount;

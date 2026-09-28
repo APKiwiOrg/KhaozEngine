@@ -259,6 +259,7 @@ public sealed partial class TileWorldServer
     public bool DespawnActor(long netId)
     {
         if (!actorNetIds.Remove(netId)) return false;
+        RemovePreparationParticipant(netId);
         Actors.Forget(netId);
         bool owned = TryResolveActor(netId, out CellSim cell, out Entity e);
         actorCells.Remove(netId);

@@ -211,6 +211,7 @@ public sealed partial class TileWorldServer : IPersistenceHost<TileMoveState>
             if (accountIdBySlot.TryGetValue(slot, out string? account)
                 && TryGetPlayerState(slot, out TileMoveState final))
                 PlayerLeaving?.Invoke(slot, account, final);
+            RemovePreparationParticipant(netId);
             if (host.TryGetOwner(netId, out CellSim cell, out Entity e) && cell.World.IsAlive(e))
             {
                 // Eager: out of the ownership index before the despawn, so a handoff pass on the same frame cannot

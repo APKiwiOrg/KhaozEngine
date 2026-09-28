@@ -22,7 +22,7 @@ internal static class SqlServerJournalResetHarness
         => SqlServerJournalTestDatabase.RequireDedicatedTestDatabase(
             Environment.GetEnvironmentVariable("KE_SQLSERVER_TEST_CONNSTRING"));
 
-    /// <summary>A store that creates the version-two journal when the test database has none yet.</summary>
+    /// <summary>A store that creates the version-three journal when the test database has none yet.</summary>
     internal static SqlServerMutationJournalStore OpenStore()
         => new(new SqlServerMutationJournalStoreOptions(ConnectionString));
 
@@ -77,14 +77,14 @@ internal static class SqlServerJournalResetHarness
         await connection.OpenAsync();
         await using SqlCommand command = connection.CreateCommand();
         command.CommandText = """
-            SELECT metadata_key, schema_version, store_epoch, updated_at_utc
+            SELECT metadata_key, schema_version, store_epoch, updated_at_utc, created_at_utc
             FROM dbo.journal_metadata ORDER BY metadata_key;
             """;
         await using SqlDataReader reader = await command.ExecuteReaderAsync();
         var rows = new List<string>();
         while (await reader.ReadAsync())
             rows.Add(FormattableString.Invariant(
-                $"{reader.GetByte(0)}|{reader.GetInt32(1)}|{reader.GetGuid(2):D}|{reader.GetFieldValue<DateTimeOffset>(3):O}"));
+                $"{reader.GetByte(0)}|{reader.GetInt32(1)}|{reader.GetGuid(2):D}|{reader.GetFieldValue<DateTimeOffset>(3):O}|{(reader.IsDBNull(4) ? (object)"null" : reader.GetFieldValue<DateTimeOffset>(4)):O}"));
         return string.Join('\n', rows);
     }
 

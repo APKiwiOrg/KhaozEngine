@@ -17,7 +17,7 @@ public enum SqlServerJournalSchemaMode
     AutoCreate,
     ValidateOnly,
 
-    /// <summary>Validates the version-two schema with catalog <c>SELECT</c>s only, in one read committed
+    /// <summary>Validates the version-three schema with catalog <c>SELECT</c>s only, in one read committed
     /// transaction that is rolled back, with no DDL and no application lock. The store then refuses every write
     /// path with <see cref="System.NotSupportedException"/>. A missing or older schema is refused with
     /// <c>SchemaMismatch</c>, never created or migrated.</summary>
@@ -416,6 +416,8 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
     internal static string SchemaSqlForTest => SqlServerJournalSchema.SchemaSql;
     internal static string VersionOneSchemaSqlForTest => SqlServerJournalSchema.VersionOneSchemaSql;
     internal static IReadOnlyList<string> VersionOneMigrationSqlForTest => SqlServerJournalSchema.VersionOneMigrationSql;
+    internal static string VersionTwoSchemaSqlForTest => SqlServerJournalSchema.VersionTwoSchemaSql;
+    internal static IReadOnlyList<string> VersionTwoMigrationSqlForTest => SqlServerJournalSchema.VersionTwoMigrationSql;
 
     private enum OperationLookupStatus
     {

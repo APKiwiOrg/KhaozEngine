@@ -13,12 +13,13 @@ namespace KhaozEngine.WorldStore.SqlServer;
 
 internal static partial class SqlServerJournalSchema
 {
-    internal const int CurrentVersion = 2;
-    internal const string RequiredMigration = "sqlserver-journal-v2-operation-retention";
+    internal const int CurrentVersion = 3;
+    internal const string RequiredMigration = "sqlserver-journal-v3-row-timestamps";
     private const string ApplicationLockResource = "KhaozEngine.WorldStore.SqlServer.JournalSchema";
 
-    internal static string SchemaSql { get; } = LoadSchemaSql("JournalSchemaV2.sql");
+    internal static string SchemaSql { get; } = LoadSchemaSql("JournalSchemaV3.sql");
     internal static string VersionOneSchemaSql { get; } = LoadSchemaSql("JournalSchemaV1.sql");
+    internal static string VersionTwoSchemaSql { get; } = LoadSchemaSql("JournalSchemaV2.sql");
     internal static IReadOnlyList<string> VersionOneMigrationSql { get; } = Array.AsReadOnly(new[]
     {
         """
@@ -127,7 +128,14 @@ internal static partial class SqlServerJournalSchema
             {
                 await ValidateShapeAsync(connection, transaction, commandTimeoutSeconds, 1, cancellationToken).ConfigureAwait(false);
                 if (mode == SqlServerJournalSchemaMode.ValidateOnly) throw Mismatch("unsupported version '1'");
-                await MigrateVersionOneAsync(connection, transaction, commandTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+                await MigrateAsync(connection, transaction, commandTimeoutSeconds, VersionOneMigrationSql, cancellationToken).ConfigureAwait(false);
+                declaredVersion = 2;
+            }
+            if (declaredVersion == 2)
+            {
+                await ValidateShapeAsync(connection, transaction, commandTimeoutSeconds, 2, cancellationToken).ConfigureAwait(false);
+                if (mode == SqlServerJournalSchemaMode.ValidateOnly) throw Mismatch("unsupported version '2'");
+                await MigrateAsync(connection, transaction, commandTimeoutSeconds, VersionTwoMigrationSql, cancellationToken).ConfigureAwait(false);
                 declaredVersion = CurrentVersion;
             }
             if (declaredVersion != CurrentVersion) throw Mismatch($"unsupported version '{declaredVersion}'");
@@ -223,13 +231,19 @@ internal static partial class SqlServerJournalSchema
             : throw Mismatch(value is null or DBNull ? "missing metadata" : "malformed metadata version");
     }
 
-    private static async Task MigrateVersionOneAsync(
+    /// <summary>
+    /// Runs one migration's statements in order, each as its own batch, inside the caller's locked transaction. A
+    /// statement that reads a column an earlier one added must be its own batch, because SQL Server compiles a whole
+    /// batch before running any of it.
+    /// </summary>
+    private static async Task MigrateAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         int commandTimeoutSeconds,
+        IReadOnlyList<string> migration,
         CancellationToken cancellationToken)
     {
-        foreach (string sql in VersionOneMigrationSql)
+        foreach (string sql in migration)
         {
             await using SqlCommand command = Command(connection, transaction, commandTimeoutSeconds, sql);
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -243,7 +257,6 @@ internal static partial class SqlServerJournalSchema
         int expectedVersion,
         CancellationToken cancellationToken)
     {
-        HashSet<string> expectedColumns = expectedVersion == 1 ? ExpectedColumnsV1 : ExpectedColumns;
         HashSet<string> expectedIndexes = expectedVersion == 1 ? ExpectedIndexesV1 : ExpectedIndexes;
         var actualColumns = new HashSet<string>(StringComparer.Ordinal);
         await using (SqlCommand columns = Command(connection, transaction, commandTimeoutSeconds, """
@@ -259,7 +272,7 @@ internal static partial class SqlServerJournalSchema
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 actualColumns.Add(Column(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt16(3), reader.GetBoolean(4), reader.GetString(5)));
         }
-        if (!actualColumns.SetEquals(expectedColumns))
+        if (!ColumnsMatch(actualColumns, expectedVersion))
             throw Mismatch("partial, malformed, or contains unsupported columns");
 
         var indexes = new HashSet<string>(StringComparer.Ordinal);
@@ -362,59 +375,6 @@ internal static partial class SqlServerJournalSchema
         if (epoch == Guid.Empty) throw Mismatch("metadata has an empty store epoch");
     }
 
-    private static readonly HashSet<string> ExpectedColumns = new(StringComparer.Ordinal)
-    {
-        Column("journal_metadata", "metadata_key", "tinyint", 1, false, ""),
-        Column("journal_metadata", "schema_version", "int", 4, false, ""),
-        Column("journal_metadata", "store_epoch", "uniqueidentifier", 16, false, ""),
-        Column("journal_metadata", "updated_at_utc", "datetimeoffset", 10, false, ""),
-        Column("journal_stream", "stream_key", "nvarchar", 512, false, "Latin1_General_100_BIN2"),
-        Column("journal_stream", "current_version", "bigint", 8, false, ""),
-        Column("journal_stream", "retained_floor", "bigint", 8, false, ""),
-        Column("journal_stream", "updated_at_utc", "datetimeoffset", 10, false, ""),
-        Column("journal_event", "stream_key", "nvarchar", 512, false, "Latin1_General_100_BIN2"),
-        Column("journal_event", "stream_version", "bigint", 8, false, ""),
-        Column("journal_event", "operation_id", "uniqueidentifier", 16, false, ""),
-        Column("journal_event", "operation_ordinal", "int", 4, false, ""),
-        Column("journal_event", "event_type", "nvarchar", 256, false, "Latin1_General_100_BIN2"),
-        Column("journal_event", "event_schema_version", "int", 4, false, ""),
-        Column("journal_event", "payload", "varbinary", -1, false, ""),
-        Column("journal_event", "payload_sha256", "binary", 32, false, ""),
-        Column("journal_event", "committed_at_utc", "datetimeoffset", 10, false, ""),
-        Column("journal_operation", "operation_id", "uniqueidentifier", 16, false, ""),
-        Column("journal_operation", "operation_kind", "nvarchar", 256, false, "Latin1_General_100_BIN2"),
-        Column("journal_operation", "intent_fingerprint_format", "int", 4, false, ""),
-        Column("journal_operation", "intent_fingerprint", "binary", 32, false, ""),
-        Column("journal_operation", "execution_fingerprint_format", "int", 4, false, ""),
-        Column("journal_operation", "execution_fingerprint", "binary", 32, false, ""),
-        Column("journal_operation", "result_schema", "nvarchar", 256, false, "Latin1_General_100_BIN2"),
-        Column("journal_operation", "result_schema_version", "int", 4, false, ""),
-        Column("journal_operation", "result_data", "varbinary", -1, false, ""),
-        Column("journal_operation", "result_sha256", "binary", 32, false, ""),
-        Column("journal_operation", "committed_at_utc", "datetimeoffset", 10, false, ""),
-        Column("journal_operation", "retention_started_at_utc", "datetimeoffset", 10, false, ""),
-        Column("journal_operation_stream", "operation_id", "uniqueidentifier", 16, false, ""),
-        Column("journal_operation_stream", "stream_key", "nvarchar", 512, false, "Latin1_General_100_BIN2"),
-        Column("journal_operation_stream", "before_version", "bigint", 8, false, ""),
-        Column("journal_operation_stream", "after_version", "bigint", 8, false, ""),
-        Column("journal_operation_stream", "event_count", "int", 4, false, ""),
-        Column("journal_snapshot", "stream_key", "nvarchar", 512, false, "Latin1_General_100_BIN2"),
-        Column("journal_snapshot", "through_version", "bigint", 8, false, ""),
-        Column("journal_snapshot", "snapshot_schema", "nvarchar", 256, false, "Latin1_General_100_BIN2"),
-        Column("journal_snapshot", "snapshot_schema_version", "int", 4, false, ""),
-        Column("journal_snapshot", "data", "varbinary", -1, false, ""),
-        Column("journal_snapshot", "data_sha256", "binary", 32, false, ""),
-        Column("journal_snapshot", "created_at_utc", "datetimeoffset", 10, false, ""),
-        Column("journal_projection", "stream_key", "nvarchar", 512, false, "Latin1_General_100_BIN2"),
-        Column("journal_projection", "section_name", "nvarchar", 256, false, "Latin1_General_100_BIN2"),
-        Column("journal_projection", "source_version", "bigint", 8, false, ""),
-        Column("journal_projection", "projection_schema", "nvarchar", 256, false, "Latin1_General_100_BIN2"),
-        Column("journal_projection", "projection_schema_version", "int", 4, false, ""),
-        Column("journal_projection", "data", "varbinary", -1, false, ""),
-        Column("journal_projection", "data_sha256", "binary", 32, false, ""),
-        Column("journal_projection", "updated_at_utc", "datetimeoffset", 10, false, ""),
-    };
-
     private static readonly HashSet<string> ExpectedIndexes = new(StringComparer.Ordinal)
     {
         Index("journal_metadata", "pk_journal_metadata", true, true, "CLUSTERED", 1, "metadata_key", false, false),
@@ -444,10 +404,6 @@ internal static partial class SqlServerJournalSchema
         ForeignKey("fk_journal_snapshot_stream", "journal_snapshot", "stream_key", "journal_stream", "stream_key", "NO_ACTION", "NO_ACTION", false, false, 1),
         ForeignKey("fk_journal_projection_stream", "journal_projection", "stream_key", "journal_stream", "stream_key", "NO_ACTION", "NO_ACTION", false, false, 1),
     };
-
-    private static readonly HashSet<string> ExpectedColumnsV1 = Without(
-        ExpectedColumns,
-        Column("journal_operation", "retention_started_at_utc", "datetimeoffset", 10, false, ""));
 
     private static readonly HashSet<string> ExpectedIndexesV1 = Without(
         ExpectedIndexes,

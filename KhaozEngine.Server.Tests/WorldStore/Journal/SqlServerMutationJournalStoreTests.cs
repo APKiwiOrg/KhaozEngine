@@ -126,7 +126,7 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
     }
 
     [SqlServerFact]
-    public void Auto_create_is_idempotent_and_validate_only_accepts_version_two()
+    public void Auto_create_is_idempotent_and_validate_only_accepts_version_three()
     {
         _ = new SqlServerMutationJournalStore(DedicatedConnectionString);
         _ = new SqlServerMutationJournalStore(DedicatedConnectionString);

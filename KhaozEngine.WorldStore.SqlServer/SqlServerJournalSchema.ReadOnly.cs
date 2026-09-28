@@ -10,7 +10,7 @@ namespace KhaozEngine.WorldStore.SqlServer;
 internal static partial class SqlServerJournalSchema
 {
     /// <summary>
-    /// Validates the version-two schema for <see cref="SqlServerJournalSchemaMode.ReadOnly"/>. Every command is a
+    /// Validates the version-three schema for <see cref="SqlServerJournalSchemaMode.ReadOnly"/>. Every command is a
     /// catalog or metadata <c>SELECT</c> inside one read committed transaction that always ends in a rollback. It
     /// takes no application lock, because that lock only orders writers, and it never creates or migrates: a missing
     /// or older schema is a <c>SchemaMismatch</c> refusal naming the migration a writer would apply.

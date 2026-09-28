@@ -515,7 +515,7 @@ public sealed class MutationJournalDatabaseClockPurgeTests
     }
 
     [SqlServerFact]
-    public async Task Sql_server_version_one_test_setup_restores_version_two_after_body_failure()
+    public async Task Sql_server_version_one_test_setup_restores_version_three_after_body_failure()
     {
         using var scope = new Task6SqlServerScope();
         SqlServerJournalPrefixStore store = scope.Open(retryHorizon: RetryHorizon);
@@ -530,7 +530,7 @@ public sealed class MutationJournalDatabaseClockPurgeTests
         {
             SchemaMode = SqlServerJournalSchemaMode.ValidateOnly,
         });
-        Assert.Equal(2, await ReadSqlServerSchemaVersionAsync(scope.ConnectionString));
+        Assert.Equal(3, await ReadSqlServerSchemaVersionAsync(scope.ConnectionString));
         Assert.True(await SqlServerRetentionColumnExistsAsync(scope.ConnectionString));
     }
 
@@ -658,6 +658,10 @@ public sealed class MutationJournalDatabaseClockPurgeTests
             DROP INDEX ix_journal_operation_retention ON dbo.journal_operation;
             ALTER TABLE dbo.journal_operation DROP CONSTRAINT df_journal_operation_retention;
             ALTER TABLE dbo.journal_operation DROP COLUMN retention_started_at_utc;
+            ALTER TABLE dbo.journal_metadata DROP COLUMN created_at_utc;
+            ALTER TABLE dbo.journal_stream DROP COLUMN created_at_utc;
+            ALTER TABLE dbo.journal_operation_stream DROP COLUMN created_at_utc;
+            ALTER TABLE dbo.journal_projection DROP COLUMN created_at_utc;
             UPDATE dbo.journal_metadata SET schema_version = 1 WHERE metadata_key = 1;
             """;
         try

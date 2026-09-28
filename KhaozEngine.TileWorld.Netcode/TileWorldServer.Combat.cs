@@ -117,8 +117,9 @@ public sealed partial class TileWorldServer
     public IReadOnlyList<TileCombatEvent> CombatEventsThisTick => combatEvents;
 
     /// <summary>Pushes one entity's next swing out by <paramref name="ticks"/> server ticks, by ADDING to
-    /// <see cref="TileCombatState.CooldownRemaining"/>. Returns false and writes nothing when no live cell owns the
-    /// id.
+    /// <see cref="TileCombatState.CooldownRemaining"/>. With preparation enabled, an active or retained deadline
+    /// also gains the accepted delay. Read the absolute result through <see cref="TryGetAttackReadyTick"/>.
+    /// Returns false and writes nothing when no live cell owns the id or a revised deadline cannot be represented.
     /// <para>WHAT A GAME USES IT FOR is an action that costs attack time without being a swing, which in the OSRS
     /// mould is eating: a bite delays the next blow rather than interrupting the fight. A potion, a spell with a
     /// cast delay, a stun and a knockback all want the same write, so the door is the delay rather than the food.
@@ -141,7 +142,8 @@ public sealed partial class TileWorldServer
     /// </summary>
     /// <param name="netId">The entity whose next swing is pushed out.</param>
     /// <param name="ticks">How many server ticks to ADD to the wait. Zero writes nothing.</param>
-    /// <returns>True when a live cell owns the id, whether or not anything was written.</returns>
+    /// <returns>True when the live entity accepted the delay, including a zero or saturated no-op. False when the
+    /// entity is absent or an enabled preparation's identity or deadline cannot be revised.</returns>
     public bool DelayAttack(long netId, byte ticks)
     {
         if (!host.TryGetOwner(netId, out CellSim cell, out Entity e)) return false;
@@ -150,6 +152,7 @@ public sealed partial class TileWorldServer
         // Default when the entity carries none, which is the create case above: every other field stays zero, so
         // this writes a wait and no cadence, no lock and no damage record.
         cell.World.TryGet(e, out TileCombatState combat);
+        if (TryHandlePreparationDelay(netId, cell, e, ticks, ref combat, out bool succeeded)) return succeeded;
         int delayed = combat.CooldownRemaining + ticks;
         combat.CooldownRemaining = delayed > byte.MaxValue ? byte.MaxValue : (byte)delayed;
         // The write is what puts a created state in the world, and the tick pass reads the component rather than a
@@ -187,6 +190,7 @@ public sealed partial class TileWorldServer
         combatants.AddRange(actorNetIds);
 
         rollOrder.Clear();
+        BeginCombatCountdown();
         for (int i = 0; i < combatants.Count; i++)
         {
             long netId = combatants[i];
@@ -211,7 +215,14 @@ public sealed partial class TileWorldServer
             // standing still still paid for one, and every player acquired the component on its first tick whether
             // or not it ever fought. Guarded, an idle world costs two comparisons per entity and no writes at all.
             if (moved) cell.World.Set(e, combat);
+            combatCountdownPassed = i + 1;
 
+            if (preparation is not null)
+            {
+                if (PreparationIsDue(netId, cell, e, state, combat))
+                    rollOrder.Add((combat.TargetSinceTick, netId, state.CombatTarget));
+                continue;
+            }
             if (state.CombatTarget == 0 || combat.CooldownRemaining != 0) continue;
             // COUNTED, and only for an ABSENT component. Everything that reaches this line wants to swing and is off
             // cooldown, so a missing TileHealth here is a game that never wrote one, which is silent in every other
@@ -226,6 +237,7 @@ public sealed partial class TileWorldServer
             rollOrder.Add((combat.TargetSinceTick, netId, state.CombatTarget));
         }
 
+        combatCountdownComplete = true;
         if (CombatRules is null || rollOrder.Count == 0) return;
         rollOrder.Sort(OldestLockFirst);
 
@@ -264,6 +276,7 @@ public sealed partial class TileWorldServer
 
             // The SAME two rects the reach check just read, handed on rather than resolved a second time, so a rule
             // that measures geometry itself cannot disagree with the check that admitted the swing.
+            CapturePreparedRoll(attacker);
             TileAttackOutcome outcome = CombatRules.Roll(new TileAttackContext(
                 attacker, attackerState.Tile, attackerHealth, target, targetState.Tile, targetHealth, TickCount,
                 attackerFootprint, targetFootprint));
@@ -298,6 +311,7 @@ public sealed partial class TileWorldServer
 
             var ev = new TileCombatEvent(attacker, target, outcome.Damage, outcome.Kind, outcome.Landed, killed);
             combatEvents.Add(ev);
+            CompletePreparedSwing(ev);
             OnCombatEvent?.Invoke(ev);
         }
 
@@ -374,7 +388,8 @@ public sealed partial class TileWorldServer
     {
         if (!host.TryGetOwner(attacker, out CellSim cell, out Entity e)) return;
         cell.World.TryGet(e, out TileCombatState combat);
-        byte ticks = CombatRules?.AttackTicks(attacker) ?? 0;
+        byte ticks = PreparedRollCadence(attacker);
+        if (ticks == 0) ticks = CombatRules?.AttackTicks(attacker) ?? 0;
         if (ticks == 0) ticks = combat.AttackTicks;
         combat.CooldownRemaining = ticks == 0 ? (byte)1 : ticks;
         combat.LastCombatTick = TickCount;

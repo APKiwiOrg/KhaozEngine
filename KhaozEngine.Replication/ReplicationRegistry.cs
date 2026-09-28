@@ -132,7 +132,7 @@ public sealed class ReplicationRegistry
         if (discreteSample)
             setFromBytes = (w, e, bytes) => w.Set(e, read(new BinaryReader(new MemoryStream(bytes))));
 
-        var codec = new ComponentCodec(typeId, lengthPrefixed, channels, TrySerialize, Deserialize, lerpFromBytes, setFromBytes, CaptureInto, RemoveComponent);
+        var codec = new ComponentCodec(typeId, typeof(T), lengthPrefixed, channels, TrySerialize, Deserialize, lerpFromBytes, setFromBytes, CaptureInto, RemoveComponent);
         ordered.Add(codec);
         byId[typeId] = codec;
     }
@@ -162,19 +162,30 @@ public sealed class ReplicationRegistry
     /// </summary>
     public bool IsRegistered(ushort typeId) => byId.ContainsKey(typeId);
 
+    /// <summary>Whether the id registers exactly component <typeparamref name="T"/> with exactly the requested
+    /// channel flags. Checks registration metadata without invoking a codec or inspecting its implementation.</summary>
+    /// <typeparam name="T">The required component type.</typeparam>
+    /// <param name="typeId">The required registered id.</param>
+    /// <param name="expectedChannels">The complete channel set, including modifiers. Extra flags do not match.</param>
+    /// <returns>False for an absent id, another component type, or a different channel set.</returns>
+    public bool IsRegistered<T>(ushort typeId, ReplicationChannels expectedChannels) where T : struct, IComponent =>
+        byId.TryGetValue(typeId, out ComponentCodec? codec)
+        && codec.ComponentType == typeof(T) && codec.Channels == expectedChannels;
+
     internal bool TryGet(ushort typeId, out ComponentCodec codec) => byId.TryGetValue(typeId, out codec!);
 }
 
 /// <summary>A single component type's erased serialize/deserialize/lerp closures.</summary>
 internal sealed class ComponentCodec
 {
-    public ComponentCodec(ushort typeId, bool lengthPrefixed, ReplicationChannels channels,
+    public ComponentCodec(ushort typeId, Type componentType, bool lengthPrefixed, ReplicationChannels channels,
         Func<World, Entity, BinaryWriter, bool> trySerialize,
         Action<World, Entity, BinaryReader> deserialize, Action<World, Entity, byte[], byte[], float>? lerpFromBytes,
         Action<World, Entity, byte[]>? setFromBytes,
         Func<World, Entity, BinaryWriter, bool> captureInto, Action<World, Entity> removeComponent)
     {
         TypeId = typeId;
+        ComponentType = componentType;
         LengthPrefixed = lengthPrefixed;
         Channels = channels;
         TrySerialize = trySerialize;
@@ -186,6 +197,9 @@ internal sealed class ComponentCodec
     }
 
     public ushort TypeId { get; }
+
+    /// <summary>The component type supplied to registration, retained before erasing its codec delegates.</summary>
+    public Type ComponentType { get; }
 
     /// <summary>True when this is a consumer extension component: it is length-prefixed on the wire
     /// (<c>[typeId][7-bit len][data]</c>) so an older client can skip it. See

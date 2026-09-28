@@ -7,15 +7,6 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.15.0
 
-- On Windows every texture now samples its mip chain, so distant textures stop aliasing and the ground filters as
-  designed through the anisotropy and mip bias of `TerrainSamplerConfig`. The native Direct3D 11 backend handed the
-  driver Vortice's sampler description, whose layout put a maximum LOD of 0 where the driver reads it, so every
-  sampler read mip level 0 only and an explicit LOD or a material mip bias changed nothing. A consumer's own
-  Direct3D 11 goldens will move where they draw a mipmapped texture below its full size. A texture created with a
-  mip chain whose lower levels were never filled now shows those levels on Windows, as it already did on Vulkan
-  and Metal. The backend now passes the driver a 52-byte description in the header's layout. One test pins that
-  layout, and another pins the size of every Vortice struct passed to the driver by address. The engine re-baked
-  six of its Direct3D 11 goldens ([#1192](https://github.com/APKiwiOrg/KhaozEngine/issues/1192)).
 - Every engine table now records when each row was created, and every table whose rows change after insert also
   records when each row last changed. The store sets both in the statement that writes the row, from the clock it
   already stamps its other times with, and a column that already held the insert time, such as
@@ -59,6 +50,33 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   without them. `InMemoryAccountStore.TimeProvider`, `AccountTableOptions.TimeProvider` and
   `SqlServerAccountStoreOptions.TimeProvider` set the clock the account times come from, the system clock by
   default ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+
+## 20.14.1
+
+- `ReplicationRegistry.IsRegistered<T>(id, expectedChannels)` checks the exact component type and channel set
+  without executing a codec. Prepared tile combat uses this at startup to reject a custom registry that binds
+  its reserved state id to another component or to channels other than Migrate-only, preventing silent state
+  loss at handoff and accidental replication or persistence of preparation internals.
+- Tile combat supports opt-in authoritative attack preparation. `ITileCombatPreparationRules` supplies a
+  game's lead, final-strike duration and public presentation key, while the server schedules and revises
+  attempts without predicting damage. Existing cooldown and food delay overlap the lead, continuing hits
+  keep their cadence, and null combat rules cancel pending attempts without a roll. Default consumers retain
+  their existing timing and legacy combat frames.
+- Matching preparation-enabled clients expose complete schedules, identity-aware outcome/cancellation
+  callbacks, a bounded `CombatPresentationTick`, and a pure stage sampler. Prepared outcomes replace the
+  legacy client `CombatEvent` callback in this mode, while server `OnCombatEvent` remains the award hook.
+  Consumers must opt in on both heads and change their connect protocol version. See the
+  [consumer contract](docs/USING-KHAOZENGINE.md#authoritative-attack-preparation-20141) for setup, delay/readiness,
+  interest and late-delivery behavior. Pose mapping, impact feedback and recovery remain game-owned.
+- On Windows every texture now samples its mip chain, so distant textures stop aliasing and the ground filters as
+  designed through the anisotropy and mip bias of `TerrainSamplerConfig`. The native Direct3D 11 backend handed the
+  driver Vortice's sampler description, whose layout put a maximum LOD of 0 where the driver reads it, so every
+  sampler read mip level 0 only and an explicit LOD or a material mip bias changed nothing. A consumer's own
+  Direct3D 11 goldens will move where they draw a mipmapped texture below its full size. A texture created with a
+  mip chain whose lower levels were never filled now shows those levels on Windows, as it already did on Vulkan
+  and Metal. The backend now passes the driver a 52-byte description in the header's layout. One test pins that
+  layout, and another pins the size of every Vortice struct passed to the driver by address. The engine re-baked
+  six of its Direct3D 11 goldens ([#1192](https://github.com/APKiwiOrg/KhaozEngine/issues/1192)).
 
 ## 20.14.0
 

@@ -15,6 +15,10 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public sealed record TileWorldServerConfig
 {
+    /// <summary>Optional authoritative preparation before combat impacts. Null keeps the legacy immediate-hit
+    /// path. An enabled game must use matching client mode and its own updated connect protocol version.</summary>
+    public ITileCombatPreparationRules? CombatPreparationRules { get; init; }
+
     /// <summary>Seconds per simulation tick. The snapshot cadence is welded to it: one serve per tick, so this is
     /// also how often a client hears from the server.</summary>
     public required float TickSeconds { get; init; }

@@ -67,10 +67,12 @@ public sealed partial class TileWorldClient
                     // first poll (a loading screen built once the transport is up) can still read why.
                     RefusedReason = ev.RejectReason;
                     IsJoined = false;
+                    ClearPreparations();
                     RefusedAtDoor?.Invoke(ev.RejectReason);
                     break;
                 case ClientSessionEventKind.Disconnected:
                     IsJoined = false;
+                    ClearPreparations();
                     Disconnected?.Invoke();
                     break;
                 case ClientSessionEventKind.Data:
@@ -85,6 +87,7 @@ public sealed partial class TileWorldClient
     // hand anything on the path between it and the server a way to kill its render loop.
     void OnServerFrame(byte[] data)
     {
+        CheckPreparationInterruption(TileProtocol.ServerFrameTag(data));
         switch (TileProtocol.ServerFrameTag(data))
         {
             case TileProtocol.ServerFrameSnapshot:
@@ -101,8 +104,14 @@ public sealed partial class TileWorldClient
             case TileProtocol.ServerFrameNotice:
                 if (TileProtocol.TryDecodeNotice(data, out string reason)) OnNotice(reason);
                 return;
+            case TileProtocol.ServerFrameCombatPreparation:
+                OnPreparationFrame(data, terminal: false);
+                return;
+            case TileProtocol.ServerFrameCombatPreparationTerminal:
+                OnPreparationFrame(data, terminal: true);
+                return;
             case TileProtocol.ServerFrameCombat:
-                if (TileProtocol.TryDecodeCombat(data, decodedCombat)) RaiseCombat();
+                if (!config.CombatPreparationEnabled && TileProtocol.TryDecodeCombat(data, decodedCombat)) RaiseCombat();
                 return;
         }
     }
@@ -150,6 +159,8 @@ public sealed partial class TileWorldClient
             DroppedSnapshotCount++;
             return;
         }
+
+        ObservePreparationSnapshot(serverTick);
 
         // THE HONEST READ's capture, and this is the ONE instant it can be taken. Apply has just written the newest
         // server state for every entity in the snapshot into World, and the next AdvancePresentation overwrites all
@@ -478,7 +489,11 @@ public sealed partial class TileWorldClient
         goneLatest.Clear();
         foreach (long netId in latestTiles.Keys)
             if (!liveLatest.Contains(netId)) goneLatest.Add(netId);
-        for (int i = 0; i < goneLatest.Count; i++) latestTiles.Remove(goneLatest[i]);
+        for (int i = 0; i < goneLatest.Count; i++)
+        {
+            latestTiles.Remove(goneLatest[i]);
+            combatPreparation?.Ledger.Forget(goneLatest[i]);
+        }
     }
 
     void CaptureLatest(Entity e, ref NetId id)

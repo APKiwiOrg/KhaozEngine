@@ -46,7 +46,7 @@ public static partial class TileProtocol
 
     /// <summary>The first id a GAME may register. Everything from
     /// <see cref="ReplicationRegistry.FirstExtensionTypeId"/> up to here belongs to the tile netcode, which is a
-    /// block of SIXTEEN ids and leaves seven free after <see cref="TileGroundItemInstanceTypeId"/>.
+    /// block of SIXTEEN ids and leaves six free after <see cref="TileCombatPreparationStateTypeId"/>.
     /// <para>It was <c>+8</c> until 18.14.0, which left a window TWO ids wide, and
     /// <see cref="TileObjectState"/> would have spent one of them. A window that runs out is not a minor
     /// release: ids at and above this one belong to games, so widening it renumbers every game registration in
@@ -158,6 +158,7 @@ public static partial class TileProtocol
         reg.Register<TileHealth>(TileHealthTypeId, WriteHealth, ReadHealth);
         reg.Register<TileCombatState>(TileCombatStateTypeId, WriteCombat, ReadCombat,
             channels: ReplicationChannels.Migrate);
+        RegisterPreparationState(reg);
         reg.Register<TileGroundItem>(TileGroundItemTypeId, WriteGroundItem,
             reader => ReadGroundItem(reader, planeCount));
         // The DEFAULT channels, and NOT OwnerOnly, which is the obvious-looking wrong answer here. OwnerOnly

@@ -16,6 +16,9 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public sealed record TileWorldClientConfig
 {
+    /// <summary>Opt in to authoritative preparation frames and callbacks. Both session peers must select this mode.</summary>
+    public bool CombatPreparationEnabled { get; init; }
+
     /// <summary>Seconds per command tick. Must equal the server's <see cref="TileWorldServerConfig.TickSeconds"/>:
     /// it is both the rate this client issues commands at and the timestep prediction replays them over.</summary>
     public required float TickSeconds { get; init; }

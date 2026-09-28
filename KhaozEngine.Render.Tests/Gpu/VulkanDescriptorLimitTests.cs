@@ -154,6 +154,14 @@ namespace KhaozEngine.Tests.Gpu
                 ["Temporal.resolve"] = L(T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"),
                     T("PrevDepth"), T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve", F)),
                 ["Temporal.depthStore"] = L(T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore", F)),
+                // Render3D/Rendering/TemporalSplitResolve.cs, the split entry point's two passes. Fragment-stage, none
+                // dynamic.
+                ["Temporal.prepare"] = L(T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"),
+                    S("LinearClamp"), U("Resolve", F)),
+                ["Temporal.accumulate"] = L(T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
+                    T("HistoryColor"), T("HistoryConfidence"), T("PreparedY"), T("PreparedCo"), T("PreparedCg"),
+                    T("PreparedReactive"), T("PreparedSurface"), T("PreparedExpected"), T("PreparedEdge"),
+                    S("LinearClamp"), U("Resolve", F)),
                 // Render3D/Rendering/TemporalDebugViewPass.cs, the debug views' immutable mode block at set 1, after
                 // the resolve's own layout at set 0.
                 ["Temporal.debugMode"] = L(U("DebugView", F)),
@@ -260,6 +268,8 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalResolveRenderer debug view", ["Temporal.resolve", "Temporal.debugMode"]),
             // The count probe binds the resolve's own layout alone, so it adds a pipeline and no layout.
             ("TemporalResolveRenderer count probe", ["Temporal.resolve"]),
+            ("TemporalSplitResolve prepare", ["Temporal.prepare"]),
+            ("TemporalSplitResolve accumulate", ["Temporal.accumulate"]),
             // The four rigid point-shadow pipelines (three caster variants and the row clear) are one row, the way
             // the cascade pass's three depth variants are: they differ in blend, depth state and shaders, and a
             // pipeline is in this table for its LAYOUT ARRAY, which is the same single set for all of them.
@@ -290,8 +300,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(54, ShippedLayouts.Count);
-            Assert.Equal(58, ShippedPipelines.Count);
+            Assert.Equal(56, ShippedLayouts.Count);
+            Assert.Equal(60, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

@@ -173,17 +173,19 @@ namespace KhaozEngine.Render3D.Internal
         /// Steps 1 and 3, the band, in metres. A pixel whose centre texel lies on a farther surface takes by dilation
         /// the motion of a nearer one. Where that nearer surface moved in the world, its own sample landing more than
         /// this many metres, as internal pixels at its depth through last frame's projection, plus
-        /// <see cref="MovingSurfaceMotionFraction"/> of its motion, from where a static point would have been, is
-        /// wide, and moves less on screen than the farther surface, as an avatar does under a camera that follows it,
-        /// the pixel's history follows the avatar's edge, which stays put on screen while the ground passes under it.
-        /// Its colour is the edge's anti-aliased coverage over a mix of the ground that passed, and dilation keeps it
-        /// for the edge. A pixel on the avatar itself, whose surface travelled in the world more than twice its motion
-        /// on screen, is a band pixel too, since the ground its feet stand on lies within the disocclusion tolerance of
-        /// its lowest pixels and would take their colour on where the avatar uncovers it. The pixel stores that it is
-        /// a band pixel, and a depth-tested pixel whose dilated nearest surface did not move in the world drops a
-        /// history that carries it, so the ground restarts rather than carrying the avatar's colour off with the pan.
-        /// A pixel beside or on the avatar, and a nearer surface reading the band where its edge was, whose stored
-        /// depths all lie farther, keep it.
+        /// <see cref="MovingSurfaceMotionFraction"/> of its motion, from where a static point would have been, is wide,
+        /// and moves less on screen than the farther surface, as an avatar does under a camera that follows it, the
+        /// pixel's history follows the avatar's edge, which stays put on screen while the ground passes under it. Its
+        /// colour is the edge's anti-aliased coverage over a mix of the ground that passed, and dilation keeps it for
+        /// the edge. A pixel on the avatar itself, whose surface travelled in the world more than
+        /// <see cref="FollowedTravelRatio"/> times its motion on screen, is marked too, since the ground its feet stand
+        /// on lies within the disocclusion tolerance of its lowest pixels and would take their colour on where the
+        /// avatar uncovers it. The pixel stores the band mark beside the edge and the followed mark on the avatar, and
+        /// a depth-tested pixel whose dilated nearest surface did not move in the world drops a history that carries
+        /// either, so the ground restarts rather than carrying the avatar's colour off with the pan. A pixel beside or
+        /// on the avatar, a nearer surface reading the band where its edge was, whose stored depths all lie farther,
+        /// and a followed history read where the same surface still shows
+        /// (<see cref="FollowedHistoryMotionFraction"/>), keep it.
         /// <para>
         /// A keyed box with ridged pixels, the camera following it across the textured wall under the reach, kept its
         /// luma in 20 and 32 of the 90 wall pixels it uncovered at 0.5 display pixels a frame at Native and Quality, 45
@@ -219,6 +221,12 @@ namespace KhaozEngine.Render3D.Internal
         /// </para>
         /// </summary>
         public const float WorldMotionMetres = 0.001f;
+        /// <summary>Step 1's followed surface: a pixel whose centre texel moves with the dilated nearest surface, a
+        /// surface that moved in the world (<see cref="WorldMotionMetres"/>), is on a surface the camera follows where
+        /// that surface travelled in the world more than this many times its motion on screen, rather than one
+        /// crossing a still view, which travels in the world as far as it moves on screen. It stores the followed
+        /// mark (<see cref="FollowedHistoryMotionFraction"/>).</summary>
+        public const float FollowedTravelRatio = 2f;
         /// <summary>
         /// Step 3 beside a followed surface. The avatar's own pixels store the followed mark while the camera follows
         /// it (<see cref="WorldMotionMetres"/>), and a pixel whose nearest surface did not move in the world drops a

@@ -49,6 +49,7 @@ namespace KhaozEngine.Tests.Render3D
                 1.25f
             },
             { "const float WorldMotionMetres = 0.001;", TemporalResolveTuning.WorldMotionMetres, 0.001f },
+            { "const float FollowedTravelRatio = 2.0;", TemporalResolveTuning.FollowedTravelRatio, 2f },
             {
                 "const float FollowedHistoryMotionFraction = 0.5;",
                 TemporalResolveTuning.FollowedHistoryMotionFraction, 0.5f
@@ -309,7 +310,7 @@ namespace KhaozEngine.Tests.Render3D
                 StringComparison.Ordinal);
             Assert.Contains("&& (movingEdge ? centreScreenMotion > closestScreenMotion", core,
                 StringComparison.Ordinal);
-            Assert.Contains(": travel > 2.0 * closestScreenMotion);", core, StringComparison.Ordinal);
+            Assert.Contains(": travel > FollowedTravelRatio * closestScreenMotion);", core, StringComparison.Ordinal);
             Assert.Contains("band = band && !nearerNarrow;", core, StringComparison.Ordinal);
             Assert.Contains("centreScreenMotion = length(centreOwn * internalSize);", core, StringComparison.Ordinal);
             Assert.DoesNotContain("farthestDepth", core, StringComparison.Ordinal);

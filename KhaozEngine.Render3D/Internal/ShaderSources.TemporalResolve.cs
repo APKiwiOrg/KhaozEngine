@@ -75,6 +75,7 @@ const float LockEdgeFloorInternalPixels = 0.001;
 const float ClipFlagMinimumMove = 0.0009765625;
 const float DilationReachInternalPixels = 1.25;
 const float WorldMotionMetres = 0.001;
+const float FollowedTravelRatio = 2.0;
 const float FollowedHistoryMotionFraction = 0.5;
 const float DisocclusionVisibleShare = 0.5;
 const float MovingShareConfidence = 0.0;
@@ -326,7 +327,8 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
 
     // The 3x3 reads each texel one step ahead. The compiler keeps the loop rolled, so a texel read at the top of its
     // own step stalls that step, while one read a step earlier arrives behind the arithmetic of the step before. The
-    // texels, and the order of every sum over them, are unchanged. The last step reads its own texel again.
+    // texels, and the order of every sum over them, are unchanged. The last step reads the last row's first texel
+    // again, inside the 3x3, so no read leaves it.
     ivec2 nextTexel = clamp(centreTexel + ivec2(-1), ivec2(0), maxTexel);
     vec4 nextScene = texelFetch(sampler2D(SceneColor, LinearClamp), nextTexel, 0);
     vec2 nextMotion = texelFetch(sampler2D(MotionTex, LinearClamp), nextTexel, 0).rg;
@@ -451,24 +453,23 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     //
     // Step 1's band, under the reach: a pixel beside or on a wide nearer surface that moved in the world. nearerMoved
     // is that test: the dilated texel's own sample lands more than WorldMotionMetres from where a static point would
-    // have been, in internal pixels at its depth through last frame's projection (one internal pixel spans
-    // 2 clipW / (P00 width) metres), plus the motion target's rounding. A static surface's travel is the motion
-    // target's float error on positions relative to the render origin, one distance in the world that more pixels
-    // show at a higher resolution or a nearer depth, so the test is in metres. Beside the surface's edge the centre
-    // texel lies on a farther surface that moves more on screen, as under a camera following the nearer one. That
-    // pixel's history followed the edge, which stays put on screen while the farther surface passes under it, so it
-    // holds the edge's colour over a mix of the farther surface. On the surface itself, where the centre texel moves
-    // with it, a pixel whose surface travelled in the world more than twice its motion on screen is followed, not
+    // have been, in internal pixels at its depth through last frame's projection (one internal pixel spans 2 clipW /
+    // (P00 width) metres), plus the motion target's rounding. A static surface's travel is the motion target's float
+    // error on positions relative to the render origin, one distance in the world that more pixels show at a higher
+    // resolution or a nearer depth, so the test is in metres. Beside the surface's edge the centre texel lies on a
+    // farther surface that moves more on screen, as under a camera following the nearer one. That pixel's history
+    // followed the edge, which stays put on screen while the farther surface passes under it, so it holds the edge's
+    // colour over a mix of the farther surface. On the surface itself, where the centre texel moves with it, a pixel
+    // whose surface travelled in the world more than FollowedTravelRatio times its motion on screen is followed, not
     // crossing a still view. Its history is its own colour, and a farther surface its lowest pixels touch, as the
     // ground under an avatar's feet lies within the disocclusion tolerance of them, takes that colour on where it is
     // uncovered. That pixel stores the followed mark rather than the band's, because once the surface stops its own
     // pixels read the same history and keep it (step 3). The band keeps the edge's anti-aliasing, and step 3 keeps a
     // pixel whose nearest surface did not move from taking either history on. A narrow nearer surface, a blade or a
-    // line, is held by the thin-feature lock
-    // instead. A surface crossing a still view leaves its history where it passed, as before: restarting the pixels
-    // it uncovers there would show a sub-texel feature's raw sample, brighter than its converged value. Both read the
-    // one narrow test of the nearer surface, and the band reads the dilated surface's travel before the pixel's own
-    // motion replaces it.
+    // line, is held by the thin-feature lock instead. A surface crossing a still view leaves its history where it
+    // passed, as before: restarting the pixels it uncovers there would show a sub-texel feature's raw sample, brighter
+    // than its converged value. Both read the one narrow test of the nearer surface, and the band reads the dilated
+    // surface's travel before the pixel's own motion replaces it.
     bool centreFarther = centreDepth > closestDepth * (1.0 + DisocclusionTolerance);
     bool ownReprojected = !depthTested && edgeMotion > DilationReachInternalPixels && centreFarther;
     float closestScreenMotion = length(closestMotion * internalSize);
@@ -476,7 +477,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
         / (CurrentDepth.x > 0.5 ? closestDepth : 1.0) + closestScreenMotion * MovingSurfaceMotionFraction;
     bool band = historyValid && !ownReprojected && nearerMoved
         && (movingEdge ? centreScreenMotion > closestScreenMotion && centreFarther
-            : travel > 2.0 * closestScreenMotion);
+            : travel > FollowedTravelRatio * closestScreenMotion);
     bool nearerNarrow = (ownReprojected || band) && temporalNarrowDepth(closestTexel, closestDepth, maxTexel, true);
     bool narrowMoving = ownReprojected && nearerNarrow;
     band = band && !nearerNarrow;

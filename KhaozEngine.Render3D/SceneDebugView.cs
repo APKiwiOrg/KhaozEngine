@@ -21,8 +21,10 @@ namespace KhaozEngine.Render3D
         /// feature lock holds whole keeps its weight. Takes effect only under <see cref="AntiAliasing.Temporal"/>.
         /// </summary>
         History,
-        /// <summary>Red where the resolve rejected history because the pixel was hidden last frame or reprojected off
-        /// screen, over the dimmed scene. Takes effect only under <see cref="AntiAliasing.Temporal"/>.</summary>
+        /// <summary>Red where the resolve rejected history because the pixel was hidden last frame, reprojected off
+        /// screen, or shows a still surface and carried the history a moving surface the camera follows left beside
+        /// or on it (the band of TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23), over the dimmed scene. Takes effect
+        /// only under <see cref="AntiAliasing.Temporal"/>.</summary>
         Disocclusion,
         /// <summary>Yellow where the reactive estimate lowered the history weight for transparent content, over the
         /// dimmed scene. Takes effect only under <see cref="AntiAliasing.Temporal"/>.</summary>

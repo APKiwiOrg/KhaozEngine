@@ -28,8 +28,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// The whole-chart mean is dominated by flat area and cannot see the finest groups turn grey, so the share of each
     /// fine group's reference contrast Quality keeps is held too, at about 0.7 of its measured value. Quality's
-    /// internal pixel is 1.5 display pixels, so groups finer than 1.5 internal pixels (the 1.2 and 1 pixel bars) are
-    /// past its internal Nyquist. They are held on the contrast they keep, not on resolving as separate bars.
+    /// internal pixel is 1.5 display pixels, so groups finer than 1.5 display pixels, one internal pixel (the 1.2 and
+    /// 1 pixel bars), are past its internal Nyquist. They are held on the contrast they keep, not on resolving as
+    /// separate bars.
     /// </para>
     /// <para>
     /// Both temporal images run the default sharpen (Sharpness 0.25) after the resolve, so the sharpen is part of what

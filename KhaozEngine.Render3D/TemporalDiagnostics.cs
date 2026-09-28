@@ -45,8 +45,9 @@ namespace KhaozEngine.Render3D;
 /// one under another anti-aliasing mode, whatever its internal size.</param>
 /// <param name="CountsFrameIndex">The frame the counts below were sampled on, minus 1 from the first render until the
 /// first <see cref="Scene3D.RequestTemporalCounts"/> is sampled and read back.</param>
-/// <param name="DisoccludedPixels">Estimated display pixels whose history was rejected by depth or an off-screen
-/// reprojection, from a 32 by 18 grid of 16 samples a cell.</param>
+/// <param name="DisoccludedPixels">Estimated display pixels whose history was rejected by depth, by an off-screen
+/// reprojection, or on a still surface because a moving surface the camera follows left it (the band drop of
+/// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23), from a 32 by 18 grid of 16 samples a cell.</param>
 /// <param name="ReactivePixels">Estimated display pixels the reactive estimate marked, on the same grid.</param>
 /// <param name="ClippedPixels">Estimated display pixels whose history the variance clip moved by more than 1/1024 in
 /// luma-weighted YCoCg, a quarter of an 8-bit display step, on the same grid. A smaller move, such as the half-float

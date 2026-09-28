@@ -58,6 +58,12 @@ public static partial class TileProtocol
     /// the engine reserving a game-owned number.</summary>
     public const byte ServerFrameCombat = 3;
 
+    /// <summary>Server-to-client tag: a chunk of the complete visible combat preparation state set.</summary>
+    public const byte ServerFrameCombatPreparation = 4;
+
+    /// <summary>Server-to-client tag: a chunk of resolved and cancelled preparation records for one tick.</summary>
+    public const byte ServerFrameCombatPreparationTerminal = 5;
+
     /// <summary>The tag a decoder answers for an EMPTY frame, which is no tag at all. A real one is never 0xFF, so
     /// a demux switch gets a default case rather than an index into a zero-length span.</summary>
     public const byte NoFrameTag = 0xFF;

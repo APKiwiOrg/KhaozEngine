@@ -76,15 +76,16 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
    from camera rotation alone. Beside a fast edge, where the nearer surface itself moved, a pixel on the farther
    surface keeps its own motion. Under that reach, beside a wide nearer surface that moved while the farther one moves
    more on screen, as under a camera following an avatar, the pixel keeps the dilated motion and marks its history
-   as the edge's (amendment 23).
+   as the edge's, and so does a pixel of the followed surface itself (amendment 23).
 2. **History fetch.** Sample the history at the reprojected position with a 5-tap Catmull-Rom filter. Bilinear history
    sampling blurs a little more every frame, and a stability-first filter keeps history for many frames.
 3. **Disocclusion.** Reproject the pixel's linear depth and compare it with the previous frame's depth at the
    reprojected position. Beyond a relative tolerance the pixel was hidden last frame, and its history weight drops to
    zero. A reprojected position off screen does the same. A moving surface skips the test (amendment 17). A mostly
    covered footprint counts as hidden unless a still narrow feature covered it or the pixel carries a lock a ridge
-   refreshed on the last frame, and one a moving surface showed at counts as hidden unless it is whole. A still
-   pixel clear of any edge drops a history marked as an edge's (amendment 23).
+   refreshed on the last frame, and one a moving surface showed at counts as hidden unless it is whole. A
+   depth-tested pixel whose nearest surface did not move in the world, ground panning under a follow camera included,
+   drops a history marked as a followed surface's (amendment 23).
 4. **Current sample reconstruction.** Gather the 3x3 internal samples around the display pixel and weight each by a
    Lanczos 2 kernel on the distance from its jittered sample position to the display pixel centre, measured in
    internal pixels. That is what turns jittered low resolution frames into a higher resolution image, and at `Native`
@@ -390,12 +391,12 @@ and changed these details. Each group's "Contract amendments" block carries the 
     so it counted as still and stored no mark at all. Once every moving surface takes the whole-footprint rule the
     stored state's fast level says nothing the moved level does not, so minus three minus the lock now marks a band
     pixel: one that took by dilation the motion of a nearer surface that moved in the world, its own sample more than
-    `WorldMotionInternalPixels` (0.05 internal pixels) plus the rounding fraction from a static point's, that is wide by
-    step 5's narrow test, and that moves less on screen than the farther surface its centre texel shows. The band still
-    counts as moved. A depth-tested pixel off any moving edge that carries the mark drops the history, unless every
-    stored depth lies farther than expected, a nearer surface reading the band where its edge was, or its own 3x3 holds
-    a surface farther than its centre, the nearer surface's own edge pixel on a frame the jitter centres it on the box.
-    The follow camera, excess pixels of those checked, before and now:
+    `WorldMotionMetres` (1 mm, below) plus the rounding fraction from a static point's, that is wide by step 5's narrow
+    test, and that moves less on screen than the farther surface its centre texel shows. A pixel of that surface itself
+    whose travel in the world is more than twice its motion on screen is a band pixel too (below). The band still
+    counts as moved. A depth-tested pixel whose dilated nearest surface did not move in the world and that carries the
+    mark drops the history, unless every stored depth lies farther than expected, a nearer surface reading the band
+    where its edge was. The follow camera, excess pixels of those checked, before and now:
 
     | Walk, display px a frame (checked) | Native | Quality | Performance | UltraPerformance |
     | --- | --- | --- | --- | --- |
@@ -437,6 +438,82 @@ and changed these details. Each group's "Contract amendments" block carries the 
     holds 0.00072 and 0.00060. That is a finding for the motion-clarity check against MSAA 4x. The local contrast
     against the reference does tell them apart, 1.223 and 0.985 of the reference's against 1.707 and 1.551, and
     `TemporalFastEdgeGpuTests` holds the resolve's departure from 1 under half of no anti-aliasing's.
+
+    Under the perspective follow camera a game uses the band did not hold. `FollowCamera3D`, 60 degrees of field of
+    view, 1.2 metres up and 12 back, followed a keyed ridged box 0.8 by 1.8 by 0.5 metres walking over textured ground
+    at 320 by 180 (`TemporalPerspectiveFollowGpuTests`). Neighbouring ground texels move apart on screen by their depth
+    step, so every ground pixel read as a moving edge, and the drop, then keyed on a pixel off any moving edge, never
+    fired on the ground. The walk away from the camera left a grey column along the box's whole path, and it was not
+    the band's. The box's lower front face lies within the disocclusion tolerance of the ground it stands on. On the
+    frame a ground point is uncovered its pixel's centre texel is still the box's, so it reads its own spot's history,
+    the box's. On the next frame its nearest texel is ground, it is depth tested, and no stored depth lies nearer by
+    the tolerance, so it keeps that history and pans it out at full confidence: a traced luma of 0.37 against the bare
+    ground's 0.43 for 9 frames. The band never marked the box's own pixels, so nothing told the ground that the history
+    was the followed surface's. A pixel of the moving surface itself, whose centre texel moves with the dilated nearest
+    so that it is no moving edge, now stores the band mark where the surface travelled in the world more than twice
+    its motion on screen, a followed surface rather than one crossing a still view, and the drop is keyed on the
+    dilated nearest surface having moved in the world, the band's own world test, in place of a moving edge. At the
+    boot pitch of 0.75 radians the walk away at half a display pixel a frame to 2.5 left 17, 50, 49, 21 and 8 trail
+    pixels at Native and 18, 47, 55, 35 and 18 at Quality, and leaves none. The drop also spared a pixel whose 3x3 held
+    a surface farther than its centre, for the nearer surface's own edge pixel on a frame the jitter centres it on the
+    surface. At a grazing angle, 0.35 radians at 320 by 180, every ground texel lies farther than the one a row below
+    it by more than the tolerance, so that spared every ground pixel, and the walk away at 1 display pixel a frame on
+    Quality still left 22. The world test now covers that edge pixel, and the spare and the 3x3's farthest depth are
+    gone.
+
+    The world test was 0.05 internal pixels. A static surface's travel is the motion target's float error on positions
+    relative to the render origin, up to about 90 metres from it with Y never rebased, and the depth's reconstruction:
+    one distance in the world, seen through more pixels at a higher resolution or a nearer depth. Orbiting its target
+    3 or 0.3 degrees a frame, strafing 0.15 metres a frame or creeping 0.4 millimetres a frame past crates and 12 metre
+    towers whose side the eye passes 0.6 metres from, near the origin and 10 km out across a render-origin step, at
+    2560 by 1440 and 3840 by 2160 (`TemporalStaticOrbitGpuTests`), it reached 0.075 internal pixels on a tower side
+    0.81 metres away at 3840 wide. No fixed pixel threshold has three times that while the slowest follow, half a
+    display pixel a frame on UltraPerformance, moves the box 0.167 internal pixels. In the world it was 0.211
+    millimetres at most. So the test compares the travel with `WorldMotionMetres` times last frame's `P00` times the
+    internal width over twice the clip w, the internal pixels 1 millimetre spans at the nearest texel's depth, clip w
+    being that depth under a perspective camera and 1 under an orthographic one. That is 6 centimetres a second at 60
+    frames a second, 4.7 times the worst static figure, and the slowest walk still stores 315 and 360 band marks on its
+    measured frame at the two pitches. On the orthographic wall it is 0.04 internal pixels at Native and 0.013 at
+    UltraPerformance. The error does not peak on the frames that cross a render-origin step, and no still run stores a
+    band mark on any frame, so none drops a band history.
+
+    Native and Quality meet acceptance 3 on 64 of the 72 walks at both pitches, away from the camera, sideways and
+    towards it at half a display pixel a frame to 3, against 27 before, the worst 5 pixels against 55. The other 8 stay
+    1 to 4 pixels over, on pixels the drop restarted on the measured frame, read against a floor restarted on the frame
+    the box uncovered them over textured ground, and on the feet row behind a sideways walk: at the boot pitch 2 of 311
+    sideways at 2 display pixels a frame and 2 of 60 towards at 1 on Quality, and at the low pitch 5 of 436 away at 2.5
+    on Quality, 2 and 3 of 71 sideways at half a pixel and 3 and 3 of 160 at 1 at Native and Quality, and 2 of 92
+    towards at 3 on Quality. Performance meets acceptance 3 on 21 of 36 walks, the worst 7 against 63, and
+    UltraPerformance on 5, the worst 42 against 48, the reconstruction's spill. `TemporalPerspectiveFollowGpuTests`
+    holds acceptance 3 where it is met and the measured excess and about a quarter more, at least 2, elsewhere. The
+    rule left 14 walks slightly worse: at the boot pitch on UltraPerformance away at 3 from 2 to 4 and towards at 1.5,
+    2, 2.5 and 3 from 7, 13, 6 and 3 to 8, 18, 7 and 7, and at the low pitch away at 2.5 and 3 from 0 and 0 to 4 and 6
+    on Performance and from 23 and 4 to 25 and 7 on UltraPerformance, sideways at half a pixel from 1 to 2 at Native and
+    from 15 to 16 on UltraPerformance, at 1 and 2.5 on UltraPerformance from 24 and 10 to 27 and 14, and towards at 3
+    from 0 to 2 on Quality.
+
+    Still lines three eighths and a quarter of a texel wide on the walk's ground (`TemporalFollowLinesGpuTests`) keep
+    at least 0.915 of their energy without the box on their worst frame under the orthographic follow, and the fact
+    holds 0.85. Under the perspective walk the blades along the box's edge keep as little as 0.77 at Quality from 1 to
+    2 display pixels a frame, with 3 to 9 trail pixels where the band left them from half a pixel to 2, and blades the
+    box reveals trail 1 to 6 pixels of 16 to 45 at Native at 1 and 1.5. The two failures pull apart: dropping the
+    band's history as a blade leaves the band shows its raw sub-texel sample, dark on a frame the jitter misses it and
+    bright on one it hits, while keeping it carries the box's colour under the thin-feature lock. Deferring the drop to
+    a frame the jitter hits the blade removed neither and brought back the grazing ground's trail. Keeping the blade
+    and removing only the box's share needs the state to record which part of a pixel's history the box gave, which it
+    does not ([#1191](https://github.com/APKiwiOrg/KhaozEngine/issues/1191)). On the orthographic wall the lines a
+    quarter of a texel wide across the path keep 2 trail pixels of 18 and 16 at Quality at half a display pixel a frame
+    and 1.5, where the pixel beside the band restarts every frame through the whole-footprint rule, since its
+    footprint reaches the box's stored depth, so a line crossing it shows its raw sample.
+
+    Printed lines outside the perspective facts moved only on the followed box's own edges (`TemporalFastEdgeGpuTests`):
+    at 0.25 internal pixels a frame on Native its edge error from 0.01729 to 0.01728, and at 0.5 on Quality its
+    temporal error from 0.01115 to 0.01114, its fast flips from 0.03913 to 0.03914 and its edge error from 0.02222 to
+    0.02219. Every reset case, the reveal, and every still camera over still content are byte-identical. The emitted
+    resolve fell from 44995 to 44851 bytes of HLSL. At 2560 by 1440 on an M2 Max the twelve keyed boxes cost the same,
+    about 2.00 ms at Quality, and the moving thin field about 0.05 ms more, 2.36 against 2.30 ms at Native and 2.26
+    against 2.21 at Quality, since the swaying blades the pan follows now pass the band's world test and run its narrow
+    test.
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies

@@ -23,9 +23,14 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The box's left edge on screen and its size, in display pixels.</summary>
         public const float LeftPixels = 150f, SizePixels = 30f;
 
+        /// <summary>How far the reconstruction spreads a texel onto the pixels around it, in internal pixels: the
+        /// radius of its Lanczos 2 kernel.</summary>
+        public const int ReconstructionRadius = 2;
+
         const ulong Key = 61;
 
         readonly Dictionary<(TemporalUpscale, float), CrossingTrail> _runs = new();
+        readonly Dictionary<(TemporalUpscale, float), CrossingTrail> _beyond = new();
         readonly Dictionary<(TemporalUpscale, float), (byte[] Wall, byte[][] Floors)> _walls = new();
 
         /// <summary>Wall time spent rendering and measuring so far, in seconds.</summary>
@@ -51,9 +56,28 @@ namespace KhaozEngine.Tests.Gpu
             CrossingTrail trail = TemporalNarrowCrossingRuns.Measure(
                 $"follow camera at {pixelsPerFrame} px a frame, {preset}", frame, wall, floors, footprints,
                 Stopwatch.GetElapsedTime(started).TotalSeconds);
+            var beyond = (PixelRect[])footprints.Clone();
+            int spill = SpillPixels(preset);
+            beyond[0] = footprints[0] with { X0 = footprints[0].X0 - spill };
+            _beyond[(preset, pixelsPerFrame)] = TemporalNarrowCrossingRuns.Measure(
+                $"follow camera at {pixelsPerFrame} px a frame, {preset}, past {spill} px", frame, wall, floors,
+                beyond, 0);
             Seconds += trail.Seconds;
             return _runs[(preset, pixelsPerFrame)] = trail;
         }
+
+        /// <summary>The walk's trail past the reconstruction's reach from the box's edge: only the wall pixels more
+        /// than <see cref="SpillPixels"/> from the box now, where the reconstruction cannot spread the box's texel and
+        /// only a history kept from it can leave its colour. The reach is counted from there.</summary>
+        internal CrossingTrail BeyondSpill(TemporalUpscale preset, float pixelsPerFrame)
+        {
+            Run(preset, pixelsPerFrame);
+            return _beyond[(preset, pixelsPerFrame)];
+        }
+
+        /// <summary><see cref="ReconstructionRadius"/> in display pixels at <paramref name="preset"/>.</summary>
+        internal static int SpillPixels(TemporalUpscale preset) =>
+            (int)MathF.Ceiling(ReconstructionRadius * TemporalSettings.DisplayOverInternal(preset));
 
         // The converged bare wall at the measured frame on the same camera path, and each age's floor: the bare wall
         // from the frame a pixel of that age was uncovered, with no history before it. Floors[k] is age k's.

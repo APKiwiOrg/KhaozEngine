@@ -46,7 +46,10 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every walk the trail fact holds, and its bound: acceptance 3 at Native and Quality at every walk,
         /// and at Performance from 1.5 display pixels a frame. Elsewhere the measured excess and about a quarter more,
-        /// at least 2 (amendment 23), the measured value in the comment.</summary>
+        /// at least 2 (amendment 23), the measured value in the comment. UltraPerformance's whole trail is mostly the
+        /// reconstruction's spill, so <see cref="SpillWalks"/> also holds the trail past it. At half a display pixel a
+        /// frame the whole trail lies within the spill, 4 display pixels of it against 6, and its bound cannot tell a
+        /// kept history apart: without the band drop it reads 35 against 36.</summary>
         public static TheoryData<TemporalUpscale, float, int> Walks
         {
             get
@@ -68,6 +71,18 @@ namespace KhaozEngine.Tests.Gpu
                 return walks;
             }
         }
+
+        /// <summary>The UltraPerformance walks with wall past the reconstruction's reach, and the bound on the trail
+        /// there (<see cref="TemporalFollowCameraRuns.BeyondSpill"/>): the measured excess and about a quarter more, at
+        /// least 2, the measured value in the comment.</summary>
+        public static TheoryData<float, int> SpillWalks => new()
+        {
+            { 1f, 2 },          // measured 0 of 30
+            { 1.5f, 4 },        // measured 2 of 150
+            { 2f, 18 },         // measured 15 of 270
+            { 2.5f, 12 },       // measured 10 of 390
+            { 3f, 15 },         // measured 12 of 510
+        };
 
         static int Allowed(int count) => Math.Max(1, count / AllowedOverOneIn);
 
@@ -98,11 +113,30 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(t.Total.Excess <= bound, $"the box's colour stays where it left. {ctx}");
         }
 
+        /// <summary>
+        /// Past the reconstruction's reach from the box's edge, 6 display pixels at UltraPerformance, the wall shows
+        /// the box's colour only where a history kept from it survived, so a trail the band drop missed shows there
+        /// while the spill does not. Without the band drop the trail there reads 12, 18, 40, 17 and 30 from 1 display
+        /// pixel a frame to 3, against the bounds of <see cref="SpillWalks"/>.
+        /// </summary>
+        [GpuTheory]
+        [MemberData(nameof(SpillWalks))]
+        public void A_followed_keyed_box_leaves_no_trail_past_the_reconstruction_at_UltraPerformance(float speed,
+            int maxExcess)
+        {
+            CrossingTrail t = runs.BeyondSpill(TemporalUpscale.UltraPerformance, speed);
+            string ctx = $"{Describe(t)}, bound {maxExcess}";
+            output.WriteLine(ctx);
+            Assert.True(t.Total.Checked > 0, $"no wall lies past the reconstruction's reach. {ctx}");
+            Assert.True(t.Total.Excess <= maxExcess, $"the box's colour stays past the reconstruction's reach. {ctx}");
+        }
+
         /// <summary>Every preset's trail at every walk speed, with the walk in internal pixels a frame, and by age at
         /// Native and Quality at <see cref="WalkPixels"/>. Under DilationReachInternalPixels (1.25 internal pixels a
         /// frame) the pixels beside the trailing edge take the box's motion by dilation, and the wall pixel clear of
         /// the edge restarts. At UltraPerformance the reconstruction spreads the box's texel over 6 display pixels of
-        /// wall, which the bare-wall floor never shows.</summary>
+        /// wall, which the bare-wall floor never shows, so it also prints each trail past the reconstruction's reach
+        /// (<see cref="TemporalFollowCameraRuns.BeyondSpill"/>).</summary>
         [GpuFact]
         public void The_follow_camera_table_prints_every_preset()
         {
@@ -119,6 +153,12 @@ namespace KhaozEngine.Tests.Gpu
                         + $"| {Allowed(t.Checked)} | {t.WorstExcess:0.000} | {c.Reach} | {c.OldestAge} "
                         + $"| {two.Excess} of {two.Checked} |");
                     Assert.True(t.Checked >= MinTrailPixels, $"{c.Name}: the trail region measured nothing");
+                }
+            foreach (float speed in Speeds)
+                foreach (TemporalUpscale preset in Presets)
+                {
+                    CrossingTrail b = runs.BeyondSpill(preset, speed);
+                    output.WriteLine($"{b.Name}: trail {b.Total}, reach {b.Reach} px");
                 }
             foreach (TemporalUpscale preset in new[] { TemporalUpscale.Native, TemporalUpscale.Quality })
             {

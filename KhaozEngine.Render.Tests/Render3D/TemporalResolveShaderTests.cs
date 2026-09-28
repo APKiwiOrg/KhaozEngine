@@ -235,8 +235,7 @@ namespace KhaozEngine.Tests.Render3D
                 + "-1.0 - lockValue\n        : lockValue;", core, StringComparison.Ordinal);
             Assert.Contains("bool temporalStoredMoved(float stored) { return stored < -0.5; }", core,
                 StringComparison.Ordinal);
-            Assert.Contains("return temporalStoredFollowed(stored) ? -5.0 - stored : temporalStoredBand(stored) ? "
-                + "-3.0 - stored\n        : temporalStoredMoved(stored) ? -1.0 - stored : stored;", core,
+            Assert.Contains("return temporalStoredMoved(stored) ? mod(-1.0 - stored, 2.0) : stored;", core,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("result.moved = historyValid && nearerMoved", core, StringComparison.Ordinal);
             Assert.Contains("result.moved = followed ? 3.0 : band ? 2.0 : historyValid && !depthTested ? 1.0 : 0.0;",

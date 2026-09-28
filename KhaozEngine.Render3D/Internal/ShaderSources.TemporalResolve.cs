@@ -272,9 +272,10 @@ float temporalStoreLock(float lockValue, float moved) {
 bool temporalStoredMoved(float stored) { return stored < -0.5; }
 bool temporalStoredBand(float stored) { return stored < -2.5; }
 bool temporalStoredFollowed(float stored) { return stored < -4.5; }
+// A mark's level is an odd whole number below zero, so minus one minus the stored value is an even number plus the
+// lock, and its remainder over two is the lock, exactly for a half float.
 float temporalStoredLock(float stored) {
-    return temporalStoredFollowed(stored) ? -5.0 - stored : temporalStoredBand(stored) ? -3.0 - stored
-        : temporalStoredMoved(stored) ? -1.0 - stored : stored;
+    return temporalStoredMoved(stored) ? mod(-1.0 - stored, 2.0) : stored;
 }
 
 ivec2 temporalDisplaySize() { return ivec2(Sizes.zw); }

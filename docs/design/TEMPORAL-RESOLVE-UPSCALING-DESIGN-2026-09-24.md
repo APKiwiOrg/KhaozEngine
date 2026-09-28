@@ -538,7 +538,9 @@ and changed these details. Each group's "Contract amendments" block carries the 
     against 3. Every walk cell holds, and the low pitch walking away at 2.5 display pixels a frame on Quality goes
     from 5 to 4. The perspective blades beside the box move both ways, the worst share at Quality 1.5 along from 0.769
     to 0.722. Every reset case, the reveal, and every still camera over still content are byte-identical. The emitted
-    resolve grew from 42685 to 44875 bytes of HLSL, most of it the fourth level's store and its four decodes.
+    resolve grew from 42685 to 44875 bytes of HLSL, most of it the fourth level's store and its four decodes, and fell
+    to 43424 with the lock read back as the remainder over two of minus one minus the stored value, exact for a half
+    float, in place of a branch per level.
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies

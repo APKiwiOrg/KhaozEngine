@@ -12,7 +12,8 @@ namespace KhaozEngine.Tests.Gpu
     /// stops with the camera, stops while a damped camera eases on, or slows and walks back. On the turn frame its
     /// travel in the world is zero. Each row reads the avatar's own pixels, their mean luma error against the 4x
     /// reference on the frame before the turn, the turn frame and the 15 after, and the flicker over those frame steps.
-    /// Report only. HDR is off, the sharpen is at its default, and the measured values are Metal on Apple silicon.
+    /// The default walks hold the avatar's inner pixels to the error a history kept through the turn gives. HDR is
+    /// off, the sharpen is at its default, and the measured values are Metal on Apple silicon.
     /// </summary>
     public sealed class TemporalFollowStopGpuTests(TemporalFollowStopRuns runs, ITestOutputHelper output)
         : IClassFixture<TemporalFollowStopRuns>
@@ -23,11 +24,18 @@ namespace KhaozEngine.Tests.Gpu
 
         static readonly TemporalUpscale[] Presets = { TemporalUpscale.Native, TemporalUpscale.Quality };
 
+        /// <summary>How far over the kept history's error a frame may read: a luma step of 1/255 on one pixel in
+        /// twenty of the inner set. Under the damped camera the history is resampled at fractional offsets, so the
+        /// inner pixels read a little of the outline's, which the rule for the ground under the avatar's feet
+        /// restarts during the walk: 0.00011 over at most, measured.</summary>
+        const double Allowance = 0.0002;
+
         // The walks: the boot pitch away and sideways and the orthographic walk at 1 display pixel a frame, and with
         // the table switch both pitches, every heading and 0.5 and 2 display pixels a frame too.
-        IEnumerable<StopRun> Walks()
+        IEnumerable<StopRun> Walks() => Walks(TemporalStabilityRuns.FullTable);
+
+        IEnumerable<StopRun> Walks(bool full)
         {
-            bool full = TemporalStabilityRuns.FullTable;
             float[] speeds = full ? new[] { 0.5f, 1f, 2f } : new[] { 1f };
             FollowHeading[] headings = full
                 ? new[] { FollowHeading.Away, FollowHeading.Sideways, FollowHeading.Towards }
@@ -45,6 +53,35 @@ namespace KhaozEngine.Tests.Gpu
                             foreach (float speed in speeds)
                                 yield return runs.Perspective(ending, preset, speed, pitch, heading);
                 }
+        }
+
+        /// <summary>
+        /// The followed avatar keeps its own history when it stops with the camera, stops while a damped camera eases
+        /// on, or turns back through zero travel: on the turn frame and each of the 15 after, at Native and Quality,
+        /// its inner pixels' error against the 4x reference is at most a kept history's
+        /// (<see cref="TemporalFollowStopKeptHistory"/>) and <see cref="Allowance"/>. Dropped on the turn frame, it
+        /// read up to 3.7 and 3.0 times that on the orthographic walk at Native and Quality, 1.2 and 1.5 on the
+        /// perspective one, and settled over the 15 frames. Every pixel showing the avatar is printed by the table,
+        /// and reads up to 2.4 percent over the kept history after a stop or a reversal and 4.5 under the damped
+        /// camera, from its lowest row, which the rule for the ground under its feet restarts during the walk.
+        /// </summary>
+        [GpuFact]
+        public void A_followed_avatar_keeps_its_own_history_when_it_stops_or_turns_back()
+        {
+            var over = new List<string>();
+            int walks = 0;
+            foreach (StopRun r in Walks(false))
+            {
+                double[] kept = TemporalFollowStopKeptHistory.InnerErrors[r.Name];
+                for (int k = 0; k < kept.Length; k++)
+                    if (r.Inner.Errors[k + 1] > kept[k] + Allowance)
+                        over.Add($"{r.Name}: frame +{k} {r.Inner.Errors[k + 1]:0.00000} against {kept[k]:0.00000}");
+                walks++;
+            }
+            foreach (string line in over) output.WriteLine(line);
+            output.WriteLine($"{walks} walks, {over.Count} frames over a kept history's error");
+            Assert.True(walks == TemporalFollowStopKeptHistory.InnerErrors.Count, "a default walk has no bound");
+            Assert.True(over.Count == 0, $"the avatar drops its own history: {string.Join(". ", over)}");
         }
 
         /// <summary>Every walk's error on the frame before the turn, the turn frame and the 15 after, its flicker and

@@ -23,8 +23,10 @@ namespace KhaozEngine.Render3D
         History,
         /// <summary>Red where the resolve rejected history because the pixel was hidden last frame, reprojected off
         /// screen, or shows a still surface and carried the history a moving surface the camera follows left beside
-        /// or on it (the band of TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23), over the dimmed scene. Takes effect
-        /// only under <see cref="AntiAliasing.Temporal"/>.</summary>
+        /// its edge, or left on it where a surface moving otherwise on screen shows now, as the ground an avatar
+        /// uncovers (the band and the followed mark of TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23), over the
+        /// dimmed scene. A followed surface that stops keeps its own history. Takes effect only under
+        /// <see cref="AntiAliasing.Temporal"/>.</summary>
         Disocclusion,
         /// <summary>Yellow where the reactive estimate lowered the history weight for transparent content, over the
         /// dimmed scene. Takes effect only under <see cref="AntiAliasing.Temporal"/>.</summary>

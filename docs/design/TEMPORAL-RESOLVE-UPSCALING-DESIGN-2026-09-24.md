@@ -508,7 +508,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
 
     Still lines three eighths and a quarter of a texel wide on the walk's ground (`TemporalFollowLinesGpuTests`) keep
     at least 0.915 of their energy without the box on their worst frame under the orthographic follow, and the fact
-    holds 0.85. Under the perspective walk the blades along the box's edge keep as little as 0.77 at Quality from 1 to
+    holds 0.85. Under the perspective walk the blades along the box's edge keep as little as 0.722 at Quality from 1 to
     2 display pixels a frame, with 3 to 9 trail pixels where the band left them from half a pixel to 2, and blades the
     box reveals trail 1 to 6 pixels of 16 to 45 at Native at 1 and 1.5. The two failures pull apart: dropping the
     band's history as a blade leaves the band shows its raw sub-texel sample, dark on a frame the jitter misses it and

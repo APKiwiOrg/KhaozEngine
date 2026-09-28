@@ -518,7 +518,8 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             stateFraction.x * stateFraction.y);
         vec4 carried = step(vec4(1.0e-3), bilinear);   // texels whose weight is more than rounding
         // The least state a carrying texel stored: the moved, band and followed marks lie below every plain lock,
-        // each below the one before, so one least value answers all three.
+        // each below the one before, so one least value answers all three, and a footprint carrying two marks
+        // answers as the lower (step 3).
         float carriedLeast = min(min(carried.x > 0.5 ? s00.y : 0.0, carried.y > 0.5 ? s10.y : 0.0),
             min(carried.z > 0.5 ? s01.y : 0.0, carried.w > 0.5 ? s11.y : 0.0));
         carriedMoved = temporalStoredMoved(carriedLeast);
@@ -558,12 +559,14 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     // pixel's own surface passes, as the ground an avatar uncovers does under a camera that follows it. A background
     // texel, whose motion is the sentinel, is never the followed surface and is left out. A surface that stopped in
     // the world, or turned back through zero travel, reads its own pixels' history in place, whatever passes beside
-    // it, or where the same surface shows moving with it under a camera that eases on after it, and keeps it. Keyed on
-    // a moving edge instead, the drop never
-    // fired on ground under a perspective camera, whose neighbouring texels move apart on screen by their depth step so
-    // that every ground pixel reads as a moving edge. Sparing a pixel whose 3x3 holds a surface farther than its centre
-    // spared every ground pixel at a grazing angle, where each ground texel lies farther than the one below it by more
-    // than the tolerance.
+    // it, or where the same surface shows moving with it under a camera that eases on after it, and keeps it. A
+    // footprint whose carrying texels stored both marks, one the followed surface's and one the band's, reads as the
+    // followed mark, the least of them, so its band history drops only as the followed mark's does. That takes a
+    // fractional position across the outline, as under a camera that eases on. Keyed on a moving edge instead, the
+    // drop never fired on ground under a perspective camera, whose neighbouring texels move apart on screen by their
+    // depth step so that every ground pixel reads as a moving edge. Sparing a pixel whose 3x3 holds a surface farther
+    // than its centre spared every ground pixel at a grazing angle, where each ground texel lies farther than the one
+    // below it by more than the tolerance.
     // Any farther stored depth kept a sub-pixel edge from reading as revealed, and on its own it kept the ring of
     // pixels around a moving object's old place, whose footprint reaches past its edge, from ever being disoccluded. A
     // background pixel expects BackgroundLinearDepth, so anything stored nearer there was covering it. A static surface

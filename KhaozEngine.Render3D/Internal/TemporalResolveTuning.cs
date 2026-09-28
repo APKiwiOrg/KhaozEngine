@@ -239,12 +239,15 @@ namespace KhaozEngine.Render3D.Internal
         /// avatar shows moving with them, apart only by its parallax, and keep it.
         /// <para>
         /// Dropped there, every pixel of the avatar showed one jittered sample on that frame and took 15 frames to
-        /// settle: its pixels inside the reconstruction's reach from its outline read 3.7 and 3.0 times the error
-        /// against the 4x reference of a kept history at Native and Quality on the orthographic follow walk, and 1.2
-        /// and 1.5 times on the perspective one. With the rule they read the same as a kept history on every frame
-        /// after a stop or a reversal, and within half a percent of it under the damped camera. Only the texel at the
-        /// history position, or the four around it, left the ground an avatar uncovers its colour: up to 8 pixels at
-        /// Quality where the walk left none, and the orthographic follow at Performance 18 of 90 against 3.
+        /// settle: its pixels farther inside its outline than the reconstruction's reach read 3.7 and 3.0 times the
+        /// error against the 4x reference of a kept history at Native and Quality on the orthographic follow walk, and
+        /// 1.2 and 1.5 times on the perspective one. With the rule those pixels read exactly the error of the same
+        /// avatar standing still in the world on every frame after a stop or a reversal. Past the most they read over
+        /// it while walking, they read at most 0.3 percent of it more under the damped camera, and every pixel showing
+        /// the avatar 0.8 percent after a stop or a reversal and 2.5 under the damped camera, where the ground or wall
+        /// passes behind its outline. Only the texel at the history position, or the four around it, left the ground
+        /// an avatar uncovers its colour: up to 8 pixels at Quality where the walk left none, and 18 of 90 against 3
+        /// on the orthographic follow at Performance.
         /// </para>
         /// </summary>
         public const float FollowedHistoryMotionFraction = 0.5f;

@@ -58,7 +58,7 @@ namespace KhaozEngine.Tests.Gpu
         /// without the box on its worst frame, across the box's trailing path and along its edge, at Native and
         /// Quality: 0.915 at worst, the line along the edge a quarter texel wide at 1.5 display pixels a frame on
         /// Quality, among the frames it lies past the band's reach and the box did not hide it. The perspective
-        /// blades are printed only: along the box's edge they keep 0.77 to 0.85 at Quality from 1 to 2 display pixels
+        /// blades are printed only: along the box's edge they keep 0.722 to 0.85 at Quality from 1 to 2 display pixels
         /// a frame, since dropping the band's history as a blade leaves the band shows its raw sample and keeping it
         /// carries the box's colour under the lock
         /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1191">#1191</see>). By default it holds half a

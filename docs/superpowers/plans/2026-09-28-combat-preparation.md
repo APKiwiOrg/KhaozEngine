@@ -8,7 +8,7 @@
 
 **Tech Stack:** C#/.NET, `KhaozEngine.TileWorld.Netcode`, ECS and replication, reliable ordered in-memory transport tests, xUnit.
 
-**Spec:** [TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md](../../design/TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md), approved by the owner at commit `60ccb6314`. Its historical status banner has not yet been updated. This plan requires separate approval before execution.
+**Spec:** [TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md](../../design/TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md), approved by the owner at commit `60ccb6314`. This plan requires separate approval before execution.
 
 ## Global Constraints
 
@@ -24,7 +24,7 @@
 - Reasons 1 through 9 retain the spec's exact mapping, including 9 for rules unavailable. Legacy tag 3 is unchanged.
 - "The server's existing `OnCombatEvent` still fires once for every resolved swing, preserving game awards, journals and retaliation hooks."
 - No engine sword/style enums, game clips, new rendering dependency, movement retiming, damage prediction or default-consumer timing change.
-- Work in `/Users/antonio/KhaozEngine/.worktrees/combat-preparation`, branch `feature/combat-preparation`. Preserve unrelated changes and stage explicit paths.
+- Work in an isolated KhaozEngine worktree on `feature/combat-preparation`. The dispatch brief supplies its absolute path. Preserve unrelated changes and stage explicit paths.
 - Tests use `KhaozEngine.Tests.TileNetcode` and the existing area project. Release, zero warnings, no blanket suppression or file-size baseline increase.
 - No em/en dash glyphs or Markdown prose semicolons. No release tag from an implementation worker.
 - Grimhollow adoption is a separate plan against the released API. This plan ends with a verified engine commit and a release handoff.

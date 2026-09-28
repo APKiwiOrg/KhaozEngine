@@ -1,9 +1,9 @@
 # Tile combat preparation: an authoritative schedule before impact
 
-Status: proposed written spec, awaiting owner approval. No implementation is authorized by this document.
+Status: approved by owner on 2026-09-28, implementation pending. Implementation awaits plan approval.
 Based on engine `54404dea5`. First consumer: Grimhollow. The owner selected engine implementation,
-an engine release, and consumer adoption, with three ticks of preparation. This document defines the
-remaining behavior for review before an implementation plan is written.
+an engine release, and consumer adoption, with three ticks of preparation. This document records the
+approved behavior for implementation planning.
 
 ## 1. Outcome and ownership
 

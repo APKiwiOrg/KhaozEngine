@@ -63,7 +63,10 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(16u, d.MaxAnisotropy);
             Assert.Equal(1f, d.MipLodBias);
             Assert.Equal(1, d.ComparisonFunc);   // D3D11_COMPARISON_NEVER
-            Assert.Equal(0f, d.BorderColorR + d.BorderColorG + d.BorderColorB + d.BorderColorA);
+            Assert.Equal(0f, d.BorderColorR);   // transparent black
+            Assert.Equal(0f, d.BorderColorG);
+            Assert.Equal(0f, d.BorderColorB);
+            Assert.Equal(0f, d.BorderColorA);
             Assert.Equal(0f, d.MinLod);
             Assert.Equal((float)uint.MaxValue, d.MaxLod);
 

@@ -18,9 +18,11 @@ namespace KhaozEngine.Tests.Gpu
     /// </para>
     /// <para>
     /// Three samplers, because the defect sat under all of them: the device's shared linear and point pair, which
-    /// are built at device creation, and one the factory builds on request in the ground's shape (anisotropic,
-    /// clamp). The coordinate and the LOD are literals, so every fragment asks the same question and any pixel of
-    /// the readback answers it.
+    /// are built at device creation, and one the factory builds on request in the ground's shape (anisotropic 16x,
+    /// wrap, mip LOD bias 1, the shared terrain sampler's description). Its bias asks for level 2, and the texture
+    /// has no level past 1, so it still reads level 1 where the backend honours a bias and where it drops one. The
+    /// coordinate and the LOD are literals, so every fragment asks the same question and any pixel of the readback
+    /// answers it.
     /// </para>
     /// </summary>
     public sealed class SamplerExplicitLodGpuTests
@@ -50,8 +52,9 @@ void main() {
             dev.UpdateTexture(src, black, 0, 0, 2, 2, mipLevel: 0, arrayLayer: 0);
             dev.UpdateTexture(src, new byte[] { 255, 255, 255, 255 }, 0, 0, 1, 1, mipLevel: 1, arrayLayer: 0);
 
-            using IGpuSampler factorySampler = f.CreateSampler(
-                new GpuSamplerDescription(GpuSamplerFilter.Anisotropic, maximumAnisotropy: 16));
+            using IGpuSampler factorySampler = f.CreateSampler(new GpuSamplerDescription(GpuSamplerFilter.Anisotropic,
+                GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, GpuSamplerAddress.Wrap, maximumAnisotropy: 16,
+                mipLodBias: 1));
 
             using IGpuTexture colour = f.CreateTexture(GpuTextureDescription.Texture2D(
                 Size, Size, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));

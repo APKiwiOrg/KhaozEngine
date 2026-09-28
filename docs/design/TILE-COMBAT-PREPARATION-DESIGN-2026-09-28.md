@@ -74,6 +74,10 @@ must preserve these semantics and identify any public API changes for review.
 
 - `TileWorldServerConfig.CombatPreparationRules`: optional `ITileCombatPreparationRules`, default null.
   Fixed for that server instance. Null selects the complete legacy path.
+- The existing `TileWorldServer.CombatRules` remains nullable and mutable. In enabled mode, null
+  prevents new attempts. A live attempt whose rules become null is cancelled at the next combat pass
+  as `rules unavailable`, retaining its old impact as a readiness lower bound. Returning rules require
+  a fresh preparation. Disabled mode preserves its existing null-rules behavior.
 - `TileWorldClientConfig.CombatPreparationEnabled`: bool, default false. True enables the preparation
   callbacks and reads for that connection. The consumer's connect version enforces matching modes.
 - `ITileCombatPreparationRules.ProfileFor(long attackerNetId)`: returns
@@ -123,29 +127,35 @@ It never reads a drawn pose, projected route tile or render interpolation.
 Let `T` be the current combat-pass tick, `P` the profile's lead, `F` its strike duration, `C` the
 resolved cadence and `R` the existing cooldown remaining after this tick's ordinary decrement.
 
-1. Apply invalidations and delay requests before deciding whether an attempt is due. Read the current
+1. Check `CombatRules` availability before resolving a profile or creating an attempt. If null, create
+   no attempts and cancel every live preparation as `rules unavailable`, including one due this tick.
+   Retain each cancelled impact as a readiness lower bound. Do no roll or new cooldown charge, while
+   existing readiness and cooldown continue to run down. When rules return, require rule 2's fresh
+   preparation, so Grimhollow's next eligible tick `T` schedules no earlier than `max(T + 3, readyTick)`.
+   Apply other invalidations and delay requests before deciding whether an attempt is due. Read the current
    target, profile, life and legality from this tick's admitted state.
-2. An attacker with no attempt may create one only when both bodies are alive, the lock is admitted
-   and the target is in legal reach now. Set `H = max(T + P, T + R, retained readiness boundary)`.
+2. An attacker with no attempt may create one only when `CombatRules` is non-null, both bodies are
+   alive, the lock is admitted and the target is in legal reach now.
+   Set `H = max(T + P, T + R, retained readiness boundary)`.
    The attempt's preparation start is `H - P`, strike start is `H - F` and impact is `H`.
    It may be announced during the earlier cooldown hold. It cannot roll on its creation tick.
 3. An unchanged live attempt keeps `H`. Repeated commands naming the same target do not restart it.
   Before `H`, no damage roll, attack RNG draw, experience award or attack combat-log stamp occurs.
    Preparation does not newly count as a landed attack for aggression or combat logout. Those existing
    rules continue to read resolved swings. The first-hit delay therefore also delays retaliation.
-4. At `T == H`, recheck life, current target, profile, permission, plane and reach. An invalid attempt
-   ends with its reason. It does not roll, count as a miss, award experience or start a new cooldown.
+4. At `T == H`, recheck rules availability, life, current target, profile, permission, plane and reach.
+   An invalid attempt ends with its reason. It does not roll, count as a miss, award experience or start a new cooldown.
    Do not create its replacement in that same pass. Reconsider on a subsequent tick.
 5. All valid due attempts join the existing oldest-lock-then-net-ID roll order. Roll all, then apply
    all, then determine deaths. Preserve mutual kills and existing outcome semantics. An attempt
    already admitted to this tick's roll survives damage caused by another roll on that tick.
 6. A resolved hit or miss consumes the attempt and sets the existing cooldown to `C`. After deaths
    and callbacks settle, a still-live attacker and target with the same valid lock, unchanged profile
-   and legal reach may
-   receive the next attempt at `H + C`, with its final `P` ticks reserved for preparation. A delay
+   and legal reach may receive the next attempt at `H + C` if `CombatRules` remains non-null,
+   with its final `P` ticks reserved for preparation. A delay
    accepted during an outcome callback also contributes before that next deadline is announced.
-   If reach is absent or a callback changed target/profile, leave no next attempt and let rule 2
-   handle a later opportunity while retaining the cooldown just charged.
+   If rules are null, reach is absent or a callback changed target/profile, leave no next attempt
+   and let rule 2 handle a later opportunity while retaining the cooldown just charged.
 7. Cancel future attempts for dead or despawned participants before serving. Serve movement and health,
    then complete preparation state, then terminal records. Reap dead actors after the serve as today.
 
@@ -164,6 +174,7 @@ and 0.167 seconds of strike. Engine tests also use other tick durations and prof
 
 | Change before impact | Authoritative result | Presentation result |
 | --- | --- | --- |
+| `CombatRules` becomes null | Cancel live attempt as rules unavailable at the next combat pass, retain its impact boundary, do no roll or new cooldown charge. No new attempt until rules return, then require a fresh preparation | Recover the aborted motion without impact feedback |
 | Same target and profile, repeated Attack | Keep identity and deadline | Continue current motion |
 | Different admitted target | Cancel old ID, retain readiness, create a fresh attempt when legal | Ease out the old preparation, use the new target and ID |
 | Weapon, style, lead, strike or cadence changes | Cancel and replace under rule 2, never accelerate old readiness | New profile key owns the next motion |
@@ -268,7 +279,9 @@ Tag 5 contains this tick's terminal records, each 46 bytes:
 The terminal kind is 1 for resolved and 2 for cancelled. Resolved records use reason 0, the event's
 amount and kind, and landed/killed flag bits 0 and 1. Cancelled records zero amount, hit kind and flags.
 Cancellation reasons are 1 disengaged, 2 target changed, 3 profile changed, 4 participant unavailable,
-5 permission revoked, 6 illegal reach, 7 teleport, 8 invalid profile. The header tick is the terminal
+5 permission revoked, 6 illegal reach, 7 teleport, 8 invalid profile, 9 rules unavailable.
+Reason 9 is a cancelled terminal with zero amount, hit kind and flags, using the same 46-byte record.
+The header tick is the terminal
 transition tick. `impactTick` retains the intended deadline for cancellations and equals the header
 tick for a resolution. Terminal records for an attacker retain transition order, with attackers
 ordered by net ID for cancellations and the existing roll order for resolved events. Send cancellations
@@ -402,6 +415,7 @@ Use fixed rules and a counted RNG/roll seam. No test should require an engine or
 | Area | Required evidence |
 | --- | --- |
 | Default compatibility | Existing combat, delay, admission, interest and wire tests unchanged with null configuration. No new state/frame cost in the disabled path |
+| Rules availability | Enabled with null `CombatRules` and no attempt creates no schedule or roll. Null during a live preparation cancels once at the next pass, including its due tick, with reason 9 and no roll or new cooldown charge. Restore rules before and after retained readiness expires, requiring a fresh lead and new ID. Disabled mode retains existing null behavior. Reason 9 round-trips without changing wire widths |
 | First attempt | Ready/in-range at T, no roll at T, T+1 or T+2, exactly one at T+3. Stand, run approach, actor and player cases |
 | Continuing cadence | Impacts H and H+C, prepare H+C-3, strike H+C-1. No extra three-tick tax. Miss and zero-damage hit consume cadence |
 | Profile validation | Other tick rates and legal leads, lead equal to cadence, invalid durations and fallback cadence. Invalid profile cannot produce an instant hit |

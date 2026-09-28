@@ -10,11 +10,19 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// <see cref="IGpuSampler"/> for the native Direct3D 11 backend: one <c>ID3D11SamplerState</c>, created
     /// eagerly, disposed under the liveness gate.
     /// <para>
-    /// FOUR VALUES ARE HARDCODED, and they are hardcoded because the incumbent hardcoded them and the committed
-    /// goldens were baked through them. No comparison function (the shadow path does manual PCF and never asks for
-    /// a comparison sampler), a minimum LOD of 0, a maximum LOD of <c>uint.MaxValue</c> which Direct3D clamps to
-    /// the real chain, and a transparent-black border colour. The seam exposes none of the four, so a caller
-    /// cannot ask for anything else, and changing one would move pixels.
+    /// FOUR VALUES ARE HARDCODED, because the incumbent hardcoded them and the Vulkan and Metal backends hold the
+    /// same four. No comparison function (the shadow path does manual PCF and never asks for a comparison
+    /// sampler), a minimum LOD of 0, a maximum LOD of <c>uint.MaxValue</c> which Direct3D clamps to the real
+    /// chain, and a transparent-black border colour. The seam exposes none of the four, so a caller cannot ask
+    /// for anything else. <see cref="D3D11SamplerDesc.Create"/> owns them.
+    /// </para>
+    /// <para>
+    /// THE DRIVER READS THE ENGINE'S OWN <see cref="D3D11SamplerDesc"/>, NOT VORTICE'S <c>SamplerDescription</c>
+    /// (https://github.com/APKiwiOrg/KhaozEngine/issues/1192). Vortice's struct is 64 bytes against the header's
+    /// 52, so until that change the driver read a maximum LOD of 0 and every texture sampled mip level 0 only,
+    /// whatever this comment said the values were. Direct3D 11 goldens baked before it were baked through that
+    /// clamp. <see cref="CreateWindows"/> calls <c>ID3D11Device::CreateSamplerState</c> through the vtable with a
+    /// pointer to the engine's struct.
     /// </para>
     /// <para>
     /// THE INCUMBENT'S TWO DEGRADATIONS ARE NOT REPRODUCED. Its sampler path fell back from anisotropic
@@ -109,23 +117,37 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             SamplerState.Dispose();
         }
 
+        /// <summary><c>ID3D11Device::CreateSamplerState</c>'s vtable slot: the three <c>IUnknown</c> methods, then
+        /// twenty creation methods from <c>CreateBuffer</c> to <c>CreateRasterizerState</c>. Vortice's own
+        /// generated call uses the same slot.</summary>
+        const int CreateSamplerStateSlot = 23;
+
+        // The second unsafe block in the package. Vortice's CreateSamplerState takes its own SamplerDescription
+        // by value and passes that value's address, so a correct struct cannot go through it. This makes the same
+        // COM call Vortice makes, on the same slot, with a pointer to the engine's struct. The result is wrapped
+        // and the HRESULT checked in the order Vortice's generated body uses, so a failure throws the same
+        // SharpGenException it always did.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static ID3D11SamplerState CreateWindows(ID3D11Device device, in GpuSamplerDescription description)
+        static unsafe ID3D11SamplerState CreateWindows(ID3D11Device device, in GpuSamplerDescription description)
         {
-            var d = new SamplerDescription
-            {
-                AddressU = D3D11Formats.ToAddressMode(description.AddressModeU),
-                AddressV = D3D11Formats.ToAddressMode(description.AddressModeV),
-                AddressW = D3D11Formats.ToAddressMode(description.AddressModeW),
-                Filter = D3D11Formats.ToFilter(description.Filter),
-                MaxAnisotropy = (int)description.MaximumAnisotropy,
-                MipLODBias = description.MipLodBias,
-                ComparisonFunction = ComparisonFunction.Never,
-                MinLOD = 0f,
-                MaxLOD = uint.MaxValue,
-                BorderColor = new Vortice.Mathematics.Color4(0f, 0f, 0f, 0f),
-            };
-            return device.CreateSamplerState(d);
+            D3D11SamplerDesc desc = D3D11SamplerDesc.Create(
+                (int)D3D11Formats.ToFilter(description.Filter),
+                (int)D3D11Formats.ToAddressMode(description.AddressModeU),
+                (int)D3D11Formats.ToAddressMode(description.AddressModeV),
+                (int)D3D11Formats.ToAddressMode(description.AddressModeW),
+                description.MaximumAnisotropy,
+                description.MipLodBias);
+
+            IntPtr self = device.NativePointer;
+            void* slot = (*(void***)self)[CreateSamplerStateSlot];
+            IntPtr created = IntPtr.Zero;
+            int hresult = ((delegate* unmanaged[Stdcall]<IntPtr, D3D11SamplerDesc*, IntPtr*, int>)slot)(
+                self, &desc, &created);
+            GC.KeepAlive(device);
+
+            ID3D11SamplerState? state = created != IntPtr.Zero ? new ID3D11SamplerState(created) : null;
+            new SharpGen.Runtime.Result(hresult).CheckError();
+            return state!;
         }
     }
 }

@@ -7,7 +7,7 @@ per-frame composition + ordering so a game can't get it wrong:
 OnLoad();
 each frame:
   --- pre-record phase: the frame's command list is NOT open yet ---
-  Clock.Update(dt)
+  Clock.Update(dt)               // the frame's one tick: Clock.FrameCount is one id for update and draw
   Viewport.Update(window size)   -> OnResize on change
   Pointer.Update(input, Viewport)
   OnResume(wallGap)              // only when the wall-clock gap exceeds the threshold (OS sleep/suspend/hang)

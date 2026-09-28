@@ -5,6 +5,35 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.14.1
+
+- On Windows every texture now samples its mip chain, so distant textures stop aliasing and the ground filters as
+  designed through the anisotropy and mip bias of `TerrainSamplerConfig`. The native Direct3D 11 backend handed the
+  driver Vortice's sampler description, whose layout put a maximum LOD of 0 where the driver reads it, so every
+  sampler read mip level 0 only and an explicit LOD or a material mip bias changed nothing. A consumer's own
+  Direct3D 11 goldens will move where they draw a mipmapped texture below its full size. A texture created with a
+  mip chain whose lower levels were never filled now shows those levels on Windows, as it already did on Vulkan
+  and Metal. The backend now passes the driver a 52-byte description in the header's layout. One test pins that
+  layout, and another pins the size of every Vortice struct passed to the driver by address. The engine re-baked
+  six of its Direct3D 11 goldens ([#1192](https://github.com/APKiwiOrg/KhaozEngine/issues/1192)).
+
+## 20.14.0
+
+- `FollowCamera3D.FrameClock` lets a camera read in the update step and again through the render compute its
+  eye once a frame. A game that moved the target and then read the eye in update paid two eye computations and
+  two `BoomProbe` calls a frame, because `Scene3D.Begin` dropped the update's eye at render time. With a
+  per-frame id set, each computed eye is stamped with it, a read reuses the eye only under the same id and
+  inputs, and `BeginFrame` keeps an eye computed earlier in the same frame. Under a clock that advances once per
+  frame, before the frame's first camera read, a camera whose inputs never change still recomputes once a frame,
+  so the world moving behind its probe is seen on the next frame. A clock ticked between update and render lets
+  the next update read reuse the previous render's eye, and one that stops advancing can hand the next latch an
+  eye from before the stall. A
+  camera read in update before it moves pays two computations a frame with a clock, one more than without. Null,
+  the default, leaves the camera unchanged ([#1189](https://github.com/APKiwiOrg/KhaozEngine/issues/1189)).
+- `GameClock.FrameCount` counts `Update` calls, paused or not. `GameApp` ticks its clock once at the head of each
+  frame, before `OnUpdate`, so `() => Clock.FrameCount` is one id for a whole frame's update and draw
+  ([#1189](https://github.com/APKiwiOrg/KhaozEngine/issues/1189)).
+
 ## 20.13.0
 
 - Render3D's animation layer takes a skinned body's joints as a contract, so a second body shape reuses the

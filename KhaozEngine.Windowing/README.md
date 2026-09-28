@@ -262,6 +262,8 @@ Windowing + input foundation for the custom MonoGame-free stack.
   / `AdaptiveViewport` (letterbox/fill/stretch + responsive). All expose `WindowBounds` (10.38.0) - the whole
   window in design space (`DesignBounds` + the letterbox bars) for full-window scrims/backgrounds; `DesignViewport`
   carries the letterbox formula, the always-edge-to-edge viewports return `DesignBounds`.
+  `GameClock.FrameCount` (since 20.14.0) counts `Update` calls, paused or not, and is the per-frame id
+  `FollowCamera3D.FrameClock` reads.
 - `UiViewport` (since 10.12.0) - a point-space viewport for DPI-aware UI, implementing `IDesignViewport`.
   Authoring units are logical points and 1 point maps to `DpiScale` device pixels (no letterbox). `Width`/`Height`
   track the logical window size, so the UI reflows as the window resizes rather than magnifying, and `ScaleX`/`ScaleY`

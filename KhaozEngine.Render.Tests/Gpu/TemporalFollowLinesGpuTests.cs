@@ -40,6 +40,8 @@ namespace KhaozEngine.Tests.Gpu
             $"{what}: worst share {m.Worst:0.000} on frame {m.WorstFrame}, trail {m.Trail}, acceptance 3 allows "
             + $"{TemporalPerspectiveFollowGpuTests.Allowed(m.Trail.Checked)}, revealed {m.Revealed}";
 
+        // Every walk of the table, or with the table switch off half a pixel and 2 at three eighths of a texel, and
+        // the orthographic walk at 1.5 on Quality a quarter texel wide, the one the band drop is seen to hold.
         static IEnumerable<(bool Perspective, TemporalUpscale Preset, float Speed, float Texels)> TableRuns()
         {
             bool full = TemporalStabilityRuns.FullTable;
@@ -48,6 +50,7 @@ namespace KhaozEngine.Tests.Gpu
                     foreach (float speed in full ? Speeds : new[] { 0.5f, 2f })
                         foreach (float texels in full ? new[] { ThreeEighths, OneQuarter } : new[] { ThreeEighths })
                             yield return (perspective, preset, speed, texels);
+            if (!full) yield return (false, TemporalUpscale.Quality, 1.5f, OneQuarter);
         }
 
         /// <summary>
@@ -58,8 +61,10 @@ namespace KhaozEngine.Tests.Gpu
         /// blades are printed only: along the box's edge they keep 0.77 to 0.85 at Quality from 1 to 2 display pixels
         /// a frame, since dropping the band's history as a blade leaves the band shows its raw sample and keeping it
         /// carries the box's colour under the lock
-        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1191">#1191</see>). It holds half a pixel and 2
-        /// at three eighths of a texel, and with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every walk and both widths.
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1191">#1191</see>). By default it holds half a
+        /// pixel and 2 at three eighths of a texel, where removing the band drop leaves every share over 0.96, and the
+        /// walk at 1.5 on Quality a quarter texel wide, where it falls to 0.807. The rest of the table, every walk and
+        /// both widths, runs only with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c>, which no workflow sets.
         /// </summary>
         [GpuFact]
         public void A_still_line_keeps_its_energy_beside_a_box_the_orthographic_camera_follows()
@@ -105,8 +110,8 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
             output.WriteLine(TemporalStabilityRuns.FullTable ? "the full table"
-                : $"half a pixel and 2 px, three eighths of a texel only. Set {TemporalStabilityRuns.TableVariable}=1 "
-                    + "for the full table");
+                : "half a pixel and 2 px at three eighths of a texel, and the orthographic 1.5 px on Quality a quarter "
+                    + $"texel wide, only. Set {TemporalStabilityRuns.TableVariable}=1 for the full table");
             output.WriteLine($"every run: {runs.Seconds:0.0} s");
         }
     }

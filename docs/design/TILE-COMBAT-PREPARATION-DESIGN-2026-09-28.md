@@ -1,9 +1,11 @@
 # Tile combat preparation: an authoritative schedule before impact
 
-Status: approved by owner on 2026-09-28, implementation pending. Implementation awaits plan approval.
-Based on engine `54404dea5`. First consumer: Grimhollow. The owner selected engine implementation,
-an engine release, and consumer adoption, with three ticks of preparation. This document records the
-approved behavior for implementation planning.
+Status: engine implementation complete in staged 20.14.1. Release and Grimhollow adoption pending.
+The owner approved this design and its implementation plan on 2026-09-28. The design base was engine
+`54404dea5`. First consumer: Grimhollow, using three ticks of preparation. This document preserves the
+approved rationale and remaining adoption contract. Current API usage lives in the
+[consumer guide](../USING-KHAOZENGINE.md#authoritative-attack-preparation-20141) and
+[package reference](../../KhaozEngine.TileWorld.Netcode/README.md#authoritative-attack-preparation-20141).
 
 ## 1. Outcome and ownership
 
@@ -32,10 +34,10 @@ References: [tile-world netcode](TILE-WORLD-NETCODE-DESIGN-2026-08-22.md),
 - Build the authoritative schedule in KhaozEngine and adopt a released engine pin in Grimhollow.
 - Give Grimhollow three ticks before impact, with a slower two-tick draw and a fast final-tick strike.
 - Improve swings in general, including the first swing after a run.
-- Review the written design before implementation. This documentation change does not build, tag,
-  release or adopt a package.
+- Review the written design and implementation plan before implementation. Both reviews are complete.
+  Release and consumer adoption remain separate handoff gates.
 
-### Orchestrator rulings proposed for owner review
+### Approved orchestrator rulings
 
 - Grimhollow enables the schedule for every combat attacker and style, including bare hands and
   creatures. Other engine consumers retain the default behavior until they opt in.
@@ -69,8 +71,8 @@ and checking its final tick preserves pursuit while retaining authoritative reac
 
 ## 3. Public seam and state
 
-Names below are the proposed API contract. The implementation plan may refine internal names, but
-must preserve these semantics and identify any public API changes for review.
+The implemented public contract follows these semantics. The living consumer references linked above
+own API usage examples. Internal scheduler, wire assembly and ledger types remain implementation details.
 
 - `TileWorldServerConfig.CombatPreparationRules`: optional `ITileCombatPreparationRules`, default null.
   Fixed for that server instance. Null selects the complete legacy path.
@@ -240,8 +242,8 @@ always wins over a still-pending visual hold.
 
 ## 6. Deterministic wire and interest
 
-Reserve two new server frame tags, proposed values 4 and 5, verified free at the base commit. Confirm
-availability when implementing. All new multi-byte integers are explicitly little-endian, with no
+The implementation reserves server frame tags 4 and 5, verified free before the codec change.
+All new multi-byte integers are explicitly little-endian, with no
 native-layout serialization, floats, strings or padding. Existing legacy tag 3 remains byte-for-byte.
 
 Both frames use this 16-byte header:
@@ -291,8 +293,12 @@ Tag 4 uses one or more chunks of at most 255 records and sends one empty chunk w
 is empty. Tag 5 uses the same cap and is omitted when empty. Frames use `ReliableOrdered`, following
 the movement snapshot, then all tag 4 chunks, then tag 5 chunks. Chunks must not be interleaved.
 Bound assembly to the declared count, at most 256 chunks and 65,280 records per frame set. Reject an
-over-budget visible set with a named server diagnostic before encoding, rather than emit a partial
-snapshot that would falsely cancel omitted actors. Validate configured actor/viewer budgets at boot.
+over-budget visible set before encoding either preparation set. The implementation increments
+`RejectedCombatPreparationFrameSetCount` and disconnects only that viewer with the developer token
+`ke:combat-preparation-overflow`. During serving, the close runs after the tick advances, so its
+participant cancellations belong to the next tick. Other viewers finish the current serve normally.
+Enabled boot checks reject negative budgets or `MaxPlayers + MaxActorsPerCell > 65,280`. Actual visible
+sets still need the runtime bound across cells.
 
 Decoders reject unknown schemas, tags, flags, reasons, impossible tick relationships,
 zero identities, invalid chunk indices/counts, duplicate attackers in a state set, and any length
@@ -362,20 +368,20 @@ both frame families, but a game session selects one mode at connection setup.
 The game's connect protocol must distinguish preparation-enabled sessions from old clients. Grimhollow
 must bump its `ProtocolVersion` during adoption and verify mixed pairs are refused at the door.
 Do not rely on an old decoder silently ignoring new tags. The engine release notes and package README
-must call out the opt-in requirement and the separate callback contract. Select the engine version from
-current main and tags during implementation, using the repository's additive-minor rules. This spec
-does not reserve a version or change the current package version.
+call out the opt-in requirement and the separate callback contract. Version inspection on 2026-09-28
+found staged 20.14.1 above newest tag v20.14.0, so this work rides that existing unreleased version under
+the repository's staged-version rule. Release remains the controller's next dependency gate.
 
-Implement scheduling, wire assembly and sampling in separate cohesive types. The server combat partial
-retains its roll/apply responsibilities and calls the scheduler at its existing seams. Do not grow a
-monolithic combat partial or raise the file-size baseline as a convenience. No rendering dependency
-is added to tile netcode. Update the package README and USING reference only when the API ships.
+Scheduling, wire assembly and sampling live in separate cohesive types. The server combat partial
+retains its roll/apply responsibilities and calls the scheduler at its existing seams. Successor
+creation follows the outcome, death and broken-lock callbacks. No file-size baseline increase or
+rendering dependency was added to tile netcode. The package README and USING reference now document the implemented API.
 
 After approved implementation and verification, the controller reconciles engine main, completes the
 required package checks, and performs the authorized release through `scripts/tag-release.sh` under
 the current release rules. Grimhollow then adopts that released pin, updates both local tools, refreshes
 its vendored packages, records the swept range and verifies the game. No game feature ships against
-unreleased engine bytes. This design-writing task performs none of those actions.
+unreleased engine bytes. The implementation worker hands off a verified commit without packing or releasing.
 
 ## 9. Grimhollow adoption contract
 
@@ -446,19 +452,19 @@ Visual review compares normal-speed local and remote sequences with timestamps a
 The owner approves the two-tick draw and one-tick cut for each style. Use headless capture where it
 proves the case and one final authorized bridge proof for pixels/window behavior under game rules.
 
-## 11. Review and completion gates
+## 11. Engine completion and remaining consumer gates
 
-Before planning, the owner reviews the gameplay cost and all proposed orchestrator rulings in section 2.
-In particular, confirm all-attacker scope, unchanged continuing cadence, transient range retention,
-idle-delay overlap, and exact additive food delay for an existing attempt even when a full revised
-visual preparation is unavailable.
+The owner approved the written spec and implementation plan, including all-attacker scope, unchanged
+continuing cadence, transient range retention, idle-delay overlap and additive delay for an existing
+attempt. Engine implementation and its scheduler, migration, wire, delivery, clock and combined
+loopback proofs are complete for staged 20.14.1. The living public references are current.
 
-The implementation is complete only when the opted-in rules and default compatibility pass their
-engine matrix, public documentation is current, the released package is adopted by Grimhollow, the
-game's full required verification passes, and the owner has reviewed its changed swing timing. A
-remaining #371 spacing limitation is reported explicitly with evidence and its reviewed disposition.
+The controller still owns whole-branch integration, guarded packing, release and durable package
+verification. Grimhollow adoption requires a separate plan against that released API and the game-side
+work in section 9. Its full required verification and the owner's visual timing review remain pending.
+Any remaining #371 spacing limitation must have evidence and a reviewed disposition.
 
-Self-review for this draft checks the following: no double cadence charge, no early first roll, no
-client damage prediction, no guarantee of full lead under arbitrary latency, no food delay lost while
-cooldown is zero, no stale identity resurrection, no default-consumer behavior change, and no hidden
-movement or reach change. Written-spec approval is the next gate. Implementation planning follows it.
+The completed engine checks cover no double cadence charge, no early first roll, no client damage
+prediction, no lost food delay at zero cooldown, no stale identity resurrection, and unchanged default
+consumers. Full visual lead under arbitrary latency is not promised. Movement and reach authority remain
+unchanged. Completion of the engine portion does not claim completion of the consumer's visual proof.

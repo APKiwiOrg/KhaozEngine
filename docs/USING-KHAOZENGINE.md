@@ -63,6 +63,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)](#networked-overworld-khaozenginelocomotion-khaozenginenetworld)
 - [Rigid-segment character poses (`KhaozEngine.SegmentRig`)](#rigid-segment-character-poses-khaozenginesegmentrig)
 - [Tile-world netcode (`KhaozEngine.TileWorld.Netcode`)](#tile-world-netcode-khaozenginetileworldnetcode)
+- [Authoritative attack preparation (20.14.1)](#authoritative-attack-preparation-20141)
 - [Charging attack time for something that is not a swing (`TileWorldServer.DelayAttack`, 18.16.0)](#charging-attack-time-for-something-that-is-not-a-swing-tileworldserverdelayattack-18160)
 - [Cancelling a tile player's pending interact (18.19.0)](#cancelling-a-tile-players-pending-interact-18190)
 - [Nearby tile-world player interest (`CollectInterestSlots`, 18.21.0)](#nearby-tile-world-player-interest-collectinterestslots-18210)
@@ -12176,7 +12177,8 @@ Four rules the pipeline runs on:
   game awarding experience straight from it over-awards on every killing blow. Read the target's health if what is
   wanted is what was taken.
 
-On the client, an attack is a click like any other, and the swings arrive on their own event.
+On the client, an attack is a click like any other. The following example uses default combat mode.
+Preparation-enabled sessions use the [separate outcome callbacks](#authoritative-attack-preparation-20141).
 
 ```csharp
 // Attack takes a NET ID, and Interact takes an OBJECT id. They are separate command kinds because the two id
@@ -12188,7 +12190,7 @@ client.RemoteEntered += id => nameplates.Add(id);
 client.RemoteLeft    += id => { nameplates.Remove(id); hitsplats.Clear(id); };
 ```
 
-`CombatEvent` carries every swing whose TARGET is in this client's area of interest, misses included. Do not
+In default mode, `CombatEvent` carries every swing whose TARGET is in this client's area of interest, misses included. Do not
 derive a fight from replicated health instead: two hits on one tick collapse into one delta and a miss moves
 health by zero, so a fight drawn from deltas shows fewer, larger, later hitsplats than the fight the server ran.
 `Killed` rides the blow that caused the death, so a client never has to notice an absence to know something died,
@@ -12391,11 +12393,161 @@ the state it set.
 
 ---
 
+## Authoritative attack preparation (20.14.1)
+
+Opt in when a game wants a server-scheduled preparation before impact. Existing consumers keep their
+first-hit timing, cadence, legacy tag 3 bytes and `CombatEvent` callbacks by leaving the server
+`CombatPreparationRules` null and client `CombatPreparationEnabled` false.
+
+The game owns the public motion key and reads it from current admitted state. Change the key when
+visible equipment or attack style changes. The provider must be deterministic and side-effect free.
+The `game` methods below are consumer integration points, not engine APIs.
+
+```csharp
+using System;
+using KhaozEngine.TileWorld.Netcode;
+
+public sealed class GamePreparationRules : ITileCombatPreparationRules
+{
+    readonly Func<long, uint> readPresentationKey;
+
+    public GamePreparationRules(Func<long, uint> readPresentationKey) =>
+        this.readPresentationKey = readPresentationKey;
+
+    public TileCombatPreparationProfile ProfileFor(long attackerNetId) =>
+        new(LeadTicks: 3, StrikeTicks: 1, PresentationKey: readPresentationKey(attackerNetId));
+}
+```
+
+Timing must satisfy `1 <= StrikeTicks <= LeadTicks <= resolved AttackTicks`. An invalid profile cancels
+its pending attempt and prevents a new roll. Keep the existing matching `TickSeconds`, `StepTicks`,
+map and world configuration when constructing the two heads:
+
+```csharp
+using KhaozEngine.Netcode;
+
+var preparedServerConfig = serverConfig with
+{
+    CombatPreparationRules = new GamePreparationRules(game.ReadPublicAttackKey)
+};
+var preparedClientConfig = clientConfig with { CombatPreparationEnabled = true };
+
+// Bump the GAME's connect version when enabling preparation. Both peers must select the same mode.
+const string preparedProtocol = "my-game-prepared-2";
+var gate = ConnectionGate.Wrap(authenticator, preparedProtocol, worldHash);
+byte[] token = TileProtocol.BuildConnectToken(preparedProtocol, worldHash, authToken);
+using var server = new TileWorldServer(serverTransport, preparedServerConfig, map, targets, gate);
+server.CombatRules = game.CombatRules;
+using var client = new TileWorldClient(clientTransport, preparedClientConfig, map, targets, token);
+```
+
+`ConnectionGate` is in `KhaozEngine.Netcode`. It compares the consumer's protocol string. The engine
+cannot detect a game that incorrectly assigns the same string to incompatible modes. An old decoder
+ignoring unfamiliar tags is not a compatibility strategy. A custom replication registry must include
+the migration-only preparation codec registered by `TileProtocol.CreateRegistry`.
+
+For an eligible tick T, the first impact is `max(T + LeadTicks, readyTick)`. Thus a ready, in-range
+3/1 attacker has two preparation ticks and one strike tick before T+3. At six ticks per second that
+is 0.5 seconds total. An existing cooldown or idle food wait overlaps the preparation, rather than
+paying another full lead after that wait. Unchanged continuing impacts remain one resolved cadence
+apart. Repeating the same target command does not restart an attempt.
+
+Temporary range loss retains the schedule while the lock remains, and impact rechecks current life,
+reach, permission and profile. An invalid impact ends without a roll or cooldown charge and cannot
+restart in that same pass. A changed target, presentation key, lead, strike duration or resolved cadence
+replaces the attempt subject to retained readiness. Null `CombatRules` creates no attempts and cancels live ones with
+`TileCombatPreparationEndReason.RulesUnavailable`. Returning rules require a fresh lead. Preparation
+makes no damage/RNG roll, experience hook or swing stamp. A held lock still counts under the existing
+logout rule. Actual swings retain the server's roll/apply/death order and one `OnCombatEvent` hook.
+
+### Reads, delay and revisions
+
+Both heads expose `TryGetCombatPreparation(attackerNetId, out TileCombatPreparation preparation)`.
+The descriptor includes target, monotonically increasing `AttackId`, `Revision`, `PresentationKey`,
+`PrepareTick`, derived `StrikeTick`, `ImpactTick` and `CadenceTicks`. Identity belongs to an attacker
+lifetime and connection session. A replacement gets a new ID. A delay normally keeps the ID and
+increments its revision. Revision exhaustion uses a new ID, and exhausted attack IDs are refused.
+
+```csharp
+// Call after the game has accepted the action that costs attack time.
+if (server.DelayAttack(attackerNetId, ticks: 3))
+{
+    server.TryGetAttackReadyTick(attackerNetId, out long readyTick);
+    bool active = server.TryGetCombatPreparation(attackerNetId, out var revised);
+    game.ReplyWithAttackWait(requestId, server.TickCount, readyTick, active, revised);
+}
+```
+
+Delay adds its accepted ticks to the current deadline or retained readiness, capped at 255 outstanding
+ticks. The whole preparation/strike window moves to end at the new impact. Zero and saturated delays
+are no-ops. An outcome callback can delay the following attempt, never a swing already rolled this
+tick. `DelayAttack` returns false for an absent entity or an unrepresentable revised identity/deadline.
+`TryGetAttackReadyTick` returns false for an absent entity. Otherwise it reports an absolute boundary,
+including the correct pre/post countdown adjustment. It can throw `OverflowException` if clock plus
+wait cannot be represented. With no active attempt, that boundary still may need a fresh lead.
+
+A consumer with pending food UI must correlate its own request/reply and schedule revision. Include
+the request identity and authoritative tick in its reply, plus the active schedule identity/revision
+when present. A no-active reply uses its authoritative tick as the stale-snapshot fence. The reply
+example above is game-owned. Do not suppress every preparation until `readyTick`: preparation is
+intentionally before impact. A revised schedule can return to Hold until its new start. Blend from
+the displayed pose, and let a confirmed result win over any still-pending presentation hold.
+
+### Client presentation and authoritative feedback
+
+```csharp
+client.CombatPreparationsChanged += serverTick => game.RefreshPreparationView(serverTick);
+client.PreparedCombatEvent += result => game.QueueImpact(result);
+client.CombatPreparationEnded += ended => game.QueueAbortedMotion(ended);
+
+// Each frame, before composing the body's action and feedback.
+client.Poll();
+client.AdvancePresentation(frameSeconds);
+if (client.TryGetCombatPreparation(attackerNetId, out var schedule))
+{
+    TileCombatPreparationSample sample = TileCombatPreparationSampler.Sample(
+        schedule, client.CombatPresentationTick);
+    game.UpdatePreparationLayer(schedule.PresentationKey, sample);
+}
+game.PresentQueuedCombatFeedback();
+```
+
+`CombatPreparationsChanged` carries the applied tick only after a complete full schedule set replaces
+the cache, including an empty set. The set can already contain a successor when the previous attempt's
+`PreparedCombatEvent` arrives. Present that outcome once using its captured identity/key, even though
+its old active sample retired. The event contains `ImpactTick`, `AttackId`, `Revision`,
+`PresentationKey` and the actual `TileCombatEvent Outcome`. `CombatPreparationEnded` identifies a
+cancelled attempt and its reason without any impact feedback. Enabled clients do not also raise the
+legacy `CombatEvent`. Server `OnCombatEvent` remains the award hook in either mode.
+
+The sampler returns Hold/0, Prepare progress, Strike progress, or AwaitingOutcome/1. A lead equal to
+strike has no Prepare interval. Non-finite sample time returns Hold/0 for a valid schedule, while
+invalid schedule identity/timing throws `ArgumentException`. Sampling emits no event and never loops
+an attempt. `CombatPresentationTick` anchors only on a newer successfully applied movement snapshot,
+advances at most one tick beyond it, and ignores invalid elapsed time. It returns -1 before an anchor,
+when disabled, or after disconnect. Large integer ticks use a conservative representable bound.
+Remote movement retains its independent interpolation delay.
+
+Apply impact pose, hitsplat, sound, shield and death feedback together after polling. Recovery and
+confirmed impact take precedence over a successor's Hold sample. Before confirmation, stop the
+strike short of contact even if the sampler is AwaitingOutcome. Latency, stalled polling and late
+interest entry can skip the preparation. Present a late result once on receipt, without delaying it
+to manufacture a full remote wind-up. Blending, pose mapping and recovery are the game's work.
+
+Schedules are read from authoritative owners and sent when either participant is in interest. Terminals
+also cover attempts visible on the previous serve. These messages do not create drawable entities.
+Complete reliable ordered sets are bounded, stale traffic is deduplicated, and disconnect/removal clears client lifecycle state. The
+[package reference](../KhaozEngine.TileWorld.Netcode/README.md#authoritative-attack-preparation-20141)
+lists wire limits, overflow disconnection and named diagnostics.
+
+---
+
 ## Charging attack time for something that is not a swing (`TileWorldServer.DelayAttack`, 18.16.0)
 
-`DelayAttack(netId, ticks)` pushes an entity's next swing out by `ticks` server ticks. It is the public writer for
-`TileCombatState.CooldownRemaining`, and the only one: everything else on that component is read-only to a game or
-reached through `ITileCombatRules`.
+`DelayAttack(netId, ticks)` adds attack wait. In default mode it writes `TileCombatState.CooldownRemaining`.
+With [preparation enabled](#authoritative-attack-preparation-20141), it also revises an active or retained
+absolute deadline. Use `TryGetAttackReadyTick` to read that boundary. Other combat-state writes belong
+to `ITileCombatRules`.
 
 ```csharp
 // OSRS: a bite costs attack time rather than interrupting the fight.
@@ -12417,8 +12569,9 @@ them: without the create, a delay would do nothing until the second fight and an
 tick would swing straight through it. The created state leaves `AttackTicks` at zero, so `ITileCombatRules` still
 answers the cadence at the first swing exactly as it does today.
 
-False means no live cell owns the id. A zero `ticks` writes nothing and still reports whether the entity is there,
-so it doubles as an existence check.
+False means no live cell owns the id or an enabled preparation's identity/deadline cannot be revised.
+A zero `ticks` writes nothing and still reports whether the entity is there. An already-rolled swing is
+immutable. Delays accepted during its outcome callbacks apply to the following readiness.
 
 ---
 

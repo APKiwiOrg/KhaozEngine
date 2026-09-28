@@ -8,7 +8,9 @@
 
 **Tech Stack:** C#/.NET, `KhaozEngine.TileWorld.Netcode`, ECS and replication, reliable ordered in-memory transport tests, xUnit.
 
-**Spec:** [TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md](../../design/TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md), approved by the owner at commit `60ccb6314`. This plan requires separate approval before execution.
+**Spec:** [TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md](../../design/TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md), approved by the owner at commit `60ccb6314`. This plan was separately approved before execution.
+
+**Execution status:** Engine tasks 1-8 are implemented in staged 20.14.1. Controller integration/release and separate Grimhollow adoption remain pending. The checklist below preserves the approved execution instructions.
 
 ## Global Constraints
 

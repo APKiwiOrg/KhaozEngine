@@ -7,6 +7,17 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.14.1
 
+- Tile combat supports opt-in authoritative attack preparation. `ITileCombatPreparationRules` supplies a
+  game's lead, final-strike duration and public presentation key, while the server schedules and revises
+  attempts without predicting damage. Existing cooldown and food delay overlap the lead, continuing hits
+  keep their cadence, and null combat rules cancel pending attempts without a roll. Default consumers retain
+  their existing timing and legacy combat frames.
+- Matching preparation-enabled clients expose complete schedules, identity-aware outcome/cancellation
+  callbacks, a bounded `CombatPresentationTick`, and a pure stage sampler. Prepared outcomes replace the
+  legacy client `CombatEvent` callback in this mode, while server `OnCombatEvent` remains the award hook.
+  Consumers must opt in on both heads and change their connect protocol version. See the
+  [consumer contract](docs/USING-KHAOZENGINE.md#authoritative-attack-preparation-20141) for setup, delay/readiness,
+  interest and late-delivery behavior. Pose mapping, impact feedback and recovery remain game-owned.
 - On Windows every texture now samples its mip chain, so distant textures stop aliasing and the ground filters as
   designed through the anisotropy and mip bias of `TerrainSamplerConfig`. The native Direct3D 11 backend handed the
   driver Vortice's sampler description, whose layout put a maximum LOD of 0 where the driver reads it, so every

@@ -151,9 +151,31 @@ public class TilePreparationLoopbackTests
         var authoritative = new List<PreparedCombatEvent>();
         var local = new List<PreparedCombatEvent>();
         var remote = new List<PreparedCombatEvent>();
+        long migratedTick = f.Server.TickCount;
+        bool localSawMigratedRevision = false, observerSawMigratedRevision = false;
+        f.Client.CombatPreparationsChanged += tick =>
+        {
+            if (tick != migratedTick) return;
+            AssertMigratedRevision(f.Client);
+            localSawMigratedRevision = true;
+        };
+        observer.CombatPreparationsChanged += tick =>
+        {
+            if (tick != migratedTick) return;
+            AssertMigratedRevision(observer);
+            observerSawMigratedRevision = true;
+        };
         f.Server.OnCombatEvent += _ => authoritative.Add(f.Server.PreparedCombatEventsThisTick[^1]);
-        f.Client.PreparedCombatEvent += local.Add;
-        observer.PreparedCombatEvent += remote.Add;
+        f.Client.PreparedCombatEvent += result =>
+        {
+            Assert.True(localSawMigratedRevision);
+            local.Add(result);
+        };
+        observer.PreparedCombatEvent += result =>
+        {
+            Assert.True(observerSawMigratedRevision);
+            remote.Add(result);
+        };
         Frames(f, 5, poll: false);
         Assert.True(f.Server.Host.TryGetOwner(attacker, out var migrated, out _));
         Assert.Equal(new CellCoord(1, 0), migrated.Coord);
@@ -164,6 +186,8 @@ public class TilePreparationLoopbackTests
         while (f.Server.TickCount <= revised.ImpactTick) Frames(f, 5, poll: false);
         Assert.Empty(local);
         Assert.Empty(remote);
+        Assert.False(localSawMigratedRevision);
+        Assert.False(observerSawMigratedRevision);
         Assert.Equal(revised.ImpactTick, Assert.Single(authoritative).ImpactTick);
         f.Client.Poll();
         observer.Poll();
@@ -173,6 +197,15 @@ public class TilePreparationLoopbackTests
         Assert.Equal(revised.Revision, local[0].Revision);
         Assert.True(f.Client.TryGetCombatPreparation(attacker, out var successor));
         Assert.Equal(revised.AttackId + 1, successor.AttackId);
+
+        void AssertMigratedRevision(TileWorldClient client)
+        {
+            Assert.True(client.TryGetCombatPreparation(attacker, out var applied));
+            Assert.Equal(revised.AttackId, applied.AttackId);
+            Assert.Equal(revised.Revision, applied.Revision);
+            Assert.Equal(revised.PrepareTick, applied.PrepareTick);
+            Assert.Equal(revised.ImpactTick, applied.ImpactTick);
+        }
     }
 
     [Fact]

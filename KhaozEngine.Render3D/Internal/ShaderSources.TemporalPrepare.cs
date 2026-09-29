@@ -50,7 +50,7 @@ float temporalReactiveDifference(vec3 weightedColor, vec3 opaqueColor) {
 }
 
 // A texel's weighted YCoCg and reactive difference as both entry points use them, rounded to half float, the precision
-// the split stores them at, so the two entry points read the same values.
+// the split stores them at, so the fused pass gathers what the split stores.
 vec4 temporalPrepared(vec3 ycc, float reactiveDifference) {
     return vec4(unpackHalf2x16(packHalf2x16(ycc.xy)), unpackHalf2x16(packHalf2x16(vec2(ycc.z, reactiveDifference))));
 }

@@ -4,8 +4,9 @@ using KhaozEngine.Gpu;
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>The temporal resolve's two entry points over one set of rules
-    /// (<see cref="ShaderSources.TemporalPrepareGlsl"/> and <see cref="ShaderSources.TemporalAccumulateGlsl"/>). Their
-    /// outputs are the same.</summary>
+    /// (<see cref="ShaderSources.TemporalPrepareGlsl"/> and <see cref="ShaderSources.TemporalAccumulateGlsl"/>),
+    /// applied to the same values. That they write the same history bit for bit is what
+    /// <c>TemporalEntryIdentityGpuTests</c> checks on each backend it runs on.</summary>
     internal enum TemporalResolveEntry
     {
         /// <summary>One display-resolution pass that prepares its 3x3 inline

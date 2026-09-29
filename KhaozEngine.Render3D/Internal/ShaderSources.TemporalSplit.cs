@@ -19,7 +19,9 @@ namespace KhaozEngine.Render3D.Internal
     /// reactive difference in half floats, which both entry points round them to, the expected depth and the edge
     /// motion in single floats, the motion in the half float the motion target itself holds, and the flags as a whole
     /// number below 256. Alpha is read from the scene colour, whatever its format. So both entry points apply every
-    /// rule to the same values.</para>
+    /// rule to the same values. Nothing is <c>precise</c>, so a backend's compiler could still compute the fused
+    /// pass's inline preparation and this one differently. <c>TemporalEntryIdentityGpuTests</c> compares the two
+    /// histories bit for bit after every frame of a follow walk, and passes on Metal.</para>
     /// </summary>
     internal static partial class ShaderSources
     {

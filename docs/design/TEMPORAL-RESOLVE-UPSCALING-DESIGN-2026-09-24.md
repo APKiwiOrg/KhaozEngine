@@ -619,6 +619,18 @@ and changed these details. Each group's "Contract amendments" block carries the 
     Metal, 2928 test fixtures and 63108 frames, matched the single-pass resolve they replaced, with each entry point
     forced in turn. It took the emitted resolve from 43661 to 42862 bytes of HLSL.
 
+    The same rules over the same values make the two entry points identical only where a backend's shader compiler
+    computes the fused pass's inline preparation and the split's first pass alike. Nothing is `precise`, and FXC, the
+    SPIR-V compilers of NVIDIA and Mesa and Metal's fast math may each round an expression differently in two
+    programs. `TemporalEntryIdentityGpuTests` is the check: two scenes render one perspective follow walk, still,
+    walking and stopped, over still blades narrower than a texel, one forced to each entry point, and after every
+    frame their history colour and state are compared bit for bit. It counts the marks the state stored, so the
+    followed mark and, at the upscaling presets, the band are shown to run. On Metal (Apple M2 Max) all 48 frames of
+    Native, Quality and Performance match, with up to 2096 band marks and 5073 followed marks stored. The hosted legs
+    run it on Direct3D 11 (WARP and a Tesla T4) and Vulkan (lavapipe and a Tesla T4), and a claim of identity on a
+    backend holds as far as that fact passes there. The per-frame hash over every temporal fact, 2931 fixtures and
+    63228 frames, was identical between the two entry points on Metal after the half-float rounding.
+
     The half-float rounding is the one output change of the two entry points. Holding the prepared colour at single
     float needed 32 bytes an internal texel, and on a Tesla T4 that bandwidth made the split slower than the fused pass
     on Direct3D 11 and on Linux Vulkan at Quality. Rounding moves 1164 of 2304 printed acceptance lines, by 0 to 2

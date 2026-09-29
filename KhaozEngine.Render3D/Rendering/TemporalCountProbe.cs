@@ -36,7 +36,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly byte[] _row = new byte[GridWidth * 4];
         bool _recorded;
 
-        public TemporalCountProbe(IGpuDevice gd, IGpuResourceLayout resolveLayout)
+        public TemporalCountProbe(IGpuDevice gd, IGpuResourceLayout resolveLayout, TemporalResolvePrecision precision)
         {
             _gd = gd;
             IGpuResourceFactory f = gd.Factory;
@@ -46,7 +46,7 @@ namespace KhaozEngine.Render3D.Rendering
             _staging = f.CreateTexture(GpuTextureDescription.Texture2D(GridWidth, GridHeight,
                 GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Staging));
             _shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                ShaderSources.TemporalProbeFragment(TemporalResolvePrecisionPolicy.For(gd)));
+                ShaderSources.TemporalProbeFragment(precision));
             _pipeline = f.CreateGraphicsPipeline(new GpuPipelineDescription
             {
                 BlendFactor = Vector4.Zero,

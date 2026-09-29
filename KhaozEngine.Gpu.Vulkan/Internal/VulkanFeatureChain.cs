@@ -25,6 +25,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="MultiViewport">READ only, never enabled: the viewport is one, set dynamically.</param>
     /// <param name="DrawIndirectFirstInstance">READ only, never enabled.</param>
     /// <param name="ShaderFloat64">READ only, never enabled: no shipped shader takes a double.</param>
+    /// <param name="ShaderFloat16">1.2. Enabled when present: half-float arithmetic in shaders.</param>
     internal readonly record struct VulkanFeatureSupport(
         bool DynamicRendering,
         bool Synchronization2,
@@ -37,7 +38,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         bool TessellationShader,
         bool MultiViewport,
         bool DrawIndirectFirstInstance,
-        bool ShaderFloat64);
+        bool ShaderFloat64,
+        bool ShaderFloat16 = false);
 
     /// <summary>
     /// What <see cref="VulkanFeatureChain.Select"/> decided: which bits <c>vkCreateDevice</c> is asked for, and

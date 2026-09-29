@@ -26,6 +26,6 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>The precision for a backend.</summary>
         public static TemporalResolvePrecision For(GpuBackendKind backend) =>
-            backend.IsMetal() ? TemporalResolvePrecision.Half : TemporalResolvePrecision.Full;
+            TemporalResolvePrecision.Half;   // SCRATCH: half on every backend, for the hosted measurement
     }
 }

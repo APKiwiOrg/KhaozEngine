@@ -135,7 +135,7 @@ namespace KhaozEngine.Render3D
                 return (_laterRenderPost ??= new PixelPostProcess(_gd, _res.PingAFB.Outputs, _targetOutput), _res);
 
             FrameView current = _currentFrameView;
-            _temporalResolve ??= new TemporalResolveRenderer(_gd);
+            _temporalResolve ??= new TemporalResolveRenderer(_gd, TemporalResolvePrecisionForTests);
             _temporalPost ??= new TemporalPostTargets(_gd);
             // New targets hold nothing. A new display or internal size already reset the history through the frame key,
             // so this catches a replacement the key cannot see, and the resolve never reads new targets as history.

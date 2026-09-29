@@ -38,6 +38,9 @@ namespace KhaozEngine.Render3D.Rendering
         internal const int DrawCallsPerFrame = 2;
 
         readonly IGpuDevice _gd;
+
+        /// <summary>The precision of every temporal program this renderer builds.</summary>
+        internal TemporalResolvePrecision Precision { get; }
         readonly IGpuResourceLayout _resolveLayout, _storeLayout;
         IGpuShaderSet? _resolveShaders, _storeShaders;
         IGpuPipeline? _resolvePipeline, _storePipeline;
@@ -49,9 +52,10 @@ namespace KhaozEngine.Render3D.Rendering
         int _boundTargets = int.MinValue;
         TemporalHistory? _boundHistory;
 
-        public TemporalResolveRenderer(IGpuDevice gd)
+        public TemporalResolveRenderer(IGpuDevice gd, TemporalResolvePrecision? precision = null)
         {
             _gd = gd;
+            Precision = precision ?? TemporalResolvePrecisionPolicy.For(gd);
             IGpuResourceFactory f = gd.Factory;
             _resolveLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
@@ -70,7 +74,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (_resolvePipeline is not null) return;
             IGpuResourceFactory f = _gd.Factory;
             _resolveShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                ShaderSources.TemporalResolveFragment(TemporalResolvePrecisionPolicy.For(_gd)));
+                ShaderSources.TemporalResolveFragment(Precision));
             _storeShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
                 ShaderSources.TemporalDepthStoreFrag);
             _resolvePipeline = Fullscreen(f, _resolveShaders, _resolveLayout,

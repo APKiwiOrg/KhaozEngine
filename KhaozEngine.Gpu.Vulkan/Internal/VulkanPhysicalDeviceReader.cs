@@ -190,7 +190,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 TessellationShader: core.TessellationShader,
                 MultiViewport: core.MultiViewport,
                 DrawIndirectFirstInstance: core.DrawIndirectFirstInstance,
-                ShaderFloat64: core.ShaderFloat64);
+                ShaderFloat64: core.ShaderFloat64,
+                ShaderFloat16: features12.ShaderFloat16);
         }
 
         // V-G2's read. The driver id is the authoritative half and comes off VkPhysicalDeviceDriverProperties,

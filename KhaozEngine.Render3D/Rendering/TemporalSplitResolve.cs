@@ -45,13 +45,13 @@ namespace KhaozEngine.Render3D.Rendering
         int _boundTargets = int.MinValue;
         TemporalHistory? _boundHistory;
 
-        public TemporalSplitResolve(IGpuDevice gd)
+        public TemporalSplitResolve(IGpuDevice gd, TemporalResolvePrecision precision)
         {
             _gd = gd;
             IGpuResourceFactory f = gd.Factory;
             _prepareShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalPrepareFrag);
             _accumulateShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(gd)));
+                ShaderSources.TemporalAccumulateFragment(precision));
             _prepareLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), S("LinearClamp"), U("Resolve")));
             _accumulateLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(

@@ -304,7 +304,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             var features12 = new PhysicalDeviceVulkan12Features(
                 sType: StructureType.PhysicalDeviceVulkan12Features,
                 pNext: &features13,
-                timelineSemaphore: true);
+                timelineSemaphore: true,
+                shaderFloat16: features.Support.ShaderFloat16);
 
             // Named one by one, which is the whole of V-N4. The incumbent handed vkCreateDevice the entire
             // supported feature struct, so its real dependencies are unknowable from the code and a device missing

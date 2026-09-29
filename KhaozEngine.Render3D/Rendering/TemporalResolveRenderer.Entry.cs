@@ -52,7 +52,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             if (Entry == TemporalResolveEntry.Split)
             {
-                _split ??= new TemporalSplitResolve(_gd);
+                _split ??= new TemporalSplitResolve(_gd, Precision);
                 _split.Bind(inputs, history, _clampSampler, _resolveBuffer, retired);
                 return;
             }

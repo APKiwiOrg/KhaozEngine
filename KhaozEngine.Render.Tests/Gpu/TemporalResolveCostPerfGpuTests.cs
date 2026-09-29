@@ -81,9 +81,10 @@ namespace KhaozEngine.Tests.Gpu
                 || n.Contains("Software", StringComparison.OrdinalIgnoreCase));
 
         // The modes of one round. Each temporal mode names the resolve it selects and the pass it leaves out.
-        enum Mode { Off, Fused, Split, PassOneAlone, PassTwoAlone }
+        enum Mode { Off, Fused, Split, PassOneAlone, PassTwoAlone, FusedFull, SplitFull }
 
-        static readonly Mode[] Modes = [Mode.Off, Mode.Fused, Mode.Split, Mode.PassOneAlone, Mode.PassTwoAlone];
+        // SCRATCH: the passes alone left out, so a round costs what it did.
+        static readonly Mode[] Modes = [Mode.Off, Mode.Fused, Mode.Split, Mode.FusedFull, Mode.SplitFull];
 
         static double Median(IEnumerable<double> xs)
         {
@@ -109,6 +110,15 @@ namespace KhaozEngine.Tests.Gpu
             }
             Scene3D scene = fx.Scene;
             Action<Scene3D, int> draw = name == Boxes ? BoxesScene(stage) : FieldScene(stage);
+            // SCRATCH: a second scene of the same content at full precision, timed in the same rounds.
+            var stageFull = new FrontStage(w, h, 4.5f);
+            using var fxFull = new TemporalFixture(w, h, s => stageFull.Setup(s, AntiAliasing.Temporal, preset));
+            fxFull.Scene.TemporalResolvePrecisionForTests = TemporalResolvePrecision.Full;
+            Action<Scene3D, int> drawFull = name == Boxes ? BoxesScene(stageFull) : FieldScene(stageFull);
+            fxFull.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Split;
+            fxFull.Frames(4, drawFull);
+            fxFull.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Fused;
+            fxFull.Frames(4, drawFull);
 
             // Settle on each entry point, which builds the split's objects, then read the internal size the resolve
             // reads from and sample its counts once.
@@ -132,6 +142,11 @@ namespace KhaozEngine.Tests.Gpu
                 for (int k = 0; k < Modes.Length; k++)
                 {
                     Mode mode = Modes[(r + k) % Modes.Length];
+                    if (mode is Mode.FusedFull or Mode.SplitFull)
+                    {
+                        TimeFull(mode);
+                        continue;
+                    }
                     bool temporal = mode != Mode.Off;
                     scene.Post.Quality.AntiAliasing = temporal ? AntiAliasing.Temporal : AntiAliasing.Off;
                     scene.Post.RenderScale = temporal ? RenderScale.MatchViewport : RenderScale.FixedInternal;
@@ -158,6 +173,29 @@ namespace KhaozEngine.Tests.Gpu
             split.SkipPassForTests = TemporalSplitPass.None;
             scene.TemporalResolveEntryForTests = null;
 
+            void TimeFull(Mode mode)
+            {
+                Scene3D full = fxFull.Scene;
+                full.Post.RenderScale = RenderScale.MatchViewport;
+                full.Post.RenderWidth = iw;
+                full.Post.RenderHeight = ih;
+                full.TemporalResolveEntryForTests = mode == Mode.FusedFull ? TemporalResolveEntry.Fused
+                    : TemporalResolveEntry.Split;
+                fxFull.Frames(Warm, drawFull);
+                double submittedFull = 0;
+                long t0 = Stopwatch.GetTimestamp();
+                for (int i = 0; i < Block; i++)
+                {
+                    fxFull.Frames(1, drawFull);
+                    submittedFull += fxFull.LastSubmitMilliseconds;
+                }
+                wall[mode].Add(Stopwatch.GetElapsedTime(t0).TotalMilliseconds / Block);
+                submit[mode].Add(submittedFull / Block);
+                Assert.True(full.ResolvedLastRenderForTests);
+                Assert.Equal(TemporalResolvePrecision.Full, full.TemporalResolveRendererForTests?.Precision);
+                Assert.Equal(full.TemporalResolveEntryForTests, full.TemporalResolveRendererForTests?.LastEntry);
+            }
+
             double off = Median(wall[Mode.Off]);
             output.WriteLine($"  {w}x{h} {preset}, {name}, internal {iw}x{ih}: {Rounds} rounds of {Block} frames after "
                 + $"{Warm}, one block a mode a round, the order rotating");
@@ -171,9 +209,10 @@ namespace KhaozEngine.Tests.Gpu
                     + $"{F(paired.Min())} max {F(paired.Max())}, submit and drain difference {F(submitted)}");
                 output.WriteLine($"    blocks {Join(wall[mode])}");
             }
-            PrintPair("pass one", wall[Mode.Split], wall[Mode.PassTwoAlone]);
-            PrintPair("pass two", wall[Mode.Split], wall[Mode.PassOneAlone]);
             PrintPair("split against fused", wall[Mode.Split], wall[Mode.Fused]);
+            output.WriteLine($"  precision under test {renderer.Precision}, against Full in a second scene");
+            PrintPair("fused at the precision under test against full", wall[Mode.Fused], wall[Mode.FusedFull]);
+            PrintPair("split at the precision under test against full", wall[Mode.Split], wall[Mode.SplitFull]);
             bool upscales = TemporalResolvePolicy.Upscales(iw, ih, w, h);
             output.WriteLine($"  the policy picks {TemporalResolvePolicy.Measured(fx.Device.Backend, upscales)} for "
                 + $"{fx.Device.Backend} at {preset}, internal {iw}x{ih} {(upscales ? "below" : "at")} the display"
@@ -196,6 +235,8 @@ namespace KhaozEngine.Tests.Gpu
             Mode.Fused => "fused",
             Mode.Split => "split",
             Mode.PassOneAlone => "split, pass one alone",
+            Mode.FusedFull => "fused at full precision",
+            Mode.SplitFull => "split at full precision",
             _ => "split, pass two alone",
         };
 

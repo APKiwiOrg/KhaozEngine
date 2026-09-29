@@ -6,7 +6,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// <summary>The resolve's two entry points (<see cref="TemporalResolveEntry"/>). The scene chooses one per
     /// resolving render (<see cref="SelectEntry"/>) from <see cref="TemporalResolvePolicy"/>. Both write the same
     /// history pair and previous depth, so the choice may change from one frame to the next. Their histories match bit
-    /// for bit wherever <c>TemporalEntryIdentityGpuTests</c> passes, which it does on Metal. The fused entry point's
+    /// for bit wherever <c>TemporalEntryIdentityGpuTests</c> passes, which it does on Metal and on a Tesla T4 on
+    /// Direct3D 11 and Vulkan. The fused entry point's
     /// objects are built on its first frame, and the split's (<see cref="TemporalSplitResolve"/>) on its first frame,
     /// whose targets it retires on any frame that does not record it.</summary>
     internal sealed partial class TemporalResolveRenderer

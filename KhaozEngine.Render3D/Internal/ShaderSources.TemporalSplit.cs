@@ -16,12 +16,12 @@ namespace KhaozEngine.Render3D.Internal
     /// that read the scene's inputs, the moving share and the followed mark's check, read them as the fused resolve
     /// does.</para>
     /// <para><b>EXACT BY CONSTRUCTION.</b> Every value the first pass stores is held exactly: the colours and the
-    /// reactive difference in half floats, which both entry points round them to, the expected depth and the edge
+    /// reactive difference in half floats, which both entry points round them to in integer steps
+    /// (<c>temporalHalf</c>, since packHalf2x16 rounded three ways on NVIDIA Vulkan), the expected depth and the edge
     /// motion in single floats, the motion in the half float the motion target itself holds, and the flags as a whole
     /// number below 256. Alpha is read from the scene colour, whatever its format. So both entry points apply every
-    /// rule to the same values. Nothing is <c>precise</c>, so a backend's compiler could still compute the fused
-    /// pass's inline preparation and this one differently. <c>TemporalEntryIdentityGpuTests</c> compares the two
-    /// histories bit for bit after every frame of a follow walk, and passes on Metal.</para>
+    /// rule to the same values. <c>TemporalEntryIdentityGpuTests</c> compares the two histories bit for bit after every
+    /// frame of a follow walk, and passes on Metal and on a Tesla T4 on Direct3D 11 and Vulkan.</para>
     /// </summary>
     internal static partial class ShaderSources
     {

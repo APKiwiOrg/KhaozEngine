@@ -14,11 +14,12 @@ namespace KhaozEngine.Tests.Gpu
     /// after every frame the history colour and state each wrote are read back and compared. The walk holds still,
     /// walks and stops, so the followed mark and its keep on the stop, the band beside the followed box at the
     /// upscaling presets, and still blades narrower than a texel on the ground all run through both, and the fact
-    /// counts the marks the state stored to show it. Nothing in the shaders is <c>precise</c>, so a compiler could
-    /// round the fused pass's inline preparation and the split's stored one differently. This fact is what shows it
-    /// does not on a given backend (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). It compares every frame of the
-    /// walk and reports the colour, the confidence, the lock under the same mark and the mark apart, so a rounding
-    /// difference in the values reads apart from a rule that decided otherwise.
+    /// counts the marks the state stored to show it. It compares every frame of the walk and reports the colour, the
+    /// confidence, the lock under the same mark and the mark apart, so a rounding difference in the values reads apart
+    /// from a rule that decided otherwise. Through packHalf2x16 the values differed on every Vulkan device it ran on,
+    /// and the locks with them, so both entries round in integer steps (<c>temporalHalf</c>). This fact is what shows
+    /// they agree on a given backend: Metal, and a Tesla T4 on Direct3D 11 and Vulkan
+    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23).
     /// </summary>
     public sealed class TemporalEntryIdentityGpuTests(ITestOutputHelper output)
     {

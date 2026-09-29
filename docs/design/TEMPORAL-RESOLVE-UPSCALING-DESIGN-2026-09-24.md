@@ -623,24 +623,36 @@ and changed these details. Each group's "Contract amendments" block carries the 
     it. At Native there is one texel a pixel, and the split's second pass and targets are pure cost.
 
     Both entry points apply every rule to the same values. The shared preparation rounds a texel's weighted Y, Co and
-    Cg and its reactive difference to half float (`temporalPrepared`), in the fused pass too, and the split stores
-    every value exactly: those four in one half-float target, the expected depth and step 6's edge motion in
-    single-float targets, the motion in a half-float target, the motion target's own format, beside the surface's
-    eight flags as a whole number below 256, and alpha is read back from the scene colour. Moving the rules into
-    functions changed no output: a hash of both history outputs after every resolved frame of every temporal fact on
-    Metal, 2928 test fixtures and 63108 frames, matched the single-pass resolve they replaced, with each entry point
+    Cg and its reactive difference to half float (`temporalPrepared`, `temporalHalf`), in the fused pass too, and the
+    split stores every value exactly: those four in one half-float target, the expected depth and step 6's edge
+    motion in single-float targets, the motion in a half-float target, the motion target's own format, beside the
+    surface's eight flags as a whole number below 256, and alpha is read back from the scene colour. Moving the rules
+    into functions changed no output: a hash of both history outputs after every resolved frame of every temporal fact
+    on Metal, 2928 test fixtures and 63108 frames, matched the single-pass resolve they replaced, with each entry point
     forced in turn. It took the emitted resolve from 43661 to 42862 bytes of HLSL.
 
-    The same rules over the same values make the two entry points identical only where a backend's shader compiler
-    computes the fused pass's inline preparation and the split's first pass alike. Nothing is `precise`, and FXC, the
-    SPIR-V compilers of NVIDIA and Mesa and Metal's fast math may each round an expression differently in two
-    programs. `TemporalEntryIdentityGpuTests` is the check: two scenes render one perspective follow walk, still,
-    walking and stopped, over still blades narrower than a texel, one forced to each entry point, and after every
-    frame their history colour and state are compared bit for bit. It counts the marks the state stored, so the
-    followed mark and, at the upscaling presets, the band are shown to run. On Metal (Apple M2 Max) all 48 frames of
-    Native, Quality and Performance match, with up to 2096 band marks and 5073 followed marks stored. The hosted legs
-    run it on Direct3D 11 (WARP and a Tesla T4) and Vulkan (lavapipe and a Tesla T4), and a claim of identity on a
-    backend holds as far as that fact passes there. The per-frame hash over every temporal fact, 2931 fixtures and
+    The same rules over the same values make the two entry points identical only where both round alike, and
+    packHalf2x16 with unpackHalf2x16 did not on Vulkan. On a Tesla T4, Windows and Linux, and on lavapipe the first
+    frame differed in about 55 percent of the history colour values by one half-float step, and over the walk the colour
+    differed by up to 316 steps as the history carried it on and the lock by a whole ridge, while the confidence and the
+    marks matched. A probe that rewrote the programs found why on the Linux T4: the split's first pass rounding through
+    the pair, the fused pass rounding through it inline and a round to nearest even gave three different values, and
+    `precise` on the preparation changed nothing. So `temporalHalf` rounds in integer steps: the 13 low mantissa bits
+    dropped with ties to even, and a value below the half's least normal value, 2^-14, flushed to zero of its sign by
+    masks. Its result is a normal half or a zero, which the half-float target stores unchanged. Keeping the half's
+    subnormals took a second rounding path that cost the fused pass up to 2.5 ms on Metal, and a comparison in place of
+    the masks up to 1.8 ms. The flush moves no printed line of the temporal facts on Metal, on either entry point. On
+    the M2 Max the rounding costs the split nothing measurable and the fused pass up to 0.28 ms at 3456x2234.
+    `TemporalEntryIdentityGpuTests` is the check: two scenes render one perspective follow walk, still, walking and
+    stopped, over still blades narrower than a texel, one forced to each entry point, and after every frame their
+    history colour and state are compared bit for bit. It reports the colour, the confidence, the lock under the same
+    mark and the mark apart, so a rounding difference reads apart from a rule that decided otherwise, and it counts the
+    marks the state stored, so the followed mark and, at the upscaling presets, the band are shown to run. All 48
+    frames of Native, Quality and Performance match on Metal (Apple M2 Max), with up to 2096 band marks and 5073
+    followed marks stored, and on a Tesla T4 on Direct3D 11 and on Vulkan under Windows and Linux. Run 36543165854
+    ran the integer rounding with the subnormals kept on all three, and run 36542189945 ran this rounding on Linux in
+    another form that gives the same bits. WARP and lavapipe have not run it since the change, and a claim of identity
+    on a backend holds as far as that fact passes there. The per-frame hash over every temporal fact, 2931 fixtures and
     63228 frames, was identical between the two entry points on Metal after the half-float rounding.
 
     The half-float rounding is the one output change of the two entry points. Holding the prepared colour at single
@@ -649,7 +661,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
     pixels in the pixel counts and small shifts in the errors, and fails one bound: the still box over the textured
     wall under a sideways camera leaves a trail of 14 pixels of 3968 at Quality, against 10 at single float. Rounding
     Co and Cg alone gives 14 as well, Y alone 9 and the reactive difference alone 10, so keeping only Y at single float
-    does not help (13). The bound is 16. The emitted resolve is 43280 bytes of HLSL, the split's first pass 12953 and
+    does not help (13). The bound is 16. The emitted resolve is 43622 bytes of HLSL, the split's first pass 13304 and
     its second 32791.
 
     The split's targets hold 24 bytes an internal texel: Y, Co, Cg and the reactive difference at 8 in RGBA16F, the

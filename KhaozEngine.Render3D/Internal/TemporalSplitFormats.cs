@@ -8,12 +8,13 @@ namespace KhaozEngine.Render3D.Internal
     /// the first pass's output order. The first pass also writes the history's previous depth
     /// (<see cref="TemporalFormats.PreviousDepth"/>), which the depth store writes on the fused entry point.
     /// <para><b>EVERY STORED VALUE IS EXACT.</b> Both entry points round the weighted Y, Co and Cg and the reactive
-    /// difference to half float (<c>temporalPrepared</c>), so the half-float prepared target holds them exactly. The
+    /// difference to a normal half float or a zero in integer steps (<c>temporalPrepared</c>, <c>temporalHalf</c>),
+    /// so the half-float prepared target holds them exactly. The
     /// expected depth and the edge motion are single floats, as the fused resolve holds them. The surface target is
     /// half float: its motion is the motion target's own half float and its flags a whole number below 256, both
     /// exact. Alpha is not stored, the second pass reads it from the scene colour, so it stays exact under an 8-bit
     /// colour target too. The targets live for one frame, written by the first pass and read by the second, so they
-    /// need no pair. Whether a backend's compiler computes the values alike in both entry points is what
+    /// need no pair. That both entry points compute the values alike on a backend is what
     /// <c>TemporalEntryIdentityGpuTests</c> checks.</para>
     /// </summary>
     internal static class TemporalSplitFormats

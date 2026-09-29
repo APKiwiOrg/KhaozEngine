@@ -6,7 +6,8 @@ namespace KhaozEngine.Render3D.Internal
     /// <summary>The temporal resolve's two entry points over one set of rules
     /// (<see cref="ShaderSources.TemporalPrepareGlsl"/> and <see cref="ShaderSources.TemporalAccumulateGlsl"/>),
     /// applied to the same values. That they write the same history bit for bit is what
-    /// <c>TemporalEntryIdentityGpuTests</c> checks on each backend it runs on.</summary>
+    /// <c>TemporalEntryIdentityGpuTests</c> checks on each backend it runs on. On a software Vulkan device (llvmpipe)
+    /// it holds the state identical and the colour within a measured bound.</summary>
     internal enum TemporalResolveEntry
     {
         /// <summary>One display-resolution pass that prepares its 3x3 inline

@@ -12,7 +12,8 @@ namespace KhaozEngine.Render3D.Internal
     /// <see cref="TemporalSplitFormats"/>'s targets and whose second pass accumulates each display pixel from them. So
     /// a constant tunes both. Both round the weighted colour and the reactive difference to half float in integer
     /// steps, which the split stores exactly, so the two apply every rule to the same values, and
-    /// <c>TemporalEntryIdentityGpuTests</c> shows they write the same history bit for bit on each backend it runs on.
+    /// <c>TemporalEntryIdentityGpuTests</c> shows they write the same history bit for bit on hardware and on WARP. On
+    /// a software Vulkan device (llvmpipe) the state is identical and the colour within a measured bound.
     /// The split's targets hold 24 bytes an internal texel, 82.3 MB at 3456x2234 Quality, and exist only while it runs.
     /// <see cref="TemporalResolvePolicy"/> picks the entry point per backend, on whether the internal size is below
     /// the display's, from the hosted NVIDIA measurements (runs 36517355602 and 36524126806) and the Metal figures,

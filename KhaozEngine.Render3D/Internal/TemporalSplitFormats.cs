@@ -15,7 +15,8 @@ namespace KhaozEngine.Render3D.Internal
     /// exact. Alpha is not stored, the second pass reads it from the scene colour, so it stays exact under an 8-bit
     /// colour target too. The targets live for one frame, written by the first pass and read by the second, so they
     /// need no pair. That both entry points compute the values alike on a backend is what
-    /// <c>TemporalEntryIdentityGpuTests</c> checks.</para>
+    /// <c>TemporalEntryIdentityGpuTests</c> checks, bit for bit on hardware and WARP, the state alone on a software
+    /// Vulkan device (llvmpipe).</para>
     /// </summary>
     internal static class TemporalSplitFormats
     {

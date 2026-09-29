@@ -651,9 +651,15 @@ and changed these details. Each group's "Contract amendments" block carries the 
     frames of Native, Quality and Performance match on Metal (Apple M2 Max), with up to 2096 band marks and 5073
     followed marks stored, and on a Tesla T4 on Direct3D 11 and on Vulkan under Windows and Linux. Run 36543165854
     ran the integer rounding with the subnormals kept on all three, and run 36542189945 ran this rounding on Linux in
-    another form that gives the same bits. WARP and lavapipe have not run it since the change, and a claim of identity
-    on a backend holds as far as that fact passes there. The per-frame hash over every temporal fact, 2931 fixtures and
-    63228 frames, was identical between the two entry points on Metal after the half-float rounding.
+    another form that gives the same bits. CI run 36553987435 ran the committed rounding on WARP and on Metal (a
+    hosted macos-26), identical. On lavapipe (Mesa llvmpipe, LLVM 20.1.2) the confidence, the locks and the marks
+    match on every frame and the colour does not: its largest difference is 0.0049 at Native, 0.0154 at Quality and
+    0.0439 at Performance, over 0.010, 0.052 and 0.118 percent of the values, since its compiler orders the two
+    programs' arithmetic differently. So the fact holds the entry points bit for bit on hardware and on WARP, and on a
+    software Vulkan device it holds the confidence, the lock and the mark identical and the colour within 0.0625 on at
+    most 0.25 percent of the values. A claim of identity on a backend holds as far as that fact passes there. The
+    per-frame hash over every temporal fact, 2931 fixtures and 63228 frames, was identical between the two entry points
+    on Metal after the half-float rounding.
 
     The half-float rounding is the one output change of the two entry points. Holding the prepared colour at single
     float needed 32 bytes an internal texel, and on a Tesla T4 that bandwidth made the split slower than the fused pass

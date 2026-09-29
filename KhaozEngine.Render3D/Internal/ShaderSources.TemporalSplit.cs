@@ -35,6 +35,10 @@ layout(set=0, binding=4) uniform sampler LinearClamp;
 // The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
 layout(set=0, binding=5) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
 " + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowCurrentGlsl + TemporalPrepareGlsl + @"
+// The prepared values through an integer mask of the 13 low mantissa bits, which a half float leaves clear, so the
+// mask changes no value. Written straight from the rounding to the half-float target, NVIDIA Vulkan stored other values
+// than the fused pass rounds inline (TemporalEntryIdentityGpuTests). Through the mask it stores the rounding's own.
+vec4 temporalExactHalf(vec4 rounded) { return uintBitsToFloat(floatBitsToUint(rounded) & uvec4(0xffffe000u)); }
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oPrepared;
 layout(location=1) out vec4 oSurface;
@@ -60,7 +64,7 @@ void main() {
     TemporalSurface surface = temporalPrepareSurface(texel, closestTexel, closestDepth, maxTexel);
     float viewDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg,
         texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r);
-    oPrepared = temporalPrepared(ycc, reactiveDifference);
+    oPrepared = temporalExactHalf(temporalPrepared(ycc, reactiveDifference));
     oSurface = temporalStoreSurface(surface);
     oExpected = vec4(surface.expectedDepth, 0.0, 0.0, 1.0);
     oEdge = vec4(surface.edgeMotion, 0.0, 0.0, 1.0);

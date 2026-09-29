@@ -467,15 +467,19 @@ namespace KhaozEngine.Tests.Render3D
         public void The_separable_Lanczos_kernel_takes_twelve_evaluations_per_pixel()
         {
             // One definition and four calls in a three-pass loop: three weights per axis at internal scale and three per
-            // axis at display scale, formed into the nine products of the 3x3.
+            // axis at display scale, formed into the nine products of the 3x3. The display-scale product serves both
+            // the sample weight and the display-sized reconstruction.
             string core = ShaderSources.TemporalResolveCoreGlsl;
             Assert.Equal(5, core.Split("lanczos2(").Length - 1);
             Assert.Contains("for (int i = 0; i < 3; i++) {", core, StringComparison.Ordinal);
             Assert.Contains("{ return kernels.x[x] * kernels.y[y]; }", core, StringComparison.Ordinal);
             Assert.Contains("float lanczosWeight = toFloat(temporalLanczosWeight(kernels, x, y));", core,
                 StringComparison.Ordinal);
-            Assert.Contains("clamp(kernels.displayX[x] * kernels.displayY[y], afloat(0.0), afloat(1.0))", core,
+            Assert.Contains("afloat displayWeight = kernels.displayX[x] * kernels.displayY[y];", core,
                 StringComparison.Ordinal);
+            Assert.Contains("n.display += vec4(toVec3(ycc), 1.0) * toFloat(displayWeight);", core,
+                StringComparison.Ordinal);
+            Assert.Contains("clamp(displayWeight, afloat(0.0), afloat(1.0))", core, StringComparison.Ordinal);
         }
 
         [Fact]

@@ -797,11 +797,15 @@ and changed these details. Each group's "Contract amendments" block carries the 
     samples, so the share also scales by that sum up to `DisplayKernelFullWeight` (a quarter). The result is held to the
     neighbourhood's range as the internal reconstruction is. The sample weight, the confidence and every other rule are
     unchanged, so a fresh or moving pixel resolves as before, and Native, where the two kernels are one, is unchanged
-    bit for bit. The split's second pass reads the 3x3's prepared colour again for the pixels that take it
-    (`temporalCurrentYcc`), and the fused pass prepares it again from the scene colour, so both entry points reconstruct
-    from the same half-float values and still write the same history. Marking every pixel that took it as a moving share
-    in a scratch run, the identity walk stored 116719 more at Quality and 63280 at Performance, with every tally still
-    identical.
+    bit for bit. The 3x3 gathers the display-sized sum beside the internal one (`temporalGather`), from the same
+    half-float values in both entry points, so they still write the same history. Marking every pixel that took it as a
+    moving share in a scratch run, the identity walk stored 116719 more at Quality and 63280 at Performance, with every
+    tally still identical. Reading the 3x3 again for the pixels that take it, in a second loop behind the share, wrote
+    the same output and cost more even where no pixel took it: on the Apple M2 Max the split's second pass at 3456x2234
+    Native took 2.69 and 3.38 ms over the boxes and the moving field against 2.33 and 2.94 without the rule, where
+    gathered it takes 2.50 to 2.54 and 3.04 to 3.05. The gathered form costs the second pass 0.10 to 0.22 ms at
+    3456x2234, Native included, where no pixel takes it, and 0.02 to 0.07 at 2560x1440, against one run without the rule
+    at a load of 8 to 13.
 
     Measured on Metal (half precision), 320x180, HDR off. On the mip bias checkerboard, local contrast as a share of
     native's: Quality 0.781 to 0.883, Balanced 0.741 to 0.806, Performance 0.747 to 0.768, and UltraPerformance

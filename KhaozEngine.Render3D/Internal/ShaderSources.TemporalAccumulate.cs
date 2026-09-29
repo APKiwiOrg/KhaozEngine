@@ -172,10 +172,11 @@ TemporalKernels temporalKernels(vec2 pixelCentre, ivec2 centreTexel, ivec2 maxTe
 afloat temporalLanczosWeight(TemporalKernels kernels, int x, int y) { return kernels.x[x] * kernels.y[y]; }
 
 // The 3x3's statistics, gathered a texel at a time in reading order: the moments and range of its weighted YCoCg and
-// alpha, its Lanczos reconstruction, what this frame is worth to the pixel, and its largest reactive difference.
+// alpha, its Lanczos reconstructions sized in internal and in display pixels, what this frame is worth to the pixel,
+// and its largest reactive difference.
 struct TemporalNeighbourhood {
     vec3 momentSum; vec3 momentSquares; avec3 neighbourMin; avec3 neighbourMax; afloat alphaMin; afloat alphaMax;
-    vec4 reconstruction; float reconstructionWeight; afloat sampleWeight; afloat reactiveDifference;
+    vec4 reconstruction; float reconstructionWeight; vec4 display; afloat sampleWeight; afloat reactiveDifference;
 };
 
 TemporalNeighbourhood temporalNeighbourhood() {
@@ -188,6 +189,7 @@ TemporalNeighbourhood temporalNeighbourhood() {
     n.alphaMax = afloat(-TemporalRangeLimit);
     n.reconstruction = vec4(0.0);
     n.reconstructionWeight = 0.0;
+    n.display = vec4(0.0);
     n.sampleWeight = afloat(0.0);
     n.reactiveDifference = afloat(0.0);
     return n;
@@ -195,7 +197,7 @@ TemporalNeighbourhood temporalNeighbourhood() {
 
 // One texel of the 3x3, in column x and row y (0 to 2): its weighted YCoCg (temporalWeighted), its alpha and its
 // reactive difference (temporalReactiveDifference). How close the nearest sample lands in display pixels is what this
-// frame is worth to the pixel.
+// frame is worth to the pixel, and the same display-sized kernels also reconstruct it (temporalDisplayCurrent).
 void temporalGather(inout TemporalNeighbourhood n, TemporalKernels kernels, int x, int y, avec3 ycc, afloat alpha,
     afloat reactiveDifference) {
     n.momentSum += toVec3(ycc);
@@ -207,7 +209,9 @@ void temporalGather(inout TemporalNeighbourhood n, TemporalKernels kernels, int 
     float lanczosWeight = toFloat(temporalLanczosWeight(kernels, x, y));
     n.reconstruction += vec4(toVec3(ycc), toFloat(alpha)) * lanczosWeight;
     n.reconstructionWeight += lanczosWeight;
-    n.sampleWeight = max(n.sampleWeight, clamp(kernels.displayX[x] * kernels.displayY[y], afloat(0.0), afloat(1.0)));
+    afloat displayWeight = kernels.displayX[x] * kernels.displayY[y];
+    n.display += vec4(toVec3(ycc), 1.0) * toFloat(displayWeight);
+    n.sampleWeight = max(n.sampleWeight, clamp(displayWeight, afloat(0.0), afloat(1.0)));
     n.reactiveDifference = max(n.reactiveDifference, reactiveDifference);
 }
 " + TemporalDisplayKernelGlsl + @"
@@ -482,15 +486,10 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         }
     }
 
-    // Step 4 for a converged pixel: the display-sized reconstruction in proportion to its share and its weight, held
-    // to the neighbourhood's range as the internal one is.
+    // Step 4 for a converged pixel: the display-sized reconstruction by its share (temporalDisplayCurrent).
     float displayShare = temporalDisplayShare(useHistory, historyState.x, motionPixels, reactive);
-    if (displayShare > 0.0) {
-        vec4 display = temporalDisplayReconstruction(kernels, centreTexel, maxTexel);
-        displayShare *= clamp(display.w / DisplayKernelFullWeight, 0.0, 1.0);
-        current.xyz = mix(current.xyz, clamp(display.xyz / max(display.w, 1.0e-4), neighbourMin, neighbourMax),
-            displayShare);
-    }
+    if (displayShare > 0.0)
+        current.xyz = temporalDisplayCurrent(current.xyz, n.display, displayShare, neighbourMin, neighbourMax);
 
     // Step 8, second half: blend in the weighted space. The current weight is 1 on a reset and falls to
     // sampleWeight / (MaxAccumulation + sampleWeight), about one in sixteen, raised wherever reactive content or a

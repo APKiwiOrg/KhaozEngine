@@ -127,21 +127,6 @@ public class TilePreparationMigrationTests
         Assert.True(copy.TryGet(mirrored, out TileCombatPreparationState restored));
         Assert.Equal(105L, restored.DeferredTick);
         Assert.Equal(state, restored);
-
-        using var fight = PreparationScenario.Create();
-        fight.SetPosition(fight.Attacker, new TileCoord(63, 20, 0));
-        fight.SetTargetPosition(new TileCoord(63, 21, 0));
-        fight.Step();
-        Assert.True(fight.Server.Host.TryGetOwner(fight.Attacker, out CellSim before, out Entity e));
-        Assert.True(before.World.TryGet(e, out TileCombatPreparationState held));
-        held.DeferredTick = 99;
-        before.World.Set(e, held);
-        fight.SetTargetPosition(new TileCoord(65, 20, 0));
-        fight.Step();
-        Assert.True(fight.Server.Host.TryGetOwner(fight.Attacker, out CellSim after, out Entity moved));
-        Assert.Equal(new CellCoord(1, 0), after.Coord);
-        Assert.True(after.World.TryGet(moved, out TileCombatPreparationState crossed));
-        Assert.Equal(held, crossed);
     }
 
     [Fact]

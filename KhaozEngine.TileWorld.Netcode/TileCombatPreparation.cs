@@ -7,7 +7,9 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <param name="Revision">The deadline revision of this attempt, starting at one.</param>
 /// <param name="PresentationKey">The game's public motion identity captured for this attempt.</param>
 /// <param name="PrepareTick">The authoritative tick at which preparation starts.</param>
-/// <param name="ImpactTick">The authoritative tick at which the server must recheck and resolve the attempt.</param>
+/// <param name="ImpactTick">The scheduled authoritative impact tick, at which the server rechecks and resolves the
+/// attempt. It resolves later only while legal reach is missing, within <paramref name="StrikeTicks"/> of this tick,
+/// and the schedule keeps this value while it waits.</param>
 /// <param name="StrikeTicks">Ticks reserved for the final strike.</param>
 /// <param name="CadenceTicks">The captured number of ticks between continuing impacts.</param>
 public readonly record struct TileCombatPreparation(
@@ -34,7 +36,8 @@ public enum TileCombatPreparationEndReason : byte
     ParticipantUnavailable = 4,
     /// <summary>The rules no longer permit this attack.</summary>
     PermissionRevoked = 5,
-    /// <summary>The target was not in legal reach at impact.</summary>
+    /// <summary>Legal reach, including the plane, was still missing when the deferral bound of
+    /// <see cref="TileCombatPreparation.StrikeTicks"/> after the scheduled impact passed.</summary>
     IllegalReach = 6,
     /// <summary>A participant's teleport epoch changed.</summary>
     Teleport = 7,
@@ -45,7 +48,9 @@ public enum TileCombatPreparationEndReason : byte
 }
 
 /// <summary>A confirmed combat outcome paired with the preparation identity that produced it.</summary>
-/// <param name="ImpactTick">The authoritative resolution tick.</param>
+/// <param name="ImpactTick">The authoritative resolution tick. It can be up to the attempt's
+/// <see cref="TileCombatPreparation.StrikeTicks"/> after the schedule's <see cref="TileCombatPreparation.ImpactTick"/>
+/// when the impact waited for legal reach.</param>
 /// <param name="AttackId">The resolved attempt's identity.</param>
 /// <param name="Revision">The resolved attempt's deadline revision.</param>
 /// <param name="PresentationKey">The motion identity captured by that attempt.</param>

@@ -55,6 +55,35 @@ public class TilePreparationDelayTests
         Assert.Equal(new long[] { 103, expected }, fight.Rules.Rolls.Select(x => x.Tick));
     }
 
+    [Theory]
+    [InlineData(3, 1)]
+    [InlineData(4, 2)]
+    public void Delay_during_a_deferral_revises_from_the_current_tick(byte lead, byte strike)
+    {
+        using var fight = PreparationScenario.Create();
+        fight.SetProfile(new(lead, strike, 7));
+        long h = 100 + lead;
+        fight.TargetAwayOn(h);
+        fight.AdvanceTo(h + 1);
+        Assert.Equal((1UL, 1U, h), (fight.Preparation().AttackId, fight.Preparation().Revision, fight.Preparation().ImpactTick));
+
+        Assert.True(fight.Server.DelayAttack(fight.Attacker, 2));
+
+        TileCombatPreparation delayed = fight.Preparation();
+        Assert.Equal((1UL, 2U, h + 3 - lead, h + 3),
+            (delayed.AttackId, delayed.Revision, delayed.PrepareTick, delayed.ImpactTick));
+        Assert.Equal(h + 3, Ready(fight.Server, fight.Attacker));
+        fight.Step();
+        Assert.Empty(fight.Rules.Rolls);
+        Assert.Empty(fight.Server.EndedCombatPreparationsThisTick);
+        fight.AdvanceTo(h + 3);
+        Assert.Empty(fight.Rules.Rolls);
+        fight.Step();
+        Assert.Equal(h + 3, Assert.Single(fight.Rules.Rolls).Tick);
+        PreparedCombatEvent result = Assert.Single(fight.Server.PreparedCombatEventsThisTick);
+        Assert.Equal((h + 3, 1UL, 2U), (result.ImpactTick, result.AttackId, result.Revision));
+    }
+
     [Fact]
     public void Delay_after_cancellation_charges_retained_readiness()
     {

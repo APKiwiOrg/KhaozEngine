@@ -88,5 +88,29 @@ internal sealed class PreparationScenario : IDisposable
         cell.World.Set(e, state);
     }
 
+    // The target leaves legal reach for the combat pass of one tick only. It moves after movement, so the pass
+    // judges committed tiles, and moves back before the next tick's follow reads it, so the attacker never steps.
+    // The default away tile is diagonal to the home tile, off the attacker's reach set and on the same plane.
+    public void TargetAwayOn(long tick, TileCoord? away = null)
+    {
+        Assert.True(Server.TryGetActorState(Target, out TileMoveState state));
+        TileCoord home = state.Tile, to = away ?? new TileCoord(home.X + 1, home.Z + 1, home.Plane);
+        Server.OnAfterMovement += _ =>
+        {
+            if (Server.TickCount == tick) SetTargetPosition(to);
+        };
+        Server.OnBeforeTick += dt =>
+        {
+            if (Server.TickCount == tick + 1 && Server.Host.TryGetOwner(Target, out _, out _)) SetTargetPosition(home);
+        };
+    }
+
+    public void Write<T>(long netId, Func<T, T> change) where T : struct, IComponent
+    {
+        Assert.True(Server.Host.TryGetOwner(netId, out CellSim cell, out Entity e));
+        cell.World.TryGet(e, out T value);
+        cell.World.Set(e, change(value));
+    }
+
     public void Dispose() => Server.Dispose();
 }

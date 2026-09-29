@@ -81,7 +81,14 @@ public sealed partial class TileWorldServer
         {
             TileCombatPreparationEndReason reason = PreparationInvalidity(attacker, move, combat, state);
             if (reason == TileCombatPreparationEndReason.None)
-                return state.Active.ImpactTick == TickCount && combat.CooldownRemaining == 0;
+                return state.Active.ImpactTick <= TickCount && combat.CooldownRemaining == 0;
+            // Only lost legal reach keeps a due attempt, silently and within its strike ticks.
+            if (reason == TileCombatPreparationEndReason.IllegalReach
+                && TileCombatPreparationScheduler.TryDefer(ref state, TickCount))
+            {
+                cell.World.Set(entity, state);
+                return false;
+            }
 
             bool wasDue = state.Active.ImpactTick <= TickCount;
             EndPreparation(cell, entity, ref state, reason);
@@ -113,8 +120,10 @@ public sealed partial class TileWorldServer
         if (!ValidPreparationProfile(profile, cadence)) return TileCombatPreparationEndReason.InvalidProfile;
         if (!SamePreparationProfile(state.Active, profile, cadence)) return TileCombatPreparationEndReason.ProfileChanged;
         // An attempt not present for its deadline cannot become a late hit when its owner becomes available again.
-        if (TickCount > state.Active.ImpactTick) return TileCombatPreparationEndReason.ParticipantUnavailable;
-        if (TickCount == state.Active.ImpactTick && !InPreparationReach(attacker, move, target))
+        // Past its impact it stays live only when the previous pass deferred it.
+        if (TickCount > state.Active.ImpactTick && state.DeferredTick < TickCount - 1)
+            return TileCombatPreparationEndReason.ParticipantUnavailable;
+        if (TickCount >= state.Active.ImpactTick && !InPreparationReach(attacker, move, target))
             return TileCombatPreparationEndReason.IllegalReach;
         return TileCombatPreparationEndReason.None;
     }
@@ -230,7 +239,10 @@ public sealed partial class TileWorldServer
             || !cell.World.TryGet(e, out TileMoveState move)) return;
         cell.World.TryGet(e, out TileCombatState combat);
         TileCombatPreparationEndReason reason = PreparationInvalidity(attacker, move, combat, state);
-        if (reason != TileCombatPreparationEndReason.None) EndPreparation(cell, e, ref state, reason);
+        if (reason == TileCombatPreparationEndReason.None) return;
+        // Keep only a deferral phase 0 made on this tick. The recheck never starts one.
+        if (reason == TileCombatPreparationEndReason.IllegalReach && state.DeferredTick == TickCount) return;
+        EndPreparation(cell, e, ref state, reason);
     }
 
     void EndPreparation(CellSim cell, Entity entity, ref TileCombatPreparationState state,

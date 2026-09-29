@@ -57,8 +57,10 @@ public sealed partial class TileWorldServer
     }
 
     /// <summary>The authoritative earliest boundary for the next unresolved attack. A current preparation supplies
-    /// its impact tick. Without one, this is a cooldown/readiness bound and a fresh preparation may start later.
-    /// A swing already rolled this tick cannot be delayed, so reads during its apply callbacks name the next wait.</summary>
+    /// its impact tick, or the current tick while that impact is deferred for legal reach, because it resolves on the
+    /// first tick reach is legal. Without one, this is a cooldown/readiness bound and a fresh preparation may start
+    /// later. A swing already rolled this tick cannot be delayed, so reads during its apply callbacks name the next
+    /// wait.</summary>
     /// <param name="attackerNetId">The live entity whose readiness to read.</param>
     /// <param name="tick">The absolute ready tick, or the current tick when no wait remains. Default on a miss.</param>
     /// <returns>False only when the entity is unknown or removed.</returns>

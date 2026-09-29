@@ -80,21 +80,22 @@ public class TilePreparationServerTests
     public void Invalid_due_attempt_requires_a_fresh_lead()
     {
         using var fight = PreparationScenario.Create();
-        fight.Server.OnAfterMovement += _ =>
-        {
-            if (fight.Server.TickCount == 103) fight.SetTargetPosition(new TileCoord(40, 40, 0));
-        };
+        fight.TargetAwayOn(103);
+        fight.TargetAwayOn(104);
         fight.AdvanceTo(104);
+        Assert.Empty(fight.Server.EndedCombatPreparationsThisTick);
+        Assert.Equal(103L, fight.Preparation().ImpactTick);
+        fight.Step();
         Assert.Empty(fight.Rules.Rolls);
-        Assert.Equal(TileCombatPreparationEndReason.IllegalReach,
-            Assert.Single(fight.Server.EndedCombatPreparationsThisTick).Reason);
+        CombatPreparationEnded ended = Assert.Single(fight.Server.EndedCombatPreparationsThisTick);
+        Assert.Equal((TileCombatPreparationEndReason.IllegalReach, 104L, 103L),
+            (ended.Reason, ended.ServerTick, ended.ImpactTick));
         Assert.False(fight.Server.TryGetCombatPreparation(fight.Attacker, out _));
         Assert.True(fight.Server.TryGetCombatState(fight.Attacker, out TileCombatState combat));
         Assert.Equal(0, combat.CooldownRemaining);
-        fight.SetTargetPosition(new TileCoord(20, 21, 0));
         fight.Step();
-        Assert.Equal(107L, fight.Preparation().ImpactTick);
-        Assert.Equal(2UL, fight.Preparation().AttackId);
+        Assert.Equal((2UL, 105L, 108L),
+            (fight.Preparation().AttackId, fight.Preparation().PrepareTick, fight.Preparation().ImpactTick));
     }
 
     [Theory]

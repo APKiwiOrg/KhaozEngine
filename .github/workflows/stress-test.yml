@@ -1,0 +1,55 @@
+name: stress-test
+
+# The engine's caller of the org's shared stress workflow. The engine is not a game-template adopter, so this
+# caller is owned here and follows game-template's by hand, adding the packages token its nuget.config needs.
+#
+# A thin caller of the org's ONE stress workflow, APKiwiOrg/ci-workflows (see its README). Every run happens on
+# a GitHub-hosted runner, never on the dev Mac or the self-hosted fleet (docs/CONTRIBUTOR-RULES.md, "Build and
+# CI"). A load or stress run needs the owner's explicit permission before it starts. Then:
+#
+#   gh workflow run stress-test.yml --ref <branch> \
+#     -f project=KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -f filter="FullyQualifiedName~<Name>" -f iterations=50 -f load=4
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: Test project to build and run (path to its .csproj)
+        required: true
+        type: string
+      filter:
+        description: dotnet test --filter expression selecting the tests to repeat
+        required: true
+        type: string
+      iterations:
+        description: How many times to run the selection, 1 to 200
+        required: false
+        default: '20'
+        type: string
+      load:
+        description: Busy-loop processes kept running during every run to add contention, 0 to 16 (0 is none)
+        required: false
+        default: '0'
+        type: string
+      configuration:
+        description: Build configuration
+        required: false
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@6f0297095d3b6f23560ae5b48c156ec2314cda5f # main 2026-09-29
+    with:
+      project: ${{ inputs.project }}
+      filter: ${{ inputs.filter }}
+      iterations: ${{ inputs.iterations }}
+      load: ${{ inputs.load }}
+      configuration: ${{ inputs.configuration }}
+    secrets:
+      packages-token: ${{ secrets.GITHUB_TOKEN }}

@@ -96,6 +96,11 @@ the full restore, Release build, test, determinism, pack and publish path. Conve
 budget and doc-version checks run before both paths. See
 [`design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md`](design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md).
 
+Never repeat tests in a loop or add CPU load on the dev Mac, which also hosts the org's self-hosted runners.
+Flake hunts and stress proofs run through `.github/workflows/stress-test.yml`, a caller of the org's shared
+workflow in `APKiwiOrg/ci-workflows`, on a GitHub-hosted runner, and only with the owner's explicit
+permission first. See that repository's README for its inputs.
+
 The engine's GPU matrix uses hosted `metal-native`, `direct3d11-native` and `vulkan-native` legs.
 Goldens are backend-family artifacts. A new or changed golden must be baked by the relevant CI leg.
 Plain `dotnet test` skips GPU facts. A local GPU proof sets `KE_GPU_TESTS=1` and confirms zero skipped

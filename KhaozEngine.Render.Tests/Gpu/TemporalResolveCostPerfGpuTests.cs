@@ -8,6 +8,7 @@ using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -137,7 +138,8 @@ namespace KhaozEngine.Tests.Gpu
                     scene.Post.RenderWidth = iw;
                     scene.Post.RenderHeight = ih;
                     scene.TemporalResolveEntryForTests = EntryOf(mode);
-                    split.SkipPassForTests = mode == Mode.PassOneAlone ? 2 : mode == Mode.PassTwoAlone ? 1 : 0;
+                    split.SkipPassForTests = mode == Mode.PassOneAlone ? TemporalSplitPass.Accumulate
+                        : mode == Mode.PassTwoAlone ? TemporalSplitPass.Prepare : TemporalSplitPass.None;
                     fx.Frames(Warm, draw);
                     double submitted = 0;
                     long t0 = Stopwatch.GetTimestamp();
@@ -153,7 +155,7 @@ namespace KhaozEngine.Tests.Gpu
                     Assert.Equal((iw, ih), (scene.CurrentFrameView.Width, scene.CurrentFrameView.Height));
                     if (temporal) Assert.Equal(EntryOf(mode), renderer.LastEntry);
                 }
-            split.SkipPassForTests = 0;
+            split.SkipPassForTests = TemporalSplitPass.None;
             scene.TemporalResolveEntryForTests = null;
 
             double off = Median(wall[Mode.Off]);

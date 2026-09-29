@@ -4,6 +4,19 @@ using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering
 {
+    /// <summary>One of the split's two passes, for the cost measurement's <c>SkipPassForTests</c>.</summary>
+    internal enum TemporalSplitPass
+    {
+        /// <summary>Neither: both passes run.</summary>
+        None,
+
+        /// <summary>The first pass, over the internal texels.</summary>
+        Prepare,
+
+        /// <summary>The second pass, over the display pixels.</summary>
+        Accumulate,
+    }
+
     /// <summary>
     /// The split entry point's objects (<see cref="ShaderSources.TemporalPrepareFrag"/> and
     /// <see cref="ShaderSources.TemporalAccumulateFrag"/>): the first pass over the internal texels into
@@ -59,9 +72,9 @@ namespace KhaozEngine.Render3D.Rendering
         static GpuResourceLayoutElement S(string n) => new(n, GpuResourceKind.Sampler, GpuShaderStages.Fragment);
         static GpuResourceLayoutElement U(string n) => new(n, GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment);
 
-        /// <summary>For the cost measurement alone: 1 records the second pass without the first, 2 the first without
-        /// the second, so each pass can be timed on its own. The output is then not a resolve.</summary>
-        internal int SkipPassForTests { get; set; }
+        /// <summary>For the cost measurement alone: which pass <see cref="Run"/> leaves out, so each pass can be timed
+        /// on its own. The output is then not a resolve.</summary>
+        internal TemporalSplitPass SkipPassForTests { get; set; }
 
         /// <summary>Whether the split's targets exist.</summary>
         internal bool TargetsAllocated => _targets[0] is not null;
@@ -116,7 +129,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// into the write index's colour and confidence, reading the read index's history and previous depth.</summary>
         public void Run(IGpuCommandList cl, TemporalHistory history)
         {
-            if (SkipPassForTests != 1)
+            if (SkipPassForTests != TemporalSplitPass.Prepare)
             {
                 cl.SetFramebuffer(_prepareFramebuffers[history.WriteIndex]
                     ?? throw new InvalidOperationException("TemporalSplitResolve.Run was called before Bind."));
@@ -124,7 +137,7 @@ namespace KhaozEngine.Render3D.Rendering
                 cl.SetGraphicsResourceSet(0, _prepareSet!);
                 cl.Draw(3);
             }
-            if (SkipPassForTests != 2)
+            if (SkipPassForTests != TemporalSplitPass.Accumulate)
             {
                 cl.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
                 cl.SetPipeline(_accumulatePipeline);
@@ -150,10 +163,17 @@ namespace KhaozEngine.Render3D.Rendering
             _boundHistory = null;
         }
 
-        /// <summary>Let go of the sets and the targets into <paramref name="retired"/>, or through a drain without one.
-        /// The pipelines stay for the next frame that records the split.</summary>
+        /// <summary>Let go of the sets and the targets into <paramref name="retired"/>, or through a drain without one,
+        /// which throws <see cref="InvalidOperationException"/> while the device is recording. The pipelines stay for
+        /// the next frame that records the split.</summary>
         public void ReleaseTargets(GpuRetireQueue? retired)
         {
+            // A drain waits out submitted work only, so with no queue an open recording could still read what this
+            // frees. Refuse then, as the history does, and change nothing.
+            if (retired is null && TargetsAllocated && GpuRecording.OpenOwner(_gd) is { } owner)
+                throw new InvalidOperationException("The split's targets were asked to go with no retire queue while "
+                    + $"{owner} is recording on this device. Pass the frame's GpuRetireQueue, or release outside the "
+                    + "recording. Nothing was drained or freed.");
             if (retired is null && TargetsAllocated) _gd.WaitForIdle();   // a frame in flight may still read them
             ReleaseSets(retired);
             for (int t = 0; t < _targets.Length; t++) Free(ref _targets[t], retired);

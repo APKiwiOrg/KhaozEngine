@@ -70,7 +70,8 @@ namespace KhaozEngine.Render3D.Rendering
             if (_resolvePipeline is not null) return;
             IGpuResourceFactory f = _gd.Factory;
             _resolveShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalResolveFrag);
-            _storeShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalDepthStoreFrag);
+            _storeShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
+                ShaderSources.TemporalDepthStoreFrag);
             _resolvePipeline = Fullscreen(f, _resolveShaders, _resolveLayout,
                 new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence));
             _storePipeline = Fullscreen(f, _storeShaders, _storeLayout,

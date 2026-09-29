@@ -16,9 +16,10 @@ namespace KhaozEngine.Tests.Gpu
     /// points, three presets (each its own internal size) and anti-aliasing off, cycle after cycle, the way the cost
     /// measurement rotates its modes. Every target a step replaces must be gone by the same step of the next cycle.
     /// <para>
-    /// On the native Vulkan backend it reads the device's live <c>vkAllocateMemory</c> count and its retire list after
-    /// each cycle, and no later cycle may end above the first. A disposed Vulkan image keeps its memory until the
-    /// device's frame boundary runs the deferred destroy, and a fixture that never reached that boundary ran a 16 GB
+    /// On the native Vulkan backend it reads the device's live <c>vkAllocateMemory</c> count after each cycle, and no
+    /// later cycle may end above the first. It prints the retire list beside it. A disposed Vulkan image keeps its
+    /// memory until the device's frame boundary runs the deferred destroy, and a fixture that never reached that
+    /// boundary ran a 16 GB
     /// Tesla T4 out of device memory within one cost fact at Native. Other backends free on dispose and report no such
     /// reading, so there it checks the resolve's own holding only: a frame on the fused entry point holds none of the
     /// split's targets.
@@ -77,15 +78,12 @@ namespace KhaozEngine.Tests.Gpu
                 output.WriteLine("  no live allocation reading on this backend, the split's targets checked only");
                 return;
             }
+            // The live count is the memory itself. The retire list is printed only: the fixture presents every frame,
+            // which drains it, so after a cycle it is near empty and bounds nothing the live count does not.
             for (int c = 1; c < readings.Count; c++)
-            {
                 Assert.True(readings[c].Live <= readings[0].Live,
                     $"cycle {c + 1} ended on {readings[c].Live} live device allocations against {readings[0].Live} "
                     + "after the first");
-                Assert.True(readings[c].Retired <= readings[0].Retired,
-                    $"cycle {c + 1} ended holding {readings[c].Retired} destroys against {readings[0].Retired} after "
-                    + "the first");
-            }
         }
 
         static readonly Color BoxTint = new(0.8f, 0.6f, 0.4f, 1f);

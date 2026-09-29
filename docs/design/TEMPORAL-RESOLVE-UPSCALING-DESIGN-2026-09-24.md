@@ -681,8 +681,9 @@ and changed these details. Each group's "Contract amendments" block carries the 
     without presenting, so every target the scene replaced stayed allocated, and the cost measurement's flips between
     entry points and presets at 3456x2234 ran a 16 GB Tesla T4 out of device memory within one fact. The fixture now
     presents after each frame. `TemporalEntryFlipMemoryGpuTests` flips the entry point and the preset at 3456x2234 for
-    four cycles, checks the split's targets exist only on a split frame, and on Vulkan holds the live allocations and
-    the retire list at the first cycle's. It passes on both hosted Vulkan legs (run 36507108295).
+    four cycles, checks the split's targets exist only on a split frame, and on Vulkan holds the live device
+    allocations at the first cycle's and prints the retire list, which the fixture's present drains every frame. It
+    passes on both hosted Vulkan legs (run 36507108295).
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies

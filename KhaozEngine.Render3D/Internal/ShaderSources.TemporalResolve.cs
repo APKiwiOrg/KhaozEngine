@@ -40,6 +40,11 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal static partial class ShaderSources
     {
+        // SCRATCH PROBE: a test's rewrite of the temporal resolve programs' text.
+        internal static System.Func<string, string>? TemporalRewriteForTests;
+        internal static string TemporalRewritten(string glsl) =>
+            TemporalRewriteForTests is { } rewrite ? rewrite(glsl) : glsl;
+
         // ---- Shared by every temporal program: the background sentinel, the depth linearisation, the view depth ----
         internal const string TemporalCommonGlsl = @"
 const float MotionSentinel = 60000.0;

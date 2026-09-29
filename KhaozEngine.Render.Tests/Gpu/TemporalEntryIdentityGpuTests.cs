@@ -20,6 +20,7 @@ namespace KhaozEngine.Tests.Gpu
     /// walk and reports the colour, the confidence, the lock under the same mark and the mark apart, so a rounding
     /// difference in the values reads apart from a rule that decided otherwise.
     /// </summary>
+    [Collection("TemporalEntryIdentitySerial")]
     public sealed class TemporalEntryIdentityGpuTests(ITestOutputHelper output)
     {
         const int W = 320, H = 180, StopFrames = 8;

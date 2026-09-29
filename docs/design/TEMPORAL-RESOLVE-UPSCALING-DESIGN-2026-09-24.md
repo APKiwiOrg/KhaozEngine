@@ -665,11 +665,13 @@ and changed these details. Each group's "Contract amendments" block carries the 
 
     The half-float rounding is the one output change of the two entry points. Holding the prepared colour at single
     float needed 32 bytes an internal texel, and on a Tesla T4 that bandwidth made the split slower than the fused pass
-    on Direct3D 11 and on Linux Vulkan at Quality. Rounding moves 1164 of 2304 printed acceptance lines, by 0 to 2
+    on Direct3D 11 and on Linux Vulkan at Quality. Rounding moves 1166 of 2304 printed acceptance lines, by 0 to 2
     pixels in the pixel counts and small shifts in the errors, and fails one bound: the still box over the textured
-    wall under a sideways camera leaves a trail of 14 pixels of 3968 at Quality, against 10 at single float. Rounding
-    Co and Cg alone gives 14 as well, Y alone 9 and the reactive difference alone 10, so keeping only Y at single float
-    does not help (13). The bound is 16. The emitted resolve is 43622 bytes of HLSL, the split's first pass 13304 and
+    wall under a sideways camera leaves a trail of 14 pixels of 3968 at Quality, against 10 at single float, with Y,
+    Co and Cg rounded. Holding Y at single float leaves 13, so it does not help. Holding Co and Cg at single float
+    over a rounded Y leaves 9, at 28 bytes an internal texel, and is the measured way back if the playtest calls for
+    it ([#1202](https://github.com/APKiwiOrg/KhaozEngine/issues/1202)). Rounding the reactive difference alone
+    leaves 10. The bound is 16. The emitted resolve is 43622 bytes of HLSL, the split's first pass 13304 and
     its second 32791.
 
     The split's targets hold 24 bytes an internal texel: Y, Co, Cg and the reactive difference at 8 in RGBA16F, the

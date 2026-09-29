@@ -11,6 +11,8 @@ these statements there:
 - Section 2, the ruling "Recheck legal reach at impact. An invalid attempt ends without damage" and the
   paragraph that says keeping the attempt "preserves pursuit".
 - Section 4, rule 4, for the legal reach check only.
+- Section 4, rule 6, "the next attempt at `H + C`". The next attempt is now at the resolution tick plus the
+  cadence, which is `H + C` only when the attempt resolved on time.
 - Section 5, the table row "Illegal reach or plane at impact".
 - Section 6, the active state record rule "impact strictly after the header tick".
 - Section 10, the "Reach and motion" row.
@@ -97,6 +99,10 @@ the attempt was deferred on the previous pass. An owner that missed a pass, for 
 still ends as today. The server records the tick of the most recent deferral in the migration-only
 preparation state, so the rule survives an in-process region handoff.
 
+The post-roll recheck of a tick does not judge reach afresh. It keeps an attempt that lacks legal reach
+only when phase 0 of the same tick deferred it, and otherwise ends it as today, so the recheck can never
+start a deferral.
+
 A deferred tick makes no roll, no RNG draw, no cooldown write, no combat stamp, no award and no terminal.
 It does not create a replacement attempt. A deferred attempt that reaches legal reach joins the ordinary
 roll order by its lock's age and net id, and it survives damage from another roll on that tick exactly as
@@ -182,7 +188,12 @@ before-preparation behavior, which reset the cooldown on the tick it actually ro
 
 The kernel's completion transition currently accepts only `tick == ImpactTick`. It must accept a tick in
 `[H, H + S]` when the attempt was deferred on the previous tick. It keeps using the actual tick for both
-the outcome's impact tick and the retained readiness.
+the outcome's impact tick and the retained readiness. Because readiness is now `tick + C` with `tick` up
+to `H + S`, the creation and delay guards that prove `H + C` representable widen to `H + S + C`.
+
+The server's continuity check is the real guard against a late roll, not the kernel. The server announces
+a rolled result even when the kernel refuses to complete it, so an attempt must never reach the roll after
+a missed pass.
 
 A deferral therefore costs at most one tick per swing in steady equal-speed pursuit, the same cost the
 before-preparation build paid. After one deferral the impact settles on a legal phase for even cadences
@@ -339,14 +350,15 @@ All engine tests are headless, in `KhaozEngine.TileWorld.Netcode.Tests`, Release
 
 | Area | Required evidence |
 | --- | --- |
-| Pursuit lock reproductions | Engine-level fixtures of walk and run pursuit with deterministic phases 0 to 3, profiles 3/1 and 4/2, cadences 14 and 16. Before the fix the 3/1 rows must show the lock. After it, no `IllegalReach` ends while the target keeps moving, every interval between resolutions is from the cadence to the cadence plus `StrikeTicks`, every roll is in legal reach, and landed outcomes summed over the four phases equal or exceed the same fixture with preparation disabled |
+| Pursuit lock reproductions | Engine-level fixtures of walk and run pursuit inside one region, with deterministic phases 0 to 3, profiles 3/1 and 4/2, cadences 14 and 16, printing a per-phase table. Before the fix the 3/1 rows must show the lock. After it, no `IllegalReach` ends after the first resolution, every interval between resolutions is from the cadence to the cadence plus `StrikeTicks`, every resolution falls within its own attempt's bound, and in every phase the count over five cadences from the build's own first resolution equals or exceeds the same fixture with preparation disabled |
 | Escaping target | A target leaving reach for good ends `IllegalReach` exactly `StrikeTicks` after the impact, with no roll or cooldown charge, and a returning target needs a fresh lead |
 | Non-reach invalidity | Disengage, retarget, profile change, invalid profile, permission, attacker or target death, teleport and rules unavailable each end a deferred attempt on the tick observed, with their own reason, and win over lost reach on the impact tick |
-| No out-of-reach roll | No roll, RNG draw, cooldown change, terminal or revision on any deferred tick. Every roll in every deferral test is in legal reach |
+| No out-of-reach roll | No roll, RNG draw, cooldown change, terminal or revision on any deferred tick |
+| Missed pass | An overdue attempt not deferred on the previous pass ends `ParticipantUnavailable` with no roll or announced result |
 | Plane | A target on another plane at impact defers and resolves if it returns within the bound |
-| Kernel | Deferral inside the window only, late completion only after an unbroken deferral, readiness from the resolution tick, delay of a deferred attempt |
+| Kernel | Deferral inside the window only, late completion only after an unbroken deferral, readiness from the resolution tick, delay of a deferred attempt, overflow room for a late completion |
 | Wire | Overdue records valid below `StrikeTicks` and invalid at it, in the encoder, decoder, assembler and serve, with unchanged golden bytes |
-| Migration | The deferral tick migrates and survives a real handoff |
+| Migration | The deferral tick round-trips through the migration codec, and a deferral survives a real handoff and resolves in the new cell |
 | Client sequence | The observed state, sample, callback and terminal sequence in section 7, including expiry, burst delivery and interest entry mid-deferral, with zero rejected frames |
 
 ## 11. Out of scope

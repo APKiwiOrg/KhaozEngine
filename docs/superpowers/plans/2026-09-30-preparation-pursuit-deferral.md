@@ -29,7 +29,7 @@
 ## Review Focus
 
 1. The post-roll recheck of a tick must not end an attempt that the same tick deferred. Owned by Task 3, `A_deferral_survives_the_post_roll_recheck_of_its_own_tick`.
-2. An overdue attempt whose owner missed a pass must still end `ParticipantUnavailable`, not roll late. Owned by Task 1, `Late_completion_requires_an_unbroken_deferral`, and Task 2, `A_deferred_attempt_survives_a_region_handoff_with_its_deferral_tick`.
+2. An overdue attempt whose owner missed a pass must still end `ParticipantUnavailable`, not roll late. `CompletePreparedSwing` announces a result even when the kernel's `TryComplete` refuses (`TileWorldServer.Preparation.cs:200-205`), so the server's continuity check is the real guard. Owned by Task 1, `Late_completion_requires_an_unbroken_deferral`, and Task 3, `An_overdue_attempt_that_was_not_deferred_ends_unavailable` and `A_deferral_survives_a_real_region_handoff_and_resolves_in_the_new_cell`.
 3. The relaxed wire rule must refuse a record overdue by exactly `StrikeTicks`. Owned by Task 2, `An_overdue_state_record_is_valid_only_below_its_strike_ticks`.
 4. A food delay during a deferral must revise from the current tick, never announce a past impact. Owned by Task 3, `Delay_during_a_deferral_revises_from_the_current_tick`.
 5. The client must see one unchanged schedule through the deferral, then exactly one outcome with the same identity and the resolution tick. Owned by Task 4, `A_deferred_impact_keeps_one_client_schedule_until_its_result`.
@@ -51,10 +51,10 @@ test filenames resolve under `KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/`.
 | Wire validity and client ledger | `TileProtocol.Preparation.cs`, `TileCombatPreparationLedger.cs` |
 | Server validity, deferral and recheck | `TileWorldServer.Preparation.cs` |
 | Public XML docs of changed behavior | `TileCombatPreparation.cs`, `TileWorldServer.PreparationDelay.cs` (doc of `TryGetAttackReadyTick` only) |
-| Kernel, wire, ledger and migration tests | `TilePreparationSchedulerTests.cs`, `TilePreparationWireTests.cs`, `TilePreparationAssemblyTests.cs`, `TilePreparationDeliveryTests.cs`, `TilePreparationMigrationTests.cs` |
-| Server deferral tests | New `TilePreparationDeferralTests.cs`, `TilePreparationServerTests.cs`, `TilePreparationDelayTests.cs` |
+| Kernel, wire, ledger, sampler and migration tests | `TilePreparationSchedulerTests.cs`, `TilePreparationWireTests.cs`, `TilePreparationAssemblyTests.cs`, `TilePreparationDeliveryTests.cs`, `TilePreparationSamplerTests.cs`, `TilePreparationMigrationTests.cs` |
+| Server deferral tests | New `TilePreparationDeferralTests.cs`, `TilePreparationServerTests.cs`, `TilePreparationDelayTests.cs`, `PreparationScenario.cs` for a profile-before-first-step option and a component-write helper only |
 | Pursuit reproductions | New `PursuitScenario.cs`, new `TilePreparationPursuitTests.cs` |
-| Client sequence | New `TilePreparationDeferralDeliveryTests.cs`, `PreparationDeliveryScenario.cs` only if a profile parameter is needed |
+| Client sequence | New `TilePreparationDeferralDeliveryTests.cs`, `PreparationDeliveryScenario.cs` only if a profile parameter is needed. A failure found here is fixed in the runtime file its owning task lists, as named in Task 4 |
 | Docs, version and release | `docs/USING-KHAOZENGINE.md`, `KhaozEngine.TileWorld.Netcode/README.md`, both design docs, `docs/INDEX.md`, `CHANGELOG.md`, `Directory.Build.props`, declarations guarded by `scripts/check-doc-versions.sh` |
 
 Existing anchors at the design base: `PreparationIsDue` and `PreparationInvalidity` in
@@ -85,7 +85,7 @@ internal static class TileCombatPreparationDeferral
 
 // TileCombatPreparationScheduler
 // True and sets DeferredTick = tick when active, tick >= ImpactTick, tick - ImpactTick < StrikeTicks, and
-// either tick == ImpactTick or DeferredTick >= tick - 1. Idempotent within one tick. False changes nothing.
+// either tick == ImpactTick or DeferredTick == tick - 1. False changes nothing.
 public static bool TryDefer(ref TileCombatPreparationState state, long tick);
 ```
 
@@ -93,6 +93,12 @@ public static bool TryDefer(ref TileCombatPreparationState state, long tick);
 `ImpactTick < tick <= ImpactTick + StrikeTicks` with `DeferredTick == tick - 1`. It keeps using `tick` for
 the outcome's impact tick and for retained readiness `tick + CadenceTicks`. `TryDelay` keeps its signature
 and clears `DeferredTick` when it revises an active attempt. `ClearActive` clears `DeferredTick`.
+
+A late completion computes `checked(tick + CadenceTicks)` with `tick` up to `ImpactTick + StrikeTicks`. The
+guards that today prove `impact + cadence` representable, in `TryCreate` at
+`TileCombatPreparationScheduler.cs:41` and in `TryDelay` at `:110`, widen to `impact + StrikeTicks + cadence`,
+so every accepted attempt can complete on its last legal tick. The completion arithmetic at `:81` then
+cannot overflow.
 
 `TileProtocol.ValidPreparationRecord` replaces `record.ImpactTick <= serverTick` with
 `!TileCombatPreparationDeferral.IsLive(record, serverTick)`, evaluated after the existing nonnegative and
@@ -106,24 +112,43 @@ ordering checks.
 - [ ] **Step 1: Write the failing kernel tests.** Add `An_overdue_attempt_defers_only_below_its_strike_ticks`,
   `A_deferred_attempt_completes_late_and_retains_cadence_from_that_tick`,
   `Late_completion_requires_an_unbroken_deferral`,
-  `Delay_of_a_deferred_attempt_revises_from_the_current_tick`, and
-  `Cancelling_or_completing_clears_the_deferral_tick`. Create at tick 100 with profile `(3, 1, 7)` and
-  cadence 14 so the impact is 103, and repeat the window rows with `(4, 2, 7)`. Core assertions:
+  `Delay_of_a_deferred_attempt_revises_from_the_current_tick`,
+  `Cancelling_or_completing_clears_the_deferral_tick`, and
+  `A_delay_that_leaves_no_room_for_a_late_completion_is_refused`. Create at tick 100 with cadence 14 and
+  run each window test for profiles `(3, 1, 7)` and `(4, 2, 7)`. Every tick is relative to the created
+  impact `H = 100 + LeadTicks`, which is 103 for 3/1 and 104 for 4/2. `S` is the profile's strike ticks
+  and `lead` its lead. Core assertions:
 
 ```csharp
-Assert.False(TileCombatPreparationScheduler.TryDefer(ref state, 102));          // before impact
-Assert.True(TileCombatPreparationScheduler.TryDefer(ref state, 103));
-Assert.Equal(103L, state.DeferredTick);
-Assert.Equal(before.Active, state.Active);                                         // silent
-Assert.False(TileCombatPreparationScheduler.TryDefer(ref state, 104));            // 3/1: bound reached
-Assert.True(TileCombatPreparationScheduler.TryComplete(ref state, 104, outcome, out var late));
-Assert.Equal((104L, 1UL, 1U), (late.ImpactTick, late.AttackId, late.Revision));
-Assert.Equal(118L, state.ReadyNotBeforeTick);                                      // 104 + 14
-Assert.False(TileCombatPreparationScheduler.TryComplete(ref gap, 105, outcome, out _)); // not deferred on 104
-Assert.True(TileCombatPreparationScheduler.TryDelay(ref deferred, 104, 2, 104, out byte accepted, out _));
-Assert.Equal(((byte)2, 2U, 106L, 103L, 0L), (accepted, deferred.Active.Revision,
+long H = state.Active.ImpactTick;
+Assert.False(TileCombatPreparationScheduler.TryDefer(ref state, H - 1));          // before impact
+for (long t = H; t < H + S; t++)
+{
+    Assert.True(TileCombatPreparationScheduler.TryDefer(ref state, t));
+    Assert.Equal(t, state.DeferredTick);
+    Assert.Equal(created.Active, state.Active);                                    // silent
+}
+Assert.False(TileCombatPreparationScheduler.TryDefer(ref state, H + S));          // bound reached
+Assert.True(TileCombatPreparationScheduler.TryComplete(ref state, H + S, outcome, out var late));
+Assert.Equal((H + S, 1UL, 1U), (late.ImpactTick, late.AttackId, late.Revision));
+Assert.Equal(H + S + 14, state.ReadyNotBeforeTick);
+// gap, 4/2 only: deferred on H, never on H + 1, completion tried on H + 2.
+Assert.False(TileCombatPreparationScheduler.TryComplete(ref gap, H + 2, outcome, out _));
+// deferred: deferred on H, then delayed by 2 on H + 1 with cooldown ready at H + 1.
+Assert.True(TileCombatPreparationScheduler.TryDelay(ref deferred, H + 1, 2, H + 1, out byte accepted, out _));
+Assert.Equal(((byte)2, 2U, H + 3, H + 3 - lead, 0L), (accepted, deferred.Active.Revision,
     deferred.Active.ImpactTick, deferred.Active.PrepareTick, deferred.DeferredTick));
 ```
+
+  Overflow boundaries. Add the row `(long.MaxValue - 17, 0)` to
+  `Unrepresentable_impact_or_following_readiness_is_refused_without_mutation`. With 3/1 and cadence 14 its
+  impact plus cadence fits exactly, but impact plus strike plus cadence does not. That row refuses the
+  creation used by `The_last_representable_completion_retains_its_full_cadence`, so replace that test with
+  `The_last_representable_late_completion_retains_its_full_cadence`: create at `long.MaxValue - 18`, defer
+  on the impact `long.MaxValue - 15`, complete on `long.MaxValue - 14`, and assert
+  `ReadyNotBeforeTick == long.MaxValue`. In `A_delay_that_leaves_no_room_for_a_late_completion_is_refused`,
+  delay an active attempt so the revised impact plus cadence fits but plus strike does not. Expect
+  `TickOverflow`, zero accepted ticks and no mutation.
 
   Keep `Completion_rejects_the_wrong_tick_or_participants` unchanged. Its row at tick 104 must still fail
   because no deferral was recorded.
@@ -131,8 +156,9 @@ Assert.Equal(((byte)2, 2U, 106L, 103L, 0L), (accepted, deferred.Active.Revision,
   `dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release --filter FullyQualifiedName~TilePreparationSchedulerTests`
   must fail on the missing `TryDefer` and `DeferredTick`.
 - [ ] **Step 3: Implement.** Add the field, the deferral type and `TryDefer`. Widen `TryComplete` to the
-  late window with the continuity rule. Clear the field in `TryDelay` revisions and `ClearActive`. Keep
-  checked arithmetic. Do not touch the server, wire or migration codec in this task.
+  late window with the continuity rule. Clear the field in `TryDelay` revisions and `ClearActive`. Widen
+  the `TryCreate` and `TryDelay` overflow guards to `impact + StrikeTicks + cadence`. Keep checked
+  arithmetic. Do not touch the server, wire or migration codec in this task.
 - [ ] **Step 4: Run the same command green.** Exit 0, zero failed tests.
 - [ ] **Step 5: Commit explicit task paths.** Subject: `feat(combat): add a bounded impact deferral to the preparation kernel`.
 
@@ -150,12 +176,19 @@ Assert.Equal(((byte)2, 2U, 106L, 103L, 0L), (accepted, deferred.Active.Revision,
   - In `Counts_lengths_and_deadlines_are_validated_atomically`, replace the `due now` and `past due`
     mutations, which now fail only through a reversed lead, with `overdue by strike`: header tick
     advanced to `ImpactTick + StrikeTicks` with a valid lead. The golden bytes test stays unchanged.
+  - In `Encoders_refuse_invalid_local_arguments_and_noncanonical_empty_sets`, replace the row
+    `State(1) with { ImpactTick = 100 }` at `TilePreparationWireTests.cs:364`, which now fails only through a
+    reversed lead, with an `overdue by strike` row: `State(1, tick: 96)` under header tick 100, so impact 99
+    is overdue by exactly its one strike tick and the encoder throws.
   - `An_overdue_record_assembles_below_its_strike_ticks` in the assembly tests, with the same boundary.
   - `A_stale_revision_cannot_retire_a_deferred_sample` in the delivery tests. Apply a revision 2 state whose
     impact equals the next frame's tick, then a frame carrying the stale revision 1. The ledger keeps
     revision 2.
-  - `A_deferred_attempt_survives_a_region_handoff_with_its_deferral_tick` in the migration tests, and add
-    `DeferredTick` to the field coverage of `All_preparation_fields_migrate_but_never_replicate_or_persist`.
+  - `Deferral_tick_round_trips_through_the_migration_codec` in the migration tests: a state with a nonzero
+    `DeferredTick` survives the Migrate-channel codec unchanged. Optionally also inject that state onto an
+    entity that then crosses the region line and read it back. Add `DeferredTick` to the field coverage of
+    `All_preparation_fields_migrate_but_never_replicate_or_persist`. The server cannot defer until Task 3,
+    so the real handoff proof lives there.
   - `A_deferred_schedule_samples_awaiting_outcome_until_its_terminal` in the sampler tests. This pins
     existing sampler behavior at `ImpactTick` and at `ImpactTick + StrikeTicks - 0.5`. It may already pass.
 - [ ] **Step 2: Run red.**
@@ -172,88 +205,137 @@ Assert.Equal(((byte)2, 2U, 106L, 103L, 0L), (accepted, deferred.Active.Revision,
 **Files:** Create `PursuitScenario.cs`, `TilePreparationPursuitTests.cs`, `TilePreparationDeferralTests.cs`.
 Modify `TileWorldServer.Preparation.cs`, `TileCombatPreparation.cs` (XML docs only),
 `TileWorldServer.PreparationDelay.cs` (XML doc of `TryGetAttackReadyTick` only), `TilePreparationServerTests.cs`,
-`TilePreparationDelayTests.cs`.
+`TilePreparationDelayTests.cs`, `PreparationScenario.cs` (helpers only).
 
-`PursuitScenario` builds a real `TileWorldServer` over a flat fixture world long enough for the whole
-route, with the fixture's `FixedRules` and a settable preparation profile, or null rules for the legacy
-path. It spawns an attacker actor and an adjacent target actor, commands
-`TileCommand.Attack(target, gait)` for the attacker, and on lock tick `L + phase` commands the target
-`TileCommand.WalkTo(goal, gait)` straight along one axis. Re-latch the same goal when the target's
-planned route ends, as the Grimhollow pursuit measurement did. `W0` is the first tick the target's
-committed tile changes. The window is the 96 ticks from `W0`. It returns:
+`PursuitScenario` builds a real `TileWorldServer` over `TileMoveSimulatorTests.FlatWorld(4, new RegionCoord(0, 0))`
+with the fixture's `FixedRules` and a settable preparation profile, or null preparation rules for the
+legacy path. A region is 64 tiles wide (x 0 to 63, see the handoff test at
+`TilePreparationMigrationTests.cs:109-116`). The whole course stays inside that one region: the attacker
+actor spawns at `(2, 20, 0)`, the target actor at `(3, 20, 0)`, and the target's goal is `(62, 20, 0)`. The
+window is the 110 ticks from `W0`, which at run is at most 55 tiles, ending by x 58. Crossing a region is
+not part of this proof. Handoff during a deferral has its own test below. The attacker is commanded
+`TileCommand.Attack(target, gait)`. On lock tick `L + phase` the target is commanded
+`TileCommand.WalkTo(goal, gait)`. Re-latch the same goal when the target's planned route ends, as the
+Grimhollow pursuit measurement did. `W0` is the first tick the target's committed tile changes. It returns:
 
 ```csharp
-internal readonly record struct PursuitWindow(int Landed, int IllegalReachEnds,
-    int EndsAfterFirstLanded, long[] ResolvedTicks, bool EveryRollInReach, bool TargetNeverIdle);
+internal readonly record struct PursuitWindow(int Landed, int IllegalReachEnds, int EndsAfterFirstLanded,
+    long[] ResolvedTicks, long WindowEnd, bool EveryResolutionWithinBound, bool TargetNeverIdle,
+    bool StayedInOneRegion)
+{
+    // Resolutions in [first, first + cadences * cadence), counted from this build's own first resolution.
+    public int SteadyCount(int cadences, byte cadence);
+}
 internal static PursuitWindow Run(bool prepared, TileMoveMode gait, byte cadence,
     byte lead, byte strike, int phase);
 ```
 
 Landed counts resolved outcomes for the attacker, hit or miss, from the prepared buffer or from
-`OnCombatEvent` on the legacy path. `EveryRollInReach` checks each `FixedRules.Rolls` context with
-`TileReach.Contains` over the fixture's baked map, the context's attacker tile and both footprints.
-`TargetNeverIdle` asserts the target committed a new tile on every step period of the window. If the
-route crosses a region boundary, record it. A handoff that ends a deferral is a finding to report, not
-to hide by moving the route.
+`OnCombatEvent` on the legacy path. `EveryResolutionWithinBound` records the attacker's schedule after
+every tick and checks that each prepared resolution resolved between its own attack ID's scheduled
+`ImpactTick` and that tick plus `StrikeTicks`. A resolution without a matching schedule, or outside the
+bound, fails it. It is true by definition on the legacy path. A roll-in-reach check is not used, because
+the roll phase already refuses a roll out of reach (`TileWorldServer.Combat.cs:274`) and it could not fail.
+`TargetNeverIdle` asserts the target committed a new tile on every step period of the window.
+`StayedInOneRegion` asserts both owners stayed in cell `(0, 0)`.
 
 - [ ] **Step 1: Write the pursuit reproductions.** `Walking_pursuit_keeps_the_legacy_hit_rate_in_every_phase`
   and `Running_pursuit_keeps_the_legacy_hit_rate_in_every_phase`, each a theory over
-  `(lead, strike, cadence)` in `(3, 1, 14)`, `(3, 1, 16)`, `(4, 2, 14)`, `(4, 2, 16)`:
+  `(lead, strike, cadence)` in `(3, 1, 14)`, `(3, 1, 16)`, `(4, 2, 14)`, `(4, 2, 16)`. The test class takes
+  `ITestOutputHelper`. Run all eight windows first, write a per-phase table, then assert, so the red run
+  shows every phase and not only the first failure:
 
 ```csharp
-int legacy = 0, prepared = 0;
+const int Cadences = 5;
+var rows = new List<(int Phase, PursuitWindow Before, PursuitWindow After)>();
 for (int phase = 0; phase < 4; phase++)
+    rows.Add((phase, PursuitScenario.Run(false, gait, cadence, lead, strike, phase),
+        PursuitScenario.Run(true, gait, cadence, lead, strike, phase)));
+// One line per phase and build: landed, IllegalReach ends, ends after first landed, first resolved tick,
+// steady count, and the resolved ticks relative to W0.
+string table = PursuitScenario.Table(rows, cadence, Cadences);
+output.WriteLine(table);
+foreach (var (phase, before, after) in rows)
 {
-    PursuitWindow before = PursuitScenario.Run(false, gait, cadence, lead, strike, phase);
-    PursuitWindow after = PursuitScenario.Run(true, gait, cadence, lead, strike, phase);
-    Assert.True(before.TargetNeverIdle && after.TargetNeverIdle);
-    Assert.True(after.EveryRollInReach);
-    Assert.InRange(after.IllegalReachEnds, 0, 1);          // only a run start from a stand may end once
-    Assert.Equal(0, after.EndsAfterFirstLanded);
+    Assert.True(before.TargetNeverIdle && after.TargetNeverIdle && before.StayedInOneRegion
+        && after.StayedInOneRegion, table);
+    Assert.True(after.EveryResolutionWithinBound, table);
+    Assert.True(after.IllegalReachEnds <= 1, table);        // only a run start from a stand may end once
+    Assert.True(after.EndsAfterFirstLanded == 0, table);
     for (int i = 1; i < after.ResolvedTicks.Length; i++)
-        Assert.InRange(after.ResolvedTicks[i] - after.ResolvedTicks[i - 1], cadence, cadence + strike);
-    legacy += before.Landed;
-    prepared += after.Landed;
+    {
+        long gap = after.ResolvedTicks[i] - after.ResolvedTicks[i - 1];
+        Assert.True(gap >= cadence && gap <= cadence + strike, table);
+    }
+    Assert.True(after.ResolvedTicks.Length > 0
+        && after.ResolvedTicks[0] + Cadences * cadence <= after.WindowEnd, table);
+    Assert.True(after.SteadyCount(Cadences, cadence) >= before.SteadyCount(Cadences, cadence), table);
 }
-Assert.True(prepared >= legacy, $"prepared {prepared} below legacy {legacy}");
 ```
 
+  The hard gate is `EndsAfterFirstLanded == 0` plus every interval inside `[C, C + S]`. The rate comparison
+  counts each build's resolutions over exactly five cadences from that build's own first resolution, per
+  phase. A windowed or summed count was rejected: the prepared build resolves its first swing at least one
+  lead later than the legacy build, so a fixed window can drop a swing from a correct fix on its edge alone
+  (a replay gave 23 against 23 summed at 3/1 cadence 16, with one run phase at 5 against 6). A slack such
+  as `legacy - 4` was rejected because it would pass a build that loses a swing in every phase. Counting
+  from each build's own first resolution removes the lead offset and the window edge. With intervals of at
+  least `C` neither build can exceed five, so a correct fix scores five in both, while a locked build scores
+  one. The steady count is also the check that fails a lock when only one outcome resolves and the interval
+  loop has nothing to test.
 - [ ] **Step 2: Run red and check fixture fidelity.**
-  `dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release --filter FullyQualifiedName~TilePreparationPursuitTests`.
-  The 3/1 rows must fail with the lock visible: at least one walk phase at cadence 14 with 10 or more
-  `IllegalReach` ends and at most one landed outcome, and at least one run phase at cadence 16 with zero
-  landed. If no phase locks, stop and report the fixture's per-tick timeline. Do not reshape the geometry
-  until it locks.
+  `dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release --filter FullyQualifiedName~TilePreparationPursuitTests --logger "console;verbosity=detailed"`,
+  so the tables print. Read them, not the first assertion. The 3/1 rows must show the lock: at least one
+  walk phase at cadence 14 with 10 or more `IllegalReach` ends and at most one landed outcome, and at least
+  one run phase at cadence 16 with zero landed. If no phase locks, stop and report the tables and the
+  per-tick timeline. Do not change the geometry.
 - [ ] **Step 3: Write the failing server deferral tests** in `TilePreparationDeferralTests.cs` over
-  `PreparationScenario`, profiles `(3, 1, 7)` and `(4, 2, 7)`, impact 103, with the target moved in
-  `OnAfterMovement` so reach is decided on committed tiles:
-  - `Out_of_reach_impact_defers_and_resolves_on_the_next_legal_tick`: out at 103, back at 104. One roll at
-    104, in reach. Result impact 104, attack ID 1, revision 1, no ended record. Next schedule impact 118,
-    prepare `118 - lead`.
-  - `A_deferred_tick_makes_no_roll_revision_or_terminal`: on each deferred tick, no roll, no RNG call, no
-    ended or prepared record, cooldown 0, `TryGetCombatPreparation` unchanged, `TryGetAttackReadyTick` equals
-    the current tick.
+  `PreparationScenario`, profiles `(3, 1, 7)` and `(4, 2, 7)`. Set the profile before the first step. The
+  scenario locks at tick 100, so the first impact is `H = 100 + lead`, which is 103 for 3/1 and 104 for 4/2.
+  Every tick below is relative to `H`, with `S` the strike ticks. Move the target in `OnAfterMovement` so
+  reach is decided on committed tiles.
+  - `Out_of_reach_impact_defers_and_resolves_on_the_next_legal_tick`: out at `H`, back at `H + 1`. One roll
+    at `H + 1`. Result impact `H + 1`, attack ID 1, revision 1, no ended record. Next schedule impact
+    `H + 15`, prepare `H + 15 - lead`.
+  - `A_deferred_tick_makes_no_roll_revision_or_terminal`: on each deferred tick `H` to `H + S - 1`, no roll,
+    no RNG call, no ended or prepared record, cooldown 0, `TryGetCombatPreparation` unchanged,
+    `TryGetAttackReadyTick` equals the current tick.
   - `An_escaping_target_ends_the_attempt_after_its_strike_ticks`: target never returns. `IllegalReach` with
-    `ServerTick` `103 + strike` and `ImpactTick` 103, no roll, cooldown 0, no attempt and no replacement in
-    that pass. Restoring reach prepares attack ID 2 with a full lead from the next tick.
-  - `Non_reach_invalidity_ends_a_deferred_attempt_immediately`, profile 4/2, deferred at 103, change applied
-    for 104, over `disengage`, `retarget`, `profile`, `invalid`, `permission`, `target-dead`,
-    `attacker-dead`, `teleport` and `rules-null`. Each ends at 104 with its own reason and no roll.
-    `retarget` prepares the new target on 105, not 104.
-  - `Non_reach_invalidity_on_the_impact_tick_wins_over_deferral`: the same changes at 103 with reach also
-    lost. The ended reason is the change's reason at 103.
-  - `A_plane_mismatch_at_impact_defers_as_reach`: target moved to plane 1 at 103 and back at 104 for 4/2.
-    One roll at 104.
-  - `A_deferral_survives_the_post_roll_recheck_of_its_own_tick`: another attacker resolves a roll on 103
-    while the first attacker defers. The first attempt is still live after the tick and resolves on 104.
-  - `A_target_killed_during_deferral_ends_it_in_that_tick`: a second attacker kills the target on 104 while
-    the first is deferred. The first ends `ParticipantUnavailable` on 104, before the serve.
+    `ServerTick` `H + S` and `ImpactTick` `H`, no roll, cooldown 0, no attempt and no replacement in that
+    pass. Restoring reach prepares attack ID 2 with a full lead from the next tick.
+  - `Non_reach_invalidity_ends_a_deferred_attempt_immediately`, profile 4/2, deferred at `H`, change applied
+    for `H + 1`, over `disengage`, `retarget`, `profile`, `invalid`, `permission`, `target-dead`,
+    `attacker-dead`, `teleport` and `rules-null`. Each ends at `H + 1` with its own reason and no roll.
+    `retarget` prepares the new target on `H + 2`, not `H + 1`.
+  - `Non_reach_invalidity_on_the_impact_tick_wins_over_deferral`: the same changes at `H` with reach also
+    lost. The ended reason is the change's reason at `H`.
+  - `A_plane_mismatch_at_impact_defers_as_reach`, 4/2: target moved to plane 1 at `H` and back at `H + 1`.
+    One roll at `H + 1`.
+  - `A_deferral_survives_the_post_roll_recheck_of_its_own_tick`: another attacker resolves a roll on `H`
+    while the first attacker defers. The first attempt is still live after the tick and resolves on `H + 1`.
+  - `A_target_killed_during_deferral_ends_it_in_that_tick`, 4/2: a second attacker kills the target on
+    `H + 1` while the first is deferred. The first ends `ParticipantUnavailable` on `H + 1`, before the serve.
+  - `A_deferral_survives_a_real_region_handoff_and_resolves_in_the_new_cell`, 3/1, following
+    `Preparation_survives_an_actual_region_handoff_without_restarting`: attacker at `(63, 20, 0)`, target at
+    `(63, 21, 0)`, then in `OnAfterMovement` of `H` the target moves to `(65, 20, 0)`, two tiles away, so the
+    attempt defers on `H`. On `H + 1` the follow steps the attacker to `(64, 20, 0)` in cell `(1, 0)`. Assert
+    the new owner cell, one roll on `H + 1` with attack ID 1 and revision 1, and no ended record. If the
+    handoff tick misses the combat pass and ends the attempt, stop and report it as a finding.
+  - `An_overdue_attempt_that_was_not_deferred_ends_unavailable`, for design check 10. A missed pass cannot be
+    produced naturally from the fixture: every player slot is in `tickSlots`, which is rebuilt from all slots
+    at tick start (`TileWorldServer.Tick.cs:143-144`), and every actor is in `actorNetIds`, so a real miss
+    needs an owner lookup to fail mid handoff. Construct the same state instead: in `OnAfterMovement` of `H`,
+    with the target in reach, write the attacker's `TileCombatState.CooldownRemaining = 2` through the host.
+    Phase 0 decrements it to 1, so the attempt is valid but not due and not deferred on `H`. On `H + 1` it
+    must end `ParticipantUnavailable` with no roll, no `PreparedCombatEvent` and no `OnCombatEvent`. This is
+    the server guard that matters, because `CompletePreparedSwing` announces a rolled result even when the
+    kernel's `TryComplete` refuses.
   - In `TilePreparationDelayTests.cs`, `Delay_during_a_deferral_revises_from_the_current_tick`: deferred at
-    103, `DelayAttack(attacker, 2)` before the 104 pass. Revision 2, impact 106, prepare `106 - lead`, no roll
-    on 104, and a roll on 106 when in reach.
-  - In `TilePreparationServerTests.cs`, update `Invalid_due_attempt_requires_a_fresh_lead` for the 3/1
-    profile: no end on 103, `IllegalReach` on 104 with impact 103, then the restored target prepares
-    attack ID 2 with impact 108.
+    `H`, `DelayAttack(attacker, 2)` before the `H + 1` pass. Revision 2, impact `H + 3`, prepare
+    `H + 3 - lead`, no roll on `H + 1`, and a roll on `H + 3` when in reach.
+  - In `TilePreparationServerTests.cs`, update `Invalid_due_attempt_requires_a_fresh_lead`, which uses 3/1
+    with `H` 103: no end on 103, `IllegalReach` on 104 with impact 103, then the target restored after tick
+    104 prepares attack ID 2 on 105 with impact 108.
 - [ ] **Step 4: Run red.**
   `dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release --filter 'FullyQualifiedName~TilePreparationDeferralTests|FullyQualifiedName~TilePreparationServerTests|FullyQualifiedName~TilePreparationDelayTests|FullyQualifiedName~TilePreparationPursuitTests'`.
 - [ ] **Step 5: Implement in `TileWorldServer.Preparation.cs`.**
@@ -263,7 +345,9 @@ Assert.True(prepared >= legacy, $"prepared {prepared} below legacy {legacy}");
   - In `PreparationIsDue`, when the reason is `IllegalReach` and the kernel's `TryDefer` accepts, write the
     state and return false without creating an attempt. A valid attempt is due when
     `ImpactTick <= TickCount` and cooldown is zero. Every other reason keeps its current path.
-  - In `RecheckPreparation`, apply the same deferral so an attempt deferred earlier in the pass is kept.
+  - In `RecheckPreparation`, keep the attempt only when the reason is `IllegalReach` and
+    `state.DeferredTick == TickCount`, meaning phase 0 of this tick deferred it. Otherwise end it as today.
+    Do not call `TryDefer` here, so the recheck can never start a deferral that phase 0 did not judge.
   - Update XML docs: `TileCombatPreparation.ImpactTick` is the scheduled impact, resolving later only
     while legal reach is missing, within `StrikeTicks`. `PreparedCombatEvent.ImpactTick` is the resolution
     tick. `TileCombatPreparationEndReason.IllegalReach` is reach still illegal when the deferral bound
@@ -271,13 +355,16 @@ Assert.True(prepared >= legacy, $"prepared {prepared} below legacy {legacy}");
   - No change to the roll, apply or death phases, roll order, `AttackReadyTick` logic or the serve.
 - [ ] **Step 6: Run the Step 4 command green,** then the whole area project:
   `dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release`.
-  Both exit 0. Record each pursuit row's summed landed counts for the report.
+  Both exit 0. Keep the printed pursuit tables for the report.
 - [ ] **Step 7: Commit explicit task paths.** Subject: `fix(combat): defer an out-of-reach prepared impact until legal reach`.
 
 ### Task 4: The client sequence of a deferred impact
 
 **Files:** Create `TilePreparationDeferralDeliveryTests.cs`. Modify `PreparationDeliveryScenario.cs` only to
-accept a profile.
+accept a profile. If a test fails, the fix may touch only the runtime file that owns the failing seam, from
+this list: `TileProtocol.Preparation.cs`, `TileCombatPreparationLedger.cs`, `TileWorldServer.Preparation.cs`,
+`TileWorldServer.PreparationServe.cs`, `TileWorldClient.Preparation.cs`. Any other runtime file means the
+design is wrong. Stop and report.
 
 - [ ] **Step 1: Write the sequence tests** over `PreparationDeliveryScenario` with a preparation-enabled client:
   Let `H` be the first attempt's scheduled impact in the scenario.
@@ -297,7 +384,9 @@ accept a profile.
 - [ ] **Step 2: Run them.**
   `dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release --filter FullyQualifiedName~TilePreparationDeferralDeliveryTests`.
   These pin a contract that Tasks 2 and 3 should already satisfy, so they may pass at once. If one fails,
-  record the failure, correct the owning seam and rerun. Do not weaken an earlier assertion.
+  record the failure, fix it in the listed owning runtime file, rerun this command and the whole area
+  project, and commit that fix separately with subject `fix(combat): <what the client sequence exposed>`
+  before the test commit. Do not weaken an earlier assertion.
 - [ ] **Step 3: Commit explicit task paths.** Subject: `test(combat): pin the client sequence of a deferred impact`.
 
 ### Task 5: Documentation sweep, version and changelog
@@ -341,8 +430,9 @@ git diff --check
 
   Every command must exit 0 with zero warnings and zero failed tests. GPU facts skip in plain
   `dotnet test`. Report that as outside this headless change.
-- [ ] **Step 6: Commit explicit paths.** Subject: `fix(20.15.1): defer out-of-reach prepared impacts in pursuit`,
-  using the version selected in Step 1. Report every task SHA with `git branch --contains` output.
+- [ ] **Step 6: Commit explicit paths.** Subject: `release(20.15.1): prepared impacts wait for legal reach in pursuit`,
+  using the version selected in Step 1. This follows the repository's release commit precedent, for example
+  `release(20.15.0): row timestamps across every engine table`. Report every task SHA with `git branch --contains` output.
 
 ### Task 6: Integration and release, owned by the orchestrator
 
@@ -375,7 +465,9 @@ without another prompt.
 | Silent schedule, relaxed wire rule, ledger and migration | 2, 4 |
 | Cadence from the resolution tick | 1, 3 |
 | Delay, cancellation, retarget, movement, death, handoff, burst, interest, determinism | 2, 3, 4 |
-| Pursuit reproductions at the legacy rate or better | 3 |
+| Pursuit reproductions at the legacy rate or better, per phase | 3 |
+| Real region handoff during a deferral and the missed-pass guard | 3 |
+| Overflow room for a late completion | 1 |
 | Docs sweep, version, changelog | 5 |
 | Merge, pack, tag and consumer handoff | 6 |
 

@@ -597,6 +597,56 @@ and changed these details. Each group's "Contract amendments" block carries the 
 
     A footprint whose carrying texels stored both marks reads as the followed mark, which takes a fractional position
     across the outline under the damped camera. The emitted resolve grew from 43424 to 43661 bytes of HLSL.
+
+    Every rule above lives once, in shared shader functions, and the resolve has two entry points over them. The
+    per-texel preparation (`TemporalPrepareGlsl`) derives what the resolve needs from one internal texel alone: its
+    weighted YCoCg and reactive difference, the nearest surface of its 3x3, and the surface every display pixel centred
+    on it reprojects by, with steps 1 and 3's tests, the reach, the band, the followed mark and the narrow test. The
+    per-pixel accumulation (`TemporalAccumulateGlsl`) gathers the 3x3 and runs steps 2 and 4 to 8. The fused entry point
+    (`TemporalResolveFrag`) runs once per display pixel, prepares its 3x3 inline and is followed by the depth store. The
+    split entry point runs a first pass once per internal texel (`TemporalPrepareFrag`), which prepares each texel once
+    into internal-size targets and writes the history's previous depth itself, so the depth store does not run, and a
+    second pass once per display pixel (`TemporalAccumulateFrag`) that reads those targets. At the upscaling presets a
+    texel lies in the 3x3 of several display pixels, so the split does that work once instead of once per pixel around
+    it. At Native there is one texel a pixel, and the split's second pass and targets are pure cost.
+
+    The two entry points are byte-identical. The split stores every value exactly: the weighted Y, Co and Cg, the
+    reactive difference, the expected depth and step 6's edge motion in single-float targets, the motion in a half-float
+    target, the motion target's own format, beside the surface's eight flags as a whole number below 256, and alpha is
+    read back from the scene colour. A hash of both history outputs after every resolved frame of every temporal fact
+    on Metal, 2928 test fixtures and 63108 frames, matched the single-pass resolve the shared functions replaced, with
+    each entry point forced in turn. Moving the rules into functions changed no output and took the emitted resolve
+    from 43661 to 42862 bytes of HLSL. The first pass is 12992 bytes and the second 33268.
+
+    The split's targets hold 32 bytes an internal texel: Y, Co, Cg, the reactive difference, the expected depth and the
+    edge motion at 4 bytes each in R32F, since no four-channel single-float format is a seam format, and the motion
+    and flags at 8 in RGBA16F. At 3456x2234 Quality, 2304x1489 internal texels, that is 109.8 MB (10^6 bytes) beside the
+    212.7 MB the history and previous depth pairs hold. They live for one frame, so they have no pair. They are made at
+    the history's internal size on the first frame that records the split, and a frame that records the fused entry
+    point or no resolve retires them, so a backend and preset that picks the fused entry point holds none of them.
+
+    `TemporalResolvePolicy` picks the entry point per graphics backend and preset from measured cost, the resolve and
+    the sharpen together, fused against split. On a Tesla T4 (hosted run 36495925808) Direct3D 11 was slower split at
+    every size and preset: the boxes at 2560x1440 took 1.82 against 2.06 ms at Quality and 1.83 against 2.63 at Native,
+    the moving field at 3456x2234 Quality 5.18 against 5.21. Vulkan on the same GPU gained at Quality, most where the
+    fused pass costs most: the boxes at 2560x1440 Quality took 2.87 against 2.29 on Windows and 2.47 against 2.58 on
+    Linux, the moving field at 3456x2234 Quality 6.90 against 6.07 and 6.64 against 6.24. It lost at Native, the moving
+    field at 2560x1440 taking 3.41 against 3.57 and 3.30 against 3.80. On an Apple M2 Max under Metal, measured locally
+    at a load average of 6 to 13, the split gained at Quality, the boxes taking 2.02 against 1.85 at 2560x1440 and 4.16
+    against 3.69 at 3456x2234, and at Native was even or slower, the moving field taking 2.54 against 2.68 at 2560x1440
+    and 4.99 against 5.31 at 3456x2234. So the split runs on Metal and Vulkan at the upscaling presets, and the fused
+    pass on Direct3D 11 and at Native everywhere.
+    `KE_TEMPORAL_RESOLVE` set to `fused` or `split` forces one entry point for the process, for tests and measurement.
+    `TemporalResolveCostPerfGpuTests` times both entry points and each split pass alone in one run on any real GPU and
+    prints the policy's pick beside them.
+
+    Vulkan frees a disposed texture's image and memory only at the frame boundary, `Present`, or when the device is
+    disposed ([#1199](https://github.com/APKiwiOrg/KhaozEngine/issues/1199)). The temporal fixture submitted and waited
+    without presenting, so every target the scene replaced stayed allocated, and the cost measurement's flips between
+    entry points and presets at 3456x2234 ran a 16 GB Tesla T4 out of device memory within one fact. The fixture now
+    presents after each frame. `TemporalEntryFlipMemoryGpuTests` flips the entry point and the preset at 3456x2234 for
+    four cycles, checks the split's targets exist only on a split frame, and on Vulkan holds the live allocations and
+    the retire list at the first cycle's. It passes on both hosted Vulkan legs (run 36507108295).
 24. Withdrawn. Step 6's lock was also released after a partial reveal, where a stored depth nearer than the one the
     pixel expects, and no thin feature, lay in last frame's 3x3 around it. It compared last frame's samples with this
     frame's, so it also fired in a still scene: a line narrower than a texel beside a still surface whose edge lies

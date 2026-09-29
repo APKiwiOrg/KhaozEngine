@@ -5,6 +5,17 @@ namespace KhaozEngine.Render3D.Internal
     /// <c>ShaderSources.TemporalResolveTuningGlsl</c> and <c>ShaderSources.TemporalCommonGlsl</c>.
     /// <c>TemporalResolveShaderTests</c> pins the two copies together, and the resolve's acceptance tests tune them. Each
     /// comment names the design step (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3) the constant belongs to.
+    /// <para><b>ONE SET OF RULES, TWO ENTRY POINTS.</b> The constants are read by shared shader functions, the
+    /// per-texel preparation (<see cref="ShaderSources.TemporalPrepareGlsl"/>) and the per-pixel accumulation
+    /// (<see cref="ShaderSources.TemporalAccumulateGlsl"/>), which both entry points call: the fused pass, which
+    /// prepares each pixel's 3x3 inline, and the split, whose first pass prepares each internal texel once into
+    /// <see cref="TemporalSplitFormats"/>'s targets and whose second pass accumulates each display pixel from them. So
+    /// a constant tunes both, and the two are byte-identical, since the split stores every prepared value exactly. The
+    /// split's targets hold 32 bytes an internal texel, 109.8 MB at 3456x2234 Quality, and exist only while it runs.
+    /// <see cref="TemporalResolvePolicy"/> picks the entry point per backend and preset from the hosted NVIDIA
+    /// measurement (run 36495925808) and the Metal figures, and amendment 23 of the design records both, with the
+    /// Vulkan frame boundary that frees replaced targets
+    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1199">#1199</see>).</para>
     /// </summary>
     internal static class TemporalResolveTuning
     {

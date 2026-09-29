@@ -15,9 +15,9 @@ namespace KhaozEngine.Render3D.Internal
     /// <c>TemporalEntryIdentityGpuTests</c> shows they write the same history bit for bit on hardware and on WARP. On
     /// a software Vulkan device (llvmpipe) the state is identical and the colour within a measured bound.
     /// The split's targets hold 24 bytes an internal texel, 82.3 MB at 3456x2234 Quality, and exist only while it runs.
-    /// <see cref="TemporalResolvePolicy"/> picks the entry point per backend, on whether the internal size is below
-    /// the display's, from the hosted NVIDIA measurements (runs 36517355602 and 36524126806) and the Metal figures,
-    /// and amendment 23 of the design records both, with the Vulkan frame boundary that frees replaced targets
+    /// <see cref="TemporalResolvePolicy"/> picks the split on every backend at every size, from the hosted NVIDIA
+    /// measurements (runs 36553954502, 36517355602 and 36524126806) and the Metal figures, and amendment 23 of the
+    /// design records them, with the Vulkan frame boundary that frees replaced targets
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1199">#1199</see>).</para>
     /// </summary>
     internal static class TemporalResolveTuning

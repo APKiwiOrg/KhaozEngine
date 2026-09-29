@@ -181,8 +181,8 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("TemporalDebugView", ShaderSources.FullscreenVert, ShaderSources.TemporalDebugFrag);
             // The on-request count probe, the same core sampled on a coarse grid.
             yield return new("TemporalCountProbe", ShaderSources.FullscreenVert, ShaderSources.TemporalProbeFrag);
-            // The resolve's split entry point, which TemporalResolvePolicy picks per backend and preset: the first pass
-            // per internal texel, the second per display pixel.
+            // The resolve's split entry point, which TemporalResolvePolicy picks on every backend: the first pass per
+            // internal texel, the second per display pixel.
             yield return new("TemporalPrepare", ShaderSources.FullscreenVert, ShaderSources.TemporalPrepareFrag);
             yield return new("TemporalAccumulate", ShaderSources.FullscreenVert, ShaderSources.TemporalAccumulateFrag);
             // The same four per-pixel programs with their 3x3 at half precision, which TemporalResolvePrecisionPolicy

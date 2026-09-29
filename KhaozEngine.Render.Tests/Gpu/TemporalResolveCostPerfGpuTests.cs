@@ -174,8 +174,8 @@ namespace KhaozEngine.Tests.Gpu
             PrintPair("pass one", wall[Mode.Split], wall[Mode.PassTwoAlone]);
             PrintPair("pass two", wall[Mode.Split], wall[Mode.PassOneAlone]);
             PrintPair("split against fused", wall[Mode.Split], wall[Mode.Fused]);
-            bool upscales = TemporalResolvePolicy.Upscales(iw, ih, w, h);
-            output.WriteLine($"  the policy picks {TemporalResolvePolicy.Measured(fx.Device.Backend, upscales)} for "
+            bool upscales = iw < w || ih < h;
+            output.WriteLine($"  the policy picks {TemporalResolvePolicy.Measured} for "
                 + $"{fx.Device.Backend} at {preset}, internal {iw}x{ih} {(upscales ? "below" : "at")} the display"
                 + (TemporalResolvePolicy.Forced is { } forced ? $", forced to {forced} in this process" : ""));
             if (w == 2560 && h == 1440)

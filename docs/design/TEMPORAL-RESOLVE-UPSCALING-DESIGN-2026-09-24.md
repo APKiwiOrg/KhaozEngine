@@ -675,31 +675,36 @@ and changed these details. Each group's "Contract amendments" block carries the 
     Quality, 2304x1489 internal texels, that is 82.3 MB (10^6 bytes) beside the 212.7 MB the history and previous
     depth pairs hold. They live for one frame, so they have no pair. They are made at
     the history's internal size on the first frame that records the split, and a frame that records the fused entry
-    point or no resolve retires them, so a backend and size that picks the fused entry point holds none of them. The
+    point or no resolve retires them, so a device on the fused entry point holds none of them. The
     first pass writes five colour attachments, the four targets and the previous depth. Vulkan guarantees a device
     only four (`GpuCapabilities.MaxColorAttachments` carries its `maxColorAttachments`, and Direct3D 11 and Metal
     allow 8), so a device that allows fewer than five records the fused entry point, even when the split is forced.
 
-    `TemporalResolvePolicy` picks the entry point per graphics backend from measured cost, the resolve and the sharpen
-    together, fused against split, on whether the internal size is below the display's: the preset's ratio or an
-    explicit `UpscaleRatio`, times the render cap, as the scene sizes its targets. A ratio override or a cap that
-    shrinks the internal size therefore gets the entry point its real size measured, whatever the preset says. On a
-    Tesla T4, hosted runs 36517355602 (Direct3D 11 and Windows Vulkan) and 36524126806 (Linux Vulkan) with the split's
-    targets at 16 bits, the split was faster below the display on every backend and size: the boxes at 2560x1440
-    Quality took 1.99 against 1.69 ms on Direct3D 11, 2.68 against 1.66 on Windows Vulkan and 2.41 against 1.95 on
-    Linux Vulkan, the moving field at 3456x2234 Quality 5.70 against 4.49, 6.65 against 4.73 and 6.69 against 5.21.
-    The Native rows at 3456x2234 render at 3342x2160 under the default render cap, so they lie below the display too,
-    and there the split was faster on every backend, by 0.18 to 1.50. At the display's own size, 2560x1440 at Native,
-    Windows Vulkan was faster split by 0.70 on the boxes and 0.36 on the field, Linux Vulkan by 0.03 on both, and
-    Direct3D 11 slower, the boxes 2.00 against 2.26 and the field 2.65 against 2.75. On an Apple M2 Max under Metal,
-    measured locally at a load average of 3 to 9, the split was faster below the display by 0.22 to 0.65, the boxes
-    at 2560x1440 Quality taking 1.98 against 1.67, and even or faster at the display's size, the moving field at
-    2560x1440 2.51 against 2.50 and the boxes 2.02 against 1.87. So the split runs wherever the internal size is below
-    the display, and at the display's size on Metal and Vulkan, and the fused pass on Direct3D 11 there. At the
-    display's size the split's targets are display-sized, 88.5 MB at 2560x1440. With the exact
-    32-bit targets (run 36507108295) the split had been slower on Direct3D 11 at every size but the moving field at
-    3456x2234 Quality, which was even, and on Linux Vulkan at 2560x1440 Quality, which is why the targets moved to 16
-    bits.
+    `TemporalResolvePolicy` records the split on every graphics backend at every internal size. The fused pass runs
+    only on a device that allows too few colour attachments for the split's first pass and under the diagnostic
+    override below. Direct3D 11 at the display's size was the last place the fused pass was picked. Hosted run
+    36553954502, on a Tesla T4 with both entry points rounding in integer steps, measured the resolve and the sharpen
+    together, fused against split, in ms:
+
+    | Scene | Preset | Display | Fused | Split |
+    | --- | --- | --- | --- | --- |
+    | Boxes | Native | 2560x1440 | 2.165 | 2.237 |
+    | Field | Native | 2560x1440 | 2.802 | 2.663 |
+    | Boxes | Native | 3456x2234 | 5.423 | 4.762 |
+    | Field | Native | 3456x2234 | 7.056 | 5.818 |
+    | Boxes | Quality | 2560x1440 | 2.107 | 1.695 |
+    | Field | Quality | 2560x1440 | 2.640 | 1.959 |
+    | Boxes | Quality | 3456x2234 | 4.925 | 3.686 |
+    | Field | Quality | 3456x2234 | 6.320 | 4.373 |
+
+    The Native rows at 3456x2234 render at 3342x2160 under the default render cap. The integer rounding slowed the
+    fused pass, so the split is faster everywhere but the boxes at 2560x1440 Native, where the two are even. Vulkan on
+    the same GPU was already faster or even split at every size (hosted runs 36517355602 and 36524126806): at
+    2560x1440 Native by 0.70 and 0.36 under Windows and 0.03 under Linux, and at Quality by 0.46 to 2.05. Metal at
+    half precision is faster split at every size (amendment 25). At the display's size the split's targets are
+    display-sized, 88.5 MB at 2560x1440. With the exact 32-bit targets (run 36507108295) the split had been slower on
+    Direct3D 11 at every size but the moving field at 3456x2234 Quality, which was even, and on Linux Vulkan at
+    2560x1440 Quality, which is why the targets moved to 16 bits.
     `KE_TEMPORAL_RESOLVE` set to `fused` or `split` forces one entry point for the process. It is a diagnostic
     override, for tests, for measurement and to tell a fault in one entry point from the other on a player's machine,
     not a setting a game ships with.
@@ -753,7 +758,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
     2.21 against 2.05 and 2.84 against 2.74, at 3456x2234 Quality 4.18 against 3.73 and 5.17 against 4.66, at Native
     4.24 against 3.77 and 5.51 against 4.92. The second pass alone falls by 0.16 to 0.58 ms. The fused pass moves by
     -0.18 to +0.27 ms, within the spread, as the split measurement found: half pays only once the per-texel work has
-    left the display pass. On Metal the policy records the split at every size, so the fused pass runs there only as
+    left the display pass. The policy records the split at every size (amendment 23), so the fused pass runs only as
     the attachment fallback or the diagnostic override.
 
     Direct3D 11 and Vulkan keep the full variant. Hosted run 36567912437 forced the half variant on every backend on a

@@ -63,8 +63,8 @@ namespace KhaozEngine.Render3D.Rendering
             _clampSampler = f.CreateSampler(GpuSamplerDescription.Linear);
         }
 
-        // The fused entry point's programs and pipelines, built on the first frame that records it, so a backend and
-        // preset that picks the split never compiles them.
+        // The fused entry point's programs and pipelines, built on the first frame that records it, so a device that
+        // records the split never compiles them.
         void EnsureFused()
         {
             if (_resolvePipeline is not null) return;

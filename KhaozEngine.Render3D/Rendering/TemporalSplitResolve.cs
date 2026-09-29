@@ -25,8 +25,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// the first time the split is chosen, and shares its clamp sampler and uniform buffer with it.
     /// <para><b>ITS TARGETS EXIST ONLY WHILE THE SPLIT RUNS.</b> They follow the history's internal size and are made
     /// on the first frame that records the split. A frame that records the fused entry point, or no resolve, retires
-    /// them (<see cref="ReleaseTargets"/>), so a backend and preset that picks the fused entry point holds none of
-    /// them. The pipelines stay for the next time.</para>
+    /// them (<see cref="ReleaseTargets"/>), so a device that falls back to the fused entry point, or a process forced
+    /// to it, holds none of them. The pipelines stay for the next time.</para>
     /// <para>The sets and framebuffers name the scene's inputs and the history targets, so they are rebuilt with a new
     /// input texture or history generation and let go with the renderer's own sets.</para>
     /// </summary>

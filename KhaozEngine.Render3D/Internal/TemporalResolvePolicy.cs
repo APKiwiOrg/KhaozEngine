@@ -21,27 +21,22 @@ namespace KhaozEngine.Render3D.Internal
     }
 
     /// <summary>
-    /// WHICH ENTRY POINT THE RESOLVE RECORDS, per graphics backend, from measurement, on whether the internal size is
-    /// below the display's (<see cref="Upscales"/>): the preset's ratio or an explicit one, times the render cap, as
-    /// the scene sizes its targets, so a ratio override or a cap gets the entry point its real size measured. The split
-    /// does the per-texel work once per internal texel rather than once per display pixel around it, so it gains most
-    /// where display pixels outnumber internal texels. At the display's own size it has nothing to share, and gains
-    /// only where its lean second pass and its 16-bit targets cost less than the fused pass's inline 3x3.
+    /// WHICH ENTRY POINT THE RESOLVE RECORDS, from measurement: the split, on every graphics backend at every internal
+    /// size. The split does the per-texel work once per internal texel rather than once per display pixel around it,
+    /// and its lean second pass and 16-bit targets cost less than the fused pass's inline 3x3 even at the display's own
+    /// size. The fused pass runs only where a device allows too few colour attachments for the split's first pass
+    /// (<see cref="Supported"/>) and under the override below.
     /// <para><b>THE TABLE</b>, the cost measurement (TemporalResolveCostPerfGpuTests), resolve and sharpen at most,
-    /// fused against split (ms), with the split's colour and reactive at 16 bits. On a Tesla T4, hosted runs
-    /// 36517355602 (Direct3D 11, Windows Vulkan) and 36524126806 (Linux Vulkan), below the display the split is faster
-    /// on every backend and size: the boxes at 2560x1440 Quality 1.99 against 1.69 on Direct3D 11, 2.68 against 1.66
-    /// on Windows Vulkan and 2.41 against 1.95 on Linux Vulkan, the moving field at 3456x2234 Quality 5.70 against
-    /// 4.49, 6.65 against 4.73 and 6.69 against 5.21. The Native rows at 3456x2234 render at 3342x2160 under the
-    /// default render cap, so they lie below the display too, and there the split is faster on every backend. At the
-    /// display's own size, 2560x1440 at Native, Windows Vulkan is faster split by 0.70 and 0.36, Linux Vulkan by 0.03,
-    /// and Direct3D 11 slower, the boxes 2.00 against 2.26 and the field 2.65 against 2.75. On an Apple M2 Max under
-    /// Metal, locally, below the display the split is faster by 0.22 to 0.65, the boxes at 2560x1440 Quality 1.98
-    /// against 1.67, and at the display's size even or faster, the moving field 2.51 against 2.50 and the boxes 2.02
-    /// against 1.87. So the split wherever the internal size is below the display, and at the display's size on Metal
-    /// and Vulkan, with the fused pass on Direct3D 11 there. At the display's size the split's targets are
-    /// display-sized, 24 bytes a pixel, 88.5 MB at 2560x1440. The measurement prints this pick beside its figures,
-    /// which is how the table is kept.</para>
+    /// fused against split (ms). Direct3D 11 on a Tesla T4, hosted run 36553954502, the backend that last kept the
+    /// fused pass at the display's size: at Native, 2560x1440, the boxes 2.165 against 2.237 and the field 2.802
+    /// against 2.663, and at 3456x2234 (3342x2160 under the default render cap) 5.423 against 4.762 and 7.056 against
+    /// 5.818. At Quality, 2560x1440, the boxes 2.107 against 1.695 and the field 2.640 against 1.959, and at 3456x2234
+    /// 4.925 against 3.686 and 6.320 against 4.373. Rounding the prepared values in integer steps slowed the fused
+    /// pass, so the split is faster or even everywhere. Vulkan on the same GPU (runs 36517355602 and 36524126806) was
+    /// already faster or even split at every size, and Metal at half precision is faster split at every size
+    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 25). At the display's
+    /// size the split's targets are display-sized, 24 bytes a pixel, 88.5 MB at 2560x1440. The measurement prints
+    /// this pick beside its figures, which is how the table is kept.</para>
     /// <para><b>THE OVERRIDE, FOR DIAGNOSIS.</b> <see cref="EnvironmentVariable"/> set to <c>fused</c> or <c>split</c>
     /// forces one entry point for every scene and renderer the process creates: for tests, for measurement, and to
     /// tell a fault in one entry point from the other on a player's machine. It is not a setting, a game does not ship
@@ -64,22 +59,11 @@ namespace KhaozEngine.Render3D.Internal
             : string.Equals(value, "split", StringComparison.OrdinalIgnoreCase) ? TemporalResolveEntry.Split
             : null;
 
-        /// <summary>Whether the scene renders below the display's size on either axis, which is what the entry point is
-        /// chosen on: the preset's ratio or an explicit one, times the render cap, as the internal targets are
-        /// sized.</summary>
-        public static bool Upscales(int internalWidth, int internalHeight, int displayWidth, int displayHeight) =>
-            internalWidth < displayWidth || internalHeight < displayHeight;
-
-        /// <summary>The measured pick for a backend rendering below the display's size or at it (the table in the
-        /// summary).</summary>
-        public static TemporalResolveEntry Measured(GpuBackendKind backend, bool upscales) =>
-            upscales || backend.IsVulkan() || backend.IsMetal()
-                ? TemporalResolveEntry.Split
-                : TemporalResolveEntry.Fused;
+        /// <summary>The measured pick (the table in the summary).</summary>
+        public const TemporalResolveEntry Measured = TemporalResolveEntry.Split;
 
         /// <summary>The entry point a resolve records: the forced one, else the measured pick.</summary>
-        public static TemporalResolveEntry Choose(GpuBackendKind backend, bool upscales) =>
-            Forced ?? Measured(backend, upscales);
+        public static TemporalResolveEntry Choose() => Forced ?? Measured;
 
         /// <summary>The entry point a device can record: the fused one in place of the split where the split's first
         /// pass writes more colour attachments (<see cref="TemporalSplitFormats.FirstPassAttachments"/>) than the

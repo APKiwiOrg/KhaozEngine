@@ -38,8 +38,12 @@ public sealed class TemporalDebugViewSceneTests
     static bool IsDebugView(IGpuPipeline? p)
         => (p as FakePipeline)?.Request?.FragmentGlsl == ShaderSources.TemporalDebugFrag;
 
+    static bool Is(IGpuPipeline? p, string fragment) => (p as FakePipeline)?.Request?.FragmentGlsl == fragment;
+
+    // A draw of either entry point of the resolve (TemporalResolveEntry), whichever the policy or its override picks.
     static bool IsResolve(IGpuPipeline? p)
-        => (p as FakePipeline)?.Request?.FragmentGlsl == ShaderSources.TemporalResolveFrag;
+        => Enum.GetValues<TemporalResolveEntry>().Any(e => TemporalResolveRenderer.EntryFragments(e)
+            .Any(fragment => Is(p, fragment)));
 
     [Theory]
     [MemberData(nameof(ResolveViews))]
@@ -67,12 +71,18 @@ public sealed class TemporalDebugViewSceneTests
         rig.Frame(W, H, commands: capture);
         Assert.True(rig.Scene.ResolvedLastRenderForTests);
         TemporalResolveRenderer resolve = rig.Scene.TemporalResolveRendererForTests!;
-        int resolveDraw = capture.Draws.FindIndex(d => IsResolve(d.Pipeline));
+        // The entry point the resolve recorded, either one: its two draws in order, then the view after both, over
+        // the set the fused resolve binds, which the renderer builds on either entry point for the views.
+        TemporalResolveEntry entry = resolve.LastEntry
+            ?? throw new InvalidOperationException("the resolve recorded no entry point");
+        string[] fragments = TemporalResolveRenderer.EntryFragments(entry);
+        int resolveDraw = capture.Draws.FindIndex(d => Is(d.Pipeline, fragments[0]));
         DrawCapture.Drawn drawn = Assert.Single(capture.Draws, d => IsDebugView(d.Pipeline));
         int viewDraw = capture.Draws.IndexOf(drawn);
-        Assert.True(resolveDraw >= 0 && viewDraw > resolveDraw,
-            $"the view draw {viewDraw} follows the resolve {resolveDraw}");
-        Assert.Same(capture.Draws[resolveDraw].Set0, drawn.Set0);
+        Assert.True(resolveDraw >= 0 && viewDraw > resolveDraw + 1,
+            $"the view draw {viewDraw} follows the {entry} resolve's draws from {resolveDraw}");
+        Assert.True(Is(capture.Draws[resolveDraw + 1].Pipeline, fragments[1]));
+        if (entry == TemporalResolveEntry.Fused) Assert.Same(capture.Draws[resolveDraw].Set0, drawn.Set0);
         Assert.Same(resolve.CurrentSet, drawn.Set0);
         Assert.NotNull(drawn.Set1);
         // Into the target the post chain ended on, the draw right before it.

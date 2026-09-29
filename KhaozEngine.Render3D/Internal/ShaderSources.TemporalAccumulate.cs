@@ -5,7 +5,7 @@ namespace KhaozEngine.Render3D.Internal
     /// resolve applies per display pixel, as GLSL functions with no stage inputs or outputs. Both entry points call
     /// them over the same 3x3 statistics (<c>temporalGather</c>) and the same prepared surface
     /// (<c>TemporalSurface</c>, <see cref="TemporalPrepareGlsl"/>): the fused resolve after preparing its 3x3 inline,
-    /// the split's second pass (<c>TemporalAccumulateFrag</c>) after reading its first pass's targets.
+    /// the split's second pass (<see cref="TemporalAccumulateFrag"/>) after reading its first pass's targets.
     /// <para>A program that includes it declares <c>SceneColor</c>, <c>SceneDepth</c>, <c>MotionTex</c>,
     /// <c>PrevDepth</c>, <c>HistoryColor</c>, <c>HistoryConfidence</c>, <c>LinearClamp</c> and the <c>Resolve</c>
     /// block, and includes <see cref="TemporalPrepareGlsl"/> before it.</para>

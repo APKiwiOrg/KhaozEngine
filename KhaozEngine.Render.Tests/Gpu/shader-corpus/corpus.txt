@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 600
+# Rows: 616
 Beam.fragment.hlsl 763e8e2481a2a78f468f6d62ed5e3a24df6ffd7ad4d0e8c280ac5ad953b177fe 1809
 Beam.fragment.msl f8bb4e895ae8c1794baa7115089311abef23c86d22b47d85f68e225dae39ad99 1493
 Beam.fragment.spirv 7023f2b860be99c43999b4be78b8fe5cbdba1e201d451dd77c137a80224eba79 2724
@@ -498,6 +498,14 @@ TargetOutlineSkinnedVisible.layout.msl 1a4db88758db3bd5a52fa88946c81962787eafd11
 TargetOutlineSkinnedVisible.vertex.hlsl f052d7a95ba2dff1fd1809c6a3c6bd1015b270977bc9878bc0ffa1a3e7f1a2f5 2267
 TargetOutlineSkinnedVisible.vertex.msl 2dc8a76160ae28ed32ff7329ed124ddc4257634a155db19891f6953387682aec 1755
 TargetOutlineSkinnedVisible.vertex.spirv e774c3416ea2e186112c647fd8c6d994d79607ae1b254a3d236b956ec64de667 3716
+TemporalAccumulate.fragment.hlsl e32f3b4e26ce065c1d06d3a084d8910bbd577f3cb1c1ff128931644140ab9d78 33268
+TemporalAccumulate.fragment.msl c067f5b039dd383f13744a27f479e0bf154ca8a92b124c3260ef1d5bf0669320 33641
+TemporalAccumulate.fragment.spirv 0e4cd00daf89fa4389e6b7339047a58712d17d6e510f7d89723aeead885d998e 31964
+TemporalAccumulate.layout.hlsl 0a09c4f901de7a2565c76161f1576f1f7fc686b43aab399e7e2907b138f2123d 15 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+TemporalAccumulate.layout.msl 0a09c4f901de7a2565c76161f1576f1f7fc686b43aab399e7e2907b138f2123d 15 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+TemporalAccumulate.vertex.hlsl a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23 691
+TemporalAccumulate.vertex.msl 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1 451
+TemporalAccumulate.vertex.spirv 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4 916
 TemporalCountProbe.fragment.hlsl 67d6ae2e161b8085cd1ab086b8adf5bc5d73d082d128cb2c0909d54eb1f589b5 48067
 TemporalCountProbe.fragment.msl 75349cb4c4685c35ce33088a52a3cd6fac958b63085c4a212981dbec268509f2 48448
 TemporalCountProbe.fragment.spirv ac8847c48d2bebbb1658ee6ea5f7b43002a1109a945d03ac99ce490e3e4db923 37244
@@ -522,6 +530,14 @@ TemporalDepthStore.layout.msl 6d190fd8b34cf673336e823491e37f44b118654288878a4748
 TemporalDepthStore.vertex.hlsl a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23 691
 TemporalDepthStore.vertex.msl 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1 451
 TemporalDepthStore.vertex.spirv 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4 916
+TemporalPrepare.fragment.hlsl 717b095dd340c35d7e8d82eb8cc53f1da4b9a084c418ee8238310df12a12aefe 12992
+TemporalPrepare.fragment.msl 085a8fb278ccccddacf69cd4e191ac913de83e6cc026df649d73ac47048e498c 13093
+TemporalPrepare.fragment.spirv e14fc66c62f3145d8dcb1810b126a67c52882b1737a261016d0280f75bdcc42d 14524
+TemporalPrepare.layout.hlsl 5617c50139daec9b9b57ae6abb22fbb7f3a0cd41c2fd3c1af8dfc5e35968c7e3 6 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+TemporalPrepare.layout.msl 5617c50139daec9b9b57ae6abb22fbb7f3a0cd41c2fd3c1af8dfc5e35968c7e3 6 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+TemporalPrepare.vertex.hlsl a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23 691
+TemporalPrepare.vertex.msl 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1 451
+TemporalPrepare.vertex.spirv 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4 916
 TemporalResolve.fragment.hlsl 93fc457ad1566b4daa4a79c99bed6e0b4cfbd7e7ae609999405fc3da2f9a8b8d 42862
 TemporalResolve.fragment.msl 0f2d420362a9a424740687da802aa311eceb0e80b1628e561df6ab3f66f477bf 43134
 TemporalResolve.fragment.spirv 13488cfc45fa8cf5f1205c80f5d728dd6440757f7f1c25a8102feb5a7907366a 40352

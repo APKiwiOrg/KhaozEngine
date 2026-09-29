@@ -7,8 +7,8 @@ namespace KhaozEngine.Render3D.Internal
     /// <para><b>EVERY RULE LIVES ONCE.</b> The rules are GLSL functions in two shared blocks: the per-texel
     /// preparation (<see cref="TemporalPrepareGlsl"/>) and the per-pixel accumulation
     /// (<see cref="TemporalAccumulateGlsl"/>). The fused entry point here prepares its 3x3 and its centre texel inline
-    /// and accumulates in one pass. The split entry point (<c>TemporalPrepareFrag</c> and
-    /// <c>TemporalAccumulateFrag</c>) runs the same functions in two.</para>
+    /// and accumulates in one pass. The split entry point (<see cref="TemporalPrepareFrag"/> and
+    /// <see cref="TemporalAccumulateFrag"/>) runs the same functions in two.</para>
     /// <para><b>ORIENTATION.</b> Both address pixels by <c>gl_FragCoord</c>, which is upper-left on every backend (the
     /// convention <c>DecalFrag</c> and <c>StarfieldFrag</c> rely on), and read every input by <c>texelFetch</c> or at the
     /// UV of a pixel centre. So neither flips: the resolve's output is upright like <c>ColorTex</c>, and the post

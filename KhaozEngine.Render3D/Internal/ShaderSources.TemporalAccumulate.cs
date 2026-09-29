@@ -361,7 +361,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         for (int y = -1; y <= 1; y++) {
             for (int x = -1; x <= 1; x++) {
                 vec2 shown = texelFetch(sampler2D(MotionTex, LinearClamp),
-                    clamp(historyTexel + ivec2(x, y), ivec2(0), maxTexel), 0).rg;
+                    temporalNeighbourTexel(historyTexel, x, y, maxTexel), 0).rg;
                 if (!(abs(shown.x) > MotionSentinel)) apart = max(apart, length(shown * internalSize - ownMotion));
             }
         }
@@ -462,7 +462,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         float nearerWeight = 0.0;
         for (int y = -1; y <= 1; y++) {
             for (int x = -1; x <= 1; x++) {
-                ivec2 texel = clamp(centreTexel + ivec2(x, y), ivec2(0), maxTexel);
+                ivec2 texel = temporalNeighbourTexel(centreTexel, x, y, maxTexel);
                 vec4 sceneColor = texelFetch(sampler2D(SceneColor, LinearClamp), texel, 0);
                 vec3 ycc = rgbToYCoCg(temporalWeighted(sceneColor.rgb));
                 float lanczosWeight = toFloat(temporalLanczosWeight(kernels, x + 1, y + 1));

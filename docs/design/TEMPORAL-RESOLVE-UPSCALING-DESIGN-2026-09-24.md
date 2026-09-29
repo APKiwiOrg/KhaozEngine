@@ -641,8 +641,12 @@ and changed these details. Each group's "Contract amendments" block carries the 
     dropped with ties to even, and a value below the half's least normal value, 2^-14, flushed to zero of its sign by
     masks. Its result is a normal half or a zero, which the half-float target stores unchanged. Keeping the half's
     subnormals took a second rounding path that cost the fused pass up to 2.5 ms on Metal, and a comparison in place of
-    the masks up to 1.8 ms. The flush moves no printed line of the temporal facts on Metal, on either entry point. On
-    the M2 Max the rounding costs the split nothing measurable and the fused pass up to 0.28 ms at 3456x2234.
+    the masks up to 1.8 ms. The flush moves no printed line of the temporal facts on Metal, on either entry point. It
+    runs on the scene colour before exposure, which the tonemap applies after the resolve, so the values it cuts grow
+    with the exposure: 2^-14 is about 0.2/255 in sRGB at an exposure of 1, and at 16 it becomes 2^-10 in linear light,
+    about 3/255 in sRGB where the tonemap is near linear by black. A game that exposes a dark scene that far resolves
+    those near-black values to black. On the M2 Max the rounding costs the split nothing measurable and
+    the fused pass up to 0.28 ms at 3456x2234.
     `TemporalEntryIdentityGpuTests` is the check: two scenes render one perspective follow walk, still, walking and
     stopped, over still blades narrower than a texel, with a keyed pole an internal texel wide sweeping across the
     view at 3 internal texels a frame, one forced to each entry point, and after every frame their history colour and

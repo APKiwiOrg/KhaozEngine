@@ -649,7 +649,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
     pixels in the pixel counts and small shifts in the errors, and fails one bound: the still box over the textured
     wall under a sideways camera leaves a trail of 14 pixels of 3968 at Quality, against 10 at single float. Rounding
     Co and Cg alone gives 14 as well, Y alone 9 and the reactive difference alone 10, so keeping only Y at single float
-    does not help (13). The bound is 16. The emitted resolve is 43280 bytes of HLSL, the split's first pass 12948 and
+    does not help (13). The bound is 16. The emitted resolve is 43280 bytes of HLSL, the split's first pass 12953 and
     its second 32791.
 
     The split's targets hold 24 bytes an internal texel: Y, Co, Cg and the reactive difference at 8 in RGBA16F, the

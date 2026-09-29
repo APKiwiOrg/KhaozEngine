@@ -23,6 +23,17 @@ public class TilePreparationSamplerTests
         Assert.Equal(new TileCombatPreparationSample(stage, progress), TileCombatPreparationSampler.Sample(Schedule, tick));
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void A_deferred_schedule_samples_awaiting_outcome_until_its_terminal(byte strike)
+    {
+        var deferred = Schedule with { StrikeTicks = strike };
+        var awaiting = new TileCombatPreparationSample(TileCombatPreparationStage.AwaitingOutcome, 1f);
+        Assert.Equal(awaiting, TileCombatPreparationSampler.Sample(deferred, deferred.ImpactTick));
+        Assert.Equal(awaiting, TileCombatPreparationSampler.Sample(deferred, deferred.ImpactTick + strike - .5));
+    }
+
     [Fact]
     public void Revised_schedule_returns_to_hold_until_its_new_start()
     {

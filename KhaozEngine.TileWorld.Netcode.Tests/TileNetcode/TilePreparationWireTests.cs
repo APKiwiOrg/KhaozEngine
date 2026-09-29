@@ -132,7 +132,7 @@ public class TilePreparationWireTests
             ("zero attacker", b => b.AsSpan(16, 8).Clear()), ("zero target", b => b.AsSpan(24, 8).Clear()),
             ("zero id", b => b.AsSpan(32, 8).Clear()), ("zero revision", b => b.AsSpan(40, 4).Clear()),
             ("negative prepare", b => Write64(b, 48, -1)),
-            ("due now", b => Write64(b, 56, Tick)), ("past due", b => Write64(b, 56, Tick - 1)),
+            ("overdue by strike", b => Write64(b, 2, Tick + 5)),
             ("zero lead", b => Write64(b, 48, Tick + 4)),
             ("reverse lead", b => Write64(b, 48, Tick + 5)),
             ("long lead", b => Write64(b, 48, 0)),
@@ -155,6 +155,28 @@ public class TilePreparationWireTests
         Assert.False(TileProtocol.TryDecodePreparationChunk(two, out _, into));
         Assert.Empty(into);
         Assert.False(TileProtocol.TryDecodePreparationChunk(valid, out _, null!));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void An_overdue_state_record_is_valid_only_below_its_strike_ticks(byte strike)
+    {
+        var into = new List<TileCombatPreparation>();
+        TileCombatPreparation live = Overdue(strike, strike - 1);
+        byte[] encoded = TileProtocol.EncodePreparationChunk(new(100, 0, 1), [live], 0, 1);
+        Assert.True(TileProtocol.TryDecodePreparationChunk(encoded, out TilePreparationChunkHeader header, into));
+        Assert.Equal(new TilePreparationChunkHeader(100, 0, 1), header);
+        Assert.Equal(live, Assert.Single(into));
+
+        TileCombatPreparation expired = Overdue(strike, strike);
+        Assert.Throws<ArgumentException>(() => TileProtocol.EncodePreparationChunk(new(100, 0, 1), [expired], 0, 1));
+        byte[] bytes = TileProtocol.EncodePreparationChunk(new(0, 0, 1), [expired], 0, 1);
+        Write64(bytes, 2, 100);
+        into.Add(live);
+        Assert.False(TileProtocol.TryDecodePreparationChunk(bytes, out header, into));
+        Assert.Empty(into);
+        Assert.Equal(default, header);
     }
 
     [Fact]
@@ -361,9 +383,13 @@ public class TilePreparationWireTests
         }
         Assert.ThrowsAny<ArgumentException>(() => TileProtocol.EncodePreparationChunk(new(100, 0, 2), state, 0, 0));
         Assert.ThrowsAny<ArgumentException>(() => TileProtocol.EncodePreparationTerminalChunk(new(100, 0, 1), terminal, 0, 0));
-        Assert.ThrowsAny<ArgumentException>(() => TileProtocol.EncodePreparationChunk(new(100, 0, 1), [State(1) with { ImpactTick = 100 }], 0, 1));
+        Assert.ThrowsAny<ArgumentException>(() => TileProtocol.EncodePreparationChunk(new(100, 0, 1), [State(1, tick: 96)], 0, 1));
         Assert.ThrowsAny<ArgumentException>(() => TileProtocol.EncodePreparationTerminalChunk(new(100, 0, 1), [Terminal(1) with { Reason = TileCombatPreparationEndReason.Disengaged }], 0, 1));
     }
+
+    // A record served at header tick 100 that is overdue by the given ticks, with a valid lead of three.
+    internal static TileCombatPreparation Overdue(byte strike, long overdue) =>
+        new(1, 999999, 1, 1, 7, 97 - overdue, 100 - overdue, strike, 14);
 
     internal static TileCombatPreparation State(long attacker, long tick = 100) =>
         new(attacker, 999999, 1, 1, 7, tick, tick + 3, 1, 14);

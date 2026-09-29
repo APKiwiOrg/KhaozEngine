@@ -93,6 +93,8 @@ public class TilePreparationMigrationTests
         Assert.True(TileCombatPreparationScheduler.TryCreate(ref state, 100, 10, 20,
             new(3, 1, 0x11223344), 14, 100, 17, 23, out _));
         state.Active = state.Active with { Revision = 7 };
+        Assert.True(TileCombatPreparationScheduler.TryDefer(ref state, state.Active.ImpactTick));
+        Assert.NotEqual(0L, state.DeferredTick);
         world.Set(entity, state);
         var view = new ClientReplicationView(registry);
         var copy = new World();
@@ -100,6 +102,46 @@ public class TilePreparationMigrationTests
         Assert.True(view.TryGetEntity(10, out Entity mirrored));
         Assert.Equal(included, copy.TryGet(mirrored, out TileCombatPreparationState restored));
         if (included) Assert.Equal(state, restored);
+    }
+
+    [Fact]
+    public void Deferral_tick_round_trips_through_the_migration_codec()
+    {
+        ReplicationRegistry registry = TileProtocol.CreateRegistry();
+        var world = new World();
+        Entity entity = world.Spawn();
+        world.Set(entity, new NetId(10));
+        TileCombatPreparationState state = default;
+        Assert.True(TileCombatPreparationScheduler.TryCreate(ref state, 100, 10, 20,
+            new(4, 2, 7), 14, 100, 3, 5, out _));
+        Assert.True(TileCombatPreparationScheduler.TryDefer(ref state, 104));
+        Assert.True(TileCombatPreparationScheduler.TryDefer(ref state, 105));
+        world.Set(entity, state);
+        var view = new ClientReplicationView(registry);
+        var copy = new World();
+
+        view.Apply(copy, SnapshotWriter.WriteFiltered(world, registry, new HashSet<long> { 10 },
+            ReplicationChannels.Migrate, null));
+
+        Assert.True(view.TryGetEntity(10, out Entity mirrored));
+        Assert.True(copy.TryGet(mirrored, out TileCombatPreparationState restored));
+        Assert.Equal(105L, restored.DeferredTick);
+        Assert.Equal(state, restored);
+
+        using var fight = PreparationScenario.Create();
+        fight.SetPosition(fight.Attacker, new TileCoord(63, 20, 0));
+        fight.SetTargetPosition(new TileCoord(63, 21, 0));
+        fight.Step();
+        Assert.True(fight.Server.Host.TryGetOwner(fight.Attacker, out CellSim before, out Entity e));
+        Assert.True(before.World.TryGet(e, out TileCombatPreparationState held));
+        held.DeferredTick = 99;
+        before.World.Set(e, held);
+        fight.SetTargetPosition(new TileCoord(65, 20, 0));
+        fight.Step();
+        Assert.True(fight.Server.Host.TryGetOwner(fight.Attacker, out CellSim after, out Entity moved));
+        Assert.Equal(new CellCoord(1, 0), after.Coord);
+        Assert.True(after.World.TryGet(moved, out TileCombatPreparationState crossed));
+        Assert.Equal(held, crossed);
     }
 
     [Fact]

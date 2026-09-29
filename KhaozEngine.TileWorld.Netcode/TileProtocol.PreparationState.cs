@@ -29,6 +29,7 @@ public static partial class TileProtocol
         writer.Write(state.ReadyNotBeforeTick);
         writer.Write(state.AttackerTeleportEpoch);
         writer.Write(state.TargetTeleportEpoch);
+        writer.Write(state.DeferredTick);
     }
 
     static TileCombatPreparationState ReadPreparationState(BinaryReader reader) => new()
@@ -39,6 +40,7 @@ public static partial class TileProtocol
         LastAttackId = reader.ReadUInt64(),
         ReadyNotBeforeTick = reader.ReadInt64(),
         AttackerTeleportEpoch = reader.ReadUInt32(),
-        TargetTeleportEpoch = reader.ReadUInt32()
+        TargetTeleportEpoch = reader.ReadUInt32(),
+        DeferredTick = reader.ReadInt64()
     };
 }

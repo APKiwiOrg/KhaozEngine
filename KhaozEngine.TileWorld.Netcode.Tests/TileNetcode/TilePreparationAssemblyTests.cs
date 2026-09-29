@@ -32,6 +32,23 @@ public class TilePreparationAssemblyTests
         Assert.Equal(before, previous.Records);
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void An_overdue_record_assembles_below_its_strike_ticks(byte strike)
+    {
+        var assembler = new TileCombatPreparationAssembler();
+        TileCombatPreparation live = Overdue(strike, strike - 1);
+        Assert.True(assembler.TryAddState(new(100, 0, 1), [live], out TilePreparationStateFrame? complete));
+        Assert.Equal(live, Assert.Single(complete!.Records));
+
+        Assert.False(assembler.TryAddState(new(100, 0, 1), [Overdue(strike, strike)], out complete));
+        Assert.Null(complete);
+        Assert.False(new TileCombatPreparationAssembler().TryAddState(new(100, 0, 1),
+            [Overdue(strike, strike)], out complete));
+        Assert.Null(complete);
+    }
+
     [Fact]
     public void Incoming_lists_and_completed_arrays_are_never_reused_as_pending_storage()
     {

@@ -94,6 +94,27 @@ public class TilePreparationDeliveryTests
     }
 
     [Fact]
+    public void A_stale_revision_cannot_retire_a_deferred_sample()
+    {
+        using var f = new PreparationDeliveryScenario();
+        (long attacker, _) = f.Fight();
+        f.Step();
+        Assert.True(f.Client.TryGetCombatPreparation(attacker, out var original));
+        long tick = f.Server.TickCount;
+        long lead = original.ImpactTick - original.PrepareTick;
+        // Revision 2 is due exactly on the next frame's tick, so it is overdue by zero when that frame arrives.
+        var revised = original with { Revision = 2, PrepareTick = tick + 2 - lead, ImpactTick = tick + 2 };
+        var stale = original with { PrepareTick = tick + 2, ImpactTick = tick + 2 + lead };
+        f.Inject(TileProtocol.EncodePreparationChunk(new(tick + 1, 0, 1), new[] { revised }, 0, 1));
+        f.Inject(TileProtocol.EncodePreparationChunk(new(tick + 2, 0, 1), new[] { stale }, 0, 1));
+        f.Client.Poll();
+
+        Assert.Equal(0, f.Client.RejectedCombatPreparationFrameCount);
+        Assert.True(f.Client.TryGetCombatPreparation(attacker, out var kept));
+        Assert.Equal(revised, kept);
+    }
+
+    [Fact]
     public void Malformed_partial_set_preserves_published_state_and_clears_assembly()
     {
         using var f = new PreparationDeliveryScenario();

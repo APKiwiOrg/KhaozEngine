@@ -134,7 +134,9 @@ public static partial class TileProtocol
     internal static bool ValidPreparationRecord(in TileCombatPreparation record, long serverTick)
     {
         if (record.AttackerNetId == 0 || record.TargetNetId == 0 || record.AttackId == 0 || record.Revision == 0
-            || record.PrepareTick < 0 || record.ImpactTick <= serverTick || record.ImpactTick <= record.PrepareTick) return false;
+            || record.PrepareTick < 0 || record.ImpactTick <= record.PrepareTick
+            // A deferred schedule stays active while it is overdue by fewer than its strike ticks.
+            || !TileCombatPreparationDeferral.IsLive(record, serverTick)) return false;
         // Both ticks are nonnegative and ordered before subtraction, so an extreme wire value cannot wrap this span.
         long lead = record.ImpactTick - record.PrepareTick;
         return record.StrikeTicks > 0 && record.StrikeTicks <= lead && lead <= record.CadenceTicks;

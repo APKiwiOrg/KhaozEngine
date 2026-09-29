@@ -46,7 +46,8 @@ internal sealed class TileCombatPreparationLedger
             if (sample.AttackId <= held.TerminalId) continue;
             if (sample.AttackId < held.SampleId || (sample.AttackId == held.SampleId && sample.Revision < held.Revision))
             {
-                if (active.TryGetValue(attacker, out var newer) && newer.ImpactTick > frame.ServerTick) next[attacker] = newer;
+                if (active.TryGetValue(attacker, out var newer) && TileCombatPreparationDeferral.IsLive(newer, frame.ServerTick))
+                    next[attacker] = newer;
                 continue;
             }
             if (sample.AttackId > held.SampleId)

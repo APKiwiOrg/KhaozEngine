@@ -59,6 +59,12 @@ namespace KhaozEngine.Tests.Render3D
             },
             { "const float DisocclusionVisibleShare = 0.5;", TemporalResolveTuning.DisocclusionVisibleShare, 0.5f },
             { "const float MovingShareConfidence = 0.0;", TemporalResolveTuning.MovingShareConfidence, 0f },
+            {
+                "const float DisplayKernelConfidenceStart = 0.5;", TemporalResolveTuning.DisplayKernelConfidenceStart,
+                0.5f
+            },
+            { "const float DisplayKernelMotionPixels = 2.0;", TemporalResolveTuning.DisplayKernelMotionPixels, 2f },
+            { "const float DisplayKernelFullWeight = 0.25;", TemporalResolveTuning.DisplayKernelFullWeight, 0.25f },
         };
 
         [Theory]

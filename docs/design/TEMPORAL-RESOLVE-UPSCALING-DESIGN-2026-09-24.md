@@ -90,7 +90,9 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
 4. **Current sample reconstruction.** Gather the 3x3 internal samples around the display pixel and weight each by a
    Lanczos 2 kernel on the distance from its jittered sample position to the display pixel centre, measured in
    internal pixels. That is what turns jittered low resolution frames into a higher resolution image, and at `Native`
-   it reduces to plain temporal anti-aliasing. The kernel is separable (amendment 18).
+   it reduces to plain temporal anti-aliasing. The kernel is separable (amendment 18). Below Native a pixel whose
+   history is converged and still also takes the 3x3 reconstructed with the kernel sized in display pixels
+   (amendment 26).
 5. **Neighbourhood clipping.** Convert to YCoCg and build a variance box, mean plus or minus gamma times the standard
    deviation, over the 3x3 internal neighbourhood. Clip the history towards the box centre, not a clamp to its
    corners, which keeps colour. Gamma widens where the pixel's motion is small and tightens as it grows, so a still or
@@ -783,3 +785,43 @@ and changed these details. Each group's "Contract amendments" block carries the 
     under bounds of 8 and 16. The 14 resets still match their from-scratch renders
     with no pixel differing, the reveal's comparison with the wall from scratch is unchanged, and the perspective walk
     cell that failed the earlier half variant (pitch 0.35, sideways at 2.5 px, Native) passes.
+26. Step 4's reconstruction is sized in display pixels for a converged pixel. The Lanczos 2 sized in internal pixels
+    band-limits each frame's current sample to the internal Nyquist, a period of 4 display pixels at Performance, so the
+    accumulated image stayed softer than its jittered samples allow
+    ([#1188](https://github.com/APKiwiOrg/KhaozEngine/issues/1188)). Below Native, a pixel that kept its history also
+    reconstructs the same 3x3 with the Lanczos 2 sized in display pixels, whose kernels the sample weight already
+    evaluates, and takes it in place of the internal one in proportion to a share: none where the pixel restarts, rising
+    as its carried confidence passes `DisplayKernelConfidenceStart` (half) towards whole, falling to none as it moves
+    `DisplayKernelMotionPixels` (2 display pixels) a frame, and cut by the reactive estimate. The display kernels' sum
+    over the 3x3 is whole where a sample lands on the pixel and falls to zero where the jitter puts the pixel between
+    samples, so the share also scales by that sum up to `DisplayKernelFullWeight` (a quarter). The result is held to the
+    neighbourhood's range as the internal reconstruction is. The sample weight, the confidence and every other rule are
+    unchanged, so a fresh or moving pixel resolves as before, and Native, where the two kernels are one, is unchanged
+    bit for bit. The split's second pass reads the 3x3's prepared colour again for the pixels that take it
+    (`temporalCurrentYcc`), and the fused pass prepares it again from the scene colour, so both entry points reconstruct
+    from the same half-float values and still write the same history. Marking every pixel that took it as a moving share
+    in a scratch run, the identity walk stored 116719 more at Quality and 63280 at Performance, with every tally still
+    identical.
+
+    Measured on Metal (half precision), 320x180, HDR off. On the mip bias checkerboard, local contrast as a share of
+    native's: Quality 0.781 to 0.883, Balanced 0.741 to 0.806, Performance 0.747 to 0.768, and UltraPerformance
+    unchanged at 0.827. With the share forced whole on every pixel with history Performance reached only 0.800 and
+    UltraPerformance 0.836, so on this receding ground the reconstruction is not what holds them back. The chart's
+    contrast kept per group, vertical and horizontal bars, at Quality: 3 px 0.782 and 0.769 to 0.867 and 0.856, 2 px
+    0.863 and 0.889 to 0.905 and 0.927, 1.5 px 0.698 and 0.702 to 0.764 and 0.779, 1.2 px 0.599 and 0.624 to 0.718 and
+    0.719, 1 px 0.359 and 0.489 to 0.463 and 0.604, and its error 0.01974 to 0.01697 against the reference, 0.577 to
+    0.496 of a bilinear upscale's. At Performance: 3 px 0.817 and 0.924 to 0.832 and 0.942, 2 px 0.841 and 0.844 to
+    0.877 and 0.876, 1.5 px 0.650 and 0.624 to 0.679 and 0.650. Its 1.2 and 1 px groups lie past Performance's internal
+    Nyquist, read as aliasing and move by 0.006 at most. The test floors rose with it: Performance on the checkerboard
+    from 0.7 to 0.72, and the chart's per-group floors at about 0.7 of the new values. The chart's Metal grid moved by
+    0.016 in its worst cell and was rebaked. The checkerboard's grid stayed within its tolerance.
+
+    Every temporal fact passes forced split with the acceptance table, and the identity fact forced each way. 622 of
+    2330 printed lines moved, none at Native. The keyed box crossing the textured wall leaves an excess of 2 pixels over
+    its trail floor at Quality against 1, and 1 at Balanced against 0, both within acceptance 3's 4. The still thin
+    fence keeps a sharpness of 0.368 against 0.322 at Quality, and the slow pan over it flickers no more (0.082 of MSAA
+    4x's added error against 0.085). From a confidence of a quarter it kept 0.785 at Performance and 0.896 at Quality,
+    and a ridged keyed box crossing the textured wall at Quality left an excess of 6 against 4, under a bound of 7, so
+    the share waits for half. With neither the confidence nor the motion rule a followed keyed box at 2 display pixels a
+    frame at Quality left an excess of 3 against its bound of 2, and a followed avatar on perspective ground 2 against 1
+    at Quality and 14 against 1 at UltraPerformance.

@@ -32,12 +32,13 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// Biased Performance detail as a share of native's, a regression floor rather than a quality claim. The
         /// claim that the bias keeps the detail rests on the unbiased control (<see cref="MaxUnbiasedDetailShare"/>)
-        /// and the band error. The resolve rebuilds each frame with a reconstruction kernel sized in internal pixels,
-        /// band-limited to Performance's internal Nyquist, so Performance holds near three quarters of native here
-        /// (measured 0.747 on Metal, Quality 0.780) even where the texture is magnified
-        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/1188).
+        /// and the band error. A converged pixel takes a reconstruction kernel sized in display pixels, so Performance
+        /// keeps 0.768 of native here on Metal (Quality 0.883), against 0.747 (Quality 0.781) with the kernel sized in
+        /// internal pixels alone, which band-limits each frame to the internal Nyquist
+        /// (https://github.com/APKiwiOrg/KhaozEngine/issues/1188). The floor is the measured value less the margin the
+        /// earlier floor kept.
         /// </summary>
-        const double MinDetailKept = 0.7;
+        const double MinDetailKept = 0.72;
 
         const double MaxUnbiasedDetailShare = 0.9;   // unbiased detail as a share of biased: the bias keeps it
         const double MaxBandLumaError = 0.08;        // mean luma error against native in the band

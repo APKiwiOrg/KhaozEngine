@@ -356,5 +356,24 @@ namespace KhaozEngine.Render3D.Internal
         /// whole left it at 0.37 or less and the line one texel wide crossing the textured wall 29 and 58 trail
         /// pixels.</summary>
         public const float MovingShareConfidence = 0f;
+        /// <summary>Step 4 for a converged pixel (<see cref="ShaderSources.TemporalDisplayKernelGlsl"/>). Below
+        /// Native a pixel that kept its history takes the 3x3 reconstructed with the Lanczos 2 sized in display pixels
+        /// as its carried confidence rises from this to whole, in place of the one sized in internal pixels, which
+        /// band-limits each frame to the internal Nyquist. On the mip bias checkerboard Performance keeps 0.768 of
+        /// native's local contrast against 0.747, and Quality 0.883 against 0.781. From 0.25 it kept 0.785 and 0.896,
+        /// and a ridged keyed box crossing the textured wall at Quality left 6 pixels in excess of its trail floor
+        /// against 4, under a bound of 7.</summary>
+        public const float DisplayKernelConfidenceStart = 0.5f;
+        /// <summary>Step 4 for a converged pixel. The display-sized share falls to none as the pixel moves this many
+        /// display pixels a frame, where the history is resampled every frame and a sparse current sample shows as
+        /// flicker. With neither this nor <see cref="DisplayKernelConfidenceStart"/>, a followed keyed box at 2 display
+        /// pixels a frame at Quality left an excess of 3 against its bound of 2, and a followed avatar on perspective
+        /// ground 2 against 1 at Quality and 14 against 1 at UltraPerformance.</summary>
+        public const float DisplayKernelMotionPixels = 2f;
+        /// <summary>Step 4 for a converged pixel. The display-sized kernels' sum over the 3x3 is whole where a sample
+        /// lands on the pixel and falls to zero, or below it, where the jitter puts the pixel between samples, which at
+        /// Performance is half an internal pixel from each. Below this sum the reconstruction says little, and the
+        /// pixel takes it only in proportion. 0.1 kept the same detail within 0.003.</summary>
+        public const float DisplayKernelFullWeight = 0.25f;
     }
 }

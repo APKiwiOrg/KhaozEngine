@@ -210,7 +210,7 @@ void temporalGather(inout TemporalNeighbourhood n, TemporalKernels kernels, int 
     n.sampleWeight = max(n.sampleWeight, clamp(kernels.displayX[x] * kernels.displayY[y], afloat(0.0), afloat(1.0)));
     n.reactiveDifference = max(n.reactiveDifference, reactiveDifference);
 }
-
+" + TemporalDisplayKernelGlsl + @"
 // Step 1: where this display pixel was last frame if it moved as the surface it reprojects by did. A surface reads
 // history where its motion carries the pixel. Background reprojects from camera rotation alone, and a point on or
 // behind last frame's camera plane has no previous position.
@@ -480,6 +480,16 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
             clipped = mix(clipped, clamp(movingColor.xyz, neighbourMin, neighbourMax), movingShare);
             historyAlpha = mix(historyAlpha, clamp(movingColor.w, alphaMin, alphaMax), movingShare);
         }
+    }
+
+    // Step 4 for a converged pixel: the display-sized reconstruction in proportion to its share and its weight, held
+    // to the neighbourhood's range as the internal one is.
+    float displayShare = temporalDisplayShare(useHistory, historyState.x, motionPixels, reactive);
+    if (displayShare > 0.0) {
+        vec4 display = temporalDisplayReconstruction(kernels, centreTexel, maxTexel);
+        displayShare *= clamp(display.w / DisplayKernelFullWeight, 0.0, 1.0);
+        current.xyz = mix(current.xyz, clamp(display.xyz / max(display.w, 1.0e-4), neighbourMin, neighbourMax),
+            displayShare);
     }
 
     // Step 8, second half: blend in the weighted space. The current weight is 1 on a reset and falls to

@@ -89,6 +89,11 @@ layout(set=0, binding=10) uniform sampler LinearClamp;
 layout(set=0, binding=11) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
 " + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
             + TemporalAccumulateGlsl + @"
+// A texel's colour as the first pass prepared it, where the display-sized reconstruction reads it.
+avec3 temporalCurrentYcc(ivec2 texel) {
+    return toAvec4(texelFetch(sampler2D(PreparedColour, LinearClamp), texel, 0)).xyz;
+}
+
 // The split's per-pixel resolve: its 3x3 gathered from the first pass's targets (temporalGather), its centre texel's
 // surface read back (temporalStoredSurface), and the accumulation (temporalAccumulatePixel).
 TemporalPixel temporalSplitPixel(ivec2 displayPixel) {

@@ -93,6 +93,9 @@ const float FollowedHistoryMotionFraction = 0.5;
 const float FollowedStillDisplayPixels = 0.1;
 const float DisocclusionVisibleShare = 0.5;
 const float MovingShareConfidence = 0.0;
+const float DisplayKernelConfidenceStart = 0.5;
+const float DisplayKernelMotionPixels = 2.0;
+const float DisplayKernelFullWeight = 0.25;
 ";
 
         // ---- The fused entry point's core: its bindings, the uniforms, the per-texel preparation and per-pixel
@@ -110,6 +113,12 @@ layout(set=0, binding=7) uniform sampler LinearClamp;
 layout(set=0, binding=8) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
 " + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
             + TemporalAccumulateGlsl + @"
+// A texel's colour prepared again where the display-sized reconstruction reads it, as the 3x3 below prepares it.
+avec3 temporalCurrentYcc(ivec2 texel) {
+    return toAvec3(temporalPrepared(rgbToYCoCg(temporalWeighted(
+        texelFetch(sampler2D(SceneColor, LinearClamp), texel, 0).rgb)), 0.0).xyz);
+}
+
 // The fused entry point: one display pixel, its 3x3 read from the scene's inputs and prepared inline
 // (temporalWeighted, temporalReactiveDifference, temporalDilate), gathered (temporalGather), its centre texel's
 // surface prepared (temporalPrepareSurface), and the accumulation (temporalAccumulatePixel).

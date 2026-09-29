@@ -45,9 +45,11 @@ namespace KhaozEngine.Tests.Gpu
         const double MaxErrorShareOfBilinear = 0.85;
 
         // Regression floors on the share of a fine group's reference contrast Quality keeps, vertical and horizontal
-        // bars, about 0.7 of the measured value: 1.5 px 0.699 and 0.703, 1.2 px 0.599 and 0.624, 1 px 0.359 and 0.489.
+        // bars, about 0.7 of the measured value: 1.5 px 0.764 and 0.779, 1.2 px 0.718 and 0.719, 1 px 0.463 and 0.604.
+        // A converged pixel's reconstruction sized in display pixels raised them from 0.699 and 0.703, 0.599 and
+        // 0.624, and 0.359 and 0.489.
         static readonly (float Bar, double Vertical, double Horizontal)[] MinKept =
-            { (1.5f, 0.49, 0.49), (1.2f, 0.42, 0.44), (1f, 0.25, 0.34) };
+            { (1.5f, 0.53, 0.55), (1.2f, 0.50, 0.50), (1f, 0.32, 0.42) };
 
         // The chart sits a quarter of a display pixel off the pixel grid on both axes. On the grid the 1 pixel bars'
         // edges fall on pixel centres, so the reference averages that whole group to one flat grey and the finest

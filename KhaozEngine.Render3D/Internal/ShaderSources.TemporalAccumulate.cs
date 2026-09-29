@@ -146,68 +146,68 @@ void temporalPixelSite(ivec2 displayPixel, out vec2 uv, out vec2 pixelCentre, ou
 // Step 4's kernel is separable, and each axis of a clamped 3x3 texel depends on that axis alone. So three weights per
 // axis at internal scale for the reconstruction, and three per axis at display scale for the sample weight, form the
 // nine products the 3x3 takes: 12 kernel evaluations in place of 36.
-struct TemporalKernels { vec3 x; vec3 y; vec3 displayX; vec3 displayY; };
+struct TemporalKernels { avec3 x; avec3 y; avec3 displayX; avec3 displayY; };
 
 TemporalKernels temporalKernels(vec2 pixelCentre, ivec2 centreTexel, ivec2 maxTexel) {
     vec2 jitter = Jitter.xy;
     float displayOverInternal = Jitter.z;
     TemporalKernels kernels;
-    kernels.x = vec3(0.0);
-    kernels.y = vec3(0.0);
-    kernels.displayX = vec3(0.0);
-    kernels.displayY = vec3(0.0);
+    kernels.x = avec3(0.0);
+    kernels.y = avec3(0.0);
+    kernels.displayX = avec3(0.0);
+    kernels.displayY = avec3(0.0);
     for (int i = 0; i < 3; i++) {
         ivec2 texel = clamp(centreTexel + ivec2(i - 1), ivec2(0), maxTexel);
         vec2 toSample = vec2(texel) + 0.5 - jitter - pixelCentre;
-        kernels.x[i] = lanczos2(toSample.x);
-        kernels.y[i] = lanczos2(toSample.y);
-        kernels.displayX[i] = lanczos2(toSample.x * displayOverInternal);
-        kernels.displayY[i] = lanczos2(toSample.y * displayOverInternal);
+        kernels.x[i] = toAfloat(lanczos2(toSample.x));
+        kernels.y[i] = toAfloat(lanczos2(toSample.y));
+        kernels.displayX[i] = toAfloat(lanczos2(toSample.x * displayOverInternal));
+        kernels.displayY[i] = toAfloat(lanczos2(toSample.y * displayOverInternal));
     }
     return kernels;
 }
 
 // Step 4: Lanczos 2 on the distance from the jittered sample of the 3x3's texel in column x and row y (0 to 2) to the
 // pixel centre, in internal pixels, as its column's weight times its row's.
-float temporalLanczosWeight(TemporalKernels kernels, int x, int y) { return kernels.x[x] * kernels.y[y]; }
+afloat temporalLanczosWeight(TemporalKernels kernels, int x, int y) { return kernels.x[x] * kernels.y[y]; }
 
 // The 3x3's statistics, gathered a texel at a time in reading order: the moments and range of its weighted YCoCg and
 // alpha, its Lanczos reconstruction, what this frame is worth to the pixel, and its largest reactive difference.
 struct TemporalNeighbourhood {
-    vec3 momentSum; vec3 momentSquares; vec3 neighbourMin; vec3 neighbourMax; float alphaMin; float alphaMax;
-    vec4 reconstruction; float reconstructionWeight; float sampleWeight; float reactiveDifference;
+    vec3 momentSum; vec3 momentSquares; avec3 neighbourMin; avec3 neighbourMax; afloat alphaMin; afloat alphaMax;
+    vec4 reconstruction; float reconstructionWeight; afloat sampleWeight; afloat reactiveDifference;
 };
 
 TemporalNeighbourhood temporalNeighbourhood() {
     TemporalNeighbourhood n;
     n.momentSum = vec3(0.0);
     n.momentSquares = vec3(0.0);
-    n.neighbourMin = vec3(1.0e30);
-    n.neighbourMax = vec3(-1.0e30);
-    n.alphaMin = 1.0e30;
-    n.alphaMax = -1.0e30;
+    n.neighbourMin = avec3(TemporalRangeLimit);
+    n.neighbourMax = avec3(-TemporalRangeLimit);
+    n.alphaMin = afloat(TemporalRangeLimit);
+    n.alphaMax = afloat(-TemporalRangeLimit);
     n.reconstruction = vec4(0.0);
     n.reconstructionWeight = 0.0;
-    n.sampleWeight = 0.0;
-    n.reactiveDifference = 0.0;
+    n.sampleWeight = afloat(0.0);
+    n.reactiveDifference = afloat(0.0);
     return n;
 }
 
 // One texel of the 3x3, in column x and row y (0 to 2): its weighted YCoCg (temporalWeighted), its alpha and its
 // reactive difference (temporalReactiveDifference). How close the nearest sample lands in display pixels is what this
 // frame is worth to the pixel.
-void temporalGather(inout TemporalNeighbourhood n, TemporalKernels kernels, int x, int y, vec3 ycc, float alpha,
-    float reactiveDifference) {
-    n.momentSum += ycc;
-    n.momentSquares += ycc * ycc;
+void temporalGather(inout TemporalNeighbourhood n, TemporalKernels kernels, int x, int y, avec3 ycc, afloat alpha,
+    afloat reactiveDifference) {
+    n.momentSum += toVec3(ycc);
+    n.momentSquares += toVec3(ycc) * toVec3(ycc);
     n.neighbourMin = min(n.neighbourMin, ycc);
     n.neighbourMax = max(n.neighbourMax, ycc);
     n.alphaMin = min(n.alphaMin, alpha);
     n.alphaMax = max(n.alphaMax, alpha);
-    float lanczosWeight = temporalLanczosWeight(kernels, x, y);
-    n.reconstruction += vec4(ycc, alpha) * lanczosWeight;
+    float lanczosWeight = toFloat(temporalLanczosWeight(kernels, x, y));
+    n.reconstruction += vec4(toVec3(ycc), toFloat(alpha)) * lanczosWeight;
     n.reconstructionWeight += lanczosWeight;
-    n.sampleWeight = max(n.sampleWeight, clamp(kernels.displayX[x] * kernels.displayY[y], 0.0, 1.0));
+    n.sampleWeight = max(n.sampleWeight, clamp(kernels.displayX[x] * kernels.displayY[y], afloat(0.0), afloat(1.0)));
     n.reactiveDifference = max(n.reactiveDifference, reactiveDifference);
 }
 
@@ -235,14 +235,14 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     vec2 displaySize = Sizes.zw;
     vec2 jitter = Jitter.xy;
     bool historyValid = Jitter.w > 0.5;
-    vec3 neighbourMin = n.neighbourMin;
-    vec3 neighbourMax = n.neighbourMax;
-    float alphaMin = n.alphaMin;
-    float alphaMax = n.alphaMax;
+    vec3 neighbourMin = toVec3(n.neighbourMin);
+    vec3 neighbourMax = toVec3(n.neighbourMax);
+    float alphaMin = toFloat(n.alphaMin);
+    float alphaMax = toFloat(n.alphaMax);
     float reconstructionWeight = n.reconstructionWeight;
-    float sampleWeight = n.sampleWeight;
+    float sampleWeight = toFloat(n.sampleWeight);
 
-    float reactive = clamp(n.reactiveDifference * ReactiveGain, 0.0, 1.0);
+    float reactive = clamp(toFloat(n.reactiveDifference) * ReactiveGain, 0.0, 1.0);
     vec3 mean = n.momentSum / 9.0;
     vec3 deviation = sqrt(max(n.momentSquares / 9.0 - mean * mean, vec3(0.0)));
     vec4 current = n.reconstruction / max(reconstructionWeight, 1.0e-4);
@@ -465,7 +465,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
                 ivec2 texel = clamp(centreTexel + ivec2(x, y), ivec2(0), maxTexel);
                 vec4 sceneColor = texelFetch(sampler2D(SceneColor, LinearClamp), texel, 0);
                 vec3 ycc = rgbToYCoCg(temporalWeighted(sceneColor.rgb));
-                float lanczosWeight = temporalLanczosWeight(kernels, x + 1, y + 1);
+                float lanczosWeight = toFloat(temporalLanczosWeight(kernels, x + 1, y + 1));
                 float viewDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg,
                     texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r);
                 if (ownDepth > viewDepth * (1.0 + DisocclusionTolerance)) {

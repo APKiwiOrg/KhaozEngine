@@ -342,7 +342,8 @@ namespace KhaozEngine.Tests.Render3D
                 + "- ownMotion));", core, StringComparison.Ordinal);
             Assert.Contains("followedElsewhere = apart > FollowedHistoryMotionFraction * length(ownMotion);", core,
                 StringComparison.Ordinal);
-            int loopEnd = core.IndexOf("float reactive = clamp(n.reactiveDifference", StringComparison.Ordinal);
+            int loopEnd = core.IndexOf("float reactive = clamp(toFloat(n.reactiveDifference)",
+                StringComparison.Ordinal);
             int nine = core.IndexOf("if (carriedFollowed && !nearerMoved && motionPixels", StringComparison.Ordinal);
             int lastMotion = core.LastIndexOf("motionPixels = onScreen ?", StringComparison.Ordinal);
             int followedRead = core.IndexOf("carriedFollowed = temporalStoredFollowed(carriedLeast);",
@@ -465,9 +466,9 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(5, core.Split("lanczos2(").Length - 1);
             Assert.Contains("for (int i = 0; i < 3; i++) {", core, StringComparison.Ordinal);
             Assert.Contains("{ return kernels.x[x] * kernels.y[y]; }", core, StringComparison.Ordinal);
-            Assert.Contains("float lanczosWeight = temporalLanczosWeight(kernels, x, y);", core,
+            Assert.Contains("float lanczosWeight = toFloat(temporalLanczosWeight(kernels, x, y));", core,
                 StringComparison.Ordinal);
-            Assert.Contains("clamp(kernels.displayX[x] * kernels.displayY[y], 0.0, 1.0)", core,
+            Assert.Contains("clamp(kernels.displayX[x] * kernels.displayY[y], afloat(0.0), afloat(1.0))", core,
                 StringComparison.Ordinal);
         }
 
@@ -507,7 +508,8 @@ namespace KhaozEngine.Tests.Render3D
         public void The_resolve_is_the_core_plus_a_main_that_writes_colour_and_state()
         {
             string frag = ShaderSources.TemporalResolveFrag;
-            Assert.StartsWith("#version 450\n" + ShaderSources.TemporalResolveCoreGlsl, frag, StringComparison.Ordinal);
+            Assert.StartsWith("#version 450\n" + ShaderSources.TemporalFullPrecisionGlsl
+                + ShaderSources.TemporalResolveCoreGlsl, frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=0) out vec4 oColor;", frag, StringComparison.Ordinal);
             Assert.Contains("layout(location=1) out vec4 oState;", frag, StringComparison.Ordinal);
             Assert.Contains("oState = vec4(p.confidence, temporalStoreLock(p.stability, p.moved), 0.0, 1.0);", frag,

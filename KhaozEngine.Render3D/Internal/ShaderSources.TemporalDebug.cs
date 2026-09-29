@@ -9,8 +9,10 @@ namespace KhaozEngine.Render3D.Internal
         //      replaces the image. Set 0 is the resolve's own layout and the set this frame's resolve bound, set 1 one
         //      immutable mode block per view. The display pixel is taken upright from vUv, the orientation
         //      TargetOutlineCompositeFrag reads a same-size target in. ----
-        public const string TemporalDebugFrag = @"#version 450
-" + TemporalResolveCoreGlsl + @"
+        public const string TemporalDebugFrag = "#version 450\n" + TemporalFullPrecisionGlsl + TemporalResolveCoreGlsl
+            + TemporalDebugMainGlsl;
+
+        internal const string TemporalDebugMainGlsl = @"
 // Mode.x is the SceneDebugView value: 2 History, 3 Disocclusion, 4 Reactive.
 layout(set=1, binding=0) uniform DebugView { vec4 Mode; };
 layout(location=0) in vec2 vUv;
@@ -38,8 +40,10 @@ void main() {
         //      16 evenly spread samples the resolve treated as disoccluded (r), reactive (g) or clipped (b). The
         //      resolve's own function is evaluated at each sample over this frame's resolve set, so the counts are
         //      the resolve's decisions. Read back on request only (TemporalCountProbe). ----
-        public const string TemporalProbeFrag = @"#version 450
-" + TemporalResolveCoreGlsl + @"
+        public const string TemporalProbeFrag = "#version 450\n" + TemporalFullPrecisionGlsl + TemporalResolveCoreGlsl
+            + TemporalProbeMainGlsl;
+
+        internal const string TemporalProbeMainGlsl = @"
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oCounts;
 void main() {

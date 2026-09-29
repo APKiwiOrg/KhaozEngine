@@ -68,8 +68,12 @@ void main() {
     oDepth = vec4(viewDepth + vUv.x * 1.0e-30, 0.0, 0.0, 1.0);   // the vUv read changes no output
 }";
 
-        // ---- The second pass: once per display pixel, into the history pair's write targets ----
-        public const string TemporalAccumulateFrag = "#version 450\n" + @"
+        // ---- The second pass: once per display pixel, into the history pair's write targets, at full precision
+        //      (TemporalAccumulateHalfFrag is the same program at half) ----
+        public const string TemporalAccumulateFrag = "#version 450\n" + TemporalFullPrecisionGlsl
+            + TemporalAccumulateBodyGlsl;
+
+        internal const string TemporalAccumulateBodyGlsl = @"
 layout(set=0, binding=0) uniform texture2D SceneColor;
 layout(set=0, binding=1) uniform texture2D SceneDepth;
 layout(set=0, binding=2) uniform texture2D MotionTex;
@@ -95,18 +99,18 @@ TemporalPixel temporalSplitPixel(ivec2 displayPixel) {
     temporalPixelSite(displayPixel, uv, pixelCentre, maxTexel, centreTexel);
     TemporalKernels kernels = temporalKernels(pixelCentre, centreTexel, maxTexel);
     TemporalNeighbourhood neighbourhood = temporalNeighbourhood();
-    float lumas[9];
+    afloat lumas[9];
 
     ivec2 nextTexel = temporalFirstTexel(centreTexel, maxTexel);
-    vec4 nextPrepared = texelFetch(sampler2D(PreparedColour, LinearClamp), nextTexel, 0);
-    float nextAlpha = texelFetch(sampler2D(SceneColor, LinearClamp), nextTexel, 0).a;
+    avec4 nextPrepared = toAvec4(texelFetch(sampler2D(PreparedColour, LinearClamp), nextTexel, 0));
+    afloat nextAlpha = toAfloat(texelFetch(sampler2D(SceneColor, LinearClamp), nextTexel, 0).a);
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
-            vec4 prepared = nextPrepared;
-            float alpha = nextAlpha;
+            avec4 prepared = nextPrepared;
+            afloat alpha = nextAlpha;
             nextTexel = temporalNextTexel(centreTexel, x, y, maxTexel);
-            nextPrepared = texelFetch(sampler2D(PreparedColour, LinearClamp), nextTexel, 0);
-            nextAlpha = texelFetch(sampler2D(SceneColor, LinearClamp), nextTexel, 0).a;
+            nextPrepared = toAvec4(texelFetch(sampler2D(PreparedColour, LinearClamp), nextTexel, 0));
+            nextAlpha = toAfloat(texelFetch(sampler2D(SceneColor, LinearClamp), nextTexel, 0).a);
             lumas[(y + 1) * 3 + (x + 1)] = prepared.x;
             temporalGather(neighbourhood, kernels, x + 1, y + 1, prepared.xyz, alpha, prepared.w);
         }

@@ -727,3 +727,37 @@ and changed these details. Each group's "Contract amendments" block carries the 
     the jump keeps its history through amendment 23's disocclusion: two frames after the jump 7 and 9 of the 144 pixels
     of its old place differ from the wall by more than 0.05 at Native and Quality, at most 0.110 and 0.098. Before
     amendment 23 and while its lock clause took any lock whose hold was whole, 8 and 12 did.
+25. The per-pixel 3x3 runs at half precision where the device runs half floats natively. One source compiles to two
+    variants: a header after `#version` names the types of the 3x3's Lanczos kernels and their products, its colour
+    and alpha range, its sample weight, its largest reactive difference and its lumas, and the conversions to and from
+    them (`TemporalFullPrecisionGlsl`, `TemporalHalfPrecisionGlsl`). The full header makes every type a single float
+    and every conversion nothing, so the full programs emit the same HLSL, MSL and SPIR-V as before, byte for byte.
+    The half header makes them half floats through `GL_EXT_shader_explicit_arithmetic_types_float16`, which Metal
+    emits as `half`, Direct3D 11 as `min16float`, and SPIR-V as the `Float16` capability. The fused resolve, the split's
+    second pass, the debug views and the count probe each ship in both variants, and `TemporalResolvePrecisionPolicy`
+    gives every temporal program on a device the same one, so the two entry points agree bit for bit within it.
+
+    The prepared values the 3x3 gathers are half floats already, so its range, its lumas and its largest reactive
+    difference are exact at half, and only the kernels and their products round. What runs at half was chosen by the
+    acceptance facts. With the reconstruction's sums at half as well, as the measured variant of the split had them,
+    the followed keyed box at 2 px a frame at Quality left an excess of 3 pixels against its bound of 2 (2 at single
+    float). Single-float display kernels and sample weight left it at 3, and single-float kernels with half sums
+    also 3. Single-float sums over the half kernels give 2, the single-float line exactly, so the sums stay single
+    floats. The moments, the ridge that refreshes the lock, the clip, the depth tests, the history and the blend stay
+    single floats as well. The emitted split second pass is 33512 bytes of MSL at half against 33161, the fused resolve
+    44292 against 43950.
+
+    Metal takes the half variant. On an Apple M2 Max, measured alternately against the full variant (full, half, half,
+    full, full, half, half, full, load average 6 to 18), medians of four, resolve and sharpen at most, split full
+    against half: the boxes at 2560x1440 Quality 1.99 against 1.86 ms, the moving field 2.38 against 2.11, at Native
+    2.21 against 2.05 and 2.84 against 2.74, at 3456x2234 Quality 4.18 against 3.73 and 5.17 against 4.66, at Native
+    4.24 against 3.77 and 5.51 against 4.92. The second pass alone falls by 0.16 to 0.58 ms. The fused pass moves by
+    -0.18 to +0.27 ms, within the spread, as the split measurement found: half pays only once the per-texel work has
+    left the display pass. On Metal the policy records the split at every size, so the fused pass runs there only as
+    the attachment fallback or the diagnostic override.
+
+    Every temporal fact passes on Metal at half with the acceptance table, each entry point forced. Their printed
+    lines are identical between the two entry points, and 983 of 1873 differ from the full variant's, by 0 to 2
+    pixels in the counts and in the third decimal of the errors. The 14 resets still match their from-scratch renders
+    with no pixel differing, the reveal's comparison with the wall from scratch is unchanged, and the perspective walk
+    cell that failed the earlier half variant (pitch 0.35, sideways at 2.5 px, Native) passes.

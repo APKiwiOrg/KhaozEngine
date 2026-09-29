@@ -140,6 +140,11 @@ namespace KhaozEngine.Tests.Gpu
                 ["TemporalCountProbe"] = "TemporalResolveRenderer count probe",
                 ["TemporalPrepare"] = "TemporalSplitResolve prepare",
                 ["TemporalAccumulate"] = "TemporalSplitResolve accumulate",
+                // The half-precision programs bind exactly as their full-precision twins.
+                ["TemporalResolveHalf"] = "TemporalResolveRenderer resolve",
+                ["TemporalAccumulateHalf"] = "TemporalSplitResolve accumulate",
+                ["TemporalDebugViewHalf"] = "TemporalResolveRenderer debug view",
+                ["TemporalCountProbeHalf"] = "TemporalResolveRenderer count probe",
             };
 
         /// <summary>
@@ -229,7 +234,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(72, catalog.Length);
+            Assert.Equal(76, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

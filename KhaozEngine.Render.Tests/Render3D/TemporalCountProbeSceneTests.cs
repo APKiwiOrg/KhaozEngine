@@ -53,7 +53,8 @@ public sealed class TemporalCountProbeSceneTests
         // which the renderer builds on either entry point for the counts.
         TemporalResolveEntry entry = resolve.LastEntry
             ?? throw new InvalidOperationException("the resolve recorded no entry point");
-        string[] fragments = TemporalResolveRenderer.EntryFragments(entry);
+        string[] fragments = TemporalResolveRenderer.EntryFragments(entry,
+            TemporalResolvePrecisionPolicy.For(rig.Device));
         int resolveDraw = capture.Draws.FindIndex(d => Is(d.Pipeline, fragments[0]));
         ProbeCapture.Drawn probe = Assert.Single(capture.Draws, d => IsProbe(d.Pipeline));
         int probeDraw = capture.Draws.IndexOf(probe);

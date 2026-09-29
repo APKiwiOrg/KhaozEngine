@@ -123,7 +123,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
     TemporalNeighbourhood neighbourhood = temporalNeighbourhood();
     float closestDepth = 2.0 * BackgroundLinearDepth;
     ivec2 closestTexel = centreTexel;
-    float lumas[9];
+    afloat lumas[9];
 
     ivec2 nextTexel = temporalFirstTexel(centreTexel, maxTexel);
     vec4 nextScene = texelFetch(sampler2D(SceneColor, LinearClamp), nextTexel, 0);
@@ -145,8 +145,9 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             vec3 weightedColor = temporalWeighted(sceneColor.rgb);
             vec4 prepared = temporalPrepared(rgbToYCoCg(weightedColor),
                 temporalReactiveDifference(weightedColor, opaqueColor));
-            lumas[(y + 1) * 3 + (x + 1)] = prepared.x;
-            temporalGather(neighbourhood, kernels, x + 1, y + 1, prepared.xyz, sceneColor.a, prepared.w);
+            lumas[(y + 1) * 3 + (x + 1)] = toAfloat(prepared.x);
+            temporalGather(neighbourhood, kernels, x + 1, y + 1, toAvec3(prepared.xyz), toAfloat(sceneColor.a),
+                toAfloat(prepared.w));
             temporalDilate(texel, temporalViewDepth(motion, ndcDepth), closestDepth, closestTexel);
         }
     }
@@ -158,8 +159,12 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
 }
 ";
 
-        // ---- The resolve: the core plus the two history outputs ----
-        public const string TemporalResolveFrag = "#version 450\n" + TemporalResolveCoreGlsl + @"
+        // ---- The resolve: the core plus the two history outputs, at full precision (TemporalResolveHalfFrag is the
+        //      same program at half) ----
+        public const string TemporalResolveFrag = "#version 450\n" + TemporalFullPrecisionGlsl + TemporalResolveCoreGlsl
+            + TemporalResolveMainGlsl;
+
+        internal const string TemporalResolveMainGlsl = @"
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oState;

@@ -51,7 +51,7 @@ namespace KhaozEngine.Render3D.Rendering
             IGpuResourceFactory f = gd.Factory;
             _prepareShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalPrepareFrag);
             _accumulateShaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
-                ShaderSources.TemporalAccumulateFrag);
+                ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(gd)));
             _prepareLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), S("LinearClamp"), U("Resolve")));
             _accumulateLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(

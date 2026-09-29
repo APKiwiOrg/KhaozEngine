@@ -39,11 +39,12 @@ namespace KhaozEngine.Render3D.Rendering
             if (entry == TemporalResolveEntry.Fused) _split?.ReleaseTargets(retired);
         }
 
-        /// <summary>The fragment programs of the draws <see cref="Run"/> records for an entry point, in order, before
-        /// any count probe. For tests that find the resolve in recorded commands.</summary>
-        internal static string[] EntryFragments(TemporalResolveEntry entry) => entry == TemporalResolveEntry.Split
-            ? [ShaderSources.TemporalPrepareFrag, ShaderSources.TemporalAccumulateFrag]
-            : [ShaderSources.TemporalResolveFrag, ShaderSources.TemporalDepthStoreFrag];
+        /// <summary>The fragment programs of the draws <see cref="Run"/> records for an entry point at a precision, in
+        /// order, before any count probe. For tests that find the resolve in recorded commands.</summary>
+        internal static string[] EntryFragments(TemporalResolveEntry entry, TemporalResolvePrecision precision) =>
+            entry == TemporalResolveEntry.Split
+                ? [ShaderSources.TemporalPrepareFrag, ShaderSources.TemporalAccumulateFragment(precision)]
+                : [ShaderSources.TemporalResolveFragment(precision), ShaderSources.TemporalDepthStoreFrag];
 
         // BindInputs' first statement: the chosen entry point's own objects. A renderer used outside a scene, which
         // never selects, retires nothing, so the fused entry point there releases the split's targets by draining.

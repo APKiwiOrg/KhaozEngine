@@ -21,6 +21,9 @@ public sealed class TemporalDebugViewSceneTests
 {
     const int W = 96, H = 64;
 
+    // The rig's backend, which picks the precision of the programs the resolve and the views record.
+    const GpuBackendKind Backend = GpuBackendKind.Vulkan;
+
     public static TheoryData<SceneDebugView> ResolveViews => new()
     {
         SceneDebugView.History, SceneDebugView.Disocclusion, SceneDebugView.Reactive,
@@ -28,7 +31,7 @@ public sealed class TemporalDebugViewSceneTests
 
     static HeadlessSceneRig Rig(SceneDebugView view, bool temporal)
     {
-        var rig = new HeadlessSceneRig();
+        var rig = new HeadlessSceneRig(Backend);
         if (temporal) rig.Scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
         rig.Scene.Post.Temporal.Upscale = TemporalUpscale.Performance;
         rig.Scene.DebugView = view;
@@ -40,10 +43,11 @@ public sealed class TemporalDebugViewSceneTests
 
     static bool Is(IGpuPipeline? p, string fragment) => (p as FakePipeline)?.Request?.FragmentGlsl == fragment;
 
-    // A draw of either entry point of the resolve (TemporalResolveEntry), whichever the policy or its override picks.
+    // A draw of either entry point of the resolve (TemporalResolveEntry), whichever the policy or its override picks,
+    // at the precision of the rig's backend.
     static bool IsResolve(IGpuPipeline? p)
-        => Enum.GetValues<TemporalResolveEntry>().Any(e => TemporalResolveRenderer.EntryFragments(e)
-            .Any(fragment => Is(p, fragment)));
+        => Enum.GetValues<TemporalResolveEntry>().Any(e => TemporalResolveRenderer.EntryFragments(e,
+            TemporalResolvePrecisionPolicy.For(Backend)).Any(fragment => Is(p, fragment)));
 
     [Theory]
     [MemberData(nameof(ResolveViews))]
@@ -75,7 +79,8 @@ public sealed class TemporalDebugViewSceneTests
         // the set the fused resolve binds, which the renderer builds on either entry point for the views.
         TemporalResolveEntry entry = resolve.LastEntry
             ?? throw new InvalidOperationException("the resolve recorded no entry point");
-        string[] fragments = TemporalResolveRenderer.EntryFragments(entry);
+        string[] fragments = TemporalResolveRenderer.EntryFragments(entry,
+            TemporalResolvePrecisionPolicy.For(rig.Device));
         int resolveDraw = capture.Draws.FindIndex(d => Is(d.Pipeline, fragments[0]));
         DrawCapture.Drawn drawn = Assert.Single(capture.Draws, d => IsDebugView(d.Pipeline));
         int viewDraw = capture.Draws.IndexOf(drawn);

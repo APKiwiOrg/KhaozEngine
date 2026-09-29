@@ -33,7 +33,8 @@ namespace KhaozEngine.Render3D.Rendering
         public TemporalDebugViewPass(IGpuDevice gd, IGpuResourceLayout resolveLayout, GpuOutputDescription targetOutput)
         {
             IGpuResourceFactory f = gd.Factory;
-            _shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert, ShaderSources.TemporalDebugFrag);
+            _shaders = f.CreateShadersFromSpirv(ShaderSources.FullscreenVert,
+                ShaderSources.TemporalDebugFragment(TemporalResolvePrecisionPolicy.For(gd)));
             _modeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("DebugView", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment)));
             for (int i = 0; i < Views.Length; i++)

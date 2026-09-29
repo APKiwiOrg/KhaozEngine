@@ -1,4 +1,5 @@
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Vulkan.Internal;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -27,6 +28,16 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(spy.Capabilities.SupportsCompletionFences);
             Assert.Equal(6, spy.Capabilities.MaxColorAttachments);
         }
+
+        [Theory]
+        [InlineData(8u, 8u, 8u)]
+        [InlineData(8u, 4u, 4u)]
+        [InlineData(4u, 8u, 4u)]
+        [InlineData(7u, 6u, 6u)]
+        public void Vulkan_carries_the_smaller_of_its_attachment_and_fragment_output_limits(uint maxColorAttachments,
+            uint maxFragmentOutputAttachments, uint expected)
+            => Assert.Equal(expected,
+                VulkanCapabilityRead.ColorAttachmentLimit(maxColorAttachments, maxFragmentOutputAttachments));
 
         [GpuFact]
         public void A_live_device_reports_its_colour_attachment_limit()

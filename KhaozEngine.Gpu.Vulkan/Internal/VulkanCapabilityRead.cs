@@ -101,6 +101,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return terminator >= 0 ? name.Substring(0, terminator) : name;
         }
 
+        /// <summary>How many colour attachments one framebuffer and one pipeline may write at once: the smaller of
+        /// the device's <c>maxColorAttachments</c> and <c>maxFragmentOutputAttachments</c>. The fragment shader writes
+        /// each attachment through its own output, so both limits bind.</summary>
+        internal static uint ColorAttachmentLimit(uint maxColorAttachments, uint maxFragmentOutputAttachments)
+            => Math.Min(maxColorAttachments, maxFragmentOutputAttachments);
+
         /// <summary>
         /// Section 14's table, assembled. Everything not passed in is a constant above, and every constant is
         /// asserted BY VALUE in the parity test rather than read back from here, so a change to one fails that
@@ -115,7 +121,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// the capability's name suggests, is what the shadow pass needs and what the incumbent asked
         /// (<see cref="VulkanPhysicalDeviceReader.ShadowMapFormatFeatures"/>).</param>
         /// <param name="supportedMsaaSampleCounts">Sample counts shared by every engine MRT attachment.</param>
-        /// <param name="maxColorAttachments">The device's <c>maxColorAttachments</c> limit.</param>
+        /// <param name="maxColorAttachments">The device's colour attachment limit
+        /// (<see cref="ColorAttachmentLimit"/>).</param>
         internal static GpuCapabilities Assemble(
             string? deviceName,
             bool samplerAnisotropy,

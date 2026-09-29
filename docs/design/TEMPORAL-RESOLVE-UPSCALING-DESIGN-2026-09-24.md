@@ -681,8 +681,9 @@ and changed these details. Each group's "Contract amendments" block carries the 
     the history's internal size on the first frame that records the split, and a frame that records the fused entry
     point or no resolve retires them, so a device on the fused entry point holds none of them. The
     first pass writes five colour attachments, the four targets and the previous depth. Vulkan guarantees a device
-    only four (`GpuCapabilities.MaxColorAttachments` carries its `maxColorAttachments`, and Direct3D 11 and Metal
-    allow 8), so a device that allows fewer than five records the fused entry point, even when the split is forced.
+    only four (`GpuCapabilities.MaxColorAttachments` carries the smaller of its `maxColorAttachments` and
+    `maxFragmentOutputAttachments`, and Direct3D 11 and Metal allow 8), so a device that allows fewer than five
+    records the fused entry point, even when the split is forced.
 
     `TemporalResolvePolicy` records the split on every graphics backend at every internal size. The fused pass runs
     only on a device that allows too few colour attachments for the split's first pass and under the diagnostic

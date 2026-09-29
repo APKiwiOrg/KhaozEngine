@@ -91,9 +91,10 @@ namespace KhaozEngine.Gpu
         public const int MinimumColorAttachments = 4;
 
         /// <summary>How many colour attachments one framebuffer and one pipeline may write at once. Direct3D 11 and
-        /// Metal allow 8 on every device, and Vulkan reports the device's own <c>maxColorAttachments</c>. A capability
-        /// built without it reports <see cref="MinimumColorAttachments"/>, so a pass that needs more degrades rather
-        /// than failing at pipeline creation.</summary>
+        /// Metal allow 8 on every device, and Vulkan reports the smaller of the device's own <c>maxColorAttachments</c>
+        /// and <c>maxFragmentOutputAttachments</c>. A capability built without it reports
+        /// <see cref="MinimumColorAttachments"/>, so a pass that needs more degrades rather than failing at pipeline
+        /// creation.</summary>
         public int MaxColorAttachments
         {
             get => _maxColorAttachments < MinimumColorAttachments ? MinimumColorAttachments : _maxColorAttachments;

@@ -37,8 +37,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// for the reason everything else here is: it comes off the SAME
     /// <c>VkPhysicalDeviceProperties</c> the version floor and the dynamic-uniform limit came off, and a second
     /// query could answer for a different device on a machine whose enumeration order moved.</param>
-    /// <param name="MaxColorAttachments"><c>VkPhysicalDeviceLimits.maxColorAttachments</c>, at least 4 by the
-    /// specification, which <see cref="GpuCapabilities.MaxColorAttachments"/> carries.</param>
+    /// <param name="MaxColorAttachments">The smaller of <c>VkPhysicalDeviceLimits.maxColorAttachments</c> and
+    /// <c>maxFragmentOutputAttachments</c> (<see cref="VulkanCapabilityRead.ColorAttachmentLimit"/>), each at least 4
+    /// by the specification, which <see cref="GpuCapabilities.MaxColorAttachments"/> carries.</param>
     internal readonly record struct VulkanPhysicalDeviceRead(
         VulkanDeviceFacts Facts,
         VulkanFeatureSupport Features,
@@ -124,7 +125,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 memory,
                 ReadPipelineCacheIdentity(&properties),
                 reportedName,
-                properties.Limits.MaxColorAttachments);
+                VulkanCapabilityRead.ColorAttachmentLimit(properties.Limits.MaxColorAttachments,
+                    properties.Limits.MaxFragmentOutputAttachments));
         }
 
         /// <summary>

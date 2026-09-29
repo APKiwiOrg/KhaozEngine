@@ -43,12 +43,13 @@ internal static class PursuitScenario
         var rules = new PreparationScenario.FixedRules { Ticks = cadence };
         var hub = new InMemoryTransportHub();
         TileWorldDocument doc = TileMoveSimulatorTests.FlatWorld(4, new RegionCoord(0, 0));
-        using var server = new TileWorldServer(hub.Server, TileWorldServerTickTests.Config(AttackerSpawn) with
+        TileWorldServerConfig config = TileWorldServerTickTests.Config(AttackerSpawn) with
         {
             TickSeconds = 1f / 6f,
             CombatPreparationRules = prepared ? profiles : null
-        }, TileMoveSimulatorTests.Bake(doc), new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs),
-            new AllowAllAuthenticator());
+        };
+        using var server = new TileWorldServer(hub.Server, config, TileMoveSimulatorTests.Bake(doc),
+            new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs), new AllowAllAuthenticator());
         server.CombatRules = rules;
         long attacker = server.SpawnActor(AttackerSpawn, new TileActorSpawn(1000, cadence, TileDirection.E));
         long target = server.SpawnActor(TargetSpawn, new TileActorSpawn(1000, cadence, TileDirection.E));
@@ -68,7 +69,7 @@ internal static class PursuitScenario
         long w0 = -1;
         TileCoord targetTile = TargetSpawn;
         long walkTick = LockTick + phase;
-        byte period = gait == TileMoveMode.Run ? (byte)2 : (byte)4;
+        byte period = config.StepTicks.For(gait);
 
         server.Actors.Command(attacker, TileCommand.Attack(target, gait));
         while (w0 < 0 ? server.TickCount <= walkTick + period : server.TickCount < w0 + WindowTicks)

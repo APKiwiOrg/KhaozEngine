@@ -291,6 +291,45 @@ public class TilePreparationDeferralTests
         Assert.Equal(0, outcomes);
     }
 
+    [Fact]
+    public void An_attempt_deferred_before_the_previous_pass_ends_unavailable()
+    {
+        using PreparationScenario fight = Fight(4, 2, out long h);
+        int outcomes = 0;
+        fight.Server.OnCombatEvent += _ => outcomes++;
+        fight.TargetAwayOn(h);
+        // Reach is legal again on H + 1, but a forced cooldown keeps the attempt from being due there, so H + 1
+        // neither resolves nor defers it. The cooldown runs out on H + 2, where reach is still legal.
+        fight.Server.OnAfterMovement += _ =>
+        {
+            if (fight.Server.TickCount != h + 1) return;
+            fight.Write<TileCombatState>(fight.Attacker, combat =>
+            {
+                combat.CooldownRemaining = 2;
+                return combat;
+            });
+        };
+        fight.AdvanceTo(h + 1);
+        Assert.True(fight.Server.Host.TryGetOwner(fight.Attacker, out CellSim cell, out Entity e));
+        Assert.True(cell.World.TryGet(e, out TileCombatPreparationState deferred));
+        Assert.Equal(h, deferred.DeferredTick);
+
+        fight.Step();
+
+        Assert.Empty(fight.Server.EndedCombatPreparationsThisTick);
+        Assert.Empty(fight.Server.PreparedCombatEventsThisTick);
+        Assert.Equal(h, fight.Preparation().ImpactTick);
+
+        fight.Step();
+
+        CombatPreparationEnded ended = Assert.Single(fight.Server.EndedCombatPreparationsThisTick);
+        Assert.Equal((TileCombatPreparationEndReason.ParticipantUnavailable, h + 2, h, 1UL),
+            (ended.Reason, ended.ServerTick, ended.ImpactTick, ended.AttackId));
+        Assert.Empty(fight.Rules.Rolls);
+        Assert.Empty(fight.Server.PreparedCombatEventsThisTick);
+        Assert.Equal(0, outcomes);
+    }
+
     static long Apply(PreparationScenario fight, string change)
     {
         switch (change)

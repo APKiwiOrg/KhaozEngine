@@ -8,7 +8,8 @@ namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
 /// A real-device <see cref="Scene3D"/> driven frame after frame the way a game drives it: Begin, a deterministic effect
-/// clock, the caller's draws, PrepareFrame, one recording into the fixture's own display target, Submit and a drain.
+/// clock, the caller's draws, PrepareFrame, one recording into the fixture's own display target, Submit, a drain and
+/// the device's frame boundary (<see cref="IGpuDevice.Present"/>, headless here).
 /// The internal size follows the display size (<see cref="RenderScale.MatchViewport"/>), the render origin is pinned at
 /// zero until a test moves it, and the camera looks at the world origin. The temporal resolve's acceptance scenes
 /// render through it (TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24, section 7).
@@ -58,7 +59,7 @@ public sealed class TemporalFixture : IDisposable
 
     /// <summary>One frame: Begin, a deterministic effect clock of n / 60 seconds, the draw callback with the frame
     /// number n (every Begin the fixture issued, skipped ones included), PrepareFrame, the recording into
-    /// <see cref="Target"/>, Submit and a drain, then the RGBA8 readback.</summary>
+    /// <see cref="Target"/>, Submit, a drain and the frame boundary, then the RGBA8 readback.</summary>
     public byte[] Frame(Action<Scene3D, int> draw)
     {
         Render(draw);
@@ -84,6 +85,10 @@ public sealed class TemporalFixture : IDisposable
         Device.Submit(_commands);
         Device.WaitForIdle();
         LastSubmitMilliseconds = Stopwatch.GetElapsedTime(submitted).TotalMilliseconds;
+        // The frame boundary a game reaches every frame. A backend runs the destroys it deferred there (Vulkan
+        // holds every disposed image and its memory until then), so a fixture that never reached it grew device
+        // memory with every target the scene replaced.
+        Device.Present();
     }
 
     /// <summary>A later render inside the frame the last <see cref="Frame"/> began, with no Begin, into a scratch

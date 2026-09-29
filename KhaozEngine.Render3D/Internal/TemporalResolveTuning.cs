@@ -13,9 +13,9 @@ namespace KhaozEngine.Render3D.Internal
     /// a constant tunes both. Both round the weighted colour and the reactive difference to half float, which the split
     /// stores exactly, so the two apply every rule to the same values. The split's targets hold 24 bytes an internal
     /// texel, 82.3 MB at 3456x2234 Quality, and exist only while it runs.
-    /// <see cref="TemporalResolvePolicy"/> picks the entry point per backend and preset from the hosted NVIDIA
-    /// measurement (run 36495925808) and the Metal figures, and amendment 23 of the design records both, with the
-    /// Vulkan frame boundary that frees replaced targets
+    /// <see cref="TemporalResolvePolicy"/> picks the entry point per backend, on whether the internal size is below
+    /// the display's, from the hosted NVIDIA measurements (runs 36517355602 and 36524126806) and the Metal figures,
+    /// and amendment 23 of the design records both, with the Vulkan frame boundary that frees replaced targets
     /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1199">#1199</see>).</para>
     /// </summary>
     internal static class TemporalResolveTuning

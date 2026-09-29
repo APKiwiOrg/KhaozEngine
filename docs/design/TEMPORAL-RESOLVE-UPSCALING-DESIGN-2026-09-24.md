@@ -633,20 +633,31 @@ and changed these details. Each group's "Contract amendments" block carries the 
     Quality, 2304x1489 internal texels, that is 82.3 MB (10^6 bytes) beside the 212.7 MB the history and previous
     depth pairs hold. They live for one frame, so they have no pair. They are made at
     the history's internal size on the first frame that records the split, and a frame that records the fused entry
-    point or no resolve retires them, so a backend and preset that picks the fused entry point holds none of them.
+    point or no resolve retires them, so a backend and size that picks the fused entry point holds none of them.
 
-    `TemporalResolvePolicy` picks the entry point per graphics backend and preset from measured cost, the resolve and
-    the sharpen together, fused against split. On a Tesla T4 (hosted run 36495925808) Direct3D 11 was slower split at
-    every size and preset: the boxes at 2560x1440 took 1.82 against 2.06 ms at Quality and 1.83 against 2.63 at Native,
-    the moving field at 3456x2234 Quality 5.18 against 5.21. Vulkan on the same GPU gained at Quality, most where the
-    fused pass costs most: the boxes at 2560x1440 Quality took 2.87 against 2.29 on Windows and 2.47 against 2.58 on
-    Linux, the moving field at 3456x2234 Quality 6.90 against 6.07 and 6.64 against 6.24. It lost at Native, the moving
-    field at 2560x1440 taking 3.41 against 3.57 and 3.30 against 3.80. On an Apple M2 Max under Metal, measured locally
-    at a load average of 6 to 13, the split gained at Quality, the boxes taking 2.02 against 1.85 at 2560x1440 and 4.16
-    against 3.69 at 3456x2234, and at Native was even or slower, the moving field taking 2.54 against 2.68 at 2560x1440
-    and 4.99 against 5.31 at 3456x2234. So the split runs on Metal and Vulkan at the upscaling presets, and the fused
-    pass on Direct3D 11 and at Native everywhere.
-    `KE_TEMPORAL_RESOLVE` set to `fused` or `split` forces one entry point for the process, for tests and measurement.
+    `TemporalResolvePolicy` picks the entry point per graphics backend from measured cost, the resolve and the sharpen
+    together, fused against split, on whether the internal size is below the display's: the preset's ratio or an
+    explicit `UpscaleRatio`, times the render cap, as the scene sizes its targets. A ratio override or a cap that
+    shrinks the internal size therefore gets the entry point its real size measured, whatever the preset says. On a
+    Tesla T4, hosted runs 36517355602 (Direct3D 11 and Windows Vulkan) and 36524126806 (Linux Vulkan) with the split's
+    targets at 16 bits, the split was faster below the display on every backend and size: the boxes at 2560x1440
+    Quality took 1.99 against 1.69 ms on Direct3D 11, 2.68 against 1.66 on Windows Vulkan and 2.41 against 1.95 on
+    Linux Vulkan, the moving field at 3456x2234 Quality 5.70 against 4.49, 6.65 against 4.73 and 6.69 against 5.21.
+    The Native rows at 3456x2234 render at 3342x2160 under the default render cap, so they lie below the display too,
+    and there the split was faster on every backend, by 0.18 to 1.50. At the display's own size, 2560x1440 at Native,
+    Windows Vulkan was faster split by 0.70 on the boxes and 0.36 on the field, Linux Vulkan by 0.03 on both, and
+    Direct3D 11 slower, the boxes 2.00 against 2.26 and the field 2.65 against 2.75. On an Apple M2 Max under Metal,
+    measured locally at a load average of 3 to 9, the split was faster below the display by 0.22 to 0.65, the boxes
+    at 2560x1440 Quality taking 1.98 against 1.67, and even or faster at the display's size, the moving field at
+    2560x1440 2.51 against 2.50 and the boxes 2.02 against 1.87. So the split runs wherever the internal size is below
+    the display, and at the display's size on Metal and Vulkan, and the fused pass on Direct3D 11 there. At the
+    display's size the split's targets are display-sized, 88.5 MB at 2560x1440. With the exact
+    32-bit targets (run 36507108295) the split had been slower on Direct3D 11 at every size but the moving field at
+    3456x2234 Quality, which was even, and on Linux Vulkan at 2560x1440 Quality, which is why the targets moved to 16
+    bits.
+    `KE_TEMPORAL_RESOLVE` set to `fused` or `split` forces one entry point for the process. It is a diagnostic
+    override, for tests, for measurement and to tell a fault in one entry point from the other on a player's machine,
+    not a setting a game ships with.
     `TemporalResolveCostPerfGpuTests` times both entry points and each split pass alone in one run on any real GPU and
     prints the policy's pick beside them.
 

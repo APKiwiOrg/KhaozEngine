@@ -1,31 +1,33 @@
 using KhaozEngine.Gpu;
-using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// THE RESOLVE'S ENTRY POINT PER BACKEND AND PRESET, PINNED (<see cref="TemporalResolvePolicy"/>). The split on
-    /// Metal and Vulkan at the upscaling presets, the fused pass on Direct3D 11 and at Native everywhere, from the
+    /// THE RESOLVE'S ENTRY POINT PER BACKEND, PINNED (<see cref="TemporalResolvePolicy"/>). The split wherever the
+    /// internal size is below the display's on either axis, and at the display's own size on Metal and Vulkan, from the
     /// cost measurement's table on the policy's summary. Device-free.
     /// </summary>
     public sealed class TemporalResolvePolicyTests
     {
         [Theory]
-        [InlineData(GpuBackendKind.MetalNative, TemporalUpscale.Native, "Fused")]
-        [InlineData(GpuBackendKind.MetalNative, TemporalUpscale.Quality, "Split")]
-        [InlineData(GpuBackendKind.MetalNative, TemporalUpscale.UltraPerformance, "Split")]
-        [InlineData(GpuBackendKind.VulkanNative, TemporalUpscale.Native, "Fused")]
-        [InlineData(GpuBackendKind.VulkanNative, TemporalUpscale.Quality, "Split")]
-        [InlineData(GpuBackendKind.VulkanNative, TemporalUpscale.Balanced, "Split")]
-        [InlineData(GpuBackendKind.VulkanNative, TemporalUpscale.Performance, "Split")]
-        [InlineData(GpuBackendKind.Direct3D11Native, TemporalUpscale.Native, "Fused")]
-        [InlineData(GpuBackendKind.Direct3D11Native, TemporalUpscale.Quality, "Fused")]
-        [InlineData(GpuBackendKind.Direct3D11Native, TemporalUpscale.UltraPerformance, "Fused")]
-        public void TheMeasuredPickFollowsTheTable(GpuBackendKind backend, TemporalUpscale preset,
-            string expected)
-            => Assert.Equal(expected, TemporalResolvePolicy.Measured(backend, preset).ToString());
+        [InlineData(GpuBackendKind.MetalNative, false, "Split")]
+        [InlineData(GpuBackendKind.MetalNative, true, "Split")]
+        [InlineData(GpuBackendKind.VulkanNative, false, "Split")]
+        [InlineData(GpuBackendKind.VulkanNative, true, "Split")]
+        [InlineData(GpuBackendKind.Direct3D11Native, false, "Fused")]
+        [InlineData(GpuBackendKind.Direct3D11Native, true, "Split")]
+        public void TheMeasuredPickFollowsTheTable(GpuBackendKind backend, bool upscales, string expected)
+            => Assert.Equal(expected, TemporalResolvePolicy.Measured(backend, upscales).ToString());
+
+        [Theory]
+        [InlineData(1706, 960, 2560, 1440, true)]
+        [InlineData(2560, 1439, 2560, 1440, true)]
+        [InlineData(2559, 1440, 2560, 1440, true)]
+        [InlineData(2560, 1440, 2560, 1440, false)]
+        public void OnlyAnInternalSizeBelowTheDisplayUpscales(int iw, int ih, int dw, int dh, bool expected)
+            => Assert.Equal(expected, TemporalResolvePolicy.Upscales(iw, ih, dw, dh));
 
         [Theory]
         [InlineData("fused", "Fused")]

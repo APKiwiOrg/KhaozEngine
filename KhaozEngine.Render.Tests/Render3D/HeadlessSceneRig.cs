@@ -19,9 +19,9 @@ internal sealed class HeadlessSceneRig : IDisposable
     readonly IGpuFramebuffer _target;
     readonly IGpuCommandList _commands;
 
-    internal HeadlessSceneRig()
+    internal HeadlessSceneRig(GpuBackendKind backend = GpuBackendKind.Vulkan)
     {
-        Device = new FakeGpuDevice();
+        Device = new FakeGpuDevice(backend);
         _color = Device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
             Width, Height, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
         _target = Device.Factory.CreateFramebuffer(null, _color);

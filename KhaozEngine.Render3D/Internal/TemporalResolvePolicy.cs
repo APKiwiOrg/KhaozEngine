@@ -19,24 +19,32 @@ namespace KhaozEngine.Render3D.Internal
     }
 
     /// <summary>
-    /// WHICH ENTRY POINT THE RESOLVE RECORDS, per graphics backend and preset, from measurement. The split does the
-    /// per-texel work once per internal texel rather than once per display pixel around it, so it can pay only where
-    /// display pixels outnumber internal texels (the upscaling presets). At Native there is one texel a pixel,
-    /// nothing to share, and the split's second pass and targets are pure cost.
+    /// WHICH ENTRY POINT THE RESOLVE RECORDS, per graphics backend, from measurement, on whether the internal size is
+    /// below the display's (<see cref="Upscales"/>): the preset's ratio or an explicit one, times the render cap, as
+    /// the scene sizes its targets, so a ratio override or a cap gets the entry point its real size measured. The split
+    /// does the per-texel work once per internal texel rather than once per display pixel around it, so it gains most
+    /// where display pixels outnumber internal texels. At the display's own size it has nothing to share, and gains
+    /// only where its lean second pass and its 16-bit targets cost less than the fused pass's inline 3x3.
     /// <para><b>THE TABLE</b>, the cost measurement (TemporalResolveCostPerfGpuTests), resolve and sharpen at most,
-    /// fused against split (ms). On the hosted NVIDIA runners (run 36495925808), Direct3D 11 on a Tesla T4: the boxes
-    /// at Quality 1.82 against 2.06 and at Native 1.83 against 2.63 at 2560x1440, the moving field at Quality 5.18
-    /// against 5.21 at 3456x2234, so the split is slower at every size and preset. Vulkan on the same T4: the boxes at
-    /// Quality 2.87 against 2.29 (Windows) and 2.47 against 2.58 (Linux) at 2560x1440, the moving field at Quality 6.90
-    /// against 6.07 and 6.64 against 6.24 at 3456x2234, at Native 3.41 against 3.57 and 3.30 against 3.80. Metal on an
-    /// Apple M2 Max, locally: the boxes at Quality 2.02 against 1.85 at 2560x1440 and 4.16 against 3.69 at 3456x2234,
-    /// the moving field at Native 2.54 against 2.68 and 4.99 against 5.31. So the split on Metal and Vulkan at the
-    /// upscaling presets, and the fused pass on Direct3D 11 and at Native everywhere, where a backend and preset holds
-    /// none of the split's targets. The measurement prints this pick beside its figures, which is how the table is
-    /// kept.</para>
-    /// <para><b>THE OVERRIDE.</b> <see cref="EnvironmentVariable"/> set to <c>fused</c> or <c>split</c> forces one
-    /// entry point for every scene and renderer the process creates, for tests and measurement. It is read once. A
-    /// scene can also be forced on its own (<c>Scene3D.TemporalResolveEntryForTests</c>).</para>
+    /// fused against split (ms), with the split's colour and reactive at 16 bits. On a Tesla T4, hosted runs
+    /// 36517355602 (Direct3D 11, Windows Vulkan) and 36524126806 (Linux Vulkan), below the display the split is faster
+    /// on every backend and size: the boxes at 2560x1440 Quality 1.99 against 1.69 on Direct3D 11, 2.68 against 1.66
+    /// on Windows Vulkan and 2.41 against 1.95 on Linux Vulkan, the moving field at 3456x2234 Quality 5.70 against
+    /// 4.49, 6.65 against 4.73 and 6.69 against 5.21. The Native rows at 3456x2234 render at 3342x2160 under the
+    /// default render cap, so they lie below the display too, and there the split is faster on every backend. At the
+    /// display's own size, 2560x1440 at Native, Windows Vulkan is faster split by 0.70 and 0.36, Linux Vulkan by 0.03,
+    /// and Direct3D 11 slower, the boxes 2.00 against 2.26 and the field 2.65 against 2.75. On an Apple M2 Max under
+    /// Metal, locally, below the display the split is faster by 0.22 to 0.65, the boxes at 2560x1440 Quality 1.98
+    /// against 1.67, and at the display's size even or faster, the moving field 2.51 against 2.50 and the boxes 2.02
+    /// against 1.87. So the split wherever the internal size is below the display, and at the display's size on Metal
+    /// and Vulkan, with the fused pass on Direct3D 11 there. At the display's size the split's targets are
+    /// display-sized, 24 bytes a pixel, 88.5 MB at 2560x1440. The measurement prints this pick beside its figures,
+    /// which is how the table is kept.</para>
+    /// <para><b>THE OVERRIDE, FOR DIAGNOSIS.</b> <see cref="EnvironmentVariable"/> set to <c>fused</c> or <c>split</c>
+    /// forces one entry point for every scene and renderer the process creates: for tests, for measurement, and to
+    /// tell a fault in one entry point from the other on a player's machine. It is not a setting, a game does not ship
+    /// it set, and it is read once. A scene can also be forced on its own
+    /// (<c>Scene3D.TemporalResolveEntryForTests</c>).</para>
     /// </summary>
     internal static class TemporalResolvePolicy
     {
@@ -54,14 +62,21 @@ namespace KhaozEngine.Render3D.Internal
             : string.Equals(value, "split", StringComparison.OrdinalIgnoreCase) ? TemporalResolveEntry.Split
             : null;
 
-        /// <summary>The measured pick for a backend and preset (the table in the summary).</summary>
-        public static TemporalResolveEntry Measured(GpuBackendKind backend, TemporalUpscale preset) =>
-            preset == TemporalUpscale.Native || backend.IsDirect3D11()
-                ? TemporalResolveEntry.Fused
-                : TemporalResolveEntry.Split;
+        /// <summary>Whether the scene renders below the display's size on either axis, which is what the entry point is
+        /// chosen on: the preset's ratio or an explicit one, times the render cap, as the internal targets are
+        /// sized.</summary>
+        public static bool Upscales(int internalWidth, int internalHeight, int displayWidth, int displayHeight) =>
+            internalWidth < displayWidth || internalHeight < displayHeight;
+
+        /// <summary>The measured pick for a backend rendering below the display's size or at it (the table in the
+        /// summary).</summary>
+        public static TemporalResolveEntry Measured(GpuBackendKind backend, bool upscales) =>
+            upscales || backend.IsVulkan() || backend.IsMetal()
+                ? TemporalResolveEntry.Split
+                : TemporalResolveEntry.Fused;
 
         /// <summary>The entry point a resolve records: the forced one, else the measured pick.</summary>
-        public static TemporalResolveEntry Choose(GpuBackendKind backend, TemporalUpscale preset) =>
-            Forced ?? Measured(backend, preset);
+        public static TemporalResolveEntry Choose(GpuBackendKind backend, bool upscales) =>
+            Forced ?? Measured(backend, upscales);
     }
 }

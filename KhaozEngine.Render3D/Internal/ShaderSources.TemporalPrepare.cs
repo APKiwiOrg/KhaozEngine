@@ -49,6 +49,12 @@ float temporalReactiveDifference(vec3 weightedColor, vec3 opaqueColor) {
     return abs(temporalLuma(weightedColor) - temporalLuma(temporalWeighted(opaqueColor)));
 }
 
+// A texel's weighted YCoCg and reactive difference as both entry points use them, rounded to half float, the precision
+// the split stores them at, so the two entry points read the same values.
+vec4 temporalPrepared(vec3 ycc, float reactiveDifference) {
+    return vec4(unpackHalf2x16(packHalf2x16(ycc.xy)), unpackHalf2x16(packHalf2x16(vec2(ycc.z, reactiveDifference))));
+}
+
 // Step 1: the nearest surface in the 3x3 carries the motion. Its texels are visited a row at a time from the top, each
 // row from the left, and a tie keeps the first.
 void temporalDilate(ivec2 texel, float viewDepth, inout float closestDepth, inout ivec2 closestTexel) {

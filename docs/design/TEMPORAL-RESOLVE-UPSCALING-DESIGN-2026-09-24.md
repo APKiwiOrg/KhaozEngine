@@ -610,18 +610,28 @@ and changed these details. Each group's "Contract amendments" block carries the 
     texel lies in the 3x3 of several display pixels, so the split does that work once instead of once per pixel around
     it. At Native there is one texel a pixel, and the split's second pass and targets are pure cost.
 
-    The two entry points are byte-identical. The split stores every value exactly: the weighted Y, Co and Cg, the
-    reactive difference, the expected depth and step 6's edge motion in single-float targets, the motion in a half-float
-    target, the motion target's own format, beside the surface's eight flags as a whole number below 256, and alpha is
-    read back from the scene colour. A hash of both history outputs after every resolved frame of every temporal fact
-    on Metal, 2928 test fixtures and 63108 frames, matched the single-pass resolve the shared functions replaced, with
-    each entry point forced in turn. Moving the rules into functions changed no output and took the emitted resolve
-    from 43661 to 42862 bytes of HLSL. The first pass is 12992 bytes and the second 33268.
+    Both entry points apply every rule to the same values. The shared preparation rounds a texel's weighted Y, Co and
+    Cg and its reactive difference to half float (`temporalPrepared`), in the fused pass too, and the split stores
+    every value exactly: those four in one half-float target, the expected depth and step 6's edge motion in
+    single-float targets, the motion in a half-float target, the motion target's own format, beside the surface's
+    eight flags as a whole number below 256, and alpha is read back from the scene colour. Moving the rules into
+    functions changed no output: a hash of both history outputs after every resolved frame of every temporal fact on
+    Metal, 2928 test fixtures and 63108 frames, matched the single-pass resolve they replaced, with each entry point
+    forced in turn. It took the emitted resolve from 43661 to 42862 bytes of HLSL.
 
-    The split's targets hold 32 bytes an internal texel: Y, Co, Cg, the reactive difference, the expected depth and the
-    edge motion at 4 bytes each in R32F, since no four-channel single-float format is a seam format, and the motion
-    and flags at 8 in RGBA16F. At 3456x2234 Quality, 2304x1489 internal texels, that is 109.8 MB (10^6 bytes) beside the
-    212.7 MB the history and previous depth pairs hold. They live for one frame, so they have no pair. They are made at
+    The half-float rounding is the one output change of the two entry points. Holding the prepared colour at single
+    float needed 32 bytes an internal texel, and on a Tesla T4 that bandwidth made the split slower than the fused pass
+    on Direct3D 11 and on Linux Vulkan at Quality. Rounding moves 1164 of 2304 printed acceptance lines, by 0 to 2
+    pixels in the pixel counts and small shifts in the errors, and fails one bound: the still box over the textured
+    wall under a sideways camera leaves a trail of 14 pixels of 3968 at Quality, against 10 at single float. Rounding
+    Co and Cg alone gives 14 as well, Y alone 9 and the reactive difference alone 10, so keeping only Y at single float
+    does not help (13). The bound is 16. The emitted resolve is 43280 bytes of HLSL, the split's first pass 12948 and
+    its second 32791.
+
+    The split's targets hold 24 bytes an internal texel: Y, Co, Cg and the reactive difference at 8 in RGBA16F, the
+    motion and flags at 8 in RGBA16F, and the expected depth and the edge motion at 4 each in R32F. At 3456x2234
+    Quality, 2304x1489 internal texels, that is 82.3 MB (10^6 bytes) beside the 212.7 MB the history and previous
+    depth pairs hold. They live for one frame, so they have no pair. They are made at
     the history's internal size on the first frame that records the split, and a frame that records the fused entry
     point or no resolve retires them, so a backend and preset that picks the fused entry point holds none of them.
 

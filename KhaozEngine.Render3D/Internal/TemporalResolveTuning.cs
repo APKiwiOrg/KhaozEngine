@@ -10,8 +10,9 @@ namespace KhaozEngine.Render3D.Internal
     /// (<see cref="ShaderSources.TemporalAccumulateGlsl"/>), which both entry points call: the fused pass, which
     /// prepares each pixel's 3x3 inline, and the split, whose first pass prepares each internal texel once into
     /// <see cref="TemporalSplitFormats"/>'s targets and whose second pass accumulates each display pixel from them. So
-    /// a constant tunes both, and the two are byte-identical, since the split stores every prepared value exactly. The
-    /// split's targets hold 32 bytes an internal texel, 109.8 MB at 3456x2234 Quality, and exist only while it runs.
+    /// a constant tunes both. Both round the weighted colour and the reactive difference to half float, which the split
+    /// stores exactly, so the two apply every rule to the same values. The split's targets hold 24 bytes an internal
+    /// texel, 82.3 MB at 3456x2234 Quality, and exist only while it runs.
     /// <see cref="TemporalResolvePolicy"/> picks the entry point per backend and preset from the hosted NVIDIA
     /// measurement (run 36495925808) and the Metal figures, and amendment 23 of the design records both, with the
     /// Vulkan frame boundary that frees replaced targets

@@ -7,6 +7,10 @@ approved rationale and remaining adoption contract. Current API usage lives in t
 [consumer guide](../USING-KHAOZENGINE.md#authoritative-attack-preparation-20141) and
 [package reference](../../KhaozEngine.TileWorld.Netcode/README.md#authoritative-attack-preparation-20141).
 
+Amended on 2026-09-30 by the [pursuit deferral design](TILE-COMBAT-PREPARATION-PURSUIT-DEFERRAL-DESIGN-2026-09-30.md).
+An impact that lacks only legal reach now waits up to its `StrikeTicks` for legal reach instead of ending.
+That document names the statements below that it replaces.
+
 ## 1. Outcome and ownership
 
 A tile combatant can announce a future attack before the server resolves it. The client draws a
@@ -68,6 +72,10 @@ the future authoritative impact a real part of the opted-in combat rules.
 Cancelling on every out-of-range tick was rejected. Equal-speed tile pursuit can alternate between
 legal and illegal range, making a three-tick preparation impossible to finish. Keeping the attempt
 and checking its final tick preserves pursuit while retaining authoritative reach.
+
+Amendment 2026-09-30: measurement showed that checking only the final tick does not preserve pursuit,
+because the impact can fall on the target's step tick every time. See the
+[pursuit deferral design](TILE-COMBAT-PREPARATION-PURSUIT-DEFERRAL-DESIGN-2026-09-30.md).
 
 ## 3. Public seam and state
 

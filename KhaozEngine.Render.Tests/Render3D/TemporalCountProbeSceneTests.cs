@@ -48,14 +48,19 @@ public sealed class TemporalCountProbeSceneTests
         rig.Frame(W, H, commands: capture);
         Assert.True(rig.Scene.ResolvedLastRenderForTests);
         TemporalResolveRenderer resolve = rig.Scene.TemporalResolveRendererForTests!;
-        int resolveDraw = capture.Draws.FindIndex(d => Is(d.Pipeline, ShaderSources.TemporalResolveFrag));
+        // The entry point the resolve recorded, either one: the resolve and the depth store, or the split's two
+        // passes, then the probe, the last thing the resolve's run records, over the set the fused resolve binds,
+        // which the renderer builds on either entry point for the counts.
+        TemporalResolveEntry entry = resolve.LastEntry
+            ?? throw new InvalidOperationException("the resolve recorded no entry point");
+        string[] fragments = TemporalResolveRenderer.EntryFragments(entry);
+        int resolveDraw = capture.Draws.FindIndex(d => Is(d.Pipeline, fragments[0]));
         ProbeCapture.Drawn probe = Assert.Single(capture.Draws, d => IsProbe(d.Pipeline));
         int probeDraw = capture.Draws.IndexOf(probe);
-        // The resolve, the depth store, then the probe: the last thing the resolve's run records.
         Assert.True(resolveDraw >= 0 && probeDraw == resolveDraw + 2,
-            $"the probe draw {probeDraw} follows the resolve {resolveDraw} and its depth store");
-        Assert.True(Is(capture.Draws[resolveDraw + 1].Pipeline, ShaderSources.TemporalDepthStoreFrag));
-        Assert.Same(capture.Draws[resolveDraw].Set0, probe.Set0);
+            $"the probe draw {probeDraw} follows the {entry} resolve's two draws from {resolveDraw}");
+        Assert.True(Is(capture.Draws[resolveDraw + 1].Pipeline, fragments[1]));
+        if (entry == TemporalResolveEntry.Fused) Assert.Same(capture.Draws[resolveDraw].Set0, probe.Set0);
         Assert.Same(resolve.CurrentSet, probe.Set0);
         FakeGraphicsPipelineRequest pipeline = Assert.Single(rig.Factory.GraphicsPipelines,
             p => p.FragmentGlsl == ShaderSources.TemporalProbeFrag);

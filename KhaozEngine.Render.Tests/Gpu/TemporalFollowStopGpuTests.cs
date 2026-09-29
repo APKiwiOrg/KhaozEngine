@@ -72,6 +72,10 @@ namespace KhaozEngine.Tests.Gpu
         /// on the turn frame and each of the 15 after, at Native and Quality, every pixel showing it and those inside
         /// its outline read at most their control's error (<see cref="TemporalFollowStopRuns.Control"/>), past the
         /// most they read over it on the frames before the turn, and one luma step of 1/255 on one of their pixels.
+        /// Beside a passer that lead is what they read over it on the frame before the turn, or the same walk's
+        /// without the passer where that is more: the passer shows beside the walking avatar some frames before the
+        /// turn, and the most read over the control since then left the outline up to 16 percent of the control's
+        /// error to drop after it, where this leaves at most 5.
         /// Every pixel showing it may also read <see cref="WholeShare"/> of the control's error over it, and under the
         /// damped camera <see cref="DampedWholeShare"/> and <see cref="DampedInnerShare"/>. The control renders in the
         /// same run, so the bound holds on any backend. Dropped on the turn frame, the inner pixels read up to 3.7 and
@@ -87,13 +91,19 @@ namespace KhaozEngine.Tests.Gpu
         {
             var over = new List<string>();
             int walks = 0;
+            Dictionary<string, StopRun> plain = Walks(false).ToDictionary(r => r.Name);
             foreach (StopRun r in Walks(false).Concat(Surrounded(false)
                 .Where(r => !(r.Surround == StopSurround.Passer && r.Ending == FollowEnding.DampedStop))))
             {
                 Assert.True(r.Phases <= TemporalFollowStopRuns.Lead, $"{r.Name}: the jitter sequence outruns the lead");
                 StopRun control = runs.Control(r);
-                Hold(r, "whole", r.Whole, control.Whole, over);
-                Hold(r, "inner", r.Inner, control.Inner, over);
+                StopRun? without = r.Surround == StopSurround.Passer
+                    ? plain[r.Name.Replace(TemporalFollowStopRuns.PasserSuffix, "", StringComparison.Ordinal)]
+                    : null;
+                Hold(r, "whole", r.Whole, control.Whole, Lead(r.Whole, control.Whole, without?.Whole,
+                    without is null ? null : runs.Control(without).Whole), over);
+                Hold(r, "inner", r.Inner, control.Inner, Lead(r.Inner, control.Inner, without?.Inner,
+                    without is null ? null : runs.Control(without).Inner), over);
                 walks++;
             }
             foreach (string line in over) output.WriteLine(line);
@@ -101,11 +111,20 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(over.Count == 0, $"the avatar drops its own history: {string.Join(". ", over)}");
         }
 
-        // Each frame from the turn on against its control, past the most the walk read over it before the turn, and
-        // the walk's worst margin printed as a share of the control's error.
-        void Hold(StopRun r, string set, StopMeasure m, StopMeasure control, List<string> over)
+        // The most a walk read over its control before the turn. A walk with a passer reads over its control from the
+        // frame the passer first shows beside the avatar, while it still walks, and that is no licence for the outline
+        // to drop more of its history from the turn on: its lead is what it read over the control on the frame before
+        // the turn, or the lead of the same walk without the passer where that is more.
+        static double Lead(StopMeasure m, StopMeasure control, StopMeasure? without, StopMeasure? withoutControl) =>
+            without is null || withoutControl is null ? Lead(m.Cycle, control.Cycle)
+                : Math.Max(Math.Max(0, m.Errors[0] - control.Errors[0]), Lead(without.Cycle, withoutControl.Cycle));
+
+        static double Lead(double[] walk, double[] control) => Math.Max(0, walk.Zip(control, (a, b) => a - b).Max());
+
+        // Each frame from the turn on against its control, past the lead, and the walk's worst margin printed as a
+        // share of the control's error.
+        void Hold(StopRun r, string set, StopMeasure m, StopMeasure control, double lead, List<string> over)
         {
-            double lead = Math.Max(0, m.Cycle.Zip(control.Cycle, (a, b) => a - b).Max());
             double rounding = 1.0 / (255.0 * m.Pixels);
             bool whole = set == "whole";
             double share = r.Ending == FollowEnding.DampedStop ? whole ? DampedWholeShare : DampedInnerShare

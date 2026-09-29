@@ -586,7 +586,11 @@ and changed these details. Each group's "Contract amendments" block carries the 
     0.3 percent of its error more under the damped camera, and every pixel showing the avatar 0.8 percent after a stop
     or a reversal and 2.5 under the damped camera, where the ground or wall passes behind the outline during the walk
     and holds still in the control. The facts allow 1, 2 and 5 percent, and the gate covers the avatar over the clear
-    colour and beside a passer too, except the damped stop beside a passer.
+    colour and beside a passer too, except the damped stop beside a passer. Beside a passer the lead is what the walk
+    read over its control on the frame before the turn, or the same walk's lead without the passer where that is more.
+    The passer shows beside the walking avatar some frames before the turn, and the most read over the control since
+    then had left the outline up to 16 percent of the control's error to drop after the turn, where this leaves at
+    most 5.
 
     The ring of pixels beside the outline, on the ground or wall, drops the band's history when the avatar stops, since
     its nearest surface no longer moves. Kept on a pixel that moved less than the floor, the ring read 1.21 to 1.40

@@ -103,6 +103,9 @@ namespace KhaozEngine.Tests.Gpu
 
         static readonly Color PasserTint = new(0.95f, 0.85f, 0.55f, 1f);
 
+        /// <summary>What a run's name adds for the passer (<see cref="StopSurround.Passer"/>).</summary>
+        internal static string PasserSuffix => Suffix(StopSurround.Passer);
+
         static string Suffix(StopSurround surround) => surround switch
         {
             StopSurround.ClearColour => ", over the clear colour",

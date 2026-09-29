@@ -174,7 +174,7 @@ afloat temporalLanczosWeight(TemporalKernels kernels, int x, int y) { return ker
 // The 3x3's statistics, gathered a texel at a time in reading order: the moments and range of its weighted YCoCg and
 // alpha, its Lanczos reconstruction, what this frame is worth to the pixel, and its largest reactive difference.
 struct TemporalNeighbourhood {
-    vec3 momentSum; vec3 momentSquares; avec3 neighbourMin; avec3 neighbourMax; afloat alphaMin; afloat alphaMax;
+    vec3 momentSum; vec3 momentSquares; vec3 neighbourMin; vec3 neighbourMax; afloat alphaMin; afloat alphaMax;
     vec4 reconstruction; float reconstructionWeight; afloat sampleWeight; afloat reactiveDifference;
 };
 
@@ -182,8 +182,8 @@ TemporalNeighbourhood temporalNeighbourhood() {
     TemporalNeighbourhood n;
     n.momentSum = vec3(0.0);
     n.momentSquares = vec3(0.0);
-    n.neighbourMin = avec3(TemporalRangeLimit);
-    n.neighbourMax = avec3(-TemporalRangeLimit);
+    n.neighbourMin = vec3(TemporalRangeLimit);
+    n.neighbourMax = vec3(-TemporalRangeLimit);
     n.alphaMin = afloat(TemporalRangeLimit);
     n.alphaMax = afloat(-TemporalRangeLimit);
     n.reconstruction = vec4(0.0);
@@ -196,16 +196,16 @@ TemporalNeighbourhood temporalNeighbourhood() {
 // One texel of the 3x3, in column x and row y (0 to 2): its weighted YCoCg (temporalWeighted), its alpha and its
 // reactive difference (temporalReactiveDifference). How close the nearest sample lands in display pixels is what this
 // frame is worth to the pixel.
-void temporalGather(inout TemporalNeighbourhood n, TemporalKernels kernels, int x, int y, avec3 ycc, afloat alpha,
+void temporalGather(inout TemporalNeighbourhood n, TemporalKernels kernels, int x, int y, vec3 ycc, afloat alpha,
     afloat reactiveDifference) {
-    n.momentSum += toVec3(ycc);
-    n.momentSquares += toVec3(ycc) * toVec3(ycc);
+    n.momentSum += ycc;
+    n.momentSquares += ycc * ycc;
     n.neighbourMin = min(n.neighbourMin, ycc);
     n.neighbourMax = max(n.neighbourMax, ycc);
     n.alphaMin = min(n.alphaMin, alpha);
     n.alphaMax = max(n.alphaMax, alpha);
     float lanczosWeight = toFloat(temporalLanczosWeight(kernels, x, y));
-    n.reconstruction += vec4(toVec3(ycc), toFloat(alpha)) * lanczosWeight;
+    n.reconstruction += vec4(ycc, toFloat(alpha)) * lanczosWeight;
     n.reconstructionWeight += lanczosWeight;
     n.sampleWeight = max(n.sampleWeight, clamp(kernels.displayX[x] * kernels.displayY[y], afloat(0.0), afloat(1.0)));
     n.reactiveDifference = max(n.reactiveDifference, reactiveDifference);

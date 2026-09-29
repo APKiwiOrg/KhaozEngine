@@ -19,14 +19,14 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Theory]
-        [InlineData("Split", 4, "Fused")]
-        [InlineData("Split", 5, "Split")]
+        [InlineData("Split", 6, "Fused")]
+        [InlineData("Split", 7, "Split")]
         [InlineData("Split", 8, "Split")]
         [InlineData("Fused", 1, "Fused")]
         public void TheSplitFallsBackToFusedBelowItsFirstPassAttachments(string entry, int maxColorAttachments,
             string expected)
         {
-            Assert.Equal(5, TemporalSplitFormats.FirstPassAttachments);
+            Assert.Equal(7, TemporalSplitFormats.FirstPassAttachments);
             Assert.Equal(expected, TemporalResolvePolicy.Supported(
                 Enum.Parse<TemporalResolveEntry>(entry), maxColorAttachments).ToString());
         }

@@ -114,8 +114,8 @@ layout(set=0, binding=8) uniform Resolve {" + TemporalResolveUniforms.GlslMember
 " + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
             + TemporalAccumulateGlsl + @"
 // A texel's colour prepared again where the display-sized reconstruction reads it, as the 3x3 below prepares it.
-avec3 temporalCurrentYcc(ivec2 texel) {
-    return toAvec3(temporalPrepared(rgbToYCoCg(temporalWeighted(
+vec3 temporalCurrentYcc(ivec2 texel) {
+    return (temporalPrepared(rgbToYCoCg(temporalWeighted(
         texelFetch(sampler2D(SceneColor, LinearClamp), texel, 0).rgb)), 0.0).xyz);
 }
 
@@ -155,7 +155,7 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             vec4 prepared = temporalPrepared(rgbToYCoCg(weightedColor),
                 temporalReactiveDifference(weightedColor, opaqueColor));
             lumas[(y + 1) * 3 + (x + 1)] = toAfloat(prepared.x);
-            temporalGather(neighbourhood, kernels, x + 1, y + 1, toAvec3(prepared.xyz), toAfloat(sceneColor.a),
+            temporalGather(neighbourhood, kernels, x + 1, y + 1, prepared.xyz, toAfloat(sceneColor.a),
                 toAfloat(prepared.w));
             temporalDilate(texel, temporalViewDepth(motion, ndcDepth), closestDepth, closestTexel);
         }

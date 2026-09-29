@@ -14,7 +14,7 @@ namespace KhaozEngine.Render3D.Internal
     {
         internal const string TemporalDisplayKernelGlsl = @"
 // The weighted YCoCg of an internal texel as its entry point's 3x3 gathers it, rounded to half (temporalPrepared).
-avec3 temporalCurrentYcc(ivec2 texel);
+vec3 temporalCurrentYcc(ivec2 texel);
 
 // How much of the display-sized reconstruction a pixel takes: none at Native, where the two kernels are one, or where
 // the pixel restarts, and otherwise as its carried confidence passes DisplayKernelConfidenceStart, falling to none as
@@ -35,7 +35,7 @@ vec4 temporalDisplayReconstruction(TemporalKernels kernels, ivec2 centreTexel, i
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             float weight = toFloat(kernels.displayX[x + 1] * kernels.displayY[y + 1]);
-            sum += vec4(toVec3(temporalCurrentYcc(temporalNeighbourTexel(centreTexel, x, y, maxTexel))), 1.0)
+            sum += vec4((temporalCurrentYcc(temporalNeighbourTexel(centreTexel, x, y, maxTexel))), 1.0)
                 * weight;
         }
     }

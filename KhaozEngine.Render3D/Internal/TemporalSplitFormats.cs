@@ -22,7 +22,13 @@ namespace KhaozEngine.Render3D.Internal
     {
         /// <summary>The weighted Y, Co and Cg and the reactive difference (step 7), rounded to half float by both
         /// entry points.</summary>
-        public const GpuPixelFormat Prepared = GpuPixelFormat.R16G16B16A16Float;
+        public const GpuPixelFormat Prepared = GpuPixelFormat.R16G16Float;
+
+        /// <summary>The weighted Co, exact.</summary>
+        public const GpuPixelFormat Co = GpuPixelFormat.R32Float;
+
+        /// <summary>The weighted Cg, exact.</summary>
+        public const GpuPixelFormat Cg = GpuPixelFormat.R32Float;
 
         /// <summary>The motion the display pixels centred on the texel reproject by, and the surface's flags.</summary>
         public const GpuPixelFormat Surface = GpuPixelFormat.R16G16B16A16Float;
@@ -34,13 +40,13 @@ namespace KhaozEngine.Render3D.Internal
         public const GpuPixelFormat Edge = GpuPixelFormat.R32Float;
 
         /// <summary>The targets in the first pass's output order: prepared, surface, expected and edge.</summary>
-        public static readonly GpuPixelFormat[] Targets = [Prepared, Surface, Expected, Edge];
+        public static readonly GpuPixelFormat[] Targets = [Prepared, Co, Cg, Surface, Expected, Edge];
 
         /// <summary>Colour attachments the first pass writes: the targets and the history's previous depth.</summary>
         public static int FirstPassAttachments => Targets.Length + 1;
 
         /// <summary>Bytes a texel across the targets.</summary>
-        public const int BytesPerTexel = 8 + 8 + 4 + 4;
+        public const int BytesPerTexel = 4 + 4 + 4 + 8 + 4 + 4;
 
         /// <summary>What the targets hold at an internal size.</summary>
         public static long Bytes(int internalWidth, int internalHeight) =>

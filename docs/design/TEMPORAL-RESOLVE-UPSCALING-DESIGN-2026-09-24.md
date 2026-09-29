@@ -756,6 +756,12 @@ and changed these details. Each group's "Contract amendments" block carries the 
     left the display pass. On Metal the policy records the split at every size, so the fused pass runs there only as
     the attachment fallback or the diagnostic override.
 
+    Direct3D 11 and Vulkan keep the full variant. Hosted run 36567912437 forced the half variant on every backend on a
+    Tesla T4. At 3456x2234 Native over the boxes the split cost more at half than at full, by 0.34 ms on Direct3D 11,
+    0.66 on Vulkan under Windows and 0.97 under Linux, and the two entry points no longer agreed on any of the three
+    (under Windows Vulkan the history colour differed by up to 218 half steps). That GPU runs half floats as scalars,
+    so the variant adds conversions without packed arithmetic to pay for them.
+
     Every temporal fact passes on Metal at half with the acceptance table, each entry point forced. Their printed
     lines are identical between the two entry points, and 983 of 1873 differ from the full variant's, by 0 to 2
     pixels in the counts and in the third decimal of the errors. The 14 resets still match their from-scratch renders

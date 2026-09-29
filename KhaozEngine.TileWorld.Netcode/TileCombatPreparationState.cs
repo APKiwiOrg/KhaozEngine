@@ -11,4 +11,6 @@ internal struct TileCombatPreparationState : IComponent
     public long ReadyNotBeforeTick;
     public uint AttackerTeleportEpoch;
     public uint TargetTeleportEpoch;
+    /// <summary>The tick of the active attempt's most recent deferral for legal reach, or zero when never deferred.</summary>
+    public long DeferredTick;
 }

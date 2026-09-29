@@ -178,6 +178,7 @@ public class TilePreparationSchedulerTests
     [Theory]
     [InlineData(long.MaxValue, 0)]
     [InlineData(long.MaxValue - 10, 0)]
+    [InlineData(long.MaxValue - 17, 0)]
     [InlineData(100, long.MaxValue)]
     public void Unrepresentable_impact_or_following_readiness_is_refused_without_mutation(long tick, long ready)
     {
@@ -191,15 +192,179 @@ public class TilePreparationSchedulerTests
     }
 
     [Fact]
-    public void The_last_representable_completion_retains_its_full_cadence()
+    public void The_last_representable_late_completion_retains_its_full_cadence()
     {
         TileCombatPreparationState state = default;
-        Assert.True(Create(ref state, long.MaxValue - 17, 0, out _));
+        Assert.True(Create(ref state, long.MaxValue - 18, 0, out _));
+        Assert.Equal(long.MaxValue - 15, state.Active.ImpactTick);
 
+        Assert.True(TileCombatPreparationScheduler.TryDefer(ref state, long.MaxValue - 15));
         Assert.True(TileCombatPreparationScheduler.TryComplete(ref state, long.MaxValue - 14,
-            new TileCombatEvent(10, 20, 1, 0, true, false), out _));
+            new TileCombatEvent(10, 20, 1, 0, true, false), out PreparedCombatEvent late));
 
+        Assert.Equal(long.MaxValue - 14, late.ImpactTick);
         Assert.Equal(long.MaxValue, state.ReadyNotBeforeTick);
+    }
+
+    [Theory]
+    [InlineData(3, 1)]
+    [InlineData(4, 2)]
+    public void An_overdue_attempt_defers_only_below_its_strike_ticks(byte lead, byte strike)
+    {
+        TileCombatPreparationState idle = default;
+        Assert.False(TileCombatPreparationScheduler.TryDefer(ref idle, 100));
+        Assert.Equal(default, idle);
+
+        TileCombatPreparationState state = Created(lead, strike);
+        TileCombatPreparationState created = state;
+        long H = state.Active.ImpactTick;
+        Assert.Equal(100L + lead, H);
+
+        Assert.False(TileCombatPreparationScheduler.TryDefer(ref state, H - 1));
+        Assert.Equal(created, state);
+        Assert.False(TileCombatPreparationScheduler.TryDefer(ref state, H + 1));
+        Assert.Equal(created, state);
+        for (long t = H; t < H + strike; t++)
+        {
+            Assert.True(TileCombatPreparationScheduler.TryDefer(ref state, t));
+            Assert.Equal(t, state.DeferredTick);
+            Assert.True(state.HasActive);
+            Assert.Equal(created.Active, state.Active);
+            Assert.Equal(created.ReadyNotBeforeTick, state.ReadyNotBeforeTick);
+            Assert.Equal(created.LastAttackId, state.LastAttackId);
+        }
+        TileCombatPreparationState last = state;
+        Assert.False(TileCombatPreparationScheduler.TryDefer(ref state, H + strike));
+        Assert.Equal(last, state);
+    }
+
+    [Theory]
+    [InlineData(3, 1)]
+    [InlineData(4, 2)]
+    public void A_deferred_attempt_completes_late_and_retains_cadence_from_that_tick(byte lead, byte strike)
+    {
+        var outcome = new TileCombatEvent(10, 20, 4, 2, true, false);
+        for (long k = 1; k <= strike; k++)
+        {
+            TileCombatPreparationState state = Created(lead, strike);
+            long H = state.Active.ImpactTick;
+            for (long t = H; t < H + k; t++) Assert.True(TileCombatPreparationScheduler.TryDefer(ref state, t));
+
+            Assert.True(TileCombatPreparationScheduler.TryComplete(ref state, H + k, outcome,
+                out PreparedCombatEvent late));
+
+            Assert.Equal(new PreparedCombatEvent(H + k, 1, 1, 7, outcome), late);
+            Assert.Equal((H + k, 1UL, 1U), (late.ImpactTick, late.AttackId, late.Revision));
+            Assert.False(state.HasActive);
+            Assert.Equal(H + k + 14, state.ReadyNotBeforeTick);
+            Assert.True(TileCombatPreparationScheduler.TryCreate(ref state, H + k, 10, 20,
+                new TileCombatPreparationProfile(lead, strike, 7), 14, H + k + 14, 4, 5, out _));
+            Assert.Equal(H + k + 14, state.Active.ImpactTick);
+        }
+    }
+
+    [Theory]
+    [InlineData(3, 1)]
+    [InlineData(4, 2)]
+    public void Late_completion_requires_an_unbroken_deferral(byte lead, byte strike)
+    {
+        var outcome = new TileCombatEvent(10, 20, 4, 2, true, false);
+
+        TileCombatPreparationState never = Created(lead, strike);
+        long H = never.Active.ImpactTick;
+        TileCombatPreparationState before = never;
+        Assert.False(TileCombatPreparationScheduler.TryComplete(ref never, H + 1, outcome, out PreparedCombatEvent none));
+        Assert.Equal(default, none);
+        Assert.Equal(before, never);
+
+        TileCombatPreparationState gap = Created(lead, strike);
+        Assert.True(TileCombatPreparationScheduler.TryDefer(ref gap, H));
+        TileCombatPreparationState deferredOnce = gap;
+        Assert.False(TileCombatPreparationScheduler.TryComplete(ref gap, H + 2, outcome, out _));
+        Assert.Equal(deferredOnce, gap);
+        Assert.False(TileCombatPreparationScheduler.TryDefer(ref gap, H + 2));
+        Assert.Equal(deferredOnce, gap);
+
+        TileCombatPreparationState beyond = Created(lead, strike);
+        beyond.DeferredTick = H + strike;
+        TileCombatPreparationState forged = beyond;
+        Assert.False(TileCombatPreparationScheduler.TryComplete(ref beyond, H + strike + 1, outcome, out _));
+        Assert.Equal(forged, beyond);
+
+        TileCombatPreparationState wrong = Created(lead, strike);
+        Assert.True(TileCombatPreparationScheduler.TryDefer(ref wrong, H));
+        TileCombatPreparationState deferred = wrong;
+        Assert.False(TileCombatPreparationScheduler.TryComplete(ref wrong, H + 1,
+            new TileCombatEvent(11, 20, 4, 2, true, false), out _));
+        Assert.False(TileCombatPreparationScheduler.TryComplete(ref wrong, H + 1,
+            new TileCombatEvent(10, 21, 4, 2, true, false), out _));
+        Assert.Equal(deferred, wrong);
+    }
+
+    [Theory]
+    [InlineData(3, 1)]
+    [InlineData(4, 2)]
+    public void Delay_of_a_deferred_attempt_revises_from_the_current_tick(byte lead, byte strike)
+    {
+        TileCombatPreparationState deferred = Created(lead, strike);
+        long H = deferred.Active.ImpactTick;
+        Assert.True(TileCombatPreparationScheduler.TryDefer(ref deferred, H));
+
+        Assert.True(TileCombatPreparationScheduler.TryDelay(ref deferred, H + 1, 2, H + 1,
+            out byte accepted, out TilePreparationFailure failure));
+
+        Assert.Equal(TilePreparationFailure.None, failure);
+        Assert.Equal(((byte)2, 2U, H + 3, H + 3 - lead, 0L), (accepted, deferred.Active.Revision,
+            deferred.Active.ImpactTick, deferred.Active.PrepareTick, deferred.DeferredTick));
+        Assert.Equal(1UL, deferred.Active.AttackId);
+        Assert.Equal(H + 3, deferred.ReadyNotBeforeTick);
+        Assert.False(TileCombatPreparationScheduler.TryDefer(ref deferred, H + 2));
+        Assert.True(TileCombatPreparationScheduler.TryDefer(ref deferred, H + 3));
+        Assert.Equal(H + 3, deferred.DeferredTick);
+    }
+
+    [Theory]
+    [InlineData(3, 1)]
+    [InlineData(4, 2)]
+    public void Cancelling_or_completing_clears_the_deferral_tick(byte lead, byte strike)
+    {
+        TileCombatPreparationState cancelled = Created(lead, strike);
+        long H = cancelled.Active.ImpactTick;
+        Assert.True(TileCombatPreparationScheduler.TryDefer(ref cancelled, H));
+        Assert.True(TileCombatPreparationScheduler.TryCancel(ref cancelled, H,
+            TileCombatPreparationEndReason.Disengaged, out CombatPreparationEnded ended));
+        Assert.Equal(H, ended.ImpactTick);
+        Assert.False(cancelled.HasActive);
+        Assert.Equal(0L, cancelled.DeferredTick);
+
+        TileCombatPreparationState completed = Created(lead, strike);
+        Assert.True(TileCombatPreparationScheduler.TryDefer(ref completed, H));
+        Assert.True(TileCombatPreparationScheduler.TryComplete(ref completed, H + 1,
+            new TileCombatEvent(10, 20, 4, 2, true, false), out _));
+        Assert.False(completed.HasActive);
+        Assert.Equal(0L, completed.DeferredTick);
+
+        Assert.True(TileCombatPreparationScheduler.TryCreate(ref completed, H + 1, 10, 20,
+            new TileCombatPreparationProfile(lead, strike, 7), 14, H + 1, 4, 5, out _));
+        Assert.Equal(0L, completed.DeferredTick);
+        Assert.False(TileCombatPreparationScheduler.TryDefer(ref completed, completed.Active.ImpactTick + 1));
+    }
+
+    [Fact]
+    public void A_delay_that_leaves_no_room_for_a_late_completion_is_refused()
+    {
+        TileCombatPreparationState state = default;
+        Assert.True(Create(ref state, long.MaxValue - 18, 0, out _));
+        Assert.Equal(long.MaxValue - 15, state.Active.ImpactTick);
+        TileCombatPreparationState before = state;
+
+        // The revised impact long.MaxValue - 14 plus cadence 14 fits, but plus strike 1 as well does not.
+        Assert.False(TileCombatPreparationScheduler.TryDelay(ref state, long.MaxValue - 18, 1, 0,
+            out byte accepted, out TilePreparationFailure failure));
+
+        Assert.Equal(TilePreparationFailure.TickOverflow, failure);
+        Assert.Equal(0, accepted);
+        Assert.Equal(before, state);
     }
 
     [Fact]
@@ -213,6 +378,14 @@ public class TilePreparationSchedulerTests
         Assert.Equal(TilePreparationFailure.None, failure);
         Assert.Equal(new TileCombatPreparation(10, 20, 1, 1, 0, 100, 103, 3, 3), state.Active);
         Assert.Equal(100L, state.Active.StrikeTick);
+    }
+
+    static TileCombatPreparationState Created(byte lead, byte strike)
+    {
+        TileCombatPreparationState state = default;
+        Assert.True(TileCombatPreparationScheduler.TryCreate(ref state, 100, 10, 20,
+            new TileCombatPreparationProfile(lead, strike, 7), 14, 100, 4, 5, out _));
+        return state;
     }
 
     static bool Create(ref TileCombatPreparationState state, long tick, long ready,

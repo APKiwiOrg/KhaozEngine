@@ -309,9 +309,9 @@ public class TilePreparationDelayTests
     [Fact]
     public void Unrepresentable_revised_cadence_is_refused_atomically()
     {
-        TileCombatPreparationState state = ActiveState(long.MaxValue - 17);
+        TileCombatPreparationState state = ActiveState(long.MaxValue - 18);
         TileCombatPreparationState before = state;
-        Assert.False(TileCombatPreparationScheduler.TryDelay(ref state, long.MaxValue - 17, 1, 0,
+        Assert.False(TileCombatPreparationScheduler.TryDelay(ref state, long.MaxValue - 18, 2, 0,
             out byte accepted, out TilePreparationFailure failure));
         Assert.Equal(TilePreparationFailure.TickOverflow, failure);
         Assert.Equal(0, accepted);

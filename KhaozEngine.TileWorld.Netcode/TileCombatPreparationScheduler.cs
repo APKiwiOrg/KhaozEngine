@@ -37,8 +37,9 @@ internal static class TileCombatPreparationScheduler
         {
             impact = Math.Max(checked(tick + profile.LeadTicks), Math.Max(readyTick, state.ReadyNotBeforeTick));
             prepare = checked(impact - profile.LeadTicks);
-            // A created attempt must be able to retain its entire cadence when completed, not just fit its impact.
-            _ = checked(impact + cadence);
+            // A created attempt must be able to retain its entire cadence when completed on its last legal
+            // late tick, not just fit its impact.
+            _ = checked(impact + profile.StrikeTicks + cadence);
         }
         catch (OverflowException)
         {
@@ -69,13 +70,33 @@ internal static class TileCombatPreparationScheduler
         return true;
     }
 
+    /// <summary>
+    /// Keeps an active attempt whose impact lacks legal reach, recording <paramref name="tick"/> as its latest
+    /// deferral. Accepted only from the impact tick while below the bound, and past the impact only after a
+    /// deferral on the previous tick. The attempt itself is unchanged. False changes nothing.
+    /// </summary>
+    public static bool TryDefer(ref TileCombatPreparationState state, long tick)
+    {
+        if (!state.HasActive) return false;
+        TileCombatPreparation active = state.Active;
+        if (tick < active.ImpactTick || !TileCombatPreparationDeferral.IsLive(active, tick)) return false;
+        if (tick != active.ImpactTick && state.DeferredTick != tick - 1) return false;
+        state.DeferredTick = tick;
+        return true;
+    }
+
     public static bool TryComplete(ref TileCombatPreparationState state, long tick,
         in TileCombatEvent outcome, out PreparedCombatEvent completed)
     {
         completed = default;
         if (!state.HasActive) return false;
         TileCombatPreparation active = state.Active;
-        if (tick != active.ImpactTick || outcome.AttackerNetId != active.AttackerNetId
+        // On time, or late within the bound after an unbroken deferral through the previous tick.
+        bool due = tick == active.ImpactTick
+            || (tick > active.ImpactTick
+                && tick - active.ImpactTick <= TileCombatPreparationDeferral.BoundTicks(active)
+                && state.DeferredTick == tick - 1);
+        if (!due || outcome.AttackerNetId != active.AttackerNetId
             || outcome.TargetNetId != active.TargetNetId) return false;
 
         long ready = checked(tick + active.CadenceTicks);
@@ -107,7 +128,7 @@ internal static class TileCombatPreparationScheduler
             {
                 long shift = checked(ready - state.Active.ImpactTick);
                 prepare = checked(state.Active.PrepareTick + shift);
-                _ = checked(ready + state.Active.CadenceTicks);
+                _ = checked(ready + state.Active.StrikeTicks + state.Active.CadenceTicks);
             }
         }
         catch (OverflowException)
@@ -139,6 +160,8 @@ internal static class TileCombatPreparationScheduler
         state.Active = active;
         state.LastAttackId = lastId;
         state.ReadyNotBeforeTick = ready;
+        // A revision restarts the deferral bound from its new impact.
+        state.DeferredTick = 0;
         acceptedTicks = accepted;
         return true;
     }
@@ -149,5 +172,6 @@ internal static class TileCombatPreparationScheduler
         state.Active = default;
         state.AttackerTeleportEpoch = 0;
         state.TargetTeleportEpoch = 0;
+        state.DeferredTick = 0;
     }
 }

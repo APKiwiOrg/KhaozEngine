@@ -577,6 +577,14 @@ and changed these details. Each group's "Contract amendments" block carries the 
     an outline pixel whose nine texels reach ground more than twice the avatar's depth drops too, that ground moving
     less than half the avatar's motion on screen.
 
+    The floor was measured against the supersampled reference on the perspective walk at the boot pitch, 320x180. A
+    walk away from the camera slower than the floor, 0.05 and 0.08 display pixels a frame, keeps the avatar's history
+    on up to 31 pixels of the ground it uncovers, which read 12.8 to 22.4/255 from the reference where no floor reads
+    10.1 to 13.2. The same walk sideways and an acceleration from standstill over 32 frames read nearer the reference
+    with the floor, 6.6 to 9.7/255 against 8.7 to 19.3, and an acceleration over 8 or 16 frames changes no pixel. A
+    walk at 1 m/s moves the ground 0.36 display pixels a frame away from a camera 30 m back at 1920x1080 and 0.47 at
+    2560x1440, so only a walk under about 0.3 m/s at that distance falls under the floor. The floor stays at 0.1.
+
     The stop facts hold every pixel showing the avatar to a control rendered in the same run: the same walk with the
     avatar standing still in the world while the camera and the passer keep their paths relative to it, which keeps its
     own history by construction. Values measured on one backend did not hold on another, three NVIDIA legs reading up to

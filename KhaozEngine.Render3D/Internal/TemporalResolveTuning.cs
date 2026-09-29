@@ -278,7 +278,10 @@ namespace KhaozEngine.Render3D.Internal
         /// walk at Native. A floor on the share holds nothing under the passer's speed, and at one internal pixel, the
         /// passer's speed at Quality, it let the ground a walk uncovers keep the avatar's colour. A reversal ramping
         /// through zero passes 0.125 display pixels a frame at the slowest walk measured, where a floor of 0.25 left
-        /// some of that ground its history.
+        /// some of that ground its history. Against the reference a walk away slower than the floor reads worse with
+        /// it, 12.8 to 22.4/255 on up to 31 uncovered ground pixels against 10.1 to 13.2 without, and a walk sideways
+        /// and an acceleration from standstill over 32 frames read better, 6.6 to 9.7 against 8.7 to 19.3. A walk at
+        /// 1 m/s seen from 30 m moves the ground 0.36 display pixels a frame at 1920x1080 (amendment 23).
         /// </summary>
         public const float FollowedStillDisplayPixels = 0.1f;
         /// <summary>Step 3. A depth-tested pixel whose expected surface shows under less than this share of the

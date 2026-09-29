@@ -49,10 +49,25 @@ float temporalReactiveDifference(vec3 weightedColor, vec3 opaqueColor) {
     return abs(temporalLuma(weightedColor) - temporalLuma(temporalWeighted(opaqueColor)));
 }
 
+// A value rounded to the nearest half float, ties to even, and below the half's least normal value, 2^-14, to zero of
+// its sign. It is written in integer steps because packHalf2x16 and unpackHalf2x16 are not one rounding on every
+// backend: on NVIDIA Vulkan the fused pass's pair inline, the split's first pass's and a round to nearest even gave
+// three different values (TemporalEntryIdentityGpuTests). Its result is a normal half or a zero, which a half-float
+// target stores unchanged. Masks rather than a comparison flush the small values, which measured cheaper in the fused
+// pass. Every value it rounds lies inside the half's range.
+float temporalHalf(float v) {
+    uint bits = floatBitsToUint(v);
+    // The 13 low mantissa bits dropped, ties to even. A carry into the exponent is the next power of two.
+    uint rounded = (bits + 0xfffu + ((bits >> 13) & 1u)) & 0xffffe000u;
+    // All ones below 2^-14, where only the sign is kept.
+    uint small = uint(int((bits & 0x7fffffffu) - 0x38800000u) >> 31);
+    return uintBitsToFloat(rounded & (~small | 0x80000000u));
+}
+
 // A texel's weighted YCoCg and reactive difference as both entry points use them, rounded to half float, the precision
 // the split stores them at, so the fused pass gathers what the split stores.
 vec4 temporalPrepared(vec3 ycc, float reactiveDifference) {
-    return vec4(unpackHalf2x16(packHalf2x16(ycc.xy)), unpackHalf2x16(packHalf2x16(vec2(ycc.z, reactiveDifference))));
+    return vec4(temporalHalf(ycc.x), temporalHalf(ycc.y), temporalHalf(ycc.z), temporalHalf(reactiveDifference));
 }
 
 // THE 3x3's VISIT ORDER, for every loop over it in both entry points: a row at a time from the top, each row from

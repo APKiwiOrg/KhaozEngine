@@ -44,9 +44,9 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: gpu-hosted-bench
-  cancel-in-progress: false
+# No concurrency group. A group keeps one run pending and cancels any older pending run when a newer one queues,
+# which dropped a dispatched run (36553965942). Each GPU runner is capped at one machine, so jobs already queue for a
+# free runner, and every dispatch runs in turn.
 
 jobs:
   legs:

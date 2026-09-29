@@ -44,7 +44,7 @@ permissions:
 
 jobs:
   stress:
-    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@6f0297095d3b6f23560ae5b48c156ec2314cda5f # main 2026-09-29
+    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@fc4a188e74c1177bef17343d4e6a70cc4a403595 # main 2026-09-29
     with:
       project: ${{ inputs.project }}
       filter: ${{ inputs.filter }}

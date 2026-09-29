@@ -40,15 +40,18 @@ internal sealed class PreparationDeliveryScenario : IDisposable
     readonly TileWorldDocument document;
     readonly bool enabled;
 
-    public PreparationDeliveryScenario(bool enabled = true, TileCoord? spawn = null, float radius = 15)
+    public PreparationDeliveryScenario(bool enabled = true, TileCoord? spawn = null, float radius = 15,
+        TileCombatPreparationProfile? profile = null)
     {
         this.enabled = enabled;
+        var profiles = new PreparationScenario.Profiles();
+        if (profile is { } chosen) profiles.Current = chosen;
         document = TileMoveSimulatorTests.FlatWorld(4, new RegionCoord(0, 0), new RegionCoord(1, 0));
         Wire = new CaptureTransport(Hub.Server);
         Server = new TileWorldServer(Wire, TileWorldServerTickTests.Config(spawn ?? new TileCoord(20, 20, 0)) with
         {
             InterestRadius = radius,
-            CombatPreparationRules = enabled ? new PreparationScenario.Profiles() : null
+            CombatPreparationRules = enabled ? profiles : null
         }, TileMoveSimulatorTests.Bake(document), new TileDocumentTargets(document, TileMoveSimulatorTests.Catalogs),
             new AllowAllAuthenticator());
         Server.CombatRules = Rules;

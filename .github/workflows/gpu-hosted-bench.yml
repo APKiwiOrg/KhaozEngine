@@ -125,6 +125,19 @@ jobs:
           ls -la /usr/share/vulkan/icd.d /etc/vulkan/icd.d 2>/dev/null || true
           vulkaninfo --summary 2>&1 | head -60 || true
 
+      # The runner also carries Mesa's llvmpipe, and a Vulkan device request that cannot be honoured falls back to
+      # it without failing (#1200): late in one run the T4 stopped being chosen and two cost facts ran on llvmpipe.
+      # Loading only the NVIDIA driver turns that into a failure instead of a skipped measurement.
+      - name: Load only the NVIDIA Vulkan driver (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          icd=$(ls /usr/share/vulkan/icd.d/nvidia_icd*.json /etc/vulkan/icd.d/nvidia_icd*.json 2>/dev/null | head -1)
+          if [ -z "$icd" ]; then echo "::error::no NVIDIA Vulkan ICD manifest on this runner"; exit 1; fi
+          echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          VK_DRIVER_FILES="$icd" VK_ICD_FILENAMES="$icd" vulkaninfo --summary 2>&1 | grep -E "deviceName|deviceType" || true
+
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: powershell

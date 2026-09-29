@@ -38,10 +38,12 @@ layout(set=0, binding=5) uniform Resolve {" + TemporalResolveUniforms.GlslMember
 " + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowCurrentGlsl + TemporalPrepareGlsl + @"
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oPrepared;
-layout(location=1) out vec4 oSurface;
-layout(location=2) out vec4 oExpected;
-layout(location=3) out vec4 oEdge;
-layout(location=4) out vec4 oDepth;
+layout(location=1) out vec4 oCo;
+layout(location=2) out vec4 oCg;
+layout(location=3) out vec4 oSurface;
+layout(location=4) out vec4 oExpected;
+layout(location=5) out vec4 oEdge;
+layout(location=6) out vec4 oDepth;
 void main() {
     ivec2 maxTexel = ivec2(Sizes.xy) - ivec2(1);
     ivec2 texel = clamp(ivec2(gl_FragCoord.xy), ivec2(0), maxTexel);
@@ -61,7 +63,10 @@ void main() {
     TemporalSurface surface = temporalPrepareSurface(texel, closestTexel, closestDepth, maxTexel);
     float viewDepth = temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), texel, 0).rg,
         texelFetch(sampler2D(SceneDepth, LinearClamp), texel, 0).r);
-    oPrepared = temporalPrepared(ycc, reactiveDifference);
+    vec4 prepared = temporalPrepared(ycc, reactiveDifference);
+    oPrepared = vec4(prepared.xw, 0.0, 1.0);
+    oCo = vec4(prepared.y, 0.0, 0.0, 1.0);
+    oCg = vec4(prepared.z, 0.0, 0.0, 1.0);
     oSurface = temporalStoreSurface(surface);
     oExpected = vec4(surface.expectedDepth, 0.0, 0.0, 1.0);
     oEdge = vec4(surface.edgeMotion, 0.0, 0.0, 1.0);
@@ -81,14 +86,23 @@ layout(set=0, binding=3) uniform texture2D PrevDepth;
 layout(set=0, binding=4) uniform texture2D HistoryColor;
 layout(set=0, binding=5) uniform texture2D HistoryConfidence;
 layout(set=0, binding=6) uniform texture2D PreparedColour;
-layout(set=0, binding=7) uniform texture2D PreparedSurface;
-layout(set=0, binding=8) uniform texture2D PreparedExpected;
-layout(set=0, binding=9) uniform texture2D PreparedEdge;
-layout(set=0, binding=10) uniform sampler LinearClamp;
+layout(set=0, binding=7) uniform texture2D PreparedCo;
+layout(set=0, binding=8) uniform texture2D PreparedCg;
+layout(set=0, binding=9) uniform texture2D PreparedSurface;
+layout(set=0, binding=10) uniform texture2D PreparedExpected;
+layout(set=0, binding=11) uniform texture2D PreparedEdge;
+layout(set=0, binding=12) uniform sampler LinearClamp;
 // The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
-layout(set=0, binding=11) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
+layout(set=0, binding=13) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
 " + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
             + TemporalAccumulateGlsl + @"
+// A texel's weighted YCoCg and reactive difference as the first pass prepared them.
+vec4 temporalStoredPrepared(ivec2 texel) {
+    vec2 yReactive = texelFetch(sampler2D(PreparedColour, LinearClamp), texel, 0).rg;
+    return vec4(yReactive.x, texelFetch(sampler2D(PreparedCo, LinearClamp), texel, 0).r,
+        texelFetch(sampler2D(PreparedCg, LinearClamp), texel, 0).r, yReactive.y);
+}
+
 // The split's per-pixel resolve: its 3x3 gathered from the first pass's targets (temporalGather), its centre texel's
 // surface read back (temporalStoredSurface), and the accumulation (temporalAccumulatePixel).
 TemporalPixel temporalSplitPixel(ivec2 displayPixel) {
@@ -102,17 +116,17 @@ TemporalPixel temporalSplitPixel(ivec2 displayPixel) {
     afloat lumas[9];
 
     ivec2 nextTexel = temporalFirstTexel(centreTexel, maxTexel);
-    avec4 nextPrepared = toAvec4(texelFetch(sampler2D(PreparedColour, LinearClamp), nextTexel, 0));
+    vec4 nextPrepared = temporalStoredPrepared(nextTexel);
     afloat nextAlpha = toAfloat(texelFetch(sampler2D(SceneColor, LinearClamp), nextTexel, 0).a);
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
-            avec4 prepared = nextPrepared;
+            vec4 prepared = nextPrepared;
             afloat alpha = nextAlpha;
             nextTexel = temporalNextTexel(centreTexel, x, y, maxTexel);
-            nextPrepared = toAvec4(texelFetch(sampler2D(PreparedColour, LinearClamp), nextTexel, 0));
+            nextPrepared = temporalStoredPrepared(nextTexel);
             nextAlpha = toAfloat(texelFetch(sampler2D(SceneColor, LinearClamp), nextTexel, 0).a);
-            lumas[(y + 1) * 3 + (x + 1)] = prepared.x;
-            temporalGather(neighbourhood, kernels, x + 1, y + 1, prepared.xyz, alpha, prepared.w);
+            lumas[(y + 1) * 3 + (x + 1)] = toAfloat(prepared.x);
+            temporalGather(neighbourhood, kernels, x + 1, y + 1, prepared.xyz, alpha, toAfloat(prepared.w));
         }
     }
 

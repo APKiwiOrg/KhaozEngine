@@ -67,7 +67,7 @@ float temporalHalf(float v) {
 // A texel's weighted YCoCg and reactive difference as both entry points use them, rounded to half float, the precision
 // the split stores them at, so the fused pass gathers what the split stores.
 vec4 temporalPrepared(vec3 ycc, float reactiveDifference) {
-    return vec4(temporalHalf(ycc.x), temporalHalf(ycc.y), temporalHalf(ycc.z), temporalHalf(reactiveDifference));
+    return vec4(temporalHalf(ycc.x), ycc.y, ycc.z, temporalHalf(reactiveDifference));
 }
 
 // THE 3x3's VISIT ORDER, for every loop over it in both entry points: a row at a time from the top, each row from

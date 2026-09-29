@@ -45,7 +45,7 @@ namespace KhaozEngine.Render3D.Rendering
                 T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"), T("HistoryColor"),
                 T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"), T("PreparedExpected"),
                 T("PreparedEdge"), S("LinearClamp"), U("Resolve")));
-            var prepareOutputs = new GpuPixelFormat[TemporalSplitFormats.Targets.Length + 1];
+            var prepareOutputs = new GpuPixelFormat[TemporalSplitFormats.FirstPassAttachments];
             TemporalSplitFormats.Targets.CopyTo(prepareOutputs, 0);
             prepareOutputs[^1] = TemporalFormats.PreviousDepth;
             _preparePipeline = TemporalResolveRenderer.Fullscreen(f, _prepareShaders, _prepareLayout,

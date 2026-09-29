@@ -645,7 +645,10 @@ and changed these details. Each group's "Contract amendments" block carries the 
     Quality, 2304x1489 internal texels, that is 82.3 MB (10^6 bytes) beside the 212.7 MB the history and previous
     depth pairs hold. They live for one frame, so they have no pair. They are made at
     the history's internal size on the first frame that records the split, and a frame that records the fused entry
-    point or no resolve retires them, so a backend and size that picks the fused entry point holds none of them.
+    point or no resolve retires them, so a backend and size that picks the fused entry point holds none of them. The
+    first pass writes five colour attachments, the four targets and the previous depth. Vulkan guarantees a device
+    only four (`GpuCapabilities.MaxColorAttachments` carries its `maxColorAttachments`, and Direct3D 11 and Metal
+    allow 8), so a device that allows fewer than five records the fused entry point, even when the split is forced.
 
     `TemporalResolvePolicy` picks the entry point per graphics backend from measured cost, the resolve and the sharpen
     together, fused against split, on whether the internal size is below the display's: the preset's ratio or an

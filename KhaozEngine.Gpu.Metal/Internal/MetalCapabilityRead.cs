@@ -82,6 +82,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <c>GraphicsDeviceFeatures(computeShader: true)</c>. There is no device to ask.</summary>
         internal const bool SupportsCompute = true;
 
+        /// <summary>Colour attachments one render pass may write: 8 on every Apple GPU family a Mac runs, per the
+        /// Metal feature set tables.</summary>
+        internal const int ColorRenderTargets = 8;
+
         /// <summary>
         /// TRUE, and it was ALREADY true, which is why M-G1's bar was zero permitted differences. A fence handed
         /// to <c>Submit</c> is a value on this device's one <c>MTLSharedEvent</c> that the GPU signals on
@@ -191,6 +195,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
                 maxMsaaSampleCount: maxMsaaSampleCount,
                 supportsShadowMaps: SupportsShadowMaps,
                 supportsCompute: SupportsCompute,
-                supportsCompletionFences: SupportsCompletionFences);
+                supportsCompletionFences: SupportsCompletionFences)
+            { MaxColorAttachments = ColorRenderTargets };
     }
 }

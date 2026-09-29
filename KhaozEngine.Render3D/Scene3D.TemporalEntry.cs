@@ -12,9 +12,11 @@ namespace KhaozEngine.Render3D
         internal TemporalResolveEntry? TemporalResolveEntryForTests { get; set; }
 
         // PrepareTemporalResolve's choice, on the render that runs the resolve, once the internal targets have the
-        // frame's size: the preset's ratio or an explicit one, times the render cap.
+        // frame's size: the preset's ratio or an explicit one, times the render cap. A device with too few colour
+        // attachments for the split's first pass records the fused entry point, forced or not.
         TemporalResolveEntry ChooseTemporalEntry(int displayWidth, int displayHeight) =>
-            TemporalResolveEntryForTests ?? TemporalResolvePolicy.Choose(_gd.Backend,
-                TemporalResolvePolicy.Upscales(_res.Width, _res.Height, displayWidth, displayHeight));
+            TemporalResolvePolicy.Supported(TemporalResolveEntryForTests ?? TemporalResolvePolicy.Choose(_gd.Backend,
+                    TemporalResolvePolicy.Upscales(_res.Width, _res.Height, displayWidth, displayHeight)),
+                _gd.Capabilities.MaxColorAttachments);
     }
 }

@@ -53,6 +53,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// that cannot give this backend an 11_0 device (see <see cref="D3D11FeatureProbe"/>).</summary>
         internal const bool SupportsCompute = true;
 
+        /// <summary><c>D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT</c>: every Direct3D 11 device binds 8 render targets at
+        /// once.</summary>
+        internal const int SimultaneousRenderTargets = 8;
+
         /// <summary>One sample, which is what "no MSAA" is spelled as everywhere in the seam. Also the answer any
         /// failed query folds to, so a device that will not answer degrades to the safe value rather than to a
         /// count nothing supports.</summary>
@@ -179,7 +183,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 maxMsaaSampleCount,
                 supportsShadowMaps,
                 SupportsCompute,
-                supportsCompletionFences);
+                supportsCompletionFences)
+            { MaxColorAttachments = SimultaneousRenderTargets };
 
         /// <summary>
         /// DECISION C4's THROW: a requested sample count above what the device supports is a fault, not something

@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
@@ -28,6 +29,19 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(2560, 1440, 2560, 1440, false)]
         public void OnlyAnInternalSizeBelowTheDisplayUpscales(int iw, int ih, int dw, int dh, bool expected)
             => Assert.Equal(expected, TemporalResolvePolicy.Upscales(iw, ih, dw, dh));
+
+        [Theory]
+        [InlineData("Split", 4, "Fused")]
+        [InlineData("Split", 5, "Split")]
+        [InlineData("Split", 8, "Split")]
+        [InlineData("Fused", 1, "Fused")]
+        public void TheSplitFallsBackToFusedBelowItsFirstPassAttachments(string entry, int maxColorAttachments,
+            string expected)
+        {
+            Assert.Equal(5, TemporalSplitFormats.FirstPassAttachments);
+            Assert.Equal(expected, TemporalResolvePolicy.Supported(
+                Enum.Parse<TemporalResolveEntry>(entry), maxColorAttachments).ToString());
+        }
 
         [Theory]
         [InlineData("fused", "Fused")]

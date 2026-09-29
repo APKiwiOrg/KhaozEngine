@@ -360,9 +360,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         // Section 14's table, assembled in VulkanCapabilityRead so every rule that decides what the engine
         // believes about the device is a plain [Fact] on a machine with no loader (row 18,
-        // https://github.com/APKiwiOrg/KhaozEngine/issues/528). This method is the four device answers and
+        // https://github.com/APKiwiOrg/KhaozEngine/issues/528). This method is the five device answers and
         // nothing else: the reported name, the anisotropy bit the feature chain settled, the R32_SFLOAT
-        // format-properties read, and row 15's MSAA fold.
+        // format-properties read, row 15's MSAA fold and the colour attachment limit.
         static GpuCapabilities ReadCapabilities(in VulkanPhysicalDeviceRead read,
             in VulkanFeatureSelection features)
             => VulkanCapabilityRead.Assemble(
@@ -371,7 +371,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 supportsShadowMaps: read.SupportsShadowMapFormat,
                 // The intersection over the engine's three MRT targets, preserving holes such as lavapipe's
                 // 1x and 4x with no 2x.
-                supportedMsaaSampleCounts: read.SupportedMsaaSampleCounts);
+                supportedMsaaSampleCounts: read.SupportedMsaaSampleCounts,
+                maxColorAttachments: (int)Math.Min(read.MaxColorAttachments, int.MaxValue));
 
         static PhysicalDevice[] EnumeratePhysicalDevices(Vk vk, Instance instance)
         {

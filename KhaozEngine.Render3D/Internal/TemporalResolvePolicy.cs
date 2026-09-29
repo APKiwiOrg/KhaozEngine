@@ -79,5 +79,13 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>The entry point a resolve records: the forced one, else the measured pick.</summary>
         public static TemporalResolveEntry Choose(GpuBackendKind backend, bool upscales) =>
             Forced ?? Measured(backend, upscales);
+
+        /// <summary>The entry point a device can record: the fused one in place of the split where the split's first
+        /// pass writes more colour attachments (<see cref="TemporalSplitFormats.FirstPassAttachments"/>) than the
+        /// device allows (<see cref="GpuCapabilities.MaxColorAttachments"/>).</summary>
+        public static TemporalResolveEntry Supported(TemporalResolveEntry entry, int maxColorAttachments) =>
+            entry == TemporalResolveEntry.Split && TemporalSplitFormats.FirstPassAttachments > maxColorAttachments
+                ? TemporalResolveEntry.Fused
+                : entry;
     }
 }

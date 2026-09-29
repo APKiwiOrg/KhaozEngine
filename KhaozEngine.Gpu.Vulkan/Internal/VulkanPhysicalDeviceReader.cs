@@ -37,6 +37,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// for the reason everything else here is: it comes off the SAME
     /// <c>VkPhysicalDeviceProperties</c> the version floor and the dynamic-uniform limit came off, and a second
     /// query could answer for a different device on a machine whose enumeration order moved.</param>
+    /// <param name="MaxColorAttachments"><c>VkPhysicalDeviceLimits.maxColorAttachments</c>, at least 4 by the
+    /// specification, which <see cref="GpuCapabilities.MaxColorAttachments"/> carries.</param>
     internal readonly record struct VulkanPhysicalDeviceRead(
         VulkanDeviceFacts Facts,
         VulkanFeatureSupport Features,
@@ -47,7 +49,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         GpuSampleCounts SupportedMsaaSampleCounts,
         VulkanMemoryFacts Memory,
         VulkanPipelineCacheIdentity PipelineCacheIdentity,
-        string ReportedDeviceName);
+        string ReportedDeviceName,
+        uint MaxColorAttachments);
 
     /// <summary>
     /// The one place a <c>VkPhysicalDevice</c> is turned into plain data, shared by the support probe and by
@@ -120,7 +123,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                     properties.Limits.FramebufferStencilSampleCounts),
                 memory,
                 ReadPipelineCacheIdentity(&properties),
-                reportedName);
+                reportedName,
+                properties.Limits.MaxColorAttachments);
         }
 
         /// <summary>

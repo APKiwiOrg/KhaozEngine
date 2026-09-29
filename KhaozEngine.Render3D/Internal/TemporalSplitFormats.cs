@@ -34,6 +34,9 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>The targets in the first pass's output order: prepared, surface, expected and edge.</summary>
         public static readonly GpuPixelFormat[] Targets = [Prepared, Surface, Expected, Edge];
 
+        /// <summary>Colour attachments the first pass writes: the targets and the history's previous depth.</summary>
+        public static int FirstPassAttachments => Targets.Length + 1;
+
         /// <summary>Bytes a texel across the targets.</summary>
         public const int BytesPerTexel = 8 + 8 + 4 + 4;
 

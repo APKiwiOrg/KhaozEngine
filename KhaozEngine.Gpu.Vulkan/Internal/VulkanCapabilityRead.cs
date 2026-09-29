@@ -115,11 +115,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// the capability's name suggests, is what the shadow pass needs and what the incumbent asked
         /// (<see cref="VulkanPhysicalDeviceReader.ShadowMapFormatFeatures"/>).</param>
         /// <param name="supportedMsaaSampleCounts">Sample counts shared by every engine MRT attachment.</param>
+        /// <param name="maxColorAttachments">The device's <c>maxColorAttachments</c> limit.</param>
         internal static GpuCapabilities Assemble(
             string? deviceName,
             bool samplerAnisotropy,
             bool supportsShadowMaps,
-            GpuSampleCounts supportedMsaaSampleCounts)
+            GpuSampleCounts supportedMsaaSampleCounts,
+            int maxColorAttachments)
             => GpuCapabilities.FromSupportedMsaaSampleCounts(
                 clipSpaceYInverted: ClipSpaceYInverted,
                 depthRangeZeroToOne: DepthRangeZeroToOne,
@@ -129,6 +131,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 samplerLodBias: SamplerLodBias,
                 supportsShadowMaps: supportsShadowMaps,
                 supportsCompute: SupportsCompute,
-                supportsCompletionFences: SupportsCompletionFences);
+                supportsCompletionFences: SupportsCompletionFences) with
+            { MaxColorAttachments = maxColorAttachments };
     }
 }

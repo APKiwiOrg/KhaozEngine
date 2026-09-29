@@ -50,6 +50,7 @@ namespace KhaozEngine.Gpu
         public GpuSampleCounts SupportedMsaaSampleCounts =>
             GpuSampleCountSet.Normalize(_supportedMsaaSampleCounts);
         readonly GpuSampleCounts _supportedMsaaSampleCounts;
+        readonly int _maxColorAttachments;
 
         /// <summary>True if the device can drive the directional shadow-map path: it can render depth into an
         /// R32_Float target and SAMPLE that target in a shader (the manual-PCF depth-compare the shadow map uses).
@@ -84,6 +85,20 @@ namespace KhaozEngine.Gpu
         /// it did before (for the retired-resource pool that is a frame-count delay behind one
         /// <see cref="IGpuDevice.WaitForIdle"/>).</para></summary>
         public bool SupportsCompletionFences { get; }
+
+        /// <summary>The least <see cref="MaxColorAttachments"/> any backend guarantees: Vulkan requires a device to
+        /// allow at least 4, and Direct3D 11 and Metal allow 8.</summary>
+        public const int MinimumColorAttachments = 4;
+
+        /// <summary>How many colour attachments one framebuffer and one pipeline may write at once. Direct3D 11 and
+        /// Metal allow 8 on every device, and Vulkan reports the device's own <c>maxColorAttachments</c>. A capability
+        /// built without it reports <see cref="MinimumColorAttachments"/>, so a pass that needs more degrades rather
+        /// than failing at pipeline creation.</summary>
+        public int MaxColorAttachments
+        {
+            get => _maxColorAttachments < MinimumColorAttachments ? MinimumColorAttachments : _maxColorAttachments;
+            init => _maxColorAttachments = value;
+        }
 
         public GpuCapabilities(bool clipSpaceYInverted, bool depthRangeZeroToOne,
             string deviceName = "", bool samplerAnisotropy = false, bool samplerLodBias = false,

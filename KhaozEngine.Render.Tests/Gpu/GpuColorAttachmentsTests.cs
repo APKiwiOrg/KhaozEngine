@@ -20,6 +20,14 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(4, (built with { MaxColorAttachments = 0 }).MaxColorAttachments);
         }
 
+        [Fact]
+        public void A_spy_that_hides_the_fences_keeps_the_limit()
+        {
+            using var spy = new SpyGpuDevice(new FakeGpuDevice(maxColorAttachments: 6), suppressFences: true);
+            Assert.False(spy.Capabilities.SupportsCompletionFences);
+            Assert.Equal(6, spy.Capabilities.MaxColorAttachments);
+        }
+
         [GpuFact]
         public void A_live_device_reports_its_colour_attachment_limit()
         {

@@ -41,7 +41,8 @@ namespace KhaozEngine.Tests.Gpu
                 return GpuCapabilities.FromSupportedMsaaSampleCounts(
                     c.ClipSpaceYInverted, c.DepthRangeZeroToOne, c.SupportedMsaaSampleCounts, c.DeviceName,
                     c.SamplerAnisotropy, c.SamplerLodBias, c.SupportsShadowMaps, c.SupportsCompute,
-                    supportsCompletionFences: false);
+                    supportsCompletionFences: false) with
+                { MaxColorAttachments = c.MaxColorAttachments };
             }
         }
 

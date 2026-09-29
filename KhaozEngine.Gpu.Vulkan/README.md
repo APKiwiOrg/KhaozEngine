@@ -1507,14 +1507,14 @@ both OFF, because a machine pinned at its refresh rate produces the same mean in
 
 ## Capabilities: zero permitted differences, the counter fill, and the two header fields
 
-`VulkanCapabilityRead` assembles `GpuCapabilities` with **no device in it**. Five of the nine members are
+`VulkanCapabilityRead` assembles `GpuCapabilities` with **no device in it**. Five of the ten members are
 constants of the configuration this backend creates rather than answers a device gives: `ClipSpaceYInverted` is
 false because the viewport carries negative height, `DepthRangeZeroToOne` and `SamplerLodBias` and
 `SupportsCompute` are core Vulkan, and `SupportsCompletionFences` is true because a fence here is a value on the
-device timeline that `vkQueueSubmit` itself signals. Three arrive as plain data off the physical-device read: the
-reported name, the `samplerAnisotropy` bit the feature chain settled, and the `R32_SFLOAT` format-properties read
-behind `SupportsShadowMaps`. So every rule that decides what the engine believes about the device is a plain
-`[Fact]` on a machine with no Vulkan loader.
+device timeline that `vkQueueSubmit` itself signals. Four arrive as plain data off the physical-device read: the
+reported name, the `samplerAnisotropy` bit the feature chain settled, the `R32_SFLOAT` format-properties read
+behind `SupportsShadowMaps`, and the `maxColorAttachments` limit behind `MaxColorAttachments`. So every rule that
+decides what the engine believes about the device is a plain `[Fact]` on a machine with no Vulkan loader.
 
 **The parity bar was ZERO permitted differences, and it was stricter than the Direct3D 11 backend's for a reason
 rather than by preference.** That backend exempted `SupportsCompletionFences`, because Veldrid's Direct3D 11

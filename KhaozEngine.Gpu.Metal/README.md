@@ -225,8 +225,9 @@ defect to correct. While both shipped, a test created both devices in one proces
 carrying a reflection check that the comparison covered the whole struct, so a member added later could not
 weaken the assertion by being forgotten.
 
-Seven of the nine members are CONSTANTS, because the incumbent answered them with constants too. Metal's clip
-space already matches the engine's, so `ClipSpaceYInverted` is false with no viewport correction anywhere.
+Eight of the ten members are CONSTANTS, `MaxColorAttachments` 8 among them, because the incumbent answered the
+first seven with constants too. Metal's clip space already matches the engine's, so `ClipSpaceYInverted` is false
+with no viewport correction anywhere.
 `SamplerLodBias` is false, and it is the one capability that differs from both other native backends, because
 `MTLSamplerDescriptor` has no LOD bias field at all. `SupportsShadowMaps` is true unconditionally: the
 incumbent's own question routed to a format switch with no `R32_Float` case, so it answered true on every Metal

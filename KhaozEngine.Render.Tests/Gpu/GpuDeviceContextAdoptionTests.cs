@@ -100,7 +100,8 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Capabilities_AreReadFromTheDevice_FieldForField()
         {
-            var device = new RecordingGpuDevice();
+            // Six colour attachments, neither the default nor the guaranteed least, so a copy that drops it shows.
+            var device = new RecordingGpuDevice(maxColorAttachments: 6);
             using var ctx = new GpuDeviceContext(device, threadingCaps: null, threadingProbeFailure: null,
                 Selection(), ownsDevice: true);
 
@@ -117,6 +118,8 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(expected.SupportsShadowMaps, actual.SupportsShadowMaps);
             Assert.Equal(expected.SupportsCompute, actual.SupportsCompute);
             Assert.Equal(expected.SupportsCompletionFences, actual.SupportsCompletionFences);
+            Assert.Equal(6, expected.MaxColorAttachments);
+            Assert.Equal(expected.MaxColorAttachments, actual.MaxColorAttachments);
 
             // The adapter line a bug report gets read off the same single source.
             Assert.Equal(expected.DeviceName, ctx.AdapterDescription);
@@ -235,8 +238,8 @@ namespace KhaozEngine.Tests.Gpu
         readonly FakeGpuDevice _inner;
         readonly List<string> _calls = new();
 
-        internal RecordingGpuDevice(GpuBackendKind backend = GpuBackendKind.Direct3D11)
-            => _inner = new FakeGpuDevice(backend);
+        internal RecordingGpuDevice(GpuBackendKind backend = GpuBackendKind.Direct3D11, int maxColorAttachments = 8)
+            => _inner = new FakeGpuDevice(backend, maxColorAttachments: maxColorAttachments);
 
         internal IReadOnlyList<string> Calls => _calls;
 

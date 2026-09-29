@@ -1016,11 +1016,12 @@ device-free `[Fact]`s that run on macOS and Linux.
 
 **Capability parity with the incumbent, except one member (G1).** `GpuCapabilities` reads here what it read on
 `GpuBackendKind.Direct3D11` field for field, with `SupportsCompletionFences` true rather than false (decision
-C5). Five of the nine members are CONSTANTS of the feature levels this backend requires rather than device
-answers: `ClipSpaceYInverted` false, `DepthRangeZeroToOne` true, `SamplerAnisotropy` true, `SamplerLodBias` true
-and `SupportsCompute` true. The four a device answers are `DeviceName` (the DXGI adapter description, cut at the
-first NUL because it arrives out of a fixed 128-wide-char buffer, and otherwise raw: the incumbent did not trim
-the vendor's padding either, and the two strings were compared character for character), `MaxMsaaSampleCount` (the
+C5). Six of the ten members are CONSTANTS of the feature levels this backend requires rather than device
+answers: `ClipSpaceYInverted` false, `DepthRangeZeroToOne` true, `SamplerAnisotropy` true, `SamplerLodBias` true,
+`SupportsCompute` true and `MaxColorAttachments` 8 (`D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT`). The four a device
+answers are `DeviceName` (the DXGI adapter description, cut at the first NUL because it arrives out of a fixed
+128-wide-char buffer, and otherwise raw: the incumbent did not trim the vendor's padding either, and the two strings
+were compared character for character), `MaxMsaaSampleCount` (the
 MIN over `R8G8B8A8_UNORM`, `R32_FLOAT` and `R32G8X24_TYPELESS` via `CheckMultisampleQualityLevels`, walked
 DOWNWARD from 32 because the supported counts are not required to be contiguous, and any query failure yields 1),
 `SupportsShadowMaps` (`CheckFormatSupport(R32_FLOAT)` for `RenderTarget | ShaderSample`), and

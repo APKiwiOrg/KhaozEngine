@@ -644,12 +644,14 @@ and changed these details. Each group's "Contract amendments" block carries the 
     the masks up to 1.8 ms. The flush moves no printed line of the temporal facts on Metal, on either entry point. On
     the M2 Max the rounding costs the split nothing measurable and the fused pass up to 0.28 ms at 3456x2234.
     `TemporalEntryIdentityGpuTests` is the check: two scenes render one perspective follow walk, still, walking and
-    stopped, over still blades narrower than a texel, one forced to each entry point, and after every frame their
-    history colour and state are compared bit for bit. It reports the colour, the confidence, the lock under the same
-    mark and the mark apart, so a rounding difference reads apart from a rule that decided otherwise, and it counts the
-    marks the state stored, so the followed mark and, at the upscaling presets, the band are shown to run. All 48
-    frames of Native, Quality and Performance match on Metal (Apple M2 Max), with up to 2096 band marks and 5073
-    followed marks stored, and on a Tesla T4 on Direct3D 11 and on Vulkan under Windows and Linux. Run 36543165854
+    stopped, over still blades narrower than a texel, with a keyed pole an internal texel wide sweeping across the
+    view at 3 internal texels a frame, one forced to each entry point, and after every frame their history colour and
+    state are compared bit for bit. It reports the colour, the confidence, the lock under the same mark and the mark
+    apart, so a rounding difference reads apart from a rule that decided otherwise, and it counts the marks and the
+    moving shares the state stored, so the followed mark, the moving share and, at the upscaling presets, the band are
+    shown to run. All 48 frames of Native, Quality and Performance match on Metal (Apple M2 Max), with up to 2096 band
+    marks, 5073 followed marks and 974 to 19930 moving shares stored (the pole alone gives Native and Quality theirs),
+    and without the pole on a Tesla T4 on Direct3D 11 and on Vulkan under Windows and Linux. Run 36543165854
     ran the integer rounding with the subnormals kept on all three, and run 36542189945 ran this rounding on Linux in
     another form that gives the same bits. CI run 36553987435 ran the committed rounding on WARP and on Metal (a
     hosted macos-26), identical. On lavapipe (Mesa llvmpipe, LLVM 20.1.2) the confidence, the locks and the marks

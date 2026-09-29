@@ -270,6 +270,7 @@ namespace KhaozEngine.Tests.Gpu
             _factor = TemporalSettings.DisplayOverInternal(preset);
             float metres = (_walk.Camera(0).Eye - _walk.Foot(0)).Length() * MathF.Tan(GroundStage.FieldOfView / 2f)
                 * 2f * _factor / h;
+            TexelMetres = metres;
             _width = lineTexels * metres;
             Vector3 across = _walk.Foot(TemporalFollowLinesRuns.Last - OrthoFollowLines.Uncovered);
             for (int i = -5; i <= 5; i++) _blades.Add((across + GroundStage.Right * (i * AcrossSpacing), 1));
@@ -282,6 +283,12 @@ namespace KhaozEngine.Tests.Gpu
         public int W => _walk.Stage.W;
         public int H => _walk.Stage.H;
         public int BandPixels => (int)MathF.Ceiling(2f * _factor);
+
+        /// <summary>The walk the box and the camera follow.</summary>
+        public PerspectiveWalk Walk => _walk;
+
+        /// <summary>The metres an internal texel spans where the box stands.</summary>
+        public float TexelMetres { get; }
 
         public void Setup(Scene3D s, TemporalUpscale preset) => _walk.Setup(s, preset);
 

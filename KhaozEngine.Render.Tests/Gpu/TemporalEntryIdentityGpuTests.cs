@@ -1,6 +1,8 @@
 using System;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
@@ -13,8 +15,9 @@ namespace KhaozEngine.Tests.Gpu
     /// scenes render the same perspective follow walk, one forced to the fused entry point and one to the split, and
     /// after every frame the history colour and state each wrote are read back and compared. The walk holds still,
     /// walks and stops, so the followed mark and its keep on the stop, the band beside the followed box at the
-    /// upscaling presets, and still blades narrower than a texel on the ground all run through both, and the fact
-    /// counts the marks the state stored to show it. It compares every frame of the walk and reports the colour, the
+    /// upscaling presets, still blades narrower than a texel on the ground, and a keyed pole crossing the view fast,
+    /// whose share the ground beside it takes (the moving share), all run through both. The fact counts the marks and
+    /// the moving shares the state stored to show it. It compares every frame of the walk and reports the colour, the
     /// confidence, the lock under the same mark and the mark apart, so a rounding difference in the values reads apart
     /// from a rule that decided otherwise. Through packHalf2x16 the values differed on every Vulkan device it ran on,
     /// and the locks with them, so both entries round in integer steps (<c>temporalHalf</c>). This fact is what shows
@@ -26,8 +29,10 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalEntryIdentityGpuTests(ITestOutputHelper output)
     {
-        const int W = 320, H = 180, StopFrames = 8;
-        const float Speed = 2f, BladeTexels = 0.375f;
+        const int W = 320, H = 180, StopFrames = 8, MoverSweep = 12;
+        const float Speed = 2f, BladeTexels = 0.375f, MoverTexels = 1f, MoverStep = 3f, MoverHeight = 3f,
+            MoverNearer = 4f;
+        const ulong MoverKey = 71;
 
         // The colour on a software Vulkan device: llvmpipe (LLVM 20.1.2) measured its largest difference 0.0049 at
         // Native, 0.0154 at Quality and 0.0439 at Performance, over 0.010, 0.052 and 0.118 percent of the values
@@ -52,7 +57,8 @@ namespace KhaozEngine.Tests.Gpu
                 && fused.Device.Diagnostics.SoftwareAdapter == true;
             long colourCompared = 0;
 
-            int frames = TemporalFollowLinesRuns.Last + 1 + StopFrames, compared = 0, band = 0, followed = 0;
+            int frames = TemporalFollowLinesRuns.Last + 1 + StopFrames, compared = 0, band = 0, followed = 0,
+                movingShare = 0;
             var colour = new EntryDifference("colour");
             var confidence = new EntryDifference("confidence");
             var locks = new EntryDifference("lock");
@@ -74,6 +80,7 @@ namespace KhaozEngine.Tests.Gpu
                 for (int i = 0; i < state.Length; i += 2)
                 {
                     confidence.Add(n, state[i], other[i]);
+                    if (state[i] == TemporalResolveTuning.MovingShareConfidence) movingShare++;
                     // The second channel stores the lock under a mark (temporalStoreLock): a mark that differs is a
                     // rule that decided otherwise, a lock under the same mark that differs is arithmetic.
                     int mark = Mark(state[i + 1]);
@@ -84,8 +91,8 @@ namespace KhaozEngine.Tests.Gpu
                 }
                 compared++;
             }
-            output.WriteLine($"  {compared} of {frames} frames resolved, {band} band marks and {followed} followed "
-                + "marks stored by the fused entry");
+            output.WriteLine($"  {compared} of {frames} frames resolved, {band} band marks, {followed} followed marks "
+                + $"and {movingShare} moving shares stored by the fused entry");
             string differences = string.Join("\n", new[] { colour, confidence, locks, marks }.Select(d => "  " + d));
             output.WriteLine(differences);
             Assert.True(compared > TemporalFollowLinesRuns.Last, $"only {compared} frames resolved");
@@ -102,13 +109,35 @@ namespace KhaozEngine.Tests.Gpu
             else Assert.True(colour.Values == 0, $"the entry points wrote different histories:\n{differences}");
             // The band reaches two internal texels beside the followed box, which this walk stores only while
             // upscaling.
-            Assert.True(followed > 0 && (band > 0 || preset == TemporalUpscale.Native),
-                $"the walk stored {band} band and {followed} followed marks");
+            Assert.True(followed > 0 && (band > 0 || preset == TemporalUpscale.Native) && movingShare > 0,
+                $"the walk stored {band} band, {followed} followed marks and {movingShare} moving shares");
         }
 
-        // The walk's last frame is its last step, so the frames after it hold the box and the camera still.
-        static Action<Scene3D, int> Draw(PerspectiveFollowLines walk) =>
-            (s, n) => walk.Draw(s, Math.Min(n, TemporalFollowLinesRuns.Last), true, true);
+        // The walk's last frame is its last step, so the frames after it hold the box and the camera still. The pole
+        // keeps moving through them.
+        static Action<Scene3D, int> Draw(PerspectiveFollowLines walk) => (s, n) =>
+        {
+            walk.Draw(s, Math.Min(n, TemporalFollowLinesRuns.Last), true, true);
+            DrawMover(s, walk, n);
+        };
+
+        // A keyed pole an internal texel wide where the box stands, MoverNearer metres nearer the camera, sweeping
+        // across the view and back at MoverStep internal texels a frame there. The resolve reprojects the ground
+        // beside it by the ground's own motion and gives its history the pole's share (narrowMoving).
+        static void DrawMover(Scene3D s, PerspectiveFollowLines walk, int n)
+        {
+            int phase = n % (2 * MoverSweep);
+            float across = (Math.Min(phase, 2 * MoverSweep - phase) - MoverSweep / 2f) * MoverStep * walk.TexelMetres;
+            float width = MoverTexels * walk.TexelMetres;
+            Vector3 foot = walk.Walk.Foot(Math.Min(n, TemporalFollowLinesRuns.Last)) - GroundStage.Forward * MoverNearer
+                + GroundStage.Right * (1f + across);
+            s.Draw(new RigidInstanceDraw(walk.Walk.Stage.Box,
+                walk.Walk.Stage.Standing(foot, new Vector3(width, MoverHeight, width)))
+            {
+                Tint = new Color(0.1f, 0.1f, 0.12f, 1f),
+                Motion = MotionKey.From(MoverKey),
+            });
+        }
 
         static float[] Read(TemporalFixture fixture, Func<TemporalHistory, IGpuTexture> target) =>
             TemporalTextureIo.Read(fixture.Device, target(fixture.Scene.TemporalHistory));

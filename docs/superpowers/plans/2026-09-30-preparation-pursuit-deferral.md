@@ -8,9 +8,9 @@
 
 **Tech Stack:** C#/.NET, `KhaozEngine.TileWorld.Netcode`, xUnit, in-memory transport.
 
-**Spec:** [TILE-COMBAT-PREPARATION-PURSUIT-DEFERRAL-DESIGN-2026-09-30.md](../../design/TILE-COMBAT-PREPARATION-PURSUIT-DEFERRAL-DESIGN-2026-09-30.md), amending [TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md](../../design/TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md). Both need owner approval before Task 1 starts.
+**Spec:** [TILE-COMBAT-PREPARATION-PURSUIT-DEFERRAL-DESIGN-2026-09-30.md](../../design/TILE-COMBAT-PREPARATION-PURSUIT-DEFERRAL-DESIGN-2026-09-30.md), amending [TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md](../../design/TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md). The owner chose option 4 on 2026-09-30 and both were reviewed before Task 1.
 
-**Execution status:** Not started. Design base `800c132d9`, released 20.15.0.
+**Execution status:** Tasks 1 to 5 complete on `feature/preparation-pursuit-deferral`, released as 20.15.1. Design base `800c132d9`, released 20.15.0.
 
 ## Global Constraints
 

@@ -52,7 +52,7 @@ void main() {
     ivec2 closestTexel = texel;
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
-            ivec2 at = clamp(texel + ivec2(x, y), ivec2(0), maxTexel);
+            ivec2 at = temporalNeighbourTexel(texel, x, y, maxTexel);
             temporalDilate(at, temporalViewDepth(texelFetch(sampler2D(MotionTex, LinearClamp), at, 0).rg,
                 texelFetch(sampler2D(SceneDepth, LinearClamp), at, 0).r), closestDepth, closestTexel);
         }

@@ -55,8 +55,27 @@ vec4 temporalPrepared(vec3 ycc, float reactiveDifference) {
     return vec4(unpackHalf2x16(packHalf2x16(ycc.xy)), unpackHalf2x16(packHalf2x16(vec2(ycc.z, reactiveDifference))));
 }
 
-// Step 1: the nearest surface in the 3x3 carries the motion. Its texels are visited a row at a time from the top, each
-// row from the left, and a tie keeps the first.
+// THE 3x3's VISIT ORDER, for every loop over it in both entry points: a row at a time from the top, each row from
+// the left, y outer and x inner from -1 to 1. temporalNeighbourTexel is the texel of step (x, y), clamped to the image.
+// The fused pass and the split's second pass read the 3x3 one texel ahead: temporalFirstTexel is the texel the first
+// step reads, and temporalNextTexel the one after step (x, y). The last step reads the last row's first texel again,
+// inside the 3x3, so no read leaves it. The compiler keeps the loop rolled, so a texel read at the top of its own step
+// stalls that step, while one read a step earlier arrives behind the arithmetic of the step before. The texels, and
+// the order of every sum over them, are unchanged. The split's first pass reads each texel in its own step, which
+// measured faster there.
+ivec2 temporalNeighbourTexel(ivec2 centreTexel, int x, int y, ivec2 maxTexel) {
+    return clamp(centreTexel + ivec2(x, y), ivec2(0), maxTexel);
+}
+ivec2 temporalFirstTexel(ivec2 centreTexel, ivec2 maxTexel) {
+    return temporalNeighbourTexel(centreTexel, -1, -1, maxTexel);
+}
+ivec2 temporalNextTexel(ivec2 centreTexel, int x, int y, ivec2 maxTexel) {
+    ivec2 next = x == 1 ? ivec2(-1, min(y + 1, 1)) : ivec2(x + 1, y);
+    return temporalNeighbourTexel(centreTexel, next.x, next.y, maxTexel);
+}
+
+// Step 1: the nearest surface in the 3x3 carries the motion. Its texels are visited in the order above, and a tie keeps
+// the first.
 void temporalDilate(ivec2 texel, float viewDepth, inout float closestDepth, inout ivec2 closestTexel) {
     if (viewDepth < closestDepth) {
         closestDepth = viewDepth;

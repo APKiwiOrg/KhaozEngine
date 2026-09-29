@@ -171,18 +171,6 @@ TemporalKernels temporalKernels(vec2 pixelCentre, ivec2 centreTexel, ivec2 maxTe
 // pixel centre, in internal pixels, as its column's weight times its row's.
 float temporalLanczosWeight(TemporalKernels kernels, int x, int y) { return kernels.x[x] * kernels.y[y]; }
 
-// Each entry point reads its 3x3 one texel ahead. The compiler keeps the loop rolled, so a texel read at the top of its
-// own step stalls that step, while one read a step earlier arrives behind the arithmetic of the step before. The
-// texels, and the order of every sum over them, are unchanged. temporalFirstTexel is the texel the first step reads,
-// and temporalNextTexel the one after step (x, y). The last step reads the last row's first texel again, inside the
-// 3x3, so no read leaves it.
-ivec2 temporalFirstTexel(ivec2 centreTexel, ivec2 maxTexel) {
-    return clamp(centreTexel + ivec2(-1), ivec2(0), maxTexel);
-}
-ivec2 temporalNextTexel(ivec2 centreTexel, int x, int y, ivec2 maxTexel) {
-    return clamp(centreTexel + (x == 1 ? ivec2(-1, min(y + 1, 1)) : ivec2(x + 1, y)), ivec2(0), maxTexel);
-}
-
 // The 3x3's statistics, gathered a texel at a time in reading order: the moments and range of its weighted YCoCg and
 // alpha, its Lanczos reconstruction, what this frame is worth to the pixel, and its largest reactive difference.
 struct TemporalNeighbourhood {

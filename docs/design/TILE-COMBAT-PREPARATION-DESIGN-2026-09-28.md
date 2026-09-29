@@ -1,13 +1,14 @@
 # Tile combat preparation: an authoritative schedule before impact
 
-Status: engine implementation complete in staged 20.14.1. Release and Grimhollow adoption pending.
+Status: shipped in 20.14.1 and amended in 20.15.1. Grimhollow adoption pending.
 The owner approved this design and its implementation plan on 2026-09-28. The design base was engine
 `54404dea5`. First consumer: Grimhollow, using three ticks of preparation. This document preserves the
 approved rationale and remaining adoption contract. Current API usage lives in the
 [consumer guide](../USING-KHAOZENGINE.md#authoritative-attack-preparation-20141) and
 [package reference](../../KhaozEngine.TileWorld.Netcode/README.md#authoritative-attack-preparation-20141).
 
-Amended on 2026-09-30 by the [pursuit deferral design](TILE-COMBAT-PREPARATION-PURSUIT-DEFERRAL-DESIGN-2026-09-30.md).
+Amended on 2026-09-30 by the [pursuit deferral design](TILE-COMBAT-PREPARATION-PURSUIT-DEFERRAL-DESIGN-2026-09-30.md),
+implemented in 20.15.1.
 An impact that lacks only legal reach now waits up to its `StrikeTicks` for legal reach instead of ending.
 That document names the statements below that it replaces.
 

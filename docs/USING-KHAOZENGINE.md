@@ -7357,7 +7357,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.15.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.15.1" />
 ```
 
 ```csharp
@@ -12454,9 +12454,17 @@ is 0.5 seconds total. An existing cooldown or idle food wait overlaps the prepar
 paying another full lead after that wait. Unchanged continuing impacts remain one resolved cadence
 apart. Repeating the same target command does not restart an attempt.
 
-Temporary range loss retains the schedule while the lock remains, and impact rechecks current life,
-reach, permission and profile. An invalid impact ends without a roll or cooldown charge and cannot
-restart in that same pass. A changed target, presentation key, lead, strike duration or resolved cadence
+Temporary range loss during the lead retains the schedule while the lock remains. From the impact tick
+the server rechecks rules, life, lock, teleport epochs, permission and profile, and any failure ends the
+attempt at once without a roll or cooldown charge. Legal reach, including the plane, is the one check that
+waits instead (since 20.15.1). An impact that lacks only legal reach keeps its schedule and resolves once on
+the first later tick with legal reach, for up to the attempt's `StrikeTicks`. It ends
+`TileCombatPreparationEndReason.IllegalReach` on `ImpactTick + StrikeTicks` if reach is still illegal, and a
+later opportunity then needs a fresh lead. A deferred tick makes no roll, RNG draw, cooldown write, combat
+stamp, revision or terminal. Only an attempt deferred on the previous pass can resolve late, so an owner that
+missed a pass ends it `ParticipantUnavailable`. The next impact is the actual resolution tick plus the
+cadence, so equal-speed pursuit keeps its cadence. An ended attempt cannot restart in that same pass.
+A changed target, presentation key, lead, strike duration or resolved cadence
 replaces the attempt subject to retained readiness. Null `CombatRules` creates no attempts and cancels live ones with
 `TileCombatPreparationEndReason.RulesUnavailable`. Returning rules require a fresh lead. Preparation
 makes no damage/RNG roll, experience hook or swing stamp. A held lock still counts under the existing
@@ -12469,6 +12477,8 @@ The descriptor includes target, monotonically increasing `AttackId`, `Revision`,
 `PrepareTick`, derived `StrikeTick`, `ImpactTick` and `CadenceTicks`. Identity belongs to an attacker
 lifetime and connection session. A replacement gets a new ID. A delay normally keeps the ID and
 increments its revision. Revision exhaustion uses a new ID, and exhausted attack IDs are refused.
+A deferred attempt keeps its identity, revision, `PrepareTick` and `ImpactTick`, so while it waits for
+legal reach its `ImpactTick` is in the past. Do not assume an active schedule's impact is in the future.
 
 ```csharp
 // Call after the game has accepted the action that costs attack time.
@@ -12486,7 +12496,11 @@ are no-ops. An outcome callback can delay the following attempt, never a swing a
 tick. `DelayAttack` returns false for an absent entity or an unrepresentable revised identity/deadline.
 `TryGetAttackReadyTick` returns false for an absent entity. Otherwise it reports an absolute boundary,
 including the correct pre/post countdown adjustment. It can throw `OverflowException` if clock plus
-wait cannot be represented. With no active attempt, that boundary still may need a fresh lead.
+wait cannot be represented. With no active attempt, that boundary still may need a fresh lead. While
+an attempt is deferred it reports the current tick, because the attempt resolves on the first tick with
+legal reach. A delay during a deferral revises the attempt from the current tick. The new impact is the
+current tick plus the accepted delay, the revision increments like any other delay, and a reach loss at
+the new impact starts a new `StrikeTicks` bound from there.
 
 A consumer with pending food UI must correlate its own request/reply and schedule revision. Include
 the request identity and authoritative tick in its reply, plus the active schedule identity/revision
@@ -12518,12 +12532,20 @@ game.PresentQueuedCombatFeedback();
 the cache, including an empty set. The set can already contain a successor when the previous attempt's
 `PreparedCombatEvent` arrives. Present that outcome once using its captured identity/key, even though
 its old active sample retired. The event contains `ImpactTick`, `AttackId`, `Revision`,
-`PresentationKey` and the actual `TileCombatEvent Outcome`. `CombatPreparationEnded` identifies a
-cancelled attempt and its reason without any impact feedback. Enabled clients do not also raise the
+`PresentationKey` and the actual `TileCombatEvent Outcome`. Its `ImpactTick` is the tick the attempt
+resolved, which trails the schedule's `ImpactTick` by up to `StrikeTicks` after a deferral, so match an
+outcome to its schedule by `AttackId` and `PresentationKey`, not by impact tick. `CombatPreparationEnded`
+identifies a cancelled attempt and its reason without any impact feedback. An `IllegalReach` end carries
+the intended `ImpactTick` and arrives with a `ServerTick` `StrikeTicks` later. Enabled clients do not
+also raise the
 legacy `CombatEvent`. Server `OnCombatEvent` remains the award hook in either mode.
 
 The sampler returns Hold/0, Prepare progress, Strike progress, or AwaitingOutcome/1. A lead equal to
-strike has no Prepare interval. Non-finite sample time returns Hold/0 for a valid schedule, while
+strike has no Prepare interval. While an attempt is deferred, every complete set repeats its unchanged
+schedule, `CombatPreparationsChanged` still fires once per applied tick, and the sampler holds
+AwaitingOutcome/1 until the outcome or `IllegalReach` terminal arrives. An observer entering interest
+during a deferral receives the overdue schedule and samples AwaitingOutcome at once. Non-finite sample
+time returns Hold/0 for a valid schedule, while
 invalid schedule identity/timing throws `ArgumentException`. Sampling emits no event and never loops
 an attempt. `CombatPresentationTick` anchors only on a newer successfully applied movement snapshot,
 advances at most one tick beyond it, and ignores invalid elapsed time. It returns -1 before an anchor,
@@ -12538,7 +12560,11 @@ to manufacture a full remote wind-up. Blending, pose mapping and recovery are th
 
 Schedules are read from authoritative owners and sent when either participant is in interest. Terminals
 also cover attempts visible on the previous serve. These messages do not create drawable entities.
-Complete reliable ordered sets are bounded, stale traffic is deduplicated, and disconnect/removal clears client lifecycle state. The
+Complete reliable ordered sets are bounded, stale traffic is deduplicated, and disconnect/removal clears client lifecycle state.
+An active schedule record is valid while `serverTick - ImpactTick < StrikeTicks`, which lets a deferred
+schedule be served overdue. A 20.14.1 to 20.15.0 client refuses such a set, counts a rejected frame and
+keeps its previous schedules, so a game that already shipped preparation-enabled clients must bump its
+connect protocol string when it adopts 20.15.1. Default consumers are unaffected. The
 [package reference](../KhaozEngine.TileWorld.Netcode/README.md#authoritative-attack-preparation-20141)
 lists wire limits, overflow disconnection and named diagnostics.
 
@@ -14002,7 +14028,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.15.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.15.1" />
 ```
 
 ```csharp
@@ -14038,7 +14064,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.15.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.15.1" />
 ```
 
 ```csharp
@@ -14280,7 +14306,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.15.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.15.1" />
 ```
 
 ```csharp
@@ -18341,7 +18367,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.15.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.15.1" />
 </ItemGroup>
 ```
 

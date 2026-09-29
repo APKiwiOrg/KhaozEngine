@@ -838,12 +838,12 @@ clientConfig = clientConfig with { CombatPreparationEnabled = true };
 | Read or callback | Contract |
 | --- | --- |
 | Server/client `TryGetCombatPreparation(attackerNetId, out preparation)` | Current intention, including target, AttackId, Revision, PresentationKey, PrepareTick, StrikeTick, ImpactTick and CadenceTicks |
-| Server `TryGetAttackReadyTick(attackerNetId, out tick)` | Absolute boundary for the next unresolved attack. A retained cooldown can still require a fresh preparation |
+| Server `TryGetAttackReadyTick(attackerNetId, out tick)` | Absolute boundary for the next unresolved attack. A retained cooldown can still require a fresh preparation. Reports the current tick while an attempt is deferred |
 | Client `CombatPreparationsChanged` | Applied server tick after a complete visible schedule set replaces the cache, including an empty set |
-| Client `PreparedCombatEvent` | Actual outcome plus its impact tick and captured attack identity, revision and presentation key |
-| Client `CombatPreparationEnded` | Cancellation identity, intended impact tick and reason, with no hit feedback |
+| Client `PreparedCombatEvent` | Actual outcome plus the tick it resolved and captured attack identity, revision and presentation key. After a deferral the resolution tick trails the schedule's `ImpactTick` by up to `StrikeTicks` |
+| Client `CombatPreparationEnded` | Cancellation identity, intended impact tick and reason, with no hit feedback. An `IllegalReach` end arrives `StrikeTicks` after its intended impact |
 | Client `CombatPresentationTick` | Newest successfully applied movement snapshot plus at most one presentation tick. Returns -1 before a valid anchor, when disabled, or after disconnect |
-| `TileCombatPreparationSampler.Sample(in preparation, double serverTick)` | Pure Hold, Prepare, Strike or AwaitingOutcome plus normalized progress |
+| `TileCombatPreparationSampler.Sample(in preparation, double serverTick)` | Pure Hold, Prepare, Strike or AwaitingOutcome plus normalized progress. A deferred schedule samples AwaitingOutcome until its terminal |
 
 For a ready, in-range attacker first considered at tick T, a three-tick lead resolves no earlier than
 T+3. Existing cooldown/idle delay overlaps that lead: impact is `max(T + LeadTicks, readyTick)`.
@@ -857,14 +857,24 @@ not a wind-up stretched across the added wait. Zero and saturated delays do not 
 When rules return, the attacker must prepare afresh subject to retained readiness.
 
 A changed target or profile replaces the attempt and cannot make impact earlier than its retained
-ready boundary. Temporary range loss keeps the attempt while the same lock remains, but legality is checked again
-at impact. An invalid impact cancels without damage, and a later opportunity needs a fresh lead.
+ready boundary. Temporary range loss during the lead keeps the attempt while the same lock remains. From the
+impact tick every other invalidity still cancels at once without damage. An impact that lacks only legal
+reach, including the plane, is deferred instead (since 20.15.1). The schedule stays unchanged, with its
+identity, revision and past `ImpactTick`, and the attempt resolves once on the first later tick with legal
+reach, for up to its `StrikeTicks`. On `ImpactTick + StrikeTicks` it cancels as `IllegalReach` without damage
+or cooldown charge, and a later opportunity needs a fresh lead. Only an attempt deferred on the previous pass
+can resolve late. The next impact is the resolution tick plus the cadence. `DelayAttack` during a deferral
+revises the attempt from the current tick.
 Preparation makes no RNG roll, award callback or combat stamp. The existing held-lock logout rule
 still applies. Server `OnCombatEvent` remains the single award hook for each actual swing.
 
 Schedules come from authoritative owners, including across region handoff, and are visible when either
 participant is in interest. Terminal delivery also covers an attempt visible on the previous serve.
 The reliable ordered sequence is movement snapshot, all schedule chunks, then all terminal chunks.
+An active schedule record is valid while `serverTick - ImpactTick < StrikeTicks`, so a deferred schedule is
+served overdue. A 20.14.1 to 20.15.0 client refuses such a set, so a game that already shipped
+preparation-enabled clients must bump its connect protocol string when adopting 20.15.1. Default consumers
+are unaffected.
 Each set is bounded to 256 chunks of 255 records, or 65,280 records. An oversized viewer set is refused
 before any preparation chunk is sent, increments `RejectedCombatPreparationFrameSetCount`, and closes
 only that viewer with `TileServerReason.CombatPreparationOverflow`. During a serve, that close runs

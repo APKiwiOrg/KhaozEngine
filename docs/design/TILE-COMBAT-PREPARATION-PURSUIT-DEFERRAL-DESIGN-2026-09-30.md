@@ -1,9 +1,11 @@
 # Tile combat preparation: deferring an out-of-reach impact in pursuit
 
-Status: proposed on 2026-09-30 for owner review. The owner chose the fix direction, which is to defer the
-impact instead of ending it. This document decides the details. Design base: engine `800c132d9`, released
-20.15.0. Implementation plan:
+Status: implemented in 20.15.1. Grimhollow adoption pending. The owner chose the fix direction, which is
+to defer the impact instead of ending it. This document decides the details. Design base: engine
+`800c132d9`, released 20.15.0. Implementation plan:
 [2026-09-30-preparation-pursuit-deferral.md](../superpowers/plans/2026-09-30-preparation-pursuit-deferral.md).
+Current API usage lives in the [consumer guide](../USING-KHAOZENGINE.md#authoritative-attack-preparation-20141)
+and [package reference](../../KhaozEngine.TileWorld.Netcode/README.md#authoritative-attack-preparation-20141).
 
 This amends the [tile combat preparation design](TILE-COMBAT-PREPARATION-DESIGN-2026-09-28.md). It replaces
 these statements there:

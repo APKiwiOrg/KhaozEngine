@@ -5,6 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.15.1
+
+- A prepared tile attack whose target is out of legal reach on its impact tick now waits for legal reach, for up
+  to its `StrikeTicks`, and resolves once on the first legal tick. It still ends `IllegalReach` with no roll or
+  cooldown charge when that bound passes. This fixes equal-speed pursuit, where an impact could fall on the
+  target's step tick every time, which a consumer measured at up to a 74 percent loss of landed attacks
+  ([design](docs/design/TILE-COMBAT-PREPARATION-PURSUIT-DEFERRAL-DESIGN-2026-09-30.md)).
+- Only legal reach, including the plane, defers. Every other invalidity still ends the attempt at once, and an
+  attempt not deferred on the previous pass still ends `ParticipantUnavailable` instead of resolving late.
+- The schedule keeps its identity, revision and past `ImpactTick` while deferred, and the sampler reports
+  `AwaitingOutcome`. `PreparedCombatEvent.ImpactTick` is the resolution tick. An `IllegalReach` cancellation
+  arrives `StrikeTicks` after the intended impact. The next impact is the resolution tick plus the cadence.
+- `DelayAttack` during a deferral revises the attempt from the current tick. `TryGetAttackReadyTick` reports the
+  current tick while deferred.
+- An active state record may now be overdue by fewer than its `StrikeTicks`. An older decoder refuses such a set,
+  so a game that shipped preparation-enabled clients must bump its connect protocol string. Default consumers are
+  unaffected ([consumer contract](docs/USING-KHAOZENGINE.md#authoritative-attack-preparation-20141)).
+
 ## 20.15.0
 
 - Every engine table now records when each row was created, and every table whose rows change after insert also

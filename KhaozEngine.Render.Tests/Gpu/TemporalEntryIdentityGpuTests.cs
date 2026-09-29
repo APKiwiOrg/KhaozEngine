@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -10,12 +11,14 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// THE TWO ENTRY POINTS WRITE THE SAME HISTORY, bit for bit, on the backend and shader compiler under test. Two
     /// scenes render the same perspective follow walk, one forced to the fused entry point and one to the split, and
-    /// after every frame the history colour and state each wrote are read back and compared. The walk holds still, walks
-    /// and stops, so the followed mark and its keep on the stop, the band beside the followed box at the upscaling
-    /// presets, and still blades narrower than a texel on the ground all run through both, and the fact counts the
-    /// marks the state stored to show it. Nothing in the shaders is <c>precise</c>, so a
-    /// compiler could round the fused pass's inline preparation and the split's stored one differently. This fact is
-    /// what shows it does not on a given backend (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23).
+    /// after every frame the history colour and state each wrote are read back and compared. The walk holds still,
+    /// walks and stops, so the followed mark and its keep on the stop, the band beside the followed box at the
+    /// upscaling presets, and still blades narrower than a texel on the ground all run through both, and the fact
+    /// counts the marks the state stored to show it. Nothing in the shaders is <c>precise</c>, so a compiler could
+    /// round the fused pass's inline preparation and the split's stored one differently. This fact is what shows it
+    /// does not on a given backend (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23). It compares every frame of the
+    /// walk and reports the colour, the confidence, the lock under the same mark and the mark apart, so a rounding
+    /// difference in the values reads apart from a rule that decided otherwise.
     /// </summary>
     public sealed class TemporalEntryIdentityGpuTests(ITestOutputHelper output)
     {
@@ -38,6 +41,10 @@ namespace KhaozEngine.Tests.Gpu
             output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, {W}x{H} {preset}");
 
             int frames = TemporalFollowLinesRuns.Last + 1 + StopFrames, compared = 0, band = 0, followed = 0;
+            var colour = new EntryDifference("colour");
+            var confidence = new EntryDifference("confidence");
+            var locks = new EntryDifference("lock");
+            var marks = new EntryDifference("mark", false);
             for (int n = 0; n < frames; n++)
             {
                 fused.Frame(Draw(fusedWalk));
@@ -46,20 +53,31 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.True(split.Scene.ResolvedLastRenderForTests, $"frame {n}: only the fused scene resolved");
                 Assert.Equal(TemporalResolveEntry.Fused, fused.Scene.TemporalResolveRendererForTests?.LastEntry);
                 Assert.Equal(TemporalResolveEntry.Split, split.Scene.TemporalResolveRendererForTests?.LastEntry);
-                Compare(n, "colour", fused, split, static h => h.Color(h.WriteIndex));
-                float[] state = Compare(n, "state", fused, split, static h => h.Confidence(h.WriteIndex));
-                // The state's second channel stores the lock under a mark: below -2.5 the band's, below -4.5 the
-                // followed surface's own (ShaderSources.TemporalAccumulateGlsl, temporalStoreLock).
-                for (int i = 1; i < state.Length; i += 2)
+                float[] a = Read(fused, static h => h.Color(h.WriteIndex));
+                float[] b = Read(split, static h => h.Color(h.WriteIndex));
+                for (int i = 0; i < a.Length; i++) colour.Add(n, a[i], b[i]);
+                float[] state = Read(fused, static h => h.Confidence(h.WriteIndex));
+                float[] other = Read(split, static h => h.Confidence(h.WriteIndex));
+                for (int i = 0; i < state.Length; i += 2)
                 {
-                    if (state[i] < -4.5f) followed++;
-                    else if (state[i] < -2.5f) band++;
+                    confidence.Add(n, state[i], other[i]);
+                    // The second channel stores the lock under a mark (temporalStoreLock): a mark that differs is a
+                    // rule that decided otherwise, a lock under the same mark that differs is arithmetic.
+                    int mark = Mark(state[i + 1]);
+                    if (mark == Mark(other[i + 1])) locks.Add(n, state[i + 1], other[i + 1]);
+                    else marks.Add(n, mark, Mark(other[i + 1]));
+                    if (mark == 3) followed++;
+                    else if (mark == 2) band++;
                 }
                 compared++;
             }
-            output.WriteLine($"  {compared} of {frames} frames resolved, every history texel the same on both, "
-                + $"{band} band marks and {followed} followed marks stored");
+            output.WriteLine($"  {compared} of {frames} frames resolved, {band} band marks and {followed} followed "
+                + "marks stored by the fused entry");
+            string differences = string.Join("\n", new[] { colour, confidence, locks, marks }.Select(d => "  " + d));
+            output.WriteLine(differences);
             Assert.True(compared > TemporalFollowLinesRuns.Last, $"only {compared} frames resolved");
+            Assert.True(colour.Values + confidence.Values + locks.Values + marks.Values == 0,
+                $"the entry points wrote different histories:\n{differences}");
             // The band reaches two internal texels beside the followed box, which this walk stores only while
             // upscaling.
             Assert.True(followed > 0 && (band > 0 || preset == TemporalUpscale.Native),
@@ -70,25 +88,43 @@ namespace KhaozEngine.Tests.Gpu
         static Action<Scene3D, int> Draw(PerspectiveFollowLines walk) =>
             (s, n) => walk.Draw(s, Math.Min(n, TemporalFollowLinesRuns.Last), true, true);
 
-        // Both entries' target bit for bit, and the fused one's values.
-        static float[] Compare(int frame, string what, TemporalFixture fused, TemporalFixture split,
-            Func<TemporalHistory, IGpuTexture> target)
+        static float[] Read(TemporalFixture fixture, Func<TemporalHistory, IGpuTexture> target) =>
+            TemporalTextureIo.Read(fixture.Device, target(fixture.Scene.TemporalHistory));
+
+        // The mark a stored lock lies under: 0 none, 1 moved, 2 the band, 3 the followed surface's own.
+        static int Mark(float stored) => stored < -4.5f ? 3 : stored < -2.5f ? 2 : stored < -0.5f ? 1 : 0;
+
+        // The half float's steps between two values it holds, zero for the two zeros.
+        static int HalfSteps(float a, float b) => Math.Abs(Ordinal(a) - Ordinal(b));
+
+        static int Ordinal(float v)
         {
-            float[] a = TemporalTextureIo.Read(fused.Device, target(fused.Scene.TemporalHistory));
-            float[] b = TemporalTextureIo.Read(split.Device, target(split.Scene.TemporalHistory));
-            Assert.Equal(a.Length, b.Length);
-            int differ = 0, first = -1;
-            float worst = 0f;
-            for (int i = 0; i < a.Length; i++)
+            short bits = BitConverter.HalfToInt16Bits((Half)v);
+            return bits < 0 ? -(bits & 0x7fff) : bits;
+        }
+
+        // Every value that differs between the entries over the walk: how many, on how many frames from which, and
+        // the largest difference, in value and in half-float steps.
+        sealed class EntryDifference(string what, bool halfFloat = true)
+        {
+            public int Values, Frames, FirstFrame = -1, WorstSteps;
+            public float Worst;
+            int _lastFrame = -1;
+
+            public void Add(int frame, float a, float b)
             {
-                if (BitConverter.SingleToInt32Bits(a[i]) == BitConverter.SingleToInt32Bits(b[i])) continue;
-                if (first < 0) first = i;
-                differ++;
-                worst = MathF.Max(worst, MathF.Abs(a[i] - b[i]));
+                if (BitConverter.SingleToInt32Bits(a) == BitConverter.SingleToInt32Bits(b)) return;
+                Values++;
+                if (frame != _lastFrame) Frames++;
+                _lastFrame = frame;
+                if (FirstFrame < 0) FirstFrame = frame;
+                Worst = MathF.Max(Worst, MathF.Abs(a - b));
+                if (halfFloat) WorstSteps = Math.Max(WorstSteps, HalfSteps(a, b));
             }
-            Assert.True(differ == 0, $"frame {frame}: {differ} of {a.Length} history {what} values differ between the "
-                + $"entry points, the first at value {first}, the largest by {worst}");
-            return a;
+
+            public override string ToString() => Values == 0 ? $"{what}: none differ"
+                : $"{what}: {Values} values differ on {Frames} frames from frame {FirstFrame}, the largest by {Worst}"
+                    + (halfFloat ? $" ({WorstSteps} half-float steps)" : " levels");
         }
     }
 }

@@ -159,9 +159,8 @@ namespace KhaozEngine.Tests.Gpu
                 ["Temporal.prepare"] = L(T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"),
                     S("LinearClamp"), U("Resolve", F)),
                 ["Temporal.accumulate"] = L(T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
-                    T("HistoryColor"), T("HistoryConfidence"), T("PreparedY"), T("PreparedCo"), T("PreparedCg"),
-                    T("PreparedReactive"), T("PreparedSurface"), T("PreparedExpected"), T("PreparedEdge"),
-                    S("LinearClamp"), U("Resolve", F)),
+                    T("HistoryColor"), T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"),
+                    T("PreparedExpected"), T("PreparedEdge"), S("LinearClamp"), U("Resolve", F)),
                 // Render3D/Rendering/TemporalDebugViewPass.cs, the debug views' immutable mode block at set 1, after
                 // the resolve's own layout at set 0.
                 ["Temporal.debugMode"] = L(U("DebugView", F)),

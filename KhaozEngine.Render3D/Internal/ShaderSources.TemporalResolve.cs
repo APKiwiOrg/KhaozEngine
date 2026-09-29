@@ -143,10 +143,10 @@ TemporalPixel temporalResolvePixel(ivec2 displayPixel) {
             nextDepth = texelFetch(sampler2D(SceneDepth, LinearClamp), nextTexel, 0).r;
             nextOpaque = texelFetch(sampler2D(OpaqueColor, LinearClamp), nextTexel, 0).rgb;
             vec3 weightedColor = temporalWeighted(sceneColor.rgb);
-            vec3 ycc = rgbToYCoCg(weightedColor);
-            lumas[(y + 1) * 3 + (x + 1)] = ycc.x;
-            temporalGather(neighbourhood, kernels, x + 1, y + 1, ycc, sceneColor.a,
+            vec4 prepared = temporalPrepared(rgbToYCoCg(weightedColor),
                 temporalReactiveDifference(weightedColor, opaqueColor));
+            lumas[(y + 1) * 3 + (x + 1)] = prepared.x;
+            temporalGather(neighbourhood, kernels, x + 1, y + 1, prepared.xyz, sceneColor.a, prepared.w);
             temporalDilate(texel, temporalViewDepth(motion, ndcDepth), closestDepth, closestTexel);
         }
     }

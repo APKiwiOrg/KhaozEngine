@@ -18,30 +18,34 @@ namespace KhaozEngine.Render3D.Internal
         //      read at the same UV with no parity flip. The interpolant stays live at a 1e-30 weight, which changes no
         //      output, so the Direct3D 11 pixel-input signature keeps the TEXCOORD0 then SV_Position shape the other
         //      fullscreen passes ship. And the output: both images take the same edge. Each splice throws at type
-        //      initialisation if EdgeFrag stops holding its text exactly once. ----
-        public static readonly string TemporalEdgeFrag = TemporalEdgeProgram();
+        //      initialisation if EdgeFrag stops holding its text exactly once. EdgeFrag is a verbatim string, so its
+        //      line breaks are the checkout's, CRLF on a Windows one, and the splices take whichever it uses. ----
+        public static readonly string TemporalEdgeFrag = TemporalEdgeProgram(EdgeFrag);
 
-        static string TemporalEdgeProgram()
+        /// <summary>The outline program spliced from <paramref name="edgeFrag"/>, whose line breaks it keeps. Internal,
+        /// for the test that splices a CRLF copy.</summary>
+        internal static string TemporalEdgeProgram(string edgeFrag)
         {
-            string source = TemporalEdgeSplice(EdgeFrag,
-                TemporalEdgeRegion(EdgeFrag, "// Texel.xy=1/size", "layout(location=0) out vec4 oColor;\n"),
-                "// Texel.xy=1/internal size, .z=isPerspective, .w=distanceFadeOn. Thresh.x=depth, .y=normal, .z=near,\n"
-                + "// .w=far. Fade.x=start, .y=end. Every image is read at this pixel's own centre, so nothing flips.\n"
-                + "layout(set=0, binding=5) uniform texture2D OpaqueTex;\n"
-                + "layout(location=0) in vec2 vUvIn;\n"
-                + "layout(location=0) out vec4 oScene;\n"
-                + "layout(location=1) out vec4 oOpaque;\n");
+            string nl = edgeFrag.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+            string source = TemporalEdgeSplice(edgeFrag,
+                TemporalEdgeRegion(edgeFrag, "// Texel.xy=1/size", "layout(location=0) out vec4 oColor;" + nl),
+                "// Texel.xy=1/internal size, .z=isPerspective, .w=distanceFadeOn. Thresh.x=depth, .y=normal, .z=near," + nl
+                + "// .w=far. Fade.x=start, .y=end. Every image is read at this pixel's own centre, so nothing flips." + nl
+                + "layout(set=0, binding=5) uniform texture2D OpaqueTex;" + nl
+                + "layout(location=0) in vec2 vUvIn;" + nl
+                + "layout(location=0) out vec4 oScene;" + nl
+                + "layout(location=1) out vec4 oOpaque;" + nl);
             source = TemporalEdgeSplice(source,
-                "    vec2 nuv = (Fade.z > 0.5) ? vec2(vUv.x, 1.0 - vUv.y) : vUv;\n"
-                + "    // Up-front, in binding order (Color, Normal, Depth) - see Bug B note above.\n"
-                + "    vec4 baseSrc = texture(sampler2D(ColorTex, Samp), vUv);\n",
-                "    vec2 vUv = gl_FragCoord.xy * Texel.xy + vUvIn * 1.0e-30;   // upright: this pixel's centre, internal UV\n"
-                + "    vec2 nuv = vUv;\n"
-                + "    vec4 baseSrc = texture(sampler2D(ColorTex, Samp), vUv);\n"
-                + "    vec4 opaqueSrc = texture(sampler2D(OpaqueTex, Samp), vUv);\n");
+                "    vec2 nuv = (Fade.z > 0.5) ? vec2(vUv.x, 1.0 - vUv.y) : vUv;" + nl
+                + "    // Up-front, in binding order (Color, Normal, Depth) - see Bug B note above." + nl
+                + "    vec4 baseSrc = texture(sampler2D(ColorTex, Samp), vUv);" + nl,
+                "    vec2 vUv = gl_FragCoord.xy * Texel.xy + vUvIn * 1.0e-30;   // upright: this pixel's centre, internal UV" + nl
+                + "    vec2 nuv = vUv;" + nl
+                + "    vec4 baseSrc = texture(sampler2D(ColorTex, Samp), vUv);" + nl
+                + "    vec4 opaqueSrc = texture(sampler2D(OpaqueTex, Samp), vUv);" + nl);
             return TemporalEdgeSplice(source,
                 "    oColor = vec4(mix(base, OutlineColor.rgb, edge), baseSrc.a); // preserve background alpha marker",
-                "    oScene = vec4(mix(base, OutlineColor.rgb, edge), baseSrc.a); // preserve background alpha marker\n"
+                "    oScene = vec4(mix(base, OutlineColor.rgb, edge), baseSrc.a); // preserve background alpha marker" + nl
                 + "    oOpaque = vec4(mix(opaqueSrc.rgb, OutlineColor.rgb, edge), opaqueSrc.a);");
         }
 

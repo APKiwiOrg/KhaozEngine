@@ -43,6 +43,18 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Equal(1, Count(frag, "    float edge = 0.0;"));
         }
 
+        /// <summary>EdgeFrag is a verbatim string, so a Windows checkout gives it CRLF line breaks. The splice follows
+        /// them, and a CRLF EdgeFrag gives the same program with CRLF breaks.</summary>
+        [Fact]
+        public void TheSpliceFollowsEdgeFragsLineBreaks()
+        {
+            string lf = ShaderSources.EdgeFrag.Replace("\r\n", "\n", StringComparison.Ordinal);
+            string crlf = lf.Replace("\n", "\r\n", StringComparison.Ordinal);
+            string fromLf = ShaderSources.TemporalEdgeProgram(lf);
+            Assert.Equal(fromLf.Replace("\n", "\r\n", StringComparison.Ordinal), ShaderSources.TemporalEdgeProgram(crlf));
+            Assert.DoesNotContain("\r", fromLf, StringComparison.Ordinal);
+        }
+
         static int Count(string text, string part)
         {
             int n = 0;

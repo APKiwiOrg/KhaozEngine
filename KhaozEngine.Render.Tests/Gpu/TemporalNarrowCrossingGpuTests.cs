@@ -35,6 +35,12 @@ namespace KhaozEngine.Tests.Gpu
         // 211.
         const int MaxRidgedBoxExcess = 7;
 
+        // The same on WARP, Direct3D 11's software rasteriser, which measured 3 and 8. Every excess pixel lies where
+        // the hardware's do, in the columns the trailing edge left two and three frames before (#1187), and five of
+        // the eight pass their floor by 0.051 to 0.055, within 0.005 of the 0.05 tolerance. 9 still fails the lock
+        // clause's 10 and 39.
+        const int WarpMaxRidgedBoxExcess = 9;
+
         /// <summary>The issue that tracks what the ridged box keeps.</summary>
         const string FreshTintIssue = "https://github.com/APKiwiOrg/KhaozEngine/issues/1187";
 
@@ -61,8 +67,9 @@ namespace KhaozEngine.Tests.Gpu
             output.WriteLine(ctx);
             Assert.True(t.Total.Checked > MinTrailPixels,
                 $"the trail region holds {t.Total.Checked} pixels, so nothing was measured. {ctx}");
-            Assert.True(t.Total.Excess <= MaxRidgedBoxExcess,
-                $"the box's locks keep its colour where it left. {ctx}");
+            int bound = TemporalDeviceClass.Warp ? WarpMaxRidgedBoxExcess : MaxRidgedBoxExcess;
+            Assert.True(t.Total.Excess <= bound,
+                $"the box's locks keep its colour where it left, bound {bound}. {ctx}");
         }
 
         /// <summary>

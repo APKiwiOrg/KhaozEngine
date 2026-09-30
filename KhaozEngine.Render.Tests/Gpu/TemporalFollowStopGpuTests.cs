@@ -42,6 +42,18 @@ namespace KhaozEngine.Tests.Gpu
         /// rounding.</summary>
         const double DampedInnerShare = 0.01;
 
+        /// <summary>The luma steps of 1/255, summed over a set's pixels, a frame may read over its control past the
+        /// lead: one on hardware. On WARP, Direct3D 11's software rasteriser, <see cref="WarpRoundingSteps"/>: the
+        /// walk's box stands at other world coordinates than its control's, and where hardware writes its motion as
+        /// exactly zero WARP writes 2^-24 UV on up to 400 of its texels, so up to four inner pixels read one 8-bit
+        /// step apart from the control, 1.14 steps at most summed (the orthographic reversal at Quality, frame
+        /// +12).</summary>
+        internal static double RoundingSteps => TemporalDeviceClass.Warp ? WarpRoundingSteps : 1;
+
+        /// <summary>The rounding a frame may read on WARP, in luma steps summed over the set (<see cref="RoundingSteps"/>).
+        /// </summary>
+        const double WarpRoundingSteps = 2;
+
         // The walks: the boot pitch away and sideways and the orthographic walk at 1 display pixel a frame, and with
         // the table switch both pitches, every heading and 0.5 and 2 display pixels a frame too.
         IEnumerable<StopRun> Walks() => Walks(TemporalStabilityRuns.FullTable);
@@ -72,7 +84,8 @@ namespace KhaozEngine.Tests.Gpu
         /// on, or turns back through zero travel, over the ground or wall, over the clear colour and beside a passer:
         /// on the turn frame and each of the 15 after, at Native and Quality, every pixel showing it and those inside
         /// its outline read at most their control's error (<see cref="TemporalFollowStopRuns.Control"/>), past the
-        /// most they read over it on the frames before the turn, and one luma step of 1/255 on one of their pixels.
+        /// most they read over it on the frames before the turn, and one luma step of 1/255 on one of their pixels
+        /// (two summed on WARP, <see cref="RoundingSteps"/>).
         /// Beside a passer that lead is what they read over it on the frame before the turn, or the same walk's
         /// without the passer where that is more: the passer shows beside the walking avatar some frames before the
         /// turn, and the most read over the control since then left the outline up to 16 percent of the control's
@@ -143,12 +156,12 @@ namespace KhaozEngine.Tests.Gpu
                 : whole ? WholeShare : 0;
         }
 
-        /// <summary>The most any frame from the turn on reads over its control past the lead and a luma step, as a
+        /// <summary>The most any frame from the turn on reads over its control past the lead and the rounding, as a
         /// share of the control's error, with each frame over its bound added to <paramref name="over"/>.</summary>
         internal static double Worst(StopRun r, string set, StopMeasure m, StopMeasure control, double lead,
             List<string> over)
         {
-            double rounding = 1.0 / (255.0 * m.Pixels);
+            double rounding = RoundingSteps / (255.0 * m.Pixels);
             double share = Share(r, set);
             double worst = double.NegativeInfinity;
             for (int k = 1; k <= TemporalFollowStopRuns.After + 1; k++)

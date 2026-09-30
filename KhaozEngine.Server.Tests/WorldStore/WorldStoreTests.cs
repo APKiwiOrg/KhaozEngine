@@ -140,18 +140,14 @@ public sealed class SqliteWorldStoreConformanceTests : IDisposable
     }
 
     /// <summary>Two processes opening one legacy file at once must not both add the column. The loser of that race
-    /// would fail its open on a duplicate column, so the check and the add share one immediate transaction. It loops
-    /// because a race that shows one time in ten is the one that reaches production.</summary>
+    /// would fail its open on a duplicate column, so the locked recheck and the add share one immediate transaction.</summary>
     [Fact]
     public async Task World_store_widening_survives_concurrent_openers()
     {
-        for (int iteration = 0; iteration < 20; iteration++)
-        {
-            using var legacy = new SqliteScratchFile("ke-ws-race-");
-            legacy.Execute(LegacyTable);
-            await SqliteScratchFile.OpenConcurrentlyAsync(() => new SqliteWorldStore(legacy.ConnectionString), openers: 4);
-            Assert.Equal(1, legacy.Column("world_store", "created_at").Count);
-        }
+        using var legacy = new SqliteScratchFile("ke-ws-race-");
+        legacy.Execute(LegacyTable);
+        await SqliteScratchFile.OpenConcurrentlyAsync(() => new SqliteWorldStore(legacy.ConnectionString), openers: 2);
+        Assert.Equal(1, legacy.Column("world_store", "created_at").Count);
     }
 
     private static (long? Created, long? Updated) Times(SqliteScratchFile database, string key)

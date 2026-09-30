@@ -37,6 +37,11 @@ public sealed class SqliteWorldStore : IWorldStore, IEnumerableWorldStore, IDisp
         "INSERT INTO world_store (key, data, updated_at, created_at) VALUES ($k, $d, $t, $t) " +
         "ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at;";
 
+    private static readonly IReadOnlyDictionary<string, string[]> RequiredTables = new Dictionary<string, string[]>
+    {
+        ["world_store"] = new[] { "key", "data", "updated_at", "created_at" },
+    };
+
     private readonly SqliteStoreConnection db;
 
     public SqliteWorldStore(SqliteWorldStoreOptions options)
@@ -57,13 +62,15 @@ public sealed class SqliteWorldStore : IWorldStore, IEnumerableWorldStore, IDisp
     /// <summary>Convenience ctor taking the raw connection string.</summary>
     public SqliteWorldStore(string connectionString) : this(new SqliteWorldStoreOptions(connectionString)) { }
 
-    // Creates the table, or adds created_at to one an older build created, in one immediate transaction. Two processes
-    // opening one legacy file at once would otherwise both read the column as missing and the second add would fail
-    // on a duplicate column. BEGIN IMMEDIATE takes the write lock before the read, so the second waits and then finds
-    // the column. Runs from the constructor, before the store is published, so nothing else holds the connection.
+    // A complete schema only needs reads. Missing schema is rechecked under the write lock before any DDL.
+    // Construction has exclusive use of the connection before the store is published.
     private static void EnsureSchema(SqliteStoreConnection db)
     {
-        using SqliteTransaction tx = db.Connection.BeginTransaction(deferred: false);
+        SqliteSchemaWidening.Ensure(db.Connection, RequiredTables, tx => WidenSchema(db, tx));
+    }
+
+    private static void WidenSchema(SqliteStoreConnection db, SqliteTransaction tx)
+    {
         using SqliteCommand cmd = db.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = CreateTable;
@@ -74,7 +81,6 @@ public sealed class SqliteWorldStore : IWorldStore, IEnumerableWorldStore, IDisp
             cmd.CommandText = "ALTER TABLE world_store ADD COLUMN created_at INTEGER NULL;";
             cmd.ExecuteNonQuery();
         }
-        tx.Commit();
     }
 
     public async Task<byte[]?> LoadAsync(string key, CancellationToken cancellationToken = default)

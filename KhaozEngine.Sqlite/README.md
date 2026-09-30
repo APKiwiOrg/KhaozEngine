@@ -1,8 +1,9 @@
 # KhaozEngine.Sqlite
 
-The shared SQLite store lifecycle. One type, `SqliteStoreConnection`: it holds an open
-`Microsoft.Data.Sqlite` connection that is never pooled, runs the store's bootstrap DDL once, serializes every
-command behind a lease, and closes the connection on dispose.
+Shared SQLite store lifecycle and schema widening. `SqliteStoreConnection` holds an open
+`Microsoft.Data.Sqlite` connection that is never pooled, runs optional bootstrap DDL once, serializes every
+command behind a lease, and closes the connection on dispose. `SqliteSchemaWidening` keeps a complete schema's
+bootstrap read-only and acquires the write lock only for missing tables, columns or declared indexes.
 
 ```csharp
 using KhaozEngine.Sqlite;
@@ -27,6 +28,46 @@ public sealed class AccountsStore : IDisposable
     public void Dispose() => db.Dispose();
 }
 ```
+
+## Schema widening
+
+For a store that widens older schemas, open `SqliteStoreConnection` with empty bootstrap SQL and call
+`SqliteSchemaWidening.Ensure` before publishing the store. It reads the requirements first. When anything is
+missing, it takes an immediate transaction, reads the requirements again, then runs the idempotent callback only
+if still needed. Another opener can finish the migration while this one waits, in which case the callback is
+skipped. A complete schema takes no write lock and can open while another connection holds a write transaction.
+
+```csharp
+using KhaozEngine.Sqlite;
+using Microsoft.Data.Sqlite;
+
+using var db = new SqliteStoreConnection("Data Source=accounts.db", string.Empty);
+SqliteSchemaWidening.Ensure(db.Connection,
+    new Dictionary<string, string[]> { ["accounts"] = new[] { "id", "data", "created_at" } },
+    transaction =>
+    {
+        using SqliteCommand command = db.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "CREATE TABLE IF NOT EXISTS accounts " +
+            "(id TEXT PRIMARY KEY, data BLOB NOT NULL, created_at INTEGER NULL);";
+        command.ExecuteNonQuery();
+        command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('accounts') WHERE name = 'created_at';";
+        if ((long)command.ExecuteScalar()! == 0)
+        {
+            command.CommandText = "ALTER TABLE accounts ADD COLUMN created_at INTEGER NULL;";
+            command.ExecuteNonQuery();
+        }
+    });
+```
+
+The caller owns the already open connection and its exclusive use, either before publishing the store or under
+its lease, with no active transaction. The callback uses the supplied transaction and leaves it open. The helper
+commits when all requirements exist and rolls back callback changes on failure. It never closes the connection.
+Schema inspection is limited to the main database and matches names case-insensitively. It checks presence, not
+column types or index definitions. Names must match `[A-Za-z_][A-Za-z0-9_]*` and are copied and validated before
+inspection. An empty column array still requires its table. The optional fourth `requiredIndexes` argument lists
+indexes the callback must create. Missing indexes alone trigger the same locked repair path. Lock waits use the
+connection's default timeout.
 
 ## Why the connection is never pooled
 
@@ -55,8 +96,8 @@ connection on it.
 
 ## What it does not do
 
-Schema, SQL, transactions and the record shape stay with the store. This package owns the connection, the
-gate and the dispose, and knows nothing about what is in the database.
+Schema definitions, SQL, row-time rules and the record shape stay with the store. This package owns the connection,
+the gate and the dispose, and coordinates declared schema requirements through the caller's callback.
 
 - `Connection` is the held `SqliteConnection`, for a store that needs the object itself.
 - `CreateCommand()` and `BeginTransaction()` are conveniences on it.

@@ -14,16 +14,19 @@ byte[]? loaded = await store.LoadAsync("player:42");
 One `world_store(key, data, updated_at, created_at)` table, bootstrapped on construction, with an upsert through
 `INSERT ... ON CONFLICT(key) DO UPDATE` and raw parameterized async ADO.NET (no EF/ORM). Both times are Unix
 milliseconds. `updated_at` is the last save's, and `created_at` is written only by the insert, so a later save never
-moves it. Construction adds a nullable `created_at` to a table an older build created, in one immediate transaction,
-and the rows already there keep NULL in it because nothing proves when they were created. Dispose the store to
+moves it. Construction reads the schema first and takes no write lock when the required table and columns exist.
+Missing schema is rechecked under one immediate transaction before creating the table or adding a nullable
+`created_at` to a table an older build created. The rows already there keep NULL in it because nothing proves when
+they were created. A current schema can open while another connection holds a write transaction. Dispose the store to
 close the connection. The connection is never pooled, so the OS handle on the database file is genuinely released
 on dispose rather than parked in the provider's pool, and the file can be deleted, rotated or exclusively opened
 straight after (since 17.41.0). For production / Azure SQL use
 `KhaozEngine.WorldStore.SqlServer` against the same `IWorldStore` contract.
 
 The connection, the operation gate and that dispose are `KhaozEngine.Sqlite`'s `SqliteStoreConnection`, shared
-with every other SQLite store in the engine. Only the schema and the SQL live here. A game writing its own
-SQLite-backed store should sit it on the same type rather than reimplementing that lifecycle.
+with every other SQLite store in the engine. `SqliteSchemaWidening` coordinates the schema check and locked recheck.
+Only the schema and the SQL live here. A game writing its own SQLite-backed store can use the same lifecycle and
+widening helper.
 
 `SqliteMutationJournalStore` implements `IMutationJournalStore`, `IMutationJournalMaintenance`, and the additive
 `IMutationJournalAgeMaintenance` and `IMutationJournalStreamListing` capabilities on the same connection lifecycle.

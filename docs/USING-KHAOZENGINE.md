@@ -19990,10 +19990,22 @@ public sealed class AccountsStore : IDisposable
 }
 ```
 
-It owns the connection, the bootstrap DDL, the gate and the dispose, and nothing else: the schema, the SQL and the
+`SqliteStoreConnection` owns the connection, the bootstrap DDL, the gate and the dispose. The schema, the SQL and the
 record shape stay in your store. `BeginTransaction()` is there for a multi-statement operation, taken under a lease
 held for the whole transaction. Both engine SQLite backends are built on it, and it is opt-in and in no umbrella,
 so reference it directly.
+
+For additive schema migrations, pass empty bootstrap SQL and use `SqliteSchemaWidening.Ensure` on the held
+connection before publishing your store. Declare required tables and columns in an `IReadOnlyDictionary<string,
+string[]>`, provide idempotent DDL through an `Action<SqliteTransaction>`, and optionally list required indexes as
+the fourth argument. A complete schema opens through reads alone, even while another connection holds a write
+transaction. Missing requirements take an immediate transaction and are rechecked before the callback runs, so
+concurrent openers cannot both add a column. The helper owns that transaction and leaves the caller's connection
+open. It validates ASCII identifiers, matches names case-insensitively in the main database, and checks presence
+rather than column types or index definitions. The callback must fulfill the requirements and leave the transaction
+open. Its changes roll back on failure. The [package README](../KhaozEngine.Sqlite/README.md#schema-widening) shows
+a nullable column migration. `SqliteWorldStore` and `SqliteWalletStore` use this helper, including index-only repairs
+for the wallet's ledger indexes.
 
 Both bootstrap one `world_store(key, data, updated_at, created_at)` table on construction, upsert via dialect SQL
 (SQLite `ON CONFLICT`, SQL Server `MERGE WITH (HOLDLOCK)`), raw parameterized async ADO.NET, no EF/ORM. The same

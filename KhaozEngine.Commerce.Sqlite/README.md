@@ -27,10 +27,16 @@ carries `created_at` beside the `updated_at` every credit and debit moves, and a
 those three columns a table an older build created lacks, as nullable columns in one immediate transaction, and the
 rows already there keep NULL where no write since knows the time.
 
+Construction reads the required tables, columns and ledger indexes first. A complete schema takes no write lock,
+so the store can open while another connection holds a write transaction. Missing requirements are rechecked under
+the immediate transaction before any DDL runs. Missing ledger indexes alone are repaired through the same path,
+including the unique index that enforces idempotency.
+
 Opt-in: pulls `Microsoft.Data.Sqlite` without touching the dependency-free `KhaozEngine.Commerce` core. Not
 bundled in the `Server` umbrella. Dispose the store to close the connection. The connection is never pooled, so the OS
 handle on the database file is genuinely released on dispose rather than parked in the provider's pool, and the
 file can be deleted, rotated or exclusively opened straight after (since 17.41.0).
 
 The connection, the operation gate and that dispose are `KhaozEngine.Sqlite`'s `SqliteStoreConnection`, shared
-with every other SQLite store in the engine. Only the schema and the SQL live here.
+with every other SQLite store in the engine. `SqliteSchemaWidening` coordinates the schema check and locked recheck.
+Only the schema and the SQL live here.

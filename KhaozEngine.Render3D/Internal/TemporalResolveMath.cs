@@ -162,9 +162,12 @@ namespace KhaozEngine.Render3D.Internal
                 Sizes = new Vector4(iw, ih, dw, dh),
                 Jitter = new Vector4(jitterPixels.X, jitterPixels.Y, displayOverInternal, readable ? 1f : 0f),
                 CurrentDepth = currentDepth,
-                Params = new Vector4(0f, screenFixedBackground ? 1f : 0f, 0f, 0f),
+                Params = new Vector4(ScratchFollowedRuleOff ? 1f : 0f, screenFixedBackground ? 1f : 0f, 0f, 0f),
             };
         }
+
+        /// <summary>Scratch cost switch: leaves out the followed pixel's band mark beside a still nearer surface.</summary>
+        internal static bool ScratchFollowedRuleOff;
 
         /// <summary>The larger per-axis ratio of a display size to an internal size, at least 1, with every size below 1
         /// read as 1. A size ratio for sampling only, the resolve's reconstruction footprint (Jitter.z). It must never

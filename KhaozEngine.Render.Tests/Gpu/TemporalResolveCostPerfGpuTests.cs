@@ -84,9 +84,10 @@ namespace KhaozEngine.Tests.Gpu
                 || n.Contains("Software", StringComparison.OrdinalIgnoreCase));
 
         // The modes of one round. Each temporal mode names the resolve it selects and the pass it leaves out.
-        enum Mode { Off, Fused, Split, PassOneAlone, PassTwoAlone, SplitUpscalingProgram }
+        enum Mode { Off, Fused, Split, PassOneAlone, PassTwoAlone, SplitUpscalingProgram, SplitWithoutRule }
 
-        static readonly Mode[] Modes = [Mode.Off, Mode.Fused, Mode.Split, Mode.PassOneAlone, Mode.PassTwoAlone];
+        static readonly Mode[] Modes = [Mode.Off, Mode.Fused, Mode.Split, Mode.PassOneAlone, Mode.PassTwoAlone,
+            Mode.SplitWithoutRule];
 
         static double Median(IEnumerable<double> xs)
         {
@@ -148,6 +149,7 @@ namespace KhaozEngine.Tests.Gpu
                     split.SkipPassForTests = mode == Mode.PassOneAlone ? TemporalSplitPass.Accumulate
                         : mode == Mode.PassTwoAlone ? TemporalSplitPass.Prepare : TemporalSplitPass.None;
                     split.UpscalingProgramForTests = mode == Mode.SplitUpscalingProgram;
+                    TemporalResolveMath.ScratchFollowedRuleOff = mode == Mode.SplitWithoutRule;
                     fx.Frames(Warm, draw);
                     double submitted = 0;
                     long t0 = Stopwatch.GetTimestamp();
@@ -166,6 +168,7 @@ namespace KhaozEngine.Tests.Gpu
             split.SkipPassForTests = TemporalSplitPass.None;
             split.UpscalingProgramForTests = false;
             scene.TemporalResolveEntryForTests = null;
+            TemporalResolveMath.ScratchFollowedRuleOff = false;
 
             double off = Median(wall[Mode.Off]);
             output.WriteLine($"  {w}x{h} {preset}, {name}, internal {iw}x{ih}: {Rounds} rounds of {Block} frames after "
@@ -183,6 +186,7 @@ namespace KhaozEngine.Tests.Gpu
             PrintPair("pass one", wall[Mode.Split], wall[Mode.PassTwoAlone]);
             PrintPair("pass two", wall[Mode.Split], wall[Mode.PassOneAlone]);
             PrintPair("split against fused", wall[Mode.Split], wall[Mode.Fused]);
+            PrintPair("followed rule, split with it against without", wall[Mode.Split], wall[Mode.SplitWithoutRule]);
             if (!upscales)
                 PrintPair("split at the display's size against its upscaling second pass", wall[Mode.Split],
                     wall[Mode.SplitUpscalingProgram]);
@@ -208,6 +212,7 @@ namespace KhaozEngine.Tests.Gpu
             Mode.Split => "split",
             Mode.PassOneAlone => "split, pass one alone",
             Mode.SplitUpscalingProgram => "split, upscaling second pass",
+            Mode.SplitWithoutRule => "split, without the followed rule",
             _ => "split, pass two alone",
         };
 

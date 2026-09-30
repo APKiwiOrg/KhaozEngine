@@ -266,7 +266,8 @@ TemporalSurface temporalPrepareSurface(ivec2 centreTexel, ivec2 closestTexel, fl
     // ground it uncovers on the next frame would keep its colour. Where its centre texel travelled in the world more
     // than FollowedTravelRatio times its motion on screen, and past the band's world test, it stores the band mark,
     // which that ground drops.
-    if (historyValid && movingEdge && !band && !ownReprojected && !nearerMoved && !centreIsBackground) {
+    if (Params.x < 0.5 && historyValid && movingEdge && !band && !ownReprojected && !nearerMoved
+        && !centreIsBackground) {
         float centreExpected;
         bool centreTested;
         float centreTravel;

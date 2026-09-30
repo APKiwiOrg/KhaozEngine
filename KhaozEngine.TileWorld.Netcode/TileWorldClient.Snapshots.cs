@@ -247,7 +247,7 @@ public sealed partial class TileWorldClient
         if (netId == LocalNetId || !remoteSamples.TryGetValue(netId, out RemoteSample sample)) return false;
         float extraTicks = ExtraTicks(sample);
         float fraction = TilePresenter.StepFraction(sample.State, extraTicks, sample.ClickDoor);
-        pose = TryResolveAim(sample.State, delayed: true, fraction, out Vector2 aim)
+        pose = TryResolveAim(sample.State, delayed: true, fraction >= 1f, out Vector2 aim)
             ? Presenter.Pose(sample.State, aim, extraTicks, sample.ClickDoor)
             : Presenter.Pose(sample.State, extraTicks, sample.ClickDoor);
         return true;

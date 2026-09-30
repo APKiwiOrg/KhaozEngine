@@ -270,9 +270,10 @@ public sealed class TilePresenter
     {
         ArgumentNullException.ThrowIfNull(prediction);
         TileMoveState r = prediction.RenderedState;
+        var presentation = TilePresentationFacing.Local(r, prediction.RemainingPresentationMovement);
         return PoseAt(r.HasRenderOverride ? r.RenderPosition : r.Position,
             r.HasRenderOverride ? r.RenderVertical : r.Vertical,
-            TilePresentationFacing.Direction(r, StepFraction(r)));
+            presentation.Direction);
     }
 
     /// <summary>

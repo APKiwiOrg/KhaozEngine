@@ -576,6 +576,9 @@ always keep the constructor map.
   `LocalPose(prediction)` adds no footprint offset, because the local player is always one tile, and additionally carries the
   prediction layer's inter-tick easing. A one-tick route targets each committed tile in turn, including the
   landing-door tick after the first clicked step, so it moves continuously instead of repeating an endpoint.
+  Local yaw keeps the physical step direction until that commanded interpolation lands, even after the simulator
+  normalizes `StepFrom` to `Tile`. Target aim resumes then. `Prediction.RemainingPresentationMovement` measures
+  the remaining movement without reconciliation offsets, so a correction-only glide does not delay aim.
   With no active reconciliation offset, its bound against
   `PredictedState.Tile` is one grid step plus one local command tick of travel. An active offset adds its current
   magnitude to that conservative bound until it decays or a hard snap clears it.

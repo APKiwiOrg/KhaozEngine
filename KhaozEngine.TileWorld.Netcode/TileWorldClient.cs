@@ -185,7 +185,8 @@ public sealed partial class TileWorldClient : IDisposable
         {
             TileMoveState rendered = Prediction.RenderedState;
             TilePose drawn = Presenter.LocalPose(Prediction);
-            return TryResolveAim(rendered, delayed: false, TilePresenter.StepFraction(rendered), out Vector2 aim)
+            var presentation = TilePresentationFacing.Local(rendered, Prediction.RemainingPresentationMovement);
+            return TryResolveAim(rendered, delayed: false, presentation.Landed, out Vector2 aim)
                 ? new TilePose(drawn.Position, Presenter.Pose(rendered, aim).Yaw)
                 : drawn;
         }

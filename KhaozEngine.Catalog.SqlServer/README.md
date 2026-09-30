@@ -83,14 +83,28 @@ guarded by `COL_LENGTH`, backfills, and moves the version last. A legacy row get
 that wrote them, a closed row's update time is the publish time of the version that replaced it, and every other
 new column stays NULL, because nothing records when a family, a block, a mark, a draft or an edit was written. The
 backfill rewrites those four tables whole, and each migration statement runs under the schema's fixed 60-second
-command timeout. Under `ValidateOnly` a version 1 or 2 database is refused instead, naming the migration, so a
+command timeout. Under either validation mode a version 1 or 2 database is refused instead, naming the migration, so a
 hosted catalog runs its schema migration step, one `AutoCreate` open under the migration credential, before a
 `ValidateOnly` server on this version starts. An older engine refuses a version 3 database, so rolling back past
 this upgrade needs a restore.
 
-`InitializeAsync` also writes the registry's types into `catalog_type`, which pins each type id to its key. A
-rename and a reassignment are both refused, because either one repoints every row already stored under the old
-pairing.
+`InitializeAsync` under `AutoCreate` or `ValidateOnly` also synchronizes the registry into `catalog_type`
+in a Serializable transaction using `MERGE WITH (HOLDLOCK)`. It inserts new registrations and refreshes
+changed chunk slots, default visibility and id ceilings. Changed settings move the row's update time.
+A rename and a reassignment are refused because either one repoints stored rows.
+
+For a hosted upgrade preview, open with `ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync`.
+It validates the existing schema and checks stored type id/key compatibility using reads only, with
+no create, migration, registration write or row time change. It takes no type synchronization transaction
+or `HOLDLOCK`. New registrations and changed nonidentity settings are accepted without storing them.
+`ExportBundleAsync` and upgrade previews use the stored type settings and omit registrations absent from
+`catalog_type`. Field schemas still come from this build's registry, so each stored type being exported
+must be registered.
+
+This mode governs initialization only and does not disable later writes. `ReadPublishBaselineAsync`
+can clear a stale draft freeze. Use `ExportBundleAsync` or `ContentUpgradeRunner.RunAsync` in `Preview`
+mode for the read-only preview, then reopen with `ValidateOnly` or `AutoCreate` for an apply or authoring
+host. Ordinary reads can still wait on a database lock held by another writer.
 
 ## Replacing the catalog: `SqlServerCatalogReset`
 
@@ -262,6 +276,10 @@ family membership survives the import.
 `AutoCreate` needs DDL rights plus `EXECUTE` on `sys.sp_getapplock`. `ValidateOnly` needs only `SELECT` on the
 `sys` catalog views plus the ordinary read and write rights on the fifteen tables, which is what a production
 application login should have.
+
+`ValidateOnlyWithoutTypeSync` initialization and upgrade preview need metadata visibility plus `SELECT`
+on the catalog tables. They need no DDL, type synchronization or write permission. The mode does not
+grant permission for other store operations.
 
 `SqlServerCatalogReset.ResetAsync` needs DDL rights plus `EXECUTE` on both `sys.sp_executesql` and
 `sys.sp_getapplock`, so give it the migration credential rather than the application login. It takes the SAME

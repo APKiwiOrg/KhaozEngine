@@ -59,12 +59,25 @@ exact time or NULL. `catalog_row`, `catalog_row_field`, `catalog_chunk` and `cat
 time of the version that wrote them, a closed row's update time is the publish time of the version that replaced
 it, and every other new column stays NULL, because nothing records when a family, a block, a mark, a draft or an
 edit was written. The rows, the history, the audit, the open draft, the pin and the store epoch all survive both
-steps. Under `ValidateOnly` a version 1 or 2 file is refused instead, naming the migration. An older engine refuses
+steps. Under either validation mode a version 1 or 2 file is refused instead, naming the migration. An older engine refuses
 a version 3 file, so rolling back past this upgrade needs a restore.
 
-`InitializeAsync` also writes the registry's types into `catalog_type`, which pins each type id to its key. A
-rename and a reassignment are both refused, because either one repoints every row already stored under the
-old pairing.
+`InitializeAsync` under `AutoCreate` or `ValidateOnly` also synchronizes the registry into `catalog_type`.
+It inserts new registrations and refreshes changed chunk slots, default visibility and id ceilings.
+Changed settings move the row's update time. A rename and a reassignment are refused because either
+one repoints stored rows.
+
+For a hosted upgrade preview, open with `ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync`.
+It validates the existing schema and checks stored type id/key compatibility using reads only, with
+no create, migration, registration write or row time change. New registrations and changed nonidentity
+settings are accepted without storing them. `ExportBundleAsync` and upgrade previews use the stored
+type settings and omit registrations absent from `catalog_type`. Field schemas still come from this
+build's registry, so each stored type being exported must be registered.
+
+This mode supports `Mode=ReadOnly` on an existing SQLite file. It governs initialization only and does
+not disable later writes. `ReadPublishBaselineAsync` can clear a stale draft freeze. Use
+`ExportBundleAsync` or `ContentUpgradeRunner.RunAsync` in `Preview` mode for the read-only preview,
+then reopen with `ValidateOnly` or `AutoCreate` for an apply or authoring host.
 
 ## Replacing the catalog: `SqliteCatalogReset`
 

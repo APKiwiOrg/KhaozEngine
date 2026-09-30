@@ -142,19 +142,8 @@ public sealed partial class SqliteContentAuthoringStore
             throw UnknownVersion(versionNumber);
         }
 
-        var types = new List<ContentBundleType>();
-        IReadOnlyList<ContentTypeRegistration> registrations = _registry.ByTypeId;
-        for (int i = 0; i < registrations.Count; i++)
-        {
-            ContentTypeRegistration registration = registrations[i];
-            types.Add(new ContentBundleType(
-                registration.Type,
-                registration.TypeKey,
-                registration.DefaultVisibility,
-                registration.ChunkSlots,
-                registration.MaxDefinitionId,
-                registration.Schema));
-        }
+        IReadOnlyList<ContentBundleType> types = await ReadBundleTypesAsync(cancellationToken)
+            .ConfigureAwait(false);
 
         IReadOnlyList<ContentFamily> families = await ReadFamiliesAsync(
             default, null, null, cancellationToken).ConfigureAwait(false);

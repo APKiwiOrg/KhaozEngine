@@ -8,10 +8,10 @@ using Microsoft.Data.Sqlite;
 namespace KhaozEngine.Catalog.Sqlite;
 
 /// <summary>
-/// The two schema modes as behaviour: <see cref="ContentAuthoringSchemaMode.AutoCreate"/> creates the schema
+/// Schema initialization as behaviour: <see cref="ContentAuthoringSchemaMode.AutoCreate"/> creates the schema
 /// when the database is empty and then validates it, and
 /// <see cref="ContentAuthoringSchemaMode.ValidateOnly"/> refuses an empty or mismatched database rather than
-/// creating anything.
+/// creating anything. ValidateOnlyWithoutTypeSync uses the same schema validation.
 /// <para>
 /// <b>ValidateOnly is what a production host sets, and its job is the typo.</b> A connection string pointing
 /// at a path nothing has created would otherwise create a second, empty catalog and serve it, which is a
@@ -26,8 +26,8 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// </para>
 /// <para>
 /// <b>A version 1 or version 2 database is MIGRATED in place under AutoCreate and refused under
-/// ValidateOnly</b>, which is the journal's split per provider and per mode. Version 1 chains through version
-/// 2 to version 3 in one open. Each migration is one transaction, so an operator host that opens read-only
+/// either validation mode</b>, which is the journal's split per provider and per mode. Version 1 chains
+/// through version 2 to version 3 in one open. Each migration is one transaction, so an operator host that opens read-only
 /// still gets a refusal naming <see cref="SqliteCatalogSchema.RequiredMigration"/> rather than a file quietly
 /// rewritten underneath it.
 /// </para>
@@ -48,7 +48,7 @@ internal static partial class SqliteCatalogSchemaValidation
         IReadOnlyDictionary<string, string> actual = Read(() => ReadSchemaObjects(connection));
         if (actual.Count == 0)
         {
-            if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+            if (mode != ContentAuthoringSchemaMode.AutoCreate)
             {
                 throw Mismatch("missing");
             }
@@ -69,7 +69,7 @@ internal static partial class SqliteCatalogSchemaValidation
             // and something else besides is refused rather than half migrated. Under ValidateOnly the
             // refusal names the migration, which is the one thing an operator can act on.
             ValidateSchemaObjects(actual, SqliteCatalogSchema.VersionOneTables, 1);
-            if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+            if (mode != ContentAuthoringSchemaMode.AutoCreate)
             {
                 throw Mismatch("at unsupported version '1'");
             }
@@ -83,7 +83,7 @@ internal static partial class SqliteCatalogSchemaValidation
             // Read HERE rather than reusing the first snapshot, for the reason given below: a version 1 file
             // this open just migrated, or one another host migrated, has objects the snapshot never saw.
             ValidateVersionTwoObjects(Read(() => ReadSchemaObjects(connection)));
-            if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+            if (mode != ContentAuthoringSchemaMode.AutoCreate)
             {
                 throw Mismatch("at unsupported version '2'");
             }

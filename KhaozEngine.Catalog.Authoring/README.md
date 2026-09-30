@@ -35,9 +35,24 @@ ContentPublishResult published = await store.PublishAsync(
     new ContentPublishRequest("admin-endpoint", "oid:8f2c", "autumn price pass", draft.BaseVersion));
 ```
 
-`ContentAuthoringSchemaMode` is `AutoCreate` or `ValidateOnly`. `ValidateOnly` refuses an empty or
-mismatched database rather than creating anything, which is what a production host sets so a typo in a
-connection string cannot silently create a second empty catalog.
+`ContentAuthoringSchemaMode` governs initialization in the durable providers:
+
+| Mode | Schema | Type registrations |
+|---|---|---|
+| `AutoCreate` | Creates or migrates, then validates | Inserts new types and refreshes changed settings |
+| `ValidateOnly` | Refuses empty, legacy or mismatched schema | Inserts new types and refreshes changed settings |
+| `ValidateOnlyWithoutTypeSync` | Refuses empty, legacy or mismatched schema | Reads id/key compatibility and changes nothing |
+
+`ValidateOnly` still writes registration rows and their update times when settings change.
+Use `ValidateOnlyWithoutTypeSync` before a hosted upgrade preview. It accepts added registrations and
+changed chunk slots, visibility or id ceilings without storing them, and refuses a conflicting stored
+type id/key pairing. `ExportBundleAsync` and the upgrade preview then describe stored type settings,
+omit registry-only additions from the baseline, and use this build's registered field schemas to read
+rows. The planner also receives the current registry so it can compare the two declarations.
+
+The new mode governs the open only. It does not block later writes, and `ReadPublishBaselineAsync`
+can clear a stale draft freeze. Reopen with `ValidateOnly` or `AutoCreate` when type synchronization
+is required for an apply or an authoring host.
 
 `ContentAuthoringException` is the one exception this package throws. It carries the offending content type,
 the definition id and a stable `Reason` token beside the message, and an operator's log line keys on the
@@ -838,9 +853,10 @@ run with no rival pays none of it.
   otherwise run `Apply`, then perform the strict load. A failed report stops the host with the report text and
   its exit code.
 - **Hosted arm.** A dependent server never upgrades implicitly. A deploy step runs the game's upgrade command
-  in `Preview`, then in `Apply` with `ExpectedVersion` set to the version it previewed, before the server
-  starts. A server booting against a catalog with pending upgrades refuses with the pending ids and the
-  command to run.
+  in `Preview` after opening with `ValidateOnlyWithoutTypeSync`, so pre-drain validation does not rewrite
+  the running server's type settings. After draining, reopen with `ValidateOnly` and run `Apply` with
+  `ExpectedVersion` set to the version it previewed, before the server starts. A server booting against a
+  catalog with pending upgrades refuses with the pending ids and the command to run.
 - **Solo client.** A host that fails before listening hands its report to the client, which shows it on screen
   instead of retrying a join that cannot succeed. The launching mechanism is game owned.
 

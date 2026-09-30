@@ -71,6 +71,11 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.True(split.Scene.ResolvedLastRenderForTests, $"frame {n}: only the fused scene resolved");
                 Assert.Equal(TemporalResolveEntry.Fused, fused.Scene.TemporalResolveRendererForTests?.LastEntry);
                 Assert.Equal(TemporalResolveEntry.Split, split.Scene.TemporalResolveRendererForTests?.LastEntry);
+                // At Native the split records its second pass compiled without the display-sized reconstruction,
+                // and the fused resolve keeps it, so this walk also holds that program to the rule's own output.
+                Assert.Equal(ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(split.Device),
+                        upscales: preset != TemporalUpscale.Native),
+                    split.Scene.TemporalResolveRendererForTests!.LastEntryFragmentsForTests()[1]);
                 float[] a = Read(fused, static h => h.Color(h.WriteIndex));
                 float[] b = Read(split, static h => h.Color(h.WriteIndex));
                 for (int i = 0; i < a.Length; i++) colour.Add(n, a[i], b[i]);

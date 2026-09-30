@@ -145,6 +145,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["TemporalAccumulateHalf"] = "TemporalSplitResolve accumulate",
                 ["TemporalDebugViewHalf"] = "TemporalResolveRenderer debug view",
                 ["TemporalCountProbeHalf"] = "TemporalResolveRenderer count probe",
+                // The second pass at the display's own size binds exactly as the upscaling one.
+                ["TemporalAccumulateAtDisplaySize"] = "TemporalSplitResolve accumulate",
+                ["TemporalAccumulateAtDisplaySizeHalf"] = "TemporalSplitResolve accumulate",
             };
 
         /// <summary>
@@ -234,7 +237,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(76, catalog.Length);
+            Assert.Equal(78, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

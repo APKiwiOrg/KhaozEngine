@@ -831,6 +831,16 @@ and changed these details. Each group's "Contract amendments" block carries the 
     its cost facts (#1200). Both entry points still write the same history on both Windows legs, and on NVIDIA Vulkan
     the checkerboard and the chart keep what Metal keeps within 0.001.
 
+    Where the internal size is the display's, the split's second pass is compiled without the rule
+    (`TemporalAccumulateAtDisplaySizeFrag`, one switch after the precision header, so the rule is written once) and
+    recorded on every frame whose ratio of display to internal size is not above 1, the test the share makes. The
+    upscaling programs emit the same HLSL, MSL and SPIR-V as before, byte for byte. The fused resolve keeps the rule,
+    so the identity walk at Native holds the new program to the rule's output bit for bit. Under the default render
+    cap a 3456x2234 display at Native renders 3342x2160, a ratio of 1.03, so the rule runs there and its cost stays.
+    On the Apple M2 Max at 2560x1440 Native (alternately without and with the program, load average 3.5 to 12.4) the
+    split took 1.727 and 1.703 ms against 1.600 and 1.605 over the boxes, and 2.240 and 2.257 against 2.206 and
+    2.206 over the moving field.
+
     Measured on Metal (half precision), 320x180, HDR off. On the mip bias checkerboard, local contrast as a share of
     native's: Quality 0.781 to 0.883, Balanced 0.741 to 0.806, Performance 0.747 to 0.768, and UltraPerformance
     unchanged at 0.827. With the share forced whole on every pixel with history Performance reached only 0.800 and

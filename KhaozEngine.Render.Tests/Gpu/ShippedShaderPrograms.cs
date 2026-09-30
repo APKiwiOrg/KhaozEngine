@@ -24,7 +24,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 76 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 78 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -48,7 +48,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct shipped vertex and fragment pair, 76 of them.</summary>
+        /// <summary>Every distinct shipped vertex and fragment pair, 78 of them.</summary>
         public static IEnumerable<ShippedGraphicsProgram> GraphicsPrograms()
         {
             // Render2D.
@@ -192,6 +192,12 @@ namespace KhaozEngine.Tests.Gpu
                 ShaderSources.TemporalAccumulateHalfFrag);
             yield return new("TemporalDebugViewHalf", ShaderSources.FullscreenVert, ShaderSources.TemporalDebugHalfFrag);
             yield return new("TemporalCountProbeHalf", ShaderSources.FullscreenVert, ShaderSources.TemporalProbeHalfFrag);
+            // The split's second pass at each precision compiled for the display's own size, without the
+            // display-sized reconstruction.
+            yield return new("TemporalAccumulateAtDisplaySize", ShaderSources.FullscreenVert,
+                ShaderSources.TemporalAccumulateAtDisplaySizeFrag);
+            yield return new("TemporalAccumulateAtDisplaySizeHalf", ShaderSources.FullscreenVert,
+                ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag);
         }
 
         /// <summary>Every shipped compute kernel, across the four reachable cascade resolutions.</summary>

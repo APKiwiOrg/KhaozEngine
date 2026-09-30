@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 648
+# Rows: 664
 Beam.fragment.hlsl 763e8e2481a2a78f468f6d62ed5e3a24df6ffd7ad4d0e8c280ac5ad953b177fe 1809
 Beam.fragment.msl f8bb4e895ae8c1794baa7115089311abef23c86d22b47d85f68e225dae39ad99 1493
 Beam.fragment.spirv 7023f2b860be99c43999b4be78b8fe5cbdba1e201d451dd77c137a80224eba79 2724
@@ -506,6 +506,22 @@ TemporalAccumulate.layout.msl fa14b1810dd701c3c5cbde9c1dfb963407d622145c83e727cf
 TemporalAccumulate.vertex.hlsl a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23 691
 TemporalAccumulate.vertex.msl 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1 451
 TemporalAccumulate.vertex.spirv 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4 916
+TemporalAccumulateAtDisplaySize.fragment.hlsl 18fd4126a6028de62e8d79e2c267f09101da8fb8b509d9478167668fe3a63525 32791
+TemporalAccumulateAtDisplaySize.fragment.msl 8fe28c598ff71a3601c4abdbeb9aa0219be44eb5ea6fa7d442831026ad74da79 33161
+TemporalAccumulateAtDisplaySize.fragment.spirv 0673a51a169fc955f2f6672bff1bd3b92093cf9ecd4d59af93fe1b26671b3ec7 31176
+TemporalAccumulateAtDisplaySize.layout.hlsl fa14b1810dd701c3c5cbde9c1dfb963407d622145c83e727cf6fdb3fc2413fea 12 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+TemporalAccumulateAtDisplaySize.layout.msl fa14b1810dd701c3c5cbde9c1dfb963407d622145c83e727cf6fdb3fc2413fea 12 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+TemporalAccumulateAtDisplaySize.vertex.hlsl a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23 691
+TemporalAccumulateAtDisplaySize.vertex.msl 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1 451
+TemporalAccumulateAtDisplaySize.vertex.spirv 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4 916
+TemporalAccumulateAtDisplaySizeHalf.fragment.hlsl 3a2408ffb6407eadd6e6322c01b3c9d688863f883ebaa9dd7ef8552b08cc196e 33512
+TemporalAccumulateAtDisplaySizeHalf.fragment.msl 1021a2019176cb01e9a3e9ee18d51c43443c850990cba08b13b0d74cf902dc05 33512
+TemporalAccumulateAtDisplaySizeHalf.fragment.spirv 962dee490f9394463af5965ef3f5eca8ff6ab3859f6d38f86a2495f56589ba9f 31728
+TemporalAccumulateAtDisplaySizeHalf.layout.hlsl fa14b1810dd701c3c5cbde9c1dfb963407d622145c83e727cf6fdb3fc2413fea 12 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+TemporalAccumulateAtDisplaySizeHalf.layout.msl fa14b1810dd701c3c5cbde9c1dfb963407d622145c83e727cf6fdb3fc2413fea 12 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+TemporalAccumulateAtDisplaySizeHalf.vertex.hlsl a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23 691
+TemporalAccumulateAtDisplaySizeHalf.vertex.msl 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1 451
+TemporalAccumulateAtDisplaySizeHalf.vertex.spirv 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4 916
 TemporalAccumulateHalf.fragment.hlsl f7c8bc0fc9acc685901ee62fb59bff17bd9f0f847199d34ef944e4f282f638d8 34679
 TemporalAccumulateHalf.fragment.msl 83b8eab76ad1f3fb773bc78f6d08ee30d8e9d60d33a4902ea0713f4fd4023023 34694
 TemporalAccumulateHalf.fragment.spirv 761ad022e337606914fff839123efc23724fbe4160b435595d526f10fa4b2514 32936

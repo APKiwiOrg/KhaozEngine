@@ -7,7 +7,9 @@ namespace KhaozEngine.Render3D.Internal
     /// reconstruction with the Lanczos 2 sized in display pixels, whose kernels the sample weight already evaluates
     /// (<c>temporalGather</c>), and a pixel whose history is converged and still takes it in proportion to
     /// <c>temporalDisplayShare</c>. A fresh, moving or reactive pixel, where few samples have landed near it, keeps
-    /// the internal kernel. Included in <see cref="TemporalAccumulateGlsl"/>.
+    /// the internal kernel. Included in <see cref="TemporalAccumulateGlsl"/>. The split's second pass at the display's
+    /// own size compiles without the gather's display-sized sum and the share
+    /// (<see cref="TemporalAccumulateAtDisplaySizeFrag"/>).
     /// </summary>
     internal static partial class ShaderSources
     {

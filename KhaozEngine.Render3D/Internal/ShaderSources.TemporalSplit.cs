@@ -14,7 +14,8 @@ namespace KhaozEngine.Render3D.Internal
     /// 3x3 from the first pass's colours, the scene's own alpha and the reactive differences, reads its centre texel's
     /// surface back (<c>temporalStoredSurface</c>) and accumulates (<c>temporalAccumulatePixel</c>). The rare branches
     /// that read the scene's inputs, the moving share and the followed mark's check, read them as the fused resolve
-    /// does.</para>
+    /// does. A frame that does not upscale records it compiled without the display-sized reconstruction
+    /// (<see cref="TemporalAccumulateAtDisplaySizeFrag"/>).</para>
     /// <para><b>EXACT BY CONSTRUCTION.</b> Every value the first pass stores is held exactly: the colours and the
     /// reactive difference in half floats, which both entry points round them to in integer steps
     /// (<c>temporalHalf</c>, since packHalf2x16 rounded three ways on NVIDIA Vulkan), the expected depth and the edge

@@ -29,6 +29,10 @@ namespace KhaozEngine.Tests.Gpu
         {
             { "TemporalResolve", ShaderSources.TemporalResolveFrag, ShaderSources.TemporalResolveHalfFrag },
             { "TemporalAccumulate", ShaderSources.TemporalAccumulateFrag, ShaderSources.TemporalAccumulateHalfFrag },
+            {
+                "TemporalAccumulateAtDisplaySize", ShaderSources.TemporalAccumulateAtDisplaySizeFrag,
+                ShaderSources.TemporalAccumulateAtDisplaySizeHalfFrag
+            },
             { "TemporalDebugView", ShaderSources.TemporalDebugFrag, ShaderSources.TemporalDebugHalfFrag },
             { "TemporalCountProbe", ShaderSources.TemporalProbeFrag, ShaderSources.TemporalProbeHalfFrag },
         };
@@ -72,7 +76,7 @@ namespace KhaozEngine.Tests.Gpu
 
             TemporalResolvePrecision precision = TemporalResolvePrecisionPolicy.For(backend);
             string[] requested = rig.Factory.GraphicsPipelines.Select(p => p.FragmentGlsl).ToArray();
-            string[] wanted = [.. TemporalResolveRenderer.EntryFragments(entry, precision),
+            string[] wanted = [.. TemporalResolveRenderer.EntryFragments(entry, precision, upscales: true),
                 ShaderSources.TemporalDebugFragment(precision), ShaderSources.TemporalProbeFragment(precision)];
             foreach (string fragment in wanted) Assert.Contains(fragment, requested);
             TemporalResolvePrecision other = precision == TemporalResolvePrecision.Half
@@ -80,6 +84,7 @@ namespace KhaozEngine.Tests.Gpu
             foreach (string fragment in new[]
             {
                 ShaderSources.TemporalResolveFragment(other), ShaderSources.TemporalAccumulateFragment(other),
+                ShaderSources.TemporalAccumulateFragment(other, upscales: false),
                 ShaderSources.TemporalDebugFragment(other), ShaderSources.TemporalProbeFragment(other),
             })
             {

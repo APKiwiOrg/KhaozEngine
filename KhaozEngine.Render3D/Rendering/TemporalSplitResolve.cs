@@ -30,7 +30,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// <para>The sets and framebuffers name the scene's inputs and the history targets, so they are rebuilt with a new
     /// input texture or history generation and let go with the renderer's own sets.</para>
     /// </summary>
-    internal sealed class TemporalSplitResolve : IDisposable
+    internal sealed partial class TemporalSplitResolve : IDisposable
     {
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _prepareShaders, _accumulateShaders;
@@ -126,8 +126,10 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Record the first pass into the targets and the write index's previous depth, then the second pass
-        /// into the write index's colour and confidence, reading the read index's history and previous depth.</summary>
-        public void Run(IGpuCommandList cl, TemporalHistory history)
+        /// into the write index's colour and confidence, reading the read index's history and previous depth. A frame
+        /// that does not upscale (<see cref="Upscales"/>) records the second pass compiled for the display's own
+        /// size.</summary>
+        public void Run(IGpuCommandList cl, TemporalHistory history, bool upscales)
         {
             if (SkipPassForTests != TemporalSplitPass.Prepare)
             {
@@ -140,7 +142,7 @@ namespace KhaozEngine.Render3D.Rendering
             if (SkipPassForTests != TemporalSplitPass.Accumulate)
             {
                 cl.SetFramebuffer(history.ResolveFramebuffer(history.WriteIndex));
-                cl.SetPipeline(_accumulatePipeline);
+                cl.SetPipeline(AccumulatePipeline(upscales));
                 cl.SetGraphicsResourceSet(0, _accumulateSets[history.ReadIndex]
                     ?? throw new InvalidOperationException("TemporalSplitResolve.Run was called before Bind."));
                 cl.Draw(3);
@@ -192,6 +194,7 @@ namespace KhaozEngine.Render3D.Rendering
             ReleaseTargets(null);
             _preparePipeline.Dispose();
             _accumulatePipeline.Dispose();
+            DisposeAtDisplaySize();
             _prepareLayout.Dispose();
             _accumulateLayout.Dispose();
             _prepareShaders.Dispose();

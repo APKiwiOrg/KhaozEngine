@@ -210,7 +210,9 @@ void temporalGather(inout TemporalNeighbourhood n, TemporalKernels kernels, int 
     n.reconstruction += vec4(toVec3(ycc), toFloat(alpha)) * lanczosWeight;
     n.reconstructionWeight += lanczosWeight;
     afloat displayWeight = kernels.displayX[x] * kernels.displayY[y];
+#ifndef TemporalAtDisplaySize
     n.display += vec4(toVec3(ycc), 1.0) * toFloat(displayWeight);
+#endif
     n.sampleWeight = max(n.sampleWeight, clamp(displayWeight, afloat(0.0), afloat(1.0)));
     n.reactiveDifference = max(n.reactiveDifference, reactiveDifference);
 }
@@ -486,10 +488,13 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         }
     }
 
-    // Step 4 for a converged pixel: the display-sized reconstruction by its share (temporalDisplayCurrent).
+    // Step 4 for a converged pixel: the display-sized reconstruction by its share (temporalDisplayCurrent). A program
+    // compiled for the display's own size (TemporalAtDisplaySize), where the share is always none, leaves it out.
+#ifndef TemporalAtDisplaySize
     float displayShare = temporalDisplayShare(useHistory, historyState.x, motionPixels, reactive);
     if (displayShare > 0.0)
         current.xyz = temporalDisplayCurrent(current.xyz, n.display, displayShare, neighbourMin, neighbourMax);
+#endif
 
     // Step 8, second half: blend in the weighted space. The current weight is 1 on a reset and falls to
     // sampleWeight / (MaxAccumulation + sampleWeight), about one in sixteen, raised wherever reactive content or a

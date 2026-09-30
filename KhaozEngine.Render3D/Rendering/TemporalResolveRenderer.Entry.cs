@@ -40,11 +40,20 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>The fragment programs of the draws <see cref="Run"/> records for an entry point at a precision, in
-        /// order, before any count probe. For tests that find the resolve in recorded commands.</summary>
-        internal static string[] EntryFragments(TemporalResolveEntry entry, TemporalResolvePrecision precision) =>
+        /// order, before any count probe, on a frame that upscales or not
+        /// (<see cref="TemporalSplitResolve.Upscales"/>). For tests that find the resolve in recorded
+        /// commands.</summary>
+        internal static string[] EntryFragments(TemporalResolveEntry entry, TemporalResolvePrecision precision,
+            bool upscales) =>
             entry == TemporalResolveEntry.Split
-                ? [ShaderSources.TemporalPrepareFrag, ShaderSources.TemporalAccumulateFragment(precision)]
+                ? [ShaderSources.TemporalPrepareFrag, ShaderSources.TemporalAccumulateFragment(precision, upscales)]
                 : [ShaderSources.TemporalResolveFragment(precision), ShaderSources.TemporalDepthStoreFrag];
+
+        /// <summary><see cref="EntryFragments"/> for the entry point, the device's precision and the uniforms of the
+        /// last <see cref="Run"/>. For tests.</summary>
+        internal string[] LastEntryFragmentsForTests() => EntryFragments(
+            LastEntry ?? throw new System.InvalidOperationException("the resolve recorded no entry point"),
+            TemporalResolvePrecisionPolicy.For(_gd), TemporalSplitResolve.Upscales(LastUniforms));
 
         // BindInputs' first statement: the chosen entry point's own objects. A renderer used outside a scene, which
         // never selects, retires nothing, so the fused entry point there releases the split's targets by draining.
@@ -64,7 +73,7 @@ namespace KhaozEngine.Render3D.Rendering
         bool RunSplit(IGpuCommandList cl, TemporalHistory history)
         {
             if (Entry != TemporalResolveEntry.Split) return false;
-            _split!.Run(cl, history);
+            _split!.Run(cl, history, TemporalSplitResolve.Upscales(LastUniforms));
             return true;
         }
     }

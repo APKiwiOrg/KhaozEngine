@@ -44,10 +44,11 @@ public sealed class TemporalDebugViewSceneTests
     static bool Is(IGpuPipeline? p, string fragment) => (p as FakePipeline)?.Request?.FragmentGlsl == fragment;
 
     // A draw of either entry point of the resolve (TemporalResolveEntry), whichever the policy or its override picks,
-    // at the precision of the rig's backend.
+    // at the precision of the rig's backend, upscaling or at the display's own size.
     static bool IsResolve(IGpuPipeline? p)
-        => Enum.GetValues<TemporalResolveEntry>().Any(e => TemporalResolveRenderer.EntryFragments(e,
-            TemporalResolvePrecisionPolicy.For(Backend)).Any(fragment => Is(p, fragment)));
+        => Enum.GetValues<TemporalResolveEntry>().Any(e => new[] { false, true }.Any(upscales =>
+            TemporalResolveRenderer.EntryFragments(e, TemporalResolvePrecisionPolicy.For(Backend), upscales)
+                .Any(fragment => Is(p, fragment))));
 
     [Theory]
     [MemberData(nameof(ResolveViews))]
@@ -79,8 +80,7 @@ public sealed class TemporalDebugViewSceneTests
         // the set the fused resolve binds, which the renderer builds on either entry point for the views.
         TemporalResolveEntry entry = resolve.LastEntry
             ?? throw new InvalidOperationException("the resolve recorded no entry point");
-        string[] fragments = TemporalResolveRenderer.EntryFragments(entry,
-            TemporalResolvePrecisionPolicy.For(rig.Device));
+        string[] fragments = resolve.LastEntryFragmentsForTests();
         int resolveDraw = capture.Draws.FindIndex(d => Is(d.Pipeline, fragments[0]));
         DrawCapture.Drawn drawn = Assert.Single(capture.Draws, d => IsDebugView(d.Pipeline));
         int viewDraw = capture.Draws.IndexOf(drawn);

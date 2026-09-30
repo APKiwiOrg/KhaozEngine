@@ -9,24 +9,26 @@ namespace KhaozEngine.ItemInstances;
 /// <b>A bound of one is not a draw, and that is the whole reason this exists.</b>
 /// <see cref="IRandomSource.NextInt"/>'s own contract says a one-wide range consumes nothing, so a real
 /// draw over a live weight of 1, an open total of 1, a rarity total of 1 or an affix count whose minimum
-/// equals its maximum costs the stream NOTHING, exactly as a discard did. The stream position after an item
-/// then depends on what its pool happened to hold rather than on how many picks it made, and a seeded
-/// session diverges at the first item whose pool ran dry, which is what spec 9.3 forbids.
+/// equals its maximum costs the stream NOTHING, exactly as a discard did. Without an explicit Skip,
+/// those logical slots would be omitted as a pool collapsed or ran dry.
 /// </para>
 /// <para>
-/// So a collapsed bound takes <see cref="IRandomSource.Skip"/>, which advances the stream by exactly one
-/// draw and has the one answer the bound allows. The discard of spec 9.4 step 8 is the same call with a
-/// bound of zero, because a discard and a collapsed draw are the same thing seen from two sides.
+/// So a bound at or below one calls <see cref="IRandomSource.Skip"/> and returns 0. This reserves the
+/// same logical slot as a live bounded call. An empty weighted slot is discarded through Skip too.
+/// The seeded Skip consumes exactly one underlying NextULong, while a live NextInt may consume
+/// additional values during rejection sampling. The helper does not guarantee an identical underlying
+/// stream stride for every bound, and the cryptographic Skip is a no-op.
 /// </para>
 /// </summary>
 static class BoundedDraw
 {
     /// <summary>
-    /// A draw in [0, <paramref name="bound"/>), costing the stream exactly one draw whatever the bound is.
+    /// A draw in [0, <paramref name="bound"/>) for a bound above one, otherwise Skip and return 0.
+    /// Every call reserves one logical slot.
     /// </summary>
     /// <param name="random">The gameplay randomness seam the caller was handed.</param>
-    /// <param name="bound">The weight, count or width the draw is taken over. Anything at or below 1 has a
-    /// single answer, so it skips instead and answers 0.</param>
+    /// <param name="bound">The weight, count or width the draw is taken over. A bound at or below 1
+    /// calls Skip and answers 0, covering both collapsed and empty slots.</param>
     internal static int Next(IRandomSource random, int bound)
     {
         if (bound > 1)

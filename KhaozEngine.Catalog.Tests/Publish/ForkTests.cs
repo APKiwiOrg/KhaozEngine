@@ -195,6 +195,9 @@ public class ForkTests
     [InlineData("legacy_")]
     [InlineData("sword__legacy")]
     [InlineData("Sword_Legacy")]
+    [InlineData("")]
+    [InlineData("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklm")]
+    [InlineData("sword_\u00e9")]
     public async Task AForkKeyThatIsTakenOrMalformedIsRefusedByKec0041(string forkKey)
     {
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);

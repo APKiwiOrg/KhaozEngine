@@ -6383,7 +6383,9 @@ eye inside the occluder. The camera holds the metres the boom is short of its fu
 multiplies that shortfall by `exp(-BoomRecoveryRate * dt)`, frame-rate independent. `FollowCameraController.Update`
 calls it after `AdvanceTarget`, so a camera driven by the controller needs only the rate. A camera driven without
 the controller calls `camera.AdvanceBoom(dt)` once a frame. `Warp` and `SnapToTarget` clear the held shortfall, so
-a teleport never eases out from the old site. **The `Distance` setter shifts it by the change in distance**,
+a teleport never eases out from the old site. Reading `Eye` with both `Occlusion` and `BoomProbe` detached also
+clears the shortfall, so reattaching a clear seam keeps the full boom length.
+**The `Distance` setter shifts it by the change in distance**,
 floored at zero. A zoom in during recovery holds the eye still until the new distance fits, so the eye never moves
 against the gesture, and a zoom out continues the ease. With no shortfall held a zoom is instant, and writing the
 same `Distance` every frame leaves the ease alone. A zero or non-finite rate follows the probe both ways at once.
@@ -9420,6 +9422,25 @@ tree.OnSelected = node => Select((SceneObject)node.Tag!);
 tree.Update(input);
 tree.Draw(batch, white, font);
 ```
+
+`tree.Update(pointer, in inputState)` accepts a pointer already updated from the snapshot and shares the
+existing manager overload's tap, wheel and reorder logic. The manager overload retains its pointer-input
+suppression.
+
+For richer rows, set `DrawRow`, an `Action<SpriteBatch, Rect, TreeNode, bool>`:
+
+```csharp
+tree.DrawRow = (rowBatch, contentBounds, node, selected) =>
+    PaintSkillContent(rowBatch, contentBounds, node, selected);
+tree.Update(pointer, in inputState);
+tree.Draw(batch, white, font);
+```
+
+The callback replaces the default label and receives the batch, visible content bounds, node and selected
+state. `contentBounds` starts after the depth indent, caret column and padding, clipped to `Bounds`.
+Fully hidden rows or content are skipped. A content scissor confines the painter and preserves any outer
+clip. The tree still paints carets, selection fills and the reorder indicator. Custom painters own
+localization, text scale and opacity. Leaving `DrawRow` null keeps the default `LocalizedText` label.
 
 A tap in a row's caret zone toggles a parent's `Expanded` flag, a tap elsewhere in the row selects it
 (`VisibleRows()` is the public depth-first walk both hit-testing and drawing share). A held press that
@@ -20155,8 +20176,16 @@ if (executor.TryGetAdmittedProjection(streamKey, "bag", out JournalAdmittedSecti
 }
 
 // When the player logs out.
-executor.ForgetStream(streamKey);
+executor.RequestForgetStream(streamKey);
 ```
+
+`RequestForgetStream` returns `JournalStreamForgetStatus.Unknown` when no view is held, `Forgotten` when an
+empty stream drops immediately, or `Deferred` while admitted work remains. Deferred forgetting retains
+projection bytes and queued order through the final required acknowledgement, including superseded
+completions. The existing bool `ForgetStream` requests the same behavior and returns true only for immediate
+removal, or false for unknown or deferred. Busy streams defer instead of throwing. A reconnecting owner calls
+`SeedCommitted` to clear its stream's pending request. Forgetting preserves quarantine and its full-group
+recovery requirement.
 
 `TryGetAdmittedProjection` returns the newest admitted uncommitted write over a section, or the committed baseline
 when nothing is in flight, and `IsCommitted` says which. `TryGetAdmittedStream` returns the whole stream: committed

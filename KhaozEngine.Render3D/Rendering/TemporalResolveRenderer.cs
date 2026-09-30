@@ -88,7 +88,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// first run.</summary>
         internal IGpuResourceSet? CurrentSet { get; private set; }
 
-        /// <summary>The uniforms uploaded for this frame. Internal, for the tests and planned temporal diagnostics.</summary>
+        /// <summary>The uniforms uploaded for this frame. The split reads them to pick its second pass, the one compiled
+        /// for an upscale or the one for the display's own size, and the tests read them too.</summary>
         internal TemporalResolveUniforms LastUniforms { get; private set; }
 
         internal static IGpuPipeline Fullscreen(IGpuResourceFactory f, IGpuShaderSet shaders, IGpuResourceLayout layout,

@@ -840,7 +840,12 @@ and changed these details. Each group's "Contract amendments" block carries the 
     cap a 3456x2234 display at Native renders 3342x2160, a ratio of 1.03, so the rule runs there and its cost stays.
     On the Apple M2 Max at 2560x1440 Native (alternately without and with the program, load average 3.5 to 12.4) the
     split took 1.727 and 1.703 ms against 1.600 and 1.605 over the boxes, and 2.240 and 2.257 against 2.206 and
-    2.206 over the moving field.
+    2.206 over the moving field. Across hosted runs the Tesla T4 drifted by more than that (the unchanged fused pass
+    took 7 to 10 percent longer in one run than in the last), so the cost measurement also times the split with its
+    upscaling second pass in the same run where the internal size is the display's. At 2560x1440 Native the program
+    compiled for the display's size saves, paired round medians over the boxes and the moving field, 0.107 and 0.051
+    ms on the M2 Max, 0.120 and 0.188 under Direct3D 11, 0.364 and 0.335 under Windows Vulkan and 0.114 and 0.120
+    under Linux Vulkan (hosted run 36652901713).
 
     Measured on Metal (half precision), 320x180, HDR off. On the mip bias checkerboard, local contrast as a share of
     native's: Quality 0.781 to 0.883, Balanced 0.741 to 0.806, Performance 0.747 to 0.768, and UltraPerformance

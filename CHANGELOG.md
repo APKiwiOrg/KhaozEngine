@@ -29,6 +29,27 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   unsigned content-version varints, full 64-bit structural varint parsing and all four entry-size examples
   (#996, #925, #905, #903).
 
+- Orbit camera recovery clears stale shortfall when both probes are detached. Headless cases cover cache invalidation,
+  invalid recovery inputs, bridge decks, raised observer planes and shallow probes (#1184).
+- Tile presentation keeps the physical final-step direction until the displayed body lands, then resolves its target
+  aim. Games can nominate entity aim points from the selected newest or delayed footprint without changing gameplay
+  reach or encoded state (#1203, #976).
+- TreeView supports custom row content with clipped bounds and a Pointer/InputState update overload. Carets, selection,
+  reorder gestures and the default localized label remain supported (#881).
+- Journal stream forgetting defers while admitted work remains and drops the view after its final acknowledgement.
+  Reseeding cancels the pending request, and quarantine recovery remains required (#872).
+- Container craft intent includes the authored plan id for paid and free crafts. Existing canonical operation and
+  event bytes remain stable. Explicit legacy client replay verifies retained plan evidence and refuses to return a
+  receipt when that proof has been compacted (#1177).
+- Item reference remapping uses registration-declared entry order, preserving authored lists and canonical sorted
+  lists beyond the old 256-entry scratch size (#930).
+- SQL Server wallet and world bootstrap serialize each complete create and widen batch under a transaction-owned
+  application lock, preserving legacy rows and nullable timestamps (#1195).
+- `ValidateOnlyWithoutTypeSync` validates an existing catalog schema without synchronizing registered types. Upgrade
+  previews can inspect stored settings without changing type rows or their timestamps (#1062).
+- Catalog diffs read all version rows through an optional bulk capability, with compatible paging for stores that
+  implement the existing interface. Historical and retired-row semantics remain intact (#952).
+
 ## 20.15.1
 
 - A prepared tile attack whose target is out of legal reach on its impact tick now waits for legal reach, for up

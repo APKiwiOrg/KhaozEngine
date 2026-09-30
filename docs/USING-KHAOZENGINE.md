@@ -16213,7 +16213,10 @@ Authoring is `KhaozEngine.Catalog.Authoring`, in the `Server` umbrella, and it i
 seam, `IContentAuthoringStore`, carries the twenty-nine members every backend implements: schema
 initialization, the version list and the operator pin, the one open draft, publish and rollback, row and audit
 reads, id allocation, families, and bulk import and export. There are three implementations, and a caller
-written against the seam runs on all three.
+written against the seam runs on all three. All three also implement optional `IContentVersionRowSource`.
+`ReadVersionRowsAsync` returns rows live at one version, including retired rows and historical revision
+metadata, ordered by type id then definition id. Version 0 reads the active published version without the
+open draft or operator pin. Empty published catalogs return an empty list.
 
 ```csharp
 // tests and tools: no database at all, same contract
@@ -16231,7 +16234,19 @@ await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly, ct);
 `AutoCreate` creates the schema when the database carries no catalog table and validates it after.
 `ValidateOnly` refuses an empty or mismatched database instead, which is what a production host sets so a typo
 in a connection string cannot silently create a second empty catalog and serve it. A mismatch is a
-`ContentAuthoringException` naming the object and the required migration.
+`ContentAuthoringException` naming the object and the required migration. Both existing modes synchronize
+registered type settings after schema validation.
+
+For a hosted upgrade preview, open with `ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync`. It validates
+an existing current schema and checks stored type id/key compatibility through reads. Changed registration
+settings and registry-only additions do not rewrite stored types or their timestamps. `ExportBundleAsync`
+reports stored type settings, so the preview sees the catalog the running server holds. This mode governs
+open-time behavior. Ordinary mutation APIs remain available, and `ReadPublishBaselineAsync` still clears stale
+publish freezes.
+
+```csharp
+await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync, ct);
+```
 
 Edits go into the ONE open draft, whole or not at all, and ids are allocated at publish rather than at edit:
 
@@ -16630,6 +16645,10 @@ than an optimistic one. A rejected edit answers one object error carrying a stab
 actual base version, and a draft a publish holds frozen answers 409 naming the remedy. A mutating action
 reached by `GET` is refused 405 with `Allow: POST`. What the caller still owns is the console UI: the engine
 ships the actions and the payload shapes, not a screen.
+
+`catalog-diff` and rollback blocker reads use the optional whole-version capability when available. A
+published-to-published diff makes one bulk call per version, then filters to the admin surface's registered
+types. Stores implementing only `IContentAuthoringStore` retain the existing paged path.
 
 That frozen-draft remedy preserves a live publisher's marker. Wait for the publisher and read the draft
 again first. If the publisher process died before commit, confirm no publisher is live, then call
@@ -17576,7 +17595,11 @@ their canonical bytes, and event parameters and schema 2 envelopes keep their ex
 A known pre-upgrade client craft uses `ContainerCraftReplay.ResolveLegacyAsync` to check its original
 fingerprint and the retained head craft event. Matching authored plan evidence returns the original
 receipt, a changed plan conflicts, and missing or compacted evidence returns `EvidenceUnavailable` without
-a receipt. This is an explicit read-only compatibility path. A fingerprint mismatch alone never authorizes
+a receipt. Stores with tightened journal limits pass those limits to the overload
+`ResolveLegacyAsync(store, streamKey, requestedIdentity, limits)`. Its read budget is the smaller of
+`EventPayloadBytes` and `AggregateEventReadBytes`. A permitted budget too small for the evidence also returns
+`EvidenceUnavailable`. The existing cancellation-token overload uses `JournalLimits.Maximum`.
+This is an explicit read-only compatibility path. A fingerprint mismatch alone never authorizes
 fallback. The helper accepts a single client craft, while legacy server batches need evidence for their
 whole ordered request. See the package README for the compatibility contract.
 

@@ -177,6 +177,8 @@ public sealed class SqlServerJournalRowTimestampTests : IDisposable
     {
         await RebuildJournalAsync(SqlServerMutationJournalStore.VersionTwoSchemaSqlForTest);
         await SeedLegacyRowsAsync();
+        Assert.Equal(1, await CountAsync("SELECT COUNT(*) FROM dbo.journal_stream WHERE stream_key = N'legacy/a';"));
+        using var probe = new SqlServerJournalMigrationBackfillProbe(ConnectionString);
         var clock = new SqlServerJournalManualTimeProvider(T0.AddHours(1));
         var firstHoldsSchemaLock = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         bool secondWaited = false;
@@ -197,6 +199,7 @@ public sealed class SqlServerJournalRowTimestampTests : IDisposable
         Assert.True(secondWaited, "The second open never waited on the schema lock the first one held.");
         Assert.Equal(3, await SchemaVersionAsync());
         await AssertLegacyBackfillAsync();
+        Assert.Equal(1, probe.Updates);
     }
 
     private async Task HalfMigratedFinishesOnReopenAsync(int columnsAdded)

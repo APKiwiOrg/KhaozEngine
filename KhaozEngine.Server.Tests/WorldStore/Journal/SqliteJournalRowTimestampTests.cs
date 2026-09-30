@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.WorldStore.Journal;
 using KhaozEngine.WorldStore.Sqlite;
 using Microsoft.Data.Sqlite;
+using SQLitePCL;
 using Xunit;
 
 namespace KhaozEngine.Tests.WorldStore.Journal;
@@ -138,6 +140,69 @@ public sealed class SqliteJournalRowTimestampTests : IDisposable
         Assert.Equal(1, database.ScalarLong(path, "SELECT COUNT(*) FROM pragma_table_info('journal_operation') WHERE name = 'retention_started_at_utc';"));
         Assert.Equal(CreationColumnTables.Length, CreationColumnCount(path));
         AssertLegacyBackfill(path);
+    }
+
+    /// <summary>Both opens reach the writer transaction with a version 2 preflight, then backfill once.</summary>
+    [Fact]
+    public async Task Two_opens_race_one_migration()
+    {
+        string path = database.NewPath();
+        database.CreateEmpty(path);
+        database.Execute(path, SqliteJournalSchema.VersionTwoSchemaSqlForTest);
+        SeedLegacyRows(path);
+        Assert.Equal(1, database.ScalarLong(path, "SELECT COUNT(*) FROM journal_stream WHERE stream_key = 'legacy/a';"));
+        database.Execute(path, """
+            CREATE TABLE test_backfill_probe (backfill_update INTEGER NOT NULL);
+            CREATE TRIGGER test_backfill_probe_trigger AFTER UPDATE ON journal_stream
+            WHEN NEW.stream_key = 'legacy/a'
+            BEGIN
+                INSERT INTO test_backfill_probe(backfill_update) VALUES (1);
+            END;
+            """);
+        try
+        {
+            using var start = new Barrier(2);
+            Task[] opens = Enumerable.Range(0, 2).Select(_ => Task.Factory.StartNew(() =>
+            {
+                using var connection = new SqliteConnection(database.ConnectionString(path));
+                connection.Open();
+                using (SqliteCommand bootstrap = connection.CreateCommand())
+                {
+                    bootstrap.CommandText = SqliteJournalSchema.BootstrapSql(
+                        new SqliteMutationJournalStoreOptions(database.ConnectionString(path)));
+                    bootstrap.ExecuteNonQuery();
+                }
+
+                bool reachedMigration = false;
+                bool bothReady = false;
+                raw.sqlite3_trace(connection.Handle!, (strdelegate_trace)((_, sql) =>
+                {
+                    if (reachedMigration || !sql.StartsWith("BEGIN IMMEDIATE", StringComparison.OrdinalIgnoreCase)) return;
+                    reachedMigration = true;
+                    bothReady = start.SignalAndWait(TimeSpan.FromSeconds(20));
+                }), null!);
+                try
+                {
+                    SqliteJournalSchema.Initialize(connection, SqliteJournalSchemaMode.AutoCreate);
+                }
+                finally
+                {
+                    raw.sqlite3_trace(connection.Handle!, (strdelegate_trace)null!, null!);
+                }
+                Assert.True(reachedMigration, "The open never reached the version 3 migration transaction.");
+                Assert.True(bothReady, "Both opens must read version 2 before either takes the writer lock.");
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)).ToArray();
+            await Task.WhenAll(opens);
+
+            Assert.Equal(3, SchemaVersion(path));
+            Assert.Equal(CreationColumnTables.Length, CreationColumnCount(path));
+            AssertLegacyBackfill(path);
+            Assert.Equal(1, database.ScalarLong(path, "SELECT COUNT(*) FROM test_backfill_probe;"));
+        }
+        finally
+        {
+            database.Execute(path, "DROP TRIGGER IF EXISTS test_backfill_probe_trigger; DROP TABLE IF EXISTS test_backfill_probe;");
+        }
     }
 
     [Theory]

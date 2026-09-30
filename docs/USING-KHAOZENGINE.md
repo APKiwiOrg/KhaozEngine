@@ -10307,6 +10307,10 @@ lifecycle for animation timing, while the live vertical velocity remains on the 
   so it stays steady under lag. Use it to drive a speed HUD, footstep audio, or a locomotion blend instead of
   differencing `LocalRenderState.Position`, which carries the decaying reconciliation render offset and wobbles
   during a steady run.
+  `ClientPrediction.RemainingPresentationMovement` reports the planar movement still to travel through
+  inter-tick interpolation, in the state's position units, excluding the reconciliation offset. It reaches
+  zero at the interpolation endpoint. An ordinary reconciliation translates both endpoints and preserves
+  this commanded segment. Reset, reseed and hard snap discard it.
 
 ```csharp
 var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, new WorldClientConfig { TickSeconds = 1f/30f });
@@ -11805,8 +11809,9 @@ Draw(playerMesh, me.Position, me.Yaw);
 - **A mid-step body faces its physical glide direction**, from `StepFrom` to `Tile`, until the displayed step
   fraction reaches 1. The simulator can already have turned `Facing` toward an interaction target at the start
   of the final step. Both local and remote poses keep the glide direction until landing, then use the target
-  aim. A remote carried to fraction 1 can aim before its next snapshot. After landing, a body with no lock or
-  an unresolved target keeps the tile facing.
+  aim. Local prediction also waits for the final inter-tick movement to finish after the simulation marks
+  the step complete. A remote carried to fraction 1 can aim before its next snapshot. After landing, a body
+  with no lock or an unresolved target keeps the tile facing. A reconciliation offset does not delay aim.
 - **Nominate an authored object's aim tile** by overriding `ITileTargets.TryGetAimPoint(target, out Vector2
   tilePlanar, out int plane)` on the resolver passed to the client constructor. The default answers the footprint
   centre, so an existing resolver needs no change.
@@ -17488,6 +17493,12 @@ kind at or above 1,024 is remapped by declaring its field shape and its referenc
 re-encodes rather than patching bytes, because a replacement id can change a varint's width, and it never
 writes the page: the rewrite is lazy and joins whatever commit comes next, which is safe because the rule set
 is required to be idempotent and `VettedRemapRules.Vet` refuses one that is not.
+
+`InstanceFieldShape.EntryOrder` defaults to `InstanceEntryOrder.Authored`. A custom sorted list declares
+`AscendingByEntryReference`, with a byte or varint repeat count, exactly one scalar entry reference and no
+nested payload. Remapping restores that reference order, including lists wider than 256 entries, while its
+codec still validates ascending order and duplicate policy. Legacy registrations using the shipped
+`AffixList` codec normalize to ascending order. Authored lists keep their sequence.
 
 ### A tick of operations as one commit (19.0.0)
 

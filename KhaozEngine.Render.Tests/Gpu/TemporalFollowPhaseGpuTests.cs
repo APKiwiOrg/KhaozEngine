@@ -38,6 +38,17 @@ namespace KhaozEngine.Tests.Gpu
     /// prints every cell's worst value over its phases, the phases over its bound, and the value at each phase. By
     /// default each table runs a few cells, and with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every cell its fact holds.
     /// HDR is off, the sharpen is at its default, and the measured values are Metal on Apple silicon.
+    /// <para>
+    /// A follow trail is read in two regions. Near the edge: every pixel the followed object uncovered but those
+    /// within one display pixel of it now. Below Native that region lies within the reconstruction's reach, so it also
+    /// reads the current frame's own spread of the object's texel onto the ground or wall, which no history removes:
+    /// the orthographic walk rendered with no history at all reads up to 60 there at Performance and 1.5 display
+    /// pixels a frame. Past the reach: only the pixels more than
+    /// <see cref="TemporalFollowCameraRuns.SpillPixels"/> from the object now, 3 display pixels at Quality, 4 at
+    /// Performance and 6 at UltraPerformance, where the reconstruction cannot spread its texel and only a history
+    /// kept from it can leave its colour. Each walk at Quality and Performance prints both, the second beside the
+    /// first, and so does each UltraPerformance walk the past-the-reach fact holds.
+    /// </para>
     /// </summary>
     public sealed partial class TemporalFollowPhaseGpuTests(TemporalFollowCameraRuns ortho,
         TemporalPerspectiveFollowRuns perspective, TemporalFollowLinesRuns lines, TemporalFollowStopRuns stops,
@@ -104,11 +115,31 @@ namespace KhaozEngine.Tests.Gpu
                 : $"the default cells only. Set {TemporalStabilityRuns.TableVariable}=1 for the full table");
         }
 
-        /// <summary>Every orthographic follow walk (<see cref="TemporalFollowCameraRuns"/>) over its start phases,
-        /// against the bound of <see cref="TemporalFollowCameraGpuTests.Walks"/>, and at UltraPerformance the trail
-        /// past the reconstruction's reach against <see cref="TemporalFollowCameraGpuTests.SpillWalks"/>. By default
-        /// the walk at 1 display pixel a frame at Native, Quality and Performance, and at half a pixel at
-        /// Quality.</summary>
+        /// <summary>A walk's trail past the reconstruction's reach over its start phases
+        /// (<see cref="TemporalFollowCameraRuns.BeyondSpill"/>), at Quality, Performance and UltraPerformance, against
+        /// <paramref name="bound"/>, or acceptance 3 of the region where that is null below UltraPerformance. Null at
+        /// Native, at UltraPerformance where the fact holds no bound, and where no pixel lies past the reach at any
+        /// phase.</summary>
+        PhaseSweep? PastTheReach(string cell, TemporalUpscale preset, int[] phases, Func<int, CrossingTrail> beyond,
+            int? bound)
+        {
+            if (preset == N || preset == U && bound is null) return null;
+            CrossingTrail[] runs = phases.Select(beyond).ToArray();
+            if (runs.All(c => c.Total.Checked == 0))
+            {
+                output.WriteLine($"{cell} past the reach: nothing lies there at any phase");
+                return null;
+            }
+            return new PhaseSweep($"{cell} past the reach", phases, runs.Select(c => c.Total.Excess).ToArray(),
+                runs.Select(c => bound ?? TemporalFollowCameraGpuTests.Allowed(c.Total.Checked)).ToArray());
+        }
+
+        /// <summary>Every orthographic follow walk (<see cref="TemporalFollowCameraRuns"/>) over its start phases, the
+        /// trail near the edge against the bound of <see cref="TemporalFollowCameraGpuTests.Walks"/>, and beside it at
+        /// Quality, Performance and UltraPerformance the trail past the reconstruction's reach, against
+        /// <see cref="TemporalFollowCameraGpuTests.SpillWalks"/> at UltraPerformance and acceptance 3 of its region
+        /// elsewhere. By default the walk at 1 display pixel a frame at Native, Quality and Performance, and at half a
+        /// pixel at Quality.</summary>
         [GpuFact]
         public void The_orthographic_follow_phase_table_prints_every_walk()
         {
@@ -129,25 +160,28 @@ namespace KhaozEngine.Tests.Gpu
                         runs.Select(c => TemporalFollowCameraGpuTests.Bound(preset, speed, c.Total.Checked)!.Value)
                             .ToArray()));
                     output.WriteLine(sweeps[^1].Row("ortho"));
-                    if (preset != U || TemporalFollowCameraGpuTests.SpillBound(speed) is not int spill) continue;
-                    int[] past = phases.Select(p => ortho.BeyondSpill(preset, speed, phase: p).Total.Excess).ToArray();
-                    sweeps.Add(new PhaseSweep($"{preset} {speed} past the reach", phases, past,
-                        phases.Select(_ => spill).ToArray()));
-                    output.WriteLine(sweeps[^1].Row("ortho"));
+                    if (PastTheReach($"{preset} {speed}", preset, phases,
+                        p => ortho.BeyondSpill(preset, speed, phase: p),
+                        preset == U ? TemporalFollowCameraGpuTests.SpillBound(speed) : null) is not { } past) continue;
+                    sweeps.Add(past);
+                    output.WriteLine(past.Row("ortho"));
                 }
             Footer(output, sweeps, ortho.Seconds - before);
         }
 
         /// <summary>Every perspective follow walk at Native and Quality (<see cref="TemporalPerspectiveFollowRuns"/>)
-        /// over its start phases, against the bound of the perspective follow fact. By default the low pitch walking
-        /// away at 1 display pixel a frame on Quality and the boot pitch walking away at 1 on Native.</summary>
+        /// over its start phases, the trail near the edge against the bound of the perspective follow fact, and beside
+        /// it on Quality the trail past the reconstruction's reach against acceptance 3 of its region. By default the
+        /// low pitch walking away at 1 display pixel a frame on Quality and the boot pitch walking away at 1 on
+        /// Native.</summary>
         [GpuFact]
         public void The_perspective_follow_phase_table_prints_Native_and_Quality() =>
             PerspectiveTable(new[] { N, Q }, (B, A, 1f, N), (L, A, 1f, Q));
 
-        /// <summary>The same at Performance and UltraPerformance, with the UltraPerformance trail past the
-        /// reconstruction's reach. By default the boot pitch walking towards the camera at 2 display pixels a frame on
-        /// Performance, and walking away at 2 on UltraPerformance from four phases.</summary>
+        /// <summary>The same at Performance and UltraPerformance, the trail past the reconstruction's reach against
+        /// acceptance 3 of its region on Performance and against the past-the-reach fact's bound on UltraPerformance.
+        /// By default the boot pitch walking towards the camera at 2 display pixels a frame on Performance, and
+        /// walking away at 2 on UltraPerformance from four phases.</summary>
         [GpuFact]
         public void The_perspective_follow_phase_table_prints_Performance_and_UltraPerformance() =>
             PerspectiveTable(new[] { P, U }, (B, T, 2f, P), (B, A, 2f, U));
@@ -177,14 +211,12 @@ namespace KhaozEngine.Tests.Gpu
                                 runs.Select(c => TemporalPerspectiveFollowGpuTests.Bound(pitch, heading, speed,
                                     preset, c.Total.Checked)).ToArray()));
                             output.WriteLine(sweeps[^1].Row("perspective"));
-                            if (preset != U
-                                || TemporalPerspectiveFollowGpuTests.ReachBound(pitch, heading, speed) is not int reach)
-                                continue;
-                            int[] past = phases.Select(p => perspective.BeyondSpill(preset, speed, pitch, heading,
-                                phase: p).Total.Excess).ToArray();
-                            sweeps.Add(new PhaseSweep($"{name} past the reach", phases, past,
-                                phases.Select(_ => reach).ToArray()));
-                            output.WriteLine(sweeps[^1].Row("perspective"));
+                            if (PastTheReach(name, preset, phases,
+                                p => perspective.BeyondSpill(preset, speed, pitch, heading, phase: p),
+                                preset == U ? TemporalPerspectiveFollowGpuTests.ReachBound(pitch, heading, speed)
+                                    : null) is not { } past) continue;
+                            sweeps.Add(past);
+                            output.WriteLine(past.Row("perspective"));
                         }
             Footer(output, sweeps, perspective.Seconds - before);
         }

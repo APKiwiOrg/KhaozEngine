@@ -76,7 +76,7 @@ public static class TileObjectRaycast
         const int Pad = 8;
         var search = new TileRect(x0 - Pad, z0 - Pad, x1 - x0 + Pad * 2 + 1, z1 - z0 + Pad * 2 + 1);
 
-        foreach (TileObject o in document.ObjectsIn(search, plane))
+        foreach (TileObject o in new TileObjectCandidates(document, search, plane))
         {
             if (catalogs.Archetype(o.ArchetypeId) is not { } archetype) continue;
             if (!bounds(archetype, out Vector3 min, out Vector3 max)) continue;

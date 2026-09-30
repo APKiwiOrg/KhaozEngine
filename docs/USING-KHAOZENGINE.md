@@ -8827,6 +8827,8 @@ roof counts as the well. Hand it a `TileObjectBoundsCache` over the view's own `
 bounds source (the per-archetype vertex box, measured once), and apply your own clickability gates on the hits
 (the archetype id rides on each one): a roof the view is currently hiding (`TileWorldView.IsRoofHidden`), a
 non-interactive archetype, or a cut at the ground hit's distance are all the caller's rules, deliberately.
+The candidate walk allocates nothing. Reuse a hit list with enough capacity and a warmed bounds cache for
+allocation-free repeated picks, including the per-frame picks made by `TileWorldCameraProbe`.
 
 ---
 

@@ -253,6 +253,8 @@ math is shared rather than copied here. It decides nothing about clickability: h
 applies its own gates (a hidden roof, a non-interactive archetype). `TileObjectBoundsCache` is the
 `BoundsSource` to hand it: the per-archetype vertex AABB measured once from the SAME `ITileMeshResolver` the
 view draws through, greybox fallback included.
+The candidate walk allocates nothing. Reuse the hit list with enough capacity and a warmed bounds cache for
+allocation-free repeated picks.
 
 ### Camera boom probe (`TileWorldCameraProbe`)
 
@@ -279,8 +281,8 @@ is the consumer's rule for which archetypes stop the camera. Tags are game conte
 - **Result.** The nearer of the terrain and object distances, capped at the requested length.
 - **Cost.** One surface pick, two when the pivot touches the ground, and up to two object picks per call, and the
   camera calls once per computed eye. The probe reuses one hit list and one bounds delegate, so it allocates
-  nothing itself, but the object pick walks the document through the `ObjectsIn` iterator, which does allocate
-  ([#1183](https://github.com/APKiwiOrg/KhaozEngine/issues/1183)). Not thread-safe, like the view it reads.
+  nothing after the hit list and model bounds cache have warmed. Object candidates walk resident region lists
+  without iterator allocations. Not thread-safe, like the view it reads.
 
 ### Real meshes (`GltfMeshResolver`)
 

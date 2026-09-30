@@ -174,8 +174,8 @@ public sealed partial class TileWorldClient : IDisposable
     /// are touching. A one-tile body BESIDE a one-tile target is unchanged to the bit: the aim point is the target's
     /// tile, so the yaw IS the cardinal. The same body holding a lock on a target it is not adjacent to (a step the
     /// simulator refused, for one tick) is aimed at that target instead of drawn along its facing. The target is
-    /// resolved through the same newest-snapshot read the reach rules make. A mid-step body,
-    /// a body with no lock, and a target that stopped resolving all keep the tile facing.</para>
+    /// resolved through the same newest-snapshot read the reach rules make. A mid-step body follows its physical
+    /// step direction. After landing, no lock or an unresolved target keeps the tile facing.</para>
     /// <para>The aimed yaw is taken from the body's FOOTPRINT CENTRE rather than from the smoothed position drawn
     /// above it, so a decaying reconciliation offset slides the body without wobbling the way it looks.</para>
     /// </summary>
@@ -185,7 +185,7 @@ public sealed partial class TileWorldClient : IDisposable
         {
             TileMoveState rendered = Prediction.RenderedState;
             TilePose drawn = Presenter.LocalPose(Prediction);
-            return TryResolveAim(rendered, delayed: false, out Vector2 aim)
+            return TryResolveAim(rendered, delayed: false, TilePresenter.StepFraction(rendered), out Vector2 aim)
                 ? new TilePose(drawn.Position, Presenter.Pose(rendered, aim).Yaw)
                 : drawn;
         }

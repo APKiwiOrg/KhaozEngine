@@ -11767,7 +11767,7 @@ TilePose me = client.LocalPose;                   // Position.Y is the ground un
 **A body holding a lock is drawn AIMING at it.** `TileMoveState.Facing` is the cardinal side the two footprints
 touch on. That is exactly right for reach and wrong as a drawn yaw the moment either body is bigger than one tile:
 a player beside a 2x2 cow points at the column of it they are touching, up to 18 degrees off its middle, and the cow
-points back the same way. So `client.LocalPose` and `client.TryGetRemotePose` aim a body that is NOT stepping and
+points back the same way. So `client.LocalPose` and `client.TryGetRemotePose` aim a body that has landed and
 holds a `CombatTarget`, or an `InteractTarget` whose route has run out, at that target's centre. Nothing to wire: it
 is the pose you already draw.
 
@@ -11781,8 +11781,11 @@ Draw(playerMesh, me.Position, me.Yaw);
   so the yaw IS `TilePresenter.Yaw(facing)`, exactly, with no tolerance needed. A footprint bigger than one tile
   moves it, and so does a locked body that is not adjacent to its target for a tick (a refused step), which is aimed
   rather than drawn along its facing.
-- **A mid-step body keeps its step facing**, and so does a body with no lock, and a body whose target stopped
-  resolving. The aim is for a body at rest, which is what a fight is between swings.
+- **A mid-step body faces its physical glide direction**, from `StepFrom` to `Tile`, until the displayed step
+  fraction reaches 1. The simulator can already have turned `Facing` toward an interaction target at the start
+  of the final step. Both local and remote poses keep the glide direction until landing, then use the target
+  aim. A remote carried to fraction 1 can aim before its next snapshot. After landing, a body with no lock or
+  an unresolved target keeps the tile facing.
 - **Nominate an aim tile** by overriding `ITileTargets.TryGetAimPoint(target, out Vector2 tilePlanar, out int
   plane)` on your own resolver. It is a default interface method answering the footprint centre, so an existing
   resolver needs no change, and the override is what a long serpent, a building door or a mounted rider wants.

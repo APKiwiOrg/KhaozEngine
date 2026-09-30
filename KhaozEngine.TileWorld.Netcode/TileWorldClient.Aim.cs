@@ -34,11 +34,12 @@ public sealed partial class TileWorldClient
     /// </summary>
     /// <param name="state">The presented state, a remote's delayed sample or the local rendered state.</param>
     /// <param name="delayed">True for a body drawn off the delayed timeline, which resolves its target there too.</param>
+    /// <param name="stepFraction">The displayed step progress, including a remote's carry-forward and step door.</param>
     /// <param name="aim">Where to look, in tile units on the lattice (x, z).</param>
-    bool TryResolveAim(in TileMoveState state, bool delayed, out Vector2 aim)
+    bool TryResolveAim(in TileMoveState state, bool delayed, float stepFraction, out Vector2 aim)
     {
         aim = default;
-        if (state.IsStepping) return false;
+        if (stepFraction < 1f) return false;
         if (state.CombatTarget != 0L) return TryResolveEntityAim(state.CombatTarget, delayed, out aim);
         if (state.InteractTarget == 0L || !state.Route.IsIdle) return false;
         return state.InteractDomain == TileInteractionDomain.Entity

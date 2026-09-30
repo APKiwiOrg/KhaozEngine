@@ -619,12 +619,14 @@ always keep the constructor map.
 - **A BODY HOLDING A LOCK IS DRAWN AIMING AT IT.** `TileMoveState.Facing` answers the cardinal side the two
   footprints touch on, which is exact for reach and up to 18 degrees off as a drawn yaw the moment either body is
   bigger than one tile: a player beside a 2x2 cow points at the column it touches, and so does the cow. So
-  `client.TryGetRemotePose` and `client.LocalPose` aim a body that is NOT stepping and holds a `CombatTarget`, or
+  `client.TryGetRemotePose` and `client.LocalPose` aim a body that has landed and holds a `CombatTarget`, or
   an `InteractTarget` whose route has run out, at that target's `ITileTargets.TryGetAimPoint`. A remote resolves
   its target on the same DELAYED timeline its body is drawn from, so an attacker never leads a target that has
   already moved on the server, and the local body resolves on the newest capture, which is the read the reach
-  rules already make. A mid-step body keeps its step facing, a body with no lock keeps the tile facing, and a
-  target that stopped resolving falls back to it too. A one-tile body beside a one-tile target draws EXACTLY its
+  rules already make. Until the displayed step fraction reaches 1, a body faces its physical `StepFrom` to `Tile`
+  direction even when the simulator has already turned `Facing` toward an interaction target. At landing it
+  uses the target aim, including a remote carried to fraction 1 before another snapshot arrives. A body with no
+  lock or an unresolved target keeps the tile facing after landing. A one-tile body beside a one-tile target draws EXACTLY its
   cardinal, to the bit, so a game asserting `TilePresenter.Yaw(TileDirection)` against a pose for an ordinary
   fight stays true. `TilePresenter.Yaw(Vector2 from, Vector2 to)` is the formula on its own, the same hand and the
   same north as `Yaw(TileDirection)`, and `presenter.Pose(state, aimTilePlanar, extraTicks)` is the whole thing

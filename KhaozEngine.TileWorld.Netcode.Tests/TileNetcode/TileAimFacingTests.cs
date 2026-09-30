@@ -260,11 +260,12 @@ public class TileAimFacingTests
         {
             h.Frames(1);
             TileMoveState r = h.Client.Prediction.RenderedState;
-            if (!r.IsStepping || r.CombatTarget != cow) continue;
+            if (!r.IsStepping || TilePresenter.StepFraction(r) >= 1f || r.CombatTarget != cow) continue;
             stepped++;
-            Assert.Equal(TilePresenter.Yaw(r.Facing), h.Client.LocalPose.Yaw);
+            float stepYaw = TilePresenter.Yaw(TileRoute.Direction(r.StepFrom, r.Tile));
+            Assert.Equal(stepYaw, h.Client.LocalPose.Yaw);
             float aimed = TilePresenter.Yaw(new Vector2(r.Tile.X, r.Tile.Z), centre);
-            if (MathF.Abs(aimed - TilePresenter.Yaw(r.Facing)) > 1e-3f) wouldHaveTurned++;
+            if (MathF.Abs(aimed - stepYaw) > 1e-3f) wouldHaveTurned++;
         }
 
         Assert.True(stepped > 0, "the body never stepped, so the rule was never exercised");

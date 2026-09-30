@@ -47,18 +47,36 @@ namespace KhaozEngine.Tests.Gpu
             => Compare(preset, outline: false);
 
         /// <summary>With the edge outline on, both entry points read the outlined images the pass ahead of the
-        /// resolve writes, so they still write the same history.</summary>
+        /// resolve writes, so they still write the same history. The outline is magenta, a colour nothing else in the
+        /// walk has, and the same walk with the outline off is the control: the history must hold the outline's
+        /// colour where the control holds next to none of it, so the fact shows the pass drew.</summary>
         [GpuFact]
         public void Both_entry_points_write_the_same_history_with_the_edge_outline_on()
-            => Compare(TemporalUpscale.Quality, outline: true);
+        {
+            int without = Compare(TemporalUpscale.Quality, outline: false);
+            int with = Compare(TemporalUpscale.Quality, outline: true);
+            output.WriteLine($"  outline-coloured history pixels on the last frame: {with} with the outline, "
+                + $"{without} without");
+            Assert.True(with >= MinOutlinePixels && with >= OutlineOverControl * Math.Max(1, without),
+                $"the outline left {with} outline-coloured history pixels against {without} without it");
+        }
 
-        void Compare(TemporalUpscale preset, bool outline)
+        // The outline's colour and how much of it the history must hold over the control. First estimates, printed.
+        static readonly Color OutlineColour = new(1f, 0f, 1f, 1f);
+        const int MinOutlinePixels = 100, OutlineOverControl = 4;
+
+        // A history pixel in the outline's colour: red and blue each well above green.
+        static bool IsOutline(float[] rgba, int i) => rgba[i] > rgba[i + 1] + 0.3f && rgba[i + 2] > rgba[i + 1] + 0.3f;
+
+        // The walk forced to each entry point. Returns the outline-coloured pixels of the fused history the last frame
+        // wrote.
+        int Compare(TemporalUpscale preset, bool outline)
         {
             // A walk each, since a walk holds the meshes its scene loaded.
             var fusedWalk = new PerspectiveFollowLines(W, H, Speed, preset, BladeTexels);
             var splitWalk = new PerspectiveFollowLines(W, H, Speed, preset, BladeTexels);
-            using var fused = new TemporalFixture(W, H, s => { fusedWalk.Setup(s, preset); s.Post.Outline = outline; });
-            using var split = new TemporalFixture(W, H, s => { splitWalk.Setup(s, preset); s.Post.Outline = outline; });
+            using var fused = new TemporalFixture(W, H, s => Setup(s, fusedWalk, preset, outline));
+            using var split = new TemporalFixture(W, H, s => Setup(s, splitWalk, preset, outline));
             fused.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Fused;
             split.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Split;
             output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, {W}x{H} {preset}"
@@ -68,7 +86,7 @@ namespace KhaozEngine.Tests.Gpu
             long colourCompared = 0;
 
             int frames = TemporalFollowLinesRuns.Last + 1 + StopFrames, compared = 0, band = 0, followed = 0,
-                movingShare = 0;
+                movingShare = 0, outlinePixels = 0;
             var colour = new EntryDifference("colour");
             var confidence = new EntryDifference("confidence");
             var locks = new EntryDifference("lock");
@@ -90,6 +108,8 @@ namespace KhaozEngine.Tests.Gpu
                 float[] b = Read(split, static h => h.Color(h.WriteIndex));
                 for (int i = 0; i < a.Length; i++) colour.Add(n, a[i], b[i]);
                 colourCompared += a.Length;
+                outlinePixels = 0;
+                for (int i = 0; i < a.Length; i += 4) if (IsOutline(a, i)) outlinePixels++;
                 float[] state = Read(fused, static h => h.Confidence(h.WriteIndex));
                 float[] other = Read(split, static h => h.Confidence(h.WriteIndex));
                 for (int i = 0; i < state.Length; i += 2)
@@ -128,6 +148,14 @@ namespace KhaozEngine.Tests.Gpu
             // upscaling.
             Assert.True(followed > 0 && (band > 0 || preset == TemporalUpscale.Native) && movingShare > 0,
                 $"the walk stored {band} band, {followed} followed marks and {movingShare} moving shares");
+            return outlinePixels;
+        }
+
+        static void Setup(Scene3D s, PerspectiveFollowLines walk, TemporalUpscale preset, bool outline)
+        {
+            walk.Setup(s, preset);
+            s.Post.Outline = outline;
+            s.Post.OutlineColor = OutlineColour;
         }
 
         // The walk's last frame is its last step, so the frames after it hold the box and the camera still. The pole

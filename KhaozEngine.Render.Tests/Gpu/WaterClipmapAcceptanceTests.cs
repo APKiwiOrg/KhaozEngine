@@ -499,7 +499,7 @@ namespace KhaozEngine.Tests.Gpu
                 Exception? thrown = null;
                 try
                 {
-                    _water.Draw(cl, _res, drawn, view * proj, new Vector3(-0.45f, -0.75f, -0.4f),
+                    _water.Draw(cl, _res, drawn, view * proj, view * proj, new Vector3(-0.45f, -0.75f, -0.4f),
                         new Color(1f, 1f, 1f, 1f), eye, settings, new SkySettings(), time);
                 }
                 catch (InvalidOperationException ex)

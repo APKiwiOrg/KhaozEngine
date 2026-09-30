@@ -131,7 +131,7 @@ namespace KhaozEngine.Tests.Gpu
             };
             WaterPlane[] planes = [new WaterPlane(0f, 0f, 0f, 16f)];
             water.PrepareFrame(new FramePrepare(settings, planes, 0f));
-            water.Draw(commands, resources, planes, Matrix4x4.Identity, -Vector3.UnitY, Color.White,
+            water.Draw(commands, resources, planes, Matrix4x4.Identity, Matrix4x4.Identity, -Vector3.UnitY, Color.White,
                 new Vector3(0f, 4f, 0f), settings, new SkySettings(), 0f);
         }
 

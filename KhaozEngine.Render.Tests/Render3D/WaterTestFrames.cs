@@ -36,7 +36,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             if (commands is RecordingGpuCommandList recording) recording.Clear();
             renderer.PrepareFrame(new FramePrepare(settings, planes, 0f));
-            renderer.Draw(commands, resources, planes, viewProj, -Vector3.UnitY, Color.White, eye, settings, Sky, 0f);
+            renderer.Draw(commands, resources, planes, viewProj, viewProj, -Vector3.UnitY, Color.White, eye, settings, Sky, 0f);
         }
 
         public static List<RecordingGpuCommandList.Upload> UploadsTo(RecordingGpuCommandList commands,

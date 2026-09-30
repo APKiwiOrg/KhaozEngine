@@ -272,6 +272,10 @@ namespace KhaozEngine.Render3D
             return CollectionsMarshal.AsSpan(_waterPlanesRelative);
         }
 
+        /// <summary>How the last frame routed queued water plane <paramref name="index"/>. Test seam for the proof that
+        /// temporal jitter never reaches the water cull (TemporalCpuIsolationTests).</summary>
+        internal Rendering.WaterRenderer.PlaneRoute WaterRouteForTests(int index) => _water.LastRoute(index);
+
         /// <summary>The queued distortion sprites with their positions in the render frame.</summary>
         ReadOnlySpan<DistortionSprite> RelativeDistortionSprites()
         {

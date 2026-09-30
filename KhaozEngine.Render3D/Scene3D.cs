@@ -1768,7 +1768,7 @@ namespace KhaozEngine.Render3D
             // renders byte-identical to before this pass existed.
             if (_waterPlanes.Count > 0)
             {
-                _water.Draw(cl, _res, RelativeWaterPlanes(), vp,
+                _water.Draw(cl, _res, RelativeWaterPlanes(), vp, displayVp,
                     Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin);
                 _frameStats.DrawCalls++;
                 // The ocean FFT's remaining GPU drain (the one a frame pays to PRIME its cascades, since #398

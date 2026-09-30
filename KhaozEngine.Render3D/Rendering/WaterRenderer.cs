@@ -557,18 +557,23 @@ namespace KhaozEngine.Render3D.Rendering
         /// state drives one bake and the bathymetry one texture. A procedural plane whose effective swell does not
         /// displace draws one quad of the shared flat buffer in either grid mode, because its vertex stage has no
         /// geometry to displace (WaterRenderer.FlatPlane.cs).
+        /// </para>
+        /// <para>
+        /// <paramref name="viewProj"/> is what the planes rasterise with, jittered under temporal anti-aliasing.
+        /// <paramref name="cullViewProj"/> is the same view without the jitter, and the CPU routing reads only it, so a
+        /// plane at the frustum's edge is kept or culled the same way on every frame of the jitter sequence.
         /// </para></summary>
         public void Draw(IGpuCommandList cl, RenderResources res, ReadOnlySpan<WaterPlane> planes,
-            Matrix4x4 viewProj, Vector3 lightDirection, Color lightColor, Vector3 cameraPos, WaterSettings settings,
-            SkySettings sky, float timeSeconds, Vector3 renderOrigin = default)
+            Matrix4x4 viewProj, Matrix4x4 cullViewProj, Vector3 lightDirection, Color lightColor, Vector3 cameraPos,
+            WaterSettings settings, SkySettings sky, float timeSeconds, Vector3 renderOrigin = default)
         {
             if (planes.Length == 0) return;
             LastClipmapRebuilds = 0;
             LastFocusedGridBuilds = 0;
             EnsureUboCapacity(planes.Length);
             // FrustumPlanes needs the matrix and the boxes tested against its planes in the same frame. The planes
-            // arrive reduced by the render origin and so does viewProj, so here both are render-relative.
-            int drawn = RoutePlanes(planes, settings, FrustumPlanes.Extract(viewProj));
+            // arrive reduced by the render origin and so does cullViewProj, so here both are render-relative.
+            int drawn = RoutePlanes(planes, settings, FrustumPlanes.Extract(cullViewProj));
             if (_clipCount > 0)
             {
                 EnsureClipPipeline();

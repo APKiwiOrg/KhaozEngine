@@ -207,7 +207,7 @@ namespace KhaozEngine.Tests.Render3D
             var sky = new SkySettings();
 
             renderer.PrepareFrame(new FramePrepare(settings, queued, timeSeconds: 0f));
-            renderer.Draw(cl, res, queued, Matrix4x4.Identity, -Vector3.UnitY, Color.White,
+            renderer.Draw(cl, res, queued, Matrix4x4.Identity, Matrix4x4.Identity, -Vector3.UnitY, Color.White,
                 new Vector3(0f, 10f, 0f), settings, sky, timeSeconds: 0f);
         }
     }

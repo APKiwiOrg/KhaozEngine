@@ -8,6 +8,11 @@ namespace KhaozEngine.ItemInstances.Journal;
 /// <summary>Resolves known pre-upgrade client crafts without weakening journal fingerprint validation.</summary>
 public static class ContainerCraftReplay
 {
+    /// <summary>Resolves legacy craft evidence with maximum journal limits.</summary>
+    public static Task<ContainerCraftReplayResult> ResolveLegacyAsync(IMutationJournalStore store,
+        string streamKey, JournalOperationIdentity requestedIdentity, CancellationToken cancellationToken = default)
+        => ResolveLegacyAsync(store, streamKey, requestedIdentity, JournalLimits.Maximum, cancellationToken);
+
     /// <summary>
     /// Checks a versioned single client craft identity against its legacy fingerprint and the retained
     /// head craft event in the receipt's named stream. Schema 1 audit bodies and schema 2 envelopes provide
@@ -17,12 +22,16 @@ public static class ContainerCraftReplay
     /// Call this explicitly for a known pre-upgrade client operation. A fingerprint mismatch alone does not
     /// authorize fallback. Server batch identities need evidence for their entire ordered operation list
     /// and are not accepted here. Store failures and cancellation propagate to the caller.
+    /// Pass the store's configured limits. The evidence read uses the smaller of its event payload and
+    /// aggregate event read budgets. A permitted budget that cannot fit the evidence returns no receipt.
     /// </remarks>
     public static async Task<ContainerCraftReplayResult> ResolveLegacyAsync(IMutationJournalStore store,
-        string streamKey, JournalOperationIdentity requestedIdentity, CancellationToken cancellationToken = default)
+        string streamKey, JournalOperationIdentity requestedIdentity, JournalLimits limits,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(requestedIdentity);
+        ArgumentNullException.ThrowIfNull(limits);
         ArgumentException.ThrowIfNullOrEmpty(streamKey);
         if (!ContainerOperationIntent.TryReadCraft(requestedIdentity.NormalizedIntent,
             out ContainerOperation requested, out int planId, out ReadOnlyMemory<byte> legacyCanonical))
@@ -46,7 +55,7 @@ public static class ContainerCraftReplay
 
         long headEventVersion = checked(range.BeforeVersion + 1);
         JournalEventPage page = await store.ReadEventsAsync(new JournalEventRead(streamKey,
-            range.BeforeVersion, headEventVersion, 1, JournalLimits.EngineMaximumEventPayloadBytes),
+            range.BeforeVersion, headEventVersion, 1, Math.Min(limits.EventPayloadBytes, limits.AggregateEventReadBytes)),
             cancellationToken).ConfigureAwait(false);
         if (page.Status != JournalEventPageStatus.Success || page.Events.Count != 1) return Unavailable();
         JournalStoredEvent stored = page.Events[0];

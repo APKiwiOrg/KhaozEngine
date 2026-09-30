@@ -107,9 +107,14 @@ public sealed partial class CraftPlanReplayTests : IDisposable
     static async Task<IReadOnlyList<JournalStoredEvent>> StoredEventsAsync(IMutationJournalStore store)
         => (await store.ReadEventsAsync(new JournalEventRead(StreamKey, 0, null, 64, 64 * 1024))).Events;
 
-    async Task<SqliteMutationJournalStore> NewStreamAsync()
+    async Task<SqliteMutationJournalStore> NewStreamAsync(JournalLimits? limits = null)
     {
-        SqliteMutationJournalStore store = database.Open(database.NewPath());
+        string path = database.NewPath();
+        SqliteMutationJournalStore store = database.Open(path,
+            new SqliteMutationJournalStoreOptions(database.ConnectionString(path))
+            {
+                Limits = limits ?? JournalLimits.Maximum,
+            });
         var page = new JournalProjectionWrite(StreamKey, "bank/p00",
             ContainerCommitOptions.DefaultProjectionSchema, ItemContainerPageCodec.Version,
             EncodePage(LoadedBank()));

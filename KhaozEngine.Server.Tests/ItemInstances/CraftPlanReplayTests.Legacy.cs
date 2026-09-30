@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.ItemInstances.Journal;
 using KhaozEngine.WorldStore.Journal;
@@ -10,6 +11,85 @@ namespace KhaozEngine.Tests.Server.ItemInstances;
 
 public sealed partial class CraftPlanReplayTests
 {
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    [InlineData(2, true)]
+    public async Task A_legacy_retry_replays_with_a_configured_event_read_limit(int eventSchema, bool paid)
+    {
+        var limits = new JournalLimits(aggregateEventReadBytes: 64 * 1024);
+        SqliteMutationJournalStore store = await NewStreamAsync(limits);
+        Guid operationId = Guid.NewGuid();
+        JournalCommit legacy = LegacyCommit(7, paid, operationId, eventSchema);
+        JournalCommitResult applied = await store.CommitAsync(legacy);
+        Assert.Equal(JournalCommitStatus.Applied, applied.Status);
+        byte[] page = await StoredPageAsync(store);
+        JournalOperationIdentity request = Commit(Plan(7, paid), operationId, afterLevel: 99).Identity;
+
+        ContainerCraftReplayResult replay = await ContainerCraftReplay.ResolveLegacyAsync(
+            store, StreamKey, request, limits);
+
+        Assert.Equal(ContainerCraftReplayStatus.Replayed, replay.Status);
+        Assert.Equal(applied.Receipt!.CommittedAtUtc, replay.Receipt!.CommittedAtUtc);
+        Assert.Equal(applied.Receipt.ResultData.ToArray(), replay.Receipt.ResultData.ToArray());
+        Assert.True(replay.Receipt.IsReplay);
+        Assert.Equal(page, await StoredPageAsync(store));
+        Assert.Single(await StoredEventsAsync(store));
+    }
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    [InlineData(2, true)]
+    public async Task A_changed_legacy_plan_conflicts_with_a_configured_event_read_limit(int eventSchema, bool paid)
+    {
+        var limits = new JournalLimits(aggregateEventReadBytes: 64 * 1024);
+        SqliteMutationJournalStore store = await NewStreamAsync(limits);
+        Guid operationId = Guid.NewGuid();
+        JournalCommit legacy = LegacyCommit(7, paid, operationId, eventSchema);
+        Assert.Equal(JournalCommitStatus.Applied, (await store.CommitAsync(legacy)).Status);
+        byte[] page = await StoredPageAsync(store);
+
+        ContainerCraftReplayResult conflict = await ContainerCraftReplay.ResolveLegacyAsync(
+            store, StreamKey, Commit(Plan(8, paid), operationId).Identity, limits);
+
+        Assert.Equal(ContainerCraftReplayStatus.OperationConflict, conflict.Status);
+        Assert.Null(conflict.Receipt);
+        Assert.Equal(page, await StoredPageAsync(store));
+        Assert.Single(await StoredEventsAsync(store));
+    }
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    [InlineData(2, true)]
+    public async Task A_permitted_read_budget_that_cannot_fit_plan_evidence_returns_no_receipt(
+        int eventSchema, bool limitPayload)
+    {
+        var storeLimits = new JournalLimits(aggregateEventReadBytes: limitPayload ? 64 * 1024 : 1);
+        JournalLimits readLimits = limitPayload
+            ? new JournalLimits(eventPayloadBytes: 1, aggregateEventReadBytes: 64 * 1024)
+            : storeLimits;
+        SqliteMutationJournalStore store = await NewStreamAsync(storeLimits);
+        Guid operationId = Guid.NewGuid();
+        JournalCommit legacy = LegacyCommit(7, false, operationId, eventSchema);
+        Assert.Equal(JournalCommitStatus.Applied, (await store.CommitAsync(legacy)).Status);
+        byte[] page = await StoredPageAsync(store);
+
+        ContainerCraftReplayResult unavailable = await ContainerCraftReplay.ResolveLegacyAsync(
+            store, StreamKey, Commit(Plan(7, false), operationId).Identity, readLimits);
+
+        Assert.Equal(ContainerCraftReplayStatus.EvidenceUnavailable, unavailable.Status);
+        Assert.Null(unavailable.Receipt);
+        Assert.Equal(page, await StoredPageAsync(store));
+        Assert.Equal(JournalOperationResolutionStatus.Replayed,
+            (await store.ResolveOperationAsync(legacy.Identity)).Status);
+        Assert.Equal(1L, (await store.ReadProjectionsAsync(new JournalProjectionQuery(StreamKey))).HeadVersion);
+    }
+
     [Theory]
     [InlineData(1, false)]
     [InlineData(1, true)]
@@ -29,7 +109,7 @@ public sealed partial class CraftPlanReplayTests
         Assert.Equal(JournalOperationResolutionStatus.OperationConflict,
             (await store.ResolveOperationAsync(request)).Status);
         ContainerCraftReplayResult replay = await ContainerCraftReplay.ResolveLegacyAsync(
-            store, StreamKey, request);
+            store, StreamKey, request, CancellationToken.None);
 
         Assert.Equal(ContainerCraftReplayStatus.Replayed, replay.Status);
         Assert.Equal(applied.Receipt!.CommittedAtUtc, replay.Receipt!.CommittedAtUtc);

@@ -339,12 +339,15 @@ envelopes remain unchanged.
 
 **Pre-upgrade client receipts require explicit plan evidence.** Their canonical intent omitted the plan id,
 so resolving a new versioned identity against one returns `OperationConflict`. For a known pre-upgrade
-client craft, call `ContainerCraftReplay.ResolveLegacyAsync(store, streamKey, requestedIdentity)`. It checks
-the original legacy fingerprint, then the retained head craft event in that receipt's stream range. Schema 1
-audit bodies and schema 2 envelopes can prove the target and authored plan. A matching plan returns the
+client craft, call `ContainerCraftReplay.ResolveLegacyAsync(store, streamKey, requestedIdentity, limits)`
+with the store's configured `JournalLimits`. The original overload uses `JournalLimits.Maximum`.
+The single-event read is bounded by the smaller of `EventPayloadBytes` and `AggregateEventReadBytes`.
+It checks the original legacy fingerprint and retained head craft event in the receipt's stream range.
+Schema 1 audit bodies and schema 2 envelopes can prove the target and authored plan. A matching plan returns the
 original replay receipt. A different plan returns `OperationConflict`. Missing, compacted or unreadable
-event evidence returns `EvidenceUnavailable` with no receipt. The helper only reads, never submits a
-mutation or rewrites a historical fingerprint. Store failures and cancellation propagate.
+event evidence, including a permitted read budget too small to fit it, returns `EvidenceUnavailable`
+with no receipt. The helper only reads, never submits a mutation or rewrites a historical fingerprint.
+Store failures and cancellation propagate.
 
 Do not infer permission to downgrade from a fingerprint mismatch. The helper accepts only a versioned
 single client Craft identity. Existing server batch receipts remain resolvable with their original ordered

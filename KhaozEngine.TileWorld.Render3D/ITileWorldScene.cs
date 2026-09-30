@@ -77,13 +77,13 @@ public interface ITileWorldScene
     /// no dissolve. <see cref="Scene3D"/> shows no body for that draw, at most a shadow, so the fallback treats it like
     /// a shadow-only draw.</summary>
     /// <exception cref="ArgumentException">The descriptor is shadow-only and casts no shadow, the pair the scene's
-    /// instance queue refuses with the same exception.</exception>
+    /// instance queue refuses with the same message. It names <c>draw</c> as its parameter.</exception>
     void DrawMesh(in RigidInstanceDraw draw)
     {
         if (draw.ShadowOnly && !draw.CastsShadows)
             throw new ArgumentException(
                 "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
-                "shadowOnly");
+                nameof(draw));
         // The colour pass and the plain shadow passes read a phase above one half as the complement, which keeps
         // nothing at a threshold of zero. An inverted shadow ignores the phase, so such a draw is at most a shadow.
         if (draw.ShadowOnly || (draw.DissolveComplement > 0.5f && draw.Dissolve <= 0f)) return;

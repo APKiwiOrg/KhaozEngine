@@ -108,9 +108,9 @@ public sealed class TileWorldSceneDescriptorTests
 
         ArgumentException fallback = Assert.Throws<ArgumentException>(() => scene.DrawMesh(nowhere));
 
-        Assert.Equal("shadowOnly", fallback.ParamName);
-        Assert.Equal(queue.ParamName, fallback.ParamName);
-        Assert.Equal(queue.Message, fallback.Message);
+        // The fallback names its own parameter, so only the reason matches the queue's.
+        Assert.Equal("draw", fallback.ParamName);
+        Assert.Equal(queue.Message.Replace("'shadowOnly'", "'draw'"), fallback.Message);
         Assert.Empty(legacy.Drawn);
     }
 

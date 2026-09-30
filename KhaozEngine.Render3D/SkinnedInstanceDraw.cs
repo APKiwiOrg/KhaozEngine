@@ -7,10 +7,10 @@ namespace KhaozEngine.Render3D;
 /// <summary>
 /// Every knob of one skinned draw in one value, for
 /// <see cref="Scene3D.DrawSkinned(in SkinnedInstanceDraw, ReadOnlySpan{Matrix4x4})"/>. The constructor sets the
-/// defaults of the plain <see cref="Scene3D.DrawSkinned(SkinnedMeshHandle, ReadOnlySpan{Matrix4x4}, Matrix4x4, Color)"/>
-/// apart from the tint: white tint, <see cref="Material.None"/>, no dissolve, casting shadows, no motion key. The bone
-/// palette stays a separate argument because it is a span. Build it with the constructor, because a <c>default</c>
-/// value has a transparent tint and casts nothing.
+/// defaults of the plain <see cref="Scene3D.DrawSkinned(SkinnedMeshHandle, ReadOnlySpan{Matrix4x4}, Matrix4x4, Color)"/>,
+/// <see cref="Material.None"/>, no dissolve, casting shadows and no motion key, and a white tint, which that overload
+/// takes as an argument instead. The bone palette stays a separate argument because it is a span. Build it with the
+/// constructor, because a <c>default</c> value has a transparent tint and casts nothing.
 /// </summary>
 public readonly struct SkinnedInstanceDraw
 {

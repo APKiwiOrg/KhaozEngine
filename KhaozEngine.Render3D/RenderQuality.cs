@@ -19,7 +19,8 @@ namespace KhaozEngine.Render3D
     ///   high-frequency terrain/foliage shimmer), at ~factor^2 the fragment cost.</item>
     /// <item><see cref="Temporal"/> - temporal anti-aliasing with upscaling: render jittered at a fraction of the display
     ///   (<see cref="TemporalSettings.Upscale"/>) and reconstruct the display image from the frame and its history.
-    ///   Single-sample, stable on thin moving detail, cheaper than MSAA at the lower presets.</item>
+    ///   Single-sample and stable on thin moving detail. The upscaling presets shade fewer pixels than the
+    ///   display.</item>
     /// </list>
     /// Extend by adding modes (future SMAA). Unknown or unsupported modes resolve to a safe fallback rather than
     /// throwing (see <see cref="AntiAliasing.ResolveFor(in GpuCapabilities)"/>).
@@ -35,7 +36,7 @@ namespace KhaozEngine.Render3D
         /// <summary>Supersample AA: render larger, downsample (edges AND shaded interiors).</summary>
         Ssaa,
         /// <summary>Temporal AA with upscaling. Forces <see cref="RenderScale.Temporal"/>, never combines with MSAA, and
-        /// is refused with <see cref="PixelPostProcessSettings.Pixelated"/>.</summary>
+        /// is forced off by <see cref="PixelPostProcessSettings.Pixelated"/>, like every mode.</summary>
         Temporal,
     }
 

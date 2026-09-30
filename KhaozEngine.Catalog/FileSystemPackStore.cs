@@ -47,7 +47,8 @@ namespace KhaozEngine.Catalog;
 /// implements and a boot over a store that does not is handed separately.
 /// </para>
 /// </summary>
-public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IContentVersionPointerSource
+public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IContentVersionPointerSource,
+    IVerifiedPackStoreWrite
 {
     /// <summary>The extension every stored object carries, whatever kind it is.</summary>
     public const string FileExtension = ".kec";
@@ -184,16 +185,7 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
         ReadOnlyMemory<byte> bytes,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(hash);
-
-        if (!IsContentAddress(hash))
-        {
-            throw new ContentPackException(
-                FormattableString.Invariant(
-                    $"'{hash}' is not a content address, and a store that files bytes under a name that is not their digest is not content addressed."),
-                hash,
-                ContentPackReader.ReasonHashMismatch);
-        }
+        RequireObjectAddress(hash);
 
         if (!ContentPackReader.TryVerify(bytes.Span, hash, out string? reason))
         {
@@ -204,6 +196,21 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
                 reason);
         }
 
+        await WriteObjectAsync(hash, bytes, cancellationToken).ConfigureAwait(false);
+    }
+
+    Task IVerifiedPackStoreWrite.PutVerifiedAsync(
+        string hash,
+        ReadOnlyMemory<byte> bytes,
+        CancellationToken cancellationToken)
+    {
+        RequireObjectAddress(hash);
+        return WriteObjectAsync(hash, bytes, cancellationToken);
+    }
+
+    async Task WriteObjectAsync(string hash, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         string path = PathFor(hash);
         if (File.Exists(path))
         {
@@ -214,6 +221,19 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await WriteThenMoveAsync(path, bytes, replace: false, cancellationToken).ConfigureAwait(false);
+    }
+
+    static void RequireObjectAddress(string hash)
+    {
+        ArgumentNullException.ThrowIfNull(hash);
+        if (!IsContentAddress(hash))
+        {
+            throw new ContentPackException(
+                FormattableString.Invariant(
+                    $"'{hash}' is not a content address, and a store that files bytes under a name that is not their digest is not content addressed."),
+                hash,
+                ContentPackReader.ReasonHashMismatch);
+        }
     }
 
     /// <inheritdoc />

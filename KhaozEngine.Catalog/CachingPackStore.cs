@@ -107,7 +107,15 @@ public sealed class CachingPackStore : IPackStore, IPackStorePruning
             return null;
         }
 
-        await Local.PutAsync(hash, fetched.Value, cancellationToken).ConfigureAwait(false);
+        if (Local is IVerifiedPackStoreWrite verified)
+        {
+            await verified.PutVerifiedAsync(hash, fetched.Value, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await Local.PutAsync(hash, fetched.Value, cancellationToken).ConfigureAwait(false);
+        }
+
         return fetched;
     }
 

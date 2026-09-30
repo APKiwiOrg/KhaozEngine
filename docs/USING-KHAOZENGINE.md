@@ -16102,6 +16102,12 @@ server boot, the client fetch loop and the string catalog, and it is in the `Fou
 `KhaozEngine.Catalog.Sqlite` and `KhaozEngine.Catalog.SqlServer` are the two durable authoring backends and
 are in no umbrella: add the one you want explicitly, the way you add a `WorldStore` backend.
 
+`ContentKeyRules.Defect(key)` checks the shared key-shape rule and returns the first defect or null. Its
+string overload reports UTF-16 positions and lengths, and its UTF-8 span overload checks runtime keys in byte
+units without materialising a string. `ContentKeyShape` in the authoring package preserves its existing
+`Defect(string)`, `Rule` and `MaxKeyLength` API by delegating to these lower catalog rules. `ContentKey`
+construction remains permissive so the validator can report every malformed key in a sweep.
+
 ```csharp
 var registry = new ContentTypeRegistry();
 EngineContentTypes.Register(registry);
@@ -16217,6 +16223,9 @@ new number, both manifest hashes, and the chunk accounting, so an operator sees 
 rewrote one chunk and reused the rest. `ContentRollback` builds a reviewable draft that restores an earlier
 version's field values, `ContentDiff` is the field-level comparison, and `ContentBundle` is the lossless
 seeding document, imported into an EMPTY database only.
+
+Bundle import preserves each family's `IsRetired` flag through family reads and later exports, including
+the in-memory authoring store. Its version line still restarts at 1.
 
 When a tool must inspect the bundle format before reading or combining the document, use the reader's
 precheck rather than parsing the JSON separately:

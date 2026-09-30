@@ -37,8 +37,10 @@ public class ContentKeyShapeTests
         string? byteDefect)
     {
         Assert.Equal(stringDefect, ContentKeyShape.Defect(key));
+        Assert.Equal(stringDefect, ContentKeyRules.Defect(key));
         ContentTypeRegistry registry = GameRegistry(Schema());
         ContentRow row = GameRow(7, key);
+        Assert.Equal(byteDefect, ContentKeyRules.Defect(row.Key.Utf8));
 
         ContentValidationReport report = Validate(Snapshot(registry, row), registry);
 

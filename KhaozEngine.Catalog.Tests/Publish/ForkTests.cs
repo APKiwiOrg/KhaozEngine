@@ -195,7 +195,6 @@ public class ForkTests
     [InlineData("legacy_")]
     [InlineData("sword__legacy")]
     [InlineData("Sword_Legacy")]
-    [InlineData("")]
     [InlineData("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklm")]
     [InlineData("sword_\u00e9")]
     public async Task AForkKeyThatIsTakenOrMalformedIsRefusedByKec0041(string forkKey)
@@ -224,6 +223,15 @@ public class ForkTests
 
         Assert.False(plan.IsValid);
         Assert.True(PublishFixtures.Has(plan, ForkCode), PublishFixtures.Findings(plan));
+    }
+
+    [Fact]
+    public void AnEmptyForkKeyIsRefusedWhenTheEditIsBuilt()
+    {
+        ArgumentException refusal = Assert.Throws<ArgumentException>(() => ContentEdit.Fork(
+            Thing, 1, new ContentKey(SourceKey), default, PublishFixtures.LegacyField, []));
+
+        Assert.Equal("forkKey", refusal.ParamName);
     }
 
     [Theory]

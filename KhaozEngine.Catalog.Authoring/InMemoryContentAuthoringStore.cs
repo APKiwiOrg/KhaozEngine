@@ -750,9 +750,11 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
 
         public int BlockSize { get; } = blockSize;
 
+        public bool IsRetired { get; init; }
+
         public List<ContentFamilyBlock> Blocks { get; } = [];
 
         public ContentFamily ToFamily()
-            => new(familyId, Type, FamilyKey, BlockSize, false, createdInVersion, Blocks);
+            => new(familyId, Type, FamilyKey, BlockSize, IsRetired, createdInVersion, Blocks);
     }
 }

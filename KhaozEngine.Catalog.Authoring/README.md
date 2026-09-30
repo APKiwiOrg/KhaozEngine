@@ -83,10 +83,12 @@ feature of whichever package motivated it.
 
 ### The key shape rule
 
-`ContentKeyShape` is the key rule of contracts 5.3 as one public predicate: `Defect(key)` answers the first
-defect as a phrase or null, `Rule` is the whole rule as one sentence for a message to append, and
-`MaxKeyLength` is the cap. It is public because the rule has callers at three layers and they are not one
-call site. The validator's `KEC0001` sweep walks the rows a candidate already holds. A fork's copy key never
+`ContentKeyShape` preserves the public authoring entry point for the key rule of contracts 5.3:
+`Defect(string)` answers the first defect as a phrase or null, `Rule` is the whole rule as one sentence for a
+message to append, and `MaxKeyLength` is the cap. It delegates to `ContentKeyRules` in `KhaozEngine.Catalog`,
+which also supplies the validator's UTF-8 span check. String diagnostics retain their UTF-16 positions and
+lengths, and runtime-key diagnostics retain their byte units. The rule has callers at three layers. The
+validator's `KEC0001` sweep walks the rows a candidate already holds. A fork's copy key never
 reaches that sweep, because the row it would go on does not exist until publish. And an admin surface has to
 refuse an add's key BEFORE the edit enters the draft, since a draft carrying a malformed key is wedged: every
 later validate reports it, every later publish refuses, and the only removal on this seam is a discard, which
@@ -864,8 +866,9 @@ version that is not a 32-bit integer. The precheck returns an unsupported intege
 report it. `Read` remains the operation that refuses a format version this build does not support.
 
 An import runs through the ORDINARY publish and there is no second mechanism. It restores the families and
-their blocks verbatim, restamps the bundle's rules as the new line's, turns every row into an `Add` edit and
-publishes the draft as version 1. `ContentEdit.Import` is the only factory that may name a definition id, and
+their blocks verbatim, including each family's `IsRetired` flag through family reads and later exports in
+every store. It restamps the bundle's rules as the new line's, turns every row into an `Add` edit and publishes
+the draft as version 1. `ContentEdit.Import` is the only factory that may name a definition id, and
 it is also the only one that may say a row is ALREADY retired, because a bundle carries its retired rows and
 already carries the rule that retired them. A refusal at any point AFTER the staging began resets the store to
 the empty state it was required to start from, so nothing is left half seeded, and that covers the staging

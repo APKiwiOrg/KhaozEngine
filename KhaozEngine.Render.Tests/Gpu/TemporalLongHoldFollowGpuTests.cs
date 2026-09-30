@@ -80,7 +80,8 @@ namespace KhaozEngine.Tests.Gpu
             {
                 TrailTally b = ortho.BeyondSpill(TemporalUpscale.UltraPerformance, speed, LongHold).Total;
                 int allowed = TemporalFollowCameraGpuTests.Allowed(b.Checked);
-                int? bound = TemporalFollowCameraGpuTests.SpillBound(speed);
+                int? bound = TemporalFollowCameraGpuTests.SpillBound(TemporalUpscale.UltraPerformance, speed,
+                    b.Checked);
                 int spill = TemporalFollowCameraRuns.SpillPixels(TemporalUpscale.UltraPerformance);
                 output.WriteLine($"| {speed} | {spill} | {b.Checked} | {b.Excess} | {allowed} | {Show(bound)} "
                     + $"| {Over(b.Excess, allowed, bound)} |");
@@ -126,7 +127,8 @@ namespace KhaozEngine.Tests.Gpu
                             TrailTally b = perspective.BeyondSpill(preset, speed, pitch, heading, LongHold).Total;
                             if (b.Checked == 0) continue;
                             int reachAllowed = TemporalPerspectiveFollowGpuTests.Allowed(b.Checked);
-                            int? reachBound = TemporalPerspectiveFollowGpuTests.ReachBound(pitch, heading, speed);
+                            int? reachBound = TemporalPerspectiveFollowGpuTests.ReachBound(pitch, heading, speed,
+                                preset, b.Checked);
                             reach.Add($"| {pitch} | {heading} | {speed} | {b.Checked} | {b.Excess} | {reachAllowed} "
                                 + $"| {Show(reachBound)} | {Over(b.Excess, reachAllowed, reachBound)} |");
                         }

@@ -17,7 +17,7 @@ namespace KhaozEngine.Tests.Gpu
     /// walk with the avatar standing still in the world, which keeps its own history by construction. HDR is off, the
     /// sharpen is at its default, and the measured values are Metal on Apple silicon.
     /// </summary>
-    public sealed class TemporalFollowStopGpuTests(TemporalFollowStopRuns runs, ITestOutputHelper output)
+    public sealed partial class TemporalFollowStopGpuTests(TemporalFollowStopRuns runs, ITestOutputHelper output)
         : IClassFixture<TemporalFollowStopRuns>
     {
         const float BootPitch = TemporalPerspectiveFollowGpuTests.BootPitch;
@@ -29,7 +29,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>How far every pixel showing the avatar may read over its control after a stop or a reversal, past
         /// the most it read over it before the turn, as a share of the control's error: the outline's pixels mix the
         /// ground or wall behind them, which passes in the walk and holds still in the control, so their histories
-        /// differ. 0.008 at most, measured.</summary>
+        /// differ. 0.008 at most on the first phase, and past it on some start phases at Quality and beside a passer
+        /// (<see cref="SweptWholeShares"/>).</summary>
         const double WholeShare = 0.02;
 
         /// <summary>The same under the damped camera, which resamples the history at fractional offsets after the
@@ -137,6 +138,7 @@ namespace KhaozEngine.Tests.Gpu
         internal static double Share(StopRun r, string set)
         {
             bool whole = set == "whole";
+            if (whole && SweptWholeShare(r) is double swept) return swept;
             return r.Ending == FollowEnding.DampedStop ? whole ? DampedWholeShare : DampedInnerShare
                 : whole ? WholeShare : 0;
         }

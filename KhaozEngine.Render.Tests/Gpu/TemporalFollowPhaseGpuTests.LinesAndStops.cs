@@ -17,11 +17,11 @@ namespace KhaozEngine.Tests.Gpu
         /// for the rest. By default the walk at 1.5 on Quality a quarter texel wide and at 2 three eighths
         /// wide.</summary>
         [GpuFact]
-        public void The_follow_lines_phase_table_prints_every_walk()
+        public void The_follow_lines_hold_their_share_from_every_start_phase()
         {
             double before = lines.Seconds;
-            Header(output, "still lines beside the orthographic follow walk over jitter start phases (#1207), report "
-                + "only, worst share in thousandths");
+            Header(output, "still lines beside the orthographic follow walk over jitter start phases (#1207), worst "
+                + "share in thousandths");
             var sweeps = new List<PhaseSweep>();
             foreach (TemporalUpscale preset in new[] { N, Q })
                 foreach (float speed in Speeds)
@@ -49,6 +49,7 @@ namespace KhaozEngine.Tests.Gpu
                         }
                     }
             Footer(output, sweeps, lines.Seconds - before);
+            Hold(sweeps, "the follow lines");
         }
 
         /// <summary>The followed avatar's stop, damped stop and reversal (<see cref="TemporalFollowStopGpuTests"/>)
@@ -57,11 +58,11 @@ namespace KhaozEngine.Tests.Gpu
         /// orthographic walk and the boot pitch away on Quality when they stop, and four phases for the rest. By
         /// default the orthographic stop and reversal on Quality.</summary>
         [GpuFact]
-        public void The_follow_stop_phase_table_prints_every_walk()
+        public void The_follow_stop_holds_its_bounds_from_every_start_phase()
         {
             double before = stops.Seconds;
-            Header(output, "the followed avatar's stop over jitter start phases (#1207), report only, worst margin "
-                + "over the control in thousandths of its error");
+            Header(output, "the followed avatar's stop over jitter start phases (#1207), regression bounds, worst "
+                + "margin over the control in thousandths of its error");
             var sweeps = new List<PhaseSweep>();
             foreach (var (label, preset, walk) in StopWalks())
             {
@@ -94,6 +95,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
             Footer(output, sweeps, stops.Seconds - before);
+            Hold(sweeps, "the follow stop");
         }
 
         // The same walk as the passer's, without the passer.

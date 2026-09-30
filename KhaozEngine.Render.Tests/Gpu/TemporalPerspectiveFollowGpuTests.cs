@@ -41,106 +41,154 @@ namespace KhaozEngine.Tests.Gpu
         const TemporalUpscale N = TemporalUpscale.Native, Q = TemporalUpscale.Quality,
             P = TemporalUpscale.Performance, U = TemporalUpscale.UltraPerformance;
 
-        /// <summary>Every walk the resolve leaves over acceptance 3, and its bound: the measured excess and about a
-        /// quarter more, at least 2 (amendment 23), the measured value in the comment. Where the resolve before the
-        /// band left more, and a bound under that still leaves the measured value a margin, the bound sits under it, so
-        /// four more bounds fail on that resolve. Three cannot: at the boot pitch away at half a display pixel a frame
-        /// on UltraPerformance, 23 against 24, and at 3 on Performance, 2 against 3, and at the low pitch sideways at
-        /// half a pixel on Performance, 2 against 3, it left one pixel more, so a bound under it would be the measured
-        /// value itself. Every other walk holds acceptance 3.</summary>
+        // Stands for acceptance 3 in PastTheReach.
+        const int Acceptance3 = -1;
+
+        /// <summary>Every walk the resolve leaves over acceptance 3 near the edge, and its bound: a regression bound
+        /// over the jitter's start phases (<see cref="TemporalFollowPhaseGpuTests"/>). Within the reconstruction's
+        /// reach of the avatar a pixel keeps one history, which either holds its edge's anti-aliasing in place or shows
+        /// the ground passing under it, and the jitter decides which
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1207">#1207</see>). A history for the edge's
+        /// coverage apart from the ground's is the fix
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1191">#1191</see>). The worst over the phases
+        /// and about a quarter more, at least 2, or the bound the walk held at its first phase where every phase
+        /// already met it. The comment gives the worst, the region's pixels, the phases run and the value at the
+        /// first phase. Every other walk meets acceptance 3 from every phase measured.</summary>
         static readonly (float Pitch, FollowHeading Heading, float Speed, TemporalUpscale Preset, int Bound)[]
             Residuals =
         {
-            (BootPitch, FollowHeading.Away, 0.5f, U, 28),              // measured 23 of 36
-            (BootPitch, FollowHeading.Away, 1f, U, 46),                // measured 37 of 96
-            (BootPitch, FollowHeading.Away, 1.5f, U, 47),              // measured 42 of 144, 48 before the band
-            (BootPitch, FollowHeading.Away, 2f, U, 22),                // measured 18 of 222
-            (BootPitch, FollowHeading.Away, 2.5f, U, 21),              // measured 17 of 284
-            (BootPitch, FollowHeading.Away, 3f, P, 4),                 // measured 2 of 368
-            (BootPitch, FollowHeading.Away, 3f, U, 6),                 // measured 4 of 368
-            (BootPitch, FollowHeading.Sideways, 0.5f, P, 6),           // measured 4 of 69
-            (BootPitch, FollowHeading.Sideways, 0.5f, U, 12),          // measured 10 of 69
-            (BootPitch, FollowHeading.Sideways, 1f, P, 5),             // measured 3 of 160
-            (BootPitch, FollowHeading.Sideways, 1f, U, 43),            // measured 35 of 160
-            (BootPitch, FollowHeading.Sideways, 1.5f, U, 31),          // measured 25 of 226
-            (BootPitch, FollowHeading.Sideways, 2f, Q, 4),             // measured 2 of 311
-            (BootPitch, FollowHeading.Sideways, 2f, P, 5),             // measured 3 of 311
-            (BootPitch, FollowHeading.Sideways, 2f, U, 42),            // measured 34 of 311
-            (BootPitch, FollowHeading.Sideways, 2.5f, P, 4),           // measured 2 of 377
-            (BootPitch, FollowHeading.Sideways, 2.5f, U, 36),          // measured 29 of 377
-            (BootPitch, FollowHeading.Sideways, 3f, U, 28),            // measured 23 of 464
-            (BootPitch, FollowHeading.Towards, 0.5f, U, 6),            // measured 4 of 24
-            (BootPitch, FollowHeading.Towards, 1f, Q, 4),              // measured 2 of 60
-            (BootPitch, FollowHeading.Towards, 1f, P, 5),              // measured 4 of 60, 6 before the band
-            (BootPitch, FollowHeading.Towards, 1f, U, 8),              // measured 6 of 60
-            (BootPitch, FollowHeading.Towards, 1.5f, U, 10),           // measured 8 of 96
-            (BootPitch, FollowHeading.Towards, 2f, U, 22),             // measured 18 of 132
-            (BootPitch, FollowHeading.Towards, 2.5f, U, 9),            // measured 7 of 144
-            (BootPitch, FollowHeading.Towards, 3f, P, 5),              // measured 3 of 180
-            (BootPitch, FollowHeading.Towards, 3f, U, 9),              // measured 7 of 180
-            (LowPitch, FollowHeading.Away, 0.5f, U, 13),               // measured 11 of 48
-            (LowPitch, FollowHeading.Away, 1f, U, 16),                 // measured 13 of 126
-            (LowPitch, FollowHeading.Away, 1.5f, U, 36),               // measured 29 of 184
-            (LowPitch, FollowHeading.Away, 2f, P, 5),                  // measured 3 of 268
-            (LowPitch, FollowHeading.Away, 2f, U, 26),                 // measured 21 of 268
-            (LowPitch, FollowHeading.Away, 2.5f, Q, 5),                // measured 4 of 436, 6 before the band
-            (LowPitch, FollowHeading.Away, 2.5f, P, 6),                // measured 4 of 436
-            (LowPitch, FollowHeading.Away, 2.5f, U, 31),               // measured 25 of 436
-            (LowPitch, FollowHeading.Away, 3f, P, 8),                  // measured 6 of 548
-            (LowPitch, FollowHeading.Away, 3f, U, 9),                  // measured 7 of 548
-            (LowPitch, FollowHeading.Sideways, 0.5f, N, 4),            // measured 2 of 71
-            (LowPitch, FollowHeading.Sideways, 0.5f, Q, 5),            // measured 3 of 71
-            (LowPitch, FollowHeading.Sideways, 0.5f, P, 4),            // measured 2 of 71
-            (LowPitch, FollowHeading.Sideways, 0.5f, U, 20),           // measured 16 of 71
-            (LowPitch, FollowHeading.Sideways, 1f, N, 5),              // measured 3 of 160
-            (LowPitch, FollowHeading.Sideways, 1f, Q, 5),              // measured 3 of 160
-            (LowPitch, FollowHeading.Sideways, 1f, P, 8),              // measured 6 of 160
-            (LowPitch, FollowHeading.Sideways, 1f, U, 33),             // measured 27 of 160
-            (LowPitch, FollowHeading.Sideways, 1.5f, P, 4),            // measured 2 of 226
-            (LowPitch, FollowHeading.Sideways, 1.5f, U, 16),           // measured 13 of 226
-            (LowPitch, FollowHeading.Sideways, 2f, P, 9),              // measured 7 of 313
-            (LowPitch, FollowHeading.Sideways, 2f, U, 21),             // measured 18 of 313, 22 before the band
-            (LowPitch, FollowHeading.Sideways, 2.5f, P, 9),            // measured 7 of 393
-            (LowPitch, FollowHeading.Sideways, 2.5f, U, 17),           // measured 14 of 393
-            (LowPitch, FollowHeading.Sideways, 3f, U, 9),              // measured 7 of 468
-            (LowPitch, FollowHeading.Towards, 2.5f, U, 4),             // measured 2 of 82
-            (LowPitch, FollowHeading.Towards, 3f, Q, 4),               // measured 2 of 92
+            (LowPitch, FollowHeading.Sideways, 0.5f, N, 4),            // worst 2 of 71 over 8 phases, phase 0 2
+            (LowPitch, FollowHeading.Sideways, 1f, N, 4),              // worst 2 of 160 over 8 phases, phase 0 0
+            (BootPitch, FollowHeading.Away, 2f, Q, 4),                 // worst 2 of 222 over 4 phases, phase 0 0
+            (BootPitch, FollowHeading.Sideways, 1f, Q, 4),             // worst 2 of 160 over 4 phases, phase 0 0
+            (BootPitch, FollowHeading.Sideways, 2f, Q, 4),             // worst 3 of 311 over 18 phases, phase 0 2
+            (BootPitch, FollowHeading.Sideways, 2.5f, Q, 5),           // worst 3 of 377 over 4 phases, phase 0 1
+            (BootPitch, FollowHeading.Towards, 1f, Q, 4),              // worst 2 of 60 over 18 phases, phase 0 2
+            (LowPitch, FollowHeading.Away, 1.5f, Q, 4),                // worst 2 of 184 over 18 phases, phase 0 0
+            (LowPitch, FollowHeading.Away, 2.5f, Q, 5),                // worst 5 of 436 over 4 phases, phase 0 5
+            (LowPitch, FollowHeading.Sideways, 0.5f, Q, 9),            // worst 7 of 71 over 4 phases, phase 0 2
+            (LowPitch, FollowHeading.Sideways, 1f, Q, 5),              // worst 3 of 160 over 4 phases, phase 0 2
+            (LowPitch, FollowHeading.Sideways, 1.5f, Q, 5),            // worst 3 of 226 over 4 phases, phase 0 2
+            (LowPitch, FollowHeading.Sideways, 2f, Q, 4),              // worst 2 of 313 over 4 phases, phase 0 1
+            (LowPitch, FollowHeading.Towards, 3f, Q, 4),               // worst 2 of 92 over 4 phases, phase 0 2
+            (BootPitch, FollowHeading.Away, 1.5f, P, 4),               // worst 2 of 144 over 4 phases, phase 0 0
+            (BootPitch, FollowHeading.Away, 3f, P, 4),                 // worst 2 of 368 over 4 phases, phase 0 2
+            (BootPitch, FollowHeading.Sideways, 0.5f, P, 6),           // worst 4 of 69 over 4 phases, phase 0 4
+            (BootPitch, FollowHeading.Sideways, 1f, P, 8),             // worst 6 of 160 over 4 phases, phase 0 3
+            (BootPitch, FollowHeading.Sideways, 2f, P, 10),            // worst 8 of 311 over 4 phases, phase 0 3
+            (BootPitch, FollowHeading.Sideways, 2.5f, P, 13),          // worst 11 of 377 over 32 phases, phase 0 2
+            (BootPitch, FollowHeading.Towards, 1f, P, 12),             // worst 10 of 60 over 32 phases, phase 0 4
+            (BootPitch, FollowHeading.Towards, 1.5f, P, 10),           // worst 8 of 96 over 32 phases, phase 0 0
+            (BootPitch, FollowHeading.Towards, 2f, P, 13),             // worst 11 of 132 over 32 phases, phase 0 0
+            (BootPitch, FollowHeading.Towards, 2.5f, P, 12),           // worst 10 of 144 over 32 phases, phase 0 1
+            (BootPitch, FollowHeading.Towards, 3f, P, 5),              // worst 4 of 180 over 4 phases, phase 0 3
+            (LowPitch, FollowHeading.Away, 0.5f, P, 12),               // worst 10 of 48 over 32 phases, phase 0 0
+            (LowPitch, FollowHeading.Away, 1f, P, 4),                  // worst 2 of 126 over 4 phases, phase 0 0
+            (LowPitch, FollowHeading.Away, 1.5f, P, 5),                // worst 3 of 184 over 32 phases, phase 0 1
+            (LowPitch, FollowHeading.Away, 2f, P, 5),                  // worst 5 of 268 over 4 phases, phase 0 2
+            (LowPitch, FollowHeading.Away, 2.5f, P, 11),               // worst 9 of 436 over 4 phases, phase 0 3
+            (LowPitch, FollowHeading.Away, 3f, P, 8),                  // worst 6 of 548 over 4 phases, phase 0 5
+            (LowPitch, FollowHeading.Sideways, 0.5f, P, 4),            // worst 4 of 71 over 4 phases, phase 0 1
+            (LowPitch, FollowHeading.Sideways, 1f, P, 8),              // worst 6 of 160 over 4 phases, phase 0 6
+            (LowPitch, FollowHeading.Sideways, 1.5f, P, 4),            // worst 4 of 226 over 4 phases, phase 0 2
+            (LowPitch, FollowHeading.Sideways, 2f, P, 9),              // worst 7 of 313 over 4 phases, phase 0 6
+            (LowPitch, FollowHeading.Sideways, 2.5f, P, 9),            // worst 9 of 393 over 4 phases, phase 0 6
+            (LowPitch, FollowHeading.Sideways, 3f, P, 9),              // worst 7 of 468 over 32 phases, phase 0 0
+            (LowPitch, FollowHeading.Towards, 2f, P, 5),               // worst 3 of 60 over 4 phases, phase 0 0
+            (BootPitch, FollowHeading.Away, 0.5f, U, 28),              // worst 24 of 36 over 4 phases, phase 0 22
+            (BootPitch, FollowHeading.Away, 1f, U, 58),                // worst 47 of 96 over 4 phases, phase 0 37
+            (BootPitch, FollowHeading.Away, 1.5f, U, 47),              // worst 41 of 144 over 4 phases, phase 0 41
+            (BootPitch, FollowHeading.Away, 2f, U, 47),                // worst 38 of 222 over 72 phases, phase 0 18
+            (BootPitch, FollowHeading.Away, 2.5f, U, 21),              // worst 20 of 284 over 4 phases, phase 0 16
+            (BootPitch, FollowHeading.Away, 3f, U, 5),                 // worst 3 of 368 over 4 phases, phase 0 3
+            (BootPitch, FollowHeading.Sideways, 0.5f, U, 25),          // worst 20 of 69 over 4 phases, phase 0 10
+            (BootPitch, FollowHeading.Sideways, 1f, U, 43),            // worst 41 of 160 over 4 phases, phase 0 35
+            (BootPitch, FollowHeading.Sideways, 1.5f, U, 40),          // worst 32 of 226 over 4 phases, phase 0 26
+            (BootPitch, FollowHeading.Sideways, 2f, U, 42),            // worst 41 of 311 over 4 phases, phase 0 35
+            (BootPitch, FollowHeading.Sideways, 2.5f, U, 36),          // worst 29 of 377 over 4 phases, phase 0 29
+            (BootPitch, FollowHeading.Sideways, 3f, U, 28),            // worst 24 of 464 over 4 phases, phase 0 22
+            (BootPitch, FollowHeading.Towards, 0.5f, U, 9),            // worst 7 of 24 over 4 phases, phase 0 4
+            (BootPitch, FollowHeading.Towards, 1f, U, 25),             // worst 20 of 60 over 72 phases, phase 0 6
+            (BootPitch, FollowHeading.Towards, 1.5f, U, 21),           // worst 17 of 96 over 4 phases, phase 0 10
+            (BootPitch, FollowHeading.Towards, 2f, U, 22),             // worst 18 of 132 over 4 phases, phase 0 18
+            (BootPitch, FollowHeading.Towards, 2.5f, U, 12),           // worst 10 of 144 over 4 phases, phase 0 5
+            (BootPitch, FollowHeading.Towards, 3f, U, 13),             // worst 11 of 180 over 4 phases, phase 0 5
+            (LowPitch, FollowHeading.Away, 0.5f, U, 10),               // worst 8 of 48 over 4 phases, phase 0 3
+            (LowPitch, FollowHeading.Away, 1f, U, 8),                  // worst 6 of 126 over 4 phases, phase 0 2
+            (LowPitch, FollowHeading.Away, 1.5f, U, 17),               // worst 14 of 184 over 4 phases, phase 0 9
+            (LowPitch, FollowHeading.Away, 2f, U, 4),                  // worst 2 of 268 over 4 phases, phase 0 0
+            (LowPitch, FollowHeading.Away, 2.5f, U, 17),               // worst 14 of 436 over 4 phases, phase 0 14
+            (LowPitch, FollowHeading.Away, 3f, U, 9),                  // worst 8 of 548 over 4 phases, phase 0 7
+            (LowPitch, FollowHeading.Sideways, 0.5f, U, 20),           // worst 17 of 71 over 4 phases, phase 0 17
+            (LowPitch, FollowHeading.Sideways, 1f, U, 33),             // worst 32 of 160 over 4 phases, phase 0 24
+            (LowPitch, FollowHeading.Sideways, 1.5f, U, 26),           // worst 21 of 226 over 72 phases, phase 0 14
+            (LowPitch, FollowHeading.Sideways, 2f, U, 28),             // worst 23 of 313 over 4 phases, phase 0 16
+            (LowPitch, FollowHeading.Sideways, 2.5f, U, 25),           // worst 20 of 393 over 4 phases, phase 0 14
+            (LowPitch, FollowHeading.Sideways, 3f, U, 9),              // worst 9 of 468 over 4 phases, phase 0 8
+            (LowPitch, FollowHeading.Towards, 1.5f, U, 4),             // worst 2 of 48 over 4 phases, phase 0 1
+            (LowPitch, FollowHeading.Towards, 2.5f, U, 4),             // worst 2 of 82 over 4 phases, phase 0 2
+            (LowPitch, FollowHeading.Towards, 3f, U, 4),               // worst 2 of 92 over 4 phases, phase 0 1
         };
 
-        /// <summary>Every UltraPerformance walk with ground past the reconstruction's reach on its measured frame, and
-        /// the bound on its trail there (<see cref="TemporalPerspectiveFollowRuns.BeyondSpill"/>): acceptance 3 where
-        /// it is met, else the measured excess and about a quarter more, at least 2, or one under what the resolve
-        /// before the band left where that still leaves the measured value a margin.</summary>
-        static readonly (float Pitch, FollowHeading Heading, float Speed, int Bound)[] PastTheReach =
+        /// <summary>The bound on each walk's trail past the reconstruction's reach
+        /// (<see cref="TemporalPerspectiveFollowRuns.BeyondSpill"/>), set as <see cref="Residuals"/> sets its bounds:
+        /// every UltraPerformance walk with ground past the reach on its measured frame, and the Quality and
+        /// Performance walks over acceptance 3 there. Every other Quality and Performance walk with ground past the
+        /// reach meets acceptance 3 there from every phase measured.</summary>
+        static readonly (float Pitch, FollowHeading Heading, float Speed, TemporalUpscale Preset, int Bound)[]
+            PastTheReach =
         {
-            (BootPitch, FollowHeading.Away, 1f, 20),                   // measured 16 of 48
-            (BootPitch, FollowHeading.Away, 1.5f, 25),                 // measured 21 of 100, 26 before the band
-            (BootPitch, FollowHeading.Away, 2f, 16),                   // measured 13 of 178, 29 before the band
-            (BootPitch, FollowHeading.Away, 2.5f, 18),                 // measured 15 of 252, 23 before the band
-            (BootPitch, FollowHeading.Away, 3f, 4),                    // measured 2 of 336, 1 before the band
-            (BootPitch, FollowHeading.Sideways, 1f, 10),               // measured 8 of 68, 14 before the band
-            (BootPitch, FollowHeading.Sideways, 1.5f, 22),             // measured 18 of 155, 30 before the band
-            (BootPitch, FollowHeading.Sideways, 2f, 26),               // measured 21 of 242, 32 before the band
-            (BootPitch, FollowHeading.Sideways, 2.5f, 28),             // measured 23 of 329, 39 before the band
-            (BootPitch, FollowHeading.Sideways, 3f, 16),               // measured 13 of 418, 14 before the band
-            (BootPitch, FollowHeading.Towards, 1f, 1),                 // measured 0 of 12
-            (BootPitch, FollowHeading.Towards, 1.5f, 6),               // measured 4 of 48, 5 before the band
-            (BootPitch, FollowHeading.Towards, 2f, 17),                // measured 14 of 84, 7 before the band
-            (BootPitch, FollowHeading.Towards, 2.5f, 9),               // measured 7 of 108, 4 before the band
-            (BootPitch, FollowHeading.Towards, 3f, 5),                 // measured 3 of 144
-            (LowPitch, FollowHeading.Away, 1f, 1),                     // measured 0 of 70, 12 before the band
-            (LowPitch, FollowHeading.Away, 1.5f, 17),                  // measured 14 of 140, 23 before the band
-            (LowPitch, FollowHeading.Away, 2f, 8),                     // measured 6 of 224, 15 before the band
-            (LowPitch, FollowHeading.Away, 2.5f, 7),                   // measured 5 of 368, 10 before the band
-            (LowPitch, FollowHeading.Away, 3f, 2),                     // measured 0 of 480
-            (LowPitch, FollowHeading.Sideways, 1f, 7),                 // measured 5 of 56, 4 before the band
-            (LowPitch, FollowHeading.Sideways, 1.5f, 10),              // measured 8 of 146, 17 before the band
-            (LowPitch, FollowHeading.Sideways, 2f, 13),                // measured 12 of 235, 14 before the band
-            (LowPitch, FollowHeading.Sideways, 2.5f, 11),              // measured 9 of 324, 5 before the band
-            (LowPitch, FollowHeading.Sideways, 3f, 5),                 // measured 3 of 414
-            (LowPitch, FollowHeading.Towards, 2f, 1),                  // measured 0 of 12
-            (LowPitch, FollowHeading.Towards, 2.5f, 1),                // measured 1 of 34
-            (LowPitch, FollowHeading.Towards, 3f, 1),                  // measured 0 of 44
+            (BootPitch, FollowHeading.Away, 2f, Q, 4),                 // worst 2 of 220 over 4 phases, phase 0 0
+            (BootPitch, FollowHeading.Sideways, 1f, Q, 4),             // worst 2 of 137 over 4 phases, phase 0 0
+            (BootPitch, FollowHeading.Sideways, 2f, Q, 5),             // worst 3 of 311 over 18 phases, phase 0 2
+            (BootPitch, FollowHeading.Sideways, 2.5f, Q, 5),           // worst 3 of 377 over 4 phases, phase 0 1
+            (BootPitch, FollowHeading.Towards, 1f, Q, 4),              // worst 2 of 48 over 18 phases, phase 0 0
+            (LowPitch, FollowHeading.Sideways, 1f, Q, 4),              // worst 2 of 134 over 4 phases, phase 0 2
+            (LowPitch, FollowHeading.Sideways, 1.5f, Q, 5),            // worst 3 of 224 over 4 phases, phase 0 2
+            (LowPitch, FollowHeading.Sideways, 2f, Q, 4),              // worst 2 of 313 over 4 phases, phase 0 1
+            (BootPitch, FollowHeading.Away, 1.5f, P, 4),               // worst 2 of 128 over 4 phases, phase 0 0
+            (BootPitch, FollowHeading.Away, 3f, P, 4),                 // worst 2 of 364 over 4 phases, phase 0 2
+            (BootPitch, FollowHeading.Sideways, 2f, P, 5),             // worst 3 of 288 over 4 phases, phase 0 0
+            (BootPitch, FollowHeading.Sideways, 2.5f, P, 12),          // worst 10 of 375 over 32 phases, phase 0 2
+            (BootPitch, FollowHeading.Towards, 1f, P, 9),              // worst 7 of 36 over 32 phases, phase 0 0
+            (BootPitch, FollowHeading.Towards, 1.5f, P, 6),            // worst 4 of 72 over 32 phases, phase 0 0
+            (BootPitch, FollowHeading.Towards, 2f, P, 6),              // worst 4 of 108 over 32 phases, phase 0 0
+            (BootPitch, FollowHeading.Towards, 2.5f, P, 10),           // worst 8 of 132 over 32 phases, phase 0 0
+            (BootPitch, FollowHeading.Towards, 3f, P, 4),              // worst 2 of 168 over 4 phases, phase 0 2
+            (LowPitch, FollowHeading.Away, 1.5f, P, 4),                // worst 2 of 168 over 32 phases, phase 0 1
+            (LowPitch, FollowHeading.Sideways, 0.5f, P, 4),            // worst 2 of 19 over 4 phases, phase 0 0
+            (LowPitch, FollowHeading.Sideways, 1f, P, 5),              // worst 3 of 108 over 4 phases, phase 0 3
+            (LowPitch, FollowHeading.Sideways, 2f, P, 5),              // worst 3 of 287 over 4 phases, phase 0 3
+            (LowPitch, FollowHeading.Sideways, 2.5f, P, 9),            // worst 7 of 376 over 4 phases, phase 0 4
+            (LowPitch, FollowHeading.Sideways, 3f, P, 8),              // worst 6 of 466 over 32 phases, phase 0 0
+            (BootPitch, FollowHeading.Away, 1f, U, 26),                // worst 21 of 48 over 4 phases, phase 0 16
+            (BootPitch, FollowHeading.Away, 1.5f, U, 25),              // worst 22 of 100 over 4 phases, phase 0 20
+            (BootPitch, FollowHeading.Away, 2f, U, 30),                // worst 24 of 178 over 72 phases, phase 0 13
+            (BootPitch, FollowHeading.Away, 2.5f, U, 18),              // worst 17 of 252 over 4 phases, phase 0 14
+            (BootPitch, FollowHeading.Away, 3f, U, Acceptance3),       // worst 1 of 336 over 4 phases, phase 0 1
+            (BootPitch, FollowHeading.Sideways, 1f, U, 21),            // worst 17 of 68 over 4 phases, phase 0 8
+            (BootPitch, FollowHeading.Sideways, 1.5f, U, 22),          // worst 18 of 155 over 4 phases, phase 0 18
+            (BootPitch, FollowHeading.Sideways, 2f, U, 33),            // worst 27 of 242 over 4 phases, phase 0 21
+            (BootPitch, FollowHeading.Sideways, 2.5f, U, 28),          // worst 25 of 329 over 4 phases, phase 0 23
+            (BootPitch, FollowHeading.Sideways, 3f, U, 15),            // worst 12 of 418 over 4 phases, phase 0 12
+            (BootPitch, FollowHeading.Towards, 1f, U, 9),              // worst 7 of 12 over 72 phases, phase 0 0
+            (BootPitch, FollowHeading.Towards, 1.5f, U, 13),           // worst 11 of 48 over 4 phases, phase 0 5
+            (BootPitch, FollowHeading.Towards, 2f, U, 17),             // worst 14 of 84 over 4 phases, phase 0 14
+            (BootPitch, FollowHeading.Towards, 2.5f, U, 9),            // worst 7 of 108 over 4 phases, phase 0 5
+            (BootPitch, FollowHeading.Towards, 3f, U, 9),              // worst 7 of 144 over 4 phases, phase 0 1
+            (LowPitch, FollowHeading.Away, 1f, U, Acceptance3),        // worst 0 of 70 over 4 phases, phase 0 0
+            (LowPitch, FollowHeading.Away, 1.5f, U, 11),               // worst 9 of 140 over 4 phases, phase 0 4
+            (LowPitch, FollowHeading.Away, 2f, U, Acceptance3),        // worst 0 of 224 over 4 phases, phase 0 0
+            (LowPitch, FollowHeading.Away, 2.5f, U, 6),                // worst 4 of 368 over 4 phases, phase 0 4
+            (LowPitch, FollowHeading.Away, 3f, U, Acceptance3),        // worst 2 of 480 over 4 phases, phase 0 0
+            (LowPitch, FollowHeading.Sideways, 1f, U, 13),             // worst 11 of 56 over 4 phases, phase 0 4
+            (LowPitch, FollowHeading.Sideways, 1.5f, U, 17),           // worst 14 of 146 over 72 phases, phase 0 9
+            (LowPitch, FollowHeading.Sideways, 2f, U, 17),             // worst 14 of 235 over 4 phases, phase 0 10
+            (LowPitch, FollowHeading.Sideways, 2.5f, U, 18),           // worst 15 of 324 over 4 phases, phase 0 10
+            (LowPitch, FollowHeading.Sideways, 3f, U, 8),              // worst 6 of 414 over 4 phases, phase 0 4
+            (LowPitch, FollowHeading.Towards, 2f, U, Acceptance3),     // worst 0 of 12 over 4 phases, phase 0 0
+            (LowPitch, FollowHeading.Towards, 2.5f, U, Acceptance3),   // worst 1 of 34 over 4 phases, phase 0 1
+            (LowPitch, FollowHeading.Towards, 3f, U, Acceptance3),     // worst 0 of 44 over 4 phases, phase 0 0
         };
 
         internal static int Bound(float pitch, FollowHeading heading, float speed, TemporalUpscale preset, int count)
@@ -150,13 +198,16 @@ namespace KhaozEngine.Tests.Gpu
             return Allowed(count);
         }
 
-        /// <summary>The past-the-reach fact's bound on an UltraPerformance walk (<see cref="PastTheReach"/>), or null
-        /// where it holds none.</summary>
-        internal static int? ReachBound(float pitch, FollowHeading heading, float speed)
+        /// <summary>The past-the-reach fact's bound on a walk over a region of <paramref name="count"/> pixels
+        /// (<see cref="PastTheReach"/>): acceptance 3 at Quality and Performance where the table holds none, and null
+        /// at Native and on an UltraPerformance walk the table holds none for.</summary>
+        internal static int? ReachBound(float pitch, FollowHeading heading, float speed, TemporalUpscale preset,
+            int count)
         {
             foreach (var r in PastTheReach)
-                if (r.Pitch == pitch && r.Heading == heading && r.Speed == speed) return r.Bound;
-            return null;
+                if (r.Pitch == pitch && r.Heading == heading && r.Speed == speed && r.Preset == preset)
+                    return r.Bound == Acceptance3 ? Allowed(count) : r.Bound;
+            return preset is Q or P ? Allowed(count) : null;
         }
 
         static string Describe(CrossingTrail t) =>
@@ -177,18 +228,19 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// The ground the avatar uncovers keeps none of its colour at Native and Quality on 64 of the 72 walks, half a
-        /// display pixel a frame to three at both pitches and every heading, where walking away at the boot pitch kept
-        /// 17 to 55 pixels before the avatar's own pixels stored the band mark. The other 8 stay 1 to 2 pixels over,
-        /// on pixels the band drop restarted on the measured frame, read against a floor restarted on the frame the
-        /// avatar uncovered them, and on the feet row behind a sideways walk
-        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1191">#1191</see>). Performance meets acceptance
-        /// 3 on 21 walks and UltraPerformance on 5, where the reconstruction spreads the avatar's texel over the
-        /// ground. Every walk over acceptance 3 holds its measured excess and about a quarter more
-        /// (<see cref="Residuals"/>). By default it holds the six walks at the boot pitch walking away at half a
-        /// display pixel a frame, 1 and 2, at Native and Quality. The rest of the table, 138 walks at both pitches,
-        /// every heading, speed and preset, every bound in <see cref="Residuals"/> among them, runs only with
-        /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c>, which no workflow sets.
+        /// The ground the avatar uncovers keeps no more of its colour than acceptance 3 or its bound in
+        /// <see cref="Residuals"/> allows, a regression bound that holds from every start phase of the jitter
+        /// measured. From every phase, 34 of the 36 walks at Native meet acceptance 3, half a display pixel a frame to
+        /// three at both pitches and every heading, where walking away at the boot pitch kept 17 to 55 pixels before
+        /// the avatar's own pixels stored the band mark, and 24 at Quality, 12 at Performance and 3 at
+        /// UltraPerformance, where the reconstruction spreads the avatar's texel over the ground. The others read up
+        /// to 2 at Native, 7 at Quality, 11 at Performance and 47 at UltraPerformance on their worst phase: pixels the
+        /// band drop restarted on the measured frame, the feet row behind a sideways walk, and the one history a pixel
+        /// beside the edge keeps (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1207">#1207</see>). By
+        /// default it holds the six walks at the boot pitch walking away at half a display pixel a frame, 1 and 2, at
+        /// Native and Quality. The rest of the table, 138 walks at both pitches, every heading, speed and preset, every
+        /// bound in <see cref="Residuals"/> among them, runs only with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c>, which no
+        /// workflow sets.
         /// </summary>
         [GpuFact]
         public void A_followed_avatar_leaves_no_trail_on_the_ground_it_uncovers()
@@ -209,24 +261,28 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// Past the reconstruction's reach on UltraPerformance, 6 display pixels from the pixels showing the avatar,
-        /// where it cannot spread the avatar's texel and only a history kept from it can leave its colour, each walk
-        /// holds its bound in <see cref="PastTheReach"/>. The whole trail's bounds above mostly measure that spread:
-        /// the resolve before the band cannot fail 15 of them. Here 13 of the 28 walks with ground past the reach fail
-        /// on it, and the same 13 with the band drop removed. At half a display pixel a frame no ground lies past the
-        /// reach on the measured frame. By default it holds the boot pitch walking away at 1.5 and 2 display pixels a
-        /// frame, and the rest only with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c>, which no workflow sets.
+        /// Past the reconstruction's reach, 3 display pixels from the pixels showing the avatar at Quality, 4 at
+        /// Performance and 6 at UltraPerformance, where it cannot spread the avatar's texel and only a history kept
+        /// from it can leave its colour, each walk holds acceptance 3 or its bound in <see cref="PastTheReach"/> from
+        /// every start phase measured: 27 of the 35 walks with ground there at Quality, 18 of 33 at Performance and 7
+        /// of 28 at UltraPerformance meet acceptance 3, and the others read up to 3, 10 and 27 on their worst phase.
+        /// The whole trail's bounds at UltraPerformance mostly measure that spread: the resolve before the band cannot
+        /// fail 15 of them. Here, on the first phase, 13 of the 28 walks at UltraPerformance failed on it, and the
+        /// same 13 with the band drop removed. At half a display pixel a frame no ground lies past the reach at
+        /// UltraPerformance. By default it holds the boot pitch walking away at 1 and 2 display pixels a frame on
+        /// Quality and at 1.5 and 2 on UltraPerformance, and the rest only with
+        /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c>, which no workflow sets.
         /// </summary>
         [GpuFact]
-        public void A_followed_avatar_leaves_no_trail_past_the_reconstruction_at_UltraPerformance()
+        public void A_followed_avatar_leaves_no_trail_past_the_reconstructions_reach()
         {
             var over = new List<string>();
             int walks = 0;
-            foreach (var (pitch, heading, speed, bound) in PastTheReach)
+            foreach (var (pitch, heading, speed, preset) in ReachWalks())
             {
-                if (!TemporalStabilityRuns.FullTable
-                    && !(pitch == BootPitch && heading == FollowHeading.Away && speed is 1.5f or 2f)) continue;
-                CrossingTrail c = runs.BeyondSpill(U, speed, pitch, heading);
+                CrossingTrail c = runs.BeyondSpill(preset, speed, pitch, heading);
+                int bound = ReachBound(pitch, heading, speed, preset, c.Total.Checked)!.Value;
+                if (c.Total.Checked == 0 && preset != U) continue;
                 Assert.True(c.Total.Checked > 0, $"{c.Name}: no ground past the reach");
                 if (c.Total.Excess > bound) over.Add($"{Describe(c)}, bound {bound}");
                 walks++;
@@ -234,6 +290,26 @@ namespace KhaozEngine.Tests.Gpu
             foreach (string line in over) output.WriteLine(line);
             output.WriteLine($"{walks - over.Count} of {walks} walks within their bounds past the reach");
             Assert.True(over.Count == 0, $"the avatar's colour stays past the reach: {string.Join(". ", over)}");
+        }
+
+        // The walks the past-the-reach fact holds: at Quality and Performance every walk of the table, where a walk
+        // with no ground past the reach is left out, and at UltraPerformance each walk in PastTheReach. With the table
+        // switch off, the boot pitch walking away at 1 and 2 display pixels a frame on Quality and at 1.5 and 2 on
+        // UltraPerformance.
+        static IEnumerable<(float Pitch, FollowHeading Heading, float Speed, TemporalUpscale Preset)> ReachWalks()
+        {
+            bool full = TemporalStabilityRuns.FullTable;
+            foreach (TemporalUpscale preset in new[] { Q, P })
+                foreach (float pitch in new[] { BootPitch, LowPitch })
+                    foreach (FollowHeading heading in Headings)
+                        foreach (float speed in Speeds)
+                            if (full || preset == Q && pitch == BootPitch && heading == FollowHeading.Away
+                                && speed is 1f or 2f)
+                                yield return (pitch, heading, speed, preset);
+            foreach (var r in PastTheReach)
+                if (r.Preset == U && (full || r.Pitch == BootPitch && r.Heading == FollowHeading.Away
+                    && r.Speed is 1.5f or 2f))
+                    yield return (r.Pitch, r.Heading, r.Speed, r.Preset);
         }
 
         /// <summary>Every walk's trail, with the walk in internal pixels a frame. With

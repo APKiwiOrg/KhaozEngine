@@ -34,10 +34,16 @@ namespace KhaozEngine.Tests.Gpu
     /// edge at Quality and below depends on it, and each follow fact starts on one phase. So each cell here is run from
     /// a set of start phases (<see cref="TemporalFixture.SkipPhases"/>), every phase of its preset's jitter sequence
     /// (<see cref="PhaseCount"/>) for the cells a phase moves most and their neighbours, and four phases a quarter
-    /// sequence apart for the rest, and read against the fact's own bound at each phase. Report only: each table
-    /// prints every cell's worst value over its phases, the phases over its bound, and the value at each phase. By
-    /// default each table runs a few cells, and with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every cell its fact holds.
-    /// HDR is off, the sharpen is at its default, and the measured values are Metal on Apple silicon.
+    /// sequence apart for the rest, and read against the fact's own bound at each phase. Each table prints every
+    /// cell's worst value over its phases, the phases over its bound, and the value at each phase, and holds every
+    /// cell within its bound from every phase run. Those bounds are regression bounds set from the worst over the
+    /// phases, not acceptance 3 where the phase breaks it: within the reconstruction's reach of a followed edge a
+    /// pixel keeps one history, which either holds the edge's anti-aliasing in place or shows the ground or wall
+    /// passing under it, and the jitter decides which. A history for the edge's coverage apart from the surface under
+    /// it is the fix (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1191">#1191</see>). A cell run from
+    /// four phases may read more from another. By default each table runs a few cells, and with
+    /// <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every cell its fact holds. HDR is off, the sharpen is at its default, and
+    /// the measured values are Metal on Apple silicon.
     /// <para>
     /// A follow trail is read in two regions. Near the edge: every pixel the followed object uncovered but those
     /// within one display pixel of it now. Below Native that region lies within the reconstruction's reach, so it also
@@ -117,21 +123,22 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>A walk's trail past the reconstruction's reach over its start phases
         /// (<see cref="TemporalFollowCameraRuns.BeyondSpill"/>), at Quality, Performance and UltraPerformance, against
-        /// <paramref name="bound"/>, or acceptance 3 of the region where that is null below UltraPerformance. Null at
-        /// Native, at UltraPerformance where the fact holds no bound, and where no pixel lies past the reach at any
-        /// phase.</summary>
+        /// the past-the-reach fact's bound over a region of so many pixels. Null at Native, where no pixel lies past
+        /// the reach at any phase, and where the fact holds no bound.</summary>
         PhaseSweep? PastTheReach(string cell, TemporalUpscale preset, int[] phases, Func<int, CrossingTrail> beyond,
-            int? bound)
+            Func<int, int?> bound)
         {
-            if (preset == N || preset == U && bound is null) return null;
+            if (preset == N) return null;
             CrossingTrail[] runs = phases.Select(beyond).ToArray();
             if (runs.All(c => c.Total.Checked == 0))
             {
                 output.WriteLine($"{cell} past the reach: nothing lies there at any phase");
                 return null;
             }
+            int?[] bounds = runs.Select(c => bound(c.Total.Checked)).ToArray();
+            if (bounds.Any(b => b is null)) return null;
             return new PhaseSweep($"{cell} past the reach", phases, runs.Select(c => c.Total.Excess).ToArray(),
-                runs.Select(c => bound ?? TemporalFollowCameraGpuTests.Allowed(c.Total.Checked)).ToArray());
+                bounds.Select(b => b!.Value).ToArray());
         }
 
         /// <summary>Every orthographic follow walk (<see cref="TemporalFollowCameraRuns"/>) over its start phases, the
@@ -141,10 +148,10 @@ namespace KhaozEngine.Tests.Gpu
         /// elsewhere. By default the walk at 1 display pixel a frame at Native, Quality and Performance, and at half a
         /// pixel at Quality.</summary>
         [GpuFact]
-        public void The_orthographic_follow_phase_table_prints_every_walk()
+        public void The_orthographic_follow_holds_its_bounds_from_every_start_phase()
         {
             double before = ortho.Seconds;
-            Header(output, "orthographic follow over jitter start phases (#1207), report only");
+            Header(output, "orthographic follow over jitter start phases (#1207), regression bounds");
             var sweeps = new List<PhaseSweep>();
             foreach (TemporalUpscale preset in Presets)
                 foreach (float speed in Speeds)
@@ -162,11 +169,13 @@ namespace KhaozEngine.Tests.Gpu
                     output.WriteLine(sweeps[^1].Row("ortho"));
                     if (PastTheReach($"{preset} {speed}", preset, phases,
                         p => ortho.BeyondSpill(preset, speed, phase: p),
-                        preset == U ? TemporalFollowCameraGpuTests.SpillBound(speed) : null) is not { } past) continue;
+                        count => TemporalFollowCameraGpuTests.SpillBound(preset, speed, count)) is not { } past)
+                        continue;
                     sweeps.Add(past);
                     output.WriteLine(past.Row("ortho"));
                 }
             Footer(output, sweeps, ortho.Seconds - before);
+            Hold(sweeps, "the orthographic follow");
         }
 
         /// <summary>Every perspective follow walk at Native and Quality (<see cref="TemporalPerspectiveFollowRuns"/>)
@@ -175,7 +184,7 @@ namespace KhaozEngine.Tests.Gpu
         /// low pitch walking away at 1 display pixel a frame on Quality and the boot pitch walking away at 1 on
         /// Native.</summary>
         [GpuFact]
-        public void The_perspective_follow_phase_table_prints_Native_and_Quality() =>
+        public void The_perspective_follow_holds_its_bounds_from_every_start_phase_at_Native_and_Quality() =>
             PerspectiveTable(new[] { N, Q }, (B, A, 1f, N), (L, A, 1f, Q));
 
         /// <summary>The same at Performance and UltraPerformance, the trail past the reconstruction's reach against
@@ -183,7 +192,7 @@ namespace KhaozEngine.Tests.Gpu
         /// By default the boot pitch walking towards the camera at 2 display pixels a frame on Performance, and
         /// walking away at 2 on UltraPerformance from four phases.</summary>
         [GpuFact]
-        public void The_perspective_follow_phase_table_prints_Performance_and_UltraPerformance() =>
+        public void The_perspective_follow_holds_its_bounds_from_every_start_phase_at_Performance_and_Ultra() =>
             PerspectiveTable(new[] { P, U }, (B, T, 2f, P), (B, A, 2f, U));
 
         void PerspectiveTable(TemporalUpscale[] presets,
@@ -191,7 +200,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             double before = perspective.Seconds;
             Header(output, $"perspective follow at {string.Join(" and ", presets)} over jitter start phases (#1207), "
-                + "report only");
+                + "regression bounds");
             var sweeps = new List<PhaseSweep>();
             foreach (TemporalUpscale preset in presets)
                 foreach (float pitch in new[] { B, L })
@@ -213,12 +222,13 @@ namespace KhaozEngine.Tests.Gpu
                             output.WriteLine(sweeps[^1].Row("perspective"));
                             if (PastTheReach(name, preset, phases,
                                 p => perspective.BeyondSpill(preset, speed, pitch, heading, phase: p),
-                                preset == U ? TemporalPerspectiveFollowGpuTests.ReachBound(pitch, heading, speed)
-                                    : null) is not { } past) continue;
+                                count => TemporalPerspectiveFollowGpuTests.ReachBound(pitch, heading, speed, preset,
+                                    count)) is not { } past) continue;
                             sweeps.Add(past);
                             output.WriteLine(past.Row("perspective"));
                         }
             Footer(output, sweeps, perspective.Seconds - before);
+            Hold(sweeps, "the perspective follow");
         }
     }
 }

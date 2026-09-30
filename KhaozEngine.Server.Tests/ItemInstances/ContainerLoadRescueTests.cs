@@ -196,54 +196,6 @@ public class ContainerLoadRescueTests
     }
 
     [Fact]
-    public void A_quarantined_PLAIN_STACK_is_reported_rather_than_wrapped()
-    {
-        // The one entry a page cannot hold in wrapped form. A wrapper IS a payload, and spec 4.7 invariant 3
-        // refuses a payload on a slot with instance id 0, so a plain stack whose definition id no longer
-        // resolves cannot be given one. The finding is the record of it and the stored bytes are untouched,
-        // because a load time quarantine never dirties the page. Filed as
-        // https://github.com/APKiwiOrg/KhaozEngine/issues/935.
-        ContentTypeRegistry types = Types();
-        ContentSnapshot snapshot = Snapshot(types);
-        var counted = new List<(int Type, string Reason)>();
-
-        ContainerLoadResult result = ContainerLoad.Load(
-            [Page(0, ActiveVersion, Slot(0, MissingId, count: 4))],
-            snapshot,
-            Context(types, Properties(), counter: (t, r) => counted.Add((t, r))));
-
-        ItemContainerPage page = result.PageAt(0);
-        Assert.False(page.SlotAt(0).Quarantined);
-        Assert.Equal(MissingId, page.SlotAt(0).Stack.ItemId);
-        Assert.False(page.IsDirty);
-
-        // The report is what says it is quarantined, and it is counted like any other quarantined record.
-        Assert.True(result.Reports[0].TryGetQuarantine(0, out InstanceValidationFinding finding), Describe(result));
-        Assert.Equal(InstanceQuarantineReason.UnknownDefinition, finding.Reason);
-        Assert.Contains((EngineContentTypes.ItemTypeId, InstanceQuarantineReason.UnknownDefinition), counted);
-        Assert.Single(result.OfKind(ContainerLoadFindingKind.EntryUnwrappable));
-    }
-
-    [Fact]
-    public void An_entry_carrying_a_payload_with_NO_instance_id_quarantines_the_page_as_a_unit()
-    {
-        // The same invariant seen from the other side: this entry cannot be seated at all, wrapped or not, so
-        // there is no shape of the page that holds it. Failing the page whole keeps the bytes, because
-        // nothing that did not load is ever written back.
-        ContentTypeRegistry types = Types();
-        ContentSnapshot snapshot = Snapshot(types);
-        JournalProjectionSection section = Page(
-            0, ActiveVersion, Slot(0, Sword, payload: AffixPayload(), instanceId: 0), Slot(1, Sword));
-
-        ContainerLoadResult result = ContainerLoad.Load([section], snapshot, Context(types, Properties()));
-
-        Assert.Empty(result.Pages);
-        ContainerLoadFinding finding = Assert.Single(result.OfKind(ContainerLoadFindingKind.PageQuarantined));
-        Assert.Equal(InstanceQuarantineReason.InstanceIdMissing, finding.Reason);
-        Assert.Equal(0, finding.Slot);
-    }
-
-    [Fact]
     public void A_wrapper_the_store_CORRUPTED_is_re_wrapped_rather_than_read()
     {
         // A quarantined entry whose bytes are not a wrapper at all cannot be unwrapped and must not be read

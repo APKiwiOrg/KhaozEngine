@@ -17361,13 +17361,20 @@ page 7 slot 43 for every container in the fleet, and growing that bag to 40 slot
 than a re-paging of stored bytes.
 
 The page is what a journal commit rewrites one of. `ItemContainerPage` holds its decoded slots, its content
-version stamp and its dirty flag, and exactly TWO things dirty it: an operation that CHANGED a slot and a
-remap that changed an id. Reading never does, seating a decoded page never does, and a write that leaves the
+version stamp and its dirty flag. An operation, a remap or a successful rescue dirties it when a slot's
+state changes. Reading never does, seating a decoded page never does, and a write that leaves the
 slot holding what it already held never does.
 
 `ContainerLoad.Load` in `KhaozEngine.ItemInstances.Journal` is the read half. It is a `Server` package
 because composing a `JournalCommit` needs `KhaozEngine.WorldStore`, so a client build keeps the record and
 none of this.
+
+A plain stack whose definition no longer resolves carries a verified quarantine wrapper over its empty
+original and keeps instance id zero. The page's quarantine flag and codec entries carry that verdict.
+Loading also wraps a non-empty payload without instance identity at entry level, preserving its bytes and
+the other slots. These quarantines keep the loaded page clean and leave the stored section untouched.
+When a plain stack's definition resolves again, the load clears its wrapper and flag, keeps its absent
+identity, and dirties the page for the next commit. A non-empty original with no instance id stays quarantined.
 
 The load path passes the 100 slot page geometry to the version 1 bridge. A page 0 section whose legacy blob
 declares 1 through 100 slots loads directly as a full 100 slot page, with its slot indexes unchanged and no

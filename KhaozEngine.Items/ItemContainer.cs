@@ -65,9 +65,9 @@ public sealed partial class ItemContainer
     /// which side of it the check can live on.</param>
     /// <param name="quarantineWellFormed">Whether a QUARANTINED slot's bytes are a well formed quarantine
     /// wrapper, which is <c>QuarantineWrapper.Verify</c> and arrives the same way and for the same reason as
-    /// <paramref name="payloadCanonical"/>. It stands in for invariants 2 and 4, which a wrapper is exempt
-    /// from by design: it is not canonical, it is not meant to be, and it may be larger than the cap because
-    /// the thing it preserves was. Left null, the container refuses every non-empty quarantined payload, so
+    /// <paramref name="payloadCanonical"/>. It stands in for invariants 2, 3 and 4, which a wrapper is exempt
+    /// from by design: it may preserve an entry with no instance id, is not canonical and may be larger than
+    /// the cap because the thing it preserves was. Left null, the container refuses every quarantined slot, so
     /// the quarantined door is never half open either. ITEM-INSTANCES-DESIGN-2026-09-15 section 4.7 is the
     /// invariant and section 12.4 is the format.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="slotCount"/> is not positive.</exception>

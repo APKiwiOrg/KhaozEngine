@@ -478,8 +478,8 @@ a dense renumber is not something this container can do by accident.
 index. Its slots live in an `ItemContainer` of exactly one page's width rather than in a second array, so the
 payload doors and their four invariants are the SAME code a whole-container consumer runs.
 
-**Exactly two things dirty a page**: an operation that CHANGED a slot (`Write`, `Take`) and a remap that
-changed an id (`ApplyRemap`). Reading never does, a write that leaves the slot holding what it already held
+**Slot state changes dirty a page**: an operation (`Write`, `Take`), a remap or a successful rescue
+(`ApplyRemap`). Reading never does, a write that leaves the slot holding what it already held
 never does, and seating a decoded page (`Seat`, `SeatStamp`) never does either, because that IS the page's
 stored state. `ApplyRemap` moves the stamp only when something changed and only upward, because a clean page
 claiming a version no stored byte carries would lose the claim on the next load anyway, and a page stamped
@@ -719,8 +719,9 @@ ones, exactly because neither has a durable ordinal and neither ever writes a wr
 
 **An entry whose quarantined flag is set carries a WRAPPER rather than a payload.** The whole-page `Validate`
 door reports it from the wrapper's stored reason and stamp without decoding the wrapper as a payload. The
-entry stays in the page-wide instance id uniqueness check. A caller using `ValidateEntry` to attempt a rescue
-unwraps it through `QuarantineWrapper.TryUnwrap` first and hands the ORIGINAL bytes in. That is how the first
+wrapper may preserve an empty original and carry instance id zero, including a quarantined plain stack.
+The entry stays in the page-wide instance id uniqueness check, which ignores zero. A caller using
+`ValidateEntry` to attempt a rescue unwraps it through `QuarantineWrapper.TryUnwrap` first and hands the ORIGINAL bytes in. That is how the first
 load after a missing remap rule lands restores the item exactly.
 
 `InstanceValidationOutcome` has THREE members and there is no fourth. In particular there is no "dropped": a

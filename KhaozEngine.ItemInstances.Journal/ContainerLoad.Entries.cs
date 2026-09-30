@@ -77,7 +77,7 @@ public static partial class ContainerLoad
     /// can use.
     /// </para>
     /// </summary>
-    static void Sweep(Loading load, JournalProjectionSection section, ItemContainerPage page)
+    static void Sweep(Loading load, ItemContainerPage page)
     {
         int count = page.CopyEntriesTo(load.Slots);
         int bytes = 0;
@@ -101,7 +101,7 @@ public static partial class ContainerLoad
         InstanceValidationReport report = InstanceValidator.Validate(
             arena, header, load.Entries.AsSpan(0, count), load.Context.Properties, load.Context.Types, load.Snapshot);
         load.Reports.Add(report);
-        Quarantine(load, section, page, report);
+        Quarantine(page, report);
     }
 
     /// <summary>
@@ -110,8 +110,7 @@ public static partial class ContainerLoad
     /// remap (spec 5.3), so the stored bytes stay as they are and the same wrapper is derived again on the
     /// next load, which is also what keeps the recovery of 12.3 exact.
     /// </summary>
-    static void Quarantine(
-        Loading load, JournalProjectionSection section, ItemContainerPage page, InstanceValidationReport report)
+    static void Quarantine(ItemContainerPage page, InstanceValidationReport report)
     {
         foreach (InstanceValidationFinding finding in report.Findings)
         {
@@ -119,21 +118,6 @@ public static partial class ContainerLoad
 
             ItemSlot slot = page.SlotAt(finding.Slot);
             if (slot.Quarantined) continue;
-
-            // The one record a page cannot hold in wrapped form: a wrapper IS a payload, and spec 4.7
-            // invariant 3 refuses a payload on a slot whose instance id is 0, which is every plain stack. The
-            // finding is the whole record of it and the stored bytes are untouched (#935).
-            if (slot.Payload.IsEmpty || !slot.Stack.HasInstance)
-            {
-                load.Add(new ContainerLoadFinding(
-                    ContainerLoadFindingKind.EntryUnwrappable,
-                    section.SectionName,
-                    page.PageIndex,
-                    finding.Slot,
-                    finding.Reason,
-                    finding.StampedVersion));
-                continue;
-            }
 
             page.Seat(
                 finding.Slot,
@@ -163,8 +147,7 @@ public static partial class ContainerLoad
     {
         // The door would refuse these before the rules ever ran, so they are answered first rather than
         // thrown at further down.
-        if (entry.InstanceId == 0
-            || original.IsEmpty
+        if ((!original.IsEmpty && entry.InstanceId == 0)
             || ItemInstancePayload.Validate(load.Context.Properties, original) is not null)
         {
             return false;

@@ -77,10 +77,11 @@ already validated and a violation is a caller bug rather than bad data. One, an 
 non-empty payload needs a non-zero instance id, while an empty payload WITH one is allowed, because a
 definition may declare durability and have it at full with nothing else set. Four, a payload that is not
 canonical is refused, on every call rather than under a `Debug.Assert`, because a door that only guards on a
-developer machine is not a door. Invariants two and four are SKIPPED on a quarantined slot and the wrapper
-check stands in for them, because a wrapper is not canonical, is not meant to be, and may be larger than the
-cap because the thing it preserves was. That check runs UNCONDITIONALLY, so a quarantined slot must carry a
-non-empty payload: the smallest wrapper is nine bytes and an empty one preserves nothing.
+developer machine is not a door. Invariants two, three and four are SKIPPED on a quarantined slot and the
+wrapper check stands in for them. A verified wrapper may preserve a plain stack with instance id zero, is
+not canonical and may be larger than the cap because the thing it preserves was. That check runs
+UNCONDITIONALLY, so a quarantined slot must carry a non-empty wrapper even when its original payload is empty.
+Ordinary non-empty live payloads still require a non-zero instance id.
 
 ```csharp
 public readonly record struct ItemStack(int ItemId, int Count, long InstanceId = 0);

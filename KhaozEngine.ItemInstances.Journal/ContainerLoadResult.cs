@@ -48,10 +48,8 @@ public enum ContainerLoadFindingKind : byte
     RemapAbandoned = 3,
 
     /// <summary>
-    /// The validator quarantined the record and the page cannot hold the wrapper: a wrapper IS a payload, and
-    /// spec 4.7 invariant 3 refuses a payload on a slot whose instance id is 0, which is every plain stack.
-    /// The finding is the whole record of it
-    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/935">#935</see>).
+    /// A legacy finding for an entry that could not carry its quarantine wrapper. Retained for compatibility.
+    /// The current loader wraps plain stacks and payloads without instance identity at entry level.
     /// </summary>
     EntryUnwrappable = 4,
 }

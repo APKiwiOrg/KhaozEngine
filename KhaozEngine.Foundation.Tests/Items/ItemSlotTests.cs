@@ -194,22 +194,26 @@ public class ItemSlotTests
         Assert.True(bag.SlotAt(0).Quarantined);
         Assert.Equal(wrapper.Length, bag.SlotAt(0).Payload.Length);
 
-        // Invariants 1 and 3 still bind whatever the flag says.
-        Assert.Throws<ArgumentException>(() =>
-            bag.SetSlotAt(1, new ItemSlot(new ItemStack(Sword, 1), wrapper, Quarantined: true)));
+        // The verified wrapper can also preserve an entry that never had an instance identity.
+        bag.SetSlotAt(1, new ItemSlot(new ItemStack(Sword, 1), wrapper, Quarantined: true));
+        Assert.Equal(0, bag.SlotAt(1).Stack.InstanceId);
+        Assert.True(bag.SlotAt(1).Quarantined);
+        Assert.Equal(wrapper, bag.SlotAt(1).Payload.ToArray());
         bag.SetSlotAt(2, new ItemSlot(ItemStack.Empty, wrapper, Quarantined: true));
         Assert.Equal(ItemSlot.Empty, bag.SlotAt(2));
     }
 
-    [Fact]
-    public void SetSlotAt_refuses_quarantined_bytes_that_are_not_a_wrapper()
+    [Theory]
+    [InlineData(0L)]
+    [InlineData(7L)]
+    public void SetSlotAt_refuses_quarantined_bytes_that_are_not_a_wrapper(long instanceId)
     {
         // The quarantined branch skips the cap and the canonical check and is NOT unchecked: the wrapper's
         // own header stands in for both (spec 4.7), so a bare payload carrying the flag is refused even
         // though the same bytes would be accepted without it.
         ItemContainer bag = Bag();
         Assert.Throws<ArgumentException>(() =>
-            bag.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, 7), Payload(1, 2, 3), Quarantined: true)));
+            bag.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, instanceId), Payload(1, 2, 3), Quarantined: true)));
         Assert.True(bag.SlotAt(0).IsEmpty);
         bag.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, 7), Payload(1, 2, 3), Quarantined: false));
         Assert.False(bag.SlotAt(0).Quarantined);
@@ -224,12 +228,14 @@ public class ItemSlotTests
         // never half open either.
         var noCheck = new ItemContainer(5, Stackable, Canonical);
         Assert.Throws<ArgumentException>(() =>
-            noCheck.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, 7), Wrapper(1, 7, 3), Quarantined: true)));
+            noCheck.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, instanceId), Wrapper(1, 7, 3), Quarantined: true)));
         Assert.True(noCheck.SlotAt(0).IsEmpty);
     }
 
-    [Fact]
-    public void SetSlotAt_refuses_a_quarantined_slot_carrying_no_payload_at_all()
+    [Theory]
+    [InlineData(0L)]
+    [InlineData(7L)]
+    public void SetSlotAt_refuses_a_quarantined_slot_carrying_no_payload_at_all(long instanceId)
     {
         // The quarantined branch used to short circuit on an empty payload, so a slot could be flagged
         // quarantined and hold nothing. A wrapper is at least nine bytes (its magic, its version, its
@@ -237,7 +243,7 @@ public class ItemSlotTests
         // claiming to preserve bytes it does not hold, and the flag would ride on into every reader.
         ItemContainer bag = Bag();
         Assert.Throws<ArgumentException>(() =>
-            bag.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, 7), default, Quarantined: true)));
+            bag.SetSlotAt(0, new ItemSlot(new ItemStack(Sword, 1, instanceId), default, Quarantined: true)));
         Assert.True(bag.SlotAt(0).IsEmpty);
 
         // The same empty payload with the flag CLEAR still seats, because a definition may declare
@@ -260,6 +266,23 @@ public class ItemSlotTests
         Assert.Equal(wrapper, bag.SlotAt(0).Payload.ToArray());
         Assert.Equal(wrapper, bag.TakeSlotAt(0).Payload.ToArray());
         Assert.Equal(ItemSlot.Empty, bag.SlotAt(0));
+    }
+
+    [Fact]
+    public void SetSlotAt_preserves_an_empty_original_wrapper_without_inventing_an_instance()
+    {
+        ItemContainer bag = Bag();
+        byte[] wrapper = Wrapper(6, 41, 0);
+        byte[] expected = (byte[])wrapper.Clone();
+        bag.SetSlotAt(0, new ItemSlot(new ItemStack(Coins, 4), wrapper, Quarantined: true));
+        wrapper[0] = 0;
+
+        Assert.Equal(new ItemStack(Coins, 4), bag.SlotAt(0).Stack);
+        Assert.True(bag.SlotAt(0).Quarantined);
+        Assert.Equal(expected, bag.SlotAt(0).Payload.ToArray());
+        bag.Add(Coins, 2);
+        Assert.Equal(4, bag.SlotAt(0).Stack.Count);
+        Assert.Equal(new ItemStack(Coins, 2), bag.SlotAt(1).Stack);
     }
 
     [Fact]

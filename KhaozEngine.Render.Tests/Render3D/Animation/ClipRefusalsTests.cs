@@ -73,6 +73,19 @@ namespace KhaozEngine.Tests.Render3D.Animation
         }
 
         [Fact]
+        public void UnkeyedRefusesAMovedJointMissingFromTheSkeleton()
+        {
+            Skeleton skeleton = Build();
+            AnimationClip keyed = Clip("walk", 1f, TurnAndMove(HipsLogical), Turn(SpineLogical), Turn(HeadLogical));
+
+            var missing = Assert.Throws<ArgumentException>(
+                () => ClipRefusals.Unkeyed(keyed, skeleton, Turned, new[] { "hips", "tail" }, "locomotion"));
+
+            Assert.Equal("moved", missing.ParamName);
+            Assert.Contains("'tail'", missing.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void UncoveredNamesAStanceChannelLeftUnkeyedOnATakenNode()
         {
             Skeleton skeleton = Build();

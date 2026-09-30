@@ -1,4 +1,7 @@
+using System;
 using System.Numerics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
@@ -154,6 +157,30 @@ public sealed class TemporalDiagnosticsTests
         Assert.True(scene.LastTemporalDiagnostics.HistoryValid, "the measured loop never ran the valid-history path");
         FrameView view = scene.CurrentFrameView;
         Assert.Equal(TemporalJitter.Offset(view.FrameIndex, 18), view.JitterPixels);
+    }
+
+    [Fact]
+    public void TheValueGrowsWithoutABreakAndComparesByValue()
+    {
+        // A public constructor or a settable property would make every added reading a breaking change.
+        Type type = typeof(TemporalDiagnostics);
+        Assert.True(type.IsValueType && type.IsDefined(typeof(IsReadOnlyAttribute), false), "not a readonly struct");
+        Assert.Empty(type.GetConstructors(BindingFlags.Public | BindingFlags.Instance));
+        Assert.Null(type.GetMethod("Deconstruct"));
+        foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            Assert.True(property.SetMethod is null, $"{property.Name} has a setter");
+
+        TemporalDiagnostics reading = Reading(), same = Reading();
+        Assert.True(reading == same && reading.Equals(same) && reading.Equals((object)same));
+        Assert.Equal(reading.GetHashCode(), same.GetHashCode());
+        TemporalDiagnostics reset = reading.WithHistoryReset(TemporalResetReason.Resize);
+        Assert.True(reading != reset);
+        Assert.Equal((false, TemporalResetReason.Resize, 13), (reset.HistoryValid, reset.LastReset, reset.ClippedPixels));
+        Assert.True(reading != reading.WithSizesAndCounts(320, 180, 480, 270, TemporalUpscale.Quality, 2f / 3f,
+            5, 11, 12, 14));
+
+        static TemporalDiagnostics Reading() => new(7, 3, new Vector2(0.25f, -0.125f), 2, 1, 0, true,
+            TemporalResetReason.CameraCutRequested, 320, 180, 480, 270, TemporalUpscale.Quality, 2f / 3f, 5, 11, 12, 13);
     }
 
     static void MeterLatchAndAdvance(Scene3D scene, string description)

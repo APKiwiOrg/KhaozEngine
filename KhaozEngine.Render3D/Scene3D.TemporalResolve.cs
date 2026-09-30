@@ -145,11 +145,7 @@ namespace KhaozEngine.Render3D
                 && TemporalHistory.IsValid)
             {
                 TemporalHistory.Invalidate(TemporalResetReason.Resize);
-                _lastTemporalDiagnostics = _lastTemporalDiagnostics with
-                {
-                    HistoryValid = false,
-                    LastReset = TemporalHistory.LastReset,
-                };
+                _lastTemporalDiagnostics = _lastTemporalDiagnostics.WithHistoryReset(TemporalHistory.LastReset);
             }
             _temporalPost.Ensure(_res, TemporalHistory, displayWidth, displayHeight, Post.Bloom.Enabled);
 

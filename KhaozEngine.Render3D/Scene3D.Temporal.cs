@@ -112,12 +112,12 @@ namespace KhaozEngine.Render3D
             _historyForward = forward;
             (int keyedRigid, int keyedSkinned, int keyCollisions) = MotionKeyCounts;
             _lastTemporalDiagnostics = new TemporalDiagnostics(
-                FrameIndex: view.FrameIndex,
-                JitterPhase: TemporalJitter.Phase(view.FrameIndex, _framePhaseCount),
-                JitterPixels: view.JitterPixels,
-                KeyedRigid: keyedRigid, KeyedSkinned: keyedSkinned, KeyCollisions: keyCollisions,
-                HistoryValid: TemporalHistory.IsValid,
-                LastReset: TemporalHistory.LastReset);
+                frameIndex: view.FrameIndex,
+                jitterPhase: TemporalJitter.Phase(view.FrameIndex, _framePhaseCount),
+                jitterPixels: view.JitterPixels,
+                keyedRigid: keyedRigid, keyedSkinned: keyedSkinned, keyCollisions: keyCollisions,
+                historyValid: TemporalHistory.IsValid,
+                lastReset: TemporalHistory.LastReset);
         }
 
         /// <summary>

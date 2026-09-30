@@ -146,21 +146,10 @@ namespace KhaozEngine.Render3D
         /// <c>TemporalDiagnosticsTests.BeforeTheFirstRenderTheDiagnosticsAreDefault</c> pins.</summary>
         TemporalDiagnostics WithSizesAndCounts(in TemporalDiagnostics published) => _temporalSizesFrame < 0
             ? published
-            : published with
-            {
-                InternalWidth = _temporalInternalWidth,
-                InternalHeight = _temporalInternalHeight,
-                DisplayWidth = _temporalDisplayWidth,
-                DisplayHeight = _temporalDisplayHeight,
-                Preset = _temporalPreset,
-                UpscaleRatio = _temporalResolved && _temporalDisplayWidth > 0
-                    ? (float)_temporalInternalWidth / _temporalDisplayWidth
-                    : 1f,
-                CountsFrameIndex = _countsFrame,
-                DisoccludedPixels = _countsDisoccluded,
-                ReactivePixels = _countsReactive,
-                ClippedPixels = _countsClipped,
-            };
+            : published.WithSizesAndCounts(_temporalInternalWidth, _temporalInternalHeight, _temporalDisplayWidth,
+                _temporalDisplayHeight, _temporalPreset,
+                _temporalResolved && _temporalDisplayWidth > 0 ? (float)_temporalInternalWidth / _temporalDisplayWidth : 1f,
+                _countsFrame, _countsDisoccluded, _countsReactive, _countsClipped);
 
         /// <summary>The model pass's packed frame block as last uploaded. Internal, for the tests.</summary>
         internal ReadOnlySpan<byte> FrameImageForTests => _model.FrameImage;

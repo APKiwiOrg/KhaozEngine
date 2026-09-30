@@ -1535,8 +1535,18 @@ and will want one again.
 ```
 
 Five bytes of header. The envelope is `[tag:1][kind:ushort 2][flags:1]`
-(`TileProtocol.Frames.cs:77`), so a chunk carries `1024 - 4 - 5 = 1015` payload bytes and 255 chunks
-carry 258 KB, which is forty times the largest page and five times the worst case page of 5.4.
+(`TileProtocol.GameMessageHeader`). `TileProtocol.MaxGameMessageBytes = 1024` caps the game payload
+alone, excluding the envelope and optional command-length pad. A full game payload makes a 1028-byte
+frame. The fragment format keeps a separate conservative `MaxUnpaddedFrameBytes = 1024` budget that
+includes the envelope, so a chunk carries `1024 - 4 - 5 = 1015` logical payload bytes. Its full game
+payload occupies 1020 bytes, leaving four bytes below the game payload cap. The optional pad applies
+only when a short chunk's natural frame length equals the command frame length. This is a fragment
+format convention, not an enforced transport datagram limit.
+
+Non-final chunks must carry exactly 1015 body bytes. Increasing the width to 1019 would make existing
+and updated readers reject each other's non-final chunks, so using the spare bytes needs a separately
+designed protocol migration. The unchanged 255-chunk ceiling carries 258 KB, which is forty times the
+largest page and five times the worst case page of 5.4.
 
 Reassembly rules, all on the client:
 
@@ -1574,8 +1584,9 @@ delta is sent with `SendGameMessageTo` from inside the per-viewer serve loop, an
 says so: the throw was inside the loop and "took the tick down for every player on the server"
 (`TileWorldServer.Tick.cs:236-247`). So the builder MEASURES as it writes:
 
-1. The budget is `MaxGameMessageBytes` less the four byte envelope (`TileProtocol.Frames.cs:77`) less the
-   delta's own three byte header, so 1,017 bytes of changes.
+1. The delta builder also keeps a conservative 1024-byte frame budget, including the four byte
+   envelope and its own three byte header, so 1,017 bytes of changes. `MaxGameMessageBytes` itself caps
+   only the game payload. The builder's existing budget leaves four bytes below that cap.
 2. A change to an OCCUPIED slot costs the slot varint plus the `0x01` tag plus the entry body, which is 70
    bytes at 3.8's rare. FOURTEEN changed rare slots fit in one frame and the fifteenth does not.
 3. A change to an EMPTIED slot costs two or three bytes, so bytes are not what binds there. `ChangedCount`

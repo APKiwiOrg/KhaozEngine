@@ -51,8 +51,9 @@ namespace KhaozEngine.Render3D.Internal
         public Vector4 Jitter;
         /// <summary>(1 for a perspective projection else 0, near, far, 0) of this frame.</summary>
         public Vector4 CurrentDepth;
-        /// <summary>Reserved, and every lane is written as 0 today. The y lane is held for a per-frame flag that a
-        /// screen-fixed starfield background's motion will read.</summary>
+        /// <summary>y: 1 when the background is fixed to the screen (the starfield), so a background pixel
+        /// reprojects in place, with zero motion, instead of by <see cref="BackgroundToPrevious"/>, else 0. x, z and w
+        /// are reserved and written as 0.</summary>
         public Vector4 Params;
     }
 

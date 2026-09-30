@@ -140,10 +140,11 @@ namespace KhaozEngine.Render3D.Internal
         /// this frame's origin, or null when there is none. Both views are unjittered, as the motion target's clip
         /// positions are, so the static previous UV and the motion agree. History is readable only when it is valid and a
         /// previous view exists and both reprojections invert. The previous projection is the current one when it is
-        /// not. <see cref="TemporalResolveUniforms.Params"/> is reserved and written as 0.</summary>
+        /// not. <paramref name="screenFixedBackground"/> sets <see cref="TemporalResolveUniforms.Params"/>.y for a
+        /// background that stays on its pixels, the starfield. Its other lanes are reserved and written as 0.</summary>
         public static TemporalResolveUniforms BuildUniforms(in TemporalViewInput current, TemporalViewInput? previous,
             Vector2 jitterPixels, int internalWidth, int internalHeight, int displayWidth, int displayHeight,
-            bool historyValid)
+            bool historyValid, bool screenFixedBackground = false)
         {
             int iw = Math.Max(1, internalWidth), ih = Math.Max(1, internalHeight);
             int dw = Math.Max(1, displayWidth), dh = Math.Max(1, displayHeight);
@@ -161,7 +162,7 @@ namespace KhaozEngine.Render3D.Internal
                 Sizes = new Vector4(iw, ih, dw, dh),
                 Jitter = new Vector4(jitterPixels.X, jitterPixels.Y, displayOverInternal, readable ? 1f : 0f),
                 CurrentDepth = currentDepth,
-                Params = Vector4.Zero,
+                Params = new Vector4(0f, screenFixedBackground ? 1f : 0f, 0f, 0f),
             };
         }
 

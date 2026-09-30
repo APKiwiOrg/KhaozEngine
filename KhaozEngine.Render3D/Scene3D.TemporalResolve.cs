@@ -159,11 +159,13 @@ namespace KhaozEngine.Render3D
                 _res.DepthColorTex, motion), TemporalHistory, _retired);
 
             // The previous view is the one the motion target reprojects with (Scene3D.MotionTarget.cs): the last frame's
-            // first render rebased to this frame's origin, or null without history.
+            // first render rebased to this frame's origin, or null without history. The starfield places its stars by
+            // pixel, not by direction, so it reprojects in place.
             FrameView? previous = PreviousFrameView;
             TemporalResolveUniforms uniforms = TemporalResolveMath.BuildUniforms(ViewInput(current),
                 previous is { } last ? ViewInput(last) : null, current.JitterPixels, current.Width, current.Height,
-                displayWidth, displayHeight, TemporalHistory.IsValid);
+                displayWidth, displayHeight, TemporalHistory.IsValid,
+                screenFixedBackground: Post.Background == BackgroundMode.Starfield);
             _temporalResolve.PrepareUniforms(cl, uniforms, TemporalResolveMath.BuildDepthStore(current.Projection));
             return (_post, _temporalPost);
         }

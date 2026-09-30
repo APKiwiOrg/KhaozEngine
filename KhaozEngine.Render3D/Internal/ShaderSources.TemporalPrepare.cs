@@ -154,9 +154,9 @@ bool temporalNarrowDepth(ivec2 texel, float depth, ivec2 maxTexel, bool current)
 }
 
 // What every display pixel whose 3x3 is centred on a texel reprojects by, from that texel's 3x3 alone: the motion and
-// whether it is background (temporalPreviousUv), the expected depth and whether the depth test runs (step 3), steps 1
-// and 3's marks (nearerMoved, band, followed, ownReprojected), whether the fast feature is narrow (narrowMoving, step
-// 5), and step 6's edge signal (movingEdge and edgeMotion).
+// whether it reprojects as background, by the camera's rotation (temporalPreviousUv), the expected depth and whether
+// the depth test runs (step 3), steps 1 and 3's marks (nearerMoved, band, followed, ownReprojected), whether the fast
+// feature is narrow (narrowMoving, step 5), and step 6's edge signal (movingEdge and edgeMotion).
 struct TemporalSurface {
     vec2 motion; bool background; float expectedDepth; bool depthTested; bool nearerMoved; bool band; bool followed;
     bool ownReprojected; bool narrowMoving; bool movingEdge; float edgeMotion;
@@ -266,6 +266,13 @@ TemporalSurface temporalPrepareSurface(ivec2 centreTexel, ivec2 closestTexel, fl
             expectedDepth, depthTested, travel);
         surface.motion = centreMotion;
         surface.background = centreIsBackground;
+    }
+    // A background fixed to the screen (the starfield, Params.y) places its stars by pixel whatever the camera does,
+    // so it reprojects in place, with zero motion, not by the camera's rotation. Its expected depth stays
+    // BackgroundLinearDepth, so a star a mover uncovered still finds a nearer stored depth and drops its history.
+    if (surface.background && Params.y > 0.5) {
+        surface.motion = vec2(0.0);
+        surface.background = false;
     }
     surface.expectedDepth = expectedDepth;
     surface.depthTested = depthTested;

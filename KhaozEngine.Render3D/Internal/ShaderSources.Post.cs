@@ -174,7 +174,7 @@ void main() {
 
     float edge = 0.0;
     // Normal-crease edge: fire if ANY neighbour's geometric normal turns by more than the threshold. Flat
-    // surfaces (constant normal) never fire; this catches interior creases the depth term misses.
+    // surfaces (constant normal) never fire. This catches interior creases the depth term misses.
     if ((1.0 - dot(nL, n0)) > Thresh.y || (1.0 - dot(nR, n0)) > Thresh.y ||
         (1.0 - dot(nU, n0)) > Thresh.y || (1.0 - dot(nD, n0)) > Thresh.y) edge = 1.0;
 

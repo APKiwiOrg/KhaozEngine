@@ -22,7 +22,7 @@ namespace KhaozEngine.Gui
             Tag = tag;
         }
 
-        /// <summary>The (lazily resolved) row label. Re-resolves on every draw, so a locale switch takes effect next frame.</summary>
+        /// <summary>The default row label. Resolves on every default draw, so a locale switch takes effect next frame.</summary>
         public LocalizedText Label { get; set; }
 
         /// <summary>When true, this node's <see cref="Children"/> are part of the visible walk. Leaf nodes ignore it.</summary>
@@ -47,9 +47,6 @@ namespace KhaozEngine.Gui
     /// </summary>
     public sealed class TreeView
     {
-        /// <summary>Pixels of horizontal padding between the caret column and the label text.</summary>
-        const float LabelPadding = 4f;
-
         readonly List<(TreeNode Node, int Depth)> _visible = new();
 
         // Drag-and-drop reorder state. `_dragNode` is non-null once a press clears `DragThreshold` and grabs a row.
@@ -99,10 +96,10 @@ namespace KhaozEngine.Gui
         /// <summary>The currently selected node, or null. A body tap sets it; a caret-zone toggle leaves it untouched.</summary>
         public TreeNode? Selected { get; set; }
 
-        /// <summary>When false, <see cref="Update"/> reserves the region on the pointer then ignores all input. Default true.</summary>
+        /// <summary>When false, <see cref="Update(InputManager)"/> reserves the region on the pointer then ignores all input. Default true.</summary>
         public bool Enabled = true;
 
-        /// <summary>Uniform fade multiplied into every colour's alpha at draw time (1 = opaque). Default 1 is a no-op.</summary>
+        /// <summary>Uniform fade multiplied into built-in colour alpha at draw time (1 = opaque). Default 1 is a no-op.</summary>
         public float Opacity = 1f;
 
         /// <summary>
@@ -114,7 +111,7 @@ namespace KhaozEngine.Gui
         public float TextScale = 1f;
 
         /// <summary>Palette knobs read at draw time: <see cref="GuiStyle.SelectedFill"/> for the selected row and
-        /// <see cref="GuiStyle.Text"/> for the caret and label. Defaults to <see cref="GuiStyle.Default"/>.</summary>
+        /// <see cref="GuiStyle.Text"/> for the caret and default label. Defaults to <see cref="GuiStyle.Default"/>.</summary>
         public GuiStyle Style = GuiStyle.Default;
 
         /// <summary>True on the frame a body tap changed the selection intent (mirrors the <see cref="Toggle.WasToggled"/> idiom).</summary>
@@ -132,6 +129,14 @@ namespace KhaozEngine.Gui
 
         /// <summary>Fired when a body tap selects a node, after <see cref="Selected"/> is updated.</summary>
         public Action<TreeNode>? OnSelected;
+
+        /// <summary>
+        /// Optional label replacement, called with the batch, visible content bounds, node and selected state.
+        /// Content starts after the row's indent, caret column and padding, intersected with <see cref="Bounds"/>.
+        /// Only visible content is painted, under a matching scissor. Carets and selection fills remain built in.
+        /// The caller owns its content, localization and opacity. Null uses the default localized label.
+        /// </summary>
+        public Action<SpriteBatch, Rect, TreeNode, bool>? DrawRow;
 
         /// <summary>
         /// Fired when a drag-and-drop reorder commits: the dragged node moves within its parent's sibling list from
@@ -275,40 +280,57 @@ namespace KhaozEngine.Gui
         /// </summary>
         public bool Update(InputManager input)
         {
+            ArgumentNullException.ThrowIfNull(input);
+            return Update(input.Pointer, input.State, input.ScrollDelta);
+        }
+
+        /// <summary>
+        /// Apply the same scrolling, tap and reorder behavior to a pointer already updated from this snapshot.
+        /// Reserves <see cref="Bounds"/> even when disabled and honors the pointer's consumed tap gesture.
+        /// </summary>
+        public bool Update(Pointer pointer, in InputState input)
+        {
+            ArgumentNullException.ThrowIfNull(pointer);
+            ArgumentNullException.ThrowIfNull(input);
+            return Update(pointer, input, input.ScrollDelta);
+        }
+
+        bool Update(Pointer pointer, in InputState input, float scrollDelta)
+        {
             WasSelectionChanged = false;
             WasExpansionChanged = false;
             WasReordered = false;
-            input.BlockInputRegion(Bounds);
+            pointer.BlockRegion(Bounds);
             if (!Enabled) { _dragCancelled = _dragNode is not null; AbandonDrag(); return false; }
 
             IReadOnlyList<(TreeNode Node, int Depth)> rows = VisibleRows();
 
-            if (input.IsPointerJustPressed) _dragCancelled = false;   // a fresh gesture clears the abort latch
+            if (pointer.IsJustPressed) _dragCancelled = false;   // a fresh gesture clears the abort latch
 
             // Escape aborts an in-flight drag outright (no drop) and latches so the release cannot tap-select.
-            if (_dragNode is not null && input.IsKeyDown(Key.Escape)) { AbandonDrag(); _dragCancelled = true; return false; }
+            if (_dragNode is not null && input.IsDown(Key.Escape)) { AbandonDrag(); _dragCancelled = true; return false; }
 
             // Wheel scrolls whenever the pointer is over the tree, continuous (no per-notch rounding) like
             // ScrollablePanel - including mid-drag, so a long list can scroll while reordering. This runs BEFORE
             // TrackDrag/ComputeDrop below, so the same frame's drop geometry resolves against the just-updated
             // ScrollOffset rather than a stale one.
-            if (input.IsPointerIn(Bounds) && input.ScrollDelta != 0f)
+            if (pointer.IsPointerIn(Bounds) && scrollDelta != 0f)
             {
                 float max = MathF.Max(0f, rows.Count * RowHeight - Bounds.Height);
-                ScrollOffset = Math.Clamp(ScrollOffset - input.ScrollDelta * WheelSpeed, 0f, max);
+                ScrollOffset = Math.Clamp(ScrollOffset - scrollDelta * WheelSpeed, 0f, max);
             }
 
             // A held press whose origin is in the tree is a (potential) drag, never a tap: arm and track it here,
             // committing nothing until release. Gated on a reorder handler being wired: with none, this path
             // stays fully inert (never arms, never draws the insertion line) so a held-then-released press falls
             // through to the tap check below exactly as it did before the drag feature existed.
-            if (OnReordered is not null && input.IsDragStartIn(Bounds)) { TrackDrag(input, rows); return false; }
+            if (OnReordered is not null && pointer.IsDragStartIn(Bounds)) { TrackDrag(pointer, rows); return false; }
 
             // Release of an armed drag: the release position is the authoritative drop slot, so an off-tree or
             // cross-parent release cancels and a valid slot that actually moves the row fires OnReordered.
-            if (input.IsPointerJustReleased && _dragNode is not null)
+            if (pointer.IsJustReleased && _dragNode is not null)
             {
-                ComputeDrop(input.PointerPosition, rows);
+                ComputeDrop(pointer.Position, rows);
                 if (_dropValid && _dropIndex != _dragFromIndex)
                 {
                     OnReordered?.Invoke(_dragNode, _dragFromIndex, _dropIndex);
@@ -321,9 +343,9 @@ namespace KhaozEngine.Gui
             // Idle tap: the caret-vs-body split. Must land inside the view to hit a row, which also drops taps in
             // the band a scrolled-away row would occupy past the clipped edge (the release fails Bounds.Contains
             // there). Suppressed for the rest of a gesture that Escape aborted.
-            if (!_dragCancelled && input.IsTapIn(Bounds))
+            if (!_dragCancelled && pointer.IsTapIn(Bounds))
             {
-                Vector2 pos = input.PointerPosition;
+                Vector2 pos = pointer.Position;
                 int i = RowAt(pos.Y, rows.Count);
                 if (i >= 0)
                 {
@@ -355,10 +377,10 @@ namespace KhaozEngine.Gui
 
         // Arm the drag once the pointer clears the threshold (grabbing the press-origin row, unless that press
         // began in a parent's caret zone), then recompute the live drop slot from the current pointer.
-        void TrackDrag(InputManager input, IReadOnlyList<(TreeNode Node, int Depth)> rows)
+        void TrackDrag(Pointer pointer, IReadOnlyList<(TreeNode Node, int Depth)> rows)
         {
-            Vector2 pos = input.PointerPosition;
-            Vector2 origin = input.PressOrigin;
+            Vector2 pos = pointer.Position;
+            Vector2 origin = pointer.PressOrigin;
 
             if (_dragNode is null)
             {
@@ -434,46 +456,47 @@ namespace KhaozEngine.Gui
         /// <summary>
         /// Draw the visible rows clipped to <see cref="Bounds"/>: a fill under the selected row, a caret chevron for
         /// nodes with children (up when expanded, matching the <see cref="Dropdown"/> chevron idiom), and the
-        /// label. <paramref name="white"/> is a 1x1 white texture.
+        /// label or <see cref="DrawRow"/> content. <paramref name="white"/> is a 1x1 white texture.
         /// </summary>
         public void Draw(SpriteBatch batch, Texture2D white, SpriteFont font)
         {
             IReadOnlyList<(TreeNode Node, int Depth)> rows = VisibleRows();
             batch.SetScissor(Bounds);
-            for (int i = 0; i < rows.Count; i++)
+            try
             {
-                Rect row = RowBounds(i);
-                if (row.Bottom <= Bounds.Y || row.Y >= Bounds.Bottom) continue;   // fully scrolled out of view
-
-                (TreeNode node, int depth) = rows[i];
-                if (ReferenceEquals(node, Selected))
-                    GuiDraw.FillStyled(batch, white, row, Style, GuiDraw.WithOpacity(Style.SelectedFill, Opacity),
-                        GuiDraw.WithOpacity(Style.SelectedBorder, Opacity));
-
-                float caretStart = Bounds.X + depth * Indent;
-                if (node.Children.Count > 0)
+                for (int i = 0; i < rows.Count; i++)
                 {
-                    var center = new Vector2(caretStart + Indent * 0.5f, row.Y + RowHeight * 0.5f);
-                    GuiDraw.Caret(batch, white, center, halfWidth: 4f, halfHeight: 2f, pointingUp: node.Expanded,
-                        thickness: 1.5f, GuiDraw.WithOpacity(Style.Text, Opacity));
+                    Rect row = RowBounds(i);
+                    if (row.Bottom <= Bounds.Y || row.Y >= Bounds.Bottom) continue;   // fully scrolled out of view
+
+                    (TreeNode node, int depth) = rows[i];
+                    bool selected = ReferenceEquals(node, Selected);
+                    if (selected)
+                        GuiDraw.FillStyled(batch, white, row, Style, GuiDraw.WithOpacity(Style.SelectedFill, Opacity),
+                            GuiDraw.WithOpacity(Style.SelectedBorder, Opacity));
+
+                    float caretStart = Bounds.X + depth * Indent;
+                    if (node.Children.Count > 0)
+                    {
+                        var center = new Vector2(caretStart + Indent * 0.5f, row.Y + RowHeight * 0.5f);
+                        GuiDraw.Caret(batch, white, center, halfWidth: 4f, halfHeight: 2f, pointingUp: node.Expanded,
+                            thickness: 1.5f, GuiDraw.WithOpacity(Style.Text, Opacity));
+                    }
+
+                    TreeViewRowPainter.Paint(this, batch, font, node, row, caretStart, selected);
                 }
 
-                float tx = caretStart + Indent + LabelPadding;
-                float ty = GuiDraw.CenteredTextY(row.Y, RowHeight, font.LineHeight, TextScale);
-                batch.DrawString(font, node.Label.Resolve(), new Vector2(MathF.Floor(tx), MathF.Floor(ty)),
-                    (Color)GuiDraw.WithOpacity(Style.Text, Opacity), TextScale);
+                // The drag insertion line: a thin bar at the boundary of the target row (its bottom edge when dropping
+                // after, its top edge when before). Only shown for a valid same-parent target.
+                if (_dragNode is not null && _dropValid)
+                {
+                    Rect target = RowBounds(_dropRow);
+                    float y = _dropAfter ? target.Bottom : target.Y;
+                    GuiDraw.Fill(batch, white, new Rect(Bounds.X, y - 1f, Bounds.Width, 2f),
+                        GuiDraw.WithOpacity(Style.Text, Opacity));
+                }
             }
-
-            // The drag insertion line: a thin bar at the boundary of the target row (its bottom edge when dropping
-            // after, its top edge when before). Only shown for a valid same-parent target.
-            if (_dragNode is not null && _dropValid)
-            {
-                Rect target = RowBounds(_dropRow);
-                float y = _dropAfter ? target.Bottom : target.Y;
-                GuiDraw.Fill(batch, white, new Rect(Bounds.X, y - 1f, Bounds.Width, 2f),
-                    GuiDraw.WithOpacity(Style.Text, Opacity));
-            }
-            batch.ClearScissor();
+            finally { batch.ClearScissor(); }
         }
     }
 }

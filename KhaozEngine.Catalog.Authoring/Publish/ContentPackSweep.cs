@@ -28,7 +28,7 @@ public sealed record ContentPackSweepResult(bool Ran, int Kept, int Deleted, str
 /// first publish, and every later boot would fail closed on an absent chunk, for every version, forever.
 /// </para>
 /// <para>
-/// <b>It is SKIPPED when the store listing fails for any reason</b>. The version-record overload also
+/// <b>It is SKIPPED when the store listing fails for any reason</b>. The validated entry point also
 /// requires every pointer's two hashes to match its durable record before any listing starts. An absent,
 /// unreadable or mismatched pointer is a listing failure. Deleting files on the authority of a listing that
 /// failed is how a bad publish turns into a lost pack.
@@ -51,13 +51,13 @@ public static class ContentPackSweep
     /// <summary>
     /// Checks every pointer against its durable version record before listing or pruning any objects.
     /// Missing pointer evidence or either mismatched manifest hash skips the sweep as a listing failure.
-    /// The publish and operator sweep use this overload.
+    /// The publish and operator sweep use this entry point.
     /// </summary>
     /// <param name="store">The pack store to sweep, with readable version pointers.</param>
     /// <param name="versions">Every durable version record the authoring store knows, the new one included.</param>
     /// <param name="cancellationToken">Cancels the sweep.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    public static async Task<ContentPackSweepResult> RunAsync(
+    public static async Task<ContentPackSweepResult> RunValidatedAsync(
         IPackStore store,
         IReadOnlyList<ContentVersionRecord> versions,
         CancellationToken cancellationToken = default)
@@ -99,9 +99,9 @@ public static class ContentPackSweep
 
     /// <summary>
     /// Deletes every object outside the keep set, or skips and says why.
-    /// This compatibility overload trusts the pointer-backed listings without durable version records.
-    /// Its caller must establish that the pointers name the authoritative manifests. Use the version-record
-    /// overload when those records are available, as the publish and operator sweep do.
+    /// This compatibility entry point trusts the pointer-backed listings without durable version records.
+    /// Its caller must establish that the pointers name the authoritative manifests. Use
+    /// <see cref="RunValidatedAsync"/> when those records are available, as the publish and operator sweep do.
     /// </summary>
     /// <param name="store">The pack store to sweep.</param>
     /// <param name="versions">Every version number the store knows, the new one included.</param>

@@ -252,7 +252,7 @@ public sealed class ContentPublishCommit
         IReadOnlyList<ContentVersionRecord> versions = await _store
             .ListVersionsAsync(cancellationToken).ConfigureAwait(false);
 
-        return await ContentPackSweep.RunAsync(PackStore, versions, cancellationToken).ConfigureAwait(false);
+        return await ContentPackSweep.RunValidatedAsync(PackStore, versions, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

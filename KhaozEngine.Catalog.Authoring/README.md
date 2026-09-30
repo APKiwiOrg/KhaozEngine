@@ -367,7 +367,8 @@ type's id space and the text chunks are per language, so neither has a chunk row
 named by both manifests. A keep set read from the chunk table would delete them at the first publish and every
 later boot would fail closed on an absent chunk, for every version, forever.
 
-The publish and operator sweep pass every durable `ContentVersionRecord` to `ContentPackSweep.RunAsync`.
+The publish and operator sweep pass every durable `ContentVersionRecord` to
+`ContentPackSweep.RunValidatedAsync`.
 Before listing any version or enumerating orphan objects, it resolves each pointer and compares BOTH manifest
 hashes ordinally with that record. A missing pointer source, an absent or partial pointer, or either hash
 disagreeing skips the sweep with `listing-failed` and deletes nothing. This protects live chunks when another
@@ -377,10 +378,10 @@ pruning half.
 `ContentPackSweepResult` carries the reason either way, because deleting nothing and deleting everything are
 one keystroke apart and an operator reading a publish response deserves to know which happened.
 
-The existing `RunAsync(IPackStore, IReadOnlyList<int>, CancellationToken)` overload remains available for
+The existing `RunAsync(IPackStore, IReadOnlyList<int>, CancellationToken)` entry point remains available for
 compatibility. It trusts the pointer-backed listings without checking durable records, so its caller must
-establish that those pointers name the authoritative manifests. Pass version records whenever they are
-available.
+establish that those pointers name the authoritative manifests. Use `RunValidatedAsync` with version records
+whenever they are available.
 
 `ContentPublishCommit.SweepAsync` is the step as the publish runs it, and it is public so a test can drive
 step 11 on its own. An OPERATOR reaches `ContentPackSweep` through the admin surface instead, because a

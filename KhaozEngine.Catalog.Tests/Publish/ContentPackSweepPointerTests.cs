@@ -151,7 +151,7 @@ public sealed class ContentPackSweepPointerTests
         ContentPublishResult published = await PublishAsync(store, value: 11);
         var tracked = new TrackedPackStore(pack);
 
-        ContentPackSweepResult sweep = await ContentPackSweep.RunAsync(tracked, await store.ListVersionsAsync());
+        ContentPackSweepResult sweep = await ContentPackSweep.RunValidatedAsync(tracked, await store.ListVersionsAsync());
 
         Assert.False(sweep.Ran);
         Assert.Equal(ContentPackSweep.SkippedListingFailed, sweep.SkipReason);
@@ -179,7 +179,7 @@ public sealed class ContentPackSweepPointerTests
         await pack.PutAsync(orphan, ContentRuleChunkCodec.Encode(rules));
         var tracked = new TrackedReadPointerPackStore(pack);
 
-        ContentPackSweepResult sweep = await ContentPackSweep.RunAsync(tracked, await store.ListVersionsAsync());
+        ContentPackSweepResult sweep = await ContentPackSweep.RunValidatedAsync(tracked, await store.ListVersionsAsync());
 
         Assert.True(sweep.Ran, sweep.SkipReason);
         Assert.Equal(1, sweep.Deleted);
@@ -190,6 +190,39 @@ public sealed class ContentPackSweepPointerTests
         {
             Assert.True(await pack.ExistsAsync(hash), hash);
         }
+    }
+
+    [Fact]
+    public async Task ANumericEmptyCollectionCallSweepsOrphansWithoutPointerEvidence()
+    {
+        using var root = new TemporaryRoot();
+        var pack = new FileSystemPackStore(root.Path);
+        RemapRule[] rules =
+        [
+            new(1, 1, Thing, RemapRuleKind.Retired, 99, 0, [RemapRule.RetirePolicyPlaceholder]),
+        ];
+        string orphan = ContentRuleChunkCodec.Hash(rules);
+        await pack.PutAsync(orphan, ContentRuleChunkCodec.Encode(rules));
+
+        ContentPackSweepResult sweep = await ContentPackSweep.RunAsync(pack, []);
+
+        Assert.True(sweep.Ran, sweep.SkipReason);
+        Assert.Equal(0, sweep.Kept);
+        Assert.Equal(1, sweep.Deleted);
+        Assert.Null(sweep.SkipReason);
+        Assert.False(await pack.ExistsAsync(orphan));
+    }
+
+    [Fact]
+    public async Task ANumericNullCallRetainsItsArgumentValidation()
+    {
+        using var root = new TemporaryRoot();
+        var pack = new FileSystemPackStore(root.Path);
+
+        ArgumentNullException refusal = await Assert.ThrowsAsync<ArgumentNullException>(
+            () => ContentPackSweep.RunAsync(pack, null!));
+
+        Assert.Equal("versions", refusal.ParamName);
     }
 
     static async Task<ContentPublishResult> PublishAsync(InMemoryContentAuthoringStore store, int value)

@@ -213,8 +213,8 @@ an ordinary database restore of the authoring store, which is the provider's own
 
 `catalog-sweep` runs publish step 11 alone, for an operator cleaning up after a crashed publish, and it obeys
 the same skip-on-listing-failure rule: deleting files on the authority of a listing that failed is how a bad
-publish turns into a lost pack. It passes the durable version records to `ContentPackSweep`, which compares
-both manifest hashes in every pointer with its record before listing or enumerating any objects. Missing
+publish turns into a lost pack. It passes the durable version records to `ContentPackSweep.RunValidatedAsync`,
+which compares both manifest hashes in every pointer with its record before listing or enumerating any objects. Missing
 pointer evidence or either hash disagreeing returns `ran: false`, `deleted: 0` and `skipReason: listing-failed`.
 `catalog-verify` walks a version's two manifests, fetches every object they name and rehashes it.
 **It is read only and it never repairs**, because a repair means deciding which copy is

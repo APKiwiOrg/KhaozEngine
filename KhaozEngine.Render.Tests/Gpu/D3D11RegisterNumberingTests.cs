@@ -127,11 +127,17 @@ namespace KhaozEngine.Tests.Gpu
                 new[] { U("Frame"), T("DepthTex"), S("Samp"), T("MotionTex"), T("AtlasTex"), S("AtlasSamp") },
                 "b0 t0 s0 t1 t2 s1"),
 
-            // The post chain declares nine, all with the uniform buffer LAST, which is the mirror image of the
-            // model pass and the reason a rule of thumb like "the UBO is b0 and comes first" is worthless here.
+            // The post chain declares ten, each with the uniform buffer after its chain textures, which is the mirror
+            // image of the model pass and the reason a rule of thumb like "the UBO is b0 and comes first" is worthless
+            // here.
             ("PixelPostProcess._palLayout", new[] { T("Src"), S("Samp"), U("Pal") }, "t0 s0 b0"),
             ("PixelPostProcess._edgeLayout",
                 new[] { T("ColorTex"), T("NormalTex"), T("DepthTex"), S("Samp"), U("Edge") }, "t0 t1 t2 s0 b0"),
+            // The outline ahead of the temporal resolve appends the opaque-only copy to the edge layout, so its texture
+            // takes the next t after the chain's three and the uniform buffer keeps b0.
+            ("PixelPostProcess._temporalEdgeLayout",
+                new[] { T("ColorTex"), T("NormalTex"), T("DepthTex"), S("Samp"), U("Edge"), T("OpaqueTex") },
+                "t0 t1 t2 s0 b0 t3"),
             ("PixelPostProcess._blitLayout", new[] { T("Src"), S("Samp"), U("Final") }, "t0 s0 b0"),
             ("PixelPostProcess._fxaaLayout", new[] { T("Src"), S("Samp"), U("Fxaa") }, "t0 s0 b0"),
             ("PixelPostProcess._brightLayout", new[] { T("Src"), S("Samp"), U("Bright") }, "t0 s0 b0"),

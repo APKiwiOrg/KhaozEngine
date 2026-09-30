@@ -139,6 +139,9 @@ namespace KhaozEngine.Tests.Gpu
                 // U helpers at :144-146 are all fragment-stage and none is dynamic.
                 ["Pixel.pal"] = L(T("Src"), S("Samp"), U("Pal", F)),
                 ["Pixel.edge"] = L(T("ColorTex"), T("NormalTex"), T("DepthTex"), S("Samp"), U("Edge", F)),
+                // The outline ahead of the temporal resolve: the edge layout with the opaque-only copy after it.
+                ["Pixel.temporalEdge"] =
+                    L(T("ColorTex"), T("NormalTex"), T("DepthTex"), S("Samp"), U("Edge", F), T("OpaqueTex")),
                 ["Pixel.blit"] = L(T("Src"), S("Samp"), U("Final", F)),
                 ["Pixel.fxaa"] = L(T("Src"), S("Samp"), U("Fxaa", F)),
                 ["Pixel.bright"] = L(T("Src"), S("Samp"), U("Bright", F)),
@@ -254,8 +257,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["TargetOutline.draw", "TargetOutline.material", "TargetOutline.palette"]),
             ("PixelPostProcess pal", ["Pixel.pal"]),
             ("PixelPostProcess edge", ["Pixel.edge"]),
-            // The outline ahead of the temporal resolve binds the edge layout, so it adds a pipeline and no layout.
-            ("PixelPostProcess temporal edge", ["Pixel.edge"]),
+            ("PixelPostProcess temporal edge", ["Pixel.temporalEdge"]),
             ("PixelPostProcess blit", ["Pixel.blit"]),
             ("PixelPostProcess fxaa", ["Pixel.fxaa"]),
             ("PixelPostProcess bright", ["Pixel.bright"]),
@@ -301,7 +303,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(56, ShippedLayouts.Count);
+            Assert.Equal(57, ShippedLayouts.Count);
             Assert.Equal(61, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)

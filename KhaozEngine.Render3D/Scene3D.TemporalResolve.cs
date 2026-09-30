@@ -161,6 +161,7 @@ namespace KhaozEngine.Render3D
             // first, and the resolve reads those (PixelPostProcess.TemporalOutline.cs). Both entry points key their
             // sets on the input textures, so turning the outline on or off rebinds them.
             bool outline = PixelPostProcess.TemporalOutlineRuns(Post);
+            if (!outline) _post.ReleaseTemporalOutline(_retired);   // the outline turned off: let the pass go
             _temporalResolve.BindInputs(new TemporalResolveInputs(outline ? _res.PingA : _res.ColorTex,
                 outline ? _res.PingB : _temporalPost.OpaqueColor, _res.DepthColorTex, motion), TemporalHistory, _retired);
 
@@ -221,26 +222,28 @@ namespace KhaozEngine.Render3D
 
         /// <summary>When this render resolves, after every internal-resolution colour writer and the distortion field and
         /// before the post chain: resolve into the history write pair, then store this frame's depth. With the outline
-        /// on, the outline pass runs first on the internal images the resolve reads.</summary>
+        /// on, the outline pass's one draw runs first on the internal images the resolve reads.</summary>
         void RunTemporalResolve(IGpuCommandList cl)
         {
             if (!_resolveThisRender) return;
             if (PixelPostProcess.TemporalOutlineRuns(Post))
             {
-                _post.RunTemporalOutline(cl, _res, _temporalPost!.OpaqueColor);
+                _post.RunTemporalOutline(cl, _res, _temporalPost!.OpaqueColor, _retired);
                 _frameStats.DrawCalls += PixelPostProcess.TemporalOutlineDrawCalls;
             }
             _temporalResolve!.Run(cl, TemporalHistory);
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
         }
 
-        // A frame without the resolve holds none of its targets. The history targets, the resolve's sets that name them
-        // and the later renders' post chain go to the retire queue, since the last frame's commands may still read them.
+        // A frame without the resolve holds none of its targets. The history targets, the resolve's sets that name them,
+        // the outline pass ahead of the resolve and the later renders' post chain go to the retire queue, since the last
+        // frame's commands may still read them.
         // The resolve keeps its pipelines for the next time. The display targets drain and free.
         void ReleaseTemporalResolve()
         {
             TemporalHistory.ReleaseTargets(_retired);
             _temporalResolve?.ReleaseSets(_retired);
+            _post.ReleaseTemporalOutline(_retired);
             _temporalPost?.Release();
             if (_laterRenderPost is null) return;
             _retired.Retire(_laterRenderPost);

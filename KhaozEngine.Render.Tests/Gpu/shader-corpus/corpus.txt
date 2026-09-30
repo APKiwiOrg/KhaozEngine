@@ -306,11 +306,11 @@ PostPalette.layout.msl b7b3dda74dfddf250657578823d795ff8f4812fdc622bab2fc3416824
 PostPalette.vertex.hlsl a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23 691
 PostPalette.vertex.msl 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1 451
 PostPalette.vertex.spirv 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4 916
-PostTemporalEdge.fragment.hlsl 8e553c22b4d05476d64f1485e6858c44555d067d5ffec2cb7f980a97846cf70d 3816
-PostTemporalEdge.fragment.msl b624342fe015dc55dcdd16f706583e372d6ff248a5da8fe9a323602524a365e3 3563
-PostTemporalEdge.fragment.spirv 245fea87dccfe670b8e27fd6d5bdc69c04a9c7bfa6879a1a5d9bc8f73e873668 5292
-PostTemporalEdge.layout.hlsl ce64a6305a10ea4d1d854e036bd37847f3e7ae73df9b384ff6a44a7870e83ace 5 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
-PostTemporalEdge.layout.msl ce64a6305a10ea4d1d854e036bd37847f3e7ae73df9b384ff6a44a7870e83ace 5 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F]
+PostTemporalEdge.fragment.hlsl 64b1b8fd768a9de71da01e9c1b7fb53ecc10e0aec71daf92ca5a5b4d9ba6d7aa 4063
+PostTemporalEdge.fragment.msl ceadbc8a05b2079772756f1b930adda1d734b81c1f98073b75775b9c0c5eed7a 3765
+PostTemporalEdge.fragment.spirv 132a314cf1ccf67e4ee5a8d4e2f56f49e1a6869c8fb3e011524a7beb1fe419e4 5616
+PostTemporalEdge.layout.hlsl 0b62ed1a6b9a0035c9eb3bf08eeb57f74e738ab0d93147a0232d6a24682a6f81 6 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F]
+PostTemporalEdge.layout.msl 0b62ed1a6b9a0035c9eb3bf08eeb57f74e738ab0d93147a0232d6a24682a6f81 6 in[]|set0[<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F]
 PostTemporalEdge.vertex.hlsl a347eabae7dfefaef4fe9f4309e8a35ca7e6e43ba7af4fa24ea8c19f596b7c23 691
 PostTemporalEdge.vertex.msl 7d3fc4137f5af6120bc9543820004323db6f99a6317b2ce1c32efaa3721a3bc1 451
 PostTemporalEdge.vertex.spirv 70c6c952e9d7169003b08630f6c4ab41cedc76249a6ee43bd2aa849822574fc4 916

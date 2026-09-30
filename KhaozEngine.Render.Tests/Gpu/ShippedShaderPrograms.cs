@@ -24,7 +24,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 78 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 79 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -48,7 +48,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct shipped vertex and fragment pair, 78 of them.</summary>
+        /// <summary>Every distinct shipped vertex and fragment pair, 79 of them.</summary>
         public static IEnumerable<ShippedGraphicsProgram> GraphicsPrograms()
         {
             // Render2D.
@@ -160,6 +160,8 @@ namespace KhaozEngine.Tests.Gpu
             // Render3D fullscreen passes, all sharing FullscreenVert.
             yield return new("PostPalette", ShaderSources.FullscreenVert, ShaderSources.PaletteFrag);
             yield return new("PostEdge", ShaderSources.FullscreenVert, ShaderSources.EdgeFrag);
+            // The edge outline ahead of the temporal resolve, built only while it runs.
+            yield return new("PostTemporalEdge", ShaderSources.FullscreenVert, ShaderSources.TemporalEdgeFrag);
             yield return new("PostBlit", ShaderSources.FullscreenVert, ShaderSources.BlitFrag);
             yield return new("PostFxaa", ShaderSources.FullscreenVert, ShaderSources.FxaaFrag);
             yield return new("PostTonemap", ShaderSources.FullscreenVert, ShaderSources.TonemapFrag);

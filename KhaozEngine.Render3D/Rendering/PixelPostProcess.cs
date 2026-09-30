@@ -19,6 +19,8 @@ namespace KhaozEngine.Render3D.Rendering
     /// <para>On the display targets alone the chain adds the temporal sharpen (<see cref="SharpenRuns"/>): directly
     /// after the tonemap in the HDR order, and first in the legacy order, which has no tonemap. Either way it precedes
     /// quantize and the outline. No other chain builds or runs it, so their output is unchanged.</para>
+    /// <para>On those display targets the chain also leaves out its outline, which ran ahead of the resolve on the
+    /// internal images instead (PixelPostProcess.TemporalOutline.cs).</para>
     /// </summary>
     internal sealed partial class PixelPostProcess : IDisposable
     {
@@ -235,6 +237,9 @@ namespace KhaozEngine.Render3D.Rendering
                 _sharpen ??= new TemporalSharpenPass(_gd, _pingOutput);
                 _sharpen.Prepare(cl, res.PingA.Width, res.PingA.Height, s.Temporal.ResolvedSharpness);
             }
+            // Under the temporal resolve the outline ran ahead of it (PixelPostProcess.TemporalOutline.cs), not in the
+            // chain, so it joins neither parity. Every other chain keeps s.Outline exactly.
+            bool outlineInChain = OutlineRunsInChain(s, res);
 
             // MRT-flip parity for the edge pass: every fullscreen chain pass flips the image vertically, but the
             // NormalTex/DepthColorTex the edge pass ALSO reads are raw MRT attachments that never pass through the
@@ -328,7 +333,7 @@ namespace KhaozEngine.Render3D.Rendering
             // The distortion apply pass adds exactly one net main-chain pass (the FIRST pass, before either mode's
             // branch), so it joins the blit flip parity too, and so does the temporal sharpen.
             int precedingPasses = (distortionRuns ? 1 : 0) + (sharpenRuns ? 1 : 0) + (s.Hdr.Enabled ? 1 : 0)
-                                + (s.Quantize ? 1 : 0) + (s.Outline ? 1 : 0) + (bloomRuns ? 1 : 0) + (runFxaa ? 1 : 0);
+                                + (s.Quantize ? 1 : 0) + (outlineInChain ? 1 : 0) + (bloomRuns ? 1 : 0) + (runFxaa ? 1 : 0);
             float flipV = (precedingPasses % 2) == 0 ? 1f : 0f;
 
             var final = new FinalUbo
@@ -354,6 +359,7 @@ namespace KhaozEngine.Render3D.Rendering
             bool bloomRuns = s.Bloom.Enabled && res.BloomAllocated;
             bool distortionRuns = distortionActive && res.DistortAllocated;
             bool sharpenRuns = SharpenRuns(s, res);
+            bool outlineInChain = OutlineRunsInChain(s, res);   // under the resolve it ran ahead of it
 
             // Shared free-ping ping-pong for the single-input passes (tonemap / quantize / outline / FXAA): each
             // writes to the ping NOT holding src so no pass reads its own output. Source/PingB -> PingA, PingA ->
@@ -451,7 +457,7 @@ namespace KhaozEngine.Render3D.Rendering
                 RunTonemap();
                 if (sharpenRuns) RunSharpen();
                 if (s.Quantize) RunQuantize();
-                if (s.Outline) RunOutline();
+                if (outlineInChain) RunOutline();
                 if (runFxaa) RunFxaa();
             }
             else
@@ -471,7 +477,7 @@ namespace KhaozEngine.Render3D.Rendering
                 // after it then reads an image in 0 to 1, as it does without the resolve.
                 if (sharpenRuns) RunSharpen();
                 if (s.Quantize) RunQuantize();
-                if (s.Outline) RunOutline();
+                if (outlineInChain) RunOutline();
                 if (bloomRuns) RunBloom();
                 if (runFxaa) RunFxaa();
             }
@@ -503,6 +509,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             DisposeSets();
             _sharpen?.Dispose();
+            DisposeTemporalOutline();
             _palPipe.Dispose(); _edgePipe.Dispose(); _blitPipe.Dispose(); _fxaaPipe.Dispose(); _tonePipe.Dispose();
             _brightPipe.Dispose(); _blurPipe.Dispose(); _compositePipe.Dispose(); _applyPipe.Dispose();
             _palLayout.Dispose(); _edgeLayout.Dispose(); _blitLayout.Dispose(); _fxaaLayout.Dispose(); _toneLayout.Dispose();

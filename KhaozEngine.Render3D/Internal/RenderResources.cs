@@ -89,8 +89,9 @@ namespace KhaozEngine.Render3D.Internal
         public IGpuFramebuffer PingAFB = null!, PingBFB = null!;
 
         /// <summary>Whether <see cref="PingA"/> and <see cref="PingB"/> exist. Always, unless the temporal resolve runs
-        /// the post chain over its display-size targets and no render in the frame presents through these ones
-        /// (Scene3D.TemporalResolve.cs). The post chain can only bind these targets while it is set.</summary>
+        /// the post chain over its display-size targets, no render in the frame presents through these ones and the edge
+        /// outline does not run ahead of the resolve into them (Scene3D.TemporalResolve.cs). The post chain can only bind
+        /// these targets while it is set.</summary>
         public bool PingsAllocated { get; private set; }
 
         /// <summary>Half-resolution ping-pong pair for the bloom bright-pass + separable blur (see

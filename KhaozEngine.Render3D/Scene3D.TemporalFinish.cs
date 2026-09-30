@@ -29,6 +29,10 @@ namespace KhaozEngine.Render3D
         /// follows the display targets whenever they are rebuilt.</summary>
         internal TemporalSharpenPass? TemporalSharpenForTests => _post.SharpenForTests;
 
+        /// <summary>Whether the post chain has built the outline pass that runs ahead of the temporal resolve.
+        /// Internal, for the tests that pin that no other mode builds it.</summary>
+        internal bool TemporalOutlineBuiltForTests => _post.TemporalOutlineBuilt;
+
         // The internal and display sizes of the frame's first render, latched by MaterialLod, which every
         // render calls before it uploads the frame block. The diagnostics report them. A later render inside the frame
         // leaves them alone, as it leaves the frame's other diagnostics alone. All four are zero for a frame whose

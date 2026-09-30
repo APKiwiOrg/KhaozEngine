@@ -122,6 +122,11 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.EdgeFrag, "PostEdge");
 
         [Fact]
+        public void PostTemporalEdge()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TemporalEdgeFrag,
+                "PostTemporalEdge");
+
+        [Fact]
         public void PostBlit()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.BlitFrag, "PostBlit");
 

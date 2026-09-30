@@ -22,12 +22,13 @@ namespace KhaozEngine.Render3D
     /// render does not advance history).
     /// </para>
     /// <para>
-    /// Under the resolve the internal targets carry no bloom or ping pair, since the display chain has its own. The first
-    /// later render at the same internal size adds both in place, and they then stay until temporal anti-aliasing turns
-    /// off, with that render's post chain. A host that captures every frame at that size then reallocates nothing per
-    /// frame, and one that never captures pays for neither. A later render at another size goes through
-    /// <c>RenderResources.Resize</c>, which recreates the internal targets
-    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1167">#1167</see>).
+    /// Under the resolve the internal targets carry no bloom or ping pair, since the display chain has its own, except
+    /// the ping pair while the edge outline runs ahead of the resolve, which outlines the lit colour and the opaque copy
+    /// into it for the resolve to read (PixelPostProcess.TemporalOutline.cs). The first later render at the same internal
+    /// size adds both in place, and they then stay until temporal anti-aliasing turns off, with that render's post
+    /// chain. A host that captures every frame at that size then reallocates nothing per frame, and one that never
+    /// captures pays for neither. A later render at another size goes through <c>RenderResources.Resize</c>, which
+    /// recreates the internal targets (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1167">#1167</see>).
     /// </para>
     /// </summary>
     public sealed partial class Scene3D
@@ -99,8 +100,9 @@ namespace KhaozEngine.Render3D
         // The internal targets' bloom pair, which a resolving frame needs only for a later render's internal chain.
         bool InternalBloomWanted => Post.Bloom.Enabled && (!_frameResolves || _internalChainKept);
 
-        // The internal targets' ping pair, likewise.
-        bool InternalPingsWanted => !_frameResolves || _internalChainKept;
+        // The internal targets' ping pair, likewise, and on a resolving frame while the outline runs ahead of the
+        // resolve, which writes the outlined images into it (PixelPostProcess.TemporalOutline.cs).
+        bool InternalPingsWanted => !_frameResolves || _internalChainKept || PixelPostProcess.TemporalOutlineRuns(Post);
 
         /// <summary>From <c>EnsureSize</c> at the start of every render, before anything is sized or latched: fix the
         /// frame's resolve decision on its first render, and whether this render runs it. The first render reads the
@@ -155,8 +157,12 @@ namespace KhaozEngine.Render3D
             IGpuTexture motion = _res.MotionTex ?? throw new InvalidOperationException(
                 "The temporal resolve runs only while temporal rendering is active, which allocates the motion target.");
             _temporalResolve.SelectEntry(ChooseTemporalEntry(), _retired);   // TemporalEntry
-            _temporalResolve.BindInputs(new TemporalResolveInputs(_res.ColorTex, _temporalPost.OpaqueColor,
-                _res.DepthColorTex, motion), TemporalHistory, _retired);
+            // With the outline on, RunTemporalResolve outlines the lit colour into PingA and the opaque copy into PingB
+            // first, and the resolve reads those (PixelPostProcess.TemporalOutline.cs). Both entry points key their
+            // sets on the input textures, so turning the outline on or off rebinds them.
+            bool outline = PixelPostProcess.TemporalOutlineRuns(Post);
+            _temporalResolve.BindInputs(new TemporalResolveInputs(outline ? _res.PingA : _res.ColorTex,
+                outline ? _res.PingB : _temporalPost.OpaqueColor, _res.DepthColorTex, motion), TemporalHistory, _retired);
 
             // The previous view is the one the motion target reprojects with (Scene3D.MotionTarget.cs): the last frame's
             // first render rebased to this frame's origin, or null without history. The starfield places its stars by
@@ -214,10 +220,16 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>When this render resolves, after every internal-resolution colour writer and the distortion field and
-        /// before the post chain: resolve into the history write pair, then store this frame's depth.</summary>
+        /// before the post chain: resolve into the history write pair, then store this frame's depth. With the outline
+        /// on, the outline pass runs first on the internal images the resolve reads.</summary>
         void RunTemporalResolve(IGpuCommandList cl)
         {
             if (!_resolveThisRender) return;
+            if (PixelPostProcess.TemporalOutlineRuns(Post))
+            {
+                _post.RunTemporalOutline(cl, _res, _temporalPost!.OpaqueColor);
+                _frameStats.DrawCalls += PixelPostProcess.TemporalOutlineDrawCalls;
+            }
             _temporalResolve!.Run(cl, TemporalHistory);
             _frameStats.DrawCalls += TemporalResolveRenderer.DrawCallsPerFrame;
         }

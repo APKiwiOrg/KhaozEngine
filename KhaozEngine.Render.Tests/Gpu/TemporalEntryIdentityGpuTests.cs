@@ -44,15 +44,25 @@ namespace KhaozEngine.Tests.Gpu
         [InlineData(TemporalUpscale.Quality)]
         [InlineData(TemporalUpscale.Performance)]
         public void Both_entry_points_write_the_same_history_on_every_frame(TemporalUpscale preset)
+            => Compare(preset, outline: false);
+
+        /// <summary>With the edge outline on, both entry points read the outlined images the pass ahead of the
+        /// resolve writes, so they still write the same history.</summary>
+        [GpuFact]
+        public void Both_entry_points_write_the_same_history_with_the_edge_outline_on()
+            => Compare(TemporalUpscale.Quality, outline: true);
+
+        void Compare(TemporalUpscale preset, bool outline)
         {
             // A walk each, since a walk holds the meshes its scene loaded.
             var fusedWalk = new PerspectiveFollowLines(W, H, Speed, preset, BladeTexels);
             var splitWalk = new PerspectiveFollowLines(W, H, Speed, preset, BladeTexels);
-            using var fused = new TemporalFixture(W, H, s => fusedWalk.Setup(s, preset));
-            using var split = new TemporalFixture(W, H, s => splitWalk.Setup(s, preset));
+            using var fused = new TemporalFixture(W, H, s => { fusedWalk.Setup(s, preset); s.Post.Outline = outline; });
+            using var split = new TemporalFixture(W, H, s => { splitWalk.Setup(s, preset); s.Post.Outline = outline; });
             fused.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Fused;
             split.Scene.TemporalResolveEntryForTests = TemporalResolveEntry.Split;
-            output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, {W}x{H} {preset}");
+            output.WriteLine($"{fused.Device.Backend} on {fused.Device.Capabilities.DeviceName}, {W}x{H} {preset}"
+                + (outline ? ", the edge outline on" : ""));
             bool softwareVulkan = fused.Device.Backend == GpuBackendKind.VulkanNative
                 && fused.Device.Diagnostics.SoftwareAdapter == true;
             long colourCompared = 0;
@@ -101,6 +111,8 @@ namespace KhaozEngine.Tests.Gpu
             string differences = string.Join("\n", new[] { colour, confidence, locks, marks }.Select(d => "  " + d));
             output.WriteLine(differences);
             Assert.True(compared > TemporalFollowLinesRuns.Last, $"only {compared} frames resolved");
+            Assert.Equal(outline, fused.Scene.TemporalOutlineBuiltForTests);
+            Assert.Equal(outline, split.Scene.TemporalOutlineBuiltForTests);
             Assert.True(confidence.Values + locks.Values + marks.Values == 0,
                 $"the entry points stored different state:\n{differences}");
             if (softwareVulkan)

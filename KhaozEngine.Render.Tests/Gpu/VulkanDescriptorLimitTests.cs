@@ -254,6 +254,8 @@ namespace KhaozEngine.Tests.Gpu
                 ["TargetOutline.draw", "TargetOutline.material", "TargetOutline.palette"]),
             ("PixelPostProcess pal", ["Pixel.pal"]),
             ("PixelPostProcess edge", ["Pixel.edge"]),
+            // The outline ahead of the temporal resolve binds the edge layout, so it adds a pipeline and no layout.
+            ("PixelPostProcess temporal edge", ["Pixel.edge"]),
             ("PixelPostProcess blit", ["Pixel.blit"]),
             ("PixelPostProcess fxaa", ["Pixel.fxaa"]),
             ("PixelPostProcess bright", ["Pixel.bright"]),
@@ -300,7 +302,7 @@ namespace KhaozEngine.Tests.Gpu
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
             Assert.Equal(56, ShippedLayouts.Count);
-            Assert.Equal(60, ShippedPipelines.Count);
+            Assert.Equal(61, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

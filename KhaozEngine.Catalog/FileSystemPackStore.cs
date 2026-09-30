@@ -359,43 +359,6 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
         }
     }
 
-    static bool TryAddManifest(
-        ReadOnlyMemory<byte> file,
-        ContentManifestSide side,
-        HashSet<string> seen,
-        List<string> hashes)
-    {
-        if (!ContentManifestCodec.TryDecode(file.Span, side, out ContentManifest? manifest, out _))
-        {
-            return false;
-        }
-
-        Add(seen, hashes, manifest.RemapRuleChunkHash);
-        for (int t = 0; t < manifest.Types.Count; t++)
-        {
-            IReadOnlyList<ManifestChunkEntry> chunks = manifest.Types[t].Chunks;
-            for (int c = 0; c < chunks.Count; c++)
-            {
-                Add(seen, hashes, chunks[c].Hash);
-            }
-        }
-
-        for (int l = 0; l < manifest.Languages.Count; l++)
-        {
-            Add(seen, hashes, manifest.Languages[l].TextHash);
-        }
-
-        return true;
-    }
-
-    static void Add(HashSet<string> seen, List<string> hashes, string hash)
-    {
-        if (seen.Add(hash))
-        {
-            hashes.Add(hash);
-        }
-    }
-
     /// <summary>
     /// Called with the destination path after the temporary is written and before it is moved into place. It
     /// is the test seam that lands a rival's copy of the same object in exactly that window, and it is null on
@@ -552,34 +515,7 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
             return [];
         }
 
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var hashes = new List<string>();
-        Add(seen, hashes, pointer.ServerManifestHash);
-        Add(seen, hashes, pointer.ClientManifestHash);
-
-        bool read = await TryAddManifestAsync(
-            pointer.ServerManifestHash, ContentManifestSide.Server, seen, hashes, cancellationToken)
-            .ConfigureAwait(false);
-        if (read)
-        {
-            read = await TryAddManifestAsync(
-                pointer.ClientManifestHash, ContentManifestSide.Client, seen, hashes, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        // A PARTIAL list is the dangerous answer, because the sweep deletes everything outside the keep set.
-        // One unreadable manifest therefore empties the whole listing, which skips the sweep.
-        return read ? hashes : [];
-    }
-
-    async Task<bool> TryAddManifestAsync(
-        string hash,
-        ContentManifestSide side,
-        HashSet<string> seen,
-        List<string> hashes,
-        CancellationToken cancellationToken)
-    {
-        ReadOnlyMemory<byte>? file = await GetAsync(hash, cancellationToken).ConfigureAwait(false);
-        return file is not null && TryAddManifest(file.Value, side, seen, hashes);
+        return await ContentPackClosure.ReadAsync(
+            this, pointer.ServerManifestHash, pointer.ClientManifestHash, cancellationToken).ConfigureAwait(false);
     }
 }

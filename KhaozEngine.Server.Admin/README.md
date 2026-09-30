@@ -216,6 +216,8 @@ the same skip-on-listing-failure rule: deleting files on the authority of a list
 publish turns into a lost pack. It passes the durable version records to `ContentPackSweep.RunValidatedAsync`,
 which compares both manifest hashes in every pointer with its record before listing or enumerating any objects. Missing
 pointer evidence or either hash disagreeing returns `ran: false`, `deleted: 0` and `skipReason: listing-failed`.
+The keep set then comes directly from the durable records' manifest hashes. Replacing a pointer after those
+checks cannot change which live objects the sweep preserves.
 `catalog-verify` walks a version's two manifests, fetches every object they name and rehashes it.
 **It is read only and it never repairs**, because a repair means deciding which copy is
 right and only a republish can know that.

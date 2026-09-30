@@ -365,9 +365,10 @@ hashes at step 8, so the transaction re-reads the highest published number and r
 holds no lock across steps 1 to 10, and this is the check that catches a base that moved underneath such a
 plan. The same statement is made about the rule list, which has to be the plan's own prefix.
 
-Step 11 is `ContentPackSweep`, the orphan sweep, which runs only after a SUCCESSFUL commit. **The keep set is
-the union, over every version the store knows, of that version's pointer, the two manifest hashes it holds and
-every hash named inside either manifest**, which is exactly `IPackStore.ListAsync(v)`. It is defined against
+Step 11 is `ContentPackSweep`, the orphan sweep, which runs only after a SUCCESSFUL commit. **The validated
+keep set is the union, over every durable version record the store knows, of its two manifest hashes and
+every hash named inside either manifest**. `ContentPackClosure.ReadAsync` walks those hashes directly,
+without consulting a mutable pointer again. It is defined against
 the MANIFESTS and not against the chunk table, because the rule chunk sits at a reserved address outside any
 type's id space and the text chunks are per language, so neither has a chunk row to hang on while both are
 named by both manifests. A keep set read from the chunk table would delete them at the first publish and every
@@ -379,6 +380,9 @@ Before listing any version or enumerating orphan objects, it resolves each point
 hashes ordinally with that record. A missing pointer source, an absent or partial pointer, or either hash
 disagreeing skips the sweep with `listing-failed` and deletes nothing. This protects live chunks when another
 catalog has replaced a pointer at the same version number. A matching pointer still needs a complete listing.
+After these checks, the durable record's immutable manifest hashes remain the authority for the whole keep
+set. A pointer replaced between validation and listing cannot substitute another catalog's closure or cause
+the record's live chunks to be deleted.
 The sweep is SKIPPED when that listing fails for any reason. It is skipped again when the store implements no
 pruning half.
 `ContentPackSweepResult` carries the reason either way, because deleting nothing and deleting everything are

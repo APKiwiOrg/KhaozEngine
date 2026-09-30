@@ -63,6 +63,58 @@ public sealed class ContentPackSweepPointerTests
         }
     }
 
+    [Fact]
+    public async Task APointerReplacedAfterValidationCannotChangeTheDurableKeepSet()
+    {
+        using var root = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var pack = new FileSystemPackStore(root.Path);
+        var tracked = new TrackedPointerPackStore(pack);
+        InMemoryContentAuthoringStore first = PublishFixtures.Store(registry, tracked);
+        ContentPublishResult a = await PublishAsync(first, value: 11);
+        var live = new HashSet<string>(StringComparer.Ordinal);
+        await foreach (string hash in pack.ListAsync(1))
+        {
+            live.Add(hash);
+        }
+
+        ContentPublishResult b = await PublishAsync(
+            PublishFixtures.Store(registry, new PrunelessPackStore(pack)), value: 99);
+        var replacementOnly = new HashSet<string>(StringComparer.Ordinal);
+        await foreach (string hash in pack.ListAsync(1))
+        {
+            if (!live.Contains(hash))
+            {
+                replacementOnly.Add(hash);
+            }
+        }
+
+        await pack.PutVersionPointerAsync(1, a.ServerManifestHash, a.ClientManifestHash);
+        tracked.Reset();
+        tracked.AfterPointerRead = () => pack.PutVersionPointerAsync(1, b.ServerManifestHash, b.ClientManifestHash);
+
+        ContentPackSweepResult sweep = await PublishFixtures.Commit(first, tracked, registry).SweepAsync();
+
+        Assert.NotEmpty(live);
+        foreach (string hash in live)
+        {
+            Assert.True(await pack.ExistsAsync(hash), hash);
+        }
+
+        Assert.True(sweep.Ran, sweep.SkipReason);
+        Assert.Equal(live.Count, sweep.Kept);
+        Assert.Equal(replacementOnly.Count, sweep.Deleted);
+        Assert.Equal(0, tracked.ListCalls);
+        PackVersionPointer replaced = Assert.IsType<PackVersionPointer>(await pack.GetVersionPointerAsync(1));
+        Assert.Equal(b.ServerManifestHash, replaced.ServerManifestHash);
+        Assert.Equal(b.ClientManifestHash, replaced.ClientManifestHash);
+        Assert.NotEmpty(replacementOnly);
+        foreach (string hash in replacementOnly)
+        {
+            Assert.False(await pack.ExistsAsync(hash), hash);
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -94,6 +146,77 @@ public sealed class ContentPackSweepPointerTests
         Assert.Equal(0, tracked.DeleteCalls);
         Assert.True(await pack.ExistsAsync(published.ServerManifestHash));
         Assert.True(await pack.ExistsAsync(published.ClientManifestHash));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AMissingDurableManifestSkipsWithoutPruning(bool server)
+    {
+        using var root = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var pack = new FileSystemPackStore(root.Path);
+        var tracked = new TrackedPointerPackStore(pack);
+        InMemoryContentAuthoringStore store = PublishFixtures.Store(registry, tracked);
+        ContentPublishResult published = await PublishAsync(store, value: 11);
+        ContentPublishBaseline baseline = await store.ReadPublishBaselineAsync();
+        File.Delete(pack.PathFor(server ? published.ServerManifestHash : published.ClientManifestHash));
+        tracked.Reset();
+
+        ContentPackSweepResult sweep = await PublishFixtures.Commit(store, tracked, registry).SweepAsync();
+
+        Assert.False(sweep.Ran);
+        Assert.Equal(ContentPackSweep.SkippedListingFailed, sweep.SkipReason);
+        Assert.Equal(0, sweep.Deleted);
+        Assert.Equal(0, tracked.ListCalls);
+        Assert.Equal(0, tracked.EnumerationCalls);
+        Assert.Equal(0, tracked.DeleteCalls);
+        Assert.NotEmpty(baseline.Chunks);
+        foreach (ContentChunkRecord chunk in baseline.Chunks)
+        {
+            Assert.True(await pack.ExistsAsync(chunk.Hash), chunk.Hash);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AValidManifestServedUnderAnotherHashHasNoClosureAndSkipsPruning(bool server)
+    {
+        using var root = new TemporaryRoot();
+        ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
+        var pack = new FileSystemPackStore(root.Path);
+        var tracked = new TrackedPointerPackStore(pack);
+        InMemoryContentAuthoringStore store = PublishFixtures.Store(registry, tracked);
+        ContentPublishResult a = await PublishAsync(store, value: 11);
+        ContentPublishBaseline baseline = await store.ReadPublishBaselineAsync();
+        ContentPublishResult b = await PublishAsync(
+            PublishFixtures.Store(registry, new PrunelessPackStore(pack)), value: 99);
+        string expected = server ? a.ServerManifestHash : a.ClientManifestHash;
+        string replacement = server ? b.ServerManifestHash : b.ClientManifestHash;
+        var bytes = await pack.GetAsync(replacement);
+        Assert.NotNull(bytes);
+        Assert.True(ContentPackReader.TryVerify(bytes.Value.Span, replacement, out _));
+        Assert.False(ContentPackReader.TryVerify(bytes.Value.Span, expected, out _));
+
+        // GetAsync returns raw fetched bytes, including a valid manifest filed under the wrong address.
+        await File.WriteAllBytesAsync(pack.PathFor(expected), bytes.Value.ToArray());
+        await pack.PutVersionPointerAsync(1, a.ServerManifestHash, a.ClientManifestHash);
+        tracked.Reset();
+
+        Assert.Empty(await ContentPackClosure.ReadAsync(tracked, a.ServerManifestHash, a.ClientManifestHash));
+        ContentPackSweepResult sweep = await PublishFixtures.Commit(store, tracked, registry).SweepAsync();
+
+        Assert.False(sweep.Ran);
+        Assert.Equal(ContentPackSweep.SkippedListingFailed, sweep.SkipReason);
+        Assert.Equal(0, sweep.Deleted);
+        Assert.Equal(0, tracked.ListCalls);
+        Assert.Equal(0, tracked.EnumerationCalls);
+        Assert.Equal(0, tracked.DeleteCalls);
+        foreach (ContentChunkRecord chunk in baseline.Chunks)
+        {
+            Assert.True(await pack.ExistsAsync(chunk.Hash), chunk.Hash);
+        }
     }
 
     [Fact]
@@ -280,6 +403,8 @@ public sealed class ContentPackSweepPointerTests
     sealed class TrackedPointerPackStore(FileSystemPackStore inner)
         : TrackedPackStore(inner), IPackVersionPointerStore
     {
+        public Func<Task>? AfterPointerRead { get; set; }
+
         public Task PutVersionPointerAsync(
             int versionNumber,
             string serverManifestHash,
@@ -287,10 +412,18 @@ public sealed class ContentPackSweepPointerTests
             CancellationToken cancellationToken = default)
             => Inner.PutVersionPointerAsync(versionNumber, serverManifestHash, clientManifestHash, cancellationToken);
 
-        public Task<PackVersionPointer?> GetVersionPointerAsync(
+        public async Task<PackVersionPointer?> GetVersionPointerAsync(
             int versionNumber,
             CancellationToken cancellationToken = default)
-            => Inner.GetVersionPointerAsync(versionNumber, cancellationToken);
+        {
+            PackVersionPointer? pointer = await Inner.GetVersionPointerAsync(versionNumber, cancellationToken);
+            if (AfterPointerRead is not null)
+            {
+                await AfterPointerRead();
+            }
+
+            return pointer;
+        }
     }
 
     sealed class TrackedReadPointerPackStore(FileSystemPackStore inner)

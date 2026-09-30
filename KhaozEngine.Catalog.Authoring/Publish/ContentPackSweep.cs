@@ -19,8 +19,8 @@ public sealed record ContentPackSweepResult(bool Ran, int Kept, int Deleted, str
 /// <summary>
 /// Step 11 of spec 6.1, the orphan sweep, which runs after a SUCCESSFUL commit and never before one.
 /// <para>
-/// <b>The keep set is the union, over EVERY version the store knows, of that version's pointer, the two
-/// manifest hashes it holds, and every hash named INSIDE either manifest.</b> It is defined against the
+/// <b>The validated keep set is the union, over EVERY durable version record the store knows, of its two
+/// manifest hashes and every hash named INSIDE either manifest.</b> It is defined against the
 /// MANIFESTS and not against the chunk table, because the manifest is the complete enumeration and the chunk
 /// table is not: the remap rule chunk sits at a reserved address outside any type's id space and the text
 /// chunks are per language, so neither has a type row to hang a chunk row on, while both are named by both
@@ -51,6 +51,8 @@ public static class ContentPackSweep
     /// <summary>
     /// Checks every pointer against its durable version record before listing or pruning any objects.
     /// Missing pointer evidence or either mismatched manifest hash skips the sweep as a listing failure.
+    /// The keep set is then read from those durable manifest hashes, so a later pointer replacement cannot
+    /// select a different closure for deletion.
     /// The publish and operator sweep use this entry point.
     /// </summary>
     /// <param name="store">The pack store to sweep, with readable version pointers.</param>
@@ -65,7 +67,7 @@ public static class ContentPackSweep
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(versions);
 
-        if (store is not IPackStorePruning)
+        if (store is not IPackStorePruning pruning)
         {
             return new ContentPackSweepResult(false, 0, 0, SkippedNoPruning);
         }
@@ -77,7 +79,7 @@ public static class ContentPackSweep
             return new ContentPackSweepResult(false, 0, 0, SkippedListingFailed);
         }
 
-        var numbers = new List<int>(versions.Count);
+        var manifests = new List<PackVersionPointer>(versions.Count);
         for (int i = 0; i < versions.Count; i++)
         {
             ContentVersionRecord version = versions[i];
@@ -91,10 +93,24 @@ public static class ContentPackSweep
                 return new ContentPackSweepResult(false, 0, 0, SkippedListingFailed);
             }
 
-            numbers.Add(version.VersionNumber);
+            manifests.Add(new PackVersionPointer(version.ServerManifestHash, version.ClientManifestHash));
         }
 
-        return await RunAsync(store, numbers, cancellationToken).ConfigureAwait(false);
+        var keep = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < manifests.Count; i++)
+        {
+            PackVersionPointer manifest = manifests[i];
+            IReadOnlyList<string> hashes = await ContentPackClosure.ReadAsync(
+                store, manifest.ServerManifestHash, manifest.ClientManifestHash, cancellationToken).ConfigureAwait(false);
+            if (hashes.Count == 0)
+            {
+                return new ContentPackSweepResult(false, keep.Count, 0, SkippedListingFailed);
+            }
+
+            keep.UnionWith(hashes);
+        }
+
+        return await PruneAsync(pruning, keep, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -139,6 +155,14 @@ public static class ContentPackSweep
             }
         }
 
+        return await PruneAsync(pruning, keep, cancellationToken).ConfigureAwait(false);
+    }
+
+    static async Task<ContentPackSweepResult> PruneAsync(
+        IPackStorePruning pruning,
+        HashSet<string> keep,
+        CancellationToken cancellationToken)
+    {
         var orphans = new List<string>();
         await foreach (string hash in pruning.EnumerateAsync(cancellationToken).ConfigureAwait(false))
         {

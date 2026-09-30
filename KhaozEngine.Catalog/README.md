@@ -406,6 +406,13 @@ if (!roller.TryRoll(tableId, drops, out int written))
   ONE object in a store not named by its own hash, and how hard a provider works to survive a power cut.
   `PackVersionPointer.TryRead` is the pointer file's one parser, because both providers read the same two
   lines, the local one off disk and the HTTP one off a `versions/<n>` GET.
+- `ContentPackClosure.ReadAsync(store, serverManifestHash, clientManifestHash)` reads both manifests at
+  the supplied immutable addresses and returns their complete, deduplicated object closure, including the
+  manifests, chunks, rules and per-language text. Fetched manifests are verified against those addresses
+  before decoding. An absent, mismatched or undecodable manifest returns an empty list, never a partial
+  closure. Filesystem version listings use this same walker after reading their pointer.
+  Validated authoring sweeps pass the durable record's hashes directly, so a later pointer replacement
+  cannot change which objects the sweep keeps.
 - `FileSystemPackStore` - the local provider: one file per hash under a two-level shard derived from the
   hash itself, written to a temporary name in the same directory and then moved. A content-addressed object
   is moved into place CREATE ONLY: one that another writer already placed holds the same bytes and is kept

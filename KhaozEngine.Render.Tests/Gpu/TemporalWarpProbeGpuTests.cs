@@ -19,6 +19,54 @@ namespace KhaozEngine.Tests.Gpu
         {
             Probe(StaticPath.FastOrbit, TemporalStaticOrbitRuns.GrazingPitch, TemporalStaticOrbitRuns.MaxZoom);
             Probe(StaticPath.FastOrbit, TemporalStaticOrbitRuns.GrazingPitch, GroundStage.Distance);
+            Probe(StaticPath.FastOrbit, TemporalStaticOrbitRuns.BootPitch, TemporalStaticOrbitRuns.MaxZoom);
+        }
+
+        // Every texel's static excess in metres against the camera's travel this frame.
+        void Distribution(TemporalFixture fx, MotionTargetReadback motion, int n)
+        {
+            TemporalHistory history = fx.Scene.TemporalHistory;
+            TemporalResolveUniforms u = fx.Scene.TemporalResolveRendererForTests!.LastUniforms;
+            float[] depth = TemporalTextureIo.Read(fx.Device, history.PreviousDepth(history.WriteIndex));
+            var size = new Vector2(u.Sizes.X, u.Sizes.Y);
+            var jitter = new Vector2(u.Jitter.X, u.Jitter.Y);
+            float eye = u.Params.Z, worst = 0f, worstDepth = 0f, worstScreen = 0f, worstGradient = 0f;
+            int wx = 0, wy = 0;
+            long overOld = 0, overNew = 0;
+            float newTest = TemporalResolveTuning.WorldMotionMetres + TemporalResolveTuning.WorldMotionEyeFraction * eye;
+            for (int y = 1; y < motion.Height - 1; y++)
+                for (int x = 1; x < motion.Width - 1; x++)
+                {
+                    int i = y * motion.Width + x;
+                    Vector2 m = motion.Motion[i];
+                    if (MathF.Abs(m.X) > TemporalResolveTuning.MotionSentinel) continue;
+                    Vector2 sampleUv = (new Vector2(x + 0.5f, y + 0.5f) - jitter) / size;
+                    var ndc = new Vector2(sampleUv.X * 2f - 1f, 1f - sampleUv.Y * 2f);
+                    if (TemporalResolveMath.StaticPreviousUv(u, ndc, depth[i]) is not Vector2 staticUv) continue;
+                    float travel = ((staticUv - (sampleUv - m)) * size).Length();
+                    float screen = (m * size).Length();
+                    float clipW = u.CurrentDepth.X > 0.5f ? depth[i] : 1f;
+                    float mpp = 2f * clipW / (u.PreviousProjection.M11 * size.X);
+                    float excess = (travel - screen * TemporalResolveTuning.MovingSurfaceMotionFraction) * mpp;
+                    if (excess > TemporalResolveTuning.WorldMotionMetres) overOld++;
+                    if (excess > newTest) overNew++;
+                    if (excess > worst)
+                    {
+                        worst = excess; worstDepth = depth[i]; worstScreen = screen; wx = x; wy = y;
+                        float g = 0f;
+                        foreach (int j in new[] { i - 1, i + 1, i - motion.Width, i + motion.Width })
+                        {
+                            float d = depth[j];
+                            if (MathF.Abs(d - depth[i]) < depth[i] * TemporalResolveTuning.DisocclusionTolerance)
+                                g = MathF.Max(g, MathF.Abs(d - depth[i]));
+                        }
+                        worstGradient = g;
+                    }
+                }
+            output.WriteLine($"  frame {n}: eye travel {eye:0.0000} m, worst static {worst * 1000f:0.0000} mm "
+                + $"({(eye > 0 ? worst / eye * 1000f : 0f):0.000} thousandths of the eye's travel) at ({wx},{wy}) depth "
+                + $"{worstDepth:0.000} m, screen {worstScreen:0.000} px, same-surface depth step {worstGradient:0.0000} m, "
+                + $"texels over 1 mm {overOld}, over {newTest * 1000f:0.000} mm {overNew}");
         }
 
         void Probe(StaticPath path, float pitch, float distance)
@@ -47,6 +95,7 @@ namespace KhaozEngine.Tests.Gpu
                         else if (MathF.Abs(c) < 4f * HalfLeastNormal) tiny++;
                     }
                 }
+                if (n > 0) Distribution(fx, motion, n);
                 var bands = new List<int>();
                 for (int i = 1; i < state.Length; i += 2) if (state[i] < -2.5f) bands.Add(i / 2);
                 output.WriteLine($"frame {n}: band {bands.Count}, motion texels {texels}, components zero {zero}, "

@@ -17,12 +17,16 @@ namespace KhaozEngine.Render3D.Rendering
         /// render cap a Native preset can upscale, 3456x2234 from 3342x2160.</summary>
         internal static bool Upscales(in TemporalResolveUniforms uniforms) => uniforms.Jitter.Z > 1f;
 
+        /// <summary>For the cost measurement alone: record the upscaling second pass on a frame at the display's own
+        /// size too, where it writes the same history, so one run times both programs.</summary>
+        internal bool UpscalingProgramForTests { get; set; }
+
         /// <summary>Whether the second pass compiled for the display's own size has been built. For tests.</summary>
         internal bool AtDisplaySizeBuiltForTests => _atDisplaySizePipeline is not null;
 
         IGpuPipeline AccumulatePipeline(bool upscales)
         {
-            if (upscales) return _accumulatePipeline;
+            if (upscales || UpscalingProgramForTests) return _accumulatePipeline;
             if (_atDisplaySizePipeline is null)
             {
                 IGpuResourceFactory f = _gd.Factory;

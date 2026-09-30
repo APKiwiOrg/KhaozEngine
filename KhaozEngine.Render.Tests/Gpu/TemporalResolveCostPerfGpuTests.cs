@@ -23,6 +23,9 @@ namespace KhaozEngine.Tests.Gpu
     /// from round to round so drift lands on every mode alike. The difference of a mode's median block from the off
     /// median is an upper bound on its resolve and sharpen, which also carries the motion target, the opaque copy and
     /// the post chain at display size in place of the internal size. The paired round differences show the spread.
+    /// Where the internal size is the display's, a sixth mode records the split with its upscaling second pass, which
+    /// writes the same history there, so the saving of the program compiled for the display's size is timed within
+    /// one run.
     /// <para>
     /// It prints the backend, the device, every block and the pick of <c>TemporalResolvePolicy</c> for the backend
     /// and preset, which is how the policy's table is kept, and asserts only that each block rendered the mode it
@@ -81,7 +84,7 @@ namespace KhaozEngine.Tests.Gpu
                 || n.Contains("Software", StringComparison.OrdinalIgnoreCase));
 
         // The modes of one round. Each temporal mode names the resolve it selects and the pass it leaves out.
-        enum Mode { Off, Fused, Split, PassOneAlone, PassTwoAlone }
+        enum Mode { Off, Fused, Split, PassOneAlone, PassTwoAlone, SplitUpscalingProgram }
 
         static readonly Mode[] Modes = [Mode.Off, Mode.Fused, Mode.Split, Mode.PassOneAlone, Mode.PassTwoAlone];
 
@@ -126,12 +129,16 @@ namespace KhaozEngine.Tests.Gpu
             var split = renderer.SplitResolveForTests
                 ?? throw new InvalidOperationException("the split entry point was never built");
 
-            var wall = Modes.ToDictionary(m => m, _ => new List<double>());
-            var submit = Modes.ToDictionary(m => m, _ => new List<double>());
+            // At the display's own size the split also records its upscaling second pass in a mode of its own, which
+            // writes the same history, to time the program compiled without the display-sized reconstruction.
+            bool upscales = iw < w || ih < h;
+            Mode[] modes = upscales ? Modes : [.. Modes, Mode.SplitUpscalingProgram];
+            var wall = modes.ToDictionary(m => m, _ => new List<double>());
+            var submit = modes.ToDictionary(m => m, _ => new List<double>());
             for (int r = 0; r < Rounds; r++)
-                for (int k = 0; k < Modes.Length; k++)
+                for (int k = 0; k < modes.Length; k++)
                 {
-                    Mode mode = Modes[(r + k) % Modes.Length];
+                    Mode mode = modes[(r + k) % modes.Length];
                     bool temporal = mode != Mode.Off;
                     scene.Post.Quality.AntiAliasing = temporal ? AntiAliasing.Temporal : AntiAliasing.Off;
                     scene.Post.RenderScale = temporal ? RenderScale.MatchViewport : RenderScale.FixedInternal;
@@ -140,6 +147,7 @@ namespace KhaozEngine.Tests.Gpu
                     scene.TemporalResolveEntryForTests = EntryOf(mode);
                     split.SkipPassForTests = mode == Mode.PassOneAlone ? TemporalSplitPass.Accumulate
                         : mode == Mode.PassTwoAlone ? TemporalSplitPass.Prepare : TemporalSplitPass.None;
+                    split.UpscalingProgramForTests = mode == Mode.SplitUpscalingProgram;
                     fx.Frames(Warm, draw);
                     double submitted = 0;
                     long t0 = Stopwatch.GetTimestamp();
@@ -156,13 +164,14 @@ namespace KhaozEngine.Tests.Gpu
                     if (temporal) Assert.Equal(EntryOf(mode), renderer.LastEntry);
                 }
             split.SkipPassForTests = TemporalSplitPass.None;
+            split.UpscalingProgramForTests = false;
             scene.TemporalResolveEntryForTests = null;
 
             double off = Median(wall[Mode.Off]);
             output.WriteLine($"  {w}x{h} {preset}, {name}, internal {iw}x{ih}: {Rounds} rounds of {Block} frames after "
                 + $"{Warm}, one block a mode a round, the order rotating");
             output.WriteLine($"  off at {iw}x{ih}: {F(off)} ms a frame, blocks {Join(wall[Mode.Off])}");
-            foreach (Mode mode in Modes.Skip(1))
+            foreach (Mode mode in modes.Skip(1))
             {
                 var paired = wall[mode].Zip(wall[Mode.Off], (t, o) => t - o).ToList();
                 double submitted = Median(submit[mode]) - Median(submit[Mode.Off]);
@@ -174,7 +183,9 @@ namespace KhaozEngine.Tests.Gpu
             PrintPair("pass one", wall[Mode.Split], wall[Mode.PassTwoAlone]);
             PrintPair("pass two", wall[Mode.Split], wall[Mode.PassOneAlone]);
             PrintPair("split against fused", wall[Mode.Split], wall[Mode.Fused]);
-            bool upscales = iw < w || ih < h;
+            if (!upscales)
+                PrintPair("split at the display's size against its upscaling second pass", wall[Mode.Split],
+                    wall[Mode.SplitUpscalingProgram]);
             output.WriteLine($"  the policy picks {TemporalResolvePolicy.Measured} for "
                 + $"{fx.Device.Backend} at {preset}, internal {iw}x{ih} {(upscales ? "below" : "at")} the display"
                 + (TemporalResolvePolicy.Forced is { } forced ? $", forced to {forced} in this process" : ""));
@@ -196,6 +207,7 @@ namespace KhaozEngine.Tests.Gpu
             Mode.Fused => "fused",
             Mode.Split => "split",
             Mode.PassOneAlone => "split, pass one alone",
+            Mode.SplitUpscalingProgram => "split, upscaling second pass",
             _ => "split, pass two alone",
         };
 

@@ -785,6 +785,21 @@ and changed these details. Each group's "Contract amendments" block carries the 
     under bounds of 8 and 16. The 14 resets still match their from-scratch renders
     with no pixel differing, the reveal's comparison with the wall from scratch is unchanged, and the perspective walk
     cell that failed the earlier half variant (pitch 0.35, sideways at 2.5 px, Native) passes.
+
+    Keeping the split's prepared chroma exact does not pay for its trail pixels, measured with the half 3x3 and the
+    display-sized reconstruction (amendment 26) on scratch branch fix/taa-chroma-2
+    ([#1202](https://github.com/APKiwiOrg/KhaozEngine/issues/1202)): Co and Cg in two R32F targets and Y and the
+    reactive difference in RG16F, 28 bytes a texel against 24 and seven first-pass outputs against five, both entry
+    points rounding only Y and the reactive difference. On Metal storing the chroma exactly changes nothing on its own,
+    since the half 3x3 converts the colour it gathers to half floats: the still box over the textured wall stays at 7
+    and 15 trail pixels at Native and Quality. With the 3x3 also gathering the colour at single float it leaves 7 and
+    10. On the Tesla T4 (hosted run 36644627034 against 36644616620) it leaves 6 and 10 under Direct3D 11 and Windows
+    Vulkan against 10 and 10, and 8 and 10 under Linux Vulkan against 8 and 10. The split, resolve and sharpen at most,
+    costs more everywhere: on the Apple M2 Max 0.02 to 0.17 ms at 2560x1440 and 0.10 to 0.26 at 3456x2234, on the T4
+    under Direct3D 11 0.21 to 0.26 and 0.35 to 0.45, and under Windows Vulkan 0.37 to 0.65 and 0.94 to 1.56. The Linux
+    leg failed at vkCreateInstance before its cost facts
+    ([#1200](https://github.com/APKiwiOrg/KhaozEngine/issues/1200)). The targets grow from 39.3 to 45.9 MB at 2560x1440
+    Quality and from 82.3 to 96.1 MB at 3456x2234 Quality. The layout stays at 16 bits, and the fact keeps its bounds.
 26. Step 4's reconstruction is sized in display pixels for a converged pixel. The Lanczos 2 sized in internal pixels
     band-limits each frame's current sample to the internal Nyquist, a period of 4 display pixels at Performance, so the
     accumulated image stayed softer than its jittered samples allow
@@ -806,6 +821,13 @@ and changed these details. Each group's "Contract amendments" block carries the 
     gathered it takes 2.50 to 2.54 and 3.04 to 3.05. The gathered form costs the second pass 0.10 to 0.22 ms at
     3456x2234, Native included, where no pixel takes it, and 0.02 to 0.07 at 2560x1440, against one run without the rule
     at a load of 8 to 13.
+
+    On the Tesla T4 (hosted runs 36580778346 without the rule, 36639533321 with the second loop, 36644616620 gathered)
+    the split, resolve and sharpen at most, costs 0.03 to 0.12 ms more at 2560x1440 and 0.15 to 0.32 at 3456x2234 under
+    Direct3D 11 gathered, against 0.19 to 0.39 and 0.68 to 0.95 with the loop, and under Windows Vulkan 0.06 to 0.10 and
+    0.15 to 0.23 against 0.08 to 0.22 and 0.47 to 0.55, at Native too. The Linux leg failed at vkCreateInstance before
+    its cost facts (#1200). Both entry points still write the same history on both Windows legs, and on NVIDIA Vulkan
+    the checkerboard and the chart keep what Metal keeps within 0.001.
 
     Measured on Metal (half precision), 320x180, HDR off. On the mip bias checkerboard, local contrast as a share of
     native's: Quality 0.781 to 0.883, Balanced 0.741 to 0.806, Performance 0.747 to 0.768, and UltraPerformance

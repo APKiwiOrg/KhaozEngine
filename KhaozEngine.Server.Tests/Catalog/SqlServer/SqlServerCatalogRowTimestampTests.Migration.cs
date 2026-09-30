@@ -245,6 +245,9 @@ public sealed partial class SqlServerCatalogRowTimestampTests
     {
         using var database = new SqlServerCatalogDatabase();
         WriteVersionTwo(database);
+        Assert.Equal(1, Count(database, "SELECT COUNT(*) FROM dbo.catalog_row WHERE definition_id = 2 AND valid_from_version = 1;"));
+        using var probe = new SqlServerMigrationBackfillProbe(
+            database.ConnectionString, "catalog_row", "definition_id = 2 AND valid_from_version = 1");
         var clock = new ManualClock(T0);
 
         bool bothWaited;
@@ -268,6 +271,7 @@ public sealed partial class SqlServerCatalogRowTimestampTests
         Assert.Equal(3, Count(database, "SELECT schema_version FROM dbo.catalog_metadata;"));
         Assert.Equal(NewColumns.Length, NewColumnCount(database));
         AssertLegacyBackfill(database);
+        Assert.Equal(1, probe.Updates);
     }
 
     async Task HalfMigratedFinishesOnReopenAsync(int applied)

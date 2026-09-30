@@ -402,12 +402,21 @@ if (!roller.TryRoll(tableId, drops, out int written))
 
 - `IPackStore` - the content-addressed store of spec 8.1, four members and no more: `ExistsAsync`,
   `GetAsync` (null for absent rather than a throw), `PutAsync` and `ListAsync`. The name IS the content.
+  Public `PutAsync` verifies the offered bytes against that name before writing, including when the file
+  already exists.
 - `IPackStorePruning` - the delete path, deliberately separate, so a read-only provider cannot be asked to
   prune and a misconfigured one cannot delete a production pack through the common interface.
 - `PackVersionPointer` and `PackDurability` - the two manifest hashes of one published version, which is the
   ONE object in a store not named by its own hash, and how hard a provider works to survive a power cut.
   `PackVersionPointer.TryRead` is the pointer file's one parser, because both providers read the same two
   lines, the local one off disk and the HTTP one off a `versions/<n>` GET.
+- `ContentPackClosure.ReadAsync(store, serverManifestHash, clientManifestHash)` reads both manifests at
+  the supplied immutable addresses and returns their complete, deduplicated object closure, including the
+  manifests, chunks, rules and per-language text. Fetched manifests are verified against those addresses
+  before decoding. An absent, mismatched or undecodable manifest returns an empty list, never a partial
+  closure. Filesystem version listings use this same walker after reading their pointer.
+  Validated authoring sweeps pass the durable record's hashes directly, so a later pointer replacement
+  cannot change which objects the sweep keeps.
 - `FileSystemPackStore` - the local provider: one file per hash under a two-level shard derived from the
   hash itself, written to a temporary name in the same directory and then moved. A content-addressed object
   is moved into place CREATE ONLY: one that another writer already placed holds the same bytes and is kept
@@ -441,6 +450,9 @@ if (!roller.TryRoll(tableId, drops, out int written))
 - `CachingPackStore` - a LOCAL store in front of a REMOTE one. `GetAsync` asks local, on a miss asks remote,
   VERIFIES, writes through to local and returns. `ExistsAsync` asks local then remote. `PutAsync`, `ListAsync`
   and the pruning half are the CACHE's alone, so one client's eviction policy can never reach the origin.
+  After a successful fetch verification, an internal opt-in write capability lets `FileSystemPackStore`
+  reuse that result through its usual atomic create-only write. Other stores receive ordinary `PutAsync`.
+  The capability is internal, and public writes retain their integrity check.
   The verification is the whole value of it and it is not optional: bytes that do not digest to the name they
   were fetched under are discarded, never cached and never returned. A matching-hash `KECC` chunk must also
   pass the structural row-table walk before caching, including row count, order, duplicate, range and body

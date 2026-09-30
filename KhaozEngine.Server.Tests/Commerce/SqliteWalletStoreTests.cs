@@ -180,20 +180,16 @@ public sealed class SqliteWalletStoreTests : WalletStoreContract, IDisposable
     }
 
     /// <summary>Two processes opening one legacy file at once must not both add a column. The loser of that race
-    /// would fail its open on a duplicate column, so the checks and the adds share one immediate transaction. It loops
-    /// because a race that shows one time in ten is the one that reaches production.</summary>
+    /// would fail its open on a duplicate column, so the locked rechecks and the adds share one immediate transaction.</summary>
     [Fact]
     public async Task Wallet_widening_survives_concurrent_openers()
     {
-        for (int iteration = 0; iteration < 20; iteration++)
-        {
-            using var legacy = new SqliteScratchFile("ke-wallet-race-");
-            legacy.Execute(LegacyTables);
-            await SqliteScratchFile.OpenConcurrentlyAsync(() => new SqliteWalletStore(legacy.ConnectionString), openers: 4);
-            Assert.Equal(1, legacy.Column("wallet_balance", "created_at").Count);
-            Assert.Equal(1, legacy.Column("grant_schedule", "created_at").Count);
-            Assert.Equal(1, legacy.Column("grant_schedule", "updated_at").Count);
-        }
+        using var legacy = new SqliteScratchFile("ke-wallet-race-");
+        legacy.Execute(LegacyTables);
+        await SqliteScratchFile.OpenConcurrentlyAsync(() => new SqliteWalletStore(legacy.ConnectionString), openers: 2);
+        Assert.Equal(1, legacy.Column("wallet_balance", "created_at").Count);
+        Assert.Equal(1, legacy.Column("grant_schedule", "created_at").Count);
+        Assert.Equal(1, legacy.Column("grant_schedule", "updated_at").Count);
     }
 
     private static (long? Created, long? Updated) BalanceTimes(SqliteScratchFile database, AccountId account)

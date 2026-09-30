@@ -121,6 +121,12 @@ family carries an ordered `ContentFamilyBlock` list.
 
 A family is never deleted. It is retired like a definition.
 
+`CreateFamilyAsync` commits the family, its first aligned block, both allocator high-water marks and the
+`family-create` audit together. A refused reservation or failed audit leaves all four unchanged, so the same
+key can be retried without wasting definition ids. The in-memory reference stages its audit before exposing
+the family and marks under its gate. Later block reservations retain the allocator's reserve-before-issue
+commit order.
+
 ## The id allocator
 
 `ContentIdAllocator` issues definition ids and it RESERVES BEFORE IT ISSUES. `ContentIdHighWater` is the
@@ -328,10 +334,10 @@ Two publishers may run step 9 at once, because every file it writes is named by 
 `CommitPublishAsync`, and the store writes the pointer as the last act before its transaction commits, once
 the version number is confirmed. Two publishers can prepare the same number from the same base, for example two
 replicas of different builds applying one upgrade, and a pointer written in step 9 let the one that went on to
-lose overwrite the committed version's pointer with manifests that never committed. The boot serves what that
-pointer names and the sweep keeps what it names, so that was content served that never committed and content
-deleted that did. Now a losing publisher is refused before it writes a pointer, and two publishers of one
-version never write it at once. A crash after the pointer write and before the commit leaves a pointer for a
+lose overwrite the committed version's pointer with manifests that never committed. Before the pointer checks,
+the boot served what that pointer named and the sweep kept what it named, so that was content served that never
+committed and content deleted that did. Now a losing publisher is refused before it writes a pointer, and two
+publishers of one version never write it at once. A crash after the pointer write and before the commit leaves a pointer for a
 version that never committed, which keeps orphan files alive rather than deleting live ones, and the next
 attempt at that number overwrites it.
 
@@ -361,18 +367,33 @@ hashes at step 8, so the transaction re-reads the highest published number and r
 holds no lock across steps 1 to 10, and this is the check that catches a base that moved underneath such a
 plan. The same statement is made about the rule list, which has to be the plan's own prefix.
 
-Step 11 is `ContentPackSweep`, the orphan sweep, which runs only after a SUCCESSFUL commit. **The keep set is
-the union, over every version the store knows, of that version's pointer, the two manifest hashes it holds and
-every hash named inside either manifest**, which is exactly `IPackStore.ListAsync(v)`. It is defined against
+Step 11 is `ContentPackSweep`, the orphan sweep, which runs only after a SUCCESSFUL commit. **The validated
+keep set is the union, over every durable version record the store knows, of its two manifest hashes and
+every hash named inside either manifest**. `ContentPackClosure.ReadAsync` walks those hashes directly,
+without consulting a mutable pointer again. It is defined against
 the MANIFESTS and not against the chunk table, because the rule chunk sits at a reserved address outside any
 type's id space and the text chunks are per language, so neither has a chunk row to hang on while both are
 named by both manifests. A keep set read from the chunk table would delete them at the first publish and every
 later boot would fail closed on an absent chunk, for every version, forever.
 
-The sweep is SKIPPED when the store listing fails for any reason, and a pointer that is absent or unreadable
-for any version IS a listing failure. It is skipped again when the store implements no pruning half.
+The publish and operator sweep pass every durable `ContentVersionRecord` to
+`ContentPackSweep.RunValidatedAsync`.
+Before listing any version or enumerating orphan objects, it resolves each pointer and compares BOTH manifest
+hashes ordinally with that record. A missing pointer source, an absent or partial pointer, or either hash
+disagreeing skips the sweep with `listing-failed` and deletes nothing. This protects live chunks when another
+catalog has replaced a pointer at the same version number. A matching pointer still needs a complete listing.
+After these checks, the durable record's immutable manifest hashes remain the authority for the whole keep
+set. A pointer replaced between validation and listing cannot substitute another catalog's closure or cause
+the record's live chunks to be deleted.
+The sweep is SKIPPED when that listing fails for any reason. It is skipped again when the store implements no
+pruning half.
 `ContentPackSweepResult` carries the reason either way, because deleting nothing and deleting everything are
 one keystroke apart and an operator reading a publish response deserves to know which happened.
+
+The existing `RunAsync(IPackStore, IReadOnlyList<int>, CancellationToken)` entry point remains available for
+compatibility. It trusts the pointer-backed listings without checking durable records, so its caller must
+establish that those pointers name the authoritative manifests. Use `RunValidatedAsync` with version records
+whenever they are available.
 
 `ContentPublishCommit.SweepAsync` is the step as the publish runs it, and it is public so a test can drive
 step 11 on its own. An OPERATOR reaches `ContentPackSweep` through the admin surface instead, because a

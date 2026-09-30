@@ -16,9 +16,8 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// edit, so the insert shares the edit's transaction and an audit failure fails the edit (spec 4.6).
 /// </para>
 /// <para>
-/// The two renderers below are the THIRD copy of one rule, after the in-memory store's and the SQLite
-/// provider's. The type that owns it is internal to <c>KhaozEngine.Catalog.Authoring</c> and therefore
-/// unreachable from here. A shared renderer in the authoring package is the remedy and it is filed rather
+/// The two renderers below are the third copy of one rule, after the in-memory store's and the SQLite
+/// provider's. A shared renderer in the authoring package is the remedy and it is filed rather
 /// than done inside this task
 /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/919">issue 919</see>, item 2).
 /// </para>

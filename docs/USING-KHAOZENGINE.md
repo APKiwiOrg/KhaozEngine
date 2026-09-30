@@ -7357,7 +7357,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.15.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.16.0" />
 ```
 
 ```csharp
@@ -14030,7 +14030,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.15.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.16.0" />
 ```
 
 ```csharp
@@ -14066,7 +14066,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.15.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.16.0" />
 ```
 
 ```csharp
@@ -14308,7 +14308,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.15.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.16.0" />
 ```
 
 ```csharp
@@ -17365,6 +17365,12 @@ version stamp and its dirty flag. An operation, a remap or a successful rescue d
 state changes. Reading never does, seating a decoded page never does, and a write that leaves the
 slot holding what it already held never does.
 
+A host with admitted and committed views can copy this state through the public load doors. The container
+exposes its original `PayloadCanonical` and `QuarantineWellFormed` delegates, and `SeatDirty` restores the
+source page's pending rewrite flag after its entries and stamp. `SeatDirty` can restore true or false and
+changes nothing else. In particular, an empty dirty page remains owed to the next commit without a fake
+write and take operation.
+
 `ContainerLoad.Load` in `KhaozEngine.ItemInstances.Journal` is the read half. It is a `Server` package
 because composing a `JournalCommit` needs `KhaozEngine.WorldStore`, so a client build keeps the record and
 none of this.
@@ -17396,6 +17402,37 @@ var bankPages = new PagedItemContainer(
 
 int entered = bankPages.Add(potionId, 40);   // the gate is asked BEFORE the address space is searched
 bankPages.Capacity = 800;                    // LEGAL below occupancy: nothing is trimmed, new slots are refused
+
+static PagedItemContainer CopyState(PagedItemContainer source)
+{
+    var copy = new PagedItemContainer(
+        source.PageCount,
+        source.Capacity,
+        source.Stackable,
+        source.PayloadCanonical,
+        source.QuarantineWellFormed,
+        source.StackCap);
+    var entries = new PageSlotInput[ItemContainerPageCodec.ContainerPageSlots];
+    for (int pageIndex = 0; pageIndex < source.PageCount; pageIndex++)
+    {
+        ItemContainerPage sourcePage = source.Pages[pageIndex];
+        ItemContainerPage copyPage = copy.Pages[pageIndex];
+        int entryCount = sourcePage.CopyEntriesTo(entries);
+        copyPage.SeatStamp(sourcePage.ContentVersion);
+        for (int entryIndex = 0; entryIndex < entryCount; entryIndex++)
+        {
+            PageSlotInput entry = entries[entryIndex];
+            copyPage.Seat(
+                entry.Slot,
+                new ItemSlot(
+                    new ItemStack(entry.DefinitionId, entry.Count, entry.InstanceId),
+                    entry.Payload,
+                    entry.Quarantined));
+        }
+        copyPage.SeatDirty(sourcePage.IsDirty);
+    }
+    return copy;
+}
 
 // Built ONCE per container. It is where the remap rule set pays its quadratic idempotence check, once
 // for the whole container rather than once per page, and a set the publish validator should have
@@ -18397,7 +18434,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.15.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.16.0" />
 </ItemGroup>
 ```
 
@@ -19983,10 +20020,22 @@ public sealed class AccountsStore : IDisposable
 }
 ```
 
-It owns the connection, the bootstrap DDL, the gate and the dispose, and nothing else: the schema, the SQL and the
+`SqliteStoreConnection` owns the connection, the bootstrap DDL, the gate and the dispose. The schema, the SQL and the
 record shape stay in your store. `BeginTransaction()` is there for a multi-statement operation, taken under a lease
 held for the whole transaction. Both engine SQLite backends are built on it, and it is opt-in and in no umbrella,
 so reference it directly.
+
+For additive schema migrations, pass empty bootstrap SQL and use `SqliteSchemaWidening.Ensure` on the held
+connection before publishing your store. Declare required tables and columns in an `IReadOnlyDictionary<string,
+string[]>`, provide idempotent DDL through an `Action<SqliteTransaction>`, and optionally list required indexes as
+the fourth argument. A complete schema opens through reads alone, even while another connection holds a write
+transaction. Missing requirements take an immediate transaction and are rechecked before the callback runs, so
+concurrent openers cannot both add a column. The helper owns that transaction and leaves the caller's connection
+open. It validates ASCII identifiers, matches names case-insensitively in the main database, and checks presence
+rather than column types or index definitions. The callback must fulfill the requirements and leave the transaction
+open. Its changes roll back on failure. The [package README](../KhaozEngine.Sqlite/README.md#schema-widening) shows
+a nullable column migration. `SqliteWorldStore` and `SqliteWalletStore` use this helper, including index-only repairs
+for the wallet's ledger indexes.
 
 Both bootstrap one `world_store(key, data, updated_at, created_at)` table on construction, upsert via dialect SQL
 (SQLite `ON CONFLICT`, SQL Server `MERGE WITH (HOLDLOCK)`), raw parameterized async ADO.NET, no EF/ORM. The same

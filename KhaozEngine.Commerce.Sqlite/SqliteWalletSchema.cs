@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using KhaozEngine.Sqlite;
 using Microsoft.Data.Sqlite;
 
@@ -43,16 +44,27 @@ internal static class SqliteWalletSchema
         ("grant_schedule", "updated_at"),
     };
 
+    private static readonly IReadOnlyDictionary<string, string[]> RequiredTables = new Dictionary<string, string[]>
+    {
+        ["wallet_ledger"] = new[] { "id", "account_id", "currency_id", "delta", "idempotency_key", "reason",
+            "source_ref", "post_balance", "created_at" },
+        ["wallet_balance"] = new[] { "account_id", "currency_id", "amount", "updated_at", "created_at" },
+        ["grant_schedule"] = new[] { "account_id", "reward_id", "next_available_utc", "created_at", "updated_at" },
+    };
+
+    private static readonly string[] RequiredIndexes = { "ux_ledger_idem", "ix_ledger_acct" };
+
     /// <summary>
-    /// Creates the tables when absent and widens them when present, in one immediate transaction. Two processes
-    /// opening one legacy file at once would otherwise both read a column as missing and the second add would fail on
-    /// a duplicate column. <c>BEGIN IMMEDIATE</c> takes the write lock before the read, so the second waits and then
-    /// finds the column. Runs from the store's constructor, before the store is published, so nothing else holds the
-    /// connection.
+    /// Reads a complete schema without taking the write lock. Missing tables, columns or indexes are rechecked
+    /// under one immediate transaction before idempotent DDL runs. Construction has exclusive use of the connection.
     /// </summary>
     internal static void Ensure(SqliteStoreConnection db)
     {
-        using SqliteTransaction tx = db.Connection.BeginTransaction(deferred: false);
+        SqliteSchemaWidening.Ensure(db.Connection, RequiredTables, tx => Widen(db, tx), RequiredIndexes);
+    }
+
+    private static void Widen(SqliteStoreConnection db, SqliteTransaction tx)
+    {
         using SqliteCommand cmd = db.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = CreateTables;
@@ -71,6 +83,5 @@ internal static class SqliteWalletSchema
             add.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} INTEGER NULL;";
             add.ExecuteNonQuery();
         }
-        tx.Commit();
     }
 }

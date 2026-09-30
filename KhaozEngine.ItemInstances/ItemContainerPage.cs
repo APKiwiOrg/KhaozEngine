@@ -29,7 +29,8 @@ namespace KhaozEngine.ItemInstances;
 /// (<see cref="Write"/>, <see cref="Take"/>) and a remap that changed an id
 /// (<see cref="ApplyRemap"/>). Nothing else does, and in particular reading one never does. Seating a
 /// decoded page (<see cref="Seat"/>, <see cref="SeatStamp"/>) is not an operation either: it IS the page's
-/// stored state, so a container that has only been loaded owes the journal nothing.
+/// stored state, so a container that has only been loaded owes the journal nothing. <see cref="SeatDirty"/>
+/// restores a pending rewrite the source page already owed rather than causing a new one.
 /// </para>
 /// <para>
 /// The slots live in an <see cref="ItemContainer"/> of exactly one page's width rather than in a second
@@ -164,6 +165,11 @@ public sealed class ItemContainerPage
         ArgumentOutOfRangeException.ThrowIfNegative(contentVersion);
         ContentVersion = contentVersion;
     }
+
+    /// <summary>Seats whether a restored page owes the next commit a rewrite. This load path door changes
+    /// only the dirty flag, so restoring it does not invent an operation or alter the stored page state.</summary>
+    /// <param name="isDirty">The dirty state carried by the source page.</param>
+    public void SeatDirty(bool isDirty) => IsDirty = isDirty;
 
     /// <summary>
     /// Writes one slot as an OPERATION, and answers whether the page changed. A write that leaves the slot

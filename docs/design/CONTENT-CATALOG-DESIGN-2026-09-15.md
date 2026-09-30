@@ -1615,6 +1615,21 @@ catch below, which exists because game validators are untrusted code, would have
 engine validator into a finding. Pass 6 is skipped entirely when no Scope B type is registered, which is
 every boot of a game that does not use instances. Its cost is inside P8 and 14.1 derives it.
 
+Pass 6 reaches Scope B without a dependency from the catalog to the instances package. It walks the
+`Instances` band registrations and invokes each registration's OWN validator as trusted engine code. The
+validator's `KEC0100` to `KEC0199` findings enter the report unchanged. The catalog neither wraps them as
+`KEC0040` nor judges whether a code belongs to the band.
+
+When that validator implements `IContentHistoryValidator`, pass 6 calls its history overload with the
+candidate, the run's `previous` snapshot and the full remap rule set. Otherwise it calls the ordinary
+`IContentValidator` overload. A check about a CHANGE skips when `previous` is null. `KEC0000` records that
+the publish-only checks did not run, which distinguishes a clean boot report from a clean ordinary publish
+report. A first publish also carries `KEC0000` because it has no previous snapshot.
+
+An `Instances` registration does not run again in the per-type validator pass below. Running it there would
+report one defect twice, first under its raw `KEC01xx` code and then wrapped as the untrusted-game code
+`KEC0040`.
+
 Game validators (contracts 4.4, an ADDITIONAL constraint never a relaxation) run LAST, after pass 6, one per
 registered type, each handed only its own type's rows plus a read-only lookup into the rest of the candidate.
 Their findings come back as `KEC0040` with the game's message. A game validator that throws is caught and

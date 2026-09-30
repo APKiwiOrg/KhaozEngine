@@ -48,9 +48,8 @@ public sealed partial class SqlServerContentAuthoringStore
 
     /// <inheritdoc />
     /// <remarks>
-    /// The family row and its first block are two commits, because the block goes through the allocator's
-    /// reserve-then-issue path like every other one. A reservation that refuses takes the family row back
-    /// with it, so a caller is never left holding a family that can never issue an id.
+    /// The family, first block, both high-water marks and audit commit together. No definition id can be
+    /// issued from the block until this transaction has committed its reservation.
     /// </remarks>
     public async Task<ContentFamily> CreateFamilyAsync(
         ContentTypeId type,
@@ -75,9 +74,12 @@ public sealed partial class SqlServerContentAuthoringStore
                 ContentAuthoringException.FamilyDeclarationReason);
         }
 
-        long familyId = await WriteAsync(
+        return await WriteAsync(
             async (scope, token) =>
             {
+                // Lock the allocator mark before reading or inserting families, as later reservations do.
+                ContentIdHighWater mark = await ReadHighWaterForUpdateAsync(scope, type, token)
+                    .ConfigureAwait(false);
                 if (await FamilyKeyTakenAsync(scope, type, familyKey, token).ConfigureAwait(false))
                 {
                     throw new ContentAuthoringException(
@@ -108,7 +110,7 @@ public sealed partial class SqlServerContentAuthoringStore
                 // still 0 on a database that has published nothing.
                 BindInt(insert, "@created", active + 1);
                 object? raw = await insert.ExecuteScalarAsync(token).ConfigureAwait(false);
-                return raw is long identity
+                long familyId = raw is long identity
                     ? identity
                     : throw new ContentAuthoringException(
                         FormattableString.Invariant(
@@ -116,22 +118,8 @@ public sealed partial class SqlServerContentAuthoringStore
                         type,
                         0,
                         ContentAuthoringException.SchemaMismatchReason);
-            },
-            cancellationToken).ConfigureAwait(false);
-
-        try
-        {
-            await _allocator.ReserveBlockAsync(familyId, cancellationToken).ConfigureAwait(false);
-        }
-        catch (ContentAuthoringException)
-        {
-            await DeleteFamilyAsync(familyId, cancellationToken).ConfigureAwait(false);
-            throw;
-        }
-
-        return await WriteAsync(
-            async (scope, token) =>
-            {
+                ContentFamilyBlock block = await ReserveInitialBlockAsync(scope, familyId, mark, token)
+                    .ConfigureAwait(false);
                 ContentFamily created = await RequireFamilyAsync(scope, familyId, token).ConfigureAwait(false);
                 await AppendAuditAsync(
                     scope,
@@ -143,7 +131,7 @@ public sealed partial class SqlServerContentAuthoringStore
                     new ContentKey(familyKey),
                     string.Empty,
                     null,
-                    Render(created.Blocks[0].BaseId),
+                    Render(block.BaseId),
                     0,
                     string.Empty,
                     token).ConfigureAwait(false);
@@ -301,24 +289,7 @@ public sealed partial class SqlServerContentAuthoringStore
                     familyId, family.Blocks.Count, baseId, family.BlockSize, baseId, active + 1);
                 DateTimeOffset now = _clock();
 
-                await using (SqlCommand insert = Command(
-                    scope,
-                    """
-                    INSERT INTO dbo.catalog_family_block(
-                        family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version,
-                        created_at_utc, updated_at_utc)
-                    VALUES (@family, @blockOrdinal, @base, @size, @next, @version, @now, @now);
-                    """))
-                {
-                    BindTime(insert, "@now", now);
-                    BindBigInt(insert, "@family", familyId);
-                    BindInt(insert, "@blockOrdinal", block.BlockOrdinal);
-                    BindInt(insert, "@base", block.BaseId);
-                    BindInt(insert, "@size", block.BlockSize);
-                    BindInt(insert, "@next", block.NextFreeId);
-                    BindInt(insert, "@version", block.ReservedInVersion);
-                    await insert.ExecuteNonQueryAsync(token).ConfigureAwait(false);
-                }
+                await InsertFamilyBlockAsync(scope, block, now, token).ConfigureAwait(false);
 
                 // The advance rides with the insert, because a block row written without it leaves the plain
                 // counter walking into the new block.
@@ -473,22 +444,6 @@ public sealed partial class SqlServerContentAuthoringStore
         BindText(command, "@key", familyKey);
         return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not null;
     }
-
-    /// <summary>
-    /// Takes a family row back when its first reservation refused. It is the ONLY delete of a family row
-    /// anywhere here: a family is otherwise retired rather than deleted, and this one undoes a creation that
-    /// never completed.
-    /// </summary>
-    Task DeleteFamilyAsync(long familyId, CancellationToken cancellationToken)
-        => WriteAsync(
-            async (scope, token) =>
-            {
-                await using SqlCommand command = Command(
-                    scope, "DELETE FROM dbo.catalog_family WHERE family_id = @family;");
-                BindBigInt(command, "@family", familyId);
-                await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
-            },
-            cancellationToken);
 
     /// <summary>The type's two marks, <c>(0, 0)</c> for a type that has allocated nothing. Scope held.</summary>
     static async Task<ContentIdHighWater> ReadHighWaterAsync(

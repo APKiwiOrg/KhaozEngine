@@ -169,10 +169,10 @@ Two routes take it there and a host picks one.
    THAT page, and the next `ContainerCommitBuilder.Close` writes it beside whatever the batch's operations
    changed. `A_hole_survives_a_load_a_save_and_a_remap_and_costs_zero_bytes` in
    `KhaozEngine.ItemInstances.Tests` is this route end to end.
-2. **Re-seat what the load already rewrote.** The host walks `ContainerLoadResult.Dirty`, and writes each of
-   those pages' slots into its container through `SetSlotAt`, which is an OPERATION and dirties the
-   container's own page. Use this when the load's pass has already done the work and re-running it would be
-   the second copy.
+2. **Restore what the load already rewrote.** The host seats each loaded page's entries through `Seat`, its
+   stamp through `SeatStamp`, and its existing dirty flag through `SeatDirty`. These are load doors, so they
+   preserve the loaded state without inventing another operation or re-running the pass. `SeatDirty` also
+   preserves an empty dirty page, which has no entry a fake write could safely use.
 
 **The load and the container must share ONE stackable predicate.** `ContainerLoadContext`'s and the
 `PagedItemContainer`'s are separate arguments, so two different rules can be handed in, and the pages would

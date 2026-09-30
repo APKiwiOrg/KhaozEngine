@@ -423,6 +423,12 @@ public readonly record struct InstanceReferenceTarget(
     int SlotIndex);                            // which slot of that shape holds the id
 ```
 
+`InstanceSlotKind` declares a value's POSITION and wire shape, not its semantic width. A `Varint` slot is
+always read at the full unsigned 64 bit width, up to ten bytes. The kind's own codec applies any narrower
+bound after the structural walk. This is required for kind 6 `BoundTo` and for a socket's
+`ContainedInstanceId`, which are both unsigned 64 bit values. A structural reader that narrowed every
+`Varint` slot to 32 bits would refuse a legal payload from a live shard.
+
 The shape says WHERE a value sits in the field's bytes and the target says WHICH content type it belongs
 to. A walker that has both can find, read and rewrite every content id in a payload without knowing what
 any kind means. The v1 assignments:
@@ -618,21 +624,24 @@ format can produce is seven bytes, and that is the number the compatibility argu
 
 The arithmetic, because the numbers carry the rest of the document:
 
-- **OSRS, 0 and 7.** Instance id 0, payload empty. The entry is slot 1, entry flags 1, definition id 1,
-  count 2 (500 is a two byte varint), instance id 1, payload length 1. **Seven bytes against version 1's
-  fixed ten** (`ItemContainerCodec.cs:19`, `EntryBytes = 2 + 4 + 4`). An OSRS shaped bank gets SMALLER
-  when instances arrive, which is the strongest single argument that the hinge in contracts 6.1 was the
-  right one.
+- **OSRS, 0 and 7.** Instance id 0, payload empty. The entry is slot 1 byte + flags 1 + definition id 1 +
+  count 2 (500 is a two byte varint) + instance id 1 + payload length 1 + payload 0 = 7. **Seven bytes
+  against version 1's fixed ten** (`ItemContainerCodec.cs:19`, `EntryBytes = 2 + 4 + 4`). An OSRS shaped
+  bank gets SMALLER when instances arrive, which is the strongest single argument that the hinge in
+  contracts 6.1 was the right one.
 - **Tibia, 7 and 15.** `04 02 12 14` is charges 18 of 20 in four bytes and `08 01 02` is upgrade tier 2
-  in three. The entry adds two varint bytes for the instance id (4,201) and one for the payload length.
-  A charged, upgraded item is fifteen bytes, and it needed no mod, no roll and no socket to say so,
-  which is contracts 1.5's claim about Tibia made concrete.
+  in three. The entry is slot 1 + flags 1 + definition id 2 + count 1 + instance id 2 (4,201) + payload
+  length 1 + payload 7 = 15. A charged, upgraded item needed no mod, no roll and no socket to say so, which
+  is contracts 1.5's claim about Tibia made concrete.
 - **Mortal Online, 20 and 30.** The materials field stores the INPUT ids and their parts, not the stats
   derived from them, so a materials rebalance is a publish rather than a rewrite of every crafted item
-  (contracts 6.3). Three materials in a 60/30/10 ratio cost eleven bytes.
+  (contracts 6.3). Three materials in a 60/30/10 ratio cost eleven bytes. The entry is slot 1 + flags 1 +
+  definition id 2 + count 1 + instance id 4 (20,000,000) + payload length 1 + payload 20 = 30.
 - **PoE, 58 and 69.** The contracts' 45 byte example plus five bytes of identification state and eight
-  of rare name. Sixty-nine bytes per bank slot, so a hundred slot page of nothing but rares is about
-  6.9 KB, which is the number sections 5, 6, 7 and 16 are all sized against.
+  of rare name. The entry is slot 1 + flags 1 + definition id 2 + count 1 + instance id 5
+  (4,000,000,000) + payload length 1 + payload 58 = 69. Sixty-nine bytes per bank slot means a hundred
+  slot page of nothing but rares is about 6.9 KB, which is the number sections 5, 6, 7 and 16 are all
+  sized against.
 
 **The deepest item v1 can express, field by field.** An earlier draft of this document put it at 410
 bytes and called 512 "1.25 times the deepest item", using forty byte nested payloads, while 3.5 computed
@@ -747,7 +756,7 @@ costs nothing and a caller cannot corrupt a container by holding one.
 [PageIndex: varint uint16]             // 0 for a whole container
 [FirstSlot: varint uint16]             // the container slot this page's slot 0 is
 [SlotCount: uint16 LE]                 // slots in THIS page
-[ContentVersion: varint int32]         // the page stamp, contracts 7.2
+[ContentVersion: varint uint32]        // non-negative int page stamp, plain unsigned under contracts 15
 [EntryCount: varint int32]
 then EntryCount entries, strictly ascending by Slot:
   [Slot: varint uint16]                // RELATIVE to FirstSlot
@@ -1386,7 +1395,7 @@ binds the instance to that event. The `loot-created` payload therefore gains fou
 [InstanceId: varint uint64]
 [PayloadLength: varint int32]
 [Payload: PayloadLength bytes]        // the FULL payload, not the public view
-[ContentVersion: varint int32]        // the stamp, see below
+[ContentVersion: varint uint32]       // non-negative int stamp, plain unsigned under contracts 15
 ```
 
 **The FULL payload is what is durable** (contracts 6.6: "What is durable is the whole payload"). Only
@@ -2026,6 +2035,12 @@ list. None of them relaxes anything the contract requires. The three marked PUBL
 the `previous` snapshot contracts 10.4 now takes as an argument, so they do not run at boot or in a test
 where `previous` is null.
 
+The band's `InstanceContentValidator` hangs off ONE registration, the lowest type id in the band. Every
+check below is cross type, over a parent and its children or over rarities, words and tags together. The
+catalog's pass 6 walks the band in ascending type-id order and therefore reaches the validator once.
+Attaching the same validator to all eighteen registrations would run the whole band eighteen times and
+repeat every finding.
+
 1. Every child row's parent reference resolves, and a `currency_guard` naming a `currency_step` names one
    belonging to the SAME currency.
 2. A `mod_tier`'s `item_level_min <= item_level_max`, and its `ordinal` is 1 to 255 and unique within its
@@ -2341,7 +2356,7 @@ One event type, `item-generated`, written on the commit that first seats the ite
 [BaseId: varint int32]
 [InstanceId: varint uint64]
 [RarityId: byte]
-[ContentVersion: varint int32]
+[ContentVersion: varint uint32]       // non-negative int stamp, plain unsigned under contracts 15
 [SourceKind: byte]              // 1 drop, 2 craft, 3 admin grant, 4 migration, 5 to 255 game
 [SourceId: varint int32]        // the loot table, currency or migration id, 0 when none
 [PayloadLength: varint int32]
@@ -2665,7 +2680,7 @@ same operation id carrying the same instance id is a `Replayed` that returns the
 ```
 [EventVersion: byte = 1]
 [CurrencyId: varint int32][InstanceId: varint uint64]
-[ContentVersion: varint int32]
+[ContentVersion: varint uint32]       // non-negative int stamp, plain unsigned under contracts 15
 [BeforeLength: varint int32][Before: bytes]     // the payload as it stood
 [AfterLength: varint int32][After: bytes]       // the payload as it stands
 ```
@@ -3037,7 +3052,7 @@ truncated, normalized or re-encoded. The wrapper replaces the entry's payload in
 [Magic: 4 bytes 'K','E','C','Q']   // 0x4B 0x45 0x43 0x51
 [Version: uint16 LE]               // 1
 [ReasonCode: byte]                 // the fixed ordinal from the table below, 0 never assigned
-[StampedVersion: varint int32]     // the page stamp the record failed under
+[StampedVersion: varint uint32]    // non-negative int page stamp, plain unsigned under contracts 15
 [OriginalLength: varint int32]
 [Original: OriginalLength bytes]   // verbatim, never re-encoded
 ```
@@ -3110,6 +3125,16 @@ is `OwnerOnly`. `Everyone` is visible always. Then, and only then, the identific
 an `identificationMaskBit` at registration (3.3) is hidden when `identified` is false and its bit in
 `revealedMask` is clear, EVEN FROM THE OWNER. That last clause is gate 0 decision 8 and it is why
 unidentified is a mechanic rather than a fourth level.
+
+The viewer-level vocabulary is closed to `Everyone` and `OwnerOnly`. `ServerOnly` is a visibility a KIND
+may carry, not a viewer privilege. Passing `ServerOnly` as the viewer level therefore returns the empty
+view rather than exposing every kind through an at-or-below comparison. The server's privileged read is of
+the stored bytes themselves and does not pass through this projection.
+
+An unregistered kind is visible to nobody. This is fail closed because a process that cannot classify the
+kind cannot prove that it is safe to send. `PublicView` and `OwnerRemainder` both omit it. The projection
+does not alter storage: contracts 9.4 still keeps an unknown kind verbatim, and a decode and rebuild still
+round-trips its bytes unchanged.
 
 ### 12.6 The counter and the log line
 

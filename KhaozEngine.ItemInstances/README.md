@@ -453,6 +453,9 @@ of instead of rewriting the whole thing. It splits the two concepts `ItemContain
   Anonymous grants return honest overflow. Identified grants are all-or-nothing because this layer cannot
   mint a second durable id. Null or zero keeps the `int.MaxValue` engine ceiling. A negative answer is a
   caller error.
+- **`PayloadCanonical` and `QuarantineWellFormed`** expose the exact nullable delegates handed to the
+  constructor. An external state copy passes them to its own constructor, so both containers keep the same
+  live acceptance rules as content changes. A null still means the matching door is closed.
 
 The four capacity rules, which are one consumer's bag model restated as engine behaviour:
 
@@ -485,6 +488,11 @@ stored state. `ApplyRemap` moves the stamp only when something changed and only 
 claiming a version no stored byte carries would lose the claim on the next load anyway, and a page stamped
 NEWER than the active version is never rewound. `CopyDirtyPagesTo` hands the dirty pages out, and they join
 whatever commit comes next rather than causing one.
+
+`SeatDirty(isDirty)` is the load path door for restoring that existing flag on an external state copy. It
+can restore either value and changes no stamp, entry, payload or occupancy. A copy seats entries with `Seat`,
+seats the stamp with `SeatStamp`, then seats the source page's dirty state. This preserves even an empty dirty
+page without manufacturing a write and take operation.
 
 **`PagedItemContainer` is an `IPagedContainerWorkingCopy`**, the narrow door the commit builder in
 `KhaozEngine.ItemInstances.Journal` reads and writes a container through

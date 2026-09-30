@@ -247,6 +247,12 @@ BEFORE any id in it is issued, in its own transaction, so a crash can skip ids t
 never reissue one. Reserving a family block advances the type's issued mark to the block top in the same
 transaction as the block insert, which is what keeps the plain counter from walking under the block.
 
+`CreateFamilyAsync` writes the family, its first block, both high-water marks and the `family-create` audit
+in one Serializable transaction. It locks the type's high-water row before the family reads and writes.
+An audit failure rolls them all back, and a retry reserves the same initial definition id range. SQL Server
+may consume a family or audit identity on rollback. Later block reservations keep their separate
+reserve-before-issue commits.
+
 `catalog_family.family_id` and `catalog_draft_edit.edit_ordinal` are `IDENTITY(1,1)`. The only place identity is
 turned off is the family restore inside a bundle import, which keeps the bundle's own family ids so a row's
 family membership survives the import.

@@ -2,7 +2,7 @@
   <PropertyGroup>
     <PackageId>KhaozEngine.Sqlite</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
-    <Description>The shared SQLite store lifecycle every KhaozEngine.*.Sqlite backend sits on: SqliteStoreConnection holds one open connection that is never pooled, bootstraps the store's schema, serializes commands behind a lease, and closes the connection on dispose, so the database file is genuinely released and no pool operation elsewhere in the process can lend or close a live store's handle. Extracted after the same pooled-handle leak shipped three times. Schema, SQL and record shape stay with the store; this package owns the lifecycle and nothing else.</Description>
+    <Description>Shared SQLite store lifecycle and schema widening. SqliteStoreConnection holds one unpooled connection, serializes commands behind a lease, and closes it on dispose. SqliteSchemaWidening inspects declared tables, columns and indexes without taking the write lock, then rechecks missing requirements under an immediate transaction before running idempotent schema DDL. Schema definitions, SQL and record shape stay with the store.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>

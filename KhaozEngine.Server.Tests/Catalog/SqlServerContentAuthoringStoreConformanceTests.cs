@@ -269,6 +269,26 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
+    public override Task AnInitialFamilyCreationWhoseAuditWriteFailsReservesNothing()
+        => base.AnInitialFamilyCreationWhoseAuditWriteFailsReservesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task AFamilyCreationWhoseAuditWriteFailsPreservesExistingReservations()
+        => base.AFamilyCreationWhoseAuditWriteFailsPreservesExistingReservations();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task AFamilyCreationRefusedAtTheCeilingReservesNothing()
+        => base.AFamilyCreationRefusedAtTheCeilingReservesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ACancelledFamilyCreationReservesNothing()
+        => base.ACancelledFamilyCreationReservesNothing();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
     public override Task ARebuildOfAPublishedVersionReproducesTheManifestHashesTheVersionRowRecords()
         => base.ARebuildOfAPublishedVersionReproducesTheManifestHashesTheVersionRowRecords();
 

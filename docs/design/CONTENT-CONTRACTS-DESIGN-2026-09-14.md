@@ -380,6 +380,30 @@ RegisterContentType(
     int chunkSlots)          // see 4.5
 ```
 
+The ordinary validator seam is `IContentValidator`:
+
+```csharp
+void Validate(
+    ContentTypeId type,
+    IContentSnapshot candidate,
+    ICollection<ContentFinding> findings);
+```
+
+Scope B's trusted pass may need the history arguments that seam does not carry. A validator that implements
+`IContentHistoryValidator` is reached through its additional overload:
+
+```csharp
+void Validate(
+    IContentSnapshot candidate,
+    IContentSnapshot? previous,
+    IReadOnlyList<RemapRule> rules,
+    ICollection<ContentFinding> findings);
+```
+
+This seam is additive. An existing `IContentValidator` remains valid, and the game validator pass never
+receives the history overload. Scope B's pass supplies the same `previous` snapshot and remap rules as the
+whole validation run.
+
 Registration happens ONCE, at process start, before any pack is loaded. The registry is frozen when the
 first pack loads and a later registration throws. That is the same shape as
 `ReplicationRegistry.Register<T>(typeId, write, read)`, which the tile protocol uses to bind a component
@@ -1534,6 +1558,11 @@ argument rather than a mode flag, which is what keeps one implementation honest 
 - A mod's TIERS were reordered. A stored affix entry is a mod id, a tier byte and a position (9.9), so
   reordering tiers repoints every affix already in the world at a range it was never rolled in.
 
+The same null rule applies to a change-shaped check reached through `IContentHistoryValidator`. A run with
+no `previous` snapshot carries informational `KEC0000` to state that the publish-only checks were skipped.
+`KEC0000` leaves `IsValid` true. Its presence distinguishes a clean boot report from a clean ordinary
+publish report. A first publish carries it too, because that publish has no previous snapshot.
+
 Nothing above weakens the two rules that make the validator testable. It still has NO SIDE EFFECTS, and it
 still performs NO AMBIENT READS: `previous` is an ARGUMENT, loaded by the caller that has a store to load
 it from, never a lookup the validator performs. A test that wants a change-shaped finding constructs both
@@ -1974,7 +2003,8 @@ inconsistency in the tree (`TileProtocol.Frames.cs:179`, `a-engine.md:1629-1635`
 the last, at most five bytes for a 32 bit value and ten for a 64 bit one. A field DECLARED SIGNED is
 zig-zag encoded first, `(n << 1) ^ (n >> 31)` for 32 bit, so 0 is 0, -1 is 1, 1 is 2, and a negative number
 does not cost ten bytes. Content ids, instance ids, kind ids, lengths, counts and roll positions are all
-declared unsigned and are never zig-zagged, so a small id costs one byte. Encodings must be MINIMAL, and a
+declared unsigned and are never zig-zagged, so a small id costs one byte. Content-version numbers follow
+the same rule: they are plain unsigned varints and are never zig-zagged. Encodings must be MINIMAL, and a
 non-minimal or non-terminating varint is a decode failure with the reasons named in section 9.7.
 
 **Version field first, always.** The FIRST field of every standalone format is its version, and a version

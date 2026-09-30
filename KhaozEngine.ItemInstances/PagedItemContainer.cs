@@ -95,10 +95,12 @@ public sealed partial class PagedItemContainer
         ArgumentNullException.ThrowIfNull(stackable);
 
         _stackable = stackable;
+        _payloadCanonical = payloadCanonical;
+        _quarantineWellFormed = quarantineWellFormed;
         _stackCap = stackCap;
         _pages = new ItemContainerPage[pageCount];
         for (int index = 0; index < pageCount; index++)
-            _pages[index] = new ItemContainerPage(index, stackable, payloadCanonical, quarantineWellFormed);
+            _pages[index] = new ItemContainerPage(index, stackable, _payloadCanonical, _quarantineWellFormed);
 
         Pages = new ReadOnlyCollection<ItemContainerPage>(_pages);
         _capacity = capacity;

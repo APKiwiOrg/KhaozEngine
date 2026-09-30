@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -7,8 +9,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog;
 
 /// <summary>
-/// Fact 26, the STORE-LEVEL half of fact 17: a change and the audit row describing it land together or
-/// neither does, on the two paths that are not a draft edit.
+/// Store-level changes and their audits land together, including a family's first reservation.
 /// </summary>
 public abstract partial class ContentAuthoringStoreConformance
 {
@@ -58,5 +59,112 @@ public abstract partial class ContentAuthoringStoreConformance
         await store.DiscardDraftAsync(CatalogFixtures.Actor, CatalogFixtures.Operator);
         Assert.Null(await store.GetOpenDraftAsync());
         Assert.True(auditBefore < (await store.ListAuditAsync(default, 0, 0, 500)).Count);
+    }
+
+    /// <summary>An audit failure leaves an empty catalog with no family or first reservation.</summary>
+    [Fact]
+    public virtual Task AnInitialFamilyCreationWhoseAuditWriteFailsReservesNothing()
+        => AssertFamilyCreationAtomicAsync(existingFamily: false);
+
+    /// <summary>An audit failure preserves existing families and marks, and a retry can allocate.</summary>
+    [Fact]
+    public virtual Task AFamilyCreationWhoseAuditWriteFailsPreservesExistingReservations()
+        => AssertFamilyCreationAtomicAsync(existingFamily: true);
+
+    /// <summary>A refused first block changes neither marks nor audit, and plain allocation still works.</summary>
+    [Fact]
+    public virtual async Task AFamilyCreationRefusedAtTheCeilingReservesNothing()
+    {
+        IContentAuthoringStore store = await OpenAsync();
+        IContentIdPersistence ids = Ids(store);
+        IReadOnlyList<ContentAuditEntry> auditBefore = await store.ListAuditAsync(default, 0, 0, 500);
+
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => store.CreateFamilyAsync(Capped, "too_large", 16, CatalogFixtures.Actor, CatalogFixtures.Operator));
+
+        Assert.Equal(ContentAuthoringException.IdCeilingReason, refused.Reason);
+        Assert.Empty(await store.ListFamiliesAsync(Capped));
+        Assert.Equal(new ContentIdHighWater(0, 0), await ids.ReadHighWaterAsync(Capped));
+        Assert.Equal(auditBefore, await store.ListAuditAsync(default, 0, 0, 500));
+        Assert.Equal(1, await store.AllocateAsync(Capped, 1));
+    }
+
+    /// <summary>A cancelled create exposes no reservation and leaves its key available for retry.</summary>
+    [Fact]
+    public virtual async Task ACancelledFamilyCreationReservesNothing()
+    {
+        IContentAuthoringStore store = await OpenAsync();
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => store.CreateFamilyAsync(
+            Thing, "retry", 16, CatalogFixtures.Actor, CatalogFixtures.Operator, cancelled.Token));
+
+        Assert.Empty(await store.ListFamiliesAsync(Thing));
+        Assert.Equal(new ContentIdHighWater(0, 0), await Ids(store).ReadHighWaterAsync(Thing));
+        Assert.Empty(await store.ListAuditAsync(default, 0, 0, 500));
+        ContentFamily created = await store.CreateFamilyAsync(
+            Thing, "retry", 16, CatalogFixtures.Actor, CatalogFixtures.Operator);
+        Assert.Equal(16, Assert.Single(created.Blocks).BaseId);
+        Assert.Equal(16, await store.AllocateInFamilyAsync(created.FamilyId));
+    }
+
+    async Task AssertFamilyCreationAtomicAsync(bool existingFamily)
+    {
+        IContentAuthoringStore store = await OpenAsync();
+        IContentIdPersistence ids = Ids(store);
+        int expectedBase = 16;
+        if (existingFamily)
+        {
+            ContentFamily held = await store.CreateFamilyAsync(
+                Thing, "held", 16, CatalogFixtures.Actor, CatalogFixtures.Operator);
+            Assert.Equal(16, await store.AllocateInFamilyAsync(held.FamilyId));
+            Assert.Equal(32, await store.AllocateAsync(Thing, 3));
+            expectedBase = 1056;
+        }
+
+        IReadOnlyList<ContentFamily> familiesBefore = await store.ListFamiliesAsync(Thing);
+        ContentIdHighWater markBefore = await ids.ReadHighWaterAsync(Thing);
+        IReadOnlyList<ContentAuditEntry> auditBefore = await store.ListAuditAsync(default, 0, 0, 500);
+
+        using (ArmAnAuditWriteFault(store))
+        {
+            await Assert.ThrowsAnyAsync<Exception>(() => store.CreateFamilyAsync(
+                Thing, "retry", 16, CatalogFixtures.Actor, CatalogFixtures.Operator));
+        }
+
+        IReadOnlyList<ContentFamily> familiesAfter = await store.ListFamiliesAsync(Thing);
+        Assert.Equal(familiesBefore.Count, familiesAfter.Count);
+        for (int i = 0; i < familiesBefore.Count; i++)
+        {
+            Assert.Equal(familiesBefore[i].FamilyId, familiesAfter[i].FamilyId);
+            Assert.Equal(familiesBefore[i].FamilyKey, familiesAfter[i].FamilyKey);
+            Assert.Equal(familiesBefore[i].Blocks, familiesAfter[i].Blocks);
+        }
+
+        Assert.Equal(markBefore, await ids.ReadHighWaterAsync(Thing));
+        Assert.Equal(auditBefore, await store.ListAuditAsync(default, 0, 0, 500));
+
+        ContentFamily created = await store.CreateFamilyAsync(
+            Thing, "retry", 16, CatalogFixtures.Actor, CatalogFixtures.Operator);
+        ContentFamilyBlock block = Assert.Single(created.Blocks);
+        Assert.Equal(expectedBase, block.BaseId);
+        Assert.Equal(expectedBase, block.NextFreeId);
+        Assert.Equal(0, block.BlockOrdinal);
+        Assert.Equal(1, block.ReservedInVersion);
+        Assert.Equal(new ContentIdHighWater(expectedBase + 15, expectedBase + 15),
+            await ids.ReadHighWaterAsync(Thing));
+
+        IReadOnlyList<ContentAuditEntry> auditAfter = await store.ListAuditAsync(default, 0, 0, 500);
+        Assert.Equal(auditBefore.Count + 1, auditAfter.Count);
+        Assert.Equal(ContentAuditActions.FamilyCreate, auditAfter[0].Action);
+        Assert.Equal(new ContentKey("retry"), auditAfter[0].Key);
+        Assert.Equal(expectedBase.ToString(System.Globalization.CultureInfo.InvariantCulture), auditAfter[0].AfterValue);
+
+        Assert.Equal(expectedBase, await store.AllocateInFamilyAsync(created.FamilyId));
+        Assert.Equal(expectedBase + 1, await store.AllocateInFamilyAsync(created.FamilyId));
+        Assert.Equal(expectedBase + 16, await store.AllocateAsync(Thing, 1));
+        Assert.Equal(expectedBase + 2, Assert.Single(
+            (await ids.ReadFamilyAsync(created.FamilyId))!.Blocks).NextFreeId);
     }
 }

@@ -1,11 +1,14 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.Sqlite;
 using KhaozEngine.Tests.Catalog.Publish;
 using Microsoft.Data.Sqlite;
+using SQLitePCL;
 using Xunit;
 
 namespace KhaozEngine.Tests.Catalog.Sqlite;
@@ -162,6 +165,67 @@ public sealed partial class SqliteCatalogRowTimestampTests
         Assert.Empty(await store.ListUpgradesAsync());
         Assert.Equal(NewColumns.Length, (int)NewColumnCount(database));
         AssertLegacyBackfill(database);
+    }
+
+    /// <summary>Both opens reach the writer transaction with a version 2 preflight, then backfill once.</summary>
+    [Fact]
+    public async Task Two_opens_race_one_migration()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        WriteVersionTwo(database);
+        Assert.Equal(1L, database.Scalar("SELECT COUNT(*) FROM catalog_row WHERE definition_id = 2 AND valid_from_version = 1;"));
+        database.Execute("""
+            CREATE TABLE test_backfill_probe (backfill_update INTEGER NOT NULL);
+            CREATE TRIGGER test_backfill_probe_trigger AFTER UPDATE ON catalog_row
+            WHEN NEW.definition_id = 2 AND NEW.valid_from_version = 1
+            BEGIN
+                INSERT INTO test_backfill_probe(backfill_update) VALUES (1);
+            END;
+            """);
+        try
+        {
+            using var start = new Barrier(2);
+            Task[] opens = Enumerable.Range(0, 2).Select(_ => Task.Factory.StartNew(() =>
+            {
+                var options = new SqliteConnectionStringBuilder(database.ConnectionString) { Pooling = false };
+                using var connection = new SqliteConnection(options.ToString());
+                connection.Open();
+                using (SqliteCommand bootstrap = connection.CreateCommand())
+                {
+                    bootstrap.CommandText = SqliteCatalogSchema.BootstrapSql;
+                    bootstrap.ExecuteNonQuery();
+                }
+
+                bool reachedMigration = false;
+                bool bothReady = false;
+                raw.sqlite3_trace(connection.Handle!, (strdelegate_trace)((_, sql) =>
+                {
+                    if (reachedMigration || !sql.StartsWith("BEGIN IMMEDIATE", StringComparison.OrdinalIgnoreCase)) return;
+                    reachedMigration = true;
+                    bothReady = start.SignalAndWait(TimeSpan.FromSeconds(20));
+                }), null!);
+                try
+                {
+                    SqliteCatalogSchemaValidation.Initialize(connection, ContentAuthoringSchemaMode.AutoCreate);
+                }
+                finally
+                {
+                    raw.sqlite3_trace(connection.Handle!, (strdelegate_trace)null!, null!);
+                }
+                Assert.True(reachedMigration, "The open never reached the version 3 migration transaction.");
+                Assert.True(bothReady, "Both opens must read version 2 before either takes the writer lock.");
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)).ToArray();
+            await Task.WhenAll(opens);
+
+            Assert.Equal(3L, database.Scalar("SELECT schema_version FROM catalog_metadata;"));
+            Assert.Equal(NewColumns.Length, (int)NewColumnCount(database));
+            AssertLegacyBackfill(database);
+            Assert.Equal(1L, database.Scalar("SELECT COUNT(*) FROM test_backfill_probe;"));
+        }
+        finally
+        {
+            database.Execute("DROP TRIGGER IF EXISTS test_backfill_probe_trigger; DROP TABLE IF EXISTS test_backfill_probe;");
+        }
     }
 
     [Theory]

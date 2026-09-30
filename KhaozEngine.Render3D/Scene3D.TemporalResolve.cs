@@ -233,8 +233,10 @@ namespace KhaozEngine.Render3D
 
         // A frame without the resolve holds none of its targets. The history targets, the resolve's sets that name them,
         // the outline pass ahead of the resolve and the later renders' post chain go to the retire queue, since the last
-        // frame's commands may still read them.
-        // The resolve keeps its pipelines for the next time. The display targets drain and free.
+        // frame's commands may still read them. The display targets drain and free.
+        // Kept until the scene is disposed, because they are small and would only be rebuilt the next time the resolve
+        // runs: the resolve's pipelines, uniform buffers and sampler (both entry points'), the debug-view pass, the
+        // count probe's textures and the post chain's sharpen pass.
         void ReleaseTemporalResolve()
         {
             TemporalHistory.ReleaseTargets(_retired);

@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.16.0
+
+- Authoritative catalog sweeps compare both pointer hashes with every durable version record, then build the
+  deletion keep set from those immutable manifest hashes. A stale, missing or partial pointer skips the sweep,
+  and a pointer replacement after validation cannot select another closure. `RunValidatedAsync` carries this
+  path while numeric `RunAsync` remains source compatible with its documented pointer trust boundary (#1040).
+- Cold cache fetches reuse their completed verification through an internal filesystem write capability. Public
+  `IPackStore.PutAsync` still verifies supplied bytes, including writes under an existing address (#948).
+- Family creation now commits the family, first block, both high-water marks and audit together on in-memory,
+  SQLite and SQL Server stores. Audit failure, cancellation or ceiling refusal leaves no partial creation and a
+  retry allocates through the same ordinary reservation rules (#940).
+- Paged containers expose their original payload and quarantine predicates, and `ItemContainerPage.SeatDirty`
+  restores a page's pending rewrite state without a fake mutation. Public-surface copies preserve content stamps,
+  dirty pages, independent payload bytes and live acceptance rules (#1028).
+- `SqliteSchemaWidening.Ensure` inspects declared tables, columns and optional indexes before locking, then
+  rechecks under an immediate transaction only when schema work is needed. World and wallet stores use it so a
+  complete schema opens under another writer or on a read-only connection. Wallet index-only repair and nullable
+  legacy timestamps remain intact (#1196).
+- Schema v3 race tests now count the actual backfill once on SQLite and SQL Server catalog and journal stores.
+  Deterministic SQLite races and a mutation-sensitive probe catch a repeated identical update (#1197).
+- Catalog and item specifications now describe the shipped Instances validation wiring, fail-closed visibility,
+  unsigned content-version varints, full 64-bit structural varint parsing and all four entry-size examples
+  (#996, #925, #905, #903).
+
 ## 20.15.1
 
 - A prepared tile attack whose target is out of legal reach on its impact tick now waits for legal reach, for up

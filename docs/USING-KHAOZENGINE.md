@@ -3426,8 +3426,8 @@ descriptor is not the plain draw (its tint is transparent, its material is not `
 shadow), so build one with the constructor.
 
 **Motion keys.** Immediate-mode draws carry no identity from one frame to the next, and temporal rendering (see
-"Temporal rendering" below) needs to know where each object was last frame. So a draw that moves names itself with a
-`MotionKey`:
+"Temporal anti-aliasing and upscaling" below) needs to know where each object was last frame. So a draw that moves
+names itself with a `MotionKey`:
 
 - `MotionKey.None`, the default, marks a static draw. Terrain, tile ground and placed props need nothing, because
   their motion comes from the camera alone.
@@ -3510,52 +3510,155 @@ If you write your own renderer against `Transform3D` (from `KhaozEngine.Render3D
 `ToMatrix(Vector3 renderOrigin)` builds the reduced matrix directly. You do not need it for `Scene3D`, which
 reduces the absolute matrix you hand it. Calling both double-subtracts.
 
-### Temporal rendering (`Post.Temporal`, `Scene3D.CameraCut`, `Scene3D.DebugView`)
+### Temporal anti-aliasing and upscaling (`AntiAliasing.Temporal`)
 
-`Scene3D` renders from one latched view per render and keeps the previous frame's view, ready for temporal effects
-such as temporal anti-aliasing. **Adoption: none.** Nothing changes until something asks for temporal
-rendering, and with it off every frame renders exactly as before.
+`Post.Quality.AntiAliasing = AntiAliasing.Temporal` renders the scene at an internal resolution at or below the
+window, moves each frame by a sub-pixel jitter, and rebuilds a stable image at the window's full resolution from the
+jittered frames and their history. Thin and moving detail such as distant grass holds still while the camera moves,
+edges are anti-aliased without MSAA's per-sample cost, and the upscaling presets shade fewer pixels. It is
+single-sample: it never combines with MSAA, and `Post.Pixelated` forces anti-aliasing off. Nothing changes until a
+game selects it, and with it off and no debug view set no target, pipeline or buffer of it exists and every frame
+renders exactly as before.
 
 ```csharp
+scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+// Native (the default), Quality, Balanced, Performance or UltraPerformance.
+scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
+scene.Post.Temporal.Sharpness = 0.25f;   // 0 turns the sharpen off
+
+// A moving body keeps one key for its lifetime. Parts of one body derive theirs.
+MotionKey body = MotionKey.From(entityId);
+scene.DrawSkinned(new SkinnedInstanceDraw(bodyMesh, bodyModel) { Motion = body }, bones);
+scene.Draw(new RigidInstanceDraw(weapon, weaponWorld) { Motion = MotionKey.Combine(body, 1) });
+
 // After a teleport, a loading screen or a cutscene cut: nothing from before it may reproject into the next frame.
 scene.CameraCut();
 
-// The automatic cut, a Post bag beside Post.Bloom and Post.Water.
+// The automatic cut, defaults 16 m and 60 degrees.
 scene.Post.Temporal.CutDistanceMetres = 24f;
 scene.Post.Temporal.CutAngleDegrees = 45f;
 
-// Development only: turn temporal rendering on through a debug view and read the frame's state.
-scene.DebugView = SceneDebugView.MotionVectors;
+// Development only: show the resolve's decisions and read the frame's state.
+scene.DebugView = SceneDebugView.History;
+scene.RequestTemporalCounts();
 TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
 ```
 
-- `CameraCut()` drops temporal history for the next rendered frame. Call it for every discontinuity the scene cannot
-  see for itself. Calling it twice before a frame is the same as calling it once, and it does nothing visible while
-  temporal rendering is off.
-- A camera that moves more than `Post.Temporal.CutDistanceMetres` (default 16) or turns more than
-  `Post.Temporal.CutAngleDegrees` (default 60) between two frames is treated as a cut without the call. Both
-  comparisons are strict, so a move or turn of exactly the limit continues history. The distance is measured between
-  absolute eye positions, so the one-cell step the automatic render origin takes as the camera moves is not a cut.
-- A render origin jump the previous view cannot be rebased across is the same automatic cut, whatever the thresholds:
-  a step on X or Z other than zero or exactly one 128 m cell, and any step on Y. An explicit `RenderOrigin` can jump
-  like that while the eye stays still, so the distance check alone would miss it.
-- History also resets for one frame when the internal size, the render scale or the anti-aliasing selection changes,
-  and when the HDR colour chain (`Post.Hdr.Enabled`) is toggled. A bloom toggle or a distortion sprite coming and
-  going keeps it. `Post.Pixelated` forces anti-aliasing off, so toggling it counts as an anti-aliasing change while
-  `Post.Quality.AntiAliasing` selects a mode. With the default `AntiAliasing.Off` a toggle keeps history.
-- `DebugView` is a development aid, not a player setting. Any value other than `SceneDebugView.None`, such as
-  `SceneDebugView.MotionVectors`, turns temporal rendering on, which jitters the rasterised image by under half an
-  internal pixel on each axis each frame. A change takes effect at the frame's first render. One made after that
-  render waits for the next frame.
-- `SceneDebugView.MotionVectors` replaces the final image with each pixel's screen motion since the last frame: hue
-  for direction (rightward cyan, leftward red, downward violet, upward yellow-green), brightness for length (full at
-  16 internal pixels), and black where nothing opaque drew or nothing moved. A moving object painted with the camera's
-  motion instead of its own is missing its `MotionKey`. The screen overlays drawn after the post chain (target
-  outlines, fills, lines, billboards and the screen transition) still draw over the view.
-- `LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed draws and key collisions
-  (see "Draw descriptors and motion keys"), whether history was valid, and why it was last reset. Read it on the render
-  thread after the frame renders. A second render inside the same frame, such as an offscreen capture, leaves it and the
-  history untouched.
+- **Presets.** `Post.Temporal.Upscale` sizes the internal target per axis against the window: `Native` 1.0 (the
+  default), `Quality` 1/1.5 (44 percent of the pixels), `Balanced` 1/1.7 (35 percent), `Performance` 1/2 (25
+  percent) and `UltraPerformance` 1/3 (11 percent). `UltraPerformance` is for very dense displays: at 3456x2234 it
+  renders 1152x745, fewer pixels than a fixed 1600x900 target, and its jitter cycle is 72 frames.
+  `Post.Temporal.UpscaleRatio` (0.33 to 1.0) overrides the preset. While temporal anti-aliasing is on it sizes the
+  target itself, the way SSAA forces `MatchViewport`, and `MaxRenderWidth` and `MaxRenderHeight` (default 3840x2160)
+  still cap it, so at `Native` a 3456x2234 display renders 3342x2160.
+- **Detail.** Below `Native` the resolve rebuilds a pixel whose history has converged at the display's resolution,
+  so the upscaling presets keep most of a native render's detail. On a receding textured checkerboard `Quality`
+  keeps about 0.88 and `Performance` about 0.77 of the native render's local contrast
+  (`TemporalMipBiasGoldenTests`). A pixel just after a reset takes the rebuild at the internal resolution, and a
+  moving pixel shifts towards it, wholly at 2 display pixels a frame, so fast motion reads softer until it settles.
+- **Sharpening.** A contrast adaptive sharpen runs after the tonemap at display resolution.
+  `Post.Temporal.Sharpness` runs from 0 (the pass does not run) to 1, default 0.25, and a value outside that range is
+  clamped. It limits each pixel by its four neighbours, so it leaves an edge already at full contrast alone and
+  sharpens an isolated pixel at most half as hard, which keeps it from bringing back shimmer. With HDR off there is
+  no tonemap, and it runs first, after the distortion apply. It always runs before palette quantize, so a palette
+  game's colours stay on its palette. A later render inside the frame is never sharpened.
+- **Texture detail.** Material textures on models, foliage, splat terrain and tile ground take a mip bias of
+  log2(internal / display) plus `Post.Temporal.MipBiasOffset` (default minus 0.5, clamped to minus 2 to plus 1), so
+  upscaling does not blur them. Textured billboards and particle atlases are not biased. The bias is exactly zero
+  with temporal anti-aliasing off and on a later render inside the frame.
+- **Keys.** A draw without a `MotionKey` is treated as static and gets camera-only motion, which is right for
+  terrain, tile ground and placed props. Give every draw that moves a key through `RigidInstanceDraw.Motion` or
+  `SkinnedInstanceDraw.Motion` (see "Draw descriptors and motion keys" above). A key submitted twice in one frame
+  counts in `LastTemporalDiagnostics.KeyCollisions`. A mover without a key reads softer rather than smeared, and the
+  `MotionVectors` debug view shows it painted with the camera's motion. `CharacterAvatar` (obsolete),
+  `Scene3DBinder` and `SkinnedLimb` key themselves.
+- **Cuts.** History resets for one frame on `scene.CameraCut()`, on a change of the window or internal size, the
+  render scale, the preset or ratio, or the anti-aliasing selection, when the HDR colour chain (`Post.Hdr.Enabled`)
+  is toggled, and automatically when the camera moves further than `Post.Temporal.CutDistanceMetres` (default 16)
+  or turns more than `Post.Temporal.CutAngleDegrees` (default 60) between two frames. Both comparisons are strict,
+  and the distance is measured between absolute eye positions, so the one-cell step the automatic render origin
+  takes as the camera moves is not a cut. A render origin jump the previous view cannot be rebased across is a cut
+  whatever the thresholds: a step on X or Z other than zero or exactly one 128 m cell, and any step on Y. Call
+  `CameraCut()` on every jump the camera makes on purpose, so a teleport under 16 m does not blend the old view into
+  the new one. Calling it twice before a frame is the same as calling it once. A bloom toggle or a distortion sprite
+  coming and going keeps history. `Post.Pixelated` forces anti-aliasing off, so toggling it counts as an
+  anti-aliasing change while a mode is selected. The frame after a reset renders exactly like a fresh scene's first
+  frame.
+- **Transparent content.** Particles, billboards, beams, trails, decals and water draw no motion. The resolve lowers
+  the history weight wherever they changed the opaque image, so a smoke puff or a splash leaves no trail.
+- **Background.** The sky reprojects by the camera's rotation, so its sun stays put in the world while the camera
+  turns. The starfield is fixed to the screen, so it takes zero motion and its stars hold still under a turning
+  camera. Under temporal anti-aliasing the background draws before the transparent passes, so a beam or billboard
+  over the sky shows.
+- **Edge outline.** With `Post.Outline` on, temporal anti-aliasing draws the outline on the internal image ahead of
+  the resolve, in one pass over both the scene colour and the resolve's copy of the opaque image, so its lines are
+  accumulated and hold still like the rest of the image rather than moving with the jitter. So under temporal
+  anti-aliasing the outline runs before the display chain's distortion and warps with the scene, and with HDR on its
+  colour passes through the tonemap. Every other mode, and a later render inside the frame, draws it in the post
+  chain as before.
+- **Debug views.** `scene.DebugView` is a development aid, not a player setting. A change takes effect at the
+  frame's first render, and one made after that render waits for the next frame. `SceneDebugView.MotionVectors`
+  works under any mode and turns temporal rendering on while it is set, which jitters the rasterised image by under
+  half an internal pixel on each axis each frame, and an MSAA selection falls back to FXAA meanwhile. It replaces the
+  final image with each pixel's screen motion since the last frame: hue for direction (rightward cyan, leftward red,
+  downward violet, upward yellow-green), brightness for length (full at 16 internal pixels), and black where nothing
+  opaque drew or nothing moved. The screen overlays drawn after the post chain (target outlines, fills, lines,
+  billboards and the screen transition) still draw over it. `History` (black just after a reset, white at the full
+  history, green where thin feature retention holds a pixel), `Disocclusion` (red where history was rejected) and
+  `Reactive` (yellow where transparent content lowered the history weight) show the resolve's own decisions and take
+  effect only under `AntiAliasing.Temporal`.
+- **Diagnostics.** `scene.LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed
+  rigid and skinned draws and key collisions, whether history was valid and why it was last reset, the internal and
+  display sizes, the preset and the effective `UpscaleRatio`. `scene.RequestTemporalCounts()` samples disoccluded,
+  reactive and clipped pixel counts on a 32 by 18 grid on the next frame that runs the resolve, and they land at the
+  following `PrepareFrame` with `CountsFrameIndex` naming the frame they came from. Reading them back drains the
+  device once on Metal and Vulkan, so request them from a debug overlay a few times a second at most, never every
+  frame. Read the diagnostics on the render thread after the frame renders. A second render inside the same frame,
+  such as an offscreen capture, leaves them and the history untouched.
+- **One resolve on every backend.** The resolve has two internal paths. It records a pass per internal texel and a
+  pass per display pixel on every backend, and a single pass per display pixel only on a device that allows fewer
+  than five colour attachments. Both paths write the same history: bit for bit on Apple, NVIDIA under Direct3D 11
+  and Vulkan, and WARP, and on a software Vulkan device (llvmpipe) with the same confidence, thin-feature lock and
+  motion marks and the colour within 0.0625 on at most 0.25 percent of the values (`TemporalEntryIdentityGpuTests`).
+  `KE_TEMPORAL_RESOLVE=fused` or `KE_TEMPORAL_RESOLVE=split` forces one path for every scene the process creates,
+  still subject to the attachment limit, to tell a fault in one path from the other on a player's machine. It is a
+  diagnostic, read once, and not a setting a game ships with.
+- **Cost.** Against anti-aliasing off at the same internal size, the resolve and the sharpen together measured at
+  most about 1.7 to 2.2 ms at `Quality` and 1.6 to 2.3 ms at `Native` at a 2560x1440 display on an Apple M2 Max, and
+  about 1.7 to 2.4 ms at `Quality` and 2.1 to 3.1 ms at `Native` on an NVIDIA Tesla T4 under Direct3D 11 and Vulkan.
+  The low end is a still camera over twelve moving boxes, the high end thin bars moving across a textured wall under
+  a following camera, where most pixels sit beside a moving edge. The figures also carry the motion target, the
+  resolve's copy of the opaque image and the post chain at display size, so they bound the passes from above. Most of
+  the resolve runs per display pixel, so an upscaling preset saves its time in the scene's own shading rather than
+  in the resolve. `TemporalResolveCostPerfGpuTests` takes the same measurement on any real GPU. On the M2 Max the
+  edge outline under temporal anti-aliasing costs about what the post chain's outline costs under another mode, 0.04
+  to 0.08 ms at `Quality` and 0.10 to 0.16 ms at `Native`, and on the T4 it takes about 0.09 to 0.14 ms and 0.3 ms
+  (`TemporalOutlineCostPerfGpuTests`). A steady frame allocates nothing, with temporal anti-aliasing on or off.
+- **Memory.** At a 3456x2234 display on `Quality` (2304x1489 internal) with HDR on, temporal anti-aliasing holds
+  212.7 MB of history (two display-size RGBA16F colours and two RG16F confidence targets, and two internal-size
+  R32F previous depths), 82.3 MB of the resolve's internal-size working targets (24 bytes a texel), 154.4 MB of
+  display-size post targets (a ping pair and, with bloom on, a half-size bloom pair), a 27.4 MB internal-size copy
+  of the opaque image and a 13.7 MB internal-size motion target, about 491 MB in all (10^6 bytes a MB). The edge
+  outline adds two internal-size colour targets, 54.9 MB there, only while it is on under temporal anti-aliasing.
+  With HDR off the post targets, the opaque copy and the outline's pair are 8-bit and take half as much. Apart from
+  that pair, the internal targets carry no bloom or ping pair under the resolve, since the display chain has its
+  own, unless a later render inside the frame needs them.
+- **Known limits.** Below `Native`, an object the camera follows can leave a short trail on the ground or wall it
+  uncovers, whose length depends on the jitter phase its movement starts on
+  ([#1207](https://github.com/APKiwiOrg/KhaozEngine/issues/1207), with the fix tracked in
+  [#1191](https://github.com/APKiwiOrg/KhaozEngine/issues/1191)). A still object's edge over a strongly textured
+  surface can keep a few pixels of colour trail while the camera moves sideways
+  ([#1202](https://github.com/APKiwiOrg/KhaozEngine/issues/1202)). Pixels a fast keyed object uncovers over a
+  textured surface can keep its tint for two frames ([#1187](https://github.com/APKiwiOrg/KhaozEngine/issues/1187)),
+  a thin keyed line crossing a grey textured surface can leave a short trail
+  ([#1186](https://github.com/APKiwiOrg/KhaozEngine/issues/1186)), and a keyed object that jumps leaves its old
+  corners for about four frames ([#1185](https://github.com/APKiwiOrg/KhaozEngine/issues/1185)). The screen
+  dissolve's frozen layer holds an unresolved internal frame under temporal anti-aliasing
+  ([#1166](https://github.com/APKiwiOrg/KhaozEngine/issues/1166),
+  [#1209](https://github.com/APKiwiOrg/KhaozEngine/issues/1209)), and minimising the window frees and reallocates
+  every display-size target ([#1181](https://github.com/APKiwiOrg/KhaozEngine/issues/1181)). The resolve flushes
+  scene colour below 2^-14 to black before exposure: about 0.2/255 in sRGB at an exposure of 1, but about 3/255 at
+  16, so a very dark scene exposed that far loses its darkest shades.
 
 ### ECS entities (`KhaozEngine.Render3D.Ecs`)
 
@@ -3633,18 +3736,20 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   (`3` = 9x the pixels), so keep it off by default and measure on the target GPU before going above `2`.
 - Anti-aliasing options (the AA dropdown): `Post.Quality.AntiAliasing` picks a configuration -
   `AntiAliasing.Off` (default), `.Fxaa` (cheap one-pass edge smoother), `.Msaa(2|4|8)` (hardware multisample,
-  geometry edges only), or `.Ssaa(factor)` (supersample the whole image, the strongest, also kills shaded-interior
-  shimmer). Build a menu from `AppWindow.Capabilities.SupportedMsaaSampleCounts` and validate a choice with
-  `aa.ResolveFor(caps)`, which selects a supported count or falls back to FXAA. The maximum alone does not
-  imply every lower count is supported. `Ssaa(f)` is
+  geometry edges only), `.Ssaa(factor)` (supersample the whole image, the strongest, also kills shaded-interior
+  shimmer) or `.Temporal` (jittered history with upscaling, see
+  [Temporal anti-aliasing and upscaling](#temporal-anti-aliasing-and-upscaling-antialiasingtemporal)). Build a
+  menu from `AppWindow.Capabilities.SupportedMsaaSampleCounts` and validate a choice with `aa.ResolveFor(caps)`, which
+  selects a supported count or falls back to FXAA. The maximum alone does not imply every lower count is supported.
+  `Ssaa(f)` is
   the high-level equivalent of `RenderScale.MatchViewport` + `Supersample = f`; the raw fields remain and, with AA
   `Off`, still govern (so existing scenes are unchanged). The `Pixelated` retro path forces AA off. Costs: SSAA is
   ~factor^2 fragment shading, MSAA adds a per-frame resolve, FXAA one pass - keep AA off by default and measure.
   `.Msaa(2, postFxaa: true)` combines multisampled geometry with the FXAA post filter. It retains the
   current internal resolution and carries the filter through device sample-count clamping. `UsesFxaa`
   reports FXAA alone or this combined configuration. The one-argument `.Msaa(samples)` stays unchanged.
-  `Post.Quality` (a `RenderQuality`) is where the quality knobs live (AA, shadows, and future anisotropy/TAA), so a
-  game's options menu binds to it.
+  `Post.Quality` (a `RenderQuality`) is where the quality knobs live (AA and shadows), and `Post.Temporal` holds the
+  temporal anti-aliasing settings, so a game's options menu binds to the two.
 - Shadows (the shadow dropdown): `Post.Quality.Shadows` (a `ShadowSettings`) picks the shadow tier via
   `Shadows.Mode`:
   - `ShadowMode.Off` (**default**): no shadows, no cost, existing scenes byte-stable.
@@ -4032,7 +4137,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   unchanged). The normal term carries silhouettes + creases; keep the depth threshold conservative on near-grazing
   ground planes (a grazing plane has genuinely high per-pixel depth change, so a low depth threshold lights it up).
   `Post.OutlineDistanceFade` (default off, perspective only) fades the outline out between `OutlineFadeStart` and
-  `OutlineFadeEnd` view-space units so far terrain/foliage stops aliasing into mush.
+  `OutlineFadeEnd` view-space units so far terrain/foliage stops aliasing into mush. Under `AntiAliasing.Temporal`
+  the outline runs ahead of the resolve, see
+  [Temporal anti-aliasing and upscaling](#temporal-anti-aliasing-and-upscaling-antialiasingtemporal).
 - **Frustum culling** (`Scene3D.FrustumCulling`, **on by default**): the visible mesh pass skips any queued instance
   whose world-space bounding sphere lies entirely outside the camera frustum, so nothing off-screen is rasterized
   (a win for the streamed overworld: distant terrain chunks and scattered props behind/beside the camera cost

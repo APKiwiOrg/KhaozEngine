@@ -54,8 +54,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
 - `Scene3D.CameraCut()` / `Scene3D.DebugView` / `Scene3D.LastTemporalDiagnostics` / `Post.Temporal` - the temporal
   rendering foundations. Each render draws from one latched view and the previous frame's view is kept, rebased
   across the one-cell steps the automatic render origin takes. Nothing changes until something asks for temporal
-  rendering, and a `DebugView` other than `SceneDebugView.None`, such as `SceneDebugView.MotionVectors`, is the public
-  way to ask. Call `CameraCut()` on a teleport, a loading screen or a cutscene cut.
+  rendering: `AntiAliasing.Temporal` (the anti-aliasing bullet below), or `SceneDebugView.MotionVectors` as a
+  development aid. The `History`, `Disocclusion` and `Reactive` views show the resolve's decisions and take effect
+  only under `AntiAliasing.Temporal`. Call `CameraCut()` on a teleport, a loading screen or a cutscene cut.
   A camera that moves further than `Post.Temporal.CutDistanceMetres` (16 m) or turns more than
   `Post.Temporal.CutAngleDegrees` (60 degrees) in one frame is a cut automatically, and so is a render origin jump the
   previous view cannot be rebased across. See docs/USING-KHAOZENGINE.md.
@@ -194,8 +195,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
 - `PixelPostProcessSettings` / `Palette` / `Palettes` - palette quantization, Bayer dither, depth/normal
   edge outline, cel bands, all independently toggleable (the smooth look is the default).
 - Anti-aliasing: `PixelPostProcessSettings.Quality.AntiAliasing` (a `RenderQuality` container) is the AA dropdown
-  most games ship - `AntiAliasing.Off` / `.Fxaa` / `.Msaa(2|4|8)` / `.Ssaa(factor)`. Validate a menu choice against
-  the device with `AntiAliasing.ResolveFor(caps)` (selects the largest member of
+  most games ship - `AntiAliasing.Off` / `.Fxaa` / `.Msaa(2|4|8)` / `.Ssaa(factor)` / `.Temporal`. Validate a menu
+  choice against the device with `AntiAliasing.ResolveFor(caps)` (selects the largest member of
   `GpuCapabilities.SupportedMsaaSampleCounts` no greater than the request, or falls back to FXAA). Default `Off`,
   so the low-level `RenderScale` / `Supersample` fields still govern.
   SSAA supersamples the whole image (geometry AND shaded interiors, the only one that kills high-frequency terrain
@@ -209,6 +210,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   blit machinery there too with `PixelPostProcessSettings.MipFilterFixedInternalDownscale` (default `false`), or
   switch to `RenderScale.MatchViewport` outright. FXAA reads only the current base mip of intermediate post
   targets. The final downscale generates and samples their mip chain after FXAA has finished.
+  `.Temporal` renders at a `Post.Temporal.Upscale` preset at or below the window, jitters each frame and resolves a
+  stable full-resolution image from history, with a light contrast adaptive sharpen (`Post.Temporal.Sharpness`) and
+  a material mip bias (`Post.Temporal.MipBiasOffset`). It is single-sample and never combines with MSAA. Moving draws
+  pass a `MotionKey` through `RigidInstanceDraw` or `SkinnedInstanceDraw`, camera jumps call `Scene3D.CameraCut()`,
+  and `Scene3D.DebugView`, `Scene3D.RequestTemporalCounts()` and `LastTemporalDiagnostics` show what the resolve did.
+  See docs/USING-KHAOZENGINE.md for the presets, the edge outline, cost, memory and known limits.
 - Shadows: `PixelPostProcessSettings.Quality.Shadows` (a `ShadowSettings`) picks the shadow tier via `Shadows.Mode`
   - `ShadowMode.Off` (default, byte-stable), `ShadowMode.Blob` (soft dark ground blob under each caster), or
   `ShadowMode.ShadowMap` (key-light directional PCF shadow map). For the blob tier the scene submits one request per

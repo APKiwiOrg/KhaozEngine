@@ -1,6 +1,7 @@
 # Temporal resolve and upscaling
 
-Status: design, awaiting owner review.
+Status: implemented. Ships with the temporal foundations in one engine release, named here when it is cut. Grimhollow's
+adoption, specified at the end of this document, follows that release.
 Date: 2026-09-24.
 Issue: [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149), rounds 2 and 3 of 3.
 Builds on: [`TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md`](TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md), round 1, approved.
@@ -927,3 +928,34 @@ and changed these details. Each group's "Contract amendments" block carries the 
     of the share forced to none either way. The one walk the rule took past its bound is Performance at 1 display pixel
     a frame, an excess of 5 against 3 without it under a bound of 4 set on the shorter hold, with the same worst channel
     difference, 0.063. Quality at half and at 1 display pixel a frame leave that hold's bound with or without the rule.
+27. The `History`, `Disocclusion` and `Reactive` debug views and the sampled counts evaluate the resolve's own
+    per-pixel function (`TemporalResolveCoreGlsl`) over the inputs the resolve bound that frame, so they show its
+    decisions rather than a second derivation that could drift. Both entry points write the same history, so the views
+    read what either one decided.
+28. Under temporal anti-aliasing the edge outline runs on the internal images ahead of the resolve, so the sharpen,
+    which runs after the tonemap, reads the outline's lines with the rest of the image. The sharpen still precedes
+    palette quantize in both orders, so it never sharpens a palette step, and in every other mode it still precedes the
+    outline.
+29. The outline ahead of the resolve is one draw at the internal size. It reads the lit colour and the resolve's copy
+    of the opaque image at the same texel, runs the edge test once and writes both, so the history and the reactive
+    estimate see the same lines. It reads every image at its own pixel centre, so nothing flips. It writes into the
+    internal ping pair, which the scene keeps on a resolving frame while the outline runs and releases when it stops:
+    26.2 MB at a 2560x1440 display on Quality and 54.9 MB at 3456x2234 on Quality with HDR on, half that with it off.
+    It runs before the display chain's distortion apply, so its lines warp with the scene, and with HDR on a non-black
+    outline colour passes through the tonemap. A later render inside the frame runs the internal chain without a
+    resolve and keeps its outline in that chain. At a 2560x1440 display on an Apple M2 Max it costs 0.04 to 0.08 ms
+    at Quality and 0.10 to 0.16 ms at Native, against 0.06 to 0.12 and 0.12 to 0.17 for the display chain's outline it
+    replaces, measured in the same session, and on a Tesla T4 0.09 to 0.14 ms and 0.30 to 0.32 ms under Direct3D 11 and
+    Vulkan (`TemporalOutlineCostPerfGpuTests`, outline on against off). A form that drew once per image cost 0.24 to
+    0.27 and 0.47 to 0.55 ms on the T4. `TemporalEntryIdentityGpuTests` repeats its walk with a magenta outline and
+    finds it in 1918 history pixels on Metal against none without it, with both entry points identical.
+30. Textured billboards and particle atlases take no mip bias. They are effect sprites outside the material programs,
+    which `MaterialMipBiasShaderContractTests` finds by their frame block and material map, so under upscaling they
+    sample the level the internal resolution picks.
+31. Section 7's cost line of 1.0 ms for the resolve and the sharpen at a 2560x1440 display is not met on Apple silicon
+    or on NVIDIA. `TemporalResolveCostPerfGpuTests` prints it beside each entry point and asserts nothing. Against
+    anti-aliasing off at the same internal size, which also counts the motion target, the opaque copy and the post
+    chain at display size, the split measures about 1.7 to 2.2 ms at Quality and 1.6 to 2.3 ms at Native on an Apple
+    M2 Max, and about 1.7 to 2.4 ms and 2.1 to 3.1 ms on a Tesla T4 under Direct3D 11 and Vulkan, from the boxes to
+    the moving field. Most of it is the pass per display pixel, so an upscaling preset saves its time in the scene's
+    shading rather than in the resolve. The whole frame against MSAA 4x stays the game-side measurement.

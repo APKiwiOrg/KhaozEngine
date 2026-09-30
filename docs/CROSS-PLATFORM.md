@@ -807,6 +807,18 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
   `MslIndexRemap`. The higher-binding-first conditional pixel-readback case in
   `MetalConditionalTextureOrderGpuTests` verifies both runtime branches. Samples can be conditional
   and ordered as the shader needs. Existing shipped shaders may keep their historical sequence.
+- **A texture LOD bias that must hold on every backend is a shader argument, never sampler state.** Metal samplers
+  carry no LOD bias (`GpuCapabilities.SamplerLodBias` is false there), so a sampler's `mipLodBias` applies on
+  Direct3D 11 and Vulkan and is dropped on Metal (`SamplerLodBiasGpuTests` builds one on every backend).
+  `texture(s, uv, bias)` cross-compiles to an MSL `bias()` argument, to HLSL `SampleBias` and to the SPIR-V `Bias`
+  operand, so it holds everywhere. `textureGrad` has no bias argument, so an explicit-gradient tap scales both
+  gradients by `exp2(bias)` instead (`ShaderSources.MaterialLodGradGlsl`). A bias of exactly 0.0 and a gradient scale
+  of exactly 1.0 leave the tap unchanged on all three backends, which is what keeps every golden byte-identical with
+  temporal anti-aliasing off. `MaterialMipBiasShaderContractTests` fails a material program that samples around it.
+- **A read map drains the device on Metal and Vulkan and not on Direct3D 11.** `Map` of a staging resource for
+  reading waits for the whole device on Metal and on Vulkan, and only for the mapped resource on Direct3D 11, so no
+  readback on the seam is free of a stall on every backend. That is why the temporal counts are sampled on request
+  (`Scene3D.RequestTemporalCounts()`) rather than every frame.
 - **One uniform buffer per pipeline, RETIRED.** The rule was written against the Veldrid Metal
   backend, where a STAGE referencing fewer buffers than the declared layout array puts before them made
   Veldrid's per-kind declaration count and SPIRV-Cross's emission disagree: a fragment function reading set 1

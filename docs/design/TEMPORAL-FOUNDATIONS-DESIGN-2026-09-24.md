@@ -1,6 +1,6 @@
 # Temporal foundations
 
-Status: design, approved by the owner on 2026-09-24. Ships with rounds 2 and 3 as one program.
+Status: implemented. Ships with the temporal resolve in one engine release, named here when it is cut.
 Date: 2026-09-24.
 Issue: [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149), round 1 of 3.
 Consumer: Grimhollow, through round 3 of the same program.
@@ -307,3 +307,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
     and the resolve rejects that pixel's history as it does any off-screen previous position (group D).
 19. The MotionVectors view tests background on the x channel alone, as `MotionMath.IsBackground` and the resolve do, so
     a pixel whose y motion alone is large draws as motion (group D).
+20. The resolve's `History`, `Disocclusion` and `Reactive` debug views take effect only under `AntiAliasing.Temporal`,
+    so `DebugView` turns temporal rendering on by itself only for `MotionVectors`. The three show the resolve's own
+    decisions, and forcing a resolve under another mode would run it outside the upscale ratios it is built for, so a
+    jittered frame never reaches the screen without a resolve.

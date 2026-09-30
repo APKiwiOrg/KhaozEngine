@@ -38,6 +38,9 @@ namespace KhaozEngine.Tests.Gpu
         const ulong Key = 51;
 
         readonly Dictionary<(NarrowCrossing, TemporalUpscale), CrossingTrail> _runs = new();
+
+        internal static readonly Dictionary<(NarrowCrossing, TemporalUpscale),
+            (byte[] Frame, byte[] Wall, byte[][] Floors, PixelRect[] Footprints)> Kept = new();
         readonly Dictionary<TemporalUpscale, (byte[] Wall, byte[][] Floors)> _walls = new();
 
         /// <summary>Wall time spent rendering and measuring so far, in seconds.</summary>
@@ -58,6 +61,7 @@ namespace KhaozEngine.Tests.Gpu
             var footprints = new PixelRect[TemporalGhostingRuns.TrailFrames];
             footprints[0] = scene.Rect(Last);
             for (int k = 1; k < footprints.Length; k++) footprints[k] = scene.Swept(Last - k);
+            Kept[(crossing, preset)] = (frame, wall, floors, footprints);
             CrossingTrail trail = Measure($"{crossing}, {preset}", frame, wall, floors, footprints,
                 Stopwatch.GetElapsedTime(started).TotalSeconds);
             Seconds += trail.Seconds;

@@ -182,7 +182,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // The field, its camera path and its towers. Every setup loads the stage's meshes, then the textured box.
-        sealed class StillField
+        internal sealed class StillField
         {
             readonly GroundStage _stage;
             readonly StaticPath _path;

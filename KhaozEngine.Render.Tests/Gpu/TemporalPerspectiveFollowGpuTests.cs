@@ -143,11 +143,20 @@ namespace KhaozEngine.Tests.Gpu
             (LowPitch, FollowHeading.Towards, 3f, 1),                  // measured 0 of 44
         };
 
-        static int Bound(float pitch, FollowHeading heading, float speed, TemporalUpscale preset, int count)
+        internal static int Bound(float pitch, FollowHeading heading, float speed, TemporalUpscale preset, int count)
         {
             foreach (var r in Residuals)
                 if (r.Pitch == pitch && r.Heading == heading && r.Speed == speed && r.Preset == preset) return r.Bound;
             return Allowed(count);
+        }
+
+        /// <summary>The past-the-reach fact's bound on an UltraPerformance walk (<see cref="PastTheReach"/>), or null
+        /// where it holds none.</summary>
+        internal static int? ReachBound(float pitch, FollowHeading heading, float speed)
+        {
+            foreach (var r in PastTheReach)
+                if (r.Pitch == pitch && r.Heading == heading && r.Speed == speed) return r.Bound;
+            return null;
         }
 
         static string Describe(CrossingTrail t) =>

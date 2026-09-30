@@ -9,16 +9,17 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// A keyed box the camera follows across the textured wall, as a third-person camera follows a walking avatar. The
     /// box is textured as the ridged box of <see cref="TemporalNarrowCrossingRuns"/>, so its pixels take ridges and
-    /// locks. It stands still for <see cref="StillFrames"/> frames, then walks right while the camera keeps it at the
-    /// same place on screen, so the box is still on screen and the wall pans left under it. Frame <see cref="Last"/> is
-    /// measured as the crossings measure their trails: each wall pixel the box uncovered at its trailing edge, by its
+    /// locks. It stands still for <see cref="StillFrames"/> frames, or the hold a run is given, then walks right for
+    /// <see cref="WalkFrames"/> frames while the camera keeps it at the same place on screen, so the box is still on
+    /// screen and the wall pans left under it. The last frame (<see cref="Last"/> at the default hold) is measured as
+    /// the crossings measure their trails: each wall pixel the box uncovered at its trailing edge, by its
     /// largest channel difference from the bare wall on the same camera path, in excess of a floor that starts that
     /// bare wall with no history on the frame the box uncovered the pixel. A pixel's age is the frames since the box
     /// last covered the wall there. HDR is off and the sharpen is at its default.
     /// </summary>
     public sealed class TemporalFollowCameraRuns
     {
-        public const int W = 320, H = 180, StillFrames = 16, Last = StillFrames + 23;
+        public const int W = 320, H = 180, StillFrames = 16, WalkFrames = 23, Last = StillFrames + WalkFrames;
 
         /// <summary>The box's left edge on screen and its size, in display pixels.</summary>
         public const float LeftPixels = 150f, SizePixels = 30f;
@@ -29,50 +30,53 @@ namespace KhaozEngine.Tests.Gpu
 
         const ulong Key = 61;
 
-        readonly Dictionary<(TemporalUpscale, float), CrossingTrail> _runs = new();
-        readonly Dictionary<(TemporalUpscale, float), CrossingTrail> _beyond = new();
-        readonly Dictionary<(TemporalUpscale, float), (byte[] Wall, byte[][] Floors)> _walls = new();
+        readonly Dictionary<(TemporalUpscale, float, int), CrossingTrail> _runs = new();
+        readonly Dictionary<(TemporalUpscale, float, int), CrossingTrail> _beyond = new();
+        readonly Dictionary<(TemporalUpscale, float, int), (byte[] Wall, byte[][] Floors)> _walls = new();
 
         /// <summary>Wall time spent rendering and measuring so far, in seconds.</summary>
         internal double Seconds { get; private set; }
 
         /// <summary>The walk at <paramref name="pixelsPerFrame"/> display pixels a frame at
-        /// <paramref name="preset"/>.</summary>
-        internal CrossingTrail Run(TemporalUpscale preset, float pixelsPerFrame)
+        /// <paramref name="preset"/>, after <paramref name="hold"/> still frames.</summary>
+        internal CrossingTrail Run(TemporalUpscale preset, float pixelsPerFrame, int hold = StillFrames)
         {
-            if (_runs.TryGetValue((preset, pixelsPerFrame), out CrossingTrail? cached)) return cached;
+            var key = (preset, pixelsPerFrame, hold);
+            if (_runs.TryGetValue(key, out CrossingTrail? cached)) return cached;
             long started = Stopwatch.GetTimestamp();
-            var walk = new Walk(pixelsPerFrame);
+            var walk = new Walk(pixelsPerFrame, hold);
             var (wall, floors) = Walls(walk, preset);
             byte[] frame;
+            int last = walk.Last;
             using (var fx = new TemporalFixture(W, H, s => walk.Setup(s, preset)))
             {
-                fx.Frames(Last, walk.Draw);
+                fx.Frames(last, walk.Draw);
                 frame = fx.Frame(walk.Draw);
             }
             var footprints = new PixelRect[TemporalGhostingRuns.TrailFrames];
-            footprints[0] = walk.Covered(Last);
-            for (int k = 1; k < footprints.Length; k++) footprints[k] = walk.Covered(Last - k);
+            footprints[0] = walk.Covered(last);
+            for (int k = 1; k < footprints.Length; k++) footprints[k] = walk.Covered(last - k);
+            string held = hold == StillFrames ? "" : $", after {hold} still frames";
             CrossingTrail trail = TemporalNarrowCrossingRuns.Measure(
-                $"follow camera at {pixelsPerFrame} px a frame, {preset}", frame, wall, floors, footprints,
+                $"follow camera at {pixelsPerFrame} px a frame, {preset}{held}", frame, wall, floors, footprints,
                 Stopwatch.GetElapsedTime(started).TotalSeconds);
             var beyond = (PixelRect[])footprints.Clone();
             int spill = SpillPixels(preset);
             beyond[0] = footprints[0] with { X0 = footprints[0].X0 - spill };
-            _beyond[(preset, pixelsPerFrame)] = TemporalNarrowCrossingRuns.Measure(
-                $"follow camera at {pixelsPerFrame} px a frame, {preset}, past {spill} px", frame, wall, floors,
+            _beyond[key] = TemporalNarrowCrossingRuns.Measure(
+                $"follow camera at {pixelsPerFrame} px a frame, {preset}{held}, past {spill} px", frame, wall, floors,
                 beyond, 0);
             Seconds += trail.Seconds;
-            return _runs[(preset, pixelsPerFrame)] = trail;
+            return _runs[key] = trail;
         }
 
         /// <summary>The walk's trail past the reconstruction's reach from the box's edge: only the wall pixels more
         /// than <see cref="SpillPixels"/> from the box now, where the reconstruction cannot spread the box's texel and
         /// only a history kept from it can leave its colour. The reach is counted from there.</summary>
-        internal CrossingTrail BeyondSpill(TemporalUpscale preset, float pixelsPerFrame)
+        internal CrossingTrail BeyondSpill(TemporalUpscale preset, float pixelsPerFrame, int hold = StillFrames)
         {
-            Run(preset, pixelsPerFrame);
-            return _beyond[(preset, pixelsPerFrame)];
+            Run(preset, pixelsPerFrame, hold);
+            return _beyond[(preset, pixelsPerFrame, hold)];
         }
 
         /// <summary><see cref="ReconstructionRadius"/> in display pixels at <paramref name="preset"/>.</summary>
@@ -83,37 +87,44 @@ namespace KhaozEngine.Tests.Gpu
         // from the frame a pixel of that age was uncovered, with no history before it. Floors[k] is age k's.
         (byte[] Wall, byte[][] Floors) Walls(Walk walk, TemporalUpscale preset)
         {
-            if (_walls.TryGetValue((preset, walk.Speed), out var cached)) return cached;
+            var key = (preset, walk.Speed, walk.Still);
+            if (_walls.TryGetValue(key, out var cached)) return cached;
             Action<Scene3D> setup = s => walk.Setup(s, preset);
             byte[] wall;
             using (var fx = new TemporalFixture(W, H, setup))
             {
-                fx.Frames(Last, walk.Background);
+                fx.Frames(walk.Last, walk.Background);
                 wall = fx.Frame(walk.Background);
             }
             var floors = new byte[TemporalGhostingRuns.TrailFrames][];
             for (int age = TemporalGhostingRuns.FirstAge; age < floors.Length; age++)
             {
                 using var fx = new TemporalFixture(W, H, setup);
-                fx.SkipFrames(Last - age + 1);
+                fx.SkipFrames(walk.Last - age + 1);
                 fx.Frames(age - 1, walk.Background);
                 floors[age] = fx.Frame(walk.Background);
             }
-            return _walls[(preset, walk.Speed)] = (wall, floors);
+            return _walls[key] = (wall, floors);
         }
 
-        // The walk: the box and the camera move right together from frame StillFrames on. Every setup loads the
-        // stage's meshes, then the textured box.
+        // The walk: the box and the camera move right together from frame Still on, and Last is measured. Every setup
+        // loads the stage's meshes, then the textured box.
         sealed class Walk
         {
             readonly FrontStage _stage = new(W, H, 4.5f);
             MeshHandle _box;
 
-            public Walk(float speed) => Speed = speed;
+            public Walk(float speed, int still)
+            {
+                Speed = speed;
+                Still = still;
+            }
 
             public float Speed { get; }
+            public int Still { get; }
+            public int Last => Still + WalkFrames;
 
-            float Walked(int n) => Math.Max(0, n - StillFrames) * Speed * _stage.PixelWorld;
+            float Walked(int n) => Math.Max(0, n - Still) * Speed * _stage.PixelWorld;
 
             Vector3 Size => new(SizePixels * _stage.PixelWorld, SizePixels * _stage.PixelWorld, 0.5f);
 

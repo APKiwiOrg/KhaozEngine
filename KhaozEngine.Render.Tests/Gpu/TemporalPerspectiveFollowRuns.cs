@@ -13,10 +13,11 @@ namespace KhaozEngine.Tests.Gpu
     /// A keyed avatar-sized box the perspective follow camera keeps at the centre of the screen while it walks over the
     /// textured ground (<see cref="GroundStage"/>), as a third-person camera follows an avatar. The box has the ridged
     /// box's texture (<see cref="TemporalNarrowCrossingRuns.RidgedTexels"/>), so its pixels take ridges and locks. It
-    /// stands still for <see cref="StillFrames"/> frames, then walks away from the camera, to its right or towards it
-    /// while the camera follows, so the box is still on screen and the ground pans under it. The walk is given as the
-    /// ground's motion at the screen centre in display pixels a frame. Frame <see cref="Last"/> is measured as the
-    /// orthographic follow walk is (<see cref="TemporalFollowCameraRuns"/>): each ground pixel the box uncovered, by
+    /// stands still for <see cref="StillFrames"/> frames, or the hold a run is given, then walks away from the camera,
+    /// to its right or towards it for <see cref="WalkFrames"/> frames while the camera follows, so the box is still on
+    /// screen and the ground pans under it. The walk is given as the ground's motion at the screen centre in display
+    /// pixels a frame. The last frame (<see cref="Last"/> at the default hold) is measured as the orthographic follow
+    /// walk is (<see cref="TemporalFollowCameraRuns"/>): each ground pixel the box uncovered, by
     /// its largest channel difference from the bare ground on the same camera path, in excess of a floor that starts
     /// that bare ground with no history on the frame the box uncovered the pixel. Which frames the box hid a pixel's
     /// ground point is found by casting rays: from the measured frame's camera through the pixel centre to the ground,
@@ -25,44 +26,49 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     public sealed class TemporalPerspectiveFollowRuns
     {
-        public const int W = 320, H = 180, StillFrames = 16, Last = StillFrames + 23;
+        public const int W = 320, H = 180, StillFrames = 16, WalkFrames = 23, Last = StillFrames + WalkFrames;
 
         /// <summary>The avatar's width, height and depth in metres.</summary>
         public static readonly Vector3 AvatarSize = new(0.8f, 1.8f, 0.5f);
 
         const ulong Key = 67;
 
-        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading), CrossingTrail> _runs = new();
-        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading), int> _bandMarks = new();
-        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading), CrossingTrail> _beyond = new();
-        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading), (byte[] Ground, byte[][] Floors)> _bare =
-            new();
+        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading, int), CrossingTrail> _runs = new();
+        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading, int), int> _bandMarks = new();
+        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading, int), CrossingTrail> _beyond = new();
+        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading, int), (byte[] Ground, byte[][] Floors)>
+            _bare = new();
 
         /// <summary>Wall time spent rendering and measuring so far, in seconds.</summary>
         internal double Seconds { get; private set; }
 
         /// <summary>The walk at <paramref name="pixelsPerFrame"/> display pixels a frame of ground motion at the
-        /// screen centre, at <paramref name="pitch"/> radians, heading <paramref name="heading"/>.</summary>
-        internal CrossingTrail Run(TemporalUpscale preset, float pixelsPerFrame, float pitch, FollowHeading heading)
+        /// screen centre, at <paramref name="pitch"/> radians, heading <paramref name="heading"/>, after
+        /// <paramref name="hold"/> still frames.</summary>
+        internal CrossingTrail Run(TemporalUpscale preset, float pixelsPerFrame, float pitch, FollowHeading heading,
+            int hold = StillFrames)
         {
-            var key = (preset, pixelsPerFrame, pitch, heading);
+            var key = (preset, pixelsPerFrame, pitch, heading, hold);
             if (_runs.TryGetValue(key, out CrossingTrail? cached)) return cached;
             long started = Stopwatch.GetTimestamp();
-            var walk = new PerspectiveWalk(W, H, pitch, heading, pixelsPerFrame, StillFrames, AvatarSize);
-            var (ground, floors) = Bare(walk, preset);
+            var walk = new PerspectiveWalk(W, H, pitch, heading, pixelsPerFrame, hold, AvatarSize);
+            int last = hold + WalkFrames;
+            var (ground, floors) = Bare(walk, preset, hold);
             byte[] frame;
             using (var fx = new TemporalFixture(W, H, s => walk.Setup(s, preset)))
             {
-                fx.Frames(Last, (s, n) => walk.Draw(s, n, Key));
+                fx.Frames(last, (s, n) => walk.Draw(s, n, Key));
                 frame = fx.Frame((s, n) => walk.Draw(s, n, Key));
                 _bandMarks[key] = BandMarks(fx);
             }
-            int[] ages = walk.Ages(Last, TemporalGhostingRuns.TrailFrames, out PixelRect now);
-            string name = $"perspective follow at {pixelsPerFrame} px a frame, pitch {pitch}, {heading}, {preset}";
+            int[] ages = walk.Ages(last, TemporalGhostingRuns.TrailFrames, out PixelRect now);
+            string held = hold == StillFrames ? "" : $", after {hold} still frames";
+            string name =
+                $"perspective follow at {pixelsPerFrame} px a frame, pitch {pitch}, {heading}, {preset}{held}";
             CrossingTrail trail = Measure(name, frame, ground, floors, ages, now,
                 Stopwatch.GetElapsedTime(started).TotalSeconds);
             int spill = TemporalFollowCameraRuns.SpillPixels(preset);
-            int[] beyond = walk.Ages(Last, TemporalGhostingRuns.TrailFrames, out PixelRect grown, spill);
+            int[] beyond = walk.Ages(last, TemporalGhostingRuns.TrailFrames, out PixelRect grown, spill);
             _beyond[key] = Measure($"{name}, past {spill} px", frame, ground, floors, beyond, grown, 0);
             Seconds += trail.Seconds;
             return _runs[key] = trail;
@@ -73,16 +79,16 @@ namespace KhaozEngine.Tests.Gpu
         /// cannot spread its texel and only a history kept from it can leave its colour. The reach is counted from
         /// there.</summary>
         internal CrossingTrail BeyondSpill(TemporalUpscale preset, float pixelsPerFrame, float pitch,
-            FollowHeading heading)
+            FollowHeading heading, int hold = StillFrames)
         {
-            Run(preset, pixelsPerFrame, pitch, heading);
-            return _beyond[(preset, pixelsPerFrame, pitch, heading)];
+            Run(preset, pixelsPerFrame, pitch, heading, hold);
+            return _beyond[(preset, pixelsPerFrame, pitch, heading, hold)];
         }
 
         /// <summary>The display pixels whose stored state holds the band mark on the measured frame of the walk, which
         /// <see cref="Run"/> rendered.</summary>
-        internal int BandMarks(TemporalUpscale preset, float pixelsPerFrame, float pitch, FollowHeading heading) =>
-            _bandMarks[(preset, pixelsPerFrame, pitch, heading)];
+        internal int BandMarks(TemporalUpscale preset, float pixelsPerFrame, float pitch, FollowHeading heading,
+            int hold = StillFrames) => _bandMarks[(preset, pixelsPerFrame, pitch, heading, hold)];
 
         // Stored states below minus 2.5 are band marks, beside the edge or on the followed surface (the resolve's
         // temporalStoreLock).
@@ -96,22 +102,23 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // The converged bare ground at the measured frame on the same camera path, and each age's floor.
-        (byte[] Ground, byte[][] Floors) Bare(PerspectiveWalk walk, TemporalUpscale preset)
+        (byte[] Ground, byte[][] Floors) Bare(PerspectiveWalk walk, TemporalUpscale preset, int hold)
         {
-            var key = (preset, walk.Speed, walk.Pitch, walk.Heading);
+            var key = (preset, walk.Speed, walk.Pitch, walk.Heading, hold);
             if (_bare.TryGetValue(key, out var cached)) return cached;
             Action<Scene3D> setup = s => walk.Setup(s, preset);
+            int last = hold + WalkFrames;
             byte[] ground;
             using (var fx = new TemporalFixture(W, H, setup))
             {
-                fx.Frames(Last, walk.Background);
+                fx.Frames(last, walk.Background);
                 ground = fx.Frame(walk.Background);
             }
             var floors = new byte[TemporalGhostingRuns.TrailFrames][];
             for (int age = TemporalGhostingRuns.FirstAge; age < floors.Length; age++)
             {
                 using var fx = new TemporalFixture(W, H, setup);
-                fx.SkipFrames(Last - age + 1);
+                fx.SkipFrames(last - age + 1);
                 fx.Frames(age - 1, walk.Background);
                 floors[age] = fx.Frame(walk.Background);
             }

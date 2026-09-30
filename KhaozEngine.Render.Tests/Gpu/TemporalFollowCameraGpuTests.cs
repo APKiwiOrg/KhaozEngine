@@ -84,7 +84,27 @@ namespace KhaozEngine.Tests.Gpu
             { 3f, 15 },         // measured 12 of 510
         };
 
-        static int Allowed(int count) => Math.Max(1, count / AllowedOverOneIn);
+        internal static int Allowed(int count) => Math.Max(1, count / AllowedOverOneIn);
+
+        /// <summary>The trail fact's bound on the walk at <paramref name="speed"/> display pixels a frame at
+        /// <paramref name="preset"/> over a trail region of <paramref name="count"/> pixels (<see cref="Walks"/>), or
+        /// null where the fact holds none.</summary>
+        internal static int? Bound(TemporalUpscale preset, float speed, int count)
+        {
+            foreach (object[] walk in Walks)
+                if ((TemporalUpscale)walk[0] == preset && (float)walk[1] == speed)
+                    return (int)walk[2] == Acceptance3 ? Allowed(count) : (int)walk[2];
+            return null;
+        }
+
+        /// <summary>The past-the-reach fact's bound at <paramref name="speed"/> (<see cref="SpillWalks"/>), or null
+        /// where it holds none.</summary>
+        internal static int? SpillBound(float speed)
+        {
+            foreach (object[] walk in SpillWalks)
+                if ((float)walk[0] == speed) return (int)walk[1];
+            return null;
+        }
 
         static string Describe(CrossingTrail t) =>
             $"{t.Name}: trail {t.Total}, acceptance 3 allows {Allowed(t.Total.Checked)}, reach {t.Reach} px, oldest "

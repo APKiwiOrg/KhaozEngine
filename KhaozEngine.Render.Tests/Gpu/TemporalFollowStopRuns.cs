@@ -66,6 +66,8 @@ namespace KhaozEngine.Tests.Gpu
         const float OrthoSize = 4.5f;
 
         readonly Dictionary<string, StopRun> _runs = new();
+
+        internal static readonly Dictionary<string, (byte[][] Frames, bool[][] Inner, byte[][] References)> Kept = new();
         readonly Dictionary<string, byte[][]> _references = new();
         readonly Dictionary<string, (Func<StopScene> Still, TemporalUpscale Preset, int Phase)> _controls = new();
 
@@ -138,6 +140,7 @@ namespace KhaozEngine.Tests.Gpu
             }
             double seconds = Stopwatch.GetElapsedTime(started).TotalSeconds;
             Seconds += seconds;
+            Kept[name] = (frames, inner, references);
             return _runs[name] = new StopRun(name, Measure(frames, references, masks),
                 Measure(frames, references, inner), Measure(frames, references, ring), seconds,
                 TemporalJitter.PhaseCount(TemporalSettings.DisplayOverInternal(preset)), scene.Ending, scene.Surround);
@@ -218,7 +221,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>A followed walk and its ending: how far the box has walked and the camera's target has moved by
         /// each frame, the draw, and the pixels whose centre shows the box.</summary>
-        abstract class StopScene
+        internal abstract class StopScene
         {
             readonly float[] _walked = new float[Turn + After + 2], _target = new float[Turn + After + 2];
 
@@ -374,7 +377,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // The orthographic walk of TemporalFollowCameraRuns, with the ending's path.
-        sealed class OrthographicStop : StopScene
+        internal sealed class OrthographicStop : StopScene
         {
             const float Left = TemporalFollowCameraRuns.LeftPixels, Side = TemporalFollowCameraRuns.SizePixels;
             readonly FrontStage _stage = new(W, H, OrthoSize);

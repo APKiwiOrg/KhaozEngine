@@ -1144,7 +1144,7 @@ jobs:
           #
           # AND A TRX LOGGER WHERE THE POOL WATCHDOG IS ARMED, so a starvation episode's timestamps can be laid
           # against the start and end of every test that was running beside it. The console logger is unchanged.
-          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native') && '--logger console;verbosity=detailed' || (env.POOL_WATCH_ARMED != '' && '--logger trx' || '') }}
+          KE_TEST_LOGGER_ARGS: '--logger console;verbosity=detailed'
           # The watchdog itself (see POOL_WATCH_ARMED in the job env). Empty everywhere else, which leaves it off.
           # Absolute, because each test host runs from its own output directory.
           KE_POOL_WATCH: ${{ env.POOL_WATCH_ARMED }}

@@ -18,7 +18,8 @@ public sealed partial class SqlServerContentAuthoringStore : IContentVersionRowS
                 int at = versionNumber == 0
                     ? await ReadActiveVersionAsync(scope, token).ConfigureAwait(false)
                     : versionNumber;
-                return await ReadRevisionsAsync(scope, default, null, at, token).ConfigureAwait(false);
+                return await ReadRevisionsAsync(scope, default, null, at, token, registeredTypesOnly: true)
+                    .ConfigureAwait(false);
             },
             cancellationToken);
 }

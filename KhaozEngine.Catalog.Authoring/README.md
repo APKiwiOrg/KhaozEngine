@@ -16,9 +16,10 @@ the version list and the operator pin, the open draft, publish and rollback, row
 allocation, families, and bulk import and export.
 
 `IContentVersionRowSource` is an optional whole-version read capability implemented by the in-memory,
-SQLite and SQL Server stores. `ReadVersionRowsAsync` returns every live revision, including retired rows,
-ordered by type id then definition id, with historical revision metadata intact. Version 0 reads the active
-published version and ignores the open draft and operator pin. Consumers of the existing
+SQLite and SQL Server stores. `ReadVersionRowsAsync` returns every live revision of the store's registered
+types, including retired rows, ordered by type id then definition id, with historical revision metadata
+intact. Stored types outside the provider registry are omitted before their fields and rows are decoded.
+Version 0 reads the active published version and ignores the open draft and operator pin. Consumers of the existing
 `IContentAuthoringStore` contract can still use `ListRowsAsync` pages without implementing this capability.
 
 `IContentAuthoringStore` also INHERITS `KhaozEngine.Catalog`'s `IContentVersionDirectory`, which declares its two version reads, so

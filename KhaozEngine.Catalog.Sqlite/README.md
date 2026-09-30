@@ -207,9 +207,10 @@ A row is TEMPORAL: `catalog_row` carries one row per row VERSION, with `valid_fr
 Its values live one per field in `catalog_row_field`, which is what makes the audit and the diff field level.
 
 The store implements the optional `IContentVersionRowSource` capability. `ReadVersionRowsAsync` uses the
-shared revision reader's two queries to read every type at one version, without paging. It includes retired
-rows and historical revision metadata, ordered by type id then definition id. Version 0 resolves the active
-published version with one additional metadata read and ignores the open draft and operator pin.
+shared revision reader's two queries to read every registered type at one version, without paging. Stored
+types outside the provider registry are omitted before their fields and rows are decoded. The read includes
+retired rows and historical revision metadata, ordered by type id then definition id. Version 0 resolves the
+active published version with one additional metadata read and ignores the open draft and operator pin.
 
 The encoded row blob is NOT stored. It is computed at publish through the type's codec, and the only thing
 persisted about it is the chunk hash in `catalog_chunk`, one row per side, because a type with a server-only

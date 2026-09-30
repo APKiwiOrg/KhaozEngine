@@ -91,16 +91,20 @@ public sealed partial class SqliteContentAuthoringStore
 
     /// <summary>
     /// Row revisions, ordered by type then id then valid-from, filtered three ways: to one type (id 0 means
-    /// every type), to one definition, and to those LIVE at one version. The caller already holds the lease.
+    /// every type), to one definition, and to those LIVE at one version. Whole-version reads opt into
+    /// skipping unregistered types before decoding rows and fields. Other callers remain strict.
+    /// The caller already holds the lease.
     /// </summary>
     async Task<IReadOnlyList<ContentRowRevision>> ReadRevisionsAsync(
         ContentTypeId type,
         int? definitionId,
         int? liveAtVersion,
         SqliteTransaction? transaction,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool registeredTypesOnly = false)
     {
-        var fields = await ReadRowFieldsAsync(type, definitionId, liveAtVersion, transaction, cancellationToken)
+        var fields = await ReadRowFieldsAsync(
+            type, definitionId, liveAtVersion, transaction, cancellationToken, registeredTypesOnly)
             .ConfigureAwait(false);
 
         using SqliteCommand command = Command(
@@ -124,6 +128,11 @@ public sealed partial class SqliteContentAuthoringStore
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             var rowType = new ContentTypeId((ushort)reader.GetInt64(0));
+            if (registeredTypesOnly && !_registry.TryGet(rowType, out _))
+            {
+                continue;
+            }
+
             int rowId = (int)reader.GetInt64(1);
             int validFrom = (int)reader.GetInt64(2);
             ContentFieldSchema schema = RequireType(rowType).Schema;
@@ -162,7 +171,8 @@ public sealed partial class SqliteContentAuthoringStore
         int? definitionId,
         int? liveAtVersion,
         SqliteTransaction? transaction,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool registeredTypesOnly = false)
     {
         using SqliteCommand command = Command(
             """
@@ -186,7 +196,13 @@ public sealed partial class SqliteContentAuthoringStore
         using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            var key = new RowKey((ushort)reader.GetInt64(0), (int)reader.GetInt64(1), (int)reader.GetInt64(2));
+            var rowType = new ContentTypeId((ushort)reader.GetInt64(0));
+            if (registeredTypesOnly && !_registry.TryGet(rowType, out _))
+            {
+                continue;
+            }
+
+            var key = new RowKey(rowType.Value, (int)reader.GetInt64(1), (int)reader.GetInt64(2));
             if (!byRow.TryGetValue(key, out Dictionary<string, ContentFieldValue>? held))
             {
                 held = new Dictionary<string, ContentFieldValue>(StringComparer.Ordinal);

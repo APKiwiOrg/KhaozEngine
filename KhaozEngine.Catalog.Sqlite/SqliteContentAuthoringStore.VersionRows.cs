@@ -20,6 +20,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentVersionRowSour
                 "SELECT active_version FROM catalog_metadata WHERE metadata_key = 1;", null, cancellationToken)
                 .ConfigureAwait(false)
             : versionNumber;
-        return await ReadRevisionsAsync(default, null, at, null, cancellationToken).ConfigureAwait(false);
+        return await ReadRevisionsAsync(default, null, at, null, cancellationToken, registeredTypesOnly: true)
+            .ConfigureAwait(false);
     }
 }

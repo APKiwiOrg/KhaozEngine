@@ -11,9 +11,10 @@ namespace KhaozEngine.Catalog.Authoring;
 public interface IContentVersionRowSource
 {
     /// <summary>
-    /// Reads every revision live at one version, including retired rows, ordered by type id then definition
-    /// id. Revision metadata and field values describe the stored historical rows. Version 0 resolves to
-    /// the active published version, without applying the open draft. A store with no published version,
+    /// Reads every live revision of the types registered by the store, including retired rows, ordered by
+    /// type id then definition id. Stored types outside that registry are omitted before decoding their
+    /// rows and fields. Revision metadata and field values describe the stored historical rows. Version 0
+    /// resolves to the active published version, without applying the open draft. A store with no published version,
     /// or a version with no live rows, returns an empty list. The read is not paged.
     /// </summary>
     /// <param name="versionNumber">The version to read, or 0 for the active version.</param>

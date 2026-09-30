@@ -31,6 +31,21 @@ public sealed class CatalogVersionRowsActionTests
     }
 
     [Fact]
+    public async Task Sqlite_ReopenedWithPartialRegistry_DiffIgnoresStoredUnregisteredTypes()
+    {
+        using var fixture = new CatalogVersionRowsFixture();
+        string connectionString = FormattableString.Invariant(
+            $"Data Source=catalog_{Guid.NewGuid():N};Mode=Memory;Cache=Shared");
+        using var full = new SqliteContentAuthoringStore(connectionString, fixture.Registry, fixture.Pack);
+        await fixture.SeedAsync(full);
+        await CatalogVersionRowsFixture.RetireAsync(full);
+        ContentTypeRegistry partial = CatalogFixtures.Registry(CatalogFixtures.ThingSpec);
+        using var reopened = new SqliteContentAuthoringStore(connectionString, partial, fixture.Pack);
+
+        await CatalogVersionRowsPartialRegistryAssertions.ReopenedAsync(reopened, partial);
+    }
+
+    [Fact]
     public async Task LegacyStore_PublishedDiff_PagesBeyond500Rows()
     {
         using var fixture = new CatalogVersionRowsFixture();

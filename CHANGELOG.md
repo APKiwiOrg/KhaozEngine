@@ -7,6 +7,37 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.16.0
 
+- Temporal anti-aliasing with upscaling (#1149). `Post.Quality.AntiAliasing = AntiAliasing.Temporal`
+  (`AntiAliasingMode.Temporal`) renders jittered frames at an internal resolution and rebuilds a stable image at the
+  display's resolution from them and their history. `Post.Temporal`, a `TemporalSettings`, picks the `TemporalUpscale`
+  preset from `Native` to `UltraPerformance` or an explicit ratio, the sharpness, the texture mip bias offset and the
+  automatic cut thresholds. It is off by default, and with it off every frame renders as before
+  ([consumer contract](docs/USING-KHAOZENGINE.md#temporal-anti-aliasing-and-upscaling-antialiasingtemporal)).
+- Moving draws name themselves with a `MotionKey` through the new draw descriptors `RigidInstanceDraw` and
+  `SkinnedInstanceDraw`, queued by `Scene3D.Draw(in RigidInstanceDraw)` and
+  `Scene3D.DrawSkinned(in SkinnedInstanceDraw, bones)` and carried as data by
+  `SceneInstances.Add(in RigidInstanceDraw)` and `SkinnedSceneInstances.Add(in SkinnedInstanceDraw)`. Every older draw
+  overload forwards to them with no key and queues what it did before. `ITileWorldScene` gains
+  `DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw, bones)` with defaults, and
+  `SkinnedLimb.Motion` keys a limb's own draw
+  ([draw descriptors](docs/USING-KHAOZENGINE.md#draw-descriptors-and-motion-keys-rigidinstancedraw-skinnedinstancedraw-motionkey)).
+  `Scene3DBinder.Submit(world, scene)` keys each entity with `Scene3DBinder.MotionKeyOf`, and the
+  `Submit(world, Action<RigidInstanceDraw>)` overload is its keyed core
+  ([ECS entities](docs/USING-KHAOZENGINE.md#ecs-entities-khaozenginerender3decs)).
+- `Scene3D.CameraCut()` drops temporal history at a teleport or a cut, beside an automatic cut past the distance and
+  angle thresholds. `Scene3D.DebugView` takes a `SceneDebugView` (`MotionVectors`, `History`, `Disocclusion` or
+  `Reactive`), `Scene3D.LastTemporalDiagnostics` reports the frame's `TemporalDiagnostics`, the last
+  `TemporalResetReason` among them, and `Scene3D.RequestTemporalCounts()` samples its pixel counts on request.
+  `GpuCapabilities.MaxColorAttachments` reports a device's colour attachment limit, at least
+  `GpuCapabilities.MinimumColorAttachments`
+  ([consumer contract](docs/USING-KHAOZENGINE.md#temporal-anti-aliasing-and-upscaling-antialiasingtemporal)).
+- The native Vulkan backend's staging arena reuses its open block record, so a steady frame there allocates nothing,
+  as on Metal and Direct3D 11 (#1162,
+  [consumer contract](docs/USING-KHAOZENGINE.md#textures-staging-and-readback-on-the-native-vulkan-backend-17320)).
+- On Direct3D 11 and Vulkan a uniform buffer written in one submitted command list and read unwritten in a later list
+  of the same frame now reads the later list's copy, the way Metal already did, and a frame with more writing
+  submissions than frames in flight waits
+  ([ordering rules](docs/USING-KHAOZENGINE.md#uniform-buffers-on-the-native-direct3d-11-backend-17320)).
 - In-memory catalog schema metadata now reports the same schema 3 target as the database providers (#1198).
   Key-shape validation shares one lower-layer rule while preserving the authoring helper's API and diagnostic
   conventions, and imported family retirement survives reads, exports and bundle round trips (#914).

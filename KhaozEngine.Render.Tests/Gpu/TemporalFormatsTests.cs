@@ -69,5 +69,20 @@ namespace KhaozEngine.Tests.Gpu
             // Two colour and two confidence targets at 3456x2234, two previous depths at 2304x1489 (Quality, 1 / 1.5).
             Assert.Equal(212_742_144L, TemporalFormats.HistoryBytes(3456, 2234, 2304, 1489));
         }
+
+        [Fact]
+        public void TheSplitsTargetsAtQualityOnA3456By2234DisplayHold82Megabytes()
+        {
+            // The byte count a texel is the targets' own formats, and the internal size is the one the scene sizes.
+            long perTexel = 0;
+            foreach (GpuPixelFormat format in TemporalSplitFormats.Targets) perTexel += MetalStagingLayout.BytesPerTexel(format);
+            Assert.Equal(TemporalSplitFormats.BytesPerTexel, perTexel);
+            var settings = new KhaozEngine.Render3D.PixelPostProcessSettings();
+            settings.Quality.AntiAliasing = KhaozEngine.Render3D.AntiAliasing.Temporal;
+            settings.Temporal.Upscale = KhaozEngine.Render3D.TemporalUpscale.Quality;
+            (int width, int height) = KhaozEngine.Render3D.Scene3D.ComputeTargetSize(settings, 3456, 2234);
+            Assert.Equal((2304, 1489), (width, height));
+            Assert.Equal(82_335_744L, TemporalSplitFormats.Bytes(width, height));   // 82.3 MB, the figure the docs cite
+        }
     }
 }

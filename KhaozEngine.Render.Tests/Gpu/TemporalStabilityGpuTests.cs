@@ -53,14 +53,14 @@ namespace KhaozEngine.Tests.Gpu
 
         // Flicker: temporal added change under half of MSAA 4x's at the slow pan. Measured 0.17 at Native and 0.08 at
         // Quality over the background, 0.32 and 0.19 over the wall.
-        const double MaxAddedShareOfMsaa = 0.5;
+        internal const double MaxAddedShareOfMsaa = 0.5;
 
         // MSAA 4x has to shimmer on the path, or the comparison measures nothing. Measured 0.72 of frozen.
-        const double MinMsaaAddedShareOfFrozen = 0.25;
+        internal const double MinMsaaAddedShareOfFrozen = 0.25;
 
         // Shimmer guard: temporal error at most this share of a frozen image's. Measured 1.02 to 1.03 at every preset.
         // Blur and lag alone stay under twice frozen, and shimmer has no bound.
-        const double MaxErrorShareOfFrozen = 1.15;
+        internal const double MaxErrorShareOfFrozen = 1.15;
 
         // The zoom does not swim: the 5 by 5 low-passed error at most this share of the one-frame-lag control's.
         // Measured 0.25 at Native and 0.35 at Quality. A late image scores about 1.05. No anti-aliasing scores 0.48,

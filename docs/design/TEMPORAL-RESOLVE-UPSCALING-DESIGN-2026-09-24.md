@@ -869,3 +869,15 @@ and changed these details. Each group's "Contract amendments" block carries the 
     the share waits for half. With neither the confidence nor the motion rule a followed keyed box at 2 display pixels a
     frame at Quality left an excess of 3 against its bound of 2, and a followed avatar on perspective ground 2 against 1
     at Quality and 14 against 1 at UltraPerformance.
+
+    The stability facts end at frame 79 and the checkerboard at 48, before UltraPerformance's confidence reaches half,
+    so `TemporalConvergedStabilityGpuTests` holds UltraPerformance from frame 120, where the fence's median stored
+    confidence is whole. Under the slow pan the error is 1.003 of a frozen image's over the dark background and 1.014
+    over the wall, the added change 0.014 and 0.041 of MSAA 4x's, and the still fence keeps a sharpness of 0.047,
+    against 1.005, 1.012, 0.016, 0.037 and 0.045 with the share forced to none. The fence, a ninth of an internal
+    texel wide there, loses sharpness as the history settles with or without the rule (0.077 from frame 64). After a
+    hold of 96 frames in place of 16, measured and not held by a fact, every follow camera walk at UltraPerformance
+    and every perspective follow walk keeps its bound with the rule, and the follow camera's excess lies within 2 pixels
+    of the share forced to none either way. The one walk the rule took past its bound is Performance at 1 display pixel
+    a frame, an excess of 5 against 3 without it under a bound of 4 set on the shorter hold, with the same worst channel
+    difference, 0.063. Quality at half and at 1 display pixel a frame leave that hold's bound with or without the rule.

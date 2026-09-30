@@ -44,7 +44,7 @@ namespace KhaozEngine.Tests.Gpu
     /// the pans at 0.5 and 1.0 display pixels a frame, and the prop paths at Quality.
     /// </para>
     /// </summary>
-    public sealed class TemporalStabilityRuns
+    public sealed partial class TemporalStabilityRuns
     {
         public const int W = 320, H = 180;
 

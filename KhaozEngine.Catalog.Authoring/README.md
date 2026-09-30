@@ -119,6 +119,12 @@ family carries an ordered `ContentFamilyBlock` list.
 
 A family is never deleted. It is retired like a definition.
 
+`CreateFamilyAsync` commits the family, its first aligned block, both allocator high-water marks and the
+`family-create` audit together. A refused reservation or failed audit leaves all four unchanged, so the same
+key can be retried without wasting definition ids. The in-memory reference stages its audit before exposing
+the family and marks under its gate. Later block reservations retain the allocator's reserve-before-issue
+commit order.
+
 ## The id allocator
 
 `ContentIdAllocator` issues definition ids and it RESERVES BEFORE IT ISSUES. `ContentIdHighWater` is the

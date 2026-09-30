@@ -52,9 +52,8 @@ public sealed partial class SqliteContentAuthoringStore
 
     /// <inheritdoc />
     /// <remarks>
-    /// The family row and its first block are two commits, because the block goes through the allocator's
-    /// reserve-then-issue path like every other one. A reservation that refuses takes the family row back
-    /// with it, so a caller is never left holding a family that can never issue an id.
+    /// The family, first block, both high-water marks and audit commit together. No definition id can be
+    /// issued from the block until this transaction has committed its reservation.
     /// </remarks>
     public async Task<ContentFamily> CreateFamilyAsync(
         ContentTypeId type,
@@ -79,64 +78,49 @@ public sealed partial class SqliteContentAuthoringStore
                 ContentAuthoringException.FamilyDeclarationReason);
         }
 
-        long familyId;
-        using (SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false))
+        using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
+        using SqliteTransaction transaction = _connection.BeginTransaction();
+        if (await FamilyKeyTakenAsync(type, familyKey, transaction, cancellationToken).ConfigureAwait(false))
         {
-            using SqliteTransaction transaction = _connection.BeginTransaction();
-            if (await FamilyKeyTakenAsync(type, familyKey, transaction, cancellationToken).ConfigureAwait(false))
-            {
-                throw new ContentAuthoringException(
-                    FormattableString.Invariant(
-                        $"Content type {type.Value} already carries a family keyed '{familyKey}', and a family key is unique within its type."),
-                    type,
-                    0,
-                    ContentAuthoringException.FamilyDeclarationReason);
-            }
-
-            long active = await ReadLongAsync(
-                "SELECT active_version FROM catalog_metadata WHERE metadata_key = 1;", transaction, cancellationToken)
-                .ConfigureAwait(false);
-
-            using (SqliteCommand insert = Command(
-                """
-                INSERT INTO catalog_family(
-                    type_id, family_key, block_size, retired, created_in_version, created_at_utc)
-                VALUES ($type, $key, $size, 0, $created, $at);
-                """,
-                transaction))
-            {
-                Bind(insert, "$at", Millis(_clock()));
-                Bind(insert, "$type", (long)type.Value);
-                Bind(insert, "$key", familyKey);
-                Bind(insert, "$size", (long)blockSize);
-
-                // The version the family will FIRST APPEAR IN, which is the active version plus one and never
-                // the active version: creating a family is an immediate action while the active version is
-                // still 0 on a database that has published nothing.
-                Bind(insert, "$created", active + 1);
-                await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            familyId = await ReadLongAsync("SELECT last_insert_rowid();", transaction, cancellationToken)
-                .ConfigureAwait(false);
-            transaction.Commit();
+            throw new ContentAuthoringException(
+                FormattableString.Invariant(
+                    $"Content type {type.Value} already carries a family keyed '{familyKey}', and a family key is unique within its type."),
+                type,
+                0,
+                ContentAuthoringException.FamilyDeclarationReason);
         }
 
-        try
+        long active = await ReadLongAsync(
+            "SELECT active_version FROM catalog_metadata WHERE metadata_key = 1;", transaction, cancellationToken)
+            .ConfigureAwait(false);
+
+        using (SqliteCommand insert = Command(
+            """
+            INSERT INTO catalog_family(
+                type_id, family_key, block_size, retired, created_in_version, created_at_utc)
+            VALUES ($type, $key, $size, 0, $created, $at);
+            """,
+            transaction))
         {
-            await _allocator.ReserveBlockAsync(familyId, cancellationToken).ConfigureAwait(false);
-        }
-        catch (ContentAuthoringException)
-        {
-            await DeleteFamilyAsync(familyId, cancellationToken).ConfigureAwait(false);
-            throw;
+            Bind(insert, "$at", Millis(_clock()));
+            Bind(insert, "$type", (long)type.Value);
+            Bind(insert, "$key", familyKey);
+            Bind(insert, "$size", (long)blockSize);
+
+            // The version the family will FIRST APPEAR IN, which is the active version plus one and never
+            // the active version: creating a family is an immediate action while the active version is
+            // still 0 on a database that has published nothing.
+            Bind(insert, "$created", active + 1);
+            await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        using SqliteStoreLease after = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
-        using SqliteTransaction auditing = _connection.BeginTransaction();
-        ContentFamily created = await RequireFamilyAsync(familyId, auditing, cancellationToken).ConfigureAwait(false);
+        long familyId = await ReadLongAsync("SELECT last_insert_rowid();", transaction, cancellationToken)
+            .ConfigureAwait(false);
+        ContentFamilyBlock block = await ReserveInitialBlockAsync(familyId, transaction, cancellationToken)
+            .ConfigureAwait(false);
+        ContentFamily created = await RequireFamilyAsync(familyId, transaction, cancellationToken).ConfigureAwait(false);
         await AppendAuditAsync(
-            auditing,
+            transaction,
             ContentAuditActions.FamilyCreate,
             actor,
             operatorId,
@@ -145,11 +129,11 @@ public sealed partial class SqliteContentAuthoringStore
             new ContentKey(familyKey),
             string.Empty,
             null,
-            Render(created.Blocks[0].BaseId),
+            Render(block.BaseId),
             0,
             string.Empty,
             cancellationToken).ConfigureAwait(false);
-        auditing.Commit();
+        transaction.Commit();
         return created;
     }
 
@@ -285,24 +269,7 @@ public sealed partial class SqliteContentAuthoringStore
             familyId, family.Blocks.Count, baseId, family.BlockSize, baseId, (int)active + 1);
         long now = Millis(_clock());
 
-        using (SqliteCommand insert = Command(
-            """
-            INSERT INTO catalog_family_block(
-                family_id, block_ordinal, base_id, block_size, next_free_id, reserved_in_version,
-                created_at_utc, updated_at_utc)
-            VALUES ($family, $ordinal, $base, $size, $next, $version, $now, $now);
-            """,
-            transaction))
-        {
-            Bind(insert, "$now", now);
-            Bind(insert, "$family", familyId);
-            Bind(insert, "$ordinal", (long)block.BlockOrdinal);
-            Bind(insert, "$base", (long)block.BaseId);
-            Bind(insert, "$size", (long)block.BlockSize);
-            Bind(insert, "$next", (long)block.NextFreeId);
-            Bind(insert, "$version", (long)block.ReservedInVersion);
-            await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
+        await InsertFamilyBlockAsync(block, now, transaction, cancellationToken).ConfigureAwait(false);
 
         // The advance rides with the insert, because a block row written without it leaves the plain counter
         // walking into the new block.
@@ -455,19 +422,6 @@ public sealed partial class SqliteContentAuthoringStore
         Bind(command, "$type", (long)type.Value);
         Bind(command, "$key", familyKey);
         return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not null;
-    }
-
-    /// <summary>
-    /// Takes a family row back when its first reservation refused. It is the ONLY delete of a family row
-    /// anywhere here: a family is otherwise retired rather than deleted, and this one undoes a creation that
-    /// never completed.
-    /// </summary>
-    async Task DeleteFamilyAsync(long familyId, CancellationToken cancellationToken)
-    {
-        using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
-        using SqliteCommand command = Command("DELETE FROM catalog_family WHERE family_id = $family;");
-        Bind(command, "$family", familyId);
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The type's two marks, <c>(0, 0)</c> for a type that has allocated nothing. Lease held.</summary>

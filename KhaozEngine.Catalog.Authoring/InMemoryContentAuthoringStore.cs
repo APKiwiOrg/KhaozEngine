@@ -412,7 +412,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
         => _allocator.AllocateInFamilyAsync(familyId, cancellationToken);
 
     /// <inheritdoc />
-    public async Task<ContentFamily> CreateFamilyAsync(
+    public Task<ContentFamily> CreateFamilyAsync(
         ContentTypeId type,
         string familyKey,
         int blockSize,
@@ -423,9 +423,9 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
         ArgumentNullException.ThrowIfNull(familyKey);
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(operatorId);
-        RequireType(type);
+        ContentTypeRegistration registration = RequireType(type);
+        cancellationToken.ThrowIfCancellationRequested();
 
-        long familyId;
         lock (_gate)
         {
             if (!ContentFamily.IsLegalBlockSize(blockSize))
@@ -451,36 +451,13 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                 }
             }
 
-            familyId = _nextFamilyId++;
-            _families.Add(familyId, new FamilyRecord(familyId, type, familyKey, blockSize, _activeVersion + 1));
-        }
+            var family = new FamilyRecord(_nextFamilyId, type, familyKey, blockSize, _activeVersion + 1);
+            ContentFamilyBlock block = ContentFamilyReservation.Plan(
+                family.ToFamily(), Mark(type), registration.MaxDefinitionId ?? int.MaxValue, _activeVersion + 1);
+            family.Blocks.Add(block);
+            ContentFamily created = family.ToFamily();
 
-        try
-        {
-            // A family reserves a block at creation (contracts 5.2), through the same reserve-then-issue
-            // path a full family takes for its next one.
-            await _allocator.ReserveBlockAsync(familyId, cancellationToken).ConfigureAwait(false);
-        }
-        catch (ContentAuthoringException)
-        {
-            // The reservation is its own commit and it refused, so the family row goes with it and the
-            // caller is left with nothing written rather than a family that can never issue an id.
-            lock (_gate)
-            {
-                _families.Remove(familyId);
-            }
-
-            throw;
-        }
-
-        lock (_gate)
-        {
-            // Staged then committed like the other three, though there is nothing left to mutate between the
-            // two here: the family row and its first block are each their own commit in EVERY backend, so the
-            // furthest this can move the render is ahead of the ledger append. Making the family and its
-            // audit row atomic is a provider-wide change rather than a reference-store one, and a reference
-            // that was atomic where no provider is would be the wrong thing to hold them to.
-            ContentFamily created = _families[familyId].ToFamily();
+            // Render all fallible audit data before publishing the family, block or marks under the gate.
             var staged = new List<ContentAuditEntry>(1);
             _audit.Stage(
                 staged,
@@ -492,12 +469,17 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                 new ContentKey(familyKey),
                 string.Empty,
                 null,
-                InMemoryContentAuditLog.Render(created.Blocks[0].BaseId),
+                InMemoryContentAuditLog.Render(block.BaseId),
                 0,
                 string.Empty);
 
+            cancellationToken.ThrowIfCancellationRequested();
+            _families.Add(created.FamilyId, family);
+            int top = block.BaseId + (block.BlockSize - 1);
+            _highWater[type.Value] = new ContentIdHighWater(top, top);
+            _nextFamilyId++;
             _audit.Commit(staged);
-            return created;
+            return Task.FromResult(created);
         }
     }
 

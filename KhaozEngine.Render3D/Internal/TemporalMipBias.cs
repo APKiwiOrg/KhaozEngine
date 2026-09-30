@@ -4,13 +4,13 @@ using System.Numerics;
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// The material texture mip bias under temporal upscaling (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 5 and
-    /// amendment 7). A texture sampled at the internal resolution picks a blurrier mip than the display needs, by
-    /// log2(internal / display). The bias undoes that, plus <see cref="TemporalSettings.MipBiasOffset"/>. It reaches
-    /// the material programs through the frame block's free <c>Params.z</c> (the bias in mips) and <c>Params.w</c>
-    /// (<c>exp2(bias) - 1</c>, the gradient scale of the explicit-gradient ground taps minus one). Both lanes are exact
-    /// zeros unless the render is one the temporal resolve accumulates, so the frame block and every tap are unchanged
-    /// otherwise.
+    /// The material texture mip bias under temporal upscaling (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 5, Texture
+    /// detail under upscaling). A texture sampled at the internal resolution picks a blurrier mip than the display
+    /// needs, by log2(internal / display). The bias undoes that, plus <see cref="TemporalSettings.MipBiasOffset"/>. It
+    /// reaches the material programs through the frame block's free <c>Params.z</c> (the bias in mips) and
+    /// <c>Params.w</c> (<c>exp2(bias) - 1</c>, the gradient scale of the explicit-gradient ground taps minus one). Both
+    /// lanes are exact zeros unless the render is one the temporal resolve accumulates, so the frame block and every
+    /// tap are unchanged otherwise.
     /// </summary>
     internal static class TemporalMipBias
     {

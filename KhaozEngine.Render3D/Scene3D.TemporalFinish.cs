@@ -8,12 +8,12 @@ namespace KhaozEngine.Render3D
 {
     /// <summary>
     /// The finishing layer over the temporal resolve (docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md,
-    /// sections 4 to 6, amendments 7, 8 and 20): the sharpen's test seams, the material mip bias, the resolve's debug
-    /// views, the sizes, preset and ratio the diagnostics report, and the counts they report on request. The sharpen
-    /// runs in the display post chain, which only the first render of a resolving frame runs, so a later render's
-    /// chain and a frame without the resolve never build it. The mip bias, the debug views and the counts follow the
-    /// same rule, and the diagnostics describe that first render. A partial of its own because <c>Scene3D.cs</c> is
-    /// frozen by the file-size ratchet.
+    /// sections 4 to 6, Sharpening, Texture detail under upscaling and Public API): the sharpen's test seams, the
+    /// material mip bias, the resolve's debug views, the sizes, preset and ratio the diagnostics report, and the counts
+    /// they report on request. The sharpen runs in the display post chain, which only the first render of a resolving
+    /// frame runs, so a later render's chain and a frame without the resolve never build it. The mip bias, the debug
+    /// views and the counts follow the same rule, and the diagnostics describe that first render. A partial of its own
+    /// because <c>Scene3D.cs</c> is frozen by the file-size ratchet.
     /// </summary>
     public sealed partial class Scene3D
     {

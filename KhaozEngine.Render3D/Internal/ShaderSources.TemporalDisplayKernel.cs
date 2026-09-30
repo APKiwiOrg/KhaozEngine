@@ -1,7 +1,7 @@
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// STEP 4 FOR A CONVERGED PIXEL (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3, amendment 26). The reconstruction's
+    /// STEP 4 FOR A CONVERGED PIXEL (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3, The resolve). The reconstruction's
     /// Lanczos 2 is sized in internal pixels, which band-limits each frame's current sample to the internal Nyquist, so
     /// below Native the accumulated image stays softer than the jittered samples allow. The 3x3 also gathers its
     /// reconstruction with the Lanczos 2 sized in display pixels, whose kernels the sample weight already evaluates

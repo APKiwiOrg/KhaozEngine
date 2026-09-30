@@ -1,8 +1,8 @@
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// THE SPLIT'S SECOND PASS AT THE DISPLAY'S OWN SIZE (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 26). Where the
-    /// internal size is the display's, the two Lanczos kernels are one and no pixel takes the display-sized
+    /// THE SPLIT'S SECOND PASS AT THE DISPLAY'S OWN SIZE (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3, The resolve).
+    /// Where the internal size is the display's, the two Lanczos kernels are one and no pixel takes the display-sized
     /// reconstruction (<c>temporalDisplayShare</c> is none wherever <c>Jitter.z</c> is not above 1). Its sum over the
     /// 3x3 and the share still cost the pass. <see cref="TemporalAtDisplaySizeGlsl"/>, placed after the precision
     /// header, compiles <see cref="TemporalAccumulateGlsl"/> without them, so one source keeps every rule and the

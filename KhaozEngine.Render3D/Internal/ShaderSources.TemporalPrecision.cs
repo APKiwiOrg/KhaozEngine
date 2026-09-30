@@ -1,10 +1,10 @@
 namespace KhaozEngine.Render3D.Internal
 {
     /// <summary>
-    /// THE ACCUMULATION'S PRECISION (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 25). Every program that includes
-    /// <see cref="TemporalAccumulateGlsl"/> starts with one of two headers. They name the types of the 3x3's Lanczos
-    /// kernels and their products, its colour and alpha range, its sample weight, its largest reactive difference and
-    /// its lumas (<c>afloat</c>, <c>avec3</c>, <c>avec4</c>), and the conversions to and from them.
+    /// THE ACCUMULATION'S PRECISION (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3, The resolve). Every program that
+    /// includes <see cref="TemporalAccumulateGlsl"/> starts with one of two headers. They name the types of the 3x3's
+    /// Lanczos kernels and their products, its colour and alpha range, its sample weight, its largest reactive
+    /// difference and its lumas (<c>afloat</c>, <c>avec3</c>, <c>avec4</c>), and the conversions to and from them.
     /// <see cref="TemporalFullPrecisionGlsl"/> makes them single floats and every conversion nothing, so the full
     /// programs compile to the same bytes as before the choice existed. <see cref="TemporalHalfPrecisionGlsl"/> makes
     /// them half floats through <c>GL_EXT_shader_explicit_arithmetic_types_float16</c>.

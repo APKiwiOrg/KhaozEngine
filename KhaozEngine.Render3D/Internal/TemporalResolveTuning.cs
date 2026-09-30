@@ -16,9 +16,9 @@ namespace KhaozEngine.Render3D.Internal
     /// a software Vulkan device (llvmpipe) the state is identical and the colour within a measured bound.
     /// The split's targets hold 24 bytes an internal texel, 82.3 MB at 3456x2234 Quality, and exist only while it runs.
     /// <see cref="TemporalResolvePolicy"/> picks the split on every backend at every size, from the hosted NVIDIA
-    /// measurements (runs 36553954502, 36517355602 and 36524126806) and the Metal figures, and amendment 23 of the
-    /// design records them, with the Vulkan frame boundary that frees replaced targets
-    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1199">#1199</see>).</para>
+    /// measurements on Direct3D 11 and Vulkan and the Metal figures, and the design records them
+    /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3, The resolve), with the Vulkan frame boundary that frees replaced
+    /// targets (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1199">#1199</see>).</para>
     /// </summary>
     internal static class TemporalResolveTuning
     {
@@ -286,7 +286,7 @@ namespace KhaozEngine.Render3D.Internal
         /// some of that ground its history. Against the reference a walk away slower than the floor reads worse with
         /// it, 12.8 to 22.4/255 on up to 31 uncovered ground pixels against 10.1 to 13.2 without, and a walk sideways
         /// and an acceleration from standstill over 32 frames read better, 6.6 to 9.7 against 8.7 to 19.3. A walk at
-        /// 1 m/s seen from 30 m moves the ground 0.36 display pixels a frame at 1920x1080 (amendment 23).
+        /// 1 m/s seen from 30 m moves the ground 0.36 display pixels a frame at 1920x1080.
         /// </summary>
         public const float FollowedStillDisplayPixels = 0.1f;
         /// <summary>Step 3. A depth-tested pixel whose expected surface shows under less than this share of the

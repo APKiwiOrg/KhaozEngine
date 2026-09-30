@@ -81,9 +81,8 @@ public readonly struct TemporalDiagnostics : IEquatable<TemporalDiagnostics>
 
     /// <summary>Estimated display pixels whose history was rejected by depth, by an off-screen reprojection, or on a
     /// still surface because a moving surface the camera follows left it beside its edge, or on it where a surface
-    /// moving otherwise on screen shows now, as the ground an avatar uncovers (the band and the followed mark of
-    /// TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 23), from a 32 by 18 grid of 16 samples a cell. A followed surface
-    /// that stops keeps its own history.</summary>
+    /// moving otherwise on screen shows now, as the ground an avatar uncovers, from a 32 by 18 grid of 16 samples a
+    /// cell. A followed surface that stops keeps its own history.</summary>
     public int DisoccludedPixels { get; }
 
     /// <summary>Estimated display pixels the reactive estimate marked, on the same grid.</summary>

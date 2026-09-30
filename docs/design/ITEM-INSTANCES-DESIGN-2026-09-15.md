@@ -2014,6 +2014,12 @@ list. None of them relaxes anything the contract requires. The three marked PUBL
 the `previous` snapshot contracts 10.4 now takes as an argument, so they do not run at boot or in a test
 where `previous` is null.
 
+The band's `InstanceContentValidator` hangs off ONE registration, the lowest type id in the band. Every
+check below is cross type, over a parent and its children or over rarities, words and tags together. The
+catalog's pass 6 walks the band in ascending type-id order and therefore reaches the validator once.
+Attaching the same validator to all eighteen registrations would run the whole band eighteen times and
+repeat every finding.
+
 1. Every child row's parent reference resolves, and a `currency_guard` naming a `currency_step` names one
    belonging to the SAME currency.
 2. A `mod_tier`'s `item_level_min <= item_level_max`, and its `ordinal` is 1 to 255 and unique within its

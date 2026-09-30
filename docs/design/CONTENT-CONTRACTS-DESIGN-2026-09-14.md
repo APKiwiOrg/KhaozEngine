@@ -380,6 +380,30 @@ RegisterContentType(
     int chunkSlots)          // see 4.5
 ```
 
+The ordinary validator seam is `IContentValidator`:
+
+```csharp
+void Validate(
+    ContentTypeId type,
+    IContentSnapshot candidate,
+    ICollection<ContentFinding> findings);
+```
+
+Scope B's trusted pass may need the history arguments that seam does not carry. A validator that implements
+`IContentHistoryValidator` is reached through its additional overload:
+
+```csharp
+void Validate(
+    IContentSnapshot candidate,
+    IContentSnapshot? previous,
+    IReadOnlyList<RemapRule> rules,
+    ICollection<ContentFinding> findings);
+```
+
+This seam is additive. An existing `IContentValidator` remains valid, and the game validator pass never
+receives the history overload. Scope B's pass supplies the same `previous` snapshot and remap rules as the
+whole validation run.
+
 Registration happens ONCE, at process start, before any pack is loaded. The registry is frozen when the
 first pack loads and a later registration throws. That is the same shape as
 `ReplicationRegistry.Register<T>(typeId, write, read)`, which the tile protocol uses to bind a component
@@ -1533,6 +1557,11 @@ argument rather than a mode flag, which is what keeps one implementation honest 
   size change repaginates every chunk hash and every page stamp derived from it.
 - A mod's TIERS were reordered. A stored affix entry is a mod id, a tier byte and a position (9.9), so
   reordering tiers repoints every affix already in the world at a range it was never rolled in.
+
+The same null rule applies to a change-shaped check reached through `IContentHistoryValidator`. A run with
+no `previous` snapshot carries informational `KEC0000` to state that the publish-only checks were skipped.
+`KEC0000` leaves `IsValid` true. Its presence distinguishes a clean boot report from a clean ordinary
+publish report. A first publish carries it too, because that publish has no previous snapshot.
 
 Nothing above weakens the two rules that make the validator testable. It still has NO SIDE EFFECTS, and it
 still performs NO AMBIENT READS: `previous` is an ARGUMENT, loaded by the caller that has a store to load

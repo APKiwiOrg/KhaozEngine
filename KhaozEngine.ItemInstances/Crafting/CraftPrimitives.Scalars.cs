@@ -80,14 +80,12 @@ public static partial class CraftPrimitives
 
     /// <summary>
     /// Primitive 13, the only one with no content parameters at all. It sets kind 128's state to 1 and its
-    /// revealed mask to the OR of every REGISTERED <c>identificationMaskBit</c>, which is <c>0b1111</c> in
-    /// v1 and is DERIVED from the registration rather than written down here.
+    /// revealed mask to the OR of every REGISTERED gated <c>identificationMaskBit</c> (spec 12.7). The
+    /// default v1 registry produces <c>0b1111</c>, DERIVED from the registration rather than written down here.
     /// <para>
-    /// <b>Spec 12.7 says "all ones" and this writes the registered bits instead.</b> All ones would write
-    /// the 28 bits spec 12.7's own earlier sentence and spec 21 both reserve as unassigned and zero in v1, so
-    /// a later engine release assigning bit 4 would find every item ever identified already claiming it. The
-    /// two readings are behaviourally identical, because <c>ItemInstanceVisibility.CanSee</c> consults the
-    /// mask only while <c>identified</c> is false, so this is the conservative one at no cost.
+    /// A custom gated registration at bit 4 or beyond extends that mask. Bits no registration assigns stay
+    /// zero in this writer's output, so a later registration does not find previously identified items
+    /// already claiming its new bit.
     /// </para>
     /// </summary>
     /// <param name="copy">The craft in progress.</param>

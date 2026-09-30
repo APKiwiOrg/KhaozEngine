@@ -17,19 +17,19 @@ namespace KhaozEngine.ItemInstances;
 /// build.
 /// </para>
 /// <para>
-/// <b>Every draw is a function of the affix COUNT and nothing else</b> (spec 9.3). A candidate that is
-/// filtered out leaves the pool BEFORE the draw rather than being drawn and rejected, and a pick whose live
-/// pool is EMPTY still draws twice and discards both. Without those two discards one item consumes fewer
-/// draws than another of the same rarity on the same base, and a seeded session diverges at the first item
-/// whose pool empties.
+/// <b>The logical draw schedule depends on the generation path, requested affix count and name
+/// positions</b> (spec 9.3). A filtered candidate leaves the pool BEFORE the draw rather than being drawn
+/// and rejected. Each affix pick reserves kind, weighted-entry and roll-position slots even when its live
+/// pool is EMPTY: after the kind slot it calls <see cref="IRandomSource.Skip"/> for the weighted-entry slot
+/// and <see cref="IRandomSource.NextRollPosition"/> for the position slot, discarding both and placing nothing.
 /// </para>
 /// <para>
-/// <b>Every one of those draws goes through <see cref="BoundedDraw"/>, and that is not a formality.</b> A
-/// bound of one consumes NOTHING from the stream, by <see cref="IRandomSource.NextInt"/>'s own contract, so
-/// a discard written as <c>NextInt(0, 1)</c> is no discard at all and a real draw over a live weight of one
-/// costs the stream nothing either. Both take <see cref="IRandomSource.Skip"/> instead, which advances it by
-/// exactly one draw, so the position after an item is a function of the pick count and never of what the
-/// pool happened to hold.
+/// <b>Bounded choices go through <see cref="BoundedDraw"/>.</b> It calls <c>NextInt(0, bound)</c> for
+/// <c>bound &gt; 1</c>, otherwise calls <see cref="IRandomSource.Skip"/> and returns 0. A one-wide
+/// <c>NextInt</c> consumes nothing. On <see cref="SeededRandomSource"/>, <c>Skip</c> discards exactly one
+/// underlying <c>NextULong</c>. A live <c>NextInt</c> may consume additional values during rejection sampling,
+/// so logical slots do not guarantee an identical underlying stream stride for every pool or bound.
+/// Reproducing a seeded roll requires the same source, seed, inputs and call order.
 /// </para>
 /// <para>
 /// <b>It is NOT reentrant and it is NOT thread safe. One instance per thread, or per executor.</b> Every
@@ -144,10 +144,10 @@ public sealed partial class ItemGenerator
     /// <returns>The resolved item, its canonical payload and the instance id it took.</returns>
     /// <exception cref="ArgumentOutOfRangeException">An item level outside 1 to 65535, a quality outside 0
     /// to 65535, a forced rarity id outside 0 to 255, a base this version has no live row for, or a forced
-    /// unique template this version has no live row for. <b>This is not the codec level width enforcement
-    /// of issue 917</b>, which stays gated on issue 903: these are the values a CALLER hands in by code,
-    /// refused in the same class as <see cref="ItemInstancePayloadBuilder"/>'s own throws, and nothing here
-    /// closes the hole a stored byte can still walk through.</exception>
+    /// unique template this version has no live row for. These caller values are refused by code, like
+    /// <see cref="ItemInstancePayloadBuilder"/>'s own caller errors. Registry-bound payload decoding also
+    /// enforces the v1 per-kind value contracts. Illegal stored values quarantine with their original
+    /// payload bytes preserved verbatim.</exception>
     /// <exception cref="InvalidOperationException">A forced rarity names no live rule, or the rarity rule
     /// asks for more affixes than kind 131's byte count can hold.</exception>
     public GenerationResult Generate(in GenerationContext context)

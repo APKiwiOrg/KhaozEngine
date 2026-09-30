@@ -125,8 +125,9 @@ The v1 gated bits are fixed: kind 129 `UniqueTemplate` is bit 0, 131 `Affixes` b
 bit 2 and 134 `RareName` bit 3. Bits 4 to 31 are unassigned.
 
 The types a registration is made of: `IInstancePropertyCodec` is the per-kind rule a shape cannot express,
-one total `TryValidate` that is handed a body the shape has already vetted, and `InstancePropertyCodec` holds
-the four the engine ships (`ShapeOnly`, `Identification`, `AffixList`, `SocketList`). `InstanceFieldShape`
+one total `TryValidate` that is handed a body the shape has already vetted. `InstancePropertyCodec` exposes
+`ShapeOnly`, `Identification`, `AffixList` and `SocketList`, while `CreateV1` also registers the scalar
+value codecs for kinds 1 to 6. `InstanceFieldShape`
 describes the bytes as a header run and a repeating entry run over `InstanceSlotKind` slots, with an
 `InstanceCountWidth` for the entry count and `InstanceEntryOrder` for the repeating entries.
 `InstanceReferenceTarget` names a content type key, the
@@ -135,12 +136,31 @@ the whole of one kind's registration, which is what `TryGet(kind, out registrati
 `TryGetByIdentificationMaskBit` hand back, and `ByKind` is every one of them ascending.
 `MaxIdentificationMaskBit` is 31, because the revealed mask is a `uint`.
 
+The registered v1 value codecs enforce these bounds through `TryDecode`, `Validate` and `IsCanonical`:
+
+| Kind | Accepted values |
+|---|---|
+| 1 `Flags` | 0 to 7, with all reserved bits zero |
+| 2 `ItemLevel` | 1 to 65535 |
+| 3 `Quality` | 0 to 65535 whole percentage points |
+| 4 `Charges` | Current and Maximum each 0 to 4294967295 |
+| 5 `Durability` | Current and Maximum each 0 to 65535 |
+| 6 `BoundTo` | Subject 1 to 18446744073709551615 |
+| 128 `Identification` | State 0 or 1, RevealedMask 0 to 4294967295, including unassigned bits |
+
+Charges and Durability permit Current above Maximum and permit Maximum zero. Values outside these
+bounds answer `field-malformed`. Stored entries quarantine with the original payload bytes kept verbatim.
+Game kinds choose their own value codecs. The shared `Varint` shape slot still reads unsigned 64 bit
+values, and registry-free payload overloads check the envelope without inspecting kind bodies.
+
 ## Building a payload
 
 `ItemInstancePayloadBuilder` is the WRITE half, and it is the thing that makes the encoding canonical. It
 holds its fields strictly ascending by kind whatever order they were added in, refuses the same kind twice,
 sorts an affix list ascending by mod id, and writes every varint minimally. Every refusal THROWS, because a
 builder is handed values by code rather than bytes by a peer, which is the opposite of the decoder below.
+The builder has no registry and does not enforce per-kind value bounds. Check authored payloads with
+`ItemInstancePayload.Validate(registry, payload)` or registry-bound `IsCanonical` before seating them.
 
 ```csharp
 byte[] payload = new ItemInstancePayloadBuilder()
@@ -240,8 +260,8 @@ fields inside, and a socket holding none of them leaves no frame behind. Nothing
 destination span either way, and the walk runs twice, once to total what the viewer may see and once to
 write it, so a rebuilt field's length varint is known before a byte is written.
 
-The revealed mask is a `ulong` on every member here. Kind 128's mask is a varint and the shape walk reads a
-varint at the full 64 bits, so taking a `uint` would force a narrowing at some call site. Bits above
+The revealed mask remains a `ulong` on every member here for caller compatibility. Registered kind 128
+accepts stored masks only within `uint32`. Supplied bits above
 `InstancePropertyRegistry.MaxIdentificationMaskBit` gate nothing, because the registry refuses to register
 one.
 
@@ -495,8 +515,8 @@ a dense renumber is not something this container can do by accident.
 index. Its slots live in an `ItemContainer` of exactly one page's width rather than in a second array, so the
 payload doors and their four invariants are the SAME code a whole-container consumer runs.
 
-**Exactly two things dirty a page**: an operation that CHANGED a slot (`Write`, `Take`) and a remap that
-changed an id (`ApplyRemap`). Reading never does, a write that leaves the slot holding what it already held
+**Slot state changes dirty a page**: an operation (`Write`, `Take`), a remap or a successful rescue
+(`ApplyRemap`). Reading never does, a write that leaves the slot holding what it already held
 never does, and seating a decoded page (`Seat`, `SeatStamp`) never does either, because that IS the page's
 stored state. `ApplyRemap` moves the stamp only when something changed and only upward, because a clean page
 claiming a version no stored byte carries would lose the claim on the next load anyway, and a page stamped
@@ -741,8 +761,9 @@ ones, exactly because neither has a durable ordinal and neither ever writes a wr
 
 **An entry whose quarantined flag is set carries a WRAPPER rather than a payload.** The whole-page `Validate`
 door reports it from the wrapper's stored reason and stamp without decoding the wrapper as a payload. The
-entry stays in the page-wide instance id uniqueness check. A caller using `ValidateEntry` to attempt a rescue
-unwraps it through `QuarantineWrapper.TryUnwrap` first and hands the ORIGINAL bytes in. That is how the first
+wrapper may preserve an empty original and carry instance id zero, including a quarantined plain stack.
+The entry stays in the page-wide instance id uniqueness check, which ignores zero. A caller using
+`ValidateEntry` to attempt a rescue unwraps it through `QuarantineWrapper.TryUnwrap` first and hands the ORIGINAL bytes in. That is how the first
 load after a missing remap rule lands restores the item exactly.
 
 `InstanceValidationOutcome` has THREE members and there is no fourth. In particular there is no "dropped": a
@@ -1030,17 +1051,19 @@ The thirteen steps, in the order the draws happen, which IS the contract:
 | 12 | encodes the payload through `ItemInstancePayloadBuilder` | none |
 | 13 | takes the instance id, and ONLY when the payload is non-empty | none |
 
-**The reproducibility contract is that every draw is a function of the affix COUNT and of nothing else.** A
-candidate that is filtered out leaves the pool BEFORE the draw rather than being drawn and rejected, and a
-pick whose live pool is EMPTY still consumes both of its draws and discards them. Without those two discards
-one item consumes fewer draws than another of the same rarity on the same base, and a seeded session diverges
-at the first item whose pool runs dry.
+**The logical draw schedule depends on the generation path, requested affix count and name positions.**
+A candidate that is filtered out leaves the pool BEFORE the draw rather than being drawn and rejected.
+After its kind slot, a pick whose live pool is EMPTY still reserves a weighted-entry slot through `Skip`
+and a roll-position slot through `NextRollPosition`, discarding both results and placing nothing.
 
 **A collapsed bound takes `IRandomSource.Skip`, and that is not a formality.** `NextInt`'s own contract says
 a one-wide range consumes nothing, so a discard written as `NextInt(0, 1)` is no discard at all and a real
-draw over a live weight of one costs the stream nothing either. `Skip` advances the stream by exactly one
-draw whatever the bound is, so the position after an item is a function of the pick count and never of what
-the pool happened to hold.
+draw over a live weight of one costs the stream nothing either. The internal `BoundedDraw.Next` calls
+`NextInt(0, bound)` when `bound > 1`, otherwise calls `Skip` and returns 0. This covers every real bounded
+draw, including rarity, count, kind, entry and name words, as well as empty bounds. On `SeededRandomSource`,
+`Skip` discards exactly one underlying `NextULong`. A live `NextInt` may consume additional values during
+rejection sampling, so this schedule does not guarantee an identical underlying stream stride for every
+pool or bound. Reproducing a seeded roll requires the same source, seed, inputs and call order.
 
 **Step 12 writes kind 128 explicitly, state 0 and revealed mask 0.** An item carrying no `Identification`
 field at all is indistinguishable from an identified one under the visibility function, so the generator,
@@ -1115,6 +1138,11 @@ bounded on both sides of the row codec by `CurrencyStepContentType.MinPrimitiveO
 exactly one static apply method on `CraftPrimitives`, split across three files by SUBJECT rather than by line
 count: affixes, sockets and scalars.
 
+`Identify` writes kind 128's state as 1 and its revealed mask as the OR of every registered gated
+`IdentificationMaskBit`. The default v1 registry produces `0b1111`, while a custom gated registration at
+bit 4 or beyond extends that mask. Bits no registration assigns stay zero in this writer's output. The
+decoder still accepts any revealed mask within `uint32`, including unassigned bits.
+
 Three of the vocabularies are closed on purpose, because a closed set is what a counter can bucket, a client
 can localize and a test can assert on:
 
@@ -1131,8 +1159,8 @@ can localize and a test can assert on:
   spec 10.3's "true when" cell, which reads the chain from the item's end and inverts it
   ([#989](https://github.com/APKiwiOrg/KhaozEngine/issues/989)).
 - **`CraftSelectorKind`, 1 to 6.** Which entries primitives 2, 3 and 10 act on. `RandomOfKind` is the only
-  one that draws, and it draws exactly ONCE, through the same bounded draw the generator uses, so a selection
-  with one candidate costs the stream what a selection with nine costs and so does a selection with none.
+  one that draws, and it reserves one slot through the same bounded helper the generator uses. A selection
+  with 0 or 1 candidates calls `Skip`, and an empty selection then refuses.
 
 **Three STANDING rules no currency can opt out of**, which is why they are not in any guard set:
 
@@ -1341,12 +1369,11 @@ every id space, every ordering rule, the stacking test, the paging shape, the pr
 byte passes through, the eighteen content types a roll and a craft read, and the three engines over them,
 which are the expensive things to change once data exists. What is absent is breadth, which is CONTENT: this
 package names no mod, no rarity, no currency and no tier, and a game authors every one of them. Beside that
-sit two named gaps on surfaces that already exist.
+sits one named gap on a surface that already exists.
 
 | Not here | Where it lands |
 |---|---|
 | a READER for the page delta, which ships the encoder alone while the fragmenter ships both halves | [#933](https://github.com/APKiwiOrg/KhaozEngine/issues/933) |
-| enforcement of spec 3.3's per-kind value widths, so the revealed mask is a full `ulong` at every door here | [#917](https://github.com/APKiwiOrg/KhaozEngine/issues/917) |
 
 The journal side of a paged container, the `<container>/p<NN>` section naming, the load path and the batched
 commit builder, is `KhaozEngine.ItemInstances.Journal`, a `Server` package. The fragmenter a full page send

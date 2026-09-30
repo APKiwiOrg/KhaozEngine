@@ -104,10 +104,12 @@ feature of whichever package motivated it.
 
 ### The key shape rule
 
-`ContentKeyShape` is the key rule of contracts 5.3 as one public predicate: `Defect(key)` answers the first
-defect as a phrase or null, `Rule` is the whole rule as one sentence for a message to append, and
-`MaxKeyLength` is the cap. It is public because the rule has callers at three layers and they are not one
-call site. The validator's `KEC0001` sweep walks the rows a candidate already holds. A fork's copy key never
+`ContentKeyShape` preserves the public authoring entry point for the key rule of contracts 5.3:
+`Defect(string)` answers the first defect as a phrase or null, `Rule` is the whole rule as one sentence for a
+message to append, and `MaxKeyLength` is the cap. It delegates to `ContentKeyRules` in `KhaozEngine.Catalog`,
+which also supplies the validator's UTF-8 span check. String diagnostics retain their UTF-16 positions and
+lengths, and runtime-key diagnostics retain their byte units. The rule has callers at three layers. The
+validator's `KEC0001` sweep walks the rows a candidate already holds. A fork's copy key never
 reaches that sweep, because the row it would go on does not exist until publish. And an admin surface has to
 refuse an add's key BEFORE the edit enters the draft, since a draft carrying a malformed key is wedged: every
 later validate reports it, every later publish refuses, and the only removal on this seam is a discard, which
@@ -500,13 +502,16 @@ and its values, which is the difference between a rollback and a restore.
 same property that lets a durable page's version stamp be an ordering comparison.
 
 **A row live at the target and RETIRED since is a flat refusal**, `KEC0039`, naming the row and the rule that
-retired it. There is no un-retire branch and there never was a reachable one: every retire appends exactly one
-`Retired` rule, so a branch conditioned on no rule naming that id could not run. The way out is an ordinary
-`Add` under a NEW key carrying the old values, because a key is immutable once published, and the retired row
-keeps its id and its bytes forever so a stored stack still decodes.
+retired it when that rule is present. There is no un-retire branch. An ordinary publish appends exactly one
+`Retired` rule for each retire. A provider baseline without a matching rule still refuses the rollback.
+The way out is an ordinary `Add` under a NEW key carrying the old values, because a key is immutable once
+published, and the retired row keeps its id and its bytes forever so a stored stack still decodes.
 
 `ContentRollback.Prepare` is the plan behind it and `ContentRollbackPlan` is what a console renders: the
-edits, the blockers with the rule that produced each one, and one `KEC0039` finding per blocker.
+edits, the blockers with any matching rule, and one `KEC0039` finding per blocker. Each
+`ContentRollbackBlocker.RuleKind` carries that rule's actual kind, or null when no rule matches. In that
+case `RuleSequence` and `IntroducedIn` are 0. The original five-argument constructor and deconstruction
+remain available.
 
 ## The diff
 
@@ -533,6 +538,11 @@ candidate, which is a row set with no number yet because it has not been publish
 in memory. A production host uses a provider, because nothing in it survives the process. It ships in this
 package rather than in a test project because the draft, allocator, publish and admin-action suites all need
 one and they sit in different assemblies.
+
+`InMemoryContentAuthoringStore.SchemaVersion` is the public catalog schema version this engine build
+targets, currently 3, matching both providers. Consumers use that constant for catalog preflight and deploy
+compatibility checks. `IContentAuthoringStore.GetSchemaVersionAsync()` reports the schema held by the opened
+store, which the in-memory store also reports as 3.
 
 It carries the constraints its provider siblings get from a `CHECK`, so a defect surfaces there rather than
 at the first SQL run: a high-water mark never moves backwards, an issued mark never passes a reserved one,
@@ -902,8 +912,9 @@ version that is not a 32-bit integer. The precheck returns an unsupported intege
 report it. `Read` remains the operation that refuses a format version this build does not support.
 
 An import runs through the ORDINARY publish and there is no second mechanism. It restores the families and
-their blocks verbatim, restamps the bundle's rules as the new line's, turns every row into an `Add` edit and
-publishes the draft as version 1. `ContentEdit.Import` is the only factory that may name a definition id, and
+their blocks verbatim, including each family's `IsRetired` flag through family reads and later exports in
+every store. It restamps the bundle's rules as the new line's, turns every row into an `Add` edit and publishes
+the draft as version 1. `ContentEdit.Import` is the only factory that may name a definition id, and
 it is also the only one that may say a row is ALREADY retired, because a bundle carries its retired rows and
 already carries the rule that retired them. A refusal at any point AFTER the staging began resets the store to
 the empty state it was required to start from, so nothing is left half seeded, and that covers the staging

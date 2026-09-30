@@ -28,21 +28,23 @@ automatically, so this is transparent to every other package.
   float, and deliberately NO `Seed`, `State` or `CreateDerived`: a source whose seed is readable is a source
   a crafting system can leak, and a durable record carries the resolved outcome rather than a seed or a draw
   index. `NextInt` throws `ArgumentOutOfRangeException` on an empty range, which is a caller bug rather than
-  a draw, and a one-wide range answers without consuming a draw. `Skip` advances the stream by exactly one
-  draw, for a caller that must consume a draw it will not use: it is what a position-stable generator
-  discards with, because `NextInt(0, 1)` consumes nothing and so leaves the stream where a skipped call
-  would. It is a default interface method (`NextInt(0, 2)` discarded), so a foreign implementation gets the
-  advance for free. `SeededRandomSource` overrides it to take exactly one draw off the wrapped generator and
+  a draw, and a one-wide range answers without consuming a draw. `Skip` supplies an explicit discarded
+  slot, because `NextInt(0, 1)` consumes nothing and so leaves the stream where a skipped call would.
+  It is a default interface method (`NextInt(0, 2)` discarded), so an existing implementation need not add
+  an override. The default's underlying cost depends on that implementation's `NextInt`.
+  `SeededRandomSource` overrides it to take exactly one `NextULong` off the wrapped generator and
   `CryptographicRandomSource` overrides it to do nothing, because a cryptographic stream has no position to
   advance. `CryptographicRandomSource` draws from the
   OS through `System.Security.Cryptography.RandomNumberGenerator` and is what a hosted server runs.
   `SeededRandomSource(ulong seed)` wraps `DeterministicRng`, so a seeded replay and a test reuse the engine's
   one seeded stream definition, and the seed is not readable back off the instance. Both bound a draw by
   rejection sampling rather than modulo, because modulo bias on a crafting roll is an edge a player can farm.
+  A live bounded draw may consume more than one 64-bit value, so the seeded `Skip`'s fixed cost does not
+  guarantee a fixed underlying stride for every bound.
   A consumer takes one as a constructor parameter: there is no ambient instance and no default, because a
   default is how a production server ends up on the test source.
-- `RandomDraw` - a bounded draw off an `IRandomSource` that always costs exactly one draw, so a stream stays
-  position stable when a tunable bound collapses. `Below(rng, exclusiveMax)` answers `[0, exclusiveMax)`, and a
+- `RandomDraw` - a bounded slot off an `IRandomSource` that calls `NextInt` for a live bound or `Skip` when
+  a tunable bound collapses. `Below(rng, exclusiveMax)` answers `[0, exclusiveMax)`, and a
   bound of 0 or 1 answers 0 through `Skip` rather than a one-wide `NextInt` that would consume nothing.
   `UpTo(rng, inclusiveMax)` answers `[0, inclusiveMax]`, the form a roll ladder is quoted in, and refuses
   `int.MaxValue`. A negative bound is refused with `ArgumentOutOfRangeException` before any draw is spent.

@@ -14,9 +14,6 @@ namespace KhaozEngine.Catalog;
 /// </summary>
 internal static class ContentKeyChecks
 {
-    /// <summary>The key length cap of contracts 5.3, which matches the consumers' own key columns.</summary>
-    internal const int MaxKeyLength = 64;
-
     internal static void Run(ContentValidationRun run)
     {
         CheckTypeIdentity(run);
@@ -124,7 +121,7 @@ internal static class ContentKeyChecks
                         $"Row '{row.Key}' carries definition id {row.Id}, over the ceiling of {ceiling} type '{registration.TypeKey}' declared at registration. A type declares one when a format it is carried in cannot hold a bigger number."));
             }
 
-            string? malformed = KeyDefect(row.Key.Utf8);
+            string? malformed = ContentKeyRules.Defect(row.Key.Utf8);
             if (malformed is not null)
             {
                 run.Add(
@@ -132,7 +129,7 @@ internal static class ContentKeyChecks
                     row.Id,
                     "KEC0001",
                     FormattableString.Invariant(
-                        $"Row {row.Id} of type '{registration.TypeKey}' carries key '{row.Key}', which is {malformed}. A key is 1 to {MaxKeyLength} characters of a-z, 0-9 and underscore, with no leading digit, no leading or trailing underscore and no double underscore."));
+                        $"Row {row.Id} of type '{registration.TypeKey}' carries key '{row.Key}', which is {malformed}. {ContentKeyRules.Rule}"));
             }
 
             if (keys.TryGetValue(row.Key, out int firstId))
@@ -203,55 +200,5 @@ internal static class ContentKeyChecks
     static void CheckFamilies(ContentValidationRun run)
     {
         _ = run;
-    }
-
-    /// <summary>
-    /// The key rules of contracts 5.3, as a phrase naming the first defect, or null when the key is well
-    /// formed. The rules are the VALIDATOR's rather than <see cref="ContentKey"/>'s, so a bad key reaches
-    /// the sweep intact and a bulk import reports every one of them in a single pass.
-    /// </summary>
-    static string? KeyDefect(ReadOnlySpan<byte> key)
-    {
-        if (key.Length == 0)
-        {
-            return "empty";
-        }
-
-        if (key.Length > MaxKeyLength)
-        {
-            return FormattableString.Invariant($"{key.Length} characters long");
-        }
-
-        for (int i = 0; i < key.Length; i++)
-        {
-            byte c = key[i];
-            bool allowed = c is >= (byte)'a' and <= (byte)'z' || c is >= (byte)'0' and <= (byte)'9' || c == (byte)'_';
-            if (!allowed)
-            {
-                return FormattableString.Invariant($"outside the character set at position {i}");
-            }
-
-            if (c == (byte)'_' && i > 0 && key[i - 1] == (byte)'_')
-            {
-                return FormattableString.Invariant($"a double underscore at position {i}");
-            }
-        }
-
-        if (key[0] is >= (byte)'0' and <= (byte)'9')
-        {
-            return "a leading digit";
-        }
-
-        if (key[0] == (byte)'_')
-        {
-            return "a leading underscore";
-        }
-
-        if (key[^1] == (byte)'_')
-        {
-            return "a trailing underscore";
-        }
-
-        return null;
     }
 }

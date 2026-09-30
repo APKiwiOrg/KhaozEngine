@@ -1366,9 +1366,18 @@ picks the kind, the stream id and the decoder, exactly as it does for an ordinar
 
 A chunk is a game message PAYLOAD, not a frame, so the caller wraps each one with
 `TileProtocol.EncodeGameMessage` under its own kind and sends it `ReliableOrdered`.
-`TileFragmentedMessage.MaxChunkPayloadBytes` is `MaxGameMessageBytes` less the four byte envelope less the five
-byte header, so a chunk carries 1015 bytes and 255 of them carry about 258 KB. Every chunk but the last carries a
-FULL load, which is what lets a reader tell a truncated chunk from a legitimately short final one.
+`TileProtocol.MaxGameMessageBytes` caps that payload at 1024 bytes, excluding the four byte envelope and optional
+command-length pad. A full game payload therefore makes a 1028-byte frame. The fragment format keeps its own
+conservative `MaxUnpaddedFrameBytes = 1024` budget, including the envelope and five byte chunk header, so
+`TileFragmentedMessage.MaxChunkPayloadBytes` remains `1024 - 4 - 5 = 1015`. A full chunk uses 1020 game payload
+bytes and leaves four spare bytes below the payload cap. The optional pad only applies to a short chunk whose
+natural frame length equals the command frame length. The fragment budget is a format convention rather than a
+transport datagram limit.
+
+Every chunk but the last carries a FULL 1015-byte body, which is what lets a reader tell a truncated chunk from a
+legitimately short final one. Both peers must preserve that width: raising it to 1019 would make existing and
+updated readers reject each other's non-final chunks. Using those four spare bytes needs a separately designed
+protocol migration. The unchanged 255-chunk limit carries about 258 KB.
 
 `Fragment` THROWS above `MaxPayloadBytes`, on the same grounds as the game message cap throw: a payload that long
 is a local caller bug. Everything on the reading side is total and never throws, because those bytes came from a

@@ -8829,6 +8829,8 @@ roof counts as the well. Hand it a `TileObjectBoundsCache` over the view's own `
 bounds source (the per-archetype vertex box, measured once), and apply your own clickability gates on the hits
 (the archetype id rides on each one): a roof the view is currently hiding (`TileWorldView.IsRoofHidden`), a
 non-interactive archetype, or a cut at the ground hit's distance are all the caller's rules, deliberately.
+The candidate walk allocates nothing. Reuse a hit list with enough capacity and a warmed bounds cache for
+allocation-free repeated picks, including the per-frame picks made by `TileWorldCameraProbe`.
 
 ---
 
@@ -16148,6 +16150,12 @@ server boot, the client fetch loop and the string catalog, and it is in the `Fou
 `KhaozEngine.Catalog.Sqlite` and `KhaozEngine.Catalog.SqlServer` are the two durable authoring backends and
 are in no umbrella: add the one you want explicitly, the way you add a `WorldStore` backend.
 
+`ContentKeyRules.Defect(key)` checks the shared key-shape rule and returns the first defect or null. Its
+string overload reports UTF-16 positions and lengths, and its UTF-8 span overload checks runtime keys in byte
+units without materialising a string. `ContentKeyShape` in the authoring package preserves its existing
+`Defect(string)`, `Rule` and `MaxKeyLength` API by delegating to these lower catalog rules. `ContentKey`
+construction remains permissive so the validator can report every malformed key in a sweep.
+
 ```csharp
 var registry = new ContentTypeRegistry();
 EngineContentTypes.Register(registry);
@@ -16248,6 +16256,10 @@ publish freezes.
 await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync, ct);
 ```
 
+For catalog preflight and deploy compatibility checks, read `InMemoryContentAuthoringStore.SchemaVersion`
+as the schema version this engine build targets, currently 3 for both providers. The opened store's
+`GetSchemaVersionAsync()` reports the schema it holds. The in-memory store reports the same build target.
+
 Edits go into the ONE open draft, whole or not at all, and ids are allocated at publish rather than at edit:
 
 ```csharp
@@ -16274,6 +16286,14 @@ new number, both manifest hashes, and the chunk accounting, so an operator sees 
 rewrote one chunk and reused the rest. `ContentRollback` builds a reviewable draft that restores an earlier
 version's field values, `ContentDiff` is the field-level comparison, and `ContentBundle` is the lossless
 seeding document, imported into an EMPTY database only.
+
+A rollback refuses a row live at the target and retired since. `ContentRollbackBlocker.RuleKind` reports
+the matching rule's actual kind, or null if the provider baseline has no matching rule. That missing-rule
+case retains the blocker with `RuleSequence` and `IntroducedIn` at 0. The admin action renders the same
+absence as `kind: null` in `blockedByRules`, while a matching retire rule renders `kind: "Retired"`.
+
+Bundle import preserves each family's `IsRetired` flag through family reads and later exports, including
+the in-memory authoring store. Its version line still restarts at 1.
 
 When a tool must inspect the bundle format before reading or combining the document, use the reader's
 precheck rather than parsing the JSON separately:
@@ -17050,6 +17070,11 @@ Decoders never throw for a byte: they answer false plus a stable token from a cl
 come from a peer or a store. Everything arrives by argument, the registry and the logger included, and there
 is no ambient static anywhere in the package.
 
+Use registry-bound payload validation to enforce the
+[v1 scalar value contracts](../KhaozEngine.ItemInstances/README.md#registration). Illegal values answer
+`field-malformed` and stored originals survive quarantine verbatim. `BoundTo` retains its full nonzero
+uint64 range. Game kinds supply their own codecs, and the shared Varint shape remains unsigned 64 bit.
+
 ```csharp
 using KhaozEngine.Catalog;
 using KhaozEngine.ItemInstances;
@@ -17084,7 +17109,7 @@ long instanceId = allocator.Next();
 var bank = new ItemContainer(
     slotCount: 28,
     stackable: Stackable,
-    payloadCanonical: ItemInstancePayload.IsCanonical,
+    payloadCanonical: bytes => ItemInstancePayload.IsCanonical(properties, bytes),
     quarantineWellFormed: QuarantineWrapper.Verify);
 
 bank.SetSlotAt(0, new ItemSlot(new ItemStack(BronzeSword, 1, instanceId), payload, Quarantined: false));
@@ -17277,10 +17302,13 @@ if (rolled.AffixCount < rolled.RequestedAffixCount)
 ```
 
 `rolled.ContentVersion` is what makes "what did this item look like when it dropped" answerable against the
-right catalog rather than against today's. The draw COUNT is a function of the affix count and of nothing
-else: a pick whose pool is empty still consumes both of its draws, and a collapsed bound goes through
-`IRandomSource.Skip` rather than `NextInt(0, 1)`, which consumes nothing at all. Without both, a seeded
-session diverges at the first item whose pool runs dry.
+right catalog rather than against today's. The logical draw schedule depends on the generation path,
+requested affix count and name positions. Each affix pick reserves kind, weighted-entry and roll-position
+slots even when its pool is empty. The bounded helper calls `NextInt(0, bound)` when `bound > 1`, otherwise
+calls `IRandomSource.Skip` and returns 0, covering real singleton choices as well as discards.
+`NextInt(0, 1)` would consume nothing. The seeded `Skip` consumes exactly one underlying `NextULong`, but a
+live `NextInt` can consume more values during rejection sampling. Reproducing a seeded roll requires the
+same source, seed, inputs and call order, rather than assuming a fixed underlying stride for every bound.
 
 **Crafting it.** A currency is authored data resolved into a `CraftPlan` at boot. The executor runs the
 target guard set once, then every step in authored order with its own guard set immediately before it.
@@ -17405,8 +17433,8 @@ page 7 slot 43 for every container in the fleet, and growing that bag to 40 slot
 than a re-paging of stored bytes.
 
 The page is what a journal commit rewrites one of. `ItemContainerPage` holds its decoded slots, its content
-version stamp and its dirty flag, and exactly TWO things dirty it: an operation that CHANGED a slot and a
-remap that changed an id. Reading never does, seating a decoded page never does, and a write that leaves the
+version stamp and its dirty flag. An operation, a remap or a successful rescue dirties it when a slot's
+state changes. Reading never does, seating a decoded page never does, and a write that leaves the
 slot holding what it already held never does.
 
 A host with admitted and committed views can copy this state through the public load doors. The container
@@ -17418,6 +17446,13 @@ write and take operation.
 `ContainerLoad.Load` in `KhaozEngine.ItemInstances.Journal` is the read half. It is a `Server` package
 because composing a `JournalCommit` needs `KhaozEngine.WorldStore`, so a client build keeps the record and
 none of this.
+
+A plain stack whose definition no longer resolves carries a verified quarantine wrapper over its empty
+original and keeps instance id zero. The page's quarantine flag and codec entries carry that verdict.
+Loading also wraps a non-empty payload without instance identity at entry level, preserving its bytes and
+the other slots. These quarantines keep the loaded page clean and leave the stored section untouched.
+When a plain stack's definition resolves again, the load clears its wrapper and flag, keeps its absent
+identity, and dirties the page for the next commit. A non-empty original with no instance id stays quarantined.
 
 The load path passes the 100 slot page geometry to the version 1 bridge. A page 0 section whose legacy blob
 declares 1 through 100 slots loads directly as a full 100 slot page, with its slot indexes unchanged and no

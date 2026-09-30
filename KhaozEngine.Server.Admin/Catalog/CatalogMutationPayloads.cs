@@ -127,18 +127,18 @@ public sealed record CatalogPinPayload(
     int? ConfigPinnedVersion,
     IReadOnlyList<string> Warnings);
 
-/// <summary>One rule that BLOCKS a rollback, with the publish that introduced it named beside it.</summary>
+/// <summary>One retired row that blocks a rollback, with its matching rule's publish when present.</summary>
 /// <param name="Sequence">The rule's sequence, or 0 when no rule names the row.</param>
 /// <param name="IntroducedIn">The version the rule was published in, or 0 when no rule names the row.</param>
 /// <param name="Type">The content type's key.</param>
 /// <param name="FromId">The retired definition id.</param>
-/// <param name="Kind">The remap rule kind, which is <c>Retired</c> for every blocker.</param>
+/// <param name="Kind">The matching remap rule's kind, or null when no rule names the row.</param>
 public sealed record CatalogBlockingRulePayload(
     int Sequence,
     int IntroducedIn,
     string Type,
     int FromId,
-    string Kind);
+    string? Kind);
 
 /// <summary>
 /// What <c>catalog-rollback</c> answers with. It BUILDS A DRAFT rather than publishing one, so the operator
@@ -156,12 +156,12 @@ public sealed record CatalogRollbackPayload(
 /// <summary>
 /// The 409 of a rollback blocked by an irreversible retire, which names the way OUT rather than leaving an
 /// operator guessing. A retire is irreversible for pages already migrated past it, so there is no un-retire
-/// branch and there never was a reachable one.
+/// branch.
 /// </summary>
 /// <param name="Error">The human-readable refusal.</param>
 /// <param name="Reason">The stable reason token.</param>
 /// <param name="Code">The finding code, <c>KEC0039</c>.</param>
-/// <param name="BlockedByRules">Every rule that blocks it.</param>
+/// <param name="BlockedByRules">Every blocking row, with rule metadata when a matching rule is present.</param>
 /// <param name="Remedy">The mint-a-new-id path, named in full.</param>
 public sealed record CatalogRollbackBlockedPayload(
     string Error,

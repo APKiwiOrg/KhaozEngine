@@ -156,7 +156,8 @@ the only two keys an edit invents, and neither exists as a row for the publish s
 is the only place either can be caught before it enters the draft. A draft that accepted a malformed key was
 wedged: every later `catalog-validate` reported the defect, every later `catalog-publish` refused, and the
 only removal on the authoring seam is `catalog-discard`, which takes every other pending edit with it. The
-rule is `ContentKeyShape` in `KhaozEngine.Catalog.Authoring`, shared with the fork precondition.
+boundary calls `ContentKeyShape` in `KhaozEngine.Catalog.Authoring`, which delegates to the lower catalog's
+`ContentKeyRules` shared by the validator and fork precondition.
 
 **`expectedBaseVersion` on a publish is REQUIRED optimistic concurrency.** Two consoles cannot both publish
 the same draft: the second one's expectation is stale and it gets a 409 naming BOTH numbers. There is
@@ -294,6 +295,10 @@ one console parser reads all of them. A 400 is `{ error, reason, findingCount, f
 empty when the refusal is about the REQUEST rather than about the content. A 409 carries `error`, `reason` and
 whatever the race needs: a stale publish adds `expectedBaseVersion` and `actualBaseVersion`, a draft a publish
 is holding adds a `remedy`, and a blocked rollback adds `code`, `blockedByRules[]` and a `remedy`.
+
+Each rollback blocker names its row through `type` and `fromId`. Its `kind` carries the matching rule's
+actual name, normally `Retired`. If the provider's baseline has no matching rule, `kind` is JSON null and
+both `sequence` and `introducedIn` are 0. The row still blocks the rollback.
 
 The frozen-draft remedy first tells the operator to wait for the publisher and read the draft again. If the
 publisher process died before commit, the marker is indistinguishable from a live publisher's marker. After

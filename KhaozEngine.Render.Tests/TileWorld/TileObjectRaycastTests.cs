@@ -135,4 +135,63 @@ public class TileObjectRaycastTests
         }
         Assert.Equal(0, TileObjectRaycast.Pick(doc, Catalogs, 0, origin, direction, 600f, None, hits));
     }
+
+    [Fact]
+    public void A_plane_pick_crosses_negative_empty_and_missing_regions_in_nearest_order()
+    {
+        var doc = new TileWorldDocument();
+        doc.GetOrCreateRegion(new RegionCoord(-1, -1));
+        doc.GetOrCreateRegion(new RegionCoord(0, -1)); // Empty, with region (1, -1) missing beyond it.
+        doc.GetOrCreateRegion(new RegionCoord(2, -1));
+        TileObject far = doc.AddObject("wall", 128, -1, 0, 0);
+        TileObject near = doc.AddObject("wall", -1, -1, 0, 0);
+        TileObject upstairs = doc.AddObject("wall", -1, -1, 1, 0);
+        static bool AcrossPlanes(TileObjectArchetype a, out Vector3 min, out Vector3 max)
+        {
+            min = new Vector3(-0.5f, -4f, -0.5f);
+            max = new Vector3(0.5f, 4f, 0.5f);
+            return true;
+        }
+        var origin = new Vector3(-10f, 1.5f, 0.5f);
+        var hits = new List<TileObjectHit>();
+
+        Assert.Equal(2, TileObjectRaycast.Pick(doc, Catalogs, 0, origin, Vector3.UnitX, 160f, AcrossPlanes, hits));
+        Assert.Equal(near.Id, hits[0].ObjectId);
+        Assert.Equal(9f, hits[0].Distance);
+        Assert.Equal(far.Id, hits[1].ObjectId);
+        Assert.Equal(138f, hits[1].Distance);
+        Assert.Equal(1, TileObjectRaycast.Pick(doc, Catalogs, 1, origin, Vector3.UnitX, 160f, AcrossPlanes, hits));
+        Assert.Equal(upstairs.Id, hits[0].ObjectId);
+        Assert.Equal(0, TileObjectRaycast.Pick(doc, Catalogs, 2, origin, Vector3.UnitX, 160f, AcrossPlanes, hits));
+        Assert.Equal(3, doc.Regions.Count);
+    }
+
+    [Fact]
+    public void Only_anchors_inside_the_padded_rect_are_candidates_even_for_a_wide_box()
+    {
+        var doc = new TileWorldDocument();
+        foreach (RegionCoord region in new[] { new RegionCoord(-1, -1), new RegionCoord(0, 0) })
+            doc.GetOrCreateRegion(region);
+        TileObject low = doc.AddObject("wall", -8, -8, 0, 0);
+        TileObject high = doc.AddObject("wall", 8, 8, 0, 0);
+        doc.AddObject("wall", -9, -8, 0, 0);
+        doc.AddObject("wall", 9, 8, 0, 0);
+        doc.AddObject("wall", -8, -9, 0, 0);
+        doc.AddObject("wall", 8, 9, 0, 0);
+        static bool WideBox(TileObjectArchetype a, out Vector3 min, out Vector3 max)
+        {
+            min = new Vector3(-100f, 0f, -100f);
+            max = new Vector3(100f, 1f, 100f);
+            return true;
+        }
+        var hits = new List<TileObjectHit>();
+
+        // A vertical ray at tile (0, 0) searches [-8, 9) on both axes, including the padded corners.
+        Assert.Equal(2, TileObjectRaycast.Pick(doc, Catalogs, 0, new Vector3(0f, 10f, 0f),
+            -Vector3.UnitY, 20f, WideBox, hits));
+        Assert.Equal(low.Id, hits[0].ObjectId);
+        Assert.Equal(high.Id, hits[1].ObjectId);
+        Assert.Equal(0, TileObjectRaycast.Pick(doc, Catalogs, 0, new Vector3(0f, 10f, 0f),
+            -Vector3.UnitY, 9f, WideBox, hits)); // Entry at the maximum distance stays excluded.
+    }
 }

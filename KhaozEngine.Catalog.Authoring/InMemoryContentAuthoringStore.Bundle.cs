@@ -254,7 +254,10 @@ public sealed partial class InMemoryContentAuthoringStore
             _ = RequireType(family.Type);
 
             var record = new FamilyRecord(
-                family.FamilyId, family.Type, family.FamilyKey, family.BlockSize, family.CreatedInVersion);
+                family.FamilyId, family.Type, family.FamilyKey, family.BlockSize, family.CreatedInVersion)
+            {
+                IsRetired = family.IsRetired,
+            };
             for (int b = 0; b < family.Blocks.Count; b++)
             {
                 record.Blocks.Add(family.Blocks[b]);

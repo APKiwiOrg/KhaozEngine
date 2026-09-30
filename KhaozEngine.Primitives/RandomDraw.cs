@@ -3,15 +3,16 @@ using System;
 namespace KhaozEngine.Primitives;
 
 /// <summary>
-/// A bounded draw off an <see cref="IRandomSource"/> that always costs the stream exactly one draw, whatever
-/// the bound is, so a stream stays POSITION STABLE when a tunable bound collapses.
+/// A bounded draw off an <see cref="IRandomSource"/> that reserves one logical slot through
+/// <see cref="IRandomSource.NextInt"/> or <see cref="IRandomSource.Skip"/>, including a collapsed bound.
 /// </summary>
 /// <remarks>
 /// <see cref="IRandomSource.NextInt"/> documents that a one-wide range consumes nothing. A roll bounded by a
 /// number content tunes (an amount list, a one-in-N rate, an accuracy roll) can legally collapse to one, and
-/// under a bare <see cref="IRandomSource.NextInt"/> that would shift every later roll of the stream by one
-/// position, so a seeded replay would drift after a content change. A collapsed bound here pays through
-/// <see cref="IRandomSource.Skip"/>, the discard whose cost is fixed.
+/// a bare <see cref="IRandomSource.NextInt"/> would silently omit that slot. A collapsed bound here calls
+/// <see cref="IRandomSource.Skip"/> instead. The seeded Skip consumes exactly one underlying
+/// <c>NextULong</c>, while a live NextInt may consume additional values during rejection sampling. This
+/// helper does not guarantee an identical underlying stream stride for every bound.
 /// <para>
 /// An adapter onto the seam, not a generator: no state, no stream of its own and no probability of its own.
 /// The distribution is <see cref="IRandomSource.NextInt"/>'s uniform draw over the same interval. On a source
@@ -21,10 +22,11 @@ namespace KhaozEngine.Primitives;
 /// </remarks>
 public static class RandomDraw
 {
-    /// <summary>A uniform draw in <c>[0, exclusiveMax)</c> that always costs the stream exactly one draw.</summary>
-    /// <param name="rng">The stream. Caller-owned: the order of calls is the order of draws.</param>
-    /// <param name="exclusiveMax">The bound. Zero and one both answer 0 and both still spend a draw, which is
-    /// what keeps a tunable bound from moving the rolls behind it.</param>
+    /// <summary>A uniform draw in <c>[0, exclusiveMax)</c> for a bound above one, otherwise 0 after Skip.
+    /// Every valid call reserves one logical slot.</summary>
+    /// <param name="rng">The caller-owned source. The order of calls is the order of logical slots.</param>
+    /// <param name="exclusiveMax">The bound. Zero and one both answer 0 through Skip, while a wider bound
+    /// calls NextInt. The underlying draw cost depends on the source.</param>
     /// <exception cref="ArgumentNullException"><paramref name="rng"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="exclusiveMax"/> is negative, which is a
     /// caller bug rather than a draw, exactly as the seam treats an inverted range.</exception>
@@ -41,7 +43,7 @@ public static class RandomDraw
     }
 
     /// <summary>A uniform draw in <c>[0, inclusiveMax]</c>, the inclusive form a roll ladder is quoted in. It
-    /// costs exactly one draw, as <see cref="Below"/> does.</summary>
+    /// reserves one logical slot, as <see cref="Below"/> does.</summary>
     /// <param name="rng">The stream.</param>
     /// <param name="inclusiveMax">The largest number the draw can answer. It must be below
     /// <see cref="int.MaxValue"/>, because the exclusive bound it becomes is one more.</param>

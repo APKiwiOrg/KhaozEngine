@@ -14,8 +14,8 @@ namespace KhaozEngine.Render3D
         /// <summary>The lowest world y of a skin deformed by <paramref name="palette"/> and drawn through
         /// <paramref name="model"/>, or positive infinity for a skin with no vertices.</summary>
         /// <param name="vertices">The skin's vertices. Each one's four bone indices must be valid palette positions,
-        /// as <see cref="SkinningMath.BlendSkinMatrix"/> requires. A vertex whose weights total zero is unweighted
-        /// and draws undeformed, through the model alone, the shader's own fallback.</param>
+        /// as <see cref="SkinningMath.BlendSkinMatrix"/> requires. A vertex whose weights total less than 1e-8 is
+        /// unweighted and draws undeformed, through the model alone, the shader's own fallback.</param>
         /// <param name="inverseBind">The skin's inverse-bind matrix per bone, one per palette entry.</param>
         /// <param name="palette">The joint-WORLD matrix per bone, as <see cref="Skeleton.ComposeInto"/> writes it and
         /// the skinned draw takes it.</param>

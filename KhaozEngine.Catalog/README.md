@@ -51,6 +51,10 @@ graph and is where the `IRandomSource` seam this catalog's random consumers take
   response or a validator finding. It hashes over its UTF-8 bytes, so it keys a dictionary directly. The
   character set and the 64 character cap are the VALIDATOR's rules, not the value type's, so an over-long
   or malformed key reaches the validator intact and is reported rather than silently truncated.
+- `ContentKeyRules` - the shared key-shape predicate for validation and authoring. `Defect(key)` returns
+  the first defect or null, `Rule` supplies the rule sentence, and `MaxKeyLength` is 64. The string overload
+  reports positions and lengths in UTF-16 units. The `ReadOnlySpan<byte>` overload uses UTF-8 bytes so the
+  validator can check runtime keys without materialising strings. Both accept the same ASCII key alphabet.
 
 ```csharp
 Span<byte> buffer = stackalloc byte[5];

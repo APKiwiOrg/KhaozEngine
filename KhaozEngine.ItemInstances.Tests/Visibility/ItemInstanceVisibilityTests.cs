@@ -129,12 +129,11 @@ public class ItemInstanceVisibilityTests
     }
 
     [Fact]
-    public void The_revealed_mask_is_a_ulong_so_a_decoded_sixty_four_bit_mask_never_narrows()
+    public void A_callers_sixty_four_bit_mask_ignores_high_bits_without_narrowing()
     {
-        // Kind 128's mask is a varint and the shape walk reads a varint at the full 64 bits (#917), so the
-        // value reaching this function can carry bits above 31. The registry caps a REGISTERED bit at
-        // MaxIdentificationMaskBit, so the high bits gate nothing, and taking a ulong here is what keeps
-        // that a documented no-op rather than a silent narrowing at the call site.
+        // Direct visibility callers still supply ulong masks. Registered kind 128 refuses stored masks
+        // above uint32, while this API ignores supplied bits above MaxIdentificationMaskBit because no
+        // registration can use them. This preserves the existing caller contract.
         InstancePropertyRegistry registry = VisibilityFixtures.Registry();
         const ulong highBitsOnly = 0xFFFF_FFFF_0000_0000UL;
 

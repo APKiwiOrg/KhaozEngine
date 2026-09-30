@@ -35,6 +35,17 @@ public class InMemoryContentAuthoringStoreTests
     static ContentFieldEdit Int(string name, long value)
         => new(name, ContentFieldValue.OfNumber(ContentFieldKind.Int, value));
 
+    [Theory]
+    [InlineData(ContentAuthoringSchemaMode.AutoCreate)]
+    [InlineData(ContentAuthoringSchemaMode.ValidateOnly)]
+    public async Task TheReportedSchemaMatchesTheProvidersBuildTarget(ContentAuthoringSchemaMode mode)
+    {
+        IContentAuthoringStore store = NewStore();
+        await store.InitializeAsync(mode);
+
+        Assert.Equal(3, await store.GetSchemaVersionAsync());
+    }
+
     [Fact]
     public async Task AnEmptyStoreReportsTheCurrentSchemaVersionAnEpochAndNoActiveVersion()
     {

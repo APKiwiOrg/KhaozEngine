@@ -313,9 +313,9 @@ engine rather than Scope B.
 |---|---|---|---|
 | 1 | `Flags` | `[Bits: varint uint32]`, a bitfield, bit 0 `Corrupted`, bit 1 `Mirrored`, bit 2 `Fractured`, bits 3 to 31 reserved and 0 in v1 | `Everyone` |
 | 2 | `ItemLevel` | `[Level: varint uint16]`, 1 to 65535 | `Everyone` |
-| 3 | `Quality` | `[Quality: varint uint16]`, in whole percentage points | `Everyone` |
-| 4 | `Charges` | `[Current: varint uint32][Maximum: varint uint32]` | `OwnerOnly` |
-| 5 | `Durability` | `[Current: varint uint16][Maximum: varint uint16]` | `OwnerOnly` |
+| 3 | `Quality` | `[Quality: varint uint16]`, 0 to 65535 whole percentage points | `Everyone` |
+| 4 | `Charges` | `[Current: varint uint32][Maximum: varint uint32]`, each bounded independently | `OwnerOnly` |
+| 5 | `Durability` | `[Current: varint uint16][Maximum: varint uint16]`, each bounded independently | `OwnerOnly` |
 | 6 | `BoundTo` | `[Subject: varint uint64]`, a character or account instance subject, 0 illegal | `OwnerOnly` |
 | 7 | `Materials` | `[Count: varint][ [MaterialId: varint int32][Parts: varint uint16] ] * Count`, authored order preserved | `Everyone` |
 | 8 | `Tier` | `[Tier: varint uint16]`, an upgrade rank, the Tibia plus-one shape | `Everyone` |
@@ -333,6 +333,13 @@ engine rather than Scope B.
 | 133 | `Enchantments` | the SAME entry layout as 131, ascending by mod id | `Everyone`, identification gated |
 | 134 | `RareName` | `[TemplateId: varint int32][WordCount: byte][WordId: varint int32] * WordCount` | `Everyone`, identification gated |
 | 135 to 1023 | reserved for Scope B | | |
+
+The v1 registered codecs enforce the value bounds for kinds 1 to 6 and 128 after the unsigned 64 bit
+shape walk. Flags accepts only 0 to 7, ItemLevel and BoundTo exclude zero, and Identification accepts
+state 0 or 1 and any uint32 mask, including unassigned bits. Quality has no 100 cap. Charges and
+Durability permit Current above Maximum and Maximum zero. A value outside these contracts answers
+`field-malformed`, and stored payload bytes are quarantined verbatim. Registry-free payload decoding
+checks only the envelope, so it does not enforce these per-kind rules.
 
 **Kind 132's count is a VARINT and kind 131's is a byte, and the difference is not an oversight.**
 Contracts 9.5 writes the socket field as `[Count: varint]`, and a narrowing to a byte would be a width
@@ -391,7 +398,8 @@ not change and nothing checks them. The v1 assignments are constants and are pin
 | 133 `Enchantments` | 2 |
 | 134 `RareName` | 3 |
 
-Bits 4 to 31 are unassigned and zero in v1. A new gated kind takes the NEXT FREE BIT, never a bit a
+Bits 4 to 31 are unassigned in the default v1 registry, and `Identify` leaves unassigned bits zero (12.7).
+A custom registration may assign bit 4 or beyond. A new gated kind takes the NEXT FREE BIT, never a bit a
 released engine has used, and registration throws on a duplicate bit exactly as it throws on a duplicate
 kind. That makes the hazard a startup failure instead of a silent renumber. That is `ReplicationRegistry.Register`'s shape
 (`TileProtocol.Components.cs:122`) and contracts 4.2's rule for the content type registry, applied one
@@ -1543,8 +1551,18 @@ and will want one again.
 ```
 
 Five bytes of header. The envelope is `[tag:1][kind:ushort 2][flags:1]`
-(`TileProtocol.Frames.cs:77`), so a chunk carries `1024 - 4 - 5 = 1015` payload bytes and 255 chunks
-carry 258 KB, which is forty times the largest page and five times the worst case page of 5.4.
+(`TileProtocol.GameMessageHeader`). `TileProtocol.MaxGameMessageBytes = 1024` caps the game payload
+alone, excluding the envelope and optional command-length pad. A full game payload makes a 1028-byte
+frame. The fragment format keeps a separate conservative `MaxUnpaddedFrameBytes = 1024` budget that
+includes the envelope, so a chunk carries `1024 - 4 - 5 = 1015` logical payload bytes. Its full game
+payload occupies 1020 bytes, leaving four bytes below the game payload cap. The optional pad applies
+only when a short chunk's natural frame length equals the command frame length. This is a fragment
+format convention, not an enforced transport datagram limit.
+
+Non-final chunks must carry exactly 1015 body bytes. Increasing the width to 1019 would make existing
+and updated readers reject each other's non-final chunks, so using the spare bytes needs a separately
+designed protocol migration. The unchanged 255-chunk ceiling carries 258 KB, which is forty times the
+largest page and five times the worst case page of 5.4.
 
 Reassembly rules, all on the client:
 
@@ -1582,8 +1600,9 @@ delta is sent with `SendGameMessageTo` from inside the per-viewer serve loop, an
 says so: the throw was inside the loop and "took the tick down for every player on the server"
 (`TileWorldServer.Tick.cs:236-247`). So the builder MEASURES as it writes:
 
-1. The budget is `MaxGameMessageBytes` less the four byte envelope (`TileProtocol.Frames.cs:77`) less the
-   delta's own three byte header, so 1,017 bytes of changes.
+1. The delta builder also keeps a conservative 1024-byte frame budget, including the four byte
+   envelope and its own three byte header, so 1,017 bytes of changes. `MaxGameMessageBytes` itself caps
+   only the game payload. The builder's existing budget leaves four bytes below that cap.
 2. A change to an OCCUPIED slot costs the slot varint plus the `0x01` tag plus the entry body, which is 70
    bytes at 3.8's rare. FOURTEEN changed rare slots fit in one frame and the fifteenth does not.
 3. A change to an EMPTIED slot costs two or three bytes, so bytes are not what binds there. `ChangedCount`
@@ -2220,19 +2239,25 @@ and it is reported beside budget 9.
 
 ### 9.3 The random source, restated at the call site
 
-`IRandomSource` is contracts 14.1 verbatim and lives in `KhaozEngine.Primitives` (2.2). Three of its four
-members are used here:
-`NextInt(minInclusive, maxExclusive)` for a count and for a weighted pick, `NextRollPosition()` for a
-`ushort` roll position, and neither `NextULong` nor `NextBytes`. A weighted pick is
-`NextInt(0, weightTotal)` followed by a binary search of the cumulative array, never a floating point
-draw and never a rejection loop, which is contracts 13.4 and 14.1 applied together.
+`IRandomSource` is contracts 14.1 verbatim and lives in `KhaozEngine.Primitives` (2.2). Of its five members,
+the ones used here are `NextInt(minInclusive, maxExclusive)` for a count and for a weighted pick,
+`NextRollPosition()` for a `ushort` roll position, and `Skip()` for a discarded or collapsed draw.
+Neither `NextULong` nor `NextBytes`
+is called here. The internal `BoundedDraw.Next` helper calls `NextInt(0, bound)` when `bound > 1`, otherwise
+calls `Skip()` and returns 0. Every real bounded draw uses this helper, including rarity, affix count,
+kind, mod weight, rare-name words and the craft selector `RandomOfKind`. A weighted pick then resolves
+against the cumulative array, never a floating point draw and never a candidate rejection loop, which is
+contracts 13.4 and 14.1 applied together. The random source's own rejection sampling remains part of
+`NextInt`.
 
-**Every draw the algorithm makes is a function of the affix COUNT and nothing else.** A candidate that is
-filtered out is removed from the pool BEFORE the draw rather than drawn and rejected, so two items of the
-same rarity on the same base at the same item level consume exactly the same number of draws. That is
-Grimhollow's always-draw rule (`GrimhollowDrops.cs:35-37`, both rolls always drawn so the stream stays
-position stable) generalised, and it is what makes a seeded replay of a drop session reproducible when
-one item's pool differs from another's.
+**The logical draw schedule depends on the generation path, requested affix count and name positions.**
+Each affix pick reserves a kind slot, a weighted-entry slot and a roll-position slot even when its pool
+is empty. A candidate that is filtered out is removed from the pool BEFORE the draw rather than drawn and
+rejected. `Skip` prevents an empty or singleton bound from silently omitting a slot, extending Grimhollow's
+always-draw rule (`GrimhollowDrops.cs:35-37`). On `SeededRandomSource`, each `Skip` advances exactly one
+underlying `NextULong`, but a live `NextInt` may consume additional values during rejection sampling.
+This is not a guarantee of an identical underlying stream stride for every pool or bound. Reproducing a
+seeded roll requires the same source, seed, inputs and call order.
 
 ### 9.4 The algorithm, step by step
 
@@ -2263,13 +2288,18 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
    `unique_line` rows as the affix list and its `unique_socket` rows as the socket list. No draw. A unique is FORCED by the
    caller rather than rolled here, because deciding that a unique drops is the loot table's job (9.1).
 3. **Roll the rarity**, unless `ForcedRarityId` is non-zero. One `NextInt(0, total)` over the
-   `rarity_weight` rows against the base's tags, using 8.3's first-tag-wins rule.
-4. **Roll the affix count.** One `NextInt(rule.min_affixes, rule.max_affixes + 1)`.
+   `rarity_weight` rows against the base's tags, using 8.3's first-tag-wins rule and the bounded helper
+   from 9.3. A total of 0 or 1 calls `Skip`, with 0 producing no rarity.
+4. **Roll the affix count.** One bounded slot over the inclusive range, implemented as
+   `rule.min_affixes + BoundedDraw.Next(random, rule.max_affixes - rule.min_affixes + 1)`. Equal bounds
+   call `Skip` and return the fixed count. A missing rarity also calls `Skip` and returns count 0.
 5. **Roll the prefix and suffix split.** For each of the `count` picks in turn, decide the kind FIRST:
    one `NextInt(0, openKindTotal)` over the kinds still under their per kind cap, weighted by the LIVE
    candidate count of that kind, which step 1 computed and step 6 has been decrementing. Kind before mod,
    so a rarity permitting three prefixes and three suffixes does not produce six prefixes because
-   prefixes happen to outnumber suffixes in the pool.
+   prefixes happen to outnumber suffixes in the pool. The bounded helper calls `Skip` and returns 0 when
+   `openKindTotal` is 0 or 1, so a real singleton kind choice and an empty-pool discard both reserve
+   this slot.
 6. **Deduct, rather than filter.** There is no per pick pass over the candidates. A candidate leaves the
    pool exactly once, when the thing that excludes it happens, and it leaves by SUBTRACTION: placing a
    mod deducts that mod's whole run of tiers, in every tag table of its kind, from that table's live
@@ -2280,7 +2310,8 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
    through a group index built at boot. An entry the overlap already suppressed is not deducted twice.
    A legacy mod needs no rule here at all, because it was never in a table (9.2). No draw.
 7. **Pick the mod and tier.** One `NextInt(0, liveWeight)` over the chosen kind's live weight, which is
-   the sum of its tag positions' live weights. The draw then resolves in three moves, all of them cheap
+   the sum of its tag positions' live weights. The same bounded helper calls `Skip` and returns 0 when a
+   real draw's live weight is 1. The draw then resolves in three moves, all of them cheap
    in the pool size: walk the two to four tag positions to find the one the draw falls in, walk that
    table's DEAD entries in index order (its suppressed list and its excluded runs, merged) adding their
    weights while they sit behind the draw, and binary search the table's cumulative array for the
@@ -2292,17 +2323,17 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
    better tier is rarer" is authored rather than coded.
 8. **Roll the position.** One `NextRollPosition()` per affix. Record `(mod id, tier ordinal, position,
    flags 0)`. Repeat steps 5 to 8 until `count` picks have been MADE. **A pick whose live pool is
-   EMPTY still draws and discards, one `NextInt(0, 1)` in place of step 7's weighted pick and one
+   EMPTY still reserves and discards one `Skip()` in place of step 7's weighted pick and one
    `NextRollPosition()` in place of this step**, places nothing, and the item ends with fewer affixes
    than the count asked for, which is a legal outcome and is reported in the result rather than retried.
-   The two discarded draws are what keep 9.3's property true: without them one item consumes fewer draws
-   than another of the same rarity on the same base, and a seeded session diverges at the first item
-   whose pool empties. `NextInt(0, 1)` rather than nothing because step 7's real draw is
-   `NextInt(0, liveWeight)` and a weight total of zero is not a legal argument, so the discard has to be
-   a defined call rather than the same call on an empty pool.
+   Step 5 has already reserved its kind slot through the same collapsed-bound rule. These two remaining
+   slots keep 9.3's logical schedule intact. `NextInt(0, 1)` cannot discard a draw because a one-wide range
+   consumes nothing. `Skip` is the explicit discard, and the same rule also covers a real weight of 1.
 9. **Sort the affix list ascending by mod id** (3.4). No draw.
 10. **Roll the rare name.** For each position 1 to `rule.name_word_positions`, one `NextInt(0, total)` over
-    that position's words weighted against the base's tags through their `rare_name_word_weight` rows. Record the word ids in position order.
+    that position's words weighted against the base's tags through their `rare_name_word_weight` rows.
+    A total of 1 uses the bounded helper's `Skip` and selects its only word. An empty position calls
+    `Skip` and records no word. Record the word ids in position order.
 11. **Seat the sockets.** A unique's `unique_socket` rows in `sort` order, otherwise the base's authored socket
     declaration, in authored order, every socket empty. No draw in v1: a rolled socket COUNT is a craft
     primitive (`add socket`, 10.2) rather than a generation step, so nothing here consumes a draw the
@@ -2313,8 +2344,9 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
 13. **Allocate the instance id** when the payload is non-empty, from `InstanceIdAllocator` (3.6). An
     empty payload takes id 0 and the item is a plain stack.
 
-**Cost, per rare, and what it is NOT a function of.** Six affixes cost six kind draws, six mod draws, six
-position draws and up to two name draws, so twenty draws. The work around those draws is eight scalar
+**Cost, per rare, and what it is NOT a function of.** Six requested affix picks reserve six kind slots, six mod slots,
+six position slots and up to two name slots, so twenty slots plus the count and any unforced rarity slot.
+The source's underlying draw cost follows 9.3. The work around those draws is eight scalar
 reads to open the pool, then per pick a walk of at most four tag positions, a walk of the dead entries
 that sit behind the draw, and a binary search of about ten steps. None of those is a function of the
 candidate pool's SIZE, which is the property the first draft did not have: it walked the merged pool once
@@ -2410,7 +2442,7 @@ Ruinborne (`c-ruinborne.md:22-26`) and `GrimhollowTrade`'s bag clone has in Grim
 | 10 | `RemoveEnchant` | selector | removes one entry from kind 133 |
 | 11 | `Repair` | amount or 0 for full | raises kind 5's current toward its maximum |
 | 12 | `SetQuality` | delta or absolute | writes kind 3 |
-| 13 | `Identify` | | sets kind 128's state to 1 and its revealed mask to all ones |
+| 13 | `Identify` | | sets kind 128's state to 1 and its revealed mask to the OR of the registered gated bits (12.7) |
 | 14 | `SetFlag` | bit, value | writes one bit of kind 1, and refuses a bit above 2 in v1 |
 
 Four notes an implementer needs and would otherwise guess:
@@ -2496,8 +2528,9 @@ content rather than a property the engine can check.
 | 4 | `AllOfKind` | every entry of that kind |
 | 5 | `LowestTier`, 6 `HighestTier` | by tier ordinal, ties broken by lower mod id |
 
-`RandomOfKind` is the only selector that draws, and it draws exactly once, so a currency's draw count is a
-function of its step list rather than of the item it hits.
+`RandomOfKind` is the only selector that draws, and it reserves exactly one bounded slot through 9.3's
+helper. A candidate count of 0 or 1 calls `Skip`, and an empty selection then refuses. When reached, this
+selector reserves one logical slot regardless of its candidate count.
 
 ### 10.4 A `crafting_currency` row and its two children
 
@@ -3127,14 +3160,20 @@ counter is what a dashboard reads and a log line is what a human reads.
 
 Kind 128 is `[State: byte][RevealedMask: varint uint32]` (3.3). State 0 is unidentified. `RevealedMask`
 bit N is the bit a kind was REGISTERED with, `identificationMaskBit` (3.3), never the kind's position in
-the ascending list of gated kinds. Four kinds are gated in v1, at bits 0, 1, 2 and 3 for kinds 129, 131,
-133 and 134, so bits 4 to 31 are unassigned and zero. The registered bit is the only shape that survives
-an engine release: the mask is durable and the registration set is not, so a derived index is a number
-stored under one meaning and read under another.
+the ascending list of gated kinds. The default v1 registry gates four kinds, at bits 0, 1, 2 and 3 for
+kinds 129, 131, 133 and 134. Bits 4 to 31 are unassigned in that registry, and `Identify` leaves them zero.
+Custom registrations may assign bit 4 or beyond without moving those four assignments. The registered
+bit is the only shape that survives an engine release: the mask is durable and the registration set is
+not, so a derived index is a number stored under one meaning and read under another.
 
 The mechanic: an unidentified item replicates and tooltips WITHOUT its gated kinds, to everyone including
 its owner, and what a viewer sees in their place is `khaoz.item.unidentified` through
-`ContentStringCatalog` (12.3), never a hardcoded string and never a blank line. The `Identify` primitive (10.2) sets state 1 and the mask to all ones. A partial reveal is
+`ContentStringCatalog` (12.3), never a hardcoded string and never a blank line. The `Identify` primitive
+(10.2) sets state 1 and builds the mask by ORing `1u << IdentificationMaskBit` for every gated registration
+in `InstancePropertyRegistry.ByKind`. This writes `0b1111` for the default v1 registry and includes any
+additional registered gated bits, while leaving unassigned bits zero. Writing all ones would make an old
+identified item claim a later bit assignment before that kind existed. This is the writer's rule: the
+decoder still accepts any revealed mask within `uint32`, including unassigned bits. A partial reveal is
 already expressible: a primitive parameterised to set one bit reveals one affix, which is an authoring
 choice rather than an engine one and needs no format change.
 
@@ -3986,7 +4025,7 @@ this log landed together in `5dc13c85`, and the consistency sweep that followed 
 | F11 | No steady-state commits-per-second budget, and no stated action on `Backpressure` | medium | PARTIAL low | FIXED 16 budget 13 and its derivation. 1,000 players at 4 Hz offer 4,000 per second pre-coalescing, the consumer refuses rather than retries, and the 698 figure is recast as offered load in 5.5 and 16 | beb4750a |
 | F12 | The deepest expressible item is understated, so request 3 and question 4 rest on a wrong figure | medium | CONFIRMED medium | FIXED 3.5, 3.8, 22 request 3, question 4. The item is counted field by field: 160 fixed plus 352 nested is the cap, so the field set fills 512 by construction | b8a37d9d |
 | F13 | A snapshot frame is not subject to the 1,024 byte cap | medium | CONFIRMED medium | FIXED 7.6, 13 row 11, question 6. The cap is only in `EncodeGameMessage`, so the row is bandwidth rather than a throw | b8a37d9d |
-| F14 | "The same number of draws" is false, because step 8 skips draws on an empty pool | medium | CONFIRMED medium | FIXED 9.4 step 8, test 6. An empty pool draws and discards one `NextInt(0, 1)` and one `NextRollPosition()`, and test 6 cites 9.3 | fcc1c6fe |
+| F14 | "The same number of draws" is false, because step 8 skips draws on an empty pool | medium | CONFIRMED medium | Original correction in 9.4 step 8, test 6 prescribed `NextInt(0, 1)` and `NextRollPosition()`. The shipped correction uses `Skip()` for the weighted slot, because the one-wide call consumes nothing (9.3 and 9.4) | fcc1c6fe |
 | F15 | The negative rounding rule departs from contracts 13.2 and its example is wrong | medium | CONFIRMED medium | FIXED 11.6, test 7. Floor division per the amended contracts 13.2, the sign-magnitude rule dropped, the example corrected to `-14000` giving -1 | fcc1c6fe |
 | F16 | No `StringId` keys are named for the placeholder presentations | medium | CONFIRMED medium | FIXED 12.3, 12.7. Three engine keys, `khaoz.item.quarantined`, `khaoz.item.retired` and `khaoz.item.unidentified`, resolved through `ContentStringCatalog` on the `SafeFormat` path | fcc1c6fe |
 | F17 | The generator memo is understated by about 2.5 times and is small for its key space | medium | CONFIRMED medium | FIXED 9.2, budget 9. The memo is 9.8 MB, the total is 30 MB, and the eviction and the 19,200 key space are stated | b8a37d9d |

@@ -105,9 +105,10 @@ A `ContainerLoadFinding` is one of five kinds. `PageQuarantined` is a page that 
 flagged quarantined over NO payload answers: there is no wrapper behind the flag to carry a reason or a
 stamp, so the reason is `field-malformed`, and the entry is left out of the page rather than seated live,
 which would clear the flag. The page codec refuses that shape at both of its own doors, so the seat door is
-the second one it would meet. `EntryRescued` is an entry that came back. `RemapAbandoned` is a rule that named an entry and could not be applied to it. `EntryUnwrappable`
-is a record the validator quarantined that the page cannot hold the wrapper for. Each one carries the section
-name an operator greps for, the page index taken from that NAME rather than from the header, the absolute
+the second one it would meet. `EntryRescued` is an entry that came back. `RemapAbandoned` is a rule that named
+an entry and could not be applied to it. `EntryUnwrappable` is retained for compatibility with older load
+results. The current loader can wrap plain stacks and payloads without instance identity. Each finding
+carries the section name an operator greps for, the page index taken from that NAME rather than from the header, the absolute
 slot (or `ContainerLoadFinding.NoSlot` on a whole-page finding), a reason token and the version the record
 stands at. An `EntryQuarantined` finding records that the wrapper remained, while its quarantine counter
 increment comes from the validator report so the record is counted once.
@@ -137,16 +138,22 @@ it stands, stamped version included, so the next rule published still reaches it
 helped by a remap rule, re-decoding one on every load costs something, and its bytes are not canonical by
 definition, so the page's own door would refuse to seat them live anyway.
 
+A drift wrapper preserving an empty original can recover a plain stack when its definition resolves again,
+even without a remap rule. Recovery keeps its existing instance id, including zero, clears the quarantine
+flag and dirties the page. A non-empty original with instance id zero cannot be restored as a live payload.
+
 ## Quarantine does not dirty a page
 
-Exactly two things dirty a page: an operation that changed a slot, and a remap that changed an id. Wrapping an
-entry at load is neither, so the stored bytes stay as they are and the same wrapper is derived again on the
+An operation, a remap or a successful rescue dirties a page when its slot state changes. Wrapping an
+entry at load does not, so the stored bytes stay as they are and the same wrapper is derived again on the
 next load. That is also what keeps the recovery exact: nothing was rewritten, so there is nothing to undo.
 
-**One record shape cannot carry its wrapper at all**: a wrapper IS a payload, and a container refuses a
-payload on a slot whose instance id is 0, which is every plain stack. Such a record is reported as
-`EntryUnwrappable` and counted like any other quarantined record, and its bytes are untouched
-([#935](https://github.com/APKiwiOrg/KhaozEngine/issues/935)).
+A verified wrapper can carry instance id zero. An unknown-definition plain stack keeps its definition,
+count and absent identity, gains a wrapper over its empty original, and carries the quarantine flag in the
+page and its codec entries. A non-empty live payload missing an instance id is wrapped at entry level,
+preserving its bytes and the rest of the page. Malformed payload bytes keep the decoder's structural reason,
+while otherwise valid bytes receive `instance-id-missing`. Neither path dirties the loaded page or writes
+the stored section ([#935](https://github.com/APKiwiOrg/KhaozEngine/issues/935)).
 
 ## How a load's dirty page reaches a commit
 

@@ -144,10 +144,10 @@ public sealed partial class ItemGenerator
     /// <returns>The resolved item, its canonical payload and the instance id it took.</returns>
     /// <exception cref="ArgumentOutOfRangeException">An item level outside 1 to 65535, a quality outside 0
     /// to 65535, a forced rarity id outside 0 to 255, a base this version has no live row for, or a forced
-    /// unique template this version has no live row for. <b>This is not the codec level width enforcement
-    /// of issue 917</b>, which stays gated on issue 903: these are the values a CALLER hands in by code,
-    /// refused in the same class as <see cref="ItemInstancePayloadBuilder"/>'s own throws, and nothing here
-    /// closes the hole a stored byte can still walk through.</exception>
+    /// unique template this version has no live row for. These caller values are refused by code, like
+    /// <see cref="ItemInstancePayloadBuilder"/>'s own caller errors. Registry-bound payload decoding also
+    /// enforces the v1 per-kind value contracts. Illegal stored values quarantine with their original
+    /// payload bytes preserved verbatim.</exception>
     /// <exception cref="InvalidOperationException">A forced rarity names no live rule, or the rarity rule
     /// asks for more affixes than kind 131's byte count can hold.</exception>
     public GenerationResult Generate(in GenerationContext context)

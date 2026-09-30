@@ -153,6 +153,27 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Changing_only_the_recovery_rate_invalidates_the_eye()
+        {
+            var probe = new FixedReachProbe { ReachAt = 4f };
+            FollowCamera3D cam = Camera(null);
+            cam.BoomProbe = probe;
+            cam.BoomRecoveryRate = 4f;
+            Assert.Equal(3.95f, cam.Eye.Z, 4);
+
+            probe.ReachAt = null;
+            cam.BeginFrame();
+            Assert.Equal(3.95f, cam.Eye.Z, 4);
+
+            cam.BoomRecoveryRate = 0f;
+
+            Assert.Equal(new Vector3(0f, 0f, 10f), cam.Eye);
+            Assert.Equal(3L, cam.EyeComputeCount);
+            Assert.Equal(new Vector3(0f, 0f, 10f), cam.Eye);
+            Assert.Equal(3L, cam.EyeComputeCount);
+        }
+
+        [Fact]
         public void Every_knob_that_feeds_the_eye_invalidates_it()
         {
             // One row per input, because the cache key is hand-maintained: a knob added to the geometry and

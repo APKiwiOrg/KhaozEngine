@@ -266,9 +266,11 @@ is the consumer's rule for which archetypes stop the camera. Tags are game conte
   for terrain, and the camera's `GroundHeight` clearance stays the guard against grazing hits.
 - **Pivot on the ground.** The ground pick counts both faces, so a pivot standing on the ground reports a hit at
   distance 0 for any boom. A hit within a millimetre of the pivot is that touching start, and the probe skips it by
-  picking once more from a centimetre above the pivot. A boom rising away from the ground keeps its length and a
-  boom pointing into it stops at the pivot. Lift the pivot clear of the ground with `FollowCamera3D.PivotHeight`,
-  which is the intended setup and saves the second pick.
+  picking once more from a centimetre above the pivot. A boom rising away from the ground keeps its length. A
+  downward boom stops at the pivot when `0.01 / sin(angle)` is within the radius, about 2.3 degrees at the default
+  0.25 m radius. Shallower downward booms can extend, but the eye stays within a centimetre of the surface. Lift
+  the pivot clear of the ground with `FollowCamera3D.PivotHeight`, which is the intended setup and saves the
+  second pick.
 - **Objects.** `PickObjects` on the observer's plane and the plane above it, where roofs stand, against every
   model box grown by the radius on each axis, which gives the boom a sphere's clearance rather than a ray's. Hits
   are walked nearest first and the first that passes stops the boom. A box that already contains the origin is

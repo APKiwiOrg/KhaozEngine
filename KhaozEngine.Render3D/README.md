@@ -52,6 +52,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `FollowCameraController.Update` calls it. `Warp` and `SnapToTarget` clear the shortfall. The `Distance` setter
   shifts it by the change in distance, so a zoom in during recovery never moves the eye outward, a zoom out
   continues the ease, and a zoom in the open is instant. The default rate of 0 follows the probe both ways at once.
+  Reading `Eye` with both `Occlusion` and `BoomProbe` detached clears the shortfall, so reattaching a clear seam
+  keeps the full boom length.
   See docs/USING-KHAOZENGINE.md.
 - Teleport transitions (`ITransition` + `HardBlink` / `CameraDissolve` / `CharDissolve`, since 10.65.0) - a phased
   cover -> swap -> optional streaming hold -> reveal state machine (pure timing) that masks a teleport swap +

@@ -23,7 +23,9 @@ namespace KhaozEngine.Render3D
         /// <c>exp(-BoomRecoveryRate * dt)</c>, so the shortfall decays frame-rate independently. Zero (the default)
         /// follows the probe both ways at once. Setting <see cref="Distance"/> shifts the held shortfall by the
         /// change in distance, so a zoom in during recovery holds the eye still until the new distance fits, a zoom
-        /// out continues the ease, and writing the same distance every frame leaves the ease alone.
+        /// out continues the ease, and writing the same distance every frame leaves the ease alone. Reading
+        /// <see cref="Eye"/> with both <see cref="Occlusion"/> and <see cref="BoomProbe"/> detached clears the
+        /// shortfall, so reattaching a clear seam keeps the full boom length.
         /// </summary>
         public float BoomRecoveryRate = 0f;
 
@@ -70,7 +72,11 @@ namespace KhaozEngine.Render3D
             IPhysicsWorld? world = Occlusion;
             if (world is null) _physicsProbe = null;   // do not keep a dropped world alive through the adapter
             ICameraBoomProbe? probe = BoomProbe;
-            if (world is null && probe is null) return geometricEye;
+            if (world is null && probe is null)
+            {
+                _heldShortfall = 0f;
+                return geometricEye;
+            }
 
             Vector3 toEye = geometricEye - pivot;
             float full = toEye.Length();

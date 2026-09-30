@@ -80,6 +80,19 @@ public class TileWorldCameraProbeTests
         Assert.Equal(0f, reach);
     }
 
+    [Fact]
+    public void A_shallow_falling_boom_extends_but_stays_within_a_centimetre_of_the_surface()
+    {
+        using TileWorldView view = View(TileRenderTestData.HouseWorld(), out var bounds);
+        var origin = new Vector3(40.5f, 0f, -40.5f);
+        var direction = new Vector3(0f, -MathF.Sin(0.01f), MathF.Cos(0.01f));
+
+        float reach = Reach(view, bounds, _ => true, origin, direction);
+
+        Assert.Equal(0.750017f, reach, 1e-4f);
+        Assert.InRange((origin + direction * reach).Y, -0.01f, 0f);
+    }
+
     // The hill's west flank: tile x 19 on rows 20 and 21 is a plane ramp rising 2 m over one tile toward +x, a
     // 63 degree slope. A boom climbing at 72 degrees clears it and the hilltop beyond. Several spots, because
     // whether a pivot on the slope lands a hair above or below it is float rounding and differs per spot.
@@ -114,42 +127,71 @@ public class TileWorldCameraProbeTests
         Assert.True(reach < Length);
     }
 
-    // The bridge of TileWorldViewSurfacePickTests: a 3x3 deck 0.825 m above an anchor on a bed carved 80 cm down.
-    // The filter rejects every archetype, because the bridge's greybox model box stands above its deck and would
-    // otherwise stop the boom first. What is under test is the walk surface alone.
-    const int BridgeZ = 40;
-
-    static TileWorldCatalogs BridgeCatalogs() => TileWorldCatalogs.Merge(
-        TileRenderTestData.Catalogs,
-        TileWorldCatalogs.LoadJson(
-            """
-            {
-              "archetypes": [
-                { "id": "bridge", "name": "Bridge", "meshRef": "test/bridge.glb", "sizeX": 3, "sizeZ": 3,
-                  "walkSurfaces": [ { "height": 0.825, "minX": -2.5, "maxX": 2.5, "minZ": -1.5, "maxZ": 1.5 } ] }
-              ]
-            }
-            """,
-            "camera-probe-walk-surfaces"));
-
     [Fact]
     public void A_walk_surface_stops_the_boom()
     {
-        TileWorldDocument doc = TileRenderTestData.RiverWorld();
-        for (int z = BridgeZ; z <= BridgeZ + 3; z++)
-            for (int x = TileRenderTestData.RiverMinX + 1; x <= TileRenderTestData.RiverMaxX; x++)
-                doc.SetCornerHeightCm(x, z, 0, -80);
-        doc.AddObject("bridge", TileRenderTestData.RiverMinX, BridgeZ, 0, 0);
-        using TileWorldView view = View(doc, BridgeCatalogs(), out var bounds);
+        TileWorldDocument doc = TileBridgeTestData.World();
+        using TileWorldView view = View(doc, TileBridgeTestData.Catalogs, out var bounds);
         var origin = new Vector3(31.5f, 5f, -41.5f);
         Vector3 direction = -Vector3.UnitY;
 
+        // Reject model boxes so only the walk surface can stop the boom.
         float reach = Reach(view, bounds, _ => false, origin, direction);
 
         TileHit deck = Assert.IsType<TileHit>(view.PickSurface(0, origin, direction, Length));
         TileHit bed = Assert.IsType<TileHit>(TileRaycast.Pick(doc, 0, origin, direction));
-        Assert.Equal(deck.Distance - Radius, reach, 1e-4f);
+        Assert.Equal(0.025f, deck.Point.Y, 1e-4f);
+        Assert.Equal(4.725f, reach, 1e-4f);
         Assert.True(reach < bed.Distance - Radius);
+    }
+
+    [Fact]
+    public void Terrain_is_picked_on_the_observers_nonzero_plane()
+    {
+        var doc = new TileWorldDocument { PlaneCount = 2 };
+        doc.GetOrCreateRegion(TileRenderTestData.Region);
+        doc.SetUnderlay(40, 40, 0, TileRenderTestData.Grass);
+        doc.SetUnderlay(40, 40, 1, TileRenderTestData.Grass);
+        for (int z = 40; z <= 41; z++)
+            for (int x = 40; x <= 41; x++)
+                doc.SetCornerHeightCm(x, z, 1, 450);
+        using TileWorldView view = View(doc, out var bounds);
+        view.Observer = new TileCoord(40, 40, 1);
+
+        float reach = Reach(view, bounds, _ => false, new Vector3(40.5f, 6f, -40.5f), -Vector3.UnitY);
+
+        Assert.Equal(1.25f, reach, 1e-4f);
+    }
+
+    [Fact]
+    public void Terrain_above_a_nonzero_observer_plane_does_not_stop_the_boom()
+    {
+        var doc = new TileWorldDocument { PlaneCount = 3 };
+        doc.GetOrCreateRegion(TileRenderTestData.Region);
+        doc.SetUnderlay(40, 40, 1, TileRenderTestData.Grass);
+        doc.SetUnderlay(40, 40, 2, TileRenderTestData.Grass);
+        using TileWorldView view = View(doc, out var bounds);
+        view.Observer = new TileCoord(40, 40, 1);
+
+        float reach = Reach(view, bounds, _ => false, new Vector3(40.5f, 4.5f, -40.5f), Vector3.UnitY);
+
+        Assert.Equal(Length, reach);
+    }
+
+    [Fact]
+    public void A_top_plane_observer_still_tests_objects_on_its_own_plane()
+    {
+        var doc = new TileWorldDocument { PlaneCount = 2 };
+        doc.GetOrCreateRegion(TileRenderTestData.Region);
+        doc.SetUnderlay(40, 40, 1, TileRenderTestData.Grass);
+        doc.AddObject("wall", 40, 40, 1, 0);
+        using TileWorldView view = View(doc, out var bounds);
+        view.Observer = new TileCoord(40, 40, 1);
+
+        float reach = Reach(view, bounds, a => a.Id == "wall",
+            new Vector3(41.5f, 4.5f, -40.5f), -Vector3.UnitX);
+
+        Assert.Equal(1.1f, reach, 1e-4f);
     }
 
     [Fact]

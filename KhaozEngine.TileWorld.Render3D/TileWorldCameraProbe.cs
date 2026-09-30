@@ -15,9 +15,10 @@ namespace KhaozEngine.TileWorld.Render3D;
 /// Planes above the observer are not tested for terrain. A surface hit within a millimetre of the pivot is the
 /// ground the pivot stands on, which the pick reports for any boom because it counts both faces of the ground. That
 /// touching start is skipped by picking once more from a centimetre above the pivot, so a boom rising away from
-/// the ground keeps its length and a boom pointing into it stops at the pivot. A pivot on the ground is handled,
-/// but a pivot lifted clear of it with <see cref="FollowCamera3D.PivotHeight"/> is the intended setup and costs
-/// one pick instead of two.</para>
+/// the ground keeps its length. A downward boom stops at the pivot when <c>0.01 / sin(angle)</c> is within the
+/// radius, about 2.3 degrees at the default 0.25 m radius. Shallower downward booms can extend, but the eye stays
+/// within a centimetre of the surface. A pivot on the ground is handled, but a pivot lifted clear of it with
+/// <see cref="FollowCamera3D.PivotHeight"/> is the intended setup and costs one pick instead of two.</para>
 /// <para>Objects are <see cref="TileWorldView.PickObjects"/> on the observer's plane and the plane above it, where
 /// roofs stand, against every model box grown by the radius on each axis, which gives the boom a sphere's
 /// clearance. Hits are walked nearest first and the first that passes survives. A box that already contains the

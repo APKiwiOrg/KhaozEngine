@@ -789,17 +789,17 @@ and changed these details. Each group's "Contract amendments" block carries the 
     cell that failed the earlier half variant (pitch 0.35, sideways at 2.5 px, Native) passes.
 
     Keeping the split's prepared chroma exact does not pay for its trail pixels, measured with the half 3x3 and the
-    display-sized reconstruction (amendment 26) on scratch branch fix/taa-chroma-2
-    ([#1202](https://github.com/APKiwiOrg/KhaozEngine/issues/1202)): Co and Cg in two R32F targets and Y and the
-    reactive difference in RG16F, 28 bytes a texel against 24 and seven first-pass outputs against five, both entry
-    points rounding only Y and the reactive difference. On Metal storing the chroma exactly changes nothing on its own,
-    since the half 3x3 converts the colour it gathers to half floats: the still box over the textured wall stays at 7
-    and 15 trail pixels at Native and Quality. With the 3x3 also gathering the colour at single float it leaves 7 and
-    10. On the Tesla T4 (hosted run 36644627034 against 36644616620) it leaves 6 and 10 under Direct3D 11 and Windows
-    Vulkan against 10 and 10, and 8 and 10 under Linux Vulkan against 8 and 10. The split, resolve and sharpen at most,
-    costs more everywhere: on the Apple M2 Max 0.02 to 0.17 ms at 2560x1440 and 0.10 to 0.26 at 3456x2234, on the T4
-    under Direct3D 11 0.21 to 0.26 and 0.35 to 0.45, and under Windows Vulkan 0.37 to 0.65 and 0.94 to 1.56. The Linux
-    leg failed at vkCreateInstance before its cost facts
+    display-sized reconstruction (amendment 26)
+    ([#1202](https://github.com/APKiwiOrg/KhaozEngine/issues/1202#issuecomment-5901509708)): Co and Cg in two R32F
+    targets and Y and the reactive difference in RG16F, 28 bytes a texel against 24 and seven first-pass outputs against
+    five, both entry points rounding only Y and the reactive difference. On Metal storing the chroma exactly changes
+    nothing on its own, since the half 3x3 converts the colour it gathers to half floats: the still box over the
+    textured wall stays at 7 and 15 trail pixels at Native and Quality. With the 3x3 also gathering the colour at single
+    float it leaves 7 and 10. On the Tesla T4 (hosted run 36644627034 against 36644616620) it leaves 6 and 10 under
+    Direct3D 11 and Windows Vulkan against 10 and 10, and 8 and 10 under Linux Vulkan against 8 and 10. The split,
+    resolve and sharpen at most, costs more everywhere: on the Apple M2 Max 0.02 to 0.17 ms at 2560x1440 and 0.10 to
+    0.26 at 3456x2234, on the T4 under Direct3D 11 0.21 to 0.26 and 0.35 to 0.45, and under Windows Vulkan 0.37 to 0.65
+    and 0.94 to 1.56. The Linux leg failed at vkCreateInstance before its cost facts
     ([#1200](https://github.com/APKiwiOrg/KhaozEngine/issues/1200)). The targets grow from 39.3 to 45.9 MB at 2560x1440
     Quality and from 82.3 to 96.1 MB at 3456x2234 Quality. The layout stays at 16 bits, and the fact keeps its bounds.
 26. Step 4's reconstruction is sized in display pixels for a converged pixel. The Lanczos 2 sized in internal pixels
@@ -807,22 +807,23 @@ and changed these details. Each group's "Contract amendments" block carries the 
     accumulated image stayed softer than its jittered samples allow
     ([#1188](https://github.com/APKiwiOrg/KhaozEngine/issues/1188)). Below Native, a pixel that kept its history also
     reconstructs the same 3x3 with the Lanczos 2 sized in display pixels, whose kernels the sample weight already
-    evaluates, and takes it in place of the internal one in proportion to a share: none where the pixel restarts, rising
-    as its carried confidence passes `DisplayKernelConfidenceStart` (half) towards whole, falling to none as it moves
-    `DisplayKernelMotionPixels` (2 display pixels) a frame, and cut by the reactive estimate. The display kernels' sum
-    over the 3x3 is whole where a sample lands on the pixel and falls to zero where the jitter puts the pixel between
-    samples, so the share also scales by that sum up to `DisplayKernelFullWeight` (a quarter). The result is held to the
-    neighbourhood's range as the internal reconstruction is. The sample weight, the confidence and every other rule are
-    unchanged, so a fresh or moving pixel resolves as before, and Native, where the two kernels are one, is unchanged
+    evaluates, and takes its colour in place of the internal one's in proportion to a share (alpha keeps the internal
+    reconstruction): none where the pixel restarts, rising as its carried confidence passes
+    `DisplayKernelConfidenceStart` (half) towards whole, falling to none as it moves `DisplayKernelMotionPixels` (2
+    display pixels) a frame, and cut by the reactive estimate. The display kernels' sum over the 3x3 is whole where a
+    sample lands on the pixel and falls to zero where the jitter puts the pixel between samples, so the share also
+    scales by that sum up to `DisplayKernelFullWeight` (a quarter). The result is held to the neighbourhood's range as
+    the internal reconstruction is. The sample weight, the confidence and every other rule are unchanged, so a fresh or
+    moving pixel resolves as before, and a frame at the display's own size, where the two kernels are one, is unchanged
     bit for bit. The 3x3 gathers the display-sized sum beside the internal one (`temporalGather`), from the same
-    half-float values in both entry points, so they still write the same history. Marking every pixel that took it as a
-    moving share in a scratch run, the identity walk stored 116719 more at Quality and 63280 at Performance, with every
-    tally still identical. Reading the 3x3 again for the pixels that take it, in a second loop behind the share, wrote
-    the same output and cost more even where no pixel took it: on the Apple M2 Max the split's second pass at 3456x2234
-    Native took 2.69 and 3.38 ms over the boxes and the moving field against 2.33 and 2.94 without the rule, where
-    gathered it takes 2.50 to 2.54 and 3.04 to 3.05. The gathered form costs the second pass 0.10 to 0.22 ms at
-    3456x2234, Native included, where no pixel takes it, and 0.02 to 0.07 at 2560x1440, against one run without the rule
-    at a load of 8 to 13.
+    half-float values in both entry points, so they still write the same history. With every pixel that took it stored
+    as a moving share in a local Metal run, the identity walk stored 116719 more at Quality and 63280 at Performance,
+    with every tally still identical. Reading the 3x3 again for the pixels that take it, in a second loop behind the
+    share, wrote the same output and cost more: on the Apple M2 Max the split's second pass at 3456x2234 Native, which
+    the default render cap upscales from 3342x2160, took 2.69 and 3.38 ms over the boxes and the moving field against
+    2.33 and 2.94 without the rule, where gathered it takes 2.50 to 2.54 and 3.04 to 3.05. The gathered form costs the
+    second pass 0.10 to 0.22 ms at 3456x2234 at Native and Quality, and 0.03 to 0.07 at 2560x1440 Quality, against one
+    run without the rule at a load of 8 to 13.
 
     On the Tesla T4 (hosted runs 36580778346 without the rule, 36639533321 with the second loop, 36644616620 gathered)
     the split, resolve and sharpen at most, costs 0.03 to 0.12 ms more at 2560x1440 and 0.15 to 0.32 at 3456x2234 under
@@ -851,7 +852,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
     by the square of the size ratio, 0.22 at UltraPerformance and half elsewhere, moved it by 0.002 at frame 48, so
     one start serves every preset. The chart's contrast kept per group, vertical and horizontal bars, at Quality:
     3 px 0.782 and 0.769 to 0.867 and 0.856, 2 px
-    0.863 and 0.889 to 0.905 and 0.927, 1.5 px 0.698 and 0.702 to 0.764 and 0.779, 1.2 px 0.599 and 0.624 to 0.718 and
+    0.863 and 0.889 to 0.904 and 0.927, 1.5 px 0.698 and 0.702 to 0.764 and 0.779, 1.2 px 0.599 and 0.624 to 0.718 and
     0.719, 1 px 0.359 and 0.489 to 0.463 and 0.604, and its error 0.01974 to 0.01697 against the reference, 0.577 to
     0.496 of a bilinear upscale's. At Performance: 3 px 0.817 and 0.924 to 0.832 and 0.942, 2 px 0.841 and 0.844 to
     0.877 and 0.876, 1.5 px 0.650 and 0.624 to 0.679 and 0.650. Its 1.2 and 1 px groups lie past Performance's internal

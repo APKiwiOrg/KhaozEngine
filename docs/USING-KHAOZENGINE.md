@@ -17549,11 +17549,25 @@ check inside its three writes (`SetSlotAt`, `TakeSlotAt`, `MarkClean`). No page 
 read stays shared and a batch copies only on the first write that joins. `MarkCommitted` calls `MarkClean`
 only on a container holding a dirty page, so a container the batch left clean is never copied.
 
-Whose identity it is decides what the normalized intent holds. A SERVER minted batch hashes the canonical
-ordered operation list. A CLIENT headed batch hashes the client operation's own encoding ALONE, under the
-client's own id, and the server work riding behind it contributes no intent bytes. That is what makes a
+Whose identity it is decides what the normalized intent holds. A SERVER minted batch hashes the ordered
+`ContainerOperationIntent` list. A CLIENT headed batch hashes the client operation's own intent ALONE, under
+the client's own id, and the server work riding behind it contributes no intent bytes. That is what makes a
 resubmit after a reconnect, which omits server work the client never saw, hash identically and resolve
 replayed rather than conflicting, and a conflict there would tell a player a committed withdraw had failed.
+
+Craft intent uses `[None = 0][Version = 1][CraftPlanId][Canonical operation]`, with minimal varints.
+`CraftPlanId` is the authored `CraftPlan.CurrencyId`, distinct from the consumed currency definition.
+Changing the paid or free plan under the same operation id conflicts even when its currency and target
+match. Before and after payloads remain outcomes and never enter identity. Other operation kinds keep
+their canonical bytes, and event parameters and schema 2 envelopes keep their existing encoding.
+`ContainerOperationIntent.ForCraft(request, plan.CurrencyId)` builds the intent before resolving an outcome.
+
+A known pre-upgrade client craft uses `ContainerCraftReplay.ResolveLegacyAsync` to check its original
+fingerprint and the retained head craft event. Matching authored plan evidence returns the original
+receipt, a changed plan conflicts, and missing or compacted evidence returns `EvidenceUnavailable` without
+a receipt. This is an explicit read-only compatibility path. A fingerprint mismatch alone never authorizes
+fallback. The helper accepts a single client craft, while legacy server batches need evidence for their
+whole ordered request. See the package README for the compatibility contract.
 
 **A commit that carries more than the batch is composed from its parts.** A loot claim writes the loot
 source's stream beside the bag, and a click can carry coins or quest state, so `Close`, which answers a commit

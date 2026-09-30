@@ -34,28 +34,11 @@ public sealed class SqlServerWorldStore : IWorldStore, IEnumerableWorldStore
         ArgumentNullException.ThrowIfNull(options);
         connectionString = options.ConnectionString
             ?? throw new ArgumentException("ConnectionString is required.", nameof(options));
-        EnsureSchema();
+        SqlServerWorldSchema.Ensure(connectionString);
     }
 
     /// <summary>Convenience ctor taking the raw connection string.</summary>
     public SqlServerWorldStore(string connectionString) : this(new SqlServerWorldStoreOptions(connectionString)) { }
-
-    private void EnsureSchema()
-    {
-        using var conn = new SqlConnection(connectionString);
-        conn.Open();
-        using SqlCommand cmd = conn.CreateCommand();
-        cmd.CommandText =
-            "IF OBJECT_ID(N'dbo.world_store', N'U') IS NULL " +
-            "CREATE TABLE dbo.world_store (" +
-            "[key] NVARCHAR(450) NOT NULL PRIMARY KEY, " +
-            "data VARBINARY(MAX) NOT NULL, " +
-            "updated_at DATETIME2 NOT NULL, " +
-            "created_at DATETIME2 NULL); " +
-            "IF COL_LENGTH(N'dbo.world_store', N'created_at') IS NULL " +
-            "ALTER TABLE dbo.world_store ADD created_at DATETIME2 NULL;";
-        cmd.ExecuteNonQuery();
-    }
 
     public async Task<byte[]?> LoadAsync(string key, CancellationToken cancellationToken = default)
     {

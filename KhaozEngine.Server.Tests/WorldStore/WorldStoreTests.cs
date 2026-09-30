@@ -156,8 +156,8 @@ public sealed class SqliteWorldStoreConformanceTests : IDisposable
 
 /// <summary>The shared conformance suite against SQL Server / Azure SQL, gated behind KE_SQLSERVER_TEST_CONNSTRING
 /// (skipped in CI where no SQL Server exists). Each test runs under a fresh key namespace to isolate the shared table.
-/// <para>This is the only class that touches <c>dbo.world_store</c>, and facts in one class never run at once, so the
-/// fact that rebuilds the table in its older shape cannot pull it from under another.</para></summary>
+/// <para>The SQL Server collection serializes these facts with the bootstrap facts that rebuild the table.</para></summary>
+[Collection("SQL Server mutation journal")]
 public sealed class SqlServerWorldStoreConformanceTests
 {
     private static readonly DateTime LegacyUpdatedAt = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Unspecified);

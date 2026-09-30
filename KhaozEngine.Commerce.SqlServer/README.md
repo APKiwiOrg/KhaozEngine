@@ -14,7 +14,11 @@ CreditResult r = await store.CreditAsync(new AccountId("acct:1"), new CurrencyId
 ```
 
 Schema (`wallet_ledger`, `wallet_balance`, `grant_schedule`) is bootstrapped on construction via
-`IF OBJECT_ID(...) IS NULL` guards. Each credit/debit opens a fresh pooled `SqlConnection` and runs inside a
+`IF OBJECT_ID(...) IS NULL` guards. One transaction holds an exclusive transaction-owned application lock,
+`KhaozEngine.Commerce.Schema`, around every table create, index create and column add. The lock is scoped to the
+database, so hosts opening the same schema wait before any DDL. A lock refusal or DDL failure rolls back the whole
+bootstrap and releases the lock. Lock acquisition waits up to thirty seconds. Each credit/debit opens a fresh
+pooled `SqlConnection` and runs inside a
 `SqlTransaction` at `IsolationLevel.Serializable`; the database serializes concurrent operations, there is no
 in-process semaphore. The initial receipt lookup uses `UPDLOCK`, so one transaction claims an overlapping
 idempotency-key range before proceeding to the shared balance row. This prevents a missing-receipt range lock from
@@ -38,9 +42,8 @@ Every row time is `DATETIME2` from the database clock. `wallet_ledger.created_at
 `grant_schedule` row carries `created_at` and an `updated_at` that moves only when a write changes the stored
 instant. Construction adds any of those three columns a table an older build created lacks, as nullable columns
 behind `IF COL_LENGTH(...) IS NULL` guards, and the rows already there keep NULL where no write since knows the
-time. The first construction after that upgrade therefore needs `ALTER` rights on both tables. Start one host
-first, because two hosts constructing the store at once against older tables can race the column add
-([#1195](https://github.com/APKiwiOrg/KhaozEngine/issues/1195)).
+time. The first construction after that upgrade therefore needs `ALTER` rights on both tables. Concurrent hosts
+serialize the guarded column adds under the same schema lock without changing legacy rows or key collations.
 
 Opt-in: pulls `Microsoft.Data.SqlClient` without touching the dependency-free `KhaozEngine.Commerce` core. Not
 bundled in the `Server` umbrella.
@@ -107,9 +110,11 @@ Run the gated tests (`KE_COMMERCE_SQLSERVER=<conn> dotnet test ...`) against a r
 trusting this store with real money. CI's `server-sqlserver` job runs them against a disposable SQL Server 2022
 service on tags, manual runs, and pushes or pull requests that touch the world store or commerce packages, and fails
 unless every selected fact executed. Elsewhere they skip. Point the variable at a database whose name contains
-`-commerce-test-`, such as `khaoz-commerce-test-local`, because the fact that proves the column adds on older
-tables drops and rebuilds `wallet_balance` and `grant_schedule` and refuses any other database. This exercises the
-composite unique index, replay and conflict classification, the atomic-update paths for both credit and debit,
+`-commerce-test-`, such as `khaoz-commerce-test-local`, because the schema facts drop and rebuild all three wallet
+tables and refuse any other database. They share one serialized collection with the wallet conformance facts.
+Bootstrap coverage starts two ordinary constructors behind a held schema lock on both empty and legacy tables,
+checks the schema stays untouched until release, and verifies full rollback on a refused column add. This exercises
+the composite unique index, replay and conflict classification, the atomic-update paths for both credit and debit,
 and the 2601/2627 duplicate-key recovery under an actual server. Repeat the parallel credit and debit fact to
 exercise the receipt-range claim and balance update under sustained contention.
 

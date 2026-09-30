@@ -230,15 +230,27 @@ namespace KhaozEngine.Render3D.Internal
         /// reaches the camera's 500 m far plane, and 0.058 mm from a steep pitch of 1.36, each on the fast orbit, the
         /// 0.508 mm near the origin at Native at a depth of 10.7 m. So 1 mm is 1.3 times the largest static travel to
         /// 22 m. 30 m away from the grazing pitch the fast orbit, its eye moving 1.5 m a frame, passes it on up to 0.24
-        /// percent of its texels, and no still surface stores the band there, since a band pixel also travels more
-        /// than <see cref="FollowedTravelRatio"/> times its motion on screen or lies beside a nearer edge whose farther
-        /// centre moves more on screen. The slowest follow measured, half a
+        /// percent of its texels. The static travel grows with the camera's own travel, since only a translation
+        /// turns a depth error into a position error, so the test adds <see cref="WorldMotionEyeFraction"/> of that
+        /// travel to the millimetre. The slowest follow measured, half a
         /// display pixel a frame on UltraPerformance, 0.17 internal pixels, still marks the band. Under the perspective
         /// follow camera the band on the avatar's own pixels takes the ground trail of a walk away from the camera at
         /// the boot pitch from 17 to 55 pixels at Native and Quality to none.
         /// </para>
         /// </summary>
         public const float WorldMotionMetres = 0.001f;
+        /// <summary>
+        /// Steps 1 and 3, the band: the share of the camera's travel since last frame, in metres
+        /// (<see cref="TemporalResolveUniforms.Params"/>.z), added to <see cref="WorldMotionMetres"/>. A still
+        /// surface's static travel is its depth error carried across by the camera's translation, so it grows with how
+        /// far the eye moved. On the fast orbit 30 m away from the grazing pitch, the eye moving 1.57 m a frame, it
+        /// reached 1.23 mm on Metal and 1.53 mm on WARP, 0.78 and 0.97 thousandths of the eye's travel. That passed the
+        /// millimetre on the edge of a crate whose farther ground moved more on screen, as the orbit's parallax moves
+        /// it beside every still edge, and WARP stored the band mark there. 1/256 is four times the largest share
+        /// measured, 7.1 mm on that orbit. A surface the camera follows travels as far as the eye, far past it, and
+        /// with the camera still the test is the millimetre alone.
+        /// </summary>
+        public const float WorldMotionEyeFraction = 1f / 256f;
         /// <summary>Step 1's followed surface: a pixel whose centre texel moves with the dilated nearest surface, a
         /// surface that moved in the world (<see cref="WorldMotionMetres"/>), is on a surface the camera follows where
         /// that surface travelled in the world more than this many times its motion on screen, rather than one

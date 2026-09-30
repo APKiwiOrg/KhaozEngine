@@ -52,8 +52,10 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>(1 for a perspective projection else 0, near, far, 0) of this frame.</summary>
         public Vector4 CurrentDepth;
         /// <summary>y: 1 when the background is fixed to the screen (the starfield), so a background pixel
-        /// reprojects in place, with zero motion, instead of by <see cref="BackgroundToPrevious"/>, else 0. x, z and w
-        /// are reserved and written as 0.</summary>
+        /// reprojects in place, with zero motion, instead of by <see cref="BackgroundToPrevious"/>, else 0. z: how far
+        /// the camera travelled since last frame, in metres, 0 when history is not readable, which the band's world
+        /// test scales by <see cref="TemporalResolveTuning.WorldMotionEyeFraction"/>. x and w are reserved and written
+        /// as 0.</summary>
         public Vector4 Params;
     }
 

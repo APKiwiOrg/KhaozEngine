@@ -141,7 +141,9 @@ namespace KhaozEngine.Render3D.Internal
         /// positions are, so the static previous UV and the motion agree. History is readable only when it is valid and a
         /// previous view exists and both reprojections invert. The previous projection is the current one when it is
         /// not. <paramref name="screenFixedBackground"/> sets <see cref="TemporalResolveUniforms.Params"/>.y for a
-        /// background that stays on its pixels, the starfield. Its other lanes are reserved and written as 0.</summary>
+        /// background that stays on its pixels, the starfield, and z is the camera's travel since last frame
+        /// (<see cref="CameraTravel"/>) where history is readable. Its other lanes are reserved and written as
+        /// 0.</summary>
         public static TemporalResolveUniforms BuildUniforms(in TemporalViewInput current, TemporalViewInput? previous,
             Vector2 jitterPixels, int internalWidth, int internalHeight, int displayWidth, int displayHeight,
             bool historyValid, bool screenFixedBackground = false)
@@ -162,9 +164,18 @@ namespace KhaozEngine.Render3D.Internal
                 Sizes = new Vector4(iw, ih, dw, dh),
                 Jitter = new Vector4(jitterPixels.X, jitterPixels.Y, displayOverInternal, readable ? 1f : 0f),
                 CurrentDepth = currentDepth,
-                Params = new Vector4(0f, screenFixedBackground ? 1f : 0f, 0f, 0f),
+                Params = new Vector4(0f, screenFixedBackground ? 1f : 0f,
+                    readable && previous is { } before ? CameraTravel(current.View, before.View) : 0f, 0f),
             };
         }
+
+        /// <summary>How far the camera's eye moved between two views, in metres: the distance between the two view
+        /// matrices' origins in the space both are relative to. Under an orthographic camera it is the view's own
+        /// translation. 0 where either view cannot be inverted.</summary>
+        public static float CameraTravel(in Matrix4x4 currentView, in Matrix4x4 previousView)
+            => Matrix4x4.Invert(currentView, out Matrix4x4 now) && Matrix4x4.Invert(previousView, out Matrix4x4 then)
+                ? Vector3.Distance(now.Translation, then.Translation)
+                : 0f;
 
         /// <summary>The larger per-axis ratio of a display size to an internal size, at least 1, with every size below 1
         /// read as 1. A size ratio for sampling only, the resolve's reconstruction footprint (Jitter.z). It must never

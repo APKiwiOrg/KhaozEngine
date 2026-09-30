@@ -88,6 +88,7 @@ const float LockEdgeFloorInternalPixels = 0.001;
 const float ClipFlagMinimumMove = 0.0009765625;
 const float DilationReachInternalPixels = 1.25;
 const float WorldMotionMetres = 0.001;
+const float WorldMotionEyeFraction = 0.00390625;
 const float FollowedTravelRatio = 2.0;
 const float FollowedHistoryMotionFraction = 0.5;
 const float FollowedStillDisplayPixels = 0.1;

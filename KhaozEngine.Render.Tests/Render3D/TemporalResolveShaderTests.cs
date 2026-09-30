@@ -49,6 +49,10 @@ namespace KhaozEngine.Tests.Render3D
                 1.25f
             },
             { "const float WorldMotionMetres = 0.001;", TemporalResolveTuning.WorldMotionMetres, 0.001f },
+            {
+                "const float WorldMotionEyeFraction = 0.00390625;", TemporalResolveTuning.WorldMotionEyeFraction,
+                1f / 256f
+            },
             { "const float FollowedTravelRatio = 2.0;", TemporalResolveTuning.FollowedTravelRatio, 2f },
             {
                 "const float FollowedHistoryMotionFraction = 0.5;",
@@ -306,8 +310,9 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void A_still_surface_pixel_drops_the_history_the_band_left_beside_or_on_a_followed_surface()
         {
-            // The band: a pixel beside or on a wide nearer surface that moved in the world, past WorldMotionMetres at
-            // its depth through last frame's projection and the rounding fraction. Beside its edge the farther centre
+            // The band: a pixel beside or on a wide nearer surface that moved in the world, past WorldMotionMetres and
+            // WorldMotionEyeFraction of the camera's travel at its depth through last frame's projection and the
+            // rounding fraction. Beside its edge the farther centre
             // moves more on screen, on it the surface travelled more than twice its screen motion. Beside the edge it
             // stores minus three minus the lock, on the surface minus five minus the lock. A depth-tested pixel whose
             // nearest surface did not move drops a history that carries either, unless every stored depth is farther,
@@ -319,8 +324,13 @@ namespace KhaozEngine.Tests.Render3D
             string core = ShaderSources.TemporalResolveCoreGlsl.Replace("\r\n", "\n", StringComparison.Ordinal);
             Assert.Contains("bool temporalStoredBand(float stored) { return stored < -2.5; }", core,
                 StringComparison.Ordinal);
-            Assert.Contains("bool nearerMoved = !depthTested || travel > WorldMotionMetres * PreviousProjection[0][0] "
+            Assert.Contains("float worldMetres = WorldMotionMetres + WorldMotionEyeFraction * Params.z;", core,
+                StringComparison.Ordinal);
+            Assert.Contains("bool nearerMoved = !depthTested || travel > worldMetres * PreviousProjection[0][0] "
                 + "* internalSize.x * 0.5", core, StringComparison.Ordinal);
+            Assert.Contains("&& centreTravel > worldMetres * PreviousProjection[0][0] * internalSize.x * 0.5", core,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("> WorldMotionMetres *", core, StringComparison.Ordinal);
             Assert.Contains("/ (CurrentDepth.x > 0.5 ? closestDepth : 1.0) + closestScreenMotion "
                 + "* MovingSurfaceMotionFraction;", core, StringComparison.Ordinal);
             Assert.Contains("bool band = historyValid && !ownReprojected && nearerMoved", core,

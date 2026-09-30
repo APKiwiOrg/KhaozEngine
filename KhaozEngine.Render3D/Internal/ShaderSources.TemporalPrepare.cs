@@ -235,8 +235,11 @@ TemporalSurface temporalPrepareSurface(ivec2 centreTexel, ivec2 closestTexel, fl
     // have been, in internal pixels at its depth through last frame's projection (one internal pixel spans 2 clipW /
     // (P00 width) metres), plus the motion target's rounding. A static surface's travel is the motion target's float
     // error on positions relative to the render origin, one distance in the world that more pixels show at a higher
-    // resolution or a nearer depth, so the test is in metres. Beside the surface's edge the centre texel lies on a
-    // farther surface that moves more on screen, as under a camera following the nearer one. That pixel's history
+    // resolution or a nearer depth, so the test is in metres. That error grows with the camera's own travel since last
+    // frame (Params.z), which carries a depth error across the view, so the test adds WorldMotionEyeFraction of that
+    // travel to WorldMotionMetres: an orbit's parallax moves the farther surface more on screen beside every still
+    // edge, and only the world test keeps such an edge from the band. Beside the surface's edge the centre texel lies
+    // on a farther surface that moves more on screen, as under a camera following the nearer one. That pixel's history
     // followed the edge, which stays put on screen while the farther surface passes under it, so it holds the edge's
     // colour over a mix of the farther surface. On the surface itself, where the centre texel moves with it, a pixel
     // whose surface travelled in the world more than FollowedTravelRatio times its motion on screen is followed, not
@@ -252,7 +255,8 @@ TemporalSurface temporalPrepareSurface(ivec2 centreTexel, ivec2 closestTexel, fl
     bool centreFarther = centreDepth > closestDepth * (1.0 + DisocclusionTolerance);
     bool ownReprojected = !depthTested && edgeMotion > DilationReachInternalPixels && centreFarther;
     float closestScreenMotion = length(closestMotion * internalSize);
-    bool nearerMoved = !depthTested || travel > WorldMotionMetres * PreviousProjection[0][0] * internalSize.x * 0.5
+    float worldMetres = WorldMotionMetres + WorldMotionEyeFraction * Params.z;
+    bool nearerMoved = !depthTested || travel > worldMetres * PreviousProjection[0][0] * internalSize.x * 0.5
         / (CurrentDepth.x > 0.5 ? closestDepth : 1.0) + closestScreenMotion * MovingSurfaceMotionFraction;
     bool band = historyValid && !ownReprojected && nearerMoved
         && (movingEdge ? centreScreenMotion > closestScreenMotion && centreFarther
@@ -273,7 +277,7 @@ TemporalSurface temporalPrepareSurface(ivec2 centreTexel, ivec2 closestTexel, fl
         temporalReprojectSurface(centreSample, centreMotion, centreDepth, false, internalSize, centreExpected,
             centreTested, centreTravel);
         band = centreTravel > FollowedTravelRatio * centreScreenMotion
-            && centreTravel > WorldMotionMetres * PreviousProjection[0][0] * internalSize.x * 0.5
+            && centreTravel > worldMetres * PreviousProjection[0][0] * internalSize.x * 0.5
                 / (CurrentDepth.x > 0.5 ? centreDepth : 1.0) + centreScreenMotion * MovingSurfaceMotionFraction;
     }
     TemporalSurface surface;

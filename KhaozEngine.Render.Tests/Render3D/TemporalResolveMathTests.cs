@@ -124,7 +124,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void The_uniforms_carry_the_sizes_jitter_ratio_and_depth_and_leave_params_reserved()
+        public void The_uniforms_carry_the_sizes_jitter_ratio_and_depth_and_leave_params_reserved_on_a_still_camera()
         {
             TemporalViewInput current = View(new Vector3(0f, 2f, 10f), Vector3.Zero);
             TemporalResolveUniforms u = TemporalResolveMath.BuildUniforms(current, current, new Vector2(0.25f, -0.125f),
@@ -279,6 +279,22 @@ namespace KhaozEngine.Tests.Render3D
 
         static Vector2 ToPixels(Vector4 clip, int w, int h)
             => new((clip.X / clip.W * 0.5f + 0.5f) * w, (0.5f - clip.Y / clip.W * 0.5f) * h);
+
+        /// <summary>Params.z carries how far the camera's eye moved since last frame, which the band's world test scales
+        /// by WorldMotionEyeFraction, whatever the camera turned by, and 0 where history is not readable.</summary>
+        [Fact]
+        public void The_uniforms_carry_the_cameras_travel_where_history_is_readable()
+        {
+            TemporalViewInput current = View(new Vector3(3f, 2f, 10f), Vector3.Zero);
+            TemporalViewInput previous = View(new Vector3(0f, 2f, 6f), new Vector3(1f, 0f, 0f));
+            Assert.Equal(5f, Build(current, previous).Params.Z, 4);
+            Assert.Equal(0f, Build(current, current).Params.Z);
+            Assert.Equal(0f, TemporalResolveMath.BuildUniforms(current, previous, Vector2.Zero, 1280, 720, 1280, 720,
+                historyValid: false).Params.Z);
+            Assert.Equal(0f, TemporalResolveMath.BuildUniforms(current, null, Vector2.Zero, 1280, 720, 1280, 720,
+                historyValid: true).Params.Z);
+            Assert.Equal(5f, TemporalResolveMath.CameraTravel(current.View, previous.View), 4);
+        }
 
         static TemporalViewInput View(Vector3 eye, Vector3 target)
         {

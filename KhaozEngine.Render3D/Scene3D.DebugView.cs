@@ -56,7 +56,7 @@ namespace KhaozEngine.Render3D
                     // the motion target. A miss is a wiring error, so it says so instead of failing on a null.
                     IGpuTexture motion = _res.MotionTex ?? throw new InvalidOperationException(
                         "The MotionVectors view has no motion target: the frame that latched it is not temporal.");
-                    (_motionVectorsView ??= new MotionVectorsView(_gd, _targetOutput)).Draw(cl, motion, target);
+                    (_motionVectorsView ??= new MotionVectorsView(_gd, _targetOutput)).Draw(cl, motion, target, _retired);
                     break;
                 case SceneDebugView.History:
                 case SceneDebugView.Disocclusion:

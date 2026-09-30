@@ -44,12 +44,13 @@ internal sealed class MotionVectorsView : IDisposable
     }
 
     /// <summary>Paint <paramref name="motion"/> over <paramref name="target"/>. The resource set follows the motion
-    /// texture, which a resize replaces, the way <see cref="PixelPostProcess"/> rebinds its sets.</summary>
-    public void Draw(IGpuCommandList cl, IGpuTexture motion, IGpuFramebuffer target)
+    /// texture, which a resize replaces, the way <see cref="PixelPostProcess"/> rebinds its sets. A replaced set goes
+    /// to <paramref name="retired"/>, since a frame the device has not finished may still bind it.</summary>
+    public void Draw(IGpuCommandList cl, IGpuTexture motion, IGpuFramebuffer target, GpuRetireQueue retired)
     {
         if (!ReferenceEquals(motion, _source))
         {
-            _set?.Dispose();
+            retired.Retire(_set);
             _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, motion, _gd.PointSampler));
             _source = motion;
         }

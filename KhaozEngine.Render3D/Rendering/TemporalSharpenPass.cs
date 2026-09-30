@@ -108,6 +108,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Dispose every cached set. Call when the textures they reference are rebuilt.</summary>
         public void ReleaseSets()
         {
+            // At once: a set owns no native object on Metal or Direct3D 11, and Vulkan defers its descriptor free
+            // through the device's retire list, so a frame in flight keeps what it bound. The chain has no queue here.
             foreach (IGpuResourceSet set in _sets.Values) set.Dispose();
             _sets.Clear();
         }

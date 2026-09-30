@@ -117,15 +117,16 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Build the resolve sets for both read indices and the depth store set, unless the four input textures
         /// are the very ones already bound and the history targets are the same generation of the same owner. The
         /// fused sets are built on either entry point, since the debug views and counts re-evaluate through them, and
-        /// the chosen entry point's own objects first (Entry partial). What the split replaces goes to
-        /// <paramref name="retired"/>, or through a drain without one.</summary>
+        /// the chosen entry point's own objects first (Entry partial). What either replaces goes to
+        /// <paramref name="retired"/>, since a frame the device has not finished may still bind it. Without one the
+        /// split drains and the sets go at once.</summary>
         public void BindInputs(in TemporalResolveInputs inputs, TemporalHistory history, GpuRetireQueue? retired = null)
         {
             BindEntry(inputs, history, retired);
             if (_storeSet is not null && SameInputs(inputs, _boundInputs) && ReferenceEquals(history, _boundHistory)
                 && history.TargetGeneration == _boundTargets)
                 return;
-            DisposeSets();
+            FreeSets(retired);
             IGpuResourceFactory f = _gd.Factory;
             for (int read = 0; read < 2; read++)
                 _resolveSets[read] = f.CreateResourceSet(new GpuResourceSetDescription(_resolveLayout,
@@ -150,14 +151,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             _split?.ReleaseTargets(retired);   // a frame without the resolve holds none of the split's targets either
             if (_storeSet is null) return;
-            for (int i = 0; i < 2; i++)
-            {
-                retired.Retire(_resolveSets[i]);
-                _resolveSets[i] = null;
-            }
-            retired.Retire(_storeSet);
-            _storeSet = null;
-            ForgetBinding();
+            FreeSets(retired);
         }
 
         /// <summary>Upload this frame's uniforms. Call before any framebuffer is bound this frame, as the post chain's
@@ -197,15 +191,12 @@ namespace KhaozEngine.Render3D.Rendering
             RecordFinishProbe(cl);   // an armed temporal count request, over the set this run bound (Finish partial)
         }
 
-        void DisposeSets()
+        /// <summary>Let go of the resolve and depth store sets into <paramref name="retired"/>, or at once without
+        /// one.</summary>
+        void FreeSets(GpuRetireQueue? retired)
         {
-            for (int i = 0; i < 2; i++)
-            {
-                _resolveSets[i]?.Dispose();
-                _resolveSets[i] = null;
-            }
-            _storeSet?.Dispose();
-            _storeSet = null;
+            for (int i = 0; i < 2; i++) Free(ref _resolveSets[i], retired);
+            Free(ref _storeSet, retired);
             ForgetBinding();
         }
 
@@ -221,7 +212,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             DisposeFinish();
             _split?.Dispose();
-            DisposeSets();
+            FreeSets(null);
             _resolvePipeline?.Dispose();
             _storePipeline?.Dispose();
             _resolveLayout.Dispose();

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
@@ -316,6 +317,36 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Throws<InvalidOperationException>(() => post.CopyOpaque(cl));
             cl.End();
             history.ReleaseTargets();
+        }
+
+        /// <summary>New inputs rebuild the resolve's sets, and the sets they replace go to the retire queue rather than
+        /// being freed in place, since a submitted frame may still bind them.</summary>
+        [Fact]
+        public void A_rebind_retires_the_sets_it_replaces()
+        {
+            using var device = new FakeGpuDevice();
+            var factory = (FakeGpuResourceFactory)device.Factory;
+            using GpuRetireQueue retired = GpuRetireQueue.CreateFrameCounted(device, frameDelay: 1);
+            var history = new TemporalHistory();
+            history.EnsureTargets(device, 96, 54, 64, 36, retired);
+            IGpuTexture Texture() => factory.CreateTexture(GpuTextureDescription.Texture2D(64, 36,
+                GpuPixelFormat.R16G16B16A16Float, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
+            IGpuTexture opaque = Texture(), depth = Texture(), motion = Texture();
+            using var renderer = new TemporalResolveRenderer(device);
+            renderer.SelectEntry(TemporalResolveEntry.Fused, retired);
+
+            int before = factory.ResourceSets.Count;
+            renderer.BindInputs(new TemporalResolveInputs(Texture(), opaque, depth, motion), history, retired);
+            FakeResourceSet[] first = factory.ResourceSets.GetRange(before, factory.ResourceSets.Count - before).ToArray();
+            Assert.Equal(3, first.Length);   // the resolve set for each read index and the depth store set
+            renderer.BindInputs(new TemporalResolveInputs(Texture(), opaque, depth, motion), history, retired);
+            Assert.True(factory.ResourceSets.Count > before + first.Length, "new inputs did not rebuild the sets");
+            Assert.All(first, set => Assert.False(set.Disposed,
+                "a rebind freed a set in place, while a submitted frame may still bind it"));
+
+            retired.BeginFrame();
+            Assert.All(first, set => Assert.True(set.Disposed, "a replaced set was never freed"));
+            history.ReleaseTargets(retired);
         }
     }
 }

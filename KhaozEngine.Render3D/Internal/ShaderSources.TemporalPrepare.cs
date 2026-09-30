@@ -261,6 +261,21 @@ TemporalSurface temporalPrepareSurface(ivec2 centreTexel, ivec2 closestTexel, fl
     bool narrowMoving = ownReprojected && nearerNarrow;
     band = band && !nearerNarrow;
     bool followed = band && !movingEdge;
+    // A pixel of the followed surface whose dilated nearest is a still surface in front of it, as the ground just in
+    // front of an avatar's lowest face under a low camera, reprojects as that still surface with no mark, so the
+    // ground it uncovers on the next frame would keep its colour. Where its centre texel travelled in the world more
+    // than FollowedTravelRatio times its motion on screen, and past the band's world test, it stores the band mark,
+    // which that ground drops.
+    if (historyValid && movingEdge && !band && !ownReprojected && !nearerMoved && !centreIsBackground) {
+        float centreExpected;
+        bool centreTested;
+        float centreTravel;
+        temporalReprojectSurface(centreSample, centreMotion, centreDepth, false, internalSize, centreExpected,
+            centreTested, centreTravel);
+        band = centreTravel > FollowedTravelRatio * centreScreenMotion
+            && centreTravel > WorldMotionMetres * PreviousProjection[0][0] * internalSize.x * 0.5
+                / (CurrentDepth.x > 0.5 ? centreDepth : 1.0) + centreScreenMotion * MovingSurfaceMotionFraction;
+    }
     TemporalSurface surface;
     surface.motion = closestMotion;
     surface.background = closestIsBackground;

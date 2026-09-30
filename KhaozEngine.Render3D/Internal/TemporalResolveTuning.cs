@@ -243,7 +243,11 @@ namespace KhaozEngine.Render3D.Internal
         /// surface that moved in the world (<see cref="WorldMotionMetres"/>), is on a surface the camera follows where
         /// that surface travelled in the world more than this many times its motion on screen, rather than one
         /// crossing a still view, which travels in the world as far as it moves on screen. It stores the followed
-        /// mark (<see cref="FollowedHistoryMotionFraction"/>).</summary>
+        /// mark (<see cref="FollowedHistoryMotionFraction"/>). A pixel of that surface whose dilated nearest is a still
+        /// surface in front of it, as the ground just in front of an avatar's lowest face under a low camera, stores
+        /// the band mark where its own centre texel travelled that far, and the ground it uncovers drops it: walking
+        /// away at 1 display pixel a frame on Quality at the low pitch, the trail's worst over the jitter's start
+        /// phases falls from 10 pixels to 1.</summary>
         public const float FollowedTravelRatio = 2f;
         /// <summary>
         /// Step 3 beside a followed surface. The avatar's own pixels store the followed mark while the camera follows

@@ -73,6 +73,8 @@ namespace KhaozEngine.Render3D.Rendering
                 _temporalEdgePingB = res.PingB;
             }
             GpuOutputDescription output = _temporalEdgeTargets!.Outputs;
+            // SamePingFormat compares the first colour format alone, which covers both outputs: CreatePings makes PingB
+            // in PingA's format.
             if (_temporalEdgePipe is null || !SamePingFormat(output, _temporalEdgeOutput))
             {
                 retired.Retire(_temporalEdgePipe);

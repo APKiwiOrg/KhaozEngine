@@ -401,7 +401,8 @@ and changed these details. Its contract amendment blocks carry the evidence.
     so it counted as still and stored no mark at all. Once every moving surface takes the whole-footprint rule the
     stored state's fast level says nothing the moved level does not, so minus three minus the lock now marks a band
     pixel: one that took by dilation the motion of a nearer surface that moved in the world, its own sample more than
-    `WorldMotionMetres` (1 mm, below) plus the rounding fraction from a static point's, that is wide by step 5's narrow
+    `WorldMotionMetres` (1 mm, widened by a share of the camera's travel, below) plus the rounding fraction from a
+    static point's, that is wide by step 5's narrow
     test, and that moves less on screen than the farther surface its centre texel shows. A pixel of that surface itself
     whose travel in the world is more than twice its motion on screen is a band pixel too (below). The band still
     counts as moved. A depth-tested pixel whose dilated nearest surface did not move in the world and that carries the
@@ -490,10 +491,17 @@ and changed these details. Its contract amendment blocks carry the evidence.
     the static travel reached 0.374 and 0.466 millimetres from the boot pitch and 0.778 and 1.23 from the grazing one,
     and from a steep pitch of 1.36 radians 0.058 at most. At 3840 by 2160 from the grazing pitch 12 metres away it
     reached 0.368. So to 22 metres the millimetre is 1.3 times the largest static travel measured. At 30 metres from the
-    grazing pitch the fast orbit, its eye moving 1.5 metres a frame, passes it on up to 0.24 percent of its texels,
-    60898 of 25.3 million at Quality, and still no still run stores a band mark, which also needs the texel to travel
-    more than `FollowedTravelRatio` times its motion on screen, or a farther centre moving more on screen beside a
-    nearer edge. On the orthographic wall it is 0.04 internal pixels at Native and 0.013 at UltraPerformance. The error
+    grazing pitch the fast orbit, its eye moving 1.52 metres a frame, passes it on up to 0.24 percent of its texels,
+    60898 of 25.3 million at Quality, all on one frame. The static travel grows with the camera's own travel, since only
+    a translation carries a depth error across the view: 1.23 mm is 0.81 thousandths of the eye's travel that frame.
+    Nothing else keeps a still edge from the band under an orbit, whose parallax moves the farther surface more on
+    screen beside every still edge, and on WARP, Direct3D 11's software rasteriser, a crate's edge 30.5 metres away, on
+    a face whose depth steps 0.51 metres a texel, travelled 1.44 mm, 0.95 thousandths of the eye's travel, with the
+    ground behind it moving more on screen, and stored the band mark. So the test adds
+    `WorldMotionEyeFraction`, 1/256, of the camera's travel since last frame to the millimetre, 6.9 mm on that orbit,
+    which no still texel passes. A surface the camera follows travels as far as the eye, far past it, and with the
+    camera still the test is the millimetre alone. On the orthographic wall it is 0.04 internal pixels at Native and
+    0.013 at UltraPerformance. The error
     does not peak on the frames that cross a render-origin step, and no still run stores a band mark on any frame, so
     none drops a band history.
 
@@ -556,7 +564,10 @@ and changed these details. Its contract amendment blocks carry the evidence.
     stays put on screen, so it still drops the avatar's history. The avatar's own pixels read it in place when it
     stops, and where the same avatar shows moving with them under a camera that eases on after it, as
     `FollowCamera3D`'s target damping does, and keep it. The inner pixels read exactly the error of the same avatar
-    standing still in the world on every frame after a stop or a reversal, and under the damped camera, which resamples
+    standing still in the world on every frame after a stop or a reversal on hardware. On WARP the walk's box writes
+    2^-24 UV of motion on up to 400 of its texels where hardware writes exactly zero, so up to four inner pixels read
+    one 8-bit step apart from the control, 1.14 steps at most summed, and the fact allows two steps there against one.
+    Under the damped camera, which resamples
     the history at fractional offsets, at most 0.3 percent more than they read over it while walking (below). Keyed
     only on the pixel having moved on screen, the stop and the reversal held, but the damped
     stop kept the drop, up to 1.43 times on its turn frame, and applied to the band beside an edge too, a still pixel
@@ -965,3 +976,10 @@ and changed these details. Its contract amendment blocks carry the evidence.
     Native. The M2 Max figures are one run of all eight cases at the final code, taken at a load average between 13
     and 25. Most of it is the pass per display pixel, so an upscaling preset saves its time in the scene's
     shading rather than in the resolve. The whole frame against MSAA 4x stays the game-side measurement.
+32. The band's world test is `WorldMotionMetres` plus `WorldMotionEyeFraction` of the camera's travel since last
+    frame, which the resolve reads from its uniforms, because a still surface's static travel grows with that travel
+    (step 1 above). Three temporal facts state a bound for WARP, the CI's Direct3D 11 device, apart from hardware, the
+    way `TemporalEntryIdentityGpuTests` states llvmpipe's: the followed avatar's stop allows its inner pixels two luma
+    steps of rounding summed there against one, and the ridged keyed box crossing the textured wall (#1187) allows 9
+    trail pixels there against 7, having measured 8 at Quality against Metal's 4. Its excess pixels lie in the same
+    columns as on Metal, five of them within 0.005 of the 0.05 tolerance. Every hardware bound is unchanged.

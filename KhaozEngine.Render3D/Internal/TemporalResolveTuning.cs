@@ -243,11 +243,11 @@ namespace KhaozEngine.Render3D.Internal
         /// Steps 1 and 3, the band: the share of the camera's travel since last frame, in metres
         /// (<see cref="TemporalResolveUniforms.Params"/>.z), added to <see cref="WorldMotionMetres"/>. A still
         /// surface's static travel is its depth error carried across by the camera's translation, so it grows with how
-        /// far the eye moved. On the fast orbit 30 m away from the grazing pitch, the eye moving 1.57 m a frame, it
-        /// reached 1.23 mm on Metal and 1.53 mm on WARP, 0.78 and 0.97 thousandths of the eye's travel. That passed the
+        /// far the eye moved. On the fast orbit 30 m away from the grazing pitch, the eye moving 1.52 m a frame, it
+        /// reached 1.23 mm on Metal and 1.44 mm on WARP, 0.81 and 0.95 thousandths of the eye's travel. That passed the
         /// millimetre on the edge of a crate whose farther ground moved more on screen, as the orbit's parallax moves
-        /// it beside every still edge, and WARP stored the band mark there. 1/256 is four times the largest share
-        /// measured, 7.1 mm on that orbit. A surface the camera follows travels as far as the eye, far past it, and
+        /// it beside every still edge, and WARP stored the band mark there. 1/256 is 4.1 times the largest share
+        /// measured, 6.9 mm on that orbit. A surface the camera follows travels as far as the eye, far past it, and
         /// with the camera still the test is the millimetre alone.
         /// </summary>
         public const float WorldMotionEyeFraction = 1f / 256f;
@@ -276,8 +276,9 @@ namespace KhaozEngine.Render3D.Internal
         /// settle: its pixels farther inside its outline than the reconstruction's reach read 3.7 and 3.0 times the
         /// error against the 4x reference of a kept history at Native and Quality on the orthographic follow walk, and
         /// 1.2 and 1.5 times on the perspective one. With the rule those pixels read exactly the error of the same
-        /// avatar standing still in the world on every frame after a stop or a reversal. Past the most they read over
-        /// it while walking, they read at most 0.3 percent of it more under the damped camera, and every pixel showing
+        /// avatar standing still in the world on every frame after a stop or a reversal on hardware, and on WARP up to
+        /// four of them one 8-bit step apart. Past the most they read over it while walking, they read at most 0.3
+        /// percent of it more under the damped camera, and every pixel showing
         /// the avatar 0.8 percent after a stop or a reversal and 2.5 under the damped camera, where the ground or wall
         /// passes behind its outline. Only the texel at the history position, or the four around it, left the ground
         /// an avatar uncovers its colour: up to 8 pixels at Quality where the walk left none, and 18 of 90 against 3

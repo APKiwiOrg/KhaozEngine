@@ -57,14 +57,16 @@ namespace KhaozEngine.Tests.Gpu
         /// slowly, strafing or creeping, near the origin or across a render-origin step, from the boot pitch, the
         /// grazing one or a steep one, 12, 22 or 30 metres away, and at 3840 by 2160 from the boot and grazing
         /// pitches, and without a stored mark no pixel drops a band history. The world-motion test is in metres
-        /// (WorldMotionMetres, 1 mm), where a fixed 0.05 internal pixels had no margin at 3840 wide (0.075). The worst
+        /// (WorldMotionMetres, 1 mm, and a share of the camera's travel), where a fixed 0.05 internal pixels had no
+        /// margin at 3840 wide (0.075). The worst
         /// static travel measured from the boot pitch is 0.211, 0.374 and 0.466 mm at 12, 22 and 30 metres, from the
         /// grazing pitch of 0.26 radians 0.508 mm 12 metres away, at a depth of 10.7 m, 0.778 and 1.23 mm, and from
         /// the steep pitch of 1.36 at most 0.058 mm, each on the fast orbit. So 1 mm is 1.3 times the worst to 22
-        /// metres, and 30 metres away from the grazing pitch the fast orbit, its eye moving 1.5 metres a frame, reads
-        /// up to 0.24 percent of its texels as moved in the world. None stores the mark, which also needs the texel to
-        /// travel more than FollowedTravelRatio times its motion on screen, or a farther centre moving more on screen
-        /// beside a nearer edge. By default it holds the far fast orbit, strafe and creep at Quality and the far fast
+        /// metres, and 30 metres away from the grazing pitch the fast orbit, its eye moving 1.52 metres a frame, read
+        /// up to 0.24 percent of its texels as moved in the world on Metal, 1.23 mm at most, and on WARP a crate's edge
+        /// travelled 1.44 mm beside ground moving more on screen and stored the mark. The static travel grows with the
+        /// camera's travel, so the test adds WorldMotionEyeFraction of it to the millimetre, 6.9 mm on that orbit. By
+        /// default it holds the far fast orbit, strafe and creep at Quality and the far fast
         /// orbit from the grazing pitch 12 and 30 metres away, and with <c>KE_TEMPORAL_ACCEPTANCE_TABLE=1</c> every run
         /// of the table.
         /// </summary>

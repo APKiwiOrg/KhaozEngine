@@ -4,9 +4,9 @@ using KhaozEngine.Catalog;
 namespace KhaozEngine.ItemInstances;
 
 /// <summary>
-/// One property kind's own rules over its field BODY, which is everything its
-/// <see cref="InstanceFieldShape"/> cannot express: an ascending mod id, a reserved flags slot that must be
-/// zero, a state byte of 0 or 1.
+/// One property kind's validation rules over its field BODY beyond the structural layout: strict ascending
+/// mod ids, a reserved flags slot that must be zero, a state byte of 0 or 1. Entry order metadata tells remap
+/// how to restore order while the codec validates that order and its duplicate policy.
 /// <para>
 /// The STRUCTURAL walk is not here. Canonical ordering, the duplicate-kind refusal, minimal varints, every
 /// declared length inside the payload, the one-level socket rule and the cap are the payload codec's, and

@@ -83,9 +83,8 @@ public static partial class InstanceRemapPass
     /// frame.</summary>
     const int SlotBuffer = 16;
 
-    /// <summary>The most entries a list that is re-sorted may hold. An affix count is a byte, so this is the
-    /// ceiling plus one and a wider list is left alone rather than half sorted.</summary>
-    const int MaxSortedEntries = 256;
+    /// <summary>Entry sort scratch held on the stack. Wider lists use arrays bounded by their field bytes.</summary>
+    const int SortedEntryBuffer = 256;
 
     /// <summary>What a rewrite answers when it cannot produce bytes the decoder would accept.</summary>
     const int Abandon = -1;
@@ -236,9 +235,9 @@ public static partial class InstanceRemapPass
         Span<PayloadField> nestedFields = stackalloc PayloadField[ItemInstancePayload.MaxFields];
         Span<ulong> values = stackalloc ulong[SlotBuffer * 2];
         Span<int> nestedStarts = stackalloc int[SlotBuffer * 2];
-        Span<int> starts = stackalloc int[MaxSortedEntries];
-        Span<int> lengths = stackalloc int[MaxSortedEntries];
-        Span<long> keys = stackalloc long[MaxSortedEntries];
+        Span<int> starts = stackalloc int[SortedEntryBuffer];
+        Span<int> lengths = stackalloc int[SortedEntryBuffer];
+        Span<ulong> keys = stackalloc ulong[SortedEntryBuffer];
 
         var walk = new RemapWalk(
             properties,

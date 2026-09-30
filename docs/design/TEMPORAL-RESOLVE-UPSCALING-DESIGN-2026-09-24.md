@@ -844,8 +844,13 @@ and changed these details. Each group's "Contract amendments" block carries the 
     Measured on Metal (half precision), 320x180, HDR off. On the mip bias checkerboard, local contrast as a share of
     native's: Quality 0.781 to 0.883, Balanced 0.741 to 0.806, Performance 0.747 to 0.768, and UltraPerformance
     unchanged at 0.827. With the share forced whole on every pixel with history Performance reached only 0.800 and
-    UltraPerformance 0.836, so on this receding ground the reconstruction is not what holds them back. The chart's
-    contrast kept per group, vertical and horizontal bars, at Quality: 3 px 0.782 and 0.769 to 0.867 and 0.856, 2 px
+    UltraPerformance 0.836, so on this receding ground the reconstruction is not what holds them back. At
+    UltraPerformance the carried confidence over the checkerboard's band stays under half through the test's 48
+    frames (median 0.43, rising about 0.009 a frame) and crosses it at frame 56, where Performance crosses at 25.
+    Past it the detail does not rise, 0.80 to 0.82 of native from frame 72 to 240 against 0.83 at 48. A start scaled
+    by the square of the size ratio, 0.22 at UltraPerformance and half elsewhere, moved it by 0.002 at frame 48, so
+    one start serves every preset. The chart's contrast kept per group, vertical and horizontal bars, at Quality:
+    3 px 0.782 and 0.769 to 0.867 and 0.856, 2 px
     0.863 and 0.889 to 0.905 and 0.927, 1.5 px 0.698 and 0.702 to 0.764 and 0.779, 1.2 px 0.599 and 0.624 to 0.718 and
     0.719, 1 px 0.359 and 0.489 to 0.463 and 0.604, and its error 0.01974 to 0.01697 against the reference, 0.577 to
     0.496 of a bilinear upscale's. At Performance: 3 px 0.817 and 0.924 to 0.832 and 0.942, 2 px 0.841 and 0.844 to

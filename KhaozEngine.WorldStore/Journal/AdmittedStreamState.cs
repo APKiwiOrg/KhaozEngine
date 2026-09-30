@@ -42,6 +42,7 @@ internal sealed class AdmittedStreamState
     private readonly List<AdmittedJournalOperation> queue = new();
     private readonly Dictionary<string, AdmittedSectionEntry> committed = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AdmittedSectionEntry> uncommitted = new(StringComparer.Ordinal);
+    private bool forgetWhenDrained;
 
     internal AdmittedStreamState(string streamKey) => StreamKey = streamKey;
 
@@ -50,7 +51,7 @@ internal sealed class AdmittedStreamState
     internal long CommittedVersion { get; private set; }
     internal long AdmittedHeadVersion { get; private set; }
     internal int Depth => queue.Count;
-    internal bool IsDroppable => queue.Count == 0 && !IsSeeded;
+    internal bool IsDroppable => queue.Count == 0 && (!IsSeeded || forgetWhenDrained);
 
     internal int UncommittedOperationCount
     {
@@ -65,6 +66,7 @@ internal sealed class AdmittedStreamState
 
     internal void Seed(long committedVersion, IReadOnlyList<JournalProjectionSection> sections)
     {
+        forgetWhenDrained = false;
         IsSeeded = true;
         CommittedVersion = committedVersion;
         committed.Clear();
@@ -77,6 +79,13 @@ internal sealed class AdmittedStreamState
                 section.SourceVersion,
                 CommittedOwner);
         Rebuild();
+    }
+
+    /// <summary>Retains the view and queue until every admitted operation has been acknowledged.</summary>
+    internal bool RequestForget()
+    {
+        forgetWhenDrained = true;
+        return queue.Count == 0;
     }
 
     /// <summary>Takes the first operation's expected version as the baseline for a stream the consumer never seeded.</summary>

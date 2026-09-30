@@ -93,7 +93,7 @@ public sealed class MutationJournalExecutor
     /// <c>ReadProjectionsAsync</c> when it loads that stream. The executor layers admitted operations over it and
     /// advances it as commits are acknowledged <see cref="JournalCompletionAcknowledgement.Handled"/>. Seeding
     /// again replaces the baseline and rebuilds the layer, which is how a stream is resynced after a correction or
-    /// a quarantine.
+    /// a quarantine. Seeding also clears a pending forget request for a reconnecting owner.
     /// </summary>
     public void SeedCommitted(string streamKey, long committedVersion, IReadOnlyList<JournalProjectionSection> sections)
     {
@@ -111,13 +111,20 @@ public sealed class MutationJournalExecutor
     }
 
     /// <summary>
-    /// Drops a seeded stream's baseline, for a player who logged out. Returns false when the executor holds no
-    /// view of it, and refuses while it still carries admitted operations.
+    /// Requests removal of a stream's admitted view. Returns true only when forgotten immediately, or false
+    /// when unknown or deferred until its final acknowledgement. Busy streams defer instead of throwing.
     /// </summary>
     public bool ForgetStream(string streamKey)
+        => RequestForgetStream(streamKey) == JournalStreamForgetStatus.Forgotten;
+
+    /// <summary>
+    /// Forgets an empty stream immediately, or retains its view and queue until every admitted operation is
+    /// acknowledged. Seeding the stream again clears the request. Quarantine recovery remains required.
+    /// </summary>
+    public JournalStreamForgetStatus RequestForgetStream(string streamKey)
     {
         string key = JournalValidation.StreamKey(streamKey, nameof(streamKey));
-        lock (gate) return admittedState.Forget(key);
+        lock (gate) return admittedState.RequestForget(key);
     }
 
     /// <summary>

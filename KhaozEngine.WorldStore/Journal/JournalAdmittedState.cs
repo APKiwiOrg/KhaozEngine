@@ -29,12 +29,12 @@ internal sealed class JournalAdmittedState
         state.Seed(committedVersion, sections);
     }
 
-    internal bool Forget(string streamKey)
+    internal JournalStreamForgetStatus RequestForget(string streamKey)
     {
-        if (!streams.TryGetValue(streamKey, out AdmittedStreamState? state)) return false;
-        if (state.Depth > 0) throw new InvalidOperationException($"Stream '{streamKey}' still has admitted operations.");
+        if (!streams.TryGetValue(streamKey, out AdmittedStreamState? state)) return JournalStreamForgetStatus.Unknown;
+        if (!state.RequestForget()) return JournalStreamForgetStatus.Deferred;
         streams.Remove(streamKey);
-        return true;
+        return JournalStreamForgetStatus.Forgotten;
     }
 
     /// <summary>Returns the refusal for a commit that cannot be admitted, or null when it can.</summary>

@@ -3629,11 +3629,12 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   `Post.Temporal.UpscaleRatio` (0.33 to 1.0) overrides the preset. While temporal anti-aliasing is on it sizes the
   target itself, the way SSAA forces `MatchViewport`, and `MaxRenderWidth` and `MaxRenderHeight` (default 3840x2160)
   still cap it, so at `Native` a 3456x2234 display renders 3342x2160.
-- **Detail.** Below `Native` the resolve rebuilds a pixel whose history has converged at the display's resolution,
-  so the upscaling presets keep most of a native render's detail. On a receding textured checkerboard `Quality`
-  keeps about 0.88 and `Performance` about 0.77 of the native render's local contrast
-  (`TemporalMipBiasGoldenTests`). A pixel just after a reset takes the rebuild at the internal resolution, and a
-  moving pixel shifts towards it, wholly at 2 display pixels a frame, so fast motion reads softer until it settles.
+- **Detail.** Below `Native` the resolve rebuilds a pixel whose history has converged at the display's resolution, so
+  the upscaling presets keep most of a native render's detail. On a receding textured checkerboard `Quality` keeps
+  about 0.88 and `Performance` about 0.77 of the native render's local contrast (`TemporalMipBiasGoldenTests`). The
+  loss at `Performance` is open in [#1212](https://github.com/APKiwiOrg/KhaozEngine/issues/1212). A pixel just after a
+  reset takes the rebuild at the internal resolution, and a moving pixel shifts towards it, wholly at 2 display pixels
+  a frame, so fast motion reads softer until it settles.
 - **Sharpening.** A contrast adaptive sharpen runs after the tonemap at display resolution.
   `Post.Temporal.Sharpness` runs from 0 (the pass does not run) to 1, default 0.25, and a value outside that range is
   clamped. It limits each pixel by its four neighbours, so it leaves an edge already at full contrast alone and
@@ -3687,12 +3688,15 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   effect only under `AntiAliasing.Temporal`.
 - **Diagnostics.** `scene.LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed
   rigid and skinned draws and key collisions, whether history was valid and why it was last reset, the internal and
-  display sizes, the preset and the effective `UpscaleRatio`. `scene.RequestTemporalCounts()` samples disoccluded,
-  reactive and clipped pixel counts on a 32 by 18 grid on the next frame that runs the resolve, and they land at the
-  following `PrepareFrame` with `CountsFrameIndex` naming the frame they came from. Reading them back drains the
-  device once on Metal and Vulkan, so request them from a debug overlay a few times a second at most, never every
-  frame. Read the diagnostics on the render thread after the frame renders. A second render inside the same frame,
-  such as an offscreen capture, leaves them and the history untouched.
+  display sizes, the preset and the effective `UpscaleRatio`. `LastReset` is a `TemporalResetReason`: `None`,
+  `FirstFrame`, `Resize`, `RenderScale`, `AntiAliasing`, `CameraCutRequested` for a `CameraCut()` call,
+  `CameraCutDetected` for a move or turn past the thresholds or an origin jump, and `DeviceReset` for the HDR toggle,
+  and a frame with both a call and a detected cut reports the call. `scene.RequestTemporalCounts()` samples
+  disoccluded, reactive and clipped pixel counts on a 32 by 18 grid on the next frame that runs the resolve, and they
+  land at the following `PrepareFrame` with `CountsFrameIndex` naming the frame they came from. Reading them back
+  drains the device once on Metal and Vulkan, so request them from a debug overlay a few times a second at most, never
+  every frame. Read the diagnostics on the render thread after the frame renders. A second render inside the same
+  frame, such as an offscreen capture, leaves them and the history untouched.
 - **One resolve on every backend.** The resolve has two internal paths. It records a pass per internal texel and a
   pass per display pixel on every backend, and a single pass per display pixel only on a device that allows fewer
   than five colour attachments. Both paths write the same history: bit for bit on Apple, NVIDIA under Direct3D 11
@@ -3701,16 +3705,17 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   `KE_TEMPORAL_RESOLVE=fused` or `KE_TEMPORAL_RESOLVE=split` forces one path for every scene the process creates,
   still subject to the attachment limit, to tell a fault in one path from the other on a player's machine. It is a
   diagnostic, read once, and not a setting a game ships with.
-- **Cost.** Against anti-aliasing off at the same internal size, the resolve and the sharpen together measured at
-  most about 1.7 to 2.2 ms at `Quality` and 1.6 to 2.3 ms at `Native` at a 2560x1440 display on an Apple M2 Max, and
-  about 1.7 to 2.4 ms at `Quality` and 2.1 to 3.1 ms at `Native` on an NVIDIA Tesla T4 under Direct3D 11 and Vulkan.
-  The low end is a still camera over twelve moving boxes, the high end thin bars moving across a textured wall under
-  a following camera, where most pixels sit beside a moving edge. The figures also carry the motion target, the
-  resolve's copy of the opaque image and the post chain at display size, so they bound the passes from above. Most of
-  the resolve runs per display pixel, so an upscaling preset saves its time in the scene's own shading rather than
-  in the resolve. `TemporalResolveCostPerfGpuTests` takes the same measurement on any real GPU. On the M2 Max the
-  edge outline under temporal anti-aliasing costs about what the post chain's outline costs under another mode, 0.04
-  to 0.08 ms at `Quality` and 0.10 to 0.16 ms at `Native`, and on the T4 it takes about 0.09 to 0.14 ms and 0.3 ms
+- **Cost.** Against anti-aliasing off at the same internal size, the resolve and the sharpen together measured at most
+  about 1.8 to 2.2 ms at `Quality` and 1.9 to 2.5 ms at `Native` at a 2560x1440 display on an Apple M2 Max, and about
+  1.8 to 2.4 ms at `Quality` and 2.1 to 3.1 ms at `Native` on an NVIDIA Tesla T4 under Direct3D 11 and Vulkan. At a
+  3456x2234 display the M2 Max measured about 3.5 to 4.3 ms at `Quality` and 4.0 to 5.0 ms at `Native`. The low end is
+  a still camera over twelve moving boxes, the high end thin bars moving across a textured wall under a following
+  camera, where most pixels sit beside a moving edge. The figures also carry the motion target, the resolve's copy of
+  the opaque image and the post chain at display size, so they bound the passes from above. Most of the resolve runs
+  per display pixel, so an upscaling preset saves its time in the scene's own shading rather than in the resolve.
+  `TemporalResolveCostPerfGpuTests` takes the same measurement on any real GPU. On the M2 Max the edge outline under
+  temporal anti-aliasing costs about what the post chain's outline costs under another mode, 0.04 to 0.08 ms at
+  `Quality` and 0.10 to 0.16 ms at `Native`, and on the T4 it takes about 0.09 to 0.14 ms and 0.3 ms
   (`TemporalOutlineCostPerfGpuTests`). A steady frame allocates nothing, with temporal anti-aliasing on or off.
 - **Memory.** At a 3456x2234 display on `Quality` (2304x1489 internal) with HDR on, temporal anti-aliasing holds
   212.7 MB of history (two display-size RGBA16F colours and two RG16F confidence targets, and two internal-size
@@ -3724,19 +3729,20 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
 - **Known limits.** Below `Native`, an object the camera follows can leave a short trail on the ground or wall it
   uncovers, whose length depends on the jitter phase its movement starts on
   ([#1207](https://github.com/APKiwiOrg/KhaozEngine/issues/1207), with the fix tracked in
-  [#1191](https://github.com/APKiwiOrg/KhaozEngine/issues/1191)). A still object's edge over a strongly textured
-  surface can keep a few pixels of colour trail while the camera moves sideways
-  ([#1202](https://github.com/APKiwiOrg/KhaozEngine/issues/1202)). Pixels a fast keyed object uncovers over a
-  textured surface can keep its tint for two frames ([#1187](https://github.com/APKiwiOrg/KhaozEngine/issues/1187)),
-  a thin keyed line crossing a grey textured surface can leave a short trail
+  [#1191](https://github.com/APKiwiOrg/KhaozEngine/issues/1191)). Still thin lines on the ground behind an object the
+  camera follows can dim slightly ([#1191](https://github.com/APKiwiOrg/KhaozEngine/issues/1191)). A still object's
+  edge over a strongly textured surface can keep a few pixels of colour trail while the camera moves sideways
+  ([#1202](https://github.com/APKiwiOrg/KhaozEngine/issues/1202)). Pixels a fast keyed object uncovers over a textured
+  surface can keep its tint for two frames ([#1187](https://github.com/APKiwiOrg/KhaozEngine/issues/1187)), a thin
+  keyed line crossing a grey textured surface can leave a short trail
   ([#1186](https://github.com/APKiwiOrg/KhaozEngine/issues/1186)), and a keyed object that jumps leaves its old
-  corners for about four frames ([#1185](https://github.com/APKiwiOrg/KhaozEngine/issues/1185)). The screen
-  dissolve's frozen layer holds an unresolved internal frame under temporal anti-aliasing
+  corners for about four frames ([#1185](https://github.com/APKiwiOrg/KhaozEngine/issues/1185)). The screen dissolve's
+  frozen layer holds an unresolved internal frame under temporal anti-aliasing
   ([#1166](https://github.com/APKiwiOrg/KhaozEngine/issues/1166),
   [#1209](https://github.com/APKiwiOrg/KhaozEngine/issues/1209)), and minimising the window frees and reallocates
-  every display-size target ([#1181](https://github.com/APKiwiOrg/KhaozEngine/issues/1181)). The resolve flushes
-  scene colour below 2^-14 to black before exposure: about 0.2/255 in sRGB at an exposure of 1, but about 3/255 at
-  16, so a very dark scene exposed that far loses its darkest shades.
+  every display-size target ([#1181](https://github.com/APKiwiOrg/KhaozEngine/issues/1181)). The resolve flushes scene
+  colour below 2^-14 to black before exposure: about 0.2/255 in sRGB at an exposure of 1, but about 3/255 at 16, so a
+  very dark scene exposed that far loses its darkest shades.
 
 ### ECS entities (`KhaozEngine.Render3D.Ecs`)
 

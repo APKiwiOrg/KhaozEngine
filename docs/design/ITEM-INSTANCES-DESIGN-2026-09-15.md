@@ -3091,6 +3091,16 @@ an `identificationMaskBit` at registration (3.3) is hidden when `identified` is 
 `revealedMask` is clear, EVEN FROM THE OWNER. That last clause is gate 0 decision 8 and it is why
 unidentified is a mechanic rather than a fourth level.
 
+The viewer-level vocabulary is closed to `Everyone` and `OwnerOnly`. `ServerOnly` is a visibility a KIND
+may carry, not a viewer privilege. Passing `ServerOnly` as the viewer level therefore returns the empty
+view rather than exposing every kind through an at-or-below comparison. The server's privileged read is of
+the stored bytes themselves and does not pass through this projection.
+
+An unregistered kind is visible to nobody. This is fail closed because a process that cannot classify the
+kind cannot prove that it is safe to send. `PublicView` and `OwnerRemainder` both omit it. The projection
+does not alter storage: contracts 9.4 still keeps an unknown kind verbatim, and a decode and rebuild still
+round-trips its bytes unchanged.
+
 ### 12.6 The counter and the log line
 
 Contracts 10.2 names both and forbids inventing others. Counter

@@ -17342,6 +17342,12 @@ version stamp and its dirty flag, and exactly TWO things dirty it: an operation 
 remap that changed an id. Reading never does, seating a decoded page never does, and a write that leaves the
 slot holding what it already held never does.
 
+A host with admitted and committed views can copy this state through the public load doors. The container
+exposes its original `PayloadCanonical` and `QuarantineWellFormed` delegates, and `SeatDirty` restores the
+source page's pending rewrite flag after its entries and stamp. `SeatDirty` can restore true or false and
+changes nothing else. In particular, an empty dirty page remains owed to the next commit without a fake
+write and take operation.
+
 `ContainerLoad.Load` in `KhaozEngine.ItemInstances.Journal` is the read half. It is a `Server` package
 because composing a `JournalCommit` needs `KhaozEngine.WorldStore`, so a client build keeps the record and
 none of this.
@@ -17366,6 +17372,37 @@ var bankPages = new PagedItemContainer(
 
 int entered = bankPages.Add(potionId, 40);   // the gate is asked BEFORE the address space is searched
 bankPages.Capacity = 800;                    // LEGAL below occupancy: nothing is trimmed, new slots are refused
+
+static PagedItemContainer CopyState(PagedItemContainer source)
+{
+    var copy = new PagedItemContainer(
+        source.PageCount,
+        source.Capacity,
+        source.Stackable,
+        source.PayloadCanonical,
+        source.QuarantineWellFormed,
+        source.StackCap);
+    var entries = new PageSlotInput[ItemContainerPageCodec.ContainerPageSlots];
+    for (int pageIndex = 0; pageIndex < source.PageCount; pageIndex++)
+    {
+        ItemContainerPage sourcePage = source.Pages[pageIndex];
+        ItemContainerPage copyPage = copy.Pages[pageIndex];
+        int entryCount = sourcePage.CopyEntriesTo(entries);
+        copyPage.SeatStamp(sourcePage.ContentVersion);
+        for (int entryIndex = 0; entryIndex < entryCount; entryIndex++)
+        {
+            PageSlotInput entry = entries[entryIndex];
+            copyPage.Seat(
+                entry.Slot,
+                new ItemSlot(
+                    new ItemStack(entry.DefinitionId, entry.Count, entry.InstanceId),
+                    entry.Payload,
+                    entry.Quarantined));
+        }
+        copyPage.SeatDirty(sourcePage.IsDirty);
+    }
+    return copy;
+}
 
 // Built ONCE per container. It is where the remap rule set pays its quadratic idempotence check, once
 // for the whole container rather than once per page, and a set the publish validator should have

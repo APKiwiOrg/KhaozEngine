@@ -1859,19 +1859,26 @@ public interface IRandomSource
     ulong  NextULong();
     ushort NextRollPosition();          // uniform over 0..65535, section 6.4
     void   NextBytes(Span<byte> destination);
+    void   Skip() => _ = NextInt(0, 2);
 }
 ```
 
-`NextInt` throws when `maxExclusive <= minInclusive`, which is a caller bug rather than a draw. There is
-NO `Seed` property, no `State` property, no `CreateDerived` and no way to ask an instance what it will do
-next. That is the whole point: a seam whose seed is readable is a seam a crafting system can leak.
+`NextInt` throws when `maxExclusive <= minInclusive`, which is a caller bug rather than a draw. A one-wide
+range returns its only answer without consuming a draw. `Skip` is the fifth member and has a default
+interface body, so an existing implementation need not add a method. The default discards one
+`NextInt(0, 2)` call. A caller reserving a random slot for an empty or singleton bound uses `Skip` instead
+of `NextInt(0, 1)`, which would consume nothing. The default's underlying stream cost depends on that
+implementation's `NextInt`.
+
+There is NO `Seed` property, no `State` property, no `CreateDerived` and no way to ask an instance what it
+will do next. That is the whole point: a seam whose seed is readable is a seam a crafting system can leak.
 
 Nothing here returns a float, which is section 13.4's rule applied to the random path. A weighted choice is
 made with `NextInt` over an integer weight total.
 
-**The engine has no seam at all today**, verified by grep: two concrete types, `DeterministicRng` and
-`TileActorRandom`, with nothing between them (`a-engine.md:1259-1269`). So this is new, and it is
-deliberately narrow.
+**At the initial design audit, the engine had no seam**, verified by grep: two concrete types,
+`DeterministicRng` and `TileActorRandom`, with nothing between them (`a-engine.md:1259-1269`). The seam
+introduced here is deliberately narrow.
 
 **`IRandomSource` lives in `KhaozEngine.Primitives`**, not in either new package. `Primitives` already
 owns `DeterministicRng` (`KhaozEngine.Primitives/DeterministicRng.cs`), which `SeededRandomSource` wraps,
@@ -1890,11 +1897,12 @@ Both ship in `KhaozEngine.Primitives` beside the seam, so taking `IRandomSource`
 package reference.
 
 **`CryptographicRandomSource`**, for hosted servers. Seeded from the OS through
-`System.Security.Cryptography.RandomNumberGenerator`, which is the only cryptographic randomness in the
-engine today and exists solely in the two Identity PKCE helpers
+`System.Security.Cryptography.RandomNumberGenerator`. The initial audit found cryptographic randomness
+only in the two Identity PKCE helpers
 (`KhaozEngine.Identity.Discord/Pkce.cs:14`, `KhaozEngine.Identity.Oidc/Pkce.cs:13`,
 `a-engine.md:1264-1269`). Uniform integer draws use rejection sampling rather than modulo, because modulo
-bias on a crafting roll is a real edge a player can farm.
+bias on a crafting roll is a real edge a player can farm. Its `Skip` override is a no-op: this source has
+no reproducible stream position to advance, so discarding an OS draw would serve no purpose.
 
 **`SeededRandomSource`**, for tests and for any deterministic replay. It WRAPS `DeterministicRng`
 (`KhaozEngine.Primitives/DeterministicRng.cs:16-72`) rather than reimplementing a generator, so the
@@ -1902,7 +1910,10 @@ engine keeps exactly one seeded stream definition and the two known vectors alre
 the test suite keep doing their job. Its constructor takes the seed. The seed is not readable back off the
 instance, so a test that wants to assert on a seed asserts on the one it passed in. Its bounded `NextInt`
 uses rejection sampling over the wrapped generator's `NextULong`, just as the cryptographic source does.
-The implementations differ in entropy source and reproducibility, not in bounded-draw bias.
+Its `Skip` override discards exactly one `_rng.NextULong()` without a range or a rejection loop. Both
+implementations' live bounded draws may consume more than one 64-bit value during rejection sampling.
+The fixed cost of the seeded `Skip` does not make every `NextInt` a fixed-stride draw. The implementations
+differ in entropy source and reproducibility, not in bounded-draw bias.
 
 ### 14.3 The journal rule
 

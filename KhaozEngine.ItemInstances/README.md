@@ -1008,17 +1008,19 @@ The thirteen steps, in the order the draws happen, which IS the contract:
 | 12 | encodes the payload through `ItemInstancePayloadBuilder` | none |
 | 13 | takes the instance id, and ONLY when the payload is non-empty | none |
 
-**The reproducibility contract is that every draw is a function of the affix COUNT and of nothing else.** A
-candidate that is filtered out leaves the pool BEFORE the draw rather than being drawn and rejected, and a
-pick whose live pool is EMPTY still consumes both of its draws and discards them. Without those two discards
-one item consumes fewer draws than another of the same rarity on the same base, and a seeded session diverges
-at the first item whose pool runs dry.
+**The logical draw schedule depends on the generation path, requested affix count and name positions.**
+A candidate that is filtered out leaves the pool BEFORE the draw rather than being drawn and rejected.
+After its kind slot, a pick whose live pool is EMPTY still reserves a weighted-entry slot through `Skip`
+and a roll-position slot through `NextRollPosition`, discarding both results and placing nothing.
 
 **A collapsed bound takes `IRandomSource.Skip`, and that is not a formality.** `NextInt`'s own contract says
 a one-wide range consumes nothing, so a discard written as `NextInt(0, 1)` is no discard at all and a real
-draw over a live weight of one costs the stream nothing either. `Skip` advances the stream by exactly one
-draw whatever the bound is, so the position after an item is a function of the pick count and never of what
-the pool happened to hold.
+draw over a live weight of one costs the stream nothing either. The internal `BoundedDraw.Next` calls
+`NextInt(0, bound)` when `bound > 1`, otherwise calls `Skip` and returns 0. This covers every real bounded
+draw, including rarity, count, kind, entry and name words, as well as empty bounds. On `SeededRandomSource`,
+`Skip` discards exactly one underlying `NextULong`. A live `NextInt` may consume additional values during
+rejection sampling, so this schedule does not guarantee an identical underlying stream stride for every
+pool or bound. Reproducing a seeded roll requires the same source, seed, inputs and call order.
 
 **Step 12 writes kind 128 explicitly, state 0 and revealed mask 0.** An item carrying no `Identification`
 field at all is indistinguishable from an identified one under the visibility function, so the generator,
@@ -1093,6 +1095,11 @@ bounded on both sides of the row codec by `CurrencyStepContentType.MinPrimitiveO
 exactly one static apply method on `CraftPrimitives`, split across three files by SUBJECT rather than by line
 count: affixes, sockets and scalars.
 
+`Identify` writes kind 128's state as 1 and its revealed mask as the OR of every registered gated
+`IdentificationMaskBit`. The default v1 registry produces `0b1111`, while a custom gated registration at
+bit 4 or beyond extends that mask. Bits no registration assigns stay zero in this writer's output. The
+decoder still accepts any revealed mask within `uint32`, including unassigned bits.
+
 Three of the vocabularies are closed on purpose, because a closed set is what a counter can bucket, a client
 can localize and a test can assert on:
 
@@ -1109,8 +1116,8 @@ can localize and a test can assert on:
   spec 10.3's "true when" cell, which reads the chain from the item's end and inverts it
   ([#989](https://github.com/APKiwiOrg/KhaozEngine/issues/989)).
 - **`CraftSelectorKind`, 1 to 6.** Which entries primitives 2, 3 and 10 act on. `RandomOfKind` is the only
-  one that draws, and it draws exactly ONCE, through the same bounded draw the generator uses, so a selection
-  with one candidate costs the stream what a selection with nine costs and so does a selection with none.
+  one that draws, and it reserves one slot through the same bounded helper the generator uses. A selection
+  with 0 or 1 candidates calls `Skip`, and an empty selection then refuses.
 
 **Three STANDING rules no currency can opt out of**, which is why they are not in any guard set:
 

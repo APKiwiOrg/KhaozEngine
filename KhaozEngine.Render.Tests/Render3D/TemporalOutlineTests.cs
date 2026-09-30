@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
@@ -131,6 +134,44 @@ namespace KhaozEngine.Tests.Render3D
             rig.Frame(96, 64);
             Assert.False(scene.ResolvedLastRenderForTests);
             Assert.False(scene.TemporalOutlineBuiltForTests);
+        }
+
+        /// <summary>Releasing the pass retires its objects rather than dropping them: the framebuffer over the two
+        /// internal pings and the set it reads outlive the release until the retire queue frees them some frames later,
+        /// and then they are disposed. Clearing the fields alone would leave both alive for ever.</summary>
+        [Fact]
+        public void ReleasingThePassRetiresItsFramebufferAndSet()
+        {
+            using var rig = new HeadlessSceneRig();
+            Scene3D scene = rig.Scene;
+            scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+            rig.Frame(96, 64);
+            rig.Frame(96, 64);
+            Assert.False(scene.InternalPingsAllocatedForTests);
+
+            // The outline turns on: the internal pings and the pass are made on this frame.
+            int framebuffers = rig.Factory.Framebuffers.Count, sets = rig.Factory.ResourceSets.Count;
+            scene.Post.Outline = true;
+            rig.Frame(96, 64);
+            Assert.True(scene.TemporalOutlineBuiltForTests);
+            List<FakeFramebuffer> made = rig.Factory.Framebuffers.GetRange(framebuffers,
+                rig.Factory.Framebuffers.Count - framebuffers);
+            // The pings each get a framebuffer of their own, and the pass's writes the two of them.
+            IGpuTexture[] pings = made.Where(f => f.Colour.Length == 1).Select(f => f.Colour[0]).ToArray();
+            Assert.Equal(2, pings.Length);
+            FakeFramebuffer targets = Assert.Single(made, f => f.Colour.Length == 2
+                && ReferenceEquals(f.Colour[0], pings[0]) && ReferenceEquals(f.Colour[1], pings[1]));
+            // Its set is the one of six bindings that ends with a texture, the opaque copy, and names no ping.
+            FakeResourceSet set = Assert.Single(rig.Factory.ResourceSets.Skip(sets), r => r.Resources.Length == 6
+                && r.Resources[5] is IGpuTexture && !r.Resources.Any(x => pings.Contains(x)));
+
+            scene.Post.Outline = false;
+            rig.Frame(96, 64);
+            Assert.False(scene.TemporalOutlineBuiltForTests);
+            Assert.False(targets.Disposed || set.Disposed, "the release destroyed what the last frame may still read");
+            for (int i = 0; i < GpuRetireQueue.DefaultFrameDelay + 1; i++) rig.Frame(96, 64);
+            Assert.True(targets.Disposed, "the pass's framebuffer was never freed");
+            Assert.True(set.Disposed, "the pass's set was never freed");
         }
 
         /// <summary>Under the resolve the internal ping pair is free of the post chain, which runs on the display

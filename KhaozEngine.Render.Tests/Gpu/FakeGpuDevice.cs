@@ -178,7 +178,8 @@ namespace KhaozEngine.Tests.Gpu
             IGpuTexture? first = colour.Length > 0 ? colour[0] : depth;
             uint w = first?.Width ?? 1, h = first?.Height ?? 1;
             uint samples = first?.SampleCount ?? 1;
-            var framebuffer = new FakeFramebuffer(samples > 1 ? outputs.WithSampleCount((int)samples) : outputs, w, h);
+            var framebuffer = new FakeFramebuffer(samples > 1 ? outputs.WithSampleCount((int)samples) : outputs, w, h,
+                (IGpuTexture[])colour.Clone());
             Framebuffers.Add(framebuffer);
             return framebuffer;
         }
@@ -288,15 +289,25 @@ namespace KhaozEngine.Tests.Gpu
 
     internal sealed class FakeFramebuffer : IGpuFramebuffer
     {
-        internal FakeFramebuffer(GpuOutputDescription outputs, uint width, uint height)
+        internal FakeFramebuffer(GpuOutputDescription outputs, uint width, uint height, IGpuTexture[]? colour = null)
         {
             Outputs = outputs; Width = width; Height = height;
+            Colour = colour ?? Array.Empty<IGpuTexture>();
         }
 
         public GpuOutputDescription Outputs { get; }
         public uint Width { get; }
         public uint Height { get; }
-        public void Dispose() { }
+
+        /// <summary>The colour attachments the factory was handed, in order, so a test can tell one framebuffer from
+        /// another by what it writes. Empty for one built directly.</summary>
+        internal IGpuTexture[] Colour { get; }
+
+        /// <summary>Whether the owner freed this framebuffer, to pin the frame a retired one is destroyed on, as
+        /// <see cref="FakeResourceSet.Disposed"/> does for a set.</summary>
+        internal bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
     }
 
     internal sealed class FakeSampler : IGpuSampler { public void Dispose() { } }

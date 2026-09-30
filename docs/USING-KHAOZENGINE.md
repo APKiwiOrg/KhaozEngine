@@ -16185,6 +16185,10 @@ await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly, ct);
 in a connection string cannot silently create a second empty catalog and serve it. A mismatch is a
 `ContentAuthoringException` naming the object and the required migration.
 
+For catalog preflight and deploy compatibility checks, read `InMemoryContentAuthoringStore.SchemaVersion`
+as the schema version this engine build targets, currently 3 for both providers. The opened store's
+`GetSchemaVersionAsync()` reports the schema it holds. The in-memory store reports the same build target.
+
 Edits go into the ONE open draft, whole or not at all, and ids are allocated at publish rather than at edit:
 
 ```csharp

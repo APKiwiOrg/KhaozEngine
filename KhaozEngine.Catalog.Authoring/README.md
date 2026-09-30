@@ -492,6 +492,11 @@ in memory. A production host uses a provider, because nothing in it survives the
 package rather than in a test project because the draft, allocator, publish and admin-action suites all need
 one and they sit in different assemblies.
 
+`InMemoryContentAuthoringStore.SchemaVersion` is the public catalog schema version this engine build
+targets, currently 3, matching both providers. Consumers use that constant for catalog preflight and deploy
+compatibility checks. `IContentAuthoringStore.GetSchemaVersionAsync()` reports the schema held by the opened
+store, which the in-memory store also reports as 3.
+
 It carries the constraints its provider siblings get from a `CHECK`, so a defect surfaces there rather than
 at the first SQL run: a high-water mark never moves backwards, an issued mark never passes a reserved one,
 and a family block is aligned to its own size.

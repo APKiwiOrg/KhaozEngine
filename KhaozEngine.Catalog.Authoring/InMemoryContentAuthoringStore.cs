@@ -28,11 +28,11 @@ namespace KhaozEngine.Catalog.Authoring;
 public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringStore, IContentIdPersistence
 {
     /// <summary>
-    /// The schema version this store reports: 2, the version that added the content upgrade ledger this store
-    /// holds as a dictionary and the providers hold as a table. The providers are on 3, which adds only row
-    /// times, and this store keeps none, so it stays at 2.
+    /// The catalog schema version this engine build targets, matching both database providers. Consumers
+    /// use this constant for catalog preflight and deploy compatibility checks. This store reports the same
+    /// version.
     /// </summary>
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
 
     /// <summary>The cap a page read is clamped to, which the seam leaves to the implementation.</summary>
     public const int MaxPageSize = 500;

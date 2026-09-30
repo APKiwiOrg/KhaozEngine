@@ -286,6 +286,10 @@ empty when the refusal is about the REQUEST rather than about the content. A 409
 whatever the race needs: a stale publish adds `expectedBaseVersion` and `actualBaseVersion`, a draft a publish
 is holding adds a `remedy`, and a blocked rollback adds `code`, `blockedByRules[]` and a `remedy`.
 
+Each rollback blocker names its row through `type` and `fromId`. Its `kind` carries the matching rule's
+actual name, normally `Retired`. If the provider's baseline has no matching rule, `kind` is JSON null and
+both `sequence` and `introducedIn` are 0. The row still blocks the rollback.
+
 The frozen-draft remedy first tells the operator to wait for the publisher and read the draft again. If the
 publisher process died before commit, the marker is indistinguishable from a live publisher's marker. After
 confirming no publisher is live, a host can call `IContentAuthoringStore.ClearDraftFreezeAsync` to release the

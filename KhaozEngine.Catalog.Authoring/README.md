@@ -460,13 +460,16 @@ and its values, which is the difference between a rollback and a restore.
 same property that lets a durable page's version stamp be an ordering comparison.
 
 **A row live at the target and RETIRED since is a flat refusal**, `KEC0039`, naming the row and the rule that
-retired it. There is no un-retire branch and there never was a reachable one: every retire appends exactly one
-`Retired` rule, so a branch conditioned on no rule naming that id could not run. The way out is an ordinary
-`Add` under a NEW key carrying the old values, because a key is immutable once published, and the retired row
-keeps its id and its bytes forever so a stored stack still decodes.
+retired it when that rule is present. There is no un-retire branch. An ordinary publish appends exactly one
+`Retired` rule for each retire. A provider baseline without a matching rule still refuses the rollback.
+The way out is an ordinary `Add` under a NEW key carrying the old values, because a key is immutable once
+published, and the retired row keeps its id and its bytes forever so a stored stack still decodes.
 
 `ContentRollback.Prepare` is the plan behind it and `ContentRollbackPlan` is what a console renders: the
-edits, the blockers with the rule that produced each one, and one `KEC0039` finding per blocker.
+edits, the blockers with any matching rule, and one `KEC0039` finding per blocker. Each
+`ContentRollbackBlocker.RuleKind` carries that rule's actual kind, or null when no rule matches. In that
+case `RuleSequence` and `IntroducedIn` are 0. The original five-argument constructor and deconstruction
+remain available.
 
 ## The diff
 

@@ -16224,6 +16224,11 @@ rewrote one chunk and reused the rest. `ContentRollback` builds a reviewable dra
 version's field values, `ContentDiff` is the field-level comparison, and `ContentBundle` is the lossless
 seeding document, imported into an EMPTY database only.
 
+A rollback refuses a row live at the target and retired since. `ContentRollbackBlocker.RuleKind` reports
+the matching rule's actual kind, or null if the provider baseline has no matching rule. That missing-rule
+case retains the blocker with `RuleSequence` and `IntroducedIn` at 0. The admin action renders the same
+absence as `kind: null` in `blockedByRules`, while a matching retire rule renders `kind: "Retired"`.
+
 Bundle import preserves each family's `IsRetired` flag through family reads and later exports, including
 the in-memory authoring store. Its version line still restarts at 1.
 

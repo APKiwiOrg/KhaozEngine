@@ -110,7 +110,7 @@ internal sealed class CatalogVersionActions(
 
     /// <summary>
     /// Builds a draft that would restore an earlier version's field values. A row live at the target and
-    /// RETIRED since blocks it, and the refusal names every blocking rule plus the way out.
+    /// RETIRED since blocks it, and the refusal names every blocking row, its matching rule and the way out.
     /// </summary>
     async Task<AdminActionResult> RollbackAsync(JsonElement? payload, CancellationToken cancellationToken)
     {
@@ -158,9 +158,9 @@ internal sealed class CatalogVersionActions(
     }
 
     /// <summary>
-    /// The rules that blocked a rollback, recomputed from the two row sets. The store's refusal carries its
-    /// findings rather than the rules, and an operator needs the RULE: the sequence and the version that
-    /// introduced it are what name the publish that did the retiring.
+    /// The rows that blocked a rollback, recomputed from the two row sets. A matching rule's sequence and
+    /// introduced version name the publish that retired it. Missing matches retain the row identity with
+    /// no rule kind, rather than naming a rule the provider did not return.
     /// </summary>
     async Task<IReadOnlyList<CatalogBlockingRulePayload>> BlockersAsync(
         int target,
@@ -183,7 +183,7 @@ internal sealed class CatalogVersionActions(
                 blocker.IntroducedIn,
                 registry.TryGet(blocker.Type, out ContentTypeRegistration? type) ? type.TypeKey : string.Empty,
                 blocker.DefinitionId,
-                RemapRuleKind.Retired.ToString()));
+                blocker.RuleKind?.ToString()));
         }
 
         return blockers;

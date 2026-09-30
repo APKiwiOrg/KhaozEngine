@@ -612,6 +612,47 @@ and changed these details. Each group's "Contract amendments" block carries the 
     A footprint whose carrying texels stored both marks reads as the followed mark, which takes a fractional position
     across the outline under the damped camera. The emitted resolve grew from 43424 to 43661 bytes of HLSL.
 
+    A pixel of the followed surface whose dilated nearest is a still surface in front of it, as the ground just in
+    front of an avatar's lowest face under a low camera, reprojected as that still surface with no mark, so the ground
+    it uncovered on the next frame read its history and kept the avatar's colour. Where its centre texel travelled in
+    the world more than `FollowedTravelRatio` times its motion on screen, and past the band's world test at its own
+    depth, it now stores the band mark, which that ground drops. Walking away at 1 display pixel a frame at the low
+    pitch on Quality, the trail's worst over the jitter's start phases fell from 10 pixels to 1, and at half a pixel on
+    Performance the phases over its bound from 16 of 32 to 7. It costs one more surface reprojection on a pixel at a
+    moving edge whose nearest did not move: on the Apple M2 Max the split's first pass alone took -0.006 to +0.040 ms
+    more over the eight cost scenes (alternated runs, medians of four), and on the Tesla T4 under Windows Vulkan, the
+    split with and without it in one run (hosted run 36671837220), -0.060 to +0.015 once a per-frame offset of about
+    0.23 ms that the switch itself carried, the same on the boxes, where the rule never fires, is taken out.
+
+    The trail behind a followed edge below Native depends on the jitter phase a walk starts on
+    ([#1207](https://github.com/APKiwiOrg/KhaozEngine/issues/1207)), and every follow fact started on one, the phase a
+    16-frame hold ends on, among the kindest at each preset. `TemporalFollowPhaseGpuTests` runs each cell from every
+    phase of its preset's sequence where the phase moves it most, and from four a quarter sequence apart elsewhere, by
+    skipping renders before the first frame so only the phase moves. The worst over the phases per preset, before and
+    after the mark above, near the edge (every pixel uncovered but those within one display pixel of the object):
+    orthographic Native 5 and 5, Quality 12 and 12, Performance 23 and 23, UltraPerformance 57 and 57, perspective
+    Native 5 and 2, Quality 10 and 7, Performance 12 and 11, UltraPerformance 47 and 47. Below Native that region lies
+    within the reconstruction's reach, and the current frame's own spread of the object's texel lands in it at some
+    phases: the orthographic walk rendered with no history reads up to 60 there at Performance and 1.5 display pixels a
+    frame. Past the reach, 3 display pixels from the object at Quality, 4 at Performance and 6 at UltraPerformance,
+    only a kept history leaves its colour: orthographic 2, 2 and 26, perspective 3, 10 and 27. After a stop the whole
+    avatar reads up to 0.368 of the control's error over it at Quality and 0.035 at Native, where the first phase read
+    within the 0.02 allowed, and its inner pixels read within the control's error from every phase, and within 0.008
+    of it under the damped camera. The still lines keep at least 0.897 of their energy.
+
+    The cause is a limit of one history. A pixel within the reconstruction's reach of a followed edge keeps either the
+    edge's anti-aliasing in place or the ground or wall passing under it, and which it gets is set per frame, at
+    internal-texel granularity, by the jitter: a column one to one and a half internal texels behind the edge falls in
+    and out of the band as the jitter moves. Rules that keep that column's history only near the edge's samples, scale
+    it by the nearer surface's share of the reconstruction, or leave the nearer texels out of its current each moved
+    some cells and cost others, and every combination traded against the fast edge's shimmer, the crossing box's flips
+    or the damped stop. A history for the edge's coverage apart from the surface under it is the fix
+    ([#1191](https://github.com/APKiwiOrg/KhaozEngine/issues/1191)), deferred until a playtest shows whether the
+    remaining trail is visible. Until then the follow facts hold regression bounds from every phase run: acceptance 3
+    where the worst over the phases meets it, else that worst and about a quarter more, at least 2, near the edge at
+    every preset and past the reach at Quality, Performance and UltraPerformance, and on the whole avatar after a stop
+    the worst share over the phases and about a quarter more where it passes 0.02 (0.05 under the damped camera).
+
     Every rule above lives once, in shared shader functions, and the resolve has two entry points over them. The
     per-texel preparation (`TemporalPrepareGlsl`) derives what the resolve needs from one internal texel alone: its
     weighted YCoCg and reactive difference, the nearest surface of its 3x3, and the surface every display pixel centred

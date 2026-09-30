@@ -422,6 +422,12 @@ public readonly record struct InstanceReferenceTarget(
     int SlotIndex);                            // which slot of that shape holds the id
 ```
 
+`InstanceSlotKind` declares a value's POSITION and wire shape, not its semantic width. A `Varint` slot is
+always read at the full unsigned 64 bit width, up to ten bytes. The kind's own codec applies any narrower
+bound after the structural walk. This is required for kind 6 `BoundTo` and for a socket's
+`ContainedInstanceId`, which are both unsigned 64 bit values. A structural reader that narrowed every
+`Varint` slot to 32 bits would refuse a legal payload from a live shard.
+
 The shape says WHERE a value sits in the field's bytes and the target says WHICH content type it belongs
 to. A walker that has both can find, read and rewrite every content id in a payload without knowing what
 any kind means. The v1 assignments:
@@ -617,21 +623,24 @@ format can produce is seven bytes, and that is the number the compatibility argu
 
 The arithmetic, because the numbers carry the rest of the document:
 
-- **OSRS, 0 and 7.** Instance id 0, payload empty. The entry is slot 1, entry flags 1, definition id 1,
-  count 2 (500 is a two byte varint), instance id 1, payload length 1. **Seven bytes against version 1's
-  fixed ten** (`ItemContainerCodec.cs:19`, `EntryBytes = 2 + 4 + 4`). An OSRS shaped bank gets SMALLER
-  when instances arrive, which is the strongest single argument that the hinge in contracts 6.1 was the
-  right one.
+- **OSRS, 0 and 7.** Instance id 0, payload empty. The entry is slot 1 byte + flags 1 + definition id 1 +
+  count 2 (500 is a two byte varint) + instance id 1 + payload length 1 + payload 0 = 7. **Seven bytes
+  against version 1's fixed ten** (`ItemContainerCodec.cs:19`, `EntryBytes = 2 + 4 + 4`). An OSRS shaped
+  bank gets SMALLER when instances arrive, which is the strongest single argument that the hinge in
+  contracts 6.1 was the right one.
 - **Tibia, 7 and 15.** `04 02 12 14` is charges 18 of 20 in four bytes and `08 01 02` is upgrade tier 2
-  in three. The entry adds two varint bytes for the instance id (4,201) and one for the payload length.
-  A charged, upgraded item is fifteen bytes, and it needed no mod, no roll and no socket to say so,
-  which is contracts 1.5's claim about Tibia made concrete.
+  in three. The entry is slot 1 + flags 1 + definition id 2 + count 1 + instance id 2 (4,201) + payload
+  length 1 + payload 7 = 15. A charged, upgraded item needed no mod, no roll and no socket to say so, which
+  is contracts 1.5's claim about Tibia made concrete.
 - **Mortal Online, 20 and 30.** The materials field stores the INPUT ids and their parts, not the stats
   derived from them, so a materials rebalance is a publish rather than a rewrite of every crafted item
-  (contracts 6.3). Three materials in a 60/30/10 ratio cost eleven bytes.
+  (contracts 6.3). Three materials in a 60/30/10 ratio cost eleven bytes. The entry is slot 1 + flags 1 +
+  definition id 2 + count 1 + instance id 4 (20,000,000) + payload length 1 + payload 20 = 30.
 - **PoE, 58 and 69.** The contracts' 45 byte example plus five bytes of identification state and eight
-  of rare name. Sixty-nine bytes per bank slot, so a hundred slot page of nothing but rares is about
-  6.9 KB, which is the number sections 5, 6, 7 and 16 are all sized against.
+  of rare name. The entry is slot 1 + flags 1 + definition id 2 + count 1 + instance id 5
+  (4,000,000,000) + payload length 1 + payload 58 = 69. Sixty-nine bytes per bank slot means a hundred
+  slot page of nothing but rares is about 6.9 KB, which is the number sections 5, 6, 7 and 16 are all
+  sized against.
 
 **The deepest item v1 can express, field by field.** An earlier draft of this document put it at 410
 bytes and called 512 "1.25 times the deepest item", using forty byte nested payloads, while 3.5 computed
@@ -1385,7 +1394,7 @@ binds the instance to that event. The `loot-created` payload therefore gains fou
 [InstanceId: varint uint64]
 [PayloadLength: varint int32]
 [Payload: PayloadLength bytes]        // the FULL payload, not the public view
-[ContentVersion: varint uint32]       // non-negative int stamp, plain unsigned under contracts 15        // the stamp, see below
+[ContentVersion: varint uint32]       // non-negative int stamp, plain unsigned under contracts 15
 ```
 
 **The FULL payload is what is durable** (contracts 6.6: "What is durable is the whole payload"). Only

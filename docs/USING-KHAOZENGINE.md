@@ -17210,10 +17210,13 @@ if (rolled.AffixCount < rolled.RequestedAffixCount)
 ```
 
 `rolled.ContentVersion` is what makes "what did this item look like when it dropped" answerable against the
-right catalog rather than against today's. The draw COUNT is a function of the affix count and of nothing
-else: a pick whose pool is empty still consumes both of its draws, and a collapsed bound goes through
-`IRandomSource.Skip` rather than `NextInt(0, 1)`, which consumes nothing at all. Without both, a seeded
-session diverges at the first item whose pool runs dry.
+right catalog rather than against today's. The logical draw schedule depends on the generation path,
+requested affix count and name positions. Each affix pick reserves kind, weighted-entry and roll-position
+slots even when its pool is empty. The bounded helper calls `NextInt(0, bound)` when `bound > 1`, otherwise
+calls `IRandomSource.Skip` and returns 0, covering real singleton choices as well as discards.
+`NextInt(0, 1)` would consume nothing. The seeded `Skip` consumes exactly one underlying `NextULong`, but a
+live `NextInt` can consume more values during rejection sampling. Reproducing a seeded roll requires the
+same source, seed, inputs and call order, rather than assuming a fixed underlying stride for every bound.
 
 **Crafting it.** A currency is authored data resolved into a `CraftPlan` at boot. The executor runs the
 target guard set once, then every step in authored order with its own guard set immediately before it.

@@ -179,6 +179,11 @@ NON-zero endpoint the store does not hold is a 400 under the unknown-version rea
 `catalog-pin`, `catalog-verify` and `catalog-export`, because an empty change set is the answer to "these two
 versions are the same" and answering it to a typo tells an operator their edit is already published.
 
+When the authoring store implements `IContentVersionRowSource`, a published-to-published `catalog-diff`
+reads each version once through `ReadVersionRowsAsync`, with no page reads. The same capability reads the
+target rows when rendering rollback blockers. Both paths keep only types in the admin registry and include
+retired rows. Stores implementing only `IContentAuthoringStore` retain the existing 500-row paging fallback.
+
 `catalog-pin` writes the operator's hold, and a version pinned in the SERVER'S OWN CONFIG wins over it,
 always. A pin against such a server is a 200 carrying `configPinnedVersion` and a warning naming it, because
 the write happened and takes effect the moment the config pin is removed, while a bare 200 for a call with no

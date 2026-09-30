@@ -71,7 +71,7 @@ public static partial class InstanceRemapPass
         readonly Span<byte> _sorted;
         readonly Span<int> _starts;
         readonly Span<int> _lengths;
-        readonly Span<long> _keys;
+        readonly Span<ulong> _keys;
 
         public RemapWalk(
             InstancePropertyRegistry properties,
@@ -81,7 +81,7 @@ public static partial class InstanceRemapPass
             Span<byte> sorted,
             Span<int> starts,
             Span<int> lengths,
-            Span<long> keys)
+            Span<ulong> keys)
         {
             _properties = properties;
             _resolver = resolver;
@@ -140,7 +140,7 @@ public static partial class InstanceRemapPass
         /// <summary>
         /// Rewrites ONE field's body against its registered shape: the header slots, the repeat count as the
         /// shape writes it, and one run per repeat, with the canonical order restored afterwards on a list
-        /// whose codec declares one.
+        /// whose shape declares one.
         /// </summary>
         int RewriteField(
             ReadOnlySpan<byte> body,
@@ -168,13 +168,7 @@ public static partial class InstanceRemapPass
 
             if (!ReadCount(shape.Count, body, ref offset, out uint count)) return Abandon;
 
-            // A list whose codec is the shipped affix list is held ASCENDING by its first entry reference
-            // (contracts 9.9), and a replacement can move an id past its neighbour. Reading that off the
-            // registered CODEC rather than off kinds 131 and 133 is what gives a game kind adopting the same
-            // codec the same re-sort. A game kind with its OWN sorted codec cannot ask for it, which is
-            // https://github.com/APKiwiOrg/KhaozEngine/issues/930. A nesting list is never re-sorted: its entries are authored order by
-            // construction, and buffering them would mean two levels sharing one arena.
-            bool sorted = ReferenceEquals(registration.Codec, InstancePropertyCodec.AffixList) && !shape.Nests;
+            bool sorted = shape.EntryOrder == InstanceEntryOrder.AscendingByEntryReference;
             ReadOnlySpan<InstanceSlotKind> entry = shape.Entry.Span;
 
             if (!sorted)
@@ -198,7 +192,14 @@ public static partial class InstanceRemapPass
                 return offset == body.Length ? written : Abandon;
             }
 
-            if (count > (uint)_starts.Length) return Abandon;
+            // Every scalar entry occupies at least one byte. Bound allocations by the actual field,
+            // including varint-counted lists wider than the stack scratch.
+            if (count > (uint)(body.Length - offset)) return Abandon;
+
+            Span<int> starts = count <= (uint)_starts.Length ? _starts : new int[(int)count];
+            Span<int> lengths = count <= (uint)_lengths.Length ? _lengths : new int[(int)count];
+            Span<ulong> keys = count <= (uint)_keys.Length ? _keys : new ulong[(int)count];
+            var sorter = new InstanceEntrySorter(_sorted, starts, lengths, keys);
 
             int fill = 0;
             for (uint repeat = 0; repeat < count; repeat++)
@@ -210,29 +211,18 @@ public static partial class InstanceRemapPass
                 run = WriteRun(entry, values, nested, buffers.Arena, _sorted[fill..]);
                 if (run < 0) return Abandon;
 
-                _starts[(int)repeat] = fill;
-                _lengths[(int)repeat] = run;
-                _keys[(int)repeat] = SortKey(registration, values);
+                sorter.Record((int)repeat, fill, run, SortKey(registration, values));
                 fill += run;
             }
 
             if (offset != body.Length) return Abandon;
 
-            Sort((int)count);
             int countWidth = WriteCount(shape.Count, count, destination[written..]);
             if (countWidth < 0) return Abandon;
 
             written += countWidth;
-            for (int repeat = 0; repeat < (int)count; repeat++)
-            {
-                ReadOnlySpan<byte> bytes = _sorted.Slice(_starts[repeat], _lengths[repeat]);
-                if (destination.Length - written < bytes.Length) return Abandon;
-
-                bytes.CopyTo(destination[written..]);
-                written += bytes.Length;
-            }
-
-            return written;
+            int entriesWritten = sorter.CopySorted((int)count, destination[written..]);
+            return entriesWritten < 0 ? Abandon : written + entriesWritten;
         }
 
         /// <summary>
@@ -377,44 +367,18 @@ public static partial class InstanceRemapPass
             }
         }
 
-        /// <summary>The value a re-sorted list orders by, which is its first ENTRY reference target.</summary>
-        static long SortKey(InstancePropertyRegistration registration, ReadOnlySpan<ulong> values)
+        /// <summary>The value a re-sorted list orders by, validated at registration as its sole entry reference.</summary>
+        static ulong SortKey(InstancePropertyRegistration registration, ReadOnlySpan<ulong> values)
         {
             foreach (InstanceReferenceTarget target in registration.References.Span)
             {
                 if (target.Site == InstanceReferenceSite.Entry && target.SlotIndex < values.Length)
                 {
-                    return (long)Math.Min(values[target.SlotIndex], long.MaxValue);
+                    return values[target.SlotIndex];
                 }
             }
 
             return 0;
-        }
-
-        /// <summary>
-        /// A STABLE insertion sort over the built entries, so two entries a rule left sharing a key keep the
-        /// order they arrived in rather than an order that depends on the sort.
-        /// </summary>
-        void Sort(int count)
-        {
-            for (int outer = 1; outer < count; outer++)
-            {
-                int start = _starts[outer];
-                int length = _lengths[outer];
-                long key = _keys[outer];
-                int inner = outer - 1;
-                while (inner >= 0 && _keys[inner] > key)
-                {
-                    _starts[inner + 1] = _starts[inner];
-                    _lengths[inner + 1] = _lengths[inner];
-                    _keys[inner + 1] = _keys[inner];
-                    inner--;
-                }
-
-                _starts[inner + 1] = start;
-                _lengths[inner + 1] = length;
-                _keys[inner + 1] = key;
-            }
         }
 
         static bool ReadCount(InstanceCountWidth width, ReadOnlySpan<byte> body, ref int offset, out uint count)

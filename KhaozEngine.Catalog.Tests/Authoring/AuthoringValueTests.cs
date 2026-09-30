@@ -38,11 +38,11 @@ public class AuthoringValueTests
     }
 
     [Fact]
-    public void SchemaModeIsTheJournalsTwoModes()
+    public void SchemaModeNumbersPreserveCompatibility()
     {
-        Assert.Equal(
-            ["AutoCreate", "ValidateOnly"],
-            Enum.GetNames<ContentAuthoringSchemaMode>());
+        Assert.Equal(0, (int)ContentAuthoringSchemaMode.AutoCreate);
+        Assert.Equal(1, (int)ContentAuthoringSchemaMode.ValidateOnly);
+        Assert.Equal(2, (int)ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync);
     }
 
     [Fact]

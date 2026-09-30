@@ -70,6 +70,62 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Detaching_both_collision_seams_discards_the_held_shortfall()
+        {
+            using var world = new CountingPhysicsWorld { WallDistance = 6.25f };
+            var probe = new FixedReachProbe { ReachAt = 4f };
+            FollowCamera3D cam = Camera(probe, 4f);
+            cam.Occlusion = world;
+            Assert.Equal(3.95f, Length(cam), 4);
+
+            probe.ReachAt = null;
+            world.WallDistance = null;
+            Assert.Equal(10f - 6.05f * MathF.Exp(-0.4f), Frame(cam, 0.1f), 4);
+
+            cam.Occlusion = null;
+            cam.BoomProbe = null;
+            Assert.Equal(10f, Length(cam), 4);
+
+            cam.BoomProbe = probe;
+            Assert.Equal(10f, Length(cam), 4);
+        }
+
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(-4f)]
+        [InlineData(float.NaN)]
+        [InlineData(float.PositiveInfinity)]
+        [InlineData(float.NegativeInfinity)]
+        public void A_nonpositive_or_nonfinite_rate_discards_the_held_shortfall(float rate)
+        {
+            var probe = new FixedReachProbe { ReachAt = 4f };
+            FollowCamera3D cam = Camera(probe, 4f);
+            Assert.Equal(3.95f, Length(cam), 4);
+            probe.ReachAt = null;
+
+            cam.BoomRecoveryRate = rate;
+            cam.AdvanceBoom(0f);
+            cam.BoomRecoveryRate = 4f;
+
+            Assert.Equal(10f, Length(cam), 4);
+        }
+
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(-0.1f)]
+        [InlineData(float.NaN)]
+        public void A_nonpositive_or_nan_step_holds_recovery_without_poisoning_it(float dt)
+        {
+            var probe = new FixedReachProbe { ReachAt = 4f };
+            FollowCamera3D cam = Camera(probe, 4f);
+            Assert.Equal(3.95f, Length(cam), 4);
+            probe.ReachAt = null;
+
+            Assert.Equal(3.95f, Frame(cam, dt), 4);
+            Assert.Equal(10f - 6.05f * MathF.Exp(-0.4f), Frame(cam, 0.1f), 4);
+        }
+
+        [Fact]
         public void Recovery_matches_across_frame_rates()
         {
             var probe60 = new FixedReachProbe { ReachAt = 4f };

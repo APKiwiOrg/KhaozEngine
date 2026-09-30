@@ -314,9 +314,9 @@ internal static class CatalogRequest
     }
 
     /// <summary>
-    /// Every row of every registered type live at one version, paged through the seam. It is what the diff
-    /// compares two versions over, and it walks the TYPES rather than the pack, so it answers on a store
-    /// whose pack files are not reachable.
+    /// Every row of every registered type live at one version, read in bulk when the store supports it and
+    /// otherwise paged through the authoring seam. It is what the diff compares two versions over, and it
+    /// walks the types rather than the pack, so it answers on a store whose pack files are not reachable.
     /// </summary>
     public static async Task<List<ContentRowRevision>> LiveRowsAsync(
         IContentAuthoringStore store,
@@ -328,6 +328,21 @@ internal static class CatalogRequest
         ArgumentNullException.ThrowIfNull(registry);
 
         var rows = new List<ContentRowRevision>();
+        if (store is IContentVersionRowSource source)
+        {
+            IReadOnlyList<ContentRowRevision> live = await source
+                .ReadVersionRowsAsync(versionNumber, cancellationToken).ConfigureAwait(false);
+            for (int i = 0; i < live.Count; i++)
+            {
+                if (registry.TryGet(live[i].Row.Type, out _))
+                {
+                    rows.Add(live[i]);
+                }
+            }
+
+            return rows;
+        }
+
         IReadOnlyList<ContentTypeRegistration> registrations = registry.ByTypeId;
         for (int i = 0; i < registrations.Count; i++)
         {

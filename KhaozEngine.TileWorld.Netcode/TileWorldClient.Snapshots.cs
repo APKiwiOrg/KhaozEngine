@@ -231,7 +231,7 @@ public sealed partial class TileWorldClient
     /// sample before, and draws that step from the tile it leaves over the ticks it actually has, landing on the
     /// committed tile at the committed tick. Every other step, and a remote first seen already stepping, draws
     /// exactly what <see cref="TilePresenter.Pose(in TileMoveState, float)"/> draws for its sample.</para>
-    /// <para>A REMOTE HOLDING A LOCK IS AIMED, on the same rule <see cref="LocalPose"/> follows: standing still with
+    /// <para>A REMOTE HOLDING A LOCK IS AIMED, on the same rule <see cref="LocalPose"/> follows: after landing with
     /// a <see cref="TileMoveState.CombatTarget"/>, or with an <see cref="TileMoveState.InteractTarget"/> it has
     /// finished walking to, it looks at that target's <see cref="ITileTargets.TryGetAimPoint"/> instead of along
     /// <see cref="TileMoveState.Facing"/>. The target is resolved on THIS timeline, off the same delayed capture the
@@ -246,7 +246,8 @@ public sealed partial class TileWorldClient
         pose = default;
         if (netId == LocalNetId || !remoteSamples.TryGetValue(netId, out RemoteSample sample)) return false;
         float extraTicks = ExtraTicks(sample);
-        pose = TryResolveAim(sample.State, delayed: true, out Vector2 aim)
+        float fraction = TilePresenter.StepFraction(sample.State, extraTicks, sample.ClickDoor);
+        pose = TryResolveAim(sample.State, delayed: true, fraction >= 1f, out Vector2 aim)
             ? Presenter.Pose(sample.State, aim, extraTicks, sample.ClickDoor)
             : Presenter.Pose(sample.State, extraTicks, sample.ClickDoor);
         return true;

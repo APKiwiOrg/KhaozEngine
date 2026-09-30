@@ -6638,7 +6638,9 @@ eye inside the occluder. The camera holds the metres the boom is short of its fu
 multiplies that shortfall by `exp(-BoomRecoveryRate * dt)`, frame-rate independent. `FollowCameraController.Update`
 calls it after `AdvanceTarget`, so a camera driven by the controller needs only the rate. A camera driven without
 the controller calls `camera.AdvanceBoom(dt)` once a frame. `Warp` and `SnapToTarget` clear the held shortfall, so
-a teleport never eases out from the old site. **The `Distance` setter shifts it by the change in distance**,
+a teleport never eases out from the old site. Reading `Eye` with both `Occlusion` and `BoomProbe` detached also
+clears the shortfall, so reattaching a clear seam keeps the full boom length.
+**The `Distance` setter shifts it by the change in distance**,
 floored at zero. A zoom in during recovery holds the eye still until the new distance fits, so the eye never moves
 against the gesture, and a zoom out continues the ease. With no shortfall held a zoom is instant, and writing the
 same `Distance` every frame leaves the ease alone. A zero or non-finite rate follows the probe both ways at once.
@@ -9678,6 +9680,25 @@ tree.Update(input);
 tree.Draw(batch, white, font);
 ```
 
+`tree.Update(pointer, in inputState)` accepts a pointer already updated from the snapshot and shares the
+existing manager overload's tap, wheel and reorder logic. The manager overload retains its pointer-input
+suppression.
+
+For richer rows, set `DrawRow`, an `Action<SpriteBatch, Rect, TreeNode, bool>`:
+
+```csharp
+tree.DrawRow = (rowBatch, contentBounds, node, selected) =>
+    PaintSkillContent(rowBatch, contentBounds, node, selected);
+tree.Update(pointer, in inputState);
+tree.Draw(batch, white, font);
+```
+
+The callback replaces the default label and receives the batch, visible content bounds, node and selected
+state. `contentBounds` starts after the depth indent, caret column and padding, clipped to `Bounds`.
+Fully hidden rows or content are skipped. A content scissor confines the painter and preserves any outer
+clip. The tree still paints carets, selection fills and the reorder indicator. Custom painters own
+localization, text scale and opacity. Leaving `DrawRow` null keeps the default `LocalizedText` label.
+
 A tap in a row's caret zone toggles a parent's `Expanded` flag, a tap elsewhere in the row selects it
 (`VisibleRows()` is the public depth-first walk both hit-testing and drawing share). A held press that
 clears `DragThreshold` (default 6 pixels) becomes a same-parent drag-and-drop reorder instead of a tap.
@@ -10543,6 +10564,10 @@ lifecycle for animation timing, while the live vertical velocity remains on the 
   so it stays steady under lag. Use it to drive a speed HUD, footstep audio, or a locomotion blend instead of
   differencing `LocalRenderState.Position`, which carries the decaying reconciliation render offset and wobbles
   during a steady run.
+  `ClientPrediction.RemainingPresentationMovement` reports the planar movement still to travel through
+  inter-tick interpolation, in the state's position units, excluding the reconciliation offset. It reaches
+  zero at the interpolation endpoint. An ordinary reconciliation translates both endpoints and preserves
+  this commanded segment. Reset, reseed and hard snap discard it.
 
 ```csharp
 var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, new WorldClientConfig { TickSeconds = 1f/30f });
@@ -12024,7 +12049,7 @@ TilePose me = client.LocalPose;                   // Position.Y is the ground un
 **A body holding a lock is drawn AIMING at it.** `TileMoveState.Facing` is the cardinal side the two footprints
 touch on. That is exactly right for reach and wrong as a drawn yaw the moment either body is bigger than one tile:
 a player beside a 2x2 cow points at the column of it they are touching, up to 18 degrees off its middle, and the cow
-points back the same way. So `client.LocalPose` and `client.TryGetRemotePose` aim a body that is NOT stepping and
+points back the same way. So `client.LocalPose` and `client.TryGetRemotePose` aim a body that has landed and
 holds a `CombatTarget`, or an `InteractTarget` whose route has run out, at that target's centre. Nothing to wire: it
 is the pose you already draw.
 
@@ -12034,23 +12059,46 @@ TilePose me = client.LocalPose;
 Draw(playerMesh, me.Position, me.Yaw);
 ```
 
-- **A one-tile body beside a one-tile target is bit-identical to before.** The target's aim point is its own tile,
+- **With default aim, a one-tile body beside a one-tile target is bit-identical to before.** The target's aim point is its own tile,
   so the yaw IS `TilePresenter.Yaw(facing)`, exactly, with no tolerance needed. A footprint bigger than one tile
   moves it, and so does a locked body that is not adjacent to its target for a tick (a refused step), which is aimed
   rather than drawn along its facing.
-- **A mid-step body keeps its step facing**, and so does a body with no lock, and a body whose target stopped
-  resolving. The aim is for a body at rest, which is what a fight is between swings.
-- **Nominate an aim tile** by overriding `ITileTargets.TryGetAimPoint(target, out Vector2 tilePlanar, out int
-  plane)` on your own resolver. It is a default interface method answering the footprint centre, so an existing
-  resolver needs no change, and the override is what a long serpent, a building door or a mounted rider wants.
+- **A mid-step body faces its physical glide direction**, from `StepFrom` to `Tile`, until the displayed step
+  fraction reaches 1. The simulator can already have turned `Facing` toward an interaction target at the start
+  of the final step. Both local and remote poses keep the glide direction until landing, then use the target
+  aim. Local prediction also waits for the final inter-tick movement to finish after the simulation marks
+  the step complete. A remote carried to fraction 1 can aim before its next snapshot. After landing, a body
+  with no lock or an unresolved target keeps the tile facing. A reconciliation offset does not delay aim.
+- **Nominate an authored object's aim tile** by overriding `ITileTargets.TryGetAimPoint(target, out Vector2
+  tilePlanar, out int plane)` on the resolver passed to the client constructor. The default answers the footprint
+  centre, so an existing resolver needs no change.
+- **Nominate an entity's aim tile** with `client.EntityAimPointResolver`, a nullable
+  `TileEntityAimPointResolver(long target, TileRect footprint, int plane, out Vector2 tilePlanar)` callback
+  returning bool. The client supplies the entity net id and its already-selected footprint and plane. A true
+  return nominates a finite point in the same tile units as `ITileTargets.TryGetAimPoint`. Null, false or a
+  nonfinite point keeps the footprint centre. Unknown or removed targets retain facing without invoking it.
 - **A remote resolves its target on the DELAYED timeline** its body is drawn from, and the local body on the newest
   capture, which is the read the reach rules already make. That is what stops an attacker leading a target that has
-  already moved on the server.
+  already moved on the server. A remote targeting `LocalNetId` uses newest local prediction because the local
+  player has no delayed capture. Entity nomination receives these same selected footprints, so a game needs no
+  delayed resolver of its own.
 - **Presentation only.** `Facing`, the reach rules, the server's `Facing` write and the wire are all untouched, so
   a turn-smoothing rule of your own keeps working: it only smooths toward whatever yaw the pose reports.
 - **Placing a body by hand** uses the same formula through `presenter.Pose(state, aimTilePlanar, extraTicks)`, and
   `TilePresenter.Yaw(Vector2 from, Vector2 to)` is the yaw on its own, in the same hand and the same north as
   `TilePresenter.Yaw(TileDirection)`.
+
+```csharp
+client.EntityAimPointResolver = TryGetEntityAimPoint;
+
+bool TryGetEntityAimPoint(long target, TileRect footprint, int plane, out Vector2 tilePlanar)
+{
+    tilePlanar = default;
+    if (!serpentNetIds.Contains(target)) return false;
+    tilePlanar = new Vector2(footprint.X, footprint.Z + footprint.Height - 1);
+    return true;
+}
+```
 
 **Run rides the tick stream, not the click.** `RunMode` is carried on EVERY command, `TileCommand.Continue`
 included, and the simulator applies it at the START of the next step. Holding run halfway through a walking step
@@ -16476,7 +16524,11 @@ Authoring is `KhaozEngine.Catalog.Authoring`, in the `Server` umbrella, and it i
 seam, `IContentAuthoringStore`, carries the twenty-nine members every backend implements: schema
 initialization, the version list and the operator pin, the one open draft, publish and rollback, row and audit
 reads, id allocation, families, and bulk import and export. There are three implementations, and a caller
-written against the seam runs on all three.
+written against the seam runs on all three. All three also implement optional `IContentVersionRowSource`.
+`ReadVersionRowsAsync` returns rows for the store's registered types live at one version, including retired
+rows and historical revision metadata, ordered by type id then definition id. Stored types absent from the
+provider registry are ignored before decoding, and an admin surface can narrow the result further. Version 0 reads the active published version without the
+open draft or operator pin. Empty published catalogs return an empty list.
 
 ```csharp
 // tests and tools: no database at all, same contract
@@ -16494,7 +16546,19 @@ await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly, ct);
 `AutoCreate` creates the schema when the database carries no catalog table and validates it after.
 `ValidateOnly` refuses an empty or mismatched database instead, which is what a production host sets so a typo
 in a connection string cannot silently create a second empty catalog and serve it. A mismatch is a
-`ContentAuthoringException` naming the object and the required migration.
+`ContentAuthoringException` naming the object and the required migration. Both existing modes synchronize
+registered type settings after schema validation.
+
+For a hosted upgrade preview, open with `ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync`. It validates
+an existing current schema and checks stored type id/key compatibility through reads. Changed registration
+settings and registry-only additions do not rewrite stored types or their timestamps. `ExportBundleAsync`
+reports stored type settings, so the preview sees the catalog the running server holds. This mode governs
+open-time behavior. Ordinary mutation APIs remain available, and `ReadPublishBaselineAsync` still clears stale
+publish freezes.
+
+```csharp
+await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync, ct);
+```
 
 For catalog preflight and deploy compatibility checks, read `InMemoryContentAuthoringStore.SchemaVersion`
 as the schema version this engine build targets, currently 3 for both providers. The opened store's
@@ -16905,6 +16969,10 @@ than an optimistic one. A rejected edit answers one object error carrying a stab
 actual base version, and a draft a publish holds frozen answers 409 naming the remedy. A mutating action
 reached by `GET` is refused 405 with `Allow: POST`. What the caller still owns is the console UI: the engine
 ships the actions and the payload shapes, not a screen.
+
+`catalog-diff` and rollback blocker reads use the optional whole-version capability when available. A
+published-to-published diff makes one bulk call per version, then filters to the admin surface's registered
+types. Stores implementing only `IContentAuthoringStore` retain the existing paged path.
 
 That frozen-draft remedy preserves a live publisher's marker. Wait for the publisher and read the draft
 again first. If the publisher process died before commit, confirm no publisher is live, then call
@@ -17784,6 +17852,12 @@ re-encodes rather than patching bytes, because a replacement id can change a var
 writes the page: the rewrite is lazy and joins whatever commit comes next, which is safe because the rule set
 is required to be idempotent and `VettedRemapRules.Vet` refuses one that is not.
 
+`InstanceFieldShape.EntryOrder` defaults to `InstanceEntryOrder.Authored`. A custom sorted list declares
+`AscendingByEntryReference`, with a byte or varint repeat count, exactly one scalar entry reference and no
+nested payload. Remapping restores that reference order, including lists wider than 256 entries, while its
+codec still validates ascending order and duplicate policy. Legacy registrations using the shipped
+`AffixList` codec normalize to ascending order. Authored lists keep their sequence.
+
 ### A tick of operations as one commit (19.0.0)
 
 `ContainerCommitBuilder` applies N logical operations to an in-memory working copy and emits ONE
@@ -17844,11 +17918,29 @@ check inside its three writes (`SetSlotAt`, `TakeSlotAt`, `MarkClean`). No page 
 read stays shared and a batch copies only on the first write that joins. `MarkCommitted` calls `MarkClean`
 only on a container holding a dirty page, so a container the batch left clean is never copied.
 
-Whose identity it is decides what the normalized intent holds. A SERVER minted batch hashes the canonical
-ordered operation list. A CLIENT headed batch hashes the client operation's own encoding ALONE, under the
-client's own id, and the server work riding behind it contributes no intent bytes. That is what makes a
+Whose identity it is decides what the normalized intent holds. A SERVER minted batch hashes the ordered
+`ContainerOperationIntent` list. A CLIENT headed batch hashes the client operation's own intent ALONE, under
+the client's own id, and the server work riding behind it contributes no intent bytes. That is what makes a
 resubmit after a reconnect, which omits server work the client never saw, hash identically and resolve
 replayed rather than conflicting, and a conflict there would tell a player a committed withdraw had failed.
+
+Craft intent uses `[None = 0][Version = 1][CraftPlanId][Canonical operation]`, with minimal varints.
+`CraftPlanId` is the authored `CraftPlan.CurrencyId`, distinct from the consumed currency definition.
+Changing the paid or free plan under the same operation id conflicts even when its currency and target
+match. Before and after payloads remain outcomes and never enter identity. Other operation kinds keep
+their canonical bytes, and event parameters and schema 2 envelopes keep their existing encoding.
+`ContainerOperationIntent.ForCraft(request, plan.CurrencyId)` builds the intent before resolving an outcome.
+
+A known pre-upgrade client craft uses `ContainerCraftReplay.ResolveLegacyAsync` to check its original
+fingerprint and the retained head craft event. Matching authored plan evidence returns the original
+receipt, a changed plan conflicts, and missing or compacted evidence returns `EvidenceUnavailable` without
+a receipt. Stores with tightened journal limits pass those limits to the overload
+`ResolveLegacyAsync(store, streamKey, requestedIdentity, limits)`. Its read budget is the smaller of
+`EventPayloadBytes` and `AggregateEventReadBytes`. A permitted budget too small for the evidence also returns
+`EvidenceUnavailable`. The existing cancellation-token overload uses `JournalLimits.Maximum`.
+This is an explicit read-only compatibility path. A fingerprint mismatch alone never authorizes
+fallback. The helper accepts a single client craft, while legacy server batches need evidence for their
+whole ordered request. See the package README for the compatibility contract.
 
 **A commit that carries more than the batch is composed from its parts.** A loot claim writes the loot
 source's stream beside the bag, and a click can carry coins or quest state, so `Close`, which answers a commit
@@ -20471,8 +20563,16 @@ if (executor.TryGetAdmittedProjection(streamKey, "bag", out JournalAdmittedSecti
 }
 
 // When the player logs out.
-executor.ForgetStream(streamKey);
+executor.RequestForgetStream(streamKey);
 ```
+
+`RequestForgetStream` returns `JournalStreamForgetStatus.Unknown` when no view is held, `Forgotten` when an
+empty stream drops immediately, or `Deferred` while admitted work remains. Deferred forgetting retains
+projection bytes and queued order through the final required acknowledgement, including superseded
+completions. The existing bool `ForgetStream` requests the same behavior and returns true only for immediate
+removal, or false for unknown or deferred. Busy streams defer instead of throwing. A reconnecting owner calls
+`SeedCommitted` to clear its stream's pending request. Forgetting preserves quarantine and its full-group
+recovery requirement.
 
 `TryGetAdmittedProjection` returns the newest admitted uncommitted write over a section, or the committed baseline
 when nothing is in flight, and `IsCommitted` says which. `TryGetAdmittedStream` returns the whole stream: committed

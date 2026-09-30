@@ -90,7 +90,7 @@ public enum InstanceReferenceSite : byte
 
 /// <summary>
 /// WHERE a property kind's values sit in its field bytes: the slots before the repeat count, how that count
-/// is written, and one repeat's slots.
+/// is written, one repeat's slots and their declared order.
 /// </summary>
 /// <param name="Header">The slots before the repeat count.</param>
 /// <param name="Count">How the repeat count is written, <see cref="InstanceCountWidth.None"/> for a field
@@ -98,7 +98,7 @@ public enum InstanceReferenceSite : byte
 /// <param name="Entry">One repeat's slots, empty when <paramref name="Count"/> is
 /// <see cref="InstanceCountWidth.None"/>.</param>
 /// <remarks>
-/// A shape carries no semantics at all, which is the point: a walker holding a shape and its targets finds,
+/// A shape carries structural facts: a walker holding a shape and its targets finds,
 /// reads and rewrites every content id in a payload without knowing what any kind MEANS. That is what gives
 /// a game kind at or above 1024 remap, drift detection and quarantine for free, and what stops a kind being
 /// remapped but not validated.
@@ -108,6 +108,27 @@ public readonly record struct InstanceFieldShape(
     InstanceCountWidth Count,
     ReadOnlyMemory<InstanceSlotKind> Entry)
 {
+    /// <summary>
+    /// Declares the entry order without changing the field's bytes. The original constructor and
+    /// three-value deconstruction remain available to compiled callers.
+    /// </summary>
+    /// <param name="Header">The slots before the repeat count.</param>
+    /// <param name="Count">How the repeat count is written.</param>
+    /// <param name="Entry">One repeat's slots.</param>
+    /// <param name="EntryOrder">The order remap restores after rewriting entry references.</param>
+    public InstanceFieldShape(
+        ReadOnlyMemory<InstanceSlotKind> Header,
+        InstanceCountWidth Count,
+        ReadOnlyMemory<InstanceSlotKind> Entry,
+        InstanceEntryOrder EntryOrder = InstanceEntryOrder.Authored)
+        : this(Header, Count, Entry)
+    {
+        this.EntryOrder = EntryOrder;
+    }
+
+    /// <summary>The order remap restores after rewriting entry references. Authored order is the default.</summary>
+    public InstanceEntryOrder EntryOrder { get; init; }
+
     /// <summary>
     /// Whether the shape carries a nested payload anywhere, in its header or in one repeat. It lives HERE
     /// rather than beside either walker because both need it and a second copy is how the two would start

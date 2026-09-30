@@ -146,6 +146,12 @@ public sealed class ClientPrediction<TState, TCommand>
         }
     }
 
+    /// <summary>The planar movement remaining in the current inter-tick interpolation, in state position units.
+    /// Excludes reconciliation offsets. A non-hard-snap reconciliation translates both endpoints and preserves
+    /// this movement. Zero at the endpoint and after <see cref="Reset"/>, <see cref="Reseed"/> or a hard snap.</summary>
+    public Vector2 RemainingPresentationMovement =>
+        (predictedState.PredictionTarget - previousPredictedPosition) * (1f - InterTickFraction);
+
     private float InterTickFraction => settings.TickSeconds > 0f
         ? MathF.Min(1f, secondsSinceLastPredict / settings.TickSeconds)
         : 1f;

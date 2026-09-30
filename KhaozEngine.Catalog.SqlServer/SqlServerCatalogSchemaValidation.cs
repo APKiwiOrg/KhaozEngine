@@ -9,10 +9,10 @@ using Microsoft.Data.SqlClient;
 namespace KhaozEngine.Catalog.SqlServer;
 
 /// <summary>
-/// The two schema modes as behaviour: <see cref="ContentAuthoringSchemaMode.AutoCreate"/> creates the schema
+/// Schema initialization as behaviour: <see cref="ContentAuthoringSchemaMode.AutoCreate"/> creates the schema
 /// when the database carries no catalog table and then validates it, and
 /// <see cref="ContentAuthoringSchemaMode.ValidateOnly"/> refuses an empty or mismatched database rather than
-/// creating anything.
+/// creating anything. ValidateOnlyWithoutTypeSync uses the same schema validation.
 /// <para>
 /// <b>ValidateOnly is what a production host sets, and its job is the typo.</b> A connection string pointing
 /// at a database nothing has created would otherwise create a second, empty catalog and serve it, which is a
@@ -32,8 +32,8 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// migration, since an operator can act on those two facts and cannot act on "schema is wrong".
 /// </para>
 /// <para>
-/// <b>A version 1 or version 2 database is MIGRATED under AutoCreate and refused under ValidateOnly</b>, which
-/// is the journal's split per provider and per mode. Version 1 chains through version 2 to version 3 in one
+/// <b>A version 1 or version 2 database is MIGRATED under AutoCreate and refused under either validation mode</b>.
+/// This follows the journal's split per provider and per mode. Version 1 chains through version 2 to version 3 in one
 /// open. Each migration runs behind the same application lock the create takes and re-reads the version inside
 /// it, so two hosts starting at once are one migration and one host that finds the work already done.
 /// </para>
@@ -68,7 +68,7 @@ internal static class SqlServerCatalogSchemaValidation
 
         if (await ReadAsync(() => CountTablesAsync(connection, cancellationToken)).ConfigureAwait(false) == 0)
         {
-            if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+            if (mode != ContentAuthoringSchemaMode.AutoCreate)
             {
                 throw Mismatch("missing");
             }
@@ -84,7 +84,7 @@ internal static class SqlServerCatalogSchemaValidation
             // and something else besides is refused rather than half migrated. Under ValidateOnly the
             // refusal names the migration, which is the one thing an operator can act on.
             await ValidateObjectsAsync(connection, 1, cancellationToken).ConfigureAwait(false);
-            if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+            if (mode != ContentAuthoringSchemaMode.AutoCreate)
             {
                 throw Mismatch("at unsupported version '1'");
             }
@@ -102,7 +102,7 @@ internal static class SqlServerCatalogSchemaValidation
             // version 2 check accepts a version 3 column in its exact shape, which is what a half-finished
             // migration or a host that migrated in between leaves.
             await ValidateObjectsAsync(connection, 2, cancellationToken).ConfigureAwait(false);
-            if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+            if (mode != ContentAuthoringSchemaMode.AutoCreate)
             {
                 throw Mismatch("at unsupported version '2'");
             }

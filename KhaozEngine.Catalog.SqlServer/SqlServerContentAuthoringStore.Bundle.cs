@@ -162,19 +162,8 @@ public sealed partial class SqlServerContentAuthoringStore
                     throw UnknownVersion(versionNumber);
                 }
 
-                var types = new List<ContentBundleType>();
-                IReadOnlyList<ContentTypeRegistration> registrations = _registry.ByTypeId;
-                for (int i = 0; i < registrations.Count; i++)
-                {
-                    ContentTypeRegistration registration = registrations[i];
-                    types.Add(new ContentBundleType(
-                        registration.Type,
-                        registration.TypeKey,
-                        registration.DefaultVisibility,
-                        registration.ChunkSlots,
-                        registration.MaxDefinitionId,
-                        registration.Schema));
-                }
+                IReadOnlyList<ContentBundleType> types = await ReadBundleTypesAsync(scope, token)
+                    .ConfigureAwait(false);
 
                 IReadOnlyList<ContentFamily> families = await ReadFamiliesAsync(scope, default, null, token)
                     .ConfigureAwait(false);

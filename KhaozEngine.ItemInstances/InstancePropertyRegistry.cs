@@ -95,7 +95,8 @@ public sealed class InstancePropertyRegistry
     /// <param name="codec">The kind's own rules over its field body.</param>
     /// <param name="visibility">How far the field travels.</param>
     /// <param name="identificationMaskBit">The fixed revealed-mask bit, or <c>-1</c> when not gated.</param>
-    /// <param name="shape">Where the kind's values sit in its field bytes.</param>
+    /// <param name="shape">The field layout and entry order. Legacy shipped affix codec registrations
+    /// normalize authored order to ascending entry reference order.</param>
     /// <param name="references">Which slots hold content ids, and the type each belongs to.</param>
     /// <exception cref="InvalidOperationException">The registry is already frozen.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The kind is 0, outside the claimed band, or the mask
@@ -122,6 +123,7 @@ public sealed class InstancePropertyRegistry
         CheckBand(band, kind);
         CheckMaskBit(kind, identificationMaskBit);
         CheckShape(kind, shape, references);
+        InstanceFieldShape normalizedShape = InstanceEntryOrdering.Normalize(kind, codec, shape, references);
 
         if (_byKind.TryGetValue(kind, out InstancePropertyRegistration? held))
         {
@@ -145,7 +147,7 @@ public sealed class InstancePropertyRegistry
             codec,
             visibility,
             identificationMaskBit,
-            shape,
+            normalizedShape,
             references.ToArray());
 
         _byKind.Add(kind, registration);
@@ -440,6 +442,6 @@ public sealed class InstancePropertyRegistry
             InstancePropertyCodec.AffixList,
             PropertyVisibility.Everyone,
             identificationMaskBit,
-            new InstanceFieldShape(default, InstanceCountWidth.Byte, AffixEntry),
+            new InstanceFieldShape(default, InstanceCountWidth.Byte, AffixEntry, InstanceEntryOrder.AscendingByEntryReference),
             new[] { new InstanceReferenceTarget(ModTypeKey, InstanceReferenceSite.Entry, 0) });
 }

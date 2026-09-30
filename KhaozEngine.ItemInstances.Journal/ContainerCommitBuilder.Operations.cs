@@ -56,12 +56,12 @@ public sealed partial class ContainerCommitBuilder
     /// <summary>The normalized intent's size once this operation joins, which is spec 6.5's two shapes.</summary>
     int ProjectedIntentBytes(in ContainerOperation operation)
     {
-        if (Window.HoldsClientOperation) return _operations[0].CanonicalByteCount;
+        if (Window.HoldsClientOperation) return ContainerOperationIntent.ByteCount(_operations[0]);
         if (operation.Origin == ContainerOperationOrigin.Client && _operations.Count == 0)
-            return operation.CanonicalByteCount;
+            return ContainerOperationIntent.ByteCount(operation);
 
-        int size = ContentVarint.Size((uint)(_operations.Count + 1)) + operation.CanonicalByteCount;
-        foreach (ContainerOperation joined in _operations) size += joined.CanonicalByteCount;
+        int size = ContentVarint.Size((uint)(_operations.Count + 1)) + ContainerOperationIntent.ByteCount(operation);
+        foreach (ContainerOperation joined in _operations) size += ContainerOperationIntent.ByteCount(joined);
         return size;
     }
 

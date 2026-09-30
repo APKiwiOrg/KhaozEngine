@@ -296,21 +296,16 @@ public class TileWorldViewSurfacePickTests
         Assert.Equal("tree", hits[0].ArchetypeId);
     }
 
-    // The crossing that asked for walk surfaces: a 3x3 bridge over the river, anchored on its bed carved 80 cm down,
-    // with a deck 0.825 m above the anchor reaching one tile past the footprint onto each bank. And a 1x1 lily pad
-    // whose top sits exactly where the river's water plane does, for the tie.
-    const int BridgeZ = 40;
-    const float DeckTop = -0.8f + 0.825f;
+    const int BridgeZ = TileBridgeTestData.BridgeZ;
+    const float DeckTop = 0.025f;
     const float Tolerance = 1e-4f;
 
     static TileWorldCatalogs SurfaceCatalogs() => TileWorldCatalogs.Merge(
-        TileRenderTestData.Catalogs,
+        TileBridgeTestData.Catalogs,
         TileWorldCatalogs.LoadJson(
             """
             {
               "archetypes": [
-                { "id": "bridge", "name": "Bridge", "meshRef": "test/bridge.glb", "sizeX": 3, "sizeZ": 3,
-                  "walkSurfaces": [ { "height": 0.825, "minX": -2.5, "maxX": 2.5, "minZ": -1.5, "maxZ": 1.5 } ] },
                 { "id": "lily", "name": "Lily", "meshRef": "test/lily.glb",
                   "walkSurfaces": [ { "height": -0.02 } ] }
               ]
@@ -320,11 +315,7 @@ public class TileWorldViewSurfacePickTests
 
     static TileWorldView BridgeView(out TileWorldDocument document)
     {
-        document = TileRenderTestData.RiverWorld();
-        for (int z = BridgeZ; z <= BridgeZ + 3; z++)
-            for (int x = TileRenderTestData.RiverMinX + 1; x <= TileRenderTestData.RiverMaxX; x++)
-                document.SetCornerHeightCm(x, z, 0, -80);
-        document.AddObject("bridge", TileRenderTestData.RiverMinX, BridgeZ, 0, 0);
+        document = TileBridgeTestData.World();
         return View(document, SurfaceCatalogs());
     }
 

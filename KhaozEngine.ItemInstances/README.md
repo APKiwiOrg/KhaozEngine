@@ -107,6 +107,19 @@ them is data.
   so a walker holding both finds, reads and rewrites every content id in a payload without knowing what any
   kind means. A game kind at or above 1024 that declares its targets gets remap, drift detection and
   quarantine for free. A kind that declares no references is never visited.
+- **`InstanceFieldShape.EntryOrder` defaults to `InstanceEntryOrder.Authored`.** A sorted list declares
+  `AscendingByEntryReference` as the optional fourth constructor argument. Remap orders the complete
+  rewritten entries by the unsigned value in the sole entry reference target's slot, which may be any
+  scalar slot, and preserves authored order for equal keys. Registration refuses an unknown order,
+  unsupported count width, nesting in the header or entries, and a missing or ambiguous entry reference.
+  The codec still validates its own ordering and duplicate rules. The original three-argument constructor
+  and three-value deconstruction remain available.
+
+For example, a game codec that requires ascending recipe ids declares its remap order with
+`new InstanceFieldShape(default, InstanceCountWidth.Varint, entrySlots, InstanceEntryOrder.AscendingByEntryReference)`
+and one `InstanceReferenceTarget("recipe", InstanceReferenceSite.Entry, referenceSlot)`.
+Kinds 131 and 133 declare this order explicitly. Legacy game registrations using the shipped `AffixList`
+codec are normalized to the same order at registration, including callers using the original constructor.
 
 The v1 gated bits are fixed: kind 129 `UniqueTemplate` is bit 0, 131 `Affixes` bit 1, 133 `Enchantments`
 bit 2 and 134 `RareName` bit 3. Bits 4 to 31 are unassigned.
@@ -116,7 +129,8 @@ one total `TryValidate` that is handed a body the shape has already vetted. `Ins
 `ShapeOnly`, `Identification`, `AffixList` and `SocketList`, while `CreateV1` also registers the scalar
 value codecs for kinds 1 to 6. `InstanceFieldShape`
 describes the bytes as a header run and a repeating entry run over `InstanceSlotKind` slots, with an
-`InstanceCountWidth` for the entry count. `InstanceReferenceTarget` names a content type key, the
+`InstanceCountWidth` for the entry count and `InstanceEntryOrder` for the repeating entries.
+`InstanceReferenceTarget` names a content type key, the
 `InstanceReferenceSite` it sits at (header or entry) and its slot index. `InstancePropertyRegistration` is
 the whole of one kind's registration, which is what `TryGet(kind, out registration)` and
 `TryGetByIdentificationMaskBit` hand back, and `ByKind` is every one of them ascending.
@@ -594,8 +608,9 @@ payload that run carries, so a kind cannot be remapped-but-not-validated or vali
 **It RE-ENCODES rather than patching bytes in place**, because a replacement id can change a varint's WIDTH.
 A hit recomputes, innermost first, the nested payload's bytes, then the socket entry's nested length, then the
 field's length, then the entry's payload length in the page. It also restores canonical order on a list whose
-codec declares one (the shipped affix list), because a replacement can move a mod id past its neighbour and a
-list that lost its order no longer stacks with its own twins.
+normalized shape declares `AscendingByEntryReference`, because a replacement can move an id past its
+neighbour and a list that lost its order no longer stacks with its own twins. Authored lists keep their
+sequence. Varint-counted sorted lists may exceed 256 entries when their encoded bytes fit the payload cap.
 
 | Rule kind | What the pass does to an entry carrying `FromId` |
 |---|---|
@@ -619,8 +634,7 @@ rewrite whose result the decoder would refuse, which is what a rule naming an id
 produces. **An abandoned entry is COUNTED**, in `EntriesAbandoned` and in the caller's slot span, so a rule
 that could not be APPLIED is tellable from a rule nobody wrote. Bringing a quarantined entry back is the load
 path's unwrap step, in `KhaozEngine.ItemInstances.Journal`, because the page stamp governs a page's live
-entries and a wrapper carries its own. A game kind with its own sorted list still cannot ask for the re-sort
-([#930](https://github.com/APKiwiOrg/KhaozEngine/issues/930)).
+entries and a wrapper carries its own.
 
 ## The page delta and the resync request
 

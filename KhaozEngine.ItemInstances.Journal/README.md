@@ -326,10 +326,40 @@ because a game refuses an illegal action before the journal ever sees it.
 
 ### Whose identity, and what the intent holds
 
-A SERVER minted batch's intent is the canonical ORDERED operation list,
-`[Count: varint][ per operation: [Kind: varint][Parameters] ]`. A CLIENT headed batch's intent is the client
-operation's own canonical encoding ALONE, under the client's own id, and the server work riding behind it
+A SERVER minted batch's intent is the ORDERED operation intent list,
+`[Count: varint][ per operation: ContainerOperationIntent ]`. A CLIENT headed batch's intent is the client
+operation's own intent ALONE, under the client's own id, and the server work riding behind it
 contributes no intent bytes at all.
+
+`ContainerOperationIntent` retains canonical operation bytes for every kind except Craft. A craft uses
+`[None: varint = 0][Version: varint = 1][CraftPlanId: varint][Canonical operation]`. The plan id is the
+authored `CraftPlan.CurrencyId`, distinct from the consumed item definition. `BuildIntent` takes it from
+the required craft audit body. Reusing an operation id for another paid or free plan conflicts, even when
+the target and consumed currency match. Retrying the same plan replays regardless of newly resolved
+before or after payloads. No outcome bytes enter the normalized intent, and admission reserves the plan
+identity bytes before changing the working copy.
+
+Use `ContainerOperationIntent.ForCraft(request, plan.CurrencyId)` to encode canonical request fields
+before resolving a craft outcome. The request may omit its payload and audit body. The existing
+`ContainerOperation.Craft` factory signature, canonical operation readers and bytes, and schema 2 event
+envelopes remain unchanged.
+
+**Pre-upgrade client receipts require explicit plan evidence.** Their canonical intent omitted the plan id,
+so resolving a new versioned identity against one returns `OperationConflict`. For a known pre-upgrade
+client craft, call `ContainerCraftReplay.ResolveLegacyAsync(store, streamKey, requestedIdentity, limits)`
+with the store's configured `JournalLimits`. The original overload uses `JournalLimits.Maximum`.
+The single-event read is bounded by the smaller of `EventPayloadBytes` and `AggregateEventReadBytes`.
+It checks the original legacy fingerprint and retained head craft event in the receipt's stream range.
+Schema 1 audit bodies and schema 2 envelopes can prove the target and authored plan. A matching plan returns the
+original replay receipt. A different plan returns `OperationConflict`. Missing, compacted or unreadable
+event evidence, including a permitted read budget too small to fit it, returns `EvidenceUnavailable`
+with no receipt. The helper only reads, never submits a mutation or rewrites a historical fingerprint.
+Store failures and cancellation propagate.
+
+Do not infer permission to downgrade from a fingerprint mismatch. The helper accepts only a versioned
+single client Craft identity. Existing server batch receipts remain resolvable with their original ordered
+canonical intent, while new plan-aware batch identities conflict with old receipts. Safely retrying those
+legacy batches requires host evidence for the entire historical request and is outside this helper.
 
 **That second half is load bearing.** The client resubmits after a reconnect with the intent it built from its
 own click, and it never saw the quest advance or the sweep the click caused. If the batch's intent were the
@@ -387,8 +417,8 @@ one resubmit resolved as a conflict rather than as a replay.
 **The vocabulary names a container by NAME, and that is the one encoding.** A container's identity on this
 path is what `ContainerSectionNames.Format` files its pages under, so the name is already durable data every
 consumer owns, and a numbering invented for the intent would be a SECOND durable identity for the same thing.
-So `ContainerOperation.WriteCanonical` writes `[Length: varint][UTF8]` names, a craft hashes under that, and
-there is no id-based intent anywhere in the tree to disagree with it
+So `ContainerOperation.WriteCanonical` writes `[Length: varint][UTF8]` names, and the craft intent retains
+those bytes behind its plan identity. There is no container-id intent anywhere in the tree to disagree with it
 ([#942](https://github.com/APKiwiOrg/KhaozEngine/issues/942), closed with that answer).
 
 ## Event names

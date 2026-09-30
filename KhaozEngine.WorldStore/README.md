@@ -266,8 +266,9 @@ ending a retry budget cannot establish whether the commit happened.
 | Member | Contract |
 |---|---|
 | `Submit(commit)` | Freezes and validates the complete commit, then queues it behind whatever its streams already carry. Returns `Accepted`, `StreamBusy`, `Backpressure`, `VersionConflict`, or `Stopping`. It never waits on database I/O. |
-| `SeedCommitted(streamKey, committedVersion, sections)` | Declares what the store durably holds for one stream, which is the `JournalProjectionRead` the consumer already performs when it loads that stream. Seeding again replaces the baseline and rebuilds the admitted layer over it. |
-| `ForgetStream(streamKey)` | Drops a seeded baseline. False when the stream is unknown, and it refuses while the stream still carries admitted operations. |
+| `SeedCommitted(streamKey, committedVersion, sections)` | Declares what the store durably holds for one stream, which is the `JournalProjectionRead` the consumer already performs when it loads that stream. Seeding again replaces the baseline, rebuilds the admitted layer and clears a pending forget request. |
+| `RequestForgetStream(streamKey)` | Returns `JournalStreamForgetStatus.Unknown` when no view is held, `Forgotten` when an empty stream drops immediately, or `Deferred` until every admitted operation is acknowledged. |
+| `ForgetStream(streamKey)` | Requests the same removal through the existing bool API. True only when forgotten immediately, or false when unknown or deferred. Busy streams defer instead of throwing. |
 | `TryGetAdmittedProjection(streamKey, sectionName, out section)` | Reads one section as the executor sees it now, the newest admitted uncommitted write or the committed baseline. Synchronous and safe from the simulation thread. |
 | `TryGetAdmittedStream(streamKey, out stream)` | Reads the whole view of one stream: committed version, admitted head version, in-flight operation count, and every section. |
 | `TryDequeueCompletion(out completion)` | Lets the simulation thread drain terminal results. `JournalCompletion` carries the frozen commit and either a result, a fatal failure, or neither when it was superseded. |
@@ -295,6 +296,12 @@ Over that queue the executor keeps a live view of the projection sections: the c
 executor never reads the store to build it and advances the baseline as commits are acknowledged `Handled`. A
 stream nobody seeded is still tracked while it has admitted operations, adopting the first operation's expected
 version as its baseline and forgotten once its queue empties.
+
+An owner leaving calls `RequestForgetStream` or `ForgetStream` even while work is queued, running or terminal but
+unacknowledged. A deferred request retains the view and queue until the final acknowledgement, including every
+superseded completion. It cancels no work and preserves admission order across all touched streams. A reconnecting
+owner calls `SeedCommitted`, which clears that stream's pending request so the new owner's view survives the older
+work draining. Forgetting does not release quarantine or replace the required recovery of its whole group.
 
 A terminal failure (fatal, quarantined, `VersionConflict`, or `OperationConflict`) corrects the view. Every stream
 the operation touched drops back to its committed baseline plus the operations still queued ahead of it, every

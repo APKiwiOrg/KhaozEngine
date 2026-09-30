@@ -34,25 +34,18 @@ public sealed partial class TileWorldClient
     /// </summary>
     /// <param name="state">The presented state, a remote's delayed sample or the local rendered state.</param>
     /// <param name="delayed">True for a body drawn off the delayed timeline, which resolves its target there too.</param>
+    /// <param name="landed">Whether the displayed commanded step has landed, excluding reconciliation offsets.</param>
     /// <param name="aim">Where to look, in tile units on the lattice (x, z).</param>
-    bool TryResolveAim(in TileMoveState state, bool delayed, out Vector2 aim)
+    bool TryResolveAim(in TileMoveState state, bool delayed, bool landed, out Vector2 aim)
     {
         aim = default;
-        if (state.IsStepping) return false;
+        if (!landed) return false;
         if (state.CombatTarget != 0L) return TryResolveEntityAim(state.CombatTarget, delayed, out aim);
         if (state.InteractTarget == 0L || !state.Route.IsIdle) return false;
         return state.InteractDomain == TileInteractionDomain.Entity
             ? TryResolveEntityAim(state.InteractTarget, delayed, out aim)
             : objectTargets is not null && objectTargets.TryGetAimPoint(state.InteractTarget, out aim, out _);
     }
-
-    // An entity target, on the timeline the LOOKING body is drawn on. The local player is the one id with no delayed
-    // capture, because it is drawn off its own prediction rather than off the remote timeline, so it answers from
-    // the newest read on both paths.
-    bool TryResolveEntityAim(long target, bool delayed, out Vector2 aim) =>
-        delayed && target != LocalNetId
-            ? delayedTargets.TryGetAimPoint(target, out aim, out _)
-            : entityTargets.TryGetAimPoint(target, out aim, out _);
 
     /// <summary>
     /// The DELAYED sibling of <see cref="TileRemoteTargets"/>: a remote's footprint off the same sample its body is

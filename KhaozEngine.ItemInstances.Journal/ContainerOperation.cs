@@ -57,8 +57,8 @@ public enum ContainerOperationOrigin
 }
 
 /// <summary>
-/// One logical operation against a paged container, with the canonical parameter encoding spec 6.4 hashes
-/// into a normalized intent.
+/// One logical operation against a paged container, with stable canonical event parameters.
+/// <see cref="ContainerOperationIntent"/> adds authored craft plan identity to normalized intents.
 /// <para>
 /// <b>The encoding is <c>[Kind: varint][Parameters]</c>, and which parameters a kind writes is FIXED per
 /// kind</b>, in one shared field order: container, slot, destination container, destination slot, definition
@@ -187,6 +187,11 @@ public readonly record struct ContainerOperation
     public int WriteCanonical(Span<byte> destination)
     {
         Validate();
+        return WriteCanonicalParameters(destination);
+    }
+
+    internal int WriteCanonicalParameters(Span<byte> destination)
+    {
         Field fields = FieldsOf(Kind);
         int written = ContentVarint.Write(destination, (uint)Kind);
         if ((fields & Field.Container) != 0) written += WriteName(destination[written..], Container);

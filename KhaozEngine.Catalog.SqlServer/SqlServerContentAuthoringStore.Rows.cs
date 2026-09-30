@@ -91,17 +91,20 @@ public sealed partial class SqlServerContentAuthoringStore
 
     /// <summary>
     /// Row revisions, ordered by type then id then valid-from, filtered three ways: to one type (id 0 means
-    /// every type), to one definition, and to those LIVE at one version. The caller owns the scope.
+    /// every type), to one definition, and to those LIVE at one version. Whole-version reads opt into
+    /// skipping unregistered types before decoding rows and fields. Other callers remain strict.
+    /// The caller owns the scope.
     /// </summary>
     async Task<IReadOnlyList<ContentRowRevision>> ReadRevisionsAsync(
         SqlServerCatalogScope scope,
         ContentTypeId type,
         int? definitionId,
         int? liveAtVersion,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool registeredTypesOnly = false)
     {
         Dictionary<RowKey, Dictionary<string, ContentFieldValue>> fields = await ReadRowFieldsAsync(
-            scope, type, definitionId, liveAtVersion, cancellationToken).ConfigureAwait(false);
+            scope, type, definitionId, liveAtVersion, cancellationToken, registeredTypesOnly).ConfigureAwait(false);
 
         await using SqlCommand command = Command(
             scope,
@@ -124,6 +127,11 @@ public sealed partial class SqlServerContentAuthoringStore
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             var rowType = new ContentTypeId((ushort)reader.GetInt32(0));
+            if (registeredTypesOnly && !_registry.TryGet(rowType, out _))
+            {
+                continue;
+            }
+
             int rowId = reader.GetInt32(1);
             int validFrom = reader.GetInt32(2);
             ContentFieldSchema schema = RequireType(rowType).Schema;
@@ -157,12 +165,13 @@ public sealed partial class SqlServerContentAuthoringStore
         return revisions;
     }
 
-    static async Task<Dictionary<RowKey, Dictionary<string, ContentFieldValue>>> ReadRowFieldsAsync(
+    async Task<Dictionary<RowKey, Dictionary<string, ContentFieldValue>>> ReadRowFieldsAsync(
         SqlServerCatalogScope scope,
         ContentTypeId type,
         int? definitionId,
         int? liveAtVersion,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool registeredTypesOnly = false)
     {
         await using SqlCommand command = Command(
             scope,
@@ -186,7 +195,13 @@ public sealed partial class SqlServerContentAuthoringStore
         await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            var key = new RowKey((ushort)reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2));
+            var rowType = new ContentTypeId((ushort)reader.GetInt32(0));
+            if (registeredTypesOnly && !_registry.TryGet(rowType, out _))
+            {
+                continue;
+            }
+
+            var key = new RowKey(rowType.Value, reader.GetInt32(1), reader.GetInt32(2));
             if (!byRow.TryGetValue(key, out Dictionary<string, ContentFieldValue>? held))
             {
                 held = new Dictionary<string, ContentFieldValue>(StringComparer.Ordinal);

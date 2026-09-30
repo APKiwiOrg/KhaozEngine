@@ -69,7 +69,9 @@ public interface IContentAuthoringStore : IContentVersionDirectory, IContentVers
 {
     /// <summary>
     /// Opens the store's schema under the given mode, creating it only under
-    /// <see cref="ContentAuthoringSchemaMode.AutoCreate"/> and validating it under both.
+    /// <see cref="ContentAuthoringSchemaMode.AutoCreate"/> and validating it under every mode.
+    /// The durable providers synchronize type registrations except under
+    /// <see cref="ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSync"/>.
     /// </summary>
     /// <param name="mode">Whether an empty or mismatched database may be created into.</param>
     /// <param name="cancellationToken">Cancels the call.</param>

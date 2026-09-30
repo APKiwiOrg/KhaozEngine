@@ -260,11 +260,12 @@ public class TileAimFacingTests
         {
             h.Frames(1);
             TileMoveState r = h.Client.Prediction.RenderedState;
-            if (!r.IsStepping || r.CombatTarget != cow) continue;
+            if (!r.IsStepping || TilePresenter.StepFraction(r) >= 1f || r.CombatTarget != cow) continue;
             stepped++;
-            Assert.Equal(TilePresenter.Yaw(r.Facing), h.Client.LocalPose.Yaw);
+            float stepYaw = TilePresenter.Yaw(TileRoute.Direction(r.StepFrom, r.Tile));
+            Assert.Equal(stepYaw, h.Client.LocalPose.Yaw);
             float aimed = TilePresenter.Yaw(new Vector2(r.Tile.X, r.Tile.Z), centre);
-            if (MathF.Abs(aimed - TilePresenter.Yaw(r.Facing)) > 1e-3f) wouldHaveTurned++;
+            if (MathF.Abs(aimed - stepYaw) > 1e-3f) wouldHaveTurned++;
         }
 
         Assert.True(stepped > 0, "the body never stepped, so the rule was never exercised");
@@ -314,10 +315,14 @@ public class TileAimFacingTests
         s.InteractTarget = AimTileTargets.Id;
         s.InteractDomain = TileInteractionDomain.AuthoredObject;
         client.Prediction.Reset(s);
+        client.EntityAimPointResolver = RefuseEntityNomination;
 
         var me = new Vector2(20f, 20f);
         Assert.Equal(TilePresenter.Yaw(me, AimTileTargets.Aim), client.LocalPose.Yaw);
         Assert.NotEqual(TilePresenter.Yaw(me, new Vector2(25f, 21f)), client.LocalPose.Yaw);
+
+        static bool RefuseEntityNomination(long id, TileRect footprint, int plane, out Vector2 aim) =>
+            throw new InvalidOperationException("An object aim must use the object resolver.");
     }
 
     // A 3x3 target whose aim point is NOT its centre, which is the override the interface exists for.

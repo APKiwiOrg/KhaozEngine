@@ -275,8 +275,8 @@ public sealed partial class ContainerCommitBuilder
     /// identity and a result, validated against <see cref="ContainerCommitOptions.Limits"/>.
     /// <para>
     /// <b>Whose identity it is decides what the intent holds</b> (spec 6.5). A SERVER minted batch carries the
-    /// canonical ORDERED operation list, and its id comes from <paramref name="identityFactory"/>. A CLIENT
-    /// headed batch carries the client operation's own canonical intent ALONE, under the client's own id, and
+    /// ORDERED operation intents, and its id comes from <paramref name="identityFactory"/>. A CLIENT
+    /// headed batch carries the client operation's own intent ALONE, under the client's own id, and
     /// the server work riding behind it contributes NO intent bytes: it is carried by the events and by the
     /// page bytes. That is what makes a resubmit which omits the server work hash identically and resolve
     /// <c>Replayed</c> rather than <c>OperationConflict</c>, which matters because a conflict would tell the
@@ -339,21 +339,21 @@ public sealed partial class ContainerCommitBuilder
     }
 
     /// <summary>
-    /// The normalized intent this batch would hash under, which is spec 6.5's split written out:
-    /// <c>[Count: varint][ per operation: [Kind: varint][Parameters] ]</c> for a server minted batch, and the
-    /// head operation's own canonical encoding ALONE for a client headed one.
+    /// The normalized intent this batch would hash under. A server batch carries an ordered count and
+    /// <see cref="ContainerOperationIntent"/> bytes per operation. A client batch carries its head intent
+    /// alone. Crafts include the authored plan id, while canonical event parameters remain unchanged.
     /// </summary>
     public byte[] BuildIntent()
     {
-        if (Window.HoldsClientOperation) return _operations[0].ToCanonicalArray();
+        if (Window.HoldsClientOperation) return ContainerOperationIntent.ToArray(_operations[0]);
 
         int size = ContentVarint.Size((uint)_operations.Count);
-        foreach (ContainerOperation operation in _operations) size += operation.CanonicalByteCount;
+        foreach (ContainerOperation operation in _operations) size += ContainerOperationIntent.ByteCount(operation);
 
         byte[] intent = new byte[size];
         int written = ContentVarint.Write(intent, (uint)_operations.Count);
         foreach (ContainerOperation operation in _operations)
-            written += operation.WriteCanonical(intent.AsSpan(written));
+            written += ContainerOperationIntent.Write(operation, intent.AsSpan(written));
         return intent;
     }
 

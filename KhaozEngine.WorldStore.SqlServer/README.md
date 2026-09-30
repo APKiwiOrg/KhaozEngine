@@ -19,9 +19,11 @@ operation. For dev/test use `KhaozEngine.WorldStore.Sqlite` against the same con
 Both times are `DATETIME2` from the database clock. `updated_at` is the last save's, and `created_at` is written only
 by the `MERGE`'s insert arm, so a later save never moves it. Construction adds a nullable `created_at` to a table an
 older build created, and the rows already there keep NULL in it because nothing proves when they were created. The
-first construction after that upgrade therefore needs `ALTER` rights on the table. Start one host first, because two
-hosts constructing the store at once against an older table can race the column add
-([#1195](https://github.com/APKiwiOrg/KhaozEngine/issues/1195)).
+first construction after that upgrade therefore needs `ALTER` rights on the table. One transaction holds an
+exclusive transaction-owned application lock, `KhaozEngine.WorldStore.Schema`, around the guarded table create
+and column add. The lock is scoped to the database, so concurrent hosts wait before any DDL. A lock refusal or DDL
+failure rolls back the whole bootstrap and releases the lock. Lock acquisition waits up to thirty seconds.
+Widening preserves legacy data, update times and the table's existing collation.
 
 `SqlServerWorldStore` implements **`IEnumerableWorldStore`** (since 8.4.2): `EnumerateAsync(keyPrefix?)` streams
 `WorldStoreEntry { Key, UpdatedAt, Size? }` records via a streaming SQL Server cursor, optionally filtered by key
@@ -191,7 +193,10 @@ and the `public` role. Stop every journal host first, because an idle host holds
 
 Live provider tests require `KE_SQLSERVER_TEST_CONNSTRING`. Each test owns a unique stream prefix and cleanup
 removes only rows under that prefix. The reset facts are the exception: they wipe the whole test journal, inside the
-same serialized test collection, so no other journal fact runs beside them. Because cursor epoch rotation,
+same serialized test collection, so no other journal fact runs beside them. World store conformance and bootstrap
+facts also join that collection. Bootstrap facts rebuild `dbo.world_store`, start two ordinary constructors behind
+a held schema lock on both empty and legacy tables, and verify no DDL runs before release. A refused column add
+also proves legacy row preservation and lock release. Because cursor epoch rotation,
 operation retention, and the reset are database-global, the test fixture requires the connection string's
 `Initial Catalog` to contain the literal `-journal-test-` marker. The guard runs before provider construction,
 schema validation, maintenance, reset, or mutation.

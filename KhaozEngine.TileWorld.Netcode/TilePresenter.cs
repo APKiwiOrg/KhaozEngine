@@ -131,6 +131,9 @@ public sealed class TilePresenter
     /// draws exactly where its owner draws it with nothing guessed and nothing reconstructed from the tile it was
     /// last seen on. A state with no step in flight draws on its footprint centre, whatever
     /// <paramref name="extraTicks"/> says.</para>
+    /// <para>Until the displayed fraction reaches one, yaw follows the physical step from
+    /// <see cref="TileMoveState.StepFrom"/> to <see cref="TileMoveState.Tile"/>. The simulator can already have
+    /// turned <see cref="TileMoveState.Facing"/> toward an interaction target. That facing resumes at landing.</para>
     /// <para>This is the BODY's answer, not the RULES'. A step commits its tile when it STARTS, so the tile the
     /// simulation has committed this player to is <see cref="TileMoveState.Tile"/> and the body drawn here is up to
     /// one Chebyshev grid step behind it. A diagonal grid step is <c>sqrt(2) * TileSize</c> in Euclidean world
@@ -147,8 +150,12 @@ public sealed class TilePresenter
     // The REMOTE client's form, which knows one thing a state cannot say about itself: whether its step came
     // through the click door (see TileStepDoor). The client holds that on its sample and hands it in, so this stays
     // a function of its arguments and the public overload above is this with the flag down, bit for bit.
-    internal TilePose Pose(in TileMoveState state, float extraTicks, bool clickDoor) =>
-        PoseAt(BodyCentre(state, StepFraction(state, extraTicks, clickDoor)), state.Tile.Plane, state.Facing);
+    internal TilePose Pose(in TileMoveState state, float extraTicks, bool clickDoor)
+    {
+        float fraction = StepFraction(state, extraTicks, clickDoor);
+        return PoseAt(BodyCentre(state, fraction), state.Tile.Plane,
+            TilePresentationFacing.Direction(state, fraction));
+    }
 
     /// <summary>
     /// The same body, drawn in the same place, LOOKING at <paramref name="aimTilePlanar"/> instead of along
@@ -263,8 +270,10 @@ public sealed class TilePresenter
     {
         ArgumentNullException.ThrowIfNull(prediction);
         TileMoveState r = prediction.RenderedState;
+        var presentation = TilePresentationFacing.Local(r, prediction.RemainingPresentationMovement);
         return PoseAt(r.HasRenderOverride ? r.RenderPosition : r.Position,
-            r.HasRenderOverride ? r.RenderVertical : r.Vertical, r.Facing);
+            r.HasRenderOverride ? r.RenderVertical : r.Vertical,
+            presentation.Direction);
     }
 
     /// <summary>

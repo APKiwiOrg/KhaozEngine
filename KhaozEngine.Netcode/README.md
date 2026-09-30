@@ -60,6 +60,11 @@ Draw(prediction.RenderedState);
 Reconciliation error and `PredictedHorizontalSpeed` still read `Position`, so the override changes presentation
 only.
 
+`RemainingPresentationMovement` reports the planar displacement still to travel in the current inter-tick
+interpolation, in state position units. It excludes reconciliation offsets and reaches zero at the endpoint.
+A non-hard-snap `Reconcile` translates both endpoints and preserves this movement. `Reset`, `Reseed` and a hard
+snap discard it, including when a quiet reseed retains a correction offset.
+
 Tune via `PredictionSettings` (tick rate, buffer cap, hard-snap distance, correction rate, dead-zone,
 correction-speed cap). `PendingCommandCount` is how many predicted commands the host has not yet acknowledged, the
 round trip in ticks plus one on a healthy link and a climbing-and-staying value when the host is applying this

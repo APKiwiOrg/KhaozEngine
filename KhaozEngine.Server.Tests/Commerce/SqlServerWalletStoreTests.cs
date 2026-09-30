@@ -13,10 +13,9 @@ namespace KhaozEngine.Tests.Commerce;
 /// database. Gated by <see cref="SqlServerFactAttribute"/> on <c>KE_COMMERCE_SQLSERVER</c>; skipped (not failed)
 /// when unset, since <see cref="WalletStoreContract"/>'s <c>[Fact]</c> methods cannot conditionally skip. Each run
 /// prefixes account ids with a fresh GUID so a shared test database does not collide across runs.
-/// <para>This is the only class that touches the wallet tables, and facts in one class never run at once, so the fact
-/// that rebuilds <c>dbo.wallet_balance</c> and <c>dbo.grant_schedule</c> in their older shape cannot pull them from
-/// under another.</para>
+/// <para>The wallet collection serializes these facts with the bootstrap facts that rebuild the tables.</para>
 /// </summary>
+[Collection("SQL Server wallet")]
 public sealed class SqlServerWalletStoreTests
 {
     private static readonly string? ConnectionString = Environment.GetEnvironmentVariable("KE_COMMERCE_SQLSERVER");

@@ -862,7 +862,16 @@ chat.Draw(batch, white);
     node with children, a tap elsewhere in the row selects it (`Selected`, `OnSelected`). The wheel scrolls
     clamped to the content, continuous (`ScrollDelta * WheelSpeed` pixels, no per-notch rounding, the
     `ScrollablePanel.WheelSpeed` idiom) - `WheelSpeed` is `RowHeight * WheelRowsPerNotch` (default 3 rows per
-    wheel unit) - and rows are scissor-clipped to `Bounds`. A held press that clears `DragThreshold` (default 6
+    wheel unit) - and rows are scissor-clipped to `Bounds`. `Update(Pointer pointer, in InputState input)`
+    accepts a pointer already updated from that snapshot. `Update(InputManager)` forwards through the same
+    tap, wheel and reorder logic, preserving the manager's pointer-input suppression.
+    Optional `DrawRow`, an `Action<SpriteBatch, Rect, TreeNode, bool>`, replaces the default localized label.
+    Its arguments are the batch, visible content bounds, node and selected state. Content starts after the
+    depth indent, caret column and padding, clipped to `Bounds`. Fully hidden rows or content are skipped.
+    The callback runs inside a content scissor, preserving any outer clip, while the tree keeps painting
+    carets, selection fills and the reorder indicator. Custom painters own localization, text scale and
+    opacity. Set `DrawRow` to null to restore the default label path.
+    A held press that clears `DragThreshold` (default 6
     pixels) becomes a same-parent drag-and-drop row reorder instead of a tap: a valid drop fires
     `OnReordered(node, oldIndex, newIndex)` and `WasReordered` goes true, an insertion line marks the live target,
     Escape aborts with no drop, and a cross-parent or off-tree release is rejected. The widget only reports the
@@ -1152,6 +1161,20 @@ var speed = new NumberField(fieldRect, value: 12f) { Min = 0f, Max = 200f, DragS
 speed.Update(input, dt);   // InputManager, not Pointer - typing needs the keyboard
 speed.Draw(batch, white, font);
 ```
+
+Panels that already hold a pointer and snapshot can call `tree.Update(pointer, in inputState)`.
+Supply a row painter for richer content such as a name, progress bar and right-aligned level:
+
+```csharp
+tree.DrawRow = (rowBatch, contentBounds, node, selected) =>
+    PaintSkillContent(rowBatch, contentBounds, node, selected);
+tree.Update(pointer, in inputState);
+tree.Draw(batch, white, font);
+```
+
+`contentBounds` excludes the caret and indent and is clipped to the visible portion of the row.
+The tree retains its caret, selection fill, scrolling and reorder behavior. The painter owns its
+content and localization. Leaving `DrawRow` null keeps the default `LocalizedText` label.
 
 **DPI-aware pixel snapping** (since 10.12.0): when a widget is drawn inside a point-space UI pass (a
 `UiViewport` `SpriteBatch.Begin`), the retained widgets and `GuiDraw` snap their rect and border thickness

@@ -47,14 +47,6 @@ public sealed partial class TileWorldClient
             : objectTargets is not null && objectTargets.TryGetAimPoint(state.InteractTarget, out aim, out _);
     }
 
-    // An entity target, on the timeline the LOOKING body is drawn on. The local player is the one id with no delayed
-    // capture, because it is drawn off its own prediction rather than off the remote timeline, so it answers from
-    // the newest read on both paths.
-    bool TryResolveEntityAim(long target, bool delayed, out Vector2 aim) =>
-        delayed && target != LocalNetId
-            ? delayedTargets.TryGetAimPoint(target, out aim, out _)
-            : entityTargets.TryGetAimPoint(target, out aim, out _);
-
     /// <summary>
     /// The DELAYED sibling of <see cref="TileRemoteTargets"/>: a remote's footprint off the same sample its body is
     /// drawn from, rather than off the newest applied snapshot. Presentation only, so it is private and never

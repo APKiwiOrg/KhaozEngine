@@ -26,7 +26,9 @@ public interface ITileTargets
     /// <para>The default is the footprint's CENTRE, the anchor plus half its width and height, which is the point
     /// <see cref="TilePresenter.PoseAt(TileRect, int, TileDirection)"/> already draws an overlay on. A game
     /// OVERRIDES it to nominate an aim tile on a body whose centre is the wrong place to look at (the head of a
-    /// long serpent, the door of a building), and gets the continuous aim for free everywhere a pose is drawn.</para>
+    /// long serpent, the door of a building). On <see cref="TileWorldClient"/>, authored objects use the constructor
+    /// resolver's override. Entity resolvers are engine-owned, so use
+    /// <see cref="TileWorldClient.EntityAimPointResolver"/> to nominate their presentation point.</para>
     /// <para>False for exactly what <see cref="TryGetFootprint"/> refuses, so a body whose target stopped resolving
     /// keeps the tile facing rather than pointing at a remembered place.</para>
     /// </summary>

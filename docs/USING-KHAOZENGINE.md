@@ -11777,7 +11777,7 @@ TilePose me = client.LocalPose;
 Draw(playerMesh, me.Position, me.Yaw);
 ```
 
-- **A one-tile body beside a one-tile target is bit-identical to before.** The target's aim point is its own tile,
+- **With default aim, a one-tile body beside a one-tile target is bit-identical to before.** The target's aim point is its own tile,
   so the yaw IS `TilePresenter.Yaw(facing)`, exactly, with no tolerance needed. A footprint bigger than one tile
   moves it, and so does a locked body that is not adjacent to its target for a tick (a refused step), which is aimed
   rather than drawn along its facing.
@@ -11786,17 +11786,36 @@ Draw(playerMesh, me.Position, me.Yaw);
   of the final step. Both local and remote poses keep the glide direction until landing, then use the target
   aim. A remote carried to fraction 1 can aim before its next snapshot. After landing, a body with no lock or
   an unresolved target keeps the tile facing.
-- **Nominate an aim tile** by overriding `ITileTargets.TryGetAimPoint(target, out Vector2 tilePlanar, out int
-  plane)` on your own resolver. It is a default interface method answering the footprint centre, so an existing
-  resolver needs no change, and the override is what a long serpent, a building door or a mounted rider wants.
+- **Nominate an authored object's aim tile** by overriding `ITileTargets.TryGetAimPoint(target, out Vector2
+  tilePlanar, out int plane)` on the resolver passed to the client constructor. The default answers the footprint
+  centre, so an existing resolver needs no change.
+- **Nominate an entity's aim tile** with `client.EntityAimPointResolver`, a nullable
+  `TileEntityAimPointResolver(long target, TileRect footprint, int plane, out Vector2 tilePlanar)` callback
+  returning bool. The client supplies the entity net id and its already-selected footprint and plane. A true
+  return nominates a finite point in the same tile units as `ITileTargets.TryGetAimPoint`. Null, false or a
+  nonfinite point keeps the footprint centre. Unknown or removed targets retain facing without invoking it.
 - **A remote resolves its target on the DELAYED timeline** its body is drawn from, and the local body on the newest
   capture, which is the read the reach rules already make. That is what stops an attacker leading a target that has
-  already moved on the server.
+  already moved on the server. A remote targeting `LocalNetId` uses newest local prediction because the local
+  player has no delayed capture. Entity nomination receives these same selected footprints, so a game needs no
+  delayed resolver of its own.
 - **Presentation only.** `Facing`, the reach rules, the server's `Facing` write and the wire are all untouched, so
   a turn-smoothing rule of your own keeps working: it only smooths toward whatever yaw the pose reports.
 - **Placing a body by hand** uses the same formula through `presenter.Pose(state, aimTilePlanar, extraTicks)`, and
   `TilePresenter.Yaw(Vector2 from, Vector2 to)` is the yaw on its own, in the same hand and the same north as
   `TilePresenter.Yaw(TileDirection)`.
+
+```csharp
+client.EntityAimPointResolver = TryGetEntityAimPoint;
+
+bool TryGetEntityAimPoint(long target, TileRect footprint, int plane, out Vector2 tilePlanar)
+{
+    tilePlanar = default;
+    if (!serpentNetIds.Contains(target)) return false;
+    tilePlanar = new Vector2(footprint.X, footprint.Z + footprint.Height - 1);
+    return true;
+}
+```
 
 **Run rides the tick stream, not the click.** `RunMode` is carried on EVERY command, `TileCommand.Continue`
 included, and the simulator applies it at the START of the next step. Holding run halfway through a walking step

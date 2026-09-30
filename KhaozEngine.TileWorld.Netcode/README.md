@@ -257,10 +257,11 @@ hidden.
   Compose it with `TileRaycast.Pick`, whose hit is a ground tile, and a click is resolved in two lines.
   `TryGetAimPoint(target, out Vector2 tilePlanar, out int plane)` is the PRESENTATION half, a default interface
   method every implementation inherits: the footprint centre, in the tile units `PoseAt(Vector2, float,
-  TileDirection)` takes, which is what a body holding a lock is drawn looking at. Override it on a body whose
-  centre is the wrong place to look at (the head of a long serpent, the door of a building) and every pose the
-  client draws follows it. It resolves and refuses exactly where `TryGetFootprint` does, so a stale lock points
-  nowhere new, and nothing in the rules reads it.
+  TileDirection)` takes, which is what a body holding a lock is drawn looking at. Override it on the authored-object
+  resolver for a building door or another object whose centre is the wrong place to look at. Client entity
+  resolvers are engine-owned, so nominate a monster's aim point through `client.EntityAimPointResolver` instead.
+  It resolves and refuses exactly where `TryGetFootprint` does, so a stale lock points nowhere new, and nothing
+  in the rules reads it.
   `GetInteractionReachPolicy(target)` is the rules half and defaults to `TileInteractionReachPolicy.Default`.
   An authored-object resolver can override it directly. Entity resolvers remain engine-owned snapshots, so the
   seven-parameter `TileWorldServer` and `TileWorldClient` constructors append the same
@@ -620,19 +621,27 @@ always keep the constructor map.
   footprints touch on, which is exact for reach and up to 18 degrees off as a drawn yaw the moment either body is
   bigger than one tile: a player beside a 2x2 cow points at the column it touches, and so does the cow. So
   `client.TryGetRemotePose` and `client.LocalPose` aim a body that has landed and holds a `CombatTarget`, or
-  an `InteractTarget` whose route has run out, at that target's `ITileTargets.TryGetAimPoint`. A remote resolves
+  an `InteractTarget` whose route has run out, at the selected target aim point. A remote resolves
   its target on the same DELAYED timeline its body is drawn from, so an attacker never leads a target that has
   already moved on the server, and the local body resolves on the newest capture, which is the read the reach
   rules already make. Until the displayed step fraction reaches 1, a body faces its physical `StepFrom` to `Tile`
   direction even when the simulator has already turned `Facing` toward an interaction target. At landing it
   uses the target aim, including a remote carried to fraction 1 before another snapshot arrives. A body with no
-  lock or an unresolved target keeps the tile facing after landing. A one-tile body beside a one-tile target draws EXACTLY its
-  cardinal, to the bit, so a game asserting `TilePresenter.Yaw(TileDirection)` against a pose for an ordinary
+  lock or an unresolved target keeps the tile facing after landing. With default aim, a one-tile body beside a
+  one-tile target draws EXACTLY its cardinal, to the bit, so a game asserting `TilePresenter.Yaw(TileDirection)` against a pose for an ordinary
   fight stays true. `TilePresenter.Yaw(Vector2 from, Vector2 to)` is the formula on its own, the same hand and the
   same north as `Yaw(TileDirection)`, and `presenter.Pose(state, aimTilePlanar, extraTicks)` is the whole thing
   for a body a game places by hand. Presentation only: `Facing`, the reach rules, the server's `Facing` write and
   the wire are untouched, and a game's own turn smoothing keeps working because it only smooths toward whatever
   yaw the pose reports.
+- **`TileWorldClient.EntityAimPointResolver`** optionally nominates an entity aim point through
+  `bool TileEntityAimPointResolver(long target, TileRect footprint, int plane, out Vector2 tilePlanar)`.
+  The callback gets the already-selected footprint and plane, so a game needs no delayed resolver of its own.
+  Local attackers use the newest remote capture. Remote attackers use the delayed capture, with targets matching
+  `LocalNetId` always using newest local prediction. A null callback, false return or nonfinite point keeps the
+  footprint centre. Unknown or removed targets keep existing facing without invoking the callback. This changes
+  presentation only. Authored-object overrides continue through `ITileTargets.TryGetAimPoint` on the constructor
+  resolver.
 - **`TileDrawPriority`** - ONE BODY PER TILE AT REST, rebuilt per frame. `Rebuild(client, dt)` reads a live
   client, `Rebuild(localNetId, localTile, localLeaving, others, dt)` takes a caller's own roster and each actor's
   step progress, and the static `Select` is the winner rule with both output buffers owned by the caller. The

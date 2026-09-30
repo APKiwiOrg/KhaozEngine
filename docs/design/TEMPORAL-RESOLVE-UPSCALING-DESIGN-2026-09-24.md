@@ -1,11 +1,12 @@
 # Temporal resolve and upscaling
 
-Status: implemented. Ships with the temporal foundations in one engine release, named here when it is cut. Grimhollow's
-adoption, specified at the end of this document, follows that release.
+Status: implemented for staged 20.16.0, with the temporal foundations. Grimhollow's adoption, specified at the end of
+this document, follows that release.
 Date: 2026-09-24.
-Issue: [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149), rounds 2 and 3 of 3.
-Builds on: [`TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md`](TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md), round 1, approved.
-Consumer: Grimhollow. Its adoption is round 3, specified at the end of this document.
+Issue: [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149).
+Builds on: [`TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md`](TEMPORAL-FOUNDATIONS-DESIGN-2026-09-24.md), the shared
+temporal foundations, approved.
+Consumer: Grimhollow. Its adoption is specified at the end of this document.
 
 ## Outcome
 
@@ -15,8 +16,9 @@ the jittered frames and their history. Thin, moving, sub-pixel detail such as di
 camera moves, edges are anti-aliased without MSAA's per-sample cost, and the output is sharper on high density
 displays than today's fixed 1600x900 stretched to the window.
 
-The owner's decisions from round 1 apply: upscaling included, stability over crispness with a light sharpen, and a
-player quality setting. Rounds 1 and 2 ship as one engine release. Grimhollow adopts it in round 3.
+The owner's decisions recorded with the temporal foundations apply: upscaling included, stability over crispness with
+a light sharpen, and a player quality setting. The foundations and the resolve ship as one engine release, and
+Grimhollow adopts them after it.
 
 ## Why the budget matters
 
@@ -29,7 +31,7 @@ line, not an aspiration.
 ## 1. Where the resolve sits in the frame
 
 ```
-opaque passes (jittered, internal res)  -> colour, depth, motion (round 1)
+opaque passes (jittered, internal res)  -> colour, depth, motion (foundations)
   copy colour                           -> opaque-only colour, for the reactive estimate
 transparents, decals, water, particles  -> colour (internal res)
 temporal resolve (internal -> display)  -> display-res HDR colour, new history
@@ -59,9 +61,9 @@ A new `RenderScale.Temporal` sizing mode, forced while `AntiAliasing.Temporal` i
 | `UltraPerformance` | 1 / 3.0 | 11% |
 
 `Post.Temporal.Upscale` takes a preset. `Post.Temporal.UpscaleRatio`, when set, overrides it with an explicit ratio
-from 0.33 to 1.0. A change of the ratio in effect resets history, per round 1. Dynamic resolution, which would change
-the ratio every frame without a reset, is out of scope, and the resolve's inputs are sized per frame so it can be added
-later.
+from 0.33 to 1.0. A change of the ratio in effect resets history, per the temporal foundations. Dynamic resolution,
+which would change the ratio every frame without a reset, is out of scope, and the resolve's inputs are sized per
+frame so it can be added later.
 
 ## 3. The resolve
 
@@ -73,11 +75,12 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
 
 1. **Motion with dilation.** For each display pixel, find the internal pixel under it and take the motion vector of
    the closest depth in its 3x3 neighbourhood. Edges of moving objects then carry the object's motion rather than the
-   background's, which is the main cause of edge ghosting. Background pixels, marked by round 1's sentinel, reproject
-   from camera rotation alone. Beside a fast edge, where the nearer surface itself moved, a pixel on the farther
-   surface keeps its own motion. Under that reach, beside a wide nearer surface that moved while the farther one moves
-   more on screen, as under a camera following an avatar, the pixel keeps the dilated motion and marks its history
-   as the edge's, and a pixel of the followed surface itself marks its history as that surface's own (amendment 23).
+   background's, which is the main cause of edge ghosting. Background pixels, marked by the foundations' sentinel,
+   reproject from camera rotation alone. Beside a fast edge, where the nearer surface itself moved, a pixel on the
+   farther surface keeps its own motion. Under that reach, beside a wide nearer surface that moved while the farther
+   one moves more on screen, as under a camera following an avatar, the pixel keeps the dilated motion and marks its
+   history as the edge's, and a pixel of the followed surface itself marks its history as that surface's own
+   (amendment 23).
 2. **History fetch.** Sample the history at the reprojected position with a 5-tap Catmull-Rom filter. Bilinear history
    sampling blurs a little more every frame, and a stability-first filter keeps history for many frames.
 3. **Disocclusion.** Reproject the pixel's linear depth and compare it with the previous frame's depth at the
@@ -114,10 +117,10 @@ frame's depth and the history. Outputs: the display-resolution colour and the ne
    accumulated sample count stored as history confidence, from one on a reset down to a floor of about one in
    sixteen, raised by the reconstruction weight of step 4, the reactive estimate and disocclusion.
 
-History is a display-resolution colour target and a confidence and stability target, double-buffered in round 1's
-`TemporalHistory`. Colour uses R11G11B10 float where all three backends can render and sample it, and RGBA16F
-otherwise. The plan's first task records which. The previous frame's depth is an internal-resolution R32F copy kept
-by the same owner.
+History is a display-resolution colour target and a confidence and stability target, double-buffered in the
+foundations' `TemporalHistory`. Colour uses R11G11B10 float where all three backends can render and sample it, and
+RGBA16F otherwise. Amendment 2 records which. The previous frame's depth is an internal-resolution R32F copy kept by
+the same owner.
 
 ## 4. Sharpening
 
@@ -130,7 +133,7 @@ by its neighbourhood's local contrast, so it cannot ring or reintroduce the shim
 A texture sampled at the internal resolution picks a blurrier mip level than the display needs. Every material
 sampling site applies a mip bias of `log2(internal / display) + Post.Temporal.MipBiasOffset` through a frame uniform,
 using the shader's own `bias` argument, because Metal samplers have no LOD bias. The offset defaults to minus 0.5,
-tuned in the plan against a checkerboard golden, and the bias is zero when temporal is off, so today's output is
+tuned against a checkerboard golden, and the bias is zero when temporal is off, so today's output is
 unchanged.
 
 ## 6. Public API
@@ -139,14 +142,15 @@ unchanged.
   Pixelated and never combines it with MSAA.
 - `Post.Temporal.Upscale` (`TemporalUpscale.Native`, `Quality`, `Balanced`, `Performance` or `UltraPerformance`), the
   nullable `Post.Temporal.UpscaleRatio` that overrides it, `Post.Temporal.Sharpness` and
-  `Post.Temporal.MipBiasOffset`, beside round 1's cut thresholds.
+  `Post.Temporal.MipBiasOffset`, beside the foundations' cut thresholds.
 - `Scene3D.LastTemporalDiagnostics` gains the internal and display sizes, the preset, and per-frame counts of
   disoccluded, reactive and clipped pixels, sampled on a coarse grid so reading them costs nothing measurable.
 - `Scene3D.DebugView` gains `History`, `Disocclusion` and `Reactive`.
 
 ## 7. Testing and acceptance
 
-GPU tests run on all three backends through round 1's multi-frame fixture, with deterministic time and camera paths.
+GPU tests run on all three backends through the foundations' multi-frame fixture, with deterministic time and camera
+paths.
 
 1. **Convergence.** A static scene of thin geometry converges to within tolerance of an 8x supersampled reference
    after 32 frames.
@@ -165,10 +169,10 @@ GPU tests run on all three backends through round 1's multi-frame fixture, with 
    Grimhollow probe and confirmed by the owner's windowed playtest.
 10. **No steady allocation** with temporal active.
 
-## Round 3: Grimhollow adoption
+## Grimhollow adoption
 
-Round 3 runs in Grimhollow on the released engine and has its own implementation plan. Its design is set here so
-rounds 1 and 2 serve it.
+Grimhollow's adoption runs in Grimhollow on the released engine and has its own implementation plan. Its design is set
+here so the foundations and the resolve serve it.
 
 1. **Motion keys** on everything that moves. The avatar's rigid parts derive keys with `MotionKey.Combine` from the
    body's session id and the part index, for the local player and every remote body. Monsters, held items and any
@@ -188,7 +192,7 @@ rounds 1 and 2 serve it.
 - Dynamic resolution. The resolve takes per-frame input sizes so it can follow.
 - Machine-learned upscalers, and vendor upscalers such as MetalFX, DLSS or FSR. A `ITemporalUpscaler` seam is not
   added until a second implementation exists.
-- Motion blur, screen-space reflections and temporal ambient occlusion, which reuse round 1's parts later.
+- Motion blur, screen-space reflections and temporal ambient occlusion, which reuse the foundations' parts later.
 
 ## Risks
 
@@ -200,47 +204,47 @@ rounds 1 and 2 serve it.
    with that cause named.
 4. **Every material sampling site takes the mip bias.** A missed site shows as one blurrier material under upscaling.
    A test enumerates the material programs and requires the bias uniform in each.
-5. **The shader list and hash table cost** of round 1 applies again for each new program.
+5. **The shader list and hash table cost** of the foundations applies again for each new program.
 
 ## Plan amendments
 
 The implementation plan, [`2026-09-24-temporal-aa.md`](../superpowers/plans/2026-09-24-temporal-aa.md), read the code
-and changed these details. Each group's "Contract amendments" block carries the evidence.
+and changed these details. Its contract amendment blocks carry the evidence.
 
 1. A fifth preset, `UltraPerformance` at 1/3 per axis (72 jitter phases), and `UpscaleRatio` from 0.33 to 1.0. At a
    3456x2234 display even `Performance` shades more pixels than a fixed 1600x900 target, so the frame-time line needs a
-   cheaper preset (group E).
+   cheaper preset.
 2. History colour is RGBA16F with RG16F confidence and stability, not R11G11B10, which is not a seam format, is not a
    guaranteed Vulkan render target, and whose mantissa stalls a 1/16 blend. At a 3456x2234 display on `Quality` the
-   history holds about 213 MB, plus about 155 MB of display-size post targets, against risk 2's estimate (group E).
-3. Previous depth is two linear view depth targets written by `TemporalDepthStoreFrag`, not a copy of the depth target
-   (group E).
-4. `PixelPostProcess` takes an `IPostChainTargets` interface so the chain runs at display size (group E).
+   history holds about 213 MB, plus about 155 MB of display-size post targets, against risk 2's estimate.
+3. Previous depth is two linear view depth targets written by `TemporalDepthStoreFrag`, not a copy of the depth
+   target.
+4. `PixelPostProcess` takes an `IPostChainTargets` interface so the chain runs at display size.
 5. In temporal mode the background draws before the transparents that render into the model target. With temporal off
    the order is unchanged, and its existing sky-over-transparents bug is
-   [#1153](https://github.com/APKiwiOrg/KhaozEngine/issues/1153) (group E).
-6. History targets survive `Invalidate` and are released only when the resolve stops (group E).
+   [#1153](https://github.com/APKiwiOrg/KhaozEngine/issues/1153).
+6. History targets survive `Invalidate` and are released only when the resolve stops.
 7. The mip bias rides the free `Params.z` and `Params.w` lanes of the frame block, and the explicit-gradient ground taps
-   scale their gradients by the bias instead of taking a bias argument (group F).
+   scale their gradients by the bias instead of taking a bias argument.
 8. Temporal counts are sampled on request through `Scene3D.RequestTemporalCounts()`, because every backend's readback
-   drains the device (group F).
-9. A screen-fixed starfield background takes zero motion instead of the sky's rotation reprojection (Task F16a).
+   drains the device.
+9. A screen-fixed starfield background takes zero motion instead of the sky's rotation reprojection.
 10. In temporal mode the toon edge outline runs on the internal images before the resolve, so its lines are
-    accumulated rather than jittered. A non-black outline colour mixes before the tonemap there (Task F16b).
-11. Round 3 keys carcasses, which move through their 0.9 s collapse (group I).
-12. The release version is chosen at release time by the ride rule: an untagged staged minor is ridden (Task H5).
+    accumulated rather than jittered. A non-black outline colour mixes before the tonemap there.
+11. Grimhollow's adoption keys carcasses, which move through their 0.9 s collapse.
+12. The release version is chosen at release time by the ride rule: an untagged staged minor is ridden.
 13. The distortion offset field keeps its internal-relative size. Only its apply pass moves to the display resolution,
-    after the resolve (group E).
+    after the resolve.
 14. A frame resolves on its first render only. A later render inside the frame, such as an offscreen capture, may use
     another camera or size while its motion pairs with the first render's previous view, so it is never resolved. It
     renders unjittered and runs the internal post chain, bloom included, on a post chain of its own, so it looks like a
     render without temporal anti-aliasing at the internal size. It leaves the history targets, their pair and their
-    contents untouched, and neither post chain is rebound per frame (group E).
+    contents untouched, and neither post chain is rebound per frame.
 15. Under the resolve the internal targets carry no bloom or ping pair, because the display chain has its own. The first
     later render at the same internal size adds both in place, never by recreating targets an earlier render in the
     frame still reads, and they stay until temporal anti-aliasing turns off, so a host that captures every frame at that
     size reallocates nothing per frame. A later render at another size resizes the internal targets, which recreates
-    them ([#1167](https://github.com/APKiwiOrg/KhaozEngine/issues/1167)) (group E).
+    them ([#1167](https://github.com/APKiwiOrg/KhaozEngine/issues/1167)).
 16. The frozen layer of the screen dissolve (`TransitionRenderer`) is captured from the internal colour before the post
     chain in every mode, so under the resolve it holds an unresolved internal frame
     ([#1166](https://github.com/APKiwiOrg/KhaozEngine/issues/1166)).
@@ -268,7 +272,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
     half float floored at 0 and not clamped at 1, so it can leave a channel slightly above 1. The limiter gives no lobe
     to a pixel with a tap above 1 in its cross, and the clamp cuts that overshoot to 1, which the 8-bit ping the pass
     writes would cut anyway. In both orders it precedes palette quantize and the edge outline, so it never sharpens a
-    palette step or an outline, and it counts in both flip parities (group F).
+    palette step or an outline, and it counts in both flip parities.
 21. Acceptance 1 is measured with HDR off, on the legacy chain, which has no tonemap. The resolve, MSAA and the 8x
     supersampled reference then all average the same display values, so the order of averaging and tonemapping cannot
     matter. The resolve blends in the luma-weighted space `c / (1 + luma)` as its firefly protection, so a high-contrast
@@ -276,7 +280,7 @@ and changed these details. Each group's "Contract amendments" block carries the 
     bar a third of a pixel wide on black reads about 0.2 where the box average gives 0.33. That is by design. So the
     mid-contrast thin geometry gate compares with the plain box-filtered reference, and the high-contrast gate compares
     with a reference averaged the same way the resolve averages. Both gates hold on every frame from 32 to 48, not on
-    one frame alone (group F).
+    one frame alone.
 22. Acceptance 2 is not measured by the grass probe's flip metric, because raw flips reward blur: a thin feature
     crossing a pixel flips it under every mode, an ideal filter included, and only an image smoothed over time flips
     less. Stability is measured with HDR off against a per-frame supersampled reference sequence of the same camera
@@ -955,7 +959,9 @@ and changed these details. Each group's "Contract amendments" block carries the 
 31. Section 7's cost line of 1.0 ms for the resolve and the sharpen at a 2560x1440 display is not met on Apple silicon
     or on NVIDIA. `TemporalResolveCostPerfGpuTests` prints it beside each entry point and asserts nothing. Against
     anti-aliasing off at the same internal size, which also counts the motion target, the opaque copy and the post
-    chain at display size, the split measures about 1.7 to 2.2 ms at Quality and 1.6 to 2.3 ms at Native on an Apple
-    M2 Max, and about 1.7 to 2.4 ms and 2.1 to 3.1 ms on a Tesla T4 under Direct3D 11 and Vulkan, from the boxes to
-    the moving field. Most of it is the pass per display pixel, so an upscaling preset saves its time in the scene's
+    chain at display size, the split measures about 1.8 to 2.2 ms at Quality and 1.9 to 2.5 ms at Native on an Apple
+    M2 Max, and about 1.8 to 2.4 ms and 2.1 to 3.1 ms on a Tesla T4 under Direct3D 11 and Vulkan, from the boxes to
+    the moving field. At a 3456x2234 display the M2 Max measures about 3.5 to 4.3 ms at Quality and 4.0 to 5.0 ms at
+    Native. The M2 Max figures are one run of all eight cases at the final code, taken at a load average between 13
+    and 25. Most of it is the pass per display pixel, so an upscaling preset saves its time in the scene's
     shading rather than in the resolve. The whole frame against MSAA 4x stays the game-side measurement.

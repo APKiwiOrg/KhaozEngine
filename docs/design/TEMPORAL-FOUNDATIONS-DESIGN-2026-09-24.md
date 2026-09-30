@@ -1,9 +1,10 @@
 # Temporal foundations
 
-Status: implemented. Ships with the temporal resolve in one engine release, named here when it is cut.
+Status: implemented for staged 20.16.0, with the temporal resolve.
 Date: 2026-09-24.
-Issue: [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149), round 1 of 3.
-Consumer: Grimhollow, through round 3 of the same program.
+Issue: [#1149](https://github.com/APKiwiOrg/KhaozEngine/issues/1149).
+Consumer: Grimhollow, through its adoption of the temporal resolve
+([`TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md`](TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md)).
 
 ## Outcome
 
@@ -14,8 +15,9 @@ draws carry a stable key, the engine remembers their previous transforms and bon
 can write a screen-space motion vector target. History targets live in their own owner with explicit reset rules.
 
 Nothing is visible yet. The temporal machinery switches on only when a consumer asks for it, and with it off every
-frame renders byte-identically to today on all three backends. Round 2 builds temporal anti-aliasing and upscaling
-on top. Motion blur, screen-space reflections and temporal ambient occlusion are later consumers of the same parts.
+frame renders byte-identically to today on all three backends. The temporal resolve builds temporal anti-aliasing and
+upscaling on top. Motion blur, screen-space reflections and temporal ambient occlusion are later consumers of the same
+parts.
 
 ## Why now
 
@@ -39,7 +41,7 @@ Taken on 2026-09-24.
 2. Stability over crispness when they conflict, with a light sharpen to offset softness.
 3. A player quality setting that scales the internal resolution against the window.
 4. Moving draws report motion through an engine-tracked caller key (approach B below).
-5. Three rounds: this foundations round, the resolve and upscaler, then Grimhollow adoption.
+5. Three parts in order: these foundations, the resolve and upscaler, then Grimhollow adoption.
 6. Foundations at a AAA standard, reusable by later graphics work, with no time pressure.
 
 ## Approaches considered for object motion
@@ -82,7 +84,7 @@ fit and its dirty-skip, point-shadow and point-light cluster work, picking, the 
 so they read the unjittered matrices too.
 
 This replaces the roughly fifteen places that call `FrameViewProjection()` or read the camera directly. After this
-round no renderer reads the camera for raster matrices. A test enumerates the raster consumers and fails when a new
+change no renderer reads the camera for raster matrices. A test enumerates the raster consumers and fails when a new
 one reads the camera instead of the snapshot.
 
 Jitter follows the Halton (2, 3) sequence, offsets in the half-open range of minus half to plus half an internal
@@ -108,7 +110,7 @@ The render origin steps in exact 128 m multiples on X and Z (`WorldFrame`). When
 the previous render-relative view-projection is rebased as `T(d) * PreviousViewProjection` at that first render,
 before any pass reads it. Float32 represents the step exactly, and the rebase leaves rows 1 to 3 of the matrix
 exact. Row 4 is a float32 sum at the magnitude of the step, so a still scene read across a 128 m step shows at most
-1e-5 UV of motion, a third of the acceptance line (plan amendment 2).
+1e-5 UV of motion, a third of the acceptance line (amendment 2 below).
 
 The frame index advances once per `Begin`. A second render in the same frame, such as an offscreen capture, re-latches
 its own matrices for its viewport with the same frame index and jitter, and leaves the history, the previous view and
@@ -116,7 +118,7 @@ the diagnostics untouched (amendment 4 below). A frame that runs the temporal re
 later renders are unjittered
 ([resolve design amendment 14](TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md#plan-amendments)).
 
-A new internal `TemporalHistory` owns every cross-frame target: round 2's colour history now, and motion blur or
+A new internal `TemporalHistory` owns every cross-frame target: the resolve's colour history now, and motion blur or
 reflection history later. It lives outside `RenderResources`, so the rebuilds that already happen there, a
 distortion toggle or a bloom change, no longer discard temporal state. History resets on:
 
@@ -173,8 +175,8 @@ is dropped at the swap. A key seen for the first time has no previous state and 
 
 A draw without a key is treated as static and gets camera-only motion. That is correct for terrain, tile ground and
 placed props, which is almost everything a world draws. A moving draw that forgets its key gets camera-only motion
-too, and round 2's history clamp rejects the mismatch, so a missed key shows as a softer patch rather than a smear.
-The debug view in section 5 makes a missing key obvious during development.
+too, and the resolve's history clamp rejects the mismatch, so a missed key shows as a softer patch rather than a
+smear. The debug view in section 5 makes a missing key obvious during development.
 
 The engine's own helpers key themselves. `CharacterAvatar` (`KhaozEngine.Game.Render3D`) owns a key for its lifetime.
 `Scene3DBinder` (`KhaozEngine.Render3D.Ecs`) derives one from the entity id and version.
@@ -188,13 +190,13 @@ The engine's own helpers key themselves. `CharacterAvatar` (`KhaozEngine.Game.Re
 | CPU skinned | Last frame's skinned vertices, kept per key |
 | Foliage | The same analytic wind and interactor bend at the previous frame's time, interactor positions, focus and pixel scale |
 | Splat terrain and tile ground | Camera-only, from the world position they already carry |
-| Water, particles, decals, billboards, beams, trails | No motion and no depth. Round 2 treats them through a reactive mask |
+| Water, particles, decals, billboards, beams, trails | No motion and no depth. The resolve treats them through a reactive mask |
 
 The rigid instance stream is 128 bytes and uses vertex locations up to 14. A previous transform does not fit in the
 instance stream within Vulkan's guaranteed 16 vertex attributes, so previous transforms go in a structured buffer
-indexed by the instance's slot, as bone palettes are. The plan's first task confirms the GPU seam binds a readable
+indexed by the instance's slot, as bone palettes are. The implementation first confirms the GPU seam binds a readable
 buffer to the vertex stage on all three backends. If one cannot, the fallback is a 3x4 previous transform in a
-second instance stream on backends whose attribute limit allows it, recorded as a plan amendment.
+second instance stream on backends whose attribute limit allows it, recorded as an amendment below.
 
 The foliage uniform slot grows to hold the previous time, focus, interactors and pixel scale. Its size and alignment
 follow the dynamic-offset rules the slot already obeys.
@@ -211,8 +213,8 @@ follow the dynamic-offset rules the slot already obeys.
   alone. Today the depth target is cleared to the background colour's red channel
   (`ModelRenderer.cs`), which cannot tell sky from geometry, so the sentinel is the reliable background mask for any
   screen-space effect.
-- Temporal rendering is single-sample. Anti-aliasing resolution refuses MSAA while temporal is active, and TAA in
-  round 2 replaces it.
+- Temporal rendering is single-sample. Anti-aliasing resolution refuses MSAA while temporal is active, and the
+  temporal resolve's anti-aliasing replaces it.
 
 ## 5. Diagnostics and debug view
 
@@ -224,29 +226,31 @@ follow the dynamic-offset rules the slot already obeys.
 
 ## 6. Settings and activation
 
-- `Post.Temporal`, a new settings bag beside `Post.Water` and `Post.Bloom`, holds the cut thresholds. Round 2 adds
-  the resolve's settings to the same bag.
-- Temporal rendering is active when a consumer requests it for the frame. In this round the only public requester is
-  `DebugView.MotionVectors`. Tests request it through the internal seam. Round 2's TAA mode becomes the main
-  requester.
+- `Post.Temporal`, a new settings bag beside `Post.Water` and `Post.Bloom`, holds the cut thresholds. The temporal
+  resolve adds its settings to the same bag.
+- Temporal rendering is active when a consumer requests it for the frame. In the foundations alone the only public
+  requester is `DebugView.MotionVectors`. Tests request it through the internal seam. The resolve's
+  `AntiAliasing.Temporal` mode becomes the main requester.
 
 ## Out of scope
 
-- The temporal resolve, upscaling, reactive mask, sharpening, texture LOD bias and render-scale presets (round 2).
-- Grimhollow's keys and settings (round 3).
-- Water motion vectors. Gerstner water is analytic and could write them, but water writes no depth and round 2
-  decides whether it joins the reactive mask or the motion target.
-- Motion blur, screen-space reflections and temporal ambient occlusion. They reuse this round's parts later.
+- The temporal resolve, upscaling, reactive mask, sharpening, texture LOD bias and render-scale presets (the
+  temporal resolve design).
+- Grimhollow's keys and settings (its adoption).
+- Water motion vectors. Gerstner water is analytic and could write them, but water writes no depth and the temporal
+  resolve decides whether it joins the reactive mask or the motion target.
+- Motion blur, screen-space reflections and temporal ambient occlusion. They reuse these parts later.
 
 ## Risks
 
-1. A raster consumer missed in section 1 draws unjittered, which round 2 would show as a one-pass shimmer. The
+1. A raster consumer missed in section 1 draws unjittered, which the resolve would show as a one-pass shimmer. The
    enumeration test in section 1 is the guard.
 2. Jitter reaching a CPU path would re-render shadow cascades every frame. A test drives temporal on and off over the
    same still scene and requires identical cascade fits, identical culled sets and a skipped shadow pass.
 3. New varyings on the model programs can hit the FXC signature-hole miscompile described in
    `docs/CROSS-PLATFORM.md`. The varying layout stays contiguous and the D3D11 leg covers every variant.
-4. Every new program touches the three shader hash tables and six hand-maintained shader lists. The plan names each.
+4. Every new program touches the three shader hash tables and six hand-maintained shader lists, and each change that
+   adds one updates all of them.
 5. `Scene3D.cs` is frozen by the file-size ratchet, so the new code lands in new partials and types.
 
 ## Acceptance
@@ -266,47 +270,46 @@ follow the dynamic-offset rules the slot already obeys.
 ## Plan amendments
 
 The implementation plan, [`2026-09-24-temporal-aa.md`](../superpowers/plans/2026-09-24-temporal-aa.md), read the code
-and changed these details. Each group's "Contract amendments" block carries the evidence.
+and changed these details. Its contract amendment blocks carry the evidence.
 
 1. The point-light cluster grid is built on the jittered view-projection, not the unjittered one. A lit fragment finds
    its cluster through the raster matrix, so the grid has to match it or lights flicker at tile edges. The grid has no
-   dirty-skip, so jitter costs it nothing (group A).
+   dirty-skip, so jitter costs it nothing.
 2. A render origin rebase is exact in its step and bounded in its product, at most 1e-5 UV of motion for a still scene
-   across a 128 m step, a third of the acceptance line (group B).
-3. `DeviceReset` means the colour-format rebuild `EnsureSize` performs, the one backend reset a live scene has (group B).
+   across a 128 m step, a third of the acceptance line.
+3. `DeviceReset` means the colour-format rebuild `EnsureSize` performs, the one backend reset a live scene has.
 4. A second render in one frame keeps the frame's temporal identity and re-latches the matrices, because it may target
-   another viewport (group B). In a frame that runs the temporal resolve it renders unjittered, per the resolve design's
+   another viewport. In a frame that runs the temporal resolve it renders unjittered, per the resolve design's
    amendment 14.
-5. The distortion offset field reads the unjittered matrix (group B).
+5. The distortion offset field reads the unjittered matrix.
 6. Skinned motion records carry the previous model matrix as well as the palette. `MotionHistory.Reset()` runs on
-   temporal-off frames, and a shadow-only draw ignores its key (group C).
+   temporal-off frames, and a shadow-only draw ignores its key.
 7. `ITileWorldScene` gains `DrawMesh(in RigidInstanceDraw)` and `DrawSkinned(in SkinnedInstanceDraw, bones)` with
-   defaults, forwarded by `Scene3DTileWorldScene`, so a tile-world game can key its bodies (Task C9).
-8. `SkinnedLimb` keys its own draw, as `CharacterAvatar` does (Task C11).
+   defaults, forwarded by `Scene3DTileWorldScene`, so a tile-world game can key its bodies.
+8. `SkinnedLimb` keys its own draw, as `CharacterAvatar` does.
 9. Each rigid instance carries a per-instance motion slot into a compact previous-transform buffer, because
-   `gl_InstanceIndex` omits the base instance on D3D11 under the pinned cross-compile options (Task D1).
-10. The motion matrices live in their own `MotionFrame` block, so no existing program's hash changes (group D).
-11. CPU-skinned previous positions are re-skinned from the remembered palette rather than stored per key (group D).
-12. An MSAA request while temporal is active falls back to FXAA (group D).
-13. The foliage uniform slot keeps its 256 bytes, with last frame's state in its padding (group D).
-14. Five transparent passes that draw into the model target get variants that leave the motion target untouched
-    (group D).
+   `gl_InstanceIndex` omits the base instance on D3D11 under the pinned cross-compile options.
+10. The motion matrices live in their own `MotionFrame` block, so no existing program's hash changes.
+11. CPU-skinned previous positions are re-skinned from the remembered palette rather than stored per key.
+12. An MSAA request while temporal is active falls back to FXAA.
+13. The foliage uniform slot keeps its 256 bytes, with last frame's state in its padding.
+14. Five transparent passes that draw into the model target get variants that leave the motion target untouched.
 15. There are seven hand-maintained shader lists, not six. `VulkanShippedVertexLayoutTests` is the seventh.
 16. The GPU-skinned previous palette is a second per-caster buffer, `SkinnedMotionPalette`, whose 8448-byte slot holds
     last frame's world matrix then its composed palette. It shares set 3 with `MotionFrame`, the last set Vulkan
-    guarantees (group D).
+    guarantees.
 17. The motion target and previous-state work add 0.119 ms of Submit-and-drain wall time per frame (GPU work and its
     submission, CPU preparation and recording excluded) at 1600x900 on Apple M2 Max, median of three runs, for a floor,
     400 keyed boxes, 8 keyed GPU-skinned bodies and 2500 wind-blown foliage blades under a panning camera
-    (`MotionTargetCostProbe`). The town-path reading of acceptance 5 is taken in round 3 (group D).
+    (`MotionTargetCostProbe`). The town-path reading of acceptance 5 is taken in Grimhollow's adoption.
 18. The opaque motion write has a w guard and a clamp. A last-frame clip w of 1e-6 or less puts the point on or behind
     last frame's camera plane, where the divide has no image position, and the write gives UV motion (2, 2) there.
     Every other motion is clamped to two screens, -2 to 2 UV on each axis, so a w just past the guard cannot reach the
     background threshold or overflow half precision. The current UV lies in 0 to 1, so any motion past 1 UV on an axis
     already puts the previous position off the screen. The clamp keeps it off the screen, changes no on-screen motion,
-    and the resolve rejects that pixel's history as it does any off-screen previous position (group D).
+    and the resolve rejects that pixel's history as it does any off-screen previous position.
 19. The MotionVectors view tests background on the x channel alone, as `MotionMath.IsBackground` and the resolve do, so
-    a pixel whose y motion alone is large draws as motion (group D).
+    a pixel whose y motion alone is large draws as motion.
 20. The resolve's `History`, `Disocclusion` and `Reactive` debug views take effect only under `AntiAliasing.Temporal`,
     so `DebugView` turns temporal rendering on by itself only for `MotionVectors`. The three show the resolve's own
     decisions, and forcing a resolve under another mode would run it outside the upscale ratios it is built for, so a

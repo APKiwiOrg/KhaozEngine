@@ -64,9 +64,8 @@ public static class ItemInstanceVisibility
     /// after walking the registry.</param>
     /// <param name="viewerLevel">The viewer's clearance for THIS item.</param>
     /// <param name="identified">Whether the item is identified, which is kind 128's state byte.</param>
-    /// <param name="revealedMask">Kind 128's revealed mask. It is a <c>ulong</c> because the shape walk
-    /// reads a varint at the full 64 bits, so narrowing it would have to happen at some call site
-    /// (KhaozEngine issue 917). Bits above
+    /// <param name="revealedMask">The caller's revealed mask, kept as a <c>ulong</c> for compatibility.
+    /// Registered kind 128 bounds stored masks to uint32. Supplied bits above
     /// <see cref="InstancePropertyRegistry.MaxIdentificationMaskBit"/> gate nothing, because the registry
     /// refuses to register one.</param>
     /// <exception cref="ArgumentNullException"><paramref name="kind"/> is null.</exception>

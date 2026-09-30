@@ -17003,6 +17003,11 @@ Decoders never throw for a byte: they answer false plus a stable token from a cl
 come from a peer or a store. Everything arrives by argument, the registry and the logger included, and there
 is no ambient static anywhere in the package.
 
+Use registry-bound payload validation to enforce the
+[v1 scalar value contracts](../KhaozEngine.ItemInstances/README.md#registration). Illegal values answer
+`field-malformed` and stored originals survive quarantine verbatim. `BoundTo` retains its full nonzero
+uint64 range. Game kinds supply their own codecs, and the shared Varint shape remains unsigned 64 bit.
+
 ```csharp
 using KhaozEngine.Catalog;
 using KhaozEngine.ItemInstances;
@@ -17037,7 +17042,7 @@ long instanceId = allocator.Next();
 var bank = new ItemContainer(
     slotCount: 28,
     stackable: Stackable,
-    payloadCanonical: ItemInstancePayload.IsCanonical,
+    payloadCanonical: bytes => ItemInstancePayload.IsCanonical(properties, bytes),
     quarantineWellFormed: QuarantineWrapper.Verify);
 
 bank.SetSlotAt(0, new ItemSlot(new ItemStack(BronzeSword, 1, instanceId), payload, Quarantined: false));

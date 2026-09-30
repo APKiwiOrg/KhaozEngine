@@ -313,9 +313,9 @@ engine rather than Scope B.
 |---|---|---|---|
 | 1 | `Flags` | `[Bits: varint uint32]`, a bitfield, bit 0 `Corrupted`, bit 1 `Mirrored`, bit 2 `Fractured`, bits 3 to 31 reserved and 0 in v1 | `Everyone` |
 | 2 | `ItemLevel` | `[Level: varint uint16]`, 1 to 65535 | `Everyone` |
-| 3 | `Quality` | `[Quality: varint uint16]`, in whole percentage points | `Everyone` |
-| 4 | `Charges` | `[Current: varint uint32][Maximum: varint uint32]` | `OwnerOnly` |
-| 5 | `Durability` | `[Current: varint uint16][Maximum: varint uint16]` | `OwnerOnly` |
+| 3 | `Quality` | `[Quality: varint uint16]`, 0 to 65535 whole percentage points | `Everyone` |
+| 4 | `Charges` | `[Current: varint uint32][Maximum: varint uint32]`, each bounded independently | `OwnerOnly` |
+| 5 | `Durability` | `[Current: varint uint16][Maximum: varint uint16]`, each bounded independently | `OwnerOnly` |
 | 6 | `BoundTo` | `[Subject: varint uint64]`, a character or account instance subject, 0 illegal | `OwnerOnly` |
 | 7 | `Materials` | `[Count: varint][ [MaterialId: varint int32][Parts: varint uint16] ] * Count`, authored order preserved | `Everyone` |
 | 8 | `Tier` | `[Tier: varint uint16]`, an upgrade rank, the Tibia plus-one shape | `Everyone` |
@@ -333,6 +333,13 @@ engine rather than Scope B.
 | 133 | `Enchantments` | the SAME entry layout as 131, ascending by mod id | `Everyone`, identification gated |
 | 134 | `RareName` | `[TemplateId: varint int32][WordCount: byte][WordId: varint int32] * WordCount` | `Everyone`, identification gated |
 | 135 to 1023 | reserved for Scope B | | |
+
+The v1 registered codecs enforce the value bounds for kinds 1 to 6 and 128 after the unsigned 64 bit
+shape walk. Flags accepts only 0 to 7, ItemLevel and BoundTo exclude zero, and Identification accepts
+state 0 or 1 and any uint32 mask, including unassigned bits. Quality has no 100 cap. Charges and
+Durability permit Current above Maximum and Maximum zero. A value outside these contracts answers
+`field-malformed`, and stored payload bytes are quarantined verbatim. Registry-free payload decoding
+checks only the envelope, so it does not enforce these per-kind rules.
 
 **Kind 132's count is a VARINT and kind 131's is a byte, and the difference is not an oversight.**
 Contracts 9.5 writes the socket field as `[Count: varint]`, and a narrowing to a byte would be a width

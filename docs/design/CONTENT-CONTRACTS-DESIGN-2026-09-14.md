@@ -1360,7 +1360,7 @@ The reasons, each a stable token so a counter can be keyed on it:
 | `varint-not-minimal` | A varint is longer than its value needs. |
 | `varint-overflow` | A varint does not terminate within 5 bytes. |
 | `socket-nesting` | A nested payload contains a socket field. |
-| `field-malformed` | A known kind's bytes do not match its own shape. |
+| `field-malformed` | A known kind's bytes do not match its own shape or its registered value rules. |
 
 A payload that fails for any reason is QUARANTINED per section 10, never discarded, and never
 reinterpreted as a shorter valid payload. That last clause matters: a decoder that stops at the first bad

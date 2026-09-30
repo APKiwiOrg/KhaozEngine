@@ -25,16 +25,16 @@ public static class InstancePropertyKind
     /// <summary>Kind 2, the item level, 1 to 65535.</summary>
     public const ushort ItemLevel = 2;
 
-    /// <summary>Kind 3, the quality, in whole percentage points.</summary>
+    /// <summary>Kind 3, the quality, 0 to 65535 in whole percentage points.</summary>
     public const ushort Quality = 3;
 
-    /// <summary>Kind 4, the current and maximum charge count.</summary>
+    /// <summary>Kind 4, the current and maximum charge counts, each an independent uint32.</summary>
     public const ushort Charges = 4;
 
-    /// <summary>Kind 5, the current and maximum durability.</summary>
+    /// <summary>Kind 5, the current and maximum durability, each independently 0 to 65535.</summary>
     public const ushort Durability = 5;
 
-    /// <summary>Kind 6, the character or account subject the item is bound to. A subject of 0 is illegal.</summary>
+    /// <summary>Kind 6, the nonzero uint64 character or account subject the item is bound to.</summary>
     public const ushort BoundTo = 6;
 
     /// <summary>Kind 7, the material inputs an item was made from, in AUTHORED order, each an item id and a part count.</summary>
@@ -43,7 +43,7 @@ public static class InstancePropertyKind
     /// <summary>Kind 8, an upgrade rank, the Tibia plus-one shape.</summary>
     public const ushort Tier = 8;
 
-    /// <summary>Kind 128, the identification state byte and the revealed mask the gated kinds index into.</summary>
+    /// <summary>Kind 128, state 0 or 1 and the uint32 revealed mask the gated kinds index into.</summary>
     public const ushort Identification = 128;
 
     /// <summary>Kind 129, the unique template row this item is an instance of.</summary>

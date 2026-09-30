@@ -112,8 +112,9 @@ The v1 gated bits are fixed: kind 129 `UniqueTemplate` is bit 0, 131 `Affixes` b
 bit 2 and 134 `RareName` bit 3. Bits 4 to 31 are unassigned.
 
 The types a registration is made of: `IInstancePropertyCodec` is the per-kind rule a shape cannot express,
-one total `TryValidate` that is handed a body the shape has already vetted, and `InstancePropertyCodec` holds
-the four the engine ships (`ShapeOnly`, `Identification`, `AffixList`, `SocketList`). `InstanceFieldShape`
+one total `TryValidate` that is handed a body the shape has already vetted. `InstancePropertyCodec` exposes
+`ShapeOnly`, `Identification`, `AffixList` and `SocketList`, while `CreateV1` also registers the scalar
+value codecs for kinds 1 to 6. `InstanceFieldShape`
 describes the bytes as a header run and a repeating entry run over `InstanceSlotKind` slots, with an
 `InstanceCountWidth` for the entry count. `InstanceReferenceTarget` names a content type key, the
 `InstanceReferenceSite` it sits at (header or entry) and its slot index. `InstancePropertyRegistration` is
@@ -121,12 +122,31 @@ the whole of one kind's registration, which is what `TryGet(kind, out registrati
 `TryGetByIdentificationMaskBit` hand back, and `ByKind` is every one of them ascending.
 `MaxIdentificationMaskBit` is 31, because the revealed mask is a `uint`.
 
+The registered v1 value codecs enforce these bounds through `TryDecode`, `Validate` and `IsCanonical`:
+
+| Kind | Accepted values |
+|---|---|
+| 1 `Flags` | 0 to 7, with all reserved bits zero |
+| 2 `ItemLevel` | 1 to 65535 |
+| 3 `Quality` | 0 to 65535 whole percentage points |
+| 4 `Charges` | Current and Maximum each 0 to 4294967295 |
+| 5 `Durability` | Current and Maximum each 0 to 65535 |
+| 6 `BoundTo` | Subject 1 to 18446744073709551615 |
+| 128 `Identification` | State 0 or 1, RevealedMask 0 to 4294967295, including unassigned bits |
+
+Charges and Durability permit Current above Maximum and permit Maximum zero. Values outside these
+bounds answer `field-malformed`. Stored entries quarantine with the original payload bytes kept verbatim.
+Game kinds choose their own value codecs. The shared `Varint` shape slot still reads unsigned 64 bit
+values, and registry-free payload overloads check the envelope without inspecting kind bodies.
+
 ## Building a payload
 
 `ItemInstancePayloadBuilder` is the WRITE half, and it is the thing that makes the encoding canonical. It
 holds its fields strictly ascending by kind whatever order they were added in, refuses the same kind twice,
 sorts an affix list ascending by mod id, and writes every varint minimally. Every refusal THROWS, because a
 builder is handed values by code rather than bytes by a peer, which is the opposite of the decoder below.
+The builder has no registry and does not enforce per-kind value bounds. Check authored payloads with
+`ItemInstancePayload.Validate(registry, payload)` or registry-bound `IsCanonical` before seating them.
 
 ```csharp
 byte[] payload = new ItemInstancePayloadBuilder()
@@ -226,8 +246,8 @@ fields inside, and a socket holding none of them leaves no frame behind. Nothing
 destination span either way, and the walk runs twice, once to total what the viewer may see and once to
 write it, so a rebuilt field's length varint is known before a byte is written.
 
-The revealed mask is a `ulong` on every member here. Kind 128's mask is a varint and the shape walk reads a
-varint at the full 64 bits, so taking a `uint` would force a narrowing at some call site. Bits above
+The revealed mask remains a `ulong` on every member here for caller compatibility. Registered kind 128
+accepts stored masks only within `uint32`. Supplied bits above
 `InstancePropertyRegistry.MaxIdentificationMaskBit` gate nothing, because the registry refuses to register
 one.
 
@@ -1335,12 +1355,11 @@ every id space, every ordering rule, the stacking test, the paging shape, the pr
 byte passes through, the eighteen content types a roll and a craft read, and the three engines over them,
 which are the expensive things to change once data exists. What is absent is breadth, which is CONTENT: this
 package names no mod, no rarity, no currency and no tier, and a game authors every one of them. Beside that
-sit two named gaps on surfaces that already exist.
+sits one named gap on a surface that already exists.
 
 | Not here | Where it lands |
 |---|---|
 | a READER for the page delta, which ships the encoder alone while the fragmenter ships both halves | [#933](https://github.com/APKiwiOrg/KhaozEngine/issues/933) |
-| enforcement of spec 3.3's per-kind value widths, so the revealed mask is a full `ulong` at every door here | [#917](https://github.com/APKiwiOrg/KhaozEngine/issues/917) |
 
 The journal side of a paged container, the `<container>/p<NN>` section naming, the load path and the batched
 commit builder, is `KhaozEngine.ItemInstances.Journal`, a `Server` package. The fragmenter a full page send

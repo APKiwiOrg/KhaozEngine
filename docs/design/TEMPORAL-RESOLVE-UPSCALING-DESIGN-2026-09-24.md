@@ -782,7 +782,9 @@ and changed these details. Each group's "Contract amendments" block carries the 
     lines are identical between the two entry points, and 983 of 1873 differ from the full variant's, most by 0 to 2
     pixels in the counts and in the third decimal of the errors. The still box over the textured wall under a
     sideways camera leaves a trail of 7 pixels at Native against 4 at full precision, and 15 at Quality against 14,
-    under bounds of 8 and 16. The 14 resets still match their from-scratch renders
+    under bounds of 11 and 16. The Native bound is set by the Tesla T4, where the trail is 10 under Direct3D 11 and
+    Windows Vulkan and 8 under Linux Vulkan (hosted runs 36553976825 and 36639533321), and Quality's by Metal at half.
+    The 14 resets still match their from-scratch renders
     with no pixel differing, the reveal's comparison with the wall from scratch is unchanged, and the perspective walk
     cell that failed the earlier half variant (pitch 0.35, sideways at 2.5 px, Native) passes.
 

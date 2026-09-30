@@ -44,6 +44,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// it happens once per readback and once per bulk upload, so two calls carrying one global barrier each cost
     /// nothing measurable and remove a whole hazard class. V-T2's gated invariant is untouched, because it is a
     /// statement about what a DRAW emits.</para>
+    ///
+    /// <para><b>A TEXTURE COPY WITH A STAGING SIDE TAKES THE FIRST ONE TOO.</b> A staging texture is a
+    /// <c>VkBuffer</c> as well, and its memory range is handed to the next staging texture once the frame boundary
+    /// frees it, so two readbacks in a row write one range from two submissions. The barrier before the copy is
+    /// what orders the second write after the first inside the command stream rather than only through the host's
+    /// wait between them.</para>
     /// </summary>
     internal static unsafe class VulkanTransferBarrier
     {

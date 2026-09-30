@@ -203,13 +203,21 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 VulkanTransferPlan.ResolveRegion(source.Width, source.Height, source.Plan.DepthStencil));
         }
 
-        // THE THREE THINGS EVERY TEXTURE COPY DOES BEFORE ITS FIRST REGION: end the pass, put each side into its
-        // transfer layout over exactly the range the copy touches, and answer the command buffer every region
-        // names. A STAGING side is skipped, because it is a VkBuffer with no image and no layout at all (V-C7).
+        // THE FOUR THINGS EVERY TEXTURE COPY DOES BEFORE ITS FIRST REGION: end the pass, put each side into its
+        // transfer layout over exactly the range the copy touches, order a STAGING side, and answer the command
+        // buffer every region names.
+        // A staging side is a VkBuffer with no image and no layout at all (V-C7), so no transition orders it. Its
+        // memory is also reused: a staging texture disposed after one readback frees its range at the next frame
+        // boundary, and the next readback's staging texture can be bound to the same range. Only the host's
+        // timeline wait orders the two copies into it, and that wait is outside the command stream, so the stream
+        // itself held two writes to one range with no dependency between them. The global barrier the buffer copy
+        // already emits (VulkanTransferBarrier.ToTransfer) is that dependency: its first scope is every earlier
+        // write on the queue, one in an earlier submission included. One per copy call, not per region, and only
+        // where a side is staging, so the image-to-image path is unchanged.
         ulong PrepareTransfer(VulkanTexture source, VulkanTexture destination, in VulkanTrackedImage sourceRange,
             in VulkanTrackedImage destinationRange, string what)
         {
-            RequireTransfers(what);
+            IVulkanTransferSink sink = RequireTransfers(what);
 
             ulong buffer = CurrentBuffer;
             EndRenderingBeforeIllegalCommand();
@@ -219,6 +227,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             if (!destination.IsStaging)
                 _layouts?.TransitionTo(buffer, destinationRange, ImageLayout.TransferDstOptimal);
+
+            if (source.IsStaging || destination.IsStaging)
+                sink.MemoryBarrier(buffer, toTransfer: true);
 
             return buffer;
         }
@@ -262,8 +273,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
                 default:
                     // BOTH SIDES ARE VkBuffers, so this is a plain byte copy between two software layouts and the
-                    // subresource offsets are the whole of what it needs. Barrier-free, unlike CopyBuffer: a
-                    // staging texture is only ever read through Map, which drains the timeline first (V-C8).
+                    // subresource offsets are the whole of what it needs. PrepareTransfer ordered it before the
+                    // first region. No barrier after it, unlike CopyBuffer: a staging texture is only ever read
+                    // through Map, which drains the timeline first (V-C8), or by a later copy, which carries its
+                    // own barrier.
                     VulkanSubresourceLayout from =
                         VulkanStagingLayout.For(source.StagingShape, sourceMip, sourceLayer);
                     VulkanSubresourceLayout to =

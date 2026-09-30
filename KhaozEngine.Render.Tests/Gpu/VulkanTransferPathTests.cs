@@ -278,7 +278,8 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>Two staging textures have no image at all, so the copy is a plain byte copy between two
-        /// software layouts and nothing is transitioned.</summary>
+        /// software layouts and nothing is transitioned. It is ordered by the one global barrier before it, as
+        /// every copy with a staging side is.</summary>
         [Fact]
         public void TwoStagingTextures_AreAPlainBufferCopyWithNoTransition()
         {
@@ -301,7 +302,7 @@ namespace KhaozEngine.Tests.Gpu
 
                 Assert.Single(fixture.TransferSink.BufferCopies);
                 Assert.Equal(0, fixture.Barriers.CallCount);
-                Assert.Empty(fixture.TransferSink.MemoryBarriers);
+                Assert.Equal([true], fixture.TransferSink.MemoryBarriers);
             }
             finally
             {

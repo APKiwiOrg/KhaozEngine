@@ -38,6 +38,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   of the same frame now reads the later list's copy, the way Metal already did, and a frame with more writing
   submissions than frames in flight waits
   ([ordering rules](docs/USING-KHAOZENGINE.md#uniform-buffers-on-the-native-direct3d-11-backend-17320)).
+- On the native Vulkan backend a texture copy into or out of a staging texture now waits in the command stream for
+  every earlier write on the queue. A staging texture's memory passes to the next one at the frame boundary, so two
+  readbacks a frame apart wrote one range ordered only by the host's wait, which synchronization validation reported
+  as a write after write.
 - In-memory catalog schema metadata now reports the same schema 3 target as the database providers (#1198).
   Key-shape validation shares one lower-layer rule while preserving the authoring helper's API and diagnostic
   conventions, and imported family retirement survives reads, exports and bundle round trips (#914).

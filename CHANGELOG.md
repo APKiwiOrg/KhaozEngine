@@ -68,7 +68,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   application lock, preserving legacy rows and nullable timestamps (#1195).
 - `ValidateOnlyWithoutTypeSync` validates an existing catalog schema without synchronizing registered types. Upgrade
   previews can inspect stored settings without changing type rows or their timestamps (#1062).
-- Catalog diffs read all version rows through an optional bulk capability, with compatible paging for stores that
+- Catalog diffs read registered version rows through an optional bulk capability, with compatible paging for stores that
   implement the existing interface. Historical and retired-row semantics remain intact (#952).
 
 ## 20.15.1

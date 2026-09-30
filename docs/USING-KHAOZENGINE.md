@@ -16222,8 +16222,9 @@ seam, `IContentAuthoringStore`, carries the twenty-nine members every backend im
 initialization, the version list and the operator pin, the one open draft, publish and rollback, row and audit
 reads, id allocation, families, and bulk import and export. There are three implementations, and a caller
 written against the seam runs on all three. All three also implement optional `IContentVersionRowSource`.
-`ReadVersionRowsAsync` returns rows live at one version, including retired rows and historical revision
-metadata, ordered by type id then definition id. Version 0 reads the active published version without the
+`ReadVersionRowsAsync` returns rows for the store's registered types live at one version, including retired
+rows and historical revision metadata, ordered by type id then definition id. Stored types absent from the
+provider registry are ignored before decoding, and an admin surface can narrow the result further. Version 0 reads the active published version without the
 open draft or operator pin. Empty published catalogs return an empty list.
 
 ```csharp

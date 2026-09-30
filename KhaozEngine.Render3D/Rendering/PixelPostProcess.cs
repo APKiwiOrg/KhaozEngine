@@ -4,6 +4,7 @@ using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D.Internal;
+using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 
 namespace KhaozEngine.Render3D.Rendering
 {
@@ -165,10 +166,6 @@ namespace KhaozEngine.Render3D.Rendering
             _applyPipe = FullscreenPipeline(f, _applyFrag, _applyLayout, pingOutput); // apply writes a full-res ping (first chain pass)
             _pingOutput = pingOutput;
         }
-
-        static GpuResourceLayoutElement T(string n) => new(n, GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);
-        static GpuResourceLayoutElement S(string n) => new(n, GpuResourceKind.Sampler, GpuShaderStages.Fragment);
-        static GpuResourceLayoutElement U(string n) => new(n, GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment);
 
         // Compile (or reuse) the (FullscreenVert, frag) pair. Memoized on the source strings so a repeated pair is
         // cross-compiled once and, via _shaderCache, disposed once. The shared FullscreenVert source is the vert of

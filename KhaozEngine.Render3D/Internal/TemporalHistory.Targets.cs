@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu;
+using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 
 namespace KhaozEngine.Render3D.Internal;
 
@@ -150,13 +151,6 @@ internal sealed partial class TemporalHistory
         _targetDevice = null;
         DisplayWidth = DisplayHeight = InternalWidth = InternalHeight = 0;
         return true;
-    }
-
-    static void Free<T>(ref T? resource, GpuRetireQueue? retired) where T : class, IDisposable
-    {
-        if (retired is not null) retired.Retire(resource);
-        else resource?.Dispose();
-        resource = null;
     }
 
     static InvalidOperationException DrainDuringRecording(string owner) => new(

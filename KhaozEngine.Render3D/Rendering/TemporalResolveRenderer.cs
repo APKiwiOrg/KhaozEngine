@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
+using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 
 namespace KhaozEngine.Render3D.Rendering
 {
@@ -89,10 +90,6 @@ namespace KhaozEngine.Render3D.Rendering
 
         /// <summary>The uniforms uploaded for this frame. Internal, for the tests and planned temporal diagnostics.</summary>
         internal TemporalResolveUniforms LastUniforms { get; private set; }
-
-        static GpuResourceLayoutElement T(string n) => new(n, GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);
-        static GpuResourceLayoutElement S(string n) => new(n, GpuResourceKind.Sampler, GpuShaderStages.Fragment);
-        static GpuResourceLayoutElement U(string n) => new(n, GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment);
 
         internal static IGpuPipeline Fullscreen(IGpuResourceFactory f, IGpuShaderSet shaders, IGpuResourceLayout layout,
             GpuOutputDescription outputs)

@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
+using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 
 namespace KhaozEngine.Render3D.Rendering
 {
@@ -66,11 +67,6 @@ namespace KhaozEngine.Render3D.Rendering
             _accumulatePipeline = TemporalResolveRenderer.Fullscreen(f, _accumulateShaders, _accumulateLayout,
                 new GpuOutputDescription(null, TemporalFormats.HistoryColor, TemporalFormats.HistoryConfidence));
         }
-
-        static GpuResourceLayoutElement T(string n) =>
-            new(n, GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment);
-        static GpuResourceLayoutElement S(string n) => new(n, GpuResourceKind.Sampler, GpuShaderStages.Fragment);
-        static GpuResourceLayoutElement U(string n) => new(n, GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment);
 
         /// <summary>For the cost measurement alone: which pass <see cref="Run"/> leaves out, so each pass can be timed
         /// on its own. The output is then not a resolve.</summary>
@@ -180,13 +176,6 @@ namespace KhaozEngine.Render3D.Rendering
             ReleaseSets(retired);
             for (int t = 0; t < _targets.Length; t++) Free(ref _targets[t], retired);
             _targetWidth = _targetHeight = 0;
-        }
-
-        static void Free<T>(ref T? resource, GpuRetireQueue? retired) where T : class, IDisposable
-        {
-            if (retired is not null) retired.Retire(resource);
-            else resource?.Dispose();
-            resource = null;
         }
 
         public void Dispose()

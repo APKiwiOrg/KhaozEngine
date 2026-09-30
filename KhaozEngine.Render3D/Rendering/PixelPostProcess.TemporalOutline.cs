@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
+using static KhaozEngine.Render3D.Internal.FragmentPassResources;
 
 namespace KhaozEngine.Render3D.Rendering
 {

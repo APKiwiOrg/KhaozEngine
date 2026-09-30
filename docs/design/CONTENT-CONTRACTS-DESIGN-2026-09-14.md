@@ -1992,7 +1992,8 @@ inconsistency in the tree (`TileProtocol.Frames.cs:179`, `a-engine.md:1629-1635`
 the last, at most five bytes for a 32 bit value and ten for a 64 bit one. A field DECLARED SIGNED is
 zig-zag encoded first, `(n << 1) ^ (n >> 31)` for 32 bit, so 0 is 0, -1 is 1, 1 is 2, and a negative number
 does not cost ten bytes. Content ids, instance ids, kind ids, lengths, counts and roll positions are all
-declared unsigned and are never zig-zagged, so a small id costs one byte. Encodings must be MINIMAL, and a
+declared unsigned and are never zig-zagged, so a small id costs one byte. Content-version numbers follow
+the same rule: they are plain unsigned varints and are never zig-zagged. Encodings must be MINIMAL, and a
 non-minimal or non-terminating varint is a decode failure with the reasons named in section 9.7.
 
 **Version field first, always.** The FIRST field of every standalone format is its version, and a version

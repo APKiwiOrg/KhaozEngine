@@ -746,7 +746,7 @@ costs nothing and a caller cannot corrupt a container by holding one.
 [PageIndex: varint uint16]             // 0 for a whole container
 [FirstSlot: varint uint16]             // the container slot this page's slot 0 is
 [SlotCount: uint16 LE]                 // slots in THIS page
-[ContentVersion: varint int32]         // the page stamp, contracts 7.2
+[ContentVersion: varint uint32]        // non-negative int page stamp, plain unsigned under contracts 15
 [EntryCount: varint int32]
 then EntryCount entries, strictly ascending by Slot:
   [Slot: varint uint16]                // RELATIVE to FirstSlot
@@ -1385,7 +1385,7 @@ binds the instance to that event. The `loot-created` payload therefore gains fou
 [InstanceId: varint uint64]
 [PayloadLength: varint int32]
 [Payload: PayloadLength bytes]        // the FULL payload, not the public view
-[ContentVersion: varint int32]        // the stamp, see below
+[ContentVersion: varint uint32]       // non-negative int stamp, plain unsigned under contracts 15        // the stamp, see below
 ```
 
 **The FULL payload is what is durable** (contracts 6.6: "What is durable is the whole payload"). Only
@@ -2322,7 +2322,7 @@ One event type, `item-generated`, written on the commit that first seats the ite
 [BaseId: varint int32]
 [InstanceId: varint uint64]
 [RarityId: byte]
-[ContentVersion: varint int32]
+[ContentVersion: varint uint32]       // non-negative int stamp, plain unsigned under contracts 15
 [SourceKind: byte]              // 1 drop, 2 craft, 3 admin grant, 4 migration, 5 to 255 game
 [SourceId: varint int32]        // the loot table, currency or migration id, 0 when none
 [PayloadLength: varint int32]
@@ -2645,7 +2645,7 @@ same operation id carrying the same instance id is a `Replayed` that returns the
 ```
 [EventVersion: byte = 1]
 [CurrencyId: varint int32][InstanceId: varint uint64]
-[ContentVersion: varint int32]
+[ContentVersion: varint uint32]       // non-negative int stamp, plain unsigned under contracts 15
 [BeforeLength: varint int32][Before: bytes]     // the payload as it stood
 [AfterLength: varint int32][After: bytes]       // the payload as it stands
 ```
@@ -3017,7 +3017,7 @@ truncated, normalized or re-encoded. The wrapper replaces the entry's payload in
 [Magic: 4 bytes 'K','E','C','Q']   // 0x4B 0x45 0x43 0x51
 [Version: uint16 LE]               // 1
 [ReasonCode: byte]                 // the fixed ordinal from the table below, 0 never assigned
-[StampedVersion: varint int32]     // the page stamp the record failed under
+[StampedVersion: varint uint32]    // non-negative int page stamp, plain unsigned under contracts 15
 [OriginalLength: varint int32]
 [Original: OriginalLength bytes]   // verbatim, never re-encoded
 ```

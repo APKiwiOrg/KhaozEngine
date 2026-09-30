@@ -203,7 +203,10 @@ TemporalSurface temporalPrepareSurface(ivec2 centreTexel, ivec2 closestTexel, fl
     float centreScreenMotion = 0.0;
     if (!closestIsBackground) {
         vec2 centreOwn = centreMotion;
-        if (centreIsBackground) {
+        // A background fixed to the screen (the starfield, Params.y) has zero motion, as it reprojects below.
+        if (centreIsBackground && Params.y > 0.5) {
+            centreOwn = vec2(0.0);
+        } else if (centreIsBackground) {
             vec2 centreUv = (vec2(centreTexel) + 0.5 - jitter) / internalSize;
             vec4 centrePrevious = BackgroundToPrevious * vec4(centreUv.x * 2.0 - 1.0, 1.0 - centreUv.y * 2.0, 1.0, 1.0);
             centreOwn = centrePrevious.w > 1.0e-6

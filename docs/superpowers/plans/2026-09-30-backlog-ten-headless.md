@@ -4,6 +4,10 @@
 
 **Goal:** Implement ten unclaimed backlog items without duplicating the other active batch.
 
+**Status:** All ten implementations and their focused or hosted verification are complete. Final comment re-review, whole-branch review and full Release validation are pending.
+
+**Execution:** Two independent documentation tasks ran in a separate worktree while a code task waited for hosted regression evidence. The branches were merged with their original commits retained. Hosted CI supplied red and green proofs when local validation was occupied. The fragment capacity remained 1015 bytes after compatibility review.
+
 **Architecture:** Repair existing flows and their contracts. Keep each issue scoped, add headless regression coverage for behavior changes, and integrate one version and changelog update after all issue commits.
 
 **Tech Stack:** C#, .NET 10, xUnit, Markdown.
@@ -16,7 +20,7 @@
 - Follow AGENTS.md and docs/CONTRIBUTOR-RULES.md. Preserve unrelated edits. Stage and commit explicit paths.
 - Root owns integration, version files, CHANGELOG.md, publishing, pushes and issue closure. Workers do none of these.
 - Workers do not spawn agents. One implementation worker at a time. Read-only review may overlap preparation.
-- Local build and test commands need a root-issued turn. No concurrent builds, repeated test loops, CPU load or stress runs.
+- Local build and test commands need a root-issued turn and run through the dispatch's full-command slot helper. No concurrent builds, repeated test loops, CPU load or stress runs.
 - Confirm regression failure before behavior changes, run focused Release verification after them, and report exact exit codes.
 - New behavior gets matching area tests. Process-global state uses DisableParallelization = true collections.
 - No baseline growth, warning suppression, dependency additions, raw input access or localization bypass.
@@ -40,13 +44,13 @@
 
 **Requirements:** Report schema version 3 from the in-memory store, matching both providers. Document the build target consumers should read. Preserve the existing public constant.
 
-**Interfaces:** Preserve existing callers and wire layouts except the explicitly stated fragment payload capacity.
+**Interfaces:** Preserve existing callers and wire layouts.
 
-- [ ] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
-- [ ] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
-- [ ] Implement only the required existing-flow correction and sweep relevant Markdown.
-- [ ] Verify synchronously in Release after receiving the root validation turn. Command: `dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter FullyQualifiedName~InMemoryContentAuthoringStoreTests`.
-- [ ] Commit explicit owned paths with `Closes #1198` in the body and write the report with root cause, paths, commands, exit codes and concerns.
+- [x] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
+- [x] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
+- [x] Implement only the required existing-flow correction and sweep relevant Markdown.
+- [x] Verify synchronously in Release after receiving the root validation turn. Command: `dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter FullyQualifiedName~InMemoryContentAuthoringStoreTests`.
+- [x] Commit explicit owned paths with `Closes #1198` in the body and write the report with root cause, paths, commands, exit codes and concerns.
 
 ### Task 2: Allocation-free object picking
 
@@ -56,13 +60,13 @@
 
 **Requirements:** Replace the iterator on the picking hot path with a non-allocating region walk. Preserve rectangle, plane, ray ordering and nearest-hit behavior. Pin allocations through the camera probe and retain ordinary picking tests.
 
-**Interfaces:** Preserve existing callers and wire layouts except the explicitly stated fragment payload capacity.
+**Interfaces:** Preserve existing callers and wire layouts.
 
-- [ ] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
-- [ ] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
-- [ ] Implement only the required existing-flow correction and sweep relevant Markdown.
-- [ ] Verify synchronously in Release after receiving the root validation turn. Command: `Locate the matching TileWorldCameraProbe and TileObjectRaycast test projects, then run their focused Release classes`.
-- [ ] Commit explicit owned paths with `Closes #1183` in the body and write the report with root cause, paths, commands, exit codes and concerns.
+- [x] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
+- [x] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
+- [x] Implement only the required existing-flow correction and sweep relevant Markdown.
+- [x] Verify synchronously in Release after receiving the root validation turn. Command: `Locate the matching TileWorldCameraProbe and TileObjectRaycast test projects, then run their focused Release classes`.
+- [x] Commit explicit owned paths with `Closes #1183` in the body and write the report with root cause, paths, commands, exit codes and concerns.
 
 ### Task 3: Skinned grounding documentation and refusal coverage
 
@@ -72,29 +76,29 @@
 
 **Requirements:** State the existing unweighted threshold of 1e-8. Add the missing moved-joint refusal test with ParamName moved, alongside the turned-joint test. No rendering behavior change.
 
-**Interfaces:** Preserve existing callers and wire layouts except the explicitly stated fragment payload capacity.
+**Interfaces:** Preserve existing callers and wire layouts.
 
-- [ ] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
-- [ ] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
-- [ ] Implement only the required existing-flow correction and sweep relevant Markdown.
-- [ ] Verify synchronously in Release after receiving the root validation turn. Command: `dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter FullyQualifiedName~ClipRefusalsTests`.
-- [ ] Commit explicit owned paths with `Closes #1201` in the body and write the report with root cause, paths, commands, exit codes and concerns.
+- [x] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
+- [x] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
+- [x] Implement only the required existing-flow correction and sweep relevant Markdown.
+- [x] Verify synchronously in Release after receiving the root validation turn. Command: `dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter FullyQualifiedName~ClipRefusalsTests`.
+- [x] Commit explicit owned paths with `Closes #1201` in the body and write the report with root cause, paths, commands, exit codes and concerns.
 
 ### Task 4: Catalog key validation and retired family bundles
 
 **Issue:** https://github.com/APKiwiOrg/KhaozEngine/issues/914
 
-**Files:** KhaozEngine.Catalog/ContentKey.cs, Validation/ContentKeyChecks.cs, KhaozEngine.Catalog.Authoring/Publish/ContentForkChecks.cs, InMemoryContentAuthoringStore family and bundle partials, matching Catalog tests.
+**Files:** KhaozEngine.Catalog/ContentKey.cs or a cohesive new core rule type, Validation/ContentKeyChecks.cs, KhaozEngine.Catalog.Authoring/ContentKeyShape.cs, Publish/ContentForkChecks.cs as needed, InMemoryContentAuthoringStore family and bundle partials, matching Catalog tests.
 
-**Requirements:** Share the actual key-shape rule between validator and fork preflight. Preserve retired family state through import, read and export. Test invalid keys and retired family round trips. Leave CreateFamilyAsync transaction changes to the other batch issue #940.
+**Requirements:** Share the actual key-shape rule between validator and fork preflight. Preserve the existing public Authoring.ContentKeyShape API while putting shared behavior in the lower Catalog layer. Preserve retired family state through import, read and export. Test invalid keys and retired family round trips. Leave CreateFamilyAsync transaction changes to the other batch issue #940.
 
-**Interfaces:** Preserve existing callers and wire layouts except the explicitly stated fragment payload capacity.
+**Interfaces:** Preserve existing callers and wire layouts.
 
-- [ ] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
-- [ ] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
-- [ ] Implement only the required existing-flow correction and sweep relevant Markdown.
-- [ ] Verify synchronously in Release after receiving the root validation turn. Command: `dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter "FullyQualifiedName~BundleTests|FullyQualifiedName~Fork|FullyQualifiedName~Key"`.
-- [ ] Commit explicit owned paths with `Closes #914` in the body and write the report with root cause, paths, commands, exit codes and concerns.
+- [x] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
+- [x] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
+- [x] Implement only the required existing-flow correction and sweep relevant Markdown.
+- [x] Verify synchronously in Release after receiving the root validation turn. Command: `dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter "FullyQualifiedName~BundleTests|FullyQualifiedName~Fork|FullyQualifiedName~Key"`.
+- [x] Commit explicit owned paths with `Closes #914` in the body and write the report with root cause, paths, commands, exit codes and concerns.
 
 ### Task 5: Truthful rollback blocker kinds
 
@@ -104,13 +108,13 @@
 
 **Requirements:** Carry nullable rule kind on a rollback blocker and render the actual kind. A baseline with a retired row and no matching rule must yield a null kind, not a fabricated Retired rule. Keep existing constructor callers compatible.
 
-**Interfaces:** Preserve existing callers and wire layouts except the explicitly stated fragment payload capacity.
+**Interfaces:** Preserve existing callers and wire layouts.
 
-- [ ] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
-- [ ] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
-- [ ] Implement only the required existing-flow correction and sweep relevant Markdown.
-- [ ] Verify synchronously in Release after receiving the root validation turn. Command: `Run focused Release rollback and admin catalog action tests`.
-- [ ] Commit explicit owned paths with `Closes #955` in the body and write the report with root cause, paths, commands, exit codes and concerns.
+- [x] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
+- [x] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
+- [x] Implement only the required existing-flow correction and sweep relevant Markdown.
+- [x] Verify synchronously in Release after receiving the root validation turn. Command: `Run focused Release rollback and admin catalog action tests`.
+- [x] Commit explicit owned paths with `Closes #955` in the body and write the report with root cause, paths, commands, exit codes and concerns.
 
 ### Task 6: Quarantine plain stacks safely
 
@@ -118,15 +122,15 @@
 
 **Files:** KhaozEngine.Items/ItemContainer.Slots.cs, KhaozEngine.ItemInstances.Journal/ContainerLoad*.cs, page codecs as needed and matching Items and Server tests.
 
-**Requirements:** Allow a verified quarantine wrapper for an instance-id-zero stack while retaining the instance-id requirement for live payloads. Load and page decoding must carry the quarantine flag, preserve original bytes and keep the page clean. A malformed payload without instance id must be quarantined at entry level when its shape can be preserved. Pin normal payload refusals and unusable quarantined slots.
+**Requirements:** Allow a verified quarantine wrapper for an instance-id-zero stack while retaining the instance-id requirement for live payloads. Load and page decoding must carry the quarantine flag, preserve original bytes and keep the page clean. A malformed payload without instance id must be quarantined at entry level when its shape can be preserved. Pin normal payload refusals and unusable quarantined slots. A formerly plain stack must be rescuable once its definition becomes valid, without inventing an instance id. A malformed original live payload with no instance id remains refused.
 
-**Interfaces:** Preserve existing callers and wire layouts except the explicitly stated fragment payload capacity.
+**Interfaces:** Preserve existing callers and wire layouts.
 
-- [ ] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
-- [ ] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
-- [ ] Implement only the required existing-flow correction and sweep relevant Markdown.
-- [ ] Verify synchronously in Release after receiving the root validation turn. Command: `Run focused Release Items slot tests and Server ContainerLoadRescueTests`.
-- [ ] Commit explicit owned paths with `Closes #935` in the body and write the report with root cause, paths, commands, exit codes and concerns.
+- [x] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
+- [x] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
+- [x] Implement only the required existing-flow correction and sweep relevant Markdown.
+- [x] Verify synchronously in Release after receiving the root validation turn. Command: `Run focused Release Items slot tests and Server ContainerLoadRescueTests`.
+- [x] Commit explicit owned paths with `Closes #935` in the body and write the report with root cause, paths, commands, exit codes and concerns.
 
 ### Task 7: Enforce instance scalar contracts
 
@@ -134,15 +138,15 @@
 
 **Files:** KhaozEngine.ItemInstances scalar codecs and registry plus identification codec, matching ItemInstances and Server load tests.
 
-**Requirements:** Validate v1 scalar widths, reject BoundTo subject zero and reserved Flags bits, and cap the identification revealed mask at uint.MaxValue. Keep the generic Varint shape at 64 bits. Use per-kind codecs, preserving invalid bytes through quarantine. Do not edit sections 3.8 or Varint semantics owned by other batch issues #903 and #905.
+**Requirements:** Validate v1 scalar widths, reject ItemLevel zero, BoundTo subject zero and reserved Flags bits, and cap the identification revealed mask at uint.MaxValue. Keep the generic Varint shape at 64 bits. Use per-kind codecs, preserving invalid bytes through quarantine. Preserve the existing uint.MaxValue mask acceptance and full-width BoundTo values. Do not edit sections 3.8 or Varint semantics owned by other batch issues #903 and #905.
 
-**Interfaces:** Preserve existing callers and wire layouts except the explicitly stated fragment payload capacity.
+**Interfaces:** Preserve existing callers and wire layouts.
 
-- [ ] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
-- [ ] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
-- [ ] Implement only the required existing-flow correction and sweep relevant Markdown.
-- [ ] Verify synchronously in Release after receiving the root validation turn. Command: `dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release with focused scalar, registry and identification filters`.
-- [ ] Commit explicit owned paths with `Closes #917` in the body and write the report with root cause, paths, commands, exit codes and concerns.
+- [x] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
+- [x] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
+- [x] Implement only the required existing-flow correction and sweep relevant Markdown.
+- [x] Verify synchronously in Release after receiving the root validation turn. Command: `dotnet test KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj -c Release with focused scalar, registry and identification filters`.
+- [x] Commit explicit owned paths with `Closes #917` in the body and write the report with root cause, paths, commands, exit codes and concerns.
 
 ### Task 8: Use the game payload budget for fragments
 
@@ -150,15 +154,15 @@
 
 **Files:** KhaozEngine.TileWorld.Netcode/TileFragmentedMessage.cs, matching fragment tests and item-instance design section 7.5.
 
-**Requirements:** Keep MaxGameMessageBytes as the payload cap. Derive a fragment chunk as payload cap minus the five-byte fragment header, giving 1019 bytes. Enforce full encoded game payload bounds, cover boundary and reassembly behavior, and correct the conservative arithmetic in section 7.5.
+**Requirements:** Keep MaxGameMessageBytes as the payload cap. Preserve the existing 1015-byte fragment capacity because both readers require a non-final chunk to have that exact width. Make the conservative unpadded frame budget explicit rather than treating the game payload cap as a datagram limit. Test the actual game-payload cap and the fragment frame budget through encoding and reassembly, including legacy-sized multi-chunk messages. Correct the conservative arithmetic and its compatibility reason in section 7.5. No wire behavior change.
 
-**Interfaces:** Preserve existing callers and wire layouts except the explicitly stated fragment payload capacity.
+**Interfaces:** Preserve existing callers and wire layouts.
 
-- [ ] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
-- [ ] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
-- [ ] Implement only the required existing-flow correction and sweep relevant Markdown.
-- [ ] Verify synchronously in Release after receiving the root validation turn. Command: `dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release --filter FullyQualifiedName~TileFragmentedMessageTests`.
-- [ ] Commit explicit owned paths with `Closes #923` in the body and write the report with root cause, paths, commands, exit codes and concerns.
+- [x] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
+- [x] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
+- [x] Implement only the required existing-flow correction and sweep relevant Markdown.
+- [x] Verify synchronously in Release after receiving the root validation turn. Command: `dotnet test KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj -c Release --filter FullyQualifiedName~TileFragmentedMessageTests`.
+- [x] Commit explicit owned paths with `Closes #923` in the body and write the report with root cause, paths, commands, exit codes and concerns.
 
 ### Task 9: Document deterministic random draw consumption
 
@@ -168,13 +172,13 @@
 
 **Requirements:** Read the shipped random implementations and generator. Document the fifth Skip member, its default and two overrides, and collapsed bounds on both real and discarded draws. Match the code without changing random behavior. Other batch #996 owns the Scope B validator prose.
 
-**Interfaces:** Preserve existing callers and wire layouts except the explicitly stated fragment payload capacity.
+**Interfaces:** Preserve existing callers and wire layouts.
 
-- [ ] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
-- [ ] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
-- [ ] Implement only the required existing-flow correction and sweep relevant Markdown.
-- [ ] Verify synchronously in Release after receiving the root validation turn. Command: `Run whole-tree documentation guards, no new tests for prose`.
-- [ ] Commit explicit owned paths with `Closes #995` in the body and write the report with root cause, paths, commands, exit codes and concerns.
+- [x] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
+- [x] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
+- [x] Implement only the required existing-flow correction and sweep relevant Markdown.
+- [x] Verify synchronously in Release after receiving the root validation turn. Command: `Run whole-tree documentation guards, no new tests for prose`.
+- [x] Commit explicit owned paths with `Closes #995` in the body and write the report with root cause, paths, commands, exit codes and concerns.
 
 ### Task 10: Document registered identification mask bits
 
@@ -184,11 +188,10 @@
 
 **Requirements:** State that Identify sets state 1 and ORs registered gated bits. Reserved unassigned bits remain zero. Preserve the shipped implementation and existing tests. Other batch #925 owns section 12.5 visibility semantics.
 
-**Interfaces:** Preserve existing callers and wire layouts except the explicitly stated fragment payload capacity.
+**Interfaces:** Preserve existing callers and wire layouts.
 
-- [ ] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
-- [ ] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
-- [ ] Implement only the required existing-flow correction and sweep relevant Markdown.
-- [ ] Verify synchronously in Release after receiving the root validation turn. Command: `Run documentation guards and inspect the existing Identify regression coverage`.
-- [ ] Commit explicit owned paths with `Closes #982` in the body and write the report with root cause, paths, commands, exit codes and concerns.
-
+- [x] Read the issue body and comments, locate current production code and tests, and confirm the gap remains.
+- [x] Add a regression test and observe the expected failure before changing behavior. Human prose needs no artificial test.
+- [x] Implement only the required existing-flow correction and sweep relevant Markdown.
+- [x] Verify synchronously in Release after receiving the root validation turn. Command: `Run documentation guards and inspect the existing Identify regression coverage`.
+- [x] Commit explicit owned paths with `Closes #982` in the body and write the report with root cause, paths, commands, exit codes and concerns.

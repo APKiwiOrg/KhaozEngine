@@ -7,6 +7,27 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.16.0
 
+- In-memory catalog schema metadata now reports the same schema 3 target as the database providers (#1198).
+  Key-shape validation shares one lower-layer rule while preserving the authoring helper's API and diagnostic
+  conventions, and imported family retirement survives reads, exports and bundle round trips (#914).
+- Camera object picks use a struct candidate walk instead of nested iterators. A warmed tile-world camera probe
+  allocates no bytes per call while preserving plane, region, distance, hit ordering and residency rules (#1183).
+- Rollback blocker payloads carry the actual nullable rule kind. A missing rule is represented as null rather
+  than a fabricated `Retired` rule, while existing blocker constructors and normal retirement responses remain
+  compatible (#955).
+- Verified quarantine wrappers can preserve a plain stack without assigning an instance id. Load keeps the
+  original bytes and a truthful quarantine flag without dirtying the page, and an empty original can be rescued
+  when valid again. Ordinary live payloads still require identity and malformed originals remain refused (#935).
+- Registry-bound instance codecs enforce the declared scalar widths, legal ItemLevel and BoundTo minima, and
+  reserved Flags bits. Identification masks are bounded to uint32. Invalid stored bytes are quarantined intact,
+  while generic 64-bit varints, full-width BoundTo values and registered game kinds remain supported (#917).
+- Fragment framing now names its conservative unpadded frame budget separately from the game payload cap.
+  Existing 1015-byte chunks remain compatible, while the 1024-byte payload boundary and legacy multi-chunk
+  encoding and reassembly are covered directly (#923).
+- Randomness contracts describe `Skip`, collapsed-bound logical draw slots and the variable raw cost of bounded
+  rejection sampling (#995). Identification prose now matches the registered-bit writer instead of prescribing
+  all ones (#982). Skinned grounding documents its existing weight threshold and missing moved-joint refusal
+  coverage accompanies the existing turned-joint coverage (#1201).
 - Authoritative catalog sweeps compare both pointer hashes with every durable version record, then build the
   deletion keep set from those immutable manifest hashes. A stale, missing or partial pointer skips the sweep,
   and a pointer replacement after validation cannot select another closure. `RunValidatedAsync` carries this

@@ -27,8 +27,8 @@ namespace KhaozEngine.Catalog;
 /// <see cref="ContentPackReader.TryVerify"/>: the declared uncompressed length is checked against
 /// <see cref="ContentPackFormat.MaxChunkUncompressedBytes"/> and the stored length against the body that
 /// arrived BEFORE a buffer is allocated, the buffer is exactly the declared length, and the decompressor
-/// refuses the first byte that would overrun it. Only bytes that survive all of that are hashed, and only
-/// bytes whose hash matches are cached.
+/// refuses the first byte that would overrun it. Only bytes that survive all of that are hashed. A matching
+/// <c>KECC</c> chunk is also walked through its structural row table before it can be cached.
 /// </para>
 /// </summary>
 public sealed class CachingPackStore : IPackStore, IPackStorePruning
@@ -76,7 +76,15 @@ public sealed class CachingPackStore : IPackStore, IPackStorePruning
         }
 
         ReadOnlyMemory<byte>? cached = await Local.GetAsync(hash, cancellationToken).ConfigureAwait(false);
-        if (cached is not null)
+        if (cached is null)
+        {
+            if (Local is IPackStorePruning
+                && await Local.ExistsAsync(hash, cancellationToken).ConfigureAwait(false))
+            {
+                await EvictAsync(hash, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        else
         {
             if (ContentPackReader.TryVerify(cached.Value.Span, hash, out string? cacheReason))
             {
@@ -99,7 +107,15 @@ public sealed class CachingPackStore : IPackStore, IPackStorePruning
             return null;
         }
 
-        await Local.PutAsync(hash, fetched.Value, cancellationToken).ConfigureAwait(false);
+        if (Local is IVerifiedPackStoreWrite verified)
+        {
+            await verified.PutVerifiedAsync(hash, fetched.Value, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await Local.PutAsync(hash, fetched.Value, cancellationToken).ConfigureAwait(false);
+        }
+
         return fetched;
     }
 

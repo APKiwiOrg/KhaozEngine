@@ -446,6 +446,7 @@ public class ContentRuntimeTests
         // The swap needs no lock and no barrier beyond the publishing write BECAUSE of this: a writable field
         // anywhere in the graph would be a torn read waiting to happen.
         AssertReadOnlyFields(typeof(ContentTypeTable));
+        AssertReadOnlyFields(typeof(ContentReferenceIndex));
         AssertReadOnlyFields(typeof(ContentTagIndex));
         AssertReadOnlyFields(typeof(ContentFamilyIndex));
         AssertReadOnlyFields(typeof(ContentLootIndex));

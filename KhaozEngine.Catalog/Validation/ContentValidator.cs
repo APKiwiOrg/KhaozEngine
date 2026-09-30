@@ -196,8 +196,8 @@ public static class ContentValidator
     /// its own type id and a read-only view of the whole candidate, and each may only ADD a constraint.
     /// <para>
     /// A validator is UNTRUSTED code, so a throw out of one becomes a single <c>KEC0040</c> carrying the
-    /// exception message. One bad validator must not take a publish down with a stack trace where a finding
-    /// was expected.
+    /// exception message after any findings it added before throwing have been wrapped and kept. One bad
+    /// validator must not take a publish down with a stack trace where a finding was expected.
     /// </para>
     /// <para>
     /// The item-instances band is SKIPPED here, because pass 6 already ran it as trusted engine code. That
@@ -229,19 +229,14 @@ public static class ContentValidator
             }
 
             var own = new List<ContentFinding>();
+            Exception? failure = null;
             try
             {
                 validator.Validate(registration.Type, run.Candidate, own);
             }
             catch (Exception ex)
             {
-                run.Add(
-                    registration.Type,
-                    0,
-                    TypeValidatorCode,
-                    FormattableString.Invariant(
-                        $"{registration.TypeKey}: the type's own validator threw {ex.GetType().Name}, '{ex.Message}'. A validator is untrusted code, so its throw is a finding rather than a failed publish."));
-                continue;
+                failure = ex;
             }
 
             foreach (ContentFinding finding in own)
@@ -251,6 +246,16 @@ public static class ContentValidator
                     finding.Id,
                     TypeValidatorCode,
                     FormattableString.Invariant($"{registration.TypeKey}: {finding.Code} {finding.Message}"));
+            }
+
+            if (failure is not null)
+            {
+                run.Add(
+                    registration.Type,
+                    0,
+                    TypeValidatorCode,
+                    FormattableString.Invariant(
+                        $"{registration.TypeKey}: the type's own validator threw {failure.GetType().Name}, '{failure.Message}'. A validator is untrusted code, so its throw is a finding rather than a failed publish."));
             }
         }
     }

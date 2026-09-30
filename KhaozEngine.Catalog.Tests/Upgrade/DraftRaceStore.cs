@@ -94,6 +94,29 @@ internal sealed class DraftRaceStore : ForwardingContentAuthoringStore, IContent
     /// <summary>Whether the rival's write went in, which a test asserts the interleaving really happened by.</summary>
     internal bool Raced { get; private set; }
 
+    /// <summary>How many times the runner read the open draft.</summary>
+    internal int OpenDraftReads { get; private set; }
+
+    /// <summary>
+    /// The most reads the expected recovery needs, or null when the caller is not checking a run. Crossing
+    /// it fails before an extra stand-off pays its backoff budget.
+    /// </summary>
+    internal int? OpenDraftReadLimit { get; set; }
+
+    /// <inheritdoc />
+    public override Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
+    {
+        OpenDraftReads++;
+        if (OpenDraftReadLimit is int limit && OpenDraftReads > limit)
+        {
+            throw new InvalidOperationException(
+                FormattableString.Invariant(
+                    $"The runner read the open draft {OpenDraftReads} times, beyond the expected {limit}, so it entered an extra stand-off."));
+        }
+
+        return base.GetOpenDraftAsync(cancellationToken);
+    }
+
     /// <inheritdoc />
     public override async Task<ContentDraft> ApplyEditsAsync(
         IReadOnlyList<ContentEdit> edits,

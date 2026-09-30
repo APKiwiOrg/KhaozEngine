@@ -100,6 +100,56 @@ public abstract class MutationJournalStreamListingConformance : MutationJournalS
     }
 
     [Fact]
+    public async Task Stream_listing_reports_when_each_stream_was_created_and_last_changed()
+    {
+        MutationJournalStoreHarness harness = CreateStore();
+        IMutationJournalStreamListing listing = Listing(harness);
+        DateTimeOffset t0 = harness.UtcNow;
+        await harness.Store.InitializeAsync(Initialization(Operation(1), "stream/a"));
+        await harness.AdvanceAsync(TimeSpan.FromMinutes(1));
+        DateTimeOffset t1 = harness.UtcNow;
+        await harness.Store.InitializeAsync(Initialization(Operation(2), "stream/b"));
+        await harness.AdvanceAsync(TimeSpan.FromMinutes(1));
+        DateTimeOffset t2 = harness.UtcNow;
+        JournalCommitResult commit = await harness.Store.CommitAsync(Commit(Operation(3), Mutation("stream/a", 0, Event(1))));
+        Assert.Equal(JournalCommitStatus.Applied, commit.Status);
+
+        JournalStreamPage page = await listing.ListStreamsAsync(new JournalStreamQuery(10, "stream/"));
+
+        JournalStreamEntry a = page.Streams.Single(value => value.StreamKey == "stream/a");
+        JournalStreamEntry b = page.Streams.Single(value => value.StreamKey == "stream/b");
+        Assert.Equal<DateTimeOffset?>(t0, a.CreatedAtUtc);
+        Assert.Equal<DateTimeOffset?>(t2, a.UpdatedAtUtc);
+        Assert.Equal<DateTimeOffset?>(t1, b.CreatedAtUtc);
+        Assert.Equal<DateTimeOffset?>(t1, b.UpdatedAtUtc);
+    }
+
+    [Fact]
+    public async Task Stream_listing_update_time_moves_when_compaction_moves_the_retained_floor()
+    {
+        MutationJournalStoreHarness harness = CreateStore();
+        IMutationJournalStreamListing listing = Listing(harness);
+        DateTimeOffset created = harness.UtcNow;
+        await harness.Store.InitializeAsync(Initialization(Operation(1), "stream/a"));
+        await harness.AdvanceAsync(TimeSpan.FromMinutes(1));
+        DateTimeOffset committed = harness.UtcNow;
+        await harness.Store.CommitAsync(Commit(Operation(2), Mutation("stream/a", 0, Event(1), Event(2))));
+        await harness.AdvanceAsync(TimeSpan.FromMinutes(1));
+        await harness.Store.CompactAsync(new JournalCompaction("stream/a", 1, "player.v1", 1, Bytes(11), null));
+
+        JournalStreamEntry afterSnapshotOnly = Assert.Single((await listing.ListStreamsAsync(new JournalStreamQuery(10, "stream/"))).Streams);
+        await harness.AdvanceAsync(TimeSpan.FromMinutes(1));
+        DateTimeOffset pruned = harness.UtcNow;
+        await harness.Store.CompactAsync(new JournalCompaction("stream/a", 2, "player.v1", 1, Bytes(12), 2));
+        JournalStreamEntry afterPrune = Assert.Single((await listing.ListStreamsAsync(new JournalStreamQuery(10, "stream/"))).Streams);
+
+        Assert.Equal<DateTimeOffset?>(created, afterSnapshotOnly.CreatedAtUtc);
+        Assert.Equal<DateTimeOffset?>(committed, afterSnapshotOnly.UpdatedAtUtc);
+        Assert.Equal<DateTimeOffset?>(created, afterPrune.CreatedAtUtc);
+        Assert.Equal<DateTimeOffset?>(pruned, afterPrune.UpdatedAtUtc);
+    }
+
+    [Fact]
     public async Task Stream_listing_of_an_empty_store_is_one_complete_empty_page()
     {
         MutationJournalStoreHarness harness = CreateStore();

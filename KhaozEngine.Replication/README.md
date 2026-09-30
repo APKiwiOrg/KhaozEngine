@@ -23,7 +23,10 @@ area-of-interest deltas.
   such bound, so it still reads through the stream itself.
   `IsRegistered(ushort)` (since 17.38.0) asks whether this registry has a codec for an id, for a caller judging
   whether an id it read out of STORED bytes is one this build knows: cell-blob persistence uses it to retire a
-  candidate parse of a blob whose wire generation was never recorded.
+  candidate parse of a blob whose wire generation was never recorded. `IsRegistered<T>(id, expectedChannels)`
+  (since 20.14.1) additionally requires the exact component type and complete channel set. Extra flags do not
+  match. This metadata read invokes no codec and does not verify the codec's byte implementation. Use it for
+  startup contracts that require state to migrate without being replicated or persisted.
 - **`ReplicationChannels`** (since 9.28.0) - an optional `[Flags]` argument to `Register<T>` declaring which of the
   four downstream consumers see a component's bytes: `Replicate` (client area-of-interest serving + border ghosts),
   `Persist` (cell persistence blob), `Migrate` (cell handoff), and `OwnerOnly` (a `Replicate` modifier: replicated

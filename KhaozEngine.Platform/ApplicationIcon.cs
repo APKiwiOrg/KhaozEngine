@@ -11,7 +11,7 @@ namespace KhaozEngine.Platform
     /// GLFW window already created the shared <c>NSApplication</c>). Windows/Linux have no equivalent runtime Dock
     /// icon; their taskbar icon is the GLFW window icon (<c>AppWindow.SetIcon</c>) and the Windows Explorer icon is
     /// the per-app <c>&lt;ApplicationIcon&gt;</c>, so this class is a no-op there.
-    /// <para>Interop mirrors <see cref="ClipboardInterop"/>'s libobjc pattern (autorelease pool + <c>objc_msgSend</c>);
+    /// <para>Interop mirrors <see cref="MacPasteboardBackend"/>'s libobjc pattern (autorelease pool + <c>objc_msgSend</c>);
     /// it is self-contained so it never destabilises the clipboard path. Every call is wrapped so a Cocoa failure
     /// degrades to <c>false</c> rather than throwing into the game loop.</para>
     /// </summary>

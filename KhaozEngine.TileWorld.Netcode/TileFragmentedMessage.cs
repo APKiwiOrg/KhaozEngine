@@ -19,9 +19,11 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </code>
 /// <para>A chunk is what goes IN a game message payload, not a frame: the caller wraps it with
 /// <see cref="TileProtocol.EncodeGameMessage"/> under its own kind and sends it on the reliable ordered channel.
-/// So a chunk carries <see cref="TileProtocol.MaxGameMessageBytes"/> less the four byte envelope less this header,
-/// which is <see cref="MaxChunkPayloadBytes"/>, and the whole datagram still lands on the cap. The envelope width
-/// is READ from <see cref="TileProtocol"/> rather than written here, so the two cannot drift.</para>
+/// <see cref="TileProtocol.MaxGameMessageBytes"/> caps the game payload alone. This format instead keeps a
+/// separate conservative <see cref="MaxUnpaddedFrameBytes"/> budget, including the four byte envelope and this
+/// header, which leaves <see cref="MaxChunkPayloadBytes"/> bytes per chunk. The envelope width is READ from
+/// <see cref="TileProtocol"/> rather than copied here. The encoder's optional command-length pad is additional
+/// to the unpadded budget and only applies to a short chunk.</para>
 /// <para><see cref="Fragment"/> THROWS above <see cref="MaxPayloadBytes"/>, on the same grounds as the game
 /// message cap throw: a payload that long is a local caller bug and worth the stack. Everything on the READING
 /// side is total and never throws, because those bytes came from a remote peer. See
@@ -35,10 +37,16 @@ public static class TileFragmentedMessage
     /// <summary>The most chunks one transmission can be split into, because <c>ChunkCount</c> is a byte.</summary>
     public const int MaxChunks = 255;
 
-    /// <summary>How many payload bytes one chunk carries. Derived from <see cref="TileProtocol.MaxGameMessageBytes"/>
-    /// less the game message envelope less <see cref="HeaderBytes"/>, so raising the frame cap raises this with no
-    /// second edit.</summary>
-    public const int MaxChunkPayloadBytes = TileProtocol.MaxGameMessageBytes - TileProtocol.GameMessageHeader - HeaderBytes;
+    /// <summary>Conservative unpadded frame budget, including both headers. Separate from
+    /// <see cref="TileProtocol.MaxGameMessageBytes"/>, which caps only the game payload. This preserves the
+    /// 1015-byte non-final chunk width that readers require exactly, so using the four spare payload bytes
+    /// would need a protocol migration. This is a fragment-format budget, not a transport datagram limit.</summary>
+    public const int MaxUnpaddedFrameBytes = 1024;
+
+    /// <summary>How many logical payload bytes one chunk carries: <see cref="MaxUnpaddedFrameBytes"/> less the
+    /// game message envelope less <see cref="HeaderBytes"/>. A full chunk occupies 1020 bytes of the game payload,
+    /// preserving the existing 1015-byte body and leaving four bytes below its payload cap.</summary>
+    public const int MaxChunkPayloadBytes = MaxUnpaddedFrameBytes - TileProtocol.GameMessageHeader - HeaderBytes;
 
     /// <summary>The largest logical payload this format can carry, <see cref="MaxChunks"/> chunks of
     /// <see cref="MaxChunkPayloadBytes"/>. About 258 KB, which is forty times the largest container page the item

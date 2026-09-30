@@ -7,7 +7,7 @@ namespace KhaozEngine.Tests.Catalog.Runtime;
 
 /// <summary>
 /// The registration hook of spec 9.4 and 3.6, and the four rules that make it safe: boot step 7b runs after
-/// the engine's four and before the validator, in TYPE ID ORDER, an index may read another type's ROWS and
+/// the engine's five and before the validator, in TYPE ID ORDER, an index may read another type's ROWS and
 /// may not read another index, and one that fails throws rather than leaving a partial index behind.
 /// </summary>
 public class ContentLoadIndexTests
@@ -36,9 +36,9 @@ public class ContentLoadIndexTests
     }
 
     [Fact]
-    public void It_runs_after_the_engines_four_and_before_the_validator()
+    public void It_runs_after_the_engines_five_and_before_the_validator()
     {
-        // After the four, because an index over rows will want the key lookup and the tag lists. The runtime
+        // After the five, because an index over rows can want key, reverse-reference or tag lookups. The runtime
         // builds them in its constructor, so an index cannot run before them even by accident.
         var index = new RecordingIndex(new ContentTypeId(1024));
         ContentRuntime runtime = Runtime(index);

@@ -45,6 +45,85 @@ public sealed class CatalogBenchmarkTests
     ];
 
     [Fact]
+    public void Synthetic_item_schema_matches_the_shipped_item_schema()
+    {
+        ContentTypeDescriptor replica = Assert.Single(
+            ContentTypes.Build(new CatalogBenchmarkConfig()),
+            static type => type.TypeId == ContentTypes.Item);
+        IReadOnlyList<KhaozEngine.Catalog.ContentFieldEntry> shipped =
+            KhaozEngine.Catalog.ItemContentType.CreateSchema().Fields;
+
+        Assert.Equal(ContentRowCodec.ItemFieldCount, shipped.Count);
+        Assert.Equal(shipped.Count, replica.Fields.Count);
+        for (int i = 0; i < shipped.Count; i++)
+        {
+            KhaozEngine.Catalog.ContentFieldEntry expected = shipped[i];
+            ContentFieldSchema actual = replica.Fields[i];
+
+            Assert.Equal(expected.Name, actual.Name);
+            Assert.Equal(BenchmarkKind(expected), actual.Kind);
+            Assert.Equal(expected.ReferenceTarget, actual.ReferenceTarget);
+            Assert.Equal((byte)expected.Visibility, actual.Visibility);
+            Assert.Equal(expected.Required, actual.Required);
+            Assert.Equal(expected.Scale, actual.Scale);
+        }
+    }
+
+    [Fact]
+    public void Synthetic_item_codec_round_trips_the_shipped_category_tail()
+    {
+        var source = new ItemRowData
+        {
+            TagCount = 2,
+            Tag0 = 3,
+            Tag1 = 5,
+            Stackable = false,
+            MaxStack = 1,
+            Tradable = true,
+            Value = 250,
+            Icon = "ui/icon/probe.png",
+            Mesh = "kit/ground/probe.glb",
+            HeldMesh = "kit/held/probe.glb",
+            GroundPose = 1,
+            IconTilt = 0,
+            IconSpin = 0,
+            DurabilityMax = 900,
+            SocketMax = 3,
+            EquipProfile = 4,
+        };
+        Span<byte> fields = stackalloc byte[512];
+        int fieldBytes = ContentRowCodec.EncodeItem(in source, fields);
+        fields[fieldBytes++] = 7;
+
+        ReadOnlySpan<byte> key = "benchmark_probe"u8;
+        Span<byte> body = stackalloc byte[512];
+        int bodyBytes = ContentVarint.Write(body, (uint)key.Length);
+        key.CopyTo(body[bodyBytes..]);
+        bodyBytes += key.Length;
+        fields[..fieldBytes].CopyTo(body[bodyBytes..]);
+        bodyBytes += fieldBytes;
+
+        var shipped = new KhaozEngine.Catalog.ItemContentType.Codec(
+            new KhaozEngine.Catalog.ContentTypeId(KhaozEngine.Catalog.EngineContentTypes.ItemTypeId),
+            KhaozEngine.Catalog.ItemContentType.CreateSchema());
+        Assert.True(
+            shipped.TryDecode(
+                body[..bodyBytes],
+                out KhaozEngine.Catalog.ContentRow? shippedRow,
+                out string? reason),
+            reason);
+        Assert.NotNull(shippedRow);
+        Assert.Equal(7, shippedRow.Fields[^1].Number);
+
+        var decoded = new ItemRowData();
+        Assert.True(ContentRowCodec.TryDecodeItem(fields[..fieldBytes], ref decoded));
+        Assert.Equal(7, decoded.Category);
+        Span<byte> roundTrip = stackalloc byte[512];
+        int roundTripBytes = ContentRowCodec.EncodeItem(in decoded, roundTrip);
+        Assert.True(fields[..fieldBytes].SequenceEqual(roundTrip[..roundTripBytes]));
+    }
+
+    [Fact]
     public void Parse_accepts_the_six_documented_options_and_rejects_malformed_values()
     {
         CatalogBenchmarkConfig config = Parse(
@@ -202,6 +281,10 @@ public sealed class CatalogBenchmarkTests
         Assert.NotNull(result.LoadTotalMs);
         Assert.NotNull(result.RuntimeHeapBytes);
         Assert.NotNull(result.RuntimeApproximateBytes);
+        Assert.Equal(512, result.ReferenceIndexEdges);
+        Assert.True(result.ReferenceIndexApproximateBytes > 0);
+        Assert.True(result.ReferenceIndexBuildMilliseconds >= 0);
+        Assert.True(result.ReferenceIndexBuildAllocatedBytes > 0);
         Assert.Equal(0, result.ValidatorFindings);
         Assert.True(result.ValidatorRowsSwept > 0);
         Assert.NotNull(result.LookupNanoseconds);
@@ -310,6 +393,21 @@ public sealed class CatalogBenchmarkTests
     }
 
     private static CatalogBenchmarkConfig Parse(params string[] args) => CatalogBenchmarkConfig.Parse(args);
+
+    private static ContentValueKind BenchmarkKind(KhaozEngine.Catalog.ContentFieldEntry field) => field.Kind switch
+    {
+        KhaozEngine.Catalog.ContentFieldKind.Int => ContentValueKind.Int,
+        KhaozEngine.Catalog.ContentFieldKind.ScaledInt => ContentValueKind.ScaledInt,
+        KhaozEngine.Catalog.ContentFieldKind.Bool => ContentValueKind.Bool,
+        KhaozEngine.Catalog.ContentFieldKind.KeyReference => ContentValueKind.KeyReference,
+        KhaozEngine.Catalog.ContentFieldKind.TagList => ContentValueKind.TagList,
+        KhaozEngine.Catalog.ContentFieldKind.LocalizedTextKey => ContentValueKind.LocalizedTextKey,
+        KhaozEngine.Catalog.ContentFieldKind.OpaqueBytes when field.Name is
+            KhaozEngine.Catalog.ItemContentType.IconField
+            or KhaozEngine.Catalog.ItemContentType.MeshField
+            or KhaozEngine.Catalog.ItemContentType.HeldMeshField => ContentValueKind.AssetReference,
+        _ => throw new InvalidOperationException($"The benchmark item schema cannot project {field.Name} ({field.Kind})."),
+    };
 
     private static Task Probe(params string[] args) => CatalogCrashProbe.RunAsync(args);
 

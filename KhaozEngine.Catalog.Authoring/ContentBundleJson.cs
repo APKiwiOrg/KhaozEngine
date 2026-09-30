@@ -67,6 +67,25 @@ public static class ContentBundleJson
     }
 
     /// <summary>
+    /// Reads the declared bundle format version without reading the rest of the bundle.
+    /// </summary>
+    /// <param name="json">The document.</param>
+    /// <returns>The declared format version, including a version this build does not support.</returns>
+    /// <remarks>
+    /// This uses the same JSONC policy and version member rules as <see cref="Read"/>. Comments and trailing
+    /// commas are accepted. Format support is validated by <see cref="Read"/> after this precheck.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="json"/> is null.</exception>
+    /// <exception cref="ContentAuthoringException">The document is not JSON, is not an object, or has no integer <c>formatVersion</c> member.</exception>
+    public static int ReadFormatVersion(string json)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+
+        using JsonDocument document = ParseDocument(json);
+        return FormatVersion(document.RootElement);
+    }
+
+    /// <summary>
     /// Reads a bundle document.
     /// </summary>
     /// <param name="json">The document.</param>
@@ -76,25 +95,11 @@ public static class ContentBundleJson
     {
         ArgumentNullException.ThrowIfNull(json);
 
-        JsonDocument document;
-        try
-        {
-            document = JsonDocument.Parse(json, DocumentOptions);
-        }
-        catch (JsonException malformed)
-        {
-            throw Refuse("The bundle is not a JSON document: " + malformed.Message);
-        }
-
+        JsonDocument document = ParseDocument(json);
         using (document)
         {
             JsonElement root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object)
-            {
-                throw Refuse("A bundle document is a JSON object.");
-            }
-
-            int formatVersion = Int(root, "formatVersion");
+            int formatVersion = FormatVersion(root);
             if (formatVersion != ContentBundle.CurrentFormatVersion)
             {
                 throw Refuse(FormattableString.Invariant(
@@ -110,6 +115,28 @@ public static class ContentBundleJson
                 ReadFamilies(root),
                 ReadRules(root));
         }
+    }
+
+    static JsonDocument ParseDocument(string json)
+    {
+        try
+        {
+            return JsonDocument.Parse(json, DocumentOptions);
+        }
+        catch (JsonException malformed)
+        {
+            throw Refuse("The bundle is not a JSON document: " + malformed.Message);
+        }
+    }
+
+    static int FormatVersion(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            throw Refuse("A bundle document is a JSON object.");
+        }
+
+        return Int(root, "formatVersion");
     }
 
     static void WriteTypes(Utf8JsonWriter writer, IReadOnlyList<ContentBundleType> types)

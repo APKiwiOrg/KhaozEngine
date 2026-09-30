@@ -84,7 +84,7 @@ public sealed class ContentRuntime
 
     public ContentTypeTable Table(ushort typeId) => _tables[typeId];
 
-    public bool TryGetItem(int id, out ItemRowView row)
+    public bool TryGetItem(int id, out KhaozEngine.Catalog.ItemRow row)
     {
         ContentTypeTable table = ItemTable;
         if ((uint)id >= (uint)table.Offsets.Length || table.Offsets[id] < 0)
@@ -92,8 +92,12 @@ public sealed class ContentRuntime
             row = default;
             return false;
         }
-        row = ItemRowView.Decode(table.Bodies.AsSpan(table.Offsets[id], table.Lengths[id]), table.IsRetired(id));
-        return row.IsValid;
+        return KhaozEngine.Catalog.ItemRow.TryDecode(
+            table.Bodies,
+            table.Offsets[id],
+            table.Lengths[id],
+            table.IsRetired(id),
+            out row);
     }
 
     /// <summary>The one array read and span slice budget P7 is taken against.</summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace KhaozEngine.WorldStore.Journal;
 
@@ -33,6 +34,9 @@ internal sealed class AdmittedJournalOperation
 
     /// <summary>True once its admitted writes have been taken back out of the view, by its own failure or by one ahead of it.</summary>
     internal bool Withdrawn { get; set; }
+
+    internal LinkedListNode<AdmittedJournalOperation>? AdmissionNode { get; set; }
+    internal LinkedListNode<AdmittedJournalOperation>? UncommittedNode { get; set; }
 
     /// <summary>True while the operation is eligible to be dispatched, before any of the terminal states.</summary>
     internal bool CanStart => Completion is null && !Started && !Withdrawn;

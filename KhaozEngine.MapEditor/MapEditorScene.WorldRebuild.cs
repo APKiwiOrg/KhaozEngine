@@ -10,13 +10,16 @@ public partial class MapEditorScene
 {
     /// <summary>Consumes a pending world rebuild after every edit source this frame (tools, then chrome, which
     /// covers the property-grid inspector), so an edit from either one lands in the streamed world before the
-    /// next frame's pick. A pending edit that reported a bounded region
+    /// next frame's pick. A field-neutral edit covering every loaded chunk first tries
+    /// <see cref="RefreshAllWorldProps"/> and falls back to the re-meshing <see cref="RefreshAllLoadedWorld"/> when
+    /// its new layers change sink shape. A pending edit that reported a bounded region
     /// (<see cref="EditorDocument.PendingRebuildRegion"/>) touches ONLY the chunks that region overlaps, never
     /// throttled (it is cheap by construction): a batch that changed captured scatter configs and left the field
     /// alone (exclusion and scatter-override edits, <see cref="EditorDocument.PendingFieldChange"/> false) re-serves
     /// those chunks' props through <see cref="RefreshWorldProps"/>, and anything else re-meshes them through
     /// <see cref="PartialRebuildWorld"/>, which is also where a declined props-only refresh lands. A null region (a
-    /// whole-world edit, or the partial path declining because the world is not built) falls through to the full
+    /// whole-world edit outside the all-loaded path, or the partial path declining because the world is not built)
+    /// falls through to the full
     /// <see cref="RebuildWorld"/>, which IS throttled while a drag or draw gesture is live
     /// (<see cref="EditorToolController.IsDragging"/> / <see cref="EditorToolController.IsDrawing"/>): a full
     /// rebuild only runs once <see cref="MapEditorOptions.GestureRebuildInterval"/> seconds have accumulated since
@@ -56,7 +59,8 @@ public partial class MapEditorScene
 
     void CheckWorldRebuildCore(float dt)
     {
-        if (_document.PendingAllLoadedInvalidation && RefreshAllLoadedWorld())
+        if (_document.PendingAllLoadedInvalidation
+            && ((PropsOnlyPending && RefreshAllWorldProps()) || RefreshAllLoadedWorld()))
         {
             _document.AcknowledgeWorldRebuild();
             return;
@@ -92,6 +96,11 @@ public partial class MapEditorScene
     /// dispatch without a device.</summary>
     protected virtual bool RefreshWorldProps(RectArea dirty) => _viewport.RefreshLayerProps(_document.Doc, dirty);
 
+    /// <summary>Props-only all-loaded seam for scatter, companion and override-order edits that preserve the sink's
+    /// layer shape. Returns false when the viewport cannot serve the new shape, so
+    /// <see cref="RefreshAllLoadedWorld"/> retains the re-mesh fallback.</summary>
+    protected virtual bool RefreshAllWorldProps() => _viewport.RefreshLoadedLayerProps(_document.Doc);
+
     /// <summary>Partial-rebuild seam: re-mesh only the loaded chunks overlapping <paramref name="dirty"/> and
     /// re-point the tool controller at the swapped field. Returns false when the viewport is not built (the
     /// <c>ViewportWorld.PartialRebuild</c> not-built contract), so <see cref="CheckWorldRebuild"/> falls back
@@ -105,7 +114,8 @@ public partial class MapEditorScene
     }
 
     /// <summary>Refreshes field and captured generation config, then invalidates every loaded chunk without
-    /// replacing the sink or streamer. Returns false when the viewport is not built.</summary>
+    /// replacing the sink or streamer. Used for field changes and as the fallback when a props-only all-loaded
+    /// refresh finds a changed layer shape. Returns false when the viewport is not built.</summary>
     protected virtual bool RefreshAllLoadedWorld()
     {
         if (!_viewport.RefreshLoaded(

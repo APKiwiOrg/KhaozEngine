@@ -26,17 +26,14 @@
 # between a tag and the next bump.
 #
 # WHERE THE FEED IS (issue #1063) is part of the same standard, because the pack and the report have to
-# agree on it: pack_feed_dir below is the one answer both use.
+# agree on it: pack_feed_dir below is the one answer both use. The shared feed also carries only clean
+# commits already on origin/main (#1135). A KHAOZENGINE_FEED outside it may carry a branch build.
 
 # pack_feed_dir -> the feed a pack writes and the report reads, as an absolute path on stdout. Run with
 # cwd at the toplevel, which both callers cd to first.
 # KHAOZENGINE_FEED wins when set, the same variable consumers' scripts/refresh-engine.sh read. A relative
-# value resolves against that toplevel, not against wherever the caller was standing. Otherwise it is
-# the MAIN checkout's local-feed from any worktree, because that is the feed consumers read. A linked
-# worktree's own local-feed is a dead end: a pack landing there never reaches a consumer. The
-# common git dir is shared by every worktree and its parent is the main checkout. When that layout does
-# not hold (a bare repository, a separate git dir) this prints nothing and returns 1, so the caller
-# refuses and asks for KHAOZENGINE_FEED rather than guessing a location.
+# value resolves against that toplevel, not against wherever the caller was standing. Otherwise it uses
+# pack_shared_feed_dir below.
 pack_feed_dir() {
   if [ -n "${KHAOZENGINE_FEED:-}" ]; then
     case "$KHAOZENGINE_FEED" in
@@ -45,10 +42,116 @@ pack_feed_dir() {
     esac
     return 0
   fi
+  pack_shared_feed_dir
+}
+
+# pack_shared_feed_dir -> the MAIN checkout's local-feed from any worktree. The common git dir is shared
+# by every worktree and its parent is the main checkout. A linked worktree's own local-feed is a dead end.
+# A bare repository or separate git dir returns 1 rather than guessing a shared location.
+pack_shared_feed_dir() {
   _pfc=$(git rev-parse --git-common-dir 2>/dev/null) || return 1
   _pfc=$(CDPATH='' cd -- "$_pfc" 2>/dev/null && pwd -P) || return 1
   [ "$(basename "$_pfc")" = .git ] || return 1
   printf '%s/local-feed' "$(dirname "$_pfc")"
+}
+
+# pack_dir_identity <path> -> a physical absolute directory identity. Existing components resolve
+# symlinks. Missing components are retained, and a later .. removes them exactly as mkdir -p will.
+pack_dir_identity() {
+  _pdi_path=$1
+  case "$_pdi_path" in /*) ;; *) return 1 ;; esac
+  _pdi_resolved=/
+  _pdi_suffix=''
+  _pdi_ifs=$IFS
+  _pdi_added_noglob=0
+  case $- in *f*) ;; *) set -f; _pdi_added_noglob=1 ;; esac
+  IFS=/
+  set -- $_pdi_path
+  IFS=$_pdi_ifs
+  [ "$_pdi_added_noglob" = 0 ] || set +f
+  for _pdi_component in "$@"; do
+    case "$_pdi_component" in
+      ''|.) continue ;;
+      ..)
+        if [ -n "$_pdi_suffix" ]; then
+          _pdi_suffix=${_pdi_suffix%/*}
+        elif [ "$_pdi_resolved" != / ]; then
+          _pdi_resolved=$(dirname "$_pdi_resolved")
+        fi
+        ;;
+      *)
+        if [ -n "$_pdi_suffix" ]; then
+          _pdi_suffix="$_pdi_suffix/$_pdi_component"
+          continue
+        fi
+        if [ "$_pdi_resolved" = / ]; then
+          _pdi_next="/$_pdi_component"
+        else
+          _pdi_next="$_pdi_resolved/$_pdi_component"
+        fi
+        if [ -d "$_pdi_next" ]; then
+          _pdi_resolved=$(CDPATH='' cd -- "$_pdi_next" 2>/dev/null && pwd -P) || return 1
+        elif [ -e "$_pdi_next" ] || [ -L "$_pdi_next" ]; then
+          return 1
+        else
+          _pdi_suffix="/$_pdi_component"
+        fi
+        ;;
+    esac
+  done
+  if [ "$_pdi_resolved" = / ] && [ -n "$_pdi_suffix" ]; then
+    printf '%s' "$_pdi_suffix"
+  else
+    printf '%s%s' "$_pdi_resolved" "$_pdi_suffix"
+  fi
+}
+
+# pack_feed_scope <path> -> shared, private or unknown. An unresolvable candidate is unknown so callers
+# can fail closed. A repository layout with no implicit shared feed still permits an explicit feed.
+pack_feed_scope() {
+  _pfs_candidate=$(pack_dir_identity "$1") || { printf unknown; return 0; }
+  _pfs_shared=$(pack_shared_feed_dir) || { printf private; return 0; }
+  _pfs_shared=$(pack_dir_identity "$_pfs_shared") || { printf unknown; return 0; }
+  if [ "$_pfs_candidate" = "$_pfs_shared" ]; then printf shared; else printf private; fi
+}
+
+# pack_origin_main_commit -> the current local origin/main commit, or empty when unavailable.
+pack_origin_main_commit() {
+  git rev-parse -q --verify 'refs/remotes/origin/main^{commit}' 2>/dev/null || true
+}
+
+# pack_commit_on_origin_main <commit> -> 0 when commit is an ancestor of current origin/main.
+pack_commit_on_origin_main() {
+  _pcom_commit=$1
+  _pcom_main=$(pack_origin_main_commit)
+  [ -n "${_pcom_main:-}" ] || return 1
+  git merge-base --is-ancestor "$_pcom_commit" "$_pcom_main" 2>/dev/null
+}
+
+# pack_shared_feed_refusal_lines <head-commit> <origin-main-commit> -> the shared-feed refusal.
+pack_shared_feed_refusal_lines() {
+  _psfr_head=$1
+  _psfr_main=$2
+  if [ -z "${_psfr_main:-}" ]; then
+    echo "Refusing to pack the shared feed: origin/main is unavailable."
+    echo "Fetch origin/main, or set KHAOZENGINE_FEED to an explicit private feed."
+    return 0
+  fi
+  echo "Refusing to pack the shared feed."
+  echo "HEAD ${_psfr_head:-unknown} is not an ancestor of origin/main $_psfr_main."
+  echo "Merge it to main and fetch, or set KHAOZENGINE_FEED to an explicit private feed."
+}
+
+# pack_tree_clean -> 0 when tracked and untracked package inputs match HEAD.
+pack_tree_clean() {
+  [ -z "$(git status --porcelain 2>/dev/null)" ]
+}
+
+# pack_shared_feed_dirty_refusal_lines -> the dirty shared-feed refusal.
+pack_shared_feed_dirty_refusal_lines() {
+  echo "Refusing to pack the shared feed: the worktree is not clean."
+  echo "Uncommitted files can change package bytes while the nuspec still stamps HEAD."
+  echo "Commit and merge the change, or set KHAOZENGINE_FEED to an explicit private feed."
 }
 
 # pack_file_mtime <path> -> modification time in unix seconds (empty when it cannot be read).

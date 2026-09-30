@@ -6,7 +6,7 @@ namespace KhaozEngine.Game
     /// The opt-in "pause while the window is in the background" rule behind
     /// <see cref="GameAppOptions.PauseOnFocusLoss"/>. Driven once per frame off the frame snapshot's
     /// <see cref="InputState.WindowFocused"/> bit, so the decision is headless-testable without a window
-    /// (see <c>GameApp.PreparePhase</c> for the one call site).
+    /// (see <c>GameApp.StartFrame</c> for the one call site).
     /// <para>
     /// It only ever lifts a pause it took itself. A game that paused on its own (a pause menu, a zero
     /// <see cref="GameClock.TimeScale"/>) is left alone on the way out and, more importantly, on the way

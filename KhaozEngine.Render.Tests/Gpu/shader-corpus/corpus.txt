@@ -618,22 +618,22 @@ TexturedBillboardMotion.layout.msl 27c5ccb35805ac5698d159ab80a7fe806b478578d17d6
 TexturedBillboardMotion.vertex.hlsl acb16ab69a8a48151cb515a7a3c900bf08161230e7f449ea4cd28513d3bc1f62 870
 TexturedBillboardMotion.vertex.msl f0f47840e9087c810ffe79b0d6c4dfa3ab4797c92cfb21ba7899d414d916ed58 586
 TexturedBillboardMotion.vertex.spirv 7e900ad9525bfe965aa0f7589eccdd3873dea627b444b9fe0601dd9c43c14d31 1132
-TileGround.fragment.hlsl 074cb89bcee0f9e0debecdb47ef5f5f28a9c238356c3e8565f90228a6fa691bf 68414
-TileGround.fragment.msl ba13aaef6488ccff3805a7fa3f46555152cdac5a056818102b5700f3137bfda8 69115
-TileGround.fragment.spirv d82c4837a55133c7b8f3ce76ce67f345d5e5c92e3d49bc5f2523ad4325bfb72d 46256
+TileGround.fragment.hlsl c1984b32f3054ca190166431fa0c9cd10f37566f1c38cd3bee54480d1332c076 68826
+TileGround.fragment.msl de342865e54478caf573a98fe695fdb21b1755b4fbb9632248a464c08609aad5 69494
+TileGround.fragment.spirv 4fd85b3a6b95586b4fa48062bfe84a03ee6aabd8158b38bc4c80c69428218957 46676
 TileGround.layout.hlsl 76edf75382edf93333069030f2a459db433c79bea1c9aba0ce4520dd48a27685 21 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]
 TileGround.layout.msl 76edf75382edf93333069030f2a459db433c79bea1c9aba0ce4520dd48a27685 21 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]
-TileGround.vertex.hlsl 09cf3d06258272f861690b73ca5a80573e90b32564352d85f5697149e6974d2b 2873
-TileGround.vertex.msl df77fc9d8ffc033fd215ae294de62ff79946dcab5c9252aba99b503463f270bc 1691
-TileGround.vertex.spirv 5757276107b990d4dba9fa9a34e73184b55b2d67152d4d347d678bc738191f84 2964
-TileGroundMotion.fragment.hlsl 71dddf562f0aa6a3a89d1e8d3b6ee22f53bb51fd9da74bcfb72b8c9d679046eb 68955
-TileGroundMotion.fragment.msl fc435796f16f85b28366d31109b5fd762b7d472c0969a6cfd368f793bd69cb68 69556
-TileGroundMotion.fragment.spirv 4a4dbb40f4f0f7eb63b3f7a6fed609928d113b5b193531f4120a5237d6b57846 46948
+TileGround.vertex.hlsl 11ac56a973ac1d34303b53ad56a9a52433739df265f22d96636da361f179fe40 2969
+TileGround.vertex.msl 487870df9d49becf217dd0afcca1c3124fa825c82dbe703bc016f4054f54b2b3 1752
+TileGround.vertex.spirv f80b45adc3b4958089dd4c1fe8bfadf31ad66918b1962dea9344b2da77516edb 3064
+TileGroundMotion.fragment.hlsl 889a6b986d1b45c95a089ebfc6eaddfebc74a3e5834f13982ed987d8e35692bc 69367
+TileGroundMotion.fragment.msl ab2b9335c0d3b97b412cb42959534a8c668451813dfd813b81a0cdf670334d3a 69935
+TileGroundMotion.fragment.spirv 848f79db06461e8803fcf053ea4600c5d5d95b20bbafb3154237b9fd5dfbc94d 47368
 TileGroundMotion.layout.hlsl cb3542cdf2700d9a85856a353d6e279b55c8ef1c75bdff0bd9b083f209d00077 22 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set2[<unnamed>:UniformBuffer:V]
 TileGroundMotion.layout.msl cb3542cdf2700d9a85856a353d6e279b55c8ef1c75bdff0bd9b083f209d00077 22 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set2[<unnamed>:UniformBuffer:V]
-TileGroundMotion.vertex.hlsl 25c19e5a80d2d93bdf73c5cdefe90dcad719518ea8f42fc223676b065117a572 3382
-TileGroundMotion.vertex.msl 8e2077f6801216382423b51035302011f95556f504e285e31521349ac8771fb8 2051
-TileGroundMotion.vertex.spirv 09f36e05e4513041b67df6bd7466d11cba2a29cb81545f320075eeeda3fe4365 3644
+TileGroundMotion.vertex.hlsl 7191aa2044462659de0bb3d86db62127320eab507083ffffdcabedf03fbd69cd 3478
+TileGroundMotion.vertex.msl 6bbb73a93fb03e3278b04d8f6a027c8b48bc308635cf1f17b9af29fce40eaba3 2112
+TileGroundMotion.vertex.spirv becee222bb213073ba58c0ea627221efa8a0452859d3fbc51a502fad66b92262 3744
 Trail.fragment.hlsl 57c27b9b2858a782bb5208600a3c7f5a1ac129d8b9f1701f4c66e6a061aba7b2 767
 Trail.fragment.msl a62a525b7976e1ed889a5a28a9971ffc3f975ac35846877dfb20a15c36308eef 570
 Trail.fragment.spirv 786a43a56ecef69f056a9f901c36184a2927f1f74df92cc56a54b9669ec417dc 1024

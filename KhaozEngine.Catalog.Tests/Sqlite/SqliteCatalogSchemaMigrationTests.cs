@@ -13,7 +13,8 @@ namespace KhaozEngine.Tests.Catalog.Sqlite;
 /// <summary>
 /// The version 1 to version 2 migration, driven against a POPULATED version 1 database this build never
 /// created: the fourteen tables as version 1 really declared them, with two published versions, the temporal
-/// history they left, an open draft, a pin and audit rows already in it.
+/// history they left, an open draft, a pin and audit rows already in it. An AutoCreate open carries on through
+/// the version 2 to version 3 migration in the same open, so a migrated database here stands at version 3.
 /// <para>
 /// <b>The DDL below is a FROZEN COPY and that is the whole point.</b> A test that built its version 1
 /// database from the provider's own constants would move with them, so the day the shipped schema drifts is
@@ -46,7 +47,7 @@ public class SqliteCatalogSchemaMigrationTests
     /// The content catalog schema EXACTLY as version 1 shipped it: the fourteen tables, their indexes and a
     /// metadata seed declaring version 1. Frozen on purpose, never regenerated from the provider.
     /// </summary>
-    const string VersionOneDdl = """
+    internal const string VersionOneDdl = """
         CREATE TABLE IF NOT EXISTS catalog_metadata (
             metadata_key INTEGER NOT NULL PRIMARY KEY CHECK (metadata_key = 1),
             schema_version INTEGER NOT NULL CHECK (schema_version >= 1),
@@ -301,7 +302,7 @@ public class SqliteCatalogSchemaMigrationTests
             database.ConnectionString, Registry(), database.Pack());
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(2, await store.GetSchemaVersionAsync());
+        Assert.Equal(3, await store.GetSchemaVersionAsync());
         Assert.Equal(Epoch, await store.GetStoreEpochAsync());
         Assert.Equal(2, await store.GetActiveVersionAsync());
         Assert.Equal(1, await store.GetPinnedVersionAsync());
@@ -360,7 +361,8 @@ public class SqliteCatalogSchemaMigrationTests
 
     /// <summary>
     /// ValidateOnly on a version 1 file REFUSES and names the migration. A production host opens this way, and
-    /// a file rewritten underneath it is the one thing that mode exists to prevent.
+    /// a file rewritten underneath it is the one thing that mode exists to prevent. The migration named is the
+    /// current one, which an AutoCreate open reaches through version 2.
     /// </summary>
     [Fact]
     public async Task ValidateOnlyOnAVersionOneDatabaseRefusesAndNamesTheMigration()
@@ -373,7 +375,7 @@ public class SqliteCatalogSchemaMigrationTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v2-content-upgrade-ledger", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v3-row-timestamps", refused.Message, StringComparison.Ordinal);
         Assert.Contains("version '1'", refused.Message, StringComparison.Ordinal);
 
         // Refused means REFUSED: the file is still version 1 and still carries no ledger table.
@@ -385,11 +387,11 @@ public class SqliteCatalogSchemaMigrationTests
     }
 
     /// <summary>
-    /// Reopening a version 2 file is a NO-OP under both modes. A migration that ran again would be a migration
+    /// Reopening a migrated file is a NO-OP under both modes. A migration that ran again would be a migration
     /// that could fail on its second run, which is how a database ends up neither version.
     /// </summary>
     [Fact]
-    public async Task ReopeningAVersionTwoDatabaseChangesNothing()
+    public async Task ReopeningAMigratedDatabaseChangesNothing()
     {
         using var database = new TemporaryCatalogDatabase();
         WriteVersionOne(database);
@@ -410,7 +412,7 @@ public class SqliteCatalogSchemaMigrationTests
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
         await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
 
-        Assert.Equal(2, await store.GetSchemaVersionAsync());
+        Assert.Equal(3, await store.GetSchemaVersionAsync());
         Assert.Equal(epoch, await store.GetStoreEpochAsync());
         Assert.Single(await store.ListUpgradesAsync());
     }
@@ -421,9 +423,10 @@ public class SqliteCatalogSchemaMigrationTests
     /// <para>
     /// <b>The failure this pins is a validation reading a TORN view.</b> The open takes an object snapshot
     /// and a schema version, and a host that read the objects while the file was version 1 and the version
-    /// after someone else's migration would compare a pre-migration snapshot against the version 2 DDL and
-    /// refuse a correct database for a missing <c>catalog_content_upgrade</c>. The objects are read after the
-    /// version is settled, immediately before they are compared, so the two always describe one state.
+    /// after someone else's migration would compare a pre-migration snapshot against a later version's DDL and
+    /// refuse a correct database for a missing <c>catalog_content_upgrade</c> or a missing row time column.
+    /// The objects are read after the version is settled, immediately before they are compared, so the two
+    /// always describe one state.
     /// </para>
     /// <para>
     /// It LOOPS, because a window measured in microseconds shows up once in many runs and never in one.
@@ -444,7 +447,7 @@ public class SqliteCatalogSchemaMigrationTests
                 {
                     using var store = new SqliteContentAuthoringStore(database.ConnectionString, Registry());
                     await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
-                    Assert.Equal(2, await store.GetSchemaVersionAsync());
+                    Assert.Equal(3, await store.GetSchemaVersionAsync());
                 });
             }
 

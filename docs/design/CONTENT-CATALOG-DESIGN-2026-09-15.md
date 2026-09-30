@@ -614,6 +614,12 @@ convention as contracts 13.2, so there is one percent representation in the syst
 
 `nested_table` is how a table references another table, which is what a rarity tier or a sub-table needs.
 
+**A live `weight` is from 0 through 2,147,483,647, and one live table's non-guaranteed weights total no more
+than 2,147,483,647.** These are the widest bounds the runtime's `int` prefix array represents exactly, so they
+do not impose a smaller authoring policy. Guaranteed entries contribute no weight and retired entries are out
+of play, so neither enters the total. `KEC0043` refuses either bound before publish and at ordinary boot. The
+runtime clamp and saturation remain defence in depth for a pack that bypassed the validator.
+
 **An entry names its draw exactly one of three ways, and `KEC0023` refuses every other count.** The three are
 `item` set, `nested_table` set, and a non-empty `required_tags`. Exactly one, never two, never none. The
 earlier wording was "exactly one of `item` and `nested_table`", which made the third shape unreachable: with
@@ -1503,12 +1509,12 @@ counter, a test and an operator runbook can all key on it, which is the same rul
 decode reasons. Codes are never reused and never renumbered, which is why a code this spec withdrew is
 withdrawn rather than recycled.
 
-**Forty-one codes are issued, across the number range `KEC0001` to `KEC0042`.** `KEC0013` is withdrawn and
+**Forty-two codes are issued, across the number range `KEC0001` to `KEC0043`.** `KEC0013` is withdrawn and
 carries no check, and `KEC0032` to `KEC0035` are four codes sharing one row below. `KEC0000` is not a finding
 about content and is listed first and separately. Section 15.7 builds one test per issued code.
 
 **The number range is banded, and the bands are as durable as the codes.** `KEC0001` to `KEC0099` are the
-engine's own, of which 1 to 42 are issued and 43 to 99 are free for this spec's successors. `KEC0100` to
+engine's own, of which 1 to 43 are issued and 44 to 99 are free for this spec's successors. `KEC0100` to
 `KEC0199` are RESERVED for Scope B, so an affix rule and a family block rule are told apart by an operator
 reading a code rather than by reading a message. `KEC0200` and above are unallocated and no game takes one: a
 game validator's findings come back as `KEC0040` prefixed with the game's type key, which is section 5.3's
@@ -1556,6 +1562,7 @@ rule and does not change.
 | `KEC0040` | A game validator returned a finding. The message is the game's, the code is prefixed with its type key. | 4.4 |
 | `KEC0041` | A `Fork` edit's preconditions fail: its source row is absent or already retired, its `forkKey` is taken or malformed, or its `flagField` is absent from the type's schema or is not `Bool`. | 3.7 here, 8.2 |
 | `KEC0042` | A definition id exceeds the `maxDefinitionId` its type declared at registration. | 4.3, 3.6 here |
+| `KEC0043` | A live `loot_entry.weight` is outside 0 to 2,147,483,647, or one live table's non-guaranteed weights total above 2,147,483,647. | 3.5 here |
 
 `KEC0022` and `KEC0025` are the two checks that make Ruinborne's stackable defects impossible to publish:
 `Stackable = true, MaxStack = 1` is directly reachable in its admin form today
@@ -1575,7 +1582,7 @@ The sweep runs in five passes over the candidate, in this order, and never stops
    to `KEC0012`, `KEC0028`, `KEC0029`, `KEC0036`, `KEC0037`.
 2. **Schema.** Every field against its type's declared schema, required fields, value ranges, localized key
    shape, the inheritance guard. `KEC0004`, `KEC0005`, `KEC0020`, `KEC0021`, `KEC0025`, `KEC0030` to
-   `KEC0035`.
+   `KEC0035`, `KEC0043`.
 3. **References.** Key references, tag lists, loot graphs. `KEC0006` to `KEC0008`, `KEC0023`, `KEC0024`.
 4. **Visibility and codec.** Field visibility against the SIDE a chunk is encoded for, the round trip, the row
    size cap and the chunk size cap. `KEC0014`, `KEC0022`, `KEC0026`, `KEC0027`, `KEC0038`.
@@ -1607,6 +1614,21 @@ once. An operator reading `KEC0040` could not tell an engine affix rule from a g
 catch below, which exists because game validators are untrusted code, would have quietly turned a broken
 engine validator into a finding. Pass 6 is skipped entirely when no Scope B type is registered, which is
 every boot of a game that does not use instances. Its cost is inside P8 and 14.1 derives it.
+
+Pass 6 reaches Scope B without a dependency from the catalog to the instances package. It walks the
+`Instances` band registrations and invokes each registration's OWN validator as trusted engine code. The
+validator's `KEC0100` to `KEC0199` findings enter the report unchanged. The catalog neither wraps them as
+`KEC0040` nor judges whether a code belongs to the band.
+
+When that validator implements `IContentHistoryValidator`, pass 6 calls its history overload with the
+candidate, the run's `previous` snapshot and the full remap rule set. Otherwise it calls the ordinary
+`IContentValidator` overload. A check about a CHANGE skips when `previous` is null. `KEC0000` records that
+the publish-only checks did not run, which distinguishes a clean boot report from a clean ordinary publish
+report. A first publish also carries `KEC0000` because it has no previous snapshot.
+
+An `Instances` registration does not run again in the per-type validator pass below. Running it there would
+report one defect twice, first under its raw `KEC01xx` code and then wrapped as the untrusted-game code
+`KEC0040`.
 
 Game validators (contracts 4.4, an ADDITIONAL constraint never a relaxation) run LAST, after pass 6, one per
 registered type, each handed only its own type's rows plus a read-only lookup into the rest of the candidate.
@@ -2909,10 +2931,17 @@ what failed. Budget P3 in 14.1 is where the trade is measured rather than argued
 because a server that decodes lazily pays a first-touch cost inside a tick. The decode is one pass over
 `Bodies` and it is what builds any per-type derived index the runtime holds (section 9.4).
 
-**The client decodes lazily**, per chunk, on first lookup into that chunk's id range. It holds the compressed
-bytes from the cache and decompresses a chunk the first time a row in it is asked for. A client that walks a
-30-slot inventory touches at most a handful of chunks, which is the whole reason the cold start budget is a
-download budget (section 14, P4).
+**The client decodes lazily**, per chunk, through `ContentPackReader.CreateLazy`. The caller supplies the
+maximum decoded chunk count and the reader keeps that many in least recently used order. It holds compressed
+bytes in the content-addressed store and decompresses a chunk when a row in its id range is asked for. A later
+lookup decompresses it again after eviction. A client that walks a 30-slot inventory touches at most a handful
+of chunks, which is the whole reason the cold start budget is a download budget (section 14, P4).
+
+The ordinary constructor remains the snapshot mode and retains every chunk read until `BuildSnapshot` hands
+them over. `CreateLazy` refuses `BuildSnapshot` and `ReadAllAsync`, because evicting a decoded chunk while
+promising that a later synchronous snapshot includes every chunk read would be contradictory. P10 measures
+text residency and P11 measures composed server boot. Neither is a lazy decoded-chunk residency budget, so
+the consumer chooses this structural count from its own decoded heap budget.
 
 The two paths share one reader and differ only in when they call it, so there is one decoder and one set of
 reason tokens.
@@ -3189,7 +3218,7 @@ registering, so there is no such thing as a content type with no page.
 
 // response 200
 { "version": 47, "total": 35, "rows": [
-    { "id": 13, "key": "stone_sword", "retired": false, "validFrom": 41,
+    { "id": 13, "key": "stone_sword", "retired": false,
       "fields": { "name": "item.stone_sword.name", "stackable": false, "value": 42 } } ] }
 ```
 
@@ -4181,9 +4210,9 @@ proves the durability.
 
 ### 15.7 The rest
 
-**Validator tests.** One per ISSUED finding code, 41 of them, each building the smallest `ContentSnapshot`
-that triggers exactly that code and asserting the code, the type and the id. Forty-one and not forty-two: the
-codes run `KEC0001` to `KEC0042`, `KEC0013` is WITHDRAWN and never reissued (section 5.2), and `KEC0032` to
+**Validator tests.** One per ISSUED finding code, 42 of them, each building the smallest `ContentSnapshot`
+that triggers exactly that code and asserting the code, the type and the id. Forty-two and not forty-three: the
+codes run `KEC0001` to `KEC0043`, `KEC0013` is WITHDRAWN and never reissued (section 5.2), and `KEC0032` to
 `KEC0035` are four codes on one table row, which is where the count went wrong before. `KEC0000` gets a test
 too and it is the one that asserts a finding does NOT set `IsValid` to false. Two groups are not
 ordinary sweep tests. The four inheritance codes are unreachable in phase 1, so their tests assert they do NOT

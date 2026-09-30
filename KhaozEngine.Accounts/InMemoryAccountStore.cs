@@ -12,12 +12,14 @@ namespace KhaozEngine.Accounts;
 /// </summary>
 /// <remarks>
 /// Nothing survives the process. It applies <see cref="AccountStoreRules"/> exactly as the durable engine stores
-/// do, keeps a ban expiry in UTC, and keeps no claim and no timestamp from a sign-in.
+/// do, keeps a ban expiry in UTC, and keeps no claim and no timestamp from a sign-in. An account's creation and
+/// update times come from <see cref="TimeProvider"/>, and the update time moves only when a write changes a value.
 /// </remarks>
 public sealed class InMemoryAccountStore : IAccountStore
 {
     private readonly object gate = new();
     private readonly SortedDictionary<string, AccountRecord> accounts = new(StringComparer.Ordinal);
+    private readonly TimeProvider clock = TimeProvider.System;
 
     /// <summary>Creates an empty store.</summary>
     /// <param name="whitelistOnCreate">Whether a newly created account is past the whitelist gate. Required, with no
@@ -28,6 +30,14 @@ public sealed class InMemoryAccountStore : IAccountStore
     /// <summary>Whether a newly created account is past the whitelist gate, as this store was built.</summary>
     public bool WhitelistOnCreate { get; }
 
+    /// <summary>The clock an account's creation and update times are stamped from. The system clock by default.</summary>
+    /// <exception cref="ArgumentNullException">Set to <c>null</c>.</exception>
+    public TimeProvider TimeProvider
+    {
+        get => clock;
+        init => clock = value ?? throw new ArgumentNullException(nameof(value), "Time provider cannot be null.");
+    }
+
     /// <inheritdoc />
     public Task<AccountRecord> FindOrCreateAsync(AccountSignIn signIn, CancellationToken ct = default)
     {
@@ -37,15 +47,21 @@ public sealed class InMemoryAccountStore : IAccountStore
         {
             if (accounts.TryGetValue(subject, out AccountRecord? existing))
             {
-                // A null name means none was given this time, which never clobbers a known one.
+                // A null name means none was given this time, which never clobbers a known one. A sign-in that
+                // changes nothing moves no time either.
                 if (signIn.DisplayName is null || string.Equals(signIn.DisplayName, existing.DisplayName, StringComparison.Ordinal))
                     return Task.FromResult(existing);
-                AccountRecord refreshed = existing with { DisplayName = signIn.DisplayName };
+                AccountRecord refreshed = existing with { DisplayName = signIn.DisplayName, UpdatedAtUtc = UtcNow() };
                 accounts[subject] = refreshed;
                 return Task.FromResult(refreshed);
             }
 
-            var created = new AccountRecord(subject, signIn.DisplayName, WhitelistOnCreate, Ban: null);
+            DateTimeOffset now = UtcNow();
+            var created = new AccountRecord(subject, signIn.DisplayName, WhitelistOnCreate, Ban: null)
+            {
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+            };
             accounts.Add(subject, created);
             return Task.FromResult(created);
         }
@@ -124,14 +140,19 @@ public sealed class InMemoryAccountStore : IAccountStore
     }
 
     // Every write names an existing account and none creates one: an unknown subject is null and changes nothing.
+    // A write that leaves every value as it was is not a change, so it moves no time.
     private AccountRecord? Update(string subject, Func<AccountRecord, AccountRecord> change)
     {
         lock (gate)
         {
             if (!accounts.TryGetValue(subject, out AccountRecord? account)) return null;
-            AccountRecord updated = change(account);
+            AccountRecord changed = change(account);
+            if (changed == account) return account;
+            AccountRecord updated = changed with { UpdatedAtUtc = UtcNow() };
             accounts[subject] = updated;
             return updated;
         }
     }
+
+    private DateTimeOffset UtcNow() => clock.GetUtcNow().ToUniversalTime();
 }

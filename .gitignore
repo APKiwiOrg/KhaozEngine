@@ -40,8 +40,6 @@ local.settings.json
 # unignored, it showed up as a dirty tree in four repos and blocked a merge that was checking for one.
 .worktrees/
 .superpowers/
-# Superpowers plan/spec output, local-only (never committed):
-docs/superpowers/
 
 # Build / publish artifacts (this is `artifacts/`, NOT the tracked `art-assets/icon/` source pack:
 # the committed generated icon pack under art-assets/ is intentionally NOT ignored)

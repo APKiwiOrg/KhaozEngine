@@ -58,12 +58,19 @@ public static partial class TileProtocol
     /// the engine reserving a game-owned number.</summary>
     public const byte ServerFrameCombat = 3;
 
+    /// <summary>Server-to-client tag: a chunk of the complete visible combat preparation state set.</summary>
+    public const byte ServerFrameCombatPreparation = 4;
+
+    /// <summary>Server-to-client tag: a chunk of resolved and cancelled preparation records for one tick.</summary>
+    public const byte ServerFrameCombatPreparationTerminal = 5;
+
     /// <summary>The tag a decoder answers for an EMPTY frame, which is no tag at all. A real one is never 0xFF, so
     /// a demux switch gets a default case rather than an index into a zero-length span.</summary>
     public const byte NoFrameTag = 0xFF;
 
     /// <summary>Cap on a game-message payload, in bytes. Over it the encoder throws (a local bug, worth the stack)
-    /// and the decoder refuses (a remote frame, worth a dropped packet and nothing more).</summary>
+    /// and the decoder refuses (a remote frame, worth a dropped packet and nothing more). The four byte envelope
+    /// and optional command-length pad are outside this cap. A full payload makes a 1028-byte frame.</summary>
     public const int MaxGameMessageBytes = 1024;
 
     /// <summary>Cap on a notice reason token's UTF-8 encoding, in bytes. A token is a wire symbol the client looks

@@ -17,6 +17,12 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// active pointer LAST. A reader that sees the new active version is guaranteed to see everything of it.
 /// </para>
 /// <para>
+/// <b>Every row, field row, close, rule, chunk and draft rebase this commit writes carries the version's own
+/// publish time</b>, the value <c>catalog_version.published_at_utc</c> holds, which is also what the version 3
+/// migration fills a legacy row of those tables with. The active pointer and the audit rows read the clock as
+/// they always have.
+/// </para>
+/// <para>
 /// <b>The number is CONFIRMED rather than trusted, and on this backend the confirmation is load bearing.</b>
 /// Nothing holds a lock across steps 1 to 10, and the second console is in another process, so another
 /// publish really can land underneath a prepared plan. The plan digested its version number into both
@@ -94,30 +100,31 @@ public sealed partial class SqlServerContentAuthoringStore
                     request.Note,
                     _clock());
                 await InsertVersionAsync(scope, record, token).ConfigureAwait(false);
+                DateTimeOffset at = record.PublishedAtUtc;
 
                 // 3. Every temporal row change: the closes first, so no insert is mistaken for the revision
                 // it replaces while the walk is half done.
                 for (int i = 0; i < plan.Closes.Count; i++)
                 {
-                    await CloseRowAsync(scope, plan.Closes[i], token).ConfigureAwait(false);
+                    await CloseRowAsync(scope, plan.Closes[i], at, token).ConfigureAwait(false);
                 }
 
                 for (int i = 0; i < plan.Inserts.Count; i++)
                 {
-                    await InsertRowAsync(scope, plan.Inserts[i], token).ConfigureAwait(false);
+                    await InsertRowAsync(scope, plan.Inserts[i], at, token).ConfigureAwait(false);
                 }
 
                 // 4. Every remap rule, appended at the sequence above the highest. Append only: there is no
                 // update and no delete of a rule anywhere.
                 for (int i = held.Count; i < plan.Rules.Count; i++)
                 {
-                    await InsertRuleAsync(scope, plan.Rules[i], token).ConfigureAwait(false);
+                    await InsertRuleAsync(scope, plan.Rules[i], at, token).ConfigureAwait(false);
                 }
 
                 // 5. Every chunk row, ONE PER SIDE, the carried-forward ones included.
                 for (int i = 0; i < plan.Chunks.Count; i++)
                 {
-                    await InsertChunkAsync(scope, plan.VersionNumber, plan.Chunks[i], token)
+                    await InsertChunkAsync(scope, plan.VersionNumber, plan.Chunks[i], at, token)
                         .ConfigureAwait(false);
                 }
 
@@ -131,7 +138,7 @@ public sealed partial class SqlServerContentAuthoringStore
 
                 // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole
                 // draft, so anything else here survives rather than being deleted unpublished.
-                await DeleteFrozenEditsAsync(scope, plan, token).ConfigureAwait(false);
+                await DeleteFrozenEditsAsync(scope, plan, at, token).ConfigureAwait(false);
 
                 // 8. The active pointer, LAST. It moves for the NEXT boot: a running server keeps serving the
                 // version it loaded.
@@ -386,14 +393,17 @@ public sealed partial class SqlServerContentAuthoringStore
     static async Task InsertRuleAsync(
         SqlServerCatalogScope scope,
         RemapRule rule,
+        DateTimeOffset at,
         CancellationToken cancellationToken)
     {
         await using SqlCommand command = Command(
             scope,
             """
-            INSERT INTO dbo.catalog_remap_rule([sequence], introduced_in, type_id, kind, from_id, to_id, payload)
-            VALUES (@sequence, @introduced, @type, @kind, @from, @to, @payload);
+            INSERT INTO dbo.catalog_remap_rule(
+                [sequence], introduced_in, type_id, kind, from_id, to_id, payload, created_at_utc)
+            VALUES (@sequence, @introduced, @type, @kind, @from, @to, @payload, @at);
             """);
+        BindTime(command, "@at", at);
         BindInt(command, "@sequence", rule.Sequence);
         BindInt(command, "@introduced", rule.IntroducedIn);
         BindInt(command, "@type", (int)rule.Type.Value);
@@ -408,6 +418,7 @@ public sealed partial class SqlServerContentAuthoringStore
         SqlServerCatalogScope scope,
         int versionNumber,
         ContentChunkRecord chunk,
+        DateTimeOffset at,
         CancellationToken cancellationToken)
     {
         await using SqlCommand command = Command(
@@ -415,9 +426,10 @@ public sealed partial class SqlServerContentAuthoringStore
             """
             INSERT INTO dbo.catalog_chunk(
                 version_number, type_id, chunk_index, chunk_hash, row_count, uncompressed_bytes,
-                stored_bytes, visibility)
-            VALUES (@version, @type, @index, @hash, @rows, @uncompressed, @stored, @visibility);
+                stored_bytes, visibility, created_at_utc)
+            VALUES (@version, @type, @index, @hash, @rows, @uncompressed, @stored, @visibility, @at);
             """);
+        BindTime(command, "@at", at);
         BindInt(command, "@version", versionNumber);
         BindInt(command, "@type", (int)chunk.Type.Value);
         BindInt(command, "@index", chunk.ChunkIndex);

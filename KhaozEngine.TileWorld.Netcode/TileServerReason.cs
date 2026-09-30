@@ -14,6 +14,9 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// </summary>
 public static class TileServerReason
 {
+    /// <summary>Developer protocol failure: a viewer exceeded the preparation record budget and was disconnected.</summary>
+    public const string CombatPreparationOverflow = "ke:combat-preparation-overflow";
+
     /// <summary>The thing the player clicked has no reachable tile, or the player cannot get to one. Sent on the
     /// tick the walk toward it ends without arriving, so a client can drop its own pending action at the same
     /// moment the server drops the authoritative one.</summary>

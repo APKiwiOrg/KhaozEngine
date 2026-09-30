@@ -10,9 +10,9 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// stood on the tile it leaves.
 /// <para>PRESENTATION ONLY, and held on the client's per-remote sample rather than anywhere else. The answer is
 /// handed to <see cref="TilePresenter"/> as an argument, so the presenter stays a pure function of what it is
-/// given, and nothing here reaches the simulation, the wire or the server. The local player needs none of it:
-/// <c>ClientPrediction.RenderedState</c> eases from the previous predicted position, which is the standing tile on
-/// the click tick, so that path already starts the step at zero.</para>
+/// given, and nothing here reaches the simulation, the wire or the server. The local player records no door:
+/// <c>ClientPrediction.RenderedState</c> eases from the previous prediction target, which is the standing tile on
+/// the click tick, and <see cref="TileMoveState.PredictionTarget"/> carries one-tick landing-door motion.</para>
 /// <para>Above a one-tick cadence a misread cannot move the LANDING. The click door fraction and the ordinary one
 /// both reach 1 when <c>StepTicks</c> plus the carried ticks reaches the step's total, so a wrong answer reshapes
 /// the curve inside the step and never the moment the body arrives.</para>

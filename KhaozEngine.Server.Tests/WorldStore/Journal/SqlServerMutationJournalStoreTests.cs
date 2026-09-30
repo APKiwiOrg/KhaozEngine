@@ -126,7 +126,7 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
     }
 
     [SqlServerFact]
-    public void Auto_create_is_idempotent_and_validate_only_accepts_version_two()
+    public void Auto_create_is_idempotent_and_validate_only_accepts_version_three()
     {
         _ = new SqlServerMutationJournalStore(DedicatedConnectionString);
         _ = new SqlServerMutationJournalStore(DedicatedConnectionString);
@@ -248,6 +248,8 @@ public sealed class SqlServerMutationJournalStoreTests : IDisposable
     [SqlServerFact] public Task Stream_listing_filters_by_an_ordinal_case_sensitive_key_prefix() => Conformance().Stream_listing_filters_by_an_ordinal_case_sensitive_key_prefix();
     [SqlServerFact] public Task Stream_listing_pages_through_a_continuation_until_the_listing_is_complete() => Conformance().Stream_listing_pages_through_a_continuation_until_the_listing_is_complete();
     [SqlServerFact] public Task Stream_listing_continuation_is_a_key_so_later_streams_ahead_of_it_are_listed() => Conformance().Stream_listing_continuation_is_a_key_so_later_streams_ahead_of_it_are_listed();
+    [SqlServerFact] public Task Stream_listing_reports_when_each_stream_was_created_and_last_changed() => Conformance().Stream_listing_reports_when_each_stream_was_created_and_last_changed();
+    [SqlServerFact] public Task Stream_listing_update_time_moves_when_compaction_moves_the_retained_floor() => Conformance().Stream_listing_update_time_moves_when_compaction_moves_the_retained_floor();
     [SqlServerFact] public Task Stream_listing_of_an_empty_store_is_one_complete_empty_page() => Conformance().Stream_listing_of_an_empty_store_is_one_complete_empty_page();
 
     private BoundConformance Conformance() => new(CreateStore);

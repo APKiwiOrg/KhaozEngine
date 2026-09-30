@@ -78,7 +78,7 @@ namespace KhaozEngine.Showcase
         protected override void OnLoad()
         {
             // Compile-time localization: register the showcase string catalog so every LocalizedText resolves
-            // against ShowcaseStrings.resx. See ShowcaseStrings.cs for the StringId constants the Gui sinks take.
+            // against ShowcaseStrings.resx. The analyzer project generates the StringId members the Gui sinks take.
             LocalizationContext.Catalog = new ResourceStringCatalog(
                 new ResourceManager("KhaozEngine.Showcase.ShowcaseStrings", typeof(ShowcaseApp).Assembly));
 

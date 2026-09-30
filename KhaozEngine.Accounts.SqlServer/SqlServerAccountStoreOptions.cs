@@ -6,8 +6,9 @@ namespace KhaozEngine.Accounts.SqlServer;
 public enum AccountSchemaMode
 {
     /// <summary>
-    /// Creates the account table when absent and adds a missing <c>ban_reason</c> or <c>ban_until</c> when present,
-    /// under an application lock, then validates the result. Needs DDL rights on the schema.
+    /// Creates the account table when absent and adds a missing <c>ban_reason</c>, <c>ban_until</c>,
+    /// <c>created_at_utc</c> or <c>updated_at_utc</c> when present, under an application lock, then validates the
+    /// result. Needs DDL rights on the schema.
     /// </summary>
     AutoCreate,
 
@@ -32,7 +33,11 @@ public enum AccountSchemaMode
 /// <param name="Table">The table name. <c>accounts</c>, Grimhollow's table, by default.</param>
 /// <param name="SchemaMode">Whether the first call may create and widen the table, or only validate it.</param>
 public sealed record SqlServerAccountStoreOptions(
-    string Schema = "dbo", string Table = "accounts", AccountSchemaMode SchemaMode = AccountSchemaMode.AutoCreate);
+    string Schema = "dbo", string Table = "accounts", AccountSchemaMode SchemaMode = AccountSchemaMode.AutoCreate)
+{
+    /// <summary>The clock an account's creation and update times are stamped from. The system clock by default.</summary>
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+}
 
 /// <summary>The one identifier rule the SQL Server store applies to a configured schema or table name.</summary>
 internal static class SqlServerAccountIdentifier

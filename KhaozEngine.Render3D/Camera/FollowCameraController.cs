@@ -9,7 +9,7 @@ namespace KhaozEngine.Render3D
     /// <see cref="OrbitButton"/> to orbit (yaw/pitch), scroll the wheel to zoom (distance). Touches no input
     /// statics (the snapshot is handed in), so it stays headless-testable. Mirrors
     /// <see cref="IsoCameraController"/>'s role for the iso camera. The camera clamps pitch/distance itself, so
-    /// this controller only adds deltas; the tuning fields below are feel-tuned, not hardcoded deep.
+    /// this controller only adds deltas. The tuning fields below are feel-tuned, not hardcoded deep.
     /// </summary>
     public sealed class FollowCameraController
     {
@@ -18,7 +18,7 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Mouse button that, while held, orbits the camera. Default <see cref="MouseButton.Right"/>
         /// (right-drag to orbit, matching the sibling <see cref="FlyCameraController"/> and the walkable-slice
-        /// games; left-drag stays free for gameplay). Assign <see cref="MouseButton.Left"/> to restore left-drag
+        /// games, so left-drag stays free for gameplay). Assign <see cref="MouseButton.Left"/> to restore left-drag
         /// orbit.</summary>
         public MouseButton OrbitButton = MouseButton.Right;
         /// <summary>Radians of yaw applied per pixel of horizontal drag. Default 0.01.</summary>
@@ -40,12 +40,14 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Apply this frame's drag-orbit and scroll-zoom. While <see cref="OrbitButton"/> is held, the mouse delta
         /// swings <see cref="FollowCamera3D.Yaw"/> (horizontal) and tilts <see cref="FollowCamera3D.Pitch"/>
-        /// (vertical); the wheel scales <see cref="FollowCamera3D.Distance"/>. The default mapping turns the view
-        /// the way the hand pulls (drag right turns left, drag down looks up); flip either axis with
+        /// (vertical), and the wheel scales <see cref="FollowCamera3D.Distance"/>. The default mapping turns the view
+        /// the way the hand pulls (drag right turns left, drag down looks up). Flip either axis with
         /// <see cref="InvertX"/> / <see cref="InvertY"/>. Pitch and distance are clamped by the camera. The orbit/zoom
         /// gestures are delta-based, but <paramref name="dt"/> drives the camera's optional target damping
-        /// (<see cref="FollowCamera3D.AdvanceTarget"/>), so pass the real frame time - it is a no-op unless
-        /// <see cref="FollowCamera3D.EnableTargetDamping"/> is on.
+        /// (<see cref="FollowCamera3D.AdvanceTarget"/>) and eased boom recovery
+        /// (<see cref="FollowCamera3D.AdvanceBoom"/>), so pass the real frame time. Each is a no-op unless
+        /// <see cref="FollowCamera3D.EnableTargetDamping"/> or <see cref="FollowCamera3D.BoomRecoveryRate"/> turns
+        /// it on.
         /// </summary>
         public void Update(in InputState input, float dt)
         {
@@ -62,9 +64,10 @@ namespace KhaozEngine.Render3D
 
             float scroll = input.ScrollDelta;
             if (scroll != 0f)
-                Camera.Distance *= MathF.Pow(ZoomStep, -scroll);   // setter clamps; +scroll -> closer
+                Camera.Distance *= MathF.Pow(ZoomStep, -scroll);   // setter clamps, and +scroll -> closer
 
             Camera.AdvanceTarget(dt);   // drives the opt-in target damping (no-op while disabled)
+            Camera.AdvanceBoom(dt);     // eases the boom back out after an obstruction clears (no-op at rate 0)
         }
     }
 }

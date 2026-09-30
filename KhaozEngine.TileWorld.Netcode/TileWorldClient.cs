@@ -475,9 +475,10 @@ public sealed partial class TileWorldClient : IDisposable
         // breath: it would carry the render time past every buffered sample at once, park every remote on its
         // newest one and never come back. Both mean the caller handed over a broken frame clock, and the honest
         // answer to a frame that took no valid amount of time is to draw the previous one again. The sanitized
-        // value is what the prediction layer is handed too, so one guard covers both render clocks.
+        // value is what the prediction layer is handed too, so one guard covers all presentation clocks.
         float step = float.IsFinite(dt) && dt > 0f ? dt : 0f;
         presentationClock += step;
+        combatPreparation?.Clock.Advance(step, config.TickSeconds);
         Prediction.AdvancePresentation(step);
         if (LocalNetId == TileDrawPriority.NoLocalPlayer) return;
         double renderTime = RenderTime;
@@ -511,6 +512,7 @@ public sealed partial class TileWorldClient : IDisposable
         goneLatest.Clear();
         liveLatest.Clear();
         decodedCombat.Clear();
+        ClearPreparations();
     }
 
     // The stepper the PREDICTION runs: <see cref="Simulator"/> with this client's own net id bound to it. The

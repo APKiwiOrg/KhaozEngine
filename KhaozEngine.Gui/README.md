@@ -13,6 +13,10 @@ overload, so a bare literal is a compile error. The `KhaozEngine.Localization.An
 icon-atlas key, not player text, so it is unchanged. See the App package for
 `StringId` / `LocalizedText` / `LocalizationContext`.
 
+The opt-in rich-text adapters take `MarkupText`, built only from a `StringId`. It has no raw root factory.
+Non-localizable names, numbers and input labels enter as `MarkupText.Of` arguments, which are formatted and
+markup-escaped before insertion into the trusted catalog template.
+
 ## Radial menu and source-target use
 
 `RadialMenu` is a retained interaction menu anchored to a pointer or projected world position. It accepts one
@@ -131,6 +135,7 @@ public sealed partial class RadialMenu
     public RadialMenuTheme Theme { get; set; }
     public Rect SafeBounds { get; set; }
     public RadialMenuInteractionMode InteractionMode { get; set; }
+    public bool ShowEnabledEntryDetails { get; set; }
     public bool IsOpen { get; }
     public int HoverIndex { get; }
     public ContextMenu? EntryContextMenu { get; set; }
@@ -199,7 +204,8 @@ public readonly record struct RadialMenuMetrics(
 ```
 
 `RadialMenuTheme` is a settable class with public `Vector4` fields named `Shadow`, `Surface`,
-`SurfaceHighlight`, `Border`, `BorderActive`, `Accent`, `Text`, `TextMuted`, `Disabled`, and `Sheen`.
+`SurfaceHighlight`, `Border`, `BorderActive`, `Accent`, `Text`, `TextMuted`, `Detail`, `DisabledDetail`,
+`Disabled`, and `Sheen`.
 `RadialMenuTheme.Default` returns a fresh theme built from the ambient `GuiTheme.Default` values.
 
 `Open` rejects duplicate entry or choice tags. An explicit nonzero `InitialChoiceTag` must identify an enabled
@@ -244,10 +250,19 @@ wedge gap must be nonnegative and smaller than one active entry's angular step. 
 non-finite dimensions. `ComputeCenter` and `Open` reject a safe area that cannot contain the complete wheel and
 footer plus both margins.
 
-`RadialMenuTheme` carries the shadow, surface, highlight, border, accent, text, disabled tint and alpha,
-`DisabledDetail`, and sheen colors. Its defaults derive from `GuiTheme.Default`. A disabled entry draws its
-localized `Detail` compactly beneath the wedge label in `DisabledDetail`, while the active entry still shows the
-same detail in the centre. Disabled labels and icons use `Disabled` directly. Backgrounds and borders take its
+`ShowEnabledEntryDetails` opts enabled entries into drawing their localized `Detail` compactly beneath the wedge
+label. It defaults to false, so existing enabled entries keep their earlier output. Enabled under-label detail
+uses `RadialMenuTheme.Detail`, whose default is the ambient muted text color. Disabled detail remains visible
+without the option and continues to use `DisabledDetail`. The active entry still shows the same detail in the
+centre whether the option is on or off.
+
+`RadialMenuMetrics.DetailGap` now controls the vertical space between a wedge label block and its detail. The
+field was previously validated and documented but unused by drawing. Its default is 2 pixels, matching the old
+fixed spacing, so default disabled output is unchanged. Caller supplied values are used directly.
+
+`RadialMenuTheme` carries the shadow, surface, highlight, border, accent, text, enabled detail, disabled tint and
+alpha, disabled detail, and sheen colors. Its defaults derive from `GuiTheme.Default`. Disabled labels and icons
+use `Disabled` directly. Backgrounds and borders take its
 hue while retaining their source luminance, and multiply their source alpha by `Disabled.W`. Setting that alpha
 to zero hides all disabled entry channels. `Draw` uses ordinary Render2D geometry. The centre plate has its own
 shadow, translucent surface, inner highlight, and border, and remains visible when every entry is disabled.
@@ -345,6 +360,13 @@ source key and collapse key match. The latest entry supplies the timestamp, auth
 while `RepeatCount` records how many were collapsed. Author and content use `LocalizedText`, so catalog text
 and explicit raw player names or messages stay distinguishable.
 
+An entry can opt into trusted localized semantic colour markup by passing `MarkupText` instead of
+`LocalizedText` to the additive constructor. Catalog templates use `[name]...[/]`, may nest spans, and write
+`[[` for a literal `[`. `MarkupText.Of` culture-formats and escapes every argument before insertion, so player
+names and other caller values cannot introduce tags. `ChatBoxTheme.InlineStyles` maps names to colours. A missing
+mapping inherits the entry colour, and malformed markup is drawn literally. Ordinary entries stay on the plain
+text path.
+
 `ChatBox` draws that history with wrapping and scrollback, optional local timestamps, own and system message
 colours, and a single-line composer. Enter opens the composer, a later Enter submits trimmed non-empty text,
 and Escape clears and closes it. `Update` reserves the full `Bounds` through `Pointer`, including movement and
@@ -371,6 +393,7 @@ text immediately through the normal `TextInput.SetText` path.
 ```csharp
 using System;
 using KhaozEngine.App;
+using KhaozEngine.Gui;
 using KhaozEngine.Gui.Chat;
 using KhaozEngine.Primitives;
 
@@ -393,6 +416,18 @@ history.Add(new ChatEntry(
     CollapseKey: message,
     Kind: ChatEntryKind.Ordinary,
     IsOwn: senderId == localPlayerId));
+
+chat.Theme.InlineStyles = new InlineTextStyles(
+    new InlineTextStyle("emphasis", chat.Theme.OwnText),
+    new InlineTextStyle("key", GuiTheme.Default.AccentBright));
+history.Add(new ChatEntry(
+    DateTimeOffset.UtcNow,
+    SourceKey: "loot",
+    Author: null,
+    Content: MarkupText.Of(Strings.ChatLootFound, itemName, bindingName),
+    CollapseKey: itemId,
+    Kind: ChatEntryKind.System,
+    IsOwn: false));
 
 chat.Update(pointer, input, dt);
 chat.Draw(batch, white);
@@ -506,9 +541,9 @@ chat.Draw(batch, white);
     the origin, and the footprint is derived from `Columns`/`SlotWidth`/`SlotHeight`/`Spacing` and the slot `Count`
     (read `ContentSize`
     / `ContentBounds`). Set nullable `VisibleBounds` to the same region passed to the caller's scissor when the
-    grid is inside a clipped panel. Slot lookup, hover, presses, taps, drag sources and targets, and pointer
-    reservation then use only the visible intersection. Null keeps the full-grid behavior, and drawing still
-    relies on the caller's scissor. A slot is square by default and `SlotSize` is the shorthand that writes both axes (reading
+    grid is inside a clipped panel. Drawing, slot lookup, hover, presses, taps, drag sources and targets, and pointer
+    reservation then visit only slots that intersect the visible region. The caller's scissor clips partially
+    visible slots. Null keeps the full-grid behavior. A slot is square by default and `SlotSize` is the shorthand that writes both axes (reading
     it returns `SlotWidth`), so a panel drawing item NAMES rather than icons sets `SlotWidth`/`SlotHeight` apart for
     a wide, short cell. Each slot hit-tests through the press-origin invariant, and `HoveredSlot`/`PressedSlot` expose the
     live index (-1 = none) and a valid tap fires `OnSlotClicked` (and `Update` returns the index). The right button
@@ -679,6 +714,8 @@ chat.Draw(batch, white);
     A scaled line still wraps within `MaxWidth` (the word-wrap budget divides by the line's own scale).
     `TooltipLine.OfSegments` resolves `LabelSegment`s into one body line and keeps each segment's colour
     through word wrapping and hard breaks. Its fallback colour applies when a segment has none.
+    `TooltipLine.OfMarkup` is the localized one-template alternative. It resolves `MarkupText` through an
+    `InlineTextStyles` map and keeps the resulting colours through the same wrapping path.
     `Opacity` (default `1f`) fades the whole bubble for a host transition, and covers every colour it paints
     (background, border, title row, separator, each body line), so `0` draws nothing.
     `AnchorMode` (default `TooltipAnchorMode.Centered`, the bubble straddling the anchor) switches to
@@ -986,6 +1023,12 @@ chat.Draw(batch, white);
   `PassTimingsSection` lists one row per pass name (in first-sampled order)
   with that pass's rolling avg/min/max milliseconds - CPU encode time, not true GPU time (see the
   `KhaozEngine.Render3D` README / `docs/USING-KHAOZENGINE.md`).
+  Every title and row label supplied by these built-in populators, plus the disconnected Network value, resolves
+  through the public `DiagnosticsOverlayStrings` `StringId` fields. The `diagnostics.overlay.performance.*`,
+  `diagnostics.overlay.pass-timings.*`, `diagnostics.overlay.draw-stats.*`, and
+  `diagnostics.overlay.network.*` keys have built-in English fallbacks that preserve the historical output.
+  Dynamic pass names, formatted numbers, and conventional units remain raw tokens. Custom section text stays
+  game-owned.
   `Bounds` is the last-drawn panel rect (empty when hidden/faded-out), so a caller can place an `OverlayLegend`
   at `Bounds.Right` + a gap to sit a second panel directly beside it.
 - `DiagnosticsHud` - turn-key wiring of the frame-cost HUD: bundles a `FrameStats` meter, an optional
@@ -996,9 +1039,10 @@ chat.Draw(batch, white);
   `AssemblyInformationalVersionAttribute`, with a `+` build metadata suffix (the SourceLink commit) dropped.
   `SetBuildIdentity(string name, string version)` shows the game's own display strings instead, e.g.
   `Diagnostics?.SetBuildIdentity(BuildConfig.Product, BuildConfig.DisplayVersion)`. The identity is read once,
-  on the first refresh that shows it, never per frame. Its title is the localized
-  `DiagnosticsOverlayStrings.BuildTitle` (`diagnostics.overlay.build.title`, English fallback "Build"). The
-  name and version are shown verbatim as non-localizable tokens. Call `Update(input, dt)`
+  on the first refresh that shows it, never per frame. Its title uses the already shipped
+  `DiagnosticsOverlayStrings.BuildTitle` (`diagnostics.overlay.build.title`, English fallback "Build") alongside
+  the other built-in keys. The name and version are shown verbatim as non-localizable tokens. Call
+  `Update(input, dt)`
   once per frame (samples FPS, handles the toggle + fade), feed `SetDrawStats(in RenderFrameStats)` the aggregate
   and (3D) sample its `PassTimings`, then `Draw`. Hidden by default, and while hidden the provider builds nothing,
   so the only cost is the surfaces' always-on counter increments. `SetNetStatsSource(Func<ClientNetStats?>?)` opts a
@@ -1011,11 +1055,11 @@ chat.Draw(batch, white);
   OVER the built-in one and costs all five built-in sections, which is the trap this seam exists to close.
   The ctor's `visibleAtBoot` starts the panel shown (default false), for a build whose tester has to read a value
   without first finding the toggle key. `GameApp`/`GameApp3D` wire one automatically (F1).
-- `TextEntry` - headless key→char text-entry helper (US layout + shift), used by `TextInput`. No SDL plumbing.
-  Ctrl/Super (Cmd) held suppresses character entry so shortcut chords like Ctrl+V / Cmd+V paste instead of typing.
-  Acts on `InputState.WasTyped` (press edge OR OS auto-repeat tick), so a held Backspace or character key repeats at
-  the OS rate; the chord suppression still blocks repeated character entry while Ctrl/Cmd is held. Keypad (numpad)
-  keys type their digit/dot/operator characters shift-independently (a keypad has no symbol row) via the
+- `TextEntry` - headless editing helper used by `TextInput`. On GLFW windows it reads the OS committed Unicode
+  stream, so layout changes and dead-key commits work. Hand-built snapshots and non-GLFW windows keep the US
+  key-map fallback. Ctrl/Super (Cmd) suppresses ordinary shortcut chords, while AltGr text is admitted. Ctrl+V /
+  Cmd+V pastes. `InputState.WasTyped` still drives Backspace and fallback character repeat at the OS rate. Keypad
+  keys type their digit/dot/operator characters shift-independently in the fallback via the
   `Keypad0`..`Keypad9`/`KeypadDecimal`/`KeypadAdd`/`KeypadSubtract`/`KeypadMultiply`/`KeypadDivide`/`KeypadEqual`
   members on `KhaozEngine.Windowing.Key`. A physical keypad Enter is folded into the regular `Enter` by
   `AppWindow`, so it commits/confirms identically everywhere, with no separate `KeypadEnter` member. The optional
@@ -1118,8 +1162,9 @@ borderless style stays borderless. Text drawn through the batch in that pass als
 block's ascent baseline, once per `DrawString`, so every glyph of a word stays on one baseline - pair with a
 `DpiFont` from `KhaozEngine.Render2D` for a crisp atlas).
 
-Text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout` (over the `ITextMeasurer` seam, so the layout
-math is headless-testable). Clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware, and
+Plain text wrap/alignment lives in `KhaozEngine.Render2D.TextLayout`. Resolved coloured runs use
+`ColoredTextLayout.Wrap`. Both operate over the `ITextMeasurer` seam, so the layout math is headless-testable.
+Clipping uses `SpriteBatch` scissor (`SetScissor`/`ClearScissor`, DPI-aware, and
 nesting: a clipping widget drawn inside another clipping widget is bounded by both). Ported
 from `KhaozEngine.Screens`/`UI` (game-specific layout coupling dropped). Built on `KhaozEngine.Windowing`
 (Pointer/Input) + `KhaozEngine.Render2D` (SpriteBatch/SpriteFont/Texture2D). Part of the MonoGame-free engine.

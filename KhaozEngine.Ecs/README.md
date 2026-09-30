@@ -4,7 +4,7 @@ A game-agnostic, struct-based **archetype** entity-component-system. Entities ar
 components are `struct`s implementing `IComponent`, stored in contiguous archetype columns. Provides
 `ref` access, `With`/`Without` queries with `ForEach` (arities 1-8), an `EntityCommandBuffer` for
 deferred structural changes, typed `Resources`, and ordered `ISystem`s. Independent of the
-input/screen packages, versioned on its own cadence (`1.0.0`).
+input/screen packages and on the engine's shared version line.
 
 ```csharp
 public struct Position : IComponent { public float X, Y; }
@@ -51,6 +51,12 @@ someScheduler;`). An explicit per-call scheduler argument always wins over it. S
 (`IJobScheduler`) + parallel cell ticks" and "Parallel `ForEach` + access declarations" in
 [docs/USING-KHAOZENGINE.md](../docs/USING-KHAOZENGINE.md) for the full picture, including the turn-key
 `GameApp.JobScheduler` client wiring.
+
+`AccessSet` is a read/write conflict declaration. It does not run systems or change
+`ParallelForEach` scheduling. `ISystem` and `RunGroup` are sequential, and no layer-3 scheduler consumes
+the declaration today. The [#125 gate decision](https://github.com/APKiwiOrg/KhaozEngine/issues/125)
+records why the benchmark did not justify building one for hot cells. Revisit only when a real workload
+shows a stable gain over the shipped parallel `ForEach` path.
 
 A component struct with no fields is a **tag**: stored with no column, presence on the entity is its whole
 state. `Get<T>` still throws for a tag, but `TryGet<T>` copies out `default` for a present one instead of

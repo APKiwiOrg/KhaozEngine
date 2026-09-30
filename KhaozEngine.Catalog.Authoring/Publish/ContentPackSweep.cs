@@ -19,8 +19,8 @@ public sealed record ContentPackSweepResult(bool Ran, int Kept, int Deleted, str
 /// <summary>
 /// Step 11 of spec 6.1, the orphan sweep, which runs after a SUCCESSFUL commit and never before one.
 /// <para>
-/// <b>The keep set is the union, over EVERY version the store knows, of that version's pointer, the two
-/// manifest hashes it holds, and every hash named INSIDE either manifest.</b> It is defined against the
+/// <b>The validated keep set is the union, over EVERY durable version record the store knows, of its two
+/// manifest hashes and every hash named INSIDE either manifest.</b> It is defined against the
 /// MANIFESTS and not against the chunk table, because the manifest is the complete enumeration and the chunk
 /// table is not: the remap rule chunk sits at a reserved address outside any type's id space and the text
 /// chunks are per language, so neither has a type row to hang a chunk row on, while both are named by both
@@ -28,9 +28,10 @@ public sealed record ContentPackSweepResult(bool Ran, int Kept, int Deleted, str
 /// first publish, and every later boot would fail closed on an absent chunk, for every version, forever.
 /// </para>
 /// <para>
-/// <b>It is SKIPPED when the store listing fails for any reason</b>, and a pointer that is absent or
-/// unreadable for any version IS a listing failure. Deleting files on the authority of a listing that failed
-/// is how a bad publish turns into a lost pack.
+/// <b>It is SKIPPED when the store listing fails for any reason</b>. The validated entry point also
+/// requires every pointer's two hashes to match its durable record before any listing starts. An absent,
+/// unreadable or mismatched pointer is a listing failure. Deleting files on the authority of a listing that
+/// failed is how a bad publish turns into a lost pack.
 /// </para>
 /// <para>
 /// It never deletes a file referenced by ANY version, not just the active one, because a pinned server and a
@@ -48,7 +49,75 @@ public static class ContentPackSweep
     public const string SkippedNoPruning = "store-cannot-prune";
 
     /// <summary>
+    /// Checks every pointer against its durable version record before listing or pruning any objects.
+    /// Missing pointer evidence or either mismatched manifest hash skips the sweep as a listing failure.
+    /// The keep set is then read from those durable manifest hashes, so a later pointer replacement cannot
+    /// select a different closure for deletion.
+    /// The publish and operator sweep use this entry point.
+    /// </summary>
+    /// <param name="store">The pack store to sweep, with readable version pointers.</param>
+    /// <param name="versions">Every durable version record the authoring store knows, the new one included.</param>
+    /// <param name="cancellationToken">Cancels the sweep.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public static async Task<ContentPackSweepResult> RunValidatedAsync(
+        IPackStore store,
+        IReadOnlyList<ContentVersionRecord> versions,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(versions);
+
+        if (store is not IPackStorePruning pruning)
+        {
+            return new ContentPackSweepResult(false, 0, 0, SkippedNoPruning);
+        }
+
+        IPackVersionPointerStore? pointers = PackVersionPointers.Resolve(store);
+        IContentVersionPointerSource? source = store as IContentVersionPointerSource;
+        if (pointers is null && source is null)
+        {
+            return new ContentPackSweepResult(false, 0, 0, SkippedListingFailed);
+        }
+
+        var manifests = new List<PackVersionPointer>(versions.Count);
+        for (int i = 0; i < versions.Count; i++)
+        {
+            ContentVersionRecord version = versions[i];
+            PackVersionPointer? pointer = pointers is not null
+                ? await pointers.GetVersionPointerAsync(version.VersionNumber, cancellationToken).ConfigureAwait(false)
+                : await source!.GetVersionPointerAsync(version.VersionNumber, cancellationToken).ConfigureAwait(false);
+            if (pointer is null
+                || !string.Equals(pointer.ServerManifestHash, version.ServerManifestHash, StringComparison.Ordinal)
+                || !string.Equals(pointer.ClientManifestHash, version.ClientManifestHash, StringComparison.Ordinal))
+            {
+                return new ContentPackSweepResult(false, 0, 0, SkippedListingFailed);
+            }
+
+            manifests.Add(new PackVersionPointer(version.ServerManifestHash, version.ClientManifestHash));
+        }
+
+        var keep = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < manifests.Count; i++)
+        {
+            PackVersionPointer manifest = manifests[i];
+            IReadOnlyList<string> hashes = await ContentPackClosure.ReadAsync(
+                store, manifest.ServerManifestHash, manifest.ClientManifestHash, cancellationToken).ConfigureAwait(false);
+            if (hashes.Count == 0)
+            {
+                return new ContentPackSweepResult(false, keep.Count, 0, SkippedListingFailed);
+            }
+
+            keep.UnionWith(hashes);
+        }
+
+        return await PruneAsync(pruning, keep, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Deletes every object outside the keep set, or skips and says why.
+    /// This compatibility entry point trusts the pointer-backed listings without durable version records.
+    /// Its caller must establish that the pointers name the authoritative manifests. Use
+    /// <see cref="RunValidatedAsync"/> when those records are available, as the publish and operator sweep do.
     /// </summary>
     /// <param name="store">The pack store to sweep.</param>
     /// <param name="versions">Every version number the store knows, the new one included.</param>
@@ -86,6 +155,14 @@ public static class ContentPackSweep
             }
         }
 
+        return await PruneAsync(pruning, keep, cancellationToken).ConfigureAwait(false);
+    }
+
+    static async Task<ContentPackSweepResult> PruneAsync(
+        IPackStorePruning pruning,
+        HashSet<string> keep,
+        CancellationToken cancellationToken)
+    {
         var orphans = new List<string>();
         await foreach (string hash in pruning.EnumerateAsync(cancellationToken).ConfigureAwait(false))
         {

@@ -107,8 +107,8 @@ public class BanSeamTests
         var again = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default, clientConfig,
             token: Encoding.UTF8.GetBytes("acct-1"));
         Pump(server, again, config.TickSeconds);
-        Assert.Equal(DisconnectReason.RejectedToken, again.DisconnectReason);
-        Assert.Equal(HandshakeToken.BannedReason, again.DisconnectReasonDetail);
+        Assert.Equal(DisconnectReason.Banned, again.DisconnectReason);
+        Assert.Equal(string.Empty, again.DisconnectReasonDetail);
         Assert.Equal(0, server.PlayerCount);
 
         // Lifting the ban in the one store opens both paths again.
@@ -117,6 +117,48 @@ public class BanSeamTests
             token: Encoding.UTF8.GetBytes("acct-1"));
         Pump(server, lifted, config.TickSeconds);
         Assert.True(lifted.Joined);
+    }
+
+    [Fact]
+    public async Task A_post_join_ban_is_terminal_even_when_auto_reconnect_is_enabled()
+    {
+        var bans = new InMemoryBanStore();
+        var hub = new InMemoryTransportHub();
+        var config = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4 };
+        var server = new WorldServer(hub.Server, config, Flat, MoveTuning.Default, banStore: bans);
+        var admin = new ServerAdmin(server, bans);
+        int connectCount = 0;
+
+        using var client = new WorldClient(
+            () =>
+            {
+                connectCount++;
+                return hub.CreateClient();
+            },
+            Flat,
+            MoveTuning.Default,
+            new WorldClientConfig
+            {
+                TickSeconds = config.TickSeconds,
+                AutoReconnect = true,
+                Reconnect = new ReconnectBackoff { InitialSeconds = 0.01f, Multiplier = 1f, MaxSeconds = 0.01f },
+            },
+            token: Encoding.UTF8.GetBytes("acct-ban"));
+
+        Pump(server, client, config.TickSeconds);
+        Assert.True(client.Joined);
+
+        await admin.BanAsync("acct-ban", "cheating");
+        for (int i = 0; i < 30; i++)
+        {
+            server.Poll();
+            server.Tick(config.TickSeconds);
+            client.Poll(0.05f);
+        }
+
+        Assert.Equal(WorldConnectionState.Disconnected, client.ConnectionState);
+        Assert.Equal(DisconnectReason.Banned, client.DisconnectReason);
+        Assert.Equal(1, connectCount);
     }
 
     [Fact]

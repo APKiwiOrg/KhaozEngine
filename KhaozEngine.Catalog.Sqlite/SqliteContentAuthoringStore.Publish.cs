@@ -18,6 +18,12 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// pointer LAST. A reader that sees the new active version is guaranteed to see everything of it.
 /// </para>
 /// <para>
+/// <b>Every row, field row, close, rule, chunk and draft rebase this commit writes carries the version's own
+/// publish time</b>, the value <c>catalog_version.published_at_utc</c> holds, because each is part of the one
+/// change that version is. It is also what the version 3 migration fills a legacy row, field, chunk or rule
+/// with. The active pointer, the audit rows and the applied upgrade row read the clock as they always have.
+/// </para>
+/// <para>
 /// <b>The number is CONFIRMED rather than trusted.</b> This store leases its connection per call, so no LOCK
 /// is held across steps 1 to 10 and another publish really can land underneath a prepared plan. The plan
 /// digested its version number into both manifest hashes at step 8, so a plan whose base moved carries
@@ -101,30 +107,31 @@ public sealed partial class SqliteContentAuthoringStore
             request.Note,
             _clock());
         await InsertVersionAsync(record, transaction, cancellationToken).ConfigureAwait(false);
+        long at = Millis(record.PublishedAtUtc);
 
         // 3. Every temporal row change: the closes first, so no insert is mistaken for the revision it
         // replaces while the walk is half done.
         for (int i = 0; i < plan.Closes.Count; i++)
         {
-            await CloseRowAsync(plan.Closes[i], transaction, cancellationToken).ConfigureAwait(false);
+            await CloseRowAsync(plan.Closes[i], at, transaction, cancellationToken).ConfigureAwait(false);
         }
 
         for (int i = 0; i < plan.Inserts.Count; i++)
         {
-            await InsertRowAsync(plan.Inserts[i], transaction, cancellationToken).ConfigureAwait(false);
+            await InsertRowAsync(plan.Inserts[i], at, transaction, cancellationToken).ConfigureAwait(false);
         }
 
         // 4. Every remap rule, appended at the sequence above the highest. Append only: there is no update
         // and no delete of a rule anywhere.
         for (int i = held.Count; i < plan.Rules.Count; i++)
         {
-            await InsertRuleAsync(plan.Rules[i], transaction, cancellationToken).ConfigureAwait(false);
+            await InsertRuleAsync(plan.Rules[i], at, transaction, cancellationToken).ConfigureAwait(false);
         }
 
         // 5. Every chunk row, ONE PER SIDE, the carried-forward ones included.
         for (int i = 0; i < plan.Chunks.Count; i++)
         {
-            await InsertChunkAsync(plan.VersionNumber, plan.Chunks[i], transaction, cancellationToken)
+            await InsertChunkAsync(plan.VersionNumber, plan.Chunks[i], at, transaction, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -139,7 +146,7 @@ public sealed partial class SqliteContentAuthoringStore
 
         // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole draft,
         // so anything else here survives rather than being deleted unpublished.
-        await DeleteFrozenEditsAsync(plan, transaction, cancellationToken).ConfigureAwait(false);
+        await DeleteFrozenEditsAsync(plan, at, transaction, cancellationToken).ConfigureAwait(false);
 
         // 8. The active pointer, LAST. It moves for the NEXT boot: a running server keeps serving the version
         // it loaded.
@@ -392,14 +399,20 @@ public sealed partial class SqliteContentAuthoringStore
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    async Task InsertRuleAsync(RemapRule rule, SqliteTransaction transaction, CancellationToken cancellationToken)
+    async Task InsertRuleAsync(
+        RemapRule rule,
+        long at,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
     {
         using SqliteCommand command = Command(
             """
-            INSERT INTO catalog_remap_rule(sequence, introduced_in, type_id, kind, from_id, to_id, payload)
-            VALUES ($sequence, $introduced, $type, $kind, $from, $to, $payload);
+            INSERT INTO catalog_remap_rule(
+                sequence, introduced_in, type_id, kind, from_id, to_id, payload, created_at_utc)
+            VALUES ($sequence, $introduced, $type, $kind, $from, $to, $payload, $at);
             """,
             transaction);
+        Bind(command, "$at", at);
         Bind(command, "$sequence", (long)rule.Sequence);
         Bind(command, "$introduced", (long)rule.IntroducedIn);
         Bind(command, "$type", (long)rule.Type.Value);
@@ -413,6 +426,7 @@ public sealed partial class SqliteContentAuthoringStore
     async Task InsertChunkAsync(
         int versionNumber,
         ContentChunkRecord chunk,
+        long at,
         SqliteTransaction transaction,
         CancellationToken cancellationToken)
     {
@@ -420,10 +434,11 @@ public sealed partial class SqliteContentAuthoringStore
             """
             INSERT INTO catalog_chunk(
                 version_number, type_id, chunk_index, chunk_hash, row_count, uncompressed_bytes,
-                stored_bytes, visibility)
-            VALUES ($version, $type, $index, $hash, $rows, $uncompressed, $stored, $visibility);
+                stored_bytes, visibility, created_at_utc)
+            VALUES ($version, $type, $index, $hash, $rows, $uncompressed, $stored, $visibility, $at);
             """,
             transaction);
+        Bind(command, "$at", at);
         Bind(command, "$version", (long)versionNumber);
         Bind(command, "$type", (long)chunk.Type.Value);
         Bind(command, "$index", (long)chunk.ChunkIndex);

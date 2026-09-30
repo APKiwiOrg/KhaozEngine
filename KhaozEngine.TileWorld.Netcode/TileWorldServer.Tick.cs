@@ -114,6 +114,7 @@ public sealed partial class TileWorldServer
     // accumulators stay in phase with this one and the tick stamped on the wire counts what actually stepped.
     void RunOneTick()
     {
+        BeginPreparationTick();
         actorTraversalProfiles.Close();
         float dt = config.TickSeconds;
         foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill();
@@ -212,27 +213,34 @@ public sealed partial class TileWorldServer
         //     out of every viewer's frame. See ReapDeadActors.
         ResolveCombat();
         ReportBrokenLocks();
+        // CannotReach callbacks may remove participants or delay the next attack. Create successors only after
+        // those callbacks, so an unannounced successor cannot be cancelled ahead of this tick's older result.
+        FinishPreparationCombat();
 
         // 5. Serve each client its home-cell area of interest, filtered to its own plane.
         long serveEpoch = ++interestServeEpoch;
-        foreach (int slot in tickSlots)
+        servingPreparations = preparation is not null;
+        try
         {
-            if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
-            // A bound player no cell owns would throw out of HomeInterest and take the whole tick, every other
-            // player included, down with it. The in-process handoff completes inside ProcessHandoffs, so this is
-            // never the ordinary case.
-            if (!host.TryGetOwner(netId, out _, out _)) continue;
-            (World world, HashSet<long> interest) = HomeInterestFor(slot, netId, serveEpoch);
-            byte[] body = SnapshotWriter.WriteFiltered(world, registry, interest,
-                ReplicationChannels.Replicate, netId);
-            net.SendTo(slot, TileProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], TickCount, body),
-                NetChannelReliability.ReliableOrdered);
-            // The swings, after the snapshot and on the same reliable ordered channel, so a client applies the
-            // health this tick produced and then the events that explain it. Only the events whose TARGET this
-            // viewer can see, so an ordinary tick costs nothing and a fight on the far side of the world costs
-            // nothing either.
-            if (combatEvents.Count > 0) SendCombatTo(slot, interest);
+            foreach (int slot in tickSlots)
+            {
+                if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
+                // A bound player no cell owns would throw out of HomeInterest and take the whole tick, every other
+                // player included, down with it. The in-process handoff completes inside ProcessHandoffs, so this is
+                // never the ordinary case.
+                if (!host.TryGetOwner(netId, out _, out _)) continue;
+                (World world, HashSet<long> interest) = HomeInterestFor(slot, netId, serveEpoch);
+                byte[] body = SnapshotWriter.WriteFiltered(world, registry, interest,
+                    ReplicationChannels.Replicate, netId);
+                net.SendTo(slot, TileProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], TickCount, body),
+                    NetChannelReliability.ReliableOrdered);
+                // Combat feedback follows the movement/health snapshot on the same reliable ordered channel.
+                // Prepared sessions include either participant's interest. Legacy swings retain their target filter.
+                if (preparation is not null) SendPreparationsTo(slot, interest);
+                else if (combatEvents.Count > 0) SendCombatTo(slot, interest);
+            }
         }
+        finally { servingPreparations = false; }
 
         // 5b. The despawn every actor killed at 4b owes, now that every client holding it in interest has been served
         //     the blow that killed it. BEFORE step 6, so the removal's own change tracking is cleared on the tick it
@@ -245,6 +253,7 @@ public sealed partial class TileWorldServer
         //    once per tick for nothing.
         for (int i = 0; i < liveCells.Count; i++) liveCells[i].World.AdvanceTick();
         TickCount++;
+        DisconnectPreparationOverflowViewers();
         // 7. The admin surface's online snapshot, the world the clients were just served.
         PublishOnline();
     }

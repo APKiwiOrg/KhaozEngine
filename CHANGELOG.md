@@ -5,9 +5,433 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.16.0
+
+- In-memory catalog schema metadata now reports the same schema 3 target as the database providers (#1198).
+  Key-shape validation shares one lower-layer rule while preserving the authoring helper's API and diagnostic
+  conventions, and imported family retirement survives reads, exports and bundle round trips (#914).
+- Camera object picks use a struct candidate walk instead of nested iterators. A warmed tile-world camera probe
+  allocates no bytes per call while preserving plane, region, distance, hit ordering and residency rules (#1183).
+- Rollback blocker payloads carry the actual nullable rule kind. A missing rule is represented as null rather
+  than a fabricated `Retired` rule, while existing blocker constructors and normal retirement responses remain
+  compatible (#955).
+- Verified quarantine wrappers can preserve a plain stack without assigning an instance id. Load keeps the
+  original bytes and a truthful quarantine flag without dirtying the page, and an empty original can be rescued
+  when valid again. Ordinary live payloads still require identity and malformed originals remain refused (#935).
+- Registry-bound instance codecs enforce the declared scalar widths, legal ItemLevel and BoundTo minima, and
+  reserved Flags bits. Identification masks are bounded to uint32. Invalid stored bytes are quarantined intact,
+  while generic 64-bit varints, full-width BoundTo values and registered game kinds remain supported (#917).
+- Fragment framing now names its conservative unpadded frame budget separately from the game payload cap.
+  Existing 1015-byte chunks remain compatible, while the 1024-byte payload boundary and legacy multi-chunk
+  encoding and reassembly are covered directly (#923).
+- Randomness contracts describe `Skip`, collapsed-bound logical draw slots and the variable raw cost of bounded
+  rejection sampling (#995). Identification prose now matches the registered-bit writer instead of prescribing
+  all ones (#982). Skinned grounding documents its existing weight threshold and missing moved-joint refusal
+  coverage accompanies the existing turned-joint coverage (#1201).
+- Authoritative catalog sweeps compare both pointer hashes with every durable version record, then build the
+  deletion keep set from those immutable manifest hashes. A stale, missing or partial pointer skips the sweep,
+  and a pointer replacement after validation cannot select another closure. `RunValidatedAsync` carries this
+  path while numeric `RunAsync` remains source compatible with its documented pointer trust boundary (#1040).
+- Cold cache fetches reuse their completed verification through an internal filesystem write capability. Public
+  `IPackStore.PutAsync` still verifies supplied bytes, including writes under an existing address (#948).
+- Family creation now commits the family, first block, both high-water marks and audit together on in-memory,
+  SQLite and SQL Server stores. Audit failure, cancellation or ceiling refusal leaves no partial creation and a
+  retry allocates through the same ordinary reservation rules (#940).
+- Paged containers expose their original payload and quarantine predicates, and `ItemContainerPage.SeatDirty`
+  restores a page's pending rewrite state without a fake mutation. Public-surface copies preserve content stamps,
+  dirty pages, independent payload bytes and live acceptance rules (#1028).
+- `SqliteSchemaWidening.Ensure` inspects declared tables, columns and optional indexes before locking, then
+  rechecks under an immediate transaction only when schema work is needed. World and wallet stores use it so a
+  complete schema opens under another writer or on a read-only connection. Wallet index-only repair and nullable
+  legacy timestamps remain intact (#1196).
+- Schema v3 race tests now count the actual backfill once on SQLite and SQL Server catalog and journal stores.
+  Deterministic SQLite races and a mutation-sensitive probe catch a repeated identical update (#1197).
+- Catalog and item specifications now describe the shipped Instances validation wiring, fail-closed visibility,
+  unsigned content-version varints, full 64-bit structural varint parsing and all four entry-size examples
+  (#996, #925, #905, #903).
+
+## 20.15.1
+
+- A prepared tile attack whose target is out of legal reach on its impact tick now waits for legal reach, for up
+  to its `StrikeTicks`, and resolves once on the first legal tick. It still ends `IllegalReach` with no roll or
+  cooldown charge when that bound passes. This fixes equal-speed pursuit, where an impact could fall on the
+  target's step tick every time, which a consumer measured at up to a 74 percent loss of landed attacks
+  ([design](docs/design/TILE-COMBAT-PREPARATION-PURSUIT-DEFERRAL-DESIGN-2026-09-30.md)).
+- Only legal reach, including the plane, defers. Every other invalidity still ends the attempt at once, and an
+  attempt not deferred on the previous pass still ends `ParticipantUnavailable` instead of resolving late.
+- The schedule keeps its identity, revision and past `ImpactTick` while deferred, and the sampler reports
+  `AwaitingOutcome`. `PreparedCombatEvent.ImpactTick` is the resolution tick. An `IllegalReach` cancellation
+  arrives `StrikeTicks` after the intended impact. The next impact is the resolution tick plus the cadence.
+- `DelayAttack` during a deferral revises the attempt from the current tick. `TryGetAttackReadyTick` reports the
+  current tick while deferred.
+- An active state record may now be overdue by fewer than its `StrikeTicks`. An older decoder refuses such a set,
+  so a game that shipped preparation-enabled clients must bump its connect protocol string. Default consumers are
+  unaffected ([consumer contract](docs/USING-KHAOZENGINE.md#authoritative-attack-preparation-20141)).
+
+## 20.15.0
+
+- Every engine table now records when each row was created, and every table whose rows change after insert also
+  records when each row last changed. The store sets both in the statement that writes the row, from the clock it
+  already stamps its other times with, and a column that already held the insert time, such as
+  `journal_event.committed_at_utc` or `catalog_version.published_at_utc`, serves as the creation time. The journal
+  moves to schema version 3 through migrations `sqlserver-journal-v3-row-timestamps` and
+  `sqlite-journal-v3-row-timestamps`, and the catalog moves to schema version 3 through `catalog-v3-row-timestamps`
+  on both backends. `AutoCreate` migrates a version 1 or 2 database in place in one open, and `ValidateOnly`, like the
+  journal's `ReadOnly`, refuses it by naming the migration. The accounts, commerce and world store tables widen in
+  place with guarded nullable column adds ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+- A legacy row gets an exact time or NULL, never a guess. `journal_stream.created_at_utc` comes only from the
+  stream's initialization snapshot, and only while compaction has never replaced it. `journal_operation_stream` rows
+  take their operation's commit time. `catalog_row`, `catalog_row_field`, `catalog_chunk` and `catalog_remap_rule`
+  rows take the publish time of the version that wrote them, and a closed catalog row's update time is the publish
+  time of the version that replaced it. Every other new column on an existing row is NULL. `journal_snapshot` is the
+  one table left as it is, because compaction overwrites its row whole and its `created_at_utc` is already when the
+  held snapshot was taken ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+- A new update time moves only when a write changes a stored value, so a repeat sign-in under the same name, an
+  account write that changes nothing, a grant schedule write of the instant already stored and a boot that syncs
+  unchanged catalog types move no time. A journal stream's update time moves when a commit appends events and when
+  a compaction with a prune boundary runs, and a snapshot-only compaction leaves it. The update times that already
+  existed keep their meaning, so `world_store.updated_at` is still the time of the last save
+  ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+- On SQL Server a grant instant, `grant_schedule.next_available_utc`, is now bound and stored at the column's full
+  `DATETIME2` precision instead of being rounded to 1/300 s on the way in, so an unchanged rewrite no longer
+  compares unequal and moves `updated_at`. Existing rows keep their rounded values.
+- **A database on journal or catalog schema version 3 is refused by an older engine, so rolling a game back past
+  this pin bump needs a database restore.** Version 2 was the same
+  ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+- Upgrade steps. A hosted catalog that opens `ValidateOnly` is refused at version 2, so its deploy runs its catalog
+  schema migration step, one `AutoCreate` open under a migration identity, before the server starts. A journal
+  opened `ValidateOnly` or `ReadOnly` on a version 2 journal, such as an admin tool pointed at a hosted database
+  before the server's first 20.15.0 boot, is refused with `SchemaMismatch` until one `AutoCreate` open migrates it. A
+  `ValidateOnly` accounts host is refused until one `AutoCreate` open adds `created_at_utc` and `updated_at_utc` to
+  the account table. The first construction of `SqlServerWalletStore` and `SqlServerWorldStore` after the upgrade
+  adds their new columns with `ALTER TABLE`, so it needs `ALTER` rights, and two hosts constructing at once against
+  older tables can race that add ([#1195](https://github.com/APKiwiOrg/KhaozEngine/issues/1195)). The journal and
+  catalog backfills rewrite whole tables inside the schema transaction. On SQL Server each journal migration
+  statement runs under `CommandTimeout`, 30 seconds by default, so a very large journal may need a longer
+  `CommandTimeout` for the one open that migrates it, and each catalog migration statement runs under the schema's
+  fixed 60-second timeout ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+- The API change is additive. `JournalStreamEntry`, returned by `IMutationJournalStreamListing`, gains nullable
+  `CreatedAtUtc` and `UpdatedAtUtc` and a four-argument constructor. The kept two-argument constructor leaves both
+  null, so a game's test fake compiles unchanged, and the in-memory, SQLite and SQL Server listings always fill
+  `UpdatedAtUtc`. `AccountRecord` gains `CreatedAtUtc` and `UpdatedAtUtc` init properties, null by default, which
+  also take part in its record equality, so a record read back from a store no longer equals one built by hand
+  without them. `InMemoryAccountStore.TimeProvider`, `AccountTableOptions.TimeProvider` and
+  `SqlServerAccountStoreOptions.TimeProvider` set the clock the account times come from, the system clock by
+  default ([design](docs/design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md)).
+
+## 20.14.1
+
+- `ReplicationRegistry.IsRegistered<T>(id, expectedChannels)` checks the exact component type and channel set
+  without executing a codec. Prepared tile combat uses this at startup to reject a custom registry that binds
+  its reserved state id to another component or to channels other than Migrate-only, preventing silent state
+  loss at handoff and accidental replication or persistence of preparation internals.
+- Tile combat supports opt-in authoritative attack preparation. `ITileCombatPreparationRules` supplies a
+  game's lead, final-strike duration and public presentation key, while the server schedules and revises
+  attempts without predicting damage. Existing cooldown and food delay overlap the lead, continuing hits
+  keep their cadence, and null combat rules cancel pending attempts without a roll. Default consumers retain
+  their existing timing and legacy combat frames.
+- Matching preparation-enabled clients expose complete schedules, identity-aware outcome/cancellation
+  callbacks, a bounded `CombatPresentationTick`, and a pure stage sampler. Prepared outcomes replace the
+  legacy client `CombatEvent` callback in this mode, while server `OnCombatEvent` remains the award hook.
+  Consumers must opt in on both heads and change their connect protocol version. See the
+  [consumer contract](docs/USING-KHAOZENGINE.md#authoritative-attack-preparation-20141) for setup, delay/readiness,
+  interest and late-delivery behavior. Pose mapping, impact feedback and recovery remain game-owned.
+- On Windows every texture now samples its mip chain, so distant textures stop aliasing and the ground filters as
+  designed through the anisotropy and mip bias of `TerrainSamplerConfig`. The native Direct3D 11 backend handed the
+  driver Vortice's sampler description, whose layout put a maximum LOD of 0 where the driver reads it, so every
+  sampler read mip level 0 only and an explicit LOD or a material mip bias changed nothing. A consumer's own
+  Direct3D 11 goldens will move where they draw a mipmapped texture below its full size. A texture created with a
+  mip chain whose lower levels were never filled now shows those levels on Windows, as it already did on Vulkan
+  and Metal. The backend now passes the driver a 52-byte description in the header's layout. One test pins that
+  layout, and another pins the size of every Vortice struct passed to the driver by address. The engine re-baked
+  six of its Direct3D 11 goldens ([#1192](https://github.com/APKiwiOrg/KhaozEngine/issues/1192)).
+
+## 20.14.0
+
+- `FollowCamera3D.FrameClock` lets a camera read in the update step and again through the render compute its
+  eye once a frame. A game that moved the target and then read the eye in update paid two eye computations and
+  two `BoomProbe` calls a frame, because `Scene3D.Begin` dropped the update's eye at render time. With a
+  per-frame id set, each computed eye is stamped with it, a read reuses the eye only under the same id and
+  inputs, and `BeginFrame` keeps an eye computed earlier in the same frame. Under a clock that advances once per
+  frame, before the frame's first camera read, a camera whose inputs never change still recomputes once a frame,
+  so the world moving behind its probe is seen on the next frame. A clock ticked between update and render lets
+  the next update read reuse the previous render's eye, and one that stops advancing can hand the next latch an
+  eye from before the stall. A
+  camera read in update before it moves pays two computations a frame with a clock, one more than without. Null,
+  the default, leaves the camera unchanged ([#1189](https://github.com/APKiwiOrg/KhaozEngine/issues/1189)).
+- `GameClock.FrameCount` counts `Update` calls, paused or not. `GameApp` ticks its clock once at the head of each
+  frame, before `OnUpdate`, so `() => Clock.FrameCount` is one id for a whole frame's update and draw
+  ([#1189](https://github.com/APKiwiOrg/KhaozEngine/issues/1189)).
+
+## 20.13.0
+
+- Render3D's animation layer takes a skinned body's joints as a contract, so a second body shape reuses the
+  checks and frames a humanoid relies on. `SkeletonContract` validates a table of `ContractJoint` entries, each
+  a named joint with its parent and whether it deforms the skin
+  ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+- `ContractJointMap` checks a loaded skeleton against a contract and refuses a missing, misparented or
+  duplicated joint by name. It derives each contract joint's base world frame, parent-base inverse and body
+  alignment from an optional one-key stance clip or the bind rest, and `SkinAtBase` deforms a skin to that
+  base on the CPU ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+- `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only`
+  throws on a second clip of one name. `NoLength`, `Unkeyed`, `Uncovered` and `Breach` return null for a clean
+  clip and a message otherwise. They cover a clip of no length, a required rotation or translation left
+  unkeyed, a stance channel left unkeyed and the first `ClipHygiene` finding
+  ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+- `BoneMask.ForJoints` weighs a list of named joints without their descendants and refuses a name the
+  skeleton does not carry ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+- `SkinnedGrounding.MinimumY` returns the lowest world height of a skin deformed by a bone palette and drawn
+  through a model, with a caller-lent scratch column per bone and no allocation
+  ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+- `MomentSchedule` picks a standing body's idle `Moment` from its id and the clock, with no state to carry.
+  It draws by weight over a table of `MomentFamily` entries under `MomentScheduleOptions`, and a mirrored
+  family's `MomentSide` is left or right with even odds. Salt 0 over a glance and turn table reproduces Grimhollow's
+  standing-player schedule to the bit ([#1182](https://github.com/APKiwiOrg/KhaozEngine/issues/1182)).
+- `FollowCamera3D.PivotHeight` lifts the orbit centre and look-at point above the target. `HeightOffset` still
+  raises only the eye. A negative `MinPitch` now looks up from below the pivot, bounded by `PitchLimit`
+  (85 degrees). A camera at the default `MaxPitch` never reaches the limit, and a `MaxPitch` above 85 degrees is
+  now capped there ([design](docs/design/ORBIT-CAMERA-LOOK-UP-DESIGN-2026-09-27.md)).
+- `ICameraBoomProbe` and `FollowCamera3D.BoomProbe` stop the boom through any probe. The `Occlusion` physics
+  sweep runs through the same path, the shorter reach wins, and `BoomProbeCount` counts probe calls
+  ([design](docs/design/ORBIT-CAMERA-LOOK-UP-DESIGN-2026-09-27.md)).
+- `FollowCamera3D.BoomRecoveryRate` and `AdvanceBoom` pull the boom in at once and ease it back out. A zoom in
+  the open stays instant, and a zoom during recovery shifts the held shortfall, so a zoom in never moves the eye
+  outward. `FollowCameraController.Update` advances it. All defaults keep existing cameras unchanged
+  ([design](docs/design/ORBIT-CAMERA-LOOK-UP-DESIGN-2026-09-27.md)).
+- `TileWorldCameraProbe` stops a camera boom at drawn terrain, water and walk surfaces, and at objects a consumer
+  filter accepts on the observer's plane and the one above. It skips roofs the view hides
+  ([design](docs/design/ORBIT-CAMERA-LOOK-UP-DESIGN-2026-09-27.md)).
+
+## 20.12.0
+
+- `GroundItemPayloadProjection.Project` writes the safe `Everyone` payload for a ground drop through the
+  same projection core as container sync. It strips private nested fields and hollows quarantine wrappers
+  without adding an ItemInstances dependency to TileWorld.Netcode
+  ([#1095](https://github.com/APKiwiOrg/KhaozEngine/issues/1095)).
+- Scatter, companion and override-order edits in MapEditor now re-serve props across loaded chunks
+  without re-meshing terrain when layer shape is unchanged. Shape and field changes retain the
+  all-loaded remesh path ([#1106](https://github.com/APKiwiOrg/KhaozEngine/issues/1106)).
+- The item-instance design now identifies structural row IDs and keys, the registered row-size caps,
+  and all five inputs to the candidate table build
+  ([#958](https://github.com/APKiwiOrg/KhaozEngine/issues/958),
+  [#959](https://github.com/APKiwiOrg/KhaozEngine/issues/959),
+  [#965](https://github.com/APKiwiOrg/KhaozEngine/issues/965)).
+
+## 20.11.0
+
+- `ContentPackReader.CreateLazy` gives long-lived row readers an explicit bound on decoded chunk
+  residency with least recently used eviction. The existing constructor keeps its snapshot contract, and
+  lazy mode refuses snapshot assembly rather than returning an incomplete result
+  ([#902](https://github.com/APKiwiOrg/KhaozEngine/issues/902)).
+- The item-instance and content contracts now match the shipped craft intent bytes, operation refusal,
+  rarity guard direction and unbiased bounded draws from both random sources
+  ([#1176](https://github.com/APKiwiOrg/KhaozEngine/issues/1176),
+  [#991](https://github.com/APKiwiOrg/KhaozEngine/issues/991),
+  [#989](https://github.com/APKiwiOrg/KhaozEngine/issues/989),
+  [#975](https://github.com/APKiwiOrg/KhaozEngine/issues/975)).
+
+## 20.10.1
+
+- Client fetches now validate a KECC chunk's row table after its hash and before caching it. Malformed
+  rows refuse early without a second decompression ([#954](https://github.com/APKiwiOrg/KhaozEngine/issues/954)).
+- Warm item generation reuses the canonical payload builder's working storage. A rare generation now
+  allocates only its final payload array, down from 944 bytes in the measured case
+  ([#972](https://github.com/APKiwiOrg/KhaozEngine/issues/972)).
+- The item-instance design now states the shipped container-name encoding, stat source ordinal packing,
+  caller-owned base lines, tag-scope union and condition-registry home
+  ([#997](https://github.com/APKiwiOrg/KhaozEngine/issues/997),
+  [#998](https://github.com/APKiwiOrg/KhaozEngine/issues/998),
+  [#985](https://github.com/APKiwiOrg/KhaozEngine/issues/985)).
+
+## 20.10.0
+
+- Catalog runtimes now expose `Indexes.References.Ids` for direct reverse lookup of authored key references.
+  Results are sorted, distinct row IDs and the flat index includes retired rows for caller filtering. Catalog
+  benchmarks now measure the fifth index at 50,000 one-to-one references ([#1005](https://github.com/APKiwiOrg/KhaozEngine/issues/1005)).
+- Journal admission gauges use admission-ordered indexes instead of scanning all in-flight operations on
+  each transition. Counts and oldest admission reads now take constant work ([#871](https://github.com/APKiwiOrg/KhaozEngine/issues/871)).
+- The Metal copy-buffer call-site test prunes nested worktrees before scanning source files, preventing
+  duplicate call sites and false failures in a shared checkout ([#1170](https://github.com/APKiwiOrg/KhaozEngine/issues/1170)).
+- Local-feed packing builds into a fresh sibling directory, refreshes the guarded current version and
+  removes obsolete same-version package files while preserving older versions ([#1172](https://github.com/APKiwiOrg/KhaozEngine/issues/1172)).
+- The item-instance design now names the boot-time craft plan index, craft executor and payload-to-stat-line
+  producer, including their ordering and random-source rules ([#999](https://github.com/APKiwiOrg/KhaozEngine/issues/999)).
+
+## 20.9.0
+
+- Tile overlays can opt into a narrow inward blend through the authored `FeatherOverlay` setting.
+  Connected full and shaped road tiles share exposed boundaries across region seams, while unmarked
+  overlays keep hard edges. The default width is 0.2 metres and the underlying terrain, collision and
+  picking stay unchanged.
+- SQL Server wallet mutations claim the idempotency receipt range before updating a shared balance row,
+  avoiding the deadlock reproduced by concurrent credits and debits ([#1168](https://github.com/APKiwiOrg/KhaozEngine/issues/1168)).
+- A frozen catalog draft refusal now distinguishes a draft intentionally ready to publish from one an
+  operator needs to keep editing, with a safe explicit marker-clear path after checking no publisher is live
+  ([#939](https://github.com/APKiwiOrg/KhaozEngine/issues/939)).
+- `RadialMenu` can opt into drawing enabled entry details beneath wedge labels in a separate theme color.
+  The default keeps existing rendering, and `DetailGap` now controls the existing two-pixel spacing
+  ([#893](https://github.com/APKiwiOrg/KhaozEngine/issues/893)).
+- The replication removal allocation regression measures three fresh views and keeps the lowest reading,
+  preserving its tight per-removal bound under loaded test runs
+  ([#1169](https://github.com/APKiwiOrg/KhaozEngine/issues/1169)).
+- The `PublicView` zero-allocation regression uses three measured windows so a one-time runtime allocation
+  does not fail the full ItemInstances suite ([#1072](https://github.com/APKiwiOrg/KhaozEngine/issues/1072)).
+
+## 20.8.0
+
+- Wallet credit and debit results now report a conflict when a scoped idempotency key is reused with a
+  different signed amount or reason. Exact retries keep their historical balance across in-memory, SQLite
+  and SQL Server stores ([#892](https://github.com/APKiwiOrg/KhaozEngine/issues/892)).
+- Journal records expose zero-copy read-only byte spans for owned payloads and checksums. Existing memory
+  properties still return defensive copies ([#889](https://github.com/APKiwiOrg/KhaozEngine/issues/889)).
+- The Game2D, Game3D and Server package READMEs now name their bundled CodeHealth analyzer, and the doc
+  guard checks direct membership for all four umbrellas ([#1165](https://github.com/APKiwiOrg/KhaozEngine/issues/1165)).
+- Invoking the Bash-only doc-version guard with `sh` now gives a clear Bash instruction instead of a
+  parser error ([#894](https://github.com/APKiwiOrg/KhaozEngine/issues/894)).
+- New `docs/superpowers/` plans are no longer ignored, matching the tracked plans already in the repo
+  ([#896](https://github.com/APKiwiOrg/KhaozEngine/issues/896)).
+
+## 20.7.0
+
+- Item instance adds and live journal merges now honor a caller-supplied stack cap without making the
+  container depend on catalog content. Existing over-cap stacks may shrink, and replay keeps historical
+  admission rules ([#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924)).
+- The Foundation package README now names every project it carries, and the doc guard checks its
+  membership against the csproj ([#915](https://github.com/APKiwiOrg/KhaozEngine/issues/915)).
+- Item-crafted event comments now describe the shipped body and point the netcode test at the full
+  server route coverage ([#992](https://github.com/APKiwiOrg/KhaozEngine/issues/992)).
+- The journal SQLite benchmark README identifies 698.46 operations per second as offered load rather
+  than measured store capacity ([#895](https://github.com/APKiwiOrg/KhaozEngine/issues/895)).
+- The CI manual-dispatch comment now describes a hosted runner check, matching the engine's GitHub-hosted
+  workflow jobs ([#1164](https://github.com/APKiwiOrg/KhaozEngine/issues/1164)).
+
+## 20.6.6
+
+- `ContentBundleJson.ReadFormatVersion` reads a bundle's format version using the same JSON rules as the
+  full reader, so authoring tools can reject unsupported formats before decoding the bundle
+  ([#1147](https://github.com/APKiwiOrg/KhaozEngine/issues/1147)).
+- The provider deadline regression waits until its validator has entered before triggering the deadline,
+  removing a scheduling race on hosted test runners ([#1148](https://github.com/APKiwiOrg/KhaozEngine/issues/1148)).
+- The version 1 container load bridge accepts stored widths up to the page width and preserves each
+  stored slot index while returning full page geometry ([#1027](https://github.com/APKiwiOrg/KhaozEngine/issues/1027)).
+- The catalog-list design example no longer promises `validFrom` on each row. Full history remains
+  available through catalog-get ([#946](https://github.com/APKiwiOrg/KhaozEngine/issues/946)).
+- Catalog stale-apply tests detect an extra stand-off by draft reads instead of a short wall-clock
+  deadline, avoiding Windows full-suite timeouts under load ([#1158](https://github.com/APKiwiOrg/KhaozEngine/issues/1158)).
+
+## 20.6.5
+
+- `ContainerLoadContext.TelemetryKey` lets a host redact an account-bearing stream key from validation logs
+  while section filtering still uses the real stream key. The default keeps existing log text
+  ([#1036](https://github.com/APKiwiOrg/KhaozEngine/issues/1036)).
+- Catalog benchmarks now derive their item schema from shipped `ItemContentType` and check their specialized
+  codec against it, so a later item field addition cannot silently change the measured workload
+  ([#1064](https://github.com/APKiwiOrg/KhaozEngine/issues/1064)).
+- One-tick tile movement now presents the committed next step without a hold after a click. Other predicted
+  states retain their existing interpolation target by default
+  ([#1109](https://github.com/APKiwiOrg/KhaozEngine/issues/1109)).
+- The diagnostics overlay resolves its built-in titles, row labels and disconnected text through the
+  localization catalog, with the same English output when a translation is absent
+  ([#1093](https://github.com/APKiwiOrg/KhaozEngine/issues/1093)).
+- Terrain height and biome shares now use one smooth transition across an uncovered gap between bands,
+  matching each adjacent band at its support edge ([#1102](https://github.com/APKiwiOrg/KhaozEngine/issues/1102)).
+
+## 20.6.4
+
+- Catalog validation now refuses negative or unrepresentable loot weights and weighted table totals that
+  would overflow the runtime's prefix array. `KEC0043` names the offending entry or table before publish
+  ([#944](https://github.com/APKiwiOrg/KhaozEngine/issues/944)).
+- Tile rectangles and path searches now reject coordinate ranges whose edges cannot fit the existing
+  signed tile domain, and reach candidates no longer wrap at its extremes
+  ([#978](https://github.com/APKiwiOrg/KhaozEngine/issues/978)).
+- MapEditor skips authored-placement diffs after commands that cannot change placements, while placement
+  edits and external custom commands still invalidate the cache
+  ([#1107](https://github.com/APKiwiOrg/KhaozEngine/issues/1107)).
+- `SlotGrid` visits only slots intersecting its visible region for draw, input and lookup. A grid with no
+  visible region retains full traversal ([#1121](https://github.com/APKiwiOrg/KhaozEngine/issues/1121)).
+- The exchange endpoint's oversized-body test now reads the HTTP/1.1 wire response after sending the
+  request, preserving the bare 413 assertion without `HttpClient` upload races
+  ([#1163](https://github.com/APKiwiOrg/KhaozEngine/issues/1163)).
+
+## 20.6.3
+
+- `MarkupText` adds opt-in semantic color markup for localized chat and tooltips. Theme styles map named spans,
+  formatted values are escaped, and the public colored-run wrapper supports a game-owned dialogue view
+  ([#65](https://github.com/APKiwiOrg/KhaozEngine/issues/65)).
+- `KhaozEngine.Localization.Analyzers` now generates `StringId` fields from explicitly opted-in neutral
+  `.resx` files. Names and keys are deterministic, collisions fail the build, and Showcase no longer carries
+  its 136-field hand-written mirror ([#66](https://github.com/APKiwiOrg/KhaozEngine/issues/66)).
+- `CharacterPose` now composes an attachment from its current bone palette and draw transform, with a rigid
+  option for held equipment. The pose type has its own file ([#96](https://github.com/APKiwiOrg/KhaozEngine/issues/96)).
+- The `AirControl` contract now states that momentum steering blends once per simulation tick, while
+  `AirBrakeAccel` remains a rate per second. Movement behavior is unchanged
+  ([#471](https://github.com/APKiwiOrg/KhaozEngine/issues/471)).
+- The Stats facts now run from `KhaozEngine.Foundation.Tests`, so a Stats change no longer pulls the broad
+  Game test project through selective CI ([#890](https://github.com/APKiwiOrg/KhaozEngine/issues/890)).
+- `pack-local-feed.sh` and `check-local-feed.sh` now print help when invoked through relative paths from a
+  subdirectory ([#1091](https://github.com/APKiwiOrg/KhaozEngine/issues/1091)).
+- SQL Server catalog schema validation calls only missing column and object errors schema mismatches.
+  Timeouts, deadlocks, cancellation and other provider failures retain their own error
+  ([#1078](https://github.com/APKiwiOrg/KhaozEngine/issues/1078)).
+- A MapEditor reload keeps the existing prop visibility filter and category resolver, so hidden props stay
+  hidden in drawing and picking ([#1094](https://github.com/APKiwiOrg/KhaozEngine/issues/1094)).
+- Catalog upgrade recovery tests now distinguish an immediate recovered draft from a real stand-off by store
+  reads, without a wall-clock threshold that flakes under load
+  ([#1089](https://github.com/APKiwiOrg/KhaozEngine/issues/1089)).
+- A `ke:banned` connect refusal and a post-join ban now both end in terminal `DisconnectReason.Banned`.
+  Admin bans send the typed notice to a live session before disconnecting it
+  ([#1103](https://github.com/APKiwiOrg/KhaozEngine/issues/1103)).
+
+## 20.6.2
+
+- A catalog type validator that throws now keeps the findings it emitted first and adds the `KEC0040`
+  throw finding. Authors can see the earlier defects while publish remains refused
+  ([#1075](https://github.com/APKiwiOrg/KhaozEngine/issues/1075)).
+- `FileSystemPackStore` refuses an oversized or growing cache file before it can allocate an unbounded
+  object. `CachingPackStore` evicts a corrupt local entry before refetching it, so the verified copy is
+  available offline afterwards. The object byte ceiling is shared across file, HTTP and Azure Blob stores
+  ([#957](https://github.com/APKiwiOrg/KhaozEngine/issues/957)).
+- Split and Merge operations reject a destination container, matching their same-container write path
+  and page accounting ([#1096](https://github.com/APKiwiOrg/KhaozEngine/issues/1096)).
+- The pack hook recognizes bare packs targeting `KHAOZENGINE_FEED`, including quoted and expanded paths,
+  and applies the released-version and shared-feed guards
+  ([#1090](https://github.com/APKiwiOrg/KhaozEngine/issues/1090)).
+- Render3D documentation now calls `Material.Shiny` with a specular strength in its examples
+  ([#1155](https://github.com/APKiwiOrg/KhaozEngine/issues/1155)).
+
+## 20.6.1
+
+`KhaozEngine.Platform` now keeps the macOS pasteboard implementation in one internal
+`MacPasteboardBackend` type. `ClipboardInterop` retains provider selection, fallback order, Windows DIB,
+and the mobile bridge. Public `Clipboard` behavior is unchanged. The original source file shrank from
+824 to 574 lines and left the KESIZE baseline ([#259](https://github.com/APKiwiOrg/KhaozEngine/issues/259)).
+
+`KhaozEngine.Windowing` now carries OS committed Unicode text through each `InputState` on GLFW windows.
+`TextEntry` and `TextInput` follow the active keyboard layout and dead-key commits, while headless input keeps
+the US key-map fallback. Filters and length limits admit non-BMP scalars whole, and Backspace removes both
+UTF-16 units together. IME preedit and candidate UI remain deferred ([#61](https://github.com/APKiwiOrg/KhaozEngine/issues/61)).
+
+- SQL Server journal commands now report `Cancelled` when the caller cancels them, including when SqlClient
+  returns a provider exception. The mapping covers writes, reads and schema validation while retaining
+  rollback certainty ([#1152](https://github.com/APKiwiOrg/KhaozEngine/issues/1152)).
+- `ContainerCommitBuilder.Open` checks names against the container's highest possible page, so a name that
+  cannot represent every projection section fails before a batch opens
+  ([#949](https://github.com/APKiwiOrg/KhaozEngine/issues/949)).
+- Whole-page instance validation reads a quarantined entry's stored reason and content version from its
+  wrapper. Duplicate instance ID checks now include those entries as well as live ones
+  ([#936](https://github.com/APKiwiOrg/KhaozEngine/issues/936)).
+- `check-local-feed.sh` compares each package's nuspec commit with its release tag and marks mismatches
+  `DRIFTED`, regardless of file timestamps ([#1136](https://github.com/APKiwiOrg/KhaozEngine/issues/1136)).
+- The shared local feed now accepts only clean commits on `origin/main`. Branch builds use a separate
+  `KHAOZENGINE_FEED`, and the feed check marks staged packages from unmerged commits `UNSAFE`
+  ([#1135](https://github.com/APKiwiOrg/KhaozEngine/issues/1135)).
+
 ## 20.6.0
 
-**A journal can be reset** ([#1150](https://github.com/APKiwiOrg/KhaozEngine/issues/1150)).
+**A journal can be reset, MapEditor can generate undoable dungeons, and an additive pose can be layered onto
+caller-owned buffers**
+([#1150](https://github.com/APKiwiOrg/KhaozEngine/issues/1150),
+[#74](https://github.com/APKiwiOrg/KhaozEngine/issues/74)).
 
 - `SqliteJournalReset` and `SqlServerJournalReset` delete every row of the journal's six data tables in one
   transaction: streams, events, snapshots, projection sections, replay receipts and their stream ranges.
@@ -29,6 +453,21 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Because the epoch is kept, a projection cursor from before the reset is not told apart by epoch. Consumers drop
   their cursors, or the caller rotates the epoch afterwards. The in-memory store has no reset, as the content
   catalog's in-memory store has none.
+
+`KhaozEngine.MapEditor` now offers an optional Dungeon toolbar action when the game supplies a
+`DungeonKitMap`. Its modal panel takes a seed, plot placement, and common layout controls over a copied
+`DungeonConfig` preset. `GenerateDungeonCommand` stages the MapDoc bake before changing the document, then
+applies placements, spawns, regions, a flatten feature, and expanded bounds as one undoable edit. Failed
+generation and plots outside a loaded tiled window leave the map and history unchanged. MapEditor now
+depends on `KhaozEngine.Dungeon`, while remaining outside every umbrella. The Showcase Map editor room
+loads its dungeon kit and exposes the action for visual validation.
+
+`PoseBlend.AddInto` in `KhaozEngine.Render3D` layers an additive pose onto a caller-owned local pose buffer, so a
+game that samples clips into its own buffers can add an additive clip without copying the math. Each node adds its
+sample's offset from its reference in the joint's local frame, scaled by a finite weight and an optional `BoneMask`
+and clamped to `[0, 1]` as `BlendInto` is. A destination equal to the reference at unit weight reproduces the
+sample. `LayeredAnimator`'s additive layers now call the same code, so their output is unchanged. Warmed calls
+allocate nothing. `BlendInto`'s mask now defaults to `null` as well.
 
 ## 20.5.1
 

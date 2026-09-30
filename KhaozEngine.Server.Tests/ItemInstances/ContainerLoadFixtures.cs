@@ -133,21 +133,28 @@ internal static class ContainerLoadFixtures
         RemapRuleSet? rules = null,
         ILogger? logger = null,
         Action<int, string>? counter = null,
-        string container = Container)
+        string container = Container,
+        string streamKey = StreamKey,
+        string? telemetryKey = null)
         => new(
-            StreamKey,
+            streamKey,
             container,
             properties,
             types,
             rules ?? new RemapRuleSet(Array.Empty<RemapRule>()),
             static definitionId => definitionId != 0,
             logger,
-            counter);
+            counter,
+            telemetryKey);
 
     /// <summary>One stored section, the way a projection read hands one back.</summary>
-    public static JournalProjectionSection Section(int pageIndex, byte[] page, string? name = null)
+    public static JournalProjectionSection Section(
+        int pageIndex,
+        byte[] page,
+        string? name = null,
+        string streamKey = StreamKey)
         => new(
-            StreamKey,
+            streamKey,
             name ?? ContainerSectionNames.Format(Container, pageIndex),
             sourceVersion: 1,
             Schema,

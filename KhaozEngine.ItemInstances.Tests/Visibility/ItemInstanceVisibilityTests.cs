@@ -129,12 +129,11 @@ public class ItemInstanceVisibilityTests
     }
 
     [Fact]
-    public void The_revealed_mask_is_a_ulong_so_a_decoded_sixty_four_bit_mask_never_narrows()
+    public void A_callers_sixty_four_bit_mask_ignores_high_bits_without_narrowing()
     {
-        // Kind 128's mask is a varint and the shape walk reads a varint at the full 64 bits (#917), so the
-        // value reaching this function can carry bits above 31. The registry caps a REGISTERED bit at
-        // MaxIdentificationMaskBit, so the high bits gate nothing, and taking a ulong here is what keeps
-        // that a documented no-op rather than a silent narrowing at the call site.
+        // Direct visibility callers still supply ulong masks. Registered kind 128 refuses stored masks
+        // above uint32, while this API ignores supplied bits above MaxIdentificationMaskBit because no
+        // registration can use them. This preserves the existing caller contract.
         InstancePropertyRegistry registry = VisibilityFixtures.Registry();
         const ulong highBitsOnly = 0xFFFF_FFFF_0000_0000UL;
 
@@ -382,14 +381,21 @@ public class ItemInstanceVisibilityTests
                 registry, payload, PropertyVisibility.Everyone, identified: true, revealedMask: 0, view);
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int index = 0; index < 256; index++)
+        // A loaded suite can place a one-time tiered JIT allocation in one sample. A real allocation in
+        // PublicView appears in every sample, so keep the strict zero bound over the lowest of three runs.
+        long leastAllocated = long.MaxValue;
+        for (int sample = 0; sample < 3; sample++)
         {
-            ItemInstanceVisibility.PublicView(
-                registry, payload, PropertyVisibility.Everyone, identified: true, revealedMask: 0, view);
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int index = 0; index < 256; index++)
+            {
+                ItemInstanceVisibility.PublicView(
+                    registry, payload, PropertyVisibility.Everyone, identified: true, revealedMask: 0, view);
+            }
+            leastAllocated = Math.Min(leastAllocated, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, leastAllocated);
     }
 
     [Fact]

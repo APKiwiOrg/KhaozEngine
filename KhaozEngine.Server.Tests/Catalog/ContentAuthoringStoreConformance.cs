@@ -50,10 +50,10 @@ public abstract partial class ContentAuthoringStoreConformance
     protected static ContentTypeId Capped => CatalogFixtures.Capped;
 
     /// <summary>The migration a schema refusal names, which is per provider and identical in both so far.</summary>
-    protected virtual string RequiredMigration => "catalog-v2-content-upgrade-ledger";
+    protected virtual string RequiredMigration => "catalog-v3-row-timestamps";
 
     /// <summary>The schema version this build creates, which every provider reports after an AutoCreate.</summary>
-    protected virtual int CurrentSchemaVersion => 2;
+    protected virtual int CurrentSchemaVersion => 3;
 
     /// <summary>
     /// A store over an EMPTY, UNINITIALIZED database, which is what facts 1 and 2 need: the schema is the
@@ -69,8 +69,8 @@ public abstract partial class ContentAuthoringStoreConformance
     protected abstract Task<IContentAuthoringStore> ResetToEmptyAsync();
 
     /// <summary>
-    /// Makes the next audit write FAIL, and undoes it on dispose. Fact 17 is the only caller: an audit insert
-    /// that fails has to take the edit down with it, and no backend offers a way to ask for that, so each
+    /// Makes the next audit write fail, and undoes it on dispose. An audit insert
+    /// that fails has to take the change down with it, and no backend offers a way to ask for that, so each
     /// subclass arms the fault the way its own store can be made to fail.
     /// </summary>
     /// <param name="store">The store whose audit write is to fail.</param>

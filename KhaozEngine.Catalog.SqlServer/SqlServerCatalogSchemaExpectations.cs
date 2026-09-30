@@ -7,7 +7,8 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// <summary>
 /// Every schema object the current version declares, by NAME, as five sets: the tables, the named indexes (the primary
 /// keys among them, since a primary key IS an index in <c>sys.indexes</c>), the check constraints, the
-/// foreign keys and the default constraints.
+/// foreign keys and the default constraints. A sixth set holds the row time columns with their types, which is
+/// the whole of what version 3 changed.
 /// <para>
 /// <b>Names are the whole mechanism, which is why the DDL names every constraint.</b> SQL Server generates a
 /// name for an unnamed constraint, and a generated name differs per database, so a schema built from unnamed
@@ -16,10 +17,11 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// </para>
 /// <para>
 /// The <c>V1</c> sets at the bottom are the same lists minus the ledger table version 2 adds, which is what a
-/// version 1 database is validated against before it is migrated.
+/// version 1 database is validated against before it is migrated. Version 3 added no named object, so a version 2
+/// database is validated against the current name sets and only its row time columns differ.
 /// </para>
 /// <para>
-/// These lists are TRANSCRIBED from <c>CatalogSchemaV2.sql</c>, and <c>SqlServerCatalogSchemaDriftTests</c>
+/// These lists are TRANSCRIBED from <c>CatalogSchemaV3.sql</c>, and <c>SqlServerCatalogSchemaDriftTests</c>
 /// parses that file and asserts set equality against every one of them without needing an instance. Drift is
 /// also what
 /// <c>SqlServerCatalogSchemaTests</c>'s AutoCreate case exists to catch: it creates the schema from the file
@@ -60,7 +62,7 @@ internal static class SqlServerCatalogSchemaExpectations
     /// tables in the catalog's database, and a table it named <c>catalog_overrides_by_host</c> matches every
     /// name rule an engine could write while belonging to nobody here. Naming the inventory means a drop
     /// destroys exactly the tables above and cannot reach anything else, and the set is pinned against
-    /// <c>CatalogSchemaV2.sql</c> by <c>SqlServerCatalogSchemaDriftTests</c> without an instance. Version 1's
+    /// <c>CatalogSchemaV3.sql</c> by <c>SqlServerCatalogSchemaDriftTests</c> without an instance. Version 1's
     /// tables are a subset of it, so a version 1 catalog is dropped by the same list.
     /// </para>
     /// </summary>
@@ -269,6 +271,103 @@ internal static class SqlServerCatalogSchemaExpectations
 
     /// <summary>The check constraints version 1 declared.</summary>
     internal static IReadOnlySet<string> ChecksV1 { get; } = WithoutTheLedger(Checks);
+
+    /// <summary>
+    /// Every row time column version 3 declares, as <c>table.column|type|scale|nullability</c>: each
+    /// <c>created_at_utc</c> and <c>updated_at_utc</c> in the schema. Only <c>catalog_metadata.updated_at_utc</c>
+    /// is older than version 3, and it alone is <c>NOT NULL</c>. Every column version 3 adds is nullable, because a
+    /// legacy row takes a time only where the migration can prove one.
+    /// <para>
+    /// The other columns are not compared here, as they never were. Version 3 changed only these, and comparing
+    /// them is what refuses a database that claims version 3 without them.
+    /// </para>
+    /// </summary>
+    internal static IReadOnlySet<string> TimeColumns { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        TimeColumn("catalog_metadata", "updated_at_utc", nullable: false),
+        TimeColumn("catalog_metadata", "created_at_utc"),
+        TimeColumn("catalog_type", "created_at_utc"),
+        TimeColumn("catalog_type", "updated_at_utc"),
+        TimeColumn("catalog_family", "created_at_utc"),
+        TimeColumn("catalog_family_block", "created_at_utc"),
+        TimeColumn("catalog_family_block", "updated_at_utc"),
+        TimeColumn("catalog_row", "created_at_utc"),
+        TimeColumn("catalog_row", "updated_at_utc"),
+        TimeColumn("catalog_row_field", "created_at_utc"),
+        TimeColumn("catalog_id_high_water", "created_at_utc"),
+        TimeColumn("catalog_id_high_water", "updated_at_utc"),
+        TimeColumn("catalog_draft", "updated_at_utc"),
+        TimeColumn("catalog_draft_edit", "created_at_utc"),
+        TimeColumn("catalog_draft_edit_field", "created_at_utc"),
+        TimeColumn("catalog_remap_rule", "created_at_utc"),
+        TimeColumn("catalog_chunk", "created_at_utc"),
+    };
+
+    /// <summary>The columns the version 3 migration adds, each in the only shape version 3 accepts.</summary>
+    static readonly HashSet<string> AddedTimeColumns = AddedByVersionThree();
+
+    /// <summary>The row time columns version 2 declared: version 3's without the ones the migration adds.</summary>
+    internal static IReadOnlySet<string> TimeColumnsV2 { get; } = WithoutAdded(TimeColumns);
+
+    /// <summary>The row time columns version 1 declared, which version 2 did not add to.</summary>
+    internal static IReadOnlySet<string> TimeColumnsV1 { get; } = TimeColumnsV2;
+
+    /// <summary>The row time columns the given schema version declares.</summary>
+    /// <param name="version">A schema version this build can validate.</param>
+    /// <exception cref="ArgumentOutOfRangeException">No catalog schema has this version.</exception>
+    internal static IReadOnlySet<string> TimeColumnsFor(int version)
+        => version switch
+        {
+            1 => TimeColumnsV1,
+            2 => TimeColumnsV2,
+            3 => TimeColumns,
+            _ => throw new ArgumentOutOfRangeException(nameof(version), version, "No catalog schema has this version."),
+        };
+
+    /// <summary>
+    /// The row time columns of <paramref name="actual"/> a version is judged on. A version 2 database may already
+    /// carry some of its version 3 columns, in exactly their version 3 shape, when the column adds ran without the
+    /// version move, and the migration then adds only what is missing, so those are left out of the comparison.
+    /// A column in any other shape stays in and is refused.
+    /// </summary>
+    /// <param name="actual">The row time columns the database holds.</param>
+    /// <param name="version">The schema version the database says it is at.</param>
+    internal static IReadOnlySet<string> JudgedTimeColumns(IReadOnlySet<string> actual, int version)
+    {
+        ArgumentNullException.ThrowIfNull(actual);
+        return version == 2 ? WithoutAdded(actual) : actual;
+    }
+
+    /// <summary>Whether <paramref name="actual"/> is the row time column set of <paramref name="version"/>.</summary>
+    /// <param name="actual">The row time columns the database holds.</param>
+    /// <param name="version">The schema version the database says it is at.</param>
+    internal static bool TimeColumnsMatch(IReadOnlySet<string> actual, int version)
+        => JudgedTimeColumns(actual, version).SetEquals(TimeColumnsFor(version));
+
+    /// <summary>One row time column in the form validation reads it back in.</summary>
+    /// <param name="table">The table.</param>
+    /// <param name="column">The column.</param>
+    /// <param name="nullable">Whether the column accepts NULL.</param>
+    internal static string TimeColumn(string table, string column, bool nullable = true)
+        => table + "." + column + "|datetimeoffset|7|" + (nullable ? "NULL" : "NOT NULL");
+
+    static HashSet<string> AddedByVersionThree()
+    {
+        var added = new HashSet<string>(StringComparer.Ordinal);
+        foreach ((string table, string column) in SqlServerCatalogSchema.VersionThreeColumns)
+        {
+            added.Add(TimeColumn(table, column));
+        }
+
+        return added;
+    }
+
+    static HashSet<string> WithoutAdded(IReadOnlySet<string> columns)
+    {
+        var kept = new HashSet<string>(columns, StringComparer.Ordinal);
+        kept.ExceptWith(AddedTimeColumns);
+        return kept;
+    }
 
     /// <summary>
     /// One set minus every object of the ledger table, which is the WHOLE of what version 2 added. Deriving

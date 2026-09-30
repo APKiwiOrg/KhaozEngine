@@ -9,7 +9,7 @@ namespace KhaozEngine.Catalog;
 /// <summary>
 /// The server's content boot, spec 9.5, in the one order it runs in: resolve the version, fetch and verify
 /// the manifest, refuse a pack this build cannot read, freeze the registry, fetch and verify every chunk,
-/// decode, build the four engine indexes and then the registered ones, validate, publish, and resolve the
+/// decode, build the five engine indexes and then the registered ones, validate, publish, and resolve the
 /// world's content keys.
 /// <para>
 /// <b>It fails CLOSED and it never exits the process.</b> Each of the twelve rows of spec 9.6's table comes
@@ -402,7 +402,7 @@ public static class ContentBoot
                 FormattableString.Invariant($"{LinePrefix}chunk {pack.Hash} {pack.Reason}."));
         }
 
-        // Step 7 and 7b: the four engine indexes come with the runtime, then every registered load index in
+        // Step 7 and 7b: the five engine indexes come with the runtime, then every registered load index in
         // type id order.
         ContentSnapshot snapshot = pack.Snapshot!;
         ContentRuntime runtime = ContentRuntime.FromSnapshot(snapshot, options.Registry);

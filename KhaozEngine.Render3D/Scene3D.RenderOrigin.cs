@@ -101,7 +101,10 @@ namespace KhaozEngine.Render3D
         /// the world move underneath it (a wall slides in, terrain deforms), so the latch is what bounds that
         /// cache at one frame instead of leaving it to go stale indefinitely. See
         /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/28">#28</see>. It is a no-op on every camera
-        /// that does not override it, which today is all of them but <see cref="FollowCamera3D"/>.
+        /// that does not override it, which today is all of them but <see cref="FollowCamera3D"/>. A follow camera
+        /// with a <see cref="FollowCamera3D.FrameClock"/> is bounded by its clock instead and keeps an eye it
+        /// computed earlier in the same frame, so a read in the consumer's update is not paid for twice
+        /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1189">#1189</see>).
         /// </para>
         /// </summary>
         void LatchRenderOrigin()

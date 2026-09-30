@@ -17,7 +17,7 @@ public sealed class SqliteAccountStoreConformanceTests : AccountStoreConformance
     /// <inheritdoc />
     protected override IAccountStore NewStore(bool whitelistOnCreate)
     {
-        var store = new SqliteAccountStore("Data Source=:memory:", whitelistOnCreate);
+        var store = new SqliteAccountStore("Data Source=:memory:", whitelistOnCreate, new AccountTableOptions { TimeProvider = Clock });
         stores.Add(store);
         return store;
     }
@@ -39,7 +39,8 @@ public sealed class SqliteAccountStoreCustomTableConformanceTests : AccountStore
     /// <inheritdoc />
     protected override IAccountStore NewStore(bool whitelistOnCreate)
     {
-        var store = new SqliteAccountStore("Data Source=:memory:", whitelistOnCreate, new AccountTableOptions("grim_accounts_2"));
+        var store = new SqliteAccountStore("Data Source=:memory:", whitelistOnCreate,
+            new AccountTableOptions("grim_accounts_2") { TimeProvider = Clock });
         stores.Add(store);
         return store;
     }
@@ -66,22 +67,31 @@ public abstract class SqliteGrimhollowLayoutConformance : AccountStoreConformanc
     protected override IAccountStore NewStore(bool whitelistOnCreate)
     {
         string path = scratch.NewDatabase(LegacyTableSql);
-        return scratch.Own(new SqliteAccountStore(SqliteScratch.ConnectionString(path), whitelistOnCreate));
+        return scratch.Own(new SqliteAccountStore(SqliteScratch.ConnectionString(path), whitelistOnCreate,
+            new AccountTableOptions { TimeProvider = Clock }));
     }
 
     public void Dispose() => scratch.Dispose();
 }
 
-/// <summary>Grimhollow's original four-column table, which the store widens with the ban pair.</summary>
+/// <summary>Grimhollow's original four-column table, which the store widens with the ban pair and the times.</summary>
 public sealed class SqliteGrimhollowOriginalLayoutConformanceTests : SqliteGrimhollowLayoutConformance
 {
     /// <inheritdoc />
     protected override string LegacyTableSql => GrimhollowSqliteLayout.Original;
 }
 
-/// <summary>Grimhollow's widened seven-column table with its <c>debug</c> flag, which the store adopts as it is.</summary>
+/// <summary>Grimhollow's widened seven-column table with its <c>debug</c> flag, which the store widens with the
+/// times.</summary>
 public sealed class SqliteGrimhollowWidenedLayoutConformanceTests : SqliteGrimhollowLayoutConformance
 {
     /// <inheritdoc />
     protected override string LegacyTableSql => GrimhollowSqliteLayout.Widened;
+}
+
+/// <summary>Grimhollow's table once its own store has added the times, which the store adopts as it is.</summary>
+public sealed class SqliteGrimhollowTimestampedLayoutConformanceTests : SqliteGrimhollowLayoutConformance
+{
+    /// <inheritdoc />
+    protected override string LegacyTableSql => GrimhollowSqliteLayout.Timestamped;
 }

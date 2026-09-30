@@ -256,8 +256,9 @@ public class PageSyncFrameBoundTests
     public void No_client_to_server_message_carries_an_instance_payload()
     {
         // Spec 7.6's invariant, which is 15.3 in practice: no client to server message in this design carries
-        // an instance payload, and every one of them names an item by id. The full version is spec 17 row 13
-        // and belongs to the phase that ships the craft messages, so this covers the two that exist.
+        // an instance payload, and every one of them names an item by id. The full cross-assembly inventory is
+        // KhaozEngine.Server.Tests/ItemInstances/NoClientPayloadRouteTests.cs. This fact keeps the protocol
+        // internals beside the netcode.
         Assert.Equal(2, ContainerPageSyncRequest.Bytes);
         Span<byte> request = stackalloc byte[ContainerPageSyncRequest.Bytes];
         Assert.Equal(2, new ContainerPageSyncRequest(ContainerId, PageIndex).Write(request));

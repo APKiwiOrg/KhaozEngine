@@ -16,7 +16,8 @@ await bans.LoadAsync();
 ```
 
 `whitelistOnCreate` is required, with no default, and `WhitelistOnCreate` reports what the instance was built
-with. Pass `new AccountTableOptions("grim_accounts")` to use a table other than `accounts`.
+with. Pass `new AccountTableOptions("grim_accounts")` to use a table other than `accounts`, and set its
+`TimeProvider` to choose the clock the row times come from, the system clock by default.
 
 ## The table
 
@@ -30,13 +31,20 @@ One flat table, Grimhollow's layout, so an existing Grimhollow database is adopt
 | `banned` | `INTEGER NOT NULL` | 1 when a ban is filed, lapsed or not |
 | `ban_reason` | `TEXT NULL` | the filed reason |
 | `ban_until` | `TEXT NULL` | the expiry as round-trip UTC text (`"o"`), null for permanent |
+| `created_at_utc` | `TEXT NULL` | when the store created the row, as round-trip UTC text |
+| `updated_at_utc` | `TEXT NULL` | when a write last changed a stored value, as round-trip UTC text |
 
 SQLite's `TEXT` has no width. The 128, 128 and 256 limits are `AccountStoreRules`, applied before every write.
 
 The constructor creates the table when it is absent. When it is present, the table must carry the first four
-columns, and a missing `ban_reason` or `ban_until` is added as a nullable column. Nothing is renamed, dropped or
-backfilled, and no column the store does not own is read or written, so a game's own column (Grimhollow's `debug`)
-keeps its values and its default. The ensure runs in one immediate transaction and is idempotent.
+columns, and a missing `ban_reason`, `ban_until`, `created_at_utc` or `updated_at_utc` is added as a nullable
+column. Nothing is renamed, dropped or backfilled, and no column the store does not own is read or written, so a
+game's own column (Grimhollow's `debug`) keeps its values and its default. The ensure runs in one immediate
+transaction and is idempotent.
+
+Find-or-create stamps both times on a new row from the store's clock. Every write sets the update time in the same
+statement, to the clock when a written value differs from the stored one and to itself otherwise, so a write that
+changes nothing moves neither time. The creation time is never written again.
 
 The subject key must compare as `BINARY`. The constructor refuses, and changes nothing in, a table whose primary key
 or unique index on `subject` alone uses another collation, such as `NOCASE` or `RTRIM`. Find-or-create's
@@ -51,6 +59,8 @@ and no subject.
   empty string, and an empty string reads back as `null`. A fresh table is nullable and stores what it is given.
 - **`banned = 1` with no reason** reads as a ban with an empty reason, because `AccountBan.Reason` is never null.
 - **A `ban_until` with an offset** reads back as the same instant in UTC, offset zero.
+- **A row older than the time columns** reads both times as null. The first write that changes it sets the update
+  time only, because nothing proves when the row was created.
 
 ## Concurrency and ordering
 

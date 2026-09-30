@@ -66,6 +66,13 @@ public static class ContentPackFormat
     /// </summary>
     public const int MaxChunkUncompressedBytes = 16 * 1024 * 1024;
 
+    /// <summary>
+    /// The most bytes one stored object may contain. It is the uncompressed chunk ceiling plus the largest
+    /// fixed header any pack file carries, because writers keep canonical bytes when compression does not
+    /// shrink them.
+    /// </summary>
+    public const int MaxObjectBytes = MaxChunkUncompressedBytes + ContentManifestCodec.FixedHeaderBytes;
+
     /// <summary>The fixed part of a <c>KECC</c> file, never compressed, so a reader learns the type, the
     /// id range, the row count and the two lengths without touching the compressor.</summary>
     public const int ChunkHeaderBytes = 36;

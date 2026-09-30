@@ -23,11 +23,17 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStreamL
             Add(command, "$lower", range.Lower);
             if (range.UpperExclusive is string upper) Add(command, "$upper", upper);
             Add(command, "$limit", query.MaxStreams + 1);
-            var rows = new List<(string StreamKey, long HeadVersion)>();
+            var rows = new List<JournalStoredStreamRow>();
             await using (SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
             {
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    rows.Add((reader.GetString(0), reader.GetInt64(1)));
+                {
+                    rows.Add(new JournalStoredStreamRow(
+                        reader.GetString(0),
+                        reader.GetInt64(1),
+                        reader.IsDBNull(2) ? null : Timestamp(reader.GetInt64(2)),
+                        Timestamp(reader.GetInt64(3))));
+                }
             }
             return JournalStreamPage.FromStoredRows(rows, query);
         }
@@ -41,22 +47,22 @@ public sealed partial class SqliteMutationJournalStore : IMutationJournalStreamL
         => (range.LowerInclusive, range.UpperExclusive is null) switch
         {
             (true, true) => """
-                SELECT stream_key, current_version FROM journal_stream
+                SELECT stream_key, current_version, created_at_utc, updated_at_utc FROM journal_stream
                 WHERE stream_key >= $lower
                 ORDER BY stream_key COLLATE BINARY LIMIT $limit;
                 """,
             (true, false) => """
-                SELECT stream_key, current_version FROM journal_stream
+                SELECT stream_key, current_version, created_at_utc, updated_at_utc FROM journal_stream
                 WHERE stream_key >= $lower AND stream_key < $upper
                 ORDER BY stream_key COLLATE BINARY LIMIT $limit;
                 """,
             (false, true) => """
-                SELECT stream_key, current_version FROM journal_stream
+                SELECT stream_key, current_version, created_at_utc, updated_at_utc FROM journal_stream
                 WHERE stream_key > $lower
                 ORDER BY stream_key COLLATE BINARY LIMIT $limit;
                 """,
             (false, false) => """
-                SELECT stream_key, current_version FROM journal_stream
+                SELECT stream_key, current_version, created_at_utc, updated_at_utc FROM journal_stream
                 WHERE stream_key > $lower AND stream_key < $upper
                 ORDER BY stream_key COLLATE BINARY LIMIT $limit;
                 """,

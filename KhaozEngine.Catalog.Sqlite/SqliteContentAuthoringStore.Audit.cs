@@ -17,8 +17,8 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// edit, so the insert shares the edit's transaction and an audit failure fails the edit (spec 4.6).
 /// </para>
 /// <para>
-/// The two renderers below duplicate the in-memory store's, which is internal to another assembly and
-/// therefore unreachable from here. Two copies of one rule is a drift candidate and the answer is a shared
+/// The two renderers below duplicate the in-memory store's. Two copies of one rule is a drift candidate
+/// and the answer is a shared
 /// renderer in the authoring package, which is filed rather than done inside this task.
 /// </para>
 /// </summary>

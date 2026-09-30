@@ -31,11 +31,19 @@ namespace KhaozEngine.Accounts.SqlServer;
 /// racers are as likely to be two hosts as two threads, and the database serializes both.
 /// </para>
 /// <para>
+/// <b>Row times.</b> Find-or-create stamps both times on a new row from
+/// <see cref="SqlServerAccountStoreOptions.TimeProvider"/>. Every write sets the update time in the same statement, to
+/// the clock when a written value differs from the stored one and to itself otherwise, so a repeat sign-in or an
+/// operator write that changes nothing moves neither time. A text compares under <c>Latin1_General_100_BIN2</c> and
+/// by length, so a change of case or of trailing spaces counts, and NULL against a value is spelled out. The creation
+/// time is never written again.
+/// </para>
+/// <para>
 /// <b>Ordinal subjects on any table.</b> An exact match compares the subject's bytes and an ordering names
 /// <c>Latin1_General_100_BIN2</c>, beside the plain predicate an index can seek on, so a legacy table in a
 /// case-insensitive database default still answers exact matches and code-point order. Such a table cannot hold
-/// two subjects its own collation calls equal, which is a limit of that table and not of the store. A ban expiry is
-/// written in UTC and read back with offset zero. Nothing here logs, and no message names a subject, a display name,
+/// two subjects its own collation calls equal, which is a limit of that table and not of the store. A ban expiry and
+/// both row times are written in UTC and read back with offset zero. Nothing here logs, and no message names a subject, a display name,
 /// a reason or the connection string.
 /// </para>
 /// </remarks>
@@ -48,11 +56,13 @@ public sealed class SqlServerAccountStore : IAccountStore
     // collation, which a plain equality under SQL Server's padded comparison would not guarantee.
     private const string ExactSubject = "CAST(subject AS varbinary(max)) = CAST(@subject AS varbinary(max))";
     private const string Inserted =
-        "inserted.subject, inserted.display_name, inserted.whitelisted, inserted.banned, inserted.ban_reason, inserted.ban_until";
+        "inserted.subject, inserted.display_name, inserted.whitelisted, inserted.banned, inserted.ban_reason, " +
+        "inserted.ban_until, inserted.created_at_utc, inserted.updated_at_utc";
 
     private readonly string connectionString;
     private readonly string schemaName;
     private readonly string qualified;
+    private readonly TimeProvider clock;
     private readonly SemaphoreSlim schemaGate = new(1, 1);
     // Published once the bootstrap succeeds. Volatile because the fast path reads it outside the gate.
     private volatile TableShape? shape;
@@ -72,8 +82,8 @@ public sealed class SqlServerAccountStore : IAccountStore
     /// default, because it is the highest-consequence value in an auth composition.</param>
     /// <param name="options">Where the accounts live and what the first call may do, or <c>null</c> for
     /// <c>dbo.accounts</c> under <see cref="AccountSchemaMode.AutoCreate"/>.</param>
-    /// <exception cref="ArgumentException">The connection string is blank, a name is not a plain identifier, or the
-    /// schema mode is undefined.</exception>
+    /// <exception cref="ArgumentException">The connection string is blank, a name is not a plain identifier, the
+    /// schema mode is undefined, or the clock is null.</exception>
     public SqlServerAccountStore(string connectionString, bool whitelistOnCreate,
         SqlServerAccountStoreOptions? options = null)
     {
@@ -83,6 +93,7 @@ public sealed class SqlServerAccountStore : IAccountStore
         string quotedTable = SqlServerAccountIdentifier.Quote(resolved.Table, "table", nameof(options));
         if (!Enum.IsDefined(resolved.SchemaMode))
             throw new ArgumentOutOfRangeException(nameof(options), resolved.SchemaMode, "The schema mode is not defined.");
+        clock = resolved.TimeProvider ?? throw new ArgumentNullException(nameof(options), "Time provider cannot be null.");
 
         this.connectionString = connectionString;
         WhitelistOnCreate = whitelistOnCreate;
@@ -92,14 +103,17 @@ public sealed class SqlServerAccountStore : IAccountStore
 
         const string columns = SqlServerAccountSchema.ReadColumns;
         const string ordinal = "subject COLLATE " + SqlServerAccountSchema.SubjectCollation;
+        // In the MERGE's update arm and in every UPDATE, a column on the right of SET is the row before the statement.
         findOrCreateSql = $"""
             MERGE {qualified} WITH (HOLDLOCK) AS target
             USING (SELECT @subject AS subject) AS source
                 ON target.subject = source.subject
                 AND CAST(target.subject AS varbinary(max)) = CAST(source.subject AS varbinary(max))
-            WHEN MATCHED THEN UPDATE SET display_name = COALESCE(@name, target.display_name)
-            WHEN NOT MATCHED THEN INSERT (subject, display_name, whitelisted, banned)
-                VALUES (@subject, @insertName, @whitelisted, 0)
+            WHEN MATCHED THEN UPDATE SET display_name = COALESCE(@name, target.display_name),
+                updated_at_utc = CASE WHEN @name IS NOT NULL AND {TextDiffers("target.display_name", "@name")}
+                    THEN @now ELSE target.updated_at_utc END
+            WHEN NOT MATCHED THEN INSERT (subject, display_name, whitelisted, banned, created_at_utc, updated_at_utc)
+                VALUES (@subject, @insertName, @whitelisted, 0, @now, @now)
             OUTPUT {Inserted};
             """;
         findSql = $"SELECT {columns} FROM {qualified} WHERE subject = @subject AND {ExactSubject};";
@@ -107,15 +121,32 @@ public sealed class SqlServerAccountStore : IAccountStore
         nextPageSql = $"SELECT TOP (@limit) {columns} FROM {qualified} WHERE {ordinal} > @after ORDER BY {ordinal};";
         bannedSql = $"SELECT {columns} FROM {qualified} WHERE banned = 1 ORDER BY {ordinal};";
         whitelistSql =
-            $"UPDATE {qualified} SET whitelisted = @whitelisted OUTPUT {Inserted} WHERE subject = @subject AND {ExactSubject};";
+            $"UPDATE {qualified} SET whitelisted = @whitelisted, updated_at_utc = {Stamp("whitelisted <> @whitelisted")} " +
+            $"OUTPUT {Inserted} WHERE subject = @subject AND {ExactSubject};";
         banSql =
-            $"UPDATE {qualified} SET banned = 1, ban_reason = @reason, ban_until = @until OUTPUT {Inserted} " +
-            $"WHERE subject = @subject AND {ExactSubject};";
+            $"UPDATE {qualified} SET banned = 1, ban_reason = @reason, ban_until = @until, updated_at_utc = " +
+            Stamp($"banned <> 1 OR {TextDiffers("ban_reason", "@reason")} OR {Differs("ban_until", "@until")}") +
+            $" OUTPUT {Inserted} WHERE subject = @subject AND {ExactSubject};";
         // The reason and the expiry go with the flag, so a lifted ban leaves nothing that reads as one in force.
         unbanSql =
-            $"UPDATE {qualified} SET banned = 0, ban_reason = NULL, ban_until = NULL OUTPUT {Inserted} " +
-            $"WHERE subject = @subject AND {ExactSubject};";
+            $"UPDATE {qualified} SET banned = 0, ban_reason = NULL, ban_until = NULL, updated_at_utc = " +
+            Stamp("banned <> 0 OR ban_reason IS NOT NULL OR ban_until IS NOT NULL") +
+            $" OUTPUT {Inserted} WHERE subject = @subject AND {ExactSubject};";
     }
+
+    // The update time a write sets: the clock when it changes a stored value, and what it was otherwise.
+    private static string Stamp(string changed) => $"CASE WHEN {changed} THEN @now ELSE updated_at_utc END";
+
+    // Whether a stored value differs from a new one, NULL-aware. A bare inequality with a NULL side is unknown, and a
+    // CASE reads unknown as no change, so NULL against a value is spelled out.
+    private static string Differs(string column, string value) =>
+        $"({column} <> {value} OR ({column} IS NULL AND {value} IS NOT NULL) OR ({column} IS NOT NULL AND {value} IS NULL))";
+
+    // The same for a text, exactly. The binary collation makes a change of case count, whatever the column's own
+    // collation, and the length makes a change of trailing spaces count, which a padded comparison ignores.
+    private static string TextDiffers(string column, string value) =>
+        $"({column} COLLATE {SqlServerAccountSchema.SubjectCollation} <> {value} OR DATALENGTH({column}) <> " +
+        $"DATALENGTH({value}) OR ({column} IS NULL AND {value} IS NOT NULL) OR ({column} IS NOT NULL AND {value} IS NULL))";
 
     /// <summary>Whether a newly created account is past the whitelist gate, as this store was built.</summary>
     public bool WhitelistOnCreate { get; }
@@ -142,6 +173,7 @@ public sealed class SqlServerAccountStore : IAccountStore
                     cmd.Parameters.Add("@name", SqlDbType.NVarChar, AccountStoreRules.MaxDisplayNameChars).Value =
                         (object?)name ?? DBNull.Value;
                     cmd.Parameters.Add("@whitelisted", SqlDbType.Bit).Value = WhitelistOnCreate;
+                    cmd.Parameters.Add("@now", SqlDbType.DateTimeOffset).Value = UtcNow();
                     return await ReadOneAsync(cmd, table, token).ConfigureAwait(false)
                         ?? throw new InvalidOperationException("The account upsert returned no row.");
                 }, ct).ConfigureAwait(false);
@@ -241,6 +273,7 @@ public sealed class SqlServerAccountStore : IAccountStore
         return RunAsync(async (connection, table, token) =>
         {
             await using SqlCommand cmd = Command(connection, sql, subject);
+            cmd.Parameters.Add("@now", SqlDbType.DateTimeOffset).Value = UtcNow();
             bind(cmd);
             return await ReadOneAsync(cmd, table, token).ConfigureAwait(false);
         }, ct);
@@ -283,6 +316,8 @@ public sealed class SqlServerAccountStore : IAccountStore
         }
     }
 
+    private DateTimeOffset UtcNow() => clock.GetUtcNow().ToUniversalTime();
+
     private static SqlCommand Command(SqlConnection connection, string sql, string subject)
     {
         SqlCommand cmd = connection.CreateCommand();
@@ -318,10 +353,17 @@ public sealed class SqlServerAccountStore : IAccountStore
         AccountBan? ban = reader.GetBoolean(3)
             ? new AccountBan(
                 reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
-                reader.IsDBNull(5) ? null : reader.GetDateTimeOffset(5).ToUniversalTime())
+                ReadUtc(reader, 5))
             : null;
-        return new AccountRecord(reader.GetString(0), name, reader.GetBoolean(2), ban);
+        return new AccountRecord(reader.GetString(0), name, reader.GetBoolean(2), ban)
+        {
+            CreatedAtUtc = ReadUtc(reader, 6),
+            UpdatedAtUtc = ReadUtc(reader, 7),
+        };
     }
+
+    private static DateTimeOffset? ReadUtc(SqlDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal) ? null : reader.GetDateTimeOffset(ordinal).ToUniversalTime();
 
     // What the bootstrap learned about the table that every read and write needs.
     private sealed record TableShape(bool DisplayNameRequired);

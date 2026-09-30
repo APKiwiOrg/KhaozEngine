@@ -66,6 +66,18 @@ public class AutomationComposeTests
     }
 
     [Fact]
+    public void Composed_snapshot_preserves_real_committed_text()
+    {
+        var injector = new AutomationInputInjector();
+        InputState real = AutomationTestKit.Real(textInput: "é", textInputAvailable: true);
+
+        InputState composed = injector.Compose(real);
+
+        Assert.Equal("é", composed.TextInput);
+        Assert.True(composed.TextInputAvailable);
+    }
+
+    [Fact]
     public void TheRealCursorKeepsThePointerUntilOneIsInjected()
     {
         var injector = new AutomationInputInjector();

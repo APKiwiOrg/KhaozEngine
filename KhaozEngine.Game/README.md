@@ -7,7 +7,7 @@ per-frame composition + ordering so a game can't get it wrong:
 OnLoad();
 each frame:
   --- pre-record phase: the frame's command list is NOT open yet ---
-  Clock.Update(dt)
+  Clock.Update(dt)               // the frame's one tick: Clock.FrameCount is one id for update and draw
   Viewport.Update(window size)   -> OnResize on change
   Pointer.Update(input, Viewport)
   OnResume(wallGap)              // only when the wall-clock gap exceeds the threshold (OS sleep/suspend/hang)
@@ -153,7 +153,9 @@ an F1-toggled panel showing fps / frame-ms / heap, the frame draw counters (`Ren
 instances, triangles, upload bytes, 2D quads/flushes/tex-switches), for a 3D app per-pass CPU-encode
 timings (`Scene3D.EnableTiming` is coupled to visibility, so it costs nothing while hidden), and a Build row naming
 the app and its version (the entry assembly's product and informational version by default). Hidden by default,
-so the only cost until F1 is the always-on counter increments. `GameAppOptions.DiagnosticsToggleKey` rebinds the
+so the only cost until F1 is the always-on counter increments. The built-in titles, row labels, and disconnected
+status resolve through `Gui.DiagnosticsOverlayStrings` with English fallbacks. Dynamic pass names, values, and
+units remain raw tokens. `GameAppOptions.DiagnosticsToggleKey` rebinds the
 key (default `Key.F1`), `GameAppOptions.DiagnosticsVisibleAtBoot` starts it shown instead of hidden, and
 `GameAppOptions.DisableDiagnosticsOverlay` turns it off. A subclass reaches it through
 the protected `Diagnostics` property (e.g. `Diagnostics?.SetNetStatsSource(...)` for a Network section, or

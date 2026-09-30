@@ -368,15 +368,14 @@ public sealed class ContainerCommitBuilderTests
         // and no fault flag: the caller held something that had committed nothing and could do nothing.
         // Nothing is recorded now until the commit is built and validated.
         //
-        // The throw is reachable because Open vets a container name at page 0, where the suffix is three
-        // characters, and page 100's is five. A name four short of the identity cap opens and then cannot
-        // name its own hundredth page.
-        string wide = new('b', JournalLimits.EngineMaximumIdentityCharacters - 4);
-        PagedItemContainer bank = Container(pageCount: 101);
-        ContainerCommitBuilder batch = ContainerCommitBuilder.Open(
-            StreamKey, ItemInstanceEvents.CraftActionKind, Scope, Containers((wide, bank)), tick: 4);
+        // An invalid result schema reaches commit validation after the projection writes are built.
+        PagedItemContainer bank = Container();
+        ContainerCommitBuilder batch = OpenBank(bank, tick: 4, options: new ContainerCommitOptions
+        {
+            ResultSchema = "",
+        });
 
-        Assert.True(batch.Apply(ContainerOperation.Grant(wide, slot: 10_000, Sword, 1, Instance, Payload())));
+        Assert.True(batch.Apply(ContainerOperation.Grant(Bank, slot: 0, Sword, 1, Instance, Payload())));
         Assert.Equal(1, batch.ProjectionWriteCount);
 
         Assert.Throws<ArgumentException>(() => batch.Close(Mint(ServerId)));
@@ -501,6 +500,38 @@ public sealed class ContainerCommitBuilderTests
         Assert.True(batch.Window.IsOpen);
     }
 
+    [Theory]
+    [InlineData(ContainerOperationKind.Split)]
+    [InlineData(ContainerOperationKind.Merge)]
+    public void Split_and_merge_refuse_a_destination_container_before_reaching_the_working_copy(
+        ContainerOperationKind kind)
+    {
+        PagedItemContainer bank = Container();
+        SeatStack(bank, 0, Potion, kind == ContainerOperationKind.Split ? 4 : 2);
+        if (kind == ContainerOperationKind.Merge) SeatStack(bank, 1, Potion, 3);
+        ContainerCommitBuilder batch = OpenBank(bank);
+        ContainerOperation operation = kind == ContainerOperationKind.Split
+            ? ContainerOperation.Split(Bank, 0, 1, 2)
+            : ContainerOperation.Merge(Bank, 0, 1);
+
+        Assert.Throws<ArgumentException>(() =>
+            batch.Apply(operation with { DestinationContainer = Bag }));
+        Assert.True(batch.Window.IsOpen);
+        Assert.Empty(batch.Operations);
+
+        Assert.True(batch.Apply(operation));
+        if (kind == ContainerOperationKind.Split)
+        {
+            Assert.Equal(2, bank.SlotAt(0).Stack.Count);
+            Assert.Equal(2, bank.SlotAt(1).Stack.Count);
+        }
+        else
+        {
+            Assert.True(bank.SlotAt(0).IsEmpty);
+            Assert.Equal(5, bank.SlotAt(1).Stack.Count);
+        }
+    }
+
     [Fact]
     public void A_craft_that_consumes_no_currency_carries_no_currency_fields()
     {
@@ -524,6 +555,18 @@ public sealed class ContainerCommitBuilderTests
             Bank, 4, Instance, Payload(3), CraftEventBody(1, afterLevel: 3, beforeLevel: 2),
             currencySlot: 5, currencyDefinitionId: Currency, currencyCount: 1);
         paid.Validate();
+    }
+
+    [Fact]
+    public void Open_refuses_a_name_that_cannot_name_the_containers_highest_page()
+    {
+        const int cap = JournalLimits.EngineMaximumIdentityCharacters;
+        string widestAtPageNinetyNine = new('b', cap - 4);
+        Dictionary<string, PagedItemContainer> containers =
+            Containers((widestAtPageNinetyNine, Container(pageCount: 101)));
+
+        Assert.Throws<ArgumentException>(() => ContainerCommitBuilder.Open(
+            StreamKey, ItemInstanceEvents.CraftActionKind, Scope, containers));
     }
 
     [Fact]

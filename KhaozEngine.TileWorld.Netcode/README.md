@@ -112,7 +112,10 @@ hidden.
   facing, mode, step progress (a tick COUNT out of a tick TOTAL), route, teleport epoch and interaction target.
   Both an `IPredictedState<TileMoveState>` and an ECS `IComponent`, so `ClientPrediction` and
   `ReplicationRegistry` carry the same type verbatim. `Position` is DERIVED in TILE units, the glide from
-  `StepFrom` into `Tile`, and `Vertical` is the plane INDEX, so the state needs no world document. It also carries
+  `StepFrom` into `Tile`. At a one-tick cadence its `PredictionTarget` is the committed tile, so local inter-tick
+  presentation crosses a landing-door step while the deterministic `Position` stays at zero progress. At every
+  other cadence the target is `Position` bit for bit. `Vertical` is the plane INDEX, so the state needs no world
+  document. It also carries
   `CombatTarget`, the NET ID this entity is locked onto and the reason the chase lives inside the one stepper both
   heads run rather than in a second movement authority a client cannot predict. `CombatTarget` and
   `InteractTarget` are mutually exclusive, each clearing the other, and a `WalkTo` clears both, which is how
@@ -388,7 +391,7 @@ understand. Its registered traversal profile can give that algorithm a different
   The original constructor still accepts a fallback map for contexts a consumer builds by hand, while a
   server-supplied profile map wins.
 - **`ITileCombatRules`** / **`TileAttackContext`** / **`TileAttackOutcome`** - where the GAME plugs into the hit
-  pipeline. The engine owns whether a swing is DUE (the cooldown) and whether it is LEGAL (adjacency through
+  pipeline. The engine owns whether a swing is DUE (cooldown and optional preparation) and whether it is LEGAL (adjacency through
   `TileReach`). That reach check uses the attacker's movement map, which keeps an actor's final chase geometry on
   its selected topology. Players continue to use the constructor map. It asks the one footprint predicate the follow
   asks, of the tiles both bodies ended the tick on: the target's whole footprint, and the attacker at its own
@@ -448,7 +451,7 @@ always keep the constructor map.
   `CreateRegistry(configure)` overload stays unbounded because it has no world count. `AssembleMoveState` is the one
   sanctioned way to put a route back onto a decoded or migrated state, `BuildConnectToken` builds the token the
   door reads, and the frame codecs are the command, the snapshot, the opaque game message, the notice and the
-  combat frame. `ServerFrameCombat` (`EncodeCombat` / `TryDecodeCombat`, at most `MaxCombatEvents` of them) is its
+  combat frames. In default mode, `ServerFrameCombat` (`EncodeCombat` / `TryDecodeCombat`, at most `MaxCombatEvents` of them) is its
   own frame family rather than a game message, because the game-message `kind` is a number the GAME defines and
   these are the ENGINE's events about a pipeline the engine owns. It is a frame at all because a MISS moves health
   by zero and two hits on one tick collapse into one delta, so a fight drawn from replicated health shows fewer,
@@ -456,7 +459,9 @@ always keep the constructor map.
   swings than one frame holds is CHUNKED across several: `EncodeCombat(events, start, count)` is the overload that
   slices one, and it is what the serve uses so an over-long viewer slice costs that viewer an extra packet rather
   than taking the tick down for every player. The whole-list overload still throws above the cap, which is the
-  right answer for a game building a frame by hand.
+  right answer for a game building a frame by hand. Opted-in preparation sessions instead use full schedule tag 4
+  (`ServerFrameCombatPreparation`) and terminal tag 5 (`ServerFrameCombatPreparationTerminal`). See
+  [authoritative preparation](#authoritative-attack-preparation-20141) for their separate client contract.
 - **`TileServerReason`** - the stable wire reason tokens a tile server sends. Not display text.
 - **`TileCells`** - the one place tile space meets the shard grid: `CellSize`, `CoordOf(tile)` and
   `RegionOf(cell)`.
@@ -537,8 +542,9 @@ always keep the constructor map.
   client's input late, which `TileWorldServer.InputDepth(slot)` reads from the server side. `NetStats` is the link readout beside the session ones, a live `NetTransportStats` forwarded from
   the transport (round trip, loss, cumulative byte counters), so a HUD does not need to keep the transport it built.
   A transport that tracks nothing answers `NetTransportStats.Unavailable`, an all-zero DISCONNECTED value that says
-  nothing about the session, so `IsJoined` stays the read for that. Three more events land here: `CombatEvent` per swing whose TARGET is in this client's own area of
-  interest (misses included, and the thing a hitsplat is drawn from), and `RemoteEntered` / `RemoteLeft`, the
+  nothing about the session, so `IsJoined` stays the read for that. Default combat mode raises `CombatEvent` per
+  swing whose TARGET is in this client's area of interest, misses included. Preparation-enabled mode uses the
+  separate callbacks below. `RemoteEntered` / `RemoteLeft` remain the
   lifecycle pair a per-remote overlay stack is built and pruned on. The diff behind the pair is already computed
   every frame, so it costs nothing beyond one array per frame that actually carries churn.
 - **`TileWorldClient.SetSteering(direction, mode)`** / **`Steering`** - the held direction a keyboard player walks
@@ -567,7 +573,9 @@ always keep the constructor map.
   plus half its edge on each axis, and the glide runs anchor to anchor so that offset is constant through a step.
   `TryGetRemotePose` goes through `Pose`, so a consumer's large remote is centred with no change on its side.
   `LocalPose(prediction)` adds no footprint offset, because the local player is always one tile, and additionally carries the
-  prediction layer's inter-tick easing. With no active reconciliation offset, its bound against
+  prediction layer's inter-tick easing. A one-tick route targets each committed tile in turn, including the
+  landing-door tick after the first clicked step, so it moves continuously instead of repeating an endpoint.
+  With no active reconciliation offset, its bound against
   `PredictedState.Tile` is one grid step plus one local command tick of travel. An active offset adds its current
   magnitude to that conservative bound until it decays or a hard snap clears it.
   `StepFraction(state, extraTicks)` is the fraction that glide interpolates on, exposed so a rule that must run in
@@ -722,7 +730,10 @@ entity set and the same cleared then filled shape. A drop with no instance is ab
 Both halves are opaque, exactly as `TileGroundItem`'s `ItemId` is opaque. The engine never decodes a
 payload, has no way to, and never mints an instance id of its own: the same id and the same bytes come
 out of a claim as went into the drop, whoever is claiming, so a drop-and-claim cycle cannot launder an
-item into a fresh one. What the engine owns is still existence.
+item into a fresh one. What the engine owns is still existence. The payload passed to `SpawnGroundItem`
+must already be the public view. A host using `KhaozEngine.ItemInstances` produces it through
+`GroundItemPayloadProjection.Project`, on the item-aware side of the package boundary. Tile netcode keeps no
+ItemInstances reference and remains unable to decode the bytes.
 
 Three rules, all of them the codec's:
 
@@ -805,6 +816,86 @@ https://github.com/APKiwiOrg/KhaozEngine/issues/823 is the engine follow-on that
 resolution. `CollectObjectStates` carries no remaining ticks either, and there is no server reader for the
 clock, so a head that wants a countdown keeps its own beside the state it set.
 
+## Authoritative attack preparation (20.14.1)
+
+Preparation is opt-in. `TileWorldServerConfig.CombatPreparationRules = null` and
+`TileWorldClientConfig.CombatPreparationEnabled = false` preserve the existing first hit, cooldown,
+legacy tag 3 bytes, and client `CombatEvent` callback. Enable both heads before constructing the session,
+and use a distinct consumer connect protocol version to refuse incompatible peers.
+
+The game implements `ITileCombatPreparationRules.ProfileFor(long attackerNetId)`, returning
+`TileCombatPreparationProfile(LeadTicks, StrikeTicks, PresentationKey)`. The read must be deterministic
+and side-effect free. Timing must satisfy `1 <= StrikeTicks <= LeadTicks <= resolved AttackTicks`.
+The opaque key identifies the game's current public motion/equipment style. The engine supplies no
+weapon enums, poses, animation clips, or damage prediction.
+
+```csharp
+// profiles is the game's ITileCombatPreparationRules implementation.
+serverConfig = serverConfig with { CombatPreparationRules = profiles };
+clientConfig = clientConfig with { CombatPreparationEnabled = true };
+```
+
+| Read or callback | Contract |
+| --- | --- |
+| Server/client `TryGetCombatPreparation(attackerNetId, out preparation)` | Current intention, including target, AttackId, Revision, PresentationKey, PrepareTick, StrikeTick, ImpactTick and CadenceTicks |
+| Server `TryGetAttackReadyTick(attackerNetId, out tick)` | Absolute boundary for the next unresolved attack. A retained cooldown can still require a fresh preparation. Reports the current tick while an attempt is deferred |
+| Client `CombatPreparationsChanged` | Applied server tick after a complete visible schedule set replaces the cache, including an empty set |
+| Client `PreparedCombatEvent` | Actual outcome plus the tick it resolved and captured attack identity, revision and presentation key. After a deferral the resolution tick trails the schedule's `ImpactTick` by up to `StrikeTicks` |
+| Client `CombatPreparationEnded` | Cancellation identity, intended impact tick and reason, with no hit feedback. An `IllegalReach` end arrives `StrikeTicks` after its intended impact |
+| Client `CombatPresentationTick` | Newest successfully applied movement snapshot plus at most one presentation tick. Returns -1 before a valid anchor, when disabled, or after disconnect |
+| `TileCombatPreparationSampler.Sample(in preparation, double serverTick)` | Pure Hold, Prepare, Strike or AwaitingOutcome plus normalized progress. A deferred schedule samples AwaitingOutcome until its terminal |
+
+For a ready, in-range attacker first considered at tick T, a three-tick lead resolves no earlier than
+T+3. Existing cooldown/idle delay overlaps that lead: impact is `max(T + LeadTicks, readyTick)`.
+An unchanged continuing fight keeps its existing impact-to-impact cadence. A 3/1 profile spends two
+ticks preparing and one striking. A lead equal to strike starts directly at Strike.
+
+`DelayAttack` adds the accepted delay to a live or retained deadline, capped at 255 outstanding ticks.
+A revised schedule moves its preparation and strike boundaries together. The client sees a revision,
+not a wind-up stretched across the added wait. Zero and saturated delays do not revise it. Null
+`CombatRules` cancels pending attempts as `RulesUnavailable`, with no roll or new cooldown charge.
+When rules return, the attacker must prepare afresh subject to retained readiness.
+
+A changed target or profile replaces the attempt and cannot make impact earlier than its retained
+ready boundary. Temporary range loss during the lead keeps the attempt while the same lock remains. From the
+impact tick every other invalidity still cancels at once without damage. An impact that lacks only legal
+reach, including the plane, is deferred instead (since 20.15.1). The schedule stays unchanged, with its
+identity, revision and past `ImpactTick`, and the attempt resolves once on the first later tick with legal
+reach, for up to its `StrikeTicks`. On `ImpactTick + StrikeTicks` it cancels as `IllegalReach` without damage
+or cooldown charge, and a later opportunity needs a fresh lead. Only an attempt deferred on the previous pass
+can resolve late. The next impact is the resolution tick plus the cadence. `DelayAttack` during a deferral
+revises the attempt from the current tick.
+Preparation makes no RNG roll, award callback or combat stamp. The existing held-lock logout rule
+still applies. Server `OnCombatEvent` remains the single award hook for each actual swing.
+
+Schedules come from authoritative owners, including across region handoff, and are visible when either
+participant is in interest. Terminal delivery also covers an attempt visible on the previous serve.
+The reliable ordered sequence is movement snapshot, all schedule chunks, then all terminal chunks.
+An active schedule record is valid while `serverTick - ImpactTick < StrikeTicks`, so a deferred schedule is
+served overdue. A 20.14.1 to 20.15.0 client refuses such a set, so a game that already shipped
+preparation-enabled clients must bump its connect protocol string when adopting 20.15.1. Default consumers
+are unaffected.
+Each set is bounded to 256 chunks of 255 records, or 65,280 records. An oversized viewer set is refused
+before any preparation chunk is sent, increments `RejectedCombatPreparationFrameSetCount`, and closes
+only that viewer with `TileServerReason.CombatPreparationOverflow`. During a serve, that close runs
+after the tick advances, so participant removals cannot reorder this tick's completed results.
+Enabled startup rejects negative budgets or `MaxPlayers + MaxActorsPerCell > 65,280` as a minimum check.
+Actual visible sets remain bounded independently of that configured minimum.
+
+Malformed or interrupted preparation sets preserve the client's published cache and increment
+`RejectedCombatPreparationFrameCount`. Duplicate/stale traffic cannot repeat terminal callbacks.
+`InvalidCombatPreparationCount` reports refused profile/deadline values and
+`ExhaustedCombatPreparationIdentityCount` reports exhausted identities. A custom replication registry
+must bind `TileProtocol.TileCombatPreparationStateTypeId` to the exact preparation component with exactly
+`ReplicationChannels.Migrate`. Enabled startup refuses another type, missing migration or extra channels.
+Start from `TileProtocol.CreateRegistry` and add game components. This private schedule state migrates between cells and does not persist or replicate as an ECS component.
+
+See the [consumer guide](../docs/USING-KHAOZENGINE.md#authoritative-attack-preparation-20141) for the
+profile implementation, matching protocol setup, callbacks, readiness and sampler examples. Clients
+present the authoritative result once on receipt. Latency, stalls and late interest can skip the
+preparation entirely, so a full remote visual lead is not guaranteed. Pose blending, impact feedback
+and recovery remain game-owned.
+
 ## The player health contract, which is the first thing a game with combat gets wrong
 
 **A spawned PLAYER has no `TileHealth` at all.** An actor gets one from its spawn spec, and nothing writes a
@@ -877,9 +968,10 @@ scan show up in a tick, wants its own index keyed by target and this loop replac
 
 ### Charging attack time for something that is not a swing
 
-`DelayAttack(netId, ticks)` pushes an entity's next swing out by `ticks`, by ADDING to
-`TileCombatState.CooldownRemaining`. It is the public writer for the swing cadence, and the only one: everything
-else on that component is either read-only to a game or reached through the rules seam.
+`DelayAttack(netId, ticks)` adds attack wait. In default mode it adds to `TileCombatState.CooldownRemaining`.
+With [preparation enabled](#authoritative-attack-preparation-20141), it also revises an active or retained
+absolute deadline. Read the resulting boundary through `TryGetAttackReadyTick`, rather than repeating
+countdown arithmetic in the consumer. Other combat-state writes remain owned by the rules seam.
 
 ```csharp
 // OSRS: a bite costs attack time rather than interrupting the fight.
@@ -897,8 +989,9 @@ without the create, a delay would do nothing until the second fight and an Attac
 would swing straight through it. The created state leaves `AttackTicks` at zero, so `ITileCombatRules.AttackTicks`
 still answers the cadence at the first swing exactly as it does today.
 
-The delay runs down once per tick like any other cadence, so it is a wait rather than a freeze. False means no live
-cell owns the id, and a zero `ticks` writes nothing while still reporting whether the entity is there.
+The delay runs down once per tick. False means no live cell owns the id or an enabled preparation's identity
+or deadline cannot be revised. A zero `ticks` writes nothing and still reports whether the entity is there.
+An already-rolled swing cannot be delayed from an outcome callback. That call charges its following readiness.
 
 ### Cancelling an interaction without refusing it
 
@@ -1259,9 +1352,18 @@ picks the kind, the stream id and the decoder, exactly as it does for an ordinar
 
 A chunk is a game message PAYLOAD, not a frame, so the caller wraps each one with
 `TileProtocol.EncodeGameMessage` under its own kind and sends it `ReliableOrdered`.
-`TileFragmentedMessage.MaxChunkPayloadBytes` is `MaxGameMessageBytes` less the four byte envelope less the five
-byte header, so a chunk carries 1015 bytes and 255 of them carry about 258 KB. Every chunk but the last carries a
-FULL load, which is what lets a reader tell a truncated chunk from a legitimately short final one.
+`TileProtocol.MaxGameMessageBytes` caps that payload at 1024 bytes, excluding the four byte envelope and optional
+command-length pad. A full game payload therefore makes a 1028-byte frame. The fragment format keeps its own
+conservative `MaxUnpaddedFrameBytes = 1024` budget, including the envelope and five byte chunk header, so
+`TileFragmentedMessage.MaxChunkPayloadBytes` remains `1024 - 4 - 5 = 1015`. A full chunk uses 1020 game payload
+bytes and leaves four spare bytes below the payload cap. The optional pad only applies to a short chunk whose
+natural frame length equals the command frame length. The fragment budget is a format convention rather than a
+transport datagram limit.
+
+Every chunk but the last carries a FULL 1015-byte body, which is what lets a reader tell a truncated chunk from a
+legitimately short final one. Both peers must preserve that width: raising it to 1019 would make existing and
+updated readers reject each other's non-final chunks. Using those four spare bytes needs a separately designed
+protocol migration. The unchanged 255-chunk limit carries about 258 KB.
 
 `Fragment` THROWS above `MaxPayloadBytes`, on the same grounds as the game message cap throw: a payload that long
 is a local caller bug. Everything on the reading side is total and never throws, because those bytes came from a
@@ -1371,9 +1473,10 @@ unauthenticated peer an amplifier of two bytes in and about 7 KB out.
   line of sight will go. The seams this round builds (the entity target space, the cooldown, the hit pipeline, the
   combat frame) are what a ranged round plugs into: a projectile is a hit whose range test is a line rather than
   an adjacency.
-- **The roll is NEVER predicted client-side.** A client predicts its own approach and never its own damage, so a
-  hitsplat costs one round trip by design. That is what lets `ITileCombatRules` be a plain server-side seam with
-  no cross-head determinism requirement at all, only server-side reproducibility for tests and replays.
+- **The roll is NEVER predicted client-side.** A client predicts its own approach and never its own damage.
+  Hitsplats wait for an authoritative outcome. An opted-in preparation also delays the first eligible impact
+  by its scheduled lead. `ITileCombatRules` remains a server-side seam with no cross-head determinism requirement,
+  only server-side reproducibility for tests and replays.
 
 The four limits above from actor blocking onward are the R1 deferrals of an in-flight program, each with its reason
 in section 12 of `docs/design/TILE-COMBAT-ACTORS-DESIGN-2026-08-27.md`, tracked by

@@ -1041,10 +1041,20 @@ a framebuffer that is quietly not multisampled.
 
 **The sampler's four hardcodes are reproduced and its two degradations are dropped (G1).** No comparison
 function, minimum LOD 0, maximum LOD `uint.MaxValue`, transparent-black border colour: those four are hardcoded
-because the incumbent hardcoded them and the committed goldens were baked through them, and the seam exposes none
-of them so a caller cannot ask for anything else. The incumbent's anisotropic-to-trilinear fallback and its
+because the incumbent hardcoded them and the Vulkan and Metal backends hold the same four, and the seam exposes
+none of them so a caller cannot ask for anything else. The incumbent's anisotropic-to-trilinear fallback and its
 forcing of `MipLodBias` to 0 are NOT reproduced, because both read capabilities that are constants here, so both
 branches are unreachable and carrying them would mean shipping a fallback nothing can enter.
+
+**The driver reads the engine's own `D3D11SamplerDesc`, not Vortice's `SamplerDescription` (since 20.14.1,
+[#1192](https://github.com/APKiwiOrg/KhaozEngine/issues/1192)).** Vortice.Mathematics stores `Color4` as one
+`Vector128<float>`, so Vortice's struct is 64 bytes with the border colour at 32, against the header's 52 bytes
+with it at 28, and Vortice passes the managed struct's address with no marshalling. The driver read a maximum LOD
+of 0, so before 20.14.1 every sampler on this backend sampled mip level 0 only, on WARP and on hardware. The
+backend now calls `ID3D11Device::CreateSamplerState` through the vtable with a pointer to a 52-byte engine
+struct of plain fields. `D3D11SamplerDescLayoutTests` pins its offsets on every OS,
+`D3D11VorticeStructLayoutTests` pins the size of every Vortice struct still passed by address on Windows, and
+`SamplerExplicitLodGpuTests` reads level 1 at an explicit LOD on every backend.
 
 **And the device's shared sampler pair is WRAP on all three axes, which is a fifth hardcode (G1).** It comes
 from `D3D11SharedSamplers`, not from the engine's `GpuSamplerDescription.Point` / `.Linear` statics, because

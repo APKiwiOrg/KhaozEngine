@@ -204,24 +204,83 @@ public class TileFragmentedMessageTests
     }
 
     [Fact]
-    public void No_chunk_exceeds_the_game_message_cap()
+    public void A_game_message_can_use_the_full_payload_cap_beside_its_envelope()
     {
-        // The whole point of the five byte header sitting INSIDE the game message payload: a chunk plus its
-        // envelope is still a frame the wire carries, so EncodeGameMessage never throws on one.
-        Assert.Equal(TileProtocol.MaxGameMessageBytes - TileProtocol.GameMessageHeader - TileFragmentedMessage.HeaderBytes,
-            TileFragmentedMessage.MaxChunkPayloadBytes);
-        Assert.Equal(1015, TileFragmentedMessage.MaxChunkPayloadBytes);
-        Assert.Equal(255 * 1015, TileFragmentedMessage.MaxPayloadBytes);
+        // Treating 1024 as a frame cap would wrongly reject the last four payload bytes.
+        byte[] payload = Payload(1024);
+        foreach (byte tag in new[] { TileProtocol.ClientFrameGameMessage, TileProtocol.ServerFrameGameMessage })
+        {
+            byte[] frame = TileProtocol.EncodeGameMessage(tag, kind: 77, payload);
+            Assert.Equal(1028, frame.Length);
+            Assert.True(TileProtocol.TryDecodeGameMessage(frame, tag, out ushort kind, out ReadOnlySpan<byte> back));
+            Assert.Equal(77, kind);
+            Assert.True(back.SequenceEqual(payload));
+            Assert.Throws<ArgumentException>(() => TileProtocol.EncodeGameMessage(tag, 77, Payload(1025)));
 
-        foreach (int length in new[] { 0, 1, TileFragmentedMessage.MaxChunkPayloadBytes,
-                     TileFragmentedMessage.MaxChunkPayloadBytes + 1, 6900, 65000 })
+            var oversized = new byte[1029];
+            frame.CopyTo(oversized, 0);
+            Assert.False(TileProtocol.TryDecodeGameMessage(oversized, tag, out _, out _));
+        }
+    }
+
+    [Fact]
+    public void Legacy_sized_chunks_keep_their_wire_bytes_and_reassemble_after_envelope_decoding()
+    {
+        // Independent wire fixture: two full 1015-byte bodies and a 15-byte tail. Increasing the non-final
+        // width would either change the emitted bytes or reject these chunks from a legacy peer.
+        byte[] payload = Payload(2045);
+        byte[][] legacy = { new byte[1020], new byte[1020], new byte[20] };
+        byte[][] emitted = TileFragmentedMessage.Fragment(streamId: 7, sequence: 0x1234, payload);
+        Assert.Equal(3, emitted.Length);
+        int[] frameLengths = { 1024, 1024, 25 };
+        var reassembler = new TileFragmentReassembler(Slot);
+        for (int i = 0; i < legacy.Length; i++)
+        {
+            byte[] chunk = legacy[i];
+            new byte[] { 7, 0x34, 0x12, (byte)i, 3 }.CopyTo(chunk, 0);
+            payload.AsSpan(i * 1015, chunk.Length - 5).CopyTo(chunk.AsSpan(5));
+            Assert.Equal(chunk, emitted[i]);
+
+            byte[] frame = TileProtocol.EncodeGameMessage(TileProtocol.ServerFrameGameMessage, kind: 77, chunk);
+            Assert.Equal(frameLengths[i], frame.Length);
+            Assert.True(TileProtocol.TryDecodeGameMessage(frame, TileProtocol.ServerFrameGameMessage,
+                out ushort kind, out ReadOnlySpan<byte> back));
+            Assert.Equal(77, kind);
+            Assert.True(back.SequenceEqual(chunk));
+            Assert.True(TileFragmentedMessage.TryReadChunk(back, out byte streamId, out ushort sequence,
+                out int index, out int count, out ReadOnlySpan<byte> body));
+            Assert.Equal(7, streamId);
+            Assert.Equal(0x1234, sequence);
+            Assert.Equal(i, index);
+            Assert.Equal(3, count);
+            Assert.True(body.SequenceEqual(payload.AsSpan(i * 1015, chunk.Length - 5)));
+
+            bool complete = reassembler.TryComplete(back, out ReadOnlyMemory<byte> assembled, out string? reason);
+            Assert.Null(reason);
+            Assert.Equal(i == 2, complete);
+            if (complete) Assert.Equal(payload, assembled.ToArray());
+        }
+        Assert.Equal(0, reassembler.PartialAssemblyCount);
+    }
+
+    [Fact]
+    public void No_chunk_exceeds_the_conservative_unpadded_frame_budget()
+    {
+        // Expected counts are derived from the legacy 1015-byte width, independently of ChunkCount.
+        (int Length, int Count)[] cases =
+        {
+            (0, 1), (1, 1), (15, 1), (1015, 1), (1016, 2), (2030, 2), (2031, 3), (6900, 7),
+            (65000, 65), (258825, 255),
+        };
+
+        foreach ((int length, int count) in cases)
         {
             byte[][] chunks = TileFragmentedMessage.Fragment(streamId: 9, sequence: 3, Payload(length));
-            Assert.Equal(TileFragmentedMessage.ChunkCount(length), chunks.Length);
+            Assert.Equal(count, chunks.Length);
             foreach (byte[] chunk in chunks)
             {
                 byte[] frame = TileProtocol.EncodeGameMessage(TileProtocol.ServerFrameGameMessage, kind: 77, chunk);
-                Assert.True(frame.Length <= TileProtocol.MaxGameMessageBytes,
+                Assert.True(frame.Length <= 1024,
                     $"a chunk of a {length} byte payload made a {frame.Length} byte frame");
                 Assert.True(TileProtocol.TryDecodeGameMessage(frame, TileProtocol.ServerFrameGameMessage, out _,
                     out ReadOnlySpan<byte> back));
@@ -232,7 +291,7 @@ public class TileFragmentedMessageTests
         // Above the cap is a LOCAL caller bug, in the same class as the game message cap throw, so the fragmenter
         // throws rather than truncating a page nobody would notice was short.
         Assert.Throws<ArgumentException>(() =>
-            TileFragmentedMessage.Fragment(1, 0, new byte[TileFragmentedMessage.MaxPayloadBytes + 1]));
+            TileFragmentedMessage.Fragment(1, 0, new byte[258826]));
     }
 
     [Fact]

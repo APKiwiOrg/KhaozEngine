@@ -40,8 +40,8 @@ public static partial class ContainerLoad
     /// filtering it first and duplicating the naming rule.</param>
     /// <param name="snapshot">The ACTIVE content version. Nothing is read from a store, a file or an ambient
     /// static inside this call.</param>
-    /// <param name="context">The registries, the vetted rule set, the door predicate and the two telemetry
-    /// sinks.</param>
+    /// <param name="context">The registries, the vetted rule set, the door predicate, the safe telemetry
+    /// identifier and the two telemetry sinks.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     public static ContainerLoadResult Load(
         IReadOnlyList<JournalProjectionSection> sections,
@@ -67,9 +67,9 @@ public static partial class ContainerLoad
         }
 
         // ONE line per container and one counter increment per record, spec 12.6 over contracts 10.2. The
-        // load's own findings ride in beside the sweeps because they are records the sweeps never saw.
+        // load's own findings ride beside the sweeps for page failures, rescues and remap facts.
         InstanceValidationTelemetry.Report(
-            load.Reports, load.Reasons, context.StreamKey, snapshot.VersionNumber, context.Logger, context.Counter);
+            load.Reports, load.Reasons, context.TelemetryKey, snapshot.VersionNumber, context.Logger, context.Counter);
         return new ContainerLoadResult(context.Container, load.Pages, load.Reports, load.Findings);
     }
 
@@ -105,8 +105,7 @@ public static partial class ContainerLoad
             return;
         }
 
-        ItemContainerPage? page = Seat(load, section, pageIndex, header, count, bytes);
-        if (page is null) return;
+        ItemContainerPage page = Seat(load, section, pageIndex, header, count, bytes);
 
         // Steps 2 and 3. Every rule whose IntroducedIn is strictly greater than the page stamp, in sequence
         // order, in one pass. A rule that changed something dirties the page and moves its stamp, and nothing
@@ -124,7 +123,7 @@ public static partial class ContainerLoad
         // The unwrap step spec 5.5 does not have and spec 12.3 promises (#929), then step 4's sweep and the
         // wrappers it earns.
         Rescue(load, section, page);
-        Sweep(load, section, page);
+        Sweep(load, page);
         load.Pages.Add(page);
     }
 
@@ -138,11 +137,11 @@ public static partial class ContainerLoad
     /// the page under its own finding, because there is nothing there to preserve and seating it live would
     /// clear the flag, a payload that is not canonical is wrapped under the reason the decoder gave, a
     /// quarantined payload that is not a well formed wrapper is wrapped verbatim under
-    /// <c>field-malformed</c>, and a payload on a slot with no instance id fails the PAGE, because a wrapper
-    /// is itself a payload and spec 4.7 invariant 3 refuses that shape whatever the flag says.
+    /// <c>field-malformed</c>, and a live payload on a slot with no instance id is wrapped under
+    /// <c>instance-id-missing</c>. Verified wrappers preserve entries with or without instance identity.
     /// </para>
     /// </summary>
-    static ItemContainerPage? Seat(
+    static ItemContainerPage Seat(
         Loading load,
         JournalProjectionSection section,
         int pageIndex,
@@ -183,17 +182,6 @@ public static partial class ContainerLoad
                 continue;
             }
 
-            if (entry.InstanceId == 0)
-            {
-                load.PageFailed(
-                    section,
-                    pageIndex,
-                    InstanceQuarantineReason.InstanceIdMissing,
-                    entry.Slot,
-                    header.ContentVersion);
-                return null;
-            }
-
             if (entry.Quarantined)
             {
                 byte[] wrapper = QuarantineWrapper.Verify(payload)
@@ -204,6 +192,7 @@ public static partial class ContainerLoad
             }
 
             string? refusal = ItemInstancePayload.Validate(load.Context.Properties, payload);
+            if (refusal is null && entry.InstanceId == 0) refusal = InstanceQuarantineReason.InstanceIdMissing;
             page.Seat(
                 entry.Slot,
                 refusal is null
@@ -279,11 +268,12 @@ public static partial class ContainerLoad
             }
         }
 
-        /// <summary>Records one finding and, when it names a record no sweep will, its reason.</summary>
+        /// <summary>Records one load finding and, when no report counts it, its reason.</summary>
         public void Add(ContainerLoadFinding finding)
         {
             Findings.Add(finding);
             bool counted = finding.Kind != ContainerLoadFindingKind.EntryRescued
+                && finding.Kind != ContainerLoadFindingKind.EntryQuarantined
                 && finding.Kind != ContainerLoadFindingKind.EntryUnwrappable
                 && finding.Reason is not null;
             if (counted) Reasons.Add(finding.Reason!);

@@ -242,7 +242,8 @@ internal static class ContentValidationFixtures
         int table,
         int item = 0,
         int nestedTable = 0,
-        IReadOnlyList<int>? requiredTags = null)
+        IReadOnlyList<int>? requiredTags = null,
+        long weight = 1)
         => new(
             LootEntryType,
             id,
@@ -253,7 +254,7 @@ internal static class ContentValidationFixtures
                 ContentFieldValue.OfNumber(ContentFieldKind.KeyReference, table),
                 Reference(item),
                 Reference(nestedTable),
-                ContentFieldValue.OfNumber(ContentFieldKind.Int, 1),
+                ContentFieldValue.OfNumber(ContentFieldKind.Int, weight),
                 ContentFieldValue.OfNumber(ContentFieldKind.Int, 10000),
                 ContentFieldValue.OfNumber(ContentFieldKind.Bool, 0),
                 ContentFieldValue.OfNumber(ContentFieldKind.Int, 1),

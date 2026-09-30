@@ -112,14 +112,14 @@ namespace KhaozEngine.Tests.Terrain
         }
 
         [Fact]
-        public void A_point_no_band_covers_is_all_of_the_SampleBiome_fallback()
+        public void A_point_no_band_covers_blends_the_adjacent_biomes()
         {
-            // A gap wider than the blend window leaves every band weight at zero. SampleBiome then names the first
-            // band, and the shares follow it rather than dividing by nothing.
+            // A gap wider than the blend windows crossfades between the adjacent bands instead of dividing by zero.
             TerrainField field = Bands(2f, Band(-100f, -50f, BiomeId.Forest), Band(50f, 100f, BiomeId.Desert));
             BiomeWeights w = field.SampleBiomeWeights(0f, 0f);
             Assert.Equal(field.SampleBiome(0f, 0f), w.Dominant);
-            Assert.Equal(1f, w[w.Dominant]);
+            Assert.Equal(0.5f, w[BiomeId.Forest]);
+            Assert.Equal(0.5f, w[BiomeId.Desert]);
             Assert.Equal(1f, Sum(w));
         }
     }

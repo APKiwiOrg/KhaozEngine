@@ -57,6 +57,14 @@ public sealed class SqlServerAccountStoreConstructionTests
     }
 
     [Fact]
+    public void TheClock_IsTheSystemClockByDefault_AndANullOneIsRefused()
+    {
+        Assert.Same(TimeProvider.System, new SqlServerAccountStoreOptions().TimeProvider);
+        Assert.Throws<ArgumentNullException>(() => new SqlServerAccountStore(Unreachable, false,
+            new SqlServerAccountStoreOptions { TimeProvider = null! }));
+    }
+
+    [Fact]
     public void ABlankConnectionString_OrAnUndefinedMode_IsRefused()
     {
         Assert.ThrowsAny<ArgumentException>(() => new SqlServerAccountStore(" ", false));

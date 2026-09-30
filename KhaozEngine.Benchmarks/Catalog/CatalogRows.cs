@@ -36,6 +36,7 @@ public struct ItemRowData
     public int DurabilityMax;
     public int SocketMax;
     public int EquipProfile;
+    public int Category;
 }
 
 public struct StatRowData

@@ -24,64 +24,6 @@ namespace KhaozEngine.Tests.Render3D
     /// </summary>
     public class FollowCamera3DEyeCacheTests
     {
-        /// <summary>
-        /// An <see cref="IPhysicsWorld"/> that counts sweeps and reports a wall the test can move, so a row can
-        /// slide an occluder in between frames without building geometry. Everything the camera never calls throws,
-        /// so a future camera change that starts querying something else shows up here rather than being silently
-        /// absorbed.
-        /// </summary>
-        sealed class CountingPhysicsWorld : IPhysicsWorld
-        {
-            /// <summary>Sweeps issued against this world, counted on the world's own side so a row can prove the
-            /// saving without trusting the camera's own counter.</summary>
-            public int SweepCount;
-
-            /// <summary>Distance from the sweep start to the wall's surface, or null for a clear boom. Assigning it
-            /// is this fake's "a wall slid in", the move no camera field can see.</summary>
-            public float? WallDistance;
-
-            /// <summary>The probe stops its own radius short of the surface, which is what a real sphere sweep
-            /// reports and what makes <c>OcclusionRadius</c> observable in the returned eye.</summary>
-            public bool SweepCapsule(CapsuleShape capsule, Pose pose, Vector3 direction, float maxDistance,
-                out SweepHit hit, QueryFilter filter = default)
-            {
-                SweepCount++;
-                if (WallDistance is { } wall)
-                {
-                    float d = wall - capsule.Radius;
-                    if (d >= 0f && d <= maxDistance)
-                    {
-                        hit = new SweepHit(d, pose.Position + direction * d, -direction, null);
-                        return true;
-                    }
-                }
-                hit = default;
-                return false;
-            }
-
-            public StaticHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null)
-                => throw new NotSupportedException();
-            public void RemoveStatic(StaticHandle handle) => throw new NotSupportedException();
-            public DynamicBodyHandle AddDynamic(PhysicsShape shape, Pose pose, DynamicBodyDescription body,
-                PhysicsMaterial? material = null) => throw new NotSupportedException();
-            public void RemoveDynamic(DynamicBodyHandle handle) => throw new NotSupportedException();
-            public Pose GetDynamicPose(DynamicBodyHandle handle) => throw new NotSupportedException();
-            public void GetDynamicVelocity(DynamicBodyHandle handle, out Vector3 linear, out Vector3 angular)
-                => throw new NotSupportedException();
-            public void SetDynamicVelocity(DynamicBodyHandle handle, Vector3 linear, Vector3 angular)
-                => throw new NotSupportedException();
-            public bool IsAwake(DynamicBodyHandle handle) => throw new NotSupportedException();
-            public ConstraintHandle AddConstraint(in ConstraintDescription description) => throw new NotSupportedException();
-            public void RemoveConstraint(ConstraintHandle handle) => throw new NotSupportedException();
-            public void SetConstraintTarget(ConstraintHandle handle, float target) => throw new NotSupportedException();
-            public void Step(float dt) => throw new NotSupportedException();
-            public bool Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit,
-                QueryFilter filter = default) => throw new NotSupportedException();
-            public bool ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv)
-                => throw new NotSupportedException();
-            public void Dispose() { }
-        }
-
         /// <summary>A camera looking straight down +Z at the origin from 10 m, the framing every existing
         /// FollowCamera3D occlusion row uses, so the geometry stays comparable across the two files.</summary>
         static FollowCamera3D Camera(IPhysicsWorld? occlusion)
@@ -134,6 +76,61 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Boom_probe_count_is_one_per_frame_across_repeated_reads()
+        {
+            var probe = new FixedReachProbe { ReachAt = 6f };
+            FollowCamera3D cam = Camera(null);
+            cam.BoomProbe = probe;
+            cam.BeginFrame();
+
+            int reads = 0;
+            for (int i = 0; i < 4; i++) reads += ReadEveryEyePath(cam);
+            _ = cam.Eye;
+            reads++;
+
+            Assert.Equal(33, reads);
+            Assert.Equal(1, probe.Calls);                   // counted by the probe, not by the camera
+            Assert.Equal(1L, cam.BoomProbeCount);           // and the camera agrees
+            Assert.Equal(0L, cam.OcclusionSweepCount);      // no world, so no physics sweep
+
+            // A physics sweep alone is not a probe call.
+            using var world = new CountingPhysicsWorld { WallDistance = 6.25f };
+            FollowCamera3D bare = Camera(world);
+            bare.BeginFrame();
+            int bareReads = 0;
+            for (int i = 0; i < 4; i++) bareReads += ReadEveryEyePath(bare);
+            _ = bare.Eye;
+            bareReads++;
+
+            Assert.Equal(33, bareReads);
+            Assert.Equal(0L, bare.BoomProbeCount);
+            Assert.Equal(1L, bare.OcclusionSweepCount);
+        }
+
+        [Fact]
+        public void Recovery_costs_one_probe_call_per_frame()
+        {
+            // The held shortfall is raised inside the computation. A cache key taken before it would miss on the
+            // very next read and pay a second probe call.
+            var probe = new FixedReachProbe { ReachAt = 6f };
+            FollowCamera3D cam = Camera(null);
+            cam.BoomProbe = probe;
+            cam.BoomRecoveryRate = 4f;
+            cam.BeginFrame();
+
+            int reads = 0;
+            for (int i = 0; i < 4; i++) reads += ReadEveryEyePath(cam);
+            _ = cam.Eye;
+            reads++;
+
+            Assert.Equal(33, reads);
+            Assert.Equal(6f - cam.OcclusionSkin, Vector3.Distance(cam.Eye, cam.Pivot), 4);   // it did pull in
+            Assert.Equal(1, probe.Calls);
+            Assert.Equal(1L, cam.BoomProbeCount);
+            Assert.Equal(1L, cam.EyeComputeCount);
+        }
+
+        [Fact]
         public void A_setter_between_reads_costs_one_more_sweep()
         {
             using var world = new CountingPhysicsWorld { WallDistance = 6.25f };
@@ -169,11 +166,16 @@ namespace KhaozEngine.Tests.Render3D
                 ("Pitch", c => c.Pitch = 0.5f),
                 ("Distance", c => c.Distance = 4f),
                 ("HeightOffset", c => c.HeightOffset = 2f),
+                // A pivot lift is purely vertical and the ground clamp below holds the eye at Y 3.5, so the
+                // step must clear 3.5 to move the eye. A 0.5 lift is swallowed by the clamp.
+                ("PivotHeight", c => c.PivotHeight += 5f),
                 ("OcclusionRadius", c => c.OcclusionRadius = 0.75f),
                 ("OcclusionSkin", c => c.OcclusionSkin = 1.5f),
                 ("MinOcclusionDistance", c => c.MinOcclusionDistance = 9f),
                 ("GroundHeight", c => c.GroundHeight = (_, _) => 50f),
                 ("GroundClearance", c => c.GroundClearance = 4f),
+                // Shorter than the wall's 6.0 reach, so the boom pulls in along Z and the ground clamp cannot hide it.
+                ("BoomProbe", c => c.BoomProbe = new FixedReachProbe { ReachAt = 3f }),
             };
 
             foreach ((string name, Action<FollowCamera3D> apply) in mutations)

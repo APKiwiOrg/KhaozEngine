@@ -182,6 +182,58 @@ namespace KhaozEngine.Tests.MapEditor
         static int TotalProps(Dictionary<ChunkCoord, PropPlacement[][]> snapshot) =>
             snapshot.Values.Sum(layers => layers.Sum(l => l.Length));
 
+        public enum AllLoadedEdit
+        {
+            ScatterLayer,
+            CompanionLayer,
+            OverrideOrder,
+        }
+
+        [Theory]
+        [InlineData(AllLoadedEdit.ScatterLayer)]
+        [InlineData(AllLoadedEdit.CompanionLayer)]
+        [InlineData(AllLoadedEdit.OverrideOrder)]
+        public void ShapePreservingAllLoadedEdits_RefreshEveryChunkWithoutRemeshing(AllLoadedEdit edit)
+        {
+            MapDocument doc = Doc();
+            doc.ScatterOverrides.Add(new MapScatterOverrideDoc
+            {
+                Shape = new DiscShapeDoc { CenterX = -20f, CenterZ = -40f, Radius = 10f },
+                DensityMultiplier = 1.8f,
+            });
+            var world = new DeviceFreeWorld(doc);
+            int terrainBuilds = world.Loaded.TerrainBuilds;
+            world.Loaded.Refreshed.Clear();
+
+            EditorCommand command = edit switch
+            {
+                AllLoadedEdit.ScatterLayer => new EditScatterLayerCommand(
+                    "trees", Layer("trees", 4f, 6f, 0f, "pine_a", "oak_a"), doc.ScatterLayers[0]),
+                AllLoadedEdit.CompanionLayer => new EditCompanionLayerCommand(
+                    "understory",
+                    new MapCompanionLayer
+                    {
+                        Name = "understory", HostLayer = "trees", CountMin = 0, CountMax = 0,
+                        Kinds = { new MapPropKind { Id = "fern" } },
+                    },
+                    doc.CompanionLayers[0]),
+                _ => new ReorderScatterOverrideCommand(0, 1),
+            };
+            world.Editor.Execute(command);
+
+            Assert.True(world.Editor.PendingAllLoadedInvalidation);
+            Assert.True(world.Editor.PendingLayerConfigRefresh);
+            Assert.False(world.Editor.PendingFieldChange);
+            Assert.True(ViewportWorld.RefreshLoadedLayerProps(
+                world.Sink,
+                world.Streamer,
+                world.Viewport.BuildSinkLayers(doc)));
+
+            Assert.Equal(terrainBuilds, world.Loaded.TerrainBuilds);
+            Assert.Equal(world.Loaded.Loads.Count, world.Loaded.Refreshed.Distinct().Count());
+            world.AssertMatchesFullRebuild();
+        }
+
         static EditorToolController Controller(DeviceFreeWorld world) => new(world.Editor)
         {
             Field = MapRuntime.BuildField(world.Editor.Doc, world.Editor.Registry),
@@ -363,6 +415,7 @@ namespace KhaozEngine.Tests.MapEditor
         {
             var world = new DeviceFreeWorld(Doc());
             Dictionary<ChunkCoord, PropPlacement[][]> before = world.Snapshot();
+            int terrainBuilds = world.Loaded.TerrainBuilds;
 
             // Re-host the companion onto the second scatter layer: a chunk the refresh does not reach would keep
             // companions derived from the old host, so the props-only path must refuse the list outright.
@@ -370,7 +423,9 @@ namespace KhaozEngine.Tests.MapEditor
             IReadOnlyList<PropLayer> rehosted = world.Viewport.BuildSinkLayers(world.Editor.Doc);
             Assert.False(ViewportWorld.RefreshLayerProps(world.Sink, world.Streamer, rehosted,
                 new RectArea(40f, 20f, 70f, 40f)));
+            Assert.False(ViewportWorld.RefreshLoadedLayerProps(world.Sink, world.Streamer, rehosted));
             Assert.Empty(world.Loaded.Refreshed);
+            Assert.Equal(terrainBuilds, world.Loaded.TerrainBuilds);
             world.Editor.Doc.CompanionLayers[0].HostLayer = "trees";
             world.AssertMatchesFullRebuild();   // the sink still serves the original list
             AssertSame(before, world);
@@ -392,8 +447,10 @@ namespace KhaozEngine.Tests.MapEditor
         {
             var world = new ViewportWorld(null!, Array.Empty<string>());
             Assert.False(world.RefreshLayerProps(new MapDocument(), new RectArea(0f, 0f, 1f, 1f)));
+            Assert.False(world.RefreshLoadedLayerProps(new MapDocument()));
             world.Dispose();
             Assert.Throws<ObjectDisposedException>(() => world.RefreshLayerProps(new MapDocument(), new RectArea(0f, 0f, 1f, 1f)));
+            Assert.Throws<ObjectDisposedException>(() => world.RefreshLoadedLayerProps(new MapDocument()));
         }
     }
 }

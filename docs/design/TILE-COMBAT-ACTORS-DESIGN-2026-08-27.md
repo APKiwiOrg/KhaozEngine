@@ -1,6 +1,11 @@
 # Tile combat and server-owned actors: melee on the tick, one basic monster (2026-08-27)
 
-Status: DESIGN, not started. Sub-project 3 of the Grimhollow program, following sub-project 1
+Status: historical design for the shipped default combat and actor path. Current usage is documented in
+[the consumer guide](../USING-KHAOZENGINE.md#combat). Opt-in preparation in staged 20.14.1 adds a lead
+before impact and separate client callbacks, documented in the
+[preparation contract](../USING-KHAOZENGINE.md#authoritative-attack-preparation-20141).
+
+Sub-project 3 of the Grimhollow program, following sub-project 1
 ([TILE-WORLD-DESIGN-2026-08-15.md](TILE-WORLD-DESIGN-2026-08-15.md),
 [#629](https://github.com/APKiwiOrg/KhaozEngine/issues/629)) and sub-project 2
 ([TILE-WORLD-NETCODE-DESIGN-2026-08-22.md](TILE-WORLD-NETCODE-DESIGN-2026-08-22.md),

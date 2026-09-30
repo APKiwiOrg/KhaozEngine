@@ -70,6 +70,8 @@ public sealed class JournalCommit
 
     public ReadOnlyMemory<byte> ResultData => JournalValidation.CopyForRead(resultData);
     public ReadOnlyMemory<byte> ResultChecksum => JournalValidation.CopyForRead(resultChecksum);
+    public ReadOnlySpan<byte> ResultDataSpan => resultData;
+    public ReadOnlySpan<byte> ResultChecksumSpan => resultChecksum;
     public int OwnedByteCount => CalculateOwnedByteCount();
 
     public void Validate(JournalLimits? limits = null)

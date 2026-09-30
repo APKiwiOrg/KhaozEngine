@@ -29,10 +29,10 @@ namespace KhaozEngine.ItemInstances;
 /// key INTO the row check 7 already resolved.
 /// </para>
 /// <para>
-/// <b>An entry whose quarantined flag is set carries a WRAPPER rather than a payload.</b> Nothing here
-/// sniffs for the <c>KECQ</c> magic (<c>K</c> is 0x4B and a legal kind varint), so a caller re-validating
-/// one unwraps it through <see cref="QuarantineWrapper.TryUnwrap"/> first and hands the ORIGINAL bytes in.
-/// That is how the first load after a missing remap rule lands restores the item exactly.
+/// <b>An entry whose quarantined flag is set carries a WRAPPER rather than a payload.</b> The whole-container
+/// door reports it from the stored reason and stamp without sweeping the wrapper as payload bytes. The
+/// standalone door still takes the ORIGINAL bytes after a caller unwraps them, which is how the first load
+/// after a missing remap rule lands restores the item exactly.
 /// </para>
 /// </summary>
 public static partial class InstanceValidator
@@ -43,7 +43,7 @@ public static partial class InstanceValidator
     /// <param name="page">The page buffer the entries were decoded from, which is where their payload
     /// windows point.</param>
     /// <param name="header">The decoded header, whose <see cref="PageHeader.ContentVersion"/> is the stamp
-    /// every finding carries.</param>
+    /// every live entry finding carries. A stored quarantine carries its wrapper's stamp.</param>
     /// <param name="entries">The decoded entries, as many as the decode wrote.</param>
     /// <param name="properties">The property kinds this build knows. An unregistered kind is kept verbatim
     /// and never inspected, which is contracts 9.4.</param>
@@ -73,7 +73,14 @@ public static partial class InstanceValidator
         for (int index = 0; index < entries.Length; index++)
         {
             PageEntry entry = entries[index];
-            _ = Sweep(Window(page, entry), entry, header.ContentVersion, properties, content, findings, out _);
+            ReadOnlySpan<byte> payload = Window(page, entry);
+            if (entry.Quarantined)
+            {
+                ReportStoredQuarantine(payload, entry, header.ContentVersion, findings);
+                continue;
+            }
+
+            _ = Sweep(payload, entry, header.ContentVersion, properties, content, findings, out _);
         }
 
         DuplicateInstanceIds(entries, header.ContentVersion, findings);
@@ -301,6 +308,39 @@ public static partial class InstanceValidator
         InstancePayloadReason.PayloadTooLong => 5,
         _ => 3,
     };
+
+    static void ReportStoredQuarantine(
+        ReadOnlySpan<byte> wrapper,
+        in PageEntry entry,
+        int pageStamp,
+        List<InstanceValidationFinding> findings)
+    {
+        if (!QuarantineWrapper.TryUnwrap(wrapper, out _, out string? reason, out int stampedVersion))
+        {
+            reason = InstancePayloadReason.FieldMalformed;
+            stampedVersion = pageStamp;
+        }
+
+        // A wrapper stores the durable reason rather than the check number. Where two checks share a token,
+        // report the first row that owns it, matching CheckForToken's treatment of varint-overflow.
+        int check = reason switch
+        {
+            InstanceQuarantineReason.UnknownDefinition => 6,
+            InstanceQuarantineReason.UnknownContentReference => 7,
+            InstanceQuarantineReason.InstanceIdMissing => 9,
+            InstanceQuarantineReason.InstanceIdDuplicate => 10,
+            InstanceQuarantineReason.StackNotInstanceable => 11,
+            _ => CheckForToken(reason),
+        };
+        findings.Add(new InstanceValidationFinding(
+            entry.Slot,
+            entry.DefinitionId,
+            entry.InstanceId,
+            stampedVersion,
+            check,
+            reason,
+            InstanceValidationOutcome.Quarantined));
+    }
 
     static InstanceValidationOutcome Quarantine(
         in PageEntry entry,

@@ -119,6 +119,50 @@ extra key handling in the outer code that owns the `Push`/`Pop` call, not in a s
 See `KhaozEngine.Showcase/RoomMapEditor.cs` for a worked example (`RoomMapEditor.Create` plus one
 `Rooms.Add(("Map editor", () => RoomMapEditor.Create(...)))` line).
 
+## Generate dungeons
+
+Supply a `KhaozEngine.Dungeon.DungeonKitMap` whose ids exist in the game's manifests. The toolbar shows a
+**Dungeon** button only when `MapEditorOptions.DungeonKit` is set. `DungeonPreset` is optional and supplies
+the settings the focused panel does not edit. Set these before the `sceneManager.Push` call in Quickstart:
+
+```csharp
+var kit = new DungeonKitMap();
+kit.Map(DungeonPiece.Floor, "dungeon_floor");
+kit.Map(DungeonPiece.Wall, "dungeon_wall");
+kit.Map(DungeonPiece.DoorFrame, "dungeon_doorframe");
+kit.Map(DungeonPiece.StairUp, "dungeon_stair");
+kit.Map(DungeonPiece.StairDown, "dungeon_landing");
+kit.Map(DungeonPiece.Ceiling, "dungeon_ceiling");
+options.DungeonKit = kit;
+options.DungeonPreset = new DungeonConfig { RoomCountTarget = 16, CeilingMode = DungeonCeilingMode.Roofed };
+```
+
+The modal panel edits the unsigned 64-bit seed, plot origin X/Z, base Y, yaw in degrees, plot width and
+depth, room count, floor count, corridor width range, and ceiling mode. It starts with a copy of the game
+preset and centres the plot on the viewport's terrain focus when possible. Generate runs one
+`GenerateDungeonCommand` through `EditorDocument.Execute`, so the placements, spawns, regions, flatten
+feature, and bounds expansion undo and redo together. Cancel changes nothing. Invalid settings, missing
+kit ids, duplicate bake ids, and a plot crossing a partially loaded document window leave the map and undo
+stack unchanged and show an error. On a windowed tiled map, open the needed tiles or load the whole map
+before generating beyond the loaded window.
+
+The same command can be used without the panel when a tool owns an `EditorDocument`:
+
+```csharp
+var editor = new EditorDocument(MapDocumentFile.Load(options.DocumentPath));
+editor.Execute(new GenerateDungeonCommand(new DungeonConfig(), 42UL, kit,
+    new DungeonPlotTransform(100f, 200f, 0f, 0f)));
+editor.Undo();
+editor.Redo();
+```
+
+Pass `loadedWindow` to the command when `editor.Doc` is a partial tiled document. The command refuses a
+partial document without that constraint. Redo reapplies the first generated bake, even if the caller
+later changes the config or kit map.
+
+The Showcase Map editor room loads its committed dungeon manifest and supplies `DungeonKitMap.Greybox()`,
+so its Dungeon button is a ready-made windowed validation path.
+
 ## Keys
 
 The viewport uses a pivot-based editor camera. Middle drag orbits around the terrain point captured when the
@@ -848,9 +892,13 @@ placement outside the gameplay ring (four 60 m chunks around the camera at every
 not drawn, and it appears once its chunk streams in. The viewport no longer submits a whole-document
 `DrawProps` list every frame.
 
-`DocumentChanged` marks the layer dirty. The next `ViewportWorld.Draw` diffs the placements against the set the
-layer last published, keyed by stable id, and refreshes only the loaded chunks whose placements changed (one
-chunk for a rotate, scale, add or delete, two for a move across a chunk edge). The refresh is props-only
+Each built-in command declares whether it can change authored placements. Commands implemented by another assembly
+take the conservative dirty path. Execute, undo and redo of a placement-changing command mark the layer dirty.
+Other built-in document edits, including exclusions and terrain fields, skip the placement diff. A field rebuild
+still invalidates the layer against the replacement field so ground-snapped placements move to the new height. The
+next `ViewportWorld.Draw` diffs dirty placements against the set the layer last published, keyed by
+stable id, and refreshes only the loaded chunks whose placements changed (one chunk for a rotate, scale, add or
+delete, two for a move across a chunk edge). The refresh is props-only
 (`TerrainStreamer.RefreshPlacements`): the sink re-queries the placement layer for that chunk and republishes
 its prop instances, and the chunk's terrain mesh is never rebuilt. Execute, undo and redo all take this path,
 so an edit shows on the next frame. An idle frame costs a few compares and allocates nothing. The selected
@@ -892,26 +940,27 @@ Procedural setup editing below.
 `CheckWorldRebuild` -> `UpdateStreaming`. `CheckWorldRebuild` dispatches a pending edit to one of four paths,
 cheapest first:
 
-- **Props only** (`ViewportWorld.RefreshLayerProps`), for a bounded batch that changed captured scatter configs
-  and left the terrain field alone (`EditorDocument.PendingFieldChange` false), which is every exclusion and
-  scatter-override edit. The viewport hands the sink the document's rebuilt layer list
-  (`Scene3DChunkSink.UpdateLayers`) and re-serves every prop layer of the loaded chunks the region overlaps
-  (`TerrainStreamer.RefreshProps`). The field is not rebuilt, no terrain is re-meshed and no authored placement
-  is re-snapped, so a gizmo drag on an exclusion or override costs the scatter work of the chunks it covers every
-  frame.
+- **Props only** (`ViewportWorld.RefreshLayerProps`), for a batch that changed captured scatter configs and left
+  the terrain field alone (`EditorDocument.PendingFieldChange` false). Exclusion and scatter-override shape edits
+  re-serve the loaded chunks their bounded region overlaps. Scatter-layer and companion-layer value edits plus an
+  override reorder re-serve the whole loaded set. Both forms hand the sink the document's rebuilt layer list,
+  require `Scene3DChunkSink.KeepsLayerShape`, and call `TerrainStreamer.RefreshProps`. The field is not rebuilt, no
+  terrain is re-meshed and no authored placement is re-snapped.
 - **Bounded re-mesh** (`ViewportWorld.PartialRebuild`), for any other bounded batch: features, sculpt strokes,
   and a batch that mixes one of those with an exclusion or override edit. It swaps the field, refreshes the
   captured configs when the batch needs it, and re-meshes the chunks the region overlaps.
-- **All loaded** (`ViewportWorld.RefreshLoaded`), for terrain scalars, biome bands and same-topology scatter or
-  companion layer edits. It refreshes the field and captured configs, then re-meshes every loaded chunk.
+- **All loaded re-mesh** (`ViewportWorld.RefreshLoaded`), for terrain scalars, biome bands and a field-neutral
+  layer edit whose replacement does not keep the sink's layer shape. It refreshes the field and captured configs,
+  then re-meshes every loaded chunk.
 - **Full** (`ViewportWorld.Rebuild`), for layer-count and other topology changes.
 
 A bounded path refreshes only some chunks, so every chunk outside its region keeps the placement arrays, prop
-clusters and HLOD handles it has, indexed by layer. The two bounded paths therefore take a new layer list only
-when it differs from the sink's current one in nothing but each layer's scatter and companion configs
+clusters and HLOD handles it has, indexed by layer. The bounded props path and whole-loaded props path therefore
+take a new layer list only when it differs from the sink's current one in nothing but its generation configs
 (`Scene3DChunkSink.KeepsLayerShape`): the same count, kinds, companion hosts, HLOD, meshes, radii and identity.
-They decline anything else, touching nothing: a declined props-only refresh falls back to the bounded
-re-mesh, and a declined bounded re-mesh falls back to the full rebuild. The commands
+They decline anything else, touching nothing: a declined bounded props refresh falls back to the bounded
+re-mesh, a declined whole-loaded props refresh falls back to the all-loaded re-mesh, and a declined bounded
+re-mesh falls back to the full rebuild. The commands
 make the other half of the guarantee: an exclusion or override command pads its shape bounds with the document's
 largest scatter jitter, because a candidate belongs to the chunk of its un-jittered cell centre while the shape
 test reads its jittered position. After every drag frame and after the drag ends, every loaded chunk therefore

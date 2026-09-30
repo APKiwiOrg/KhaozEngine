@@ -117,7 +117,7 @@ namespace KhaozEngine.Gui
 
             if (font.Measure(text).X * preferredScale > wrapWidth &&
                 _drawCenterLineCount + 1 < MaximumCenterLines &&
-                TrySplitLabel(font, text, out string first, out string second))
+                RadialMenuTextLayout.TrySplitLabel(font, text, out string first, out string second))
             {
                 AppendCenterLine(font, first, preferredScale, gapBefore, color);
                 AppendCenterLine(font, second, preferredScale, 1f, color);

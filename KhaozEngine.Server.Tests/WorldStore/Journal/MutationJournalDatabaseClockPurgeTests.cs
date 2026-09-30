@@ -416,7 +416,7 @@ public sealed class MutationJournalDatabaseClockPurgeTests
         JournalOperationPurgeResult result = await store.PurgeOperationsByAgeAsync(
             new JournalOperationAgePurge(TimeSpan.Zero, 10));
 
-        Assert.Equal(2, database.ScalarLong(path, "SELECT schema_version FROM journal_metadata WHERE metadata_key = 1;"));
+        Assert.Equal(3, database.ScalarLong(path, "SELECT schema_version FROM journal_metadata WHERE metadata_key = 1;"));
         Assert.Equal(1, database.ScalarLong(path, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'trg_journal_operation_delete_guard';"));
         Assert.Equal(0, result.DeletedCount);
         Assert.Equal(2, database.ScalarLong(path, "SELECT COUNT(*) FROM journal_operation;"));
@@ -446,6 +446,11 @@ public sealed class MutationJournalDatabaseClockPurgeTests
         Assert.Equal(0, database.ScalarLong(path,
             "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('ix_journal_operation_retention', " +
             "'trg_journal_operation_retention', 'trg_journal_operation_delete_guard');"));
+        Assert.Equal(0, database.ScalarLong(path,
+            "SELECT COUNT(*) FROM (SELECT name FROM pragma_table_info('journal_metadata') " +
+            "UNION ALL SELECT name FROM pragma_table_info('journal_stream') " +
+            "UNION ALL SELECT name FROM pragma_table_info('journal_operation_stream') " +
+            "UNION ALL SELECT name FROM pragma_table_info('journal_projection')) WHERE name = 'created_at_utc';"));
     }
 
     [Fact]
@@ -510,7 +515,7 @@ public sealed class MutationJournalDatabaseClockPurgeTests
     }
 
     [SqlServerFact]
-    public async Task Sql_server_version_one_test_setup_restores_version_two_after_body_failure()
+    public async Task Sql_server_version_one_test_setup_restores_version_three_after_body_failure()
     {
         using var scope = new Task6SqlServerScope();
         SqlServerJournalPrefixStore store = scope.Open(retryHorizon: RetryHorizon);
@@ -525,7 +530,7 @@ public sealed class MutationJournalDatabaseClockPurgeTests
         {
             SchemaMode = SqlServerJournalSchemaMode.ValidateOnly,
         });
-        Assert.Equal(2, await ReadSqlServerSchemaVersionAsync(scope.ConnectionString));
+        Assert.Equal(3, await ReadSqlServerSchemaVersionAsync(scope.ConnectionString));
         Assert.True(await SqlServerRetentionColumnExistsAsync(scope.ConnectionString));
     }
 
@@ -653,6 +658,10 @@ public sealed class MutationJournalDatabaseClockPurgeTests
             DROP INDEX ix_journal_operation_retention ON dbo.journal_operation;
             ALTER TABLE dbo.journal_operation DROP CONSTRAINT df_journal_operation_retention;
             ALTER TABLE dbo.journal_operation DROP COLUMN retention_started_at_utc;
+            ALTER TABLE dbo.journal_metadata DROP COLUMN created_at_utc;
+            ALTER TABLE dbo.journal_stream DROP COLUMN created_at_utc;
+            ALTER TABLE dbo.journal_operation_stream DROP COLUMN created_at_utc;
+            ALTER TABLE dbo.journal_projection DROP COLUMN created_at_utc;
             UPDATE dbo.journal_metadata SET schema_version = 1 WHERE metadata_key = 1;
             """;
         try

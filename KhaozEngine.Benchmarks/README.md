@@ -231,7 +231,13 @@ failure counter. It does not encode a universal throughput target. The final JSO
 returns a failing exit code for any nonzero checksum, duplicate-effect, sequence, or partial-commit counter.
 
 The checked-in SQLite baseline is
-`Baselines/journal-sqlite-mmo-mixed-v1-seed835-10000ops.json`. Reproduce it on the current machine with:
+`Baselines/journal-sqlite-mmo-mixed-v1-seed835-10000ops.json`.
+
+The baseline's 698.46 operations per second is the offered rate of this mixed workload, not measured SQLite store
+capacity. Zero backpressure, busy and retry rates, together with a 1.17 ms p50 commit latency, show that this run
+did not measure store saturation.
+
+Reproduce it on the current machine with:
 
 ```bash
 dotnet run --project KhaozEngine.Benchmarks -c Release -- --journal --operations 10000 --players 1000 --seed 835 --output "$PWD/KhaozEngine.Benchmarks/Baselines/journal-sqlite-mmo-mixed-v1-seed835-10000ops.json"
@@ -347,9 +353,9 @@ Four things about the measurements that a reader would otherwise have to reverse
   position of the pool. It is NOT the dead entries a roll walks, which is a merge of that list with the runs
   a placement excluded, taken only as far as the draw, and which has no instrument yet
   ([#988](https://github.com/APKiwiOrg/KhaozEngine/issues/988)). The allocation figure beside them is
-  what a generation costs today, which is more than the payload alone:
-  [#972](https://github.com/APKiwiOrg/KhaozEngine/issues/972) is the per field allocation in
-  `ItemInstancePayloadBuilder` behind it, and budget 5's target is a time rather than a byte count.
+  what a generation costs today. `ItemGenerator` reuses its `ItemInstancePayloadBuilder` working storage, so a
+  warmed generation allocates only the final payload array. Budget 5 still records that allocation beside its
+  time target rather than treating it as an unmeasured assumption.
 - **Budget 13 drops a refused submission rather than retrying it**, which is what section 16 says a
   consumer must do on `Backpressure`. The executor runs at the engine default stream queue depth of 8.
   Latency is measured from `Submit` to the completion being dequeued, so it includes queueing behind
@@ -394,6 +400,13 @@ dotnet run --project KhaozEngine.Benchmarks -c Release -- --catalog --definition
 The compose command must run second and against the same `--pack-root` as the command before it, because it
 reports a cold boot only when it finds the pack already published. A one line sanity check that finishes in
 a few seconds is `--catalog --quick`, which drops to 5,000 definitions and shortens the timed loops.
+
+P3's index time, heap and allocation now include all five engine indexes. Its reverse-reference term creates
+one synthetic satellite edge per item row, so the 50,000 definition owner run measures 50,000 one-to-one
+buckets and reports `referenceIndexEdges`, `referenceIndexBuildMilliseconds`,
+`referenceIndexBuildAllocatedBytes` and `referenceIndexApproximateBytes`. The allocation number is transient
+GC allocation during the fifth-index build. The approximate number is the arrays retained by the runtime.
+The term is derived during load and does not change the published pack shape used by the other budgets.
 
 Always `-c Release`. Debug numbers are not representative, and the P7 and P9 figures in particular are
 timed loops whose Debug values say nothing. Like every mode here the project is `IsPackable=false`, is not

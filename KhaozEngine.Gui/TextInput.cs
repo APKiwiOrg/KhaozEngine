@@ -9,11 +9,11 @@ namespace KhaozEngine.Gui
 {
     /// <summary>
     /// A single-line text field over <see cref="Pointer"/> + <see cref="TextEntry"/>: a tap inside focuses it,
-    /// a tap outside unfocuses; while focused, this frame's typed keys edit <see cref="Text"/> (and Ctrl+V / Cmd+V
+    /// a tap outside unfocuses; while focused, this frame's committed text edits <see cref="Text"/> (and Ctrl+V / Cmd+V
     /// pastes the clipboard). Draws a bordered field with the non-editable <see cref="PrefixContent"/> followed by
     /// the text or <see cref="PlaceholderContent"/>, then a blinking caret. Typed input comes from the headless
-    /// key-mapping in TextEntry. <see cref="SetText"/> replaces the buffer programmatically and is picked up with
-    /// <see cref="TextChanged"/> on the next <see cref="Update"/>.
+    /// OS text stream or the headless key-map fallback in TextEntry. <see cref="SetText"/> replaces the buffer
+    /// programmatically and is picked up with <see cref="TextChanged"/> on the next <see cref="Update"/>.
     /// </summary>
     public sealed class TextInput
     {

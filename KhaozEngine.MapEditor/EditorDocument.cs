@@ -51,6 +51,10 @@ public sealed class EditorDocument
     /// <see cref="Redo"/>).</summary>
     public event Action? DocumentChanged;
 
+    /// <summary>Fired after a committed mutation that can change authored placements. Commands implemented outside
+    /// this assembly take this safe path, including custom <see cref="EditorCommand"/> subclasses.</summary>
+    internal event Action? PlacementsChanged;
+
     /// <summary>Fired after a command applies through <see cref="Execute"/>, carrying that command (BEFORE
     /// <see cref="DocumentChanged"/>). Fires on EVERY execute, including one that coalesced into the current undo
     /// step (a merged command still applied its mutation). The editor subscribes to run a command's view-only
@@ -93,8 +97,8 @@ public sealed class EditorDocument
     public bool PendingLayerConfigRefresh => _pendingLayerConfigRefresh;
 
     /// <summary>True when some command in the pending batch may have changed the terrain field (see
-    /// <c>EditorCommand.ChangesField</c>). False means the batch changed captured scatter configs only (exclusion and
-    /// scatter-override edits), so the chunks it covers need their props re-served but keep their terrain mesh.</summary>
+    /// <c>EditorCommand.ChangesField</c>). False means the batch changed captured scatter or companion configs only,
+    /// so its bounded region or the whole loaded set can re-serve props while keeping every terrain mesh.</summary>
     public bool PendingFieldChange => _pendingFieldChange;
 
     /// <summary>True when the pending edit requires a full sink and streamer rebuild.</summary>
@@ -123,6 +127,7 @@ public sealed class EditorDocument
             _savedMarker = Unreachable;
         MarkWorldRebuild(command);
         CommandApplied?.Invoke(command);
+        MarkPlacementsChanged(command);
         DocumentChanged?.Invoke();
     }
 
@@ -135,6 +140,7 @@ public sealed class EditorDocument
         {
             MarkWorldRebuild(command);
             CommandUndone?.Invoke(command);
+            MarkPlacementsChanged(command);
         }
         DocumentChanged?.Invoke();
         return true;
@@ -149,6 +155,7 @@ public sealed class EditorDocument
         {
             MarkWorldRebuild(command);
             CommandRedone?.Invoke(command);
+            MarkPlacementsChanged(command);
         }
         DocumentChanged?.Invoke();
         return true;
@@ -197,5 +204,13 @@ public sealed class EditorDocument
             _pendingAllLoaded = false;
             _pendingRegion = null;
         }
+    }
+
+    void MarkPlacementsChanged(IEditorCommand command)
+    {
+        if (command is EditorCommand ec
+            && ec.GetType().Assembly == typeof(EditorCommand).Assembly
+            && !ec.ChangesPlacements) return;
+        PlacementsChanged?.Invoke();
     }
 }

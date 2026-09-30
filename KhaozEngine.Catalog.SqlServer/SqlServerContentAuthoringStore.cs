@@ -276,6 +276,11 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
     /// columns are a RECORD of the declaration this process carries and are refreshed, since the registry is
     /// the authority the publish actually reads them from.
     /// </para>
+    /// <para>
+    /// A refresh is an UPDATE only when one of the three differs, so <c>updated_at_utc</c> is when the
+    /// declaration last changed rather than when a host last booted. The ceiling may be NULL on either side, so
+    /// its comparison spells the NULL cases out.
+    /// </para>
     /// </summary>
     async Task SyncTypesAsync(SqlConnection connection, CancellationToken cancellationToken)
     {
@@ -283,6 +288,7 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
             .BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
         var scope = new SqlServerCatalogScope(connection, transaction);
         int active = await ReadActiveVersionAsync(scope, cancellationToken).ConfigureAwait(false);
+        DateTimeOffset now = _clock();
 
         IReadOnlyList<ContentTypeRegistration> registrations = _registry.ByTypeId;
         for (int i = 0; i < registrations.Count; i++)
@@ -295,13 +301,20 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
                 """
                 MERGE dbo.catalog_type WITH (HOLDLOCK) AS target
                 USING (SELECT @type AS type_id) AS source ON target.type_id = source.type_id
-                WHEN MATCHED THEN UPDATE SET
+                WHEN MATCHED AND (
+                    target.chunk_slots <> @slots
+                    OR target.default_visibility <> @visibility
+                    OR target.max_definition_id <> @ceiling
+                    OR (target.max_definition_id IS NULL AND @ceiling IS NOT NULL)
+                    OR (target.max_definition_id IS NOT NULL AND @ceiling IS NULL)) THEN UPDATE SET
                     chunk_slots = @slots,
                     default_visibility = @visibility,
-                    max_definition_id = @ceiling
+                    max_definition_id = @ceiling,
+                    updated_at_utc = @now
                 WHEN NOT MATCHED THEN INSERT (
-                    type_id, type_key, chunk_slots, default_visibility, max_definition_id, first_seen_version)
-                    VALUES (@type, @key, @slots, @visibility, @ceiling, @firstSeen);
+                    type_id, type_key, chunk_slots, default_visibility, max_definition_id, first_seen_version,
+                    created_at_utc, updated_at_utc)
+                    VALUES (@type, @key, @slots, @visibility, @ceiling, @firstSeen, @now, @now);
                 """);
             BindInt(upsert, "@type", (int)registration.Type.Value);
             BindText(upsert, "@key", registration.TypeKey);
@@ -309,6 +322,7 @@ public sealed partial class SqlServerContentAuthoringStore : IContentAuthoringSt
             BindInt(upsert, "@visibility", (int)registration.DefaultVisibility);
             BindInt(upsert, "@ceiling", registration.MaxDefinitionId);
             BindInt(upsert, "@firstSeen", active);
+            BindTime(upsert, "@now", now);
             await upsert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 

@@ -28,10 +28,10 @@ public interface IInstancePropertyCodec
 }
 
 /// <summary>
-/// The codecs the engine ships: one that refuses nothing, and the three v1 kinds that carry a rule their
-/// shape cannot express.
+/// The public codecs for shape-only, identification, affix-list and socket-list rules. The v1 registry
+/// also supplies per-kind scalar value codecs for kinds 1 to 6.
 /// <para>
-/// Each of the three runs AFTER the shape walk has succeeded, so it re-reads a body it already knows is
+/// Each value codec runs AFTER the shape walk has succeeded, so it re-reads a body it already knows is
 /// well formed and looks only at the values. It is total anyway, because it is public and a caller may
 /// hand it anything.
 /// </para>
@@ -45,8 +45,8 @@ public static class InstancePropertyCodec
     public static IInstancePropertyCodec ShapeOnly { get; } = new ShapeOnlyCodec();
 
     /// <summary>
-    /// Kind 128: the state byte is 0 unidentified or 1 identified and nothing else (spec 3.3). A third
-    /// value would be a state no rule in the tree knows how to apply.
+    /// Kind 128: the state byte is 0 unidentified or 1 identified, and the revealed mask fits uint32
+    /// (spec 3.3). Unassigned mask bits remain legal within that width.
     /// </summary>
     public static IInstancePropertyCodec Identification { get; } = new IdentificationCodec();
 
@@ -83,8 +83,17 @@ public static class InstancePropertyCodec
         {
             if (body.Length >= 1 && body[0] <= 1)
             {
-                reason = null;
-                return true;
+                int offset = 1;
+                if (!ContentVarint.TryReadUInt64(body, ref offset, out ulong mask, out reason))
+                {
+                    return false;
+                }
+
+                if (mask <= uint.MaxValue && offset == body.Length)
+                {
+                    reason = null;
+                    return true;
+                }
             }
 
             reason = InstancePayloadReason.FieldMalformed;

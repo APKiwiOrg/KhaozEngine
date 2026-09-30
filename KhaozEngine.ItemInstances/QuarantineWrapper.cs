@@ -223,7 +223,7 @@ public static class QuarantineWrapper
     /// <summary>
     /// Whether these bytes are a well formed wrapper: the four magic bytes, the version, a reason ordinal
     /// this build knows, and a declared <c>OriginalLength</c> that accounts for exactly the bytes present.
-    /// This is what stands in for spec 4.7's invariants 2 and 4 on a quarantined slot.
+    /// This stands in for the live payload cap, instance identity and canonical checks on a quarantined slot.
     /// </summary>
     /// <param name="wrapper">The bytes, which may be anything at all.</param>
     public static bool Verify(ReadOnlySpan<byte> wrapper) => TryUnwrap(wrapper, out _, out _, out _);

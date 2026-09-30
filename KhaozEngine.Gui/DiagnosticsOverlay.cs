@@ -15,9 +15,10 @@ namespace KhaozEngine.Gui;
 /// <see cref="UpdateOverlayView"/>. The game assembles <see cref="OverlaySection"/>s each frame and feeds them
 /// in via <see cref="SetSections"/>; <see cref="Update"/> handles the toggle key (default F1) and a fade, and
 /// <see cref="Draw"/> renders a corner panel of section titles and right-aligned label/value rows. The widget
-/// is content-agnostic (the metric catalog stays game-owned); <see cref="PerformanceSection"/> and
-/// <c>NetworkSection</c> overloads are convenience populators for the common cases. Headless-testable:
-/// <see cref="Update"/> and the populators need no GPU. Drop it into any Gui layer.
+/// keeps custom metric content game-owned. <see cref="PerformanceSection"/> and <c>NetworkSection</c> overloads
+/// are convenience populators for the common cases, with their built-in text resolved through
+/// <see cref="DiagnosticsOverlayStrings"/>. Headless-testable: <see cref="Update"/> and the populators need no
+/// GPU. Drop it into any Gui layer.
 /// </summary>
 public sealed class DiagnosticsOverlay
 {
@@ -133,11 +134,14 @@ public sealed class DiagnosticsOverlay
         if (f is null) throw new ArgumentNullException(nameof(f));
         var rows = new[]
         {
-            new OverlayRow("fps", f.Fps.ToString("0", Inv)),
-            new OverlayRow("frame ms", string.Format(Inv, "{0:0.0}/{1:0.0}/{2:0.0}", f.FrameMsAvg, f.FrameMsMin, f.FrameMsMax)),
-            new OverlayRow("managed MB", (f.ManagedBytes / (1024d * 1024d)).ToString("0.0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.PerformanceFpsLabel),
+                f.Fps.ToString("0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.PerformanceFrameMsLabel),
+                string.Format(Inv, "{0:0.0}/{1:0.0}/{2:0.0}", f.FrameMsAvg, f.FrameMsMin, f.FrameMsMax)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.PerformanceManagedMbLabel),
+                (f.ManagedBytes / (1024d * 1024d)).ToString("0.0", Inv)),
         };
-        return new OverlaySection("Performance", rows);
+        return new OverlaySection(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.PerformanceTitle), rows);
     }
 
     /// <summary>
@@ -158,7 +162,7 @@ public sealed class DiagnosticsOverlay
             rows[i] = new OverlayRow(pass,
                 string.Format(Inv, "{0:0.00}/{1:0.00}/{2:0.00}", t.AvgMs(pass), t.MinMs(pass), t.MaxMs(pass)));
         }
-        return new OverlaySection("Pass timings", rows);
+        return new OverlaySection(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.PassTimingsTitle), rows);
     }
 
     /// <summary>
@@ -179,36 +183,52 @@ public sealed class DiagnosticsOverlay
     {
         var rows = new[]
         {
-            new OverlayRow("draw calls", s.DrawCalls.ToString("0", Inv)),
-            new OverlayRow("instances", s.Instances.ToString("0", Inv)),
-            new OverlayRow("triangles", s.Triangles.ToString("#,0", Inv)),
-            new OverlayRow("quads", s.Quads.ToString("0", Inv)),
-            new OverlayRow("flushes", s.Flushes.ToString("0", Inv)),
-            new OverlayRow("tex switches", s.TextureSwitches.ToString("0", Inv)),
-            new OverlayRow("upload KB", (s.BufferUpdateBytes / 1024d).ToString("0.0", Inv)),
-            new OverlayRow("  instances KB", (s.InstanceUploadBytes / 1024d).ToString("0.0", Inv)),
-            new OverlayRow("  skinned KB", (s.SkinnedUploadBytes / 1024d).ToString("0.0", Inv)),
-            new OverlayRow("  skin ubo KB", (s.SkinnedUniformUploadBytes / 1024d).ToString("0.0", Inv)),
-            new OverlayRow("  sprites KB", (s.SpriteUploadBytes / 1024d).ToString("0.0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.DrawCallsLabel),
+                s.DrawCalls.ToString("0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.InstancesLabel),
+                s.Instances.ToString("0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.TrianglesLabel),
+                s.Triangles.ToString("#,0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.QuadsLabel),
+                s.Quads.ToString("0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.FlushesLabel),
+                s.Flushes.ToString("0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.TextureSwitchesLabel),
+                s.TextureSwitches.ToString("0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.UploadKbLabel),
+                (s.BufferUpdateBytes / 1024d).ToString("0.0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.InstanceUploadKbLabel),
+                (s.InstanceUploadBytes / 1024d).ToString("0.0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.SkinnedUploadKbLabel),
+                (s.SkinnedUploadBytes / 1024d).ToString("0.0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.SkinUboUploadKbLabel),
+                (s.SkinnedUniformUploadBytes / 1024d).ToString("0.0", Inv)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.SpriteUploadKbLabel),
+                (s.SpriteUploadBytes / 1024d).ToString("0.0", Inv)),
         };
-        return new OverlaySection("Draw stats", rows);
+        return new OverlaySection(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.DrawStatsTitle), rows);
     }
 
     /// <summary>Build a standard "Network" section from a <see cref="ClientNetStats"/> snapshot.</summary>
     public static OverlaySection NetworkSection(in ClientNetStats n)
     {
         if (!n.Connected)
-            return new OverlaySection("Network", new[] { new OverlayRow("status", "not connected") });
+            return DisconnectedNetworkSection();
 
         var rows = new[]
         {
-            new OverlayRow("ping", n.RttMs.ToString("0", Inv) + " ms"),
-            new OverlayRow("loss", (n.PacketLoss * 100f).ToString("0.0", Inv) + " %"),
-            new OverlayRow("in/out", string.Format(Inv, "{0:0.0}/{1:0.0} KB/s", n.BytesInPerSec / 1024f, n.BytesOutPerSec / 1024f)),
-            new OverlayRow("snapshots", n.SnapshotsPerSec.ToString("0.0", Inv) + "/s"),
-            new OverlayRow("correction", string.Format(Inv, "{0:0.00}/{1:0.00} m", n.LastCorrectionMeters, n.AvgCorrectionMeters)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.NetworkPingLabel),
+                n.RttMs.ToString("0", Inv) + " ms"),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.NetworkLossLabel),
+                (n.PacketLoss * 100f).ToString("0.0", Inv) + " %"),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.NetworkInOutLabel),
+                string.Format(Inv, "{0:0.0}/{1:0.0} KB/s", n.BytesInPerSec / 1024f, n.BytesOutPerSec / 1024f)),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.NetworkSnapshotsLabel),
+                n.SnapshotsPerSec.ToString("0.0", Inv) + "/s"),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.NetworkCorrectionLabel),
+                string.Format(Inv, "{0:0.00}/{1:0.00} m", n.LastCorrectionMeters, n.AvgCorrectionMeters)),
         };
-        return new OverlaySection("Network", rows);
+        return new OverlaySection(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.NetworkTitle), rows);
     }
 
     /// <summary>Build a standard "Network" section from transport link health. Cumulative byte counters are not
@@ -216,15 +236,25 @@ public sealed class DiagnosticsOverlay
     public static OverlaySection NetworkSection(in NetTransportStats n)
     {
         if (!n.Connected)
-            return new OverlaySection("Network", new[] { new OverlayRow("status", "not connected") });
+            return DisconnectedNetworkSection();
 
         var rows = new[]
         {
-            new OverlayRow("ping", n.RttMs.ToString("0", Inv) + " ms"),
-            new OverlayRow("loss", (n.PacketLoss * 100f).ToString("0.0", Inv) + " %"),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.NetworkPingLabel),
+                n.RttMs.ToString("0", Inv) + " ms"),
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.NetworkLossLabel),
+                (n.PacketLoss * 100f).ToString("0.0", Inv) + " %"),
         };
-        return new OverlaySection("Network", rows);
+        return new OverlaySection(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.NetworkTitle), rows);
     }
+
+    static OverlaySection DisconnectedNetworkSection() => new(
+        DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.NetworkTitle),
+        new[]
+        {
+            new OverlayRow(DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.NetworkStatusLabel),
+                DiagnosticsOverlayStrings.Resolve(DiagnosticsOverlayStrings.NetworkNotConnected)),
+        });
 
     /// <summary>Draw the corner panel. No-op when hidden / fully faded out / empty.</summary>
     public void Draw(SpriteBatch batch, SpriteFont font, Texture2D white, Rect viewport)

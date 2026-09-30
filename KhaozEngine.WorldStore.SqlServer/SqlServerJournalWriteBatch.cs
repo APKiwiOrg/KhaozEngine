@@ -88,8 +88,8 @@ internal static class SqlServerJournalWriteBatch
                 SELECT @head = current_version FROM dbo.journal_stream WITH (UPDLOCK, HOLDLOCK) WHERE stream_key = @stream0;
                 IF @head IS NOT NULL BEGIN SET @outcome = 7; BREAK; END
 
-                INSERT INTO dbo.journal_stream(stream_key, current_version, retained_floor, updated_at_utc)
-                VALUES (@stream0, 0, 0, @now);
+                INSERT INTO dbo.journal_stream(stream_key, current_version, retained_floor, updated_at_utc, created_at_utc)
+                VALUES (@stream0, 0, 0, @now, @now);
 
                 INSERT INTO dbo.journal_snapshot(
                     stream_key, through_version, snapshot_schema, snapshot_schema_version, data, data_sha256, created_at_utc)
@@ -114,8 +114,8 @@ internal static class SqlServerJournalWriteBatch
             initialization.ResultData.ToArray(),
             initialization.ResultChecksum.ToArray());
         text.Append("""
-                INSERT INTO dbo.journal_operation_stream(operation_id, stream_key, before_version, after_version, event_count)
-                VALUES (@operation, @stream0, 0, 0, 0);
+                INSERT INTO dbo.journal_operation_stream(operation_id, stream_key, before_version, after_version, event_count, created_at_utc)
+                VALUES (@operation, @stream0, 0, 0, 0, @now);
 
 
             """);
@@ -290,6 +290,7 @@ internal static class SqlServerJournalWriteBatch
         string schemaVersion = ProjectionParameter("SchemaVersion", index);
         string data = ProjectionParameter("Data", index);
         string checksum = ProjectionParameter("Checksum", index);
+        // Only the INSERT arm sets created_at_utc, so a replaced section keeps the time it was first written.
         SqlServerMutationJournalStore.Add(command, schema, projection.ProjectionSchema);
         SqlServerMutationJournalStore.Add(command, schemaVersion, projection.ProjectionSchemaVersion);
         SqlServerMutationJournalStore.Add(command, data, projection.Data.ToArray());
@@ -303,8 +304,8 @@ internal static class SqlServerJournalWriteBatch
                 IF @@ROWCOUNT = 0
                     INSERT INTO dbo.journal_projection(
                         stream_key, section_name, source_version, projection_schema,
-                        projection_schema_version, data, data_sha256, updated_at_utc)
-                    VALUES ({stream}, {SectionParameter(index)}, {sourceVersion}, {schema}, {schemaVersion}, {data}, {checksum}, @now);
+                        projection_schema_version, data, data_sha256, updated_at_utc, created_at_utc)
+                    VALUES ({stream}, {SectionParameter(index)}, {sourceVersion}, {schema}, {schemaVersion}, {data}, {checksum}, @now, @now);
 
 
             """);
@@ -349,10 +350,10 @@ internal static class SqlServerJournalWriteBatch
         for (int index = 0; index < streams.Length; index++)
         {
             if (index > 0) rows.Append(",\n        ");
-            rows.Append(CultureInfo.InvariantCulture, $"(@operation, {StreamParameter(index)}, {ExpectedParameter(index)}, {AfterVersion(streams, index)}, {Number(streams[index].Events.Count)})");
+            rows.Append(CultureInfo.InvariantCulture, $"(@operation, {StreamParameter(index)}, {ExpectedParameter(index)}, {AfterVersion(streams, index)}, {Number(streams[index].Events.Count)}, @now)");
         }
         text.Append(CultureInfo.InvariantCulture, $"""
-                INSERT INTO dbo.journal_operation_stream(operation_id, stream_key, before_version, after_version, event_count)
+                INSERT INTO dbo.journal_operation_stream(operation_id, stream_key, before_version, after_version, event_count, created_at_utc)
                 VALUES
                     {rows};
 

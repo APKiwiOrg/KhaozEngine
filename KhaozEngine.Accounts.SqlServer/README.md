@@ -19,7 +19,8 @@ await bans.LoadAsync();   // the first call, so the bootstrap runs here
 
 `whitelistOnCreate` is required, with no default, and `WhitelistOnCreate` reports what the instance was built
 with. `SqlServerAccountStoreOptions` names the schema (`dbo`), the table (`accounts`) and the schema mode
-(`AutoCreate`). The schema must already exist.
+(`AutoCreate`), and its `TimeProvider` init property is the clock the row times come from, the system clock by
+default. The schema must already exist.
 
 ## Lazy bootstrap and the two schema modes
 
@@ -27,14 +28,18 @@ The constructor validates the names and opens nothing. The first call opens a co
 the engine layout, so an auto-paused Azure SQL database costs that one caller a wait instead of costing the host
 its start. A failed bootstrap is retried by the next call.
 
-- **`AutoCreate`** creates the table when absent and adds a missing `ban_reason` or `ban_until` when present, in
-  one transaction under an exclusive application lock, then checks the result. It needs DDL rights.
+- **`AutoCreate`** creates the table when absent and adds a missing `ban_reason`, `ban_until`, `created_at_utc` or
+  `updated_at_utc` when present, in one transaction under an exclusive application lock, then checks the result.
+  It needs DDL rights.
 - **`ValidateOnly`** reads `sys.columns` and refuses a missing table or a mismatched one, with no DDL and no lock.
   The runtime identity then needs only `SELECT`, `INSERT` and `UPDATE` on the table, which is what
-  `SECURITY-BASELINE.md` asks of a runtime identity. Run once under `AutoCreate` with a migration identity first.
+  `SECURITY-BASELINE.md` asks of a runtime identity. Run once under `AutoCreate` with a migration identity first. A
+  table without the two time columns, which includes every table an older engine created, is refused until one
+  `AutoCreate` run adds them.
 
 Both modes end with the same check: every owned column present, `nvarchar` for the text columns at no less than
-the limits, `bit` for the flags and `datetimeoffset` for the expiry. The message names columns, never rows.
+the limits, `bit` for the flags and `datetimeoffset` for the expiry and the two row times. The message names
+columns, never rows.
 
 ## The table
 
@@ -48,11 +53,19 @@ One flat table, Grimhollow's layout, so an existing `dbo.accounts` is adopted in
 | `banned` | `BIT NOT NULL` | a ban is filed, lapsed or not |
 | `ban_reason` | `NVARCHAR(256) NULL` | the filed reason |
 | `ban_until` | `DATETIMEOFFSET(7) NULL` | the expiry in UTC, null for permanent |
+| `created_at_utc` | `DATETIMEOFFSET(7) NULL` | when the store created the row, in UTC |
+| `updated_at_utc` | `DATETIMEOFFSET(7) NULL` | when a write last changed a stored value, in UTC |
 
-The widths are the `AccountStoreRules` limits, which the store also applies before every write. The ensure is
-additive only, guarded by `OBJECT_ID` and `COL_LENGTH`. Nothing is renamed, dropped or backfilled, and no column
-the store does not own is read or written, so a game's own column (Grimhollow's `debug`) keeps its values and its
-default. Every write returns the row through `OUTPUT`, so a table with an enabled trigger is not supported.
+The widths are the `AccountStoreRules` limits, which the store also applies before every write. The two times are
+part of the shared layout Grimhollow's own store is to write, so once it does either store reads the other's rows.
+Find-or-create stamps both on a new row, and every write sets the update time in the same statement, to the clock when
+a written value differs from the stored one and to itself otherwise. A text compares under `Latin1_General_100_BIN2`
+and by length, so a change of case or of trailing spaces counts. The creation time is never written again.
+
+The ensure is additive only, guarded by `OBJECT_ID` and `COL_LENGTH`. Nothing is renamed, dropped or backfilled,
+and no column the store does not own is read or written, so a game's own column (Grimhollow's `debug`) keeps its
+values and its default. Every write returns the row through `OUTPUT`, so a table with an enabled trigger is not
+supported.
 
 ## Legacy rows and collation
 
@@ -60,6 +73,8 @@ default. Every write returns the row through `OUTPUT`, so a table with an enable
   empty string, and an empty string reads back as `null`. A fresh table is nullable and stores what it is given.
 - **`banned = 1` with no reason** reads as a ban with an empty reason, because `AccountBan.Reason` is never null.
 - **A `ban_until` with an offset** reads back as the same instant in UTC, offset zero.
+- **A row older than the time columns** reads both times as null. The first write that changes it sets the update
+  time only, because nothing proves when the row was created.
 - **Collation.** A fresh table pins `Latin1_General_100_BIN2` on `subject`. An existing table keeps its collation,
   usually the case-insensitive database default. The store still answers exactly: an exact match compares the
   subject's bytes, beside the plain equality an index seeks on, and every ordering names the binary collation, so

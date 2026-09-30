@@ -199,19 +199,26 @@ public sealed partial class SqliteContentAuthoringStore
         return byRow;
     }
 
-    /// <summary>One row revision and its field rows. The caller owns the transaction.</summary>
-    async Task InsertRowAsync(ContentRowInsert insert, SqliteTransaction transaction, CancellationToken cancellationToken)
+    /// <summary>
+    /// One row revision and its field rows, stamped with the publish time. The caller owns the transaction.
+    /// </summary>
+    async Task InsertRowAsync(
+        ContentRowInsert insert,
+        long at,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
     {
         ContentRow row = insert.Row;
         using (SqliteCommand command = Command(
             """
             INSERT INTO catalog_row(
                 type_id, definition_id, valid_from_version, replaced_in_version, content_key, parent_id,
-                family_id, retired)
-            VALUES ($type, $id, $from, NULL, $key, $parent, $family, $retired);
+                family_id, retired, created_at_utc, updated_at_utc)
+            VALUES ($type, $id, $from, NULL, $key, $parent, $family, $retired, $at, $at);
             """,
             transaction))
         {
+            Bind(command, "$at", at);
             Bind(command, "$type", (long)row.Type.Value);
             Bind(command, "$id", (long)row.Id);
             Bind(command, "$from", (long)insert.ValidFromVersion);
@@ -236,10 +243,11 @@ public sealed partial class SqliteContentAuthoringStore
                 """
                 INSERT INTO catalog_row_field(
                     type_id, definition_id, valid_from_version, field_name, field_kind,
-                    int_value, text_value, blob_value)
-                VALUES ($type, $id, $from, $name, $kind, $int, NULL, $blob);
+                    int_value, text_value, blob_value, created_at_utc)
+                VALUES ($type, $id, $from, $name, $kind, $int, NULL, $blob, $at);
                 """,
                 transaction);
+            Bind(command, "$at", at);
             Bind(command, "$type", (long)row.Type.Value);
             Bind(command, "$id", (long)row.Id);
             Bind(command, "$from", (long)insert.ValidFromVersion);
@@ -251,16 +259,24 @@ public sealed partial class SqliteContentAuthoringStore
         }
     }
 
-    /// <summary>One row revision closed at the new version. The caller owns the transaction.</summary>
-    async Task CloseRowAsync(ContentRowClose close, SqliteTransaction transaction, CancellationToken cancellationToken)
+    /// <summary>
+    /// One row revision closed at the new version, at that version's publish time. The caller owns the
+    /// transaction.
+    /// </summary>
+    async Task CloseRowAsync(
+        ContentRowClose close,
+        long at,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
     {
         using SqliteCommand command = Command(
             """
-            UPDATE catalog_row SET replaced_in_version = $replaced
+            UPDATE catalog_row SET replaced_in_version = $replaced, updated_at_utc = $at
             WHERE type_id = $type AND definition_id = $id AND valid_from_version = $from
               AND replaced_in_version IS NULL;
             """,
             transaction);
+        Bind(command, "$at", at);
         Bind(command, "$replaced", (long)close.ReplacedInVersion);
         Bind(command, "$type", (long)close.Type.Value);
         Bind(command, "$id", (long)close.DefinitionId);

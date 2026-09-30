@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
+using System.Text;
 
 namespace KhaozEngine.Windowing
 {
@@ -40,6 +41,8 @@ namespace KhaozEngine.Windowing
         bool _cursorSampled;
         float _wheelAccum;
         bool _focused = true;   // windows open focused, and OnFocusChanged keeps this in sync.
+        readonly StringBuilder _textInput = new();
+        bool _textInputAvailable;
 
         /// <summary>
         /// True while the window owning this accumulator has OS input focus. Stamped onto every snapshot as
@@ -69,6 +72,16 @@ namespace KhaozEngine.Windowing
         {
             if (key == Key.None) return;
             _repeated.Add(key);
+        }
+
+        /// <summary>Mark a window as supplying OS committed text events, including frames with no text.</summary>
+        public void EnableTextInput() => _textInputAvailable = true;
+
+        /// <summary>Record one committed Unicode scalar value from the OS text callback.</summary>
+        public void OnTextInput(uint codepoint)
+        {
+            if (_focused && Rune.TryCreate(codepoint, out Rune rune))
+                _textInput.Append(rune.ToString());
         }
 
         /// <summary>Record a mouse button going down (press edge on the transition only).</summary>
@@ -103,6 +116,8 @@ namespace KhaozEngine.Windowing
             _focused = focused;
             if (focused) return;
 
+            _textInput.Clear();
+
             foreach (Key key in _keysDown) _released.Add(key);
             _keysDown.Clear();
             foreach (MouseButton button in _mouseDown) _mouseReleased.Add(button);
@@ -135,13 +150,15 @@ namespace KhaozEngine.Windowing
                 position, delta, _wheelAccum, width, height,
                 gamepads, windowFocused: _focused,
                 repeated: new HashSet<Key>(_repeated),
-                mouseReleased: new HashSet<MouseButton>(_mouseReleased));
+                mouseReleased: new HashSet<MouseButton>(_mouseReleased),
+                textInput: _textInput.ToString(), textInputAvailable: _textInputAvailable);
 
             _pressed.Clear();
             _released.Clear();
             _repeated.Clear();
             _mousePressed.Clear();
             _mouseReleased.Clear();
+            _textInput.Clear();
             _lastMouse = position;
             // Only a frame that actually read a cursor primes the delta. A window that opens with no mouse
             // attached must still report a zero delta on the first frame one shows up.

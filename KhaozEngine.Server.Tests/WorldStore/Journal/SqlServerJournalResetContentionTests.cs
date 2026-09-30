@@ -125,13 +125,12 @@ public sealed class SqlServerJournalResetContentionTests
                 Assert.True(await WaitForLockWaiterAsync(reset), "The reset never showed up waiting on the schema lock.");
                 await cancel.CancelAsync();
 
-                // Well inside a lock timeout of minutes, so the wait ended because the caller cancelled it. The
-                // provider answers a cancelled command with its own error rather than a cancellation, and the schema
-                // step maps that as it maps any provider failure, so the kind is not what this fact pins.
+                // Well inside a lock timeout of minutes, so the wait ended because the caller cancelled it.
                 Assert.True(
                     await Task.WhenAny(reset, Task.Delay(WaiterBound)) == reset,
                     "The cancelled reset kept waiting behind the schema lock.");
                 JournalStoreException refused = await Assert.ThrowsAsync<JournalStoreException>(() => reset);
+                Assert.Equal(JournalStoreFailureKind.Cancelled, refused.Kind);
                 Assert.Equal(JournalStoreFailureCertainty.DefinitelyNotCommitted, refused.Certainty);
                 Assert.Equal(JournalStoreFailureScope.WholeStore, refused.Scope);
             }

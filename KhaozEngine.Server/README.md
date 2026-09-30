@@ -44,6 +44,9 @@ Pulls in:
   server-owned actors (`TileActorHost`, `ITileActorBehaviour`) and tick-based melee combat
   (`ITileCombatRules`), both of which ride the same stepper and the same reach rule as a player's walk.
 - `KhaozEngine.Physics` - the dependency-free physics seam (backend opt-in, see below).
+- `KhaozEngine.CodeHealth.Analyzers` - the KESIZE file-size ratchet. The direct dependency uses
+  `PrivateAssets="none"` so its analyzer assembly and `buildTransitive` baseline discovery props both flow
+  through the packed umbrella and run in the consuming project's build.
 
 ```xml
 <PackageReference Include="KhaozEngine.Server" Version="x.y.z" />

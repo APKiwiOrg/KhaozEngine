@@ -66,6 +66,10 @@ public sealed record CatalogBenchmarkResult
     public long? RuntimeHeapBytes { get; init; }
     public long? RuntimeAllocatedBytes { get; init; }
     public long? RuntimeApproximateBytes { get; init; }
+    public int? ReferenceIndexEdges { get; init; }
+    public long? ReferenceIndexApproximateBytes { get; init; }
+    public double? ReferenceIndexBuildMilliseconds { get; init; }
+    public long? ReferenceIndexBuildAllocatedBytes { get; init; }
 
     // P4 and P4b: client cold start over the shaped link.
     public double? ColdStartMs { get; init; }

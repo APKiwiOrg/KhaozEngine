@@ -269,7 +269,7 @@ public class HttpPackStoreTests
         {
             using var origin = await PackHttpHost.StartAsync();
             string hash = new('b', 64);
-            origin.ServePlan(hash, declaredLength: -1, actualBytes: HttpPackStore.MaxObjectBytes + 4096L);
+            origin.ServePlan(hash, declaredLength: -1, actualBytes: ContentPackFormat.MaxObjectBytes + 4096L);
             using HttpClient client = origin.Client();
             var store = new HttpPackStore(client, origin.BaseAddress);
 
@@ -283,14 +283,17 @@ public class HttpPackStoreTests
         {
             using var origin = await PackHttpHost.StartAsync();
             string hash = new('c', 64);
-            origin.ServePlan(hash, HttpPackStore.MaxObjectBytes, HttpPackStore.MaxObjectBytes);
+            origin.ServePlan(
+                hash,
+                ContentPackFormat.MaxObjectBytes,
+                ContentPackFormat.MaxObjectBytes);
             using HttpClient client = origin.Client();
             var store = new HttpPackStore(client, origin.BaseAddress);
 
             ReadOnlyMemory<byte>? bytes = await store.GetAsync(hash);
 
             Assert.NotNull(bytes);
-            Assert.Equal(HttpPackStore.MaxObjectBytes, bytes.Value.Length);
+            Assert.Equal(ContentPackFormat.MaxObjectBytes, bytes.Value.Length);
         }
 
         // The ceiling is the format's own, not a number this store invented: the largest uncompressed chunk
@@ -302,7 +305,8 @@ public class HttpPackStoreTests
         {
             Assert.Equal(
                 ContentPackFormat.MaxChunkUncompressedBytes + ContentManifestCodec.FixedHeaderBytes,
-                HttpPackStore.MaxObjectBytes);
+                ContentPackFormat.MaxObjectBytes);
+            Assert.Equal(ContentPackFormat.MaxObjectBytes, HttpPackStore.MaxObjectBytes);
             Assert.True(ContentManifestCodec.FixedHeaderBytes >= ContentPackFormat.ChunkHeaderBytes);
             Assert.True(ContentManifestCodec.FixedHeaderBytes >= ContentPackFormat.RuleHeaderBytes);
             Assert.True(

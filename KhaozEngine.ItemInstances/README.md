@@ -10,8 +10,8 @@ It reads in layers, and the sections below are in that order. The RECORD is the 
 registry, the refusal sets, the `KECQ` quarantine wrapper and the instance id allocator. The CONTAINER is
 container codec version 2, the paged container and its capacity gate, the merge rule and the registry-derived
 remap pass that brings a stored page forward. The WIRE is the visibility projection every replicated byte
-passes through, the one frame page delta and the whole viewer page built on it, and the two byte resync
-request a client answers with.
+passes through, the public ground payload built on the same projection, the one frame page delta and the
+whole viewer page built on it, and the two byte resync request a client answers with.
 The validator, the player-facing strings and the one telemetry call sit under those three.
 
 Over them sit the four things that PRODUCE and CHANGE a payload, which are the last four sections. The
@@ -112,8 +112,9 @@ The v1 gated bits are fixed: kind 129 `UniqueTemplate` is bit 0, 131 `Affixes` b
 bit 2 and 134 `RareName` bit 3. Bits 4 to 31 are unassigned.
 
 The types a registration is made of: `IInstancePropertyCodec` is the per-kind rule a shape cannot express,
-one total `TryValidate` that is handed a body the shape has already vetted, and `InstancePropertyCodec` holds
-the four the engine ships (`ShapeOnly`, `Identification`, `AffixList`, `SocketList`). `InstanceFieldShape`
+one total `TryValidate` that is handed a body the shape has already vetted. `InstancePropertyCodec` exposes
+`ShapeOnly`, `Identification`, `AffixList` and `SocketList`, while `CreateV1` also registers the scalar
+value codecs for kinds 1 to 6. `InstanceFieldShape`
 describes the bytes as a header run and a repeating entry run over `InstanceSlotKind` slots, with an
 `InstanceCountWidth` for the entry count. `InstanceReferenceTarget` names a content type key, the
 `InstanceReferenceSite` it sits at (header or entry) and its slot index. `InstancePropertyRegistration` is
@@ -121,12 +122,31 @@ the whole of one kind's registration, which is what `TryGet(kind, out registrati
 `TryGetByIdentificationMaskBit` hand back, and `ByKind` is every one of them ascending.
 `MaxIdentificationMaskBit` is 31, because the revealed mask is a `uint`.
 
+The registered v1 value codecs enforce these bounds through `TryDecode`, `Validate` and `IsCanonical`:
+
+| Kind | Accepted values |
+|---|---|
+| 1 `Flags` | 0 to 7, with all reserved bits zero |
+| 2 `ItemLevel` | 1 to 65535 |
+| 3 `Quality` | 0 to 65535 whole percentage points |
+| 4 `Charges` | Current and Maximum each 0 to 4294967295 |
+| 5 `Durability` | Current and Maximum each 0 to 65535 |
+| 6 `BoundTo` | Subject 1 to 18446744073709551615 |
+| 128 `Identification` | State 0 or 1, RevealedMask 0 to 4294967295, including unassigned bits |
+
+Charges and Durability permit Current above Maximum and permit Maximum zero. Values outside these
+bounds answer `field-malformed`. Stored entries quarantine with the original payload bytes kept verbatim.
+Game kinds choose their own value codecs. The shared `Varint` shape slot still reads unsigned 64 bit
+values, and registry-free payload overloads check the envelope without inspecting kind bodies.
+
 ## Building a payload
 
 `ItemInstancePayloadBuilder` is the WRITE half, and it is the thing that makes the encoding canonical. It
 holds its fields strictly ascending by kind whatever order they were added in, refuses the same kind twice,
 sorts an affix list ascending by mod id, and writes every varint minimally. Every refusal THROWS, because a
 builder is handed values by code rather than bytes by a peer, which is the opposite of the decoder below.
+The builder has no registry and does not enforce per-kind value bounds. Check authored payloads with
+`ItemInstancePayload.Validate(registry, payload)` or registry-bound `IsCanonical` before seating them.
 
 ```csharp
 byte[] payload = new ItemInstancePayloadBuilder()
@@ -143,6 +163,9 @@ caller writes a body there is no helper for. `AddMaterials` is kind 7, `AddSocke
 AUTHORED order rather than sorting, and refuses a socket whose nested payload is not structurally canonical,
 and `AddRareName` is kind 134. `Length` is what `ToArray` will write, so
 a caller can size a buffer, and `FieldCount` is how many fields it holds.
+
+The builder copies field bodies into one working buffer and keeps ordered field windows over it rather than
+allocating one array per field. The builder is mutable and not thread safe. One owner uses one builder at a time.
 
 Three value types are the list entries those helpers take. `InstanceMaterial` is an input item definition and
 how many parts of it went in, which is what makes a materials rebalance a publish rather than a rewrite of
@@ -185,6 +208,7 @@ function is a call-site constraint rather than a convenience.
 | `CanSee(registry, kind, viewerLevel, identified, revealedMask)` | the same rule reached by kind id, which is the tooltip builder's door |
 | `PublicView(registry, payload, level, identified, revealedMask, destination)` | the payload one viewer may see, as bytes written into the caller's span |
 | `OwnerRemainder(registry, payload, identified, revealedMask, destination)` | the exact complement of `PublicView` at `Everyone`, which is what the targeted owner message carries |
+| `GroundItemPayloadProjection.Project(registry, storedPayload, quarantined, identified, revealedMask, destination)` | the stored payload safe for a public ground component, fixed at `Everyone` and sharing the container projection's hollow quarantine rule |
 
 **The rule, in order.** `ServerOnly` is never visible to anyone. `OwnerOnly` is visible when the viewer
 level is `OwnerOnly`. `Everyone` is visible always. THEN, and only then, the identification gate: a kind
@@ -222,18 +246,21 @@ fields inside, and a socket holding none of them leaves no frame behind. Nothing
 destination span either way, and the walk runs twice, once to total what the viewer may see and once to
 write it, so a rebuilt field's length varint is known before a byte is written.
 
-The revealed mask is a `ulong` on every member here. Kind 128's mask is a varint and the shape walk reads a
-varint at the full 64 bits, so taking a `uint` would force a narrowing at some call site. Bits above
+The revealed mask remains a `ulong` on every member here for caller compatibility. Registered kind 128
+accepts stored masks only within `uint32`. Supplied bits above
 `InstancePropertyRegistry.MaxIdentificationMaskBit` gate nothing, because the registry refuses to register
 one.
 
 **A GROUND item has no owner, and that is a rule rather than an omission.** A drop's entity is the drop,
 whose net id is nobody's, so there is no viewer this design calls the owner of a ground stack. A ground
-item's public view is `PublicView` at `Everyone` and there is NO owner remainder for a drop. Kind 6
-`BoundTo` is owner-only, so it is stripped before the sibling component is written and a passer-by cannot
-read who a dropped item is bound to, which is a fact about a PLAYER rather than about an item. Kinds 4 and 5
-go with it, which is why the 58 byte reference rare replicates as 54 bytes on the ground: it carries one of
-the three owner-only kinds, kind 5 durability, whose whole field is four bytes.
+item's public view goes through `GroundItemPayloadProjection.Project` and there is NO owner remainder for a
+drop. The helper runs the stored payload through the same core as
+`ContainerPageProjection.ProjectPayload`, fixed at `Everyone`. Kind 6 `BoundTo` is owner-only, so it is
+stripped before the sibling component is written and a passer-by cannot read who a dropped item is bound to,
+which is a fact about a PLAYER rather than about an item. Kinds 4 and 5 go with it, which is why the 58 byte
+reference rare replicates as 54 bytes on the ground: it carries one of the three owner-only kinds, kind 5
+durability, whose whole field is four bytes. A quarantined stored payload becomes the same hollow wrapper a
+projected container page carries, with no preserved bytes leaving the server.
 
 The owner remainder's BYTES live here, beside the projection they complement, so the two cannot disagree.
 The MESSAGE KIND stays the game's, because `TileProtocol` reserves the `ushort` kind space to the game and
@@ -376,6 +403,13 @@ path, which seats every entry with instance id 0, an empty payload and the quara
 page stamp 0, which is older than every published version. Anything else is a `ushort` version, which must be
 2.
 
+The version 1 bridge accepts a stored slot count from 1 through the caller's `expectedPageSlots`. It validates
+and decodes against that stored count, then returns page 0 with first slot 0 and `SlotCount` equal to the
+caller's full page geometry. Slot indexes do not move, so a 2 or 11 slot worn set, a 28 or 30 slot bag, and a
+56 slot bank can load into the 100 slot page without being re-encoded first. A stored count above the page
+geometry is refused whole. This widening belongs to `ItemContainerPageCodec` only.
+`ItemContainerCodec.TryDecode` still requires its caller's slot count to equal the stored count.
+
 - `ContainerPageSlots` is 100 rather than 128, so slot 743 is page 7 slot 43 and an operator reading a
   section name can do the arithmetic in their head.
 - `FirstSlot` is redundant against `PageIndex` ON PURPOSE. It costs two bytes per page and it is what catches
@@ -434,6 +468,14 @@ of instead of rewriting the whole thing. It splits the two concepts `ItemContain
   gate consulted by `Add` and by nothing else, and `IsAtCapacity` is the question it asks. `Occupancy` counts
   what it gates and `FreeSlots` counts the address space, so a container at capacity usually has free slots
   and refuses to open one anyway.
+- **`StackCap`** is the optional content-free `Func<int, int>` that supplies the current `max_stack`. It is
+  called once per add and never cached. A new stack and a merge accept only the units within a positive cap.
+  Anonymous grants return honest overflow. Identified grants are all-or-nothing because this layer cannot
+  mint a second durable id. Null or zero keeps the `int.MaxValue` engine ceiling. A negative answer is a
+  caller error.
+- **`PayloadCanonical` and `QuarantineWellFormed`** expose the exact nullable delegates handed to the
+  constructor. An external state copy passes them to its own constructor, so both containers keep the same
+  live acceptance rules as content changes. A null still means the matching door is closed.
 
 The four capacity rules, which are one consumer's bag model restated as engine behaviour:
 
@@ -459,18 +501,23 @@ a dense renumber is not something this container can do by accident.
 index. Its slots live in an `ItemContainer` of exactly one page's width rather than in a second array, so the
 payload doors and their four invariants are the SAME code a whole-container consumer runs.
 
-**Exactly two things dirty a page**: an operation that CHANGED a slot (`Write`, `Take`) and a remap that
-changed an id (`ApplyRemap`). Reading never does, a write that leaves the slot holding what it already held
+**Slot state changes dirty a page**: an operation (`Write`, `Take`), a remap or a successful rescue
+(`ApplyRemap`). Reading never does, a write that leaves the slot holding what it already held
 never does, and seating a decoded page (`Seat`, `SeatStamp`) never does either, because that IS the page's
 stored state. `ApplyRemap` moves the stamp only when something changed and only upward, because a clean page
 claiming a version no stored byte carries would lose the claim on the next load anyway, and a page stamped
 NEWER than the active version is never rewound. `CopyDirtyPagesTo` hands the dirty pages out, and they join
 whatever commit comes next rather than causing one.
 
+`SeatDirty(isDirty)` is the load path door for restoring that existing flag on an external state copy. It
+can restore either value and changes no stamp, entry, payload or occupancy. A copy seats entries with `Seat`,
+seats the stamp with `SeatStamp`, then seats the source page's dirty state. This preserves even an empty dirty
+page without manufacturing a write and take operation.
+
 **`PagedItemContainer` is an `IPagedContainerWorkingCopy`**, the narrow door the commit builder in
 `KhaozEngine.ItemInstances.Journal` reads and writes a container through
-([#1045](https://github.com/APKiwiOrg/KhaozEngine/issues/1045)). It is ten members and no page object:
-`PageCount`, `Stackable`, `IsAtCapacity` and `SlotAt`, the three writes `SetSlotAt`, `TakeSlotAt` and
+([#1045](https://github.com/APKiwiOrg/KhaozEngine/issues/1045)). It is eleven members and no page object:
+`PageCount`, `Stackable`, `StackCap`, `IsAtCapacity` and `SlotAt`, the three writes `SetSlotAt`, `TakeSlotAt` and
 `MarkClean`, and the page reads by INDEX, `IsPageDirty`, `PageContentVersion` and `CopyPageEntriesTo`. A page
 is read by index because an `ItemContainerPage` carries write members of its own, so handing one out would be a
 second door around the first. The container implements the three page reads explicitly, because `Pages`
@@ -482,6 +529,7 @@ var bag = new PagedItemContainer(
     pageCount: 1,
     capacity: 30,
     stackable: definitionId => catalog.Item(definitionId).Stackable,
+    stackCap: definitionId => catalog.Item(definitionId).MaxStack,
     payloadCanonical: ItemInstancePayload.IsCanonical,
     quarantineWellFormed: QuarantineWrapper.Verify);
 
@@ -497,14 +545,18 @@ comparison ONLY because the payload is canonical, so a decode inside it would be
 differing only in a field neither build understands do not merge, which is the conservative answer. On top of
 the four rules, an entry carrying durability (kind 5) or sockets (kind 132) never merges whatever the
 predicate says, because a definition can gain either AFTER its items exist and publish only sees the
-definitions it publishes. `InstanceStacking.Merge` is the arithmetic and never the rules: the surviving
-instance id is the numerically LOWER of the two, so a replay in either order agrees, and the count saturates
-at `int.MaxValue` rather than overflowing.
-
-**The stack cap of a lowered `max_stack` is the CALLER's**, applied above this kernel. The container reads no
-content, so it saturates at the engine ceiling and the load-time validator is what reports an over-cap count.
-Where that rule should live is
-[#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924).
+definitions it publishes. `InstanceStacking.Merge` is the arithmetic and never the rules. A complete merge
+keeps the numerically LOWER instance id, so a replay in either order agrees. A partial merge keeps the
+destination id because both entries survive. Its existing overload uses the `int.MaxValue` engine ceiling.
+The cap overload takes the current `max_stack` as an integer, moves only the units that fit and returns the
+rest. Zero means no content cap and a negative value throws. A destination already at or above a positive
+cap accepts no units. Removal can shrink an over-cap stack, and ordinary capped growth resumes once the
+count is below it. `PagedItemContainer.Add` admits partial overflow only for an anonymous grant. An
+identified grant that cannot enter whole changes nothing, whether it found a stack or would open one. `Seat`
+and the load path may preserve an existing over-cap stack. The container reads the cap through `StackCap`
+for each operation, so `ItemInstances` stays free of catalog row types and observes catalog edits without a
+cache. The exact legacy five-argument constructor remains, and the cap overload adds a required sixth
+argument after the two payload predicates.
 
 ## The remap pass
 
@@ -693,8 +745,11 @@ Four of those rows deserve their reason spelled out.
 The two POLICY tokens of rows 12 and 13 live in `InstanceValidationReason` rather than beside the quarantine
 ones, exactly because neither has a durable ordinal and neither ever writes a wrapper.
 
-**An entry whose quarantined flag is set carries a WRAPPER rather than a payload.** A caller re-validating one
-unwraps it through `QuarantineWrapper.TryUnwrap` first and hands the ORIGINAL bytes in. That is how the first
+**An entry whose quarantined flag is set carries a WRAPPER rather than a payload.** The whole-page `Validate`
+door reports it from the wrapper's stored reason and stamp without decoding the wrapper as a payload. The
+wrapper may preserve an empty original and carry instance id zero, including a quarantined plain stack.
+The entry stays in the page-wide instance id uniqueness check, which ignores zero. A caller using
+`ValidateEntry` to attempt a rescue unwraps it through `QuarantineWrapper.TryUnwrap` first and hands the ORIGINAL bytes in. That is how the first
 load after a missing remap rule lands restores the item exactly.
 
 `InstanceValidationOutcome` has THREE members and there is no fourth. In particular there is no "dropped": a
@@ -982,21 +1037,27 @@ The thirteen steps, in the order the draws happen, which IS the contract:
 | 12 | encodes the payload through `ItemInstancePayloadBuilder` | none |
 | 13 | takes the instance id, and ONLY when the payload is non-empty | none |
 
-**The reproducibility contract is that every draw is a function of the affix COUNT and of nothing else.** A
-candidate that is filtered out leaves the pool BEFORE the draw rather than being drawn and rejected, and a
-pick whose live pool is EMPTY still consumes both of its draws and discards them. Without those two discards
-one item consumes fewer draws than another of the same rarity on the same base, and a seeded session diverges
-at the first item whose pool runs dry.
+**The logical draw schedule depends on the generation path, requested affix count and name positions.**
+A candidate that is filtered out leaves the pool BEFORE the draw rather than being drawn and rejected.
+After its kind slot, a pick whose live pool is EMPTY still reserves a weighted-entry slot through `Skip`
+and a roll-position slot through `NextRollPosition`, discarding both results and placing nothing.
 
 **A collapsed bound takes `IRandomSource.Skip`, and that is not a formality.** `NextInt`'s own contract says
 a one-wide range consumes nothing, so a discard written as `NextInt(0, 1)` is no discard at all and a real
-draw over a live weight of one costs the stream nothing either. `Skip` advances the stream by exactly one
-draw whatever the bound is, so the position after an item is a function of the pick count and never of what
-the pool happened to hold.
+draw over a live weight of one costs the stream nothing either. The internal `BoundedDraw.Next` calls
+`NextInt(0, bound)` when `bound > 1`, otherwise calls `Skip` and returns 0. This covers every real bounded
+draw, including rarity, count, kind, entry and name words, as well as empty bounds. On `SeededRandomSource`,
+`Skip` discards exactly one underlying `NextULong`. A live `NextInt` may consume additional values during
+rejection sampling, so this schedule does not guarantee an identical underlying stream stride for every
+pool or bound. Reproducing a seeded roll requires the same source, seed, inputs and call order.
 
 **Step 12 writes kind 128 explicitly, state 0 and revealed mask 0.** An item carrying no `Identification`
 field at all is indistinguishable from an identified one under the visibility function, so the generator,
 which is what decides a new item is unidentified, is what writes the field.
+
+The generator owns one pre-sized `ItemInstancePayloadBuilder` alongside its other scratch arrays and clears it
+for each roll. A warmed generation allocates only the final payload array. Crafting still reaches the same builder
+and `ItemInstancePayload.Encode`, so generation has no second encoder whose canonical form could drift.
 
 `GenerationResult` carries `AffixCount` and `RequestedAffixCount` separately, because an item whose pool ran
 dry ends with fewer affixes than the count asked for, which is a legal outcome and is REPORTED rather than
@@ -1063,6 +1124,11 @@ bounded on both sides of the row codec by `CurrencyStepContentType.MinPrimitiveO
 exactly one static apply method on `CraftPrimitives`, split across three files by SUBJECT rather than by line
 count: affixes, sockets and scalars.
 
+`Identify` writes kind 128's state as 1 and its revealed mask as the OR of every registered gated
+`IdentificationMaskBit`. The default v1 registry produces `0b1111`, while a custom gated registration at
+bit 4 or beyond extends that mask. Bits no registration assigns stay zero in this writer's output. The
+decoder still accepts any revealed mask within `uint32`, including unassigned bits.
+
 Three of the vocabularies are closed on purpose, because a closed set is what a counter can bucket, a client
 can localize and a test can assert on:
 
@@ -1079,8 +1145,8 @@ can localize and a test can assert on:
   spec 10.3's "true when" cell, which reads the chain from the item's end and inverts it
   ([#989](https://github.com/APKiwiOrg/KhaozEngine/issues/989)).
 - **`CraftSelectorKind`, 1 to 6.** Which entries primitives 2, 3 and 10 act on. `RandomOfKind` is the only
-  one that draws, and it draws exactly ONCE, through the same bounded draw the generator uses, so a selection
-  with one candidate costs the stream what a selection with nine costs and so does a selection with none.
+  one that draws, and it reserves one slot through the same bounded helper the generator uses. A selection
+  with 0 or 1 candidates calls `Skip`, and an empty selection then refuses.
 
 **Three STANDING rules no currency can opt out of**, which is why they are not in any guard set:
 
@@ -1289,13 +1355,11 @@ every id space, every ordering rule, the stacking test, the paging shape, the pr
 byte passes through, the eighteen content types a roll and a craft read, and the three engines over them,
 which are the expensive things to change once data exists. What is absent is breadth, which is CONTENT: this
 package names no mod, no rarity, no currency and no tier, and a game authors every one of them. Beside that
-sit three named gaps on surfaces that already exist.
+sits one named gap on a surface that already exists.
 
 | Not here | Where it lands |
 |---|---|
 | a READER for the page delta, which ships the encoder alone while the fragmenter ships both halves | [#933](https://github.com/APKiwiOrg/KhaozEngine/issues/933) |
-| the lowered `max_stack` cap on the merge path, which saturates at `int.MaxValue` here and is reported after the fact by validator check 12 | [#924](https://github.com/APKiwiOrg/KhaozEngine/issues/924) |
-| enforcement of spec 3.3's per-kind value widths, so the revealed mask is a full `ulong` at every door here | [#917](https://github.com/APKiwiOrg/KhaozEngine/issues/917) |
 
 The journal side of a paged container, the `<container>/p<NN>` section naming, the load path and the batched
 commit builder, is `KhaozEngine.ItemInstances.Journal`, a `Server` package. The fragmenter a full page send

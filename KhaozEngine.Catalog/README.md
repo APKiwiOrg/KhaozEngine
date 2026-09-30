@@ -51,6 +51,10 @@ graph and is where the `IRandomSource` seam this catalog's random consumers take
   response or a validator finding. It hashes over its UTF-8 bytes, so it keys a dictionary directly. The
   character set and the 64 character cap are the VALIDATOR's rules, not the value type's, so an over-long
   or malformed key reaches the validator intact and is reported rather than silently truncated.
+- `ContentKeyRules` - the shared key-shape predicate for validation and authoring. `Defect(key)` returns
+  the first defect or null, `Rule` supplies the rule sentence, and `MaxKeyLength` is 64. The string overload
+  reports positions and lengths in UTF-16 units. The `ReadOnlySpan<byte>` overload uses UTF-8 bytes so the
+  validator can check runtime keys without materialising strings. Both accept the same ASCII key alphabet.
 
 ```csharp
 Span<byte> buffer = stackalloc byte[5];
@@ -142,7 +146,8 @@ stable ids and keys, plus the two type keys the engine writes down and a GAME re
   cap of its own because entries outnumber tables. **`guaranteed` is a field of this type and not of the
   table**, settled by `LootRoller` below: the composition spec 3.5 is written around is a table that drops one
   thing on its own chance AND another out of a weighted draw, which a table-level flag cannot express and which
-  would make `roll_count` meaningless on the table that set it.
+  would make `roll_count` meaningless on the table that set it. `MaxWeight` and `MaxWeightedPoolTotal` are both
+  `int.MaxValue`, the widest exact domain of the runtime prefix array.
 - `BaseSocketContentType` - `base_socket`, id 6, one socket an item base is authored WITH, in authored order,
   which `item.socket_max` caps rather than describes.
 - `ItemCategoryContentType` - `item_category`, id 7, the coarse bucket `item.category` names. The tag type's
@@ -225,9 +230,10 @@ mismatch refuses the WHOLE record with a reason token. Every decode entry point 
   same order. A row's offset is not stored, it is the running sum. `Encode` produces the canonical bytes, the
   content address and the stored file, storing uncompressed whenever Brotli does not shrink the body.
   `TryReadHeader` takes every refusal derivable from the header alone and allocates nothing, `TryDecode`
-  walks the table, and `TryVerify` checks a stored file against an address without decoding its rows.
-  `TryDecodeVerified` is the load path's one pass, doing both over a SINGLE decompression and comparing the
-  digest before it walks a row, so nothing escapes a buffer that has not been verified.
+  walks the table, and `TryVerify` checks a stored file against an address then walks the table without
+  allocating row arrays or decoding row bodies. `TryDecodeVerified` is the load path's one pass, doing both
+  over a SINGLE decompression and comparing the digest before it trusts the table, so nothing escapes a
+  buffer that has not been verified.
 - `ContentChunk`, `ContentChunkRow`, `ContentChunkHeader` and `EncodedContentChunk` - the decoded chunk with
   its walked table, one row on its way in, the 36 header bytes as a value, and the encode result carrying the
   canonical bytes, the hash and the stored file. `IsRetired(id)` is answered from the table with no row
@@ -299,9 +305,9 @@ process, and it implements the same `IContentSnapshot` seam over arrays indexed 
   read is the same slice one varint further in and a key costs only its bucket. `Body`, `Key`, `TryGetItem`,
   `TryGetId` over raw UTF-8 and the seven seam members all answer out of those arrays. The hand-off from the
   snapshot SHARES its per-type body blob rather than copying it, so the two hold one copy of the catalog
-  between them. `FromSnapshot` is boot step 7 and derives the four indexes below with it. `BuildLoadIndexes`
+  between them. `FromSnapshot` is boot step 7 and derives the five indexes below with it. `BuildLoadIndexes`
   is step 7b and runs whatever the registered types declared, which `ContentBoot` sequences separately
-  because it falls between the engine's four and the validator.
+  because it falls between the engine's five and the validator.
 - `ContentRuntimeHolder` - the ONE field the active runtime lives in, published at boot step 9 with a
   `Volatile.Write` and read with a `Volatile.Read`, and no lock anywhere. A reader takes the reference once at the top of an
   operation and uses that instance throughout, so a swap cannot hand it a half-old half-new answer, which
@@ -310,14 +316,21 @@ process, and it implements the same `IContentSnapshot` seam over arrays indexed 
   later live-apply phase. An unloaded holder THROWS rather than serving a default catalog, because there is
   no fallback to code defaults anywhere in this package.
 
-## The four derived indexes
+## The five derived indexes
 
 `ContentDerivedIndexes` is built eagerly in the runtime's own constructor, so a runtime never exists with its
-engine indexes missing. None of the four is built lazily, because each is walked inside gameplay and a lazy
+engine indexes missing. None of the five is built lazily, because each is walked inside gameplay and a lazy
 build inside a tick is a latency spike.
 
 - **Key to id, per type.** The open-addressed `int[]` on the type table itself, because it is keyed on a slice
   of that table's own blob. Read through `ContentRuntime.TryGetId`.
+- `ContentReferenceIndex` - every `KeyReference` field reversed from `(target type, target id, referencing
+  type)` to the referencing row ids. `Ids` returns a read-only span sorted by row id and does no row walk or
+  allocation. Its load build collects one flat value record per edge, sorts and deduplicates those records,
+  then compacts them into the lookup arrays in two passes. It creates no dictionary or list per target bucket.
+  Multiple fields on one row naming the same target contribute that row once. Retired target and referencing
+  rows stay indexed for stored-data and admin reads, so gameplay filters retirement explicitly. A reference
+  to a missing target row is left to validation and creates no lookup bucket.
 - `ContentTagIndex` - tag id to the sorted, distinct ids of the rows carrying it, per content type. Flat
   arrays sliced three deep rather than a dictionary of lists, so a lookup is two searches over small sorted
   runs and hands back a span. It covers EVERY registered type declaring a tag-list field rather than just
@@ -332,10 +345,10 @@ build inside a tick is a latency spike.
   Tracked as https://github.com/APKiwiOrg/KhaozEngine/issues/934.
 - `ContentLootIndex` and `ContentLootEntry` - per `loot_table`, the resolved entries with the weights PREFIX
   SUMMED, so a weighted draw is one `NextInt(0, total)` and one binary search over an `int[]` with no
-  allocation and no per-roll summation. Entries come back in `sort` then id order, a negative weight is clamped
-  and the running total saturates, both so the prefix array stays monotonic and searchable, and both the only
-  defence a weight has: no validator check reads one
-  (https://github.com/APKiwiOrg/KhaozEngine/issues/944). The sums run over
+  allocation and no per-roll summation. `KEC0043` refuses a live entry weight outside zero to `int.MaxValue`
+  and a live table whose non-guaranteed pool exceeds `int.MaxValue`. The load-time clamp and saturation remain
+  defence in depth for a pack that bypassed validation, so the prefix array stays monotonic and searchable.
+  The sums run over
   the NON-GUARANTEED entries only: a guaranteed entry rolls its own chance instead of competing, so it has zero
   width and a pick steps straight over it, which keeps one array and one search. `TotalWeight` is therefore the
   weighted pool's total rather than the sum of every authored weight. A `required_tags` entry resolves at load
@@ -389,12 +402,21 @@ if (!roller.TryRoll(tableId, drops, out int written))
 
 - `IPackStore` - the content-addressed store of spec 8.1, four members and no more: `ExistsAsync`,
   `GetAsync` (null for absent rather than a throw), `PutAsync` and `ListAsync`. The name IS the content.
+  Public `PutAsync` verifies the offered bytes against that name before writing, including when the file
+  already exists.
 - `IPackStorePruning` - the delete path, deliberately separate, so a read-only provider cannot be asked to
   prune and a misconfigured one cannot delete a production pack through the common interface.
 - `PackVersionPointer` and `PackDurability` - the two manifest hashes of one published version, which is the
   ONE object in a store not named by its own hash, and how hard a provider works to survive a power cut.
   `PackVersionPointer.TryRead` is the pointer file's one parser, because both providers read the same two
   lines, the local one off disk and the HTTP one off a `versions/<n>` GET.
+- `ContentPackClosure.ReadAsync(store, serverManifestHash, clientManifestHash)` reads both manifests at
+  the supplied immutable addresses and returns their complete, deduplicated object closure, including the
+  manifests, chunks, rules and per-language text. Fetched manifests are verified against those addresses
+  before decoding. An absent, mismatched or undecodable manifest returns an empty list, never a partial
+  closure. Filesystem version listings use this same walker after reading their pointer.
+  Validated authoring sweeps pass the durable record's hashes directly, so a later pointer replacement
+  cannot change which objects the sweep keeps.
 - `FileSystemPackStore` - the local provider: one file per hash under a two-level shard derived from the
   hash itself, written to a temporary name in the same directory and then moved. A content-addressed object
   is moved into place CREATE ONLY: one that another writer already placed holds the same bytes and is kept
@@ -405,7 +427,9 @@ if (!roller.TryRoll(tableId, drops, out int written))
   `<hash[0..2]>/<hash[2..4]>/<hash>.kec`, lower case with forward slashes and no leading slash, and it
   throws on a name that is not a content address rather than turning it into a path segment. Every provider
   that derives a name from a hash goes through it, the local path, the HTTP URI and the blob key alike, so
-  one tree serves all three and a client reads what any of them wrote.
+  one tree serves all three and a client reads what any of them wrote. `GetAsync` samples the open file's
+  length and refuses one over `ContentPackFormat.MaxObjectBytes` before allocating its contents. It reads
+  only the sampled length and one probe byte, so a file that grows after the sample is still bounded.
 - `HttpPackStore` - the read-only cloud provider, over ONE injected `HttpClient`, laying the SAME two-level
   shard out under an HTTP base address as the file store does on disk, so one tree serves both and a
   publisher uploads the directory as it stands. `PutAsync` and `ListAsync` throw `NotSupportedException` on
@@ -416,32 +440,39 @@ if (!roller.TryRoll(tableId, drops, out int written))
   no credential, because a redirect off a content-addressed store is either a misconfiguration or a
   redirection attack. No cloud SDK, deliberately: a blob SDK here would be a third-party dependency in every
   game client's graph, and the write side belongs to the publisher's own server.
-- **`HttpPackStore.MaxObjectBytes` is the one size bound that applies BEFORE a byte is buffered.** Every
-  other length check in the format is inside `ContentPackReader.TryVerify`, which `CachingPackStore` reaches
-  only once the whole body is in hand, so the store is the single layer that can refuse a body for being
-  too big at all. A declared `Content-Length` above the ceiling answers null without reading, and a response
-  that declares nothing is read through a bounded copy that stops one byte past it, so a chunked origin is
-  bounded too. The ceiling is `ContentPackFormat.MaxChunkUncompressedBytes` plus the largest fixed header a
-  pack file carries, because no legal stored body is larger than the uncompressed bytes it decompresses to.
+- **`ContentPackFormat.MaxObjectBytes` is the size bound every buffering store applies BEFORE an
+  object-sized allocation.** Every other length check in the format is inside
+  `ContentPackReader.TryVerify`, which `CachingPackStore` reaches only once the whole body is in hand. An
+  HTTP `Content-Length` above the ceiling answers null without reading, and a response that declares nothing
+  is read through a bounded copy that stops one byte past it, so a chunked origin is bounded too. The ceiling
+  is `ContentPackFormat.MaxChunkUncompressedBytes` plus the largest fixed header a pack file carries, because
+  no legal stored body is larger than the uncompressed bytes it decompresses to.
 - `CachingPackStore` - a LOCAL store in front of a REMOTE one. `GetAsync` asks local, on a miss asks remote,
   VERIFIES, writes through to local and returns. `ExistsAsync` asks local then remote. `PutAsync`, `ListAsync`
   and the pruning half are the CACHE's alone, so one client's eviction policy can never reach the origin.
+  After a successful fetch verification, an internal opt-in write capability lets `FileSystemPackStore`
+  reuse that result through its usual atomic create-only write. Other stores receive ordinary `PutAsync`.
+  The capability is internal, and public writes retain their integrity check.
   The verification is the whole value of it and it is not optional: bytes that do not digest to the name they
-  were fetched under are discarded, never cached and never returned. It verifies on every READ from the cache
-  and not only on write, which is what makes a local file replaced with attacker bytes self-healing, and a
-  failed cache read is DELETED before the refetch, because a content-addressed `PutAsync` is a no-op when the
-  name already exists. Every discard is reported as `(hash, reason)` through the optional callback, which is
-  how a fetch loop says `hash-mismatch` without this type knowing what a fetch loop is.
+  were fetched under are discarded, never cached and never returned. A matching-hash `KECC` chunk must also
+  pass the structural row-table walk before caching, including row count, order, duplicate, range and body
+  bounds checks. The walk reuses the decompressed body and does not allocate decoded row arrays. Verification
+  runs on every READ from the cache and not only on write, which is what makes a local file replaced with
+  attacker bytes self-healing, and a failed cache read is DELETED before the refetch, because a content-addressed
+  `PutAsync` is a no-op when the name already exists. Every discard is reported as `(hash, reason)` through the
+  optional callback, which is how a fetch loop says `hash-mismatch` without this type knowing what a fetch loop is.
 - `ContentPackReader` - the ONE reader, shared by the server and the client, which differ only in when they
   call it. `ReadAllAsync` is the server's eager boot path, `ReadRowAsync` is the client's lazy one and
-  touches at most the chunk whose slots cover the id, and `ReadChunkAsync` never refetches a chunk it holds.
-  Verify comes before decode, always. `ReadManifestAsync` fetches one manifest by hash and checks that its
-  canonical text digests back to the name it was fetched under, and the static `TryVerify` dispatches on the
-  magic, so a caller hashes an object the way the publisher did rather than guessing. `BuildSnapshot` HANDS
-  the decoded chunks over: the snapshot copies every row body into its own blob, so the reader drops them
-  and reading rows through the reader afterwards is not a supported mode. The constructor cross-checks every
-  manifest type's `chunkSlots` against the local registration and throws on a disagreement, because the
-  manifest digest does not cover `chunkSlots` and a registry-free decode leaves it unchecked.
+  touches at most the chunk whose slots cover the id. The public constructor retains decoded chunks for
+  `BuildSnapshot`, which HANDS them over and clears the reader. Long-lived clients use
+  `ContentPackReader.CreateLazy(..., maxResidentChunks)`, whose decoded working set is a bounded LRU. That
+  explicit mode refuses `ReadAllAsync` and `BuildSnapshot` rather than silently omitting evicted chunks.
+  `ChunksRead` reports current decoded residency. Verify comes before decode, always. `ReadManifestAsync`
+  fetches one manifest by hash and checks that its canonical text digests back to the name it was fetched
+  under, and the static `TryVerify` dispatches on the magic, so a caller hashes an object the way the publisher
+  did rather than guessing. Construction cross-checks every manifest type's `chunkSlots` against the local
+  registration and throws on a disagreement, because the manifest digest does not cover `chunkSlots` and a
+  registry-free decode leaves it unchecked.
 - `ContentManifestRead`, `ContentChunkRead`, `ContentRowRead` and `ContentPackRead` - one attempt each, every
   one carrying a stable reason token rather than throwing. The reasons this type adds (`hash-mismatch`,
   `manifest-hash-mismatch`, `chunk-fetch-failed`, `chunk-type-unregistered`) are FETCH outcomes and are
@@ -487,11 +518,13 @@ else
   restart refuses its whole population at once, so an undrawn curve moves that population together and
   arrives as one spike at every step of it. `BackoffBase` of zero runs the attempts back to back, and
   `ContentFetchOptions.Delay` is the wait itself, `Task.Delay` in a client and a recorder in a test.
-- **Decode is LAZY and the loop stores BYTES.** No row is decoded and no decompressed body is kept: the one
-  decompression a chunk pays is the verify's, inside the store pair, and its result is dropped. A client
-  that later reads one item id through `ContentPackReader.ReadRowAsync` decompresses the one chunk whose
-  slots cover it and leaves every other chunk compressed in the cache, which is what makes the cold start a
-  download budget rather than a decode budget.
+- **Decode is LAZY and the loop stores BYTES.** No row body is decoded and no decompressed body is kept: the one
+  decompression a chunk pays is the verify's, inside the store pair, where its row table is walked structurally
+  before the result is dropped. A client that later reads one item id through a reader from
+  `ContentPackReader.CreateLazy` decompresses the one chunk whose slots cover it and leaves every other chunk
+  compressed in the store. The caller sets `maxResidentChunks` from its decoded heap budget. The least recently
+  used decoded chunk leaves when that count is reached and is decoded again from the content-addressed store
+  on a later lookup.
 - **A partial download never becomes a partial catalog.** `Success` is `Complete` and nothing else, and
   there is deliberately no member on the loop or the result that hands back a snapshot, a runtime or a
   reader. That is what makes the door comparison a hash equality rather than a negotiation.
@@ -638,7 +671,7 @@ reports every defect rather than the earliest.
   when it is null and the report carries `KEC0000` naming them. That is a property of the ARGUMENT rather
   than a mode flag, and `KEC0000` is the one finding that leaves `IsValid` true.
 - **Five passes, in order, none of them stopping early**: structure, schema, references, visibility and
-  codec, then the remap rules. `KEC0001` to `KEC0099` are the engine's own and 1 to 42 are issued.
+  codec, then the remap rules. `KEC0001` to `KEC0099` are the engine's own and 1 to 43 are issued.
 - **Pass 6 is the item-instances band**, which runs INSIDE the sweep after pass 5 and emits the reserved
   `KEC0100` to `KEC0199`. It reaches a registration the way every other pass does, through the registry: a
   type registered in the `Instances` band whose registration carries a validator has that validator run HERE,
@@ -655,8 +688,9 @@ reports every defect rather than the earliest.
 - A per-type `IContentValidator` runs LAST, one per registered type outside that band, and may only ADD a
   constraint. Its findings come back as `KEC0040` with its type key on the message, so the token stays stable.
   A per-type validator is untrusted code, so a throw from one is caught and reported as `KEC0040` rather than
-  taking a publish down with a stack trace where a finding was expected, and it is never handed the previous
-  version: that is the one thing pass 6 does that this loop deliberately does not.
+  taking a publish down with a stack trace where a finding was expected. Findings it added before throwing
+  are wrapped and kept before that throw finding, and it is never handed the previous version: that is the
+  one thing pass 6 does that this loop deliberately does not.
 - **What it deliberately does NOT check**: whether a value is sensible, whether a client has the art,
   whether a localization key resolves, and whether a remap rule is a good idea. The owner owns the numbers.
 
@@ -726,7 +760,7 @@ loads before the world and both load before the door opens.
 4. **Step 6, both type lists, before a single chunk is fetched**, then `Freeze()` on the registry. A
    manifest naming a type this build does not register has no codec for its rows, and a registered type
    absent from the version is the same failure from the other side.
-5. **Steps 7 and 7b**, the runtime and its four engine indexes, then every registered `IContentLoadIndex` in
+5. **Steps 7 and 7b**, the runtime and its five engine indexes, then every registered `IContentLoadIndex` in
    type id order.
 6. **Step 8**, the one validator with `previous` null. **Step 9**, one `Volatile.Write` into the holder.
    **Step 11**, every world-to-content key resolved by KEY against the loaded version.

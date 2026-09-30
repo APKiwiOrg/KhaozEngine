@@ -107,7 +107,7 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStreamListi
     }
 
     [Fact]
-    public void Auto_create_is_idempotent_and_validate_only_accepts_version_two()
+    public void Auto_create_is_idempotent_and_validate_only_accepts_version_three()
     {
         string path = database.NewPath();
         using (database.Open(path)) { }
@@ -128,7 +128,7 @@ public sealed class SqliteMutationJournalStoreTests : MutationJournalStreamListi
             "SELECT [notnull] FROM pragma_table_info('journal_operation') WHERE name = 'retention_started_at_utc';");
 
         Assert.Equal(7, tableCount);
-        Assert.Equal(2, schemaVersion);
+        Assert.Equal(3, schemaVersion);
         Assert.Equal(1, retentionNotNull);
     }
 

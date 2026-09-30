@@ -20,7 +20,7 @@ public abstract partial class ContentAuthoringStoreConformance
     /// <summary>
     /// FACT 1. <see cref="ContentAuthoringSchemaMode.AutoCreate"/> on an empty database creates the schema and
     /// reports the CURRENT version, which is the number a migration compares against. A fresh create is
-    /// version 2 directly rather than version 1 and a migration.
+    /// version 3 directly rather than an older version and a migration.
     /// </summary>
     [Fact]
     public virtual async Task Fact01_AutoCreateOnAnEmptyStoreCreatesTheSchemaAndReportsTheCurrentVersion()

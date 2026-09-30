@@ -286,9 +286,11 @@ half way.
 entry rolls its own `chance_bp`, then a table takes `roll_count` weighted picks over the rest, and a pick
 never rolls a chance. So a chance on a weighted entry, a weight on a guaranteed one, a weighted entry at no
 weight, picks over an empty pool, a pool nothing picks from, a guaranteed chance outside the basis-point range
-and a guaranteed entry at no chance are all numbers nobody rolls against. The engine's own loot checks,
-`KEC0023` and `KEC0024`, refuse none of them. An ABSENT chance on a weighted entry is nothing authored and is never refused, and a
-weighted entry whose chance is also out of range draws the weighted finding alone.
+and a guaranteed entry at no chance are all numbers nobody rolls against. The engine's draw-shape checks,
+`KEC0023` and `KEC0024`, refuse none of them. `KEC0043` separately keeps entry weights and each
+non-guaranteed pool inside the runtime's exact int range, without deciding any of these semantic combinations.
+An ABSENT chance on a weighted entry is nothing authored and is never refused, and a weighted entry whose
+chance is also out of range draws the weighted finding alone.
 
 **`KGT1316` is a MAXIMUM, computed.** A table's most lines is every live guaranteed entry's own most plus
 `roll_count` times the widest single weighted entry, recursing through `nested_table` down to
@@ -333,9 +335,10 @@ A game finding reaches the report the way a package finding does, folded into `K
 key with the game's own code in the message. Empty, which is the default, changes nothing. **The hook rides
 the sweep and cannot run without it**, which is why it is not a second slot: a game rule mounted on a type of
 its own would run once per mounting, and one mounted on `food` in place of `GameContentChecks` would drop the
-package's sweep. A rule that throws is the slot's throw, reported as one `KEC0040` with none of the slot's
-findings kept, so a rule that can fail on content adds a finding instead. A null list or a null member is
-refused when `GameContentChecks` is built.
+package's sweep. A rule that throws is the slot's throw. Findings the package or an earlier game rule already
+added are kept and folded into `KEC0040`, then the throw is reported as another `KEC0040` naming the slot's
+type. A rule that can fail on content adds a finding instead. A null list or a null member is refused when
+`GameContentChecks` is built.
 
 ## Registering by hand
 

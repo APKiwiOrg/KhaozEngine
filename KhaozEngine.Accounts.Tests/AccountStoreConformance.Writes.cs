@@ -33,7 +33,7 @@ public abstract partial class AccountStoreConformance
         await store.BanAsync("discord:1", "griefing", null);
 
         AccountRecord? on = await store.SetWhitelistedAsync("discord:1", true);
-        Assert.Equal(new AccountRecord("discord:1", "Ferret", true, new AccountBan("griefing", null)), on);
+        Assert.Equal(CreatedAtNow(new AccountRecord("discord:1", "Ferret", true, new AccountBan("griefing", null))), on);
         Assert.Equal(on, await store.FindAsync("discord:1"));
 
         AccountRecord? off = await store.SetWhitelistedAsync("discord:1", false);
@@ -49,7 +49,8 @@ public abstract partial class AccountStoreConformance
 
         AccountRecord? banned = await store.BanAsync("discord:1", "griefing", Now.AddHours(1));
 
-        Assert.Equal(new AccountRecord("discord:1", "Ferret", true, new AccountBan("griefing", Now.AddHours(1))), banned);
+        Assert.Equal(CreatedAtNow(new AccountRecord("discord:1", "Ferret", true, new AccountBan("griefing", Now.AddHours(1)))),
+            banned);
         Assert.True(banned!.IsBanActive(Now));
         Assert.False(banned.IsBanActive(Now.AddHours(1)));
         Assert.Equal(banned, await store.FindAsync("discord:1"));
@@ -93,7 +94,7 @@ public abstract partial class AccountStoreConformance
 
         AccountRecord? lifted = await store.UnbanAsync("discord:1");
 
-        Assert.Equal(new AccountRecord("discord:1", "Ferret", true, null), lifted);
+        Assert.Equal(CreatedAtNow(new AccountRecord("discord:1", "Ferret", true, null)), lifted);
         Assert.Equal(lifted, await store.FindAsync("discord:1"));
         Assert.Empty(await store.ListBannedAsync());
 

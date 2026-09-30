@@ -44,7 +44,7 @@ public static class SqlServerJournalReset
     /// <param name="cancellationToken">Cancels the work. Nothing is committed on the way out.</param>
     /// <returns>The rows deleted from each data table, and the store epoch that was kept.</returns>
     /// <exception cref="ArgumentException"><paramref name="connectionString"/> is null, empty or whitespace.</exception>
-    /// <exception cref="JournalStoreException">The database carries no journal or not the version-two journal, or a host key the deletes would fire (<c>SchemaMismatch</c>), schema initialization, a journal writer or a maintenance call held its lock past the timeout (<c>Timeout</c>), a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>), or the server failed.</exception>
+    /// <exception cref="JournalStoreException">The database carries no journal or not the version-three journal, or a host key the deletes would fire (<c>SchemaMismatch</c>), schema initialization, a journal writer or a maintenance call held its lock past the timeout (<c>Timeout</c>), a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>), or the server failed.</exception>
     public static Task<JournalResetResult> ResetAsync(string connectionString, CancellationToken cancellationToken = default)
         => ResetAsync(connectionString, DefaultLockTimeout, cancellationToken);
 
@@ -54,8 +54,9 @@ public static class SqlServerJournalReset
     /// <para>
     /// <b>It validates before it deletes.</b> The journal is opened with
     /// <see cref="SqlServerJournalSchemaMode.ValidateOnly"/>, behind the schema's application lock, so a database with
-    /// no journal, a version-one journal or a malformed one is refused with <c>SchemaMismatch</c> and is never created,
-    /// migrated or repaired. That includes a delete guard trigger that is missing, altered or disabled.
+    /// no journal, a version-one or version-two journal or a malformed one is refused with <c>SchemaMismatch</c> and
+    /// is never created, migrated or repaired. That includes a delete guard trigger that is missing, altered or
+    /// disabled.
     /// </para>
     /// <para>
     /// <b>It refuses contention rather than waiting for it forever.</b> Every journal commit and initialization holds
@@ -89,7 +90,7 @@ public static class SqlServerJournalReset
     /// <returns>The rows deleted from each data table, and the store epoch that was kept.</returns>
     /// <exception cref="ArgumentException"><paramref name="connectionString"/> is null, empty or whitespace.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="lockTimeout"/> is not positive or does not fit SQL Server's millisecond lock timeout.</exception>
-    /// <exception cref="JournalStoreException">The database carries no journal or not the version-two journal, or a host key the deletes would fire (<c>SchemaMismatch</c>), schema initialization, a journal writer or a maintenance call held its lock past the timeout (<c>Timeout</c>), a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>), or the server failed.</exception>
+    /// <exception cref="JournalStoreException">The database carries no journal or not the version-three journal, or a host key the deletes would fire (<c>SchemaMismatch</c>), schema initialization, a journal writer or a maintenance call held its lock past the timeout (<c>Timeout</c>), a host row still references the journal through a <c>NO ACTION</c> key (<c>ConstraintViolation</c>), or the server failed.</exception>
     public static async Task<JournalResetResult> ResetAsync(
         string connectionString,
         TimeSpan lockTimeout,

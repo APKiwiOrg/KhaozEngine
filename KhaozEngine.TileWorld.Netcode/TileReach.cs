@@ -69,7 +69,10 @@ public static class TileReach
             foreach (TileDirection outward in Cardinals)
             {
                 (int dx, int dz) = TileDirections.Delta(outward);
-                int nx = x + dx, nz = z + dz;
+                long nextX = (long)x + dx, nextZ = (long)z + dz;
+                if (nextX < int.MinValue || nextX > int.MaxValue
+                    || nextZ < int.MinValue || nextZ > int.MaxValue) continue;
+                int nx = (int)nextX, nz = (int)nextZ;
                 if (footprint.Contains(nx, nz)) continue;             // inside the object is not a reach tile
                 if (!TileCollision.CanStep(map, x, z, plane, outward)) continue;
                 found.Add(new TileCoord(nx, nz, plane));
@@ -112,7 +115,10 @@ public static class TileReach
             for (int dz = 0; dz < agentSize; dz++)
                 for (int dx = 0; dx < agentSize; dx++)
                 {
-                    var a = new TileCoord(p.X - dx, p.Z - dz, plane);
+                    long anchorX = (long)p.X - dx, anchorZ = (long)p.Z - dz;
+                    if (anchorX < int.MinValue || anchorX > int.MaxValue
+                        || anchorZ < int.MinValue || anchorZ > int.MaxValue) continue;
+                    var a = new TileCoord((int)anchorX, (int)anchorZ, plane);
                     if (Overlaps(a, agentSize, footprint) || !seen.Add(a)) continue;
                     anchors.Add(a);
                 }
@@ -304,7 +310,10 @@ public static class TileReach
         foreach (TileDirection d in Cardinals)
         {
             (int dx, int dz) = TileDirections.Delta(d);
-            if (footprint.Contains(from.X + dx, from.Z + dz)) return d;
+            long nextX = (long)from.X + dx, nextZ = (long)from.Z + dz;
+            if (nextX < int.MinValue || nextX > int.MaxValue
+                || nextZ < int.MinValue || nextZ > int.MaxValue) continue;
+            if (footprint.Contains((int)nextX, (int)nextZ)) return d;
         }
         return TileDirection.W;
     }
@@ -346,15 +355,13 @@ public static class TileReach
 
     // The Chebyshev gap between `from` and the footprint, 0 when `from` stands on it, and the whole of the
     // admission rule above. Its own member because the arithmetic is the only observable part of that rule at the
-    // coordinates it is written to survive: a rect whose far edge passes int.MaxValue cannot be enumerated by Set
-    // at all, so the call answers false either way and no end-to-end test can tell a wrapped edge from a sound one.
+    // coordinates it is written to survive. TileRect now refuses an unrepresentable far edge before Set enumerates
+    // it, while this helper also has to compare accepted rectangles with a `from` at the opposite int extreme.
     //
     // In LONG throughout, for two independent reasons. The two coordinates can be far apart, so a footprint near
     // int.MinValue against a `from` at a positive tile overflows the SUBTRACTION in int, and the wrong sign would
-    // ADMIT the call rather than refuse it. And the far edge is X + Width - 1 computed here rather than
-    // TileRect.X1 - 1 read off the rect, because X1 is an int sum that has already wrapped by the time it is cast:
-    // that read a footprint one tile away as about 2^32 away and refused it (#898), the same wrap the overlap
-    // helper below spells out.
+    // ADMIT the call rather than refuse it. The inclusive far tile is widened before the addition for the same
+    // reason, even though the rect's public exclusive edge is already range checked.
     internal static long FootprintDistance(TileRect footprint, TileCoord from)
     {
         long dx = Math.Max(Math.Max((long)footprint.X - from.X, (long)from.X - ((long)footprint.X + footprint.Width - 1)), 0L);
@@ -362,8 +369,7 @@ public static class TileReach
         return Math.Max(dx, dz);
     }
 
-    // In long, both the agent's far edges and the rect's, because TileRect.X1 and Z1 are int sums that wrap near
-    // int.MaxValue and a wrapped edge would read as no overlap.
+    // In long because the agent's far edges can pass int.MaxValue before a candidate is rejected.
     static bool Overlaps(TileCoord anchor, int size, TileRect r) =>
         (long)anchor.X < (long)r.X + r.Width && (long)anchor.X + size > r.X
         && (long)anchor.Z < (long)r.Z + r.Height && (long)anchor.Z + size > r.Z;

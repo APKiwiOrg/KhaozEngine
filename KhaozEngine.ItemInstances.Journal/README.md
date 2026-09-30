@@ -40,8 +40,8 @@ WRITES rather than on the container, because the suffix is three characters at p
 Without it the refusal arrives from the journal at the far end of a commit, with the batch already closed and
 its pages already dirty.
 
-`ContainerCommitBuilder.Open` asks `Format` for each container it is opened over, at page 0, so a name that
-cannot be a section name never reaches a commit.
+`ContainerCommitBuilder.Open` asks `Format` for each container it is opened over, at the container's highest
+page, so a name that cannot be a section name never reaches a commit.
 
 **`TryParse` is the ONE place a name is taken apart** and it is CANONICAL rather than tolerant: it accepts
 exactly what `Format` writes, so `bank/p007` is refused rather than read as page 7. A tolerant parse would let
@@ -52,13 +52,21 @@ check exists to catch. It answers false rather than throwing, because a section 
 
 ```csharp
 var context = new ContainerLoadContext(
-    streamKey, "bank", properties, types, rules, stackable, logger, counter);
+    streamKey, "bank", properties, types, rules, stackable, logger, counter,
+    telemetryKey: "player/redacted");
 ContainerLoadResult result = ContainerLoad.Load(read.Sections, snapshot, context);
 ```
 
+`Load` passes the 100 slot page geometry to `ItemContainerPageCodec`. A version 1 section named for page 0
+may declare any stored width from 1 through 100. It loads as a full 100 slot page with every stored slot index
+unchanged, so the host does not widen or re-encode an older bank, bag or worn set first. A version 1 blob that
+declares more than 100 slots fails at the page level and is quarantined as a unit.
+
 `Load` takes the whole projection read and keeps the sections that are this container's pages, so a caller
 never re-implements the naming rule to filter first. It takes its whole world as arguments: no store read, no
-file read, no ambient static. The order is the design:
+file read, no ambient static. `streamKey` remains the exact stored key used for that filter. `telemetryKey` is
+used only in the warning line, so pass a redacted value when the stored key contains an account id. It defaults
+to `streamKey`, and it does not change the per-record counter dimensions. The order is the design:
 
 1. **Decode the page.** A page that fails at the PAGE level (bad version, bad header, truncated, entries out
    of order) is quarantined as a UNIT, because a page that cannot be parsed has no entries to keep. It is not
@@ -70,10 +78,10 @@ file read, no ambient static. The order is the design:
    order, in one pass. A rule that changed something marks the page DIRTY and moves its in-memory stamp. The
    page is not written: the rewrite is lazy and rides the next ordinary commit.
 4. **Unwrap and re-offer every quarantined entry**, at the WRAPPER's own stamped version.
-5. **Validate** the page's LIVE entries, then wrap what the validator quarantined, then emit one log line and
-   one counter increment per record for the whole container. A quarantined entry is not swept again: its
-   verdict is already stored, and the validator would read its wrapper as a payload and report the wrong
-   reason ([#936](https://github.com/APKiwiOrg/KhaozEngine/issues/936)).
+5. **Validate** every page entry, then wrap what the validator newly quarantined, then emit one log line and
+   one counter increment per record for the whole container. An already quarantined entry is reported from
+   its wrapper's stored reason and stamp without decoding the wrapper as a payload. It stays in the page-wide
+   instance id uniqueness check ([#936](https://github.com/APKiwiOrg/KhaozEngine/issues/936)).
 
 **Rules run BEFORE the validator and that is what gives a drift finding its meaning:** a
 `unknown-definition` or `unknown-content-reference` finding means NO RULE COVERED IT.
@@ -88,7 +96,7 @@ should have refused.
 |---|---|
 | `Pages` | every page that decoded, ascending by page index. A page that failed whole is not here |
 | `Reports` | one `InstanceValidationReport` per page, the validator's own accumulated findings |
-| `Findings` | everything the validator cannot say, because it never saw it |
+| `Findings` | page and load lifecycle facts beside the validator reports |
 | `Dirty` | the pages that owe the next ordinary commit a rewrite |
 | `QuarantinedRecords` | how many records are out of play |
 
@@ -97,11 +105,13 @@ A `ContainerLoadFinding` is one of five kinds. `PageQuarantined` is a page that 
 flagged quarantined over NO payload answers: there is no wrapper behind the flag to carry a reason or a
 stamp, so the reason is `field-malformed`, and the entry is left out of the page rather than seated live,
 which would clear the flag. The page codec refuses that shape at both of its own doors, so the seat door is
-the second one it would meet. `EntryRescued` is an entry that came back. `RemapAbandoned` is a rule that named an entry and could not be applied to it. `EntryUnwrappable`
-is a record the validator quarantined that the page cannot hold the wrapper for. Each one carries the section
-name an operator greps for, the page index taken from that NAME rather than from the header, the absolute
+the second one it would meet. `EntryRescued` is an entry that came back. `RemapAbandoned` is a rule that named
+an entry and could not be applied to it. `EntryUnwrappable` is retained for compatibility with older load
+results. The current loader can wrap plain stacks and payloads without instance identity. Each finding
+carries the section name an operator greps for, the page index taken from that NAME rather than from the header, the absolute
 slot (or `ContainerLoadFinding.NoSlot` on a whole-page finding), a reason token and the version the record
-stands at.
+stands at. An `EntryQuarantined` finding records that the wrapper remained, while its quarantine counter
+increment comes from the validator report so the record is counted once.
 
 `ContainerLoadReason` is the load path's own two tokens, beside the page tokens of `ItemContainerPageReason`
 and the quarantine tokens of `InstanceQuarantineReason`. `page-section-mismatch` is a page whose header names
@@ -128,16 +138,22 @@ it stands, stamped version included, so the next rule published still reaches it
 helped by a remap rule, re-decoding one on every load costs something, and its bytes are not canonical by
 definition, so the page's own door would refuse to seat them live anyway.
 
+A drift wrapper preserving an empty original can recover a plain stack when its definition resolves again,
+even without a remap rule. Recovery keeps its existing instance id, including zero, clears the quarantine
+flag and dirties the page. A non-empty original with instance id zero cannot be restored as a live payload.
+
 ## Quarantine does not dirty a page
 
-Exactly two things dirty a page: an operation that changed a slot, and a remap that changed an id. Wrapping an
-entry at load is neither, so the stored bytes stay as they are and the same wrapper is derived again on the
+An operation, a remap or a successful rescue dirties a page when its slot state changes. Wrapping an
+entry at load does not, so the stored bytes stay as they are and the same wrapper is derived again on the
 next load. That is also what keeps the recovery exact: nothing was rewritten, so there is nothing to undo.
 
-**One record shape cannot carry its wrapper at all**: a wrapper IS a payload, and a container refuses a
-payload on a slot whose instance id is 0, which is every plain stack. Such a record is reported as
-`EntryUnwrappable` and counted like any other quarantined record, and its bytes are untouched
-([#935](https://github.com/APKiwiOrg/KhaozEngine/issues/935)).
+A verified wrapper can carry instance id zero. An unknown-definition plain stack keeps its definition,
+count and absent identity, gains a wrapper over its empty original, and carries the quarantine flag in the
+page and its codec entries. A non-empty live payload missing an instance id is wrapped at entry level,
+preserving its bytes and the rest of the page. Malformed payload bytes keep the decoder's structural reason,
+while otherwise valid bytes receive `instance-id-missing`. Neither path dirties the loaded page or writes
+the stored section ([#935](https://github.com/APKiwiOrg/KhaozEngine/issues/935)).
 
 ## How a load's dirty page reaches a commit
 
@@ -153,10 +169,10 @@ Two routes take it there and a host picks one.
    THAT page, and the next `ContainerCommitBuilder.Close` writes it beside whatever the batch's operations
    changed. `A_hole_survives_a_load_a_save_and_a_remap_and_costs_zero_bytes` in
    `KhaozEngine.ItemInstances.Tests` is this route end to end.
-2. **Re-seat what the load already rewrote.** The host walks `ContainerLoadResult.Dirty`, and writes each of
-   those pages' slots into its container through `SetSlotAt`, which is an OPERATION and dirties the
-   container's own page. Use this when the load's pass has already done the work and re-running it would be
-   the second copy.
+2. **Restore what the load already rewrote.** The host seats each loaded page's entries through `Seat`, its
+   stamp through `SeatStamp`, and its existing dirty flag through `SeatDirty`. These are load doors, so they
+   preserve the loaded state without inventing another operation or re-running the pass. `SeatDirty` also
+   preserves an empty dirty page, which has no entry a fake write could safely use.
 
 **The load and the container must share ONE stackable predicate.** `ContainerLoadContext`'s and the
 `PagedItemContainer`'s are separate arguments, so two different rules can be handed in, and the pages would
@@ -192,7 +208,7 @@ leaves its pages owing the next commit a rewrite, which is the state the consume
 
 **The batch owns what it is opened over, from `Open` until `MarkCommitted`.** It holds each container by
 reference and every `Apply` writes through it, so between those two calls the containers are the batch's and
-nothing else writes them. It reads and writes through `IPagedContainerWorkingCopy` and nothing wider: ten
+nothing else writes them. It reads and writes through `IPagedContainerWorkingCopy` and nothing wider: eleven
 members, three of which write (`SetSlotAt`, `TakeSlotAt`, `MarkClean`), and no page object crosses it
 ([#1045](https://github.com/APKiwiOrg/KhaozEngine/issues/1045)). `Open` has two overloads. Handed the
 `PagedItemContainer`s themselves, the batch holds their real write doors. Handed a host's own
@@ -414,13 +430,24 @@ has no target slot and returns `legacy-location-omitted` for replay, while
 
 `ContainerOperationApplier.TryReplay` takes the decoded operation and a dictionary of caller-owned
 `IPagedContainerWorkingCopy` containers. It checks known invalid slots, instance ids, counts, payloads,
-currency and craft before state before changing a slot. A historical Merge or occupied Grant uses its
-admission as proof that the item was stackable then, so a later catalog retune cannot block replay. An
-admitted Grant also bypasses a later reduction in container capacity. The live builder uses `TryApply`,
-which still checks current stackability and capacity. The caller's working-copy
+currency and craft before state before changing a slot. A historical Merge or Grant uses its
+admission as proof that the item was stackable and within its stack cap then, so a later catalog retune
+cannot block replay. An admitted Grant also bypasses a later reduction in container capacity. The live
+builder uses `TryApply`, which checks current stackability, stack cap and capacity. The caller's working-copy
 implementation remains responsible for accepting valid writes. No replay path rerolls content or mints an
 instance id. `ItemGeneratedEvent` remains a readable audit body, and version 2 Craft still contains the
 unchanged `ItemCraftedEvent` audit body inside its envelope.
+
+**A new live Merge is all-or-nothing.** Its version 1 event names the two slots and instance ids but no moved
+count, so admitting a partial capped move would let replay consume the whole source and reconstruct different
+page bytes. A nonzero remainder refuses before either slot changes. Every newly admitted Merge therefore
+consumes its source whole and replays byte identically under historical admission.
+
+Replay retains one released exception. Before the cap seam, a Merge whose destination was one below
+`int.MaxValue` admitted one unit and retained the source remainder. It also chose the lower instance id for
+the destination even though the source survived. `TryReplay` reconstructs that exact partial result from a
+stored version 1 event, including both counts and both ids. This compatibility branch is replay-only and
+cannot admit a new partial merge.
 
 ```csharp
 if (!ContainerOperationEventCodec.TryRead(stored.EventType, stored.EventSchemaVersion,

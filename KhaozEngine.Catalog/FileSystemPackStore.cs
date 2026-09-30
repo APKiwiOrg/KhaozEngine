@@ -47,7 +47,8 @@ namespace KhaozEngine.Catalog;
 /// implements and a boot over a store that does not is handed separately.
 /// </para>
 /// </summary>
-public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IContentVersionPointerSource
+public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IContentVersionPointerSource,
+    IVerifiedPackStoreWrite
 {
     /// <summary>The extension every stored object carries, whatever kind it is.</summary>
     public const string FileExtension = ".kec";
@@ -160,20 +161,16 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
         }
 
         string path = PathFor(hash);
-        if (!File.Exists(path))
-        {
-            return null;
-        }
-
         try
         {
-            byte[] bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
-            return new ReadOnlyMemory<byte>(bytes);
+            return await BoundedFileReader
+                .ReadAsync(path, ContentPackFormat.MaxObjectBytes, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (IOException)
         {
-            // A file that went away between the check and the read is the same answer as one that was never
-            // there, because the caller's next move is to fetch it from somewhere else either way.
+            // A file that is absent or changed while it is read is the same answer as one that was never
+            // there, because the caller fetches it from somewhere else either way.
             return null;
         }
         catch (UnauthorizedAccessException)
@@ -188,16 +185,7 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
         ReadOnlyMemory<byte> bytes,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(hash);
-
-        if (!IsContentAddress(hash))
-        {
-            throw new ContentPackException(
-                FormattableString.Invariant(
-                    $"'{hash}' is not a content address, and a store that files bytes under a name that is not their digest is not content addressed."),
-                hash,
-                ContentPackReader.ReasonHashMismatch);
-        }
+        RequireObjectAddress(hash);
 
         if (!ContentPackReader.TryVerify(bytes.Span, hash, out string? reason))
         {
@@ -208,6 +196,21 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
                 reason);
         }
 
+        await WriteObjectAsync(hash, bytes, cancellationToken).ConfigureAwait(false);
+    }
+
+    Task IVerifiedPackStoreWrite.PutVerifiedAsync(
+        string hash,
+        ReadOnlyMemory<byte> bytes,
+        CancellationToken cancellationToken)
+    {
+        RequireObjectAddress(hash);
+        return WriteObjectAsync(hash, bytes, cancellationToken);
+    }
+
+    async Task WriteObjectAsync(string hash, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         string path = PathFor(hash);
         if (File.Exists(path))
         {
@@ -218,6 +221,19 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await WriteThenMoveAsync(path, bytes, replace: false, cancellationToken).ConfigureAwait(false);
+    }
+
+    static void RequireObjectAddress(string hash)
+    {
+        ArgumentNullException.ThrowIfNull(hash);
+        if (!IsContentAddress(hash))
+        {
+            throw new ContentPackException(
+                FormattableString.Invariant(
+                    $"'{hash}' is not a content address, and a store that files bytes under a name that is not their digest is not content addressed."),
+                hash,
+                ContentPackReader.ReasonHashMismatch);
+        }
     }
 
     /// <inheritdoc />
@@ -340,43 +356,6 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
                     $"A version pointer holds two manifest content addresses, and {parameterName} is '{hash}'."),
                 hash,
                 ContentPackReader.ReasonHashMismatch);
-        }
-    }
-
-    static bool TryAddManifest(
-        ReadOnlyMemory<byte> file,
-        ContentManifestSide side,
-        HashSet<string> seen,
-        List<string> hashes)
-    {
-        if (!ContentManifestCodec.TryDecode(file.Span, side, out ContentManifest? manifest, out _))
-        {
-            return false;
-        }
-
-        Add(seen, hashes, manifest.RemapRuleChunkHash);
-        for (int t = 0; t < manifest.Types.Count; t++)
-        {
-            IReadOnlyList<ManifestChunkEntry> chunks = manifest.Types[t].Chunks;
-            for (int c = 0; c < chunks.Count; c++)
-            {
-                Add(seen, hashes, chunks[c].Hash);
-            }
-        }
-
-        for (int l = 0; l < manifest.Languages.Count; l++)
-        {
-            Add(seen, hashes, manifest.Languages[l].TextHash);
-        }
-
-        return true;
-    }
-
-    static void Add(HashSet<string> seen, List<string> hashes, string hash)
-    {
-        if (seen.Add(hash))
-        {
-            hashes.Add(hash);
         }
     }
 
@@ -536,34 +515,7 @@ public sealed class FileSystemPackStore : IPackStore, IPackStorePruning, IConten
             return [];
         }
 
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var hashes = new List<string>();
-        Add(seen, hashes, pointer.ServerManifestHash);
-        Add(seen, hashes, pointer.ClientManifestHash);
-
-        bool read = await TryAddManifestAsync(
-            pointer.ServerManifestHash, ContentManifestSide.Server, seen, hashes, cancellationToken)
-            .ConfigureAwait(false);
-        if (read)
-        {
-            read = await TryAddManifestAsync(
-                pointer.ClientManifestHash, ContentManifestSide.Client, seen, hashes, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        // A PARTIAL list is the dangerous answer, because the sweep deletes everything outside the keep set.
-        // One unreadable manifest therefore empties the whole listing, which skips the sweep.
-        return read ? hashes : [];
-    }
-
-    async Task<bool> TryAddManifestAsync(
-        string hash,
-        ContentManifestSide side,
-        HashSet<string> seen,
-        List<string> hashes,
-        CancellationToken cancellationToken)
-    {
-        ReadOnlyMemory<byte>? file = await GetAsync(hash, cancellationToken).ConfigureAwait(false);
-        return file is not null && TryAddManifest(file.Value, side, seen, hashes);
+        return await ContentPackClosure.ReadAsync(
+            this, pointer.ServerManifestHash, pointer.ClientManifestHash, cancellationToken).ConfigureAwait(false);
     }
 }

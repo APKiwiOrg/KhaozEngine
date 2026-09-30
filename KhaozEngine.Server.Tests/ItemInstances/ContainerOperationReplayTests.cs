@@ -122,6 +122,117 @@ public sealed class ContainerOperationReplayTests
     }
 
     [Fact]
+    public void Live_merges_refuse_partial_cap_results_and_replay_uses_historical_admission()
+    {
+        PagedItemContainer live = Container(stackCap: static _ => 10);
+        SeatStack(live, 0, Potion, 8);
+        SeatStack(live, 1, Potion, 5);
+
+        Assert.False(ContainerOperationApplier.TryApply(Copies((Bank, live)),
+            ContainerOperation.Merge(Bank, 1, 0), out string? crossingReason));
+        Assert.Equal("merge-refused", crossingReason);
+        Assert.Equal(8, live.SlotAt(0).Stack.Count);
+        Assert.Equal(5, live.SlotAt(1).Stack.Count);
+        Assert.Equal(0, live.DirtyPageCount);
+
+        byte[] atCap = EncodePage(live, 0);
+        Assert.False(ContainerOperationApplier.TryApply(Copies((Bank, live)),
+            ContainerOperation.Merge(Bank, 1, 0), out string? atCapReason));
+        Assert.Equal("merge-refused", atCapReason);
+        Assert.Equal(atCap, EncodePage(live, 0));
+
+        ContainerCommitBuilder refused = OpenBank(live);
+        Assert.Throws<ArgumentException>(() => refused.Apply(ContainerOperation.Merge(Bank, 1, 0)));
+        Assert.Empty(refused.Operations);
+        Assert.Equal(0, refused.EventCount);
+        Assert.Equal(0, refused.ProjectionWriteCount);
+        Assert.Equal(0, live.DirtyPageCount);
+
+        PagedItemContainer replayed = Container(stackCap: static _ => 5);
+        SeatStack(replayed, 0, Potion, 8);
+        SeatStack(replayed, 1, Potion, 5);
+        Assert.True(ContainerOperationApplier.TryReplay(Copies((Bank, replayed)),
+            ContainerOperation.Merge(Bank, 1, 0), out string? replayReason), replayReason);
+        Assert.Equal(13, replayed.SlotAt(0).Stack.Count);
+        Assert.True(replayed.SlotAt(1).IsEmpty);
+    }
+
+    [Fact]
+    public void Every_admitted_capped_merge_event_replays_to_identical_page_bytes()
+    {
+        PagedItemContainer partial = Container(stackCap: static _ => 10);
+        SeatStack(partial, 0, Potion, 8);
+        SeatStack(partial, 1, Potion, 5);
+        byte[] beforePartial = EncodePage(partial, 0);
+        ContainerCommitBuilder refused = OpenBank(partial);
+
+        Assert.Throws<ArgumentException>(() => refused.Apply(ContainerOperation.Merge(Bank, 1, 0)));
+        Assert.Empty(refused.Operations);
+        Assert.Equal(0, refused.EventCount);
+        Assert.Equal(beforePartial, EncodePage(partial, 0));
+
+        PagedItemContainer live = Container(stackCap: static _ => 10);
+        PagedItemContainer replayed = Container(stackCap: static _ => 5);
+        foreach (PagedItemContainer bank in new[] { live, replayed })
+        {
+            SeatStack(bank, 0, Potion, 6);
+            SeatStack(bank, 1, Potion, 4);
+        }
+
+        ContainerCommitBuilder admitted = OpenBank(live);
+        Assert.True(admitted.Apply(ContainerOperation.Merge(Bank, 1, 0)));
+        JournalEvent entry = Assert.Single(Assert.Single(
+            admitted.Close(Mint(ServerId)).StreamMutations).Events);
+        Assert.True(ContainerOperationEventCodec.TryRead(
+            entry.EventType, entry.EventSchemaVersion, entry.Payload,
+            out ContainerOperation operation, out string? readReason), readReason);
+        Assert.True(ContainerOperationApplier.TryReplay(
+            Copies((Bank, replayed)), operation, out string? replayReason), replayReason);
+        Assert.Equal(EncodePage(live, 0), EncodePage(replayed, 0));
+    }
+
+    [Theory]
+    [InlineData(0L, 0L, 0L, 0L)]
+    [InlineData(40L, 11L, 11L, 11L)]
+    public void Released_v1_partial_merge_events_replay_their_exact_counts_and_instance_ids(
+        long destinationId,
+        long sourceId,
+        long expectedDestinationId,
+        long expectedSourceId)
+    {
+        ContainerOperation admitted = ContainerOperation.Merge(
+            Bank, slot: 1, destinationSlot: 0, sourceId, destinationId);
+        (int schemaVersion, byte[] body) = ContainerOperationEventCodec.Write(admitted);
+        Assert.Equal(1, schemaVersion);
+        Assert.True(ContainerOperationEventCodec.TryRead(
+            admitted.EventType, schemaVersion, body,
+            out ContainerOperation recorded, out string? readReason), readReason);
+
+        PagedItemContainer replayed = Container();
+        replayed.Seat(0, new ItemSlot(
+            new ItemStack(Potion, int.MaxValue - 1, destinationId), default, false));
+        replayed.Seat(1, new ItemSlot(new ItemStack(Potion, 5, sourceId), default, false));
+
+        Assert.True(ContainerOperationApplier.TryReplay(
+            Copies((Bank, replayed)), recorded, out string? replayReason), replayReason);
+        Assert.Equal(int.MaxValue, replayed.SlotAt(0).Stack.Count);
+        Assert.Equal(expectedDestinationId, replayed.SlotAt(0).Stack.InstanceId);
+        Assert.Equal(4, replayed.SlotAt(1).Stack.Count);
+        Assert.Equal(expectedSourceId, replayed.SlotAt(1).Stack.InstanceId);
+
+        PagedItemContainer live = Container();
+        live.Seat(0, new ItemSlot(
+            new ItemStack(Potion, int.MaxValue - 1, destinationId), default, false));
+        live.Seat(1, new ItemSlot(new ItemStack(Potion, 5, sourceId), default, false));
+        byte[] before = EncodePage(live, 0);
+
+        Assert.False(ContainerOperationApplier.TryApply(
+            Copies((Bank, live)), recorded, out string? liveReason));
+        Assert.Equal("merge-refused", liveReason);
+        Assert.Equal(before, EncodePage(live, 0));
+    }
+
+    [Fact]
     public void Historical_grant_replays_after_container_capacity_is_reduced()
     {
         PagedItemContainer live = Container(capacity: 2);
@@ -141,6 +252,40 @@ public sealed class ContainerOperationReplayTests
         ContainerCommitBuilder currentBatch = OpenBank(current);
         Assert.Throws<ArgumentException>(() => currentBatch.Apply(
             ContainerOperation.Grant(Bank, 1, Sword, 1, Instance, Payload())));
+    }
+
+    [Fact]
+    public void A_live_grant_cannot_open_an_over_cap_stack_and_replay_uses_historical_admission()
+    {
+        PagedItemContainer live = Container(stackCap: static _ => 10);
+        ContainerCommitBuilder refused = OpenBank(live);
+
+        Assert.Throws<ArgumentException>(() => refused.Apply(
+            ContainerOperation.Grant(Bank, 0, Potion, 15)));
+        Assert.Empty(refused.Operations);
+        Assert.Equal(0, refused.EventCount);
+        Assert.Equal(0, refused.ProjectionWriteCount);
+        Assert.True(live.SlotAt(0).IsEmpty);
+
+        PagedItemContainer replayed = Container(stackCap: static _ => 5);
+        Assert.True(ContainerOperationApplier.TryReplay(Copies((Bank, replayed)),
+            ContainerOperation.Grant(Bank, 0, Potion, 15), out string? replayReason), replayReason);
+        Assert.Equal(15, replayed.SlotAt(0).Stack.Count);
+    }
+
+    [Fact]
+    public void A_live_journal_grant_refuses_a_negative_stack_cap_before_writing()
+    {
+        PagedItemContainer live = Container(stackCap: static _ => -1);
+        ContainerCommitBuilder refused = OpenBank(live);
+
+        ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(() => refused.Apply(
+            ContainerOperation.Grant(Bank, 0, Potion, 1)));
+        Assert.Equal("cap", error.ParamName);
+        Assert.Empty(refused.Operations);
+        Assert.Equal(0, refused.EventCount);
+        Assert.Equal(0, refused.ProjectionWriteCount);
+        Assert.True(live.SlotAt(0).IsEmpty);
     }
 
     [Fact]

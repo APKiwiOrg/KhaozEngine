@@ -15,6 +15,13 @@
 #
 # Run locally: ./scripts/check-doc-versions.sh   (also runs in CI)
 
+case "${BASH_VERSION:-}:${SHELLOPTS:-}" in
+  :*|*:posix|*:posix:*)
+    printf '%s\n' 'Run this script with bash: bash scripts/check-doc-versions.sh' >&2
+    exit 2
+    ;;
+esac
+
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -88,9 +95,39 @@ for csproj in KhaozEngine.*/KhaozEngine.*.csproj; do
   fi
 done
 
+# --- Umbrella membership guard ---------------------------------------------
+# Each umbrella csproj is the authority on the packages it carries. Keep every
+# direct reference visible in the Pulls in list shipped inside that package.
+check_umbrella_membership() {
+  local umbrella="$1"
+  local project="KhaozEngine.$umbrella/KhaozEngine.$umbrella.csproj"
+  local readme="KhaozEngine.$umbrella/README.md"
+  local pulls_in package needle
+
+  pulls_in=$(awk '
+    /^Pulls in:$/ { found=1; next }
+    found && /^- / { started=1; print; next }
+    found && started && /^  / { print; next }
+    found && started { exit }
+  ' "$readme")
+
+  while IFS= read -r reference; do
+    package=$(basename "$(dirname "$reference")")
+    needle="\`$package\`"
+    if ! grep -Fq "$needle" <<< "$pulls_in"; then
+      echo "FAIL  $readme: Pulls in list is missing $package from $project"
+      fail=1
+    fi
+  done < <(sed -n 's#.*ProjectReference Include="\([^"]*\)".*#\1#p' "$project")
+}
+
+for umbrella in Foundation Game2D Game3D Server; do
+  check_umbrella_membership "$umbrella"
+done
+
 if [ "$fail" -ne 0 ]; then
   echo
-  echo "Doc version drift detected. Bump the declarations above to $ver (or fix Directory.Build.props)." >&2
+  echo "Documentation drift detected. Fix the failures above." >&2
   exit 1
 fi
-echo "all engine-version declarations match $ver; package inventory is documented"
+echo "all engine-version declarations match $ver, and package inventory plus umbrella membership are documented"

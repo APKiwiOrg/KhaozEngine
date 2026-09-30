@@ -42,6 +42,12 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   observable.
 - Player-facing text resolves through `StringId` and the localization catalog. Prefer `LocalizedText`
   at GUI sinks. Developer-only output and non-localizable tokens use the explicit raw escape hatch.
+- Every engine table records when each row was created, and every table whose rows change after insert
+  also records when each row last changed. The store sets both in the statement that writes the row,
+  from the clock it stamps its other times with, never through a column default. A column that already
+  holds the insert time is the creation time. A migration gives a legacy row an exact time it can prove
+  or NULL, never a guess. `journal_snapshot`, replaced whole by compaction, is the one exception. See
+  [`design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md`](design/ROW-TIMESTAMPS-DESIGN-2026-09-28.md).
 
 ### File-size ratchet
 
@@ -90,6 +96,11 @@ the full restore, Release build, test, determinism, pack and publish path. Conve
 budget and doc-version checks run before both paths. See
 [`design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md`](design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md).
 
+Never repeat tests in a loop or add CPU load on the dev Mac, which also hosts the org's self-hosted runners.
+Flake hunts and stress proofs run through `.github/workflows/stress-test.yml`, a caller of the org's shared
+workflow in `APKiwiOrg/ci-workflows`, on a GitHub-hosted runner, and only with the owner's explicit
+permission first. See that repository's README for its inputs.
+
 The engine's GPU matrix uses hosted `metal-native`, `direct3d11-native` and `vulkan-native` legs.
 Goldens are backend-family artifacts. A new or changed golden must be baked by the relevant CI leg.
 Plain `dotnet test` skips GPU facts. A local GPU proof sets `KE_GPU_TESTS=1` and confirms zero skipped
@@ -109,24 +120,32 @@ For a package-bearing change:
 3. Add or extend the newest `CHANGELOG.md` entry in the same commit as the version change.
 4. Update every version declaration guarded by `scripts/check-doc-versions.sh`.
 5. Run the full documentation sweep described below.
-6. Build and test in Release.
-7. Run `scripts/pack-local-feed.sh`. Never write released bytes with a bare pack command.
-8. Commit, reconcile with current `main`, verify again, merge and push `main` through the owning
+6. Build and test in Release. Use an explicit private `KHAOZENGINE_FEED` for any pre-merge pack proof.
+7. Commit, reconcile with current `main`, verify again, merge and push `main` through the owning
    orchestrator.
+8. Run `scripts/pack-local-feed.sh` from `main` after `origin/main` contains that commit. Never write
+   released bytes with a bare pack command.
 
 One related batch gets one version bump. Item commits can remain separate, followed by one release
 commit. Commit subjects use `area(scope): summary`. A release commit uses the new version as scope.
 
 Packing is cumulative and occurs on every package-bearing finish. `scripts/pack-local-feed.sh` refuses
-to overwrite a released version unless the tree is exactly that clean tagged commit. The pack standard
-lives in `scripts/pack-standard.sh` and is covered by `scripts/tests/pack-local-feed.test.sh`. Run
-`scripts/check-local-feed.sh` before a consumer vendors packages.
+to overwrite a released version unless the tree is exactly that clean tagged commit. It also refuses
+to write the shared feed until HEAD is an ancestor of current `origin/main` and the tree is clean. A
+`KHAOZENGINE_FEED` that resolves outside the shared feed is the private path for a deliberate branch
+build. Once those guards pass, the wrapper packs through a fresh sibling directory and promotes only the
+guarded current version's generated `nupkg` and `snupkg` files, then removes same-version files the fresh
+pack no longer generates. A repeated pack refreshes stale outputs while leaving every other version
+untouched. The pack standard lives in
+`scripts/pack-standard.sh` and is covered by
+`scripts/tests/pack-local-feed.test.sh`. Run `scripts/check-local-feed.sh` before a consumer vendors
+packages.
 
 The pack builds the current tree, worktree or not, and writes to the main checkout's `local-feed`,
-which is the feed consumers read. `scripts/check-local-feed.sh` reads the same feed. Setting
-`KHAOZENGINE_FEED` moves both to another directory. A relative value resolves against the root of the
-tree the script runs in. A linked worktree still keeps its own empty `local-feed`, because
-`nuget.config` names it as a restore source.
+which is the feed consumers read. `scripts/check-local-feed.sh` reads the same feed and flags staged
+package commits that are not on current `origin/main`. Setting `KHAOZENGINE_FEED` moves both to another
+directory. A relative value resolves against the root of the tree the script runs in. A linked
+worktree still keeps its own empty `local-feed`, because `nuget.config` names it as a restore source.
 
 A release tag is separate and user-started. Create it with `scripts/tag-release.sh`, which reads the
 version and creates the canonical annotated message. Do not hand-create a tag. The only automatic tag

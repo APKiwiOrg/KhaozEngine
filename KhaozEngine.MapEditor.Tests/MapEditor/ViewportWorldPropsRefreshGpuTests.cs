@@ -52,7 +52,7 @@ namespace KhaozEngine.Tests.MapEditor
 
             var editor = new EditorDocument(Doc());
             var world = new ViewportWorld(scene, Array.Empty<string>());
-            editor.DocumentChanged += world.InvalidatePlacements;   // the scene's wiring
+            editor.PlacementsChanged += world.InvalidatePlacements;   // the scene's wiring
             world.Build(editor.Doc, editor.Registry);
             var visibility = new EditorVisibility();
             TerrainField field = world.Field!;

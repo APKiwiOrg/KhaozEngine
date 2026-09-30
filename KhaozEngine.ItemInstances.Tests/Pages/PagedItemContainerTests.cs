@@ -33,8 +33,13 @@ public class PagedItemContainerTests
         return false;
     }
 
-    static PagedItemContainer NewContainer(int pageCount, int capacity, Func<int, bool>? stackable = null) =>
-        new(pageCount, capacity, stackable ?? Stacks, ItemInstancePayload.IsCanonical, QuarantineWrapper.Verify);
+    static PagedItemContainer NewContainer(
+        int pageCount,
+        int capacity,
+        Func<int, bool>? stackable = null,
+        Func<int, int>? stackCap = null) =>
+        new(pageCount, capacity, stackable ?? Stacks, ItemInstancePayload.IsCanonical,
+            QuarantineWrapper.Verify, stackCap);
 
     static ItemSlot Slot(int definitionId, int count, long instanceId = 0, byte[]? payload = null) =>
         new(new ItemStack(definitionId, count, instanceId), payload ?? Array.Empty<byte>(), Quarantined: false);
@@ -74,6 +79,119 @@ public class PagedItemContainerTests
         // The same occupancy refuses a grant that would open a slot, which is what makes this rule 2 rather
         // than a hole in rule 1.
         Assert.Equal(0, container.Add(Sword, 1));
+    }
+
+    [Fact]
+    public void A_stack_cap_is_read_per_operation_and_stops_a_crossing_merge_at_the_cap()
+    {
+        int cap = 10;
+        PagedItemContainer container = NewContainer(
+            pageCount: 1, capacity: 1, stackCap: _ => cap);
+
+        Assert.Equal(8, container.Add(Potion, 8));
+        Assert.Equal(2, container.Add(Potion, 5));
+        Assert.Equal(10, container.SlotAt(0).Stack.Count);
+        Assert.Equal(0, container.Add(Potion, 1));
+
+        cap = 20;
+        Assert.Equal(5, container.Add(Potion, 5));
+        Assert.Equal(15, container.SlotAt(0).Stack.Count);
+    }
+
+    [Fact]
+    public void A_positive_stack_cap_limits_a_plain_new_stack_and_refuses_to_split_an_identified_one()
+    {
+        PagedItemContainer plain = NewContainer(
+            pageCount: 1, capacity: 1, stackCap: _ => 10);
+        Assert.Equal(10, plain.Add(Potion, 15));
+        Assert.Equal(10, plain.SlotAt(0).Stack.Count);
+
+        PagedItemContainer whole = NewContainer(
+            pageCount: 1, capacity: 1, stackCap: _ => 10);
+        Assert.Equal(0, whole.Add(Slot(Potion, 15, 11, Level(68))));
+        Assert.True(whole.SlotAt(0).IsEmpty);
+        Assert.Equal(0, whole.DirtyPageCount);
+    }
+
+    [Fact]
+    public void An_identified_partial_merge_is_refused_without_splitting_its_instance_id()
+    {
+        PagedItemContainer container = NewContainer(
+            pageCount: 1, capacity: 1, stackCap: _ => 10);
+        container.Seat(0, Slot(Potion, 8, 40, Level(68)));
+        ItemSlot grant = Slot(Potion, 5, 11, Level(68));
+
+        Assert.Equal(0, container.Add(grant));
+        Assert.Equal(8, container.SlotAt(0).Stack.Count);
+        Assert.Equal(40, container.SlotAt(0).Stack.InstanceId);
+        Assert.Equal(11, grant.Stack.InstanceId);
+        Assert.NotEqual(grant.Stack.InstanceId, container.SlotAt(0).Stack.InstanceId);
+        Assert.Equal(0, container.DirtyPageCount);
+    }
+
+    [Fact]
+    public void The_legacy_five_argument_constructor_and_additive_stack_cap_overload_both_exist()
+    {
+        Type memoryPredicate = typeof(Func<ReadOnlyMemory<byte>, bool>);
+        ConstructorInfo? legacy = typeof(PagedItemContainer).GetConstructor(
+            [typeof(int), typeof(int), typeof(Func<int, bool>), memoryPredicate, memoryPredicate]);
+        ConstructorInfo? capped = typeof(PagedItemContainer).GetConstructor(
+            [typeof(int), typeof(int), typeof(Func<int, bool>), memoryPredicate, memoryPredicate,
+                typeof(Func<int, int>)]);
+
+        Assert.NotNull(legacy);
+        Assert.NotNull(capped);
+        Assert.True(legacy.GetParameters()[3].IsOptional);
+        Assert.True(legacy.GetParameters()[4].IsOptional);
+        Assert.False(capped.GetParameters()[3].IsOptional);
+        Assert.False(capped.GetParameters()[4].IsOptional);
+        Assert.False(capped.GetParameters()[5].IsOptional);
+    }
+
+    [Fact]
+    public void An_existing_over_cap_stack_may_only_shrink_until_it_recovers()
+    {
+        PagedItemContainer container = NewContainer(
+            pageCount: 1, capacity: 1, stackCap: _ => 10);
+        container.Seat(0, Slot(Potion, 15));
+
+        Assert.Equal(0, container.Add(Potion, 5));
+        Assert.Equal(15, container.SlotAt(0).Stack.Count);
+        Assert.Equal(0, container.DirtyPageCount);
+
+        Assert.Equal(4, container.Remove(Potion, 4));
+        Assert.Equal(0, container.Add(Potion, 1));
+        Assert.Equal(11, container.SlotAt(0).Stack.Count);
+
+        Assert.Equal(2, container.Remove(Potion, 2));
+        Assert.Equal(1, container.Add(Potion, 5));
+        Assert.Equal(10, container.SlotAt(0).Stack.Count);
+    }
+
+    [Fact]
+    public void An_absent_or_zero_stack_cap_keeps_the_engine_overflow_ceiling()
+    {
+        PagedItemContainer absent = NewContainer(pageCount: 1, capacity: 1);
+        PagedItemContainer zero = NewContainer(pageCount: 1, capacity: 1, stackCap: _ => 0);
+
+        foreach (PagedItemContainer container in new[] { absent, zero })
+        {
+            container.Seat(0, Slot(Potion, int.MaxValue - 1));
+            Assert.Equal(1, container.Add(Potion, 5));
+            Assert.Equal(int.MaxValue, container.SlotAt(0).Stack.Count);
+        }
+    }
+
+    [Fact]
+    public void A_negative_stack_cap_answer_is_a_caller_error()
+    {
+        PagedItemContainer container = NewContainer(
+            pageCount: 1, capacity: 1, stackCap: _ => -1);
+
+        ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            container.Add(Potion, 1));
+        Assert.Equal("cap", error.ParamName);
+        Assert.Equal(0, container.Occupancy);
     }
 
     [Fact]

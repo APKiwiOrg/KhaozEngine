@@ -48,4 +48,24 @@ public sealed class JournalStreamListingValueTests
         Assert.Throws<ArgumentException>(() => new JournalStreamPage(Array.Empty<JournalStreamEntry>(), "player/a"));
         Assert.Throws<ArgumentOutOfRangeException>(() => new JournalStreamEntry("player/a", -1));
     }
+
+    [Fact]
+    public void Entry_times_are_utc_and_the_short_form_leaves_them_unknown()
+    {
+        var created = new DateTimeOffset(2026, 9, 28, 1, 2, 3, TimeSpan.Zero);
+        DateTimeOffset updated = created.AddMinutes(5);
+
+        var entry = new JournalStreamEntry("player/a", 2, created, updated);
+        var legacy = new JournalStreamEntry("player/a", 2, null, updated);
+        var bare = new JournalStreamEntry("player/a", 2);
+
+        Assert.Equal<DateTimeOffset?>(created, entry.CreatedAtUtc);
+        Assert.Equal<DateTimeOffset?>(updated, entry.UpdatedAtUtc);
+        Assert.Null(legacy.CreatedAtUtc);
+        Assert.Equal<DateTimeOffset?>(updated, legacy.UpdatedAtUtc);
+        Assert.Null(bare.CreatedAtUtc);
+        Assert.Null(bare.UpdatedAtUtc);
+        Assert.Throws<ArgumentException>(() => new JournalStreamEntry("player/a", 2, created.ToOffset(TimeSpan.FromHours(10)), updated));
+        Assert.Throws<ArgumentException>(() => new JournalStreamEntry("player/a", 2, created, updated.ToOffset(TimeSpan.FromHours(-5))));
+    }
 }

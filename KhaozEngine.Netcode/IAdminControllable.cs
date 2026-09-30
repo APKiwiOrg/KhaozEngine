@@ -53,8 +53,9 @@ public interface IAdminControllable
     void AbortMovementCommitment(PlayerRef target, uint expectedSequence) =>
         throw new System.NotSupportedException("This server does not support movement commitments.");
 
-    /// <summary>Queues a kick of <paramref name="target"/>; the reason is delivered to that client as a notice (a Custom
-    /// notice on the float heads, a reason token on the tile head).</summary>
+    /// <summary>Queues a kick of <paramref name="target"/>. The reason is delivered to that client as a notice. Float
+    /// heads send a typed Banned notice when their configured store bans the account, otherwise a Custom notice. The
+    /// tile head sends a reason token and likewise substitutes its banned token for a banned account.</summary>
     void Kick(PlayerRef target, string reason);
 
     /// <summary>Queues a broadcast of <paramref name="text"/> to every client (a Custom server notice on the float heads,

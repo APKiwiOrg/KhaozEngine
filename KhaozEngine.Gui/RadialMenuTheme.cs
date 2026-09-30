@@ -16,6 +16,8 @@ namespace KhaozEngine.Gui
         public Vector4 Accent = WithAlpha(GuiTheme.Default.Accent, 0.32f);
         public Vector4 Text = GuiTheme.Default.Text;
         public Vector4 TextMuted = GuiTheme.Default.TextMuted;
+        /// <summary>Compact detail drawn beneath enabled entry labels when the menu opts into it.</summary>
+        public Vector4 Detail = GuiTheme.Default.TextMuted;
         /// <summary>
         /// Compact requirement text drawn beneath disabled entry labels. Its RGB is used directly so a semantic
         /// warning hue stays distinct from the disabled surface tint.

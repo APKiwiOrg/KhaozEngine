@@ -7,7 +7,8 @@ namespace KhaozEngine.ItemInstances;
 /// The ONE answer to "which payload bytes does this viewer receive for this stored entry", which every
 /// container sync message writes through. <see cref="ContainerPageDelta.TryBuild"/> calls it for each
 /// change and <see cref="ItemContainerPageCodec.EncodeProjected"/> calls it for each entry of a whole page,
-/// so the delta and the page cannot come to disagree about what one viewer sees
+/// while <see cref="GroundItemPayloadProjection"/> reaches the same core at the public viewer level. The
+/// delta, page and ground drop therefore cannot come to disagree about what one viewer sees
 /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1049">#1049</see>).
 /// <para>
 /// <b>A live payload goes through <see cref="ItemInstanceVisibility.PublicView"/></b> at the viewer's level
@@ -53,20 +54,41 @@ public static class ContainerPageProjection
         in ContainerPageChange entry,
         PropertyVisibility viewerLevel,
         Span<byte> destination)
+        => ProjectStoredPayload(
+            registry,
+            entry.Entry.Payload.Span,
+            entry.Entry.Quarantined,
+            entry.Identified,
+            entry.RevealedMask,
+            viewerLevel,
+            destination,
+            entry.Slot);
+
+    /// <summary>
+    /// The one raw payload projection shared by container messages and ground drops. A negative slot names
+    /// the ground source in an exception. A non-negative one names the stored container slot.
+    /// </summary>
+    internal static int ProjectStoredPayload(
+        InstancePropertyRegistry registry,
+        ReadOnlySpan<byte> payload,
+        bool quarantined,
+        bool identified,
+        ulong revealedMask,
+        PropertyVisibility viewerLevel,
+        Span<byte> destination,
+        int slot)
     {
         ArgumentNullException.ThrowIfNull(registry);
-        ReadOnlySpan<byte> payload = entry.Entry.Payload.Span;
         if (destination.Length < payload.Length)
             throw new ArgumentException(
-                FormattableString.Invariant(
-                    $"slot {entry.Slot} stores {payload.Length} payload bytes and the destination holds {destination.Length}"),
+                StoredLengthMessage(slot, payload.Length, destination.Length),
                 nameof(destination));
 
-        if (entry.Entry.Quarantined) return Hollow(entry.Slot, payload, destination);
+        if (quarantined) return Hollow(slot, payload, destination);
         if (payload.IsEmpty) return 0;
 
         int view = ItemInstanceVisibility.PublicView(
-            registry, payload, viewerLevel, entry.Identified, entry.RevealedMask, destination);
+            registry, payload, viewerLevel, identified, revealedMask, destination);
         return view < 0 ? 0 : view;
     }
 
@@ -76,10 +98,23 @@ public static class ContainerPageProjection
     {
         if (!QuarantineWrapper.TryUnwrap(wrapper, out _, out string? reason, out int stampedVersion) || reason is null)
             throw new ArgumentException(
-                FormattableString.Invariant(
-                    $"slot {slot} is flagged quarantined over {wrapper.Length} bytes that are not a well formed wrapper"),
-                "entry");
+                MalformedWrapperMessage(slot, wrapper.Length),
+                slot < 0 ? "storedPayload" : "entry");
 
         return QuarantineWrapper.Wrap(reason, stampedVersion, ReadOnlySpan<byte>.Empty, destination);
     }
+
+    static string StoredLengthMessage(int slot, int payloadLength, int destinationLength) =>
+        slot < 0
+            ? FormattableString.Invariant(
+                $"the ground item stores {payloadLength} payload bytes and the destination holds {destinationLength}")
+            : FormattableString.Invariant(
+                $"slot {slot} stores {payloadLength} payload bytes and the destination holds {destinationLength}");
+
+    static string MalformedWrapperMessage(int slot, int wrapperLength) =>
+        slot < 0
+            ? FormattableString.Invariant(
+                $"the ground item is flagged quarantined over {wrapperLength} bytes that are not a well formed wrapper")
+            : FormattableString.Invariant(
+                $"slot {slot} is flagged quarantined over {wrapperLength} bytes that are not a well formed wrapper");
 }

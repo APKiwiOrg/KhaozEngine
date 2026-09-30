@@ -11,9 +11,9 @@ namespace KhaozEngine.Tests.Catalog.Format;
 /// <para>
 /// <b>Hash before trust is the property these tests exist to hold.</b> The saving is only legitimate while
 /// the digest is compared BEFORE the row table is walked, so no row can escape a buffer nothing signed. The
-/// header refusals are the full <c>CheckRange</c> set rather than <c>TryVerify</c>'s lengths alone, so the
-/// row-count guard that bounds the four parallel arrays is still taken from the header before the body is
-/// sized.
+/// header refusals include the registry-specific range check that a standalone <c>TryVerify</c> cannot make,
+/// and the row-count guard that bounds the four parallel arrays is still taken from the header before the
+/// body is sized.
 /// </para>
 /// </summary>
 public class ContentChunkVerifiedDecodeTests
@@ -108,8 +108,8 @@ public class ContentChunkVerifiedDecodeTests
     [Fact]
     public void ASlotCountThatDisagreesWithTheRegistryStillRefuses()
     {
-        // TryVerify ran CheckLengths alone, so the whole range half would have been lost by folding the two
-        // calls into one. It is taken here from the header, before the body is sized.
+        // TryVerify has no registry, so folding the two calls must retain this per-type slot-count check.
+        // It is taken here from the header, before the body is sized.
         ContentTypeRegistry registry = Registry();
         EncodedContentChunk encoded = TwoRowChunk(Tag(registry));
         byte[] file = PatchUInt32(encoded.StoredFile.Span, 16, 1024);

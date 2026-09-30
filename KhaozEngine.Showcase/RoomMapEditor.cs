@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using KhaozEngine.Dungeon;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
@@ -38,15 +39,24 @@ namespace KhaozEngine.Showcase
             // the room keeps the plain lit look with nothing to force.
 
             string assets = Path.Combine(AppContext.BaseDirectory, "assets");
-            var options = new MapEditorOptions
+            return new MapEditorScene().Init(scene, white, font, CreateOptions(assets));
+        }
+
+        /// <summary>Builds the editor options over the showcase's map and both its prop and dungeon kits.</summary>
+        internal static MapEditorOptions CreateOptions(string assets)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(assets);
+            return new MapEditorOptions
             {
                 DocumentPath = Path.Combine(assets, "maps", "demo.map.json"),
                 ManifestPaths = new List<string>
                 {
                     Path.Combine(assets, "props", "props.manifest.json"),
                     Path.Combine(assets, "buildings", "buildings.manifest.json"),
+                    Path.Combine(assets, "dungeon", "dungeon.manifest.json"),
                 },
                 SpawnArchetypes = new List<string>(SpawnArchetypes),
+                DungeonKit = DungeonKitMap.Greybox(),
                 // Reserve the bottom band the app's F7-F10 display readout draws in, so the editor's own status
                 // strip sits directly above it instead of stacking on the same pixels.
                 StatusBottomOffset = ShowcaseApp.DisplayReadoutHeight,
@@ -56,7 +66,6 @@ namespace KhaozEngine.Showcase
                 // editor-settings.json lands beside the showcase's own app data rather than a one-off location.
                 Settings = new EditorSettingsStore("APKiwi", "Showcase"),
             };
-            return new MapEditorScene().Init(scene, white, font, options);
         }
     }
 }

@@ -1,0 +1,6 @@
+<Project>
+  <ItemGroup>
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="KhaozStringIdType" />
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="KhaozStringIdAccessibility" />
+  </ItemGroup>
+</Project>

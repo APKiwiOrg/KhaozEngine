@@ -27,6 +27,8 @@ clockwise viewed from above with north up.
 `TileRect` is a rect of world tiles with EXCLUSIVE far edges (`X1`, `Z1`, plus `FromCorners`, `Expand`,
 `Intersect`, `Union`, `Intersects`, `Contains`), and `TileDirection` with `TileDirections.All/Delta/IsDiagonal`
 gives the eight step directions in the fixed W, E, S, N, SW, SE, NW, NE order the pathfinder needs.
+Tile addresses use signed 32-bit coordinates. Rect operations that read or produce an exclusive far edge reject
+geometry whose edge falls outside that same domain, so a rect cannot include `int.MaxValue` on either axis.
 
 ## The document
 
@@ -40,7 +42,7 @@ of its own and raises no events: every mutation marks its region `Dirty`, and th
   not exist at all, and both throw for one the manifest knows about but that is not in memory (creating it
   blind would let the next save overwrite authored terrain), so load that one through `TileWorldSource` first.
 - Tiles: `Get`/`Set` pairs for `Underlay`, `Overlay`, `OverlayShape`, `OverlayRotation` and `Settings`, where
-  `TileSettings` is `Blocked`, `Indoors`, `Bridge`, `NoDraw` and `TileOverlayShape` is `Full`, `DiagonalHalf`,
+  `TileSettings` is `Blocked`, `Indoors`, `Bridge`, `NoDraw`, `FeatherOverlay` and `TileOverlayShape` is `Full`, `DiagonalHalf`,
   `CornerQuarter`, `CornerThreeQuarter`. Reads outside a loaded region answer the default, writes require it.
 - Heights: `CornerHeightCm`/`CornerHeight` read the ONE GLOBAL LATTICE (the owning region, else edge-extended
   from the region west, south or south-west), `SetCornerHeightCm`/`TrySetCornerHeightCm` write it,
@@ -229,6 +231,8 @@ so both heads replay identical paths. `maxRadius` must be 1..`MaxSearchRadius` (
 arrays being `(2r + 1)^2` entries each. `TilePath` carries `Tiles` (the steps AFTER the start), `Reached` and
 `End`. An unreachable goal yields the walk to the nearest reachable tile, nearest by SQUARED EUCLIDEAN distance
 to the goal, then by BFS distance, then by scan order, and a start on a `Blocked` tile behaves like any other.
+The window's near and exclusive far edges must fit signed 32-bit tile coordinates. A start and radius that would
+cross that boundary throw instead of wrapping the search to the opposite extreme.
 **Branch on `Reached`, never on `Tiles.Count`**: a partial walk and a reached one both carry steps.
 
 `TilePathfinder.FindPathToAny(map, plane, start, goals, agentSize, maxRadius, scratch, out int goalIndex)` walks

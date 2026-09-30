@@ -697,7 +697,12 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 int slot = ResolveSlot(cmd.Target);
                 if (slot >= 0)
                 {
-                    SendNoticeTo(slot, new ServerNotice(ServerNoticeKind.Custom, cmd.Text));
+                    bool banned = banStore is not null
+                        && accountIdBySlot.TryGetValue(slot, out string? accountId)
+                        && banStore.IsBanned(accountId);
+                    SendNoticeTo(slot, banned
+                        ? new ServerNotice(ServerNoticeKind.Banned, string.Empty)
+                        : new ServerNotice(ServerNoticeKind.Custom, cmd.Text));
                     Disconnect(slot);
                 }
                 break;

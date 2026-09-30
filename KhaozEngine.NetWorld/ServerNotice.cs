@@ -4,7 +4,7 @@ namespace KhaozEngine.NetWorld;
 
 /// <summary>The kind of out-of-band notice a server pushes to connected clients. <see cref="Shutdown"/> also lets a
 /// client attribute a following drop to <c>DisconnectReason.ServerShutdown</c> (a planned restart, not a crash), and
-/// <see cref="Banned"/> does the same for <c>DisconnectReason.Banned</c>.
+/// <see cref="Banned"/> does the same for terminal <c>DisconnectReason.Banned</c>.
 /// <see cref="Banned"/> is the typed rejection sent just before a banned account is dropped: it carries no
 /// engine-authored display text, so the client maps the kind to its own localized string (a headless server owns no
 /// string catalog). Adding a value is wire-additive: the byte kind is written/read raw with no validation (see

@@ -63,14 +63,14 @@ internal static class SqliteJournalResetHarness
         connection.Open();
         using SqliteCommand command = connection.CreateCommand();
         command.CommandText = """
-            SELECT metadata_key, schema_version, store_epoch, updated_at_utc
+            SELECT metadata_key, schema_version, store_epoch, updated_at_utc, created_at_utc
             FROM journal_metadata ORDER BY metadata_key;
             """;
         using SqliteDataReader reader = command.ExecuteReader();
         var rows = new List<string>();
         while (reader.Read())
             rows.Add(FormattableString.Invariant(
-                $"{reader.GetInt64(0)}|{reader.GetInt64(1)}|{reader.GetString(2)}|{reader.GetInt64(3)}"));
+                $"{reader.GetInt64(0)}|{reader.GetInt64(1)}|{reader.GetString(2)}|{reader.GetInt64(3)}|{(reader.IsDBNull(4) ? (object)"null" : reader.GetInt64(4))}"));
         return string.Join('\n', rows);
     }
 

@@ -202,7 +202,7 @@ static class ContentForkChecks
         return null;
     }
 
-    // The key shape rule itself lives in ContentKeyShape, because it has three callers at three layers now:
+    // ContentKeyShape delegates to Catalog's ContentKeyRules, shared by callers at three layers:
     // the validator's KEC0001 sweep, this fork precondition (whose copy key never reaches that sweep, since
     // the row it would go on does not exist until publish) and the admin boundary, which refuses an add's key
     // before the edit enters the draft.

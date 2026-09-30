@@ -1,0 +1,201 @@
+# gpu-hosted-bench: runs a filtered slice of KhaozEngine.Render.Tests on GitHub-hosted NVIDIA T4 runners, to see
+# how the engine behaves and what it costs on real desktop hardware: Windows Direct3D 11, Windows Vulkan and Linux
+# Vulkan. The Windows and Linux legs of cross-platform-gpu.yml run on software rasterizers (WARP and lavapipe), so
+# they prove output and never speed.
+#
+# BILLING: GPU runners are larger runners, billed per minute even on this public repo. So this workflow runs on
+# workflow_dispatch only, each runner is capped at one machine, and the org runner group `gpu-bench` admits this
+# file on main and nothing else. A dispatch names the ref to test, so the file never has to live on a branch.
+#
+# THE ADAPTER IS PINNED to the NVIDIA device on both APIs, and Vulkan is required on the Vulkan legs
+# (KE_VULKAN_REQUIRED). Direct3D 11 takes a name substring, and its adapter is named "NVIDIA Tesla T4". Vulkan's
+# device is named "Tesla T4" with no vendor in it, so a name pin of NVIDIA matched nothing and silently took the
+# first eligible device, and the Linux runner also carries llvmpipe. Vulkan is pinned by type (discrete) instead.
+# An unmet pin still falls back on both APIs, which on a machine without a graphics driver is the Microsoft Basic
+# Render Driver or llvmpipe, so every leg first runs the device report and fails unless it names the NVIDIA GPU.
+# Nothing is timed on a software rasterizer.
+#
+# THE WINDOWS IMAGE SHIPS THE T4 IN TCC, the driver model that offers compute only (first probe, run 36380480461:
+# datacenter driver 471.11, Direct3D 11 on the Basic Render Driver, no Vulkan device). Direct3D and Vulkan need
+# WDDM, and that driver refuses the switch (`nvidia-smi -dm 0` answers Not Supported, run 36382124195). So the
+# Windows legs install Microsoft's Azure GRID driver for the T4 silently, without the reboot its docs recommend,
+# and the device report says whether it took.
+#
+# Example: gh workflow run gpu-hosted-bench.yml -f ref=main -f filter=FullyQualifiedName~GpuCapabilitiesDiagTests
+name: gpu-hosted-bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or SHA to test
+        required: true
+        default: main
+      filter:
+        description: dotnet test filter for KhaozEngine.Render.Tests
+        required: true
+        default: FullyQualifiedName~GpuCapabilitiesDiagTests
+      legs:
+        description: Which legs to run
+        type: choice
+        options: [all, windows-d3d11, windows-vulkan, linux-vulkan]
+        default: all
+
+permissions:
+  contents: read
+
+# No concurrency group. A group keeps one run pending and cancels any older pending run when a newer one queues,
+# which dropped a dispatched run (36553965942). Each GPU runner is capped at one machine, so jobs already queue for a
+# free runner, and every dispatch runs in turn.
+
+jobs:
+  legs:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        shell: bash
+        env:
+          LEGS: ${{ inputs.legs }}
+        run: |
+          all='[{"leg":"windows-d3d11","runner":"gpu-t4-windows","backend":"direct3d11-native"},{"leg":"windows-vulkan","runner":"gpu-t4-windows","backend":"vulkan-native"},{"leg":"linux-vulkan","runner":"gpu-t4-linux","backend":"vulkan-native"}]'
+          if [ "$LEGS" = "all" ]; then picked="$all"; else picked=$(echo "$all" | jq -c --arg l "$LEGS" '[.[] | select(.leg == $l)]'); fi
+          echo "matrix={\"include\":$picked}" >> "$GITHUB_OUTPUT"
+
+  bench:
+    needs: legs
+    name: ${{ matrix.leg }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.legs.outputs.matrix) }}
+    env:
+      KE_GPU_TESTS: '1'
+      KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
+      KE_D3D11_ADAPTER: NVIDIA
+      KE_VULKAN_DEVICE: discrete
+      KE_VULKAN_REQUIRED: ${{ matrix.backend == 'vulkan-native' && '1' || '' }}
+      FILTER: ${{ inputs.filter }}
+      DEVICE_REPORT: FullyQualifiedName~GpuCapabilitiesDiagTests.LiveDeviceReportsNameAndSamplerFeatures
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: GPU, driver model and the GRID driver (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: powershell
+        env:
+          # Microsoft's redistribution for NCasT4_v3 on Windows Server 2022 (vGPU 20.2), licensed for Azure. From
+          # learn.microsoft.com/azure/virtual-machines/windows/n-series-driver-setup.
+          GRID_URL: https://download.microsoft.com/download/0f21fd13-2390-4c79-876a-87ae3dc724c6/596.86_grid_win10_win11_server2022_server2025_dch_64bit_international_azure_swl.exe
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $ProgressPreference = 'SilentlyContinue'
+          Get-CimInstance Win32_VideoController | Format-List Name, DriverVersion, Status
+          & nvidia-smi
+          $model = (& nvidia-smi --query-gpu=driver_model.current --format=csv,noheader) -join ''
+          Write-Host "driver model: $model"
+          if ($model -match 'TCC') {
+            $exe = Join-Path $env:RUNNER_TEMP 'grid.exe'
+            Invoke-WebRequest -Uri $env:GRID_URL -OutFile $exe -UseBasicParsing
+            $p = Start-Process -FilePath $exe -ArgumentList '-s', '-noreboot', '-clean', '-noeula' -Wait -PassThru
+            Write-Host "GRID installer exit code: $($p.ExitCode)"
+            Start-Sleep -Seconds 15
+            & nvidia-smi
+            Write-Host "after the install: $((& nvidia-smi --query-gpu=driver_model.current,driver_model.pending --format=csv,noheader) -join '')"
+            Get-CimInstance Win32_VideoController | Format-List Name, Status
+          }
+
+      - name: GPU, driver and Vulkan devices (Linux)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        shell: bash
+        run: |
+          nvidia-smi || true
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libvulkan1 vulkan-tools
+          ls -la /usr/share/vulkan/icd.d /etc/vulkan/icd.d 2>/dev/null || true
+          vulkaninfo --summary 2>&1 | head -60 || true
+
+      # The runner also carries Mesa's llvmpipe, and a Vulkan device request that cannot be honoured falls back to
+      # it without failing (#1200): late in one run the T4 stopped being chosen and two cost facts ran on llvmpipe.
+      # Loading only the NVIDIA driver turns that into a failure instead of a skipped measurement.
+      - name: Load only the NVIDIA Vulkan driver (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          # One of the two directories is usually absent, and ls then exits 2, which the step's pipefail would
+          # turn into a failure, so the first existing manifest is found with a glob instead.
+          icd=""
+          for f in /usr/share/vulkan/icd.d/nvidia_icd*.json /etc/vulkan/icd.d/nvidia_icd*.json; do
+            if [ -f "$f" ]; then icd="$f"; break; fi
+          done
+          if [ -z "$icd" ]; then echo "::error::no NVIDIA Vulkan ICD manifest on this runner"; exit 1; fi
+          echo "VK_DRIVER_FILES=$icd" >> "$GITHUB_ENV"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          VK_DRIVER_FILES="$icd" VK_ICD_FILENAMES="$icd" vulkaninfo --summary 2>&1 | grep -E "deviceName|deviceType" || true
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force local-feed | Out-Null
+          & dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+          exit $LASTEXITCODE
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p local-feed
+          dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+
+      - name: Confirm the NVIDIA adapter (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $report = & dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$env:DEVICE_REPORT" --logger "console;verbosity=detailed" *>&1
+          $report | Out-Host
+          $line = ($report | Select-String "device='" | Select-Object -First 1)
+          if (-not ("$line" -match 'NVIDIA|Tesla')) { Write-Host "::error::$env:KE_GRAPHICS_BACKEND is not on the NVIDIA GPU: $line"; exit 1 }
+
+      - name: Confirm the NVIDIA adapter (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          report=$(dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$DEVICE_REPORT" --logger "console;verbosity=detailed" 2>&1 || true)
+          echo "$report"
+          line=$(echo "$report" | grep -m1 "device='" || true)
+          if ! echo "$line" | grep -Eq 'NVIDIA|Tesla'; then echo "::error::$KE_GRAPHICS_BACKEND is not on the NVIDIA GPU: $line"; exit 1; fi
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          & dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$env:FILTER" --logger "console;verbosity=detailed" *>&1 | Tee-Object -FilePath bench-output.log
+          exit $LASTEXITCODE
+
+      - name: Test (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter "$FILTER" --logger "console;verbosity=detailed" 2>&1 | tee bench-output.log
+
+      - name: Upload the output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gpu-hosted-bench-${{ matrix.leg }}
+          path: bench-output.log
+          if-no-files-found: warn

@@ -5,16 +5,19 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Render3D
 {
     /// <summary>
-    /// Third-person follow camera: a perspective camera that orbits behind a moving <see cref="Target"/> at a
-    /// clamped <see cref="Pitch"/> and <see cref="Distance"/>, always looking at the target. Sibling of
-    /// <see cref="IsoCamera3D"/> (same Y-up right-handed convention, same Eye/Forward/ScreenToGround helpers) but
-    /// perspective so scroll-zoom-via-distance reads naturally. Pure System.Numerics, no GPU and no input types;
-    /// drive it with a <see cref="FollowCameraController"/> or set the fields directly.
+    /// Third-person follow camera: a perspective camera that orbits a <see cref="Pivot"/> above a moving
+    /// <see cref="Target"/> at a clamped <see cref="Pitch"/> and <see cref="Distance"/>, always looking at the
+    /// pivot. Sibling of <see cref="IsoCamera3D"/> (same Y-up right-handed convention, same
+    /// Eye/Forward/ScreenToGround helpers) but perspective so scroll-zoom-via-distance reads naturally. Pure
+    /// System.Numerics, with no GPU and no input types. Drive it with a <see cref="FollowCameraController"/> or set
+    /// the fields directly.
     ///
     /// Convention (matches IsoCamera3D): dirToEye = normalize(cosP*sinYaw, sinP, cosP*cosYaw),
-    /// Eye = Target + dirToEye*Distance + (0, HeightOffset, 0), looking at Target.
+    /// Pivot = EffectiveTarget + (0, PivotHeight, 0), Eye = Pivot + dirToEye*Distance + (0, HeightOffset, 0),
+    /// looking at Pivot. With <see cref="PivotHeight"/> at its default of zero the pivot is
+    /// <see cref="EffectiveTarget"/>.
     /// </summary>
-    public sealed class FollowCamera3D : IIsoCamera3D, IRenderOriginAware
+    public sealed partial class FollowCamera3D : IIsoCamera3D, IRenderOriginAware
     {
         /// <summary>World-space point the camera follows (the character position).</summary>
         public Vector3 Target = Vector3.Zero;
@@ -23,12 +26,12 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Opt-in target damping. When true, the camera follows a smoothed <see cref="EffectiveTarget"/> that eases
-        /// toward <see cref="Target"/> each <see cref="AdvanceTarget"/> call instead of snapping - belt-and-suspenders
-        /// against residual avatar jitter on a remote server. Default OFF, so existing consumers (which read
+        /// toward <see cref="Target"/> each <see cref="AdvanceTarget"/> call instead of snapping, a belt-and-suspenders
+        /// guard against residual avatar jitter on a remote server. Default OFF, so existing consumers (which read
         /// <see cref="Eye"/>/<see cref="View"/> without driving the damping) are completely unchanged.
         /// </summary>
         public bool EnableTargetDamping = false;
-        /// <summary>Exponential follow rate (per second) used when <see cref="EnableTargetDamping"/> is on; higher is
+        /// <summary>Exponential follow rate (per second) used when <see cref="EnableTargetDamping"/> is on. Higher is
         /// snappier. Frame-rate independent. Default 10.</summary>
         public float TargetDampingRate = 10f;
 
@@ -46,7 +49,7 @@ namespace KhaozEngine.Render3D
         /// <see cref="FollowCameraController.Update"/>). A no-op for the camera geometry while
         /// <see cref="EnableTargetDamping"/> is off (it just keeps the smoothed target synced so enabling later starts
         /// without a lurch). The first call after enabling locks the smoothed target onto the current
-        /// <see cref="Target"/>; subsequent calls ease it in frame-rate-independently.
+        /// <see cref="Target"/>. Later calls ease it in frame-rate-independently.
         /// </summary>
         public void AdvanceTarget(float dt)
         {
@@ -65,12 +68,13 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Hard-cuts the camera onto <paramref name="target"/>, bypassing target damping: sets <see cref="Target"/>
         /// and forces the smoothed target so <see cref="EffectiveTarget"/> equals <paramref name="target"/> THIS
-        /// frame with zero trailing; normal damping resumes on the next <see cref="AdvanceTarget"/>. The 3D
-        /// counterpart of <c>Render2D.CameraFollow.Warp</c> - use it on a teleport (login/reconnect placement,
+        /// frame with zero trailing. Normal damping resumes on the next <see cref="AdvanceTarget"/>. The 3D
+        /// counterpart of <c>Render2D.CameraFollow.Warp</c>. Use it on a teleport (login/reconnect placement,
         /// self-rescue, fast-travel) so the follow camera does not ease ("fly") across the jump. While
         /// <see cref="EnableTargetDamping"/> is off the effective target already tracks <see cref="Target"/>, so the
         /// cut is invisible, but it still updates <see cref="Target"/> and arms the smoothed state so enabling
-        /// damping later starts without a lurch.
+        /// damping later starts without a lurch. It also drops any held <see cref="BoomRecoveryRate"/> shortfall, so
+        /// the boom never eases out from the old site.
         /// </summary>
         /// <param name="target">The world-space point to cut the camera onto (also the new follow point).</param>
         public void Warp(Vector3 target)
@@ -78,25 +82,53 @@ namespace KhaozEngine.Render3D
             Target = target;
             _dampedTarget = target;
             _dampedInit = true;
+            _heldShortfall = 0f;
         }
 
         /// <summary>
         /// Collapses any in-flight target damping onto the current <see cref="Target"/> without moving the follow
         /// point, so <see cref="EffectiveTarget"/> equals <see cref="Target"/> this frame. Equivalent to
-        /// <c>Warp(Target)</c>; use it to kill a residual ease after <see cref="Target"/> was set directly.
+        /// <c>Warp(Target)</c>. Use it to kill a residual ease after <see cref="Target"/> was set directly.
         /// </summary>
         public void SnapToTarget() => Warp(Target);
 
-        /// <summary>Lower clamp for <see cref="Pitch"/>, radians (kept &gt; 0 so the view never goes flat). Default ~6 deg.</summary>
+        /// <summary>
+        /// Lower clamp for <see cref="Pitch"/>, radians. A negative value lets the eye drop below the pivot and look
+        /// up, bounded by <see cref="PitchLimit"/>. Default ~6 deg.
+        /// </summary>
         public float MinPitch = MathF.PI / 30f;
-        /// <summary>Upper clamp for <see cref="Pitch"/>, radians (kept &lt; 90 deg so LookAt never degenerates). Default ~80 deg.</summary>
+        /// <summary>
+        /// Upper clamp for <see cref="Pitch"/>, radians, bounded by <see cref="PitchLimit"/>. Default ~81 deg, which
+        /// never reaches the limit. A value above 85 deg is capped there.
+        /// </summary>
         public float MaxPitch = MathF.PI * 0.45f;
-        /// <summary>Nearest the eye may sit to the target. Default 2.</summary>
+        /// <summary>
+        /// Hard bound on the magnitude of <see cref="Pitch"/>, 85 deg, applied after <see cref="MinPitch"/> and
+        /// <see cref="MaxPitch"/> so the look direction never nears world up and LookAt never degenerates. A camera
+        /// at the default <see cref="MaxPitch"/> never reaches it, and a <see cref="MaxPitch"/> above 85 deg is
+        /// capped here.
+        /// </summary>
+        public const float PitchLimit = 85f * MathF.PI / 180f;
+        /// <summary>Nearest the eye may sit to the pivot. Default 2.</summary>
         public float MinDistance = 2f;
-        /// <summary>Farthest the eye may sit from the target. Default 30.</summary>
+        /// <summary>Farthest the eye may sit from the pivot. Default 30.</summary>
         public float MaxDistance = 30f;
-        /// <summary>Eye height added above the target so the camera looks slightly down at the character. Default 1.</summary>
+        /// <summary>
+        /// Height added to the eye alone, after the orbit, so the camera looks slightly down at the character. It
+        /// raises the eye only and never moves the look-at point. Use <see cref="PivotHeight"/> to lift what the
+        /// camera orbits and looks at. Default 1.
+        /// </summary>
         public float HeightOffset = 1f;
+        /// <summary>
+        /// Height of the orbit centre above <see cref="EffectiveTarget"/>. The camera orbits and looks at
+        /// <see cref="Pivot"/>, so raising this lifts the eye and the look-at point together (orbit a head rather
+        /// than the feet). Default 0, which makes the pivot the target.
+        /// </summary>
+        public float PivotHeight = 0f;
+
+        /// <summary>The point the camera orbits and looks at: <see cref="EffectiveTarget"/> raised by
+        /// <see cref="PivotHeight"/>.</summary>
+        public Vector3 Pivot => EffectiveTarget + new Vector3(0f, PivotHeight, 0f);
 
         /// <summary>Vertical field of view, radians. Default 60 deg.</summary>
         public float FieldOfView = MathF.PI / 3f;
@@ -118,42 +150,54 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// Optional occlusion sweep. When set, <see cref="Eye"/> sweeps a sphere probe from
-        /// <see cref="EffectiveTarget"/> toward the geometric eye (the boom) and pulls the eye in to the first
-        /// static hit, so the follow camera never clips through a wall or ceiling between the target and the
+        /// <see cref="Pivot"/> toward the geometric eye (the boom) and pulls the eye in to the first
+        /// static hit, so the follow camera never clips through a wall or ceiling between the pivot and the
         /// desired eye. Mirrors <c>CharacterMovement</c>'s own swept collide-and-slide: a zero-length capsule
         /// (a sphere of radius <see cref="OcclusionRadius"/>) is swept via <see cref="IPhysicsWorld.SweepCapsule"/>
-        /// against statics only (<see cref="QueryFilter.StaticsOnly"/>). Applied BEFORE <see cref="GroundHeight"/>
-        /// clearance, so a ground dip can still lift the (already pulled-in) eye clear of the terrain. Null (the
-        /// default) leaves the eye purely geometric - existing consumers that never set this are unchanged.
+        /// against statics only (<see cref="QueryFilter.StaticsOnly"/>). It runs through the same boom path as
+        /// <see cref="BoomProbe"/>, and when both are set the shorter reach wins. Applied BEFORE
+        /// <see cref="GroundHeight"/> clearance, so a ground dip can still lift the (already pulled-in) eye clear of
+        /// the terrain. Null (the default) sweeps nothing. Existing consumers that never set this are unchanged.
         /// </summary>
         public IPhysicsWorld? Occlusion;
-        /// <summary>Sphere-probe radius (metres) used by the <see cref="Occlusion"/> sweep. Default 0.25.</summary>
+        /// <summary>Sphere-probe radius (metres) swept by the <see cref="Occlusion"/> sweep and handed to
+        /// <see cref="BoomProbe"/>. Default 0.25.</summary>
         public float OcclusionRadius = 0.25f;
-        /// <summary>Clearance (metres) kept between the pulled-in eye and the occluding surface (mirrors the swept
-        /// collide-and-slide skin-width convention), so the eye sits just off the wall rather than flush against
-        /// it. Default 0.05.</summary>
+        /// <summary>Clearance (metres) kept between the pulled-in eye and the occluding surface, for both the
+        /// <see cref="Occlusion"/> sweep and <see cref="BoomProbe"/> (mirrors the swept collide-and-slide skin-width
+        /// convention), so the eye sits just off the wall rather than flush against it. Default 0.05.</summary>
         public float OcclusionSkin = 0.05f;
-        /// <summary>The closest the <see cref="Occlusion"/> sweep is ever allowed to pull the boom (metres), so the
-        /// eye never collapses onto the target and leave <see cref="Forward"/>/<see cref="View"/> degenerate (a
-        /// zero-length look direction). A static within a skin of the target (e.g. a character pressed flush against
-        /// a wall) is clamped to this floor instead. Default 0.2.</summary>
+        /// <summary>The closest the <see cref="Occlusion"/> sweep or <see cref="BoomProbe"/> is ever allowed to pull
+        /// the boom (metres), so the eye never collapses onto the pivot and leaves <see cref="Forward"/>/
+        /// <see cref="View"/> degenerate (a zero-length look direction). An obstruction within a skin of the pivot
+        /// (e.g. a character pressed flush against a wall) is clamped to this floor instead. Default 0.2.</summary>
         public float MinOcclusionDistance = 0.2f;
 
         float _pitch = MathF.PI / 6f;   // 30 deg, a comfortable default tilt
         float _distance = 8f;
 
-        /// <summary>Tilt above the horizontal, radians, clamped to [<see cref="MinPitch"/>, <see cref="MaxPitch"/>].</summary>
+        /// <summary>Tilt above the horizontal, radians, clamped to [<see cref="MinPitch"/>, <see cref="MaxPitch"/>]
+        /// and then to [-<see cref="PitchLimit"/>, <see cref="PitchLimit"/>]. Negative puts the eye below the pivot
+        /// looking up.</summary>
         public float Pitch
         {
             get => _pitch;
-            set => _pitch = Math.Clamp(value, MinPitch, MaxPitch);
+            set => _pitch = Math.Clamp(Math.Clamp(value, MinPitch, MaxPitch), -PitchLimit, PitchLimit);
         }
 
-        /// <summary>Eye distance from the target, clamped to [<see cref="MinDistance"/>, <see cref="MaxDistance"/>].</summary>
+        /// <summary>Eye distance from the pivot, clamped to [<see cref="MinDistance"/>, <see cref="MaxDistance"/>].
+        /// Setting it shifts any held <see cref="BoomRecoveryRate"/> shortfall by the change in distance, floored at
+        /// zero, so a zoom in during recovery holds the eye still until the new distance fits and never moves it
+        /// outward, and a zoom out continues the ease. With no shortfall held a zoom is instant.</summary>
         public float Distance
         {
             get => _distance;
-            set => _distance = Math.Clamp(value, MinDistance, MaxDistance);
+            set
+            {
+                float old = _distance;
+                _distance = Math.Clamp(value, MinDistance, MaxDistance);
+                _heldShortfall = _heldShortfall > 0f ? MathF.Max(0f, _heldShortfall + (_distance - old)) : 0f;
+            }
         }
 
         Vector3 DirToEye
@@ -184,27 +228,37 @@ namespace KhaozEngine.Render3D
         // more sweep, deliberately: the caller changed the camera, so the second read must not answer with the
         // pre-change eye.
         //
-        // WHAT THE KEY CANNOT SEE is the physics world's contents and whatever the ground delegate samples. A
-        // wall slides in or terrain deforms, and nothing about the camera changed. That is what BeginFrame is
-        // for (IIsoCamera3D.BeginFrame): Scene3D.Begin drops the cache at the top of every frame, before
-        // LatchRenderOrigin takes this frame's first read.
+        // WHAT THE KEY CANNOT SEE is the physics world's contents and whatever the boom probe or the ground
+        // delegate samples. A wall slides in or terrain deforms, and nothing about the camera changed. That is
+        // what BeginFrame is for (IIsoCamera3D.BeginFrame): Scene3D.Begin drops the cache at the top of every
+        // frame, before LatchRenderOrigin takes this frame's first read.
+        //
+        // That latch runs at render time, so an eye a consumer computed in its update step, after moving the
+        // target, is dropped and computed again (#1189). FrameClock is the opt-in cure, in
+        // FollowCamera3D.FrameClock.cs: the eye is stamped with a per-frame id the host ticks before update, a
+        // read only reuses an eye stamped with the current id, and BeginFrame keeps this frame's eye. The stamp is
+        // what tells the update's eye in frame N from the render's eye in frame N-1. "Keep it if anything was
+        // computed since the last latch" cannot, because the render's own read always was.
         //
         // Single-threaded by construction, exactly like every other field on this class. A camera is a frame
         // object owned by the thread that renders it, so there are no locks here and none are wanted.
 
         /// <summary>
         /// The inputs <see cref="Eye"/> reads, snapshotted so a later read can tell whether recomputing could
-        /// possibly produce anything different. The two seam members compare by <c>Equals</c>: reference equality
-        /// for the physics world, and method-plus-target equality for the ground delegate, so two separately
-        /// allocated delegates over the same instance method count as the same sampler (they are). Both are
-        /// conservative in the safe direction, since the worst a false difference costs is one recompute.
+        /// possibly produce anything different. The three seam members compare by <c>Equals</c>: reference
+        /// equality for the physics world and the boom probe, and method-plus-target equality for the ground
+        /// delegate, so two separately allocated delegates over the same instance method count as the same sampler
+        /// (they are). All are conservative in the safe direction, since the worst a false difference costs is one
+        /// recompute.
         /// <see cref="OcclusionOrigin"/> is in here because a rebased world moves the frame the sweep start is
-        /// expressed in without any camera field changing.
+        /// expressed in without any camera field changing. <see cref="HeldShortfall"/> is in here because
+        /// <see cref="AdvanceBoom"/> moves the eye by decaying the held shortfall, with no public input assigned.
         /// </summary>
         readonly record struct EyeInputs(
-            Vector3 Target, float Yaw, float Pitch, float Distance, float HeightOffset,
+            Vector3 Target, float Yaw, float Pitch, float Distance, float HeightOffset, float PivotHeight,
             IPhysicsWorld? Occlusion, Vector3 OcclusionOrigin, float OcclusionRadius, float OcclusionSkin,
-            float MinOcclusionDistance, Func<float, float, float>? GroundHeight, float GroundClearance);
+            float MinOcclusionDistance, ICameraBoomProbe? BoomProbe, Func<float, float, float>? GroundHeight,
+            float GroundClearance, float BoomRecoveryRate, float HeldShortfall);
 
         EyeInputs _eyeInputs;
         Vector3 _eye;
@@ -237,21 +291,15 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// Drop the cached <see cref="Eye"/>, so the next read recomputes it. Idempotent and cheap. Call it after
         /// changing something the camera cannot see (moving an occluder, deforming the ground under the eye) if
-        /// that happens mid-frame. <see cref="BeginFrame"/> is the once-a-frame form and is what
-        /// <see cref="Scene3D"/> calls.
+        /// that happens mid-frame. It drops the eye with or without a <see cref="FrameClock"/>.
+        /// <see cref="BeginFrame"/> is the once-a-frame latch <see cref="Scene3D"/> calls.
         /// </summary>
         public void InvalidateEye() => _eyeValid = false;
 
         /// <summary>
-        /// A new frame has started: drop the cached <see cref="Eye"/>. See
-        /// <see cref="IIsoCamera3D.BeginFrame"/> for the contract, and call it yourself once per frame if you drive
-        /// this camera without a <see cref="Scene3D"/>.
-        /// </summary>
-        public void BeginFrame() => InvalidateEye();
-
-        /// <summary>
         /// The absolute world-space eye position: the geometric boom position, pulled in by the optional
-        /// <see cref="Occlusion"/> sweep and then lifted by the optional <see cref="GroundHeight"/> clearance.
+        /// <see cref="Occlusion"/> sweep and <see cref="BoomProbe"/> and then lifted by the optional
+        /// <see cref="GroundHeight"/> clearance.
         /// Computed once per distinct set of inputs per frame and cached, so reading it (or anything built on it)
         /// repeatedly across one frame costs one sweep, not one per read.
         /// </summary>
@@ -259,10 +307,12 @@ namespace KhaozEngine.Render3D
         {
             get
             {
-                EyeInputs inputs = CurrentEyeInputs();
-                if (_eyeValid && inputs == _eyeInputs) return _eye;
+                if (_eyeValid && EyeIsFromThisFrame() && CurrentEyeInputs() == _eyeInputs) return _eye;
                 _eye = ComputeEye();
-                _eyeInputs = inputs;
+                // Keyed AFTER the computation, which can raise the held shortfall. A key taken before it would
+                // miss on the next read and pay a second probe call in the same frame.
+                _eyeInputs = CurrentEyeInputs();
+                StampEyeFrame();
                 _eyeValid = true;
                 _eyeComputes++;
                 return _eye;
@@ -270,37 +320,15 @@ namespace KhaozEngine.Render3D
         }
 
         EyeInputs CurrentEyeInputs() => new(
-            EffectiveTarget, Yaw, _pitch, _distance, HeightOffset,
+            EffectiveTarget, Yaw, _pitch, _distance, HeightOffset, PivotHeight,
             Occlusion, Occlusion?.Origin ?? Vector3.Zero, OcclusionRadius, OcclusionSkin, MinOcclusionDistance,
-            GroundHeight, GroundClearance);
+            BoomProbe, GroundHeight, GroundClearance, BoomRecoveryRate, _heldShortfall);
 
         /// <summary>The uncached geometry, byte for byte what the getter used to run on every read.</summary>
         Vector3 ComputeEye()
         {
-            Vector3 target = EffectiveTarget;
-            Vector3 eye = target + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f);
-            if (Occlusion is { } world)
-            {
-                // Sweep a sphere probe (a zero-length capsule) from the target toward the desired eye along the
-                // boom. The first static hit clamps how far out the boom can extend, mirroring the
-                // hit.Distance - skin convention CharacterMovement uses for its own swept collide-and-slide. The
-                // pull-in is floored at MinOcclusionDistance so a static right at the target never collapses the
-                // eye onto it (which would leave Forward/View with a zero-length look direction).
-                Vector3 toEye = eye - target;
-                float dist = toEye.Length();
-                if (dist > 1e-6f)
-                {
-                    // The sweep START is a query coordinate, so it is expressed in the physics world's own space
-                    // (IPhysicsWorld.Origin): the camera speaks absolute, and against a rebased world an
-                    // unreduced start silently stops finding anything. The DIRECTION and the returned distance
-                    // are frame-invariant, so only this one operand converts.
-                    Vector3 dir = toEye / dist;
-                    _occlusionSweeps++;
-                    if (world.SweepCapsule(new CapsuleShape(OcclusionRadius, 0f), Pose.At(target - world.Origin), dir, dist,
-                            out SweepHit hit, QueryFilter.StaticsOnly))
-                        eye = target + dir * MathF.Max(MinOcclusionDistance, hit.Distance - OcclusionSkin);
-                }
-            }
+            Vector3 pivot = Pivot;
+            Vector3 eye = ConstrainBoom(pivot, pivot + DirToEye * _distance + new Vector3(0f, HeightOffset, 0f));
             if (GroundHeight is { } ground)
             {
                 float floor = ground(eye.X, eye.Z) + GroundClearance;
@@ -309,22 +337,22 @@ namespace KhaozEngine.Render3D
             return eye;
         }
 
-        public Vector3 Forward => Vector3.Normalize(EffectiveTarget - Eye);
+        public Vector3 Forward => Vector3.Normalize(Pivot - Eye);
 
-        /// <summary>The render origin eye and target are expressed against when building <see cref="View"/>. See
+        /// <summary>The render origin eye and pivot are expressed against when building <see cref="View"/>. See
         /// <see cref="IRenderOriginAware"/>. <see cref="Vector3.Zero"/> (the default) is the pre-floating-origin
         /// camera, bit for bit.</summary>
         public Vector3 RenderOrigin { get; set; }
 
-        public Matrix4x4 View => Matrix4x4.CreateLookAt(Eye - RenderOrigin, EffectiveTarget - RenderOrigin, Vector3.UnitY);
+        public Matrix4x4 View => Matrix4x4.CreateLookAt(Eye - RenderOrigin, Pivot - RenderOrigin, Vector3.UnitY);
         public Matrix4x4 Projection => Matrix4x4.CreatePerspectiveFieldOfView(FieldOfView, AspectRatio, NearPlane, FarPlane);
         public Matrix4x4 ViewProjection => View * Projection;
 
         /// <summary>The pre-shift view-projection. See <see cref="IRenderOriginAware.AbsoluteViewProjection"/>.</summary>
         public Matrix4x4 AbsoluteViewProjection =>
-            Matrix4x4.CreateLookAt(Eye, EffectiveTarget, Vector3.UnitY) * Projection;
+            Matrix4x4.CreateLookAt(Eye, Pivot, Vector3.UnitY) * Projection;
 
-        /// <summary>Project a world point to a screen pixel (forward inverse of <see cref="ScreenToRay"/>); false
+        /// <summary>Project a world point to a screen pixel (forward inverse of <see cref="ScreenToRay"/>). False
         /// when the point is not in front of the camera. See <see cref="IIsoCamera3D.WorldToScreen(Vector3, int, int, out Vector2)"/>.</summary>
         public bool WorldToScreen(Vector3 world, int viewportWidth, int viewportHeight, out Vector2 screenPixel) =>
             CameraProjection.WorldToScreen(ViewProjection, world - RenderOrigin, viewportWidth, viewportHeight, out screenPixel);

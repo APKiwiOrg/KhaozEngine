@@ -9,6 +9,11 @@ namespace KhaozEngine.TileWorld;
 
 public sealed partial class TileWorldView
 {
+    // The document and catalogs this view reads, for the camera probe that resolves object hits and roof rules
+    // against the same world the view draws.
+    internal TileWorldDocument Document => _doc;
+    internal TileWorldCatalogs Catalogs => _catalogs;
+
     /// <summary>Names the full authored objects intersected by a ray inside Gameplay regions. Decor HLOD is a
     /// render representation only and never contributes a target. The bounds source remains the full resolved
     /// object mesh, so entering Gameplay changes eligibility rather than click shape.</summary>

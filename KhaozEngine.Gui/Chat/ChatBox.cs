@@ -13,7 +13,7 @@ namespace KhaozEngine.Gui.Chat;
 /// Placement-neutral chat history and single-line composer. The host supplies design-space bounds, appends
 /// entries to the retained <see cref="ChatHistory"/>, and handles submitted text through <see cref="Submitted"/>.
 /// </summary>
-public sealed class ChatBox
+public sealed partial class ChatBox
 {
     const float Padding = 8f;
     const float ComposerHeight = 30f;
@@ -35,6 +35,11 @@ public sealed class ChatBox
     bool _cachedShowTimestamps;
     string _cachedCultureName = "";
     string _cachedTimeZoneId = "";
+    InlineTextStyles? _cachedInlineStyles;
+    Vector4 _cachedOrdinaryText;
+    Vector4 _cachedOwnText;
+    Vector4 _cachedSystemText;
+    Vector4 _cachedTimestampText;
 
     /// <summary>The design-space rectangle occupied and reserved by the complete chatbox.</summary>
     public Rect Bounds;
@@ -200,6 +205,12 @@ public sealed class ChatBox
         Rect bounds = RowBounds(index);
         var position = new Vector2(MathF.Floor(bounds.X), MathF.Floor(bounds.Y));
 
+        if (row.IsRich)
+        {
+            if (!row.Runs.IsEmpty) sink.DrawTextRuns(row.Runs.Span, position);
+            return;
+        }
+
         // Both runs were split and measured when the layout was refreshed, so a steady frame slices and measures
         // nothing. The colours are read here because a theme change takes effect on the next draw. An empty run
         // is skipped, which paints exactly what drawing it did, nothing.
@@ -299,7 +310,12 @@ public sealed class ChatBox
             && ReferenceEquals(_cachedMeasurer, measurer)
             && _cachedShowTimestamps == ShowTimestamps
             && string.Equals(_cachedCultureName, cultureName, StringComparison.Ordinal)
-            && string.Equals(_cachedTimeZoneId, timeZone.Id, StringComparison.Ordinal))
+            && string.Equals(_cachedTimeZoneId, timeZone.Id, StringComparison.Ordinal)
+            && ReferenceEquals(_cachedInlineStyles, Theme.InlineStyles)
+            && _cachedOrdinaryText == Theme.OrdinaryText
+            && _cachedOwnText == Theme.OwnText
+            && _cachedSystemText == Theme.SystemText
+            && _cachedTimestampText == Theme.TimestampText)
             return;
 
         float previousMaxScroll = _scroll.MaxScroll;
@@ -310,6 +326,12 @@ public sealed class ChatBox
         float wrapWidth = MathF.Max(1f, _scroll.ContentBounds.Width);
         foreach (ChatEntry entry in _history.Entries)
         {
+            if (entry.MarkupContent.HasValue)
+            {
+                AddRichRows(entry, measurer, timeZone, wrapWidth);
+                continue;
+            }
+
             string prefix = FormatPrefix(entry, ShowTimestamps, timeZone);
             string text = FormatText(entry, ShowTimestamps, timeZone);
             List<string> lines = TextLayout.Wrap(
@@ -342,6 +364,11 @@ public sealed class ChatBox
         _cachedShowTimestamps = ShowTimestamps;
         _cachedCultureName = cultureName;
         _cachedTimeZoneId = timeZone.Id;
+        _cachedInlineStyles = Theme.InlineStyles;
+        _cachedOrdinaryText = Theme.OrdinaryText;
+        _cachedOwnText = Theme.OwnText;
+        _cachedSystemText = Theme.SystemText;
+        _cachedTimestampText = Theme.TimestampText;
     }
 
     internal static string FormatPrefix(ChatEntry entry, bool showTimestamps, TimeZoneInfo timeZone)
@@ -374,5 +401,6 @@ public sealed class ChatBox
 
     // One wrapped line, split and measured at layout time: the stamp run (empty when the line carries none), the
     // message run (empty when the line is only the stamp), and where the message run starts after the stamp.
-    readonly record struct CachedRow(ChatEntry Entry, string TimestampText, string MessageText, float MessageX);
+    readonly record struct CachedRow(ChatEntry Entry, string TimestampText, string MessageText, float MessageX,
+        bool IsRich = false, ReadOnlyMemory<ColoredTextRun> Runs = default);
 }

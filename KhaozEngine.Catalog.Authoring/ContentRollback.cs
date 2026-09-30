@@ -5,7 +5,7 @@ namespace KhaozEngine.Catalog.Authoring;
 
 /// <summary>
 /// One row that BLOCKS a rollback: it was live at the target version and has been retired since, and the
-/// rule that retired it is named beside it so an operator sees which publish did it.
+/// matching rule, when present, is named beside it so an operator sees which publish did it.
 /// </summary>
 /// <param name="Type">The content type.</param>
 /// <param name="DefinitionId">The retired definition id.</param>
@@ -17,7 +17,11 @@ public sealed record ContentRollbackBlocker(
     int DefinitionId,
     ContentKey Key,
     int RuleSequence,
-    int IntroducedIn);
+    int IntroducedIn)
+{
+    /// <summary>The matching retiring rule's kind, or null when no rule names the row.</summary>
+    public RemapRuleKind? RuleKind { get; init; }
+}
 
 /// <summary>
 /// What a rollback WOULD do: the edits that restore the target version's field values, or the rows that
@@ -73,10 +77,10 @@ public sealed class ContentRollbackPlan
 /// </para>
 /// <para>
 /// <b>A row live at the target and RETIRED since is a flat refusal</b>, <c>KEC0039</c>. There is no
-/// un-retire branch and there never was a reachable one: a retire appends exactly one kind 2 rule, so every
-/// retired row is named by a rule and a branch conditioned on "no rule names that id" could not run. The way
-/// out is <see cref="Remedy"/>, an ordinary add under a NEW key carrying the old values, plus a replacement
-/// rule when existing references should move onto it.
+/// un-retire branch. An ordinary publish appends exactly one kind 2 rule for each retire, but a provider
+/// baseline without a matching rule still blocks the rollback and carries no rule kind. The way out is
+/// <see cref="Remedy"/>, an ordinary add under a NEW key carrying the old values, plus a replacement rule
+/// when existing references should move onto it.
 /// </para>
 /// </summary>
 public static class ContentRollback
@@ -95,7 +99,7 @@ public static class ContentRollback
     /// <param name="target">The rows live AT the target version.</param>
     /// <param name="fromVersion">The version the rollback is measured from.</param>
     /// <param name="current">The rows live at <paramref name="fromVersion"/>.</param>
-    /// <param name="rules">The full ordered rule list, which names the retire that blocks a row.</param>
+    /// <param name="rules">The full ordered rule list, searched for the retire that blocks a row.</param>
     /// <param name="registry">The registry the rows' types are declared in, which supplies the field names.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     public static ContentRollbackPlan Prepare(
@@ -144,7 +148,10 @@ public static class ContentRollback
                     was.Id,
                     was.Key,
                     retiring?.Sequence ?? 0,
-                    retiring?.IntroducedIn ?? 0));
+                    retiring?.IntroducedIn ?? 0)
+                {
+                    RuleKind = retiring?.Kind,
+                });
                 findings.Add(new ContentFinding(
                     was.Type,
                     was.Id,

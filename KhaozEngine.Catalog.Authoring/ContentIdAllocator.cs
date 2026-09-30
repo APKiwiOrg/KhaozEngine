@@ -296,8 +296,8 @@ public sealed class ContentIdAllocator
     }
 
     /// <summary>
-    /// Reserves one more ALIGNED block for a family, which is what a family creation does for its first
-    /// block and what a full family does for its next one.
+    /// Reserves one more aligned block for an existing family. Creation reserves its first block together
+    /// with the family and audit, before any definition id can be issued.
     /// </summary>
     /// <param name="familyId">The family to reserve for.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
@@ -349,20 +349,16 @@ public sealed class ContentIdAllocator
             .ReadHighWaterAsync(family.Type, cancellationToken).ConfigureAwait(false);
         long ceiling = await ReadCeilingAsync(family.Type, cancellationToken).ConfigureAwait(false);
 
-        long baseId = NextBlockBase(mark, family.BlockSize);
-        long topId = baseId + family.BlockSize - 1;
-        if (topId > ceiling)
-        {
-            throw BlockCeilingRefusal(family, ceiling, mark, baseId, topId);
-        }
+        ContentFamilyBlock planned = ContentFamilyReservation.Plan(family, mark, ceiling, reservedInVersion: 0);
+        int topId = planned.BaseId + (planned.BlockSize - 1);
 
         // Reserve through the top of the new block FIRST, on its own commit, then insert the block row
         // together with the advance of the issued mark to that same top.
         await _persistence
-            .CommitReservedThroughAsync(family.Type, (int)topId, cancellationToken)
+            .CommitReservedThroughAsync(family.Type, topId, cancellationToken)
             .ConfigureAwait(false);
         return await _persistence
-            .CommitFamilyBlockAsync(family.FamilyId, (int)baseId, (int)topId, cancellationToken)
+            .CommitFamilyBlockAsync(family.FamilyId, planned.BaseId, topId, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -388,19 +384,6 @@ public sealed class ContentIdAllocator
             FormattableString.Invariant(
                 $"Content type {type.Value} declares an id ceiling of {ceiling} and has issued through {mark.IssuedThrough}, so a range of {count} more cannot be allocated. The ceiling is a format constraint rather than a preference, and ids are never reused, so a retired row keeps its id and the space it occupies."),
             type,
-            0,
-            ContentAuthoringException.IdCeilingReason);
-
-    static ContentAuthoringException BlockCeilingRefusal(
-        ContentFamily family,
-        long ceiling,
-        ContentIdHighWater mark,
-        long baseId,
-        long topId)
-        => new(
-            FormattableString.Invariant(
-                $"Content type {family.Type.Value} declares an id ceiling of {ceiling}, so family '{family.FamilyKey}' cannot reserve the block [{baseId}, {topId + 1}) whose highest id is {topId}. The type has reserved through {mark.ReservedThrough} and issued through {mark.IssuedThrough}."),
-            family.Type,
             0,
             ContentAuthoringException.IdCeilingReason);
 }

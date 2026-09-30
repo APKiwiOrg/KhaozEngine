@@ -29,7 +29,7 @@ public sealed partial class ItemContainer
     /// <param name="value">The whole slot to seat. Its payload bytes are COPIED, so the caller may reuse
     /// its buffer.</param>
     /// <exception cref="ArgumentException">The payload is over <see cref="ItemSlot.MaxPayloadBytes"/>, or a
-    /// non-empty payload arrives with no instance id, or the payload is not canonical, or a quarantined
+    /// non-empty live payload arrives with no instance id, or the payload is not canonical, or a quarantined
     /// slot's bytes are not a well formed quarantine wrapper, which an EMPTY payload never is.</exception>
     /// <remarks>
     /// The invariants, in the order they are checked. One, an empty stack writes <see cref="ItemSlot.Empty"/>
@@ -38,12 +38,11 @@ public sealed partial class ItemContainer
     /// definition may declare durability and have it at full with nothing else set. Four, a payload that is
     /// not canonical is refused, through the predicate handed to the constructor, on every call rather than
     /// under a Debug.Assert, because a door that only guards on a developer machine is not a door.
-    /// Invariants two and four are SKIPPED when the slot is quarantined, because a wrapper is not a payload:
-    /// it is not canonical, it is not meant to be, and it may be larger than the cap because the thing it
-    /// preserves was. The wrapper's own check stands in for them, through the second predicate, and it runs
-    /// UNCONDITIONALLY: a quarantined slot must carry a non-empty payload, because the smallest wrapper is
-    /// nine bytes and an empty one preserves nothing. Invariants one and three still bind whatever the flag
-    /// says.
+    /// Invariants two, three and four are SKIPPED when the slot is quarantined, because a wrapper is not a
+    /// live payload: it may preserve a plain stack with no instance id, is not canonical and may be larger
+    /// than the cap because the thing it preserves was. The wrapper's own check stands in for them, through
+    /// the second predicate, and it runs UNCONDITIONALLY: a quarantined slot must carry a non-empty wrapper,
+    /// even when its preserved original is empty. Invariant one still binds whatever the flag says.
     /// </remarks>
     public void SetSlotAt(int slot, ItemSlot value)
     {
@@ -55,13 +54,9 @@ public sealed partial class ItemContainer
         }
 
         ReadOnlySpan<byte> payload = value.Payload.Span;
-        if (!payload.IsEmpty && !value.Stack.HasInstance)
-            throw new ArgumentException(
-                $"slot {slot} carries a {payload.Length} byte payload with instance id 0", nameof(value));
-
         if (value.Quarantined)
         {
-            // QuarantineWrapper.Verify stands in for invariants 2 and 4: the four magic bytes, the version
+            // QuarantineWrapper.Verify stands in for invariants 2, 3 and 4: the four magic bytes, the version
             // and a declared original length that accounts for exactly the bytes present. The container
             // never learns the wrapper's shape, exactly as it never learns the payload's, because the type
             // that knows it sits in the package ABOVE this one.
@@ -76,6 +71,9 @@ public sealed partial class ItemContainer
         }
         else
         {
+            if (!payload.IsEmpty && !value.Stack.HasInstance)
+                throw new ArgumentException(
+                    $"slot {slot} carries a {payload.Length} byte payload with instance id 0", nameof(value));
             if (payload.Length > ItemSlot.MaxPayloadBytes)
                 throw new ArgumentException(
                     $"slot {slot} carries {payload.Length} payload bytes over the {ItemSlot.MaxPayloadBytes} byte cap",

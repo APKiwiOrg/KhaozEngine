@@ -53,16 +53,16 @@ void main() {
     /// <summary>SplatFrag with motion, the pair at 5 and 6.</summary>
     public static readonly string SplatMotionFrag = MotionFragment(SplatFrag, 5);
 
-    /// <summary>TileGroundVert with motion, the pair after its seven outputs at 7 and 8.</summary>
+    /// <summary>TileGroundVert with motion, the pair after its eight outputs at 8 and 9.</summary>
     public static readonly string TileGroundMotionVert = ShaderText.BeforeEndOfMain(
-        ShaderText.After(TileGroundVert, "layout(location=6) out vec4 vEmissive;", @"
+        ShaderText.After(TileGroundVert, "layout(location=7) out float vOverlaySlot;", @"
 layout(set=2, binding=0) uniform MotionFrame {" + MotionFrameMembersGlsl + @"};
-layout(location=7) out vec4 vCurClip;
-layout(location=8) out vec4 vPrevClip;"),
+layout(location=8) out vec4 vCurClip;
+layout(location=9) out vec4 vPrevClip;"),
         @"    vCurClip = CurViewProj * world;
     vPrevClip = MotionParams.x > 0.5 ? PrevViewProj * world : vCurClip;
 ");
 
-    /// <summary>TileGroundFrag with motion, the pair at 7 and 8.</summary>
-    public static readonly string TileGroundMotionFrag = MotionFragment(TileGroundFrag, 7);
+    /// <summary>TileGroundFrag with motion, the pair at 8 and 9.</summary>
+    public static readonly string TileGroundMotionFrag = MotionFragment(TileGroundFrag, 8);
 }

@@ -214,32 +214,47 @@ public class AuthExchangeOutcomeTests
     {
         // A validator doing synchronous I/O before its first await never hands back a task to wait on, so a deadline
         // applied to that task alone starts only once the block is over.
-        using var release = new ManualResetEventSlim();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var blocking = new ScriptedValidator("discord", (_, _) =>
         {
-            release.Wait(TimeSpan.FromSeconds(10));
+            entered.TrySetResult();
+            release.Task.GetAwaiter().GetResult();
             exited.TrySetResult();
             return Task.FromResult(IdentityValidation.Verified(
                 new VerifiedIdentity("1", "discord", "Wren", new Dictionary<string, string>())));
         });
+        var clock = new ManualDeadlineClock(Now);
         var options = new AuthExchangeOptions
         {
             TokenLifetime = ExchangeFixture.Lifetime,
             ProviderTimeout = TimeSpan.FromMilliseconds(50),
-            Clock = new FixedClock(Now),
+            Clock = clock,
         };
         var store = new CountingAccountStore(whitelistOnCreate: true);
         var exchange = new AuthExchange(new[] { blocking }, store, ExchangeFixture.Key(), options);
 
-        AuthExchangeResult result = await exchange.ExchangeAsync("discord", "tok");
-        bool answeredWhileBlocked = !exited.Task.IsCompleted;
-        release.Set();
-        await exited.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        Task<AuthExchangeResult> pending = exchange.ExchangeAsync("discord", "tok");
+        try
+        {
+            // Start the deadline only after the queued validator enters, so scheduling delay is not mistaken for a
+            // failure to answer while synchronous provider work is blocked.
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            clock.ExpireDeadline();
+            AuthExchangeResult result = await pending.WaitAsync(TimeSpan.FromSeconds(15));
 
-        Assert.True(answeredWhileBlocked);
-        Assert.Equal((AuthExchangeOutcome.Unavailable, AuthExchangeCause.ProviderTimeout), (result.Outcome, result.Cause));
-        Assert.Equal(0, store.Calls);
+            Assert.False(exited.Task.IsCompleted);
+            Assert.Equal((AuthExchangeOutcome.Unavailable, AuthExchangeCause.ProviderTimeout),
+                (result.Outcome, result.Cause));
+            Assert.Equal(0, store.Calls);
+        }
+        finally
+        {
+            release.TrySetResult();
+            if (entered.Task.IsCompleted)
+                await exited.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        }
     }
 
     [Fact]

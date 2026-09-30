@@ -68,11 +68,11 @@ public class GameContentRulesHookTests
 
     /// <summary>
     /// A game rule that THROWS is the slot's throw, which is the engine's contract for any per-type validator:
-    /// one <c>KEC0040</c> naming the slot's type, the publish refused, and none of the slot's findings kept,
-    /// the package's own included. The option documents this, so the test keeps the documentation true.
+    /// one <c>KEC0040</c> naming the slot's type, the publish refused, and the slot's earlier findings kept.
+    /// The option documents this, so the test keeps the documentation true.
     /// </summary>
     [Fact]
-    public void AThrowingGameRuleIsTheSlotsThrowAndKeepsNoneOfTheSlotsFindings()
+    public void AThrowingGameRuleKeepsTheSlotsEarlierFindingsAndReportsTheThrow()
     {
         var registry = new ContentTypeRegistry();
         EngineContentTypes.Register(registry);
@@ -88,11 +88,16 @@ public class GameContentRulesHookTests
             Snapshot(registry, Item(item, 11, "tuna"), Recipe(recipe, 1)), null, [], registry);
 
         Assert.False(report.IsValid);
-        ContentFinding only = Assert.Single(
-            report.Findings,
-            f => string.Equals(f.Code, ContentValidator.TypeValidatorCode, StringComparison.Ordinal));
-        Assert.StartsWith(GameContentTypeIds.FoodKey + ": ", only.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain(GameContentFindings.SweepRecipeWithoutOutput, only.Message, StringComparison.Ordinal);
+        ContentFinding[] validatorFindings = report.Findings
+            .Where(f => string.Equals(f.Code, ContentValidator.TypeValidatorCode, StringComparison.Ordinal))
+            .ToArray();
+        Assert.Collection(
+            validatorFindings,
+            finding => Assert.StartsWith(
+                GameContentTypeIds.FoodKey + ": " + GameContentFindings.SweepRecipeWithoutOutput,
+                finding.Message,
+                StringComparison.Ordinal),
+            finding => Assert.Contains("the game rule is broken", finding.Message, StringComparison.Ordinal));
     }
 
     /// <summary>

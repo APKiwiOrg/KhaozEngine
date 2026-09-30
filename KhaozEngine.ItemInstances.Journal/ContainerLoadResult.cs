@@ -48,10 +48,8 @@ public enum ContainerLoadFindingKind : byte
     RemapAbandoned = 3,
 
     /// <summary>
-    /// The validator quarantined the record and the page cannot hold the wrapper: a wrapper IS a payload, and
-    /// spec 4.7 invariant 3 refuses a payload on a slot whose instance id is 0, which is every plain stack.
-    /// The finding is the whole record of it
-    /// (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/935">#935</see>).
+    /// A legacy finding for an entry that could not carry its quarantine wrapper. Retained for compatibility.
+    /// The current loader wraps plain stacks and payloads without instance identity at entry level.
     /// </summary>
     EntryUnwrappable = 4,
 }
@@ -122,9 +120,9 @@ public readonly record struct ContainerLoadFinding(
 /// What spec 5.5 step 5 returns: the decoded pages, the accumulated findings and the dirty set.
 /// <para>
 /// The findings come in two shapes and both are here. <see cref="Reports"/> is the validator's own, one per
-/// page that decoded, pure and accumulated (contracts 10.4). <see cref="Findings"/> is everything the
-/// validator cannot say, because it never saw it: a page that failed whole, an entry whose wrapper was
-/// already stored, an entry that came back, a rule that could not be applied.
+/// page that decoded, pure and accumulated (contracts 10.4). <see cref="Findings"/> records the load path:
+/// a page that failed whole, an entry whose wrapper remained or was rescued, or a rule that could not be
+/// applied.
 /// </para>
 /// <para>
 /// <b>The pages are in memory and nothing has been written.</b> A page a rule changed, or a rescue brought an
@@ -165,10 +163,14 @@ public sealed class ContainerLoadResult
 
         foreach (ContainerLoadFinding finding in _findings)
         {
-            // A record the validator never swept, so it is counted here rather than there. The unwrappable
-            // one is the exception: it IS in a report, and counting it twice would make one broken plain
-            // stack look like two.
-            if (finding.IsQuarantine && finding.Kind != ContainerLoadFindingKind.EntryUnwrappable) quarantined++;
+            // A page the validator never swept is counted here. Entry findings are already in a report, so
+            // counting either one again would make one broken record look like two.
+            if (finding.IsQuarantine
+                && finding.Kind is not ContainerLoadFindingKind.EntryQuarantined
+                    and not ContainerLoadFindingKind.EntryUnwrappable)
+            {
+                quarantined++;
+            }
         }
 
         _dirty = dirty.ToArray();

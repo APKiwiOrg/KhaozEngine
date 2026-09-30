@@ -12,8 +12,9 @@
 #
 # Fixture-only by construction: every repo, tag and package below is scratch, made with git init and
 # touch under mktemp. Nothing here reads or writes the real checkout, the real local-feed, or a real
-# tag, and --dry-run means dotnet is never invoked. Each fixture is its own main checkout, and every run
-# clears an inherited KHAOZENGINE_FEED, so the resolved feed is always a scratch one.
+# tag. Most wrapper cases use --dry-run. The refresh regression invokes a scratch fake dotnet that
+# reproduces the SDK's incremental skip over an existing package output. Each fixture is its own main
+# checkout, and every run clears an inherited KHAOZENGINE_FEED, so the resolved feed is always scratch.
 #
 # Run it from anywhere:  sh scripts/tests/pack-local-feed.test.sh
 set -eu
@@ -36,8 +37,8 @@ check() { # name, expected, actual
   if [ "$2" = "$3" ]; then pass=$((pass+1)); echo "  ok    $1"
   else fail=$((fail+1)); echo "  FAIL  $1 (expected $2, got $3)"; echo "  ----- output -----"; sed 's/^/  | /' "$OUTFILE"; fi
 }
-says() { grep -qF "$1" "$OUTFILE" && r=0 || r=1; }
-absent_says() { grep -qF "$1" "$OUTFILE" && r=1 || r=0; }
+says() { grep -qF -- "$1" "$OUTFILE" && r=0 || r=1; }
+absent_says() { grep -qF -- "$1" "$OUTFILE" && r=1 || r=0; }
 
 # newfixture <name> <version> -> a scratch repo carrying the scripts under test and that engine
 # version, with one commit and a clean tree. Sets REPO, FEED, REAL (REPO with symlinks resolved, which
@@ -66,6 +67,7 @@ EOF
   # at-tag-dirty by accident.
   printf 'local-feed\n.worktrees/\n' > "$REPO/.gitignore"
   ( cd "$REPO" && $GIT init -q . >/dev/null 2>&1 && $GIT add -A && $GIT commit -q --no-verify -m "chore: fixture" )
+  ( cd "$REPO" && git update-ref refs/remotes/origin/main HEAD )
   REAL=$(cd "$REPO" && pwd -P)
 }
 
@@ -81,12 +83,78 @@ addworktree() {
 tagit() { ( cd "$REPO" && $GIT tag -a "v$1" -m "release($1): fixture" ); }
 
 # advance -> one more commit on top, leaving the tree clean and HEAD off the tag.
-advance() { ( cd "$REPO" && echo "more" >> README.md && $GIT add -A && $GIT commit -q --no-verify -m "chore: more" ); }
+advance() {
+  ( cd "$REPO" && echo "more" >> README.md && $GIT add -A \
+    && $GIT commit -q --no-verify -m "chore: more" \
+    && git update-ref refs/remotes/origin/main HEAD )
+}
+
+# package <id> <version> <commit> [feed] -> a minimal nupkg carrying the same repository commit metadata
+# the .NET SDK writes into real packages. The fixture's shared feed is the default destination.
+package() {
+  _id=$1; _version=$2; _commit=$3; _feed=${4:-$FEED}
+  _pkgdir="$TMPROOT/package-$_id-$_version"
+  mkdir -p "$_pkgdir" "$_feed"
+  cat > "$_pkgdir/$_id.nuspec" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<package>
+  <metadata>
+    <id>$_id</id>
+    <version>$_version</version>
+    <repository type="git" url="https://example.invalid/repo" commit="$_commit" />
+  </metadata>
+</package>
+EOF
+  ( cd "$_pkgdir" && zip -q "$_feed/$_id.$_version.nupkg" "$_id.nuspec" )
+}
 
 # packrun [VAR=VALUE ...] -> the fixture's wrapper in --dry-run from $AT, never invoking dotnet.
 packrun() {
   set +e
   ( cd "$AT" && env -u PACK_RELEASED_OK -u KHAOZENGINE_FEED "$@" sh scripts/pack-local-feed.sh --dry-run ) >"$OUTFILE" 2>&1
+  rc=$?
+  set -e
+}
+
+# packrun_actual <fake-package-source> <fake-log> [fail] -> runs the fixture wrapper against a fake dotnet. The
+# fake copies only package names absent from the output directory, reproducing the stale same-version
+# output that #1172 observed from the SDK's incremental pack target.
+packrun_actual() {
+  _source=$1
+  _log=$2
+  _fail=${3:-0}
+  _fakebin="$TMPROOT/fake-dotnet-bin"
+  mkdir -p "$_fakebin"
+  cat > "$_fakebin/dotnet" <<'EOF'
+#!/bin/sh
+set -eu
+out=''
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o|--output) out=$2; shift 2 ;;
+    -o=*|--output=*) out=${1#*=}; shift ;;
+    *) shift ;;
+  esac
+done
+[ -n "$out" ] || { echo "fake dotnet: no output directory" >&2; exit 2; }
+mkdir -p "$out"
+printf '%s\n' "$out" > "$FAKE_PACK_LOG"
+[ "${FAKE_PACK_FAIL:-0}" = 0 ] || exit 17
+for artifact in "$FAKE_PACK_SOURCE"/*; do
+  [ -f "$artifact" ] || continue
+  target="$out/$(basename "$artifact")"
+  [ -e "$target" ] || cp "$artifact" "$target"
+done
+EOF
+  chmod +x "$_fakebin/dotnet"
+
+  set +e
+  (
+    cd "$AT" || exit 2
+    env -u PACK_RELEASED_OK -u KHAOZENGINE_FEED \
+      PATH="$_fakebin:$PATH" FAKE_PACK_SOURCE="$_source" FAKE_PACK_LOG="$_log" FAKE_PACK_FAIL="$_fail" \
+      sh scripts/pack-local-feed.sh
+  ) >"$OUTFILE" 2>&1
   rc=$?
   set -e
 }
@@ -115,8 +183,31 @@ hookrun() {
   rc=$?
   set -e
 }
+# hookrun_feed <feed> <command-string> -> hookrun with the configured feed visible to the hook.
+hookrun_feed() {
+  set +e
+  printf '%s' "$2" | jq -Rs '{tool_input: {command: .}}' \
+    | ( cd "$REPO" && KHAOZENGINE_FEED=$1 sh scripts/hooks/pack-release-guard.sh ) >"$OUTFILE" 2>&1
+  rc=$?
+  set -e
+}
 denied() { grep -q '"permissionDecision":"deny"' "$OUTFILE" && r=0 || r=1; }
 allowed() { [ -s "$OUTFILE" ] && r=1 || r=0; }
+
+echo "== help: both scripts print help through relative and absolute paths from a subdirectory =="
+newfixture help 2.0.0
+mkdir -p "$REPO/sub"
+for script in pack-local-feed.sh check-local-feed.sh; do
+  for path in "../scripts/$script" "$REPO/scripts/$script"; do
+    case "$path" in ../*) form="a relative" ;; *) form="an absolute" ;; esac
+    set +e
+    ( cd "$REPO/sub" && sh "$path" --help ) >"$OUTFILE" 2>&1
+    rc=$?
+    set -e
+    check "$script help succeeds through $form path" 0 "$rc"
+    says "$script - ";  check "  and prints its header" 0 "$r"
+  done
+done
 
 echo "== staged: the version carries no tag, so the ritual pack is the ordinary case =="
 newfixture staged 2.0.0
@@ -154,45 +245,99 @@ check "wrapper succeeds with no override" 0 "$rc"
 says "reproduces the released bytes";  check "  says why it is allowed" 0 "$r"
 says "dotnet pack";                    check "  reaches the pack command" 0 "$r"
 
+echo "== at-tag refresh: stale same-version outputs are rebuilt and other versions remain =="
+newfixture refresh 2.0.0
+OLD_COMMIT=$(cd "$REPO" && git rev-parse HEAD)
+package KhaozEngine.App 2.0.0 "$OLD_COMMIT"
+package KhaozEngine.Gui 2.0.0 "$OLD_COMMIT"
+cp "$FEED/KhaozEngine.App.2.0.0.nupkg" "$FEED/KhaozEngine.App.2.0.0.snupkg"
+cp "$FEED/KhaozEngine.Gui.2.0.0.nupkg" "$FEED/KhaozEngine.Gui.2.0.0.snupkg"
+package KhaozEngine.Legacy 2.0.0 "$OLD_COMMIT"
+cp "$FEED/KhaozEngine.Legacy.2.0.0.nupkg" "$FEED/KhaozEngine.Legacy.2.0.0.snupkg"
+package KhaozEngine.App 1.9.0 "$OLD_COMMIT"
+OLDER_SUM=$(cksum "$FEED/KhaozEngine.App.1.9.0.nupkg")
+STALE_SUM=$(cksum "$FEED/KhaozEngine.App.2.0.0.nupkg")
+
+advance
+tagit 2.0.0
+TAG_COMMIT=$(cd "$REPO" && git rev-parse 'refs/tags/v2.0.0^{commit}')
+FRESH="$TMPROOT/refresh-fresh"
+mkdir -p "$FRESH"
+package KhaozEngine.App 2.0.0 "$TAG_COMMIT" "$FRESH"
+package KhaozEngine.Gui 2.0.0 "$TAG_COMMIT" "$FRESH"
+cp "$FRESH/KhaozEngine.App.2.0.0.nupkg" "$FRESH/KhaozEngine.App.2.0.0.snupkg"
+cp "$FRESH/KhaozEngine.Gui.2.0.0.nupkg" "$FRESH/KhaozEngine.Gui.2.0.0.snupkg"
+FAKE_LOG="$TMPROOT/refresh-output"
+
+packrun_actual "$FRESH" "$FAKE_LOG" 1
+check "failed pack is refused" 17 "$rc"
+[ "$(cksum "$FEED/KhaozEngine.App.2.0.0.nupkg")" = "$STALE_SUM" ] && r=0 || r=1
+check "  failed pack leaves the feed unchanged" 0 "$r"
+[ ! -d "$(cat "$FAKE_LOG")" ] && r=0 || r=1
+check "  failed pack removes its scratch directory" 0 "$r"
+
+packrun_actual "$FRESH" "$FAKE_LOG"
+check "wrapper succeeds over stale outputs" 0 "$rc"
+[ "$(cat "$FAKE_LOG" 2>/dev/null || true)" != "$REAL/local-feed" ] && r=0 || r=1
+check "  packs through a fresh output directory" 0 "$r"
+[ ! -d "$(cat "$FAKE_LOG")" ] && r=0 || r=1
+check "  successful pack removes its scratch directory" 0 "$r"
+unzip -p "$FEED/KhaozEngine.App.2.0.0.snupkg" '*.nuspec' | grep -qF "$TAG_COMMIT" && r=0 || r=1
+check "  refreshes the symbol package" 0 "$r"
+[ ! -e "$FEED/KhaozEngine.Legacy.2.0.0.nupkg" ] && [ ! -e "$FEED/KhaozEngine.Legacy.2.0.0.snupkg" ] && r=0 || r=1
+check "  removes obsolete current-version packages" 0 "$r"
+[ "$OLDER_SUM" = "$(cksum "$FEED/KhaozEngine.App.1.9.0.nupkg")" ] && r=0 || r=1
+check "  preserves every other version" 0 "$r"
+feedrun --strict
+check "  refreshed feed passes the strict report" 0 "$rc"
+says "RELEASED   2.0.0  commit $TAG_COMMIT"
+check "  and current packages carry the tag commit" 0 "$r"
+
 echo "== at-tag-dirty: same commit, dirty tree, so the pack would not reproduce those bytes =="
 ( cd "$REPO" && echo "uncommitted" >> README.md )
 packrun
 check "wrapper refuses" 1 "$rc"
 says "the tree is not clean";  check "  names the dirty tree as the reason" 0 "$r"
 packrun PACK_RELEASED_OK=1
-check "  and the override still gets through" 0 "$rc"
+check "  and the release override does not bypass shared-feed cleanliness" 1 "$rc"
+ATTAG_PRIVATE="$TMPROOT/attag-private"
+packrun PACK_RELEASED_OK=1 KHAOZENGINE_FEED="$ATTAG_PRIVATE"
+check "  while the release override plus a private feed gets through" 0 "$rc"
 
-echo "== check-local-feed: classifies staged, released and re-packed versions =="
+echo "== check-local-feed: tagged versions are classified by their nuspec commit stamps =="
 newfixture feed 3.0.0
 tagit 1.0.0
 tagit 1.1.0
-touch "$FEED/KhaozEngine.App.1.0.0.nupkg" "$FEED/KhaozEngine.Gui.1.0.0.nupkg"
-touch "$FEED/KhaozEngine.App.1.1.0.nupkg"
-touch "$FEED/KhaozEngine.Gpu.D3D11.3.0.0.nupkg" "$FEED/KhaozEngine.Gpu.D3D11.3.0.0.snupkg"
-# The two tags were just created, so a package stamped in 2000 predates its release and one stamped in
-# 2099 was written after it. Absolute stamps rather than relative ones, so the case does not depend on
-# clock resolution.
-touch -t 200001010000 "$FEED/KhaozEngine.App.1.0.0.nupkg" "$FEED/KhaozEngine.Gui.1.0.0.nupkg"
-touch -t 209901010000 "$FEED/KhaozEngine.App.1.1.0.nupkg"
+TAG_COMMIT=$(cd "$REPO" && git rev-parse 'refs/tags/v1.0.0^{commit}')
+advance
+WRONG_COMMIT=$(cd "$REPO" && git rev-parse HEAD)
+package KhaozEngine.App 1.0.0 "$TAG_COMMIT"
+package KhaozEngine.Gui 1.0.0 "$TAG_COMMIT"
+package KhaozEngine.App 1.1.0 "$TAG_COMMIT"
+package KhaozEngine.Gui 1.1.0 "$WRONG_COMMIT"
+package KhaozEngine.Gpu.D3D11 3.0.0 "$WRONG_COMMIT"
+# Times deliberately contradict the commit stamps. The matching 1.0.0 files look newer than the tag,
+# while the mismatched 1.1.0 files look older. Commit identity must decide both classifications.
+touch -t 209901010000 "$FEED/KhaozEngine.App.1.0.0.nupkg" "$FEED/KhaozEngine.Gui.1.0.0.nupkg"
+touch -t 200001010000 "$FEED/KhaozEngine.App.1.1.0.nupkg" "$FEED/KhaozEngine.Gui.1.1.0.nupkg"
 feedrun
 check "report succeeds without --strict" 0 "$rc"
-says "RELEASED   1.0.0";   check "  a version packed before its tag is RELEASED" 0 "$r"
-says "RE-PACKED  1.1.0";   check "  a version packed after its tag is RE-PACKED" 0 "$r"
-says "STAGED     3.0.0";   check "  an untagged version is STAGED" 0 "$r"
-says "1 staged, 1 released, 1 re-packed"
+says "RELEASED   1.0.0  commit $TAG_COMMIT";  check "  matching package commits are RELEASED" 0 "$r"
+says "DRIFTED    1.1.0  tag commit $TAG_COMMIT";  check "  any wrong package commit is DRIFTED" 0 "$r"
+says "KhaozEngine.Gui.1.1.0.nupkg: commit $WRONG_COMMIT";  check "  names the wrong package and stamp" 0 "$r"
+says "STAGED     3.0.0  commit $WRONG_COMMIT on origin/main";  check "  a main commit is safely STAGED" 0 "$r"
+says "1 staged, 0 unsafe, 1 released, 1 drifted"
 check "  the summary counts all three" 0 "$r"
-says "KhaozEngine.App.1.1.0.nupkg"
-check "  and names the offending file" 0 "$r"
 feedrun --strict
-check "--strict fails on a re-packed version" 1 "$rc"
+check "--strict fails on a drifted version" 1 "$rc"
 
 echo "== check-local-feed: a clean feed and a missing feed are both quiet successes =="
 newfixture cleanfeed 3.0.0
 tagit 1.0.0
-touch "$FEED/KhaozEngine.App.1.0.0.nupkg"
-touch -t 200001010000 "$FEED/KhaozEngine.App.1.0.0.nupkg"
+CLEAN_TAG_COMMIT=$(cd "$REPO" && git rev-parse 'refs/tags/v1.0.0^{commit}')
+package KhaozEngine.App 1.0.0 "$CLEAN_TAG_COMMIT"
 feedrun --strict
-check "--strict passes when nothing was re-packed" 0 "$rc"
+check "--strict passes when every released package matches its tag" 0 "$rc"
 rm -rf "$FEED"
 feedrun --strict
 check "no feed at all is not a failure" 0 "$rc"
@@ -210,10 +355,12 @@ absent_says "$WTREAL/local-feed";                   check "  never into the work
 absent_says "-o ./local-feed";                      check "  nor into a cwd-relative one" 0 "$r"
 [ -d "$WT/local-feed" ] && r=0 || r=1
 check "  the worktree still gets the local-feed its nuget.config source needs" 0 "$r"
-touch "$FEED/KhaozEngine.App.2.0.0.nupkg"
+WT_COMMIT=$(cd "$WT" && git rev-parse HEAD)
+package KhaozEngine.App 2.0.0 "$WT_COMMIT"
 feedrun
 check "report succeeds from the worktree" 0 "$rc"
-says "STAGED     2.0.0";           check "  reads the package in the main checkout's feed" 0 "$r"
+says "STAGED     2.0.0  commit $WT_COMMIT on origin/main"
+check "  reads the safe package in the main checkout's feed" 0 "$r"
 says "(feed: $REAL/local-feed)";   check "  and names that feed" 0 "$r"
 
 echo "== worktree: the released-version guard still runs in front of the resolved feed =="
@@ -225,22 +372,102 @@ says "feed is $REAL/local-feed";            check "  names the feed it refused t
 says "v2.0.0 is already a released tag";    check "  names the released tag" 0 "$r"
 absent_says "dotnet pack";                  check "  and never reaches the pack command" 0 "$r"
 packrun PACK_RELEASED_OK=1
-check "  the override still gets through" 0 "$rc"
-says "dotnet pack -c Release -o $REAL/local-feed";  check "  into the main checkout's feed" 0 "$r"
+check "  the release override does not bypass the shared-feed boundary" 1 "$rc"
+says "not an ancestor of origin/main";  check "  names the remaining refusal" 0 "$r"
+RELEASED_PRIVATE="$TMPROOT/released-private"
+packrun PACK_RELEASED_OK=1 KHAOZENGINE_FEED="$RELEASED_PRIVATE"
+check "  release override plus a private feed gets through" 0 "$rc"
+says "dotnet pack -c Release -o $RELEASED_PRIVATE";  check "  into only the private feed" 0 "$r"
+
+echo "== unmerged worktree: shared feed refuses it, private feed allows it (#1135) =="
+newfixture unmerged 4.0.0
+addworktree
+MAIN_COMMIT=$(cd "$REPO" && git rev-parse refs/remotes/origin/main)
+( cd "$WT" && echo "branch" >> README.md && $GIT add -A && $GIT commit -q --no-verify -m "chore: branch" )
+BRANCH_COMMIT=$(cd "$WT" && git rev-parse HEAD)
+packrun
+check "shared-feed pack refuses the unmerged HEAD" 1 "$rc"
+says "Refusing to pack the shared feed";  check "  names the shared-feed boundary" 0 "$r"
+says "HEAD $BRANCH_COMMIT is not an ancestor of origin/main $MAIN_COMMIT"
+check "  prints both commits" 0 "$r"
+says "KHAOZENGINE_FEED";  check "  points to the private-feed escape path" 0 "$r"
+absent_says "dotnet pack";  check "  never reaches the shared pack command" 0 "$r"
+packrun KHAOZENGINE_FEED="$REAL/local-feed"
+check "an absolute override naming the shared feed is still refused" 1 "$rc"
+says "not an ancestor of origin/main";  check "  keeps the ancestry guard" 0 "$r"
+packrun KHAOZENGINE_FEED=../../local-feed
+check "a relative override resolving to the shared feed is still refused" 1 "$rc"
+says "not an ancestor of origin/main";  check "  canonicalizes before deciding" 0 "$r"
+packrun KHAOZENGINE_FEED="$REAL/missing/../local-feed"
+check "a shared alias behind a missing component is still refused" 1 "$rc"
+says "not an ancestor of origin/main";  check "  normalizes missing components before deciding" 0 "$r"
+ALT="$TMPROOT/unmerged-private"
+packrun KHAOZENGINE_FEED="$ALT"
+check "explicit private-feed pack succeeds" 0 "$rc"
+says "dotnet pack -c Release -o $ALT";  check "  reaches only the private feed" 0 "$r"
+
+echo "== dirty tree: shared feed refuses it, private feed allows it (#1135) =="
+UNMERGED_REPO=$REPO
+UNMERGED_FEED=$FEED
+UNMERGED_WT=$WT
+newfixture dirtyshared 6.0.0
+echo "dirty" >> "$REPO/README.md"
+packrun
+check "shared-feed pack refuses a dirty tree" 1 "$rc"
+says "the worktree is not clean";  check "  names uncommitted package bytes" 0 "$r"
+packrun KHAOZENGINE_FEED="$REAL/missing/../local-feed"
+check "a dirty tree cannot use a missing-component shared alias" 1 "$rc"
+says "the worktree is not clean";  check "  retains the cleanliness guard" 0 "$r"
+DIRTY_PRIVATE="$TMPROOT/dirty-private"
+packrun KHAOZENGINE_FEED="$DIRTY_PRIVATE"
+check "dirty private-feed pack succeeds" 0 "$rc"
+says "dotnet pack -c Release -o $DIRTY_PRIVATE";  check "  reaches only the private feed" 0 "$r"
+NESTED_PRIVATE="$TMPROOT/private-missing/nested/feed"
+packrun KHAOZENGINE_FEED="$NESTED_PRIVATE"
+check "a nonexistent nested private feed remains allowed" 0 "$rc"
+says "dotnet pack -c Release -o $NESTED_PRIVATE";  check "  keeps the distinct private path" 0 "$r"
+packrun KHAOZENGINE_FEED="$REPO/Directory.Build.props/feed"
+check "an unresolvable feed path fails closed" 1 "$rc"
+says "cannot be resolved safely";  check "  explains the path refusal" 0 "$r"
+
+echo "== staged report: package commits outside origin/main are unsafe (#1135) =="
+REPO=$UNMERGED_REPO
+FEED=$UNMERGED_FEED
+WT=$UNMERGED_WT
+AT=$WT
+package KhaozEngine.App 4.0.0 "$BRANCH_COMMIT"
+feedrun
+check "unsafe staged report succeeds without --strict" 0 "$rc"
+says "UNSAFE     4.0.0";  check "  flags the staged version" 0 "$r"
+says "KhaozEngine.App.4.0.0.nupkg: commit $BRANCH_COMMIT not on origin/main"
+check "  names the package and unmerged commit" 0 "$r"
+says "0 staged, 1 unsafe, 0 released, 0 drifted";  check "  counts unsafe separately" 0 "$r"
+feedrun --strict
+check "--strict fails on an unsafe staged version" 1 "$rc"
+
+echo "== staged report: a package commit on origin/main remains safe =="
+newfixture stagedmain 5.0.0
+MAIN_COMMIT=$(cd "$REPO" && git rev-parse refs/remotes/origin/main)
+package KhaozEngine.App 5.0.0 "$MAIN_COMMIT"
+feedrun --strict
+check "safe staged report passes --strict" 0 "$rc"
+says "STAGED     5.0.0  commit $MAIN_COMMIT on origin/main"
+check "  prints the package commit and ancestry" 0 "$r"
 
 echo "== KHAOZENGINE_FEED: one override moves the pack and the report together =="
 newfixture wtoverride 2.0.0
 addworktree
 ALT="$TMPROOT/altfeed"
 mkdir -p "$ALT"
-touch "$ALT/KhaozEngine.App.9.9.9.nupkg"
+ALT_COMMIT=$(cd "$WT" && git rev-parse HEAD)
+package KhaozEngine.App 9.9.9 "$ALT_COMMIT" "$ALT"
 packrun KHAOZENGINE_FEED="$ALT"
 check "wrapper succeeds with the override" 0 "$rc"
 says "dotnet pack -c Release -o $ALT";  check "  packs into the override" 0 "$r"
 absent_says "$REAL/local-feed";         check "  instead of the main checkout's feed" 0 "$r"
 feedrun KHAOZENGINE_FEED="$ALT"
 check "report succeeds with the override" 0 "$rc"
-says "STAGED     9.9.9";   check "  reads the same override" 0 "$r"
+says "STAGED     9.9.9  commit $ALT_COMMIT on origin/main";  check "  reads the same safe override" 0 "$r"
 feedrun KHAOZENGINE_FEED="$ALT" --feed "$FEED"
 says "nothing to check";   check "  and --feed still beats it" 0 "$r"
 absent_says "9.9.9";       check "  without reading the override" 0 "$r"
@@ -248,12 +475,12 @@ absent_says "9.9.9";       check "  without reading the override" 0 "$r"
 echo "== KHAOZENGINE_FEED: a relative override resolves against the toplevel the scripts cd to =="
 WTREAL=$(cd "$WT" && pwd -P)
 mkdir -p "$WT/relfeed"
-touch "$WT/relfeed/KhaozEngine.App.8.8.8.nupkg"
+package KhaozEngine.App 8.8.8 "$ALT_COMMIT" "$WT/relfeed"
 packrun KHAOZENGINE_FEED=relfeed
 check "wrapper succeeds with a relative override" 0 "$rc"
 says "dotnet pack -c Release -o $WTREAL/relfeed";  check "  packs into it, made absolute" 0 "$r"
 feedrun KHAOZENGINE_FEED=relfeed
-says "STAGED     8.8.8";   check "  the report reads the same place" 0 "$r"
+says "STAGED     8.8.8  commit $ALT_COMMIT on origin/main";  check "  the report reads the same place" 0 "$r"
 mkdir -p "$WT/sub"
 set +e
 ( cd "$WT/sub" && env -u PACK_RELEASED_OK KHAOZENGINE_FEED=relfeed sh ../scripts/pack-local-feed.sh --dry-run ) >"$OUTFILE" 2>&1
@@ -290,15 +517,37 @@ else
   says "already a released tag";   check "  the deny reason carries the explanation" 0 "$r"
   says "pack-local-feed.sh";       check "  and points at the wrapper" 0 "$r"
 
+  PRIVATE_FEED="$TMPROOT/hook-private"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && dotnet pack -c Release -o \"\$KHAOZENGINE_FEED\""
+  denied;  check "  a literal KHAOZENGINE_FEED output is denied" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && dotnet pack -c Release --output \"\$KHAOZENGINE_FEED\""
+  denied;  check "  the long output form with a separate value is denied" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && dotnet pack -c Release -o=\"\$KHAOZENGINE_FEED\""
+  denied;  check "  the short output equals form is denied" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && dotnet pack -c Release --output=\"\$KHAOZENGINE_FEED\""
+  denied;  check "  the long output form with a literal KHAOZENGINE_FEED is denied" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && dotnet pack -c Release -o $PRIVATE_FEED"
+  denied;  check "  an expanded KHAOZENGINE_FEED output is denied" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && dotnet pack -c Release -o \"$PRIVATE_FEED\""
+  denied;  check "  a quoted expanded KHAOZENGINE_FEED output is denied" 0 "$r"
+
   echo "== hook: the allow paths =="
   hookrun "cd $REPO && PACK_RELEASED_OK=1 dotnet pack -c Release -o ./local-feed"
   allowed;  check "an inline override is allowed through" 0 "$r"
   hookrun "cd $REPO && dotnet pack -c Release -o ./artifacts --no-build"
   allowed;  check "a pack that misses local-feed entirely is not this hook's business" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && dotnet pack -c Release -p:RestoreSources=\"\$KHAOZENGINE_FEED\" -o ./artifacts"
+  allowed;  check "a feed mentioned outside the output option does not redirect the pack" 0 "$r"
   hookrun "cd $REPO && sh scripts/pack-local-feed.sh"
   allowed;  check "the wrapper is left to speak for itself" 0 "$r"
   hookrun "cd $REPO && git commit -m 'chore: dotnet pack into local-feed later'"
   allowed;  check "a quoted mention of the command is not the command" 0 "$r"
+  hookrun_feed "$REAL/local-feed" "cd $REPO && git commit -m 'chore: dotnet pack -o \"\$KHAOZENGINE_FEED\" later'"
+  allowed;  check "a quoted KHAOZENGINE_FEED mention is not the command" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && git commit -m 'chore: dotnet pack -o \"$PRIVATE_FEED\" later'"
+  allowed;  check "a quoted expanded feed mention is not the command" 0 "$r"
+  hookrun_feed "$PRIVATE_FEED" "cd $REPO && PACK_RELEASED_OK=1 dotnet pack -c Release -o \"\$KHAOZENGINE_FEED\""
+  allowed;  check "the release override allows a configured private feed" 0 "$r"
   hookrun "cd $REPO && dotnet build"
   allowed;  check "an unrelated dotnet command is untouched" 0 "$r"
 
@@ -309,6 +558,33 @@ else
   ( cd "$WT" && echo "more" >> README.md && $GIT add -A && $GIT commit -q --no-verify -m "chore: more" )
   hookrun "cd $WT && dotnet pack -c Release -o $REAL/local-feed"
   denied;  check "the raw command aimed at the resolved feed is denied" 0 "$r"
+
+  echo "== hook: an untagged unmerged HEAD cannot write the shared feed =="
+  newfixture hookunmerged 2.0.0
+  addworktree
+  ( cd "$WT" && echo "branch" >> README.md && $GIT add -A && $GIT commit -q --no-verify -m "chore: branch" )
+  hookrun "cd $WT && dotnet pack -c Release -o $REAL/local-feed"
+  denied;  check "the raw staged pack from an unmerged HEAD is denied" 0 "$r"
+  says "not an ancestor of origin/main";  check "  the deny names the ancestry failure" 0 "$r"
+  hookrun "cd $WT && PACK_RELEASED_OK=1 dotnet pack -c Release -o $REAL/local-feed"
+  denied;  check "  PACK_RELEASED_OK does not bypass the shared-feed boundary" 0 "$r"
+  hookrun_feed "$REAL/local-feed" "cd $WT && dotnet pack -c Release -o \"\$KHAOZENGINE_FEED\""
+  denied;  check "  a configured shared feed keeps the ancestry guard" 0 "$r"
+  UNMERGED_PRIVATE="$TMPROOT/hook-unmerged-private"
+  hookrun_feed "$UNMERGED_PRIVATE" "cd $WT && dotnet pack -c Release -o \"\$KHAOZENGINE_FEED\""
+  allowed;  check "  a configured private feed allows the unmerged HEAD" 0 "$r"
+
+  echo "== hook: an untagged dirty tree cannot write the shared feed =="
+  newfixture hookdirty 2.0.0
+  echo "dirty" >> "$REPO/README.md"
+  hookrun "cd $REPO && dotnet pack -c Release -o $REAL/local-feed"
+  denied;  check "the raw staged pack from a dirty tree is denied" 0 "$r"
+  says "the worktree is not clean";  check "  the deny names uncommitted package bytes" 0 "$r"
+  hookrun_feed "$REAL/local-feed" "cd $REPO && dotnet pack -c Release -o \"\$KHAOZENGINE_FEED\""
+  denied;  check "  a configured shared feed keeps the cleanliness guard" 0 "$r"
+  DIRTY_HOOK_PRIVATE="$TMPROOT/hook-dirty-private"
+  hookrun_feed "$DIRTY_HOOK_PRIVATE" "cd $REPO && dotnet pack -c Release -o \"\$KHAOZENGINE_FEED\""
+  allowed;  check "  a configured private feed allows the dirty tree" 0 "$r"
 
   echo "== hook: stays silent while the version is staged =="
   newfixture hookstaged 2.0.0

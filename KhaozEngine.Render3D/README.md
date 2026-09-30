@@ -28,6 +28,31 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   in, terrain deforms) is never answered with last frame's eye. Drive the camera without a `Scene3D` and you call
   `BeginFrame()` (or `FollowCamera3D.InvalidateEye()`) once a frame yourself. `OcclusionSweepCount` /
   `EyeComputeCount` are cumulative-since-construction counters for watching the load.
+- `FollowCamera3D.FrameClock` (since 20.14.0, off by default). A per-frame id (`() => Clock.FrameCount` over a
+  `GameApp`) that stamps each computed eye. A read reuses the eye only under the same id and inputs, and
+  `BeginFrame` keeps an eye computed earlier in the same frame, so a game that reads the eye in update after moving
+  the target, and again through the render, pays one computation and one `BoomProbe` call a frame instead of two.
+  A camera read in update BEFORE it moves pays two computations a frame with a clock, where it pays one without, so
+  leave the clock null for that shape. A clock that advances once per frame, before the frame's first camera read,
+  never returns an eye from an earlier frame, so a still camera still recomputes once a frame and sees the world
+  move behind the probe. A clock ticked between update and render instead lets the next update read reuse the
+  previous render's eye, and one that stops advancing can hand the next latch an eye from before the stall. Null
+  keeps the previous behaviour. See docs/USING-KHAOZENGINE.md.
+- `FollowCamera3D.PivotHeight` / `Pivot` / `PitchLimit` (since 20.13.0). The camera orbits and looks at `Pivot`,
+  which is `EffectiveTarget` raised by `PivotHeight` (default 0). `HeightOffset` still raises only the eye. A
+  negative `MinPitch` puts the eye below the pivot looking up, and `Pitch` clamps to `[-PitchLimit, PitchLimit]`
+  (85 degrees) after `[MinPitch, MaxPitch]`, so the view never degenerates against world up.
+- `ICameraBoomProbe` / `FollowCamera3D.BoomProbe` (since 20.13.0). Any probe can stop the boom. The camera asks
+  `Reach(origin, direction, length, radius)` once per computed eye, from the pivot toward the geometric eye, and
+  places the eye at that reach less `OcclusionSkin`, floored at `MinOcclusionDistance`. The `Occlusion` physics
+  sweep runs through the same path, the shorter reach wins, and `GroundHeight` clearance still runs last.
+  `BoomProbeCount` counts probe calls cumulatively. `KhaozEngine.TileWorld.Render3D` ships `TileWorldCameraProbe`.
+- `FollowCamera3D.BoomRecoveryRate` / `AdvanceBoom(dt)` (since 20.13.0). A pull-in stays instant and the boom
+  eases back out as `AdvanceBoom` multiplies the held shortfall by `exp(-BoomRecoveryRate * dt)`.
+  `FollowCameraController.Update` calls it. `Warp` and `SnapToTarget` clear the shortfall. The `Distance` setter
+  shifts it by the change in distance, so a zoom in during recovery never moves the eye outward, a zoom out
+  continues the ease, and a zoom in the open is instant. The default rate of 0 follows the probe both ways at once.
+  See docs/USING-KHAOZENGINE.md.
 - Teleport transitions (`ITransition` + `HardBlink` / `CameraDissolve` / `CharDissolve`, since 10.65.0) - a phased
   cover -> swap -> optional streaming hold -> reveal state machine (pure timing) that masks a teleport swap +
   destination pop-in. A teleport is a hard cut, so `HardBlink` defaults to an instant, reveal-only cover (opaque on the
@@ -160,9 +185,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   - **The vertex contract, for this pipeline only.** `ModelVertex` is unchanged, so the upload path is the ordinary
     one, but the fields are repurposed: `Color` is the vertex's four weights, `Uv.x`, `Uv.y`, `Tangent.x` and
     `Tangent.y` are four material SLOTS as floats holding integers (constant across a triangle, so interpolation
-    cannot smear them), `Tangent.z` is a per-vertex brightness multiplier and `Tangent.w` is 0. The fragment reads
-    a slot as `int(x + 0.5)` clamped to 0..63, takes four `textureGrad` taps at
-    `worldXZ * TilesPerMetre[slot]`, renormalises the weights by their own sum (no fifth-layer remainder) and
+    cannot smear them), `Tangent.z` is a per-vertex brightness multiplier and `Tangent.w` is 0 for the ordinary
+    four-layer path. A positive value names an optional overlay slot plus one, whose weight is one minus the
+    sum of `Color`. The fragment reads a slot as `int(x + 0.5)` clamped to 0..63, takes up to five `textureGrad`
+    taps at `worldXZ * TilesPerMetre[slot]`, renormalises ordinary weights by their own sum (or preserves the
+    opted overlay remainder) and
     multiplies by the slot tint and the jitter. **The jitter is a MULTIPLIER, not an offset, so `Tangent.z` of 0
     renders that vertex BLACK**: write 1 for none. A mesh built for the model pipeline, where `Tangent` is a
     tangent frame, is not a tile-ground mesh.
@@ -1048,12 +1075,45 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     leaves the destination exactly unchanged, unit effective weight copies the source exactly, and intermediate
     weights lerp translation and scale while rotation follows the normalized shortest spherical arc. Warmed calls
     allocate no managed memory and need no mesh, graphics device, or test framework.
+  - `Animation.Inspection.PoseBlend.AddInto` layers an additive pose onto a caller-owned local pose buffer. Each
+    node adds its sample's offset from its reference in the joint's local frame. Rotation composes
+    `destination * slerp(identity, inverse(reference) * sample, w)` along the shortest arc, and translation and
+    scale add `(sample - reference) * w`. The finite weight, optional `BoneMask`, and `[0, 1]` clamp follow
+    `BlendInto`. A destination equal to the reference at unit weight reproduces the sample. `LayeredAnimator`'s
+    additive layers run the same code. Warmed calls allocate no managed memory.
+  - `SkeletonContract` / `ContractJoint` state a skinned body's named joints, each with its parent and whether it
+    deforms the skin, the root first and each parent before its children. Construction refuses an empty table, an
+    unnamed or repeated joint, a second root and a parent declared after its child, naming the joint.
+  - `ContractJointMap(skeleton, contract, stance, stanceClipName)` checks a loaded skeleton against a contract. It
+    refuses more nodes than `SkinningMath.MaxBonesPerDraw`, two nodes of one name, and a contract joint that is
+    missing, misparented or, other than the root, outside the skin. Unnamed nodes are left alone. The base is an
+    optional one-key stance clip or the bind rest. A stance must carry `stanceClipName` (`stance` by default), key
+    each track once, animate contract joints only and carry no scale track. `BaseLocal`, `BaseWorld`,
+    `ParentBaseInverse` and `BodyAlignment` expose the base frames, and the frame accessors refuse a node outside
+    the contract. `BodyAlignment` pairs with `BoneSocket.ComposeRigid` to seat a piece authored in the body's axes.
+    `SkinAtBase` deforms a skin to the base on the CPU and allocates, so call it at load.
+  - `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only`
+    throws on a second clip of one name. `NoLength`, `Unkeyed`, `Uncovered` and `Breach` return null for a clean
+    clip and a message otherwise, so a loader chains them with `??` and throws the first. They cover a clip of no
+    length, a required rotation or translation left unkeyed, a stance channel left unkeyed on the nodes a filter
+    takes, and the first `ClipHygiene` finding. A joint name the skeleton lacks throws.
+  - `SkinnedGrounding.MinimumY(vertices, inverseBind, palette, model, scratch)` returns the lowest world y of the
+    DEFORMED skin, so a crouched or striding body can be set down on its ground. The caller lends one `Vector4`
+    scratch entry per bone and the call allocates nothing. An unweighted vertex draws through the model alone, as
+    the shader does. An empty skin returns positive infinity.
+  - `MomentSchedule` / `MomentScheduleOptions` / `MomentFamily` / `Moment` / `MomentSide` schedule a standing
+    body's idle moments as a pure function of its id and the clock. The clock is cut into slots that each hold
+    one moment or none, with quiet ends, an empty share, a cap on empty runs and a salt. A family is drawn by
+    weight, and a mirrored family plays left or right with even odds. `At(seed, seconds)` allocates nothing, and
+    `At(seed, seconds, stoppedAt)` skips a moment that began before the body last stopped. `Moment.None` is the
+    default value.
   - `LayeredAnimator` / `AnimationLayer` / `BoneMask` / `LayerMode` - N animation layers composited into one final
     skeleton pose: a base locomotion layer below, masked `Override` / `Additive` action layers above (attack while
     running). Each `AnimationLayer` is a clip + its own looping playhead + a blend weight + an optional `BoneMask` +
     a `LayerMode`. `BoneMask` is per-node weights 0..1 (`BoneMask.Full`/`.Empty`, `BoneMask.Subtree(skel, root, w)`
     for "this bone and all descendants at weight w" - the upper-body-action shape). The root may be a node index or
-    a retained glTF name. Override lerps toward the layer
+    a retained glTF name. `BoneMask.ForJoints(skel, jointNames, w)` weighs a named joint group without its
+    descendants and refuses a name the skeleton lacks. Override lerps toward the layer
     pose by `weight x mask`. Additive applies the clip's delta from its first frame (the reference), scaled by
     `weight x mask`: the rotation delta is both EXTRACTED and APPLIED in the joint's LOCAL frame
     (`delta = inverse(reference) * sample`, applied as `base * delta`), so a base equal to the reference reproduces

@@ -163,6 +163,30 @@ namespace KhaozEngine.Tests.Gpu
                 + "default.");
         }
 
+        [Fact]
+        public void TheSweep_IgnoresSourceInsideANestedWorktree()
+        {
+            string root = Path.Combine(Path.GetTempPath(), $"metal-copy-sweep-{Guid.NewGuid():N}");
+            string main = Path.Combine(root, "Main.cs");
+            string nested = Path.Combine(root, ".worktrees", "agent", "Nested.cs");
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(nested)!);
+                File.WriteAllText(main, "class MainSource { }");
+                File.WriteAllText(nested, "class NestedWorktreeSource { }");
+
+                string[] files = Sources(root)
+                    .Select(source => Path.GetRelativePath(root, source.Path).Replace('\\', '/'))
+                    .ToArray();
+
+                Assert.Equal(new[] { "Main.cs" }, files);
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+        }
+
         // ---- The sweep -------------------------------------------------------------------------------------
 
         /// <summary>One invocation, as the sweep read it.</summary>
@@ -418,18 +442,33 @@ namespace KhaozEngine.Tests.Gpu
             return types.Contains("IGpuCommandList");
         }
 
-        // Every .cs file under the root that is not build output. Read once, with comments blanked in place so
-        // indices, and therefore line numbers, still point at the original text.
+        // Every .cs file under the root that is not build output or another worktree. Excluded directories are
+        // pruned before descent, so scan cost follows this checkout rather than every active agent checkout. Read
+        // once, with comments blanked in place so indices, and therefore line numbers, still point at the original
+        // text.
         static IEnumerable<(string Path, string Text)> Sources(string root)
-            => Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+            => SourcePaths(root)
                 .Where(path => !IsExcluded(root, path))
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .Select(path => (path, WithoutComments(File.ReadAllText(path))));
 
+        static IEnumerable<string> SourcePaths(string root)
+        {
+            var pending = new Stack<string>();
+            pending.Push(root);
+            while (pending.TryPop(out string? directory))
+            {
+                foreach (string file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.TopDirectoryOnly))
+                    yield return file;
+                foreach (string child in Directory.EnumerateDirectories(directory))
+                    if (!IsExcluded(root, child)) pending.Push(child);
+            }
+        }
+
         static bool IsExcluded(string root, string path)
             => Segments(root, path).Any(segment =>
                 segment is "obj" or "bin" or "local-feed" or ".git" or ".claude" or ".buildhome" or "vendor"
-                    or "artifacts");
+                    or "artifacts" or ".worktrees");
 
         // THE FILES WHOSE WHOLE JOB IS TO PASS AN OFFSET THE SEAM REFUSES, so the caller pass reads them as
         // intent rather than as a violation (17.40.0, https://github.com/APKiwiOrg/KhaozEngine/issues/684).

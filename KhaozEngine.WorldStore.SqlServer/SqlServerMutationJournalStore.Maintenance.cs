@@ -74,7 +74,7 @@ public sealed partial class SqlServerMutationJournalStore
         }
         catch (Exception exception)
         {
-            await ThrowWriteFailureAsync(exception, transaction, streamKeys, commitStarted, committed).ConfigureAwait(false);
+            await ThrowWriteFailureAsync(exception, transaction, streamKeys, commitStarted, committed, cancellationToken).ConfigureAwait(false);
             throw;
         }
         finally
@@ -151,7 +151,7 @@ public sealed partial class SqlServerMutationJournalStore
         }
         catch (Exception exception)
         {
-            await ThrowWriteFailureAsync(exception, transaction, Array.Empty<string>(), commitStarted, committed).ConfigureAwait(false);
+            await ThrowWriteFailureAsync(exception, transaction, Array.Empty<string>(), commitStarted, committed, cancellationToken).ConfigureAwait(false);
             throw;
         }
         finally
@@ -190,7 +190,7 @@ public sealed partial class SqlServerMutationJournalStore
         }
         catch (Exception exception)
         {
-            await ThrowWriteFailureAsync(exception, transaction, Array.Empty<string>(), commitStarted, committed).ConfigureAwait(false);
+            await ThrowWriteFailureAsync(exception, transaction, Array.Empty<string>(), commitStarted, committed, cancellationToken).ConfigureAwait(false);
             throw;
         }
         finally

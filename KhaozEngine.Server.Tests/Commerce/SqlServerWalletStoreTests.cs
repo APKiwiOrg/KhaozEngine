@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using KhaozEngine.Commerce;
 using KhaozEngine.Commerce.SqlServer;
+using KhaozEngine.Tests.WorldStore;
 using Xunit;
 
 namespace KhaozEngine.Tests.Commerce;
@@ -12,11 +13,17 @@ namespace KhaozEngine.Tests.Commerce;
 /// database. Gated by <see cref="SqlServerFactAttribute"/> on <c>KE_COMMERCE_SQLSERVER</c>; skipped (not failed)
 /// when unset, since <see cref="WalletStoreContract"/>'s <c>[Fact]</c> methods cannot conditionally skip. Each run
 /// prefixes account ids with a fresh GUID so a shared test database does not collide across runs.
+/// <para>This is the only class that touches the wallet tables, and facts in one class never run at once, so the fact
+/// that rebuilds <c>dbo.wallet_balance</c> and <c>dbo.grant_schedule</c> in their older shape cannot pull them from
+/// under another.</para>
 /// </summary>
 public sealed class SqlServerWalletStoreTests
 {
     private static readonly string? ConnectionString = Environment.GetEnvironmentVariable("KE_COMMERCE_SQLSERVER");
     private static readonly CurrencyId Currency = new("shard");
+    private const string Reward = "dailyShard";
+    private static readonly DateTime LegacyUpdatedAt = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Unspecified);
+    private static readonly DateTime LegacyNextAvailable = new(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc);
 
     private static SqlServerWalletStore NewStore() => new(ConnectionString!);
 
@@ -35,16 +42,104 @@ public sealed class SqlServerWalletStoreTests
     }
 
     [SqlServerFact]
-    public async Task Replayed_key_credits_once()
+    public async Task Credit_replay_returns_historical_balance()
     {
         SqlServerWalletStore store = NewStore();
         AccountId account = FreshAccount();
         await store.CreditAsync(account, Currency, 5, "dup", LedgerReason.Grant, null);
+        await store.CreditAsync(account, Currency, 2, "later", LedgerReason.Grant, null);
         CreditResult again = await store.CreditAsync(account, Currency, 5, "dup", LedgerReason.Grant, null);
         Assert.True(again.Replayed);
         Assert.False(again.Applied);
+        Assert.False(again.Conflict);
         Assert.Equal(5, again.NewBalance);
-        Assert.Equal(5, await store.GetBalanceAsync(account, Currency));
+        Assert.Equal(7, await store.GetBalanceAsync(account, Currency));
+        Assert.Equal(2, (await store.GetLedgerAsync(account, Currency, 100)).Count);
+    }
+
+    [SqlServerFact]
+    public async Task Debit_replay_returns_historical_balance()
+    {
+        SqlServerWalletStore store = NewStore();
+        AccountId account = FreshAccount();
+        await store.CreditAsync(account, Currency, 10, "seed", LedgerReason.Grant, null);
+        await store.DebitAsync(account, Currency, 4, "dup", LedgerReason.Spend, null);
+        await store.CreditAsync(account, Currency, 2, "later", LedgerReason.Grant, null);
+
+        DebitResult again = await store.DebitAsync(account, Currency, 4, "dup", LedgerReason.Spend, null);
+
+        Assert.False(again.Applied);
+        Assert.True(again.Replayed);
+        Assert.False(again.Conflict);
+        Assert.False(again.Insufficient);
+        Assert.Equal(6, again.NewBalance);
+        Assert.Equal(8, await store.GetBalanceAsync(account, Currency));
+        Assert.Equal(3, (await store.GetLedgerAsync(account, Currency, 100)).Count);
+    }
+
+    [SqlServerFact]
+    public async Task Credit_key_reuse_with_different_intent_conflicts()
+    {
+        SqlServerWalletStore store = NewStore();
+        AccountId account = FreshAccount();
+        await store.CreditAsync(account, Currency, 5, "dup", LedgerReason.Grant, null);
+        await store.CreditAsync(account, Currency, 2, "later", LedgerReason.Grant, null);
+
+        CreditResult differentAmount = await store.CreditAsync(
+            account, Currency, 6, "dup", LedgerReason.Grant, null);
+        CreditResult differentReason = await store.CreditAsync(
+            account, Currency, 5, "dup", LedgerReason.Adjustment, null);
+
+        AssertCreditConflict(differentAmount, 5);
+        AssertCreditConflict(differentReason, 5);
+        Assert.Equal(7, await store.GetBalanceAsync(account, Currency));
+        Assert.Equal(2, (await store.GetLedgerAsync(account, Currency, 100)).Count);
+    }
+
+    [SqlServerFact]
+    public async Task Debit_key_reuse_with_different_intent_conflicts()
+    {
+        SqlServerWalletStore store = NewStore();
+        AccountId account = FreshAccount();
+        await store.CreditAsync(account, Currency, 10, "seed", LedgerReason.Grant, null);
+        await store.DebitAsync(account, Currency, 4, "dup", LedgerReason.Spend, null);
+        await store.CreditAsync(account, Currency, 2, "later", LedgerReason.Grant, null);
+
+        DebitResult differentAmount = await store.DebitAsync(
+            account, Currency, 3, "dup", LedgerReason.Spend, null);
+        DebitResult differentReason = await store.DebitAsync(
+            account, Currency, 4, "dup", LedgerReason.Adjustment, null);
+
+        AssertDebitConflict(differentAmount, 6);
+        AssertDebitConflict(differentReason, 6);
+        Assert.Equal(8, await store.GetBalanceAsync(account, Currency));
+        Assert.Equal(3, (await store.GetLedgerAsync(account, Currency, 100)).Count);
+    }
+
+    [SqlServerFact]
+    public async Task Key_reuse_across_credit_and_debit_conflicts()
+    {
+        SqlServerWalletStore store = NewStore();
+        AccountId creditFirst = FreshAccount();
+        await store.CreditAsync(creditFirst, Currency, 4, "same", LedgerReason.Adjustment, null);
+
+        DebitResult debitConflict = await store.DebitAsync(
+            creditFirst, Currency, 4, "same", LedgerReason.Adjustment, null);
+
+        AssertDebitConflict(debitConflict, 4);
+        Assert.Equal(4, await store.GetBalanceAsync(creditFirst, Currency));
+        Assert.Single(await store.GetLedgerAsync(creditFirst, Currency, 100));
+
+        AccountId debitFirst = FreshAccount();
+        await store.CreditAsync(debitFirst, Currency, 10, "seed", LedgerReason.Grant, null);
+        await store.DebitAsync(debitFirst, Currency, 4, "same", LedgerReason.Adjustment, null);
+
+        CreditResult creditConflict = await store.CreditAsync(
+            debitFirst, Currency, 4, "same", LedgerReason.Adjustment, null);
+
+        AssertCreditConflict(creditConflict, 6);
+        Assert.Equal(6, await store.GetBalanceAsync(debitFirst, Currency));
+        Assert.Equal(2, (await store.GetLedgerAsync(debitFirst, Currency, 100)).Count);
     }
 
     [SqlServerFact]
@@ -129,6 +224,7 @@ public sealed class SqlServerWalletStoreTests
 
     /// <summary>Stress the atomic credit/debit update paths against a live server: many concurrent credits and
     /// debits, distinct idempotency keys, racing on the same account row under <c>IsolationLevel.Serializable</c>.
+    /// This regresses the missing-receipt range lock against balance-row lock cycle, which surfaced as error 1205.
     /// The final balance must equal the net of applied ops and must never go negative. Only runs when
     /// <c>KE_COMMERCE_SQLSERVER</c> is set; compiles and skips cleanly otherwise.</summary>
     [SqlServerFact]
@@ -162,5 +258,192 @@ public sealed class SqlServerWalletStoreTests
         long balance = await store.GetBalanceAsync(account, Currency);
         Assert.Equal(expected, balance);
         Assert.True(balance >= 0);
+    }
+
+    /// <summary>A balance row is created with equal creation and update times, and every later credit or debit moves
+    /// the update time alone. A grant schedule row does the same through a claim, and a write that stores the
+    /// instant already there changes nothing, so its update time stays. Every time is the database clock the store
+    /// stamps with.</summary>
+    [SqlServerFact]
+    public async Task Wallet_balance_and_grant_schedule_stamp_creation_and_update()
+    {
+        string cs = ConnectionString!;
+        SqlServerWalletStore store = NewStore();
+        AccountId account = FreshAccount();
+
+        DateTime before = await SqlServerTableProbe.ServerNowAsync(cs);
+        await store.CreditAsync(account, Currency, 5, "first", LedgerReason.Grant, null);
+        DateTime after = await SqlServerTableProbe.ServerNowAsync(cs);
+        (DateTime? created, DateTime? updated) = await BalanceTimesAsync(cs, account);
+        Assert.Equal(updated, created);
+        Assert.InRange(created ?? DateTime.MinValue, before, after);
+
+        await SqlServerTableProbe.WaitForServerClockPastAsync(cs, after);
+        before = await SqlServerTableProbe.ServerNowAsync(cs);
+        await store.CreditAsync(account, Currency, 2, "second", LedgerReason.Grant, null);
+        after = await SqlServerTableProbe.ServerNowAsync(cs);
+        (DateTime? keptCreated, DateTime? moved) = await BalanceTimesAsync(cs, account);
+        Assert.Equal(created, keptCreated);
+        Assert.InRange(moved ?? DateTime.MinValue, before, after);
+
+        await SqlServerTableProbe.WaitForServerClockPastAsync(cs, after);
+        before = await SqlServerTableProbe.ServerNowAsync(cs);
+        await store.DebitAsync(account, Currency, 3, "spend", LedgerReason.Spend, null);
+        after = await SqlServerTableProbe.ServerNowAsync(cs);
+        (keptCreated, moved) = await BalanceTimesAsync(cs, account);
+        Assert.Equal(created, keptCreated);
+        Assert.InRange(moved ?? DateTime.MinValue, before, after);
+
+        AccountId claimer = FreshAccount();
+        PeriodicGrant grant = new(new Wallet(store, new InMemoryProductCatalog(Array.Empty<ProductDefinition>())),
+            store, TimeSpan.FromHours(24), Reward, Currency, 1);
+        DateTimeOffset t0 = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+        before = await SqlServerTableProbe.ServerNowAsync(cs);
+        Assert.True((await grant.TryClaimAsync(claimer, t0)).Granted);
+        after = await SqlServerTableProbe.ServerNowAsync(cs);
+        (DateTime? scheduleCreated, DateTime? scheduleUpdated) = await ScheduleTimesAsync(cs, claimer);
+        Assert.Equal(scheduleUpdated, scheduleCreated);
+        Assert.InRange(scheduleCreated ?? DateTime.MinValue, before, after);
+
+        await SqlServerTableProbe.WaitForServerClockPastAsync(cs, after);
+        before = await SqlServerTableProbe.ServerNowAsync(cs);
+        Assert.True((await grant.TryClaimAsync(claimer, t0.AddHours(25))).Granted);
+        after = await SqlServerTableProbe.ServerNowAsync(cs);
+        (keptCreated, moved) = await ScheduleTimesAsync(cs, claimer);
+        Assert.Equal(scheduleCreated, keptCreated);
+        Assert.InRange(moved ?? DateTime.MinValue, before, after);
+
+        await SqlServerTableProbe.WaitForServerClockPastAsync(cs, after);
+        DateTimeOffset stored = (await store.GetNextAvailableAsync(claimer, Reward))!.Value;
+        await grant.ResetAsync(claimer, stored);
+        Assert.Equal((scheduleCreated, moved), await ScheduleTimesAsync(cs, claimer));
+    }
+
+    /// <summary>Tables an older build created gain the nullable columns in place. Their rows keep a NULL creation
+    /// time after later writes, and the schedule row's unknown update time is filled only by a write that changes it.
+    /// The fact drops and rebuilds both tables with the key collation they always had, so it runs only against a
+    /// database named for commerce tests.
+    /// <para>The rebuild and the rows are two batches. SQL Server compiles a whole batch before it runs any of it, so
+    /// an insert batched with the rebuild binds to the widened tables the other facts left behind, and a positional
+    /// insert then fails to compile and takes the drops down with it. The old shape is checked before the store
+    /// opens, so the widening is what the fact proves.</para></summary>
+    [SqlServerFact]
+    public async Task Wallet_tables_from_an_older_build_gain_the_new_columns()
+    {
+        string cs = SqlServerTableProbe.RequireMarkedDatabase(ConnectionString, "-commerce-test-");
+        AccountId legacy = FreshAccount();
+        await SqlServerTableProbe.ExecuteAsync(cs, """
+            IF OBJECT_ID(N'dbo.wallet_balance', N'U') IS NOT NULL DROP TABLE dbo.wallet_balance;
+            IF OBJECT_ID(N'dbo.grant_schedule', N'U') IS NOT NULL DROP TABLE dbo.grant_schedule;
+            CREATE TABLE dbo.wallet_balance (
+              account_id NVARCHAR(200) COLLATE Latin1_General_100_BIN2 NOT NULL,
+              currency_id NVARCHAR(100) COLLATE Latin1_General_100_BIN2 NOT NULL,
+              amount BIGINT NOT NULL,
+              updated_at DATETIME2 NOT NULL, PRIMARY KEY(account_id, currency_id));
+            CREATE TABLE dbo.grant_schedule (
+              account_id NVARCHAR(200) COLLATE Latin1_General_100_BIN2 NOT NULL,
+              reward_id NVARCHAR(200) COLLATE Latin1_General_100_BIN2 NOT NULL,
+              next_available_utc DATETIME2 NOT NULL,
+              PRIMARY KEY(account_id, reward_id));
+            """);
+        Assert.Null(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "wallet_balance", "created_at"));
+        Assert.Null(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "grant_schedule", "created_at"));
+        Assert.Null(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "grant_schedule", "updated_at"));
+        await SqlServerTableProbe.ExecuteAsync(cs, $"""
+            INSERT INTO dbo.wallet_balance (account_id, currency_id, amount, updated_at)
+              VALUES (N'{legacy.Value}', N'{Currency.Value}', 7, '2026-01-01T00:00:00');
+            INSERT INTO dbo.grant_schedule (account_id, reward_id, next_available_utc)
+              VALUES (N'{legacy.Value}', N'{Reward}', '2026-01-02T00:00:00');
+            """);
+
+        SqlServerWalletStore widened = NewStore();
+        Assert.True(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "wallet_balance", "created_at"));
+        Assert.True(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "grant_schedule", "created_at"));
+        Assert.True(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "grant_schedule", "updated_at"));
+        Assert.Equal(((DateTime?)null, (DateTime?)LegacyUpdatedAt), await BalanceTimesAsync(cs, legacy));
+        Assert.Equal(((DateTime?)null, (DateTime?)null), await ScheduleTimesAsync(cs, legacy));
+
+        await widened.CreditAsync(legacy, Currency, 1, "after-upgrade", LedgerReason.Grant, null);
+        Assert.Equal(8, await widened.GetBalanceAsync(legacy, Currency));
+        (DateTime? created, DateTime? updated) = await BalanceTimesAsync(cs, legacy);
+        Assert.Null(created);
+        Assert.NotEqual(LegacyUpdatedAt, updated);
+
+        DateTimeOffset stored = new(LegacyNextAvailable, TimeSpan.Zero);
+        await widened.SetNextAvailableAsync(legacy, Reward, stored);
+        Assert.Equal(((DateTime?)null, (DateTime?)null), await ScheduleTimesAsync(cs, legacy));
+
+        DateTime before = await SqlServerTableProbe.ServerNowAsync(cs);
+        await widened.SetNextAvailableAsync(legacy, Reward, stored.AddDays(1));
+        DateTime after = await SqlServerTableProbe.ServerNowAsync(cs);
+        (DateTime? scheduleCreated, DateTime? scheduleUpdated) = await ScheduleTimesAsync(cs, legacy);
+        Assert.Null(scheduleCreated);
+        Assert.InRange(scheduleUpdated ?? DateTime.MinValue, before, after);
+
+        _ = NewStore();
+        Assert.True(await SqlServerTableProbe.ColumnIsNullableAsync(cs, "grant_schedule", "updated_at"));
+    }
+
+    /// <summary>A schedule instant off the legacy <c>datetime</c> grid. The store binds the instant as
+    /// <c>DATETIME2(7)</c>, the column's own type, so it round trips exactly, and a rewrite of the same instant
+    /// compares equal and moves neither time. Bound as <c>datetime</c>, the instant was rounded to a 1/300 s tick and
+    /// an unchanged rewrite moved the update time, which is what this fact caught on a real server. A real change of
+    /// a few milliseconds still moves it.</summary>
+    [SqlServerFact]
+    public async Task Grant_schedule_rewrite_of_a_sub_second_instant_keeps_the_update_time()
+    {
+        string cs = ConnectionString!;
+        SqlServerWalletStore store = NewStore();
+        AccountId account = FreshAccount();
+        // 1.7 ms past the second, between the datetime ticks at .000 and .00333.
+        DateTimeOffset instant = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero).AddTicks(17_000);
+
+        DateTime before = await SqlServerTableProbe.ServerNowAsync(cs);
+        await store.SetNextAvailableAsync(account, Reward, instant);
+        DateTime after = await SqlServerTableProbe.ServerNowAsync(cs);
+        (DateTime? created, DateTime? updated) = await ScheduleTimesAsync(cs, account);
+        Assert.Equal(updated, created);
+        Assert.InRange(created ?? DateTime.MinValue, before, after);
+        // DATETIME2(7) holds 100 ns, a DateTimeOffset tick, so the column's precision is exact equality here.
+        Assert.Equal(instant, (await store.GetNextAvailableAsync(account, Reward))!.Value);
+
+        await SqlServerTableProbe.WaitForServerClockPastAsync(cs, after);
+        await store.SetNextAvailableAsync(account, Reward, instant);
+        Assert.Equal((created, updated), await ScheduleTimesAsync(cs, account));
+
+        before = await SqlServerTableProbe.ServerNowAsync(cs);
+        await store.SetNextAvailableAsync(account, Reward, instant.AddMilliseconds(5));
+        after = await SqlServerTableProbe.ServerNowAsync(cs);
+        (DateTime? keptCreated, DateTime? moved) = await ScheduleTimesAsync(cs, account);
+        Assert.Equal(created, keptCreated);
+        Assert.InRange(moved ?? DateTime.MinValue, before, after);
+    }
+
+    private static Task<(DateTime? First, DateTime? Second)> BalanceTimesAsync(string cs, AccountId account)
+        => SqlServerTableProbe.ReadPairAsync(cs,
+            "SELECT created_at, updated_at FROM dbo.wallet_balance WHERE account_id = @a AND currency_id = @c;",
+            ("@a", account.Value), ("@c", Currency.Value));
+
+    private static Task<(DateTime? First, DateTime? Second)> ScheduleTimesAsync(string cs, AccountId account)
+        => SqlServerTableProbe.ReadPairAsync(cs,
+            "SELECT created_at, updated_at FROM dbo.grant_schedule WHERE account_id = @a AND reward_id = @r;",
+            ("@a", account.Value), ("@r", Reward));
+
+    private static void AssertCreditConflict(CreditResult result, long historicalBalance)
+    {
+        Assert.False(result.Applied);
+        Assert.False(result.Replayed);
+        Assert.True(result.Conflict);
+        Assert.Equal(historicalBalance, result.NewBalance);
+    }
+
+    private static void AssertDebitConflict(DebitResult result, long historicalBalance)
+    {
+        Assert.False(result.Applied);
+        Assert.False(result.Replayed);
+        Assert.False(result.Insufficient);
+        Assert.True(result.Conflict);
+        Assert.Equal(historicalBalance, result.NewBalance);
     }
 }

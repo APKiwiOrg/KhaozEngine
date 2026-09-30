@@ -198,12 +198,13 @@ public static partial class ItemInstancePayload
         }
 
         int written = 0;
-        foreach (PayloadFieldBytes field in builder.Fields)
+        for (int index = 0; index < builder.FieldCount; index++)
         {
+            PayloadFieldBytes field = builder.FieldAt(index);
             written += ContentVarint.Write(destination[written..], field.Kind);
-            written += ContentVarint.Write(destination[written..], (uint)field.Body.Length);
-            field.Body.Span.CopyTo(destination[written..]);
-            written += field.Body.Length;
+            written += ContentVarint.Write(destination[written..], (uint)field.BodyLength);
+            builder.BodyAt(index).CopyTo(destination[written..]);
+            written += field.BodyLength;
         }
 
         return written;
@@ -217,8 +218,9 @@ public static partial class ItemInstancePayload
     /// projection eventually disagrees with the tooltip beside it.
     /// <para>
     /// The registry arrives as an argument because visibility is a PER KIND fact the registry holds, and
-    /// the registry is per instance rather than an ambient static. The mask is a <c>ulong</c> for the same
-    /// reason it is one there: a decoded mask carries the full varint width.
+    /// the registry is per instance rather than an ambient static. The mask remains a <c>ulong</c> for
+    /// caller compatibility. Registered kind 128 bounds stored masks to uint32, and supplied bits above
+    /// the highest registered mask bit gate nothing.
     /// </para>
     /// </summary>
     /// <param name="registry">The property kinds this process knows.</param>

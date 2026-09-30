@@ -109,25 +109,47 @@ public static class ContentTypes
         new("sort", ContentValueKind.Int, null, Client, false),
     ];
 
-    private static ContentFieldSchema[] ItemFields() =>
-    [
-        new("name", ContentValueKind.LocalizedTextKey, null, Client, true),
-        new("examine", ContentValueKind.LocalizedTextKey, null, Client, false),
-        new("tags", ContentValueKind.TagList, "tag", Client, false),
-        new("stackable", ContentValueKind.Bool, null, Client, true),
-        new("max_stack", ContentValueKind.Int, null, Client, true),
-        new("tradable", ContentValueKind.Bool, null, Client, true),
-        new("value", ContentValueKind.ScaledInt, null, Client, true),
-        new("icon", ContentValueKind.AssetReference, null, Client, false),
-        new("mesh", ContentValueKind.AssetReference, null, Client, false),
-        new("held_mesh", ContentValueKind.AssetReference, null, Client, false),
-        new("ground_pose", ContentValueKind.Int, null, Client, false),
-        new("icon_tilt", ContentValueKind.ScaledInt, null, Client, false, 1000),
-        new("icon_spin", ContentValueKind.ScaledInt, null, Client, false, 1000),
-        new("durability_max", ContentValueKind.Int, null, Client, false),
-        new("socket_max", ContentValueKind.Int, null, Client, false),
-        new("equip_profile", ContentValueKind.KeyReference, "equip_profile", Client, false),
-    ];
+    private static ContentFieldSchema[] ItemFields()
+    {
+        IReadOnlyList<KhaozEngine.Catalog.ContentFieldEntry> shipped =
+            KhaozEngine.Catalog.ItemContentType.CreateSchema().Fields;
+        if (shipped.Count != ContentRowCodec.ItemFieldCount)
+        {
+            throw new InvalidOperationException(
+                $"The shipped item schema has {shipped.Count} fields and the allocation-free benchmark codec handles {ContentRowCodec.ItemFieldCount}. Update the benchmark item codec with the shipped schema.");
+        }
+
+        var fields = new ContentFieldSchema[shipped.Count];
+        for (int i = 0; i < shipped.Count; i++)
+        {
+            KhaozEngine.Catalog.ContentFieldEntry field = shipped[i];
+            fields[i] = new ContentFieldSchema(
+                field.Name,
+                ItemFieldKind(field),
+                field.ReferenceTarget,
+                (byte)field.Visibility,
+                field.Required,
+                field.Scale);
+        }
+
+        return fields;
+    }
+
+    private static ContentValueKind ItemFieldKind(KhaozEngine.Catalog.ContentFieldEntry field) => field.Kind switch
+    {
+        KhaozEngine.Catalog.ContentFieldKind.Int => ContentValueKind.Int,
+        KhaozEngine.Catalog.ContentFieldKind.ScaledInt => ContentValueKind.ScaledInt,
+        KhaozEngine.Catalog.ContentFieldKind.Bool => ContentValueKind.Bool,
+        KhaozEngine.Catalog.ContentFieldKind.KeyReference => ContentValueKind.KeyReference,
+        KhaozEngine.Catalog.ContentFieldKind.TagList => ContentValueKind.TagList,
+        KhaozEngine.Catalog.ContentFieldKind.LocalizedTextKey => ContentValueKind.LocalizedTextKey,
+        KhaozEngine.Catalog.ContentFieldKind.OpaqueBytes when field.Name is
+            KhaozEngine.Catalog.ItemContentType.IconField
+            or KhaozEngine.Catalog.ItemContentType.MeshField
+            or KhaozEngine.Catalog.ItemContentType.HeldMeshField => ContentValueKind.AssetReference,
+        _ => throw new InvalidOperationException(
+            $"The benchmark item schema cannot project {field.Name} ({field.Kind})."),
+    };
 
     private static ContentFieldSchema[] StatFields() =>
     [

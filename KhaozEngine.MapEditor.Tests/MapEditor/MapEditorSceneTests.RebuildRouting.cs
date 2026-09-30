@@ -23,6 +23,7 @@ namespace KhaozEngine.Tests.MapEditor
         {
             readonly Func<MapDocument> _factory;
             public bool PropsSucceeds = true;
+            public bool AllPropsSucceeds = true;
             public readonly List<string> Log = new();
             public RoutingScene(Func<MapDocument> factory) => _factory = factory;
             protected override MapDocument CreateDocument(MapDocRegistry registry) => _factory();
@@ -30,14 +31,23 @@ namespace KhaozEngine.Tests.MapEditor
                 new TerrainField(new TerrainConfig { GentleAmplitude = 0f });
             protected override void TeardownWorld() { }
             protected override bool RefreshWorldProps(RectArea dirty) { Log.Add("props"); return PropsSucceeds; }
+            protected override bool RefreshAllWorldProps() { Log.Add("all-props"); return AllPropsSucceeds; }
             protected override bool PartialRebuildWorld(RectArea dirty) { Log.Add("partial"); return true; }
+            protected override bool RefreshAllLoadedWorld() { Log.Add("all-remesh"); return true; }
             protected override bool RebuildWorld() { Log.Add("full"); return true; }
             public void RunRebuildCheck(float dt) => CheckWorldRebuild(dt);
         }
 
-        static RoutingScene PushRoutingScene(Func<MapDocument> factory, bool propsSucceeds = true)
+        static RoutingScene PushRoutingScene(
+            Func<MapDocument> factory,
+            bool propsSucceeds = true,
+            bool allPropsSucceeds = true)
         {
-            var scene = new RoutingScene(factory) { PropsSucceeds = propsSucceeds };
+            var scene = new RoutingScene(factory)
+            {
+                PropsSucceeds = propsSucceeds,
+                AllPropsSucceeds = allPropsSucceeds,
+            };
             scene.Init(null!, null!, null!, new MapEditorOptions { GestureRebuildInterval = 0.25f });
             new SceneManager().Push(scene);
             scene.Document.AcknowledgeWorldRebuild();   // ignore any pending state from the initial load
@@ -161,6 +171,71 @@ namespace KhaozEngine.Tests.MapEditor
             scene.RunRebuildCheck(0.01f);
 
             Assert.Equal(new[] { "partial" }, scene.Log);
+        }
+
+        [Fact]
+        public void ScatterCompanionAndOverrideOrderEdits_TakeTheAllLoadedPropsPath()
+        {
+            AssertAllLoadedProps(doc => new EditScatterLayerCommand(
+                "trees",
+                new MapScatterLayer { Name = "trees", CellSize = 8f },
+                doc.ScatterLayers[0]));
+            AssertAllLoadedProps(doc => new EditCompanionLayerCommand(
+                "understory",
+                new MapCompanionLayer { Name = "understory", HostLayer = "trees", CountMin = 2, CountMax = 3 },
+                doc.CompanionLayers[0]));
+            AssertAllLoadedProps(_ => new ReorderScatterOverrideCommand(0, 1));
+        }
+
+        [Fact]
+        public void ChangedLayerShape_DeclinesAllLoadedPropsAndFallsBackToRemesh()
+        {
+            RoutingScene scene = PushRoutingScene(AllLoadedDoc, allPropsSucceeds: false);
+            MapCompanionLayer oldLayer = scene.Document.Doc.CompanionLayers[0];
+            scene.Document.Execute(new EditCompanionLayerCommand(
+                "understory",
+                new MapCompanionLayer { Name = "understory", HostLayer = "grass" },
+                oldLayer));
+
+            scene.RunRebuildCheck(0.01f);
+
+            Assert.Equal(new[] { "all-props", "all-remesh" }, scene.Log);
+        }
+
+        [Fact]
+        public void TerrainFieldEdit_SkipsAllLoadedPropsAndRemeshes()
+        {
+            RoutingScene scene = PushRoutingScene(AllLoadedDoc);
+            scene.Document.Execute(new EditTerrainCommand(newWaterLevel: 2f, oldWaterLevel: 0f));
+
+            scene.RunRebuildCheck(0.01f);
+
+            Assert.Equal(new[] { "all-remesh" }, scene.Log);
+        }
+
+        static void AssertAllLoadedProps(Func<MapDocument, EditorCommand> command)
+        {
+            RoutingScene scene = PushRoutingScene(AllLoadedDoc);
+            scene.Document.Execute(command(scene.Document.Doc));
+            Assert.True(scene.Document.PendingAllLoadedInvalidation);
+            Assert.False(scene.Document.PendingFieldChange);
+
+            scene.RunRebuildCheck(0.01f);
+
+            Assert.Equal(new[] { "all-props" }, scene.Log);
+        }
+
+        static MapDocument AllLoadedDoc()
+        {
+            MapDocument doc = RoutingDoc(d =>
+            {
+                d.ScatterLayers.Add(new MapScatterLayer { Name = "trees", CellSize = 4f });
+                d.ScatterLayers.Add(new MapScatterLayer { Name = "grass", CellSize = 2f });
+                d.CompanionLayers.Add(new MapCompanionLayer { Name = "understory", HostLayer = "trees" });
+                d.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = OriginDisc(), DensityMultiplier = 0.5f });
+                d.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = OriginDisc(), DensityMultiplier = 1.5f });
+            });
+            return doc;
         }
     }
 }

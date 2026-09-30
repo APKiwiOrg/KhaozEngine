@@ -5,8 +5,8 @@ namespace KhaozEngine.App;
 /// <summary>
 /// A localization key: the typed handle a <see cref="LocalizedText"/> resolves against an
 /// <see cref="IStringCatalog"/>. There is deliberately NO implicit conversion from <see cref="string"/> -
-/// authoring a <see cref="StringId"/> is an explicit act (a constants class today, a generator later), so a
-/// bare string literal can never slip into a player-facing sink.
+/// authoring a <see cref="StringId"/> is an explicit act. Keys can be hand-authored or generated from a neutral
+/// resx by KhaozEngine.Localization.Analyzers, so a bare string literal can never slip into a player-facing sink.
 /// </summary>
 public readonly struct StringId : IEquatable<StringId>
 {

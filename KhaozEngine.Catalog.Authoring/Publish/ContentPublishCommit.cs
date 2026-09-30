@@ -251,13 +251,8 @@ public sealed class ContentPublishCommit
         Step(ContentPublishStep.DuringSweep);
         IReadOnlyList<ContentVersionRecord> versions = await _store
             .ListVersionsAsync(cancellationToken).ConfigureAwait(false);
-        var numbers = new List<int>(versions.Count);
-        for (int i = 0; i < versions.Count; i++)
-        {
-            numbers.Add(versions[i].VersionNumber);
-        }
 
-        return await ContentPackSweep.RunAsync(PackStore, numbers, cancellationToken).ConfigureAwait(false);
+        return await ContentPackSweep.RunValidatedAsync(PackStore, versions, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

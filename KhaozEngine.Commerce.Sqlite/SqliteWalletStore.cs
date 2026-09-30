@@ -11,31 +11,31 @@ namespace KhaozEngine.Commerce.Sqlite;
 /// <summary>SQLite-backed wallet + grant-schedule store. Single connection, serialized behind one gate.
 /// Idempotency is enforced by a composite unique index on <c>(account_id, currency_id, idempotency_key)</c>: the
 /// same key used for a different account, or a different currency on the same account, is a distinct operation, not
-/// a replay.
+/// a replay. Within that scope, the stored ledger row's signed delta and reason distinguish an exact replay from an
+/// intent conflict.
 /// <para>The connection, the gate and the dispose are <see cref="SqliteStoreConnection"/>'s, shared with every other
 /// SQLite store in the engine. That is where the unpooled open and the dispose live, and why this store no longer
-/// carries its own copy of them (#731). What stays here is the schema and the SQL.</para></summary>
+/// carries its own copy of them (#731). The tables and their widening are <see cref="SqliteWalletSchema"/>'s. What
+/// stays here is the SQL.</para></summary>
 public sealed class SqliteWalletStore : IWalletStore, IGrantScheduleStore, IDisposable
 {
-    private const string Bootstrap = @"CREATE TABLE IF NOT EXISTS wallet_ledger (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                 account_id TEXT NOT NULL, currency_id TEXT NOT NULL, delta INTEGER NOT NULL,
-                 idempotency_key TEXT NOT NULL, reason INTEGER NOT NULL, source_ref TEXT NULL,
-                 post_balance INTEGER NOT NULL, created_at INTEGER NOT NULL);
-               CREATE UNIQUE INDEX IF NOT EXISTS ux_ledger_idem ON wallet_ledger(account_id, currency_id, idempotency_key);
-               CREATE INDEX IF NOT EXISTS ix_ledger_acct ON wallet_ledger(account_id, currency_id, id DESC);
-               CREATE TABLE IF NOT EXISTS wallet_balance (
-                 account_id TEXT NOT NULL, currency_id TEXT NOT NULL, amount INTEGER NOT NULL,
-                 updated_at INTEGER NOT NULL, PRIMARY KEY(account_id, currency_id));
-               CREATE TABLE IF NOT EXISTS grant_schedule (
-                 account_id TEXT NOT NULL, reward_id TEXT NOT NULL, next_available_utc INTEGER NOT NULL,
-                 PRIMARY KEY(account_id, reward_id));";
-
     private readonly SqliteStoreConnection db;
 
     /// <summary>Opens (creating if needed) the SQLite database at <paramref name="connectionString"/> and
-    /// bootstraps the schema.</summary>
-    public SqliteWalletStore(string connectionString) => db = new SqliteStoreConnection(connectionString, Bootstrap);
+    /// bootstraps the schema, widening tables an older build created.</summary>
+    public SqliteWalletStore(string connectionString)
+    {
+        db = new SqliteStoreConnection(connectionString, string.Empty);
+        try
+        {
+            SqliteWalletSchema.Ensure(db);
+        }
+        catch
+        {
+            db.Dispose();
+            throw;
+        }
+    }
 
     /// <inheritdoc/>
     public Task<CreditResult> CreditAsync(AccountId account, CurrencyId currency, long amount,
@@ -50,14 +50,16 @@ public sealed class SqliteWalletStore : IWalletStore, IGrantScheduleStore, IDisp
     private async Task<CreditResult> MutateForCreditAsync(AccountId a, CurrencyId c, long amount, string key,
         LedgerReason reason, string? src, CancellationToken ct)
     {
-        (bool applied, bool replayed, bool _, long balance) = await Mutate(a, c, amount, key, reason, src, isDebit: false, ct);
+        (bool applied, bool replayed, bool _, long balance) =
+            await Mutate(a, c, amount, key, reason, src, isDebit: false, ct);
         return new CreditResult(applied, replayed, balance);
     }
 
     private async Task<DebitResult> MutateForDebitAsync(AccountId a, CurrencyId c, long amount, string key,
         LedgerReason reason, string? src, CancellationToken ct)
     {
-        (bool applied, bool replayed, bool insufficient, long balance) = await Mutate(a, c, amount, key, reason, src, isDebit: true, ct);
+        (bool applied, bool replayed, bool insufficient, long balance) =
+            await Mutate(a, c, amount, key, reason, src, isDebit: true, ct);
         return new DebitResult(applied, replayed, insufficient, balance);
     }
 
@@ -68,19 +70,21 @@ public sealed class SqliteWalletStore : IWalletStore, IGrantScheduleStore, IDisp
         if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Idempotency key required.", nameof(key));
         using SqliteStoreLease _ = await db.EnterAsync(ct);
         using SqliteTransaction tx = db.BeginTransaction();
-        long? prior = ScalarLong(tx, "SELECT post_balance FROM wallet_ledger WHERE account_id=$a AND currency_id=$c AND idempotency_key=$k",
+        Receipt? prior = ReadReceipt(tx,
+            "SELECT delta, reason, post_balance FROM wallet_ledger WHERE account_id=$a AND currency_id=$c AND idempotency_key=$k",
             ("$a", a.Value), ("$c", c.Value), ("$k", key));
-        if (prior is long pb)
+        if (prior is Receipt receipt)
         {
             tx.Commit();
-            return (false, true, false, pb);
+            bool conflict = receipt.Delta != (isDebit ? -amount : amount) || receipt.Reason != reason;
+            return (false, !conflict, false, receipt.PostBalance);
         }
         long bal = ScalarLong(tx, "SELECT amount FROM wallet_balance WHERE account_id=$a AND currency_id=$c",
             ("$a", a.Value), ("$c", c.Value)) ?? 0;
         if (isDebit && bal < amount) { tx.Rollback(); return (false, false, true, bal); }
         long newBal = isDebit ? bal - amount : bal + amount;
-        Exec(tx, @"INSERT INTO wallet_balance(account_id,currency_id,amount,updated_at)
-                   VALUES($a,$c,$amt,$now)
+        Exec(tx, @"INSERT INTO wallet_balance(account_id,currency_id,amount,updated_at,created_at)
+                   VALUES($a,$c,$amt,$now,$now)
                    ON CONFLICT(account_id,currency_id) DO UPDATE SET amount=$amt, updated_at=$now",
             ("$a", a.Value), ("$c", c.Value), ("$amt", newBal), ("$now", Now()));
         Exec(tx, @"INSERT INTO wallet_ledger(account_id,currency_id,delta,idempotency_key,reason,source_ref,post_balance,created_at)
@@ -128,9 +132,12 @@ public sealed class SqliteWalletStore : IWalletStore, IGrantScheduleStore, IDisp
     public async Task SetNextAvailableAsync(AccountId account, string rewardId, DateTimeOffset nextUtc, CancellationToken ct = default)
     {
         using SqliteStoreLease _ = await db.EnterAsync(ct);
-        Exec(null, @"INSERT INTO grant_schedule(account_id,reward_id,next_available_utc) VALUES($a,$r,$v)
-                     ON CONFLICT(account_id,reward_id) DO UPDATE SET next_available_utc=$v",
-            ("$a", account.Value), ("$r", rewardId), ("$v", nextUtc.ToUnixTimeMilliseconds()));
+        // A write of the instant already stored changes nothing, so it leaves the row, and its update time, alone.
+        Exec(null, @"INSERT INTO grant_schedule(account_id,reward_id,next_available_utc,created_at,updated_at)
+                     VALUES($a,$r,$v,$now,$now)
+                     ON CONFLICT(account_id,reward_id) DO UPDATE SET next_available_utc=$v, updated_at=$now
+                     WHERE grant_schedule.next_available_utc <> $v",
+            ("$a", account.Value), ("$r", rewardId), ("$v", nextUtc.ToUnixTimeMilliseconds()), ("$now", Now()));
     }
 
     private static long Now() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -153,6 +160,20 @@ public sealed class SqliteWalletStore : IWalletStore, IGrantScheduleStore, IDisp
         object? o = cmd.ExecuteScalar();
         return o is null or DBNull ? null : Convert.ToInt64(o, CultureInfo.InvariantCulture);
     }
+
+    private Receipt? ReadReceipt(SqliteTransaction tx, string sql, params (string, object)[] p)
+    {
+        using SqliteCommand cmd = db.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = sql;
+        Bind(cmd, p);
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        return reader.Read()
+            ? new Receipt(reader.GetInt64(0), (LedgerReason)reader.GetInt32(1), reader.GetInt64(2))
+            : null;
+    }
+
+    private readonly record struct Receipt(long Delta, LedgerReason Reason, long PostBalance);
 
     private static void Bind(SqliteCommand cmd, params (string name, object value)[] p)
     {

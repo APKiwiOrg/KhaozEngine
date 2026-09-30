@@ -19,16 +19,21 @@ Provides a foundational wallet system with:
 | Type | What it does |
 |---|---|
 | `AccountId`, `CurrencyId` | Opaque, non-empty string identifiers (`IEquatable`, ordinal comparison). |
-| `IWalletStore` | `CreditAsync`/`DebitAsync` (atomic, idempotent by `idempotencyKey`, scoped per account+currency), `GetBalanceAsync`, `GetLedgerAsync`. Keys compare by code point on every backend, so `"claim-ABC"` is not a replay of `"claim-abc"`. |
+| `IWalletStore` | `CreditAsync`/`DebitAsync` (atomic, idempotent by `idempotencyKey`, scoped per account+currency, with explicit intent conflicts), `GetBalanceAsync`, `GetLedgerAsync`. Keys compare by code point on every backend, so `"claim-ABC"` is not a replay of `"claim-abc"`. |
 | `InMemoryWalletStore` | In-process reference/test `IWalletStore` + `IGrantScheduleStore`, single lock for atomicity. |
 | `Wallet` | `GrantAsync` (free credit), `SpendAsync` (debit), `RedeemAsync` (credit a `VerifiedEntitlement` via the product catalog), `BalanceAsync`. |
 | `LedgerEntry` | Immutable ledger row: `Delta` (negative = debit, positive = credit), `Reason`, `SourceRef`, `IdempotencyKey`, `CreatedAt`. |
-| `LedgerReason` | Why a row exists: `Grant`, `Purchase`, `Spend`, `Adjustment`. Descriptive only. |
-| `CreditResult` / `DebitResult` | `Applied`, `Replayed` (idempotency key already seen), `Insufficient` (debit only), `NewBalance`. |
+| `LedgerReason` | Why a row exists: `Grant`, `Purchase`, `Spend`, `Adjustment`. It does not affect balance math, but it participates in idempotency conflict detection. |
+| `CreditResult` / `DebitResult` | `Applied`, `Replayed` (the same idempotent intent was already applied), `Conflict` (the key belongs to a different intent), `Insufficient` (debit only), `NewBalance`. |
 | `IProductCatalog`, `InMemoryProductCatalog`, `ProductDefinition` | Maps a product id to `(CurrencyId, AmountPerUnit)`. |
 | `VerifiedEntitlement`, `EntitlementProof`, `IEntitlementValidator` | Turns an untrusted external proof into a verified, account-resolved entitlement (or null). |
 | `IGrantScheduleStore` | Persists the next-available instant per `(account, rewardId)` for `PeriodicGrant`. |
 | `PeriodicGrant`, `PeriodicGrantResult` | Server-clock daily/periodic reward: `TryClaimAsync(account, serverNowUtc)`, plus `ResetAsync(account, availableFromUtc)` to re-open it. The `rewardId` may not contain `':'` (the idempotency key's segment separator), while the account id still may. |
+
+An idempotency key binds the signed amount and `LedgerReason`. An exact retry returns `Replayed=true` and the
+original operation's historical post-balance. Reusing the key with another amount or reason, including switching
+between credit and debit, returns `Conflict=true` and leaves the balance and ledger unchanged. A conflict carries
+the same historical post-balance. `SourceRef` is provenance only and does not take part in the comparison.
 
 ## Quick Start
 

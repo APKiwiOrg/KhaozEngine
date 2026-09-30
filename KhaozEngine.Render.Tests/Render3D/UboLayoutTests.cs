@@ -600,21 +600,21 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void TileGroundFrag_BlendsFourCornerSlots_AndReadsThemWithTheRoundingIdiom()
+        public void TileGroundFrag_BlendsCornerSlotsAndOptionalOverlay_AndRoundsSlotIds()
         {
-            // Four slots per tile is the whole design (one per tile corner), and a slot held as a float is read back
+            // Four corner slots and an optional overlay share the existing vertex. A float slot is read back
             // with the +0.5 round the splat pass uses. A change to either without the C# side is a silent
             // mis-material, so pin both spellings.
-            Assert.Contains("for (int L = 0; L < 4; L++)", ShaderSources.TileGroundFrag);
-            Assert.Contains("float w[4] = float[4]", ShaderSources.TileGroundFrag);
+            Assert.Contains("for (int L = 0; L < 5; L++)", ShaderSources.TileGroundFrag);
+            Assert.Contains("float w[5] = float[5]", ShaderSources.TileGroundFrag);
             // Clamped to the last valid slot, since the index reaches the UBO array AND the texture array layer,
             // and an out-of-range uniform-array index is undefined rather than wrapped. The maxSlot declaration
             // above pins the shader's hard ceiling to the C# constant.
-            string firstSlot = "int slot[4] = int[4](clamp(int(vSlots.x + 0.5), 0, maxSlot)";
+            string firstSlot = "int slot[5] = int[5](clamp(int(vSlots.x + 0.5), 0, maxSlot)";
             Assert.True(ShaderSources.TileGroundFrag.Contains(firstSlot),
                 $"TileGroundFrag lost '{firstSlot}': the slot clamp drifted from TileGroundMaterialConfig.MaxMaterials ({TileGroundMaterialConfig.MaxMaterials}). Fix ShaderSources.TileGroundFrag or the constant.");
-            // Renormalised by their OWN sum: there is no one-minus-sum fifth layer on this pipeline.
-            Assert.DoesNotContain("1.0 - (a0 + a1 + a2 + a3)", ShaderSources.TileGroundFrag);
+            // Only the positive overlay slot enables the fifth-layer remainder. Hard meshes still renormalise.
+            Assert.Contains("vOverlaySlot > 0.5 ? clamp(1.0 - wsum, 0.0, 1.0) : 0.0", ShaderSources.TileGroundFrag);
         }
 
         // ---- Sky background pass UBO (SkyRenderer) ----

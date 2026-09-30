@@ -415,5 +415,43 @@ namespace KhaozEngine.Tests.Windowing
             // The earlier snapshot is immutable, so a later event cannot rewrite a frame already handed out.
             Assert.True(held.IsDown(Key.W));
         }
+
+        [Fact]
+        public void Committed_unicode_is_ordered_and_cleared_after_each_snapshot()
+        {
+            var a = new InputAccumulator();
+            a.EnableTextInput();
+            a.OnTextInput(0x00E9);
+            a.OnTextInput(0x1F642);
+
+            InputState first = Snap(a);
+            Assert.True(first.TextInputAvailable);
+            Assert.Equal("é🙂", first.TextInput);
+            Assert.Equal("", Snap(a).TextInput);
+            Assert.Equal("é🙂", first.TextInput);
+        }
+
+        [Fact]
+        public void Invalid_unicode_scalars_are_ignored()
+        {
+            var a = new InputAccumulator();
+            a.EnableTextInput();
+            a.OnTextInput(0xD800);
+            a.OnTextInput(0x110000);
+
+            Assert.Equal("", Snap(a).TextInput);
+        }
+
+        [Fact]
+        public void Focus_loss_discards_pending_committed_text()
+        {
+            var a = new InputAccumulator();
+            a.EnableTextInput();
+            a.OnTextInput('x');
+            a.OnFocusChanged(false);
+
+            Assert.Equal("", Snap(a).TextInput);
+            Assert.True(Snap(a).TextInputAvailable);
+        }
     }
 }

@@ -63,6 +63,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)](#networked-overworld-khaozenginelocomotion-khaozenginenetworld)
 - [Rigid-segment character poses (`KhaozEngine.SegmentRig`)](#rigid-segment-character-poses-khaozenginesegmentrig)
 - [Tile-world netcode (`KhaozEngine.TileWorld.Netcode`)](#tile-world-netcode-khaozenginetileworldnetcode)
+- [Authoritative attack preparation (20.14.1)](#authoritative-attack-preparation-20141)
 - [Charging attack time for something that is not a swing (`TileWorldServer.DelayAttack`, 18.16.0)](#charging-attack-time-for-something-that-is-not-a-swing-tileworldserverdelayattack-18160)
 - [Cancelling a tile player's pending interact (18.19.0)](#cancelling-a-tile-players-pending-interact-18190)
 - [Nearby tile-world player interest (`CollectInterestSlots`, 18.21.0)](#nearby-tile-world-player-interest-collectinterestslots-18210)
@@ -791,7 +792,10 @@ GamepadState Gamepad(int i = 0);  GamepadState PrimaryGamepad { get; }
 then recurring at the OS repeat rate); `AppWindow` fills `KeysRepeated` from GLFW's `REPEAT` key action. `WasPressed`
 stays the press edge only (auto-repeat excluded), so existing callers are unchanged; `WasTyped(Key)` is the union
 (`WasPressed || WasRepeated`) - the "a character was typed this frame" signal hold-to-repeat text entry wants.
-`TextEntry`/`TextInput` use it, so a held Backspace or character key repeats with no game code.
+`TextEntry`/`TextInput` use committed `InputState.TextInput` on GLFW windows, including layout-specific and
+dead-key output. `TextInputAvailable` stays true on empty text frames to avoid a US key-map fallback for dead
+keys. Headless frames and non-GLFW windows keep that fallback. `WasTyped` still handles Backspace and fallback
+repeat. The windowing seam does not expose IME preedit text or candidate selection.
 
 `MouseReleased` (since 14.25.0) is the mouse counterpart to `KeysReleased`, read via `WasReleased(MouseButton)`.
 Before it existed the mouse had a press edge but no release edge, so a rebindable action bound to a mouse button
@@ -865,7 +869,8 @@ for the player to accept "any connected controller".
 
 **Feeding the text-entry core:** `State` returns this frame's `InputState` snapshot (the value last passed to
 `Update`), so a retained, custom-rendered widget that holds an `InputManager` can drive the headless
-`TextEntry.Apply(text, input, maxLength, filter, allowPaste)` editing core - the full printable map, hold-to-repeat,
+`TextEntry.Apply(text, input, maxLength, filter, allowPaste)` editing core - committed OS text when available,
+the US printable map otherwise, hold-to-repeat,
 and Ctrl/Cmd+V clipboard paste - without reaching for the raw window input. There is an `InputManager` overload of
 `Apply` that reads `State` for you, so the call is one line; pass `allowPaste: false` to suppress paste. Paste
 appends `Clipboard.TryGetClipboardText()` through the same `filter` + `maxLength` path as typed chars (so a digits
@@ -1005,7 +1010,9 @@ here localizes.
   screen below (it reduces to `DesignBounds` when unletterboxed).
 - `GameClock`: `TimeScale`, `Pause()`/`Resume()`, `RealDeltaSeconds`/`ScaledDeltaSeconds`,
   `RealWallGapSeconds`/`LastRealTimestamp` (the suspend-robust wall-clock gap that drives `GameApp.OnResume`),
-  `Paused`/`Resumed` events. `GameApp.Clock` is updated for you each frame.
+  `Paused`/`Resumed` events, and `FrameCount` (since 20.14.0: one per `Update`, paused or not, the per-frame id a
+  `FollowCamera3D.FrameClock` reads). `GameApp.Clock` is updated for you once at the head of each frame, before
+  `OnUpdate`, so update and draw see the same `FrameCount`.
 
 ---
 
@@ -1362,6 +1369,23 @@ TooltipLine action = TooltipLine.OfSegments(localizedActionSegments, actionColor
 tip.Show(default, new[] { action }, anchor);
 ```
 
+Use one trusted localized template when the translator must control the whole sentence. Semantic tags map
+through the caller's current palette, and formatted arguments are escaped automatically:
+
+```csharp
+var inlineStyles = new InlineTextStyles(
+    new InlineTextStyle("emphasis", rarityColor),
+    new InlineTextStyle("key", keyColor));
+// Catalog value: "Equip [emphasis]{0}[/] with [key]{1}[/]"
+TooltipLine action = TooltipLine.OfMarkup(
+    MarkupText.Of(Strings.EquipHint, itemName, bindingName), inlineStyles, actionColor);
+```
+
+Tags use `[name]...[/]`, may nest, and use `[[` for a literal `[`. Missing names inherit the enclosing colour.
+Names begin with an ASCII letter, continue with ASCII letters, digits, dot, underscore or hyphen, and match
+ordinally. Malformed markup renders literally rather than throwing or dropping text. Styles are semantic colours
+only. Translations do not contain raw palette values, font names, links or actions.
+
 For separate bubbles that must keep one order beside the pointer, measure each with `Tooltip.ComputeBounds`,
 pass the widths and heights to `TooltipStackLayout.Place`, then show each offset-mode `Tooltip` at
 `TooltipStackLayout.AnchorFor(box, tip.Metrics)`. Use the same viewport and metrics for measurement and drawing.
@@ -1413,9 +1437,10 @@ invariant as the left: a valid right tap sets `RightClickedSlot` and fires `OnSl
 per-slot context menu opens only when the right press BEGAN in that slot. The `Update` return stays the left tap.
 
 For a grid inside a scrolling panel, set `VisibleBounds` (18.19.0) to the panel's clip rectangle each frame.
-`SlotAt`, gestures and pointer reservation use the visible intersection, so a hidden row cannot answer a click
-on the panel's tabs or footer. Partially visible cells require the press and release inside their visible
-portion. Null leaves the original behavior intact. The caller still supplies the drawing scissor.
+`Draw`, `SlotAt`, gestures and pointer reservation visit only slots that intersect the visible region, so a
+hidden row is neither drawn nor allowed to answer a click on the panel's tabs or footer. Partially visible cells
+still draw from their full slot rectangle under the caller's scissor, and require the press and release inside
+their visible portion. Null leaves the original full-grid behavior intact.
 
 ```csharp
 // A two-column inventory of wide text rows, right-click opening a per-slot context menu.
@@ -1548,6 +1573,11 @@ latest entry supplies the timestamp, author, content and ownership, while `Repea
 into it. Author and content use `LocalizedText`, so catalog-backed system copy and explicit raw player names or
 messages keep the same localization boundary as the rest of Gui.
 
+Localized system entries may instead use the additive `MarkupText` constructor. The catalog owns the trusted
+markup and `MarkupText.Of` escapes every formatted argument before it is inserted. Map the semantic names on
+`ChatBoxTheme.InlineStyles`. A style missing from the map inherits the ordinary, own or system entry colour.
+Plain `LocalizedText` entries retain their existing layout and draw path.
+
 `ChatBox` owns wrapped scrollback and a single-line composer inside caller-selected design-space bounds. Enter
 opens the composer. A later Enter submits trimmed non-empty text and leaves it open. Escape clears and closes it.
 `ShowTimestamps` converts each UTC timestamp to local time for presentation only. `ChatBoxTheme` carries the frame,
@@ -1575,6 +1605,7 @@ string placeholder or prefix overload on `ChatBox`.
 ```csharp
 using System;
 using KhaozEngine.App;
+using KhaozEngine.Gui;
 using KhaozEngine.Gui.Chat;
 using KhaozEngine.Primitives;
 
@@ -1597,6 +1628,19 @@ history.Add(new ChatEntry(
     CollapseKey: message,
     Kind: ChatEntryKind.Ordinary,
     IsOwn: senderId == localPlayerId));
+
+chat.Theme.InlineStyles = new InlineTextStyles(
+    new InlineTextStyle("emphasis", chat.Theme.OwnText),
+    new InlineTextStyle("key", GuiTheme.Default.AccentBright));
+// Catalog value: "[emphasis]{0}[/] found. Press [key]{1}[/] to inspect."
+history.Add(new ChatEntry(
+    DateTimeOffset.UtcNow,
+    SourceKey: "loot",
+    Author: null,
+    Content: MarkupText.Of(Strings.ChatLootFound, itemName, bindingName),
+    CollapseKey: itemId,
+    Kind: ChatEntryKind.System,
+    IsOwn: false));
 ```
 
 Update the chatbox before world picking. It blocks its complete bounds through `Pointer`, including pointer
@@ -1870,6 +1914,12 @@ if (radial.WasSelected)
 radial.Draw(batch, white, font, icons);
 ```
 
+Set `ShowEnabledEntryDetails = true` when enabled wedges carry compact secondary text that should remain visible,
+such as a resolved quantity, cost, or yield. It defaults to false. The under-label line uses
+`RadialMenuTheme.Detail`, which defaults to the ambient muted text color. Disabled entry detail remains visible
+through `DisabledDetail`, and the active entry's detail continues to appear in the centre with either setting.
+The option changes only wedge placement. It does not remove or move the centre hover detail.
+
 For pointer shortcuts, assign a caller-owned `ContextMenu` to `EntryContextMenu`, set its `Viewport`, and set
 `QuickSelectLabel` before `Open`. Construct that context menu with `SpriteFont` values for normal drawing or with
 `ITextMeasurer` values for headless interaction tests. A right tap on an enabled wedge opens it with the entry name
@@ -1923,11 +1973,15 @@ and `ResolvedChoiceLabel` expose the strings retained at the latest open.
 
 `RadialMenuMetrics` is a public value that controls inner and outer radius, wedge gap, icon size, label scale,
 detail gap, footer gap and button size, composition margin, border thickness, shadow offset, and sheen speed.
+`DetailGap` now controls the actual vertical distance between a wedge label block and its detail. It was unused
+before this option shipped. Its 2-pixel default preserves the earlier fixed spacing for disabled details, and a
+caller supplied value is used directly for both enabled and disabled under-label detail.
 The matching pure geometry is public through `ComputeCenter`, `ComputeBounds`, `WedgeAngles`, `EntryAt`,
 `ChoiceBounds`, and `LabelPoint`. `RadialMenuTheme` supplies the shadow, surface, upper highlight, borders,
-accent, text, disabled tint and alpha, disabled detail, and sheen colors. A fresh default derives from the
-ambient `GuiTheme.Default`. Disabled entry details draw compactly beneath their wedge label through
-`DisabledDetail`, and remain in the centre when that entry is active. Setting `Disabled.W` to zero hides every
+accent, text, enabled detail, disabled tint and alpha, disabled detail, and sheen colors. A fresh default derives
+from the ambient `GuiTheme.Default`. Enabled under-label detail uses `Detail`. Disabled entry details draw
+compactly beneath their wedge label through `DisabledDetail`, and remain in the centre when that entry is active.
+Setting `Disabled.W` to zero hides every
 disabled wedge visual, including its detail. Disabled labels and icons use `Disabled` directly. Backgrounds and
 borders use its hue at their source luminance and multiply their source alpha by its alpha.
 
@@ -2245,19 +2299,30 @@ reference each other just to agree on how versions order.
 The Gui text sinks accept a `LocalizedText` (from `KhaozEngine.App`), not a raw `string`. The only implicit
 conversion into `LocalizedText` is from `StringId`, so **a bare string literal at a sink is a compile error** -
 you either localize it (a `StringId`) or opt out explicitly (`LocalizedText.Raw`). The `KhaozEngine.Localization.Analyzers`
-analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adopting it on a bump:
+analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest.
 
-1. **Author a `.resx` + `StringId` constants.** One satellite `.resx` per culture (the base file is the default
-   language), and a constants class of keys (a `.resx` -> `StringId` source generator is on the roadmap):
+Rich-text adapters take `MarkupText`, which is built only from a `StringId` and has no raw root factory.
+Non-localizable values enter through `MarkupText.Of` format arguments, where they are escaped before insertion
+into the catalog's trusted semantic markup.
 
-   ```csharp
-   internal static class Strings
-   {
-       public static readonly StringId Pause  = new("Menu.Pause");
-       public static readonly StringId Resume = new("Menu.Resume");
-       public static readonly StringId Score  = new("Hud.Score");   // "Score: {0}"
-   }
+To adopt the analyzer on a bump:
+
+1. **Author a neutral `.resx` and generate its `StringId` keys.** Keep one satellite `.resx` per culture, with
+   the base file as the default language. Add only that neutral file as an opted AdditionalFile:
+
+   ```xml
+   <ItemGroup>
+     <AdditionalFiles Include="Strings.resx"
+                      KhaozStringIdType="MyGame.Strings" />
+   </ItemGroup>
    ```
+
+   The class is internal by default and contains one public static readonly `StringId` per string key. Set
+   `KhaozStringIdAccessibility="public"` when another assembly needs the class. Member names join key runs with
+   invariant uppercase starts, so `Menu.Pause` becomes `MenuPause` and `fly_speed` becomes `FlySpeed`. A key
+   rename or removal then breaks stale call sites at compile time. Name collisions and invalid resx inputs are
+   build errors. Do not opt satellite files in. Use `KhaozEngine.Localization.TestKit` for their coverage and
+   placeholder parity.
 
 2. **Wire the catalog once at startup** so every `LocalizedText` resolves against it. `LocalizationContext.WireResx`
    is the one-liner (no per-game bridge class needed - it builds the `ResourceStringCatalog`, installs it as the
@@ -2275,8 +2340,8 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
 3. **Pass a `StringId` (or `LocalizedText.Of` with format args) at the sinks:**
 
    ```csharp
-   gui.Button(font, rect, Strings.Resume);                 // StringId -> LocalizedText implicitly
-   label.Content = LocalizedText.Of(Strings.Score, score); // format args -> catalog.Format
+   gui.Button(font, rect, Strings.MenuResume);                // StringId -> LocalizedText implicitly
+   label.Content = LocalizedText.Of(Strings.HudScore, score); // format args -> catalog.Format
    ```
 
    `LocalizedText` re-resolves on every draw, so `LocalizationManager.SetCulture(...)` at runtime updates the UI
@@ -2296,8 +2361,8 @@ analyzer (already in the `Game2D`/`Game3D` umbrellas) enforces the rest. Adoptin
    ```
 
 The Gui sinks carry no `string` overload, so every player-facing call site must be migrated before a game
-builds against them. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` +
-`ShowcaseStrings` constants + `LocalizationContext` wiring).
+builds against them. `KhaozEngine.Showcase` is the worked example (`ShowcaseStrings.resx` generates the
+`ShowcaseStrings` key class, with `LocalizationContext` wiring at startup).
 
 **A widget with no sink is invisible to the analyzer, which is the failure mode to watch for.** KELOC001 and
 KELOC003 flag a literal passed into a parameter that is typed or marked as a sink, so a widget holding a plain
@@ -2773,6 +2838,19 @@ inside the callback: the command list it is recording into still names them unti
   TextLayout.DrawWrapped(batch, font, body, topLeft, boxWidth, TextAlign.Left, color);
   ```
 
+- `ColoredTextLayout.Wrap` - device-free wrapping for adjacent `ColoredTextRun` values. It preserves interior
+  spaces and returns `ColoredTextLine` values whose runs concatenate to the visible line and retain colour through
+  word and hard breaks. This is the layout seam for a game-owned dialogue view:
+
+  ```csharp
+  ColoredTextRun[] runs = InlineMarkup.Resolve(dialogue, inlineStyles, bodyColor);
+  foreach (ColoredTextLine line in ColoredTextLayout.Wrap(font, runs, boxWidth, hardBreak: true))
+  {
+      batch.DrawStringRuns(font, line.Runs.Span, topLeft);
+      topLeft.Y += font.LineHeight;
+  }
+  ```
+
 ### 2D VFX (`KhaozEngine.Render2D.Vfx`)
 
 Glowing sprites, animated energy beams, and rich pooled particles - all additive, no shipped asset. The
@@ -3025,7 +3103,7 @@ Vector3 ground = scene.Camera.ScreenToGround(pointer.Position, w, h, 0f); // pic
 // per frame, inside OnDraw3D:
 scene.Begin();
 scene.Draw(board, Matrix4x4.Identity);
-scene.Draw(tower, transform, tint, Material.Shiny);
+scene.Draw(tower, transform, tint, Material.Shiny(0.6f));
 scene.AddLight(muzzlePos, new Color(1f, 0.6f, 0.2f, 1f), radius: 6f, intensity: 3f); // point light
 scene.DrawBillboard(pos, size, color, BillboardBlend.Additive);
 scene.DebugCircle(center, up, radius, color);                        // immediate-mode debug overlay
@@ -3682,7 +3760,7 @@ keys from the re-keyed key, not from `MotionKeyOf`.
 
 ```csharp
 world.Set(e, new Transform3D { Position = new Vector3(4f, 0f, 2f) });
-world.Set(e, new MeshInstance { Mesh = tower, Material = Material.Shiny });
+world.Set(e, new MeshInstance { Mesh = tower, Material = Material.Shiny(0.6f) });
 
 // per frame, inside OnDraw3D:
 scene.Begin();
@@ -5115,6 +5193,24 @@ weights interpolate translation and scale componentwise and use normalized short
 for rotation. Reusing the buffers and mask keeps warmed steady-state calls free of managed allocation. The helper
 is pure and needs no mesh, graphics device, or test framework.
 
+Use `PoseBlend.AddInto` to layer an additive clip over locals you sampled into your own buffers. It adds each
+sample's offset from its reference onto the destination, in the joint's local frame, with the same weight and
+mask rules as `BlendInto`. An additive clip's reference is usually its own first frame.
+
+```csharp
+AnimationSampler.SampleInto(breatheClip, skeleton, 0f, breatheReference);   // once per clip
+AnimationSampler.SampleInto(breatheClip, skeleton, breatheTime, breatheSample);
+
+PoseBlend.AddInto(bodyLocals, breatheSample, breatheReference, weight: 0.6f, mask: upperBody);
+```
+
+Rotation composes `destination * slerp(identity, inverse(reference) * sample, w)` along the shortest arc and is
+normalized. Translation and scale add `(sample - reference) * w`, so scale is an offset and unit scale stays a
+no-op. A destination equal to the reference at unit weight reproduces the sample. The sample and reference spans
+must match the destination length, and zero effective weight leaves a node exactly unchanged. This is the
+composition an `Additive` layer applies in `LayeredAnimator`, from one implementation. Layered / masked
+animation below states the convention in full. Warmed calls allocate no managed memory.
+
 Each frame, feed it the movement state your controller already computes, then draw with its pose
 (the bone palette `DrawSkinned` consumes - it is joint-WORLD, the loader-attached skeleton composes it):
 
@@ -5194,6 +5290,21 @@ foreach (CharacterPose p in animators.Live)
 The set is render-free and headless-testable (owns no GPU handle, never calls `Scene3D`). Facing assumes the
 asset's rest pose looks down +Z; set `CharacterAnimatorTuning.FacingYawOffset` if yours does not. A
 `CharacterPose.Pose` is the brain's own buffer reused each frame - draw it this frame, do not retain it.
+
+For equipment or a VFX anchor, resolve a named skeleton joint to its skin bone index once, then compose from
+each draw-ready pose. `ComposeSocket` keeps the joint's scale and shear. `ComposeRigidSocket` removes those
+from the joint while retaining the character model transform:
+
+```csharp
+int handBone = skeleton.BoneIndexOfNode(skeleton.IndexOf("RightHand"));
+foreach (CharacterPose p in animators.Live)
+{
+    Matrix4x4 weaponWorld = p.ComposeRigidSocket(handBone, gripLocal);
+    // Draw the equipped mesh with weaponWorld in the same frame.
+}
+```
+
+The bone index addresses `CharacterPose.Pose`, not the skeleton's node array. The pose remains transient.
 
 `Live` holds exactly ONE pose per entity id, so the draw loop above cannot draw a character twice. The sample list
 is expected to carry at most one entry per `CharacterSample.Id` (the netcode's own snapshot does, its samples coming
@@ -5457,6 +5568,100 @@ scale or shear that skinning blends across vertices but a one-joint attachment w
 reflected joint stays reflected. A non-finite, collapsed, or linearly dependent basis throws `ArgumentException`
 because no rigid orientation can be recovered.
 
+### Skinned body contracts (any body shape)
+
+A game with more than one skinned body states each body's joints once as a `SkeletonContract` and checks every
+loaded skin against it. Each `ContractJoint` carries a glTF node name, its parent's name (`null` for the root) and
+whether it deforms the skin. The root comes first and each parent before its children. Construction refuses an
+empty table, an unnamed or repeated joint, a second root and a parent declared after its child, naming the joint.
+The table is copied, so a caller may reuse its list.
+
+```csharp
+var cow = new SkeletonContract(new[]
+{
+    new ContractJoint("root", null, Deforms: false),
+    new ContractJoint("hips", "root", Deforms: true),
+    new ContractJoint("spine", "hips", Deforms: true),
+    new ContractJoint("head", "spine", Deforms: true),
+    new ContractJoint("bell_socket", "head", Deforms: false),   // a zero-weight skin joint
+});
+
+byName.TryGetValue("stance", out AnimationClip? stance);
+var joints = new ContractJointMap(skeleton, cow, stance);   // a null stance keeps the bind rest as the base
+Vector3[] baseSkin = joints.SkinAtBase(mesh);              // load time only, it allocates
+
+// headModel is the head's posed model frame, the jointModel BoneSocket takes.
+Matrix4x4 bellWorld = bellLocal * joints.BodyAlignment(joints.Node("head"))
+    * BoneSocket.ComposeRigid(Matrix4x4.Identity, headModel, model);
+```
+
+`ContractJointMap` refuses a skeleton with more nodes than `SkinningMath.MaxBonesPerDraw`, two nodes of one name,
+and a contract joint that is missing, misparented or, other than the root, outside the skin. A misparent message
+names both parents. Unnamed nodes are left alone, as `Skeleton` leaves them. The base is the body's zero: an
+optional one-key stance clip sampled once, or the bind rest without one. A stance must carry the
+`stanceClipName` argument (`stance` by default), key each track exactly once, animate contract joints only and
+carry no scale track, or it is refused before it is sampled. `BaseLocal` is the base local pose per node.
+`BaseWorld`, `ParentBaseInverse` and `BodyAlignment` return a contract joint's base model frame, the inverse of its
+parent's, and the rotation that takes its base orientation back out. They refuse a node outside the contract
+rather than return a zero matrix. `Node` resolves any named node and `Bone` its skin bone.
+
+`ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only` throws
+on a second clip of one name. The other checks return null for a clean clip and a message otherwise, so a loader
+chains them and throws the first:
+
+```csharp
+AnimationClip walk = byName["Walk"];
+string? refusal = ClipRefusals.NoLength(walk, "locomotion")
+    ?? ClipRefusals.Unkeyed(walk, skeleton, turned: new[] { "hips", "spine" }, moved: new[] { "hips" }, "locomotion")
+    ?? ClipRefusals.Uncovered(walk, skeleton, stance, node => legs.Contains(node),
+        "A locomotion clip keys every channel the stance keys on the legs")
+    ?? ClipRefusals.Breach(walk, skeleton, hygieneOptions, "locomotion");
+if (refusal is not null) throw new InvalidDataException(refusal);
+```
+
+`Unkeyed` checks each `turned` joint's rotation, then its translation when `moved` names it too, then the joints
+only `moved` names, and throws for a joint name the skeleton lacks. `Uncovered` refuses a channel the stance keys
+and the clip leaves unkeyed on a node the filter takes, and returns null without a stance. `Breach` reports the
+first `ClipHygiene` finding of a policy. Each check allocates, so run them at load.
+
+`SkinnedGrounding.MinimumY` returns the lowest world y of the DEFORMED skin, not its rest box, so a body lowered
+into a crouch or lifted on a stride can be set on its ground each frame:
+
+```csharp
+var groundScratch = new Vector4[mesh.BoneCount];   // once per body
+float lowest = SkinnedGrounding.MinimumY(mesh.Vertices, mesh.InverseBind, pose, model, groundScratch);
+Matrix4x4 grounded = model * Matrix4x4.CreateTranslation(0f, groundY - lowest, 0f);
+```
+
+`pose` is the joint-WORLD palette `DrawSkinned` takes. The call allocates nothing. A vertex whose weights total
+under the threshold `SkinningMath.BlendSkinMatrix` and the skinned shader share draws through the model alone. An
+empty skin returns positive infinity.
+
+`MomentSchedule` decides when a standing body plays an idle moment and which one, as a pure function of the body's
+id and the clock. There is no random source to seed and no state to carry, so every machine agrees:
+
+```csharp
+var idle = new MomentSchedule(
+    new MomentScheduleOptions(SlotSeconds: 6.0, QuietSeconds: 0.5, EmptyShare: 0.4, MaxEmptySlots: 2, Salt: 7UL),
+    new[]
+    {
+        new MomentFamily("ear_flick", Weight: 3.0, LengthSeconds: 0.6, Mirrored: true),
+        new MomentFamily("tail_swish", Weight: 1.0, LengthSeconds: 1.2, Mirrored: false),
+    });
+
+Moment moment = idle.At(netId, clockSeconds, stoppedAt: lastBusySeconds);
+if (!moment.IsNone)
+    PlayIdle(moment.Family, moment.Side, moment.SecondsIn);
+```
+
+The clock is cut into slots. Each holds one moment or none, with `QuietSeconds` kept clear at both ends. A slot
+draws none at `EmptyShare`, but one after `MaxEmptySlots` empty draws holds a moment anyway. A family is drawn by
+weight, and a mirrored one plays `MomentSide.Left` or `Right` with even odds. The salt is XORed into the seed.
+Salt 0 over a glance and turn table reproduces Grimhollow's standing-player schedule to the bit. The overload with
+`stoppedAt` skips a moment that began before the body last stopped. `At` allocates nothing. `Moment.None`, family
+-1, is the default value. The constructor refuses an empty table, a weight or length out of range, and options
+that are not finite or out of range, naming the option or family.
+
 ### Layered / masked animation (attack while running)
 
 `LayeredAnimator` composites N `AnimationLayer`s into one final skeleton pose: a base locomotion layer below,
@@ -5468,7 +5673,10 @@ A `BoneMask` gates a layer per node: `BoneMask.Subtree(skeleton, spineRootNode, 
 its descendants (the torso + arms + head) at `weight`, everything else 0 - the upper-body-action shape.
 `BoneMask.Full` / `.Empty` are the constants; a name overload
 `BoneMask.Subtree(skeleton, "spine", weight)` resolves the root through `Skeleton.NodeNames`. The older overload
-that accepts an explicit name list remains available for code-driven rigs.
+that accepts an explicit name list remains available for code-driven rigs. When a body's groups are lists of joints
+rather than one subtree, `BoneMask.ForJoints(skeleton, new[] { "neck", "head" }, weight)` weighs exactly the named
+joints, never their descendants. A name listed twice is taken once, and a name the skeleton lacks throws
+`ArgumentException` naming it.
 
     var anim = new LayeredAnimator(skeleton);
     // Base: full-body locomotion (drive its clip/playhead however you like - e.g. from your own state machine).
@@ -5498,7 +5706,8 @@ componentwise (`base + (sample - reference) * w`, scale as an OFFSET so unit sca
 side to get wrong. Extracting the rotation delta as `sample * inverse(reference)` instead is the PARENT-frame delta
 and gives the sample conjugated by the reference, which matches only when the reference is identity. That was the
 shipped behaviour through 17.36.1 (fixed in 17.37.0): a clip whose t=0 pose is rotated, which is every glTF humanoid
-shoulder and spine, came out wrong.
+shoulder and spine, came out wrong. `PoseBlend.AddInto` applies this same composition, from the same code, to
+local pose buffers a caller samples itself.
 
 **Byte-stable:** zero layers is the rest pose and a single full-weight, unmasked `Override`
 layer is bit-identical to the single-clip path, so a character that never adds a layer renders exactly as before.
@@ -6128,6 +6337,10 @@ Build a field (server and client both do this), `using KhaozEngine.Terrain;`:
 base height + hill amplitude + `BiomeId`), the base-noise knobs, and an ordered `ITerrainFeature[]` folded in
 order: `LakeFeature` (carves a basin), `RidgeFeature` (a gaussian wall pierced by a pass), `FlattenFeature`
 (levels a hub). Write your own `ITerrainFeature` (`float Apply(float x, float z, float h)`) for new shapes.
+When a gap is wider than both bands' blend windows, `TerrainField` smoothstep-crossfades the adjacent bands from
+the left band's effective end to the right band's effective start. Height, hill amplitude, and biome shares use
+that same fallback. A gap with a band on only one side uses the nearest band, and equal shares choose the earlier
+band in the configured array as dominant.
 
 The sim keeps entities on the ground with `TerrainCollision` (render-free, in the leaf):
 
@@ -6285,12 +6498,12 @@ own `TerrainSculpt` if you are not going through a document. The map editor's sc
 ## Third-person follow camera + character controller (`FollowCamera3D` / `CharacterController3D`)
 
 For a walkable 3D world, pair `FollowCamera3D` (`KhaozEngine.Render3D`) with `CharacterController3D`
-(`KhaozEngine.Game.Render3D`). The camera is a perspective sibling of `IsoCamera3D`: it orbits behind a `Target`
-at a clamped `Pitch`/`Distance` and always looks at the target (same Y-up convention, same `Eye`/`Forward`/
-`ScreenToGround`; it implements `IIsoCamera3D`). Drive it from the input snapshot with `FollowCameraController`
-(hold the orbit button - right mouse by default, matching the fly camera and leaving left-drag free for
-gameplay - and drag to swing yaw/pitch, scroll to zoom; set `FollowCameraController.OrbitButton` to change it).
-To render through it, set
+(`KhaozEngine.Game.Render3D`). The camera is a perspective sibling of `IsoCamera3D`: it orbits a `Pivot` above
+its `Target` at a clamped `Pitch`/`Distance` and always looks at that pivot (same Y-up convention, same `Eye`/
+`Forward`/`ScreenToGround`, and it implements `IIsoCamera3D`). Drive it from the input snapshot with
+`FollowCameraController`: hold the orbit button (right mouse by default, matching the fly camera and leaving
+left-drag free for gameplay) and drag to swing yaw/pitch, and scroll to zoom. Set
+`FollowCameraController.OrbitButton` to change the button. To render through it, set
 `Scene3D.CameraOverride` (null = the built-in iso `Camera`) and feed the override its aspect ratio each frame:
 
 ```csharp
@@ -6365,27 +6578,75 @@ character off this controller's movement state (see "Animated characters" above)
 
 **Optional target damping (off by default).** Set `FollowCamera3D.EnableTargetDamping = true` (rate
 `TargetDampingRate`, default 10/s) to have the camera follow a smoothed `EffectiveTarget` that eases toward
-`Target` each frame instead of snapping 1:1 - belt-and-suspenders against residual avatar jitter on a remote
-server. `FollowCameraController.Update(input, dt)` drives it (so pass the real frame `dt`); with damping off the
-camera reads `Target` directly and is unchanged. Read `EffectiveTarget` for the smoothed look-at point.
+`Target` each frame instead of snapping 1:1, a belt-and-suspenders guard against residual avatar jitter on a
+remote server. `FollowCameraController.Update(input, dt)` drives it, so pass the real frame `dt`. With damping off
+the camera reads `Target` directly and is unchanged. Read `EffectiveTarget` for the smoothed follow point and
+`Pivot` for the look-at point above it.
+
+**Pivot and looking up (since 20.13.0, off by default).** `PivotHeight` (default 0) lifts the orbit centre above
+`EffectiveTarget`, and `Pivot` reads the result. The eye orbits the pivot and `View`/`Forward` look at it, so a
+camera with `PivotHeight` at head height orbits the head instead of staring at the feet. `HeightOffset` keeps its
+meaning: it raises the eye alone and never moves the look-at point, so a camera that orbits a head sets
+`PivotHeight` and leaves `HeightOffset` at zero. `MinPitch` may be negative. Below zero the eye drops under the
+pivot and the view tilts up toward the sky. The `Pitch` setter clamps to `[MinPitch, MaxPitch]` and then to
+`[-PitchLimit, PitchLimit]`, where the constant `PitchLimit` is 85 degrees, so the view never degenerates against
+world up. A camera at the default `MaxPitch` of 81 degrees never reaches the limit, and a `MaxPitch` above
+85 degrees is now capped there.
+
+```csharp
+camera.PivotHeight = 1.6f;                  // orbit and look at the head
+camera.HeightOffset = 0f;                   // the eye rides the orbit alone
+camera.MinPitch = -60f * MathF.PI / 180f;   // drag down past the horizon to look up
+```
 
 **Optional occlusion spring-arm (off by default).** Set `FollowCamera3D.Occlusion` to an `IPhysicsWorld` and the
-camera sweeps a sphere probe (radius `OcclusionRadius`, default 0.25) from the target along the boom toward the
+camera sweeps a sphere probe (radius `OcclusionRadius`, default 0.25) from the pivot along the boom toward the
 geometric eye and pulls the eye in to the first static hit, so the eye never clips through a wall or a ceiling
-between the target and the desired eye (the roofed-dungeon case). `OcclusionSkin` (default 0.05) keeps the
+between the pivot and the desired eye (the roofed-dungeon case). `OcclusionSkin` (default 0.05) keeps the
 pulled-in eye just off the surface, and `MinOcclusionDistance` (default 0.2) floors how far in the boom is ever
-pulled so the eye can never collapse onto the target. The sweep hits statics only, and it runs before the
-`GroundHeight` clamp, so a ground dip still lifts the already pulled-in eye. Null (the default) leaves the eye
-purely geometric, so existing cameras are unchanged.
+pulled so the eye can never collapse onto the pivot. The sweep hits statics only, and it runs before the
+`GroundHeight` clamp, so a ground dip still lifts the already pulled-in eye. Null (the default) sweeps nothing, so
+existing cameras are unchanged. The same three knobs govern the boom probe below.
+
+**Optional boom probe (since 20.13.0, off by default).** An `ICameraBoomProbe` answers
+`Reach(origin, direction, length, radius)`, how far a boom can extend before it meets something. Set
+`FollowCamera3D.BoomProbe` and the camera asks it once per computed eye, from the pivot toward the geometric eye
+with `OcclusionRadius`, in absolute world coordinates. A probe over a rebased world converts on its own side, as
+the physics sweep does with `IPhysicsWorld.Origin`. The `Occlusion` sweep runs through the same path, so a camera
+may set both and the shorter reach wins. A short reach puts the eye that far along the boom less `OcclusionSkin`,
+floored at `MinOcclusionDistance`, and `GroundHeight` clearance still runs last. A blocked boom shortens along its
+own line instead of lifting, so a looking-up boom that meets the ground slides the eye in toward the pivot while
+the view keeps tilting up. `BoomProbeCount` is the cumulative count of probe calls, in the same shape as
+`OcclusionSweepCount`, and one per rendered frame is the healthy reading. A tile world uses the shipped
+`TileWorldCameraProbe` (`KhaozEngine.TileWorld.Render3D`, whose README gives its rules):
+
+```csharp
+var bounds = new TileObjectBoundsCache(resolver);   // the resolver the view draws with
+camera.BoomProbe = new TileWorldCameraProbe(view, bounds.TryGetBounds,
+    archetype => archetype.Tags?.Contains("camera-blocker") == true);   // the game's rule and tag
+```
+
+**Eased boom recovery (since 20.13.0, off by default).** `BoomRecoveryRate` (per second, default 0) eases the
+boom back out after an obstruction clears. A pull-in is always instant, because an eased pull-in would put the
+eye inside the occluder. The camera holds the metres the boom is short of its full length, and `AdvanceBoom(dt)`
+multiplies that shortfall by `exp(-BoomRecoveryRate * dt)`, frame-rate independent. `FollowCameraController.Update`
+calls it after `AdvanceTarget`, so a camera driven by the controller needs only the rate. A camera driven without
+the controller calls `camera.AdvanceBoom(dt)` once a frame. `Warp` and `SnapToTarget` clear the held shortfall, so
+a teleport never eases out from the old site. **The `Distance` setter shifts it by the change in distance**,
+floored at zero. A zoom in during recovery holds the eye still until the new distance fits, so the eye never moves
+against the gesture, and a zoom out continues the ease. With no shortfall held a zoom is instant, and writing the
+same `Distance` every frame leaves the ease alone. A zero or non-finite rate follows the probe both ways at once.
 
 **The eye is computed once a frame, not once a read (since 17.37.0).** `Eye` is the expensive property here, and
 `Forward`, `View`, `ViewProjection`, `AbsoluteViewProjection`, `WorldToScreen`, `ScreenToRay` and `ScreenToGround`
 all funnel back through it, so one `Scene3D.Render` reads it over thirty times. It caches, keyed on the inputs the
-last computation read, which means writing any knob (`Target`, `Yaw`, `Pitch`, `Distance`, `HeightOffset`, the
-occlusion knobs, `GroundHeight`, `GroundClearance`) between two reads recomputes on the next one, as it must.
+last computation read, which means writing any knob (`Target`, `Yaw`, `Pitch`, `Distance`, `HeightOffset`,
+`PivotHeight`, the occlusion knobs, `BoomProbe`, `BoomRecoveryRate`, `GroundHeight`, `GroundClearance`) between
+two reads recomputes on the next one, as it must.
 
-What the camera cannot see is the world moving underneath it: a wall slides in, terrain deforms, and no camera
-field changed. `IIsoCamera3D.BeginFrame()` is the boundary that bounds the cache at one frame.
+What the camera cannot see is the world moving underneath it: a wall slides in, terrain deforms, whatever a
+`BoomProbe` reads changes, and no camera field changed. `IIsoCamera3D.BeginFrame()` is the boundary that bounds
+the cache at one frame.
 **`Scene3D.Begin()` calls it on the active camera for you**, so a game that renders through a scene needs no
 adoption at all. A consumer that drives a `FollowCamera3D` with no `Scene3D` (a headless projection pass, a tool)
 calls `camera.BeginFrame()` once a frame itself, or `camera.InvalidateEye()` at the moment it moves an occluder.
@@ -6394,12 +6655,47 @@ wrote yourself inherit a no-op and are completely unaffected. One ordering to kn
 render time, so a gameplay read of `Eye` (or `ScreenToRay`) taken in your update step, BEFORE that frame's `Begin`,
 answers from the last computation. With `Occlusion` set and no camera knob changed since, that is the previous
 frame's sweep. A follow camera whose target moves every frame recomputes anyway. If yours can stand still while
-the world moves around it and you pick from the update step, call `InvalidateEye()` after stepping physics.
+the world moves around it and you pick from the update step, call `InvalidateEye()` after stepping physics, or set
+a `FrameClock` (below), which makes the first read of every frame compute a fresh eye.
+
+**One computation for update and render reads (since 20.14.0, off by default).** A game that moves the target in
+its update step and then reads the eye there (an audio listener, keyboard steering, a cursor pick) pays twice a
+frame without help: its own read computes, then `Scene3D.Begin` drops that eye at render time and computes it
+again, with a second `BoomProbe` call. Set `FollowCamera3D.FrameClock` to a per-frame id and the pair costs one.
+`GameApp` updates `Clock` once at the head of each frame, before `OnUpdate`, so `GameClock.FrameCount` is the id to
+use, and update, the world prepare and the draw all read the same value:
+
+```csharp
+camera.FrameClock = () => Clock.FrameCount;   // once, where the camera is built
+```
+
+Each computed eye is stamped with the id. A read reuses the cached eye only under the same id and the same inputs,
+and `BeginFrame` keeps an eye computed earlier in the same frame. The staleness bound holds through the stamp: a
+clock that advances once per frame, BEFORE the frame's first camera read, such as `GameClock.FrameCount` under
+`GameApp`, never returns an eye from an earlier frame, so a camera whose inputs never change still recomputes once
+a frame and a wall that slides in behind the probe is seen on the next frame. The tick point is part of the
+contract. A counter that advances once per frame but between update and render (ticked in `OnPrepareWorld` or a
+draw callback) lets the next frame's update read reuse the previous render's eye. An extra advance later in a frame
+whose clock already ticked before its first read costs a recompute and nothing worse.
+
+A clock that stops advancing breaks that contract. `BeginFrame` can spot a stall only by comparing with the
+previous latch, so the next latch after a stall can keep an eye computed before it. A constant clock on a still
+camera read only in update for a few frames, then made the active camera, hands its first latch the eye from the
+first of those frames. Only the latches after that drop the cache as a camera with no clock does. The clock is
+called on every read, so keep it cheap and allocation-free. `InvalidateEye()` still drops the eye at once.
+
+The saving needs the update's reads to come after its last camera write, `FollowCameraController.Update`
+included. A camera read in update BEFORE it advances costs two computations a frame with a clock, where it costs
+one without: the clock makes that read compute a fresh eye instead of reusing last frame's, and the move then costs
+the render another. Leave `FrameClock` null there, or move the read after the camera's update. A camera read only
+through the render costs one computation a frame either way.
 
 Two cumulative counters (never reset, in the same shape as `GpuDeviceCounters`) show the load:
 `OcclusionSweepCount` is the sweeps this camera has issued, and `EyeComputeCount` is full eye computations whether
 or not the spring-arm is on. A healthy game shows one of each per rendered frame. A sweep count climbing much
-faster than the frame count means something is writing a camera knob between reads.
+faster than the frame count means something is writing a camera knob between reads. Two a frame from a camera read
+in update after it moves is the cost `FrameClock` removes. A clocked camera read in update before it moves also
+shows two a frame, which is that shape's cost under a clock (above), not a fault.
 
 ```csharp
 scene.CameraOverride = camera;   // set the camera first: Begin latches the ACTIVE one
@@ -7310,7 +7606,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.6.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.16.0" />
 ```
 
 ```csharp
@@ -8115,9 +8411,10 @@ open ground only and never takes weight from a cliff, a shore or a peak.
 | Snow | 0.85 to snow | snow cover below the snow line with a little tundra showing through |
 
 `SampleBiomeWeights` reads each biome's share off the same smoothstep band blend that shapes the height, so the
-tilt fades across a band's `BiomeBlend` window. A per-vertex dominant biome would switch it along one triangle row
-instead, which is the visible seam the blend avoids. `TerrainSplatWeights.From(height, slope01, biome, ...)` is the
-discrete form for one biome, bit-identical to `FromBlend` wherever that biome holds the whole share.
+tilt fades across a band's `BiomeBlend` window and any uncovered interval between effective band edges. A
+per-vertex dominant biome would switch it along one triangle row instead, which is the visible seam the blend
+avoids. `TerrainSplatWeights.From(height, slope01, biome, ...)` is the discrete form for one biome, bit-identical
+to `FromBlend` wherever that biome holds the whole share.
 
 **4. Influence the mix with a splat rule (optional).** The default derives its sand band from the field's single
 `WaterLevel`. That is the sea, so a world with a SECOND body of water (a lake, river, pond, oasis, flooded
@@ -8673,6 +8970,8 @@ Validation resolves the foliage archetype and material ids against the same cata
 `TileObject.X/Z` and `TileMarker.X/Z`, and the owning region is always `RegionCoord.Of(X, Z)`, which floors, so
 a negative coordinate lands in a negative region with a local coordinate in 0..63. Rotation is quarter turns
 clockwise from above, 0 west, 1 north, 2 east, 3 south, on objects, on overlay shapes and on prefab stamps.
+Tile addresses use signed 32-bit coordinates. `TileRect` operations that read or produce an exclusive far edge
+reject geometry whose edge falls outside that domain, so a rect cannot include `int.MaxValue` on either axis.
 
 **Tile space is not render space, and `TileWorldSpace` is the only place that knows it.** The document is x east,
 z NORTH, y up, while the engine renders right handed with y up where a camera facing +z has +x on its left, so
@@ -8745,6 +9044,8 @@ it. Both entry points share one expansion, so a multi-goal walk and a single-goa
 step. There is no nearest-reachable fallback here, unlike `FindPath`, because a goal set has no single tile to be
 near: an unreachable set answers a not-reached empty path and a `goalIndex` of -1. `TileReach.TryNearest` is built
 on it, so an interaction click against a walled-in target costs one window rather than one per reach tile.
+Both pathfinder entry points require the window's near and exclusive far edges to fit signed 32-bit tile
+coordinates. A start and radius that cross the boundary throw instead of wrapping to the opposite extreme.
 
 **A caller that paths on a tick hands `FindPath` a `TilePathfinderScratch`.** The default call allocates the two
 `(2r + 1)^2` window arrays every search, about 83 KB at radius 64, which is nothing for an editor click and is
@@ -8775,6 +9076,8 @@ roof counts as the well. Hand it a `TileObjectBoundsCache` over the view's own `
 bounds source (the per-archetype vertex box, measured once), and apply your own clickability gates on the hits
 (the archetype id rides on each one): a roof the view is currently hiding (`TileWorldView.IsRoofHidden`), a
 non-interactive archetype, or a cut at the ground hit's distance are all the caller's rules, deliberately.
+The candidate walk allocates nothing. Reuse a hit list with enough capacity and a warmed bounds cache for
+allocation-free repeated picks, including the per-frame picks made by `TileWorldCameraProbe`.
 
 ---
 
@@ -9024,6 +9327,17 @@ that size and another textured material of a different size throws rather than b
 one from the catalogs on its own unless `TileWorldViewOptions.GroundMaterials` hands it one, uploads it ONCE,
 points the mesher at it (the slots in a vertex only mean anything against the set the mesh is drawn with), and
 frees it on `Dispose`. So a colour-only world and a textured one take exactly the same path.
+
+**Feather selected overlay edges.** Author `TileSettings.FeatherOverlay` on the intended road tiles with
+`ke-tileedit` (`tile_set` or `tiles_fill`, `settings: "FeatherOverlay"`). Preserve other required flags in the
+comma list. Give those tiles the surrounding grass as their underlay and the road as their overlay.
+The renderer blends inward through 0.2 metres of the exposed full or shaped edge, including across region
+boundaries. Unmarked tiles keep hard edges, even if they use the same road material. Connected overlays of
+that material share their interior edges. Set `TileWorldViewOptions.Mesher.OverlayFeatherWidthMetres` before
+constructing the view to choose another positive finite width, capped to half a tile. This changes rendering
+only. The original terrain triangles still define the surface for picking and collision. See the
+[render package reference](../KhaozEngine.TileWorld.Render3D/README.md#ground-tilegroundmesher-itilegroundslotmap-tilecolors)
+for tessellation cost and sampling limits.
 
 **Texturing a world is two catalog fields.** Give a ground material a `texture` and, optionally, a
 `tilesPerMetre` (repeats per world metre, default 0.5, a 2 m repeat):
@@ -9474,6 +9788,29 @@ var options = new MapEditorOptions
 sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, options));
 ```
 
+**Dungeon generation.** Set `options.DungeonKit` to a `DungeonKitMap` whose six piece ids exist in the
+game's manifests. The toolbar then shows **Dungeon**, opening a modal Generate dungeon panel. Null hides
+the action. `options.DungeonPreset` optionally supplies advanced `DungeonConfig` values, while the panel
+edits seed, plot position and yaw, plot size, room count, floors, corridor widths, and ceiling mode.
+The panel copies the preset, so cancelling or changing fields never mutates the game's options. Generate
+uses one `GenerateDungeonCommand` through `EditorDocument.Execute`, making all emitted placements, spawns,
+regions, the flatten feature, and expanded bounds one undo step. Invalid input or a missing kit piece
+leaves the map and history unchanged. The command is also usable directly by a headless authoring tool:
+
+```csharp
+var dungeonKit = DungeonKitMap.Greybox(); // use only when the game manifests contain these kit ids
+var editor = new EditorDocument(MapDocumentFile.Load(options.DocumentPath));
+editor.Execute(new GenerateDungeonCommand(new DungeonConfig(), 42UL, dungeonKit,
+    new DungeonPlotTransform(originX: 120f, originZ: 0f, baseY: 0f, yawRadians: 0f)));
+editor.Undo();
+editor.Redo();
+```
+
+For a partial tiled document pass the loaded `MapTileRect` as the command's `loadedWindow` argument.
+The editor panel supplies its own loaded window and refuses a plot that crosses it. Redo reuses the
+first bake rather than regenerating from later changes to the config or kit. See the
+`KhaozEngine.MapEditor` README for the complete kit mapping and panel workflow.
+
 Push it directly rather than wrapping it in your own `GameScene`. `GameScene.Manager` is set only by
 `SceneManager.Push` (an internal setter), so a hand-built wrapper that forwards lifecycle calls to a
 `new MapEditorScene()` it never pushes leaves that inner scene's `Manager` permanently null (its first
@@ -9898,9 +10235,9 @@ shared 260) now split independently, giving the grouped companion/scatter-layer 
 **Viewport rebuild performance.** Bounded terrain-height edits invalidate only loaded chunks overlapping
 the accumulated dirty region. Exclusion and scatter-override edits leave the field alone, so they refresh the
 captured generation configuration and re-serve only the props of the loaded chunks their jitter-padded shape
-bounds overlap (`ViewportWorld.RefreshLayerProps`), with no terrain re-mesh, every drag frame. Terrain scalars,
-biome bands and same-topology scatter or companion value edits refresh every loaded chunk without rebuilding
-the viewport.
+bounds overlap (`ViewportWorld.RefreshLayerProps`), with no terrain re-mesh, every drag frame. Shape-preserving
+scatter or companion value edits and override reorders use the same props-only seam across the whole loaded set.
+Terrain scalars, biome bands and a layer edit that changes sink shape retain the all-loaded terrain re-mesh.
 Pending asynchronous work is flushed before field or layer snapshots change. Layer-count, layer-kind,
 placement-layer, kit and HLOD topology changes retain the full rebuild path (#14). Full rebuilds are
 throttled to at most once per
@@ -11334,7 +11671,9 @@ client.TryGetRemotePose(netId, out TilePose them);              // everybody els
   construction and a game with a body of its own draws it the same way (`presenter.Pose(state, extraTicks)`).
 - **Frame-rate independent by construction.** The fraction is an integer tick count over an integer total, and
   the local player's inter-tick easing is a plain lerp of it, so nothing accumulates per frame and 30 fps and
-  144 fps draw the same body at the same wall-clock instants.
+  144 fps draw the same body at the same wall-clock instants. At a one-tick cadence `TileMoveState.PredictionTarget`
+  names the committed tile for each landing-door step, so the lerp crosses one tile on the click tick and every
+  following route tick instead of repeating the first endpoint.
 - **Discontinuities cut.** A teleport, a hard snap, the first snapshot, and a remote seen more than one step
   from where it was all place the body outright on the frame the snapshot lands. Nothing slides across the tiles
   in between. For the local player that is entirely `ClientPrediction`'s doing (an epoch advance and a hard snap
@@ -12089,7 +12428,8 @@ Four rules the pipeline runs on:
   game awarding experience straight from it over-awards on every killing blow. Read the target's health if what is
   wanted is what was taken.
 
-On the client, an attack is a click like any other, and the swings arrive on their own event.
+On the client, an attack is a click like any other. The following example uses default combat mode.
+Preparation-enabled sessions use the [separate outcome callbacks](#authoritative-attack-preparation-20141).
 
 ```csharp
 // Attack takes a NET ID, and Interact takes an OBJECT id. They are separate command kinds because the two id
@@ -12101,7 +12441,7 @@ client.RemoteEntered += id => nameplates.Add(id);
 client.RemoteLeft    += id => { nameplates.Remove(id); hitsplats.Clear(id); };
 ```
 
-`CombatEvent` carries every swing whose TARGET is in this client's area of interest, misses included. Do not
+In default mode, `CombatEvent` carries every swing whose TARGET is in this client's area of interest, misses included. Do not
 derive a fight from replicated health instead: two hits on one tick collapse into one delta and a miss moves
 health by zero, so a fight drawn from deltas shows fewer, larger, later hitsplats than the fight the server ran.
 `Killed` rides the blow that caused the death, so a client never has to notice an absence to know something died,
@@ -12206,13 +12546,12 @@ identity and the bytes ride a SIBLING component seated only when the instance id
 kill usually leaves behind carries no component and costs nothing on the wire.
 
 ```csharp
-// Server, dropping an owned item. `held` is the ItemSlot leaving the player's container. The payload is
-// the PUBLIC view rather than the stored bytes: a ground item has no owner viewer at all, so an
-// owner-only kind (6 BoundTo, 4 charges, 5 durability) is stripped before the component is written and a
-// passer-by cannot read who a dropped item is bound to.
+// Server, dropping an owned item. `held` is the ItemSlot leaving the player's container. This one door
+// accepts the STORED payload and produces the public ground view. A ground item has no owner viewer, so
+// owner-only kinds 4, 5 and 6 are stripped before the component is written.
 byte[] view = new byte[held.Payload.Length];
-int viewBytes = ItemInstanceVisibility.PublicView(
-    properties, held.Payload.Span, PropertyVisibility.Everyone,
+int viewBytes = GroundItemPayloadProjection.Project(
+    properties, held.Payload.Span, held.Quarantined,
     identified: true, revealedMask: 0UL, view);
 
 long drop = server.SpawnGroundItem(
@@ -12234,6 +12573,12 @@ client.CollectGroundItemInstances(instancedBuffer);
 foreach ((long netId, TileGroundItem item, TileGroundItemInstance instance) in instancedBuffer)
     DrawInstanceMarker(item.Tile, instance.InstanceId);
 ```
+
+`GroundItemPayloadProjection.Project` shares `ContainerPageProjection`'s serializer and always selects
+`PropertyVisibility.Everyone`. A live stored payload that cannot be projected fails closed to zero bytes. A
+quarantined payload becomes a hollow wrapper carrying its reason and stamp over no preserved bytes. Invalid
+quarantine bytes and a destination shorter than the stored payload throw as caller bugs. Pass only the
+returned slice to `SpawnGroundItem`.
 
 Both halves are opaque. The engine never decodes the payload, has no way to, and never mints an instance id
 of its own, so the same id and the same bytes come out of a claim as went into the drop, whoever is claiming,
@@ -12299,11 +12644,189 @@ the state it set.
 
 ---
 
+## Authoritative attack preparation (20.14.1)
+
+Opt in when a game wants a server-scheduled preparation before impact. Existing consumers keep their
+first-hit timing, cadence, legacy tag 3 bytes and `CombatEvent` callbacks by leaving the server
+`CombatPreparationRules` null and client `CombatPreparationEnabled` false.
+
+The game owns the public motion key and reads it from current admitted state. Change the key when
+visible equipment or attack style changes. The provider must be deterministic and side-effect free.
+The `game` methods below are consumer integration points, not engine APIs.
+
+```csharp
+using System;
+using KhaozEngine.TileWorld.Netcode;
+
+public sealed class GamePreparationRules : ITileCombatPreparationRules
+{
+    readonly Func<long, uint> readPresentationKey;
+
+    public GamePreparationRules(Func<long, uint> readPresentationKey) =>
+        this.readPresentationKey = readPresentationKey;
+
+    public TileCombatPreparationProfile ProfileFor(long attackerNetId) =>
+        new(LeadTicks: 3, StrikeTicks: 1, PresentationKey: readPresentationKey(attackerNetId));
+}
+```
+
+Timing must satisfy `1 <= StrikeTicks <= LeadTicks <= resolved AttackTicks`. An invalid profile cancels
+its pending attempt and prevents a new roll. Keep the existing matching `TickSeconds`, `StepTicks`,
+map and world configuration when constructing the two heads:
+
+```csharp
+using KhaozEngine.Netcode;
+
+var preparedServerConfig = serverConfig with
+{
+    CombatPreparationRules = new GamePreparationRules(game.ReadPublicAttackKey)
+};
+var preparedClientConfig = clientConfig with { CombatPreparationEnabled = true };
+
+// Bump the GAME's connect version when enabling preparation. Both peers must select the same mode.
+const string preparedProtocol = "my-game-prepared-2";
+var gate = ConnectionGate.Wrap(authenticator, preparedProtocol, worldHash);
+byte[] token = TileProtocol.BuildConnectToken(preparedProtocol, worldHash, authToken);
+using var server = new TileWorldServer(serverTransport, preparedServerConfig, map, targets, gate);
+server.CombatRules = game.CombatRules;
+using var client = new TileWorldClient(clientTransport, preparedClientConfig, map, targets, token);
+```
+
+`ConnectionGate` is in `KhaozEngine.Netcode`. It compares the consumer's protocol string. The engine
+cannot detect a game that incorrectly assigns the same string to incompatible modes. An old decoder
+ignoring unfamiliar tags is not a compatibility strategy. A custom replication registry must include
+the migration-only preparation codec registered by `TileProtocol.CreateRegistry`. Enabled server startup
+requires the exact preparation component at its reserved id with exactly `ReplicationChannels.Migrate`.
+Another component at that id, a missing migration channel, or extra replication/persistence channels is refused.
+
+For an eligible tick T, the first impact is `max(T + LeadTicks, readyTick)`. Thus a ready, in-range
+3/1 attacker has two preparation ticks and one strike tick before T+3. At six ticks per second that
+is 0.5 seconds total. An existing cooldown or idle food wait overlaps the preparation, rather than
+paying another full lead after that wait. Unchanged continuing impacts remain one resolved cadence
+apart. Repeating the same target command does not restart an attempt.
+
+Temporary range loss during the lead retains the schedule while the lock remains. From the impact tick
+the server rechecks rules, life, lock, teleport epochs, permission and profile, and any failure ends the
+attempt at once without a roll or cooldown charge. Legal reach, including the plane, is the one check that
+waits instead (since 20.15.1). An impact that lacks only legal reach keeps its schedule and resolves once on
+the first later tick with legal reach, for up to the attempt's `StrikeTicks`. It ends
+`TileCombatPreparationEndReason.IllegalReach` on `ImpactTick + StrikeTicks` if reach is still illegal, and a
+later opportunity then needs a fresh lead. A deferred tick makes no roll, RNG draw, cooldown write, combat
+stamp, revision or terminal. Only an attempt deferred on the previous pass can resolve late, so an owner that
+missed a pass ends it `ParticipantUnavailable`. The next impact is the actual resolution tick plus the
+cadence, so equal-speed pursuit keeps its cadence. An ended attempt cannot restart in that same pass.
+A changed target, presentation key, lead, strike duration or resolved cadence
+replaces the attempt subject to retained readiness. Null `CombatRules` creates no attempts and cancels live ones with
+`TileCombatPreparationEndReason.RulesUnavailable`. Returning rules require a fresh lead. Preparation
+makes no damage/RNG roll, experience hook or swing stamp. A held lock still counts under the existing
+logout rule. Actual swings retain the server's roll/apply/death order and one `OnCombatEvent` hook.
+
+### Reads, delay and revisions
+
+Both heads expose `TryGetCombatPreparation(attackerNetId, out TileCombatPreparation preparation)`.
+The descriptor includes target, monotonically increasing `AttackId`, `Revision`, `PresentationKey`,
+`PrepareTick`, derived `StrikeTick`, `ImpactTick` and `CadenceTicks`. Identity belongs to an attacker
+lifetime and connection session. A replacement gets a new ID. A delay normally keeps the ID and
+increments its revision. Revision exhaustion uses a new ID, and exhausted attack IDs are refused.
+A deferred attempt keeps its identity, revision, `PrepareTick` and `ImpactTick`, so while it waits for
+legal reach its `ImpactTick` is in the past. Do not assume an active schedule's impact is in the future.
+
+```csharp
+// Call after the game has accepted the action that costs attack time.
+if (server.DelayAttack(attackerNetId, ticks: 3))
+{
+    server.TryGetAttackReadyTick(attackerNetId, out long readyTick);
+    bool active = server.TryGetCombatPreparation(attackerNetId, out var revised);
+    game.ReplyWithAttackWait(requestId, server.TickCount, readyTick, active, revised);
+}
+```
+
+Delay adds its accepted ticks to the current deadline or retained readiness, capped at 255 outstanding
+ticks. The whole preparation/strike window moves to end at the new impact. Zero and saturated delays
+are no-ops. An outcome callback can delay the following attempt, never a swing already rolled this
+tick. `DelayAttack` returns false for an absent entity or an unrepresentable revised identity/deadline.
+`TryGetAttackReadyTick` returns false for an absent entity. Otherwise it reports an absolute boundary,
+including the correct pre/post countdown adjustment. It can throw `OverflowException` if clock plus
+wait cannot be represented. With no active attempt, that boundary still may need a fresh lead. While
+an attempt is deferred it reports the current tick, because the attempt resolves on the first tick with
+legal reach. A delay during a deferral revises the attempt from the current tick. The new impact is the
+current tick plus the accepted delay, the revision increments like any other delay, and a reach loss at
+the new impact starts a new `StrikeTicks` bound from there.
+
+A consumer with pending food UI must correlate its own request/reply and schedule revision. Include
+the request identity and authoritative tick in its reply, plus the active schedule identity/revision
+when present. A no-active reply uses its authoritative tick as the stale-snapshot fence. The reply
+example above is game-owned. Do not suppress every preparation until `readyTick`: preparation is
+intentionally before impact. A revised schedule can return to Hold until its new start. Blend from
+the displayed pose, and let a confirmed result win over any still-pending presentation hold.
+
+### Client presentation and authoritative feedback
+
+```csharp
+client.CombatPreparationsChanged += serverTick => game.RefreshPreparationView(serverTick);
+client.PreparedCombatEvent += result => game.QueueImpact(result);
+client.CombatPreparationEnded += ended => game.QueueAbortedMotion(ended);
+
+// Each frame, before composing the body's action and feedback.
+client.Poll();
+client.AdvancePresentation(frameSeconds);
+if (client.TryGetCombatPreparation(attackerNetId, out var schedule))
+{
+    TileCombatPreparationSample sample = TileCombatPreparationSampler.Sample(
+        schedule, client.CombatPresentationTick);
+    game.UpdatePreparationLayer(schedule.PresentationKey, sample);
+}
+game.PresentQueuedCombatFeedback();
+```
+
+`CombatPreparationsChanged` carries the applied tick only after a complete full schedule set replaces
+the cache, including an empty set. The set can already contain a successor when the previous attempt's
+`PreparedCombatEvent` arrives. Present that outcome once using its captured identity/key, even though
+its old active sample retired. The event contains `ImpactTick`, `AttackId`, `Revision`,
+`PresentationKey` and the actual `TileCombatEvent Outcome`. Its `ImpactTick` is the tick the attempt
+resolved, which trails the schedule's `ImpactTick` by up to `StrikeTicks` after a deferral, so match an
+outcome to its schedule by `AttackId` and `PresentationKey`, not by impact tick. `CombatPreparationEnded`
+identifies a cancelled attempt and its reason without any impact feedback. An `IllegalReach` end carries
+the intended `ImpactTick` and arrives with a `ServerTick` `StrikeTicks` later. Enabled clients do not
+also raise the
+legacy `CombatEvent`. Server `OnCombatEvent` remains the award hook in either mode.
+
+The sampler returns Hold/0, Prepare progress, Strike progress, or AwaitingOutcome/1. A lead equal to
+strike has no Prepare interval. While an attempt is deferred, every complete set repeats its unchanged
+schedule, `CombatPreparationsChanged` still fires once per applied tick, and the sampler holds
+AwaitingOutcome/1 until the outcome or `IllegalReach` terminal arrives. An observer entering interest
+during a deferral receives the overdue schedule and samples AwaitingOutcome at once. Non-finite sample
+time returns Hold/0 for a valid schedule, while
+invalid schedule identity/timing throws `ArgumentException`. Sampling emits no event and never loops
+an attempt. `CombatPresentationTick` anchors only on a newer successfully applied movement snapshot,
+advances at most one tick beyond it, and ignores invalid elapsed time. It returns -1 before an anchor,
+when disabled, or after disconnect. Large integer ticks use a conservative representable bound.
+Remote movement retains its independent interpolation delay.
+
+Apply impact pose, hitsplat, sound, shield and death feedback together after polling. Recovery and
+confirmed impact take precedence over a successor's Hold sample. Before confirmation, stop the
+strike short of contact even if the sampler is AwaitingOutcome. Latency, stalled polling and late
+interest entry can skip the preparation. Present a late result once on receipt, without delaying it
+to manufacture a full remote wind-up. Blending, pose mapping and recovery are the game's work.
+
+Schedules are read from authoritative owners and sent when either participant is in interest. Terminals
+also cover attempts visible on the previous serve. These messages do not create drawable entities.
+Complete reliable ordered sets are bounded, stale traffic is deduplicated, and disconnect/removal clears client lifecycle state.
+An active schedule record is valid while `serverTick - ImpactTick < StrikeTicks`, which lets a deferred
+schedule be served overdue. A 20.14.1 to 20.15.0 client refuses such a set, counts a rejected frame and
+keeps its previous schedules, so a game that already shipped preparation-enabled clients must bump its
+connect protocol string when it adopts 20.15.1. Default consumers are unaffected. The
+[package reference](../KhaozEngine.TileWorld.Netcode/README.md#authoritative-attack-preparation-20141)
+lists wire limits, overflow disconnection and named diagnostics.
+
+---
+
 ## Charging attack time for something that is not a swing (`TileWorldServer.DelayAttack`, 18.16.0)
 
-`DelayAttack(netId, ticks)` pushes an entity's next swing out by `ticks` server ticks. It is the public writer for
-`TileCombatState.CooldownRemaining`, and the only one: everything else on that component is read-only to a game or
-reached through `ITileCombatRules`.
+`DelayAttack(netId, ticks)` adds attack wait. In default mode it writes `TileCombatState.CooldownRemaining`.
+With [preparation enabled](#authoritative-attack-preparation-20141), it also revises an active or retained
+absolute deadline. Use `TryGetAttackReadyTick` to read that boundary. Other combat-state writes belong
+to `ITileCombatRules`.
 
 ```csharp
 // OSRS: a bite costs attack time rather than interrupting the fight.
@@ -12325,8 +12848,9 @@ them: without the create, a delay would do nothing until the second fight and an
 tick would swing straight through it. The created state leaves `AttackTicks` at zero, so `ITileCombatRules` still
 answers the cadence at the first swing exactly as it does today.
 
-False means no live cell owns the id. A zero `ticks` writes nothing and still reports whether the entity is there,
-so it doubles as an existence check.
+False means no live cell owns the id or an enabled preparation's identity/deadline cannot be revised.
+A zero `ticks` writes nothing and still reports whether the entity is there. An already-rolled swing is
+immutable. Delays accepted during its outcome callbacks apply to the following readiness.
 
 ---
 
@@ -13043,6 +13567,14 @@ panel over the frame. It starts hidden, so the only cost until you press F1 is t
 MB), **Draw stats** (the counters below), for a 3D app **Pass timings** (per-pass CPU encode ms, enabled
 only while the panel is visible so it costs nothing when hidden), and **Build**.
 
+All built-in section titles and row labels resolve through the public `DiagnosticsOverlayStrings` `StringId`
+fields. The disconnected Network value does too. Add the `diagnostics.overlay.performance.*`,
+`diagnostics.overlay.pass-timings.*`, `diagnostics.overlay.draw-stats.*`, `diagnostics.overlay.network.*`, and
+`diagnostics.overlay.build.title` keys to the game's catalog to translate the complete built-in panel. Missing
+keys use the built-in English fallback, preserving the earlier output. A locale switch appears on the next HUD
+refresh. Dynamic pass names, formatted numbers, and conventional units remain raw tokens. Text in custom
+`OverlaySection` and `OverlayRow` instances remains the game's responsibility.
+
 **Build** is one row naming the running app and its version, so a tester reading the panel can say which binary
 they ran. It needs no wiring and no debug switch. The default label is the entry assembly's product name and the
 default value is its `AssemblyInformationalVersionAttribute`, with a `+` build metadata suffix (the SourceLink
@@ -13053,9 +13585,8 @@ Diagnostics?.SetBuildIdentity(BuildConfig.Product, BuildConfig.DisplayVersion); 
 ```
 
 The identity is read once, on the first refresh that shows it, and never per frame. The name and version are
-shown verbatim as non-localizable tokens. The section title is the localized
-`DiagnosticsOverlayStrings.BuildTitle` (key `diagnostics.overlay.build.title`, English fallback "Build"). Add
-that key to the game's catalog to translate it.
+shown verbatim as non-localizable tokens. The section title keeps the already shipped
+`DiagnosticsOverlayStrings.BuildTitle` key (`diagnostics.overlay.build.title`, English fallback "Build").
 
 Opt out or rebind via `GameAppOptions`:
 
@@ -13145,6 +13676,8 @@ game hands it, a frame-time meter, a client network-stats snapshot, and a crash-
 widget is content-agnostic - **the game assembles the rows each frame**, so the metric catalog stays
 game-owned. The engine ships populators for the common Performance / Network sections. (For most games the
 turn-key HUD above is enough. Reach for this manual path only for custom rows, a recorder, or a bespoke panel.)
+The built-in populators localize their own titles, labels, and disconnected status through
+`DiagnosticsOverlayStrings`. A game's custom section titles and rows are passed through unchanged.
 
 The four pieces (`FrameStats`, `TelemetryRecorder`, `ClientNetStats` are in `KhaozEngine.Diagnostics`;
 `DiagnosticsOverlay` + `DiagnosticsOverlayTheme` in `KhaozEngine.Gui`; `WorldClient.NetStats` in
@@ -13746,7 +14279,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.6.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.16.0" />
 ```
 
 ```csharp
@@ -13782,7 +14315,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.6.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.16.0" />
 ```
 
 ```csharp
@@ -14024,7 +14557,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.6.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.16.0" />
 ```
 
 ```csharp
@@ -15854,8 +16387,10 @@ the seven engine types through `EngineContentTypes.Register`, then its own `Game
 closes the registry at boot, so no type can appear halfway through a session. The SERVER's way in is eager,
 reading every chunk the manifest names through `ContentPackReader.ReadAllAsync` and assembling one
 `IContentSnapshot` over `ContentSnapshotBuilder`. The CLIENT's way in is the lazy one, `ReadRowAsync`, which
-touches at most the chunk whose slots cover the id. Either way verify comes before decode and a decode never
-throws: a bad byte comes back as a stable reason token on the result.
+touches at most the chunk whose slots cover the id. A long-lived client opens that path through
+`ContentPackReader.CreateLazy(..., maxResidentChunks)`. Its decoded chunks form a bounded LRU, while the
+content-addressed store remains the durable byte cache. Either way verify comes before decode and a decode
+never throws: a bad byte comes back as a stable reason token on the result.
 
 Five packages carry it. `KhaozEngine.Catalog` is the read side above, plus the runtime, the loot roller, the
 server boot, the client fetch loop and the string catalog, and it is in the `Foundation` umbrella.
@@ -15863,6 +16398,12 @@ server boot, the client fetch loop and the string catalog, and it is in the `Fou
 `KhaozEngine.Catalog.Netcode` (the content layer of the connect door) are in `Server`.
 `KhaozEngine.Catalog.Sqlite` and `KhaozEngine.Catalog.SqlServer` are the two durable authoring backends and
 are in no umbrella: add the one you want explicitly, the way you add a `WorldStore` backend.
+
+`ContentKeyRules.Defect(key)` checks the shared key-shape rule and returns the first defect or null. Its
+string overload reports UTF-16 positions and lengths, and its UTF-8 span overload checks runtime keys in byte
+units without materialising a string. `ContentKeyShape` in the authoring package preserves its existing
+`Defect(string)`, `Rule` and `MaxKeyLength` API by delegating to these lower catalog rules. `ContentKey`
+construction remains permissive so the validator can report every malformed key in a sweep.
 
 ```csharp
 var registry = new ContentTypeRegistry();
@@ -15886,6 +16427,21 @@ ContentValidationReport report = ContentValidator.Validate(
 if (!report.IsValid) return Refuse(report);         // boot exits non-zero, publish writes nothing
 ```
 
+The constructor above is the SNAPSHOT mode. It retains every decoded chunk until `BuildSnapshot` hands them
+to the snapshot and clears the reader. Use the explicit bounded mode for a long-lived client:
+
+```csharp
+ContentPackReader lazy = ContentPackReader.CreateLazy(
+    store, registry, manifest.Manifest!, manifestHash, maxResidentChunks: decodedChunkBudget);
+ContentRowRead row = await lazy.ReadRowAsync(EngineContentTypes.ItemType, itemId, ct);
+```
+
+Choose `decodedChunkBudget` from the game's active screen and inventory working set. `lazy.ChunksRead` reports
+the current resident count and never exceeds that bound. A lookup promotes its chunk. Adding past the bound
+evicts the least recently used decoded chunk, which a later lookup decodes again from `store`. Lazy mode
+refuses `ReadAllAsync` and `BuildSnapshot` before fetching, because a synchronous snapshot cannot include an
+evicted chunk. Use the constructor when the caller needs a snapshot.
+
 ### Registering a game type
 
 The engine's seven types occupy ids 1 to 255, `KhaozEngine.ItemInstances` owns 256 to 1023, and a game's own
@@ -15905,7 +16461,7 @@ registry.RegisterContentType(
     ]),
     defaultVisibility: ContentVisibility.Client,
     chunkSlots: 1024,
-    loadIndex: new RecipeByOutputIndex());          // built eagerly at load, beside the engine's four
+    loadIndex: new RecipeByOutputIndex());          // built eagerly at load, beside the engine's five
 ```
 
 ### Authoring: the store seam and the publisher
@@ -15934,6 +16490,10 @@ await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly, ct);
 in a connection string cannot silently create a second empty catalog and serve it. A mismatch is a
 `ContentAuthoringException` naming the object and the required migration.
 
+For catalog preflight and deploy compatibility checks, read `InMemoryContentAuthoringStore.SchemaVersion`
+as the schema version this engine build targets, currently 3 for both providers. The opened store's
+`GetSchemaVersionAsync()` reports the schema it holds. The in-memory store reports the same build target.
+
 Edits go into the ONE open draft, whole or not at all, and ids are allocated at publish rather than at edit:
 
 ```csharp
@@ -15960,6 +16520,32 @@ new number, both manifest hashes, and the chunk accounting, so an operator sees 
 rewrote one chunk and reused the rest. `ContentRollback` builds a reviewable draft that restores an earlier
 version's field values, `ContentDiff` is the field-level comparison, and `ContentBundle` is the lossless
 seeding document, imported into an EMPTY database only.
+
+A rollback refuses a row live at the target and retired since. `ContentRollbackBlocker.RuleKind` reports
+the matching rule's actual kind, or null if the provider baseline has no matching rule. That missing-rule
+case retains the blocker with `RuleSequence` and `IntroducedIn` at 0. The admin action renders the same
+absence as `kind: null` in `blockedByRules`, while a matching retire rule renders `kind: "Retired"`.
+
+Bundle import preserves each family's `IsRetired` flag through family reads and later exports, including
+the in-memory authoring store. Its version line still restarts at 1.
+
+When a tool must inspect the bundle format before reading or combining the document, use the reader's
+precheck rather than parsing the JSON separately:
+
+```csharp
+int declaredFormat = ContentBundleJson.ReadFormatVersion(json);
+if (declaredFormat != ContentBundle.CurrentFormatVersion)
+{
+    throw new InvalidOperationException($"Unsupported bundle format {declaredFormat}.");
+}
+
+ContentBundle bundle = ContentBundleJson.Read(json);
+```
+
+`ReadFormatVersion` and `Read` share the same JSONC parsing and format member rules. Both accept comments and
+trailing commas. Both refuse malformed JSON, a nonobject root, a missing version or a version that is not a
+32-bit integer with `ContentAuthoringException`. The precheck returns an unsupported integer for the caller to
+inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`.
 
 ### Replacing a catalog from its bundle
 
@@ -16116,11 +16702,21 @@ holder.TryGetCurrent(out ContentRuntime content);
 ```
 
 `ContentRuntime` is arrays indexed by id: `TryGetRow`, `TryGetId`, `Rows`, `Body`, `Key`, `IsRetired` and the
-typed `TryGetItem`. Four indexes are built EAGERLY beside it, because each is walked inside gameplay and a
-lazy build inside a tick is the latency spike the design exists to refuse: key to id per type, `ContentTagIndex`,
-`ContentFamilyIndex` and the prefix-summed `ContentLootIndex`, plus whatever a type registered through
-`IContentLoadIndex`. A version change builds a whole new runtime beside the old one and `ContentRuntimeHolder`
-swaps it in, so a reader mid-frame keeps reading the version it started on.
+typed `TryGetItem`. Five indexes are built EAGERLY beside it, because each is walked inside gameplay and a
+lazy build inside a tick is the latency spike the design exists to refuse: key to id per type,
+`ContentReferenceIndex`, `ContentTagIndex`, `ContentFamilyIndex` and the prefix-summed `ContentLootIndex`, plus
+whatever a type registered through `IContentLoadIndex`. A version change builds a whole new runtime beside the
+old one and `ContentRuntimeHolder` swaps it in, so a reader mid-frame keeps reading the version it started on.
+
+Use `content.Indexes.References.Ids(itemType, itemId, foodType)` when a satellite row such as `food` declares
+a `KeyReference` to `item`. The result is a read-only span of referencing row ids in ascending order, built
+once when the runtime loads. It includes retired targets and retired referencing rows, so a gameplay reader
+checks `IsRetired` before using a result. A missing target answers an empty span. A consumer replacing a row
+scan should probe the returned ids with `TryGetRow` and apply its ordinary retirement rule.
+
+`loot_entry.weight` and each live table's non-guaranteed weighted pool are bounded from zero through
+`int.MaxValue`. `KEC0043` refuses a publish or boot that would make `ContentLootIndex` clamp a weight or
+saturate a prefix. The runtime guards remain for a pack that bypassed validation.
 
 ### Recovering a pack root
 
@@ -16192,9 +16788,12 @@ the fix: a game ships ordered `ContentUpgradeDefinition`s in its server assembly
 Migration history is its own ledger, the `catalog_content_upgrade` table added by catalog schema version 2.
 An engine package version does not say which upgrades ran, and neither does a published version number. An
 `applied` row commits inside the publish transaction, so a version and its history land together or not at
-all. A SQLite file at schema version 1 migrates in place when opened under `AutoCreate`. SQL Server ships
-`CatalogSchemaV2.sql` as the operator script for migration `catalog-v2-content-upgrade-ledger`, and
-`ValidateOnly` refuses a version 1 database by naming it.
+all. Schema version 3 adds a row creation time to every catalog table and an update time to every table whose rows
+change, through migration `catalog-v3-row-timestamps` on both providers. A SQLite or SQL Server catalog at schema
+version 1 or 2 migrates in place, in one open, when opened under `AutoCreate`, and `ValidateOnly` refuses it by
+naming that migration, so a hosted `ValidateOnly` catalog runs its schema migration step before the server starts.
+An older engine refuses a version 3 catalog. Each provider README lists the columns and the exact-or-NULL
+backfill.
 
 ```csharp
 static readonly ContentUpgradeSet Upgrades = new(
@@ -16301,6 +16900,12 @@ actual base version, and a draft a publish holds frozen answers 409 naming the r
 reached by `GET` is refused 405 with `Allow: POST`. What the caller still owns is the console UI: the engine
 ships the actions and the payload shapes, not a screen.
 
+That frozen-draft remedy preserves a live publisher's marker. Wait for the publisher and read the draft
+again first. If the publisher process died before commit, confirm no publisher is live, then call
+`IContentAuthoringStore.ClearDraftFreezeAsync` from a host recovery path. It releases the marker and preserves
+every pending edit, so editing or an intentional discard can continue. Run `catalog-publish` only when the
+current draft is intentionally ready to publish.
+
 A game whose catalog is bundle-derived registers the reads alone, instead of `Register`:
 
 ```csharp
@@ -16339,11 +16944,15 @@ if (ContentRefusal.TryParseMismatch(refusedReason, out ContentVersionIdentity se
 The refusal token carries both sides and NO URL, because a URL in a refusal token is a redirect an
 unauthenticated party controls: the client already knows its own pack origin. The fetch reads the missing
 hashes off the manifest the refusal named, pulls them through `CachingPackStore` (local cache in front,
-`HttpPackStore` behind, every body bounded by `HttpPackStore.MaxObjectBytes` and verified against its content
+`HttpPackStore` behind, every body bounded by `ContentPackFormat.MaxObjectBytes` and verified against its content
 address before it is kept), retries with capped jittered exponential backoff, and reports through
 `IProgress<ContentFetchProgress>`. Cancellation is its one throwing exit, and it leaves no partial file: a
 chunk is written to a temporary name and moved. What the caller still owns is the pack HOSTING and the build
 ordinals: the engine reads a build number, it does not mint one.
+
+For `KECC`, matching the content address is necessary but not sufficient for cache admission. Verification
+also walks the row table for count, order, duplicate, range and body bounds failures before the bytes are kept.
+It reuses the decompressed body without allocating decoded row arrays. Row body decoding remains lazy.
 
 On a `WorldClient` both refusals arrive TYPED, so a float head knows which one it got without parsing anything. A
 token starting `ke:content-mismatch:` is `DisconnectReason.ContentVersionMismatch`, and one starting
@@ -16617,9 +17226,11 @@ half way.
 entry rolls its own `chance_bp`, then a table takes `roll_count` weighted picks over the rest, and a pick
 never rolls a chance. So a chance on a weighted entry, a weight on a guaranteed one, a weighted entry at no
 weight, picks over an empty pool, a pool nothing picks from, a guaranteed chance outside the basis-point range
-and a guaranteed entry at no chance are all numbers nobody rolls against. The engine's own loot checks,
-`KEC0023` and `KEC0024`, refuse none of them. An ABSENT chance on a weighted entry is nothing authored and is never refused, and a
-weighted entry whose chance is also out of range draws the weighted finding alone.
+and a guaranteed entry at no chance are all numbers nobody rolls against. The engine's draw-shape checks,
+`KEC0023` and `KEC0024`, refuse none of them. `KEC0043` separately keeps entry weights and each
+non-guaranteed pool inside the runtime's exact int range, without deciding any of these semantic combinations.
+An ABSENT chance on a weighted entry is nothing authored and is never refused, and a weighted entry whose
+chance is also out of range draws the weighted finding alone.
 
 **`KGT1316` is a MAXIMUM, computed.** A table's most lines is every live guaranteed entry's own most plus
 `roll_count` times the widest single weighted entry, recursing through `nested_table` down to
@@ -16664,9 +17275,10 @@ A game finding reaches the report the way a package finding does, folded into `K
 key with the game's own code in the message. Empty, which is the default, changes nothing. **The hook rides
 the sweep and cannot run without it**, which is why it is not a second slot: a game rule mounted on a type of
 its own would run once per mounting, and one mounted on `food` in place of `GameContentChecks` would drop the
-package's sweep. A rule that throws is the slot's throw, reported as one `KEC0040` with none of the slot's
-findings kept, so a rule that can fail on content adds a finding instead. A null list or a null member is
-refused when `GameContentChecks` is built.
+package's sweep. A rule that throws is the slot's throw. Findings the package or an earlier game rule already
+added are kept and folded into `KEC0040`, then the throw is reported as another `KEC0040` naming the slot's
+type. A rule that can fail on content adds a finding instead. A null list or a null member is refused when
+`GameContentChecks` is built.
 
 `KhaozEngine.Catalog.GameTypes/README.md` is the API reference, type by type.
 
@@ -16687,6 +17299,11 @@ built against content build N reads, shows and re-saves an item carrying a field
 Decoders never throw for a byte: they answer false plus a stable token from a closed set, because the bytes
 come from a peer or a store. Everything arrives by argument, the registry and the logger included, and there
 is no ambient static anywhere in the package.
+
+Use registry-bound payload validation to enforce the
+[v1 scalar value contracts](../KhaozEngine.ItemInstances/README.md#registration). Illegal values answer
+`field-malformed` and stored originals survive quarantine verbatim. `BoundTo` retains its full nonzero
+uint64 range. Game kinds supply their own codecs, and the shared Varint shape remains unsigned 64 bit.
 
 ```csharp
 using KhaozEngine.Catalog;
@@ -16722,7 +17339,7 @@ long instanceId = allocator.Next();
 var bank = new ItemContainer(
     slotCount: 28,
     stackable: Stackable,
-    payloadCanonical: ItemInstancePayload.IsCanonical,
+    payloadCanonical: bytes => ItemInstancePayload.IsCanonical(properties, bytes),
     quarantineWellFormed: QuarantineWrapper.Verify);
 
 bank.SetSlotAt(0, new ItemSlot(new ItemStack(BronzeSword, 1, instanceId), payload, Quarantined: false));
@@ -16749,7 +17366,8 @@ byte[] page = ItemContainerPageCodec.Encode(
     entries);
 
 // Reload. The decoder REFUSES rather than throws, and byte 0 dispatches, so a stored version 1
-// blob comes back through the same call with instance id 0 and page stamp 0 on every entry.
+// blob from 1 through 100 slots needs no pre-widening. It comes back as page 0 with the stored
+// slot indexes unchanged, instance id 0 and page stamp 0 on every entry.
 Span<PageEntry> decoded = stackalloc PageEntry[ItemContainerPageCodec.ContainerPageSlots];
 if (!ItemContainerPageCodec.TryDecode(
         page,
@@ -16770,15 +17388,15 @@ InstanceValidationReport report = InstanceValidator.Validate(
 foreach (PageEntry entry in decoded[..entryCount])
 {
     var stack = new ItemStack(entry.DefinitionId, entry.Count, entry.InstanceId);
+    ReadOnlySpan<byte> payload = page.AsSpan(entry.PayloadStart, entry.PayloadLength);
 
     if (report.TryGetQuarantine(entry.Slot, out InstanceValidationFinding finding))
     {
-        // Keep the bytes VERBATIM under the reason's durable ordinal. The item is unusable,
-        // untradeable and undroppable, and it can still be moved between slots.
-        byte[] wrapper = QuarantineWrapper.Wrap(
-            finding.Reason!,
-            finding.StampedVersion,
-            page.AsSpan(entry.PayloadStart, entry.PayloadLength));
+        // Keep a stored wrapper exactly. For a newly quarantined entry, keep its payload VERBATIM
+        // under the reason's durable ordinal. The item remains movable but unusable.
+        byte[] wrapper = entry.Quarantined && QuarantineWrapper.Verify(payload)
+            ? payload.ToArray()
+            : QuarantineWrapper.Wrap(finding.Reason!, finding.StampedVersion, payload);
         bank.SetSlotAt(entry.Slot, new ItemSlot(stack, wrapper, Quarantined: true));
         continue;
     }
@@ -16914,10 +17532,13 @@ if (rolled.AffixCount < rolled.RequestedAffixCount)
 ```
 
 `rolled.ContentVersion` is what makes "what did this item look like when it dropped" answerable against the
-right catalog rather than against today's. The draw COUNT is a function of the affix count and of nothing
-else: a pick whose pool is empty still consumes both of its draws, and a collapsed bound goes through
-`IRandomSource.Skip` rather than `NextInt(0, 1)`, which consumes nothing at all. Without both, a seeded
-session diverges at the first item whose pool runs dry.
+right catalog rather than against today's. The logical draw schedule depends on the generation path,
+requested affix count and name positions. Each affix pick reserves kind, weighted-entry and roll-position
+slots even when its pool is empty. The bounded helper calls `NextInt(0, bound)` when `bound > 1`, otherwise
+calls `IRandomSource.Skip` and returns 0, covering real singleton choices as well as discards.
+`NextInt(0, 1)` would consume nothing. The seeded `Skip` consumes exactly one underlying `NextULong`, but a
+live `NextInt` can consume more values during rejection sampling. Reproducing a seeded roll requires the
+same source, seed, inputs and call order, rather than assuming a fixed underlying stride for every bound.
 
 **Crafting it.** A currency is authored data resolved into a `CraftPlan` at boot. The executor runs the
 target guard set once, then every step in authored order with its own guard set immediately before it.
@@ -17042,13 +17663,32 @@ page 7 slot 43 for every container in the fleet, and growing that bag to 40 slot
 than a re-paging of stored bytes.
 
 The page is what a journal commit rewrites one of. `ItemContainerPage` holds its decoded slots, its content
-version stamp and its dirty flag, and exactly TWO things dirty it: an operation that CHANGED a slot and a
-remap that changed an id. Reading never does, seating a decoded page never does, and a write that leaves the
+version stamp and its dirty flag. An operation, a remap or a successful rescue dirties it when a slot's
+state changes. Reading never does, seating a decoded page never does, and a write that leaves the
 slot holding what it already held never does.
+
+A host with admitted and committed views can copy this state through the public load doors. The container
+exposes its original `PayloadCanonical` and `QuarantineWellFormed` delegates, and `SeatDirty` restores the
+source page's pending rewrite flag after its entries and stamp. `SeatDirty` can restore true or false and
+changes nothing else. In particular, an empty dirty page remains owed to the next commit without a fake
+write and take operation.
 
 `ContainerLoad.Load` in `KhaozEngine.ItemInstances.Journal` is the read half. It is a `Server` package
 because composing a `JournalCommit` needs `KhaozEngine.WorldStore`, so a client build keeps the record and
 none of this.
+
+A plain stack whose definition no longer resolves carries a verified quarantine wrapper over its empty
+original and keeps instance id zero. The page's quarantine flag and codec entries carry that verdict.
+Loading also wraps a non-empty payload without instance identity at entry level, preserving its bytes and
+the other slots. These quarantines keep the loaded page clean and leave the stored section untouched.
+When a plain stack's definition resolves again, the load clears its wrapper and flag, keeps its absent
+identity, and dirties the page for the next commit. A non-empty original with no instance id stays quarantined.
+
+The load path passes the 100 slot page geometry to the version 1 bridge. A page 0 section whose legacy blob
+declares 1 through 100 slots loads directly as a full 100 slot page, with its slot indexes unchanged and no
+consumer pre-widening. A declared width above 100 is refused and the section is quarantined as a unit. This
+one-sided bridge does not change `ItemContainerCodec.TryDecode`, which still requires exact stored geometry
+when called directly.
 
 ```csharp
 using KhaozEngine.ItemInstances;
@@ -17058,17 +17698,50 @@ var bankPages = new PagedItemContainer(
     pageCount: 10,
     capacity: 1000,
     stackable: Stackable,
+    stackCap: definitionId => catalog.Item(definitionId).MaxStack,
     payloadCanonical: ItemInstancePayload.IsCanonical,
     quarantineWellFormed: QuarantineWrapper.Verify);
 
 int entered = bankPages.Add(potionId, 40);   // the gate is asked BEFORE the address space is searched
 bankPages.Capacity = 800;                    // LEGAL below occupancy: nothing is trimmed, new slots are refused
 
+static PagedItemContainer CopyState(PagedItemContainer source)
+{
+    var copy = new PagedItemContainer(
+        source.PageCount,
+        source.Capacity,
+        source.Stackable,
+        source.PayloadCanonical,
+        source.QuarantineWellFormed,
+        source.StackCap);
+    var entries = new PageSlotInput[ItemContainerPageCodec.ContainerPageSlots];
+    for (int pageIndex = 0; pageIndex < source.PageCount; pageIndex++)
+    {
+        ItemContainerPage sourcePage = source.Pages[pageIndex];
+        ItemContainerPage copyPage = copy.Pages[pageIndex];
+        int entryCount = sourcePage.CopyEntriesTo(entries);
+        copyPage.SeatStamp(sourcePage.ContentVersion);
+        for (int entryIndex = 0; entryIndex < entryCount; entryIndex++)
+        {
+            PageSlotInput entry = entries[entryIndex];
+            copyPage.Seat(
+                entry.Slot,
+                new ItemSlot(
+                    new ItemStack(entry.DefinitionId, entry.Count, entry.InstanceId),
+                    entry.Payload,
+                    entry.Quarantined));
+        }
+        copyPage.SeatDirty(sourcePage.IsDirty);
+    }
+    return copy;
+}
+
 // Built ONCE per container. It is where the remap rule set pays its quadratic idempotence check, once
 // for the whole container rather than once per page, and a set the publish validator should have
 // refused is rejected here before a single page is decoded.
 var context = new ContainerLoadContext(
     streamKey: persistenceKey,
+    telemetryKey: telemetrySafeKey,             // log-only identifier, redacted when persistenceKey has an account id
     container: "bank",
     properties: properties,
     types: types,
@@ -17080,7 +17753,7 @@ var context = new ContainerLoadContext(
 
 // ONE pass over the whole projection read: decode, check each page against the SECTION it arrived in,
 // apply every remap rule newer than the page stamp, unwrap and re-offer every quarantined entry at the
-// WRAPPER's own stamp, then validate the live entries. No store read and no ambient static inside it.
+// WRAPPER's own stamp, then validate every page entry. No store read and no ambient static inside it.
 ContainerLoadResult loaded = ContainerLoad.Load(read.Sections, content, context);
 
 foreach (ContainerLoadFinding finding in loaded.Findings)
@@ -17092,6 +17765,10 @@ foreach (ContainerLoadFinding finding in loaded.Findings)
 
 IReadOnlyList<ItemContainerPage> owed = loaded.Dirty;   // rides the NEXT commit and never causes one
 ```
+
+`streamKey` is always the exact stored key and remains the section filter. The optional `telemetryKey` is used
+only in the warning line and defaults to `streamKey`. Give it a redacted value when the stored key contains an
+account id. The counter still reports one increment per quarantined record with only content type id and reason.
 
 Rules run BEFORE the validator, which is what gives a drift finding its meaning: an `unknown-definition` or
 `unknown-content-reference` finding means no rule covered it. `InstanceRemapPass.Apply` is the pass itself, in
@@ -17145,6 +17822,14 @@ The window needs a tick, and your journal layer may not own one. `Apply(operatio
 tick, so a journal that never sees the server tick opens every batch at the default and uses that form:
 `TickBoundary` then never fires, and the batch is bounded by the other four closers and by your own `Close`.
 
+`stackCap` is a content-free seam. A positive value limits the units a new stack or merge accepts, while zero
+or no delegate keeps the `int.MaxValue` ceiling. A negative value is a caller error. The delegate is read
+once per operation and never cached. `Seat` and the load path may preserve a stored over-cap stack, which
+refuses growth until removal brings it below the current cap. Anonymous `Add` grants may enter partially and
+return the remainder. An identified grant enters whole or changes nothing, because the container cannot mint
+an id for a split remainder. The exact five-argument constructor remains for compiled consumers, and the
+stack-cap overload adds a required sixth argument after the two payload predicates.
+
 **The batch owns what it is opened over, from `Open` until `MarkCommitted`.** It holds each container by
 reference and writes through it on every `Apply`, through `IPagedContainerWorkingCopy` and nothing wider. The
 overload above hands it the `PagedItemContainer`s themselves. If you share containers copy on write, open over
@@ -17196,11 +17881,18 @@ An event sourced host starts with its prior container pages and applies stored e
 `ContainerOperationEventCodec.TryRead` checks the event name, schema version and complete body, and returns
 the recorded operation. `ContainerOperationApplier.TryReplay` checks the known slot, instance, count,
 payload and currency preconditions before writing through the host's `IPagedContainerWorkingCopy`. It uses
-the historical admission of Merge and occupied Grant as proof of their former stackability, even if the
-current catalog changed. It also allows an admitted Grant after a later capacity reduction. The live builder
-uses `TryApply` and checks the current stackability and capacity. A false
+the historical admission of Merge and Grant as proof of their former stackability and stack cap,
+even if the current catalog changed. It also allows an admitted Grant after a later capacity reduction. The
+live builder uses `TryApply` and checks the current stackability, stack cap and capacity. A false
 answer names a stored record the host must refuse or quarantine. A custom working-copy implementation is
 still responsible for accepting valid writes.
+
+A new live journal Merge is atomic. Its version 1 event has no moved-count field, so a capped merge that would
+leave any source remainder is refused before either slot changes. Every newly admitted Merge consumes the
+source whole, and replay from the same prior pages produces the same encoded page bytes. `TryReplay` also
+preserves the released engine-ceiling partial result: the destination gains the one unit that fit and takes
+the lower id, while the source keeps its remainder and its stored id. That branch reconstructs old version 1
+events only and is never live admission.
 
 ```csharp
 if (!ContainerOperationEventCodec.TryRead(stored.EventType, stored.EventSchemaVersion,
@@ -17321,11 +18013,10 @@ types and the item generator are spec 20 phase 4, and the crafting framework and
 are phase 5, both in `docs/design/ITEM-INSTANCES-DESIGN-2026-09-15.md`. `ContainerOperationKind.Craft`
 already carries the operation and its page write, and the event BODY is the crafting framework's to encode.
 
-Three named gaps sit on surfaces that DO exist. The page delta ships an encoder and no reader, while the
-fragmenter ships both halves (https://github.com/APKiwiOrg/KhaozEngine/issues/933). A lowered `max_stack` is
-not enforced on the merge path, which saturates at `int.MaxValue` and is reported after the fact by validator
-check 12 (https://github.com/APKiwiOrg/KhaozEngine/issues/924). And a container operation's events are written
-with nothing able to read one back (https://github.com/APKiwiOrg/KhaozEngine/issues/941).
+Two named gaps sit on surfaces that DO exist. The page delta ships an encoder and no reader, while the
+fragmenter ships both halves (https://github.com/APKiwiOrg/KhaozEngine/issues/933). A container operation's
+events are written with nothing able to read one back
+(https://github.com/APKiwiOrg/KhaozEngine/issues/941).
 
 ---
 
@@ -17355,6 +18046,7 @@ var account = new AccountId("player:1234");
 var entitlement = new VerifiedEntitlement(account, ProductId: "shards_100", SourceTxnId: "txn_abc123", Quantity: 1);
 CreditResult redeemed = await wallet.RedeemAsync(entitlement);
 // redeemed.Replayed is true if this SourceTxnId was already credited - safe to call again on a retry.
+// redeemed.Conflict is true if that SourceTxnId was already bound to another amount or ledger reason.
 
 // A daily grant, routed through the same wallet and store (InMemoryWalletStore also implements IGrantScheduleStore).
 var daily = new PeriodicGrant(wallet, store, TimeSpan.FromHours(24),
@@ -17375,6 +18067,11 @@ long balance = await wallet.BalanceAsync(account, new CurrencyId("shard"));
 
 `rewardId` may not contain `':'`, the separator the wallet idempotency key joins its segments with. An account id
 still may (the fleet writes them as `"acct:1"`).
+
+An idempotency key binds the signed amount and `LedgerReason` within its account and currency scope. An exact retry
+returns `Replayed=true` and the original operation's historical post-balance. Reusing the key with another amount
+or reason, including changing a credit to a debit, returns `Conflict=true` with that historical post-balance and
+does not change the balance or ledger. `SourceRef` is provenance and does not take part in the comparison.
 
 `Wallet.SpendAsync` debits (fails with `Insufficient`, no throw, if the balance is too low); `GrantAsync` is
 a raw server-authorized credit for anything outside the periodic/purchase paths. See
@@ -17485,10 +18182,12 @@ The ASP.NET Core names come from a web project's implicit usings. What a game ch
   `SigningSecret.CreateEphemeral()` gives a key that dies with the process. Never a source constant.
 - **The store.** `InMemoryAccountStore` for tests and a local host, `SqliteAccountStore` for a single node, and
   `SqlServerAccountStore` for production, where `AccountSchemaMode.ValidateOnly` lets the runtime identity run without
-  DDL rights. The engine stores keep one flat `accounts` table and mint `{ProviderId}:{ProviderSubject}`, for example
-  `discord:80351110224678912`. A game with its own schema implements `IAccountStore` over it and mints what it likes,
-  provided `AccountStoreRules.IsAdmissibleSubject` accepts the result. Each store's README has its table and the
-  contract.
+  DDL rights once one `AutoCreate` run under a migration identity has brought the table to the engine layout,
+  including the `created_at_utc` and `updated_at_utc` columns behind `AccountRecord.CreatedAtUtc` and
+  `UpdatedAtUtc`. The engine stores keep one flat `accounts` table and mint `{ProviderId}:{ProviderSubject}`, for
+  example `discord:80351110224678912`. A game with its own schema implements `IAccountStore` over it and mints what
+  it likes, provided `AccountStoreRules.IsAdmissibleSubject` accepts the result. Each store's README has its table
+  and the contract.
 - **The whitelist.** `whitelistOnCreate` on the store is what a new account row says, so every reader of the row agrees.
   `AuthExchangeOptions.RequireWhitelist` (true by default) is whether the exchange refuses an unwhitelisted account.
   `false` is the policy of an open game, or of a local host bound to a throwaway in-memory store.
@@ -18037,7 +18736,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.6.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.16.0" />
 </ItemGroup>
 ```
 
@@ -19057,8 +19756,10 @@ so external sink use never drains the World's internal pool.
 **`AccessSet` - the read/write declaration model.** `Access.Read<T>()` / `Access.Write<T>()` build an immutable
 declaration of which components a unit of work reads vs writes; `a.ConflictsWith(b)` is true iff one writes a type the
 other touches (write-write or read-write; two readers never conflict). `ParallelForEach`'s own safety is the runtime
-guard above, but `AccessSet` is the explicit vocabulary a future system scheduler reuses to decide which systems may
-run concurrently.
+guard above. `AccessSet` is an available declaration vocabulary, but `ISystem` and `RunGroup` remain sequential
+and no scheduler consumes it. The `KhaozEngine.Benchmarks --gate` measurement did not justify layer 3 at
+hot-cell sizes on the measured 12-core machine, so that scheduler is not planned without a contrary real
+workload. The decision and benchmark rows are in [#125](https://github.com/APKiwiOrg/KhaozEngine/issues/125).
 
 ```csharp
 AccessSet move = Access.Write<Position>().Read<Velocity>();
@@ -19414,6 +20115,16 @@ r.Register<PrivateStats>(MoveProtocol.FirstConsumerTypeId + 2,
     channels: ReplicationChannels.Default | ReplicationChannels.OwnerOnly);
 ```
 
+Since 20.14.1, a startup contract can check an id, component type and exact channel set without running
+its codec. Extra flags do not match. The existing `IsRegistered(id)` still checks numeric presence only.
+This is a metadata check, not verification of custom serialization code.
+
+```csharp
+if (!r.IsRegistered<Aggro>(MoveProtocol.FirstConsumerTypeId + 1,
+    ReplicationChannels.Persist | ReplicationChannels.Migrate))
+    throw new InvalidOperationException("Aggro registration must preserve server-only state across handoff and restart.");
+```
+
 `WorldServer` / `ShardedWorldServer` / `MmoServer` thread the serving channel and the receiving client's own player
 net id automatically, so `OwnerOnly` "just works" (an observer's snapshot and delta both lack another player's
 owner-only component, including across a cell handoff). The flags gate the **server (write) side** only - build the
@@ -19611,13 +20322,25 @@ public sealed class AccountsStore : IDisposable
 }
 ```
 
-It owns the connection, the bootstrap DDL, the gate and the dispose, and nothing else: the schema, the SQL and the
+`SqliteStoreConnection` owns the connection, the bootstrap DDL, the gate and the dispose. The schema, the SQL and the
 record shape stay in your store. `BeginTransaction()` is there for a multi-statement operation, taken under a lease
 held for the whole transaction. Both engine SQLite backends are built on it, and it is opt-in and in no umbrella,
 so reference it directly.
 
-Both bootstrap one `world_store(key, data, updated_at)` table on construction, upsert via dialect SQL (SQLite
-`ON CONFLICT`, SQL Server `MERGE WITH (HOLDLOCK)`), raw parameterized async ADO.NET, no EF/ORM. The same
+For additive schema migrations, pass empty bootstrap SQL and use `SqliteSchemaWidening.Ensure` on the held
+connection before publishing your store. Declare required tables and columns in an `IReadOnlyDictionary<string,
+string[]>`, provide idempotent DDL through an `Action<SqliteTransaction>`, and optionally list required indexes as
+the fourth argument. A complete schema opens through reads alone, even while another connection holds a write
+transaction. Missing requirements take an immediate transaction and are rechecked before the callback runs, so
+concurrent openers cannot both add a column. The helper owns that transaction and leaves the caller's connection
+open. It validates ASCII identifiers, matches names case-insensitively in the main database, and checks presence
+rather than column types or index definitions. The callback must fulfill the requirements and leave the transaction
+open. Its changes roll back on failure. The [package README](../KhaozEngine.Sqlite/README.md#schema-widening) shows
+a nullable column migration. `SqliteWorldStore` and `SqliteWalletStore` use this helper, including index-only repairs
+for the wallet's ledger indexes.
+
+Both bootstrap one `world_store(key, data, updated_at, created_at)` table on construction, upsert via dialect SQL
+(SQLite `ON CONFLICT`, SQL Server `MERGE WITH (HOLDLOCK)`), raw parameterized async ADO.NET, no EF/ORM. The same
 contract, so dev and prod differ only in which line you construct:
 
 ```csharp
@@ -19648,6 +20371,11 @@ The core package provides the immutable values, `IMutationJournalStore`, `IMutat
 listing seams. Their package READMEs cover schema modes
 and permissions. The complete public type and limit reference is in
 [`KhaozEngine.WorldStore/README.md`](../KhaozEngine.WorldStore/README.md).
+
+Journal request values copy byte arrays at construction. Their existing `ReadOnlyMemory<byte>` properties also
+return defensive copies. Use the matching `ReadOnlySpan<byte>` property in a hot synchronous read, such as
+`frozen.ResultDataSpan` or `frozen.Identity.NormalizedIntentSpan`. It views the object's owned bytes without an
+allocation and cannot be retained on the heap. The package README lists every available span accessor.
 
 The host flow is fixed:
 
@@ -19812,9 +20540,9 @@ transaction, and enforce the longer of the requested age or `MinimumRetryHorizon
 to schema version two by assigning every existing receipt the migration time, which conservatively restarts its
 retention horizon. `JournalOperationPurgeResult.EvaluatedAtUtc` and `EffectiveCutoffUtc` support retention metrics.
 The older cutoff API remains available for compatibility with controlled maintenance code. Durable providers clip
-its cutoff to database UTC minus `MinimumRetryHorizon`. Their version-two schemas also reject operation deletion
-unless current maintenance opens a transaction-local guard. This forces a still-running version-one maintenance
-host to roll back its child and parent deletes after migration.
+its cutoff to database UTC minus `MinimumRetryHorizon`. Their schemas from version two on also reject operation
+deletion unless current maintenance opens a transaction-local guard. This forces a still-running version-one
+maintenance host to roll back its child and parent deletes after migration.
 
 Every executor needs explicit positive operation-count and owned-byte capacities. Accepted work remains charged and
 its streams remain reserved until acknowledgement. `StopAsync` rejects new work, gives admitted work a bounded drain
@@ -19842,9 +20570,11 @@ all-player polling endpoint and no inventory, bank, skill, or quest snapshot on 
 An operator tool that sweeps a whole store (a copy, a release rehearsal, an audit, or a migration check) lists
 streams through `IMutationJournalStreamListing.ListStreamsAsync` instead of querying the provider's tables. Each call
 reads one bounded page in ordinal key order, optionally by key prefix, and returns a continuation key until the
-listing is complete. Load each listed stream through the ordinary snapshot, event, and projection reads. Open the
-SQLite or SQL Server store with `SchemaMode = ReadOnly` when the source must not be written to. That mode issues no
-DDL, reports a missing or older schema as `SchemaMismatch` instead of repairing it, and makes every write path throw
+listing is complete. Each `JournalStreamEntry` carries the stream's `CreatedAtUtc` and `UpdatedAtUtc`, null where
+nothing proves the time, such as the creation of a stream that predates journal schema version 3 and was compacted.
+Load each listed stream through the ordinary snapshot, event, and projection reads. Open the SQLite or SQL Server
+store with `SchemaMode = ReadOnly` when the source must not be written to. That mode issues no DDL, reports a
+missing or older schema as `SchemaMismatch` instead of repairing it, and makes every write path throw
 `NotSupportedException`. Do not hand a read only store to `MutationJournalExecutor`.
 
 A release that wipes all game data empties the journal with `SqliteJournalReset.ResetAsync` or
@@ -20361,7 +21091,7 @@ client.AdvancePresentation(dt);
 EntityRenderState[] snapshot = client.Snapshot();
 ```
 
-`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below), and the catalog content door's two refusals, `ContentVersionMismatch` and `ContentClientTooOld` (see "The connect door, and the client's catch-up", which parses `DisconnectReasonDetail` with `ContentRefusal`). The last two were appended after every shipped value, so no numeric value moved. The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+`ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the `ke:banned` connect refusal or the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below), and the catalog content door's two refusals, `ContentVersionMismatch` and `ContentClientTooOld` (see "The connect door, and the client's catch-up", which parses `DisconnectReasonDetail` with `ContentRefusal`). The last two were appended after every shipped value, so no numeric value moved. The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
 
 **One account, one live session (17.38.0).** The join gate keys a live session by the SUBJECT the authenticator verified, so two clients presenting one account's connect token cannot become two live sessions. Above the session layer that shape is unrepresentable: `WorldPersistence` keys one record per account, so the two shared it and the later join left the earlier session unrestored, then let its default-spawn state overwrite the record once the winner left (#662). Set the policy on either head:
 
@@ -20549,11 +21279,10 @@ ban list for a game on that registry (see "Identity / sign-in"). Such a game doe
 whose keys would be a second list. Pass the store as the trailing `banStore:` ctor arg on either server. Bans key on
 the verified account id, and guests are not bannable. A rejected account receives a typed `ServerNoticeKind.Banned`
 notice (empty message) just before the drop, which the client maps to its own localized "you are banned" string, so
-the ban text never ships from the server as a hardcoded literal. The drop itself attributes as `DisconnectReason.Banned`,
-mirroring the way a `Shutdown` notice promotes the following drop to `ServerShutdown`, so a screen that only reads
-`client.DisconnectReason` can still tell a ban from a network outage. It stays retried on the reconnect backoff,
-deliberately: a ban may carry an expiry, and going terminal would sit out a five-minute ban forever. Read the
-reason and set `ReconnectBackoff.MaxAttempts` (or turn `AutoReconnect` off) if your game would rather stop asking.
+the ban text never ships from the server as a hardcoded literal. The drop itself attributes as terminal
+`DisconnectReason.Banned`, mirroring the way a `Shutdown` notice promotes the following drop to `ServerShutdown`,
+so a screen that only reads `client.DisconnectReason` can still tell a ban from a network outage. A ban is never put
+on the reconnect backoff. The player can reconnect manually after an expiry.
 
 One store serves every ban path. `IBanStore`, `BanRecord` and `InMemoryBanStore` live in the `KhaozEngine.Netcode`
 assembly under their `KhaozEngine.NetWorld` names, forwarded from `KhaozEngine.NetWorld`, so existing code compiles
@@ -20573,10 +21302,11 @@ var admin = new ServerAdmin(server, bans);                       // BanAsync rec
 `BanGateAuthenticator(inner, Func<string,bool>, log?)` form stays for a ban list that is not a store. A tile server
 takes the store as `TileWorldServerConfig.BanStore` and reads it at the door, at the join, and once per tick over
 every live session, closing a banned session with the `ke:banned` notice token (`TileServerReason.Banned`), so a ban
-written straight to the store ends a tile session on the next tick with no kick of the game's own. The two paths
-read differently on a `WorldClient`:
-a door refusal is `DisconnectReason.RejectedToken` with `ke:banned` in `DisconnectReasonDetail`, terminal unless
-`RetryOnReject` is set, while the join kick is `DisconnectReason.Banned` and is retried.
+written straight to the store ends a tile session on the next tick with no kick of the game's own. A float server
+checks direct store writes at the next join. Its `ServerAdmin.BanAsync` path records the ban and kicks a live session
+through a typed `Banned` notice. On `WorldClient`, both the connect door's `ke:banned` refusal and the typed notice
+become terminal `DisconnectReason.Banned`, with empty `DisconnectReasonDetail`, even when `RetryOnReject` and
+`AutoReconnect` are enabled.
 
 **Account enumeration.** Stores opt into `IEnumerableWorldStore` (`InMemoryWorldStore`, `SqliteWorldStore`,
 `SqlServerWorldStore` all do): `EnumerateAsync(keyPrefix?)` streams `WorldStoreEntry { Key, UpdatedAt, Size? }`.
@@ -20843,7 +21573,9 @@ consumed while grounded.
 over the direction of travel rather than a speed scale. `1` is still full control (an instant 180 mid-flight, still
 at the carried speed), and `0` is now a true ballistic arc rather than "frozen horizontally in mid-air". If your
 game runs a partial `AirControl` and opts in, re-check the feel: the value now bends the arc over several ticks
-instead of scaling it.
+instead of scaling it. That blend is applied once per simulation tick with no `dt` factor, so changing the tick
+rate changes airborne steering over the same airtime. Keep prediction and authority at the same fixed rate.
+`AirBrakeAccel` is separate and remains measured per second.
 
 **`AirBrakeAccel`** (m/s^2, default `0`) bleeds a conserved speed down toward a STRICTLY SLOWER commanded speed and
 stops there, never below it. `0` is pure conservation. It is for a root or a snare landing mid-flight, and it is

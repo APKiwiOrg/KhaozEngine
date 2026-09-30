@@ -10,13 +10,21 @@ namespace KhaozEngine.Commerce.SqlServer;
 
 /// <summary>SQL Server / Azure SQL-backed wallet + grant-schedule store. A fresh pooled <see cref="SqlConnection"/>
 /// per call, no in-process semaphore: the database serializes concurrent operations via a
-/// <see cref="IsolationLevel.Serializable"/> transaction. Idempotency is enforced by a composite unique index on
+/// <see cref="IsolationLevel.Serializable"/> transaction. The receipt lookup takes an update lock before the
+/// balance mutation so overlapping missing-key ranges cannot deadlock against the shared balance row.
+/// Idempotency is enforced by a composite unique index on
 /// <c>(account_id, currency_id, idempotency_key)</c>: the same key used for a different account, or a different
-/// currency on the same account, is a distinct operation, not a replay.
+/// currency on the same account, is a distinct operation, not a replay. Within that scope, the stored ledger row's
+/// signed delta and reason distinguish an exact replay from an intent conflict.
 /// <para>Keys are CASE SENSITIVE, matching the InMemory and SQLite backends: tables this store creates pin their
 /// key columns to <c>Latin1_General_100_BIN2</c> instead of inheriting a database default that is usually
 /// case-insensitive. A database whose tables predate that pin keeps its own collation, so see the package README
-/// for the migration.</para></summary>
+/// for the migration.</para>
+/// <para>Every time is <c>DATETIME2</c> from the database clock. A <c>wallet_balance</c> row carries
+/// <c>created_at</c> beside the <c>updated_at</c> every credit and debit moves. A <c>grant_schedule</c> row carries
+/// <c>created_at</c> and an <c>updated_at</c> that moves only when a write changes the stored instant. The creation
+/// time is written by an insert alone. Tables an older build created gain these as nullable columns in place, and
+/// their rows keep NULL where no write since knows the time.</para></summary>
 public sealed class SqlServerWalletStore : IWalletStore, IGrantScheduleStore
 {
     private readonly string connectionString;
@@ -65,12 +73,18 @@ IF OBJECT_ID(N'dbo.wallet_balance', N'U') IS NULL
 CREATE TABLE dbo.wallet_balance (
   account_id NVARCHAR(200) {KeyCollation} NOT NULL, currency_id NVARCHAR(100) {KeyCollation} NOT NULL,
   amount BIGINT NOT NULL,
-  updated_at DATETIME2 NOT NULL, PRIMARY KEY(account_id, currency_id));
+  updated_at DATETIME2 NOT NULL, created_at DATETIME2 NULL, PRIMARY KEY(account_id, currency_id));
 IF OBJECT_ID(N'dbo.grant_schedule', N'U') IS NULL
 CREATE TABLE dbo.grant_schedule (
   account_id NVARCHAR(200) {KeyCollation} NOT NULL, reward_id NVARCHAR(200) {KeyCollation} NOT NULL,
-  next_available_utc DATETIME2 NOT NULL,
-  PRIMARY KEY(account_id, reward_id));";
+  next_available_utc DATETIME2 NOT NULL, created_at DATETIME2 NULL, updated_at DATETIME2 NULL,
+  PRIMARY KEY(account_id, reward_id));
+IF COL_LENGTH(N'dbo.wallet_balance', N'created_at') IS NULL
+ALTER TABLE dbo.wallet_balance ADD created_at DATETIME2 NULL;
+IF COL_LENGTH(N'dbo.grant_schedule', N'created_at') IS NULL
+ALTER TABLE dbo.grant_schedule ADD created_at DATETIME2 NULL;
+IF COL_LENGTH(N'dbo.grant_schedule', N'updated_at') IS NULL
+ALTER TABLE dbo.grant_schedule ADD updated_at DATETIME2 NULL;";
         cmd.ExecuteNonQuery();
     }
 
@@ -87,14 +101,16 @@ CREATE TABLE dbo.grant_schedule (
     private async Task<CreditResult> MutateForCreditAsync(AccountId a, CurrencyId c, long amount, string key,
         LedgerReason reason, string? src, CancellationToken ct)
     {
-        (bool applied, bool replayed, bool _, long balance) = await Mutate(a, c, amount, key, reason, src, isDebit: false, ct);
+        (bool applied, bool replayed, bool _, long balance) =
+            await Mutate(a, c, amount, key, reason, src, isDebit: false, ct);
         return new CreditResult(applied, replayed, balance);
     }
 
     private async Task<DebitResult> MutateForDebitAsync(AccountId a, CurrencyId c, long amount, string key,
         LedgerReason reason, string? src, CancellationToken ct)
     {
-        (bool applied, bool replayed, bool insufficient, long balance) = await Mutate(a, c, amount, key, reason, src, isDebit: true, ct);
+        (bool applied, bool replayed, bool insufficient, long balance) =
+            await Mutate(a, c, amount, key, reason, src, isDebit: true, ct);
         return new DebitResult(applied, replayed, insufficient, balance);
     }
 
@@ -109,13 +125,19 @@ CREATE TABLE dbo.grant_schedule (
         await using SqlTransaction tx = (SqlTransaction)await conn.BeginTransactionAsync(IsolationLevel.Serializable, ct).ConfigureAwait(false);
         try
         {
-            long? prior = await ScalarLongAsync(conn, tx,
-                "SELECT post_balance FROM dbo.wallet_ledger WHERE account_id=@a AND currency_id=@c AND idempotency_key=@k",
+            long signedDelta = isDebit ? -amount : amount;
+            // Claim the receipt key range before touching the shared balance row. A plain serializable read takes
+            // RangeS-S for a missing key, which lets several transactions reach the balance UPDATE. The winner then
+            // holds the balance X lock while waiting to convert its receipt range for INSERT, as the waiters retain
+            // RangeS-S and wait on that balance lock. UPDLOCK makes the initial range lock exclusive to one updater,
+            // preserving receipt-first replay checks while preventing that circular wait.
+            Receipt? prior = await ReadReceiptAsync(conn, tx,
+                "SELECT delta, reason, post_balance FROM dbo.wallet_ledger WITH (UPDLOCK) WHERE account_id=@a AND currency_id=@c AND idempotency_key=@k",
                 ct, ("@a", a.Value), ("@c", c.Value), ("@k", key)).ConfigureAwait(false);
-            if (prior is long pb)
+            if (prior is Receipt receipt)
             {
                 await tx.CommitAsync(ct).ConfigureAwait(false);
-                return (false, true, false, pb);
+                return ResolveReceipt(receipt, signedDelta, reason);
             }
 
             if (isDebit)
@@ -145,15 +167,16 @@ CREATE TABLE dbo.grant_schedule (
                 }
                 catch (SqlException ex) when (ex.Number is 2601 or 2627)
                 {
-                    long replayedBal = await ScalarLongAsync(conn, tx,
-                        "SELECT post_balance FROM dbo.wallet_ledger WHERE account_id=@a AND currency_id=@c AND idempotency_key=@k",
-                        ct, ("@a", a.Value), ("@c", c.Value), ("@k", key)).ConfigureAwait(false) ?? 0;
-                    // Duplicate-key replay: the balance UPDATE above is relative (amount - @amt), so this
+                    Receipt winningReceipt = await ReadReceiptAsync(conn, tx,
+                        "SELECT delta, reason, post_balance FROM dbo.wallet_ledger WHERE account_id=@a AND currency_id=@c AND idempotency_key=@k",
+                        ct, ("@a", a.Value), ("@c", c.Value), ("@k", key)).ConfigureAwait(false)
+                        ?? throw new InvalidOperationException("The conflicting wallet receipt was not found.");
+                    // Duplicate-key resolution: the balance UPDATE above is relative (amount - @amt), so this
                     // transaction already applied its own debit before losing the ledger insert race. The
                     // winning transaction holds the single authoritative mutation and ledger row, so this
                     // transaction's debit must be rolled back, not committed, or the balance double-debits.
                     await tx.RollbackAsync(ct).ConfigureAwait(false);
-                    return (false, true, false, replayedBal);
+                    return ResolveReceipt(winningReceipt, signedDelta, reason);
                 }
 
                 await tx.CommitAsync(ct).ConfigureAwait(false);
@@ -162,7 +185,7 @@ CREATE TABLE dbo.grant_schedule (
             else
             {
                 // Correctness of concurrent credits rests on this atomic `amount = amount + @amt` update plus the
-                // ledger's composite unique index (duplicate-key insert below -> 2601/2627 -> treated as a replay).
+                // ledger's composite unique index. A duplicate-key insert below is resolved from the winning receipt.
                 // This path must be exercised by the gated SQL Server tests against a live server before real-money use.
                 await using SqlCommand upd = conn.CreateCommand();
                 upd.Transaction = tx;
@@ -182,8 +205,10 @@ CREATE TABLE dbo.grant_schedule (
                     await updReader.DisposeAsync().ConfigureAwait(false);
                     await using SqlCommand ins = conn.CreateCommand();
                     ins.Transaction = tx;
-                    ins.CommandText = @"INSERT INTO dbo.wallet_balance(account_id, currency_id, amount, updated_at)
-                                         VALUES (@a, @c, @amt, SYSUTCDATETIME());";
+                    // One read of the clock, so the new row's creation and update times are the same instant.
+                    ins.CommandText = @"DECLARE @now DATETIME2 = SYSUTCDATETIME();
+                                         INSERT INTO dbo.wallet_balance(account_id, currency_id, amount, updated_at, created_at)
+                                         VALUES (@a, @c, @amt, @now, @now);";
                     Bind(ins, ("@a", a.Value), ("@c", c.Value), ("@amt", amount));
                     await ins.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                     newBal = amount;
@@ -195,15 +220,16 @@ CREATE TABLE dbo.grant_schedule (
                 }
                 catch (SqlException ex) when (ex.Number is 2601 or 2627)
                 {
-                    long replayedBal = await ScalarLongAsync(conn, tx,
-                        "SELECT post_balance FROM dbo.wallet_ledger WHERE account_id=@a AND currency_id=@c AND idempotency_key=@k",
-                        ct, ("@a", a.Value), ("@c", c.Value), ("@k", key)).ConfigureAwait(false) ?? 0;
-                    // Duplicate-key replay: the balance UPDATE above is relative (amount + @amt), so this
+                    Receipt winningReceipt = await ReadReceiptAsync(conn, tx,
+                        "SELECT delta, reason, post_balance FROM dbo.wallet_ledger WHERE account_id=@a AND currency_id=@c AND idempotency_key=@k",
+                        ct, ("@a", a.Value), ("@c", c.Value), ("@k", key)).ConfigureAwait(false)
+                        ?? throw new InvalidOperationException("The conflicting wallet receipt was not found.");
+                    // Duplicate-key resolution: the balance UPDATE above is relative (amount + @amt), so this
                     // transaction already applied its own credit before losing the ledger insert race. The
                     // winning transaction holds the single authoritative mutation and ledger row, so this
                     // transaction's credit must be rolled back, not committed, or the balance double-credits.
                     await tx.RollbackAsync(ct).ConfigureAwait(false);
-                    return (false, true, false, replayedBal);
+                    return ResolveReceipt(winningReceipt, signedDelta, reason);
                 }
 
                 await tx.CommitAsync(ct).ConfigureAwait(false);
@@ -276,13 +302,23 @@ CREATE TABLE dbo.grant_schedule (
         await using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
         await using SqlCommand cmd = conn.CreateCommand();
+        // A write of the instant already stored changes nothing, so it leaves the row, and its update time, alone.
         cmd.CommandText = @"
+DECLARE @now DATETIME2 = SYSUTCDATETIME();
 MERGE dbo.grant_schedule WITH (HOLDLOCK) AS t
 USING (SELECT @a AS account_id, @r AS reward_id) AS s
   ON t.account_id = s.account_id AND t.reward_id = s.reward_id
-WHEN MATCHED THEN UPDATE SET next_available_utc = @v
-WHEN NOT MATCHED THEN INSERT (account_id, reward_id, next_available_utc) VALUES (@a, @r, @v);";
-        Bind(cmd, ("@a", account.Value), ("@r", rewardId), ("@v", nextUtc.UtcDateTime));
+WHEN MATCHED AND t.next_available_utc <> @v THEN UPDATE SET next_available_utc = @v, updated_at = @now
+WHEN NOT MATCHED THEN INSERT (account_id, reward_id, next_available_utc, created_at, updated_at)
+  VALUES (@a, @r, @v, @now, @now);";
+        Bind(cmd, ("@a", account.Value), ("@r", rewardId));
+        // The instant is typed as the column is, DATETIME2(7), for the stored value and the comparison alike.
+        // AddWithValue types a DateTime as the legacy datetime, which rounds it to a 1/300 s tick on the way in, and a
+        // sub-second instant stored from that rounding then compared unequal to the same instant, so an unchanged
+        // rewrite moved the update time.
+        SqlParameter next = cmd.Parameters.Add("@v", SqlDbType.DateTime2);
+        next.Scale = 7;
+        next.Value = nextUtc.UtcDateTime;
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
@@ -296,6 +332,28 @@ WHEN NOT MATCHED THEN INSERT (account_id, reward_id, next_available_utc) VALUES 
         object? o = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
         return o is null or DBNull ? null : Convert.ToInt64(o, CultureInfo.InvariantCulture);
     }
+
+    private static async Task<Receipt?> ReadReceiptAsync(SqlConnection conn, SqlTransaction tx, string sql,
+        CancellationToken ct, params (string, object)[] p)
+    {
+        await using SqlCommand cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = sql;
+        Bind(cmd, p);
+        await using SqlDataReader reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        return await reader.ReadAsync(ct).ConfigureAwait(false)
+            ? new Receipt(reader.GetInt64(0), (LedgerReason)reader.GetInt32(1), reader.GetInt64(2))
+            : null;
+    }
+
+    private static (bool applied, bool replayed, bool insufficient, long balance) ResolveReceipt(
+        Receipt receipt, long signedDelta, LedgerReason reason)
+    {
+        bool conflict = receipt.Delta != signedDelta || receipt.Reason != reason;
+        return (false, !conflict, false, receipt.PostBalance);
+    }
+
+    private readonly record struct Receipt(long Delta, LedgerReason Reason, long PostBalance);
 
     private static void Bind(SqlCommand cmd, params (string name, object value)[] p)
     {

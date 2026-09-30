@@ -111,7 +111,8 @@ public sealed partial class ItemGenerator
         int wordCount,
         int socketCount)
     {
-        var builder = new ItemInstancePayloadBuilder();
+        ItemInstancePayloadBuilder builder = _payloadBuilder;
+        builder.Clear();
         _ = builder.AddScalar(InstancePropertyKind.ItemLevel, (uint)context.ItemLevel);
         if (context.Quality > 0)
         {

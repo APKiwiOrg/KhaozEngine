@@ -14,7 +14,7 @@ namespace KhaozEngine.Netcode;
 /// The render smoothing is 3D: both the inter-tick interpolation and the reconciliation offset carry the
 /// vertical axis (<see cref="IPredictedState{TSelf}.Vertical"/>), so a jump/fall eases instead of stair-stepping
 /// or popping. Reconcile is C1-continuous: it does NOT collapse the in-flight inter-tick interpolation onto the
-/// new basis. It keeps the inter-tick phase (previous position + elapsed) flowing at the steady velocity and only
+/// new basis. It keeps the inter-tick phase (previous target + elapsed) flowing at the steady velocity and only
 /// rebases the target plus folds any genuine misprediction into the decaying render offset, so a matching (loopback)
 /// rebase - which fires every tick - perturbs neither the rendered position nor its velocity. Collapsing frac to 1
 /// each tick (the old behaviour) pinned the inter-tick contribution at zero and left only the offset decay to carry
@@ -46,10 +46,9 @@ public sealed class ClientPrediction<TState, TCommand>
     private Vector2 renderOffsetVelocity;
     private float verticalRenderOffsetVelocity;
     private int nextSeq;
-    // Inter-tick render interpolation: the predicted position only steps once per tick (60Hz). At higher frame
-    // rates the render would snap each tick, so the rendered position eases from the previous tick's position to
-    // the current one across the tick duration. Frame-rate independent (time-based fraction). Carries the vertical
-    // axis alongside the planar one.
+    // Inter-tick render interpolation: the prediction target only steps once per tick (60Hz). At higher frame rates
+    // the render would snap each tick, so the rendered position eases from the previous tick's target to the current
+    // one across the tick duration. Frame-rate independent (time-based fraction). Carries the vertical axis beside it.
     private Vector2 previousPredictedPosition;
     private float previousPredictedVertical;
     private float secondsSinceLastPredict;
@@ -132,16 +131,16 @@ public sealed class ClientPrediction<TState, TCommand>
     public float StepCumulativeY => stepCumulativeY;
 
     /// <summary>
-    /// The state to draw: the predicted position (planar AND vertical) eased from the previous tick toward the
-    /// current one over the tick duration (so it stays smooth above the tick rate), plus the decaying
-    /// reconciliation offset on both axes.
+    /// The state to draw: the predicted presentation target (planar AND vertical) eased from the previous tick
+    /// toward the current one over the tick duration (so it stays smooth above the tick rate), plus the decaying
+    /// reconciliation offset on both axes. The planar target defaults to <see cref="IPredictedState{TSelf}.Position"/>.
     /// </summary>
     public TState RenderedState
     {
         get
         {
             float frac = InterTickFraction;
-            Vector2 planar = Vector2.Lerp(previousPredictedPosition, predictedState.Position, frac) + renderOffset;
+            Vector2 planar = Vector2.Lerp(previousPredictedPosition, predictedState.PredictionTarget, frac) + renderOffset;
             float vertical = Lerp(previousPredictedVertical, predictedState.Vertical, frac) + verticalRenderOffset;
             return predictedState.WithRenderState(planar, vertical);
         }
@@ -154,7 +153,7 @@ public sealed class ClientPrediction<TState, TCommand>
     public void Reset(in TState initialState)
     {
         predictedState = initialState;
-        previousPredictedPosition = initialState.Position;
+        previousPredictedPosition = initialState.PredictionTarget;
         previousPredictedVertical = initialState.Vertical;
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
         pendingCommands.Clear();
@@ -214,11 +213,11 @@ public sealed class ClientPrediction<TState, TCommand>
         // frame-invariant, which is what lets it be re-anchored across the frame change at all.
         float frac = InterTickFraction;
         Vector2 renderedAbsolute = predictedState.FrameAnchor
-            + Vector2.Lerp(previousPredictedPosition, predictedState.Position, frac) + renderOffset;
+            + Vector2.Lerp(previousPredictedPosition, predictedState.PredictionTarget, frac) + renderOffset;
         float renderedVertical = Lerp(previousPredictedVertical, predictedState.Vertical, frac) + verticalRenderOffset;
 
         predictedState = basis;
-        previousPredictedPosition = basis.Position;
+        previousPredictedPosition = basis.PredictionTarget;
         previousPredictedVertical = basis.Vertical;
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
         if (seedReportsTeleport)
@@ -233,7 +232,7 @@ public sealed class ClientPrediction<TState, TCommand>
             // A quiet resume GLIDES: re-anchor the offsets so the rendered position is exactly where it already was,
             // and let the sub-threshold displacement decay away as an ordinary correction. Nothing fires the
             // consumer's camera warp on this path, so cutting here would strand the avatar ahead of its camera.
-            renderOffset = renderedAbsolute - (basis.FrameAnchor + basis.Position);
+            renderOffset = renderedAbsolute - (basis.FrameAnchor + basis.PredictionTarget);
             verticalRenderOffset = renderedVertical - basis.Vertical;
         }
         // Either way the carried smoothing velocity is stale (the offsets just moved discontinuously), so both axes
@@ -267,8 +266,9 @@ public sealed class ClientPrediction<TState, TCommand>
     {
         int seq = nextSeq++;
         pendingCommands[seq] = command;
-        // The position before this step becomes the interpolation start; the render eases toward the new step.
-        previousPredictedPosition = predictedState.Position;
+        // The target before this step becomes the interpolation start. The render eases toward the new target.
+        Vector2 previousSimulationPosition = predictedState.Position;
+        previousPredictedPosition = predictedState.PredictionTarget;
         previousPredictedVertical = predictedState.Vertical;
         secondsSinceLastPredict = 0f;
         predictedState = simulator.Step(predictedState, command, settings.TickSeconds);
@@ -279,7 +279,7 @@ public sealed class ClientPrediction<TState, TCommand>
         stepCumulativeY += predictedState.StepDeltaY;
         // Planar speed for this tick: the distance the predicted position actually moved (after the simulator's
         // collision clamp) over the tick duration. IPredictedState.Position is planar, so this is horizontal for free.
-        Vector2 step = predictedState.Position - previousPredictedPosition;
+        Vector2 step = predictedState.Position - previousSimulationPosition;
         predictedHorizontalSpeed = settings.TickSeconds > 0f ? step.Length() / settings.TickSeconds : 0f;
         if (pendingCommands.Count > settings.MaxPendingCommands)
         {
@@ -323,8 +323,9 @@ public sealed class ClientPrediction<TState, TCommand>
         // (without the smoothing offset) - that is the clean prediction-divergence metric the gate uses.
         float frac = InterTickFraction;
         Vector2 oldPlanar = predictedState.Position;
+        Vector2 oldPredictionTarget = predictedState.PredictionTarget;
         float oldVertical = predictedState.Vertical;
-        Vector2 renderedPlanar = Vector2.Lerp(previousPredictedPosition, oldPlanar, frac) + renderOffset;
+        Vector2 renderedPlanar = Vector2.Lerp(previousPredictedPosition, oldPredictionTarget, frac) + renderOffset;
         float renderedVertical = Lerp(previousPredictedVertical, oldVertical, frac) + verticalRenderOffset;
 
         while (pendingCommands.Count > 0 && pendingCommands.Keys[0] <= lastAcknowledgedSeq)
@@ -367,7 +368,7 @@ public sealed class ClientPrediction<TState, TCommand>
         {
             // A hard snap teleports on screen: collapse the inter-tick lerp onto the new basis (previous == current,
             // frac = 1) and drop the offset so rendered == predicted immediately.
-            previousPredictedPosition = predictedState.Position;
+            previousPredictedPosition = predictedState.PredictionTarget;
             previousPredictedVertical = predictedState.Vertical;
             secondsSinceLastPredict = settings.TickSeconds;
             renderOffset = Vector2.Zero;
@@ -394,11 +395,12 @@ public sealed class ClientPrediction<TState, TCommand>
             //    lives entirely in the render offset, which critically-damps it away without a reversal.
             // Continuity holds either way: rendered_after == rendered_before (the offset re-anchors to whatever the
             // translation left).
-            Vector2 planarRebase = predictedState.Position - oldPlanar;
+            Vector2 planarRebase = predictedState.PredictionTarget - oldPredictionTarget;
             float verticalRebase = predictedState.Vertical - oldVertical;
             previousPredictedPosition += planarRebase;
             previousPredictedVertical += verticalRebase;
-            renderOffset = renderedPlanar - (Vector2.Lerp(previousPredictedPosition, predictedState.Position, frac));
+            renderOffset = renderedPlanar
+                - Vector2.Lerp(previousPredictedPosition, predictedState.PredictionTarget, frac);
             verticalRenderOffset = renderedVertical - Lerp(previousPredictedVertical, predictedState.Vertical, frac);
             // Both axes' offsets just jumped discontinuously (re-anchored to preserve rendered continuity against the
             // new target), so their carried smoothing velocity is stale. Zero both: keeping it lets the decay's

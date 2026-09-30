@@ -7,10 +7,12 @@ namespace KhaozEngine.MapEditor;
 
 /// <summary>The in-place refresh seams: the edits that keep the sink, streamer, ring, kit meshes and splat material and
 /// rebuild only what changed. Cheapest first: <see cref="RefreshLayerProps(MapDocument, RectArea)"/> re-serves the
-/// props of the chunks an exclusion or scatter-override edit covers, <see cref="PartialRebuild(MapDocument,
-/// MapDocRegistry, RectArea, bool)"/> re-meshes the chunks a terrain edit covers, and <see cref="RefreshLoaded"/>
-/// re-meshes every loaded chunk. Each returns false, touching nothing, when it cannot serve the edit, so the caller
-/// falls back to the next one and finally to <see cref="Rebuild"/>.</summary>
+/// props of the chunks an exclusion or scatter-override edit covers,
+/// <see cref="RefreshLoadedLayerProps(MapDocument)"/> re-serves
+/// props across the whole loaded set, <see cref="PartialRebuild(MapDocument, MapDocRegistry, RectArea, bool)"/>
+/// re-meshes the chunks a terrain edit covers, and <see cref="RefreshLoaded"/> re-meshes every loaded chunk. Each
+/// returns false, touching nothing, when it cannot serve the edit, so the caller falls back to the next one and
+/// finally to <see cref="Rebuild"/>.</summary>
 public sealed partial class ViewportWorld
 {
     /// <summary>The live streamer, or null before <see cref="Build"/>. Internal so a device test can read its build
@@ -47,10 +49,60 @@ public sealed partial class ViewportWorld
     internal static bool RefreshLayerProps(Scene3DChunkSink sink, TerrainStreamer streamer,
         IReadOnlyList<PropLayer> layers, RectArea dirty)
     {
+        if (!PrepareLayerRefresh(sink, streamer, layers)) return false;
+        streamer.RefreshProps(dirty);
+        return true;
+    }
+
+    /// <summary>Re-serves every loaded chunk's props after a shape-preserving layer edit, leaving the field,
+    /// terrain meshes and authored placements untouched. Returns false before build or when the new layer list
+    /// changes sink shape, so the caller can retain the all-loaded re-mesh fallback.</summary>
+    internal bool RefreshLoadedLayerProps(MapDocument doc)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(doc);
+        if (!_built) return false;
+        if (!RefreshLoadedLayerProps(_sink!, _streamer!, BuildSinkLayers(doc))) return false;
+        _doc = doc;
+        return true;
+    }
+
+    /// <summary>The device-free form over an explicit sink and streamer.</summary>
+    internal static bool RefreshLoadedLayerProps(
+        Scene3DChunkSink sink,
+        TerrainStreamer streamer,
+        IReadOnlyList<PropLayer> layers)
+    {
+        if (!PrepareLayerRefresh(sink, streamer, layers)) return false;
+        if (streamer.Loaded.Count == 0) return true;
+
+        int minX = int.MaxValue, minZ = int.MaxValue;
+        int maxX = int.MinValue, maxZ = int.MinValue;
+        foreach (ChunkCoord coord in streamer.Loaded)
+        {
+            minX = Math.Min(minX, coord.X);
+            minZ = Math.Min(minZ, coord.Z);
+            maxX = Math.Max(maxX, coord.X);
+            maxZ = Math.Max(maxZ, coord.Z);
+        }
+
+        float chunkSize = streamer.Config.ChunkSize;
+        streamer.RefreshProps(new RectArea(
+            (minX + 0.5f) * chunkSize,
+            (minZ + 0.5f) * chunkSize,
+            (maxX + 0.5f) * chunkSize,
+            (maxZ + 0.5f) * chunkSize));
+        return true;
+    }
+
+    static bool PrepareLayerRefresh(
+        Scene3DChunkSink sink,
+        TerrainStreamer streamer,
+        IReadOnlyList<PropLayer> layers)
+    {
         streamer.FlushPendingBuilds();
         if (!sink.KeepsLayerShape(layers)) return false;
         sink.UpdateLayers(layers);
-        streamer.RefreshProps(dirty);
         return true;
     }
 

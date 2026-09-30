@@ -1,6 +1,6 @@
 # KhaozEngine.Localization.Analyzers
 
-Roslyn analyzer enforcing KhaozEngine's `LocalizedText` localization contract.
+Roslyn analyzer and opt-in source generator enforcing KhaozEngine's `LocalizedText` localization contract.
 
 - **KELOC001** (Warning): player-facing text passed as a raw string to a `[LocalizationStringSink]`-marked
   method or constructor (a sink a game marks itself). The engine's Gui sinks take only `LocalizedText`, so a
@@ -18,7 +18,7 @@ Roslyn analyzer enforcing KhaozEngine's `LocalizedText` localization contract.
   `LocalizedText.Raw("...").Resolve()` for non-localizable text, or mark the scope `[LocalizationExempt]` /
   DEBUG. Covers only the engine primitive - a game's own `SpriteBatch`-based text helpers are its own to guard.
 
-All three ship as warnings. Raise any to error in a consumer `.editorconfig`:
+The three analyzer diagnostics ship as warnings. Raise any to error in a consumer `.editorconfig`:
 
 ```ini
 dotnet_diagnostic.KELOC001.severity = error
@@ -26,6 +26,33 @@ dotnet_diagnostic.KELOC002.severity = error
 dotnet_diagnostic.KELOC003.severity = error
 ```
 
-The analyzer flows automatically to any project referencing the `KhaozEngine.Game2D` or `KhaozEngine.Game3D`
-umbrella metapackage. The marker attributes (`LocalizationExemptAttribute`, `LocalizationStringSinkAttribute`)
-and the `StringId` / `LocalizedText` types live in `KhaozEngine.App`.
+## Generate StringId keys from a neutral resx
+
+Add the neutral resx as an analyzer AdditionalFile and name the exact class to generate:
+
+```xml
+<ItemGroup>
+  <AdditionalFiles Include="Strings.resx"
+                   KhaozStringIdType="MyGame.Strings" />
+</ItemGroup>
+```
+
+The package's buildTransitive props expose this metadata to Roslyn. The SDK still embeds `Strings.resx`
+normally. Do not add satellite files such as `Strings.fr.resx`. Translation coverage remains the job of
+`KhaozEngine.Localization.TestKit`.
+
+The generated class is `internal` by default and contains one public static readonly `StringId` per neutral
+string key. Add `KhaozStringIdAccessibility="public"` when another assembly must reference the class.
+Resource keys are ordered ordinally. Dots, underscores, and other separators are removed while the next letter
+or digit is uppercased, so `Menu.Play` becomes `MenuPlay` and `fly_speed` becomes `FlySpeed`.
+
+Generator configuration and input failures are errors:
+
+- **KELOC004**: invalid target type, accessibility, or opted file extension.
+- **KELOC005**: malformed resx shape or invalid resource key.
+- **KELOC006**: two resource keys produce the same member name.
+- **KELOC007**: the target type already exists or two opted resources request it.
+
+The analyzer and generator flow automatically to any project referencing the `KhaozEngine.Game2D` or
+`KhaozEngine.Game3D` umbrella metapackage. The marker attributes (`LocalizationExemptAttribute`,
+`LocalizationStringSinkAttribute`) and the `StringId` / `LocalizedText` types live in `KhaozEngine.App`.

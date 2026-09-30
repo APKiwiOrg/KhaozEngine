@@ -7,7 +7,8 @@ using System.Threading.Tasks;
 namespace KhaozEngine.Commerce;
 
 /// <summary>In-process transactional wallet store: dependency-free reference + test backend. A single
-/// lock makes credit/debit atomic so semantics match the SQL backends.</summary>
+/// lock makes credit/debit atomic so semantics match the SQL backends. Reused keys are classified from the
+/// stored ledger row's signed delta and reason.</summary>
 public sealed class InMemoryWalletStore : IWalletStore, IGrantScheduleStore
 {
     private readonly object gate = new();
@@ -29,7 +30,10 @@ public sealed class InMemoryWalletStore : IWalletStore, IGrantScheduleStore
         lock (gate)
         {
             if (byKey.TryGetValue((account.Value, currency.Value, idempotencyKey), out LedgerEntry prior))
-                return Task.FromResult(new CreditResult(false, true, BalanceAfter(prior)));
+            {
+                bool conflict = prior.Delta != amount || prior.Reason != reason;
+                return Task.FromResult(new CreditResult(false, !conflict, BalanceAfter(prior)));
+            }
             long bal = Bal(account, currency) + amount;
             Set(account, currency, bal);
             Append(account, currency, amount, idempotencyKey, reason, sourceRef, bal);
@@ -44,7 +48,10 @@ public sealed class InMemoryWalletStore : IWalletStore, IGrantScheduleStore
         lock (gate)
         {
             if (byKey.TryGetValue((account.Value, currency.Value, idempotencyKey), out LedgerEntry prior))
-                return Task.FromResult(new DebitResult(false, true, false, BalanceAfter(prior)));
+            {
+                bool conflict = prior.Delta != -amount || prior.Reason != reason;
+                return Task.FromResult(new DebitResult(false, !conflict, false, BalanceAfter(prior)));
+            }
             long bal = Bal(account, currency);
             if (bal < amount)
                 return Task.FromResult(new DebitResult(false, false, true, bal));

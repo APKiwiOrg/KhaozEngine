@@ -47,11 +47,11 @@ public abstract partial class EditorCommand : IEditorCommand
     internal virtual RectArea? DirtyRegion => null;
 
     /// <summary>True when the viewport must rebuild the sink's captured scatter and companion configs before
-    /// invalidating chunks.</summary>
+    /// re-serving props or invalidating chunks.</summary>
     internal virtual bool RefreshesLayerConfig => false;
 
-    /// <summary>True when every loaded chunk must be invalidated but sink topology can stay. False with a null
-    /// <see cref="DirtyRegion"/> means a full rebuild remains required.</summary>
+    /// <summary>True when every loaded chunk must refresh but sink topology can stay. Field-neutral edits may
+    /// re-serve props when layer shape stays fixed. False with a null <see cref="DirtyRegion"/> needs a full rebuild.</summary>
     internal virtual bool InvalidatesAllLoaded => false;
 
     /// <inheritdoc/>
@@ -337,7 +337,7 @@ internal readonly struct VisibilityOp
 /// immediately follows (place-and-adjust): the placed prop can be dragged into position within the same gesture and
 /// the whole thing stays ONE undo step whose <see cref="Revert"/> removes the placement, restoring the pre-place
 /// document byte for byte.</summary>
-public sealed class AddPlacementCommand : EditorCommand
+public sealed partial class AddPlacementCommand : EditorCommand
 {
     readonly MapPlacement _placement;
 
@@ -373,7 +373,7 @@ public sealed class AddPlacementCommand : EditorCommand
 
 /// <summary>Removes the placement with the given id, capturing the removed item and its index so
 /// <see cref="Revert"/> restores it at its original position.</summary>
-public sealed class RemovePlacementCommand : EditorCommand
+public sealed partial class RemovePlacementCommand : EditorCommand
 {
     readonly string _id;
     MapPlacement? _removed;
@@ -406,7 +406,7 @@ public sealed class RemovePlacementCommand : EditorCommand
 
 /// <summary>Moves a placement to a new XZ (and optional Y). Successive moves of the same placement coalesce
 /// into one undo step (drag coalescing).</summary>
-public sealed class MovePlacementCommand : EditorCommand
+public sealed partial class MovePlacementCommand : EditorCommand
 {
     readonly string _id;
     float _newX, _newZ;
@@ -472,7 +472,7 @@ public sealed class MovePlacementCommand : EditorCommand
 }
 
 /// <summary>Sets a placement's yaw. Successive rotations of the same placement coalesce.</summary>
-public sealed class RotatePlacementCommand : EditorCommand
+public sealed partial class RotatePlacementCommand : EditorCommand
 {
     readonly string _id;
     float _newYaw;
@@ -514,7 +514,7 @@ public sealed class RotatePlacementCommand : EditorCommand
 }
 
 /// <summary>Sets a placement's uniform scale. Successive scalings of the same placement coalesce.</summary>
-public sealed class ScalePlacementCommand : EditorCommand
+public sealed partial class ScalePlacementCommand : EditorCommand
 {
     readonly string _id;
     float _newScale;
@@ -558,7 +558,7 @@ public sealed class ScalePlacementCommand : EditorCommand
 /// <summary>Renames a placement. Placements are keyed by id, so the id-carrying selection follows the rename.
 /// The target id must be unique: <see cref="Apply"/> throws (before it mutates) if a placement already carries
 /// the new id, so a rejected rename lands no undo step. Renames never coalesce (no merge).</summary>
-public sealed class RenamePlacementCommand : EditorCommand, IVisibilityEffect
+public sealed partial class RenamePlacementCommand : EditorCommand, IVisibilityEffect
 {
     readonly string _oldId;
     readonly string _newId;

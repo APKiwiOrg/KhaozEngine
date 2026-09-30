@@ -83,10 +83,12 @@ feature of whichever package motivated it.
 
 ### The key shape rule
 
-`ContentKeyShape` is the key rule of contracts 5.3 as one public predicate: `Defect(key)` answers the first
-defect as a phrase or null, `Rule` is the whole rule as one sentence for a message to append, and
-`MaxKeyLength` is the cap. It is public because the rule has callers at three layers and they are not one
-call site. The validator's `KEC0001` sweep walks the rows a candidate already holds. A fork's copy key never
+`ContentKeyShape` preserves the public authoring entry point for the key rule of contracts 5.3:
+`Defect(string)` answers the first defect as a phrase or null, `Rule` is the whole rule as one sentence for a
+message to append, and `MaxKeyLength` is the cap. It delegates to `ContentKeyRules` in `KhaozEngine.Catalog`,
+which also supplies the validator's UTF-8 span check. String diagnostics retain their UTF-16 positions and
+lengths, and runtime-key diagnostics retain their byte units. The rule has callers at three layers. The
+validator's `KEC0001` sweep walks the rows a candidate already holds. A fork's copy key never
 reaches that sweep, because the row it would go on does not exist until publish. And an admin surface has to
 refuse an add's key BEFORE the edit enters the draft, since a draft carrying a malformed key is wedged: every
 later validate reports it, every later publish refuses, and the only removal on this seam is a discard, which
@@ -118,6 +120,12 @@ because changing it would move every id in the family. When a block fills a seco
 family carries an ordered `ContentFamilyBlock` list.
 
 A family is never deleted. It is retired like a definition.
+
+`CreateFamilyAsync` commits the family, its first aligned block, both allocator high-water marks and the
+`family-create` audit together. A refused reservation or failed audit leaves all four unchanged, so the same
+key can be retried without wasting definition ids. The in-memory reference stages its audit before exposing
+the family and marks under its gate. Later block reservations retain the allocator's reserve-before-issue
+commit order.
 
 ## The id allocator
 
@@ -216,8 +224,15 @@ one connection per call, and SQL Server's Serializable transaction covers step 1
 cancellation all release the draft. Two things recover a marker nothing cleared, which is what a killed
 process leaves. A marker naming a version the store has moved past is STALE, and
 `ReadPublishBaselineAsync` clears it, which is the read every publish starts with. A marker naming the
-version the store still stands at belongs to a publish that died before its commit, and the next publish's
-step 1 overwrites it, because a publish is exactly what an operator does to recover.
+version the store still stands at belongs to a publish that died before its commit. A later publish
+overwrites that marker at step 1 and clears it on exit.
+
+The same-version marker carries no publisher identity, so an edit or discard cannot tell a dead publisher
+from a live one and never clears it. After confirming no publisher is live, a host can call
+`IContentAuthoringStore.ClearDraftFreezeAsync` to release the marker and preserve every pending edit, so the
+operator can continue editing or intentionally discard the draft. Run `catalog-publish` only when the current
+draft is intentionally ready to publish, since it may commit that draft. Its step 1 replaces the marker and
+its exit clears it.
 
 Driving `ContentPublisher.PrepareAsync` on its own therefore leaves a frozen draft behind, deliberately: half
 a publish is the state the marker describes. Call `ClearDraftFreezeAsync` when standing in for the commit.
@@ -319,10 +334,10 @@ Two publishers may run step 9 at once, because every file it writes is named by 
 `CommitPublishAsync`, and the store writes the pointer as the last act before its transaction commits, once
 the version number is confirmed. Two publishers can prepare the same number from the same base, for example two
 replicas of different builds applying one upgrade, and a pointer written in step 9 let the one that went on to
-lose overwrite the committed version's pointer with manifests that never committed. The boot serves what that
-pointer names and the sweep keeps what it names, so that was content served that never committed and content
-deleted that did. Now a losing publisher is refused before it writes a pointer, and two publishers of one
-version never write it at once. A crash after the pointer write and before the commit leaves a pointer for a
+lose overwrite the committed version's pointer with manifests that never committed. Before the pointer checks,
+the boot served what that pointer named and the sweep kept what it named, so that was content served that never
+committed and content deleted that did. Now a losing publisher is refused before it writes a pointer, and two
+publishers of one version never write it at once. A crash after the pointer write and before the commit leaves a pointer for a
 version that never committed, which keeps orphan files alive rather than deleting live ones, and the next
 attempt at that number overwrites it.
 
@@ -352,18 +367,33 @@ hashes at step 8, so the transaction re-reads the highest published number and r
 holds no lock across steps 1 to 10, and this is the check that catches a base that moved underneath such a
 plan. The same statement is made about the rule list, which has to be the plan's own prefix.
 
-Step 11 is `ContentPackSweep`, the orphan sweep, which runs only after a SUCCESSFUL commit. **The keep set is
-the union, over every version the store knows, of that version's pointer, the two manifest hashes it holds and
-every hash named inside either manifest**, which is exactly `IPackStore.ListAsync(v)`. It is defined against
+Step 11 is `ContentPackSweep`, the orphan sweep, which runs only after a SUCCESSFUL commit. **The validated
+keep set is the union, over every durable version record the store knows, of its two manifest hashes and
+every hash named inside either manifest**. `ContentPackClosure.ReadAsync` walks those hashes directly,
+without consulting a mutable pointer again. It is defined against
 the MANIFESTS and not against the chunk table, because the rule chunk sits at a reserved address outside any
 type's id space and the text chunks are per language, so neither has a chunk row to hang on while both are
 named by both manifests. A keep set read from the chunk table would delete them at the first publish and every
 later boot would fail closed on an absent chunk, for every version, forever.
 
-The sweep is SKIPPED when the store listing fails for any reason, and a pointer that is absent or unreadable
-for any version IS a listing failure. It is skipped again when the store implements no pruning half.
+The publish and operator sweep pass every durable `ContentVersionRecord` to
+`ContentPackSweep.RunValidatedAsync`.
+Before listing any version or enumerating orphan objects, it resolves each pointer and compares BOTH manifest
+hashes ordinally with that record. A missing pointer source, an absent or partial pointer, or either hash
+disagreeing skips the sweep with `listing-failed` and deletes nothing. This protects live chunks when another
+catalog has replaced a pointer at the same version number. A matching pointer still needs a complete listing.
+After these checks, the durable record's immutable manifest hashes remain the authority for the whole keep
+set. A pointer replaced between validation and listing cannot substitute another catalog's closure or cause
+the record's live chunks to be deleted.
+The sweep is SKIPPED when that listing fails for any reason. It is skipped again when the store implements no
+pruning half.
 `ContentPackSweepResult` carries the reason either way, because deleting nothing and deleting everything are
 one keystroke apart and an operator reading a publish response deserves to know which happened.
+
+The existing `RunAsync(IPackStore, IReadOnlyList<int>, CancellationToken)` entry point remains available for
+compatibility. It trusts the pointer-backed listings without checking durable records, so its caller must
+establish that those pointers name the authoritative manifests. Use `RunValidatedAsync` with version records
+whenever they are available.
 
 `ContentPublishCommit.SweepAsync` is the step as the publish runs it, and it is public so a test can drive
 step 11 on its own. An OPERATOR reaches `ContentPackSweep` through the admin surface instead, because a
@@ -451,13 +481,16 @@ and its values, which is the difference between a rollback and a restore.
 same property that lets a durable page's version stamp be an ordering comparison.
 
 **A row live at the target and RETIRED since is a flat refusal**, `KEC0039`, naming the row and the rule that
-retired it. There is no un-retire branch and there never was a reachable one: every retire appends exactly one
-`Retired` rule, so a branch conditioned on no rule naming that id could not run. The way out is an ordinary
-`Add` under a NEW key carrying the old values, because a key is immutable once published, and the retired row
-keeps its id and its bytes forever so a stored stack still decodes.
+retired it when that rule is present. There is no un-retire branch. An ordinary publish appends exactly one
+`Retired` rule for each retire. A provider baseline without a matching rule still refuses the rollback.
+The way out is an ordinary `Add` under a NEW key carrying the old values, because a key is immutable once
+published, and the retired row keeps its id and its bytes forever so a stored stack still decodes.
 
 `ContentRollback.Prepare` is the plan behind it and `ContentRollbackPlan` is what a console renders: the
-edits, the blockers with the rule that produced each one, and one `KEC0039` finding per blocker.
+edits, the blockers with any matching rule, and one `KEC0039` finding per blocker. Each
+`ContentRollbackBlocker.RuleKind` carries that rule's actual kind, or null when no rule matches. In that
+case `RuleSequence` and `IntroducedIn` are 0. The original five-argument constructor and deconstruction
+remain available.
 
 ## The diff
 
@@ -484,6 +517,11 @@ candidate, which is a row set with no number yet because it has not been publish
 in memory. A production host uses a provider, because nothing in it survives the process. It ships in this
 package rather than in a test project because the draft, allocator, publish and admin-action suites all need
 one and they sit in different assemblies.
+
+`InMemoryContentAuthoringStore.SchemaVersion` is the public catalog schema version this engine build
+targets, currently 3, matching both providers. Consumers use that constant for catalog preflight and deploy
+compatibility checks. `IContentAuthoringStore.GetSchemaVersionAsync()` reports the schema held by the opened
+store, which the in-memory store also reports as 3.
 
 It carries the constraints its provider siblings get from a `CHECK`, so a defect surfaces there rather than
 at the first SQL run: a high-water mark never moves backwards, an issued mark never passes a reserved one,
@@ -694,11 +732,12 @@ ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
    The minimum builds rise to at least the running build's ordinals and never fall below the baseline's.
 9. After ANY publish failure the run READS the ledger and reports the disposition the row holds, which is
    `Adopted` when a rival found the catalog already satisfied and published no version at all. It discards a
-   draft only under one of the two proofs below, and a `publish-in-progress` refusal means a rival is live,
-   so the draft is left alone and the run stands off. A refusal over a draft that is NOT this plan says
-   nothing about this plan, so that draft is resolved and the upgrade is tried again rather than blamed. An
-   exception thrown after the commit point and a refusal before it look identical from outside, and only the
-   ledger tells them apart.
+   draft only under one of the two proofs below, and a `publish-in-progress` refusal means a marker stands, so
+   the run treats the publisher as live, leaves the draft alone and stands off. A publisher that died before
+   commit leaves the same marker and needs the explicit recovery described above. A refusal over a draft that
+   is NOT this plan says nothing about this plan, so that draft is resolved and the upgrade is tried again
+   rather than blamed. An exception thrown after the commit point and a refusal before it look identical from
+   outside, and only the ledger tells them apart.
 10. `Preview` writes nothing. It plans the first pending definition exactly and says which disposition an
     APPLY would record, because a definition the catalog already carries publishes no version at all and a
     preview that called that a plan left an operator to find out by running the apply. The step state is
@@ -844,9 +883,16 @@ wants as an integer can be handed `1.5`, an id past `int.MaxValue` or `1e308`. T
 1 to 65,535 domain, and field kinds, visibility values and remap kinds must be known enum values. Each bad
 value is refused naming the member, the same as a missing one.
 
+`ContentBundleJson.ReadFormatVersion` is the precheck for a consumer that must inspect the declared format
+before reading or combining a bundle. It uses the same JSONC policy and format member rules as `Read`, so both
+accept comments and trailing commas and both refuse malformed JSON, a nonobject root, a missing version or a
+version that is not a 32-bit integer. The precheck returns an unsupported integer so the caller can compare or
+report it. `Read` remains the operation that refuses a format version this build does not support.
+
 An import runs through the ORDINARY publish and there is no second mechanism. It restores the families and
-their blocks verbatim, restamps the bundle's rules as the new line's, turns every row into an `Add` edit and
-publishes the draft as version 1. `ContentEdit.Import` is the only factory that may name a definition id, and
+their blocks verbatim, including each family's `IsRetired` flag through family reads and later exports in
+every store. It restamps the bundle's rules as the new line's, turns every row into an `Add` edit and publishes
+the draft as version 1. `ContentEdit.Import` is the only factory that may name a definition id, and
 it is also the only one that may say a row is ALREADY retired, because a bundle carries its retired rows and
 already carries the rule that retired them. A refusal at any point AFTER the staging began resets the store to
 the empty state it was required to start from, so nothing is left half seeded, and that covers the staging

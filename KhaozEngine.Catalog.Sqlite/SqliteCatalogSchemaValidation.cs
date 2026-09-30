@@ -25,13 +25,14 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// "schema is wrong".
 /// </para>
 /// <para>
-/// <b>A version 1 database is MIGRATED in place under AutoCreate and refused under ValidateOnly</b>, which is
-/// the journal's split per provider and per mode. The migration adds one table in one transaction and touches
-/// nothing else, so an operator host that opens read-only still gets a refusal naming
-/// <see cref="SqliteCatalogSchema.RequiredMigration"/> rather than a file quietly rewritten underneath it.
+/// <b>A version 1 or version 2 database is MIGRATED in place under AutoCreate and refused under
+/// ValidateOnly</b>, which is the journal's split per provider and per mode. Version 1 chains through version
+/// 2 to version 3 in one open. Each migration is one transaction, so an operator host that opens read-only
+/// still gets a refusal naming <see cref="SqliteCatalogSchema.RequiredMigration"/> rather than a file quietly
+/// rewritten underneath it.
 /// </para>
 /// </summary>
-internal static class SqliteCatalogSchemaValidation
+internal static partial class SqliteCatalogSchemaValidation
 {
     /// <summary>
     /// Brings the open connection to the current schema under one mode, or throws naming what is wrong.
@@ -77,6 +78,20 @@ internal static class SqliteCatalogSchemaValidation
             version = Read(() => ReadSchemaVersion(connection));
         }
 
+        if (version == 2)
+        {
+            // Read HERE rather than reusing the first snapshot, for the reason given below: a version 1 file
+            // this open just migrated, or one another host migrated, has objects the snapshot never saw.
+            ValidateVersionTwoObjects(Read(() => ReadSchemaObjects(connection)));
+            if (mode == ContentAuthoringSchemaMode.ValidateOnly)
+            {
+                throw Mismatch("at unsupported version '2'");
+            }
+
+            MigrateVersionTwo(connection);
+            version = Read(() => ReadSchemaVersion(connection));
+        }
+
         if (version != SqliteCatalogSchema.CurrentVersion)
         {
             throw Mismatch(FormattableString.Invariant($"at unsupported version '{version}'"));
@@ -84,9 +99,10 @@ internal static class SqliteCatalogSchemaValidation
 
         // The objects are read HERE, after the version is settled and immediately before they are
         // compared, so the two always describe one state of the file. Reusing the snapshot taken above
-        // would let a second host that migrated in between hand this one a version 1 view of the objects
-        // and a version 2 answer for the number, and it would refuse a correct database for a missing
-        // catalog_content_upgrade. Two replicas booting together is an ordinary deployment.
+        // would let a second host that migrated in between hand this one an older view of the objects and a
+        // newer answer for the number, and it would refuse a correct database for a missing
+        // catalog_content_upgrade or a missing created_at_utc. Two replicas booting together is an ordinary
+        // deployment.
         ValidateSchemaObjects(
             Read(() => ReadSchemaObjects(connection)), SqliteCatalogSchema.Tables, SqliteCatalogSchema.CurrentVersion);
 

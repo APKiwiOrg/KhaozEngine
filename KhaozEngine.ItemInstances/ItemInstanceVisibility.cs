@@ -17,9 +17,9 @@ namespace KhaozEngine.ItemInstances;
 /// <para>
 /// <b>A GROUND item has no owner viewer, and that is a rule rather than an omission.</b> A drop's entity is
 /// the drop, whose net id is nobody's, so there is no viewer this design calls the owner of a ground stack
-/// (spec 7.4). A ground item's public view is therefore
-/// <see cref="PublicView"/> at <see cref="PropertyVisibility.Everyone"/>, and there is NO owner remainder
-/// for a drop: the sibling component carries the whole of what a passer-by ever receives. The consequence
+/// (spec 7.4). <see cref="GroundItemPayloadProjection"/> is the public door and reaches
+/// <see cref="PublicView"/> at <see cref="PropertyVisibility.Everyone"/>. There is NO owner remainder for a
+/// drop: the sibling component carries the whole of what a passer-by ever receives. The consequence
 /// worth stating is the leak that does not happen. Kind 6 <c>BoundTo</c> is <see cref="PropertyVisibility.OwnerOnly"/>,
 /// so it is stripped before the component is written and a passer-by cannot read who a dropped item is
 /// bound to, which is a fact about a PLAYER rather than about an item. Kinds 4 and 5, charges and
@@ -64,9 +64,8 @@ public static class ItemInstanceVisibility
     /// after walking the registry.</param>
     /// <param name="viewerLevel">The viewer's clearance for THIS item.</param>
     /// <param name="identified">Whether the item is identified, which is kind 128's state byte.</param>
-    /// <param name="revealedMask">Kind 128's revealed mask. It is a <c>ulong</c> because the shape walk
-    /// reads a varint at the full 64 bits, so narrowing it would have to happen at some call site
-    /// (KhaozEngine issue 917). Bits above
+    /// <param name="revealedMask">The caller's revealed mask, kept as a <c>ulong</c> for compatibility.
+    /// Registered kind 128 bounds stored masks to uint32. Supplied bits above
     /// <see cref="InstancePropertyRegistry.MaxIdentificationMaskBit"/> gate nothing, because the registry
     /// refuses to register one.</param>
     /// <exception cref="ArgumentNullException"><paramref name="kind"/> is null.</exception>

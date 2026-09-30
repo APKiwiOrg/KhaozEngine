@@ -89,7 +89,11 @@ public readonly record struct MoveTuning(
     /// <summary>Window (seconds) within which a jump pressed before landing fires on contact (jump-buffer).</summary>
     public float JumpBuffer { get; init; } = JumpBuffer;
 
-    /// <summary>Scale applied to horizontal movement while airborne (1 = full control, 0 = none).</summary>
+    /// <summary>Scale applied to horizontal movement while airborne (1 = full control, 0 = none).
+    /// With <see cref="AirMomentum"/> on, this is instead the fraction of the gap toward commanded velocity
+    /// blended once per simulation tick. It is not multiplied by dt, so changing the tick rate changes steering
+    /// feel at values between 0 and 1. Keep client prediction and authority on the same fixed tick rate.
+    /// <see cref="AirBrakeAccel"/> is separate and remains a rate per second.</summary>
     public float AirControl { get; init; } = AirControl;
 
     /// <summary>Grounded skin (metres): while already grounded, ground within this distance below the feet keeps

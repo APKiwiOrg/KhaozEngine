@@ -183,9 +183,9 @@ public sealed partial class ContainerCommitBuilder
             if (pair.Value is null)
                 throw new ArgumentException($"Container '{pair.Key}' is null.", nameof(containers));
 
-            // Format is the one place a section name is made, so asking it here means a batch cannot be
-            // opened over a name that would only fail at Close.
-            _ = ContainerSectionNames.Format(pair.Key, 0);
+            // Format is the one place a section name is made, so asking it for the highest page here means
+            // a batch cannot be opened over a name that would only fail at Close.
+            _ = ContainerSectionNames.Format(pair.Key, pair.Value.PageCount - 1);
             copy.Add(pair.Key, pair.Value);
         }
 

@@ -23,6 +23,11 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// committed and then died before its own release can leave one, and the draft it names would otherwise
 /// refuse every edit forever, so the baseline read every publish starts with clears it.
 /// </para>
+/// <para>
+/// Each statement here moves <c>catalog_draft.updated_at_utc</c> when it changes the row and leaves it alone
+/// when it does not: a freeze at the base the marker already names, and a release of a draft nothing holds,
+/// are both no change.
+/// </para>
 /// </summary>
 public sealed partial class SqliteContentAuthoringStore
 {
@@ -35,11 +40,19 @@ public sealed partial class SqliteContentAuthoringStore
         using SqliteTransaction transaction = _connection.BeginTransaction();
 
         // It OVERWRITES rather than refusing an already frozen draft. A marker a dead publish left behind
-        // must not block the retry, and the retry is exactly what an operator does to recover.
+        // must not block the retry, and the retry is exactly what an operator does to recover. The row count
+        // is the open-draft check, so the update time is decided inside the SET rather than in the WHERE.
         using (SqliteCommand command = Command(
-            "UPDATE catalog_draft SET frozen_for_base_version = $base WHERE draft_key = 1;", transaction))
+            """
+            UPDATE catalog_draft
+            SET frozen_for_base_version = $base,
+                updated_at_utc = CASE WHEN frozen_for_base_version IS $base THEN updated_at_utc ELSE $now END
+            WHERE draft_key = 1;
+            """,
+            transaction))
         {
             Bind(command, "$base", (long)baseVersion);
+            Bind(command, "$now", Millis(_clock()));
             if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 0)
             {
                 throw new ContentAuthoringException(
@@ -68,7 +81,12 @@ public sealed partial class SqliteContentAuthoringStore
     async Task ClearFreezeAsync(SqliteTransaction transaction, CancellationToken cancellationToken)
     {
         using SqliteCommand command = Command(
-            "UPDATE catalog_draft SET frozen_for_base_version = NULL WHERE draft_key = 1;", transaction);
+            """
+            UPDATE catalog_draft SET frozen_for_base_version = NULL, updated_at_utc = $now
+            WHERE draft_key = 1 AND frozen_for_base_version IS NOT NULL;
+            """,
+            transaction);
+        Bind(command, "$now", Millis(_clock()));
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -83,7 +101,7 @@ public sealed partial class SqliteContentAuthoringStore
         using SqliteTransaction transaction = _connection.BeginTransaction();
         using (SqliteCommand command = Command(
             """
-            UPDATE catalog_draft SET frozen_for_base_version = NULL
+            UPDATE catalog_draft SET frozen_for_base_version = NULL, updated_at_utc = $now
             WHERE draft_key = 1
               AND frozen_for_base_version IS NOT NULL
               AND frozen_for_base_version <>
@@ -91,6 +109,7 @@ public sealed partial class SqliteContentAuthoringStore
             """,
             transaction))
         {
+            Bind(command, "$now", Millis(_clock()));
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -141,10 +160,12 @@ public sealed partial class SqliteContentAuthoringStore
     /// </para>
     /// </summary>
     /// <param name="plan">The plan committing, whose frozen edits leave the draft.</param>
+    /// <param name="at">The version's publish time, which a rebase stamps as the draft's update time.</param>
     /// <param name="transaction">The commit's one transaction.</param>
     /// <param name="cancellationToken">Cancels the statements.</param>
     async Task DeleteFrozenEditsAsync(
         ContentPublishPlan plan,
+        long at,
         SqliteTransaction transaction,
         CancellationToken cancellationToken)
     {
@@ -175,11 +196,13 @@ public sealed partial class SqliteContentAuthoringStore
 
         using SqliteCommand rebase = Command(
             """
-            UPDATE catalog_draft SET base_version = $version, frozen_for_base_version = NULL
+            UPDATE catalog_draft
+            SET base_version = $version, frozen_for_base_version = NULL, updated_at_utc = $at
             WHERE draft_key = 1;
             """,
             transaction);
         Bind(rebase, "$version", (long)plan.VersionNumber);
+        Bind(rebase, "$at", at);
         await rebase.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 }

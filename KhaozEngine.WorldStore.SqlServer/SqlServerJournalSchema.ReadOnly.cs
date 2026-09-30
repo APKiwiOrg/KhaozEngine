@@ -10,7 +10,7 @@ namespace KhaozEngine.WorldStore.SqlServer;
 internal static partial class SqlServerJournalSchema
 {
     /// <summary>
-    /// Validates the version-two schema for <see cref="SqlServerJournalSchemaMode.ReadOnly"/>. Every command is a
+    /// Validates the version-three schema for <see cref="SqlServerJournalSchemaMode.ReadOnly"/>. Every command is a
     /// catalog or metadata <c>SELECT</c> inside one read committed transaction that always ends in a rollback. It
     /// takes no application lock, because that lock only orders writers, and it never creates or migrates: a missing
     /// or older schema is a <c>SchemaMismatch</c> refusal naming the migration a writer would apply.
@@ -36,7 +36,9 @@ internal static partial class SqlServerJournalSchema
         }
         catch (SqlException exception)
         {
-            throw Failure(JournalStoreFailureKind.Unavailable, "SQL Server journal schema could not be opened for read only validation.", exception);
+            throw cancellationToken.IsCancellationRequested
+                ? Failure(JournalStoreFailureKind.Cancelled, "Read only schema validation was cancelled before it began.", exception)
+                : Failure(JournalStoreFailureKind.Unavailable, "SQL Server journal schema could not be opened for read only validation.", exception);
         }
 
         await using (transaction)
@@ -61,6 +63,8 @@ internal static partial class SqlServerJournalSchema
             }
             catch (SqlException exception)
             {
+                if (cancellationToken.IsCancellationRequested)
+                    throw Failure(JournalStoreFailureKind.Cancelled, "Read only schema validation was cancelled.", exception);
                 throw exception.Number switch
                 {
                     1205 => Failure(JournalStoreFailureKind.Deadlock, "Read only schema validation was a deadlock victim.", exception),

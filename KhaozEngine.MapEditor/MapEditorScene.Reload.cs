@@ -58,12 +58,7 @@ public partial class MapEditorScene
     protected virtual ViewportWorld? BuildReloadViewport(EditorDocument candidate)
     {
         if (!_viewport.IsBuilt) return null;
-        var replacement = new ViewportWorld(_scene, _options.ManifestPaths)
-        {
-            ScatterLayerVisible = _visibility.GetLayer,
-            RenderDistance = _viewport.RenderDistance,
-            TexturedPropsEnabled = () => _options.TexturedProps,
-        };
+        ViewportWorld replacement = CreateReloadViewport();
         try
         {
             replacement.Build(candidate.Doc, candidate.Registry);
@@ -75,6 +70,16 @@ public partial class MapEditorScene
             throw;
         }
     }
+
+    internal ViewportWorld CreateReloadViewport() =>
+        new ViewportWorld(_scene, _options.ManifestPaths)
+        {
+            ScatterLayerVisible = _visibility.GetLayer,
+            RenderDistance = _viewport.RenderDistance,
+            TexturedPropsEnabled = () => _options.TexturedProps,
+            PropCategoryResolver = _options.ResolvePropCategory,
+            PropKindVisible = PropKindVisible,
+        };
 
     void CommitReload(EditorDocument replacement, ViewportWorld? replacementViewport, MapTileRect? replacementWindow)
     {
@@ -122,6 +127,7 @@ public partial class MapEditorScene
 
     void SubscribeDocument(EditorDocument document)
     {
+        document.PlacementsChanged += OnPlacementsChanged;
         document.DocumentChanged += OnDocumentChanged;
         document.CommandApplied += OnCommandVisibilityForward;
         document.CommandRedone += OnCommandVisibilityForward;
@@ -131,6 +137,7 @@ public partial class MapEditorScene
 
     void UnsubscribeDocument(EditorDocument document)
     {
+        document.PlacementsChanged -= OnPlacementsChanged;
         document.DocumentChanged -= OnDocumentChanged;
         document.CommandApplied -= OnCommandVisibilityForward;
         document.CommandRedone -= OnCommandVisibilityForward;

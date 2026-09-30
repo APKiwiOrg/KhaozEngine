@@ -79,14 +79,9 @@ internal sealed class CatalogOperationalActions(IContentAuthoringStore store, Co
 
         IReadOnlyList<ContentVersionRecord> records = await store
             .ListVersionsAsync(cancellationToken).ConfigureAwait(false);
-        var versions = new List<int>(records.Count);
-        for (int i = 0; i < records.Count; i++)
-        {
-            versions.Add(records[i].VersionNumber);
-        }
 
         ContentPackSweepResult result = await ContentPackSweep
-            .RunAsync(pack, versions, cancellationToken).ConfigureAwait(false);
+            .RunValidatedAsync(pack, records, cancellationToken).ConfigureAwait(false);
 
         // Spec 10.10: every mutating request's operator is recorded beside the actor. A sweep that DELETED
         // something is the one operation on this surface no republish undoes, so the row goes in after the

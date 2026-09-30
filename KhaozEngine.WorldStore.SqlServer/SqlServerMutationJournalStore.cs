@@ -17,7 +17,7 @@ public enum SqlServerJournalSchemaMode
     AutoCreate,
     ValidateOnly,
 
-    /// <summary>Validates the version-two schema with catalog <c>SELECT</c>s only, in one read committed
+    /// <summary>Validates the version-three schema with catalog <c>SELECT</c>s only, in one read committed
     /// transaction that is rolled back, with no DDL and no application lock. The store then refuses every write
     /// path with <see cref="System.NotSupportedException"/>. A missing or older schema is refused with
     /// <c>SchemaMismatch</c>, never created or migrated.</summary>
@@ -124,7 +124,14 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         catch (SqlException exception)
         {
             bool rolledBack = await TryRollbackAsync(transaction).ConfigureAwait(false);
-            throw MapProviderFailure(exception.Number, exception, Array.Empty<string>(), false, false, rolledBack);
+            throw MapCommandFailure(
+                exception.Number,
+                exception,
+                cancellationToken,
+                Array.Empty<string>(),
+                false,
+                false,
+                rolledBack);
         }
         catch (OperationCanceledException exception)
         {
@@ -149,7 +156,14 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         catch (SqlException exception)
         {
             await connection.DisposeAsync().ConfigureAwait(false);
-            throw MapProviderFailure(exception.Number, exception, Array.Empty<string>(), false, false, false);
+            throw MapCommandFailure(
+                exception.Number,
+                exception,
+                cancellationToken,
+                Array.Empty<string>(),
+                false,
+                false,
+                false);
         }
     }
 
@@ -167,7 +181,14 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         }
         catch (SqlException exception)
         {
-            throw MapProviderFailure(exception.Number, exception, Array.Empty<string>(), false, false, false);
+            throw MapCommandFailure(
+                exception.Number,
+                exception,
+                cancellationToken,
+                Array.Empty<string>(),
+                false,
+                false,
+                false);
         }
     }
 
@@ -305,6 +326,18 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
             exception);
     }
 
+    private static JournalStoreException MapCommandFailure(
+        int number,
+        Exception exception,
+        CancellationToken cancellationToken,
+        IReadOnlyList<string> streamKeys,
+        bool transactionStarted,
+        bool commitStarted,
+        bool rollbackConfirmed)
+        => cancellationToken.IsCancellationRequested
+            ? Cancelled(streamKeys, transactionStarted, commitStarted, rollbackConfirmed, exception)
+            : MapProviderFailure(number, exception, streamKeys, transactionStarted, commitStarted, rollbackConfirmed);
+
     private static JournalStoreException Cancelled(
         IReadOnlyList<string> streamKeys,
         bool transactionStarted,
@@ -350,6 +383,15 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
         IReadOnlyList<string> streamKeys)
         => MapProviderFailure(number, new InvalidOperationException("provider test seam"), streamKeys, transactionStarted, commitStarted, rollbackConfirmed);
 
+    internal static JournalStoreException MapCommandFailureForTest(
+        int number,
+        CancellationToken cancellationToken,
+        bool transactionStarted,
+        bool commitStarted,
+        bool rollbackConfirmed,
+        IReadOnlyList<string> streamKeys)
+        => MapCommandFailure(number, new InvalidOperationException("provider test seam"), cancellationToken, streamKeys, transactionStarted, commitStarted, rollbackConfirmed);
+
     internal static JournalStoreException MapCancellationForTest(
         bool transactionStarted,
         bool commitStarted,
@@ -374,6 +416,8 @@ public sealed partial class SqlServerMutationJournalStore : IMutationJournalStor
     internal static string SchemaSqlForTest => SqlServerJournalSchema.SchemaSql;
     internal static string VersionOneSchemaSqlForTest => SqlServerJournalSchema.VersionOneSchemaSql;
     internal static IReadOnlyList<string> VersionOneMigrationSqlForTest => SqlServerJournalSchema.VersionOneMigrationSql;
+    internal static string VersionTwoSchemaSqlForTest => SqlServerJournalSchema.VersionTwoSchemaSql;
+    internal static IReadOnlyList<string> VersionTwoMigrationSqlForTest => SqlServerJournalSchema.VersionTwoMigrationSql;
 
     private enum OperationLookupStatus
     {

@@ -279,7 +279,7 @@ public sealed class InstancePropertyRegistry
     /// by construction now: kind 7's material ids are <c>item</c> references, and a socket's contained
     /// definition id is an <c>item</c> reference at every depth.
     /// <para>
-    /// Kinds 128, 131, 132 and 133 register a REAL codec here rather than
+    /// Kinds 1 to 6, 128, 131, 132 and 133 register a value codec here rather than
     /// <see cref="InstancePropertyCodec.ShapeOnly"/>, and it has to happen at registration: a registered
     /// codec is never replaced (that would make two previously distinct items stack and destroy one
     /// identity), so there is no later moment at which one could be supplied. Every other v1 kind's shape
@@ -292,12 +292,12 @@ public sealed class InstancePropertyRegistry
 
         // The engine band, kinds 1 to 127: generic per-instance facts any game might want. Kinds 4, 5 and 6
         // are OwnerOnly while 7 and 8 are Everyone, so visibility is deliberately NOT monotonic in the kind.
-        Scalars(registry, InstanceKindBand.Engine, InstancePropertyKind.Flags, 1, PropertyVisibility.Everyone);
-        Scalars(registry, InstanceKindBand.Engine, InstancePropertyKind.ItemLevel, 1, PropertyVisibility.Everyone);
-        Scalars(registry, InstanceKindBand.Engine, InstancePropertyKind.Quality, 1, PropertyVisibility.Everyone);
-        Scalars(registry, InstanceKindBand.Engine, InstancePropertyKind.Charges, 2, PropertyVisibility.OwnerOnly);
-        Scalars(registry, InstanceKindBand.Engine, InstancePropertyKind.Durability, 2, PropertyVisibility.OwnerOnly);
-        Scalars(registry, InstanceKindBand.Engine, InstancePropertyKind.BoundTo, 1, PropertyVisibility.OwnerOnly);
+        Scalars(registry, InstanceKindBand.Engine, InstancePropertyKind.Flags, 1, PropertyVisibility.Everyone, InstanceScalarCodec.Flags);
+        Scalars(registry, InstanceKindBand.Engine, InstancePropertyKind.ItemLevel, 1, PropertyVisibility.Everyone, InstanceScalarCodec.ItemLevel);
+        Scalars(registry, InstanceKindBand.Engine, InstancePropertyKind.Quality, 1, PropertyVisibility.Everyone, InstanceScalarCodec.Quality);
+        Scalars(registry, InstanceKindBand.Engine, InstancePropertyKind.Charges, 2, PropertyVisibility.OwnerOnly, InstanceScalarCodec.Charges);
+        Scalars(registry, InstanceKindBand.Engine, InstancePropertyKind.Durability, 2, PropertyVisibility.OwnerOnly, InstanceScalarCodec.Durability);
+        Scalars(registry, InstanceKindBand.Engine, InstancePropertyKind.BoundTo, 1, PropertyVisibility.OwnerOnly, InstanceScalarCodec.BoundTo);
 
         // Materials are input item DEFINITIONS, so every material id is an item reference and a retired
         // material is visible to both the rule pass and the validator.
@@ -421,11 +421,12 @@ public sealed class InstancePropertyRegistry
         InstanceKindBand band,
         ushort kind,
         int count,
-        PropertyVisibility visibility)
+        PropertyVisibility visibility,
+        IInstancePropertyCodec? codec = null)
         => registry.Register(
             band,
             kind,
-            InstancePropertyCodec.ShapeOnly,
+            codec ?? InstancePropertyCodec.ShapeOnly,
             visibility,
             NotGated,
             new InstanceFieldShape(count == 1 ? OneVarint : TwoVarints, InstanceCountWidth.None, default),

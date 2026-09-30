@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -48,6 +49,60 @@ public class TileCoordsTests
         Assert.True(a.Intersects(b));
         Assert.True(a.Intersect(new TileRect(10, 10, 1, 1)).IsEmpty);
         Assert.False(a.Intersects(new TileRect(4, 0, 1, 1)));
+    }
+
+    [Fact]
+    public void TileRect_far_edges_refuse_wrap_and_near_boundary_edges_remain_exact()
+    {
+        var valid = new TileRect(int.MaxValue - 2, int.MinValue, 2, 2);
+        Assert.Equal(int.MaxValue, valid.X1);
+        Assert.Equal(int.MinValue + 2, valid.Z1);
+        Assert.True(valid.Contains(int.MaxValue - 1, int.MinValue + 1));
+
+        var invalidX = new TileRect(int.MaxValue, 0, 1, 1);
+        Assert.Throws<InvalidOperationException>(() => _ = invalidX.X1);
+        Assert.Throws<InvalidOperationException>(() => invalidX.Contains(int.MaxValue, 0));
+
+        var invalidZ = new TileRect(0, int.MaxValue, 1, 1);
+        Assert.Throws<InvalidOperationException>(() => _ = invalidZ.Z1);
+        Assert.Throws<InvalidOperationException>(() => invalidZ.Contains(0, int.MaxValue));
+    }
+
+    [Fact]
+    public void TileRect_intersection_across_coordinate_extremes_is_empty()
+    {
+        var low = new TileRect(int.MinValue, 0, 1, 1);
+        var high = new TileRect(int.MaxValue - 1, 0, 1, 1);
+
+        Assert.True(low.Intersect(high).IsEmpty);
+        Assert.False(low.Intersects(high));
+    }
+
+    [Fact]
+    public void TileRect_construction_helpers_refuse_spans_wider_than_the_coordinate_domain()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => TileRect.FromCorners(int.MinValue, 0, int.MaxValue, 0));
+
+        var low = new TileRect(int.MinValue, 0, 1, 1);
+        var high = new TileRect(int.MaxValue - 1, 0, 1, 1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => low.Union(high));
+    }
+
+    [Fact]
+    public void TileRect_expand_refuses_unrepresentable_results_and_keeps_valid_boundary_results()
+    {
+        Assert.Equal(
+            new TileRect(int.MinValue, -1, 3, 3),
+            new TileRect(int.MinValue + 1, 0, 1, 1).Expand(1));
+        Assert.Equal(
+            new TileRect(int.MaxValue - 3, -1, 3, 3),
+            new TileRect(int.MaxValue - 2, 0, 1, 1).Expand(1));
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new TileRect(int.MinValue, 0, 1, 1).Expand(1));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new TileRect(int.MaxValue - 1, 0, 1, 1).Expand(1));
     }
 
     [Fact]

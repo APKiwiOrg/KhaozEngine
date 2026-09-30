@@ -52,7 +52,7 @@ public class ScalarContractPayloadTests
     [InlineData(1, new byte[] { 0x01, 0x01, 0x00 })]
     [InlineData(1, new byte[] { 0x01, 0x01, 0x07 })]
     [InlineData(2, new byte[] { 0x02, 0x01, 0x01 })]
-    [InlineData(2, new byte[] { 0x02, 0x03, 0xFF, 0xFF, 0x03 })] // 65535.
+    [InlineData(2, new byte[] { 0x02, 0x03, 0xFF, 0xFF, 0x03 })] // ItemLevel upper boundary is 65535.
     [InlineData(3, new byte[] { 0x03, 0x01, 0x00 })]
     [InlineData(3, new byte[] { 0x03, 0x01, 0x65 })] // Quality is not capped at 100.
     [InlineData(3, new byte[] { 0x03, 0x03, 0xFF, 0xFF, 0x03 })]

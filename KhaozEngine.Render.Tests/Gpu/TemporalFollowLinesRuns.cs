@@ -64,19 +64,27 @@ namespace KhaozEngine.Tests.Gpu
 
         internal double Seconds { get; private set; }
 
+        /// <summary>The walk's two lines, its jitter sequence started <paramref name="phase"/> phases on
+        /// (<see cref="TemporalFixture.SkipPhases"/>). Only the first phase's ground alone is kept for another run on
+        /// <paramref name="groundKey"/>.</summary>
         internal (LineMeasure Across, LineMeasure Along) Run(string key, IFollowLinesWalk walk, TemporalUpscale preset,
-            string groundKey)
+            string groundKey, int phase = 0)
         {
+            if (phase != 0) key = $"{key}, from jitter phase {phase}";
             if (_runs.TryGetValue(key, out var cached)) return cached;
             long started = Stopwatch.GetTimestamp();
             int w = walk.W, h = walk.H, count = Last - StillFrames + 1;
-            byte[][] with = Sequence(walk, preset, true, true), lines = Sequence(walk, preset, false, true);
-            if (!_ground.TryGetValue(groundKey, out byte[][]? ground))
-                _ground[groundKey] = ground = Sequence(walk, preset, false, false);
+            byte[][] with = Sequence(walk, preset, true, true, phase);
+            byte[][] lines = Sequence(walk, preset, false, true, phase);
+            byte[][]? ground = null;
+            if (phase != 0) ground = Sequence(walk, preset, false, false, phase);
+            else if (!_ground.TryGetValue(groundKey, out ground))
+                _ground[groundKey] = ground = Sequence(walk, preset, false, false, 0);
             var floors = new byte[TemporalGhostingRuns.TrailFrames][];
             for (int age = TemporalGhostingRuns.FirstAge; age < floors.Length; age++)
             {
                 using var fx = new TemporalFixture(w, h, s => walk.Setup(s, preset));
+                fx.SkipPhases(phase);
                 fx.SkipFrames(Last - age + 1);
                 fx.Frames(age - 1, (s, n) => walk.Draw(s, n, false, true));
                 floors[age] = fx.Frame((s, n) => walk.Draw(s, n, false, true));
@@ -152,9 +160,9 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        static byte[][] Sequence(IFollowLinesWalk walk, TemporalUpscale preset, bool box, bool lines) =>
+        static byte[][] Sequence(IFollowLinesWalk walk, TemporalUpscale preset, bool box, bool lines, int phase) =>
             TemporalAcceptance.Sequence(walk.W, walk.H, s => walk.Setup(s, preset),
-                (s, n) => walk.Draw(s, n, box, lines), StillFrames, Last - StillFrames + 1);
+                (s, n) => walk.Draw(s, n, box, lines), StillFrames, Last - StillFrames + 1, phase);
     }
 
     /// <summary>

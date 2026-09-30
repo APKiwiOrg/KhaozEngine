@@ -22,18 +22,18 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The share of its energy without the box a still line keeps on its worst frame under the
         /// orthographic follow walk, as the still-camera passers hold it.</summary>
-        const double MinShare = 0.85;
+        internal const double MinShare = 0.85;
 
         static readonly float[] Speeds = { 0.5f, 1f, 1.5f, 2f, 2.5f, 3f };
 
         internal static (LineMeasure Across, LineMeasure Along) Run(TemporalFollowLinesRuns runs, bool perspective,
-            TemporalUpscale preset, float speed, float texels)
+            TemporalUpscale preset, float speed, float texels, int phase = 0)
         {
             IFollowLinesWalk walk = perspective
                 ? new PerspectiveFollowLines(320, 180, speed, preset, texels)
                 : new OrthoFollowLines(320, 180, speed, preset, texels);
             string ground = $"{(perspective ? "perspective" : "orthographic")} {preset} {speed}";
-            return runs.Run($"{ground} {texels}", walk, preset, ground);
+            return runs.Run($"{ground} {texels}", walk, preset, ground, phase);
         }
 
         internal static string Describe(string what, LineMeasure m) =>

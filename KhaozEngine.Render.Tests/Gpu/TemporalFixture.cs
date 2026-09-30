@@ -19,7 +19,7 @@ public sealed class TemporalFixture : IDisposable
     readonly GpuDeviceContext _gpu;
     readonly IGpuCommandList _commands;
     IGpuTexture _targetTexture;
-    int _frame;
+    int _frame, _skippedPhases;
 
     /// <summary>320 x 180 with temporal rendering forced on, the shape an <c>IClassFixture</c> needs.</summary>
     public TemporalFixture() : this(320, 180, static s => s.ForceTemporalForTests = true) { }
@@ -58,7 +58,8 @@ public sealed class TemporalFixture : IDisposable
     public double LastSubmitMilliseconds { get; private set; }
 
     /// <summary>One frame: Begin, a deterministic effect clock of n / 60 seconds, the draw callback with the frame
-    /// number n (every Begin the fixture issued, skipped ones included), PrepareFrame, the recording into
+    /// number n (every Begin the fixture issued, skipped ones included, less the <see cref="SkipPhases"/> count),
+    /// PrepareFrame, the recording into
     /// <see cref="Target"/>, Submit, a drain and the frame boundary, then the RGBA8 readback.</summary>
     public byte[] Frame(Action<Scene3D, int> draw)
     {
@@ -74,7 +75,7 @@ public sealed class TemporalFixture : IDisposable
 
     void Render(Action<Scene3D, int> draw)
     {
-        int n = _frame++;
+        int n = _frame++ - _skippedPhases;
         Scene.Begin();
         Scene.EffectTimeSeconds = n / 60f;
         draw(Scene, n);
@@ -110,6 +111,15 @@ public sealed class TemporalFixture : IDisposable
     public void SkipFrames(int count)
     {
         for (int i = 0; i < count; i++) { Scene.Begin(); _frame++; }
+    }
+
+    /// <summary>Begin <paramref name="count"/> frames without rendering them and without counting them in the frame
+    /// number the draw callback and the effect clock see, so a run starts its jitter sequence
+    /// <paramref name="count"/> phases on and draws the same frames. Call it before the first frame.</summary>
+    public void SkipPhases(int count)
+    {
+        SkipFrames(count);
+        _skippedPhases += count;
     }
 
     /// <summary>Change the display size: drain, then rebuild <see cref="Target"/> at the same format.</summary>

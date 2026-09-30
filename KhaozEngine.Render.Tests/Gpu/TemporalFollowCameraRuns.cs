@@ -30,33 +30,36 @@ namespace KhaozEngine.Tests.Gpu
 
         const ulong Key = 61;
 
-        readonly Dictionary<(TemporalUpscale, float, int), CrossingTrail> _runs = new();
-        readonly Dictionary<(TemporalUpscale, float, int), CrossingTrail> _beyond = new();
+        readonly Dictionary<(TemporalUpscale, float, int, int), CrossingTrail> _runs = new();
+        readonly Dictionary<(TemporalUpscale, float, int, int), CrossingTrail> _beyond = new();
         readonly Dictionary<(TemporalUpscale, float, int), (byte[] Wall, byte[][] Floors)> _walls = new();
 
         /// <summary>Wall time spent rendering and measuring so far, in seconds.</summary>
         internal double Seconds { get; private set; }
 
         /// <summary>The walk at <paramref name="pixelsPerFrame"/> display pixels a frame at
-        /// <paramref name="preset"/>, after <paramref name="hold"/> still frames.</summary>
-        internal CrossingTrail Run(TemporalUpscale preset, float pixelsPerFrame, int hold = StillFrames)
+        /// <paramref name="preset"/>, after <paramref name="hold"/> still frames, its jitter sequence started
+        /// <paramref name="phase"/> phases on (<see cref="TemporalFixture.SkipPhases"/>).</summary>
+        internal CrossingTrail Run(TemporalUpscale preset, float pixelsPerFrame, int hold = StillFrames, int phase = 0)
         {
-            var key = (preset, pixelsPerFrame, hold);
+            var key = (preset, pixelsPerFrame, hold, phase);
             if (_runs.TryGetValue(key, out CrossingTrail? cached)) return cached;
             long started = Stopwatch.GetTimestamp();
             var walk = new Walk(pixelsPerFrame, hold);
-            var (wall, floors) = Walls(walk, preset);
+            var (wall, floors) = Walls(walk, preset, phase);
             byte[] frame;
             int last = walk.Last;
             using (var fx = new TemporalFixture(W, H, s => walk.Setup(s, preset)))
             {
+                fx.SkipPhases(phase);
                 fx.Frames(last, walk.Draw);
                 frame = fx.Frame(walk.Draw);
             }
             var footprints = new PixelRect[TemporalGhostingRuns.TrailFrames];
             footprints[0] = walk.Covered(last);
             for (int k = 1; k < footprints.Length; k++) footprints[k] = walk.Covered(last - k);
-            string held = hold == StillFrames ? "" : $", after {hold} still frames";
+            string held = (hold == StillFrames ? "" : $", after {hold} still frames")
+                + (phase == 0 ? "" : $", from jitter phase {phase}");
             CrossingTrail trail = TemporalNarrowCrossingRuns.Measure(
                 $"follow camera at {pixelsPerFrame} px a frame, {preset}{held}", frame, wall, floors, footprints,
                 Stopwatch.GetElapsedTime(started).TotalSeconds);
@@ -73,10 +76,11 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The walk's trail past the reconstruction's reach from the box's edge: only the wall pixels more
         /// than <see cref="SpillPixels"/> from the box now, where the reconstruction cannot spread the box's texel and
         /// only a history kept from it can leave its colour. The reach is counted from there.</summary>
-        internal CrossingTrail BeyondSpill(TemporalUpscale preset, float pixelsPerFrame, int hold = StillFrames)
+        internal CrossingTrail BeyondSpill(TemporalUpscale preset, float pixelsPerFrame, int hold = StillFrames,
+            int phase = 0)
         {
-            Run(preset, pixelsPerFrame, hold);
-            return _beyond[(preset, pixelsPerFrame, hold)];
+            Run(preset, pixelsPerFrame, hold, phase);
+            return _beyond[(preset, pixelsPerFrame, hold, phase)];
         }
 
         /// <summary><see cref="ReconstructionRadius"/> in display pixels at <paramref name="preset"/>.</summary>
@@ -84,15 +88,17 @@ namespace KhaozEngine.Tests.Gpu
             (int)MathF.Ceiling(ReconstructionRadius * TemporalSettings.DisplayOverInternal(preset));
 
         // The converged bare wall at the measured frame on the same camera path, and each age's floor: the bare wall
-        // from the frame a pixel of that age was uncovered, with no history before it. Floors[k] is age k's.
-        (byte[] Wall, byte[][] Floors) Walls(Walk walk, TemporalUpscale preset)
+        // from the frame a pixel of that age was uncovered, with no history before it. Floors[k] is age k's. Only the
+        // first phase's are kept: another phase's serve one walk.
+        (byte[] Wall, byte[][] Floors) Walls(Walk walk, TemporalUpscale preset, int phase)
         {
             var key = (preset, walk.Speed, walk.Still);
-            if (_walls.TryGetValue(key, out var cached)) return cached;
+            if (phase == 0 && _walls.TryGetValue(key, out var cached)) return cached;
             Action<Scene3D> setup = s => walk.Setup(s, preset);
             byte[] wall;
             using (var fx = new TemporalFixture(W, H, setup))
             {
+                fx.SkipPhases(phase);
                 fx.Frames(walk.Last, walk.Background);
                 wall = fx.Frame(walk.Background);
             }
@@ -100,11 +106,12 @@ namespace KhaozEngine.Tests.Gpu
             for (int age = TemporalGhostingRuns.FirstAge; age < floors.Length; age++)
             {
                 using var fx = new TemporalFixture(W, H, setup);
+                fx.SkipPhases(phase);
                 fx.SkipFrames(walk.Last - age + 1);
                 fx.Frames(age - 1, walk.Background);
                 floors[age] = fx.Frame(walk.Background);
             }
-            return _walls[key] = (wall, floors);
+            return phase == 0 ? _walls[key] = (wall, floors) : (wall, floors);
         }
 
         // The walk: the box and the camera move right together from frame Still on, and Last is measured. Every setup

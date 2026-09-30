@@ -33,9 +33,9 @@ namespace KhaozEngine.Tests.Gpu
 
         const ulong Key = 67;
 
-        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading, int), CrossingTrail> _runs = new();
-        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading, int), int> _bandMarks = new();
-        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading, int), CrossingTrail> _beyond = new();
+        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading, int, int), CrossingTrail> _runs = new();
+        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading, int, int), int> _bandMarks = new();
+        readonly Dictionary<(TemporalUpscale, float, float, FollowHeading, int, int), CrossingTrail> _beyond = new();
         readonly Dictionary<(TemporalUpscale, float, float, FollowHeading, int), (byte[] Ground, byte[][] Floors)>
             _bare = new();
 
@@ -44,25 +44,28 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>The walk at <paramref name="pixelsPerFrame"/> display pixels a frame of ground motion at the
         /// screen centre, at <paramref name="pitch"/> radians, heading <paramref name="heading"/>, after
-        /// <paramref name="hold"/> still frames.</summary>
+        /// <paramref name="hold"/> still frames, its jitter sequence started <paramref name="phase"/> phases on
+        /// (<see cref="TemporalFixture.SkipPhases"/>).</summary>
         internal CrossingTrail Run(TemporalUpscale preset, float pixelsPerFrame, float pitch, FollowHeading heading,
-            int hold = StillFrames)
+            int hold = StillFrames, int phase = 0)
         {
-            var key = (preset, pixelsPerFrame, pitch, heading, hold);
+            var key = (preset, pixelsPerFrame, pitch, heading, hold, phase);
             if (_runs.TryGetValue(key, out CrossingTrail? cached)) return cached;
             long started = Stopwatch.GetTimestamp();
             var walk = new PerspectiveWalk(W, H, pitch, heading, pixelsPerFrame, hold, AvatarSize);
             int last = hold + WalkFrames;
-            var (ground, floors) = Bare(walk, preset, hold);
+            var (ground, floors) = Bare(walk, preset, hold, phase);
             byte[] frame;
             using (var fx = new TemporalFixture(W, H, s => walk.Setup(s, preset)))
             {
+                fx.SkipPhases(phase);
                 fx.Frames(last, (s, n) => walk.Draw(s, n, Key));
                 frame = fx.Frame((s, n) => walk.Draw(s, n, Key));
                 _bandMarks[key] = BandMarks(fx);
             }
             int[] ages = walk.Ages(last, TemporalGhostingRuns.TrailFrames, out PixelRect now);
-            string held = hold == StillFrames ? "" : $", after {hold} still frames";
+            string held = (hold == StillFrames ? "" : $", after {hold} still frames")
+                + (phase == 0 ? "" : $", from jitter phase {phase}");
             string name =
                 $"perspective follow at {pixelsPerFrame} px a frame, pitch {pitch}, {heading}, {preset}{held}";
             CrossingTrail trail = Measure(name, frame, ground, floors, ages, now,
@@ -79,16 +82,16 @@ namespace KhaozEngine.Tests.Gpu
         /// cannot spread its texel and only a history kept from it can leave its colour. The reach is counted from
         /// there.</summary>
         internal CrossingTrail BeyondSpill(TemporalUpscale preset, float pixelsPerFrame, float pitch,
-            FollowHeading heading, int hold = StillFrames)
+            FollowHeading heading, int hold = StillFrames, int phase = 0)
         {
-            Run(preset, pixelsPerFrame, pitch, heading, hold);
-            return _beyond[(preset, pixelsPerFrame, pitch, heading, hold)];
+            Run(preset, pixelsPerFrame, pitch, heading, hold, phase);
+            return _beyond[(preset, pixelsPerFrame, pitch, heading, hold, phase)];
         }
 
         /// <summary>The display pixels whose stored state holds the band mark on the measured frame of the walk, which
         /// <see cref="Run"/> rendered.</summary>
         internal int BandMarks(TemporalUpscale preset, float pixelsPerFrame, float pitch, FollowHeading heading,
-            int hold = StillFrames) => _bandMarks[(preset, pixelsPerFrame, pitch, heading, hold)];
+            int hold = StillFrames, int phase = 0) => _bandMarks[(preset, pixelsPerFrame, pitch, heading, hold, phase)];
 
         // Stored states below minus 2.5 are band marks, beside the edge or on the followed surface (the resolve's
         // temporalStoreLock).
@@ -101,16 +104,18 @@ namespace KhaozEngine.Tests.Gpu
             return marks;
         }
 
-        // The converged bare ground at the measured frame on the same camera path, and each age's floor.
-        (byte[] Ground, byte[][] Floors) Bare(PerspectiveWalk walk, TemporalUpscale preset, int hold)
+        // The converged bare ground at the measured frame on the same camera path, and each age's floor. Only the first
+        // phase's are kept: another phase's serve one walk.
+        (byte[] Ground, byte[][] Floors) Bare(PerspectiveWalk walk, TemporalUpscale preset, int hold, int phase)
         {
             var key = (preset, walk.Speed, walk.Pitch, walk.Heading, hold);
-            if (_bare.TryGetValue(key, out var cached)) return cached;
+            if (phase == 0 && _bare.TryGetValue(key, out var cached)) return cached;
             Action<Scene3D> setup = s => walk.Setup(s, preset);
             int last = hold + WalkFrames;
             byte[] ground;
             using (var fx = new TemporalFixture(W, H, setup))
             {
+                fx.SkipPhases(phase);
                 fx.Frames(last, walk.Background);
                 ground = fx.Frame(walk.Background);
             }
@@ -118,11 +123,12 @@ namespace KhaozEngine.Tests.Gpu
             for (int age = TemporalGhostingRuns.FirstAge; age < floors.Length; age++)
             {
                 using var fx = new TemporalFixture(W, H, setup);
+                fx.SkipPhases(phase);
                 fx.SkipFrames(last - age + 1);
                 fx.Frames(age - 1, walk.Background);
                 floors[age] = fx.Frame(walk.Background);
             }
-            return _bare[key] = (ground, floors);
+            return phase == 0 ? _bare[key] = (ground, floors) : (ground, floors);
         }
 
         /// <summary>The trail by age as <see cref="TemporalNarrowCrossingRuns.Measure"/> reads it, from an age per

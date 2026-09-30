@@ -115,7 +115,8 @@ namespace KhaozEngine.Tests.Gpu
         // frame the passer first shows beside the avatar, while it still walks, and that is no licence for the outline
         // to drop more of its history from the turn on: its lead is what it read over the control on the frame before
         // the turn, or the lead of the same walk without the passer where that is more.
-        static double Lead(StopMeasure m, StopMeasure control, StopMeasure? without, StopMeasure? withoutControl) =>
+        internal static double Lead(StopMeasure m, StopMeasure control, StopMeasure? without,
+            StopMeasure? withoutControl) =>
             without is null || withoutControl is null ? Lead(m.Cycle, control.Cycle)
                 : Math.Max(Math.Max(0, m.Errors[0] - control.Errors[0]), Lead(without.Cycle, withoutControl.Cycle));
 
@@ -125,10 +126,28 @@ namespace KhaozEngine.Tests.Gpu
         // share of the control's error.
         void Hold(StopRun r, string set, StopMeasure m, StopMeasure control, double lead, List<string> over)
         {
-            double rounding = 1.0 / (255.0 * m.Pixels);
+            double share = Share(r, set);
+            double worst = Worst(r, set, m, control, lead, over);
+            output.WriteLine($"{r.Name}, {set}: {worst:+0.0000;-0.0000} of the kept error over it and the lead's "
+                + $"{lead:0.00000}, allowed {share:0.00}");
+        }
+
+        /// <summary>How far every pixel showing the avatar (<paramref name="set"/> "whole") or its inner pixels may
+        /// read over their control on <paramref name="r"/>'s walk, as a share of the control's error.</summary>
+        internal static double Share(StopRun r, string set)
+        {
             bool whole = set == "whole";
-            double share = r.Ending == FollowEnding.DampedStop ? whole ? DampedWholeShare : DampedInnerShare
+            return r.Ending == FollowEnding.DampedStop ? whole ? DampedWholeShare : DampedInnerShare
                 : whole ? WholeShare : 0;
+        }
+
+        /// <summary>The most any frame from the turn on reads over its control past the lead and a luma step, as a
+        /// share of the control's error, with each frame over its bound added to <paramref name="over"/>.</summary>
+        internal static double Worst(StopRun r, string set, StopMeasure m, StopMeasure control, double lead,
+            List<string> over)
+        {
+            double rounding = 1.0 / (255.0 * m.Pixels);
+            double share = Share(r, set);
             double worst = double.NegativeInfinity;
             for (int k = 1; k <= TemporalFollowStopRuns.After + 1; k++)
             {
@@ -138,8 +157,7 @@ namespace KhaozEngine.Tests.Gpu
                 if (m.Errors[k] > bound)
                     over.Add($"{r.Name}, {set}: frame +{k - 1} {m.Errors[k]:0.00000} against {bound:0.00000}");
             }
-            output.WriteLine($"{r.Name}, {set}: {worst:+0.0000;-0.0000} of the kept error over it and the lead's "
-                + $"{lead:0.00000}, allowed {share:0.00}");
+            return worst;
         }
 
         /// <summary>Every walk's error on the frame before the turn, the turn frame and the 15 after, its flicker and

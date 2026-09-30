@@ -62,11 +62,13 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Frames <paramref name="warm"/> to <paramref name="warm"/> plus <paramref name="count"/> minus 1
         /// of a fresh <see cref="TemporalFixture"/> run, after <paramref name="warm"/> frames rendered and not read
-        /// back.</summary>
+        /// back, its jitter sequence started <paramref name="startPhase"/> phases on
+        /// (<see cref="TemporalFixture.SkipPhases"/>).</summary>
         public static byte[][] Sequence(int w, int h, Action<Scene3D> setup, Action<Scene3D, int> draw, int warm,
-            int count)
+            int count, int startPhase = 0)
         {
             using var fx = new TemporalFixture(w, h, setup);
+            fx.SkipPhases(startPhase);
             fx.Frames(warm, draw);
             var frames = new byte[count][];
             for (int i = 0; i < count; i++) frames[i] = fx.Frame(draw);

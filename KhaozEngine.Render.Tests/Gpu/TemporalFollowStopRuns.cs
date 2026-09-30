@@ -67,33 +67,34 @@ namespace KhaozEngine.Tests.Gpu
 
         readonly Dictionary<string, StopRun> _runs = new();
         readonly Dictionary<string, byte[][]> _references = new();
-        readonly Dictionary<string, (Func<StopScene> Still, TemporalUpscale Preset)> _controls = new();
+        readonly Dictionary<string, (Func<StopScene> Still, TemporalUpscale Preset, int Phase)> _controls = new();
 
         /// <summary>Wall time spent rendering and measuring so far, in seconds.</summary>
         internal double Seconds { get; private set; }
 
         /// <summary>The perspective walk at <paramref name="pixelsPerFrame"/> display pixels a frame of ground motion
         /// at the screen centre, at <paramref name="pitch"/> radians, heading <paramref name="heading"/>, ending as
-        /// <paramref name="ending"/> says.</summary>
+        /// <paramref name="ending"/> says, its jitter sequence started <paramref name="phase"/> phases on
+        /// (<see cref="TemporalFixture.SkipPhases"/>).</summary>
         internal StopRun Perspective(FollowEnding ending, TemporalUpscale preset, float pixelsPerFrame, float pitch,
-            FollowHeading heading, StopSurround surround = StopSurround.Ground) =>
+            FollowHeading heading, StopSurround surround = StopSurround.Ground, int phase = 0) =>
             Run(new PerspectiveStop(ending, pixelsPerFrame, pitch, heading, surround, false), preset,
-                () => new PerspectiveStop(ending, pixelsPerFrame, pitch, heading, surround, true));
+                () => new PerspectiveStop(ending, pixelsPerFrame, pitch, heading, surround, true), phase);
 
         /// <summary>The orthographic walk at <paramref name="pixelsPerFrame"/> display pixels a frame, ending as
-        /// <paramref name="ending"/> says.</summary>
+        /// <paramref name="ending"/> says, its jitter sequence started <paramref name="phase"/> phases on.</summary>
         internal StopRun Orthographic(FollowEnding ending, TemporalUpscale preset, float pixelsPerFrame,
-            StopSurround surround = StopSurround.Ground) =>
+            StopSurround surround = StopSurround.Ground, int phase = 0) =>
             Run(new OrthographicStop(ending, pixelsPerFrame, surround, false), preset,
-                () => new OrthographicStop(ending, pixelsPerFrame, surround, true));
+                () => new OrthographicStop(ending, pixelsPerFrame, surround, true), phase);
 
         /// <summary>The control of <paramref name="walk"/>: the same scene and ending with the avatar standing still
         /// in the world while the camera and the passer keep their paths relative to it. The avatar shows as it does
         /// in the walk on every frame, and its own history is kept by construction, since it never travels.</summary>
         internal StopRun Control(StopRun walk)
         {
-            var (still, preset) = _controls[walk.Name];
-            return Run(still(), preset, still);
+            var (still, preset, phase) = _controls[walk.Name];
+            return Run(still(), preset, still, phase);
         }
 
         /// <summary>The passer's speed across the screen once the camera stops, in display pixels a frame.</summary>
@@ -113,17 +114,18 @@ namespace KhaozEngine.Tests.Gpu
             _ => "",
         };
 
-        StopRun Run(StopScene scene, TemporalUpscale preset, Func<StopScene> still)
+        StopRun Run(StopScene scene, TemporalUpscale preset, Func<StopScene> still, int phase)
         {
-            string name = $"{scene.Name}, {preset}";
-            _controls[name] = (still, preset);
+            string name = $"{scene.Name}, {preset}" + (phase == 0 ? "" : $", from jitter phase {phase}");
+            _controls[name] = (still, preset, phase);
             if (_runs.TryGetValue(name, out StopRun? cached)) return cached;
             long started = Stopwatch.GetTimestamp();
             const int first = Turn - Lead, count = Lead + After + 1;
             if (!_references.TryGetValue(scene.Name, out byte[][]? references))
                 _references[scene.Name] = references = TemporalAcceptance.ReferenceSequence(W, H,
                     s => scene.Setup(s, TemporalUpscale.Native), scene.Draw, first, count);
-            byte[][] frames = TemporalAcceptance.Sequence(W, H, s => scene.Setup(s, preset), scene.Draw, first, count);
+            byte[][] frames = TemporalAcceptance.Sequence(W, H, s => scene.Setup(s, preset), scene.Draw, first, count,
+                phase);
             var masks = new bool[count][];
             for (int k = 0; k < count; k++) masks[k] = scene.Mask(first + k);
             int reach = TemporalFollowCameraRuns.SpillPixels(preset);

@@ -406,4 +406,32 @@ public class TileWorldCatalogsTests
         Assert.Equal(tmp.Sub("a.json"), merged.MaterialSource(1));
         Assert.Null(merged.MaterialSource(2));
     }
+
+    [Fact]
+    public void ArchetypeSource_is_the_file_each_archetype_was_loaded_from()
+    {
+        using var tmp = new TempDir();
+        File.WriteAllText(tmp.Sub("a.json"), Arch);
+        File.WriteAllText(tmp.Sub("b.json"), """{ "archetypes": [ { "id": "bush", "name": "Bush", "meshRef": "kit/bush.glb" } ] }""");
+        TileWorldCatalogs c = TileWorldCatalogs.Load(new[] { tmp.Sub("a.json"), tmp.Sub("b.json") });
+        Assert.Equal(tmp.Sub("a.json"), c.ArchetypeSource("wall"));
+        Assert.Equal(tmp.Sub("a.json"), c.ArchetypeSource("rock"));
+        Assert.Equal(tmp.Sub("b.json"), c.ArchetypeSource("bush"));
+        Assert.Null(c.ArchetypeSource("missing"));
+        Assert.Null(c.ArchetypeSource(""));
+    }
+
+    [Fact]
+    public void ArchetypeSource_is_null_when_the_catalog_did_not_come_from_a_file()
+    {
+        using var tmp = new TempDir();
+        File.WriteAllText(tmp.Sub("a.json"), Arch);
+        Assert.Null(TileWorldCatalogs.LoadJson(Arch, "a").ArchetypeSource("wall"));
+        Assert.Null(TileWorldCatalogs.Greybox().ArchetypeSource("wall"));
+        TileWorldCatalogs merged = TileWorldCatalogs.Merge(
+            TileWorldCatalogs.Load(new[] { tmp.Sub("a.json") }),
+            TileWorldCatalogs.LoadJson("""{ "archetypes": [ { "id": "bush", "name": "Bush", "meshRef": "kit/bush.glb" } ] }""", "label"));
+        Assert.Equal(tmp.Sub("a.json"), merged.ArchetypeSource("wall"));
+        Assert.Null(merged.ArchetypeSource("bush"));
+    }
 }

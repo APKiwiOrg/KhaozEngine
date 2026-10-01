@@ -132,6 +132,15 @@ public sealed class TileWorldCatalogs
     public TileObjectArchetype? Archetype(string? id) =>
         !string.IsNullOrEmpty(id) && _archetypes.TryGetValue(id, out TileObjectArchetype? a) ? a : null;
 
+    /// <summary>The catalog FILE this archetype was loaded from, or null when it did not come from one.</summary>
+    /// <remarks>Only <see cref="Load(IEnumerable{string})"/> records a file. A catalog built in memory (through
+    /// <see cref="LoadJson(string, string)"/> with a label, <see cref="Merge"/>, or <see cref="Greybox"/>) carries a source name
+    /// for error messages that is not a path, and reports null here rather than handing a caller a name it would
+    /// go on to write an archetype edit into.</remarks>
+    public string? ArchetypeSource(string id) =>
+        !string.IsNullOrEmpty(id) && _archetypeSources.TryGetValue(id, out (string Name, bool IsFile) s) && s.IsFile
+            ? s.Name : null;
+
     /// <summary>Catalogs with nothing in them.</summary>
     public static TileWorldCatalogs Empty() => new();
 
@@ -170,7 +179,7 @@ public sealed class TileWorldCatalogs
 
         var c = new TileWorldCatalogs();
         foreach (GroundMaterial m in file.Materials ?? new()) c.AddMaterial(m, sourceName, sourceIsFile);
-        foreach (TileObjectArchetype a in file.Archetypes ?? new()) c.AddArchetype(a, sourceName);
+        foreach (TileObjectArchetype a in file.Archetypes ?? new()) c.AddArchetype(a, sourceName, sourceIsFile);
         return c;
     }
 
@@ -202,7 +211,7 @@ public sealed class TileWorldCatalogs
     }
 
     readonly Dictionary<ushort, (string Name, bool IsFile)> _materialSources = new();
-    readonly Dictionary<string, string> _archetypeSources = new(StringComparer.Ordinal);
+    readonly Dictionary<string, (string Name, bool IsFile)> _archetypeSources = new(StringComparer.Ordinal);
 
     void MergeFrom(TileWorldCatalogs other, string sourceName)
     {
@@ -211,7 +220,11 @@ public sealed class TileWorldCatalogs
             (string Name, bool IsFile) origin = other._materialSources.GetValueOrDefault(m.Id, (sourceName, false));
             AddMaterial(m, origin.Name, origin.IsFile);
         }
-        foreach (TileObjectArchetype a in other._archetypes.Values) AddArchetype(a, other._archetypeSources.GetValueOrDefault(a.Id, sourceName));
+        foreach (TileObjectArchetype a in other._archetypes.Values)
+        {
+            (string Name, bool IsFile) origin = other._archetypeSources.GetValueOrDefault(a.Id, (sourceName, false));
+            AddArchetype(a, origin.Name, origin.IsFile);
+        }
     }
 
     void AddMaterial(GroundMaterial m, string source, bool sourceIsFile = false)
@@ -223,17 +236,17 @@ public sealed class TileWorldCatalogs
         _materialSources[m.Id] = (source, sourceIsFile);
     }
 
-    void AddArchetype(TileObjectArchetype a, string source)
+    void AddArchetype(TileObjectArchetype a, string source, bool sourceIsFile = false)
     {
         if (string.IsNullOrWhiteSpace(a.Id)) throw new TileWorldException($"{source}: an archetype has no id");
         if (_archetypes.ContainsKey(a.Id))
-            throw new TileWorldException($"{source}: archetype '{a.Id}' is already defined in {_archetypeSources[a.Id]}");
+            throw new TileWorldException($"{source}: archetype '{a.Id}' is already defined in {_archetypeSources[a.Id].Name}");
         if (string.IsNullOrWhiteSpace(a.LodMeshRef)) a.LodMeshRef = null;
         if (a.WalkSurfaces is { Count: 0 }) a.WalkSurfaces = null;
         ValidateWalkSurfaces(a, source);
         ValidateCollisionHeight(a, source);
         _archetypes.Add(a.Id, a);
-        _archetypeSources[a.Id] = source;
+        _archetypeSources[a.Id] = (source, sourceIsFile);
     }
 
     // The schema cannot say either of these. JSON has no NaN literal, but a merged catalog carries archetypes a

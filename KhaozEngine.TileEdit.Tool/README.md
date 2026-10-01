@@ -107,7 +107,7 @@ goes through.
 the rect, each row running west to east, which is the way round a top-down render reads. `height_get_rect`
 hands its rows straight to `height_set` without flipping the terrain.
 
-## Verb surface (48 tools)
+## Verb surface (50 tools)
 
 ### World, catalogs, regions, history
 
@@ -247,6 +247,29 @@ object and ask again.
 `path` never changes plane. An unreachable goal still returns the steps to the NEAREST reachable tile with
 `reached` false, and so does a goal simply further away than `maxRadius`, which is a search-window limit rather
 than a verdict on the world. Widen `maxRadius` before concluding a place is cut off.
+
+### Archetype collision heights
+
+| Verb | What it does |
+|---|---|
+| `archetype_measure_heights(kitRoot)` | Every archetype of the open catalogs with its model top in metres above the mesh's local base (max Y of the glb's vertices), its collision kind, the height its catalog already records, and an error when it could not be measured. Read-only. |
+| `archetype_set_collision_heights(heights, overwrite = false)` | Writes `collisionHeight` into the catalog file that defines each archetype. Returns each change with its file, the skips and the errors. |
+
+A physics consumer needs a height on every `Solid`, `Diagonal`, `Wall` and `WallCorner` archetype, and these two
+fill it from the kit. `kitRoot` resolves against the world directory when relative and must exist. Measuring has
+no greybox fallback, so a missing or unreadable glb is an error entry, never a guessed box, and so is a model top
+at or below 0, which the catalog loader would refuse. Those archetypes take a hand-set height. The good rows of
+the measure result pass straight into `heights`, since both carry `id` and `height`.
+
+Writing changes catalog FILES, never the world, so it is not an undo step. Each height goes into the one file the
+loader recorded the archetype from (`TileWorldCatalogs.ArchetypeSource`). The writer edits the JSON text in place:
+a new `collisionHeight` goes right after `collisionKind` (or last when the entry has none) with the entry's own
+separator, line ending and indentation, an existing one has only its value replaced, and comments, trailing
+commas, a byte order mark and every other byte stay. A catalog with nothing to change is not rewritten. The
+number is the float's shortest invariant round-trip form. An archetype that already records a height is skipped
+unless `overwrite`, a height that is not a finite number above 0 or an id the open catalogs do not define is an
+error entry, and every file is checked to load before any is written. The open catalogs reload afterwards, so the
+next verb sees the new heights without a `world_open`.
 
 ### Renders
 

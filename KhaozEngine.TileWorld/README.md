@@ -175,6 +175,8 @@ with no walk surfaces keeps the digest it had before the field existed.
 path gives that material, null to take the renderer default of 0.5. `MaterialSource(id)` returns the catalog
 FILE a material was loaded from, or null when the catalog came from `LoadJson`, `Merge` or `Greybox` rather than
 `Load(paths)`, which is what lets a caller resolve a relative `Texture` against the file that declared it.
+`ArchetypeSource(id)` is the same for an archetype under the same file-only rule, which is how `ke-tileedit`'s
+`archetype_set_collision_heights` finds the one file to write an archetype's height into.
 
 `TileWorldValidator.Validate(doc, catalogs)` returns `TileWorldIssue(Code, Message, Region, Tile)` records and
 never throws on bad content, while `ValidateOrThrow` throws once quoting the first five. The codes are stable

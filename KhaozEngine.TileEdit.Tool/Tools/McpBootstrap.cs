@@ -9,7 +9,7 @@ namespace KhaozEngine.TileEdit.Tools;
 /// which verbs the server exposes, and every later verb class goes here rather than into Program.cs.</summary>
 public static class McpBootstrap
 {
-    /// <summary>Registers the session and the query, mutation, and render services as singletons. The tool classes
+    /// <summary>Registers the session and the query, mutation, render, and archetype height services as singletons. The tool classes
     /// take these through their constructors, so the MCP server resolves ONE shared session for the whole
     /// process, which is what makes an open world outlive a single verb call.</summary>
     public static IServiceCollection AddTileEditServices(this IServiceCollection services)
@@ -18,10 +18,11 @@ public static class McpBootstrap
         services.AddSingleton<QueryService>();
         services.AddSingleton<MutationService>();
         services.AddSingleton<RenderService>();
+        services.AddSingleton<ArchetypeHeightService>();
         return services;
     }
 
-    /// <summary>Registers the world, tile, height, object, marker, prefab, collision, and render verb classes on
+    /// <summary>Registers the world, tile, height, object, marker, prefab, collision, archetype height, and render verb classes on
     /// the MCP server builder, so both the host and the tests pick up the same verb set from this one call.</summary>
     public static IMcpServerBuilder WithTileEditTools(this IMcpServerBuilder builder)
     {
@@ -33,6 +34,7 @@ public static class McpBootstrap
         builder.WithTools<FoliageTools>();
         builder.WithTools<PrefabTools>();
         builder.WithTools<CollisionTools>();
+        builder.WithTools<ArchetypeHeightTools>();
         builder.WithTools<RenderTools>();
         return builder;
     }

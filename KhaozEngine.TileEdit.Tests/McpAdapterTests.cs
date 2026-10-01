@@ -37,7 +37,7 @@ public class McpAdapterTests
 {
     /// <summary>All verb names, spelled exactly as the design's verb table: the world lifecycle plus catalog,
     /// region and history verbs, the tile layers, the corner-height lattice and its brushes, the object family
-    /// with its two batch placers, markers, prefabs, the derived collision queries, and the two renders. This
+    /// with its two batch placers, markers, prefabs, the derived collision queries, the archetype collision heights, and the two renders. This
     /// array is the contract: a verb renamed or added without a matching edit here fails the set assertion
     /// below, which is the point. Note what is NOT here: <c>MutationService.TilesClear</c> exists on the service
     /// but is deliberately not a verb, because passing underlay 0, overlay 0, shape Full, rotation 0 and settings
@@ -63,6 +63,8 @@ public class McpAdapterTests
         "prefab_save", "prefab_place", "prefab_list",
         // Derived collision
         "collision_at", "is_walkable", "path", "walkable_rect",
+        // Archetype collision heights
+        "archetype_measure_heights", "archetype_set_collision_heights",
         // Renders
         "render_topdown", "render_view",
     };
@@ -275,6 +277,28 @@ public class McpAdapterTests
         Assert.Equal(1, Deserialize<UndoResult>(await harness.CallAsync("undo", cts.Token)).Steps);
         Assert.Equal("meadow", Deserialize<FoliageLayerInfo>(await harness.CallAsync("foliage_get", cts.Token,
             ("id", "meadow"))).Id);
+    }
+
+    [Fact]
+    public async Task ArchetypeHeightVerbs_RoundTripThroughMcpCalls()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var temp = new TempDir();
+        await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+        await harness.CreateWorldAsync(temp.Sub("world"), cts.Token);
+        Directory.CreateDirectory(temp.Sub(Path.Combine("world", "kit")));
+
+        CallToolResult set = await harness.CallAsync("archetype_set_collision_heights", cts.Token,
+            ("heights", new[] { new ArchetypeHeight("wall", 2.5f) }));
+        Assert.NotEqual(true, set.IsError);
+        Assert.Equal("wall", Assert.Single(Deserialize<CollisionHeightsResult>(set).Changed).Id);
+
+        // An empty kit, so every archetype is an error entry, and the height just written reads back.
+        CallToolResult measured = await harness.CallAsync("archetype_measure_heights", cts.Token, ("kitRoot", "kit"));
+        Assert.NotEqual(true, measured.IsError);
+        MeasureHeightsResult parsed = Deserialize<MeasureHeightsResult>(measured);
+        Assert.Equal(2.5f, parsed.Archetypes.Single(a => a.Id == "wall").Recorded);
+        Assert.All(parsed.Archetypes, a => Assert.NotNull(a.Error));
     }
 
     [Fact]

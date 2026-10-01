@@ -9590,7 +9590,7 @@ working directory, because an MCP server is started by a client whose working di
 The two verbs that OPEN a world (`world_open`, `world_create`) are the exception, since there is no world to be
 relative to yet: pass them an absolute path.
 
-**Verb families (48 tools).** World lifecycle, catalogs, regions and history (`world_open`, `world_create`,
+**Verb families (50 tools).** World lifecycle, catalogs, regions and history (`world_open`, `world_create`,
 `world_save`, `world_summary`, `world_validate`, `catalog_list`, `region_create`, `region_delete`,
 `region_list`, `undo`, `redo`), tiles (`tile_get`, `tile_set`, `tiles_fill`, `tiles_get_rect`), heights
 (`height_set`, `height_raise`, `height_flatten`, `height_smooth`, `height_get_rect`, `height_import`), objects
@@ -9598,7 +9598,8 @@ relative to yet: pass them an absolute path.
 `objects_in_rect`, `object_find`, `objects_line`, `objects_scatter`), markers (`marker_set`, `marker_remove`,
 `marker_list`), foliage (`foliage_layer_set`, `foliage_get`, `foliage_density_set`, `foliage_paint`,
 `foliage_remove`), prefabs (`prefab_save`, `prefab_place`, `prefab_list`), derived collision (`collision_at`,
-`is_walkable`, `path`, `walkable_rect`) and renders (`render_topdown`, `render_view`). The per-verb reference,
+`is_walkable`, `path`, `walkable_rect`), archetype collision heights (`archetype_measure_heights`,
+`archetype_set_collision_heights`) and renders (`render_topdown`, `render_view`). The per-verb reference,
 with every argument and the ASCII map legends, is the
 [`KhaozEngine.TileEdit.Tool` README](../KhaozEngine.TileEdit.Tool/README.md).
 

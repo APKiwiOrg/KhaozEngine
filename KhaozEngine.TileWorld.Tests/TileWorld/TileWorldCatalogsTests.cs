@@ -192,6 +192,17 @@ public class TileWorldCatalogsTests
         Assert.Contains("bad-surface.json", ex.Message);
     }
 
+    // An absent collisionHeight is null in memory, but a JSON null is refused like a walk surface's null extent.
+    [Fact]
+    public void Schema_rejects_a_null_collision_height()
+    {
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
+            """{ "archetypes": [ { "id": "rock", "name": "Rock", "meshRef": "m", "collisionHeight": null } ] }""",
+            "null-height.json"));
+        Assert.Contains("does not match the schema", ex.Message);
+        Assert.Contains("null-height.json", ex.Message);
+    }
+
     [Theory]
     [InlineData("\"minX\": 2, \"maxX\": -2", "minX")]
     [InlineData("\"minX\": 1, \"maxX\": 1", "minX")]

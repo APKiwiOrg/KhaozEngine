@@ -139,7 +139,8 @@ public class TileWorldHashTests
 
     // Walk surfaces joined the digest without a scheme bump, on purpose: an archetype that carries none writes
     // nothing for them, so every catalog digested before the field existed keeps the identity a deployed head
-    // already compares. The literal is the greybox digest from before walk surfaces landed.
+    // already compares. The literal is the greybox digest from before walk surfaces landed. Collision height
+    // joined the digest the same way later: a null height writes nothing, so this literal did not move then either.
     [Fact]
     public void Catalog_hash_of_a_catalog_without_walk_surfaces_did_not_move_when_the_field_landed()
     {
@@ -169,15 +170,6 @@ public class TileWorldHashTests
         Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "maxZ");
         bench.WalkSurfaces.Add(new TileWalkSurface { Height = 0.75f, MinX = -1f, MaxX = 1f, MinZ = -1f, MaxZ = 1f });
         Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "a second surface");
-    }
-
-    // Collision height joined the digest the same way: a null height writes nothing, so the pinned greybox literal,
-    // whose archetypes carry none, does not move.
-    [Fact]
-    public void GreyboxHashIsUnchanged()
-    {
-        Assert.Equal("541ac51315c6371abed5392d64e7e5cdf50adca9edb42cf42b7723c389eb4cbb",
-            TileWorldHash.OfCatalogs(TileWorldCatalogs.Greybox()));
     }
 
     [Fact]

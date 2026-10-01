@@ -73,10 +73,12 @@ public class TileWorldPhysicsQueryTests
 
     // Ruling B14: a ray exactly on an outer edge of the drawn ground may miss. Bepu's ray against a triangle treats
     // its edges as half-open, so of two meshes meeting at a seam one always owns the shared line, but on the loaded
-    // world's boundary nothing lies across, and rays exactly on its south and east lines fall through. The same holds
-    // beside an undrawn tile, which the worlds here do not have. Those lines are skipped, not asserted to miss, so
-    // the test pins no backend convention. Undrawn tiles carry blocked boxes and the movement floor is the analytic
-    // sampler, so no body stands there. A tile point is on the boundary when any region touching it is not loaded.
+    // world's boundary nothing lies across, and a ray exactly on that line can fall through. The same holds beside
+    // an undrawn tile, which the worlds here do not have. Every offset sits in [0, 1) of its tile, so the sweep never
+    // generates a point on the outer east or north line. The points it does generate on the outer west and south
+    // lines are skipped here, not asserted to miss, so the test pins no backend convention. Undrawn tiles carry
+    // blocked boxes and the movement floor is the analytic sampler, so no body stands there. A tile point is on the
+    // boundary when any region touching it is not loaded.
     static bool OnOuterBoundary(float tileX, float tileZ, HashSet<RegionCoord> loaded)
     {
         int rx = (int)MathF.Floor(tileX / TileRegion.Size), rz = (int)MathF.Floor(tileZ / TileRegion.Size);
@@ -201,11 +203,12 @@ public class TileWorldPhysicsQueryTests
         using var world = new RecordingWorld(new BepuPhysicsWorld());
         TileColliderRegistration registration = colliders.AddTo(world);
         StaticHandle stuck = registration.Handles[2];
-        world.FailRemovalOnce.Add(stuck);
+        var refused = new InvalidOperationException("the static is stuck");
+        world.FailRemovalOnce.Add(stuck, refused);
 
         InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(registration.Remove);
 
-        Assert.Contains(stuck.ToString(), thrown.Message);
+        Assert.Same(refused, thrown);
         // Every other handle was still tried, and removed.
         Assert.Equal(registration.Handles.Where(h => h != stuck).OrderBy(h => h.Value),
                      world.Removed.OrderBy(h => h.Value));
@@ -224,14 +227,16 @@ public class TileWorldPhysicsQueryTests
         using var world = new RecordingWorld(new BepuPhysicsWorld());
         TileColliderRegistration registration = colliders.AddTo(world);
         StaticHandle first = registration.Handles[1], last = registration.Handles[^1];
-        world.FailRemovalOnce.Add(first);
-        world.FailRemovalOnce.Add(last);
+        var firstRefused = new InvalidOperationException("the first static is stuck");
+        var lastRefused = new InvalidOperationException("the last static is stuck");
+        world.FailRemovalOnce.Add(first, firstRefused);
+        world.FailRemovalOnce.Add(last, lastRefused);
 
         AggregateException thrown = Assert.Throws<AggregateException>(registration.Remove);
 
         Assert.Equal(2, thrown.InnerExceptions.Count);
-        Assert.Contains(first.ToString(), thrown.InnerExceptions[0].Message);
-        Assert.Contains(last.ToString(), thrown.InnerExceptions[1].Message);
+        Assert.Same(firstRefused, thrown.InnerExceptions[0]);
+        Assert.Same(lastRefused, thrown.InnerExceptions[1]);
         Assert.Equal(registration.Handles.Count - 2, world.Removed.Count);
 
         registration.Remove();
@@ -252,8 +257,8 @@ public class TileWorldPhysicsQueryTests
         public int? FailAddAt { get; init; }
         public Exception? AddFailure { get; init; }
 
-        // Handles whose next removal throws, once each.
-        public HashSet<StaticHandle> FailRemovalOnce { get; } = new();
+        // Handles whose next removal throws the given exception, once each.
+        public Dictionary<StaticHandle, Exception> FailRemovalOnce { get; } = new();
 
         public StaticHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null)
         {
@@ -265,7 +270,7 @@ public class TileWorldPhysicsQueryTests
 
         public void RemoveStatic(StaticHandle handle)
         {
-            if (FailRemovalOnce.Remove(handle)) throw new InvalidOperationException($"{handle} is stuck");
+            if (FailRemovalOnce.Remove(handle, out Exception? failure)) throw failure;
             inner.RemoveStatic(handle);
             Removed.Add(handle);
         }

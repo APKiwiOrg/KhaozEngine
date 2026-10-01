@@ -154,7 +154,8 @@ caller's `IReadOnlySet<long>` instead of querying the interest itself, so a serv
 and the delta paths. `world` must be the slot's home-cell world exactly as `HomeInterest` returned it for the same
 `serveEpoch`, because the indexed snapshot below is cached per world within an epoch and shared by every client
 homed in that cell. Owner scoping is the radius overload's, and the radius overload `SnapshotForClient(slot,
-interestRadius, serveEpoch)` now calls this one. It throws for an unbound slot or a null `world` or `interest`.
+interestRadius, serveEpoch)` now calls this one. Any other `world` throws `ArgumentException`, so a misuse cannot
+poison that cache. It also throws for an unbound slot, a player no cell owns, or a null `world` or `interest`.
 
 **Indexed snapshots (perf).** The filtered `SnapshotWriter` calls on the hot cross-cell and serve passes
 (`SyncGhosts` ghost mirroring, `SnapshotForClient` non-delta fallback, `ProcessHandoffs` crossing capture) resolve

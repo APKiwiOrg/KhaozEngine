@@ -1376,9 +1376,7 @@ legitimately short final one. Both peers must preserve that width: raising it to
 updated readers reject each other's non-final chunks. Using those four spare bytes needs a separately designed
 protocol migration. The unchanged 255-chunk limit carries about 258 KB.
 
-`Fragment` THROWS above `MaxPayloadBytes`, on the same grounds as the game message cap throw: a payload that long
-is a local caller bug. Everything on the reading side is total and never throws, because those bytes came from a
-remote peer.
+`TileFragmentedMessage.MaxPayloadBytes` is that limit at the tile width, 258825 bytes.
 
 ```csharp
 foreach (byte[] chunk in TileFragmentedMessage.Fragment(streamId: 1, sequence: page.Version, encodedPage))

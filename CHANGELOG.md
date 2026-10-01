@@ -89,13 +89,14 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `WorldServerConfig.EntityVisibleToSlot` and `ShardedWorldServerConfig.EntityVisibleToSlot` take a viewer slot
   and a net id and hide an entity from chosen viewers. A false answer despawns it on the delta path and drops it on
   the snapshot path, and a later true answer sends the whole entity again, also when it comes before the viewer
-  acknowledged the despawn. The viewer's own player is never hidden,
-  and a null rule serves the same bytes as before. The rule runs once per candidate entity per viewer per tick and
+  acknowledged the despawn. The viewer's own player is never hidden, and a null rule serves the same bytes as
+  before. The rule runs once per candidate entity per viewer per tick and
   must not read components, because a sharded ghost lacks owner-only and server-only components
   ([consumer contract](docs/USING-KHAOZENGINE.md#hiding-an-entity-from-chosen-viewers-entityvisibletoslot)).
 - New `ShardHost.SnapshotForClient(slot, world, interest, serveEpoch)` serves exactly a caller's narrowed interest
-  set out of the slot's home-cell world, which must be the one `HomeInterest` returned at that epoch. The radius
-  overload calls it, and `ShardedWorldServer` uses it so its snapshot and delta paths serve one filtered set.
+  set out of the slot's home-cell world, which must be the one `HomeInterest` returned at that epoch. Any other
+  world throws `ArgumentException`. The radius overload calls it, and `ShardedWorldServer` uses it so its snapshot
+  and delta paths serve one filtered set.
 - Fixed: `AoiDeltaReplicator` diffed a returning entity against the client's last acknowledged baseline, which
   still held it when the removal was unacknowledged. An entity that left and re-entered a client's interest within
   one round trip came back partial, or never came back when nothing on it changed. Such an entity is now resent

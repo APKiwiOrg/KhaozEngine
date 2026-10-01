@@ -369,12 +369,19 @@ frames, demuxes, rate-limits and size-caps them, but never deserializes them - t
   1024) is dropped and flagged `SuspiciousReason.OversizedMessage` via `OnSuspiciousActivity` - never thrown. Its
   token budget advances with simulated ticks, so extra calls to `Poll` do not mint command capacity.
 - **Size, each direction.** Server to client carries no engine cap: `SendGameMessageTo` and
-  `BroadcastGameMessage` frame any payload, and a large one goes `ReliableOrdered`, where the transport delivers it
-  whole. Client to server is capped by the configurable `MaxGameMessageBytes` above, which counts the game payload
-  alone. A client message that can exceed it is split with `MessageFragmenter` from `KhaozEngine.Netcode` and put
-  back on the server with one `MessageReassembler` per slot, dropped from the disconnect path. Pick the width from
-  the cap, `MaxGameMessageBytes - MessageFragmenter.HeaderBytes`, and fix it in both heads, because the width is
-  part of the wire contract. See the Netcode README for the chunk rules.
+  `BroadcastGameMessage` frame any payload, and a large one goes `ReliableOrdered`. That it arrives whole rests on
+  the transport. LiteNetLib fragments a `ReliableOrdered` send itself, up to 65535 datagrams, and the in-memory
+  transports have no limit. `UnreliableSequenced` is limited to one datagram, and LiteNetLib throws
+  `TooBigPacketException` above it, so keep a lossy state ping small. Client to server is capped by the
+  configurable `MaxGameMessageBytes` above, which counts the game payload alone. A client message that can exceed
+  it is split with `MessageFragmenter` from `KhaozEngine.Netcode` and put back on the server with one
+  `MessageReassembler` per slot, dropped from the disconnect path. Pick the width from the cap,
+  `MaxGameMessageBytes - MessageFragmenter.HeaderBytes`, and fix it in both heads, because the width is part of the
+  wire contract. See the Netcode README for the chunk rules.
+- **Fragments and the rate limiter.** Each chunk is one client message through the per-slot `AntiCheat` rate
+  limiter. Size `AntiCheat.MessageBurst` for the largest fragmented send, or pace the chunks across ticks.
+  Otherwise the limiter drops a middle chunk, every later chunk of that message refuses as
+  `ke:fragment-out-of-sequence`, and under `DisconnectOnRateLimit` the slot is kicked.
 - **Framing / version skew.** A client message rides the existing `0xC5` control-marker family with its own
   sub-marker, demuxed ahead of the move; by construction it can never alias the 2 / 6 / 18 byte control / ack /
   move shapes (see the aliasing contract in `MoveProtocol`). Server frames use a new `ServerFrameKind.GameMessage`
@@ -1259,5 +1266,7 @@ same version-skew bar as 9.16.0.
     entity's components: on `ShardedWorldServer` an entity seen across a cell boundary is a GHOST in the viewer's
     home cell, and a ghost lacks the owner-only and server-only components its owning cell holds. Owned entities
     and ghosts are filtered the same way.
+  - Seats are reused. A table keyed by slot must drop a slot's entries when its player leaves, because the next
+    player to join can take the same slot. Keep durable ownership against the account, as the tile twin does.
   - It is a presentation gate only. The game still authorizes every interaction. The tile server's ground-item
     twin is `TileWorldServerConfig.GroundItemVisibleToSlot`.

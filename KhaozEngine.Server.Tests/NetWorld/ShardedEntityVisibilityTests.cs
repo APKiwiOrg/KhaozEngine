@@ -226,6 +226,80 @@ public sealed class ShardedEntityVisibilityTests
     }
 
     [Fact]
+    public void AViewerCrossingACellBoundaryUnderADenyAllRuleSeesOnlyItself()
+    {
+        var rig = new Rig(visible: (_, _) => false);
+        rig.Pump(8);
+        long npcWest = rig.Server.SpawnEntity(7f, 4f);
+        long npcEast = rig.Server.SpawnEntity(11f, 5f);
+        rig.Pump(6);
+        RawDeltaClient[] viewers = { rig.DeltaViewer, rig.SnapshotViewer };
+        foreach (RawDeltaClient viewer in viewers)
+        {
+            Assert.True(rig.Server.Host.TryGetHomeCell(rig.SlotOf(viewer), out CellSim home));
+            Assert.Equal(new CellCoord(0, 0), home.Coord);
+            AssertSeesOnlyItself(rig, viewer, npcWest, npcEast);
+        }
+
+        // Both viewers cross into cell (1,0), next to each other and to the east entity.
+        float x = 12f;
+        foreach (RawDeltaClient viewer in viewers)
+        {
+            int slot = rig.SlotOf(viewer);
+            Assert.True(rig.Server.TryGetPlayerState(slot, out PlayerMoveState state));
+            state.Position = new Vector3(x, 0f, 5f);
+            rig.Server.SetPlayerState(slot, state, teleport: true);
+            x += 0.5f;
+        }
+        rig.Pump(8);
+
+        float radius = Config(NearEastEdge).InterestRadius;
+        foreach (RawDeltaClient viewer in viewers)
+        {
+            int slot = rig.SlotOf(viewer);
+            Assert.True(rig.Server.Host.TryGetHomeCell(slot, out CellSim home));
+            Assert.Equal(new CellCoord(1, 0), home.Coord);
+            // The rule is what hides them: the east entity and the other viewer are in this viewer's interest.
+            (_, HashSet<long> interest) = rig.Server.Host.HomeInterest(slot, radius);
+            Assert.Contains(npcEast, interest);
+            Assert.True(interest.Count > 2);
+            AssertSeesOnlyItself(rig, viewer, npcWest, npcEast);
+        }
+        Assert.True(rig.DeltaViewer.DeltaFramesApplied > 0);
+        Assert.Equal(0, rig.SnapshotViewer.DeltaFramesApplied);
+    }
+
+    private static void AssertSeesOnlyItself(Rig rig, RawDeltaClient viewer, long npcWest, long npcEast)
+    {
+        Assert.True(viewer.LocalNetId > 0);
+        Assert.True(rig.Sees(viewer, viewer.LocalNetId));
+        Assert.Single(viewer.View.Entities);
+        Assert.False(rig.Sees(viewer, npcWest));
+        Assert.False(rig.Sees(viewer, npcEast));
+    }
+
+    [Fact]
+    public void SnapshotForClientRefusesAWorldThatIsNotTheSlotsHome()
+    {
+        var rig = new Rig();
+        rig.Pump(8);
+        long east = rig.Server.SpawnEntity(11f, 5f);
+        rig.Pump(6);
+        ShardHost host = rig.Server.Host;
+        int slot = rig.SlotOf(rig.DeltaViewer);
+        (World home, HashSet<long> interest) = host.HomeInterest(slot, Config(NearEastEdge).InterestRadius);
+        Assert.True(host.TryGetOwner(east, out CellSim eastCell, out _));
+        Assert.NotSame(home, eastCell.World);
+
+        Assert.Throws<ArgumentException>(() => host.SnapshotForClient(slot, eastCell.World, interest));
+        Assert.Throws<ArgumentException>(() => host.SnapshotForClient(slot, eastCell.World, interest, serveEpoch: 9001));
+        Assert.Throws<ArgumentException>(() => host.SnapshotForClient(slot, new World(), interest));
+        // The home world is still served, with and without an epoch.
+        Assert.Equal(host.SnapshotForClient(slot, home, interest),
+            host.SnapshotForClient(slot, home, interest, serveEpoch: 9001));
+    }
+
+    [Fact]
     public void SnapshotForClientWithAnExplicitSetMatchesTheRadiusOverloadForTheSameSet()
     {
         var rig = new Rig();

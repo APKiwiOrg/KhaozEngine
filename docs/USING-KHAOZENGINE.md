@@ -20397,6 +20397,8 @@ var cfg = new ShardedWorldServerConfig
 - **Cheap and allocation-free.** It runs synchronously on the tick, once per candidate entity per viewer per tick.
   Keep it pure and non-throwing too.
 - **Presentation only.** The game still authorizes every interaction against its own rule.
+- **Seats are reused.** A table keyed by slot must drop a slot's entries when its player leaves, because the next
+  player to join can take the same slot. Keep durable ownership against the account, as the tile twin does.
 
 The tile server's ground-item twin is `TileWorldServerConfig.GroundItemVisibleToSlot`.
 
@@ -22416,11 +22418,18 @@ client.GameMessageReceived += (kind, payload) => { /* opaque bytes; deserialize 
   limiter runs in front of game messages (they share the move flood budget), and a payload over
   `WorldServerConfig.MaxGameMessageBytes` / `ShardedWorldServerConfig.MaxGameMessageBytes` (default 1024) is dropped
   and flagged `SuspiciousReason.OversizedMessage` on `OnSuspiciousActivity` - never thrown.
-- **Size, each direction.** Server to client carries no engine cap, and a large payload goes `ReliableOrdered`,
-  where the transport delivers it whole. Client to server is capped by the configurable `MaxGameMessageBytes`
-  above. A client message that can exceed the cap is fragmented with `MessageFragmenter` and reassembled per slot
-  with `MessageReassembler`, at a width of `MaxGameMessageBytes - MessageFragmenter.HeaderBytes` (see
+- **Size, each direction.** Server to client carries no engine cap, and a large payload goes `ReliableOrdered`.
+  That it arrives whole rests on the transport. LiteNetLib fragments a `ReliableOrdered` send itself, up to 65535
+  datagrams, and the in-memory transports have no limit. `UnreliableSequenced` is limited to one datagram, and
+  LiteNetLib throws `TooBigPacketException` above it, so keep a lossy state ping small. Client to server is capped
+  by the configurable `MaxGameMessageBytes` above. A client message that can exceed the cap is fragmented with
+  `MessageFragmenter` and reassembled per slot with `MessageReassembler`, at a width of
+  `MaxGameMessageBytes - MessageFragmenter.HeaderBytes` (see
   [A payload too large for one message](#a-payload-too-large-for-one-message-messagefragmenter--messagereassembler)).
+- **Fragments and the rate limiter.** Each chunk is one client message through the per-slot `AntiCheat` rate
+  limiter. Size `AntiCheat.MessageBurst` for the largest fragmented send, or pace the chunks across ticks.
+  Otherwise the limiter drops a middle chunk, every later chunk of that message refuses as
+  `ke:fragment-out-of-sequence`, and under `DisconnectOnRateLimit` the slot is kicked.
 - **Version skew.** Server -> client is version-skew-safe downstream: an older client ignores the new frame kind.
   Client -> old server is NOT protected by the framing: a server that predates the feature flags a SHORT
   game-message frame (< 18 bytes) as malformed but MISPARSES one whose total length is >= 18 (a payload of >= 13
@@ -22563,7 +22572,8 @@ adds rather than clears: the caller owns the reset. A bare `null` third argument
 `HomeInterest` and then narrowed it serves the same set on the snapshot and delta paths. `ShardedWorldServer.Tick`
 uses it to apply `EntityVisibleToSlot`. Pass the `world` `HomeInterest` returned for that slot at the same
 `serveEpoch`, because the indexed snapshot is cached per world within an epoch and shared by every client homed in
-that cell. The radius overload calls this one. It throws for an unbound slot or a null argument.
+that cell. Any other world throws `ArgumentException`, so a misuse cannot poison that cache. The radius overload
+calls this one. It also throws for an unbound slot, a player no cell owns or a null argument.
 
 ```csharp
 interest.Clear();
@@ -22571,6 +22581,10 @@ World home = host.HomeInterest(slot, interestRadius, interest, serveEpoch);
 interest.RemoveWhere(netId => !VisibleTo(slot, netId));          // your narrowing, never the slot's own player
 byte[] aoi = host.SnapshotForClient(slot, home, interest, serveEpoch);
 ```
+
+The capturing lambda in the snippet allocates a closure per client per tick. `ShardedWorldServer` applies
+`EntityVisibleToSlot` through its own filter, which allocates nothing. The viewer's own player is excluded from
+the narrowing: never remove it, as the server's filter never offers it to the rule.
 
 **Reference dedicated server (Phase 3E).** `MmoServerSample` wires the whole stack into a runnable headless
 server: a multi-cell `ShardHost` driven over the `NetServer` session layer (any `INetTransport` - LiteNetLib in

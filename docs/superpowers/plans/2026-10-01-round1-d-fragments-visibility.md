@@ -141,4 +141,4 @@
 - **Integration.** The orchestrator merges each verified branch into engine `main` in order A, B, C and D, re-verifies after each merge, pushes, and runs `scripts/pack-local-feed.sh` from `main`.
 - **Release.** The owner tags 20.17.0 with `scripts/tag-release.sh`, after the plan C manual check.
 - **Grimhollow pin bump.** Grimhollow then bumps its pin, moves `ke-tileedit` and `ke-sfxbake`, refreshes the vendored feed, records the swept range in `docs/ENGINE-INTEGRATION.md`, and runs its full verification. That closes Grimhollow's P2.
-- **Version hold.** The Grimhollow bump changes shipped code, so it lands under the same version rule as P1 (#406 in Grimhollow): it rides the next staged player version or waits for one.
+- **Where it lands.** The Grimhollow bump lands on Grimhollow's integration branch `feature/continuous-movement` (owner ruling O11 in its spec), not on Grimhollow `main`, so no player version has to be staged for it.

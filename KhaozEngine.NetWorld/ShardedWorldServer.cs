@@ -562,12 +562,14 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
             MoveProtocol.ServerFrameKind kind;
             byte[] body;
+            // One reused interest set for the whole client loop, cleared per client. Both writers are done with it
+            // before they return, so nothing retains it. The visibility rule filters it here, ghosts included, so
+            // both paths serve the same filtered set.
+            interestScratch.Clear();
+            World world = host.HomeInterest(slot, config.InterestRadius, interestScratch, serveEpoch);
+            InterestVisibility.Filter(interestScratch, slot, netId, config.EntityVisibleToSlot);
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
-                // One reused interest set for the whole client loop, cleared per client. WriteFor projects out of it
-                // into its own per-slot baseline and is done with it before it returns, so nothing retains it.
-                interestScratch.Clear();
-                World world = host.HomeInterest(slot, config.InterestRadius, interestScratch, serveEpoch);
                 // Owner-scope the Replicate channel to this client's own player (netId is stable across handoff), so an
                 // OwnerOnly component is served only on the client's own entity, never on another player it observes.
                 body = deltaReplicator.WriteFor(slot, world, interestScratch, netId);
@@ -575,7 +577,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             }
             else
             {
-                body = host.SnapshotForClient(slot, config.InterestRadius, serveEpoch);
+                body = host.SnapshotForClient(slot, world, interestScratch, serveEpoch);
                 kind = MoveProtocol.ServerFrameKind.Snapshot;
             }
             byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], body);

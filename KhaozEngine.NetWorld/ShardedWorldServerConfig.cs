@@ -92,4 +92,18 @@ public sealed partial class ShardedWorldServerConfig
     /// re-announces a departure, so dropping one would strand the player slot. Watch
     /// <see cref="ShardedWorldServer.DroppedEventCount"/> to see the cap engage. Must be positive.</summary>
     public int MaxQueuedEvents { get; init; } = BoundedEventQueue<ServerSessionEvent>.DefaultCapacity;
+
+    /// <summary>Optional server-owned visibility rule for any replicated entity in a viewer's home-cell area of
+    /// interest, mirroring <see cref="WorldServerConfig.EntityVisibleToSlot"/>. The arguments are the viewer's session
+    /// slot and the candidate entity's net id. Decide from a visibility table the game keeps itself, keyed by those
+    /// two ids: an entity a viewer sees across a cell boundary is a ghost in the viewer's home cell, and a ghost lacks
+    /// the owner-only and server-only components its owning cell holds. A null rule (the default) serves every
+    /// in-interest entity exactly as before, byte for byte. A false answer removes the whole entity from that viewer's
+    /// interest for the tick, so a delta client is sent a despawn and a full-snapshot client stops seeing it, and a
+    /// later true answer brings it back whole, as a fresh spawn carrying all its state. Owned entities and ghosts are
+    /// filtered the same way. A viewer's own player is never filtered. The rule runs synchronously on the tick, once
+    /// per candidate entity per viewer per tick, so keep it cheap, pure, non-throwing and allocation-free. This is a
+    /// presentation gate only: the game still authorizes every interaction. The tile server's ground-item twin is
+    /// <c>TileWorldServerConfig.GroundItemVisibleToSlot</c>.</summary>
+    public Func<int, long, bool>? EntityVisibleToSlot { get; init; }
 }

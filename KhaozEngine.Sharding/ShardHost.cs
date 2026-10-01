@@ -540,8 +540,22 @@ public sealed partial class ShardHost : IDisposable
     public byte[] SnapshotForClient(int slot, float interestRadius, long? serveEpoch = null)
     {
         (World world, HashSet<long> interest) = HomeInterest(slot, interestRadius, serveEpoch);
-        // HomeInterest validated the binding, so the slot's player net id is present: it is this client's owner id.
-        long ownerNetId = clientPlayerNetId[slot];
+        return SnapshotForClient(slot, world, interest, serveEpoch);
+    }
+
+    /// <summary>
+    /// As <see cref="SnapshotForClient(int, float, long?)"/>, but serves exactly <paramref name="interest"/> out of
+    /// <paramref name="world"/> instead of querying the interest itself. For a serve loop that resolved the interest
+    /// through <see cref="HomeInterest(int, float, ICollection{long}, long?)"/> and then narrowed it (a per-viewer
+    /// visibility rule), so the snapshot and the delta paths serve one set. Same owner scoping and the same per-epoch
+    /// shared index as the radius overload, which calls this one. Throws if <paramref name="slot"/> is not bound.
+    /// </summary>
+    public byte[] SnapshotForClient(int slot, World world, IReadOnlySet<long> interest, long? serveEpoch = null)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(interest);
+        if (!clientPlayerNetId.TryGetValue(slot, out long ownerNetId))
+            throw new InvalidOperationException($"No client bound to slot {slot}.");
         // Resolve the interest set off a home-cell index (shared across clients homed in this cell within the serve
         // pass) instead of a full-world scan per client - the snapshot fallback's O(worldPop)-per-client ceiling.
         WorldSnapshotIndex index = ClientIndexFor(world, serveEpoch);
@@ -576,12 +590,12 @@ public sealed partial class ShardHost : IDisposable
     /// <summary>
     /// Resolves a client's <b>home-cell</b> world and its area-of-interest net-id set (owned + border ghosts within
     /// <paramref name="interestRadius"/> of the client's player) - the shared basis for serving that client, whether
-    /// as a full snapshot (<see cref="SnapshotForClient"/>) or as a per-client delta (fed to
+    /// as a full snapshot (<see cref="SnapshotForClient(int, float, long?)"/>) or as a per-client delta (fed to
     /// <see cref="AoiDeltaReplicator.WriteFor"/>). Because the interest is keyed by <see cref="NetId"/> and the home
     /// cell already holds the surroundings as ghosts, a delta encoder built on it reads a boundary crossing as
     /// component changes on stable ids, never a despawn+respawn. Same invariants (and throws) as
-    /// <see cref="SnapshotForClient"/>: requires a position accessor, a bound client with an owned, positioned player,
-    /// and <paramref name="interestRadius"/> in <c>[0, OverlapMargin]</c>.
+    /// <see cref="SnapshotForClient(int, float, long?)"/>: requires a position accessor, a bound client with an
+    /// owned, positioned player, and <paramref name="interestRadius"/> in <c>[0, OverlapMargin]</c>.
     /// </summary>
     public (World world, HashSet<long> interest) HomeInterest(int slot, float interestRadius, long? serveEpoch = null)
     {

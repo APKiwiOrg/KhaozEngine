@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.Sharding;
 /// <summary>
 /// End-to-end <see cref="ReplicationChannels"/> behaviour through the sharding consumers: cell persistence
 /// (<see cref="CellSim.SnapshotOwned(System.Collections.Generic.IReadOnlySet{long})"/> = Persist), cell handoff (<see cref="ShardHost.ProcessHandoffs"/> = Migrate),
-/// border ghosting + home-cell serving (<see cref="ShardHost.SyncGhosts"/> / <see cref="ShardHost.SnapshotForClient"/>
+/// border ghosting + home-cell serving (<see cref="ShardHost.SyncGhosts"/> / <see cref="ShardHost.SnapshotForClient(int, float, long?)"/>
 /// = owner-scoped Replicate). Verifies each channel's component survives ONLY its intended path, plus the OwnerOnly
 /// no-leak guarantee across a real cell handoff.
 /// </summary>

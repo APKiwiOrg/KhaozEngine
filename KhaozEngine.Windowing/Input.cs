@@ -53,6 +53,12 @@ namespace KhaozEngine.Windowing
         /// still ends cleanly when the OS swallows the real button-up.
         /// </summary>
         public IReadOnlySet<MouseButton> MouseReleased { get; }
+        /// <summary>
+        /// The cursor in framebuffer pixels. While <see cref="PointerCaptured"/> is true it holds at the position
+        /// where capture started, so a hidden cursor never hovers, selects or blocks anything, and
+        /// <see cref="MouseDelta"/> keeps reporting the real movement. The frame capture ends reports the live
+        /// position again.
+        /// </summary>
         public Vector2 MousePosition { get; }
         public Vector2 MouseDelta { get; }
         public float ScrollDelta { get; }
@@ -80,8 +86,8 @@ namespace KhaozEngine.Windowing
         /// <summary>
         /// True while the window holds the pointer captured (hidden and locked for mouse-look). While captured,
         /// <see cref="MouseDelta"/> is in window points rather than framebuffer pixels, so the same hand movement
-        /// reads the same on a 1x and a 2x display. <see cref="MousePosition"/> stays in framebuffer pixels.
-        /// Defaults to <c>false</c>.
+        /// reads the same on a 1x and a 2x display. <see cref="MousePosition"/> stays in framebuffer pixels and
+        /// holds at the point where capture started. Defaults to <c>false</c>.
         /// </summary>
         public bool PointerCaptured { get; }
 

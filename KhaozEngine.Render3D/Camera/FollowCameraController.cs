@@ -33,13 +33,13 @@ namespace KhaozEngine.Render3D
         public bool InvertY = false;
 
         /// <summary>Optional orbit gesture: its drag orbits the camera only, and its quick click is a tap read from
-        /// <see cref="PointerGesture.TapThisFrame"/> and <see cref="PointerGesture.TapPosition"/> after
-        /// <see cref="Update"/>. Null by default. Setting this or <see cref="LookGesture"/> replaces
-        /// <see cref="OrbitButton"/>, which is then ignored.</summary>
+        /// <see cref="OrbitTap"/> after <see cref="Update"/>, with the press origin in
+        /// <see cref="PointerGesture.TapPosition"/>. Null by default. Setting this or <see cref="LookGesture"/>
+        /// replaces <see cref="OrbitButton"/>, which is then ignored.</summary>
         public PointerGesture? OrbitGesture;
         /// <summary>Optional look gesture: its drag orbits the camera and sets <see cref="TurnBodyActive"/>, so the
-        /// game turns the body to face the camera. Its quick click is a tap, read as for
-        /// <see cref="OrbitGesture"/>. Null by default.</summary>
+        /// game turns the body to face the camera. Its quick click is a tap read from <see cref="LookTap"/>, with
+        /// the press origin in <see cref="PointerGesture.TapPosition"/>. Null by default.</summary>
         public PointerGesture? LookGesture;
         /// <summary>Whether the UI owns the pointer this frame. The game sets it before each <see cref="Update"/>.
         /// A press that begins while blocked never taps, and never orbits while the gesture's threshold is above zero.
@@ -51,6 +51,16 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public bool TurnBodyActive => LookGesture?.Phase == PointerGesturePhase.Dragging;
 
+        /// <summary>True on the frame of the last <see cref="Update"/> when <see cref="OrbitGesture"/> tapped and its
+        /// press did not begin while <see cref="LookGesture"/> was dragging. Read taps here rather than from
+        /// <see cref="PointerGesture.TapThisFrame"/>, which knows nothing of the other gesture. False while no
+        /// gesture is set.</summary>
+        public bool OrbitTap { get; private set; }
+
+        /// <summary>The <see cref="LookGesture"/> twin of <see cref="OrbitTap"/>: its tap, unless its press began
+        /// while <see cref="OrbitGesture"/> was dragging.</summary>
+        public bool LookTap { get; private set; }
+
         /// <summary>True while either gesture is dragging. The game forwards it to the pointer capture request so
         /// the cursor hides and holds for the drag.</summary>
         public bool WantsPointerCapture => TurnBodyActive || OrbitGesture?.Phase == PointerGesturePhase.Dragging;
@@ -59,6 +69,10 @@ namespace KhaozEngine.Render3D
         // replays its pending travel, which is only fresh movement if nothing orbited the camera during that travel.
         bool _orbitedSinceOrbitPress;
         bool _orbitedSinceLookPress;
+        // Whether each gesture's live press began while the other gesture was dragging. Such a press never taps:
+        // in a both-buttons run, letting go of the second button is not a select.
+        bool _orbitPressDuringLookDrag;
+        bool _lookPressDuringOrbitDrag;
 
         public FollowCameraController(FollowCamera3D camera)
         {
@@ -82,12 +96,14 @@ namespace KhaozEngine.Render3D
         /// that crosses its threshold with no orbit since its press began applies its
         /// <see cref="PointerGesture.DragDelta"/>, the replay of its pending travel (<see cref="LookGesture"/> first
         /// if both cross together). Otherwise the frame's <see cref="InputState.MouseDelta"/> applies. Speed, invert
-        /// and sign are as above. Read each gesture's tap after this call, in the same frame.</para>
+        /// and sign are as above. Read <see cref="OrbitTap"/> and <see cref="LookTap"/> after this call, in the
+        /// same frame. A press that began while the other gesture was dragging never taps.</para>
         /// </summary>
         public void Update(in InputState input, float dt)
         {
             if (OrbitGesture is null && LookGesture is null)
             {
+                OrbitTap = LookTap = false;
                 if (input.IsDown(OrbitButton))
                     Orbit(input.MouseDelta);
             }
@@ -104,12 +120,21 @@ namespace KhaozEngine.Render3D
             Camera.AdvanceBoom(dt);     // eases the boom back out after an obstruction clears (no-op at rate 0)
         }
 
-        // Advances each set gesture once, then orbits by at most one delta: a crossing gesture's replay when nothing
-        // has orbited since its press began, else this frame's mouse delta while any gesture drags.
+        // Advances each set gesture once and reports its tap, then orbits by at most one delta: a crossing gesture's
+        // replay when nothing has orbited since its press began, else this frame's mouse delta while any gesture
+        // drags.
         void AdvanceGestures(in InputState input)
         {
+            bool orbitWasDragging = IsDragging(OrbitGesture);
+            bool lookWasDragging = IsDragging(LookGesture);
+            PointerGesturePhase orbitBefore = OrbitGesture?.Phase ?? PointerGesturePhase.Idle;
+            PointerGesturePhase lookBefore = LookGesture?.Phase ?? PointerGesturePhase.Idle;
             bool orbitCrossed = Step(OrbitGesture, input, ref _orbitedSinceOrbitPress);
             bool lookCrossed = Step(LookGesture, input, ref _orbitedSinceLookPress);
+            OrbitTap = Tap(OrbitGesture, orbitBefore, lookWasDragging || IsDragging(LookGesture),
+                ref _orbitPressDuringLookDrag);
+            LookTap = Tap(LookGesture, lookBefore, orbitWasDragging || IsDragging(OrbitGesture),
+                ref _lookPressDuringOrbitDrag);
             if (!(IsDragging(OrbitGesture) || IsDragging(LookGesture)))
                 return;
 
@@ -134,6 +159,18 @@ namespace KhaozEngine.Render3D
             if (before == PointerGesturePhase.Idle && gesture.Phase != PointerGesturePhase.Idle)
                 orbitedSincePress = false;
             return before != PointerGesturePhase.Dragging && gesture.Phase == PointerGesturePhase.Dragging;
+        }
+
+        // On the frame a gesture's press begins, latches whether the other gesture was dragging that frame. Returns
+        // the gesture's tap unless its press began during the other's drag.
+        static bool Tap(PointerGesture? gesture, PointerGesturePhase before, bool otherDragging,
+            ref bool pressDuringOtherDrag)
+        {
+            if (gesture is null)
+                return false;
+            if (before == PointerGesturePhase.Idle && gesture.Phase != PointerGesturePhase.Idle)
+                pressDuringOtherDrag = otherDragging;
+            return gesture.TapThisFrame && !pressDuringOtherDrag;
         }
 
         static bool IsDragging(PointerGesture? gesture) => gesture?.Phase == PointerGesturePhase.Dragging;

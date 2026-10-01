@@ -170,7 +170,8 @@ Windowing + input foundation for the custom MonoGame-free stack.
   collection and preserving every other value. It reuses the original snapshot when scroll is already zero.
   `PointerCaptured` (since 20.17.0) is true while the window holds the pointer captured. While captured,
   `MouseDelta` is in window points, so the same hand movement reads alike on a 1x and a 2x display, and
-  `MousePosition` stays in framebuffer pixels. The frames capture starts and ends report a zero delta.
+  `MousePosition` stays in framebuffer pixels, held where capture started until the frame capture ends. The frames
+  capture starts and ends report a zero delta.
 - `InputManager.SuppressPointerInput()` gives an owning surface a frame-level pointer arbitration boundary after
   `Update`. It clears mouse buttons and wheel input for that frame, quarantines held buttons until their physical
   release, and keeps keyboard, gamepad, pointer position, and hover available.
@@ -271,7 +272,8 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `Advance(input, uiBlocked)` once a frame, then read `Phase` (`Idle`, `Pending`, `Dragging`), `DragDelta`,
   `TapThisFrame` and `TapPosition`. Travel is path length, crossing replays the pending travel, and above a zero
   threshold a press begun under UI or while unfocused is inert. A threshold of 0 or less drags at once, never taps,
-  and drags a held button again on the first unblocked frame. `Advance` allocates nothing. Lifted from Ruinborne's
+  and drags a held button again on the first unblocked frame. The threshold is in framebuffer pixels until capture
+  starts and window points after (#1228). `Advance` allocates nothing. Lifted from Ruinborne's
   `RightMouseGesture`. See docs/USING-KHAOZENGINE.md.
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
   that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`

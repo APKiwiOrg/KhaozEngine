@@ -39,10 +39,14 @@ namespace KhaozEngine.Windowing
         // its very first frame. This is a bool and not a "_lastMouse == position" test on purpose: a cursor
         // genuinely sitting at (0,0) would make that test lie and reintroduce the same spike.
         bool _cursorSampled;
-        // The capture state the previous snapshot reported. A frame on which it changes reports a zero delta,
-        // because GLFW warps the cursor when capture starts and restores it (jumping by the virtual drift) when
-        // capture ends.
+        // The capture state the previous snapshot reported. A frame on which it changes reports a zero delta. The
+        // end zero covers a real jump: GLFW restores the cursor when capture ends, a jump by the virtual drift.
+        // GLFW does not jump the cursor when capture starts, so the start zero is only a safety net for untested
+        // platforms, and it drops one frame of real movement.
         bool _lastCaptured;
+        // The framebuffer position where the current capture started, recorded on the capture-start frame. A
+        // captured snapshot reports it as the position, so a hidden cursor never hovers, selects or blocks.
+        Vector2 _captureAnchor;
         float _wheelAccum;
         bool _focused = true;   // windows open focused, and OnFocusChanged keeps this in sync.
         readonly StringBuilder _textInput = new();
@@ -141,7 +145,9 @@ namespace KhaozEngine.Windowing
         /// <param name="height">Framebuffer height in pixels.</param>
         /// <param name="gamepads">Connected gamepads this frame, or null for none.</param>
         /// <param name="pointerCaptured">Whether the window holds the pointer captured this frame. While captured
-        /// the delta is divided by <paramref name="framebufferScale"/> into window points. The frame this value
+        /// the delta is divided by <paramref name="framebufferScale"/> into window points, and the reported
+        /// position holds at the framebuffer position of the capture-start frame while the delta keeps following
+        /// the virtual cursor. The frame capture ends reports the live position again. The frame this value
         /// changes, in either direction, reports a zero delta.</param>
         /// <param name="framebufferScale">Framebuffer pixels per window point on each axis. The default, and any
         /// component that is not positive or is NaN, means 1. Only the captured delta uses it. The position stays in
@@ -151,11 +157,13 @@ namespace KhaozEngine.Windowing
             IReadOnlyList<GamepadState>? gamepads = null,
             bool pointerCaptured = false, Vector2 framebufferScale = default)
         {
-            Vector2 position = hasMouse ? cursorPosition : _lastMouse;
+            Vector2 live = hasMouse ? cursorPosition : _lastMouse;
             // First sample reports no movement. See _cursorSampled for why this is not a position comparison.
-            Vector2 delta = _cursorSampled ? position - _lastMouse : Vector2.Zero;
+            Vector2 delta = _cursorSampled ? live - _lastMouse : Vector2.Zero;
             if (pointerCaptured != _lastCaptured) delta = Vector2.Zero;
             else if (pointerCaptured) delta /= PointsScale(framebufferScale);
+            if (pointerCaptured && !_lastCaptured) _captureAnchor = live;
+            Vector2 position = pointerCaptured ? _captureAnchor : live;
 
             var input = new InputState(
                 new HashSet<Key>(_keysDown), new HashSet<Key>(_pressed), new HashSet<Key>(_released),
@@ -173,7 +181,7 @@ namespace KhaozEngine.Windowing
             _mousePressed.Clear();
             _mouseReleased.Clear();
             _textInput.Clear();
-            _lastMouse = position;
+            _lastMouse = live;     // the live position, so captured deltas keep following the virtual cursor
             _lastCaptured = pointerCaptured;
             // Only a frame that actually read a cursor primes the delta. A window that opens with no mouse
             // attached must still report a zero delta on the first frame one shows up.

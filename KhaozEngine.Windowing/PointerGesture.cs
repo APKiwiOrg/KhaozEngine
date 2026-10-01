@@ -38,10 +38,12 @@ namespace KhaozEngine.Windowing
     /// <para><see cref="Advance"/> allocates nothing.</para>
     /// </remarks>
     /// <param name="button">The button this gesture watches. Every other button is ignored.</param>
-    /// <param name="thresholdPixels">Pixels of accumulated <see cref="InputState.MouseDelta"/> travel that turn a
-    /// press into a drag. While the pointer is captured that delta is in window points, so the threshold is too.
-    /// Four is about the width of the hand tremor in a click. Zero or less means a press drags from its first
-    /// frame and never taps.</param>
+    /// <param name="thresholdPixels">Accumulated <see cref="InputState.MouseDelta"/> travel that turns a press into
+    /// a drag. The threshold and the crossing replay are in delta units: framebuffer pixels until capture starts,
+    /// window points after it (see <see cref="InputState.PointerCaptured"/>). On a 2x display an uncaptured press
+    /// crosses at half the hand movement it would at 1x. A scale-aware threshold is engine issue #1228. Four is
+    /// about the width of the hand tremor in a click. Zero or less means a press drags from its first frame and
+    /// never taps.</param>
     public sealed class PointerGesture(MouseButton button, float thresholdPixels = 4f)
     {
         Vector2 _pressPosition;     // where the live press began, promoted to TapPosition if it ends as a tap
@@ -53,8 +55,9 @@ namespace KhaozEngine.Windowing
         /// <summary>The button this gesture watches.</summary>
         public MouseButton Button { get; } = button;
 
-        /// <summary>The threshold this instance was built on, in pixels of <see cref="InputState.MouseDelta"/>.
-        /// Zero or less means drag from the first frame and never tap.</summary>
+        /// <summary>The threshold this instance was built on, in <see cref="InputState.MouseDelta"/> units
+        /// (framebuffer pixels until capture starts, window points after). Zero or less means drag from the first
+        /// frame and never tap.</summary>
         public float ThresholdPixels { get; } = thresholdPixels;
 
         /// <summary>What the button is doing after the most recent <see cref="Advance"/>.</summary>

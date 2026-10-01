@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Render3D
     /// <summary>
     /// The follow camera's optional orbit and look gestures. With neither set the controller is today's
     /// button-held orbit, pinned exactly. With either set, each gesture's drag orbits, a look drag also turns the
-    /// body, any drag asks for pointer capture, and a quick click is a tap read from the gesture after the update.
+    /// body, any drag asks for pointer capture, and a quick click is a tap read from the controller after the update.
     /// </summary>
     public class FollowCameraGestureTests
     {
@@ -191,22 +191,54 @@ namespace KhaozEngine.Tests.Render3D
             ctl.Update(Frame(down: [MouseButton.Left]), Dt);
             ctl.Update(Frame(new Vector2(1f, 1f), down: [MouseButton.Left]), Dt);   // tremor under the threshold
             ctl.Update(Frame(), Dt);
+            Assert.True(ctl.OrbitTap);
             Assert.True(ctl.OrbitGesture!.TapThisFrame);
             Assert.Equal(new Vector2(120f, 80f), ctl.OrbitGesture.TapPosition);
-            Assert.False(ctl.LookGesture!.TapThisFrame);
+            Assert.False(ctl.LookTap);
 
             ctl.Update(Frame(), Dt);
-            Assert.False(ctl.OrbitGesture.TapThisFrame);                           // one frame only
+            Assert.False(ctl.OrbitTap);                                            // one frame only
 
             ctl.Update(Frame(down: [MouseButton.Right]), Dt);
             ctl.Update(Frame(), Dt);
-            Assert.True(ctl.LookGesture.TapThisFrame);
-            Assert.False(ctl.OrbitGesture.TapThisFrame);
+            Assert.True(ctl.LookTap);
+            Assert.False(ctl.OrbitTap);
 
             Assert.Equal(0f, cam.Yaw);
             Assert.Equal(0.5f, cam.Pitch);
             Assert.False(ctl.WantsPointerCapture);
             Assert.False(ctl.TurnBodyActive);
+        }
+
+        [Fact]
+        public void ALeftTapDuringALookDragIsNotATap()
+        {
+            FollowCamera3D cam = NewCamera();
+            FollowCameraController ctl = WowStyle(cam);
+
+            // Right crosses into a look drag.
+            ctl.Update(Frame(new Vector2(2f, 0f), down: [MouseButton.Right]), Dt);
+            ctl.Update(Frame(new Vector2(6f, 0f), down: [MouseButton.Right]), Dt);
+            Assert.True(ctl.TurnBodyActive);
+
+            // Left goes down and up under its threshold while the look keeps turning. The gesture alone calls that a
+            // tap, but a press that began during the other's drag is never a select.
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Right, MouseButton.Left]), Dt);
+            ctl.Update(Frame(new Vector2(2f, 0f), down: [MouseButton.Right, MouseButton.Left]), Dt);
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Right]), Dt);
+            Assert.True(ctl.OrbitGesture!.TapThisFrame);
+            Assert.False(ctl.OrbitTap);
+            Assert.True(ctl.TurnBodyActive);
+
+            // The look ends as a drag, so it is no tap either.
+            ctl.Update(Frame(), Dt);
+            Assert.False(ctl.LookTap);
+            Assert.False(ctl.OrbitTap);
+
+            // The latch belongs to that press only. A fresh left click with nothing dragging taps again.
+            ctl.Update(Frame(down: [MouseButton.Left]), Dt);
+            ctl.Update(Frame(), Dt);
+            Assert.True(ctl.OrbitTap);
         }
 
         [Fact]

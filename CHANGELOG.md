@@ -45,11 +45,14 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Afterwards only `collisionHeight` is refreshed in the open session, other catalog edits made outside the tool
   still need `world_open`, and a failed refresh is reported in `sessionRefreshError`.
 - `InputState.PointerCaptured` is true while the window holds the pointer captured for mouse-look. While captured,
-  `MouseDelta` is in window points rather than framebuffer pixels, so a 1x and a 2x display turn a camera alike, and
-  `MousePosition` stays in framebuffer pixels. The frames capture starts and ends report a zero delta, so the cursor
-  warp on either edge never reads as a jump. `InputAccumulator.Snapshot` takes `pointerCaptured` and
-  `framebufferScale` as optional trailing arguments, and a scale component that is not positive or is NaN means 1.
-  `WithoutScroll` and `AutomationInputInjector.Compose` keep the value. Snapshots that never capture are unchanged.
+  `MouseDelta` is in window points rather than framebuffer pixels, so a 1x and a 2x display turn a camera alike.
+  `MousePosition` stays in framebuffer pixels and holds where capture started, so a hidden cursor never hovers,
+  selects or blocks, and the frame capture ends reports the live position again. The frames capture starts and ends
+  report a zero delta. The end zero covers GLFW restoring the cursor, a jump by the virtual drift. GLFW does not jump
+  the cursor when capture starts, so the start zero is a safety net that drops one frame of real movement.
+  `InputAccumulator.Snapshot` takes `pointerCaptured` and `framebufferScale` as optional trailing arguments, and a
+  scale component that is not positive or is NaN means 1. `WithoutScroll` and `AutomationInputInjector.Compose`
+  keep the value. Snapshots that never capture are unchanged.
 - `AppWindow.SetPointerCaptured(bool)` requests capture and `AppWindow.PointerCaptured` reads it.
   `GameApp.SetPointerCaptured` is the protected forwarder beside `Rumble`. Capture holds only while requested and
   focused, drops on the frame a focus loss releases held buttons, and after refocus waits for the request to go
@@ -60,19 +63,31 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Ruinborne's `RightMouseGesture`. Travel is path length, crossing the threshold replays the pending travel, a
   press that begins under UI or while unfocused never taps or drags, and a focus loss ends a press without a tap.
   A threshold of 0 or less drags at once and never taps, and a button still held drags again on the first
-  unblocked frame. `Advance` allocates nothing
+  unblocked frame. The threshold and the crossing replay are in framebuffer pixels until capture starts and window
+  points after, and a scale-aware threshold is
+  [#1228](https://github.com/APKiwiOrg/KhaozEngine/issues/1228). `Advance` allocates nothing
   ([consumer contract](docs/USING-KHAOZENGINE.md#tap-or-drag-pointergesture)).
 - `FollowCameraController` takes optional `OrbitGesture` and `LookGesture` gestures and a `UiBlocked` field, and
   reports `TurnBodyActive` and `WantsPointerCapture`. With either gesture set, `OrbitButton` is ignored and the
   camera orbits by one delta a frame while a gesture drags, so each mouse movement turns it once however many
-  buttons are held. Taps are read from each gesture after `Update`. Scroll zoom, damping and boom recovery are
-  unchanged, and with neither gesture set the controller behaves exactly as before. The WoW wiring hands
-  `TurnBodyActive` to `MoveCommand.FaceCamera` with `Camera.Yaw` as `CameraYaw`
+  buttons are held. `OrbitTap` and `LookTap` report taps after `Update`, and a press that began while the other
+  gesture was dragging never taps, so releasing left in a both-buttons run is not a select. The documented
+  `UiBlocked` gate is `GuiSurface.HoverCaptured`. Scroll zoom, damping and boom recovery are unchanged, and with
+  neither gesture set the controller behaves exactly as before. The WoW wiring hands `TurnBodyActive` to
+  `MoveCommand.FaceCamera` with `Camera.Yaw` as `CameraYaw`
   ([consumer contract](docs/USING-KHAOZENGINE.md#third-person-follow-camera--character-controller-followcamera3d--charactercontroller3d)).
 - The Showcase 3D room opts in, so a left or a right drag orbits its camera with the cursor held.
-- Owed before release: a manual check in the Showcase 3D room (`Room3D`) on macOS, Windows and Linux. The cursor
-  hides and holds during a right drag, the camera does not jump on release, capture drops on alt-tab, and
-  sensitivity is equal on a Retina and a 1x display. The results go in the release notes.
+- Owed before release: a manual check in the Showcase 3D room (`Room3D`), run and recorded separately on macOS,
+  Windows, Linux X11 and Linux Wayland. macOS runs without raw mouse motion. On each platform:
+  - A left drag orbits with the cursor hidden and held.
+  - A right drag orbits with the cursor hidden and held.
+  - Holding both buttons orbits at single speed with the cursor hidden and held.
+  - Releasing the buttons does not jump the camera.
+  - Alt-tab drops capture and frees the cursor.
+  - After refocus the cursor stays free until the next press.
+  - Sensitivity is equal on a Retina and a 1x display.
+
+  The results go in the release notes.
 
 ## 20.16.0
 

@@ -21,7 +21,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `PointerGesture` each and `OrbitButton` is ignored. The camera orbits only while a gesture drags, by one delta a
   frame, and a press begun while the game's `UiBlocked` is set never taps, and above a zero threshold never orbits.
   `TurnBodyActive` is true while `LookGesture` drags, for `MoveCommand.FaceCamera`, and `WantsPointerCapture` while
-  either drags, for `SetPointerCaptured`. Taps are read from each gesture after `Update`. Scroll zoom, damping and
+  either drags, for `SetPointerCaptured`. `OrbitTap` and `LookTap` report taps after `Update`, and a press begun while
+  the other gesture drags never taps. Gate `UiBlocked` on `GuiSurface.HoverCaptured`. Scroll zoom, damping and
   boom recovery are unchanged, and with neither gesture set the controller behaves exactly as before. See
   docs/USING-KHAOZENGINE.md.
 - `FollowCamera3D.Warp(target)` / `SnapToTarget()` (since 10.65.0) - hard-cut the third-person follow camera onto a

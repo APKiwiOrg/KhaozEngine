@@ -468,7 +468,8 @@ namespace KhaozEngine.Tests.Windowing
             var a = new InputAccumulator();
             Snap(a, Centre);
 
-            // GLFW warps the cursor when capture starts, so the start frame reports no movement.
+            // GLFW does not jump the cursor when capture starts. The start frame's zero is a safety net for untested
+            // platforms, and it drops this frame's real movement.
             InputState start = Captured(a, new Vector2(1000, 540), Retina);
             Assert.True(start.PointerCaptured);
             Assert.Equal(Vector2.Zero, start.MouseDelta);
@@ -506,8 +507,8 @@ namespace KhaozEngine.Tests.Windowing
 
             Assert.Equal(new Vector2(10, -4), atOneX.MouseDelta);
             Assert.Equal(atOneX.MouseDelta, atTwoX.MouseDelta);
-            // Only the delta converts. The position stays in framebuffer pixels.
-            Assert.Equal(Centre + new Vector2(20, -8), atTwoX.MousePosition);
+            // Only the delta converts. The position stays in framebuffer pixels, held where capture started.
+            Assert.Equal(Centre, atTwoX.MousePosition);
 
             // A default scale means 1, and a zero component never divides.
             var unscaled = new InputAccumulator();
@@ -517,6 +518,43 @@ namespace KhaozEngine.Tests.Windowing
             var halfZero = new InputAccumulator();
             Captured(halfZero, Centre, new Vector2(2, 0));
             Assert.Equal(new Vector2(3, 6), Captured(halfZero, Centre + new Vector2(6, 6), new Vector2(2, 0)).MouseDelta);
+        }
+
+        [Fact]
+        public void ACapturedPositionHoldsWhereCaptureStartedWhileDeltasFlow()
+        {
+            var a = new InputAccumulator();
+            Snap(a, Centre);
+
+            // Capture starts with the cursor at (1000, 540). That framebuffer point is the position from here on.
+            Vector2 anchor = new(1000, 540);
+            Assert.Equal(anchor, Captured(a, anchor, Retina).MousePosition);
+
+            // The virtual cursor keeps moving. The position holds and the deltas follow it in window points.
+            InputState first = Captured(a, new Vector2(1040, 520), Retina);
+            Assert.Equal(anchor, first.MousePosition);
+            Assert.Equal(new Vector2(20, -10), first.MouseDelta);
+            InputState second = Captured(a, new Vector2(1100, 600), Retina);
+            Assert.Equal(anchor, second.MousePosition);
+            Assert.Equal(new Vector2(30, 40), second.MouseDelta);
+
+            // A frame with no mouse to read still holds the anchor and reports no movement.
+            InputState noMouse = a.Snapshot(Vector2.Zero, false, Width, Height,
+                pointerCaptured: true, framebufferScale: Retina);
+            Assert.Equal(anchor, noMouse.MousePosition);
+            Assert.Equal(Vector2.Zero, noMouse.MouseDelta);
+
+            // The end frame reports the live position again, with the end zero.
+            InputState end = a.Snapshot(new Vector2(1002, 541), true, Width, Height,
+                pointerCaptured: false, framebufferScale: Retina);
+            Assert.Equal(new Vector2(1002, 541), end.MousePosition);
+            Assert.Equal(Vector2.Zero, end.MouseDelta);
+
+            // Uncaptured, the position is live every frame, and a later capture anchors afresh.
+            Assert.Equal(new Vector2(700, 400), Snap(a, new Vector2(700, 400)).MousePosition);
+            Assert.Equal(new Vector2(710, 405), Snap(a, new Vector2(710, 405)).MousePosition);
+            Assert.Equal(new Vector2(720, 410), Captured(a, new Vector2(720, 410), Retina).MousePosition);
+            Assert.Equal(new Vector2(720, 410), Captured(a, new Vector2(780, 410), Retina).MousePosition);
         }
 
         [Fact]
@@ -531,6 +569,7 @@ namespace KhaozEngine.Tests.Windowing
             // An uncaptured cursor keeps today's framebuffer-pixel delta whatever the scale.
             Assert.False(s.PointerCaptured);
             Assert.Equal(new Vector2(20, -8), s.MouseDelta);
+            Assert.Equal(Centre + new Vector2(20, -8), s.MousePosition);
             Assert.False(Snap(a).PointerCaptured);
         }
 

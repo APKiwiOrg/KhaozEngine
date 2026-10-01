@@ -823,10 +823,13 @@ InputState cameraInput = input.WithoutScroll();
 `PointerCaptured` (since 20.17.0) is true while the window holds the pointer captured for mouse-look: hidden,
 locked to the window and moving without bounds. A game requests it through `SetPointerCaptured` (see "Pointer
 capture" below). While captured, `MouseDelta` is in window points rather than framebuffer pixels, so the same hand
-movement reads the same on a 1x and a 2x display. `MousePosition` stays in framebuffer pixels. The frame capture
-starts and the frame it ends each report a zero `MouseDelta`, because GLFW moves the cursor on both edges and the
-restored position would otherwise read as one large jump. `WithoutScroll()` and `AutomationInputInjector.Compose`
-keep the value. It is unrelated to `GuiSurface.PointerCaptured`, the UI click-through gate.
+movement reads the same on a 1x and a 2x display. `MousePosition` stays in framebuffer pixels and holds at the
+position where capture started, so a hidden cursor never hovers, selects or blocks anything, while `MouseDelta` keeps
+following the real movement. The frame capture ends reports the live position again. The frame capture starts and
+the frame it ends each report a zero `MouseDelta`. The end zero covers a real jump: GLFW restores the cursor when
+capture ends, and the restored position would otherwise read as one large movement. GLFW does not jump the cursor
+when capture starts, so the start zero is only a safety net for untested platforms, and it drops one frame of real
+movement. `WithoutScroll()` and `AutomationInputInjector.Compose` keep the value. It is unrelated to `GuiSurface.PointerCaptured`, the UI click-through gate.
 
 A custom snapshot producer passes the same facts to `InputAccumulator.Snapshot(..., pointerCaptured,
 framebufferScale)`. `framebufferScale` is framebuffer pixels per window point on each axis, the ratio `AppWindow`
@@ -1071,7 +1074,10 @@ The rules:
   stops the drag, and a button still held drags again on the first unblocked frame.
 - `TapThisFrame` describes only the most recent `Advance`. Read it after advancing with the snapshot you act on.
 - `Advance` allocates nothing.
-- While the pointer is captured, `MouseDelta` is in window points, so the threshold is too.
+- The threshold and the crossing replay are measured in `MouseDelta` units, which are framebuffer pixels until
+  capture starts and window points after it. On a 2x display a press that has not yet captured crosses at half the
+  hand movement it would at 1x. A scale-aware threshold is tracked in
+  [#1228](https://github.com/APKiwiOrg/KhaozEngine/issues/1228).
 
 It is lifted from Ruinborne's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
 them (see "Tap-or-drag gestures" in the follow camera chapter).
@@ -6676,7 +6682,10 @@ The controller reports three things:
 - `TurnBodyActive` is true while `LookGesture` drags.
 - `WantsPointerCapture` is true while either gesture drags. Forward it to `SetPointerCaptured` so the cursor hides
   and holds for the drag (see "Pointer capture" in the input chapter).
-- Taps are read from each gesture's `TapThisFrame` and `TapPosition` after `Update`, in the same frame.
+- `OrbitTap` and `LookTap` report each gesture's tap after `Update`, in the same frame, with the press origin in
+  that gesture's `TapPosition`. Read taps there rather than from `PointerGesture.TapThisFrame`: a press that began
+  while the other gesture was dragging never taps, so letting go of the left button in a both-buttons run is not a
+  select.
 
 The WoW wiring puts orbit on the left button and look on the right. The game reads `TurnBodyActive` and hands it to
 `CharacterMovement` as `MoveCommand.FaceCamera`, with `Camera.Yaw` as `CameraYaw`. A local
@@ -6690,13 +6699,17 @@ var camController = new FollowCameraController(camera)
 };
 
 // each frame:
-camController.UiBlocked = gui.PointerCaptured;           // the UI owns this press
+camController.UiBlocked = gui.HoverCaptured;             // the pointer is over UI
 camController.Update(input, dt);
 SetPointerCaptured(camController.WantsPointerCapture);
 var cmd = new MoveCommand(move, run, camController.Camera.Yaw, jump, faceCamera: camController.TurnBodyActive);
 character.FaceCamera = camController.TurnBodyActive;    // the local controller's equivalent
-if (camController.OrbitGesture!.TapThisFrame) Select(camController.OrbitGesture.TapPosition);
+if (camController.OrbitTap) Select(camController.OrbitGesture!.TapPosition);
 ```
+
+Gate `UiBlocked` on `GuiSurface.HoverCaptured`, which tests the live pointer against every UI rect reserved this
+frame whichever button is pressed, and reads the frozen capture point while captured. `GuiSurface.PointerCaptured`
+tracks only the left button's press origin, so it would let a right drag start on an inventory slot.
 
 The Showcase 3D room opts in with this wiring and forwards `WantsPointerCapture` through `ShowcaseApp`. It reads
 neither `TurnBodyActive` nor the taps, so both drags only orbit there.

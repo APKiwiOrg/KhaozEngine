@@ -10,8 +10,8 @@ namespace KhaozEngine.Windowing
         /// <summary>Pressed, but the cursor has not yet travelled past the threshold, so it is still undecided
         /// whether this press is a tap or a drag. Nothing drags while a press is here.</summary>
         Pending,
-        /// <summary>The press crossed the threshold. It drags from here until the button comes up, however still
-        /// the cursor goes, and it can never become a tap.</summary>
+        /// <summary>The press crossed the threshold. It drags from here until the button comes up or a block arrives,
+        /// however still the cursor goes, and it can never become a tap.</summary>
         Dragging,
     }
 

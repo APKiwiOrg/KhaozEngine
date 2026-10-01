@@ -31,7 +31,8 @@ document live, but its bounds were captured at build, and the medium sampler sna
 the world as it was built, so rebuild both.
 
 If the world refuses a static partway through `AddTo`, the statics already added are removed and the world's
-exception is rethrown. `Remove` tries every handle once even when one fails, then rethrows the one failure as it was
+exception is rethrown. If that rollback fails too, `AddTo` throws an `AggregateException` whose first inner
+exception is the add failure. `Remove` tries every handle once even when one fails, then rethrows the one failure as it was
 or several as an `AggregateException`. A second call retries only the handles that failed.
 
 ## Types
@@ -83,14 +84,28 @@ absolute, so a caller stepping a body in a rebased world adds the origin to the 
 it off the heights they answer:
 
 ```csharp
-Vector3 o = world.Origin;
-Func<float, float, float> height = (x, z) => colliders.Ground.HeightAt(x + o.X, z + o.Z) - o.Y;
-Func<float, float, Vector3> normal = (x, z) => colliders.Ground.NormalAt(x + o.X, z + o.Z);
+Func<float, float, float> height = (x, z) =>
+{
+    Vector3 o = world.Origin;
+    return colliders.Ground.HeightAt(x + o.X, z + o.Z) - o.Y;
+};
+Func<float, float, Vector3> normal = (x, z) =>
+{
+    Vector3 o = world.Origin;
+    return colliders.Ground.NormalAt(x + o.X, z + o.Z);
+};
 Func<float, float, float, MovementMedium> medium = (x, z, feetY) =>
-    colliders.Medium.MediumAt(x + o.X, z + o.Z, feetY + o.Y) is { InWater: true } m
+{
+    Vector3 o = world.Origin;
+    return colliders.Medium.MediumAt(x + o.X, z + o.Z, feetY + o.Y) is { InWater: true } m
         ? new MovementMedium(m.WaterSurfaceY - o.Y, inWater: true, m.WadeSpeedScale)
         : MovementMedium.Dry;
+};
+
+body = CharacterMovement.Step(body, command, dt, height, MoveTuning.Default, normal, world, medium: medium);
 ```
+
+Each delegate reads `world.Origin` when it is called, so the wrapped delegates stay right across later rebases.
 
 ## Samplers
 

@@ -9113,23 +9113,17 @@ allocation-free repeated picks, including the per-frame picks made by `TileWorld
 A tile world walks, renders and serves with no physics. A game that wants a continuous body moving over it, a
 capsule driven by `CharacterMovement` rather than a player stepping tile to tile, adds
 `KhaozEngine.TileWorld.Physics` explicitly, with the backend it picks (`KhaozEngine.Physics.Bepu` is the shipped
-one). The package is in no umbrella, renders nothing and references no backend.
+one). The package is in no umbrella, renders nothing and references no backend. The code for building,
+registering and stepping a body is in the package README's
+[Use](../KhaozEngine.TileWorld.Physics/README.md#use) section.
 
-```csharp
-TileWorldColliders colliders = TileWorldColliders.Build(document, catalogs);   // or pass TileColliderOptions
-using var world = new BepuPhysicsWorld();
-using TileColliderRegistration registration = colliders.AddTo(world);
-
-body = CharacterMovement.Step(body, command, dt, colliders.Ground.HeightDelegate, MoveTuning.Default,
-                              colliders.Ground.NormalDelegate, world, medium: colliders.Medium.Delegate);
-```
-
-`Build` describes the loaded plane-0 regions as static colliders and registers nothing: one ground mesh per region
-from the same triangles the renderer draws, a box per blocked wall edge, blocked tile and `Solid` or `Diagonal`
-object, and a thin box under each walk surface. `AddTo` registers them, and disposing the registration removes
+`TileWorldColliders.Build(document, catalogs, options)` describes the loaded plane-0 regions as static colliders
+and registers nothing: one ground mesh per region from the same triangles the renderer draws, a box per blocked
+wall edge, blocked tile and `Solid` or `Diagonal` object, and a thin box under each walk surface. `AddTo` registers them, and disposing the registration removes
 them. `Ground` is the floor sampler, read from the drawn ground only, so a deck or a bridge holds a body up as a
-static and never becomes the floor. `Medium` puts feet in water only below a water body's surface. `Hash` is a
-stable digest of the whole collider set.
+static and never becomes the floor. `Medium` puts feet in water only below a water body's surface. Their delegates
+are the ground-height, ground-normal and medium arguments of `CharacterMovement.Step`. `Hash` is a stable digest of
+the whole collider set.
 
 The contract a consumer has to keep:
 
@@ -9139,7 +9133,8 @@ The contract a consumer has to keep:
 - **Rebuild after an edit.** Remove the old registration, `Build` again and `AddTo` again. The samplers answer for
   the world as it was built.
 - **The samplers speak absolute document coordinates.** `AddTo` subtracts `world.Origin` once, so in a rebased world
-  wrap the three delegates to add the origin back. The package README shows the wrapping.
+  wrap the three delegates to add the origin back, reading `world.Origin` at call time so they stay right across
+  later rebases. The package README shows the wrapping.
 
 The collider rules, the defaults, the hash encoding and the limits (plane 0 only, roofs and `NoDraw` tiles, rays
 exactly on the world's outer edge) are in the

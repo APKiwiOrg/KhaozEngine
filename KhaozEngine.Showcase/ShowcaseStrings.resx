@@ -81,7 +81,7 @@
   <data name="Controls.Gui2D" xml:space="preserve"><value>Tab or Shift+Tab switch tabs  Esc back</value></data>
   <data name="Controls.MiniGame" xml:space="preserve"><value>A/D or arrow keys move  Esc menu</value></data>
   <data name="Controls.Boot" xml:space="preserve"><value>Enter replay  F toggle a failing step  Esc menu</value></data>
-  <data name="Controls.World1" xml:space="preserve"><value>WASD move  Shift run  Space jump  Left-drag orbit  Right-drag look  Scroll zoom</value></data>
+  <data name="Controls.World1" xml:space="preserve"><value>WASD move  Shift run  Space jump  Left or right drag orbit, cursor held  Scroll zoom</value></data>
   <data name="Controls.World2" xml:space="preserve"><value>O outline  C cel  R retro  P palette  N sky/stars  T pause day  F2 collision  F skinning  M scale  L/K H/G thresholds</value></data>
   <data name="World.Sky" xml:space="preserve"><value>Outdoor sky</value></data>
   <data name="World.Stars" xml:space="preserve"><value>Starfield background</value></data>

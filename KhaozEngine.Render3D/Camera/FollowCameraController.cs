@@ -53,6 +53,11 @@ namespace KhaozEngine.Render3D
         /// the cursor hides and holds for the drag.</summary>
         public bool WantsPointerCapture => TurnBodyActive || OrbitGesture?.Phase == PointerGesturePhase.Dragging;
 
+        // Whether the camera has orbited since each gesture's live press began. A gesture that crosses its threshold
+        // replays its pending travel, which is only fresh movement if nothing orbited the camera during that travel.
+        bool _orbitedSinceOrbitPress;
+        bool _orbitedSinceLookPress;
+
         public FollowCameraController(FollowCamera3D camera)
         {
             Camera = camera ?? throw new ArgumentNullException(nameof(camera));
@@ -70,9 +75,12 @@ namespace KhaozEngine.Render3D
         /// <see cref="FollowCamera3D.EnableTargetDamping"/> or <see cref="FollowCamera3D.BoomRecoveryRate"/> turns
         /// it on.
         /// <para>With <see cref="OrbitGesture"/> or <see cref="LookGesture"/> set, each set gesture advances once with
-        /// <see cref="UiBlocked"/>, <see cref="OrbitButton"/> is ignored, and the orbit comes from the dragging
-        /// gestures' <see cref="PointerGesture.DragDelta"/>, summed when both drag, with the same speed, invert and
-        /// sign as above. Read each gesture's tap after this call, in the same frame.</para>
+        /// <see cref="UiBlocked"/> and <see cref="OrbitButton"/> is ignored. The camera orbits only while a gesture
+        /// drags, by one delta a frame, so each mouse movement turns it once however many buttons are held. A gesture
+        /// that crosses its threshold with no orbit since its press began applies its
+        /// <see cref="PointerGesture.DragDelta"/>, the replay of its pending travel (<see cref="LookGesture"/> first
+        /// if both cross together). Otherwise the frame's <see cref="InputState.MouseDelta"/> applies. Speed, invert
+        /// and sign are as above. Read each gesture's tap after this call, in the same frame.</para>
         /// </summary>
         public void Update(in InputState input, float dt)
         {
@@ -94,26 +102,39 @@ namespace KhaozEngine.Render3D
             Camera.AdvanceBoom(dt);     // eases the boom back out after an obstruction clears (no-op at rate 0)
         }
 
-        // Advances each set gesture once and orbits by the sum of the dragging ones' deltas.
+        // Advances each set gesture once, then orbits by at most one delta: a crossing gesture's replay when nothing
+        // has orbited since its press began, else this frame's mouse delta while any gesture drags.
         void AdvanceGestures(in InputState input)
         {
-            bool dragging = false;
-            Vector2 drag = Vector2.Zero;
-            if (OrbitGesture is not null)
-            {
-                OrbitGesture.Advance(input, UiBlocked);
-                dragging |= OrbitGesture.Phase == PointerGesturePhase.Dragging;
-                drag += OrbitGesture.DragDelta;
-            }
-            if (LookGesture is not null)
-            {
-                LookGesture.Advance(input, UiBlocked);
-                dragging |= LookGesture.Phase == PointerGesturePhase.Dragging;
-                drag += LookGesture.DragDelta;
-            }
-            if (dragging)
-                Orbit(drag);
+            bool orbitCrossed = Step(OrbitGesture, input, ref _orbitedSinceOrbitPress);
+            bool lookCrossed = Step(LookGesture, input, ref _orbitedSinceLookPress);
+            if (!(IsDragging(OrbitGesture) || IsDragging(LookGesture)))
+                return;
+
+            if (lookCrossed && !_orbitedSinceLookPress)
+                Orbit(LookGesture!.DragDelta);
+            else if (orbitCrossed && !_orbitedSinceOrbitPress)
+                Orbit(OrbitGesture!.DragDelta);
+            else
+                Orbit(input.MouseDelta);
+            _orbitedSinceOrbitPress = true;
+            _orbitedSinceLookPress = true;
         }
+
+        // Advances one gesture. A press that began this frame clears its orbited-since flag, before this frame's
+        // orbit can set it. Returns whether the gesture crossed into a drag this frame.
+        bool Step(PointerGesture? gesture, in InputState input, ref bool orbitedSincePress)
+        {
+            if (gesture is null)
+                return false;
+            PointerGesturePhase before = gesture.Phase;
+            gesture.Advance(input, UiBlocked);
+            if (before == PointerGesturePhase.Idle && gesture.Phase != PointerGesturePhase.Idle)
+                orbitedSincePress = false;
+            return before != PointerGesturePhase.Dragging && gesture.Phase == PointerGesturePhase.Dragging;
+        }
+
+        static bool IsDragging(PointerGesture? gesture) => gesture?.Phase == PointerGesturePhase.Dragging;
 
         void Orbit(Vector2 d)
         {

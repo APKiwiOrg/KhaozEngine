@@ -164,14 +164,13 @@ namespace KhaozEngine.Tests.Render3D
             Assert.True(ctl.WantsPointerCapture);
             Assert.False(ctl.TurnBodyActive);
 
-            ctl.Update(Frame(Vector2.Zero, down: new[] { MouseButton.Left, MouseButton.Right }), Dt);
-            ctl.Update(Frame(new Vector2(8f, 0f), down: new[] { MouseButton.Left, MouseButton.Right }), Dt);
-            Assert.True(ctl.TurnBodyActive);
-
-            // Both dragging: the frame's orbit is the sum of the two drag deltas.
+            // Both held: each frame's movement turns the camera once, however many buttons drag.
             float before = cam.Yaw;
-            ctl.Update(Frame(new Vector2(3f, 0f), down: new[] { MouseButton.Left, MouseButton.Right }), Dt);
-            Assert.Equal(before - 6f * ctl.OrbitYawSpeed, cam.Yaw, 5);
+            ctl.Update(Frame(new Vector2(2f, 0f), down: [MouseButton.Left, MouseButton.Right]), Dt);
+            ctl.Update(Frame(new Vector2(8f, 0f), down: [MouseButton.Left, MouseButton.Right]), Dt);
+            Assert.True(ctl.TurnBodyActive);
+            ctl.Update(Frame(new Vector2(3f, 0f), down: [MouseButton.Left, MouseButton.Right]), Dt);
+            Assert.Equal(before - 13f * ctl.OrbitYawSpeed, cam.Yaw, 5);
 
             ctl.Update(Frame(down: [MouseButton.Right]), Dt);                       // left up, look still drags
             Assert.True(ctl.WantsPointerCapture);
@@ -224,24 +223,24 @@ namespace KhaozEngine.Tests.Render3D
             ctl.Update(Frame(), Dt);
             Assert.False(ctl.LookGesture.TapThisFrame);
 
-            // A look drag in progress, then focus goes with the button still read as held: the drag stops and
-            // capture is no longer wanted.
-            ctl.Update(Frame(down: [MouseButton.Right]), Dt);
+            // A look drag in progress, then focus goes. The accumulator's unfocus snapshot is unfocused with the
+            // button released, so the drag ends there: no orbit, no capture, no tap.
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Right]), Dt);
             ctl.Update(Frame(new Vector2(8f, 0f), down: [MouseButton.Right]), Dt);
             Assert.True(ctl.WantsPointerCapture);
             float yaw = cam.Yaw;
 
-            ctl.Update(Frame(new Vector2(30f, 0f), focused: false, down: [MouseButton.Right]), Dt);
+            ctl.Update(Frame(new Vector2(30f, 0f), focused: false), Dt);
             Assert.False(ctl.WantsPointerCapture);
             Assert.False(ctl.TurnBodyActive);
+            Assert.False(ctl.LookGesture.TapThisFrame);
             Assert.Equal(yaw, cam.Yaw);
 
-            // Back in focus with the same hold: the rest of that press is inert, and its release is no tap.
-            ctl.Update(Frame(new Vector2(30f, 0f), down: [MouseButton.Right]), Dt);
+            // Back in focus, the button stays up until a new press.
+            ctl.Update(Frame(new Vector2(30f, 0f)), Dt);
             Assert.False(ctl.WantsPointerCapture);
-            Assert.Equal(yaw, cam.Yaw);
-            ctl.Update(Frame(), Dt);
             Assert.False(ctl.LookGesture.TapThisFrame);
+            Assert.Equal(yaw, cam.Yaw);
         }
 
         [Fact]
@@ -290,6 +289,105 @@ namespace KhaozEngine.Tests.Render3D
             for (int i = 0; i < 5; i++) ctl.Update(Frame(), Dt);
             float x = cam.EffectiveTarget.X;
             Assert.True(x > 0f && x < 10f, $"controller should be easing the target, got {x}");
+        }
+
+        [Fact]
+        public void BoomStillRecoversWithGesturesSet()
+        {
+            var probe = new FixedReachProbe { ReachAt = 4f };
+            var cam = new FollowCamera3D
+            {
+                Target = Vector3.Zero,
+                Yaw = 0f,
+                HeightOffset = 0f,
+                MinPitch = 0f,
+                BoomProbe = probe,
+                BoomRecoveryRate = 4f,
+            };
+            cam.Pitch = 0f;
+            cam.Distance = 10f;
+            FollowCameraController ctl = WowStyle(cam);
+            Assert.Equal(3.95f, Vector3.Distance(cam.Eye, cam.Pivot), 4);   // pulled in
+
+            probe.ReachAt = null;
+            ctl.Update(Frame(), 0.1f);
+            float length = Vector3.Distance(cam.Eye, cam.Pivot);
+
+            Assert.True(length > 3.95f && length < 10f, $"controller should be easing the boom out, got {length}");
+        }
+
+        [Theory]
+        [InlineData(MouseButton.Left)]
+        [InlineData(MouseButton.Right)]
+        public void ASingleGesturesFirstCrossingReplaysItsPendingTravel(MouseButton button)
+        {
+            FollowCamera3D cam = NewCamera();
+            FollowCameraController ctl = WowStyle(cam);
+
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [button]), Dt);
+            ctl.Update(Frame(new Vector2(2f, 0f), down: [button]), Dt);   // 3 px, still undecided
+            Assert.Equal(0f, cam.Yaw);
+
+            ctl.Update(Frame(new Vector2(3f, 0f), down: [button]), Dt);   // 6 px, crossed: the whole travel at once
+            Assert.Equal(-6f * ctl.OrbitYawSpeed, cam.Yaw, 5);
+
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [button]), Dt);
+            Assert.Equal(-7f * ctl.OrbitYawSpeed, cam.Yaw, 5);
+        }
+
+        [Fact]
+        public void ASecondButtonJoiningADragDoesNotReplayMovementAlreadyApplied()
+        {
+            FollowCamera3D cam = NewCamera();
+            FollowCameraController ctl = WowStyle(cam);
+
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Left]), Dt);
+            ctl.Update(Frame(new Vector2(5f, 0f), down: [MouseButton.Left]), Dt);   // left drags
+            float start = cam.Yaw;
+
+            // Right joins with 3 px, then crosses with 2 more. Left already turned the camera by the 3, so the
+            // crossing applies only the 2, not Right's 5 px replay on top.
+            ctl.Update(Frame(new Vector2(3f, 0f), down: [MouseButton.Left, MouseButton.Right]), Dt);
+            ctl.Update(Frame(new Vector2(2f, 0f), down: [MouseButton.Left, MouseButton.Right]), Dt);
+            Assert.True(ctl.TurnBodyActive);
+            Assert.Equal(start - 5f * ctl.OrbitYawSpeed, cam.Yaw, 5);
+        }
+
+        [Fact]
+        public void AHandoffFromLookToOrbitDoesNotReplayWhatTheLookApplied()
+        {
+            FollowCamera3D cam = NewCamera();
+            FollowCameraController ctl = WowStyle(cam);
+
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Right]), Dt);
+            ctl.Update(Frame(new Vector2(5f, 0f), down: [MouseButton.Right]), Dt);  // look drags: 6
+            ctl.Update(Frame(new Vector2(2f, 0f), down: [MouseButton.Right, MouseButton.Left]), Dt);   // left pending: 8
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Right, MouseButton.Left]), Dt);   // 9
+            ctl.Update(Frame(Vector2.Zero, down: [MouseButton.Left]), Dt);          // right up, left still pending
+            Assert.False(ctl.WantsPointerCapture);
+
+            // Left crosses with 7 px of travel, but the look already applied 3 of them, so only this frame's 4 turns.
+            ctl.Update(Frame(new Vector2(4f, 0f), down: [MouseButton.Left]), Dt);
+            Assert.True(ctl.WantsPointerCapture);
+            Assert.False(ctl.TurnBodyActive);
+            Assert.Equal(-13f * ctl.OrbitYawSpeed, cam.Yaw, 5);
+        }
+
+        [Fact]
+        public void TwoButtonsCrossingTogetherReplayTheLookOnce()
+        {
+            FollowCamera3D cam = NewCamera();
+            FollowCameraController ctl = WowStyle(cam);
+
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Right]), Dt);
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Right, MouseButton.Left]), Dt);
+
+            // Both cross on this frame: right with 6 px of travel, left with 5. Nothing has orbited yet, so the
+            // look's replay applies, once.
+            ctl.Update(Frame(new Vector2(4f, 0f), down: [MouseButton.Right, MouseButton.Left]), Dt);
+            Assert.True(ctl.TurnBodyActive);
+            Assert.True(ctl.OrbitGesture!.Phase == PointerGesturePhase.Dragging);
+            Assert.Equal(-6f * ctl.OrbitYawSpeed, cam.Yaw, 5);
         }
     }
 }

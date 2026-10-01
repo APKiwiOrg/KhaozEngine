@@ -164,7 +164,9 @@ that starts while the UI owns the pointer stays inert.
   `CameraYaw` when `FaceCamera` is set.
 - `WantsPointerCapture` is true while either gesture is dragging. The game forwards it to
   `SetPointerCaptured`.
-- `TapThisFrame` and `TapPosition` per gesture, for a default action on a click without a drag.
+- `TapThisFrame` and `TapPosition` per gesture, for a default action on a click without a drag. Amended in execution
+  (plan C ruling C7a): the controller reports `OrbitTap` and `LookTap`, which count only when the camera did not turn
+  during that press.
 
 With neither gesture set, the controller behaves exactly as today: `OrbitButton` orbits from the first frame
 of the press. Grimhollow's middle-button orbit, the Showcase rooms and Ruinborne's masked snapshot all keep

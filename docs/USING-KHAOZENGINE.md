@@ -829,7 +829,8 @@ following the real movement. The frame capture ends reports the live position ag
 the frame it ends each report a zero `MouseDelta`. The end zero covers a real jump: GLFW restores the cursor when
 capture ends, and the restored position would otherwise read as one large movement. GLFW does not jump the cursor
 when capture starts, so the start zero is only a safety net for untested platforms, and it drops one frame of real
-movement. `WithoutScroll()` and `AutomationInputInjector.Compose` keep the value. It is unrelated to `GuiSurface.PointerCaptured`, the UI click-through gate.
+movement. `WithoutScroll()` and `AutomationInputInjector.Compose` keep the value. It is unrelated to
+`GuiSurface.PointerCaptured`, the UI click-through gate.
 
 A custom snapshot producer passes the same facts to `InputAccumulator.Snapshot(..., pointerCaptured,
 framebufferScale)`. `framebufferScale` is framebuffer pixels per window point on each axis, the ratio `AppWindow`

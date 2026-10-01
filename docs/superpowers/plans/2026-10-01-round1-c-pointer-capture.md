@@ -12,6 +12,40 @@
 
 **Spec:** `docs/design/CONTINUOUS-HOST-ROUND-1-DESIGN-2026-10-01.md`, section 3. Branch 3 of 4. It is independent of plans A and B and can start once plan A has opened 20.17.0 on `main`.
 
+## Outcome
+
+Executed 2026-10-02 on `feature/round1-pointer-capture`, commits `5153fe73d` to the merge, riding 20.17.0. Full suite at `0eaa33a49`: 22899 passed, 0 failed. Later commits are docs and the final fix wave, with the focused input, gesture and camera tests rerun. The manual cursor check in the CHANGELOG is owed by the owner before the tag.
+
+| Ruling | What was decided | Why |
+| --- | --- | --- |
+| C1 | The `AppWindow.cs` cap is a line count. `BuildInput` is edited in place and new members live in `AppWindow.PointerCapture.cs` | The file sits at the cap |
+| C2 | `GameApp.SetPointerCaptured` stays protected beside `Rumble`. The Showcase forwards the active room's `WantsPointerCapture` from `ShowcaseApp` | Scenes reach neither seam today, and no consumer has asked for a scene-level one |
+| C3 | Automation's `Compose` forwards `PointerCaptured` | Automation must not report a captured pointer as released |
+| C4 | Focus is sampled once per frame | Nobody can alt-tab out and back within one poll, and GLFW re-disables on refocus |
+| C5, C5a | The camera orbits by at most one delta a frame, and each mouse movement is applied once. A crossing replay counts only if the camera has not orbited since that press | Both gestures read the same delta, so summing or replaying double-counts the both-buttons run |
+| C6 | The zero-threshold resume behaviour stays as lifted from Ruinborne, and the docs qualify the inert rule | The lift changes only the four sanctioned points |
+| C7, C7a | While captured, `MousePosition` holds the capture-start point. `OrbitTap` and `LookTap` count only when the camera did not turn during that press | A hidden cursor must not select, hover or block, and a both-buttons release is never a select |
+| C8 | Camera gestures are gated by `UiBlocked = gui.HoverCaptured` | `GuiSurface.PointerCaptured` tracks the left button only |
+| C9 | Gesture thresholds are documented as framebuffer pixels before capture and window points after | A scale-aware gesture needs new API (KhaozEngine #1228) |
+| C10 | The capture-start zero delta stays as a safety net, with its reason corrected | GLFW does not jump on capture start |
+| C11 | The manual check covers macOS, Windows, Linux X11 and Linux Wayland, with left, right and both-buttons drags, alt-tab, refocus and Retina sensitivity | Cursor modes differ across those platforms |
+
+Deferred:
+- PascalCase test names against the file's underscore style. The plan mandated them.
+- An `in` parameter on a class. The plan mandated it.
+- No test pins the C5a undercount while a gesture is pending.
+- The Showcase room does not use `TurnBodyActive` or taps.
+
+Follow-ups:
+- KhaozEngine #1227 (the USING contents anchors)
+- KhaozEngine #1228 (scale-aware gesture thresholds)
+
+Note for Grimhollow at P3:
+- Forward `WantsPointerCapture` from the app.
+- Set `UiBlocked` from `HoverCaptured`.
+- Read taps through `OrbitTap` and `LookTap`.
+- Hand `TurnBodyActive` to `MoveCommand.FaceCamera` with `Camera.Yaw` as `CameraYaw`.
+
 ## Global Constraints
 
 - Work in `/Users/antonio/KhaozEngine/.worktrees/round1-c` on `feature/round1-pointer-capture`, from current `origin/main`. Read `AGENTS.md` and `docs/CONTRIBUTOR-RULES.md` first.

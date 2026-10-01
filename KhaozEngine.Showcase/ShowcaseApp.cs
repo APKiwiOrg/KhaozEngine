@@ -251,6 +251,10 @@ namespace KhaozEngine.Showcase
             }
 
             _scenes.Update(dt);
+
+            // After the scenes update, so a camera drag that started or ended this frame is already reflected. A
+            // non-room scene (the menu, the map editor) never captures.
+            SetPointerCaptured(_scenes.Active is IShowcaseRoom room && room.WantsPointerCapture);
         }
 
         protected override void OnDraw2D(SpriteBatch batch)

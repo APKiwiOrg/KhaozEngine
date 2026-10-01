@@ -26,6 +26,11 @@ namespace KhaozEngine.Showcase
         /// <summary>Optional live dev diagnostics drawn beside the title (raw text: net stats, skinning path).
         /// Null (the default) shows nothing, so a room opts in only when it has something to report.</summary>
         string? StatusLine => null;
+
+        /// <summary>Whether the room wants the pointer captured this frame (hidden and held for a camera drag).
+        /// <see cref="ShowcaseApp"/> forwards it to the window after the scenes update. False (the default) leaves
+        /// the cursor free, so a room opts in only when it drives a capturing camera.</summary>
+        bool WantsPointerCapture => false;
     }
 
     /// <summary>Owns the toast state and draws all shared room chrome through the point-space UI pass, so its text

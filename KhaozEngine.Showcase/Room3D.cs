@@ -38,6 +38,9 @@ namespace KhaozEngine.Showcase
             ? $"Skinning: {(_scene.UseGpuSkinning ? "GPU (vertex-shader palette)" : "CPU")}   [F]   drawn {_scene.DrawnSkinnedInstances} / culled {_scene.CulledSkinnedInstances}"
             : null;
 
+        // A left or right camera drag hides and holds the cursor (see OnEnter's gesture opt-in).
+        public bool WantsPointerCapture => _built && _camController.WantsPointerCapture;
+
         // distance-cull ring for instanced props around the focus point (matches TerrainWalkSample's PropDrawRadius).
         const float PropDrawRadius = 90f;
 
@@ -250,7 +253,13 @@ namespace KhaozEngine.Showcase
             // still carries on a stair climb (see the matching note in RoomDungeon). Off by engine default; enabled
             // in the two showcase rooms that have climbable stairs only, leaving other consumers' cameras untouched.
             _camera.EnableTargetDamping = true;
-            _camController = new FollowCameraController(_camera);
+            // WoW-style mouse: left drag orbits the camera only, right drag looks. A quick click of either is a tap
+            // this room does not use yet.
+            _camController = new FollowCameraController(_camera)
+            {
+                OrbitGesture = new PointerGesture(MouseButton.Left),
+                LookGesture = new PointerGesture(MouseButton.Right),
+            };
             _scene.CameraOverride = _camera;
 
             // Outline post-process starts OFF here by the engine default (press O to toggle it on). OnExit resets it
@@ -464,6 +473,8 @@ namespace KhaozEngine.Showcase
             // centre) so the camera glides on climbed steps, falling back to the raw physics position when the rig failed to load.
             _camera.Target = renderTarget;
             _camera.AspectRatio = Manager!.FrameHeight > 0 ? (float)Manager!.FrameWidth / Manager!.FrameHeight : _camera.AspectRatio;
+            // No UI in this room takes the pointer over the 3D view: the chrome and the F2 legend are display-only.
+            _camController.UiBlocked = false;
             _camController.Update(Manager!.Input, dt);
         }
 

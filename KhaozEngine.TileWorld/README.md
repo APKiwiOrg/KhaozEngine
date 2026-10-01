@@ -303,6 +303,40 @@ every point the same way. Every triangle comes back wound the SAME way (counter-
 pass that culls a face direction keeps or drops all of them together rather than half of them. Pass the shape
 the tile actually draws with, so a shape whose overlay material is missing is passed as `Full`.
 
+## Ground triangles and water bodies
+
+The ground the renderer draws and the water it lays over that ground are decided here, GPU-free, so a server, a
+physics bake or a test reads the same surface as `KhaozEngine.TileWorld.Render3D` without a renderer.
+
+`TileGroundTriangles` is the full-detail ground triangle rule, and the ground mesher draws exactly its triangles.
+None of its members takes catalogs.
+
+- `IsDrawable(doc, worldX, worldZ, plane)` is true when the tile has an underlay and is not marked
+  `TileSettings.NoDraw`. Every drawability check in the render package, the water rule and the visible-surface
+  pick included, calls it.
+- `TryDescribe(doc, worldX, worldZ, plane, out cell, triangles)` writes the tile's triangles in
+  `TileTriangulation.Triangulate` order into a span of at least `TileTriangulation.MaxTriangles`, and returns false
+  with nothing written for a tile that does not draw. The `TileGroundCell(Cut, Rotation, SplitSwNe, TriangleCount)`
+  it hands back carries the cut shape, which is the authored overlay shape when the overlay id is not 0 and `Full`
+  otherwise, and the split, which always comes from the authored shape. An overlay id the catalogs do not define
+  still cuts the tile, because the renderer paints that cut with its missing-material slot.
+- `LatticePosition(doc, worldX, worldZ, plane, point, originX, originZ)` places one `TileLatticePoint` relative to a
+  tile corner. A corner is taken as it stands and a mid-edge point is the midpoint of its two corners, so every copy
+  of a shared corner is bit-identical across tiles and regions.
+- `Build(doc, region, plane)` returns a `TileGroundMesh` of one region-plane: `Region`, `Plane`, region-local
+  `Positions` with three fresh points per triangle, and `Indices` running 0, 1, 2 and on. A region-plane with no
+  drawable tile has both arrays empty. Tiles marked `FeatherOverlay` draw smaller triangles in the mesher, on this
+  same surface.
+
+`TileWaterBodies` is the water body rule. `IsWater(doc, catalogs, worldX, worldZ, plane)` is true for a drawable
+tile whose UNDERLAY material has `GroundMaterialKind.Water`. An overlay in a water material is never water.
+`Collect(doc, catalogs, region, plane)` returns the region-plane's `TileWaterBody(Rects, SurfaceY)` list: the water
+tiles grouped into 4-connected bodies clipped to the region, each cut into disjoint world tile rects, with its still
+surface `SurfaceDropMetres` (2 cm) under the highest corner the body touches. `Components(mask)` and
+`Rectangles(mask)` are the body search and the greedy row-run rectangle cut on their own. The order of bodies and
+rects is a pure function of the document. `TileWaterPlanes` in the render package turns these bodies into
+`WaterPlane` requests.
+
 `TilePrefab` is a rect of tiles lifted out of a world (every layer, corner heights relative to the rect's SW
 corner, objects and markers in prefab-relative coordinates) that can be stamped elsewhere with a rotation.
 `TilePrefabFile.Save`/`Load` are its JSON form (base64 layers, indented for git, atomic replace).

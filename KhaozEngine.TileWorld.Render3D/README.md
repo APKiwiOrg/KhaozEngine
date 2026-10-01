@@ -24,7 +24,10 @@ quarter turn.
 
 `TileGroundMesher.Build(doc, catalogs, region, plane, options)` returns the full `GltfMesh` of one region-plane,
 or null when the region-plane has no drawable tile (underlay 0, or `TileSettings.NoDraw`). The overload taking a
-`TileGroundLod` selects `Full` or `Coarse4`. The mesh is REGION LOCAL,
+`TileGroundLod` selects `Full` or `Coarse4`. Which tiles draw, how each is cut and split, and where its lattice
+points sit come from `TileGroundTriangles` in `KhaozEngine.TileWorld`, the GPU-free rule a server or a physics bake
+reads, so the full-detail triangles here are exactly its triangles. This package adds the slots, weights, normals,
+jitter and the coarse level of detail on top. The mesh is REGION LOCAL,
 so draw it at `TileGroundMesher.WorldMatrix(doc, region)`, a pure translation to the region's lowest tile corner
 with Y left at 0 because the vertices already carry absolute corner heights. Vertices are the existing
 `ModelVertex`, with its fields repurposed for the tile-ground pipeline (`Scene3D.LoadTileGroundMaterial`), so
@@ -156,7 +159,9 @@ and the bed is sunk by lowering the corner heights, so the material's texture is
 computed rather than placed. Only the underlay counts: an overlay drawn in a water material is a puddle-shaped
 decoration on ordinary ground and gets no surface, because an overlay cuts a fraction of a tile and a fraction of
 a tile has no rim to take a height from. A `NoDraw` tile is not water either, since water over a hole has no bed
-for the depth read to darken against. Collision, pathing, the raycast and the top-down painter are all unchanged:
+for the depth read to darken against. That body rule, which tiles are water, the body search, the rectangle cut and
+the rim, is `TileWaterBodies` in `KhaozEngine.TileWorld`, GPU-free, and this package turns its bodies into planes.
+Collision, pathing, the raycast and the top-down painter are all unchanged:
 `TileRaycast.Pick` still lands on the bed, which is what an editor click wants.
 
 `TileWorldView.PickSurface(plane, origin, direction, maxDistance?)` is the picture-side tile pick for a game.
@@ -174,7 +179,7 @@ surface moves only after its region-plane mesh is rebuilt or its water look chan
 used by the draw path.
 
 `TileWaterPlanes.Collect(doc, catalogs, region, plane, look?)` returns every `WaterPlane` one region-plane
-contributes, in a deterministic order.
+contributes, one per rectangle of each body `TileWaterBodies.Collect` returns, in the same deterministic order.
 
 - **One surface height per body.** Water tiles are grouped into 4-connected components, discovered row by row from
   the region's south-west corner. Each component's surface is the MAXIMUM corner height over its tiles, which is
@@ -189,8 +194,8 @@ contributes, in a deterministic order.
   mouth or a sunk road cut inside that box would render as water. `Collect` asserts pairwise disjointness over
   everything a region-plane emits (two overlapping planes double-darken, the blend is depth-write off) and logs
   once past `PlaneCountWarnThreshold` (16), which is the signal that a river was drawn as a staircase of short
-  runs where a few long ones would read the same. `Components` and `Rectangles` are public for a caller that wants
-  the decomposition on its own, and `ToPlane` for one rectangle.
+  runs where a few long ones would read the same. `Components`, `Rectangles` and `SurfaceDropMetres` stay public
+  as forwarders to `TileWaterBodies`, which owns them, and `ToPlane` turns one rectangle into a plane.
 - **Region borders are safe by construction.** A component is clipped to its region and region rects are disjoint,
   so planes from neighbouring regions never overlap. A body crossing a border is two planes meeting at it, at the
   same height when the banks agree, and a mismatch shows as a 2 cm lip rather than being hidden.

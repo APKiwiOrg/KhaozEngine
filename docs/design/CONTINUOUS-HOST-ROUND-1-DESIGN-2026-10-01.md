@@ -123,7 +123,7 @@ The bridge adds no navigation code. `NavLayerBaker` already bakes from any physi
 
 Two rules move from `KhaozEngine.TileWorld.Render3D` into `KhaozEngine.TileWorld`, GPU-free:
 
-- **Ground triangles.** `TileGroundTriangles.Build(document, catalogs, region, plane)` returns the
+- **Ground triangles.** `TileGroundTriangles.Build(document, region, plane)` returns the
   full-detail triangle positions (with the `NoDraw` skip, the overlay-present rule and mid-edge corner
   averaging) that `TileGroundMesher` uses today. The mesher keeps UVs, normals, materials and the coarse
   level of detail, and takes its full-detail positions from the shared rule.

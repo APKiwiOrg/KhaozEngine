@@ -7614,7 +7614,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.16.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.17.0" />
 ```
 
 ```csharp
@@ -9076,6 +9076,24 @@ values happen to match the derived surface. The default includes derived heights
 A stamp is additive per layer, so clear the rect first if you want a replace. Full API summary: the
 `KhaozEngine.TileWorld` package README. Design rationale: `docs/design/TILE-WORLD-DESIGN-2026-08-15.md`.
 
+**The drawn ground and its water, without a renderer.** `TileGroundTriangles` and `TileWaterBodies` are the two
+rules the render package draws from, so a server, a physics bake or a test reads the surface a player sees with no
+GPU in the process. `TileGroundTriangles.IsDrawable(doc, x, z, plane)` is the one drawability test (an underlay, and
+no `TileSettings.NoDraw`). `TryDescribe` hands back a tile's `TileGroundCell` and writes its triangles,
+`LatticePosition` places one lattice point, and `Build(doc, region, plane)` returns a `TileGroundMesh` of every
+full-detail triangle in a region-plane, three region-local positions per triangle with indices 0, 1, 2 and on.
+None of them takes catalogs: an overlay id that is not 0 cuts its tile whether or not the catalogs define it.
+`TileWaterBodies.Collect(doc, catalogs, region, plane)` returns each water body as a `TileWaterBody(Rects,
+SurfaceY)`, with world tile rects and the still surface `SurfaceDropMetres` under the body's rim, and `IsWater`
+answers for one tile. The mesher's full-detail positions and the water planes are built from these rules, so the
+picture and a headless reader cannot drift apart.
+
+```csharp
+TileGroundMesh ground = TileGroundTriangles.Build(doc, region, plane: 0);
+foreach (TileWaterBody body in TileWaterBodies.Collect(doc, catalogs, region, plane: 0))
+    Console.WriteLine($"{body.Rects.Count} rects at {body.SurfaceY} m");
+```
+
 **Picking object models.** `TileRaycast` answers the GROUND. For the objects standing on it,
 `TileObjectRaycast.Pick(doc, catalogs, plane, origin, direction, maxDistance, bounds, hits)` (in
 `KhaozEngine.TileWorld.Render3D`) names every object whose drawn MODEL the ray passes through, nearest first,
@@ -9376,9 +9394,10 @@ which is what a colour-only world wants.
 
 **Water is carved, not placed.** A tile is water when its underlay material's `kind` is `Water`, and you sink the
 bed by lowering the corner heights, so the material's texture is the river BED and the surface height is computed.
-`TileWaterPlanes.Collect(doc, catalogs, region, plane, look?)` groups a region-plane's water tiles into
-4-connected bodies, puts each at the maximum corner height over its tiles (the rim it shares with its bank) minus
-2 cm, and cuts the body into disjoint maximal rectangles, one `WaterPlane` each. Rectangles rather than a bounding
+`TileWaterPlanes.Collect(doc, catalogs, region, plane, look?)` turns the bodies of the GPU-free
+`TileWaterBodies.Collect` into planes. That rule groups a region-plane's water tiles into 4-connected bodies, puts
+each at the maximum corner height over its tiles (the rim it shares with its bank) minus 2 cm, and cuts the body
+into disjoint maximal rectangles, and `Collect` emits one `WaterPlane` per rectangle. Rectangles rather than a bounding
 box because the pass discards only where the ground is at or above the surface, so a box over a bend would flood
 the ditch beside it. `TileWorldView.Draw` queues them every frame through the `ITileWorldScene.DrawWater` seam
 member, so `TileWorldSnapshot` and the `ke-tileedit` renders get water for free:
@@ -14333,7 +14352,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.16.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.17.0" />
 ```
 
 ```csharp
@@ -14369,7 +14388,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.16.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.17.0" />
 ```
 
 ```csharp
@@ -14611,7 +14630,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.16.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.17.0" />
 ```
 
 ```csharp
@@ -18834,7 +18853,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.16.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.17.0" />
 </ItemGroup>
 ```
 

@@ -5,6 +5,22 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.17.0
+
+- Continuous host round 1 opens on this version, and plans B, C and D of the round ride it
+  ([design](docs/design/CONTINUOUS-HOST-ROUND-1-DESIGN-2026-10-01.md)).
+- The ground triangle rule moves from `KhaozEngine.TileWorld.Render3D` into GPU-free `KhaozEngine.TileWorld`, so a
+  server, a physics bake or a test reads the ground the renderer draws. `TileGroundTriangles.IsDrawable` is the one
+  drawability test. `TryDescribe` hands back a tile's `TileGroundCell` (cut, rotation, split and triangle count) and
+  writes its triangles, `LatticePosition` places one lattice point, and `Build(document, region, plane)` returns a
+  `TileGroundMesh` of every full-detail triangle in a region-plane. None of them takes catalogs. `TileGroundMesher`
+  draws through the rule, and its geometry is byte-identical, pinned by golden hashes
+  ([consumer contract](docs/USING-KHAOZENGINE.md#tile-world-khaozenginetileworld)).
+- The water body rule moves the same way. `TileWaterBodies.Collect(document, catalogs, region, plane)` returns each
+  4-connected body as a `TileWaterBody(Rects, SurfaceY)`, with `IsWater`, `Components`, `Rectangles` and
+  `SurfaceDropMetres` beside it. `TileWaterPlanes.Collect` builds its planes from those bodies with unchanged output,
+  and its `SurfaceDropMetres`, `Components` and `Rectangles` remain as forwarders.
+
 ## 20.16.0
 
 - Temporal anti-aliasing with upscaling (#1149). `Post.Quality.AntiAliasing = AntiAliasing.Temporal`

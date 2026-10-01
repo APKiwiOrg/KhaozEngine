@@ -70,11 +70,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `FollowCameraController` takes optional `OrbitGesture` and `LookGesture` gestures and a `UiBlocked` field, and
   reports `TurnBodyActive` and `WantsPointerCapture`. With either gesture set, `OrbitButton` is ignored and the
   camera orbits by one delta a frame while a gesture drags, so each mouse movement turns it once however many
-  buttons are held. `OrbitTap` and `LookTap` report taps after `Update`, and a press that began while the other
-  gesture was dragging never taps, so releasing left in a both-buttons run is not a select. The documented
-  `UiBlocked` gate is `GuiSurface.HoverCaptured`. Scroll zoom, damping and boom recovery are unchanged, and with
-  neither gesture set the controller behaves exactly as before. The WoW wiring hands `TurnBodyActive` to
-  `MoveCommand.FaceCamera` with `Camera.Yaw` as `CameraYaw`
+  buttons are held. `OrbitTap` and `LookTap` report taps after `Update`, and a tap counts only if the camera did
+  not turn during that press, so a both-buttons release is never a select. The documented `UiBlocked` gate is
+  `GuiSurface.HoverCaptured`. Scroll zoom, damping and boom recovery are unchanged, and with neither gesture set the
+  controller behaves exactly as before. The WoW wiring hands `TurnBodyActive` to `MoveCommand.FaceCamera` with
+  `Camera.Yaw` as `CameraYaw`
   ([consumer contract](docs/USING-KHAOZENGINE.md#third-person-follow-camera--character-controller-followcamera3d--charactercontroller3d)).
 - The Showcase 3D room opts in, so a left or a right drag orbits its camera with the cursor held.
 - Owed before release: a manual check in the Showcase 3D room (`Room3D`), run and recorded separately on macOS,

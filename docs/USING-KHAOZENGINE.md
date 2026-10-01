@@ -6683,9 +6683,11 @@ The controller reports three things:
 - `WantsPointerCapture` is true while either gesture drags. Forward it to `SetPointerCaptured` so the cursor hides
   and holds for the drag (see "Pointer capture" in the input chapter).
 - `OrbitTap` and `LookTap` report each gesture's tap after `Update`, in the same frame, with the press origin in
-  that gesture's `TapPosition`. Read taps there rather than from `PointerGesture.TapThisFrame`: a press that began
-  while the other gesture was dragging never taps, so letting go of the left button in a both-buttons run is not a
-  select.
+  that gesture's `TapPosition`. A tap counts only if the camera did not turn during that press, its release frame
+  included. The camera turns on every frame a gesture drags, even with no mouse movement. A tapping gesture never
+  dragged, so any turn came from the other one, and a both-buttons release is never a select whichever button went
+  down first. Read taps there rather than from `PointerGesture.TapThisFrame`, which knows nothing of the other
+  gesture.
 
 The WoW wiring puts orbit on the left button and look on the right. The game reads `TurnBodyActive` and hands it to
 `CharacterMovement` as `MoveCommand.FaceCamera`, with `Camera.Yaw` as `CameraYaw`. A local
@@ -6707,9 +6709,16 @@ character.FaceCamera = camController.TurnBodyActive;    // the local controller'
 if (camController.OrbitTap) Select(camController.OrbitGesture!.TapPosition);
 ```
 
-Gate `UiBlocked` on `GuiSurface.HoverCaptured`, which tests the live pointer against every UI rect reserved this
-frame whichever button is pressed, and reads the frozen capture point while captured. `GuiSurface.PointerCaptured`
-tracks only the left button's press origin, so it would let a right drag start on an inventory slot.
+Gate `UiBlocked` on `GuiSurface.HoverCaptured`, which tests the pointer against every UI rect reserved whichever
+button is pressed, and reads the frozen capture point while captured. `GuiSurface.PointerCaptured` tracks only the
+left button's press origin, so it would let a right drag start on an inventory slot.
+
+`HoverCaptured` tests the rects reserved since the last `GuiSurface.Begin`, which clears them, against the live
+position of the `Pointer` handed to that `Begin`. A game that passes its one long-lived `Pointer` and sets
+`UiBlocked` in its update, before `Update` and before drawing its GUI for the frame, reads the previous frame's
+layout against this frame's pointer. That one-frame lag is harmless: a panel that opens or moves this frame gates the
+camera one frame later, and a press that began on that frame is blocked on the next, which ends it without a tap. Do
+not read it between `Begin` and the widget calls, where the set is empty or partial.
 
 The Showcase 3D room opts in with this wiring and forwards `WantsPointerCapture` through `ShowcaseApp`. It reads
 neither `TurnBodyActive` nor the taps, so both drags only orbit there.

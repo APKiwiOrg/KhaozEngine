@@ -222,7 +222,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.True(ctl.TurnBodyActive);
 
             // Left goes down and up under its threshold while the look keeps turning. The gesture alone calls that a
-            // tap, but a press that began during the other's drag is never a select.
+            // tap, but the camera turned during that press, so it is never a select.
             ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Right, MouseButton.Left]), Dt);
             ctl.Update(Frame(new Vector2(2f, 0f), down: [MouseButton.Right, MouseButton.Left]), Dt);
             ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Right]), Dt);
@@ -239,6 +239,45 @@ namespace KhaozEngine.Tests.Render3D
             ctl.Update(Frame(down: [MouseButton.Left]), Dt);
             ctl.Update(Frame(), Dt);
             Assert.True(ctl.OrbitTap);
+        }
+
+        [Fact]
+        public void ALeftPressBeganBeforeTheLookCrossedIsNotATapOnceTheCameraTurns()
+        {
+            FollowCamera3D cam = NewCamera();
+            FollowCameraController ctl = WowStyle(cam);
+
+            // Right goes down, then left joins while right is still undecided.
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Right]), Dt);
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Right, MouseButton.Left]), Dt);
+            Assert.False(ctl.TurnBodyActive);
+
+            // Right crosses with 5 px of travel and the camera turns. Left has 4 px, still undecided.
+            ctl.Update(Frame(new Vector2(3f, 0f), down: [MouseButton.Right, MouseButton.Left]), Dt);
+            Assert.True(ctl.TurnBodyActive);
+            Assert.Equal(PointerGesturePhase.Pending, ctl.OrbitGesture!.Phase);
+            Assert.Equal(-5f * ctl.OrbitYawSpeed, cam.Yaw, 5);
+
+            // Left comes up under its threshold. The gesture alone calls it a tap, but the camera turned during
+            // that press, so it is no select.
+            ctl.Update(Frame(new Vector2(1f, 0f), down: [MouseButton.Right]), Dt);
+            Assert.True(ctl.OrbitGesture.TapThisFrame);
+            Assert.False(ctl.OrbitTap);
+            Assert.False(ctl.LookTap);
+
+            // Right ends as a drag, so neither reports a tap.
+            ctl.Update(Frame(), Dt);
+            Assert.False(ctl.LookTap);
+            Assert.False(ctl.OrbitTap);
+
+            // With nothing turning, plain clicks on either button tap again.
+            ctl.Update(Frame(down: [MouseButton.Left]), Dt);
+            ctl.Update(Frame(), Dt);
+            Assert.True(ctl.OrbitTap);
+            ctl.Update(Frame(down: [MouseButton.Right]), Dt);
+            ctl.Update(Frame(), Dt);
+            Assert.True(ctl.LookTap);
+            Assert.False(ctl.OrbitTap);
         }
 
         [Fact]

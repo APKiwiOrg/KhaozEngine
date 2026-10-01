@@ -24,7 +24,8 @@ public sealed record CollisionHeightChange(string Id, string File, float? Previo
 /// for, and why it was left.</summary>
 public sealed record CollisionHeightSkip(string Id, float Recorded, float Requested, string Reason);
 
-/// <summary>An archetype the verb could not measure or write, and why.</summary>
+/// <summary>An archetype the verb could not measure or write, and why. An empty id is an error about the whole
+/// call rather than one archetype, such as a session refresh that failed after the files were written.</summary>
 public sealed record ArchetypeHeightError(string Id, string Error);
 
 /// <summary>Result of <c>archetype_set_collision_heights</c>: what was written, what was left alone and what was

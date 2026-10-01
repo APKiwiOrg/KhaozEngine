@@ -97,6 +97,31 @@ public class ArchetypeHeightToolsTests
         Assert.Equal(2.75f, result.Archetypes.Single(a => a.Id == "wall").Height);
     }
 
+    // The resolver reports a broken glb once per path, so two archetypes sharing one must both get the real reason.
+    [Fact]
+    public void MeasureGivesEveryArchetypeSharingABrokenMeshTheSameReason()
+    {
+        using var f = new Fixture(("props.json", """
+            {
+              "archetypes": [
+                { "id": "fence_a", "name": "Fence", "meshRef": "kit/fence.glb", "collisionKind": "Wall" },
+                { "id": "fence_b", "name": "Fence", "meshRef": "kit/fence.glb", "collisionKind": "Wall" }
+              ]
+            }
+            """));
+        Directory.CreateDirectory(Path.Combine(f.Kit, "kit"));
+        File.WriteAllBytes(Path.Combine(f.Kit, "kit", "fence.glb"), Encoding.ASCII.GetBytes("not a glb at all"));
+
+        MeasureHeightsResult result = f.Tools.MeasureHeights(f.Kit);
+
+        string?[] errors = result.Archetypes.Select(a => a.Error).ToArray();
+        Assert.Equal(2, errors.Length);
+        Assert.All(errors, e => Assert.Contains("did not load", e, StringComparison.Ordinal));
+        Assert.DoesNotContain("no geometry", errors[0], StringComparison.Ordinal);
+        Assert.Equal(errors[0], errors[1]);
+        Assert.All(result.Archetypes, a => Assert.Null(a.Height));
+    }
+
     // Ruling B2: a model whose top is at or below its base measures to a height the loader would refuse, so it is
     // an error entry and the author sets that archetype's height by hand.
     [Fact]
@@ -172,6 +197,63 @@ public class ArchetypeHeightToolsTests
         Assert.Contains("not defined", result.Errors.Single(e => e.Id == "ghost").Error, StringComparison.Ordinal);
         Assert.Equal(before, File.ReadAllBytes(f.CatalogPath("props.json")));
         Assert.Null(f.Session.Editing!.Catalogs.Archetype("wall")!.CollisionHeight);
+    }
+
+    [Fact]
+    public void AMixedBatchWritesTheGoodEntryAndReportsTheBadOne()
+    {
+        using var f = new Fixture(("props.json", Props));
+
+        CollisionHeightsResult result = f.Tools.SetCollisionHeights(
+            new[] { new ArchetypeHeight("wall", 2f), new ArchetypeHeight("tree", -1f) });
+
+        CollisionHeightChange wall = Assert.Single(result.Changed);
+        Assert.Equal("wall", wall.Id);
+        Assert.Equal("tree", Assert.Single(result.Errors).Id);
+        Assert.Empty(result.Skipped);
+        string text = File.ReadAllText(f.CatalogPath("props.json"));
+        Assert.Contains("\"collisionKind\": \"Wall\", \"collisionHeight\": 2 }", text, StringComparison.Ordinal);
+        Assert.Contains("\"collisionKind\": \"Solid\" }", text, StringComparison.Ordinal);
+        Assert.Equal(2f, f.Session.Editing!.Catalogs.Archetype("wall")!.CollisionHeight);
+        Assert.Null(f.Session.Editing!.Catalogs.Archetype("tree")!.CollisionHeight);
+    }
+
+    // A later duplicate is ignored whatever became of the first entry, and the message says only that, so it stays
+    // true when the first entry was itself refused.
+    [Fact]
+    public void ALaterDuplicateEntryIsIgnoredEvenWhenTheFirstWasRefused()
+    {
+        using var f = new Fixture(("props.json", Props));
+
+        CollisionHeightsResult result = f.Tools.SetCollisionHeights(
+            new[] { new ArchetypeHeight("wall", float.NaN), new ArchetypeHeight("wall", 2f) });
+
+        Assert.Empty(result.Changed);
+        Assert.Equal(2, result.Errors.Count);
+        Assert.Contains("not a finite number", result.Errors[0].Error, StringComparison.Ordinal);
+        Assert.Equal("listed more than once in this call, so this later entry is ignored.", result.Errors[1].Error);
+        Assert.Null(f.Session.Editing!.Catalogs.Archetype("wall")!.CollisionHeight);
+    }
+
+    // When the write lands but the session refresh fails (another catalog file broke after world_open), the change
+    // is still reported and one whole-call error says the session needs world_open, with the loader's reason.
+    [Fact]
+    public void AFailedSessionRefreshStillReportsTheWrittenHeights()
+    {
+        using var f = new Fixture(("ground.json", Ground), ("props.json", Props));
+        File.WriteAllText(f.CatalogPath("ground.json"), "{ oops");
+
+        CollisionHeightsResult result = f.Tools.SetCollisionHeights(new[] { new ArchetypeHeight("tree", 4.5f) });
+
+        CollisionHeightChange tree = Assert.Single(result.Changed);
+        Assert.Equal(f.CatalogPath("props.json"), tree.File);
+        Assert.Contains("\"collisionHeight\": 4.5 }", File.ReadAllText(f.CatalogPath("props.json")), StringComparison.Ordinal);
+        ArchetypeHeightError error = Assert.Single(result.Errors);
+        Assert.Equal("", error.Id);
+        Assert.Contains("world_open", error.Error, StringComparison.Ordinal);
+        Assert.Contains("ground.json", error.Error, StringComparison.Ordinal);
+        // The refresh did not run, which is exactly what the error tells the client.
+        Assert.Null(f.Session.Editing!.Catalogs.Archetype("tree")!.CollisionHeight);
     }
 
     // Ruling B12: each height lands in the one catalog file that defines its archetype, a file with nothing to

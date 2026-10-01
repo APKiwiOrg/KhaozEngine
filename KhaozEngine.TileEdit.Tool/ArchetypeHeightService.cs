@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.Render3D;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Render3D;
 
@@ -21,8 +22,9 @@ namespace KhaozEngine.TileEdit;
 /// <para>Writing never touches the world, so it is not an undo step. Each height goes into the ONE catalog file
 /// the loader recorded the archetype from (a duplicate id across files is refused at load, so there is exactly
 /// one), through <see cref="CatalogWriter"/>, which keeps every byte it does not change. Every file is prepared
-/// and checked against the loader before any is written, and the session then reloads its catalogs so the next
-/// verb sees the new heights.</para></summary>
+/// and checked against the loader before any is written. Afterwards ONLY <c>collisionHeight</c> is refreshed in
+/// the open session, read back from the files, so the next verb sees the new heights. Any other catalog edit made
+/// outside the tool still needs <c>world_open</c>.</para></summary>
 public sealed class ArchetypeHeightService(TileEditSession session)
 {
     /// <summary>Measures every archetype of the open catalogs against the meshes under <paramref name="kitRoot"/>,
@@ -49,13 +51,14 @@ public sealed class ArchetypeHeightService(TileEditSession session)
             })
             .ToArray());
 
-        string? lastLog = null;
-        var resolver = new GltfMeshResolver(root, fallback: null, log: line => lastLog = line);
+        var resolver = new GltfMeshResolver(root, fallback: null);
         var bounds = new TileObjectBoundsCache(resolver);
+        // The resolver reports a failed glb once per path, so the reason is kept here per path instead, and every
+        // archetype that shares the glb gets the same accurate message.
+        var failures = new Dictionary<string, string>(StringComparer.Ordinal);
         var entries = new List<MeasuredArchetypeHeight>(archetypes.Length);
         foreach (TileObjectArchetype a in archetypes)
         {
-            lastLog = null;
             float? height = null;
             string? error;
             if (bounds.TryGetBounds(a, out _, out Vector3 max))
@@ -68,7 +71,7 @@ public sealed class ArchetypeHeightService(TileEditSession session)
             }
             else
             {
-                error = MissingMesh(resolver, a, lastLog);
+                error = MissingMesh(resolver, a, failures);
             }
             entries.Add(new MeasuredArchetypeHeight(a.Id, a.CollisionKind.ToString(), height, a.CollisionHeight, error));
         }
@@ -79,12 +82,24 @@ public sealed class ArchetypeHeightService(TileEditSession session)
     /// records a height is skipped unless <paramref name="overwrite"/>, and one that already records exactly the
     /// height asked for is always skipped, so its file is not rewritten. A height that is not a finite number above
     /// 0, an id the open catalogs do not define and an id listed twice are error entries, and nothing is written
-    /// for them.</summary>
-    /// <exception cref="TileWorldException">No world is open, or a catalog file no longer loads.</exception>
+    /// for them.
+    ///
+    /// <para>Afterwards only <c>collisionHeight</c> is refreshed in the open session. When that refresh fails (another
+    /// of the world's catalog files no longer loads), the files already written stay reported as changed and one
+    /// error entry with an empty id says so, carrying the loader's message: call <c>world_open</c> once the file is
+    /// fixed.</para></summary>
+    /// <exception cref="TileWorldException">No world is open.</exception>
     public CollisionHeightsResult SetCollisionHeights(IReadOnlyList<ArchetypeHeight> heights, bool overwrite)
     {
         ArgumentNullException.ThrowIfNull(heights);
-        return session.EditCatalogFiles(catalogs => Write(catalogs, heights, overwrite));
+        return session.EditCatalogFiles(
+            catalogs => Write(catalogs, heights, overwrite),
+            (result, ex) => result with
+            {
+                Errors = result.Errors.Append(new ArchetypeHeightError("",
+                    "the catalog files were written, but refreshing the open session's collision heights failed, so " +
+                    $"call world_open once the catalogs load again. {ex.Message}")).ToArray(),
+            });
     }
 
     static CollisionHeightsResult Write(TileWorldCatalogs catalogs, IReadOnlyList<ArchetypeHeight> heights,
@@ -105,7 +120,8 @@ public sealed class ArchetypeHeightService(TileEditSession session)
             float h = entry.Height;
             if (!seen.Add(id))
             {
-                errors.Add(new ArchetypeHeightError(id, "listed more than once, only the first is used."));
+                errors.Add(new ArchetypeHeightError(id,
+                    "listed more than once in this call, so this later entry is ignored."));
                 continue;
             }
             if (!(float.IsFinite(h) && h > 0f))
@@ -161,8 +177,9 @@ public sealed class ArchetypeHeightService(TileEditSession session)
         return new CollisionHeightsResult(changed, skipped, errors);
     }
 
-    // Why an archetype measured to nothing, naming its mesh reference and where it was looked for.
-    static string MissingMesh(GltfMeshResolver resolver, TileObjectArchetype a, string? log)
+    // Why an archetype measured to nothing, naming its mesh reference and where it was looked for. A glb that is on
+    // disk but did not resolve is loaded once more, directly, for the loader's own reason, kept per path.
+    static string MissingMesh(GltfMeshResolver resolver, TileObjectArchetype a, Dictionary<string, string> failures)
     {
         if (string.IsNullOrWhiteSpace(a.MeshRef)) return "the archetype names no meshRef.";
         string path;
@@ -172,8 +189,25 @@ public sealed class ArchetypeHeightService(TileEditSession session)
             return $"no mesh: '{a.MeshRef}' is not a usable path ({ex.Message}).";
         }
         if (!File.Exists(path)) return $"no mesh: '{a.MeshRef}' is not at {path}.";
-        return log is null
-            ? $"no mesh: '{a.MeshRef}' at {path} has no geometry."
-            : $"no mesh: '{a.MeshRef}' at {path} did not load. {log}";
+        if (!failures.TryGetValue(path, out string? reason))
+        {
+            reason = LoadFailure(path);
+            failures[path] = reason;
+        }
+        return $"no mesh: '{a.MeshRef}' at {path} did not load ({reason}).";
+    }
+
+    static string LoadFailure(string path)
+    {
+        try
+        {
+            return GltfLoader.LoadPartsWithMaterials(path).Count == 0 ? "it has no geometry" : "it has no vertices";
+        }
+        catch (Exception ex)
+        {
+            // Deliberately broad, as the resolver is: a corrupt glb surfaces as anything from a format exception
+            // to an IO one, and the message is the reason either way.
+            return ex.Message;
+        }
     }
 }

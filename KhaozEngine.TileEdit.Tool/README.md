@@ -268,8 +268,13 @@ separator, line ending and indentation, an existing one has only its value repla
 commas, a byte order mark and every other byte stay. A catalog with nothing to change is not rewritten. The
 number is the float's shortest invariant round-trip form. An archetype that already records a height is skipped
 unless `overwrite`, a height that is not a finite number above 0 or an id the open catalogs do not define is an
-error entry, and every file is checked to load before any is written. The open catalogs reload afterwards, so the
-next verb sees the new heights without a `world_open`.
+error entry, and every file is checked to load before any is written.
+
+Afterwards ONLY `collisionHeight` is refreshed in the open session, read back from the files, so the next verb sees
+the new heights without a `world_open`. Any other catalog edit made outside the tool (a new archetype, a changed
+footprint or collision kind) still needs `world_open`. If the refresh fails because another of the world's catalog
+files no longer loads, the written files are still reported as changed and one error entry with an empty id says
+the session needs `world_open`, carrying the loader's message.
 
 ### Renders
 

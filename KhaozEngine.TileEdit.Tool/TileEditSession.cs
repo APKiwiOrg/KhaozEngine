@@ -152,18 +152,24 @@ public sealed class TileEditSession
     }
 
     /// <summary>Runs <paramref name="edit"/> against the open catalogs under the session lock, for a caller that
-    /// rewrites catalog FILES, then reloads every catalog file from the world's resolved paths under the same lock
-    /// and carries the reloaded collision heights into the open archetypes, so the next verb reads what is now on
-    /// disk without a <c>world_open</c>.
+    /// rewrites catalog FILES, then loads every catalog file again from the world's resolved paths under the same
+    /// lock and refreshes ONLY <c>collisionHeight</c> on the open archetypes, so the next verb reads the heights now
+    /// on disk without a <c>world_open</c>. Any other catalog edit made outside the tool still needs
+    /// <c>world_open</c>.
     ///
-    /// <para>The reload loads every file in full (schema, duplicate ids and all), but only collision heights are
-    /// carried into the open catalogs. The editing document, its undo history, its dirty flag and its baked
-    /// collision map stay as they were: no baked collision reads a height, and rebuilding the document to swap its
-    /// catalogs would drop the history and report unsaved edits as saved.</para></summary>
-    /// <exception cref="TileWorldException">No world is open, or a catalog file no longer loads.</exception>
-    public T EditCatalogFiles<T>(Func<TileWorldCatalogs, T> edit)
+    /// <para>The editing document, its undo history, its dirty flag and its baked collision map stay as they were:
+    /// no baked collision reads a height, and rebuilding the document to swap its catalogs would drop the history
+    /// and report unsaved edits as saved.</para>
+    ///
+    /// <para>When the edit succeeded but the refresh fails (a catalog file no longer loads), the edit's result is
+    /// not lost: <paramref name="refreshFailed"/> gets it with the loader's exception and returns what the caller
+    /// reports. When the edit itself throws, the refresh is still attempted, since a failed edit may already have
+    /// written a file, and the edit's own exception is the one that propagates.</para></summary>
+    /// <exception cref="TileWorldException">No world is open.</exception>
+    public T EditCatalogFiles<T>(Func<TileWorldCatalogs, T> edit, Func<T, TileWorldException, T> refreshFailed)
     {
         ArgumentNullException.ThrowIfNull(edit);
+        ArgumentNullException.ThrowIfNull(refreshFailed);
         lock (_lock)
         {
             TileEditingDocument e = RequireOpenLocked();
@@ -180,7 +186,14 @@ public sealed class TileEditSession
                 catch (TileWorldException) { }
                 throw;
             }
-            ReloadCollisionHeightsLocked(e);
+            try
+            {
+                ReloadCollisionHeightsLocked(e);
+            }
+            catch (TileWorldException ex)
+            {
+                return refreshFailed(result, ex);
+            }
             return result;
         }
     }

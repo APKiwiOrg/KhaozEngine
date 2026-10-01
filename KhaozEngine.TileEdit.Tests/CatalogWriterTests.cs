@@ -128,6 +128,57 @@ public class CatalogWriterTests
         Assert.Equal(new[] { "dressing" }, loaded.Archetype("crate")!.Tags);
     }
 
+    // A // comment ending collisionKind's line annotates collisionKind, so the new property takes the next line and
+    // the comment stays where it was. Without a comma after the value (the entry's last property) one is added
+    // before the comment.
+    [Fact]
+    public void ALineCommentAfterCollisionKindStaysWithIt()
+    {
+        string before = Lf("""
+            {
+            	"archetypes": [
+            		{
+            			"id": "gate",
+            			"name": "Gate",
+            			"meshRef": "kit/gate.glb",
+            			"collisionKind": "Wall", // swings open
+            			"tags": [ "door" ]
+            		},
+            		{
+            			"id": "post",
+            			"name": "Post",
+            			"meshRef": "kit/post.glb",
+            			"collisionKind": "Solid" // the last property
+            		},
+            		{
+            			"id": "stile",
+            			"name": "Stile",
+            			"meshRef": "kit/stile.glb",
+            			"collisionKind": "Wall", // trailing comma
+            		}
+            	]
+            }
+
+            """).Replace("\n", "\r\n", StringComparison.Ordinal);
+        byte[] after = CatalogWriter.SetCollisionHeights(Encoding.UTF8.GetBytes(before),
+            new Dictionary<string, float> { ["gate"] = 2f, ["post"] = 1.5f, ["stile"] = 1.25f });
+
+        string expected = before
+            .Replace("\"collisionKind\": \"Wall\", // swings open\r\n",
+                "\"collisionKind\": \"Wall\", // swings open\r\n\t\t\t\"collisionHeight\": 2,\r\n", StringComparison.Ordinal)
+            .Replace("\"collisionKind\": \"Solid\" // the last property\r\n",
+                "\"collisionKind\": \"Solid\", // the last property\r\n\t\t\t\"collisionHeight\": 1.5\r\n", StringComparison.Ordinal)
+            .Replace("\"collisionKind\": \"Wall\", // trailing comma\r\n",
+                "\"collisionKind\": \"Wall\", // trailing comma\r\n\t\t\t\"collisionHeight\": 1.25\r\n", StringComparison.Ordinal);
+        Assert.Equal(expected, Encoding.UTF8.GetString(after));
+
+        TileWorldCatalogs loaded = TileWorldCatalogs.LoadJson(Encoding.UTF8.GetString(after), "commented.json");
+        Assert.Equal(2f, loaded.Archetype("gate")!.CollisionHeight);
+        Assert.Equal(1.5f, loaded.Archetype("post")!.CollisionHeight);
+        Assert.Equal(1.25f, loaded.Archetype("stile")!.CollisionHeight);
+        Assert.Equal(new[] { "door" }, loaded.Archetype("gate")!.Tags);
+    }
+
     [Fact]
     public void ReplacingAHeightChangesOnlyItsValueText()
     {

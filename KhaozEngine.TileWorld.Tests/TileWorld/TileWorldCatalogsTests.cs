@@ -44,6 +44,17 @@ public class TileWorldCatalogsTests
     }
 
     [Fact]
+    public void A_duplicate_archetype_across_files_names_the_first_file_by_its_path()
+    {
+        using var tmp = new TempDir();
+        File.WriteAllText(tmp.Sub("a.json"), Arch);
+        File.WriteAllText(tmp.Sub("b.json"), Arch);
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.Load(new[] { tmp.Sub("a.json"), tmp.Sub("b.json") }));
+        // The bare path, never the (Name, IsFile) pair the source is recorded as.
+        Assert.Equal($"{tmp.Sub("b.json")}: archetype 'wall' is already defined in {tmp.Sub("a.json")}", ex.Message);
+    }
+
+    [Fact]
     public void Malformed_json_names_the_source()
     {
         var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson("{ oops", "bad.json"));

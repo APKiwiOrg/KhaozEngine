@@ -17,7 +17,8 @@ namespace KhaozEngine.TileEdit;
 /// <see cref="Utf8JsonReader"/> to find byte offsets, and only the named entries are spliced. A new height goes
 /// right after the entry's <c>collisionKind</c> (after its last property when it has none), separated by the
 /// same comma and whitespace that precede that property, so a one-line entry gains <c>, "collisionHeight": 2.5</c>
-/// and a one-property-per-line entry gains a line in its own indentation and line ending. An existing height
+/// and a one-property-per-line entry gains a line in its own indentation and line ending (after the anchor's line
+/// when a <c>//</c> comment ends it, so the comment stays with the property it annotates). An existing height
 /// has only its value text replaced. Every other byte, a byte order mark included, is copied through.</para>
 ///
 /// <para>The number is the float's shortest invariant round-trip form (what <see cref="float.ToString(IFormatProvider)"/>
@@ -209,8 +210,42 @@ public static class CatalogWriter
         }
         // An entry always has properties (the schema requires id, name and meshRef), so last is set here.
         Property anchor = kind ?? last!.Value;
-        byte[] text = Concat(Separator(catalog, anchor), "\"collisionHeight\""u8.ToArray(), Colon(catalog, anchor), number);
-        splices.Add(new Splice(anchor.ValueEnd, anchor.ValueEnd, text));
+        bool hasNext = anchor != last!.Value;
+        byte[] separator = Separator(catalog, anchor);
+        byte[] added = Concat("\"collisionHeight\""u8.ToArray(), Colon(catalog, anchor), number);
+        if (AfterLineComment(catalog, anchor, hasNext, separator, added, splices)) return;
+        splices.Add(new Splice(anchor.ValueEnd, anchor.ValueEnd, Concat(separator, added)));
+    }
+
+    // A // comment that ends the anchor's line belongs to the anchor, so on a one-property-per-line entry the new
+    // property goes on a line of its own AFTER that line, rather than between the value and its comment. The comma
+    // the anchor needs is added before the comment when it has none. A comma-first layout (no comma after the
+    // value, another property after it) is left to the plain insert, which stays valid there.
+    static bool AfterLineComment(byte[] catalog, Property anchor, bool hasNext, byte[] separator, byte[] added,
+        List<Splice> splices)
+    {
+        int lastNewline = Array.LastIndexOf(separator, (byte)'\n');
+        if (lastNewline < 0) return false;
+        int i = SkipSpaces(catalog, anchor.ValueEnd);
+        bool comma = i < catalog.Length && catalog[i] == (byte)',';
+        if (comma) i = SkipSpaces(catalog, i + 1);
+        if (i + 1 >= catalog.Length || catalog[i] != (byte)'/' || catalog[i + 1] != (byte)'/') return false;
+        if (!comma && hasNext) return false;
+        int lineEnd = Array.IndexOf(catalog, (byte)'\n', i);
+        if (lineEnd < 0) return false;
+
+        byte[] eol = catalog[lineEnd - 1] == (byte)'\r' ? "\r\n"u8.ToArray() : "\n"u8.ToArray();
+        byte[] indent = separator.AsSpan(lastNewline + 1).ToArray();
+        if (!comma) splices.Add(new Splice(anchor.ValueEnd, anchor.ValueEnd, ","u8.ToArray()));
+        splices.Add(new Splice(lineEnd + 1, lineEnd + 1,
+            Concat(indent, added, hasNext ? ","u8.ToArray() : Array.Empty<byte>(), eol)));
+        return true;
+    }
+
+    static int SkipSpaces(byte[] catalog, int i)
+    {
+        while (i < catalog.Length && catalog[i] is (byte)' ' or (byte)'\t') i++;
+        return i;
     }
 
     // A comma, then the whitespace run that ends the gap before the anchor property: ", " on a one-line entry,

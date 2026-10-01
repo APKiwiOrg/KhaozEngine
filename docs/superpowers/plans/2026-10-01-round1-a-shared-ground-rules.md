@@ -10,6 +10,21 @@
 
 **Spec:** `docs/design/CONTINUOUS-HOST-ROUND-1-DESIGN-2026-10-01.md`, sections 1 (Ground, Water) and 2, decision D2. Branch 1 of 4 in that note's "Sequencing and release". Plans B, C and D are siblings in this folder.
 
+## Outcome
+
+Executed 2026-10-01 on `feature/round1-shared-ground-rules`, commits `2a9cec620` to `ccec3a911`, merged to `main` riding 20.17.0. Full suite at `ad7a4fe95`: 27 assemblies, 22754 passed, 0 failed. The goldens never moved, and hosted ubuntu x64 run 36849112716 matched the Mac hashes.
+
+| Ruling | What was decided | Why |
+| --- | --- | --- |
+| A1 | Mesher parity tests live in `KhaozEngine.Render.Tests`, rule-level tests in `KhaozEngine.TileWorld.Tests` | A TileWorld test cannot reference Render3D |
+| A2 | Tasks ran focused tests, the full suite ran once in Task 5 | The no-local-load rule binds |
+| A3 | `TryDescribe` and `Build` take no catalogs parameter | Overlay present is `overlay != 0`, so the rule reads no catalog data, and an unread public parameter is a breaking change to remove later |
+| A4 | `Build` places points through `LatticePosition`, with a parity assertion against the mesher | One position rule, so the goldens and parity tests see every copy |
+| A5 | The Render3D README names the feathered-overlay exception and this plan notes A3 | Plan B would otherwise copy the old signature |
+| A6 | The final review's four minors landed before the merge (`ccec3a911`) | Public contracts plan B builds on, and 20.17.0 is untagged |
+
+Follow-ups: KhaozEngine #1225 (`TileRaycast` keeps its own copy of the rule) and #1226 (API polish: mutable mesh arrays, `TileWaterBody` equality, the mesher's second corner-or-midpoint choice, `Build` speed on a hot path). Declined with reasons: the Patchwork golden's `Math.Sin` risk (the hosted x64 run matched), a single-plane water golden (`TileWaterPlanesTests` covers several bodies), a TileWorld-level twin of the sideways-river test (render `Collect` covers it), and repeated null checks in `IsWater` (negligible).
+
 ## Global Constraints
 
 - Work in `/Users/antonio/KhaozEngine/.worktrees/round1-a` on `feature/round1-shared-ground-rules`, created from current `origin/main`. Read `AGENTS.md` and `docs/CONTRIBUTOR-RULES.md` (engine code and test contracts, version rules) first.

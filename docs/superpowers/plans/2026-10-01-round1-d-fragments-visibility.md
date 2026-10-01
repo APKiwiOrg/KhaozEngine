@@ -12,6 +12,19 @@
 
 **Spec:** `docs/design/CONTINUOUS-HOST-ROUND-1-DESIGN-2026-10-01.md`, sections 4 and 5 and decision D6. Branch 4 of 4. It is independent of plans B and C, and starts once plan A has opened 20.17.0 on `main`.
 
+## Outcome
+
+Executed 2026-10-02 on `feature/round1-fragments-visibility`, commits `203098c71` to the merge, riding 20.17.0. Full suite at `80591a285`: 28 assemblies, 22933 passed, 0 failed.
+
+- **Fragments.** `MessageFragmenter` and `MessageReassembler` in `KhaozEngine.Netcode` are the Tile logic moved line for line, with the width as a parameter and checked first at every entry. The Tile types are wrappers at 1015 with consts aliased to the core, and their tests are unchanged.
+- **Visibility.** `EntityVisibleToSlot` on both NetWorld configs filters each viewer's interest set through `InterestVisibility.Filter`, which allocates nothing (a cached static delegate and thread-static state, safe because both serve loops are sequential). The sharded loop now queries `HomeInterest` once per client and serves both paths from the filtered set through the new `ShardHost.SnapshotForClient(slot, world, interest, serveEpoch)`, which the radius overload calls.
+- **Plan text.** The Task 3 filter names `ShardHostServingTests`, which never existed. The overload test lives in `ShardedEntityVisibilityTests`, which the filter's `EntityVisibilityTests` term already matches.
+- **Replication fix (D1, D1a, D1b).** The final review found that `AoiDeltaReplicator` decided presence against the acked baseline only. So an entity that left and returned, or arrived and left, inside the ack window came back partial, stayed missing, or stayed on the client as a ghost. The bug predates this round and fires on every AoI edge brush. `AoiPresenceRecord` now remembers per slot when each id was last written whole or removed after the baseline, and `WriteFor` decides presence from it. Removals still repeat until acked, so the parity tests stay byte-identical.
+- **Overload guard (D2).** `ShardHost.SnapshotForClient(slot, world, interest, epoch)` throws for a world that is not the slot's home world.
+- **Byte identity (D3).** No golden was recorded from the base commit. Byte identity for the null rule rests on construction and the parity tests.
+- **Left for the baseline redesign (D4, D5).** A component that reverts inside the ack window is lost on the client, and a whole entry carries no removed-component list. Both are filed as KhaozEngine #1229 and linked from #34, which redesigns baselines before Grimhollow's continuous host ships.
+- **Deferred.** The visibility test rigs are duplicated across the two test files. The reassembler re-checks the width per chunk through the public `TryReadChunk`, at two compares and no allocation.
+
 ## Global Constraints
 
 - **Worktree:** `/Users/antonio/KhaozEngine/.worktrees/round1-d` on `feature/round1-fragments-visibility`, from current `origin/main`. Read `AGENTS.md` and `docs/CONTRIBUTOR-RULES.md` first.

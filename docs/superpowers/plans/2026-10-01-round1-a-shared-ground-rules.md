@@ -64,6 +64,7 @@
   - `public static Vector3 TileGroundTriangles.LatticePosition(TileWorldDocument document, int worldX, int worldZ, int plane, TileLatticePoint point, int originX, int originZ)`: a corner taken as it stands, a mid-edge point as `(a + b) * 0.5f`, positioned through `TileWorldSpace.ToWorld(cornerX - originX, heightCm * 0.01f, cornerZ - originZ, tileSize)`, matching `TileGroundCornerCache.Point` and `TileGroundMesher.Overlays.cs:67-74` and `:189-198` bit for bit.
   - `public static TileGroundMesh TileGroundTriangles.Build(TileWorldDocument document, TileWorldCatalogs catalogs, RegionCoord region, int plane)`: full detail only, region-local positions, triangles counter-clockwise in tile space as the mesher emits them, in the mesher's tile order (`lz` outer, `lx` inner).
   - `public sealed class TileGroundMesh { public RegionCoord Region; public int Plane; public Vector3[] Positions; public int[] Indices; }` as read-only properties.
+  - Note: controller ruling A3 removed the `TileWorldCatalogs catalogs` parameter from `TryDescribe` and `Build` above, so the shipped signatures take none: `TryDescribe(document, worldX, worldZ, plane, out cell, triangles)` and `Build(document, region, plane)`.
 
 - [ ] **Step 1: Write the failing tests.**
   - **`TileGroundTrianglesTests`** (TileWorld.Tests, own small worlds from `TileWorldTestData.FlatWorld`):

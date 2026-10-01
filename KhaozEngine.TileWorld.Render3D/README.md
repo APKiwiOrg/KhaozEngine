@@ -26,12 +26,13 @@ quarter turn.
 or null when the region-plane has no drawable tile (underlay 0, or `TileSettings.NoDraw`). The overload taking a
 `TileGroundLod` selects `Full` or `Coarse4`. Which tiles draw, how each is cut and split, and where its lattice
 points sit come from `TileGroundTriangles` in `KhaozEngine.TileWorld`, the GPU-free rule a server or a physics bake
-reads, so the full-detail triangles here are exactly its triangles. This package adds the slots, weights, normals,
-jitter and the coarse level of detail on top. The mesh is REGION LOCAL,
-so draw it at `TileGroundMesher.WorldMatrix(doc, region)`, a pure translation to the region's lowest tile corner
-with Y left at 0 because the vertices already carry absolute corner heights. Vertices are the existing
-`ModelVertex`, with its fields repurposed for the tile-ground pipeline (`Scene3D.LoadTileGroundMaterial`), so
-nothing in the upload path moves.
+reads, so the full-detail triangles here are exactly its triangles. The one exception is a tile marked
+`TileSettings.FeatherOverlay`, which draws more, smaller triangles that subdivide the same surface without moving
+it. This package adds the slots, weights, normals, jitter and the coarse level of detail on top. The mesh is
+REGION LOCAL, so draw it at `TileGroundMesher.WorldMatrix(doc, region)`, a pure translation to the region's
+lowest tile corner with Y left at 0 because the vertices already carry absolute corner heights. Vertices are the
+existing `ModelVertex`, with its fields repurposed for the tile-ground pipeline (`Scene3D.LoadTileGroundMaterial`),
+so nothing in the upload path moves.
 
 - **Four material slots per TILE, weights per vertex.** Every triangle of a tile carries the same four slots, one
   per corner in SW, SE, NW, NE order, as floats in `Uv.x`, `Uv.y`, `Tangent.x` and `Tangent.y`. `Color` is that

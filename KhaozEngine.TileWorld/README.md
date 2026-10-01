@@ -303,6 +303,30 @@ every point the same way. Every triangle comes back wound the SAME way (counter-
 pass that culls a face direction keeps or drops all of them together rather than half of them. Pass the shape
 the tile actually draws with, so a shape whose overlay material is missing is passed as `Full`.
 
+`TilePrefab` is a rect of tiles lifted out of a world (every layer, corner heights relative to the rect's SW
+corner, objects and markers in prefab-relative coordinates) that can be stamped elsewhere with a rotation.
+`TilePrefabFile.Save`/`Load` are its JSON form (base64 layers, indented for git, atomic replace).
+
+- `Extract(doc, catalogs, rect, planeFrom, planeCount, includeObjects, includeMarkers, name,
+  includeDerivedHeights)` lifts it, stamping each object's UNROTATED `SizeX`/`SizeZ` so a rotation later needs no
+  catalog. `includeDerivedHeights: false` omits unauthored higher-plane height lattices, so those planes derive
+  from the destination ground after placement. Explicitly authored height layers remain in the prefab even when
+  their values match the source derivation. The default is true for compatibility.
+- `Rotate(prefab, rotation)` turns a copy, bumping overlay rotations with the tiles and re-basing every plane's
+  heights by the shift that puts the rotated SW corner on plane 0 at height 0, so the inter-plane offsets
+  survive, then re-trimming, so a rotated prefab is shaped exactly like a fresh `Extract` of the same content.
+- `Place(doc, prefab, x, z, plane, rotation)` validates the prefab's shape (sizes, layer lengths, and every
+  object's and marker's plane), rotates, then requires every region of the TILE RECT BEFORE the first write, so
+  a bad stamp cannot tear half way through. The far-edge CORNER writes at `x + w` and `z + h` are the one
+  exception: at the edge of the authored world their region may not exist, and those writes are SKIPPED rather
+  than refusing the stamp, because a corner out there is edge-extended from the tile rect and is not readable
+  as its own value anyway. The prefab's SW corner is the height datum, so it lands on the existing ground at
+  (x, z) whatever the rotation. Objects get fresh ids, markers replace same-name markers, and the returned rect
+  is the touched area for a collision rebake.
+
+A stamp is ADDITIVE per layer: a null layer is skipped rather than zeroed, so pre-existing overlays or settings
+under the stamp survive it. Clear the rect first if you want a replace.
+
 ## Ground triangles and water bodies
 
 The ground the renderer draws and the water it lays over that ground are decided here, GPU-free, so a server, a
@@ -336,27 +360,3 @@ surface `SurfaceDropMetres` (2 cm) under the highest corner the body touches. `C
 `Rectangles(mask)` are the body search and the greedy row-run rectangle cut on their own. The order of bodies and
 rects is a pure function of the document. `TileWaterPlanes` in the render package turns these bodies into
 `WaterPlane` requests.
-
-`TilePrefab` is a rect of tiles lifted out of a world (every layer, corner heights relative to the rect's SW
-corner, objects and markers in prefab-relative coordinates) that can be stamped elsewhere with a rotation.
-`TilePrefabFile.Save`/`Load` are its JSON form (base64 layers, indented for git, atomic replace).
-
-- `Extract(doc, catalogs, rect, planeFrom, planeCount, includeObjects, includeMarkers, name,
-  includeDerivedHeights)` lifts it, stamping each object's UNROTATED `SizeX`/`SizeZ` so a rotation later needs no
-  catalog. `includeDerivedHeights: false` omits unauthored higher-plane height lattices, so those planes derive
-  from the destination ground after placement. Explicitly authored height layers remain in the prefab even when
-  their values match the source derivation. The default is true for compatibility.
-- `Rotate(prefab, rotation)` turns a copy, bumping overlay rotations with the tiles and re-basing every plane's
-  heights by the shift that puts the rotated SW corner on plane 0 at height 0, so the inter-plane offsets
-  survive, then re-trimming, so a rotated prefab is shaped exactly like a fresh `Extract` of the same content.
-- `Place(doc, prefab, x, z, plane, rotation)` validates the prefab's shape (sizes, layer lengths, and every
-  object's and marker's plane), rotates, then requires every region of the TILE RECT BEFORE the first write, so
-  a bad stamp cannot tear half way through. The far-edge CORNER writes at `x + w` and `z + h` are the one
-  exception: at the edge of the authored world their region may not exist, and those writes are SKIPPED rather
-  than refusing the stamp, because a corner out there is edge-extended from the tile rect and is not readable
-  as its own value anyway. The prefab's SW corner is the height datum, so it lands on the existing ground at
-  (x, z) whatever the rotation. Objects get fresh ids, markers replace same-name markers, and the returned rect
-  is the touched area for a collision rebake.
-
-A stamp is ADDITIVE per layer: a null layer is skipped rather than zeroed, so pre-existing overlays or settings
-under the stamp survive it. Clear the rect first if you want a replace.

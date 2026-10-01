@@ -210,11 +210,30 @@ public class TileSamplerTests
     }
 
     [Fact]
+    public void ANaNPointOrAnEmptyWorldAnswersLevelGround()
+    {
+        TileWorldColliders empty = TileWorldColliders.Build(new TileWorldDocument(), Catalogs());
+        TileWorldColliders loaded = Build(RoughWorld());
+
+        foreach ((TileWorldColliders colliders, float x, float z) in new[]
+                 {
+                     (empty, float.PositiveInfinity, float.NegativeInfinity), (empty, 5f, -5f),
+                     (loaded, float.NaN, -5f), (loaded, 5f, float.NaN),
+                 })
+        {
+            Assert.Equal(0f, colliders.Ground.HeightAt(x, z));
+            Assert.Equal(Vector3.UnitY, colliders.Ground.NormalAt(x, z));
+        }
+    }
+
+    [Fact]
     public void TheDelegatesAnswerAsTheMethodsDo()
     {
         TileWorldColliders colliders = Build(RoughWorld());
 
         Assert.Same(colliders.Ground.HeightDelegate, colliders.Ground.HeightDelegate);
+        Assert.Same(colliders.Ground.NormalDelegate, colliders.Ground.NormalDelegate);
+        Assert.Same(colliders.Medium.Delegate, colliders.Medium.Delegate);
         Assert.Equal(colliders.Ground.HeightAt(3.3f, -1.7f), colliders.Ground.HeightDelegate(3.3f, -1.7f));
         Assert.Equal(colliders.Ground.NormalAt(3.3f, -1.7f), colliders.Ground.NormalDelegate(3.3f, -1.7f));
         Assert.Equal(colliders.Medium.MediumAt(3.3f, -1.7f, -5f), colliders.Medium.Delegate(3.3f, -1.7f, -5f));

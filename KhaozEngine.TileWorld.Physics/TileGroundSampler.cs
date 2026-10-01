@@ -17,7 +17,8 @@ namespace KhaozEngine.TileWorld.Physics;
 /// the rectangle) takes the document's lattice height, <see cref="TileWorldDocument.HeightAt"/>, with a straight up
 /// normal.</item>
 /// </list>
-/// Any finite point answers a finite height. The sampler reads the document it was built from on every call, but its
+/// It never answers NaN. A point infinitely far out clamps like any other, and a NaN point, or any point in a world
+/// with no loaded regions, answers height 0 with a straight up normal. The sampler reads the document it was built from on every call, but its
 /// rectangle was captured at build and the colliders it has to agree with were built then too, so a document edited
 /// after <see cref="TileWorldColliders.Build"/> needs a rebuild.
 /// </summary>
@@ -67,8 +68,7 @@ public sealed class TileGroundSampler
     /// <param name="worldZ">World z in metres, which runs against tile z.</param>
     public float HeightAt(float worldX, float worldZ)
     {
-        float tileX = TileWorldSpace.TileX(worldX, _tileSize), tileZ = TileWorldSpace.TileZ(worldZ, _tileSize);
-        ClampToLoaded(ref tileX, ref tileZ);
+        if (!TryLoadedTile(worldX, worldZ, out float tileX, out float tileZ)) return 0f;
         return TryTriangle(tileX, tileZ, out GroundTriangle triangle)
             ? triangle.Height
             : _document.HeightAt(TileWorldSpace.WorldX(tileX, _tileSize), TileWorldSpace.WorldZ(tileZ, _tileSize), Plane);
@@ -80,16 +80,17 @@ public sealed class TileGroundSampler
     /// <param name="worldZ">World z in metres, which runs against tile z.</param>
     public Vector3 NormalAt(float worldX, float worldZ)
     {
-        float tileX = TileWorldSpace.TileX(worldX, _tileSize), tileZ = TileWorldSpace.TileZ(worldZ, _tileSize);
-        ClampToLoaded(ref tileX, ref tileZ);
+        if (!TryLoadedTile(worldX, worldZ, out float tileX, out float tileZ)) return Vector3.UnitY;
         return TryTriangle(tileX, tileZ, out GroundTriangle triangle) ? triangle.Normal : Vector3.UnitY;
     }
 
-    void ClampToLoaded(ref float tileX, ref float tileZ)
+    // The point in tile coordinates, clamped into the loaded rectangle. False, before any document read, when there
+    // is no rectangle or the point is NaN, which the clamp passes through.
+    bool TryLoadedTile(float worldX, float worldZ, out float tileX, out float tileZ)
     {
-        if (!_bounded) return;
-        tileX = Math.Clamp(tileX, _minX, _maxX);
-        tileZ = Math.Clamp(tileZ, _minZ, _maxZ);
+        tileX = Math.Clamp(TileWorldSpace.TileX(worldX, _tileSize), _minX, _maxX);
+        tileZ = Math.Clamp(TileWorldSpace.TileZ(worldZ, _tileSize), _minZ, _maxZ);
+        return _bounded && float.IsFinite(tileX) && float.IsFinite(tileZ);
     }
 
     // The ground triangle under a tile-space point, chosen among its tile's triangles as the one whose smallest
@@ -122,11 +123,13 @@ public sealed class TileGroundSampler
             }
         }
 
+        // Placed relative to the tile's own corner, so the normal's edge vectors stay exact however far out the tile
+        // is. A lattice height does not depend on the origin, so the heights are the ones the ground mesh holds.
         TileLatticeTriangle t = triangles[best];
         triangle = new GroundTriangle(
-            TileGroundTriangles.LatticePosition(_document, x, z, Plane, t.A, 0, 0),
-            TileGroundTriangles.LatticePosition(_document, x, z, Plane, t.B, 0, 0),
-            TileGroundTriangles.LatticePosition(_document, x, z, Plane, t.C, 0, 0),
+            TileGroundTriangles.LatticePosition(_document, x, z, Plane, t.A, x, z),
+            TileGroundTriangles.LatticePosition(_document, x, z, Plane, t.B, x, z),
+            TileGroundTriangles.LatticePosition(_document, x, z, Plane, t.C, x, z),
             weights);
         return true;
     }
@@ -143,7 +146,7 @@ public sealed class TileGroundSampler
         return new Vector3(1f - wb - wc, wb, wc);
     }
 
-    // One ground triangle in world metres and a point's weights on it.
+    // One ground triangle in metres relative to its tile's corner, and a point's weights on it.
     readonly record struct GroundTriangle(Vector3 A, Vector3 B, Vector3 C, Vector3 Weights)
     {
         public float Height => Weights.X * A.Y + Weights.Y * B.Y + Weights.Z * C.Y;

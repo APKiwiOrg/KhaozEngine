@@ -18,6 +18,9 @@
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Netcode.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Editing" />
     <InternalsVisibleTo Include="KhaozEngine.TileWorld.Render3D" />
+    <!-- The collider builder places object boxes with the same quarter-turn basis the renderer uses
+         (TileObjectPlacement.PlanarBasis and AnchorPlanar), so a box can never drift from its drawn model. -->
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Physics" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <EmbeddedResource Include="tileworld.catalog.schema.json" />
   </ItemGroup>

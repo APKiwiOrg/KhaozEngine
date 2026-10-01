@@ -47,6 +47,8 @@ public partial class ArchitectureTests
         // Server umbrella until more than its first consumers want it. Accounts_ReferencesOnlyNetcode pins its edge.
         // Its SQL backends follow the rule every SQL provider follows.
         "Accounts", "Accounts.Sqlite", "Accounts.SqlServer",
+        // Tile world colliders are for a game that wants physics under a tile world, which no umbrella implies.
+        "TileWorld.Physics",
         // THE THREE NATIVE GPU BACKENDS ARE NOT ON THIS LIST ANY MORE, and their absence is asserted rather than
         // assumed: NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu below requires the opposite of what
         // this list would have meant. They were opt-in from decisions P1 / V-P1 / M-P1, on pay-for-what-you-use
@@ -666,6 +668,17 @@ public partial class ArchitectureTests
             .ToArray();
 
         Assert.Equal(new[] { "Identity.Exchange.AspNetCore", "Server.Admin" }, carriers);
+    }
+
+    [Fact]
+    public void TileWorldPhysics_ReferencesOnlyTileWorldPhysicsAndLocomotion()
+    {
+        // The seams only: no renderer, no physics backend and no third-party package.
+        Project tilePhysics = LoadGraph()["KhaozEngine.TileWorld.Physics"];
+        string[] packages = tilePhysics.PackageRefs.Where(p => !IgnoredInfraPackages.Contains(p)).ToArray();
+        Assert.Equal(new[] { "Locomotion", "Physics", "TileWorld" },
+            tilePhysics.ProjectRefs.Select(Short).OrderBy(a => a, StringComparer.Ordinal).ToArray());
+        Assert.Empty(packages);
     }
 
     [Fact]

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.TileWorld.Physics</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Turns an authored KhaozEngine.TileWorld world into static colliders for any KhaozEngine.Physics world, a floor sampler and a water medium sampler for KhaozEngine.Locomotion. TileColliderOptions sets the wall thickness, the blocked-tile height and the walk-surface thickness. GPU-free and backend-free: the caller picks the IPhysicsWorld. Opt-in: in NO umbrella.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- TileWorld for the document, Physics for the seam the colliders are registered through, Locomotion for the
+         floor and medium sampler contracts. Nothing else: no renderer and no physics backend.
+         ArchitectureTests.TileWorldPhysics_ReferencesOnlyTileWorldPhysicsAndLocomotion pins the edges. -->
+    <ProjectReference Include="../KhaozEngine.TileWorld/KhaozEngine.TileWorld.csproj" />
+    <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

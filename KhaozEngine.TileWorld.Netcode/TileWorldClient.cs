@@ -88,6 +88,7 @@ public sealed partial class TileWorldClient : IDisposable
         ArgumentNullException.ThrowIfNull(map);
         if (config.TickSeconds <= 0f)
             throw new ArgumentOutOfRangeException(nameof(config), config.TickSeconds, "TickSeconds must be > 0.");
+        InitializeContactPresentation(config);
 
         this.config = config;
         queued = TileCommand.Continue(RunMode);
@@ -514,6 +515,7 @@ public sealed partial class TileWorldClient : IDisposable
         liveLatest.Clear();
         decodedCombat.Clear();
         ClearPreparations();
+        ClearContactPresentation();
     }
 
     // The stepper the PREDICTION runs: <see cref="Simulator"/> with this client's own net id bound to it. The

@@ -19,6 +19,10 @@ public sealed record TileWorldClientConfig
     /// <summary>Opt in to authoritative preparation frames and callbacks. Both session peers must select this mode.</summary>
     public bool CombatPreparationEnabled { get; init; }
 
+    /// <summary>Opt in to separate combat body presentation. Requires <see cref="CombatPreparationEnabled"/>.
+    /// Null preserves raw reads and allocates no contact state.</summary>
+    public TileCombatContactPresentationSettings? CombatContactPresentation { get; init; }
+
     /// <summary>Seconds per command tick. Must equal the server's <see cref="TileWorldServerConfig.TickSeconds"/>:
     /// it is both the rate this client issues commands at and the timestep prediction replays them over.</summary>
     public required float TickSeconds { get; init; }
@@ -32,7 +36,7 @@ public sealed record TileWorldClientConfig
     /// remote holding on its tile, which is what the delay buys. It costs exactly itself in apparent lag, so a
     /// bigger number is not free.
     /// <para>It does not touch the local player, who is predicted rather than interpolated. It is also the ONLY
-    /// presentation knob this config carries: the drawn body glides its whole step, linearly, on the step's own
+    /// raw-movement presentation knob this config carries: the drawn body glides its whole step, linearly, on the step's own
     /// tick count, and that is a ruled behaviour rather than a tuning default (see <see cref="TilePresenter"/>).
     /// So a remote's divergence from its committed tile is this delay plus the step, and a design that reads other
     /// players' tiles is sized against the sum.</para></summary>

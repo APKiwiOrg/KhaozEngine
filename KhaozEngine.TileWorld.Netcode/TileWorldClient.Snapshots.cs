@@ -160,6 +160,7 @@ public sealed partial class TileWorldClient
             return;
         }
 
+        acceptedMovementServerTick = serverTick;
         ObservePreparationSnapshot(serverTick);
 
         // THE HONEST READ's capture, and this is the ONE instant it can be taken. Apply has just written the newest

@@ -13,7 +13,7 @@ Grimhollow keeps its authored `KhaozEngine.TileWorld` document as the world and 
 host and camera to the continuous stack Ruinborne already ships on (`NetWorld`, `Locomotion`, `Physics.Bepu`,
 `Navigation`). That stack has no way to turn a tile world into colliders, no pointer capture for mouse-look,
 no host-neutral home for message fragments, and no per-viewer visibility on NetWorld. Grimhollow's phase P3
-(a continuous skeleton behind a Debug switch) needs all four. Each is useful to a second game, so each
+(the continuous host replacing its tile host on an integration branch) needs all four. Each is useful to a second game, so each
 belongs here.
 
 ## Decisions for the owner

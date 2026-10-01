@@ -1,5 +1,12 @@
 # Tile Combat Contact Presentation Implementation Plan
 
+**Execution status:** Parked after the owner's continuous-movement pivot. [Grimhollow #371](https://github.com/APKiwiOrg/Grimhollow/issues/371)
+is closed as superseded. Task 1's public-contract prototype is preserved at `5e4c3a35e` on
+`fix/combat-presentation-spacing`, with 41 focused tests passing. Contact correction is not implemented.
+The prototype has not received final solution verification, integration or release. Tasks 2 to 11 were not
+started. [Engine #1216](https://github.com/APKiwiOrg/KhaozEngine/issues/1216) remains open as tile-world roadmap
+work. The requirements below preserve the approved design history, not an active Grimhollow adoption commitment.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add opt-in, continuous, collision-safe combat body presentation with stable legal footprint layouts and receipt-frame outcome measurements, then hand a released engine capability to Grimhollow for its mandatory adoption gates.

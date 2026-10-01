@@ -1,6 +1,11 @@
 # Tile combat contact presentation
 
-Status: owner-approved design and implementation plan. Subagent-driven execution is authorized.
+Status: parked after the owner's continuous-movement pivot in Grimhollow. The design and plan were approved,
+but [Grimhollow #371](https://github.com/APKiwiOrg/Grimhollow/issues/371) is now closed as superseded.
+[Engine #1216](https://github.com/APKiwiOrg/KhaozEngine/issues/1216) remains open for tile-world consumers.
+Task 1's public-contract prototype is preserved on `fix/combat-presentation-spacing`. It does not implement
+contact correction, and it has not been integrated or released. Remaining implementation and consumer
+adoption are no longer part of the Grimhollow follow-up batch.
 
 Consumer: [Grimhollow #371](https://github.com/APKiwiOrg/Grimhollow/issues/371). The owner approved developing
 a smooth presentation-adjustment design. The earlier [spacing evidence](COMBAT-CONTACT-SPACING-2026-10-01.md)

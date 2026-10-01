@@ -32,8 +32,11 @@ belongs here.
 
 ### Package
 
-`KhaozEngine.TileWorld.Physics`, opt-in and kept out of the umbrellas, as `KhaozEngine.Physics` is. It
-references `KhaozEngine.TileWorld` and `KhaozEngine.Physics` only. No Render3D and no Bepu reference.
+`KhaozEngine.TileWorld.Physics`, opt-in and kept out of the umbrellas, on the same opt-in list as
+`KhaozEngine.Physics.Bepu` and `KhaozEngine.Identity.Exchange`. It references `KhaozEngine.TileWorld`,
+`KhaozEngine.Physics` and `KhaozEngine.Locomotion`, because the water sampler returns Locomotion's
+`MovementMedium`. No Render3D and no Bepu reference. `KhaozEngine.TileWorld` grants it internals, as it does
+Render3D, for the exact quarter-turn basis `TileObjectPlacement.PlanarBasis`.
 `Sharding -> Physics` is the precedent for a simulation package depending on the physics seam. Its tests
 live in a new `KhaozEngine.TileWorld.Physics.Tests` project that references `KhaozEngine.Physics.Bepu`, as
 `KhaozEngine.Game.Tests` does for the terrain collision tests. `docs/DEPENDENCY-SEAMS.md` gains the edge.
@@ -67,7 +70,7 @@ public enum TileColliderKind : byte { Ground, Wall, Blocked, Object, WalkSurface
 | --- | --- |
 | Ground on plane 0 | One `TriangleMeshShape` static per region, built from the shared ground triangle rule (D2) at full detail, with `NoDraw` tiles skipped exactly as the mesher skips them. Triangles are wound for Bepu's one-sided meshes (the b and c swap terrain uses), so downward rays and capsules hit the top face. A mesh never sits inside a compound, which Bepu refuses. |
 | Blocked tiles (`underlay == 0` or `TileSettings.Blocked`) | A box over the tile from the lowest corner to `options.BlockedHeight` (default the plane height, 3 m), so nothing walks onto void or authored blocks. |
-| Wall edges (`WallN`, `WallE`, `WallS`, `WallW` from `TileCollisionBaker`) | A thin box along the edge, `options.WallThickness` thick (default 0.1 m), as tall as the owning archetype's `collisionHeight`, or the plane height when the edge has no archetype. Boxes, not quads, because one-sided quads only block from one side. Corner bits are ignored, because continuous movement has no diagonal step to forbid. |
+| `Wall` and `WallCorner` objects | A thin box along each edge the object blocks (one edge for `Wall`, two for `WallCorner`, on the anchor tile, using the baker's `WallFacing` rule), `options.WallThickness` thick (default 0.1 m) and as tall as the archetype's `collisionHeight`. Walls are read from the placed objects, not from the collision map's mirrored edge flags, so each wall is built once and knows its height. Boxes, not quads, because one-sided quads only block from one side. Corner bits are ignored, because continuous movement has no diagonal step to forbid. |
 | `Solid` and `Diagonal` objects | A box over the rotated footprint (`TileFootprint.Of`), from the anchor's ground height to `collisionHeight`, yawed with the exact quarter-turn basis `TileObjectPlacement` uses. `Diagonal` keeps today's meaning, the whole anchor tile. |
 | Walk surfaces | A thin box (0.1 m) at each surface's height over its rectangle, so a body stands on a bridge deck while the drawn ground below stays the floor. |
 | Roof objects | Nothing. Roofs are drawn, not walked or collided, as in the tile host. |
@@ -97,9 +100,11 @@ would be zero.
 
 The server has no meshes, so archetypes gain an optional `collisionHeight` (metres) in the catalog. It is
 part of the archetype record, so `TileWorldHash` covers it. `ke-tileedit` gains a verb that fills it from
-each archetype's mesh bounds (through the existing `TileObjectBoundsCache` on the authoring side). Building
-colliders for a `Solid`, `Diagonal` or `Wall` archetype with no height fails with the archetype id, rather
-than guessing.
+each archetype's mesh bounds (through the existing `TileObjectBoundsCache` and a `GltfMeshResolver` rooted
+at a kit directory the verb is given, with no greybox fallback). The tool has no catalog writer today, so the
+verb writes through a new format-preserving writer that keeps property order and indentation. Building
+colliders for a `Solid`, `Diagonal`, `Wall` or `WallCorner` archetype with no height fails with the archetype
+id, rather than guessing.
 
 ### Determinism and the hash
 

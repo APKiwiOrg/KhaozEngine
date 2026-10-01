@@ -97,10 +97,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   set out of the slot's home-cell world, which must be the one `HomeInterest` returned at that epoch. Any other
   world throws `ArgumentException`. The radius overload calls it, and `ShardedWorldServer` uses it so its snapshot
   and delta paths serve one filtered set.
-- Fixed: `AoiDeltaReplicator` diffed a returning entity against the client's last acknowledged baseline, which
-  still held it when the removal was unacknowledged. An entity that left and re-entered a client's interest within
-  one round trip came back partial, or never came back when nothing on it changed. Such an entity is now resent
-  whole. The wire format is unchanged.
+- Fixed: `AoiDeltaReplicator` decided presence from the client's last acknowledged baseline, not from what it had
+  sent since. An entity that left and returned inside the ack window came back partial, or never came back when
+  nothing on it changed. An entity that arrived and left inside the window was never removed and stayed on the
+  client. Such an entity is now resent whole or removed. The wire format is unchanged.
 - Owed before release: a manual check in the Showcase 3D room (`Room3D`), run and recorded separately on macOS,
   Windows, Linux X11 and Linux Wayland. macOS runs without raw mouse motion. On each platform:
   - A left drag orbits with the cursor hidden and held.

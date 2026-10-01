@@ -83,7 +83,7 @@ public sealed class EntityVisibilityTests
     }
 
     [Fact]
-    public void AHideAndShowInsideTheAckWindowRestoresTheEntityWhole()
+    public void FlipsInsideTheAckWindowRestoreTheEntityWholeAndRemoveItCleanly()
     {
         var rig = new Rig();
         rig.Pump(8);
@@ -108,6 +108,20 @@ public sealed class EntityVisibilityTests
         Assert.True(viewer.View.TryGetEntity(id, out Entity seen));
         Assert.True(viewer.World.TryGet(seen, out PlayerIdentity identity));
         Assert.Equal("kept", identity.DisplayName);
+
+        // The mirror: hidden long enough for the acked baseline to lack it, then shown for one tick and hidden on the
+        // next with the show ack unread. The viewer must not keep it.
+        rig.AllowOthers = false;
+        rig.Pump(6);
+        Assert.False(rig.Sees(viewer, id));
+        rig.AllowOthers = true;
+        rig.TickWithoutReadingAcks();
+        Assert.True(rig.Sees(viewer, id));
+        rig.AllowOthers = false;
+        rig.TickWithoutReadingAcks();
+        rig.Pump(6);
+        Assert.False(rig.Sees(viewer, id));
+        Assert.False(viewer.View.Entities.ContainsKey(id));
     }
 
     [Fact]

@@ -20340,9 +20340,10 @@ aoi.Acknowledge(slot, ackedSeq);                      // aoi.Forget(slot) on dis
 ```
 
 The wire is byte-identical to `ServerReplicator.WriteFor` (a full snapshot is the `baseline -1` delta), and the
-baseline is keyed by `NetId`, so a seamless cell handoff reads as a component delta, never a despawn+respawn. An
-entity that left a client's interest and is back before the client acknowledged the removal is sent as a full
-spawn, not a diff against the acked baseline that still holds it.
+baseline is keyed by `NetId`, so a seamless cell handoff reads as a component delta, never a despawn+respawn.
+Presence follows what was last sent, not what was last acked. An entity that left a client's interest and is back
+before the client acknowledged the removal is sent as a full spawn. One sent whole and gone before that entry was
+acknowledged is sent as a removal. Like the rest of the diff, both repeat until the client acknowledges them.
 
 **Shared per-tick capture (perf).** `WriteFor` builds its whole-world Replicate-channel capture once per `world`
 per tick, the first time any client's `WriteFor` runs after `BeginTick`, then every later `WriteFor` on the same

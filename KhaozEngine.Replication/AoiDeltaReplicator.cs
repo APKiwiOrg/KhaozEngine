@@ -25,9 +25,10 @@ namespace KhaozEngine.Replication;
 /// from the acked baseline until a newer ack advances it). Per-client memory is bounded by
 /// <c>historyDepth × players</c>: up to <c>historyDepth</c> pending per-seq projections per slot, dropped
 /// on <see cref="Acknowledge"/> / <see cref="Forget"/>.
-/// <para>An entity removed from a client's delta and back in its interest before that removal is acknowledged is
-/// written whole (a full spawn), not diffed against the acked baseline that still holds it. The client already
-/// despawned it, so a diff would leave it missing or partial.</para>
+/// <para>Presence follows what was last sent, not what was last acked. An entity removed from a client's delta and
+/// back in its interest before that removal is acknowledged is written whole (a full spawn), not diffed against the
+/// acked baseline that still holds it. An entity sent whole and gone before that entry is acknowledged is written as
+/// a removal, although the acked baseline never held it. A removal repeats until it is acknowledged.</para>
 /// </remarks>
 public sealed class AoiDeltaReplicator
 {
@@ -44,12 +45,12 @@ public sealed class AoiDeltaReplicator
     // to historyDepth in ascending-seq insertion order.
     private readonly Dictionary<int, Dictionary<int, AoiBaseline>> pendingBySlot = new();
     private readonly Dictionary<int, Queue<int>> pendingOrderBySlot = new();
-    // Per slot: the latest seq at which each net id was written as a removal. The diff runs from the ACKED baseline,
-    // so an id removed at seq R and back in the projection before R is acked still sits in that baseline. Diffing it
-    // against the baseline would send nothing (or only changed components) to a client that already despawned it.
-    // While R is newer than the baseline seq, the id is written whole instead. Pruned on Acknowledge, cleared on
-    // Forget. The dictionary is kept per slot and reused, so steady state allocates nothing here.
-    private readonly Dictionary<int, Dictionary<long, int>> removalSeqBySlot = new();
+    // Per slot: the latest seq at which each net id was written as a removal and as a whole entry (see
+    // AoiPresenceRecord). The diff runs from the ACKED baseline, but the client holds what was last SENT. An id removed
+    // at seq R and back before R is acked still sits in the baseline, so it is written whole while R is newer than
+    // the baseline seq. An id sent whole at seq W and gone before W is acked is missing from the baseline, so it is
+    // removed when the client still holds it. Pruned on Acknowledge, cleared on Forget, reused per slot.
+    private readonly Dictionary<int, AoiPresenceRecord> presenceBySlot = new();
 
     // Shared per-tick capture: the whole-world Replicate-channel snapshot (netId -> components), captured ONCE per
     // distinct world per seq and projected per client in WriteFor. Keyed by World because the sharded server serves
@@ -78,8 +79,12 @@ public sealed class AoiDeltaReplicator
     // that serves C clients from one world scans once, not C times - what this whole change buys.
     internal long WorldScanCount { get; private set; }
 
-    // Test seam: how many removal records the slot holds, to prove Acknowledge prunes them and Forget clears them.
-    internal int RemovalRecordCount(int slot) => removalSeqBySlot.TryGetValue(slot, out Dictionary<long, int>? r) ? r.Count : 0;
+    // Test seams: how many removal and whole-entry records the slot holds, to prove Acknowledge prunes them and Forget
+    // clears them.
+    internal int RemovalRecordCount(int slot) =>
+        presenceBySlot.TryGetValue(slot, out AoiPresenceRecord? r) ? r.Removed.Count : 0;
+    internal int WholeRecordCount(int slot) =>
+        presenceBySlot.TryGetValue(slot, out AoiPresenceRecord? r) ? r.Whole.Count : 0;
 
     public AoiDeltaReplicator(ReplicationRegistry registry, int historyDepth = 32)
     {
@@ -142,28 +147,42 @@ public sealed class AoiDeltaReplicator
         bw.Write(baselineSeq);
         bw.Write(currentSeq);
 
-        // Removed: the client knew it (baseline) but it is gone from the interest set (left AoI or despawned).
-        // Reused scratch lists, cleared per call.
+        // Removed: gone from the interest set (left AoI or despawned) while the client may hold it, because the
+        // baseline holds it or it was sent whole since the baseline. Like every other part of the diff, a removal is
+        // repeated each tick until a baseline that lacks the id is acked. Reused scratch list, cleared per call.
+        AoiPresenceRecord? presence = presenceBySlot.GetValueOrDefault(slot);
         scratchRemoved.Clear();
         if (baseline is not null)
             foreach (long netId in baseline.Keys)
                 if (!projected.ContainsKey(netId)) scratchRemoved.Add(netId);
-        bw.Write(scratchRemoved.Count);
-        foreach (long netId in scratchRemoved) bw.Write(netId);
-        Dictionary<long, int>? removalSeqs = RecordRemovals(slot, scratchRemoved);
+        if (presence is not null)
+            foreach (KeyValuePair<long, int> kv in presence.Whole)
+                if (kv.Value > baselineSeq && !projected.ContainsKey(kv.Key)
+                    && (baseline is null || !baseline.ContainsKey(kv.Key))) // baseline ids were listed above
+                    scratchRemoved.Add(kv.Key);
+        // A full snapshot (no baseline) removes implicitly, so it writes no list, but the records still learn it.
+        bw.Write(baseline is null ? 0 : scratchRemoved.Count);
+        if (baseline is not null)
+            foreach (long netId in scratchRemoved) bw.Write(netId);
+        if (scratchRemoved.Count > 0)
+        {
+            presence ??= PresenceFor(slot);
+            foreach (long netId in scratchRemoved) presence.Removed[netId] = currentSeq;
+        }
 
         // New (entered, or re-entered after an unacked removal) or changed (stayed + component delta).
         scratchChanged.Clear();
         foreach (long netId in projected.Keys)
         {
-            if (IsWholeEntry(baseline, baselineSeq, removalSeqs, netId)) { scratchChanged.Add(netId); continue; }
+            if (IsWholeEntry(baseline, baselineSeq, presence, netId)) { scratchChanged.Add(netId); continue; }
             if (DeltaEncoding.EntityChanged(baseline![netId], projected[netId])) scratchChanged.Add(netId);
         }
         bw.Write(scratchChanged.Count);
         foreach (long netId in scratchChanged)
         {
-            bool isNew = IsWholeEntry(baseline, baselineSeq, removalSeqs, netId);
+            bool isNew = IsWholeEntry(baseline, baselineSeq, presence, netId);
             DeltaEncoding.WriteChangedEntity(bw, registry, netId, isNew, isNew ? null : baseline![netId], projected[netId]);
+            if (isNew) (presence ??= PresenceFor(slot)).Whole[netId] = currentSeq;
         }
 
         bw.Flush();
@@ -176,23 +195,18 @@ public sealed class AoiDeltaReplicator
     /// a removal at a seq newer than <paramref name="baselineSeq"/>. In the second case the client may already have
     /// despawned it, so a diff against the baseline would leave it missing or partial.
     /// </summary>
-    private static bool IsWholeEntry(AoiBaseline? baseline, int baselineSeq, Dictionary<long, int>? removalSeqs,
-        long netId) =>
+    private static bool IsWholeEntry(AoiBaseline? baseline, int baselineSeq, AoiPresenceRecord? presence, long netId) =>
         baseline is null || !baseline.ContainsKey(netId)
-        || (removalSeqs is not null && removalSeqs.TryGetValue(netId, out int removedAt) && removedAt > baselineSeq);
+        || AoiPresenceRecord.RemovedSince(presence, baselineSeq, netId);
 
-    /// <summary>Records <see cref="currentSeq"/> as the latest removal seq of every id in
-    /// <paramref name="removed"/> and returns the slot's record (null when the slot has none).</summary>
-    private Dictionary<long, int>? RecordRemovals(int slot, List<long> removed)
+    /// <summary>The slot's presence record, created on its first use and reused for the seat's lifetime.</summary>
+    private AoiPresenceRecord PresenceFor(int slot)
     {
-        Dictionary<long, int>? record = removalSeqBySlot.GetValueOrDefault(slot);
-        if (removed.Count == 0) return record;
-        if (record is null)
+        if (!presenceBySlot.TryGetValue(slot, out AoiPresenceRecord? record))
         {
-            record = new Dictionary<long, int>();
-            removalSeqBySlot[slot] = record;
+            record = new AoiPresenceRecord();
+            presenceBySlot[slot] = record;
         }
-        foreach (long netId in removed) record[netId] = currentSeq;
         return record;
     }
 
@@ -267,12 +281,9 @@ public sealed class AoiDeltaReplicator
         // Everything at or before the acked seq is superseded (reliable-ordered acks advance monotonically).
         Queue<int> order = pendingOrderBySlot[slot];
         while (order.Count > 0 && order.Peek() <= seq) map.Remove(order.Dequeue());
-        // A removal at or before the acked seq is now in the baseline (the id is absent there, or present again from a
-        // later whole entry the client acked), so it no longer forces a whole entry. Remove during enumeration is
-        // allowed on Dictionary and allocates nothing.
-        if (removalSeqBySlot.TryGetValue(slot, out Dictionary<long, int>? removals))
-            foreach (KeyValuePair<long, int> kv in removals)
-                if (kv.Value <= seq) removals.Remove(kv.Key);
+        // A removal or whole entry at or before the acked seq is now in the baseline, so it no longer decides
+        // presence.
+        if (presenceBySlot.TryGetValue(slot, out AoiPresenceRecord? presence)) presence.Prune(seq);
     }
 
     /// <summary>Drops all per-client state for <paramref name="slot"/> (call on disconnect / slot recycle).</summary>
@@ -282,7 +293,7 @@ public sealed class AoiDeltaReplicator
         ackedSeqBySlot.Remove(slot);
         pendingBySlot.Remove(slot);
         pendingOrderBySlot.Remove(slot);
-        if (removalSeqBySlot.TryGetValue(slot, out Dictionary<long, int>? removals)) removals.Clear(); // kept for reuse
+        if (presenceBySlot.TryGetValue(slot, out AoiPresenceRecord? presence)) presence.Clear(); // kept for reuse
     }
 
     private void RecordPending(int slot, int seq, AoiBaseline projected)

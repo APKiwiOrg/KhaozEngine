@@ -16,10 +16,12 @@ public sealed class TileWorldColliders
 {
     readonly byte[] _hash;
 
-    TileWorldColliders(TileCollider[] colliders, byte[] hash)
+    TileWorldColliders(TileCollider[] colliders, byte[] hash, TileGroundSampler ground, TileMediumSampler medium)
     {
         Colliders = Array.AsReadOnly(colliders);
         _hash = hash;
+        Ground = ground;
+        Medium = medium;
     }
 
     /// <summary>
@@ -39,6 +41,12 @@ public sealed class TileWorldColliders
     /// Each read returns a fresh copy.
     /// </summary>
     public byte[] Hash => (byte[])_hash.Clone();
+
+    /// <summary>The floor on plane 0, read from the same drawn ground triangles as the ground colliders.</summary>
+    public TileGroundSampler Ground { get; }
+
+    /// <summary>The water medium on plane 0, from the water bodies of the loaded regions.</summary>
+    public TileMediumSampler Medium { get; }
 
     /// <summary>
     /// Describes the loaded regions of a document as colliders. Plane 0 and walk surfaces only: objects and walk
@@ -64,9 +72,11 @@ public sealed class TileWorldColliders
     /// <para>A <see cref="TileSettings.NoDraw"/> tile gets no ground triangle and no blocked box, so it is a hole in the
     /// physics floor. NoDraw marks a plane whose floor is an object, the upper-floor case this round leaves
     /// out.</para>
+    /// <para>The floor and water samplers, <see cref="Ground"/> and <see cref="Medium"/>, are built here from the same
+    /// document and catalogs.</para>
     /// </summary>
     /// <param name="document">The world. Only its loaded regions are read.</param>
-    /// <param name="catalogs">The archetypes its objects are placed from.</param>
+    /// <param name="catalogs">The archetypes its objects are placed from and the materials that mark water.</param>
     /// <param name="options">Thicknesses and the blocked height, defaults when null.</param>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> or <paramref name="catalogs"/> is
     /// null.</exception>
@@ -97,7 +107,8 @@ public sealed class TileWorldColliders
         TileColliderBuilder.AddWalkSurfaces(document, catalogs, placed, options.WalkSurfaceThickness, colliders);
 
         TileCollider[] ordered = colliders.ToArray();
-        return new TileWorldColliders(ordered, HashOf(ordered));
+        return new TileWorldColliders(ordered, HashOf(ordered), new TileGroundSampler(document, regions),
+                                      new TileMediumSampler(document, catalogs, regions));
     }
 
     static void RequirePositive(float value, string option)

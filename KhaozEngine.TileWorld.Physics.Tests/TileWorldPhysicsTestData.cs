@@ -10,6 +10,15 @@ public static class TileWorldPhysicsTestData
     /// <summary>How fast <see cref="SlopedWorld"/> rises east, in centimetres per tile.</summary>
     public const short SlopeCmPerTile = 10;
 
+    /// <summary>The water material's id in <see cref="Catalogs"/>.</summary>
+    public const ushort Water = 3;
+
+    /// <summary>The first and last rows of <see cref="BridgedRiverWorld"/>'s river.</summary>
+    public const int RiverFirstRow = 10, RiverLastRow = 12;
+
+    /// <summary>Where <see cref="BridgedRiverWorld"/>'s deck stands.</summary>
+    public const int DeckX = 20, DeckZ = 10;
+
     /// <summary>One archetype per collider rule, each with the height the rule needs:
     /// <list type="bullet">
     /// <item><c>wall</c>, a 1x1 <c>Wall</c> 2.5 m tall.</item>
@@ -23,10 +32,16 @@ public static class TileWorldPhysicsTestData
     /// turn moves it.</item>
     /// <item><c>deck_skewed</c>, the same deck with a 30 degree yaw offset.</item>
     /// <item><c>unmeasured</c>, a <c>Solid</c> with no collision height.</item>
-    /// </list></summary>
+    /// </list>
+    /// And three ground materials: grass (1) and dirt (2), both ground, and water (<see cref="Water"/>).</summary>
     public static TileWorldCatalogs Catalogs() => TileWorldCatalogs.LoadJson(
         """
         {
+          "materials": [
+            { "id": 1, "name": "grass", "color": "#4d8a3a", "kind": "Ground" },
+            { "id": 2, "name": "dirt", "color": "#7a5a3a", "kind": "Ground" },
+            { "id": 3, "name": "water", "color": "#2a5a9a", "kind": "Water" }
+          ],
           "archetypes": [
             { "id": "wall", "name": "wall", "meshRef": "test/wall.glb", "collisionKind": "Wall", "collisionHeight": 2.5 },
             { "id": "wall_corner", "name": "wall_corner", "meshRef": "test/wall_corner.glb",
@@ -171,6 +186,24 @@ public static class TileWorldPhysicsTestData
         doc.AddObject("diag_wall", 3, 3, 0, 0);
         doc.AddObject("roof", 12, 12, 0, 0);
         doc.AddObject("deck", 20, 20, 0, 0);
+        return doc;
+    }
+
+    /// <summary><see cref="FlatWorld"/> with a river of <see cref="Water"/> across the whole region over rows
+    /// <see cref="RiverFirstRow"/> to <see cref="RiverLastRow"/>, its bed sunk to -1 m on every corner inside it, so
+    /// its banks stand at 0 and it is one body whose surface sits at -0.02 m. A <c>deck</c> turned a quarter stands
+    /// on the bed at (<see cref="DeckX"/>, <see cref="DeckZ"/>), its walk surface above the water from tile z 10.5 to
+    /// 13.5.</summary>
+    public static TileWorldDocument BridgedRiverWorld()
+    {
+        TileWorldDocument doc = FlatWorld();
+        for (int z = RiverFirstRow; z <= RiverLastRow; z++)
+            for (int x = 0; x < TileRegion.Size; x++)
+                doc.SetUnderlay(x, z, 0, Water);
+        for (int z = RiverFirstRow + 1; z <= RiverLastRow; z++)
+            for (int x = 0; x < TileRegion.Size; x++)
+                doc.SetCornerHeightCm(x, z, 0, -100);
+        doc.AddObject("deck", DeckX, DeckZ, 0, 1);
         return doc;
     }
 }

@@ -1066,7 +1066,7 @@ The rules:
 - Crossing the threshold replays the pending travel in one `DragDelta`, so a drag has no dead zone at its start.
 - A press that begins while `uiBlocked` is true or while the window is unfocused is inert for its whole life. A
   focus loss or a block that arrives mid-press ends any drag and makes the rest of the press inert, so that press
-  is neither a tap nor a drag.
+  never ends in a tap.
 - A threshold of 0 or less drags from the first frame of a press and never taps.
 - `TapThisFrame` describes only the most recent `Advance`. Read it after advancing with the snapshot you act on.
 - `Advance` allocates nothing.

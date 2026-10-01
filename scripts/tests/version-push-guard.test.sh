@@ -74,9 +74,18 @@ new_repo() {
     conditional) _test_property='<IsPackable Condition="false">false</IsPackable>' ;;
     conditional-group) _test_property='</PropertyGroup><PropertyGroup Condition="false"><IsPackable>false</IsPackable>' ;;
     conflicting) _test_property='<IsPackable>false</IsPackable><IsPackable>true</IsPackable>' ;;
+    choose) _test_property='</PropertyGroup><Choose><When Condition="&apos;$(Configuration)&apos; == &apos;Debug&apos;"><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></When></Choose><PropertyGroup>' ;;
+    cdata) _test_property='<Description><![CDATA[<IsPackable>false</IsPackable>]]></Description>' ;;
+    target) _test_property='</PropertyGroup><Target Name="SetPackability"><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Target><PropertyGroup>' ;;
+    import) _test_property='<IsPackable>false</IsPackable></PropertyGroup><Import Project="packable.props" /><PropertyGroup>' ;;
+    root) _test_property='</PropertyGroup><IsPackable>false</IsPackable><PropertyGroup>' ;;
+    item) _test_property='</PropertyGroup><ItemGroup><IsPackable>false</IsPackable></ItemGroup><PropertyGroup>' ;;
     *) _test_property="<IsPackable>$_test_packable</IsPackable>" ;;
   esac
-  printf '<Project><PropertyGroup>%s</PropertyGroup></Project>\n' "$_test_property" > KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj
+  if [ "$_test_packable" != absent ]; then
+    printf '<Project><PropertyGroup>%s</PropertyGroup></Project>\n' "$_test_property" > KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj
+  fi
+  printf '<Project><PropertyGroup><IsPackable>true</IsPackable></PropertyGroup></Project>\n' > KhaozEngine.TileWorld.Netcode.Tests/packable.props
   printf '<Project><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>\n' > KhaozEngine.Tests/KhaozEngine.Tests.csproj
   git add -A
   git commit --quiet -m "init"
@@ -146,7 +155,7 @@ done
 
 # A test-looking name alone proves nothing. Missing, conditional and commented properties do not
 # prove that the project is non-packable either.
-for test_packable in true unknown comment multiline-comment conditional conditional-group conflicting; do
+for test_packable in true unknown comment multiline-comment conditional conditional-group conflicting choose cdata target import root item; do
   w=$(new_repo 1.0.0 "$test_packable"); cd "$w"
   git tag -a v1.0.0 -m "release(1.0.0): first" >/dev/null 2>&1
   git push --quiet origin v1.0.0 2>/dev/null
@@ -155,6 +164,26 @@ for test_packable in true unknown comment multiline-comment conditional conditio
   git commit --quiet -m "test: add a regression"
   check "test-looking project with $test_packable packability is refused" refused "$(try_push main)"
 done
+
+# Turning a previously packable or unknown project into tests still changes shipped packages.
+for test_packable in true unknown; do
+  w=$(new_repo 1.0.0 "$test_packable"); cd "$w"
+  git tag -a v1.0.0 -m "release(1.0.0): first" >/dev/null 2>&1
+  git push --quiet origin v1.0.0 2>/dev/null
+  printf '<Project><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>\n' > KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj
+  git commit --quiet -am "build: retire a package"
+  check "changing $test_packable packability to false is refused" refused "$(try_push main)"
+done
+
+# A genuinely new non-packable test project has no old package to remove.
+w=$(new_repo 1.0.0 absent); cd "$w"
+git tag -a v1.0.0 -m "release(1.0.0): first" >/dev/null 2>&1
+git push --quiet origin v1.0.0 2>/dev/null
+printf '<Project><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Project>\n' > KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj
+echo 'test' > KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/Example.cs
+git add KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/Example.cs
+git commit --quiet -m "test: add a non-packable test project"
+check "a new non-packable test project rides a release" allowed "$(try_push main)"
 
 # The push names a commit. A dirty project declaration cannot change that commit's classification.
 for test_packable in false true; do

@@ -94,8 +94,8 @@ tag_release_window() {
 
 # tag_nonpackable_test <commit> <path> -> 0 for a path owned by a non-packable test project.
 # Read the project at the pushed commit, never from the worktree. A test-looking name alone is not
-# enough. Strip XML comments and require one unconditional literal false declaration. Conditional
-# property groups and conflicting declarations stay version-bearing rather than guessing MSBuild.
+# enough. Strip XML comments and require one literal false in a direct unconditional PropertyGroup.
+# Unsupported MSBuild containers and conflicting declarations stay version-bearing.
 tag_nonpackable_test() {
   _nt_dir=${2%%/*}
   case "$_nt_dir" in KhaozEngine.*Tests) ;; *) return 1 ;; esac
@@ -109,7 +109,29 @@ tag_nonpackable_test() {
         if (!finish) exit 1
         xml = substr(xml, 1, start - 1) substr(tail, finish + 3)
       }
-      if (xml ~ /<PropertyGroup[^>]*Condition[[:space:]]*=/) exit 1
+      if (xml ~ /<!\[CDATA\[/) exit 1
+      if (xml ~ /<(Choose|When|Otherwise|Target|Import|ImportGroup|UsingTask|Sdk)[[:space:]\/>]/) exit 1
+      if (xml ~ /<(Project|PropertyGroup)[^>]*Condition[[:space:]]*=/) exit 1
+      tree = xml
+      while (match(tree, /<[^>]+>/)) {
+        tag = substr(tree, RSTART, RLENGTH)
+        tree = substr(tree, RSTART + RLENGTH)
+        if (tag ~ /^<\?xml[[:space:]]/) continue
+        name = tag
+        sub(/^<\/?/, "", name)
+        sub(/[[:space:]\/>].*$/, "", name)
+        if (name !~ /^[A-Za-z_][A-Za-z0-9_.-]*$/) exit 1
+        if (tag ~ /^<\//) {
+          if (depth < 1 || parents[depth] != name) exit 1
+          depth--
+        } else {
+          if (!depth && (name != "Project" || ++roots != 1)) exit 1
+          if (depth == 1 && name != "PropertyGroup" && name != "ItemGroup") exit 1
+          if (name == "IsPackable" && (depth != 2 || parents[1] != "Project" || parents[2] != "PropertyGroup")) exit 1
+          if (tag !~ /\/>$/) parents[++depth] = name
+        }
+      }
+      if (depth || roots != 1) exit 1
       if (!sub(/<IsPackable>[[:space:]]*false[[:space:]]*<\/IsPackable>/, "", xml)) exit 1
       if (xml ~ /<IsPackable[[:space:]\/>]/) exit 1
       exit 0
@@ -133,8 +155,8 @@ tag_nonpackable_test() {
 # project ever moves under tools/, this line is the one to revisit.
 #
 # Test projects are also non-packable, including the rump KhaozEngine.Tests project. No packable
-# project references them. Match their project declaration at the target commit before excluding a
-# path, so a packable or unknown project cannot evade the guard by taking a test-looking name.
+# project references them. Check their declaration at both commits before excluding a path. A new
+# non-packable test project is safe, but retiring a packable or unknown project still needs a bump.
 #
 # .gitignore and .filesize-baseline are governance in the same sense: they decide what is TRACKED and
 # how large a file may be, never what a package contains. .gitignore joined the list the third time
@@ -152,6 +174,10 @@ tag_version_bearing() {
     ':(exclude).filesize-baseline' ':(exclude).gitignore' 2>/dev/null | (
       while IFS= read -r _vb_path; do
         tag_nonpackable_test "$_vb_to" "$_vb_path" || exit 0
+        _vb_dir=${_vb_path%%/*}
+        if git cat-file -e "$_vb_from:$_vb_dir/$_vb_dir.csproj" 2>/dev/null; then
+          tag_nonpackable_test "$_vb_from" "$_vb_path" || exit 0
+        fi
       done
       exit 1
     )

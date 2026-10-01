@@ -18,8 +18,8 @@ namespace KhaozEngine.Tests.Windowing
 
         static PointerGesture New(float thresholdPixels = Threshold) => new(MouseButton.Right, thresholdPixels);
 
-        static InputState Frame(IReadOnlySet<MouseButton> down, Vector2 cursor, Vector2 delta) =>
-            new(NoKeys, NoKeys, NoKeys, down, NoButtons, cursor, delta, 0, 960, 540);
+        static InputState Frame(IReadOnlySet<MouseButton> down, Vector2 cursor, Vector2 delta, bool windowFocused = true) =>
+            new(NoKeys, NoKeys, NoKeys, down, NoButtons, cursor, delta, 0, 960, 540, windowFocused: windowFocused);
 
         // One frame: button state, this frame's delta, and where the cursor ended up. The cursor is advanced by the
         // delta so the press origin and the travel cannot silently disagree, which is the bug the TapPosition case
@@ -204,6 +204,31 @@ namespace KhaozEngine.Tests.Windowing
         }
 
         [Fact]
+        public void LosingFocusIsBlocked()
+        {
+            PointerGesture gesture = New();
+            var held = new HashSet<MouseButton> { gesture.Button };
+            var cursor = new Vector2(60f, 60f);
+
+            // A pending press, then the window loses focus and the accumulator releases the button. Not a tap.
+            gesture.Advance(Frame(held, cursor, Vector2.Zero), uiBlocked: false);
+            Assert.Equal(PointerGesturePhase.Pending, gesture.Phase);
+            gesture.Advance(Frame(NoButtons, cursor, Vector2.Zero, windowFocused: false), uiBlocked: false);
+            Assert.False(gesture.TapThisFrame);
+            Assert.Equal(PointerGesturePhase.Idle, gesture.Phase);
+
+            // A press that begins unfocused stays inert after refocus, even when it travels past the threshold.
+            gesture.Advance(Frame(held, cursor, Vector2.Zero, windowFocused: false), uiBlocked: false);
+            Assert.Equal(PointerGesturePhase.Idle, gesture.Phase);
+            gesture.Advance(Frame(held, cursor, new Vector2(20f, 0f)), uiBlocked: false);
+            Assert.Equal(PointerGesturePhase.Idle, gesture.Phase);
+            Assert.Equal(Vector2.Zero, gesture.DragDelta);
+            gesture.Advance(Frame(NoButtons, cursor, Vector2.Zero), uiBlocked: false);
+            Assert.False(gesture.TapThisFrame);
+            Assert.Equal(PointerGesturePhase.Idle, gesture.Phase);
+        }
+
+        [Fact]
         public void TheGestureWatchesOnlyItsOwnButton()
         {
             var gesture = new PointerGesture(MouseButton.Middle);
@@ -226,6 +251,13 @@ namespace KhaozEngine.Tests.Windowing
             var withOwn = new HashSet<MouseButton> { MouseButton.Left, MouseButton.Middle, MouseButton.Right };
             gesture.Advance(Frame(withOwn, cursor, Vector2.Zero), uiBlocked: false);
             Assert.Equal(PointerGesturePhase.Pending, gesture.Phase);
+
+            // Another button released while its own press is pending is not its release.
+            var middleAndRight = new HashSet<MouseButton> { MouseButton.Middle, MouseButton.Right };
+            gesture.Advance(Frame(middleAndRight, cursor, Vector2.Zero), uiBlocked: false);
+            Assert.False(gesture.TapThisFrame);
+            Assert.Equal(PointerGesturePhase.Pending, gesture.Phase);
+
             gesture.Advance(Frame(others, cursor, Vector2.Zero), uiBlocked: false);
             Assert.True(gesture.TapThisFrame);
             Assert.Equal(cursor, gesture.TapPosition);

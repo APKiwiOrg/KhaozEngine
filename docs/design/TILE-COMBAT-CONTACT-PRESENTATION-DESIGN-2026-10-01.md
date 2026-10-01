@@ -1,6 +1,6 @@
 # Tile combat contact presentation
 
-Status: written design for owner review. No implementation or implementation plan is approved.
+Status: owner-approved design and implementation plan. Subagent-driven execution is authorized.
 
 Consumer: [Grimhollow #371](https://github.com/APKiwiOrg/Grimhollow/issues/371). The owner approved developing
 a smooth presentation-adjustment design. The earlier [spacing evidence](COMBAT-CONTACT-SPACING-2026-10-01.md)
@@ -349,5 +349,5 @@ held-item contact. Distance checks do not approve appearance.
 Approve or revise the separate smooth body adjustment, stable legal layout, stationary/local/centroid anchor
 priority, constants and continuous fallback when contact is causally unavailable. Confirm receipt-frame
 feedback despite a measured late or incompatible contact miss. Local body/camera separation, collision holds
-and locomotion look need explicit review. No implementation plan, engine code or game adoption starts until
-this written artifact is approved.
+and locomotion look need explicit review. This written artifact and its implementation plan are approved. Game adoption still requires the
+released capability and owner look acceptance.

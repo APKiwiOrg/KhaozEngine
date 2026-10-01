@@ -31,8 +31,12 @@ public sealed class TileWorldColliders
 
     /// <summary>
     /// SHA-256 over every collider in order: its kind byte, its shape as <see cref="PropCollisionFormat.Write"/>
-    /// writes it, and its pose as seven little-endian floats (position x, y, z, then orientation x, y, z, w). Equal
-    /// colliders give an equal hash on every head and every reload. Each read returns a fresh copy.
+    /// writes it, and its pose as seven little-endian floats (position x, y, z, then orientation x, y, z, w). The same
+    /// world and catalogs hash equal on every rebuild and reload, whatever order the regions were created or loaded
+    /// in. Across machines the hash is exact for every box on a quarter turn. A walk surface on a yaw that is not a
+    /// quarter turn takes its centre and orientation from <see cref="MathF"/> trigonometry, which .NET does not
+    /// promise is bit-identical across x64 and ARM64, so such a world can hash differently on another architecture.
+    /// Each read returns a fresh copy.
     /// </summary>
     public byte[] Hash => (byte[])_hash.Clone();
 
@@ -53,16 +57,22 @@ public sealed class TileWorldColliders
     /// surface's top, over its rectangle as <see cref="TileWalkSurfaces"/> resolves it. A rectangle that resolves
     /// empty gets none.</item>
     /// </list>
-    /// Wall and object boxes rise from the lowest ground corner under them to the height the model stands at,
-    /// <see cref="TileObjectPlacement.AnchorPosition"/>, plus the archetype's
-    /// <see cref="TileObjectArchetype.CollisionHeight"/>. Every box is axis-aligned except a walk surface yawed off a
-    /// quarter turn.
+    /// A wall or object box's top is the height the model stands at, <see cref="TileObjectPlacement.AnchorPosition"/>,
+    /// plus the archetype's <see cref="TileObjectArchetype.CollisionHeight"/>. Its bottom is the lower of the lowest
+    /// ground corner under it and that standing height, so it never inverts on a steep slope. Every box is
+    /// axis-aligned except a walk surface yawed off a quarter turn.
+    /// <para>A <see cref="TileSettings.NoDraw"/> tile gets no ground triangle and no blocked box, so it is a hole in the
+    /// physics floor. NoDraw marks a plane whose floor is an object, the upper-floor case this round leaves
+    /// out.</para>
     /// </summary>
     /// <param name="document">The world. Only its loaded regions are read.</param>
     /// <param name="catalogs">The archetypes its objects are placed from.</param>
     /// <param name="options">Thicknesses and the blocked height, defaults when null.</param>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> or <paramref name="catalogs"/> is
     /// null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><see cref="TileColliderOptions.WallThickness"/>,
+    /// <see cref="TileColliderOptions.WalkSurfaceThickness"/> or a set <see cref="TileColliderOptions.BlockedHeight"/>
+    /// is not a finite number above 0. The message names the option.</exception>
     /// <exception cref="TileWorldException">A placed <c>Solid</c>, <c>Diagonal</c>, <c>Wall</c> or <c>WallCorner</c>
     /// object's archetype has no <see cref="TileObjectArchetype.CollisionHeight"/>. The message names the
     /// archetype.</exception>
@@ -72,6 +82,10 @@ public sealed class TileWorldColliders
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(catalogs);
         options ??= new TileColliderOptions();
+        RequirePositive(options.WallThickness, nameof(TileColliderOptions.WallThickness));
+        RequirePositive(options.WalkSurfaceThickness, nameof(TileColliderOptions.WalkSurfaceThickness));
+        if (options.BlockedHeight is { } blockedHeight)
+            RequirePositive(blockedHeight, nameof(TileColliderOptions.BlockedHeight));
 
         RegionCoord[] regions = document.Regions.Keys.OrderBy(c => c.Rz).ThenBy(c => c.Rx).ToArray();
         TileObject[] placed = TileColliderBuilder.PlacedObjects(document, regions);
@@ -84,6 +98,13 @@ public sealed class TileWorldColliders
 
         TileCollider[] ordered = colliders.ToArray();
         return new TileWorldColliders(ordered, HashOf(ordered));
+    }
+
+    static void RequirePositive(float value, string option)
+    {
+        if (!(float.IsFinite(value) && value > 0f))
+            throw new ArgumentOutOfRangeException("options", value,
+                $"{nameof(TileColliderOptions)}.{option} must be a finite number above 0.");
     }
 
     static byte[] HashOf(TileCollider[] colliders)

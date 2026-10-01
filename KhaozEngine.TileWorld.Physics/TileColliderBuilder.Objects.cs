@@ -59,12 +59,13 @@ static partial class TileColliderBuilder
                 default:
                     continue;
             }
-            float bottom = LowestCorner(document, tiles.X, tiles.Z, tiles.X1, tiles.Z1);
+            (float bottom, float top) = Span(document, archetype, o,
+                LowestCorner(document, tiles.X, tiles.Z, tiles.X1, tiles.Z1));
             into.Add(Box(TileColliderKind.Object,
                 TileWorldSpace.WorldX(tiles.X + tiles.Width * 0.5f, tileSize),
                 TileWorldSpace.WorldZ(tiles.Z + tiles.Height * 0.5f, tileSize),
                 tiles.Width * tileSize * 0.5f, tiles.Height * tileSize * 0.5f,
-                bottom, Top(document, archetype, o)));
+                bottom, top));
         }
     }
 
@@ -111,43 +112,41 @@ static partial class TileColliderBuilder
         }
     }
 
-    // One box on an edge of the object's anchor tile, centred on the edge and as long as it.
+    // One box on an edge of the object's anchor tile, centred on the edge and as long as it. The corners named are
+    // the two ends of the edge, the ground under the box.
     static void AddEdge(TileWorldDocument document, TileObjectArchetype archetype, TileObject o, TileDirection edge,
                         float thickness, List<TileCollider> into)
     {
         float tileSize = document.TileSize;
         int x = o.X, z = o.Z;
         float half = thickness * 0.5f, tileHalf = tileSize * 0.5f;
-        float top = Top(document, archetype, o);
-        TileCollider box = edge switch
+        (float centreX, float centreZ, float halfX, float halfZ, int x0, int z0, int x1, int z1) = edge switch
         {
-            TileDirection.W => Box(TileColliderKind.Wall,
-                TileWorldSpace.WorldX(x, tileSize), TileWorldSpace.WorldZ(z + 0.5f, tileSize), half, tileHalf,
-                LowestCorner(document, x, z, x, z + 1), top),
-            TileDirection.E => Box(TileColliderKind.Wall,
-                TileWorldSpace.WorldX(x + 1, tileSize), TileWorldSpace.WorldZ(z + 0.5f, tileSize), half, tileHalf,
-                LowestCorner(document, x + 1, z, x + 1, z + 1), top),
-            TileDirection.N => Box(TileColliderKind.Wall,
-                TileWorldSpace.WorldX(x + 0.5f, tileSize), TileWorldSpace.WorldZ(z + 1, tileSize), tileHalf, half,
-                LowestCorner(document, x, z + 1, x + 1, z + 1), top),
-            TileDirection.S => Box(TileColliderKind.Wall,
-                TileWorldSpace.WorldX(x + 0.5f, tileSize), TileWorldSpace.WorldZ(z, tileSize), tileHalf, half,
-                LowestCorner(document, x, z, x + 1, z), top),
+            TileDirection.W => (x + 0f, z + 0.5f, half, tileHalf, x, z, x, z + 1),
+            TileDirection.E => (x + 1f, z + 0.5f, half, tileHalf, x + 1, z, x + 1, z + 1),
+            TileDirection.N => (x + 0.5f, z + 1f, tileHalf, half, x, z + 1, x + 1, z + 1),
+            TileDirection.S => (x + 0.5f, z + 0f, tileHalf, half, x, z, x + 1, z),
             _ => throw new ArgumentOutOfRangeException(nameof(edge)),
         };
-        into.Add(box);
+        (float bottom, float top) = Span(document, archetype, o, LowestCorner(document, x0, z0, x1, z1));
+        into.Add(Box(TileColliderKind.Wall, TileWorldSpace.WorldX(centreX, tileSize),
+                     TileWorldSpace.WorldZ(centreZ, tileSize), halfX, halfZ, bottom, top));
     }
 
     // The archetype of an object that can carry a wall or object box: defined and not a roof.
     static TileObjectArchetype? Collidable(TileWorldCatalogs catalogs, TileObject o) =>
         catalogs.Archetype(o.ArchetypeId) is { IsRoof: false } archetype ? archetype : null;
 
-    // The top of a wall or object box: the height the model stands at plus its collision height.
-    static float Top(TileWorldDocument document, TileObjectArchetype archetype, TileObject o)
+    // The vertical span of a wall or object box. The top is the height the model stands at plus its collision
+    // height. The bottom is the lower of the ground under the box and that standing height, so the box is never
+    // shorter than the collision height and never inverts on a slope that falls away from the edge it sits on.
+    static (float Bottom, float Top) Span(TileWorldDocument document, TileObjectArchetype archetype, TileObject o,
+                                         float lowestCorner)
     {
         if (archetype.CollisionHeight is not { } height)
             throw new TileWorldException(string.Create(CultureInfo.InvariantCulture,
                 $"archetype '{archetype.Id}' is placed as a {archetype.CollisionKind} collider at ({o.X}, {o.Z}) but has no collisionHeight. Set one in its catalog."));
-        return TileObjectPlacement.AnchorPosition(document, archetype, o).Y + height;
+        float standing = TileObjectPlacement.AnchorPosition(document, archetype, o).Y;
+        return (MathF.Min(lowestCorner, standing), standing + height);
     }
 }

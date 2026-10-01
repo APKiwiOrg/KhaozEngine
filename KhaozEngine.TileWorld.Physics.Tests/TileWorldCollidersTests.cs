@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -143,13 +144,77 @@ public class TileWorldCollidersTests
 
         TileCollider[] walls = Of(TileWorldColliders.Build(doc, Catalogs()), TileColliderKind.Wall);
 
-        Assert.Equal(3, walls.Length);
-        // Tile x orders the wall at (5, 5) ahead of the corner at (8, 5), placed first. Every top is the anchor
-        // height plus 2.5 m, every bottom the lowest corner on the edge.
+        // Four walls with one edge each on row 5, ahead of four corners with two each on row 10, though the corners
+        // were placed first. Every top is the anchor height plus 2.5 m. Every bottom is the lowest corner on the edge
+        // or the anchor height, whichever is lower.
+        Assert.Equal(4 + 4 * 2, walls.Length);
         AssertBox(walls[0], 5f, -5.5f, 0.05f, 0.5f, bottom: 0.5f, top: 0.55f + 2.5f);
-        // Rotation 1 is the north and east edges, in that order.
-        AssertBox(walls[1], 8.5f, -6f, 0.5f, 0.05f, bottom: 0.8f, top: 0.85f + 2.5f);
-        AssertBox(walls[2], 9f, -5.5f, 0.05f, 0.5f, bottom: 0.9f, top: 0.85f + 2.5f);
+        // The corner at (8, 10) turned once is the north and east edges, in that order. The east edge's corners sit
+        // above the anchor, so the anchor is its bottom.
+        AssertBox(walls[6], 8.5f, -11f, 0.5f, 0.05f, bottom: 0.8f, top: 0.85f + 2.5f);
+        AssertBox(walls[7], 9f, -10.5f, 0.05f, 0.5f, bottom: 0.85f, top: 0.85f + 2.5f);
+    }
+
+    [Fact]
+    public void EveryWallEdgeIsTheEdgeTheBakerMarks()
+    {
+        TileWorldDocument doc = WallsWorld();
+        TileWorldCatalogs catalogs = Catalogs();
+
+        TileCollider[] walls = Of(TileWorldColliders.Build(doc, catalogs), TileColliderKind.Wall);
+        TileCollisionMap map = TileCollisionBaker.Bake(doc, catalogs);
+
+        // An edge as one key from either side: a line of constant tile x or z, and the row or column it spans.
+        var baked = new SortedSet<(bool AlongZ, int Line, int Span)>();
+        for (int z = 0; z < 20; z++)
+            for (int x = 0; x < 20; x++)
+            {
+                TileCollisionFlags f = map.Get(x, z, 0);
+                if ((f & TileCollisionFlags.WallW) != 0) baked.Add((true, x, z));
+                if ((f & TileCollisionFlags.WallE) != 0) baked.Add((true, x + 1, z));
+                if ((f & TileCollisionFlags.WallS) != 0) baked.Add((false, z, x));
+                if ((f & TileCollisionFlags.WallN) != 0) baked.Add((false, z + 1, x));
+            }
+        var built = new List<(bool AlongZ, int Line, int Span)>();
+        foreach (TileCollider wall in walls)
+        {
+            Vector3 half = Assert.IsType<BoxShape>(wall.Shape).HalfExtents;
+            float tileX = TileWorldSpace.TileX(wall.Pose.Position.X, 1f), tileZ = TileWorldSpace.TileZ(wall.Pose.Position.Z, 1f);
+            bool alongZ = half.X < half.Z;
+            Assert.Equal(0.05f, alongZ ? half.X : half.Z, Tolerance);
+            Assert.Equal(0.5f, alongZ ? half.Z : half.X, Tolerance);
+            built.Add(alongZ
+                ? (true, (int)MathF.Round(tileX), (int)MathF.Floor(tileZ))
+                : (false, (int)MathF.Round(tileZ), (int)MathF.Floor(tileX)));
+        }
+
+        Assert.Equal(12, baked.Count);
+        Assert.Equal(baked, built.OrderBy(e => e));
+    }
+
+    [Fact]
+    public void NoObjectBoxInvertsOnSteepGround()
+    {
+        TileWorldDocument doc = SteepWorld();
+        TileWorldCatalogs catalogs = Catalogs();
+
+        TileWorldColliders colliders = TileWorldColliders.Build(doc, catalogs);
+
+        // The wall's edge is at -30 m and its anchor, the tile centre, at -33 m. The 3x1 diagonal's anchor tile reaches
+        // down to -36 m and its anchor, the footprint centre, stands at -39 m. Each box runs from the anchor to the
+        // anchor plus its collision height.
+        TileCollider wall = Assert.Single(Of(colliders, TileColliderKind.Wall));
+        TileCollider diagonal = Assert.Single(Of(colliders, TileColliderKind.Object));
+        AssertBox(wall, 5f, -5.5f, 0.05f, 0.5f, bottom: -33f, top: -33f + 2.5f);
+        AssertBox(diagonal, 5.5f, -10.5f, 0.5f, 0.5f, bottom: -39f, top: -39f + 2f);
+        foreach (TileObject o in doc.AllObjects())
+        {
+            TileObjectArchetype archetype = catalogs.Archetype(o.ArchetypeId)!;
+            TileCollider box = o.ArchetypeId == "wall" ? wall : diagonal;
+            Assert.True(Assert.IsType<BoxShape>(box.Shape).HalfExtents.Y > 0f, $"{o.ArchetypeId} is inverted");
+            Assert.Equal(TileObjectPlacement.AnchorPosition(doc, archetype, o).Y + archetype.CollisionHeight!.Value,
+                         box.Pose.Position.Y + ((BoxShape)box.Shape).HalfExtents.Y, Tolerance);
+        }
     }
 
     [Fact]
@@ -233,6 +298,42 @@ public class TileWorldCollidersTests
             Assert.True(MathF.Abs(inBox.Z) <= box.HalfExtents.Z + Tolerance, $"{local} is outside the box on z");
             Assert.Equal(expected, deck.Pose.Position.Y + box.HalfExtents.Y, Tolerance);
         }
+
+        // And the box ends where the rect does: a point just past each edge is off the surface and off the box.
+        foreach (Vector2 local in new[] { new Vector2(1.01f, 0f), new Vector2(-2.01f, 0f), new Vector2(-0.5f, 0.51f), new Vector2(-0.5f, -0.51f) })
+        {
+            Vector3 world = Vector3.Transform(new Vector3(local.X, 0f, local.Y), localToWorld);
+            Assert.False(TileWalkSurfaces.TryHeightAt(doc, catalogs, world.X, world.Z, 0, out _));
+
+            Vector3 inBox = Vector3.Transform(
+                new Vector3(world.X, deck.Pose.Position.Y, world.Z) - deck.Pose.Position,
+                Quaternion.Conjugate(deck.Pose.Orientation));
+            Assert.True(MathF.Abs(inBox.X) > box.HalfExtents.X || MathF.Abs(inBox.Z) > box.HalfExtents.Z,
+                        $"{local} is inside the box");
+        }
+    }
+
+    [Theory]
+    [InlineData(nameof(TileColliderOptions.WallThickness), 0f)]
+    [InlineData(nameof(TileColliderOptions.WallThickness), float.NaN)]
+    [InlineData(nameof(TileColliderOptions.WalkSurfaceThickness), -0.1f)]
+    [InlineData(nameof(TileColliderOptions.WalkSurfaceThickness), float.PositiveInfinity)]
+    [InlineData(nameof(TileColliderOptions.BlockedHeight), 0f)]
+    [InlineData(nameof(TileColliderOptions.BlockedHeight), float.NaN)]
+    public void AnOptionThatIsNotAFinitePositiveNumberIsRefusedByName(string option, float value)
+    {
+        TileColliderOptions options = option switch
+        {
+            nameof(TileColliderOptions.WallThickness) => new TileColliderOptions { WallThickness = value },
+            nameof(TileColliderOptions.WalkSurfaceThickness) => new TileColliderOptions { WalkSurfaceThickness = value },
+            _ => new TileColliderOptions { BlockedHeight = value },
+        };
+
+        ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(
+            () => TileWorldColliders.Build(FlatWorld(), Catalogs(), options));
+
+        Assert.Equal("options", error.ParamName);
+        Assert.Contains(option, error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -265,6 +366,22 @@ public class TileWorldCollidersTests
         {
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
+    }
+
+    [Fact]
+    public void TheHashIgnoresTheOrderRegionsWereCreatedIn()
+    {
+        RegionCoord[] regions = { new(0, 0), new(1, 0), new(0, -1), new(-1, 1) };
+        TileWorldDocument forward = MultiRegionWorld(regions);
+        TileWorldDocument backward = MultiRegionWorld(regions.Reverse().ToArray());
+        Assert.NotEqual(forward.Regions.Keys, backward.Regions.Keys);
+
+        TileWorldColliders a = TileWorldColliders.Build(forward, Catalogs());
+        TileWorldColliders b = TileWorldColliders.Build(backward, Catalogs());
+
+        Assert.Equal(4, Of(a, TileColliderKind.Ground).Length);
+        Assert.Equal(a.Colliders.Count, b.Colliders.Count);
+        Assert.Equal(a.Hash, b.Hash);
     }
 
     [Fact]

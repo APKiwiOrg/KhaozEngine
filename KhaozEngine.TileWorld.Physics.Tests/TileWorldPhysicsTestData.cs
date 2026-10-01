@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.TileWorld;
 
 namespace KhaozEngine.Tests.TileWorld.Physics;
@@ -15,6 +16,8 @@ public static class TileWorldPhysicsTestData
     /// <item><c>wall_corner</c>, a 1x1 <c>WallCorner</c> 2.5 m tall.</item>
     /// <item><c>bench</c>, a 1x2 <c>Solid</c> 0.8 m tall, so a quarter turn moves its footprint.</item>
     /// <item><c>diag_wall</c>, a 2x1 <c>Diagonal</c> 2 m tall, wider than the anchor tile it blocks.</item>
+    /// <item><c>diag_long</c>, a 3x1 <c>Diagonal</c> 2 m tall, whose anchor stands a full tile past its anchor
+    /// tile.</item>
     /// <item><c>roof</c>, a <c>Solid</c> roof 0.5 m tall.</item>
     /// <item><c>deck</c>, a 3x1 with no collision and a walk surface 1.2 m up from local x -2 to 1, off centre so a
     /// turn moves it.</item>
@@ -31,6 +34,8 @@ public static class TileWorldPhysicsTestData
             { "id": "bench", "name": "bench", "meshRef": "test/bench.glb", "sizeX": 1, "sizeZ": 2,
               "collisionKind": "Solid", "collisionHeight": 0.8 },
             { "id": "diag_wall", "name": "diag_wall", "meshRef": "test/diag_wall.glb", "sizeX": 2, "sizeZ": 1,
+              "collisionKind": "Diagonal", "collisionHeight": 2 },
+            { "id": "diag_long", "name": "diag_long", "meshRef": "test/diag_long.glb", "sizeX": 3, "sizeZ": 1,
               "collisionKind": "Diagonal", "collisionHeight": 2 },
             { "id": "roof", "name": "roof", "meshRef": "test/roof.glb", "isRoof": true,
               "collisionKind": "Solid", "collisionHeight": 0.5 },
@@ -109,13 +114,41 @@ public static class TileWorldPhysicsTestData
         return doc;
     }
 
-    /// <summary><see cref="SlopedWorld"/> with a <c>wall</c> at (5, 5) facing west and a <c>wall_corner</c> at
-    /// (8, 5) facing north and east.</summary>
+    /// <summary><see cref="SlopedWorld"/> with a <c>wall</c> at every rotation along row 5 and a <c>wall_corner</c>
+    /// at every rotation along row 10, at x 5, 8, 11 and 14 for rotations 0 to 3. Three tiles apart, so no two share
+    /// an edge. The corners are placed first.</summary>
     public static TileWorldDocument WallsWorld()
     {
         TileWorldDocument doc = SlopedWorld();
-        doc.AddObject("wall_corner", 8, 5, 0, 1);
+        for (int rotation = 0; rotation < 4; rotation++) doc.AddObject("wall_corner", 5 + 3 * rotation, 10, 0, rotation);
+        for (int rotation = 0; rotation < 4; rotation++) doc.AddObject("wall", 5 + 3 * rotation, 5, 0, rotation);
+        return doc;
+    }
+
+    /// <summary><see cref="FlatWorld"/> falling 6 m a tile eastward (every corner at x times -600 cm, level past
+    /// x 40), steeper than twice any collision height here, with a west-facing <c>wall</c> at (5, 5) and a
+    /// <c>diag_long</c> at (5, 10). Both stand lower than the ground their boxes sit on.</summary>
+    public static TileWorldDocument SteepWorld()
+    {
+        TileWorldDocument doc = FlatWorld();
+        for (int z = 0; z < TileRegion.Size; z++)
+            for (int x = 0; x < TileRegion.Size; x++)
+                doc.SetCornerHeightCm(x, z, 0, (short)(-600 * Math.Min(x, 40)));
         doc.AddObject("wall", 5, 5, 0, 0);
+        doc.AddObject("diag_long", 5, 10, 0, 0);
+        return doc;
+    }
+
+    /// <summary><see cref="SlopedWorld"/> over regions (0, 0), (1, 0), (0, -1) and (-1, 1), created in the order
+    /// given, with the same content whatever the order: a wall in (0, 0), a bench in (1, 0), a deck in (0, -1) and a
+    /// blocked tile in (-1, 1), placed in that order.</summary>
+    public static TileWorldDocument MultiRegionWorld(params RegionCoord[] order)
+    {
+        TileWorldDocument doc = SlopedWorld(order);
+        doc.AddObject("wall", 5, 5, 0, 0);
+        doc.AddObject("bench", 70, 3, 0, 1);
+        doc.AddObject("deck", 10, -20, 0, 0);
+        doc.SetSettings(-10, 70, 0, TileSettings.Blocked);
         return doc;
     }
 

@@ -269,9 +269,10 @@ Windowing + input foundation for the custom MonoGame-free stack.
   GLFW supports it. See docs/USING-KHAOZENGINE.md.
 - `PointerGesture(button, thresholdPixels = 4)` (since 20.17.0) - splits one mouse button into a tap and a drag.
   `Advance(input, uiBlocked)` once a frame, then read `Phase` (`Idle`, `Pending`, `Dragging`), `DragDelta`,
-  `TapThisFrame` and `TapPosition`. Travel is path length, crossing replays the pending travel, and a press begun
-  under UI or while unfocused is inert. A threshold of 0 or less drags at once and never taps. `Advance` allocates
-  nothing. Lifted from Ruinborne's `RightMouseGesture`. See docs/USING-KHAOZENGINE.md.
+  `TapThisFrame` and `TapPosition`. Travel is path length, crossing replays the pending travel, and above a zero
+  threshold a press begun under UI or while unfocused is inert. A threshold of 0 or less drags at once, never taps,
+  and drags a held button again on the first unblocked frame. `Advance` allocates nothing. Lifted from Ruinborne's
+  `RightMouseGesture`. See docs/USING-KHAOZENGINE.md.
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
   that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`
   / `AdaptiveViewport` (letterbox/fill/stretch + responsive). All expose `WindowBounds` (10.38.0) - the whole

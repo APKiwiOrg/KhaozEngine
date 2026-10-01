@@ -30,9 +30,11 @@ namespace KhaozEngine.Windowing
     /// drives would start from behind the cursor for the rest of the press. Replaying costs one frame of catch-up
     /// worth at most the threshold and keeps the property that the same mouse path ends in the same place
     /// whatever the threshold is.</para>
-    /// <para>A press that begins while blocked (the UI owns the pointer, or the window is unfocused) is inert for
-    /// its whole life. It never drags, and its release is never a tap. A block that arrives mid-press stops the
-    /// drag and makes the rest of that press inert too.</para>
+    /// <para>Above a zero threshold, a press that begins while blocked (the UI owns the pointer, or the window is
+    /// unfocused) is inert for its whole life. It never drags, and its release is never a tap. A block that arrives
+    /// mid-press stops the drag and makes the rest of that press inert too. At a zero or negative threshold there is
+    /// no inert press: a block stops the drag, and a button still held drags again on the first unblocked
+    /// frame.</para>
     /// <para><see cref="Advance"/> allocates nothing.</para>
     /// </remarks>
     /// <param name="button">The button this gesture watches. Every other button is ignored.</param>

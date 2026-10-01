@@ -58,8 +58,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   error on macOS ([consumer contract](docs/USING-KHAOZENGINE.md#pointer-capture-setpointercaptured)).
 - New `PointerGesture(button, thresholdPixels = 4)` splits one mouse button into a tap and a drag, lifted from
   Ruinborne's `RightMouseGesture`. Travel is path length, crossing the threshold replays the pending travel, a
-  press that begins under UI or while unfocused never taps or drags, and a focus loss ends a press without a tap. A threshold of
-  0 or less drags at once and never taps. `Advance` allocates nothing
+  press that begins under UI or while unfocused never taps or drags, and a focus loss ends a press without a tap.
+  A threshold of 0 or less drags at once and never taps, and a button still held drags again on the first
+  unblocked frame. `Advance` allocates nothing
   ([consumer contract](docs/USING-KHAOZENGINE.md#tap-or-drag-pointergesture)).
 - `FollowCameraController` takes optional `OrbitGesture` and `LookGesture` gestures and a `UiBlocked` field, and
   reports `TurnBodyActive` and `WantsPointerCapture`. With either gesture set, `OrbitButton` is ignored and the

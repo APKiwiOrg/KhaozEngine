@@ -42,7 +42,9 @@ namespace KhaozEngine.Render3D
         /// <see cref="OrbitGesture"/>. Null by default.</summary>
         public PointerGesture? LookGesture;
         /// <summary>Whether the UI owns the pointer this frame. The game sets it before each <see cref="Update"/>.
-        /// A press that begins while blocked never orbits and never taps. Read only while a gesture is set.</summary>
+        /// A press that begins while blocked never taps, and never orbits while the gesture's threshold is above zero.
+        /// At a zero or negative threshold a held button orbits again on the first unblocked frame. Read only while a
+        /// gesture is set.</summary>
         public bool UiBlocked;
 
         /// <summary>True while <see cref="LookGesture"/> is dragging: the game turns the body to face the camera.

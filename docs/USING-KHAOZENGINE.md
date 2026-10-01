@@ -1054,7 +1054,7 @@ pure and headless. It reads its own button, `MousePosition`, `MouseDelta` and `W
 owns no camera. Call `Advance(input, uiBlocked)` once a frame, then read:
 
 - `Phase`: `Idle`, `Pending` (pressed and still undecided) or `Dragging` (past the threshold, and a drag until the
-  button comes up).
+  button comes up or a block arrives).
 - `DragDelta`: zero unless dragging, the frame's `MouseDelta` while dragging, and the whole pending travel on the
   frame the press crosses the threshold.
 - `TapThisFrame` and `TapPosition`: a release while still pending is a tap, at the position the press began.
@@ -1064,10 +1064,11 @@ The rules:
 - Travel is path length over the whole press, so slow movement still becomes a drag, and a wiggle that returns to
   its start is a drag rather than a tap.
 - Crossing the threshold replays the pending travel in one `DragDelta`, so a drag has no dead zone at its start.
-- A press that begins while `uiBlocked` is true or while the window is unfocused is inert for its whole life. A
-  focus loss or a block that arrives mid-press ends any drag and makes the rest of the press inert, so that press
-  never ends in a tap.
-- A threshold of 0 or less drags from the first frame of a press and never taps.
+- Above a zero threshold, a press that begins while `uiBlocked` is true or while the window is unfocused is inert
+  for its whole life. A focus loss or a block that arrives mid-press ends any drag and makes the rest of the press
+  inert, so that press never ends in a tap.
+- A threshold of 0 or less drags from the first frame of a press and never taps. It has no inert press: a block
+  stops the drag, and a button still held drags again on the first unblocked frame.
 - `TapThisFrame` describes only the most recent `Advance`. Read it after advancing with the snapshot you act on.
 - `Advance` allocates nothing.
 - While the pointer is captured, `MouseDelta` is in window points, so the threshold is too.
@@ -6586,8 +6587,9 @@ its `Target` at a clamped `Pitch`/`Distance` and always looks at that pivot (sam
 `Forward`/`ScreenToGround`, and it implements `IIsoCamera3D`). Drive it from the input snapshot with
 `FollowCameraController`: hold the orbit button (right mouse by default, matching the fly camera and leaving
 left-drag free for gameplay) and drag to swing yaw/pitch, and scroll to zoom. Set
-`FollowCameraController.OrbitButton` to change the button, or opt in to the tap-or-drag gestures below. To render through it, set
-`Scene3D.CameraOverride` (null = the built-in iso `Camera`) and feed the override its aspect ratio each frame:
+`FollowCameraController.OrbitButton` to change the button, or opt in to the tap-or-drag gestures below. To render
+through it, set `Scene3D.CameraOverride` (null = the built-in iso `Camera`) and feed the override its aspect ratio
+each frame:
 
 ```csharp
 var camera = new FollowCamera3D { Target = character.Position, Distance = 9f };
@@ -6659,15 +6661,15 @@ setting), and the camera ground-clamp (`FollowCamera3D.GroundHeight` / `GroundCl
 (feel-tuned later). See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the full wiring (Space to jump). It now drives an animated
 character off this controller's movement state (see "Animated characters" above) rather than a static capsule.
 
-**Tap-or-drag gestures (since 20.17.0, off by default).** Set `FollowCameraController.OrbitGesture` and
-`LookGesture` to a `PointerGesture` each (see "Tap or drag" in the input chapter) and every button splits into a tap
-and a drag. With either set, `OrbitButton` is ignored. `UiBlocked` is a field the game sets before each `Update`,
-and a press that begins while it is true never orbits and never taps. `Update` advances each set gesture once. The
-camera orbits only while a gesture drags, and by one delta a frame, so each mouse movement turns it once however
-many buttons are held. A gesture that crosses its threshold with no orbit since its press began applies its
-`DragDelta`, the replay of its pending travel, with `LookGesture` first when both cross together. Otherwise the
-frame's `MouseDelta` applies. Speed, invert and sign are as for the orbit button, and scroll zoom, target damping
-and boom recovery run unchanged. With neither gesture set, `Update` runs the orbit button path exactly as before.
+**Tap-or-drag gestures (since 20.17.0, off by default).** Set `FollowCameraController.OrbitGesture` and `LookGesture`
+to a `PointerGesture` each (see "Tap or drag" in the input chapter) and every button splits into a tap and a drag.
+With either set, `OrbitButton` is ignored. `UiBlocked` is a field the game sets before each `Update`, and a press
+that begins while it is true never taps, and above a zero threshold never orbits either. `Update` advances each set
+gesture once. The camera orbits only while a gesture drags, and by one delta a frame, so each mouse movement turns it
+once however many buttons are held. A gesture that crosses its threshold with no orbit since its press began applies
+its `DragDelta`, the replay of its pending travel, with `LookGesture` first when both cross together. Otherwise the
+frame's `MouseDelta` applies. Speed, invert and sign are as for the orbit button, and scroll zoom, target damping and
+boom recovery run unchanged. With neither gesture set, `Update` runs the orbit button path exactly as before.
 
 The controller reports three things:
 

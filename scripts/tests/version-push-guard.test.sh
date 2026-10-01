@@ -74,6 +74,9 @@ new_repo() {
     conditional) _test_property='<IsPackable Condition="false">false</IsPackable>' ;;
     conditional-group) _test_property='</PropertyGroup><PropertyGroup Condition="false"><IsPackable>false</IsPackable>' ;;
     conflicting) _test_property='<IsPackable>false</IsPackable><IsPackable>true</IsPackable>' ;;
+    mixed-conflict) _test_property='<IsPackable>false</IsPackable><ispackable>true</ispackable>' ;;
+    casefold) _test_property='<ispackable>FALSE</ispackable>' ;;
+    casefold-root) _test_property='</PropertyGroup><ispackable>FALSE</ispackable><PropertyGroup>' ;;
     choose) _test_property='</PropertyGroup><Choose><When Condition="&apos;$(Configuration)&apos; == &apos;Debug&apos;"><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></When></Choose><PropertyGroup>' ;;
     cdata) _test_property='<Description><![CDATA[<IsPackable>false</IsPackable>]]></Description>' ;;
     target) _test_property='</PropertyGroup><Target Name="SetPackability"><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup></Target><PropertyGroup>' ;;
@@ -155,7 +158,7 @@ done
 
 # A test-looking name alone proves nothing. Missing, conditional and commented properties do not
 # prove that the project is non-packable either.
-for test_packable in true unknown comment multiline-comment conditional conditional-group conflicting choose cdata target import root item; do
+for test_packable in true unknown comment multiline-comment conditional conditional-group conflicting mixed-conflict choose cdata target import root item casefold-root; do
   w=$(new_repo 1.0.0 "$test_packable"); cd "$w"
   git tag -a v1.0.0 -m "release(1.0.0): first" >/dev/null 2>&1
   git push --quiet origin v1.0.0 2>/dev/null
@@ -164,6 +167,15 @@ for test_packable in true unknown comment multiline-comment conditional conditio
   git commit --quiet -m "test: add a regression"
   check "test-looking project with $test_packable packability is refused" refused "$(try_push main)"
 done
+
+# MSBuild property names and boolean values ignore case. XML structural names still retain it.
+w=$(new_repo 1.0.0 casefold); cd "$w"
+git tag -a v1.0.0 -m "release(1.0.0): first" >/dev/null 2>&1
+git push --quiet origin v1.0.0 2>/dev/null
+echo 'test' > KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/Example.cs
+git add KhaozEngine.TileWorld.Netcode.Tests/TileNetcode/Example.cs
+git commit --quiet -m "test: add a regression"
+check "lowercase property with uppercase false rides a release" allowed "$(try_push main)"
 
 # Turning a previously packable or unknown project into tests still changes shipped packages.
 for test_packable in true unknown; do

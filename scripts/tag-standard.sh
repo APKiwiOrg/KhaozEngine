@@ -127,13 +127,14 @@ tag_nonpackable_test() {
         } else {
           if (!depth && (name != "Project" || ++roots != 1)) exit 1
           if (depth == 1 && name != "PropertyGroup" && name != "ItemGroup") exit 1
-          if (name == "IsPackable" && (depth != 2 || parents[1] != "Project" || parents[2] != "PropertyGroup")) exit 1
+          if (tolower(name) == "ispackable" && (depth != 2 || parents[1] != "Project" || parents[2] != "PropertyGroup")) exit 1
           if (tag !~ /\/>$/) parents[++depth] = name
         }
       }
       if (depth || roots != 1) exit 1
-      if (!sub(/<IsPackable>[[:space:]]*false[[:space:]]*<\/IsPackable>/, "", xml)) exit 1
-      if (xml ~ /<IsPackable[[:space:]\/>]/) exit 1
+      properties = tolower(xml)
+      if (!sub(/<ispackable>[[:space:]]*false[[:space:]]*<\/ispackable>/, "", properties)) exit 1
+      if (properties ~ /<ispackable[[:space:]\/>]/) exit 1
       exit 0
     }'
 }

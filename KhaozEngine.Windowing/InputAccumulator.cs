@@ -144,7 +144,7 @@ namespace KhaozEngine.Windowing
         /// the delta is divided by <paramref name="framebufferScale"/> into window points. The frame this value
         /// changes, in either direction, reports a zero delta.</param>
         /// <param name="framebufferScale">Framebuffer pixels per window point on each axis. The default, and any
-        /// component that is not positive, means 1. Only the captured delta uses it. The position stays in
+        /// component that is not positive or is NaN, means 1. Only the captured delta uses it. The position stays in
         /// framebuffer pixels.</param>
         public InputState Snapshot(
             Vector2 cursorPosition, bool hasMouse, int width, int height,

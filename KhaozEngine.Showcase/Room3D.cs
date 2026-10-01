@@ -253,8 +253,8 @@ namespace KhaozEngine.Showcase
             // still carries on a stair climb (see the matching note in RoomDungeon). Off by engine default; enabled
             // in the two showcase rooms that have climbable stairs only, leaving other consumers' cameras untouched.
             _camera.EnableTargetDamping = true;
-            // WoW-style mouse: left drag orbits the camera only, right drag looks. A quick click of either is a tap
-            // this room does not use yet.
+            // WoW-style gestures: a left or a right drag orbits the camera and captures the cursor. This room never
+            // reads TurnBodyActive, so a right drag turns no body, and it uses neither button's tap yet.
             _camController = new FollowCameraController(_camera)
             {
                 OrbitGesture = new PointerGesture(MouseButton.Left),

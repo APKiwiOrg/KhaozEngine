@@ -101,8 +101,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   sent since. An entity that left and returned inside the ack window came back partial, or never came back when
   nothing on it changed. An entity that arrived and left inside the window was never removed and stayed on the
   client. Such an entity is now resent whole or removed. The wire format is unchanged.
-- Owed before release: a manual check in the Showcase 3D room (`Room3D`), run and recorded separately on macOS,
-  Windows, Linux X11 and Linux Wayland. macOS runs without raw mouse motion. On each platform:
+- Manual check in the Showcase 3D room (`Room3D`), recorded separately per platform. macOS runs without raw mouse
+  motion. Results: macOS passed every point below on 2026-10-02. Windows is left to the testers. Linux X11 and Linux
+  Wayland were not checked. Room3D keeps the default camera bounds, so it cannot look up
+  (https://github.com/APKiwiOrg/KhaozEngine/issues/1230). On each platform:
   - A left drag orbits with the cursor hidden and held.
   - A right drag orbits with the cursor hidden and held.
   - Holding both buttons orbits at single speed with the cursor hidden and held.

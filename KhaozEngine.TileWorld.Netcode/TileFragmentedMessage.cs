@@ -22,7 +22,9 @@ public static class TileFragmentedMessage
     /// <summary>Conservative unpadded frame budget, including both headers. Separate from
     /// <see cref="TileProtocol.MaxGameMessageBytes"/>, which caps only the game payload. This preserves the
     /// 1015-byte non-final chunk width that readers require exactly, so using the four spare payload bytes
-    /// would need a protocol migration. This is a fragment-format budget, not a transport datagram limit.</summary>
+    /// would need a protocol migration. This is a fragment-format budget, not a transport datagram limit. The
+    /// encoder's optional command-length pad is additional to this unpadded budget and applies only to a short
+    /// chunk.</summary>
     public const int MaxUnpaddedFrameBytes = 1024;
 
     /// <summary>How many logical payload bytes one chunk carries: <see cref="MaxUnpaddedFrameBytes"/> less the
@@ -32,7 +34,8 @@ public static class TileFragmentedMessage
     public const int MaxChunkPayloadBytes = MaxUnpaddedFrameBytes - TileProtocol.GameMessageHeader - HeaderBytes;
 
     /// <summary>The largest logical payload this format can carry, <see cref="MaxChunks"/> chunks of
-    /// <see cref="MaxChunkPayloadBytes"/>.</summary>
+    /// <see cref="MaxChunkPayloadBytes"/>. About 258 KB, which is forty times the largest container page the item
+    /// design sizes against.</summary>
     public const int MaxPayloadBytes = MaxChunks * MaxChunkPayloadBytes;
 
     /// <summary><see cref="MessageFragmenter.ChunkCount"/> at <see cref="MaxChunkPayloadBytes"/>.</summary>

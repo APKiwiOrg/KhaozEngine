@@ -47,7 +47,8 @@ public sealed record TileWorldServerConfig
     /// The arguments are the authenticated viewer slot and the ground item's net id. A null rule serves every
     /// ground item as before. A false answer excludes the entire ground entity from that viewer's snapshot and
     /// delta. Runs synchronously on the simulation tick, so callers keep it pure and non-throwing. This is a
-    /// presentation gate only: the game still authorizes pickup.</summary>
+    /// presentation gate only: the game still authorizes pickup. The NetWorld servers carry the same shape for any
+    /// entity as <c>WorldServerConfig.EntityVisibleToSlot</c> and <c>ShardedWorldServerConfig.EntityVisibleToSlot</c>.</summary>
     public Func<int, long, bool>? GroundItemVisibleToSlot { get; init; }
 
     /// <summary>Border overlap in tiles. Must be at least <see cref="InterestRadius"/> or the home cell cannot hold

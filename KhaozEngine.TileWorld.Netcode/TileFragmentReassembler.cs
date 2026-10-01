@@ -6,7 +6,9 @@ namespace KhaozEngine.TileWorld.Netcode;
 /// <summary>
 /// Puts the chunks of a <see cref="TileFragmentedMessage"/> back together for ONE peer: a
 /// <see cref="MessageReassembler"/> at <see cref="TileFragmentedMessage.MaxChunkPayloadBytes"/>. The four rules,
-/// the refusal tokens and the memory bound are the core type's.
+/// the refusal tokens and the memory bound are the core type's. At this width the held partial state peaks at
+/// <see cref="MaxPartialAssemblies"/> times <see cref="TileFragmentedMessage.MaxPayloadBytes"/>, about one
+/// megabyte, for a peer that really did send that.
 /// <para>Each chunk is the payload of a game message the caller has already unwrapped with
 /// <see cref="TileProtocol.TryDecodeGameMessage"/>, sent on the <c>ReliableOrdered</c> channel. One reassembler
 /// per connection slot, dropped through <see cref="DropConnection"/> from the server's disconnect path.</para>

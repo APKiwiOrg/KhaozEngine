@@ -1254,7 +1254,7 @@ same version-skew bar as 9.16.0.
     hidden.
   - A false answer removes the whole entity from that viewer's interest for the tick: a delta client is sent a
     despawn and a full-snapshot client simply stops seeing it. A later true answer sends the whole entity again, as
-    a fresh spawn carrying all its state.
+    a fresh spawn carrying all its state, also when it comes before the viewer acknowledged the despawn.
   - Decide from a visibility table the game keeps itself, keyed by those two ids. The rule must not read the
     entity's components: on `ShardedWorldServer` an entity seen across a cell boundary is a GHOST in the viewer's
     home cell, and a ghost lacks the owner-only and server-only components its owning cell holds. Owned entities

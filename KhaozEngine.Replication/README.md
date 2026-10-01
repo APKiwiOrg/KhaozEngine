@@ -73,6 +73,8 @@ area-of-interest deltas.
   acknowledged baseline it emits an entity that **entered** its interest set as a full spawn, one that **stayed and
   changed** as only its changed components, one that **left** (or despawned) as a removal, and an unchanged in-AoI
   entity as nothing. `Acknowledge(slot, seq)` advances the baseline; `Forget(slot)` drops a disconnected client.
+  An entity that left and is back before the client acknowledged its removal is also sent as a full spawn, because
+  the acked baseline still holds it while the client has already despawned it.
   The wire is byte-identical to `ServerReplicator.WriteFor` (a full snapshot is the `baseline -1` delta), so
   `ClientReplicationView.ApplyDelta` decodes both. Keyed by `NetId` (not by owning cell), so a seamless cell handoff
   reads as a component delta, never a despawn+respawn. This is what `WorldServer`/`ShardedWorldServer`/`MmoServer`

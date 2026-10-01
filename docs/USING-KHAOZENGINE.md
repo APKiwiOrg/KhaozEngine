@@ -20340,7 +20340,9 @@ aoi.Acknowledge(slot, ackedSeq);                      // aoi.Forget(slot) on dis
 ```
 
 The wire is byte-identical to `ServerReplicator.WriteFor` (a full snapshot is the `baseline -1` delta), and the
-baseline is keyed by `NetId`, so a seamless cell handoff reads as a component delta, never a despawn+respawn.
+baseline is keyed by `NetId`, so a seamless cell handoff reads as a component delta, never a despawn+respawn. An
+entity that left a client's interest and is back before the client acknowledged the removal is sent as a full
+spawn, not a diff against the acked baseline that still holds it.
 
 **Shared per-tick capture (perf).** `WriteFor` builds its whole-world Replicate-channel capture once per `world`
 per tick, the first time any client's `WriteFor` runs after `BeginTick`, then every later `WriteFor` on the same
@@ -20386,7 +20388,8 @@ var cfg = new ShardedWorldServerConfig
 - **The viewer's own player is never hidden.** It is never offered to the rule.
 - **Hiding and showing are whole-entity.** A false answer removes the entity from that viewer's interest for the
   tick, so a delta client is sent a despawn and a full-snapshot client stops seeing it. A later true answer sends
-  the whole entity again as a fresh spawn carrying all its state.
+  the whole entity again as a fresh spawn carrying all its state, also when it comes before the viewer
+  acknowledged the despawn.
 - **Ids only, never components.** On `ShardedWorldServer` an entity a viewer sees across a cell boundary is a ghost
   in the viewer's home cell, and a ghost lacks the owner-only and server-only components its owning cell holds. A
   rule that read components would answer differently for the same entity on either side of a boundary. Owned

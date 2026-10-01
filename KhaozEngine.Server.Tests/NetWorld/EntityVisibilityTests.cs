@@ -83,6 +83,34 @@ public sealed class EntityVisibilityTests
     }
 
     [Fact]
+    public void AHideAndShowInsideTheAckWindowRestoresTheEntityWhole()
+    {
+        var rig = new Rig();
+        rig.Pump(8);
+        long id = rig.Server.SpawnEntity(4f, 0f, (w, e) => w.Set(e, new PlayerIdentity { DisplayName = "kept" }));
+        rig.HiddenId = id;
+        rig.AllowOthers = true;
+        rig.Pump(6);
+        RawDeltaClient viewer = rig.DeltaViewer;
+        Assert.True(rig.Sees(viewer, id));
+
+        // Hidden for one tick and shown on the next, with the viewer's ack for the hiding tick still unread, so the
+        // server's acked baseline still holds the entity the viewer already despawned. Nothing on it changes.
+        rig.AllowOthers = false;
+        rig.TickWithoutReadingAcks();
+        Assert.False(rig.Sees(viewer, id));
+        rig.AllowOthers = true;
+        rig.TickWithoutReadingAcks();
+        rig.Pump(6);
+
+        Assert.True(viewer.TryPos(id, out Vector3 pos));
+        Assert.Equal(new Vector3(4f, 0f, 0f), pos);
+        Assert.True(viewer.View.TryGetEntity(id, out Entity seen));
+        Assert.True(viewer.World.TryGet(seen, out PlayerIdentity identity));
+        Assert.Equal("kept", identity.DisplayName);
+    }
+
+    [Fact]
     public void AViewerEnteringRangeLaterStillNeverReceivesAHiddenEntity()
     {
         var rig = new Rig(radius: 20f, spawn: slot => slot == 0 ? Vector3.Zero : new Vector3(200f + slot * 10f, 0f, 0f));
@@ -232,6 +260,13 @@ public sealed class EntityVisibilityTests
         public bool AllowOthers { get; set; }
 
         public void Pump(int ticks) => EntityVisibilityTests.Pump(Server, ticks, Owner, DeltaViewer, SnapshotViewer);
+
+        // One tick that skips the server's Poll, so acks the clients sent since the last Poll stay unread.
+        public void TickWithoutReadingAcks()
+        {
+            Server.Tick(Dt);
+            foreach (RawDeltaClient c in new[] { Owner, DeltaViewer, SnapshotViewer }) c.Poll();
+        }
 
         public bool Sees(RawDeltaClient client, long netId) =>
             client.View.TryGetEntity(netId, out Entity e) && client.World.IsAlive(e);

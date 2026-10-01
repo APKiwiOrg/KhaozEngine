@@ -171,6 +171,46 @@ public class TileWorldHashTests
         Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "a second surface");
     }
 
+    // Collision height joined the digest the same way: a null height writes nothing, so the pinned greybox literal,
+    // whose archetypes carry none, does not move.
+    [Fact]
+    public void GreyboxHashIsUnchanged()
+    {
+        Assert.Equal("541ac51315c6371abed5392d64e7e5cdf50adca9edb42cf42b7723c389eb4cbb",
+            TileWorldHash.OfCatalogs(TileWorldCatalogs.Greybox()));
+    }
+
+    [Fact]
+    public void AHeightChangesTheCatalogHash()
+    {
+        TileWorldCatalogs catalogs = TileWorldCatalogs.Greybox();
+        TileObjectArchetype bench = catalogs.Archetype("bench")!;
+        var seen = new HashSet<string> { TileWorldHash.OfCatalogs(catalogs) };
+
+        bench.CollisionHeight = 0.5f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "adding a height");
+        bench.CollisionHeight = 0.75f;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "changing the height");
+        bench.WalkSurfaces = new List<TileWalkSurface> { new() { Height = 0.75f } };
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "a walk surface beside the height");
+        bench.CollisionHeight = null;
+        Assert.True(seen.Add(TileWorldHash.OfCatalogs(catalogs)), "the walk surface alone");
+    }
+
+    [Fact]
+    public void AbsentAndNullHeightsHashAlike()
+    {
+        TileWorldCatalogs absent = TileWorldCatalogs.LoadJson(
+            """{ "archetypes": [ { "id": "rock", "name": "Rock", "meshRef": "m", "collisionKind": "Solid" } ] }""", "absent");
+        TileWorldCatalogs cleared = TileWorldCatalogs.LoadJson(
+            """{ "archetypes": [ { "id": "rock", "name": "Rock", "meshRef": "m", "collisionKind": "Solid", "collisionHeight": 2 } ] }""", "cleared");
+        string withHeight = TileWorldHash.OfCatalogs(cleared);
+        cleared.Archetype("rock")!.CollisionHeight = null;
+
+        Assert.Equal(TileWorldHash.OfCatalogs(absent), TileWorldHash.OfCatalogs(cleared));
+        Assert.NotEqual(withHeight, TileWorldHash.OfCatalogs(absent));
+    }
+
     // Load order is a caller's business, the digest is not. Two catalogs holding the same content merged from parts
     // in either order are one identity, exactly as the region composition sorts its rows.
     [Fact]

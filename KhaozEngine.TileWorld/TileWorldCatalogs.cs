@@ -80,6 +80,9 @@ public sealed class TileObjectArchetype
     /// <summary>The flat tops a body can stand on, in the mesh's local metres, null when the archetype has none.
     /// See <see cref="TileWalkSurface"/> and <see cref="TileWalkSurfaces"/>. An empty list loads as null.</summary>
     public List<TileWalkSurface>? WalkSurfaces { get; set; }
+    /// <summary>How tall the object stands for collision, in metres, null when not authored. Finite and above 0 when
+    /// present. Optional at load. A consumer that needs it decides what a missing height means.</summary>
+    public float? CollisionHeight { get; set; }
 }
 
 /// <summary>Footprint helpers. Rotation swaps X and Z on odd quarter turns, the anchor stays the SW tile.</summary>
@@ -228,6 +231,7 @@ public sealed class TileWorldCatalogs
         if (string.IsNullOrWhiteSpace(a.LodMeshRef)) a.LodMeshRef = null;
         if (a.WalkSurfaces is { Count: 0 }) a.WalkSurfaces = null;
         ValidateWalkSurfaces(a, source);
+        ValidateCollisionHeight(a, source);
         _archetypes.Add(a.Id, a);
         _archetypeSources[a.Id] = source;
     }
@@ -252,6 +256,15 @@ public sealed class TileWorldCatalogs
             RequireOrdered(at, "minX", s.MinX, "maxX", s.MaxX);
             RequireOrdered(at, "minZ", s.MinZ, "maxZ", s.MaxZ);
         }
+    }
+
+    // The schema refuses a non-positive height, but not a NaN or an infinity edited in after load, which Merge re-adds
+    // through here like every other archetype field.
+    static void ValidateCollisionHeight(TileObjectArchetype a, string source)
+    {
+        if (a.CollisionHeight is { } h && !(float.IsFinite(h) && h > 0f))
+            throw new TileWorldException(
+                $"{source}: archetype '{a.Id}': collisionHeight {h.ToString(CultureInfo.InvariantCulture)} is not a finite number above 0");
     }
 
     static void RequireFinite(string at, string field, float? value)

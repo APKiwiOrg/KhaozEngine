@@ -80,11 +80,11 @@ public static class TileWorldHash
     /// collision map, so two heads over one world directory with independently updated catalogs agreed on the world
     /// digest and then disagreed on every wall. <see cref="OfWorldAndCatalogs"/> is the composed digest a netcode
     /// gate should use.</para>
-    /// <para>EVERY authored field is in, cosmetic ones included (walk surfaces too, written only for an archetype
-    /// that carries one, so a catalog without any digests exactly as it did before the field existed), rather than
-    /// only the fields the collision baker reads. The engine does not know which fields a given game treats as
-    /// decoration, a mesh reference points at content the client has to ship anyway, and a digest that blessed art drift would be silently wrong for the
-    /// first game that dispatched on a tag.</para>
+    /// <para>EVERY authored field is in, cosmetic ones included (walk surfaces and collision height too, each written
+    /// only for an archetype that carries one, so a catalog without any digests exactly as it did before the field
+    /// existed), rather than only the fields the collision baker reads. The engine does not know which fields a given
+    /// game treats as decoration, a mesh reference points at content the client has to ship anyway, and a digest that
+    /// blessed art drift would be silently wrong for the first game that dispatched on a tag.</para>
     /// </summary>
     /// <param name="catalogs">The loaded catalogs.</param>
     /// <exception cref="ArgumentNullException"><paramref name="catalogs"/> is null.</exception>
@@ -120,6 +120,7 @@ public static class TileWorldHash
             sb.Append(Inv(a.Tags?.Count ?? 0)).Append(' ');
             for (int i = 0; i < (a.Tags?.Count ?? 0); i++) Text(sb, a.Tags![i]);
             WalkSurfaces(sb, a.WalkSurfaces);
+            CollisionHeight(sb, a.CollisionHeight);
             sb.Append('\n');
         }
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));
@@ -192,6 +193,14 @@ public static class TileWorldHash
             sb.Append(OptionalFloat(s.MinX)).Append(' ').Append(OptionalFloat(s.MaxX)).Append(' ');
             sb.Append(OptionalFloat(s.MinZ)).Append(' ').Append(OptionalFloat(s.MaxZ)).Append(' ');
         }
+    }
+
+    // Collision height rides the archetype line the same way, after any walk-surface section. A null height writes
+    // NOTHING, so every catalog digested before the field existed keeps its identity. A height writes an 'h' marker,
+    // which cannot start a walk-surface entry (a float or '-'), so the shapes stay distinct.
+    static void CollisionHeight(StringBuilder sb, float? height)
+    {
+        if (height is { } h) sb.Append("h ").Append(Float(h)).Append(' ');
     }
 
     static string OptionalFloat(float? value) => value is { } v ? Float(v) : "-";

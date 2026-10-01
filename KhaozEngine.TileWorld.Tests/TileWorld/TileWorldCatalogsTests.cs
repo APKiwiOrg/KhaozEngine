@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -239,6 +240,58 @@ public class TileWorldCatalogsTests
             """{ "archetypes": [ { "id": "deck", "name": "Deck", "meshRef": "m", "walkSurfaces": [ { "height": 1e39 } ] } ] }""",
             "overflow.json"));
         Assert.Contains("overflow.json", ex.Message);
+    }
+
+    [Fact]
+    public void ACatalogWithCollisionHeightLoadsIt()
+    {
+        TileWorldCatalogs loaded = TileWorldCatalogs.LoadJson("""
+            { "archetypes": [ { "id": "rock", "name": "Rock", "meshRef": "kit/rock.glb", "collisionKind": "Solid", "collisionHeight": 2.5 },
+                              { "id": "wall", "name": "Wall", "meshRef": "kit/wall.glb", "collisionKind": "Wall" } ] }
+            """, "heights.json");
+
+        Assert.Equal(2.5f, loaded.Archetype("rock")!.CollisionHeight);
+        Assert.Null(loaded.Archetype("wall")!.CollisionHeight);
+        Assert.Equal(2.5f, TileWorldCatalogs.Merge(loaded).Archetype("rock")!.CollisionHeight);
+
+        string written = JsonSerializer.Serialize(new { archetypes = new[] { loaded.Archetype("rock") } }, CatalogWriteOptions());
+        Assert.Equal(2.5f, TileWorldCatalogs.LoadJson(written, "round-trip.json").Archetype("rock")!.CollisionHeight);
+    }
+
+    // The schema refuses the JSON forms. Merge re-adds in-memory archetypes through the same gate, so a NaN or a
+    // non-positive height edited in after load is refused there too.
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    [InlineData(0f)]
+    [InlineData(-1f)]
+    public void ANonFiniteOrNonPositiveCollisionHeightIsRejected(float height)
+    {
+        TileWorldCatalogs part = TileWorldCatalogs.LoadJson(
+            """{ "archetypes": [ { "id": "rock", "name": "Rock", "meshRef": "m", "collisionHeight": 1 } ] }""", "rock.json");
+        part.Archetype("rock")!.CollisionHeight = height;
+
+        var merged = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.Merge(part));
+        Assert.Contains("'rock'", merged.Message);
+        Assert.Contains("collisionHeight", merged.Message);
+
+        if (!float.IsFinite(height)) return;
+        string value = height.ToString("R", CultureInfo.InvariantCulture);
+        var loaded = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
+            $$"""{ "archetypes": [ { "id": "rock", "name": "Rock", "meshRef": "m", "collisionHeight": {{value}} } ] }""", "bad-height.json"));
+        Assert.Contains("does not match the schema", loaded.Message);
+        Assert.Contains("bad-height.json", loaded.Message);
+    }
+
+    [Fact]
+    public void AnUnknownFieldIsStillRejected()
+    {
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldCatalogs.LoadJson(
+            """{ "archetypes": [ { "id": "rock", "name": "Rock", "meshRef": "m", "collisionHeight": 2, "collisionTop": 3 } ] }""",
+            "unknown.json"));
+        Assert.Contains("does not match the schema", ex.Message);
+        Assert.Contains("unknown.json", ex.Message);
     }
 
     [Fact]

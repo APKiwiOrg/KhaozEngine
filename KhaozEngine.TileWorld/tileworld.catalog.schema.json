@@ -52,7 +52,8 @@
               },
               "additionalProperties": false
             }
-          }
+          },
+          "collisionHeight": { "type": "number", "exclusiveMinimum": 0 }
         },
         "additionalProperties": false
       }

@@ -158,6 +158,17 @@ public sealed class TileWaterBodiesTests
     }
 
     [Fact]
+    public void AWaterOverlayOnGrassIsNotWater()
+    {
+        // Only the underlay counts. A water-material overlay on a grass underlay is a decoration with no rim.
+        TileWorldDocument doc = GrassWorld();
+        doc.SetOverlay(10, 10, 0, Water);
+
+        Assert.False(TileWaterBodies.IsWater(doc, Catalogs, 10, 10, 0));
+        Assert.Empty(Collect(doc));
+    }
+
+    [Fact]
     public void ARegionWithNoWaterOrNoRegionCollectsNothing()
     {
         Assert.Empty(Collect(GrassWorld()));

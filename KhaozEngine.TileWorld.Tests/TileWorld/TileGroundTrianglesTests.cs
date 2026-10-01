@@ -149,6 +149,28 @@ public sealed class TileGroundTrianglesTests
         Assert.Equal(expected, mesh.Positions.AsSpan(first, 12).ToArray());
     }
 
+    [Fact]
+    public void TryDescribeRejectsANullDocumentBeforeAShortSpan()
+    {
+        // The span is short too, so only a null check that runs first reports the null document.
+        Assert.Throws<ArgumentNullException>(() =>
+        {
+            Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[1];
+            TileGroundTriangles.TryDescribe(null!, 0, 0, 0, out _, triangles);
+        });
+    }
+
+    [Fact]
+    public void TryDescribeRejectsASpanShorterThanMaxTriangles()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        Assert.Throws<ArgumentException>(() =>
+        {
+            Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles - 1];
+            TileGroundTriangles.TryDescribe(doc, 0, 0, 0, out _, triangles);
+        });
+    }
+
     static Vector3 Position(TileWorldDocument doc, TileLatticePoint point) =>
         TileGroundTriangles.LatticePosition(doc, 6, 6, 0, point, 0, 0);
 }

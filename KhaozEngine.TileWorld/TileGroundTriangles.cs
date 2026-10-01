@@ -55,6 +55,7 @@ public static class TileGroundTriangles
         out TileGroundCell cell,
         Span<TileLatticeTriangle> triangles)
     {
+        ArgumentNullException.ThrowIfNull(document);
         if (triangles.Length < TileTriangulation.MaxTriangles)
             throw new ArgumentException($"Needs room for {TileTriangulation.MaxTriangles} triangles.", nameof(triangles));
         if (!IsDrawable(document, worldX, worldZ, plane))

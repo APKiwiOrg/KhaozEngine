@@ -11,7 +11,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   ([design](docs/design/CONTINUOUS-HOST-ROUND-1-DESIGN-2026-10-01.md)).
 - The ground triangle rule moves from `KhaozEngine.TileWorld.Render3D` into GPU-free `KhaozEngine.TileWorld`, so a
   server, a physics bake or a test reads the ground the renderer draws. `TileGroundTriangles.IsDrawable` is the one
-  drawability test. `TryDescribe` hands back a tile's `TileGroundCell` (cut, rotation, split and triangle count) and
+  drawability test the renderer and the water rule use.
+  `TryDescribe` hands back a tile's `TileGroundCell` (cut, rotation, split and triangle count) and
   writes its triangles, `LatticePosition` places one lattice point, and `Build(document, region, plane)` returns a
   `TileGroundMesh` of every full-detail triangle in a region-plane. None of them takes catalogs. `TileGroundMesher`
   draws through the rule, and its geometry is byte-identical, pinned by golden hashes

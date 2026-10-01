@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Security.Cryptography;
 using KhaozEngine.Physics;
 
@@ -109,6 +110,31 @@ public sealed class TileWorldColliders
         TileCollider[] ordered = colliders.ToArray();
         return new TileWorldColliders(ordered, HashOf(ordered), new TileGroundSampler(document, regions),
                                       new TileMediumSampler(document, catalogs, regions));
+    }
+
+    /// <summary>
+    /// Adds every collider to a physics world as a static, in <see cref="Colliders"/> order. The colliders are in
+    /// absolute document coordinates and the world speaks relative to its <see cref="IPhysicsWorld.Origin"/>, so each
+    /// pose is moved by that origin once, here. A later <see cref="IPhysicsWorld.Rebase"/> moves the statics with the
+    /// rest of the world. <see cref="Ground"/> and <see cref="Medium"/> still answer in document coordinates, so a
+    /// caller stepping a body in a rebased world adds the origin to the coordinates it hands them and takes it off the
+    /// heights they answer.
+    /// </summary>
+    /// <param name="world">The world to add the statics to.</param>
+    /// <returns>The handles, to remove the statics again.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="world"/> is null.</exception>
+    public TileColliderRegistration AddTo(IPhysicsWorld world)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        Vector3 origin = world.Origin;
+        var handles = new StaticHandle[Colliders.Count];
+        for (int i = 0; i < handles.Length; i++)
+        {
+            TileCollider collider = Colliders[i];
+            handles[i] = world.AddStatic(collider.Shape,
+                new Pose(collider.Pose.Position - origin, collider.Pose.Orientation));
+        }
+        return new TileColliderRegistration(world, handles);
     }
 
     static void RequirePositive(float value, string option)

@@ -19,6 +19,22 @@ public static class TileWorldPhysicsTestData
     /// <summary>Where <see cref="BridgedRiverWorld"/>'s deck stands.</summary>
     public const int DeckX = 20, DeckZ = 10;
 
+    /// <summary>How fast <see cref="RampWorld"/> rises east, in centimetres per tile.</summary>
+    public const short RampCmPerTile = 40;
+
+    /// <summary>The row whose south edge <see cref="DoorwayWorld"/>'s walls stand on, and the one tile x along it left
+    /// open as the door.</summary>
+    public const int DoorRow = 20, DoorX = 20;
+
+    /// <summary>The first and last tile x of <see cref="DoorwayWorld"/>'s wall run, the door included.</summary>
+    public const int WallRunFirstX = 10, WallRunLastX = 30;
+
+    /// <summary>Where <see cref="HighDeckWorld"/>'s <c>high_deck</c> is anchored.</summary>
+    public const int HighDeckX = 20, HighDeckZ = 20;
+
+    /// <summary>The height of the <c>high_deck</c> walk surface above the ground it stands on.</summary>
+    public const float HighDeckHeight = 2.5f;
+
     /// <summary>One archetype per collider rule, each with the height the rule needs:
     /// <list type="bullet">
     /// <item><c>wall</c>, a 1x1 <c>Wall</c> 2.5 m tall.</item>
@@ -31,6 +47,8 @@ public static class TileWorldPhysicsTestData
     /// <item><c>deck</c>, a 3x1 with no collision and a walk surface 1.2 m up from local x -2 to 1, off centre so a
     /// turn moves it.</item>
     /// <item><c>deck_skewed</c>, the same deck with a 30 degree yaw offset.</item>
+    /// <item><c>high_deck</c>, a 3x3 with no collision and a walk surface <see cref="HighDeckHeight"/> up over its
+    /// whole footprint, high enough for a standing body to pass under.</item>
     /// <item><c>unmeasured</c>, a <c>Solid</c> with no collision height.</item>
     /// </list>
     /// And three ground materials: grass (1) and dirt (2), both ground, and water (<see cref="Water"/>).</summary>
@@ -58,6 +76,8 @@ public static class TileWorldPhysicsTestData
               "walkSurfaces": [ { "height": 1.2, "minX": -2, "maxX": 1 } ] },
             { "id": "deck_skewed", "name": "deck_skewed", "meshRef": "test/deck.glb", "sizeX": 3, "sizeZ": 1,
               "yawOffsetDegrees": 30, "walkSurfaces": [ { "height": 1.2, "minX": -2, "maxX": 1 } ] },
+            { "id": "high_deck", "name": "high_deck", "meshRef": "test/high_deck.glb", "sizeX": 3, "sizeZ": 3,
+              "walkSurfaces": [ { "height": 2.5 } ] },
             { "id": "unmeasured", "name": "unmeasured", "meshRef": "test/unmeasured.glb", "collisionKind": "Solid" }
           ]
         }
@@ -204,6 +224,37 @@ public static class TileWorldPhysicsTestData
             for (int x = 0; x < TileRegion.Size; x++)
                 doc.SetCornerHeightCm(x, z, 0, -100);
         doc.AddObject("deck", DeckX, DeckZ, 0, 1);
+        return doc;
+    }
+
+    /// <summary><see cref="FlatWorld"/> with every corner of plane 0 at x times <see cref="RampCmPerTile"/>, a 22 degree
+    /// climb eastward under the 45 degree walkable slope.</summary>
+    public static TileWorldDocument RampWorld()
+    {
+        TileWorldDocument doc = FlatWorld();
+        for (int z = 0; z < TileRegion.Size; z++)
+            for (int x = 0; x < TileRegion.Size; x++)
+                doc.SetCornerHeightCm(x, z, 0, (short)(x * RampCmPerTile));
+        return doc;
+    }
+
+    /// <summary><see cref="FlatWorld"/> with a south-facing <c>wall</c> on every tile of row <see cref="DoorRow"/> from
+    /// <see cref="WallRunFirstX"/> to <see cref="WallRunLastX"/> except <see cref="DoorX"/>, so the run is broken by
+    /// one door exactly a tile wide.</summary>
+    public static TileWorldDocument DoorwayWorld()
+    {
+        TileWorldDocument doc = FlatWorld();
+        for (int x = WallRunFirstX; x <= WallRunLastX; x++)
+            if (x != DoorX) doc.AddObject("wall", x, DoorRow, 0, 3);
+        return doc;
+    }
+
+    /// <summary><see cref="FlatWorld"/> with a <c>high_deck</c> at (<see cref="HighDeckX"/>, <see cref="HighDeckZ"/>),
+    /// its walk surface <see cref="HighDeckHeight"/> above the grass over tiles x and z 20 to 23.</summary>
+    public static TileWorldDocument HighDeckWorld()
+    {
+        TileWorldDocument doc = FlatWorld();
+        doc.AddObject("high_deck", HighDeckX, HighDeckZ, 0, 0);
         return doc;
     }
 }

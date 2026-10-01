@@ -100,7 +100,7 @@ internal sealed class TileOverlayBoundary
         return TileTriangulation.Triangulate(shape, rotation, split, triangles);
     }
 
-    bool Drawable(int x, int z) => TileGroundMesher.IsDrawable(_doc, x, z, _plane);
+    bool Drawable(int x, int z) => TileGroundTriangles.IsDrawable(_doc, x, z, _plane);
 
     static bool Contains(Vector2 p, Vector2 a, Vector2 b, Vector2 c) =>
         Cross(b - a, p - a) >= -0.00001f && Cross(c - b, p - b) >= -0.00001f

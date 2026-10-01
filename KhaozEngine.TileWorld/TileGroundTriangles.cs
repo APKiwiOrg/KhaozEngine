@@ -63,20 +63,42 @@ public static class TileGroundTriangles
             return false;
         }
 
-        short h00 = document.CornerHeightCm(worldX, worldZ, plane);
-        short h10 = document.CornerHeightCm(worldX + 1, worldZ, plane);
-        short h01 = document.CornerHeightCm(worldX, worldZ + 1, plane);
-        short h11 = document.CornerHeightCm(worldX + 1, worldZ + 1, plane);
+        cell = Describe(
+            document, worldX, worldZ, plane,
+            document.CornerHeightCm(worldX, worldZ, plane),
+            document.CornerHeightCm(worldX + 1, worldZ, plane),
+            document.CornerHeightCm(worldX, worldZ + 1, plane),
+            document.CornerHeightCm(worldX + 1, worldZ + 1, plane),
+            out _,
+            triangles);
+        return true;
+    }
+
+    /// <summary>The <see cref="TryDescribe"/> decision for a tile the caller has already found drawable, from the
+    /// four corner heights it has already read (SW, SE, NW, NE), so a mesher holding a corner memo does not read
+    /// them again. Hands back the overlay id it read, which the mesher paints the cut with.</summary>
+    internal static TileGroundCell Describe(
+        TileWorldDocument document,
+        int worldX,
+        int worldZ,
+        int plane,
+        short h00,
+        short h10,
+        short h01,
+        short h11,
+        out ushort overlay,
+        Span<TileLatticeTriangle> triangles)
+    {
         TileOverlayShape shape = document.GetOverlayShape(worldX, worldZ, plane);
         int rotation = document.GetOverlayRotation(worldX, worldZ, plane);
         bool splitSwNe = TileTriangulation.SplitSwNe(h00, h10, h01, h11, shape, rotation);
 
         // A shape only cuts the tile when there is an overlay to paint into the cut, and the split above still
         // comes from the authored shape, because a diagonal half forces its diagonal either way.
-        TileOverlayShape cut = document.GetOverlay(worldX, worldZ, plane) == 0 ? TileOverlayShape.Full : shape;
+        overlay = document.GetOverlay(worldX, worldZ, plane);
+        TileOverlayShape cut = overlay == 0 ? TileOverlayShape.Full : shape;
         int count = TileTriangulation.Triangulate(cut, rotation, splitSwNe, triangles);
-        cell = new TileGroundCell(cut, rotation, splitSwNe, count);
-        return true;
+        return new TileGroundCell(cut, rotation, splitSwNe, count);
     }
 
     /// <summary>Where one lattice point of the tile sits, relative to the tile corner
@@ -106,8 +128,19 @@ public static class TileGroundTriangles
         // copy of that corner bit-identical across the tiles and regions that share it.
         return first == second
             ? a
-            : (a + CornerPosition(document, worldX, worldZ, plane, second, originX, originZ)) * 0.5f;
+            : MidEdgePosition(a, CornerPosition(document, worldX, worldZ, plane, second, originX, originZ));
     }
+
+    /// <summary>Where the lattice corner (<paramref name="cornerX"/>, <paramref name="cornerZ"/>) at
+    /// <paramref name="heightCm"/> sits relative to (<paramref name="originX"/>, <paramref name="originZ"/>). The
+    /// one corner position rule, shared with the mesher's corner memo.</summary>
+    internal static Vector3 CornerPosition(
+        int cornerX, int cornerZ, short heightCm, int originX, int originZ, float tileSize) =>
+        TileWorldSpace.ToWorld(cornerX - originX, heightCm * 0.01f, cornerZ - originZ, tileSize);
+
+    /// <summary>The mid-edge position between two corner positions. The one mid-edge rule, shared with the
+    /// mesher.</summary>
+    internal static Vector3 MidEdgePosition(Vector3 a, Vector3 b) => (a + b) * 0.5f;
 
     /// <summary>Every full-detail ground triangle of one region-plane, in region-local positions, tile by tile with
     /// z outer and x inner, each tile's triangles in <see cref="TryDescribe"/> order and each point placed by
@@ -146,7 +179,7 @@ public static class TileGroundTriangles
     {
         int cornerX = worldX + (corner is TileLatticePoint.Se or TileLatticePoint.Ne ? 1 : 0);
         int cornerZ = worldZ + (corner is TileLatticePoint.Nw or TileLatticePoint.Ne ? 1 : 0);
-        return TileWorldSpace.ToWorld(cornerX - originX, document.CornerHeightCm(cornerX, cornerZ, plane) * 0.01f,
-                                      cornerZ - originZ, document.TileSize);
+        return CornerPosition(cornerX, cornerZ, document.CornerHeightCm(cornerX, cornerZ, plane), originX, originZ,
+                              document.TileSize);
     }
 }

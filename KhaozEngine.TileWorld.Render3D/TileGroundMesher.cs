@@ -127,7 +127,8 @@ public static partial class TileGroundMesher
         for (int lz = 0; lz < TileRegion.Size; lz++)
             for (int lx = 0; lx < TileRegion.Size; lx++)
             {
-                if (!IsDrawable(doc, context.OriginX + lx, context.OriginZ + lz, plane)) continue;
+                if (!TileGroundTriangles.IsDrawable(doc, context.OriginX + lx, context.OriginZ + lz, plane))
+                    continue;
                 AddTile(mesh, context, lx, lz);
             }
         return mesh.ToMesh();
@@ -150,8 +151,8 @@ public static partial class TileGroundMesher
                 for (int dz = 0; dz < cellSize; dz++)
                     for (int dx = 0; dx < cellSize; dx++)
                     {
-                        if (!IsDrawable(context.Doc, context.OriginX + lx + dx, context.OriginZ + lz + dz,
-                                        context.Plane))
+                        if (!TileGroundTriangles.IsDrawable(context.Doc, context.OriginX + lx + dx,
+                                                            context.OriginZ + lz + dz, context.Plane))
                             continue;
                         AddTile(mesh, context, lx + dx, lz + dz);
                     }
@@ -240,12 +241,6 @@ public static partial class TileGroundMesher
         return TileColors.Blend(sharing[..count]);
     }
 
-    /// <summary>True when the tile draws ground: it has an underlay and is not marked
-    /// <see cref="TileSettings.NoDraw"/>.</summary>
-    internal static bool IsDrawable(TileWorldDocument doc, int worldX, int worldZ, int plane) =>
-        doc.GetUnderlay(worldX, worldZ, plane) != 0
-        && (doc.GetSettings(worldX, worldZ, plane) & TileSettings.NoDraw) == 0;
-
     /// <summary>The material's colour, or <see cref="MissingMaterialColor"/> when the catalogs do not define it.</summary>
     internal static Vector4 MaterialColor(TileWorldCatalogs catalogs, ushort id)
     {
@@ -257,25 +252,22 @@ public static partial class TileGroundMesher
     {
         int x = c.OriginX + lx;
         int z = c.OriginZ + lz;
-        short h00 = c.Corners.HeightCm(x, z);
-        short h10 = c.Corners.HeightCm(x + 1, z);
-        short h01 = c.Corners.HeightCm(x, z + 1);
-        short h11 = c.Corners.HeightCm(x + 1, z + 1);
-        TileOverlayShape shape = c.Doc.GetOverlayShape(x, z, c.Plane);
-        int rotation = c.Doc.GetOverlayRotation(x, z, c.Plane);
-        bool swne = TileTriangulation.SplitSwNe(h00, h10, h01, h11, shape, rotation);
+        // The cut, the split and the triangles are the shared ground rule's, fed the heights this build's corner
+        // memo already holds, so a headless reader of TileGroundTriangles sees exactly the triangles drawn here.
+        Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
+        TileGroundCell cell = TileGroundTriangles.Describe(
+            c.Doc, x, z, c.Plane,
+            c.Corners.HeightCm(x, z),
+            c.Corners.HeightCm(x + 1, z),
+            c.Corners.HeightCm(x, z + 1),
+            c.Corners.HeightCm(x + 1, z + 1),
+            out ushort overlay,
+            triangles);
 
         // The overlay is a slot rather than a colour, so an id the catalogs no longer define lands on the slot
         // map's reserved slot and paints from there, the same way a dangling underlay does.
-        ushort overlay = c.Doc.GetOverlay(x, z, c.Plane);
         int? overlaySlot = overlay == 0 ? null : c.Options.Slots.SlotOf(overlay);
-
-        // A shape only cuts the tile when there is an overlay material to paint into the cut, so a shape with no
-        // overlay meshes as the plain pair. The raycast reads the same two facts the same way, which is what keeps
-        // a click on the triangle that was drawn. The split still comes from the authored shape above, because a
-        // diagonal half forces the diagonal whether or not its material survived.
-        TileOverlayShape cut = overlaySlot is null ? TileOverlayShape.Full : shape;
-        AddCutTile(mesh, c, lx, lz, cut, rotation, overlaySlot, swne);
+        AddCutTile(mesh, c, lx, lz, cell.Cut, overlaySlot, triangles[..cell.TriangleCount]);
     }
 
     /// <summary>Adds a triangle, replacing the three corner normals with the triangle's own when the options ask

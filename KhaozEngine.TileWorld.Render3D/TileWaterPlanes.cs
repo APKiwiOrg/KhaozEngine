@@ -232,7 +232,7 @@ public static class TileWaterPlanes
     // the mesher's own, so a NoDraw tile (a hole the ground mesh skips) gets no surface either: water over a hole
     // has no bed under it to darken against, and would read as a slab of blue over whatever lies beyond.
     static bool IsWater(TileWorldDocument doc, TileWorldCatalogs catalogs, int x, int z, int plane) =>
-        TileGroundMesher.IsDrawable(doc, x, z, plane)
+        TileGroundTriangles.IsDrawable(doc, x, z, plane)
         && catalogs.Material(doc.GetUnderlay(x, z, plane))?.Kind == GroundMaterialKind.Water;
 
     // The highest corner the body touches, in metres. One height for the whole body, so a river that descends is

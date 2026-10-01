@@ -65,12 +65,13 @@ internal sealed class TileGroundCornerCache
         return _height![at];
     }
 
-    /// <summary>What a vertex at this corner carries apart from its slots and weights: its region-local position,
-    /// its normal (the lattice normal, or up when the options ask for flat shading) and its brightness jitter.</summary>
+    /// <summary>What a vertex at this corner carries apart from its slots and weights: its region-local position
+    /// by the shared <see cref="TileGroundTriangles"/> corner rule, its normal (the lattice normal, or up when the
+    /// options ask for flat shading) and its brightness jitter.</summary>
     internal void Point(int cornerX, int cornerZ, out Vector3 position, out Vector3 normal, out float jitter)
     {
-        position = TileWorldSpace.ToWorld(cornerX - _originX, HeightCm(cornerX, cornerZ) * 0.01f,
-                                          cornerZ - _originZ, _tileSize);
+        position = TileGroundTriangles.CornerPosition(cornerX, cornerZ, HeightCm(cornerX, cornerZ), _originX, _originZ,
+                                                      _tileSize);
         if (!TryEntry(cornerX, cornerZ, out int at))
         {
             normal = ComputeNormal(cornerX, cornerZ);

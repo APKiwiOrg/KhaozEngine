@@ -5,27 +5,25 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.TileWorld;
 
-// The vertex half of the tile triangulation. Which triangles a tile is cut into is TileTriangulation's business,
-// shared with the raycast so a click lands on the triangle that is drawn. What each of their lattice points
-// becomes, its position, normal, slots, weights and jitter, is this file's. Both parts of a cut tile are built
-// from the same points, so the cut edge carries one position and one normal on each side and the parts meet
-// without a crack.
+// The vertex half of the tile triangulation. Which triangles a tile is cut into, and where their lattice points
+// sit, is TileGroundTriangles' business, shared with the raycast and headless readers so a click lands on the
+// triangle that is drawn. What else each of their lattice points carries, its normal, slots, weights and jitter,
+// is this file's. Both parts of a cut tile are built from the same points, so the cut edge carries one position
+// and one normal on each side and the parts meet without a crack.
 public static partial class TileGroundMesher
 {
-    /// <summary>Emits one tile the way the shared triangulation cuts it, painting each triangle with the
-    /// overlay's slot or leaving it to the tile's own four corner materials.</summary>
+    /// <summary>Emits one tile's <paramref name="triangles"/>, cut by the shared ground rule as
+    /// <paramref name="shape"/>, painting each triangle with the overlay's slot or leaving it to the tile's own
+    /// four corner materials.</summary>
     static void AddCutTile(
         MeshAccumulator mesh,
         in TileMeshContext c,
         int lx,
         int lz,
         TileOverlayShape shape,
-        int rotation,
         int? overlaySlot,
-        bool splitSwNe)
+        ReadOnlySpan<TileLatticeTriangle> triangles)
     {
-        Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
-        int count = TileTriangulation.Triangulate(shape, rotation, splitSwNe, triangles);
         bool feather = overlaySlot.HasValue
             && (c.Doc.GetSettings(c.OriginX + lx, c.OriginZ + lz, c.Plane) & TileSettings.FeatherOverlay) != 0;
         TileOverlayBoundary? boundary = feather
@@ -43,7 +41,7 @@ public static partial class TileGroundMesher
         LatticePoint nw = Corner(c, lx, lz, 0, 1, slots);
         LatticePoint ne = Corner(c, lx, lz, 1, 1, slots);
 
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < triangles.Length; i++)
         {
             TileLatticeTriangle t = triangles[i];
             int? paint = t.Overlay ? overlaySlot : null;
@@ -190,7 +188,7 @@ public static partial class TileGroundMesher
     {
         Vector3 normal = (a.Normal + b.Normal) * 0.5f;
         return new LatticePoint(
-            (a.Position + b.Position) * 0.5f,
+            TileGroundTriangles.MidEdgePosition(a.Position, b.Position),
             normal.LengthSquared() > 0f ? Vector3.Normalize(normal) : Vector3.UnitY,
             a.Slots,
             (a.Weights + b.Weights) * 0.5f,

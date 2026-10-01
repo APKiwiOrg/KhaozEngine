@@ -102,7 +102,7 @@ public sealed partial class TileWorldView
         _loaded.TryGetValue(RegionCoord.Of(x, z), out RegionHandles? handles)
         && handles.Residency == TileRegionResidencyState.Gameplay
         && handles.Meshes[plane] is not null
-        && TileGroundMesher.IsDrawable(_doc, x, z, plane);
+        && TileGroundTriangles.IsDrawable(_doc, x, z, plane);
 
     static bool IsFinite(in Vector3 value) =>
         float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);

@@ -134,7 +134,7 @@ public static partial class TileGroundMesher
             {
                 int x = worldX + dx;
                 int z = worldZ + dz;
-                if (!IsDrawable(c.Doc, x, z, c.Plane)) return default;
+                if (!TileGroundTriangles.IsDrawable(c.Doc, x, z, c.Plane)) return default;
                 if ((c.Doc.GetSettings(x, z, c.Plane) & TileSettings.Bridge) != 0) return default;
 
                 ushort underlay = c.Doc.GetUnderlay(x, z, c.Plane);

@@ -24,18 +24,20 @@ public class CharacterOnTileWorldTests
     const float North = 0f, South = MathF.PI, East = -MathF.PI / 2f;
 
     // The flat face a wall box shows a body: half the default wall thickness out from the edge it stands on.
-    const float WallFace = 0.05f;
+    static readonly float WallFace = new TileColliderOptions().WallThickness / 2f;
 
-    // Small enough that the body walks over the ramp's mesh in either space, and high enough against its x that a
-    // registration which forgot the origin would stand that mesh about a metre above the floor the body walks on.
-    static readonly Vector3 RampOrigin = new(3.5f, 2.5f, -2.75f);
+    // The origin the rebased cases use. Small enough that the ramp walker stays over the ramp's mesh in either space,
+    // and high enough against its x that a registration which forgot the origin would stand that mesh about a metre
+    // above the floor the body walks on. Its z moves the river three rows, and its height puts the feet 2.5 m off,
+    // so a medium wrapper that drops either offset reads the wader as dry or swimming.
+    static readonly Vector3 RebasedOrigin = new(3.5f, 2.5f, -2.75f);
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void ABodyWalksUpASlopeAndStaysOnTheGround(bool rebased)
     {
-        using var scene = new Scene(RampWorld(), rebased ? RampOrigin : Vector3.Zero);
+        using var scene = new Scene(RampWorld(), rebased ? RebasedOrigin : Vector3.Zero);
         MoveState body = scene.Place(5.5f, 30.5f);
         float startFeet = scene.Absolute(body).Y - Character.CapsuleHalfHeight;
 
@@ -79,7 +81,8 @@ public class CharacterOnTileWorldTests
     public void AWallBlocksFromBothSides()
     {
         using var scene = new Scene(DoorwayWorld());
-        const float x = WallRunFirstX + 5.5f;
+        // East of the door, on a different wall box from the doorway test's blocked walk.
+        const float x = WallRunLastX - 3.5f;
 
         Vector3 fromSouth = scene.Absolute(scene.Walk(scene.Place(x, DoorRow - 3.5f), North, 120));
         AssertStoppedSouthOfTheWall(fromSouth);
@@ -125,10 +128,12 @@ public class CharacterOnTileWorldTests
         Assert.True(-scene.Absolute(on).Z > HighDeckZ + 2f, $"did not walk along the deck, at tile z {-scene.Absolute(on).Z}");
     }
 
-    [Fact]
-    public void WadingSlowsTheBody()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WadingSlowsTheBody(bool rebased)
     {
-        using var scene = new Scene(BridgedRiverWorld());
+        using var scene = new Scene(BridgedRiverWorld(), rebased ? RebasedOrigin : Vector3.Zero);
         float riverRow = RiverFirstRow + 1.5f;   // the flat bed of the river, a metre down
 
         MoveState dry = scene.Place(2.5f, 5.5f);

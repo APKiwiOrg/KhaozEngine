@@ -119,20 +119,40 @@ public sealed class TileWorldColliders
     /// rest of the world. <see cref="Ground"/> and <see cref="Medium"/> still answer in document coordinates, so a
     /// caller stepping a body in a rebased world adds the origin to the coordinates it hands them and takes it off the
     /// heights they answer.
+    /// <para>If the world refuses a static partway through, the statics already added are removed again and the
+    /// world's exception is rethrown, so a failed call leaves nothing behind.</para>
     /// </summary>
     /// <param name="world">The world to add the statics to.</param>
     /// <returns>The handles, to remove the statics again.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="world"/> is null.</exception>
+    /// <exception cref="AggregateException">Adding failed and removing what was added failed too. The add failure is
+    /// the first inner exception.</exception>
     public TileColliderRegistration AddTo(IPhysicsWorld world)
     {
         ArgumentNullException.ThrowIfNull(world);
         Vector3 origin = world.Origin;
         var handles = new StaticHandle[Colliders.Count];
-        for (int i = 0; i < handles.Length; i++)
+        int added = 0;
+        try
         {
-            TileCollider collider = Colliders[i];
-            handles[i] = world.AddStatic(collider.Shape,
-                new Pose(collider.Pose.Position - origin, collider.Pose.Orientation));
+            for (; added < handles.Length; added++)
+            {
+                TileCollider collider = Colliders[added];
+                handles[added] = world.AddStatic(collider.Shape,
+                    new Pose(collider.Pose.Position - origin, collider.Pose.Orientation));
+            }
+        }
+        catch (Exception addFailure)
+        {
+            try
+            {
+                new TileColliderRegistration(world, handles[..added]).Remove();
+            }
+            catch (Exception cleanupFailure)
+            {
+                throw new AggregateException(addFailure, cleanupFailure);
+            }
+            throw;
         }
         return new TileColliderRegistration(world, handles);
     }

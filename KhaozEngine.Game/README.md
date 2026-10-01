@@ -114,6 +114,11 @@ options.AppUserModelId = "APKiwi.Nullwake";
 options.SingleInstance = true;   // reuses AppUserModelId as the guard key
 ```
 
+**Pointer capture** (since 20.17.0). The protected `SetPointerCaptured(bool)` forwards to
+`AppWindow.SetPointerCaptured`, beside `Rumble`. Call it each frame with whatever wants the cursor hidden and held,
+such as `FollowCameraController.WantsPointerCapture`. A scene cannot reach it, so an app forwards its active
+scene's request itself. The capture rules are `KhaozEngine.Windowing`'s (see docs/USING-KHAOZENGINE.md).
+
 **WinExe console attach.** Ship the Desktop head as `<OutputType>WinExe</OutputType>` (no stray console window on
 Windows). Because a Windows-subsystem exe has no console, `GameApp` calls `AppWindow.TryAttachParentConsole()` as
 its very first action, attaching the launching terminal's console so `Console.Write*` still shows under

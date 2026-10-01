@@ -778,6 +778,8 @@ public sealed class InputState   // immutable per-frame snapshot; InputState.Emp
     bool WindowFocused;                             // optional trailing ctor arg, default true (Empty = false)
     IReadOnlySet<Key> KeysRepeated;                 // optional trailing ctor arg, default empty
     IReadOnlySet<MouseButton> MouseReleased;        // optional trailing ctor arg, default empty
+    string TextInput;  bool TextInputAvailable;     // optional trailing ctor args, default "" and false
+    bool PointerCaptured;                           // optional trailing ctor arg, default false
 }
 
 bool IsDown(Key) / WasPressed(Key) / WasReleased(Key);
@@ -817,6 +819,18 @@ wheel input. It does not consume the wheel globally or mutate the source snapsho
 ```csharp
 InputState cameraInput = input.WithoutScroll();
 ```
+
+`PointerCaptured` (since 20.17.0) is true while the window holds the pointer captured for mouse-look: hidden,
+locked to the window and moving without bounds. A game requests it through `SetPointerCaptured` (see "Pointer
+capture" below). While captured, `MouseDelta` is in window points rather than framebuffer pixels, so the same hand
+movement reads the same on a 1x and a 2x display. `MousePosition` stays in framebuffer pixels. The frame capture
+starts and the frame it ends each report a zero `MouseDelta`, because GLFW moves the cursor on both edges and the
+restored position would otherwise read as one large jump. `WithoutScroll()` and `AutomationInputInjector.Compose`
+keep the value. It is unrelated to `GuiSurface.PointerCaptured`, the UI click-through gate.
+
+A custom snapshot producer passes the same facts to `InputAccumulator.Snapshot(..., pointerCaptured,
+framebufferScale)`. `framebufferScale` is framebuffer pixels per window point on each axis, the ratio `AppWindow`
+also applies to the cursor position. The default, and any component that is not positive or is NaN, means 1.
 
 ### InputManager + Pointer - the higher-level read
 
@@ -998,6 +1012,68 @@ Because a motor-less pad no-ops silently, a game can call rumble unconditionally
 
 **Localization note:** rumble deals in `PlayerIndex` + numeric intensities only, no player-facing text, so nothing
 here localizes.
+
+### Pointer capture (`SetPointerCaptured`)
+
+Pointer capture is the mouse-look output beside rumble, and it keeps the same rule: a game asks, and only
+`AppWindow` tells GLFW. `AppWindow.SetPointerCaptured(bool)` records the request, and `AppWindow.PointerCaptured`
+reports whether GLFW holds the cursor captured, matching this frame's `InputState.PointerCaptured`. A `GameApp`
+calls the protected `SetPointerCaptured(bool)`, which forwards to its window.
+
+The window applies the request once a frame, before it builds the input snapshot, through a pure policy:
+
+- It captures only while the request is true and the window is focused.
+- A focus loss releases the cursor on the same frame the input snapshot releases held buttons.
+- Refocus does not capture again until the request goes false and then true, so a request held across an alt-tab
+  leaves the cursor free when the player comes back.
+- Focus is sampled once per frame. A loss and a refocus inside one event pump keep the capture, and GLFW disables
+  the cursor again on refocus, so it is never left stuck.
+- Raw mouse motion is turned on only where GLFW reports it supported.
+- The cursor mode is set through GLFW's `SetInputMode` directly, never through Silk's `CursorMode` setter, which
+  writes raw motion even where it is unsupported and raises a GLFW error on macOS.
+- A window with no GLFW handle never captures.
+
+Set the request every frame from whatever wants it. A request made in `OnUpdate` applies on the next frame:
+
+```csharp
+protected override void OnUpdate(float dt)
+{
+    _camController.Update(Input, dt);
+    SetPointerCaptured(_camController.WantsPointerCapture);   // hidden and held while a camera drag runs
+}
+```
+
+A scene cannot reach the protected member, so an app whose camera lives in a scene forwards the scene's want
+itself. The Showcase does this for its 3D room: `IShowcaseRoom.WantsPointerCapture` defaults to false, and
+`ShowcaseApp` forwards the active room's value after the scenes update.
+
+### Tap or drag (`PointerGesture`)
+
+`PointerGesture(button, thresholdPixels = 4)` (since 20.17.0) splits one mouse button into a tap and a drag. It is
+pure and headless. It reads its own button, `MousePosition`, `MouseDelta` and `WindowFocused` from the snapshot and
+owns no camera. Call `Advance(input, uiBlocked)` once a frame, then read:
+
+- `Phase`: `Idle`, `Pending` (pressed and still undecided) or `Dragging` (past the threshold, and a drag until the
+  button comes up).
+- `DragDelta`: zero unless dragging, the frame's `MouseDelta` while dragging, and the whole pending travel on the
+  frame the press crosses the threshold.
+- `TapThisFrame` and `TapPosition`: a release while still pending is a tap, at the position the press began.
+
+The rules:
+
+- Travel is path length over the whole press, so slow movement still becomes a drag, and a wiggle that returns to
+  its start is a drag rather than a tap.
+- Crossing the threshold replays the pending travel in one `DragDelta`, so a drag has no dead zone at its start.
+- A press that begins while `uiBlocked` is true or while the window is unfocused is inert for its whole life. A
+  focus loss or a block that arrives mid-press ends any drag and makes the rest of the press inert, so that press
+  is neither a tap nor a drag.
+- A threshold of 0 or less drags from the first frame of a press and never taps.
+- `TapThisFrame` describes only the most recent `Advance`. Read it after advancing with the snapshot you act on.
+- `Advance` allocates nothing.
+- While the pointer is captured, `MouseDelta` is in window points, so the threshold is too.
+
+It is lifted from Ruinborne's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
+them (see "Tap-or-drag gestures" in the follow camera chapter).
 
 ### Rect, viewport, clock
 
@@ -6510,7 +6586,7 @@ its `Target` at a clamped `Pitch`/`Distance` and always looks at that pivot (sam
 `Forward`/`ScreenToGround`, and it implements `IIsoCamera3D`). Drive it from the input snapshot with
 `FollowCameraController`: hold the orbit button (right mouse by default, matching the fly camera and leaving
 left-drag free for gameplay) and drag to swing yaw/pitch, and scroll to zoom. Set
-`FollowCameraController.OrbitButton` to change the button. To render through it, set
+`FollowCameraController.OrbitButton` to change the button, or opt in to the tap-or-drag gestures below. To render through it, set
 `Scene3D.CameraOverride` (null = the built-in iso `Camera`) and feed the override its aspect ratio each frame:
 
 ```csharp
@@ -6582,6 +6658,46 @@ orbit/zoom sensitivity, per-axis drag inversion (`FollowCameraController.InvertX
 setting), and the camera ground-clamp (`FollowCamera3D.GroundHeight` / `GroundClearance`) are public fields
 (feel-tuned later). See the 3D World room (`Room3D`) in `KhaozEngine.Showcase` for the full wiring (Space to jump). It now drives an animated
 character off this controller's movement state (see "Animated characters" above) rather than a static capsule.
+
+**Tap-or-drag gestures (since 20.17.0, off by default).** Set `FollowCameraController.OrbitGesture` and
+`LookGesture` to a `PointerGesture` each (see "Tap or drag" in the input chapter) and every button splits into a tap
+and a drag. With either set, `OrbitButton` is ignored. `UiBlocked` is a field the game sets before each `Update`,
+and a press that begins while it is true never orbits and never taps. `Update` advances each set gesture once. The
+camera orbits only while a gesture drags, and by one delta a frame, so each mouse movement turns it once however
+many buttons are held. A gesture that crosses its threshold with no orbit since its press began applies its
+`DragDelta`, the replay of its pending travel, with `LookGesture` first when both cross together. Otherwise the
+frame's `MouseDelta` applies. Speed, invert and sign are as for the orbit button, and scroll zoom, target damping
+and boom recovery run unchanged. With neither gesture set, `Update` runs the orbit button path exactly as before.
+
+The controller reports three things:
+
+- `TurnBodyActive` is true while `LookGesture` drags.
+- `WantsPointerCapture` is true while either gesture drags. Forward it to `SetPointerCaptured` so the cursor hides
+  and holds for the drag (see "Pointer capture" in the input chapter).
+- Taps are read from each gesture's `TapThisFrame` and `TapPosition` after `Update`, in the same frame.
+
+The WoW wiring puts orbit on the left button and look on the right. The game reads `TurnBodyActive` and hands it to
+`CharacterMovement` as `MoveCommand.FaceCamera`, with `Camera.Yaw` as `CameraYaw`. A local
+`CharacterController3D` builds that command itself from its `FaceCamera` field and the yaw passed to `Update`:
+
+```csharp
+var camController = new FollowCameraController(camera)
+{
+    OrbitGesture = new PointerGesture(MouseButton.Left),   // orbit only
+    LookGesture = new PointerGesture(MouseButton.Right),   // orbit and turn the body
+};
+
+// each frame:
+camController.UiBlocked = gui.PointerCaptured;           // the UI owns this press
+camController.Update(input, dt);
+SetPointerCaptured(camController.WantsPointerCapture);
+var cmd = new MoveCommand(move, run, camController.Camera.Yaw, jump, faceCamera: camController.TurnBodyActive);
+character.FaceCamera = camController.TurnBodyActive;    // the local controller's equivalent
+if (camController.OrbitGesture!.TapThisFrame) Select(camController.OrbitGesture.TapPosition);
+```
+
+The Showcase 3D room opts in with this wiring and forwards `WantsPointerCapture` through `ShowcaseApp`. It reads
+neither `TurnBodyActive` nor the taps, so both drags only orbit there.
 
 **Optional target damping (off by default).** Set `FollowCamera3D.EnableTargetDamping = true` (rate
 `TargetDampingRate`, default 10/s) to have the camera follow a smoothed `EffectiveTarget` that eases toward

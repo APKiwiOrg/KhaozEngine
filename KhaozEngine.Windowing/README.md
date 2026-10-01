@@ -168,6 +168,9 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `WasReleased(MouseButton)` / `MouseReleased` (since 14.25.0) give the mouse the release edge the keyboard
   already had. `WithoutScroll()` returns the same snapshot with only `ScrollDelta` cleared, sharing every input
   collection and preserving every other value. It reuses the original snapshot when scroll is already zero.
+  `PointerCaptured` (since 20.17.0) is true while the window holds the pointer captured. While captured,
+  `MouseDelta` is in window points, so the same hand movement reads alike on a 1x and a 2x display, and
+  `MousePosition` stays in framebuffer pixels. The frames capture starts and ends report a zero delta.
 - `InputManager.SuppressPointerInput()` gives an owning surface a frame-level pointer arbitration boundary after
   `Update`. It clears mouse buttons and wheel input for that frame, quarantines held buttons until their physical
   release, and keeps keyboard, gamepad, pointer position, and hover available.
@@ -177,7 +180,8 @@ Windowing + input foundation for the custom MonoGame-free stack.
   reads passed in as arguments. `AppWindow` keeps the Silk/GLFW binding and delegates, so the input hard rule is
   unchanged: `AppWindow` is still the only class touching the Silk input statics. Games do not construct this
   directly, they read `Frame.Input`. It exists so focus-loss release semantics and first-frame cursor priming can
-  be tested without a window.
+  be tested without a window. `Snapshot(..., pointerCaptured, framebufferScale)` (since 20.17.0) takes the capture
+  state and the framebuffer pixels per window point. A scale component that is not positive or is NaN means 1.
 - `AppWindow.SetIcon(params WindowIcon[])` sets the runtime window/taskbar icon. `WindowIcon` is one already-decoded,
   tightly-packed RGBA8 image (top-left origin); pass several sizes (16/32/48...) and GLFW picks per DPI. On Windows
   it sets the title bar + Alt-Tab (`WM_SETICON`) **and** the taskbar button: GLFW only sets `WM_SETICON`, which does
@@ -257,6 +261,17 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `IRumbleOutput` sink and is headless-tested against a recording fake. **Reality: the current GLFW input backend
   exposes zero vibration motors (GLFW has no haptics API), so rumble is a graceful no-op today; the wiring is correct
   and a future SDL-backed window lights up through the same seam. On-device feel needs a physical smoke test.**
+- **Pointer capture** (since 20.17.0) - the mouse-look output beside rumble. `AppWindow.SetPointerCaptured(bool)`
+  records the request and `AppWindow.PointerCaptured` reads the result. `GameApp.SetPointerCaptured` is the
+  protected forwarder. Once a frame, before the snapshot, a pure policy captures only while requested and focused,
+  releases on focus loss, and waits for a false then true request before capturing again after refocus. It sets
+  GLFW's cursor mode through `SetInputMode`, never Silk's `CursorMode` setter, and turns on raw motion only where
+  GLFW supports it. See docs/USING-KHAOZENGINE.md.
+- `PointerGesture(button, thresholdPixels = 4)` (since 20.17.0) - splits one mouse button into a tap and a drag.
+  `Advance(input, uiBlocked)` once a frame, then read `Phase` (`Idle`, `Pending`, `Dragging`), `DragDelta`,
+  `TapThisFrame` and `TapPosition`. Travel is path length, crossing replays the pending travel, and a press begun
+  under UI or while unfocused is inert. A threshold of 0 or less drags at once and never taps. `Advance` allocates
+  nothing. Lifted from Ruinborne's `RightMouseGesture`. See docs/USING-KHAOZENGINE.md.
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
   that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`
   / `AdaptiveViewport` (letterbox/fill/stretch + responsive). All expose `WindowBounds` (10.38.0) - the whole

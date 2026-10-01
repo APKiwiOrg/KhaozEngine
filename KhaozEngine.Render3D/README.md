@@ -17,6 +17,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   E/Q to rise/sink on world +Y, hold `Key.LeftShift` to sprint (`SprintMultiplier`), and the wheel to scale
   `MoveSpeed` (clamped `MinMoveSpeed`..`MaxMoveSpeed`). No smoothing (dt-scaled direct integration), no input
   statics touched (the snapshot is handed in), allocation-free per frame.
+- `FollowCameraController` gestures (since 20.17.0, off by default). Set `OrbitGesture` and `LookGesture` to a
+  `PointerGesture` each and `OrbitButton` is ignored. The camera orbits only while a gesture drags, by one delta a
+  frame, and a press begun while the game's `UiBlocked` is set never orbits or taps. `TurnBodyActive` is true while
+  `LookGesture` drags, for `MoveCommand.FaceCamera`, and `WantsPointerCapture` while either drags, for
+  `SetPointerCaptured`. Taps are read from each gesture after `Update`. Scroll zoom, damping and boom recovery are
+  unchanged, and with neither gesture set the controller behaves exactly as before. See docs/USING-KHAOZENGINE.md.
 - `FollowCamera3D.Warp(target)` / `SnapToTarget()` (since 10.65.0) - hard-cut the third-person follow camera onto a
   point with no ease (the 3D counterpart of `Render2D.CameraFollow.Warp`), for a teleport/respawn so the smoothed
   camera does not "fly" across the jump.

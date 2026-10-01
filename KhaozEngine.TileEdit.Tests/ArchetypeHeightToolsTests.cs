@@ -27,7 +27,12 @@ public class ArchetypeHeightToolsTests
         public Fixture(params (string Name, string Json)[] catalogs)
         {
             Directory.CreateDirectory(World);
-            foreach ((string name, string json) in catalogs) File.WriteAllText(Path.Combine(World, name), json);
+            foreach ((string name, string json) in catalogs)
+            {
+                string path = Path.Combine(World, name);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path, json);
+            }
             Session.Create(World, "heights", "Heights", 1, 1f, catalogs.Select(c => c.Name).ToArray());
             Tools = new ArchetypeHeightTools(new ArchetypeHeightService(Session));
         }
@@ -305,6 +310,62 @@ public class ArchetypeHeightToolsTests
         Assert.Equal(f.CatalogPath("ground.json"), Assert.Single(rock.Changed).File);
         Assert.Equal(1.5f, f.Session.Editing!.Catalogs.Archetype("rock")!.CollisionHeight);
         Assert.Equal(1.5f, TileWorldCatalogs.Load(new[] { f.CatalogPath("ground.json") }).Archetype("rock")!.CollisionHeight);
+    }
+
+    // A file the disk refuses fails alone: the file written before it stays reported as changed and refreshes the
+    // session, and only the refused file's entries become errors. The refused file's directory is made read-only
+    // after the world opens, so it still loads and prepares but its temporary file cannot be created.
+    [Fact]
+    public void AFailedWriteKeepsTheFilesThatLandedBeforeIt()
+    {
+        // Windows governs a directory through its ACL, not a POSIX mode.
+        if (OperatingSystem.IsWindows()) return;
+        using var f = new Fixture(("ground.json", Ground), ("locked/props.json", Props));
+        string locked = Path.GetDirectoryName(f.CatalogPath("locked/props.json"))!;
+        byte[] props = File.ReadAllBytes(f.CatalogPath("locked/props.json"));
+        UnixFileMode mode = File.GetUnixFileMode(locked);
+        File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            // A user that ignores directory modes (root) can write anyway, so there is no failure to observe.
+            if (CanCreateFileIn(locked)) return;
+
+            CollisionHeightsResult result = f.Tools.SetCollisionHeights(
+                new[] { new ArchetypeHeight("rock", 1.5f), new ArchetypeHeight("tree", 4.5f) });
+
+            CollisionHeightChange rock = Assert.Single(result.Changed);
+            Assert.Equal("rock", rock.Id);
+            Assert.Equal(f.CatalogPath("ground.json"), rock.File);
+            ArchetypeHeightError tree = Assert.Single(result.Errors);
+            Assert.Equal("tree", tree.Id);
+            Assert.Contains("could not be written", tree.Error, StringComparison.Ordinal);
+            Assert.Null(result.SessionRefreshError);
+
+            Assert.Equal(1.5f, TileWorldCatalogs.Load(new[] { f.CatalogPath("ground.json") }).Archetype("rock")!.CollisionHeight);
+            Assert.Equal(props, File.ReadAllBytes(f.CatalogPath("locked/props.json")));
+            Assert.Equal(new[] { "props.json" }, Directory.GetFiles(locked).Select(Path.GetFileName));
+            Assert.Equal(1.5f, f.Session.Editing!.Catalogs.Archetype("rock")!.CollisionHeight);
+            Assert.Null(f.Session.Editing!.Catalogs.Archetype("tree")!.CollisionHeight);
+        }
+        finally
+        {
+            File.SetUnixFileMode(locked, mode);
+        }
+    }
+
+    static bool CanCreateFileIn(string directory)
+    {
+        string probe = Path.Combine(directory, "probe");
+        try
+        {
+            File.WriteAllBytes(probe, Array.Empty<byte>());
+            File.Delete(probe);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Writes a one-triangle binary glTF whose vertices span y from <paramref name="minY"/> to

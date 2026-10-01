@@ -21,6 +21,8 @@ namespace KhaozEngine.TileWorld.Physics;
 /// with no loaded regions, answers height 0 with a straight up normal. The sampler reads the document it was built
 /// from on every call, but its rectangle was captured at build and the colliders it has to agree with were built
 /// then too, so a document edited after <see cref="TileWorldColliders.Build"/> needs a rebuild.
+/// <para>It is read-only after construction, with no cache and no shared scratch buffer, so several threads may call
+/// it at once as long as nothing edits the document meanwhile.</para>
 /// </summary>
 public sealed class TileGroundSampler
 {

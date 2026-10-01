@@ -26,7 +26,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   ground triangles, wound for a one-sided backend mesh) plus wall, blocked-tile, object and walk-surface boxes, with
   a stable SHA-256 `Hash`. `AddTo(world)` registers them in any `IPhysicsWorld`, relative to its origin, and the
   returned `TileColliderRegistration` removes them again. `Ground` is a floor sampler read from the drawn ground
-  only and `Medium` a water sampler, both handing `CharacterMovement.Step` its delegates. `TileColliderOptions`
+  only and `Medium` a water sampler, and their `HeightDelegate`, `NormalDelegate` and `MediumDelegate` are the
+  delegates `CharacterMovement.Step` takes. Both samplers are safe for concurrent calls while the document is not
+  edited. A blocked tile's box runs from its lowest corner to its highest corner plus the blocked height, so a body
+  cannot step onto a steep blocked tile from above. `Hash` is pinned by a golden literal. `TileColliderOptions`
   sets the wall thickness, the blocked-tile height and the walk-surface thickness
   ([consumer contract](docs/USING-KHAOZENGINE.md#physics-for-a-tile-world-khaozenginetileworldphysics)).
 - Catalog archetypes take an optional `collisionHeight`, the model's height in metres above its local base. A
@@ -37,7 +40,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   not come from a file, like `MaterialSource`.
 - `ke-tileedit` has 50 verbs. `archetype_measure_heights(kitRoot)` reads each archetype's model top from its glb,
   and `archetype_set_collision_heights(heights, overwrite)` writes `collisionHeight` into the one catalog file that
-  defines each archetype. Its catalog writer edits the JSON text in place and keeps every byte it does not change.
+  defines each archetype. Its catalog writer edits the JSON text in place and keeps every byte it does not change,
+  and writes each file through a temporary file and a rename. A file the disk refuses fails its own entries only.
   Afterwards only `collisionHeight` is refreshed in the open session, other catalog edits made outside the tool
   still need `world_open`, and a failed refresh is reported in `sessionRefreshError`.
 

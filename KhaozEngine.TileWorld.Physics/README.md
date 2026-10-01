@@ -17,13 +17,13 @@ using var world = new BepuPhysicsWorld();
 using TileColliderRegistration registration = colliders.AddTo(world);
 
 body = CharacterMovement.Step(body, command, dt, colliders.Ground.HeightDelegate, MoveTuning.Default,
-                              colliders.Ground.NormalDelegate, world, medium: colliders.Medium.Delegate);
+                              colliders.Ground.NormalDelegate, world, medium: colliders.Medium.MediumDelegate);
 ```
 
 `TileWorldColliders.Build(document, catalogs, options)` describes the loaded regions as data and registers
 nothing. `AddTo(world)` adds every collider as a static and returns a `TileColliderRegistration`, whose `Remove()`
 or `Dispose()` takes them out again. `Ground` and `Medium` are the samplers, and their `HeightDelegate`,
-`NormalDelegate` and `Delegate` are the ground-height, ground-normal and medium arguments of
+`NormalDelegate` and `MediumDelegate` are the ground-height, ground-normal and medium arguments of
 `CharacterMovement.Step`, each created once.
 
 After an edit, remove the old registration, build again and add the new colliders. The ground sampler reads the
@@ -55,8 +55,9 @@ or several as an `AggregateException`. A second call retries only the handles th
   front face up, the same swap the terrain's collision mesh makes.
 - **Wall:** one box per edge a placed `Wall` or `WallCorner` blocks, as the collision baker reads its rotation,
   `WallThickness` thick and centred on the edge.
-- **Blocked:** one box per tile with no underlay or marked `TileSettings.Blocked`, from the tile's lowest corner up
-  `BlockedHeight`.
+- **Blocked:** one box per tile with no underlay or marked `TileSettings.Blocked`, from the tile's lowest corner to
+  its highest corner plus `BlockedHeight`. The tile collision map refuses the whole tile, so the box stands above
+  every point of its ground, and a body cannot step onto a steep blocked tile from the high side.
 - **Object:** a box over a `Solid` object's rotated footprint, or over a `Diagonal` object's anchor tile.
 - **WalkSurface:** a box `WalkSurfaceThickness` thick under each walk surface's top, over its rectangle as
   `TileWalkSurfaces` resolves it.
@@ -119,6 +120,9 @@ document's lattice height, `TileWorldDocument.HeightAt`, with a straight up norm
 standing on a deck above a river is dry. The surface is the body's rim less `TileWaterBodies.SurfaceDropMetres`. An
 in-water answer is always built through the `MovementMedium` constructor and leaves the wade speed to the tuning.
 
+`TileGroundSampler` and `TileMediumSampler` are read-only after construction, with no cache and no shared scratch
+buffer, so several threads may call them at once as long as nothing edits the document meanwhile.
+
 ## Hash
 
 `Hash` is SHA-256 over every collider in order: its kind byte, its shape as `PropCollisionFormat.Write` writes it,
@@ -134,6 +138,8 @@ x64 and ARM64, and so can the hash of a world that has one.
   whose archetype the catalogs do not define get no collider. A plane-0 `Solid` roof is still blocked by the tile
   collision map, so the two disagree there.
 - A `TileSettings.NoDraw` tile has no ground triangle and no blocked box, so it is a hole in the physics floor.
+- Nothing collides at the edge of the loaded world or across a missing region inside it. The floor sampler carries on
+  level there, so a body keeps walking on an invisible floor. Author a blocked border around the playable area.
 - A down ray exactly on an outer edge of the drawn ground, the loaded world's boundary or a drawn tile beside an
   undrawn one, may miss under the backend's half-open triangle edges. Interior lattice lines and region seams hit.
   The movement floor is the sampler, not a ray, so a walking body never depends on that line, and a void tile

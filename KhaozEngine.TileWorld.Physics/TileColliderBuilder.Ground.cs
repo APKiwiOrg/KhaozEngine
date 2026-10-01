@@ -47,10 +47,12 @@ static partial class TileColliderBuilder
                     // The collision baker's ground rule.
                     if (document.GetUnderlay(x, z, Plane) != 0
                         && (document.GetSettings(x, z, Plane) & TileSettings.Blocked) == 0) continue;
+                    // The tile map refuses the whole tile, so the box stands above every point of its ground.
                     float bottom = LowestCorner(document, x, z, x + 1, z + 1);
+                    float top = HighestCorner(document, x, z, x + 1, z + 1) + height;
                     into.Add(Box(TileColliderKind.Blocked,
                         TileWorldSpace.WorldX(x + 0.5f, tileSize), TileWorldSpace.WorldZ(z + 0.5f, tileSize),
-                        tileSize * 0.5f, tileSize * 0.5f, bottom, bottom + height));
+                        tileSize * 0.5f, tileSize * 0.5f, bottom, top));
                 }
     }
 
@@ -62,6 +64,16 @@ static partial class TileColliderBuilder
             for (int x = x0; x <= x1; x++)
                 lowest = Math.Min(lowest, document.CornerHeightCm(x, z, Plane));
         return lowest * 0.01f;
+    }
+
+    // The highest lattice corner from (x0, z0) to (x1, z1) inclusive, in metres.
+    static float HighestCorner(TileWorldDocument document, int x0, int z0, int x1, int z1)
+    {
+        short highest = short.MinValue;
+        for (int z = z0; z <= z1; z++)
+            for (int x = x0; x <= x1; x++)
+                highest = Math.Max(highest, document.CornerHeightCm(x, z, Plane));
+        return highest * 0.01f;
     }
 
     // An axis-aligned box centred on (centreX, centreZ) in world metres, from bottom to top.

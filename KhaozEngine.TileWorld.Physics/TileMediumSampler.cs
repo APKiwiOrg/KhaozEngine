@@ -12,6 +12,8 @@ namespace KhaozEngine.TileWorld.Physics;
 /// <para>Every water tile's surface is collected once into a per-tile table, so a call is one lookup with no search
 /// and no allocation. The table is a snapshot of the document it was built from, so a document edited after
 /// <see cref="TileWorldColliders.Build"/> needs a rebuild.</para>
+/// <para>The table is read-only after construction, so several threads may call the sampler at once as long as
+/// nothing edits the document meanwhile.</para>
 /// </summary>
 public sealed class TileMediumSampler
 {
@@ -30,11 +32,11 @@ public sealed class TileMediumSampler
                     for (int z = rect.Z; z < rect.Z1; z++)
                         for (int x = rect.X; x < rect.X1; x++)
                             _surfaceByTile[(x, z)] = body.SurfaceY;
-        Delegate = MediumAt;
+        MediumDelegate = MediumAt;
     }
 
     /// <summary><see cref="MediumAt"/> as the medium delegate the movement step takes, created once.</summary>
-    public Func<float, float, float, MovementMedium> Delegate { get; }
+    public Func<float, float, float, MovementMedium> MediumDelegate { get; }
 
     /// <summary>The medium at a world point for feet at a height: in water at the body's surface when the point is
     /// over a water tile and <paramref name="feetY"/> is below that surface, otherwise

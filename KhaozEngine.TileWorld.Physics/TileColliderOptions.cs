@@ -9,8 +9,8 @@ public sealed record TileColliderOptions
     public float WallThickness { get; init; } = 0.1f;
 
     /// <summary>
-    /// How far a blocked tile's box rises above the lowest ground corner under it. Null means the document's plane
-    /// height.
+    /// How far a blocked tile's box rises above the highest ground corner under it. Its bottom is the lowest corner.
+    /// Null means the document's plane height.
     /// </summary>
     public float? BlockedHeight { get; init; }
 

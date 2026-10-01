@@ -142,7 +142,7 @@ public class CharacterOnTileWorldTests
         float feet = wetStart.Y - Character.CapsuleHalfHeight;
         Assert.True(scene.Colliders.Medium.MediumAt(wetStart.X, wetStart.Z, feet).InWater, "the river start is dry");
         float wade = CharacterMovement.WadeSpeedScale(wetStart.X, wetStart.Z, feet, Character,
-                                                      scene.Colliders.Medium.Delegate);
+                                                      scene.Colliders.Medium.MediumDelegate);
         Assert.True(wade < 0.8f, $"the river is too shallow to slow anyone, wade scale {wade}");
 
         float dryDistance = scene.Absolute(scene.Walk(dry, East, 60)).X - 2.5f;
@@ -165,6 +165,24 @@ public class CharacterOnTileWorldTests
         Assert.True(stopped.X <= 6f - Character.CapsuleRadius + 0.01f, $"walked into the blocked tile, at x {stopped.X}");
         Assert.True(stopped.X >= 6f - Character.CapsuleRadius - 0.1f, $"stopped short at x {stopped.X}");
         Assert.Equal(4.5f, -stopped.Z, 0.05f);
+    }
+
+    [Fact]
+    public void ABodyWalkingOffAPlateauIsStoppedAtATallBlockedCliff()
+    {
+        using var scene = new Scene(CliffWorld());
+        float plateau = PlateauCm * 0.01f;
+
+        MoveState body = scene.Place(CliffX - 4.5f, 30.5f);
+        Assert.Equal(plateau, scene.Absolute(body).Y - Character.CapsuleHalfHeight, 0.02f);
+        Vector3 stopped = scene.Absolute(scene.Walk(body, East, 120));
+
+        // The cliff tile falls further than the blocked height, and its box still stands above the plateau, so the
+        // capsule stops a radius short of the cliff's west face, on the plateau and on its row.
+        Assert.True(stopped.X <= CliffX - Character.CapsuleRadius + 0.01f, $"crossed onto the cliff, at x {stopped.X}");
+        Assert.True(stopped.X >= CliffX - Character.CapsuleRadius - 0.1f, $"stopped short at x {stopped.X}");
+        Assert.Equal(plateau, stopped.Y - Character.CapsuleHalfHeight, 0.02f);
+        Assert.Equal(30.5f, -stopped.Z, 0.05f);
     }
 
     static void AssertStoppedSouthOfTheWall(Vector3 at)
@@ -198,7 +216,7 @@ public class CharacterOnTileWorldTests
             {
                 _height = ground.HeightDelegate;
                 _normal = ground.NormalDelegate;
-                _medium = water.Delegate;
+                _medium = water.MediumDelegate;
             }
             else
             {

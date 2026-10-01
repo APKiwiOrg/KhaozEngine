@@ -59,7 +59,8 @@ public sealed class TileWorldColliders
     /// <item><b>Wall:</b> one box per edge a placed <c>Wall</c> or <c>WallCorner</c> blocks, as the collision baker
     /// reads its rotation, <see cref="TileColliderOptions.WallThickness"/> thick and centred on the edge.</item>
     /// <item><b>Blocked:</b> one box per tile with no underlay or marked <see cref="TileSettings.Blocked"/>, from the
-    /// tile's lowest corner up <see cref="TileColliderOptions.BlockedHeight"/>.</item>
+    /// tile's lowest corner to its highest corner plus <see cref="TileColliderOptions.BlockedHeight"/>, so it stands
+    /// above every point of the tile's ground however steep the tile is.</item>
     /// <item><b>Object:</b> a box over a <c>Solid</c> object's rotated footprint, or a <c>Diagonal</c> object's
     /// anchor tile.</item>
     /// <item><b>WalkSurface:</b> a box <see cref="TileColliderOptions.WalkSurfaceThickness"/> thick under each walk

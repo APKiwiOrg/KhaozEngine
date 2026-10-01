@@ -233,10 +233,10 @@ public class TileSamplerTests
 
         Assert.Same(colliders.Ground.HeightDelegate, colliders.Ground.HeightDelegate);
         Assert.Same(colliders.Ground.NormalDelegate, colliders.Ground.NormalDelegate);
-        Assert.Same(colliders.Medium.Delegate, colliders.Medium.Delegate);
+        Assert.Same(colliders.Medium.MediumDelegate, colliders.Medium.MediumDelegate);
         Assert.Equal(colliders.Ground.HeightAt(3.3f, -1.7f), colliders.Ground.HeightDelegate(3.3f, -1.7f));
         Assert.Equal(colliders.Ground.NormalAt(3.3f, -1.7f), colliders.Ground.NormalDelegate(3.3f, -1.7f));
-        Assert.Equal(colliders.Medium.MediumAt(3.3f, -1.7f, -5f), colliders.Medium.Delegate(3.3f, -1.7f, -5f));
+        Assert.Equal(colliders.Medium.MediumAt(3.3f, -1.7f, -5f), colliders.Medium.MediumDelegate(3.3f, -1.7f, -5f));
     }
 
     [Fact]
@@ -308,7 +308,7 @@ public class TileSamplerTests
         (float X, float Z)[] points = { (3.3f, -1.7f), (5.5f, -11.5f), (40.5f, -40.5f), (-9f, 99f) };
         Func<float, float, float> height = colliders.Ground.HeightDelegate;
         Func<float, float, Vector3> normal = colliders.Ground.NormalDelegate;
-        Func<float, float, float, MovementMedium> medium = colliders.Medium.Delegate;
+        Func<float, float, float, MovementMedium> medium = colliders.Medium.MediumDelegate;
         float sink = 0f;
         for (int warm = 0; warm < 2; warm++)
             foreach ((float x, float z) in points)

@@ -35,6 +35,13 @@ public static class TileWorldPhysicsTestData
     /// <summary>The height of the <c>high_deck</c> walk surface above the ground it stands on.</summary>
     public const float HighDeckHeight = 2.5f;
 
+    /// <summary>The blocked cliff column of <see cref="CliffWorld"/>.</summary>
+    public const int CliffX = 10;
+
+    /// <summary>The height of <see cref="CliffWorld"/>'s plateau in centimetres, taller than the default blocked
+    /// height.</summary>
+    public const short PlateauCm = 400;
+
     /// <summary>One archetype per collider rule, each with the height the rule needs:
     /// <list type="bullet">
     /// <item><c>wall</c>, a 1x1 <c>Wall</c> 2.5 m tall.</item>
@@ -171,6 +178,20 @@ public static class TileWorldPhysicsTestData
                 doc.SetCornerHeightCm(x, z, 0, (short)(-600 * Math.Min(x, 40)));
         doc.AddObject("wall", 5, 5, 0, 0);
         doc.AddObject("diag_long", 5, 10, 0, 0);
+        return doc;
+    }
+
+    /// <summary><see cref="FlatWorld"/> with a plateau <see cref="PlateauCm"/> high on every corner up to x
+    /// <see cref="CliffX"/>, so every tile of column <see cref="CliffX"/> falls from the plateau to the grass at 0 in one
+    /// tile, and that whole column marked <see cref="TileSettings.Blocked"/>.</summary>
+    public static TileWorldDocument CliffWorld()
+    {
+        TileWorldDocument doc = FlatWorld();
+        for (int z = 0; z < TileRegion.Size; z++)
+        {
+            for (int x = 0; x <= CliffX; x++) doc.SetCornerHeightCm(x, z, 0, PlateauCm);
+            doc.SetSettings(CliffX, z, 0, TileSettings.Blocked);
+        }
         return doc;
     }
 

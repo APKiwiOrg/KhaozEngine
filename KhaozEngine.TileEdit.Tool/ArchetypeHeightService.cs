@@ -22,9 +22,10 @@ namespace KhaozEngine.TileEdit;
 /// <para>Writing never touches the world, so it is not an undo step. Each height goes into the ONE catalog file
 /// the loader recorded the archetype from (a duplicate id across files is refused at load, so there is exactly
 /// one), through <see cref="CatalogWriter"/>, which keeps every byte it does not change. Every file is prepared
-/// and checked against the loader before any is written. Afterwards ONLY <c>collisionHeight</c> is refreshed in
-/// the open session, read back from the files, so the next verb sees the new heights. Any other catalog edit made
-/// outside the tool still needs <c>world_open</c>.</para></summary>
+/// and checked against the loader before any is written, and each is written to a temporary file beside it and
+/// renamed over it, so a catalog is always one complete file. Afterwards ONLY <c>collisionHeight</c> is refreshed
+/// in the open session, read back from the files, so the next verb sees the new heights. Any other catalog edit
+/// made outside the tool still needs <c>world_open</c>.</para></summary>
 public sealed class ArchetypeHeightService(TileEditSession session)
 {
     /// <summary>Measures every archetype of the open catalogs against the meshes under <paramref name="kitRoot"/>,
@@ -82,7 +83,8 @@ public sealed class ArchetypeHeightService(TileEditSession session)
     /// records a height is skipped unless <paramref name="overwrite"/>, and one that already records exactly the
     /// height asked for is always skipped, so its file is not rewritten. A height that is not a finite number above
     /// 0, an id the open catalogs do not define and an id listed twice are error entries, and nothing is written
-    /// for them.
+    /// for them. A file the disk refuses turns its own entries into error entries, and the files written before or
+    /// after it stay reported as changed.
     ///
     /// <para>When a file was written, only <c>collisionHeight</c> is refreshed in the open session afterwards. When
     /// that refresh fails (another of the world's catalog files no longer loads), the files already written stay
@@ -170,13 +172,31 @@ public sealed class ArchetypeHeightService(TileEditSession session)
                 foreach ((ArchetypeHeight entry, _, _) in group) errors.Add(new ArchetypeHeightError(entry.Id, ex.Message));
             }
         }
-        foreach ((string file, byte[] bytes) in prepared) File.WriteAllBytes(file, bytes);
+        // A write the disk refuses fails that file alone. The files that landed before it are on disk, so they are
+        // reported as changed and the session still refreshes from them.
+        int written = 0;
+        foreach ((string file, byte[] bytes) in prepared)
+        {
+            try
+            {
+                TileWorldFile.WriteAtomic(file, bytes);
+                written++;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                failedFiles.Add(file);
+                foreach ((ArchetypeHeight entry, string entryFile, _) in pending)
+                    if (entryFile == file)
+                        errors.Add(new ArchetypeHeightError(entry.Id,
+                            $"the catalog file {file} could not be written, so it keeps its old height. {ex.Message}"));
+            }
+        }
 
         CollisionHeightChange[] changed = pending
             .Where(p => !failedFiles.Contains(p.File))
             .Select(p => new CollisionHeightChange(p.Entry.Id, p.File, p.Previous, p.Entry.Height))
             .ToArray();
-        return (new CollisionHeightsResult(changed, skipped, errors, SessionRefreshError: null), prepared.Count > 0);
+        return (new CollisionHeightsResult(changed, skipped, errors, SessionRefreshError: null), written > 0);
     }
 
     // Why an archetype measured to nothing, naming its mesh reference and where it was looked for. A glb that is on

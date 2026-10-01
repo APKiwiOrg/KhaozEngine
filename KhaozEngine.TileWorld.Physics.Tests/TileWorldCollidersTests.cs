@@ -127,14 +127,34 @@ public class TileWorldCollidersTests
         TileCollider[] blocked = Of(TileWorldColliders.Build(doc, Catalogs()), TileColliderKind.Blocked);
 
         Assert.Equal(2, blocked.Length);
-        // From the lowest corner under the tile up the plane height, 3 m.
-        AssertBox(blocked[0], 2.5f, -2.5f, 0.5f, 0.5f, bottom: 0.2f, top: 3.2f);
-        AssertBox(blocked[1], 6.5f, -4.5f, 0.5f, 0.5f, bottom: 0.6f, top: 3.6f);
+        // From the lowest corner under the tile to the highest corner plus the plane height, 3 m.
+        AssertBox(blocked[0], 2.5f, -2.5f, 0.5f, 0.5f, bottom: 0.2f, top: 3.3f);
+        AssertBox(blocked[1], 6.5f, -4.5f, 0.5f, 0.5f, bottom: 0.6f, top: 3.7f);
 
         TileCollider[] lower = Of(
             TileWorldColliders.Build(doc, Catalogs(), new TileColliderOptions { BlockedHeight = 1.5f }),
             TileColliderKind.Blocked);
-        AssertBox(lower[0], 2.5f, -2.5f, 0.5f, 0.5f, bottom: 0.2f, top: 1.7f);
+        AssertBox(lower[0], 2.5f, -2.5f, 0.5f, 0.5f, bottom: 0.2f, top: 1.8f);
+    }
+
+    [Fact]
+    public void ASteepBlockedTileStandsOverItsHighestCorner()
+    {
+        TileWorldDocument doc = CliffWorld();
+        float blockedHeight = doc.PlaneHeight;
+
+        TileCollider cliff = Assert.Single(Of(TileWorldColliders.Build(doc, Catalogs()), TileColliderKind.Blocked),
+            c => MathF.Abs(c.Pose.Position.Z - TileWorldSpace.WorldZ(4.5f, 1f)) < Tolerance);
+
+        // The tile falls from the plateau to 0 inside itself, more than the blocked height, so a box measured from
+        // the lowest corner alone would top out below the plateau a body walks off.
+        float highest = PlateauCm * 0.01f;
+        Assert.True(highest > blockedHeight);
+        BoxShape box = Assert.IsType<BoxShape>(cliff.Shape);
+        float bottom = cliff.Pose.Position.Y - box.HalfExtents.Y, top = cliff.Pose.Position.Y + box.HalfExtents.Y;
+        Assert.Equal(0f, bottom, Tolerance);
+        Assert.True(top >= highest + blockedHeight - Tolerance, $"box top {top} under {highest + blockedHeight}");
+        AssertBox(cliff, CliffX + 0.5f, -4.5f, 0.5f, 0.5f, bottom: 0f, top: highest + blockedHeight);
     }
 
     [Fact]
@@ -366,6 +386,16 @@ public class TileWorldCollidersTests
         {
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
+    }
+
+    // The kind order, the shape bytes and the pose encoding are a contract: a deployed head compares this hash. The
+    // literal is EveryKindWorld's digest, every collider on a quarter turn so it is exact on every architecture. A
+    // deliberate change to the colliders or their encoding updates this literal and says so in the CHANGELOG.
+    [Fact]
+    public void TheHashOfEveryKindWorldIsPinned()
+    {
+        Assert.Equal("6aa23030d83786938861832e5f220a95614c896da011eb21c14ef31a5e651851",
+            Convert.ToHexStringLower(TileWorldColliders.Build(EveryKindWorld(), Catalogs()).Hash));
     }
 
     [Fact]

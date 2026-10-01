@@ -9136,8 +9136,8 @@ The contract a consumer has to keep:
   wrap the three delegates to add the origin back, reading `world.Origin` at call time so they stay right across
   later rebases. The package README shows the wrapping.
 
-The collider rules, the defaults, the hash encoding and the limits (plane 0 only, roofs and `NoDraw` tiles, rays
-exactly on the world's outer edge) are in the
+The collider rules, the defaults, the hash encoding and the limits (plane 0 only, roofs and `NoDraw` tiles, no
+collider at the loaded world's edge or across a missing region, rays exactly on the world's outer edge) are in the
 [`KhaozEngine.TileWorld.Physics` README](../KhaozEngine.TileWorld.Physics/README.md).
 
 ---

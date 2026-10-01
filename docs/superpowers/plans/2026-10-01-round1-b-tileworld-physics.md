@@ -132,7 +132,7 @@
   - Off the world, it returns the nearest drawn tile's edge height.
 - Produces `public sealed class TileMediumSampler`:
   - `MovementMedium MediumAt(float worldX, float worldZ, float feetY)` returns `new MovementMedium(surfaceY, true)` over a water body from `TileWaterBodies.Collect`, else `MovementMedium.Dry`.
-  - `Func<float, float, float, MovementMedium> Delegate`.
+  - `Func<float, float, float, MovementMedium> MediumDelegate`.
   - Wade scale is left to `MoveTuning`.
 
 - [ ] **Step 1: Write the failing tests.**
@@ -161,7 +161,7 @@
     - `ADownwardRayHitsTheGroundEverywhereTheSamplerSaysItIs` (within 1 mm, Review Focus 1)
     - `ARebasedWorldStillAgreesWithTheSampler` (Review Focus 3)
     - `RemoveLeavesNoStatics`
-  - `CharacterOnTileWorldTests`, driving `CharacterMovement.Step` with `Ground.HeightDelegate`, `Ground.NormalDelegate`, the physics world and `Medium.Delegate`:
+  - `CharacterOnTileWorldTests`, driving `CharacterMovement.Step` with `Ground.HeightDelegate`, `Ground.NormalDelegate`, the physics world and `Medium.MediumDelegate`:
     - `ABodyWalksUpASlopeAndStaysOnTheGround`
     - `ACapsulePassesADoorwayAndIsStoppedByTheWallBesideIt` (Review Focus 4)
     - `AWallBlocksFromBothSides`

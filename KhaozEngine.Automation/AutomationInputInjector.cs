@@ -140,7 +140,8 @@ namespace KhaozEngine.Automation
                 repeated: real.KeysRepeated,
                 mouseReleased: Union(real.MouseReleased, _buttonsReleased),
                 textInput: real.TextInput,
-                textInputAvailable: real.TextInputAvailable);
+                textInputAvailable: real.TextInputAvailable,
+                pointerCaptured: real.PointerCaptured);
         }
 
         /// <summary>Clear this frame's injected edges. Called after <see cref="Compose"/>, once the frame has read them.</summary>

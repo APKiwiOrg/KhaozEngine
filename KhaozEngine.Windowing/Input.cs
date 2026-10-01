@@ -77,6 +77,13 @@ namespace KhaozEngine.Windowing
         /// frame. Text-entry helpers use this to avoid mapping a dead key through the US-layout fallback.
         /// </summary>
         public bool TextInputAvailable { get; }
+        /// <summary>
+        /// True while the window holds the pointer captured (hidden and locked for mouse-look). While captured,
+        /// <see cref="MouseDelta"/> is in window points rather than framebuffer pixels, so the same hand movement
+        /// reads the same on a 1x and a 2x display. <see cref="MousePosition"/> stays in framebuffer pixels.
+        /// Defaults to <c>false</c>.
+        /// </summary>
+        public bool PointerCaptured { get; }
 
         static readonly IReadOnlySet<Key> EmptyKeys = new HashSet<Key>();
         static readonly IReadOnlySet<MouseButton> EmptyMouseButtons = new HashSet<MouseButton>();
@@ -93,7 +100,7 @@ namespace KhaozEngine.Windowing
             IReadOnlyList<GamepadState>? gamepads = null, IReadOnlyList<TouchPoint>? touches = null,
             bool windowFocused = true, IReadOnlySet<Key>? repeated = null,
             IReadOnlySet<MouseButton>? mouseReleased = null,
-            string textInput = "", bool textInputAvailable = false)
+            string textInput = "", bool textInputAvailable = false, bool pointerCaptured = false)
         {
             KeysDown = down; KeysPressed = pressed; KeysReleased = released;
             KeysRepeated = repeated ?? EmptyKeys;
@@ -106,6 +113,7 @@ namespace KhaozEngine.Windowing
             WindowFocused = windowFocused;
             TextInput = textInput;
             TextInputAvailable = textInputAvailable;
+            PointerCaptured = pointerCaptured;
         }
 
         /// <summary>
@@ -117,7 +125,7 @@ namespace KhaozEngine.Windowing
             : new InputState(
                 KeysDown, KeysPressed, KeysReleased, MouseDown, MousePressed,
                 MousePosition, MouseDelta, 0f, Width, Height, Gamepads, Touches,
-                WindowFocused, KeysRepeated, MouseReleased, TextInput, TextInputAvailable);
+                WindowFocused, KeysRepeated, MouseReleased, TextInput, TextInputAvailable, PointerCaptured);
 
         /// <summary>The gamepad at <paramref name="index"/>, or <see cref="GamepadState.Disconnected"/> if absent.</summary>
         public GamepadState Gamepad(int index = 0) =>

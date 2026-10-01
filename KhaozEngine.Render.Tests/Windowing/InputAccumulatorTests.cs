@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Windowing;
 using KhaozEngine.Windowing.Actions;
@@ -452,6 +453,101 @@ namespace KhaozEngine.Tests.Windowing
 
             Assert.Equal("", Snap(a).TextInput);
             Assert.True(Snap(a).TextInputAvailable);
+        }
+
+        // ---- pointer capture ------------------------------------------------------------------------------
+
+        static readonly Vector2 Retina = new(2, 2);
+
+        static InputState Captured(InputAccumulator a, Vector2 cursor, Vector2 scale) =>
+            a.Snapshot(cursor, true, Width, Height, pointerCaptured: true, framebufferScale: scale);
+
+        [Fact]
+        public void CaptureEdgesReportAZeroDelta()
+        {
+            var a = new InputAccumulator();
+            Snap(a, Centre);
+
+            // GLFW warps the cursor when capture starts, so the start frame reports no movement.
+            InputState start = Captured(a, new Vector2(1000, 540), Retina);
+            Assert.True(start.PointerCaptured);
+            Assert.Equal(Vector2.Zero, start.MouseDelta);
+            Assert.Equal(new Vector2(1000, 540), start.MousePosition);
+
+            // The next captured frame measures from the start frame's position.
+            InputState held = Captured(a, new Vector2(1010, 540), Retina);
+            Assert.True(held.PointerCaptured);
+            Assert.Equal(new Vector2(5, 0), held.MouseDelta);
+
+            // GLFW restores the cursor when capture ends, a jump by the virtual drift. That frame is zero too.
+            InputState end = a.Snapshot(new Vector2(400, 300), true, Width, Height,
+                pointerCaptured: false, framebufferScale: Retina);
+            Assert.False(end.PointerCaptured);
+            Assert.Equal(Vector2.Zero, end.MouseDelta);
+            Assert.Equal(new Vector2(400, 300), end.MousePosition);
+
+            // The frame after release measures from the release frame's position, in framebuffer pixels.
+            InputState after = a.Snapshot(new Vector2(410, 300), true, Width, Height,
+                pointerCaptured: false, framebufferScale: Retina);
+            Assert.Equal(new Vector2(10, 0), after.MouseDelta);
+        }
+
+        [Fact]
+        public void CapturedDeltasAreWindowPointsNotFramebufferPixels()
+        {
+            // The same 10-point hand movement: 10 framebuffer pixels at 1x, 20 at 2x.
+            var oneX = new InputAccumulator();
+            Captured(oneX, Centre, Vector2.One);
+            InputState atOneX = Captured(oneX, Centre + new Vector2(10, -4), Vector2.One);
+
+            var twoX = new InputAccumulator();
+            Captured(twoX, Centre, Retina);
+            InputState atTwoX = Captured(twoX, Centre + new Vector2(20, -8), Retina);
+
+            Assert.Equal(new Vector2(10, -4), atOneX.MouseDelta);
+            Assert.Equal(atOneX.MouseDelta, atTwoX.MouseDelta);
+            // Only the delta converts. The position stays in framebuffer pixels.
+            Assert.Equal(Centre + new Vector2(20, -8), atTwoX.MousePosition);
+
+            // A default scale means 1, and a zero component never divides.
+            var unscaled = new InputAccumulator();
+            Captured(unscaled, Centre, default);
+            Assert.Equal(new Vector2(6, 6), Captured(unscaled, Centre + new Vector2(6, 6), default).MouseDelta);
+
+            var halfZero = new InputAccumulator();
+            Captured(halfZero, Centre, new Vector2(2, 0));
+            Assert.Equal(new Vector2(3, 6), Captured(halfZero, Centre + new Vector2(6, 6), new Vector2(2, 0)).MouseDelta);
+        }
+
+        [Fact]
+        public void UncapturedDeltasAreUnchanged()
+        {
+            var a = new InputAccumulator();
+            a.Snapshot(Centre, true, Width, Height, pointerCaptured: false, framebufferScale: Retina);
+
+            InputState s = a.Snapshot(Centre + new Vector2(20, -8), true, Width, Height,
+                pointerCaptured: false, framebufferScale: Retina);
+
+            // An uncaptured cursor keeps today's framebuffer-pixel delta whatever the scale.
+            Assert.False(s.PointerCaptured);
+            Assert.Equal(new Vector2(20, -8), s.MouseDelta);
+            Assert.False(Snap(a).PointerCaptured);
+        }
+
+        [Fact]
+        public void WithoutScrollKeepsPointerCaptured()
+        {
+            var captured = new InputState(
+                new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+                new HashSet<MouseButton>(), new HashSet<MouseButton>(),
+                Centre, new Vector2(3, 4), 2f, Width, Height, pointerCaptured: true);
+
+            InputState cleared = captured.WithoutScroll();
+
+            Assert.Equal(0f, cleared.ScrollDelta);
+            Assert.True(cleared.PointerCaptured);
+            Assert.Equal(new Vector2(3, 4), cleared.MouseDelta);
+            Assert.False(InputState.Empty.PointerCaptured);
         }
     }
 }

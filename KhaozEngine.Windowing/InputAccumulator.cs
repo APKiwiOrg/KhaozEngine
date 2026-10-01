@@ -39,6 +39,10 @@ namespace KhaozEngine.Windowing
         // its very first frame. This is a bool and not a "_lastMouse == position" test on purpose: a cursor
         // genuinely sitting at (0,0) would make that test lie and reintroduce the same spike.
         bool _cursorSampled;
+        // The capture state the previous snapshot reported. A frame on which it changes reports a zero delta,
+        // because GLFW warps the cursor when capture starts and restores it (jumping by the virtual drift) when
+        // capture ends.
+        bool _lastCaptured;
         float _wheelAccum;
         bool _focused = true;   // windows open focused, and OnFocusChanged keeps this in sync.
         readonly StringBuilder _textInput = new();
@@ -136,13 +140,22 @@ namespace KhaozEngine.Windowing
         /// <param name="width">Framebuffer width in pixels.</param>
         /// <param name="height">Framebuffer height in pixels.</param>
         /// <param name="gamepads">Connected gamepads this frame, or null for none.</param>
+        /// <param name="pointerCaptured">Whether the window holds the pointer captured this frame. While captured
+        /// the delta is divided by <paramref name="framebufferScale"/> into window points. The frame this value
+        /// changes, in either direction, reports a zero delta.</param>
+        /// <param name="framebufferScale">Framebuffer pixels per window point on each axis. The default, and any
+        /// component that is not positive, means 1. Only the captured delta uses it. The position stays in
+        /// framebuffer pixels.</param>
         public InputState Snapshot(
             Vector2 cursorPosition, bool hasMouse, int width, int height,
-            IReadOnlyList<GamepadState>? gamepads = null)
+            IReadOnlyList<GamepadState>? gamepads = null,
+            bool pointerCaptured = false, Vector2 framebufferScale = default)
         {
             Vector2 position = hasMouse ? cursorPosition : _lastMouse;
             // First sample reports no movement. See _cursorSampled for why this is not a position comparison.
             Vector2 delta = _cursorSampled ? position - _lastMouse : Vector2.Zero;
+            if (pointerCaptured != _lastCaptured) delta = Vector2.Zero;
+            else if (pointerCaptured) delta /= PointsScale(framebufferScale);
 
             var input = new InputState(
                 new HashSet<Key>(_keysDown), new HashSet<Key>(_pressed), new HashSet<Key>(_released),
@@ -151,7 +164,8 @@ namespace KhaozEngine.Windowing
                 gamepads, windowFocused: _focused,
                 repeated: new HashSet<Key>(_repeated),
                 mouseReleased: new HashSet<MouseButton>(_mouseReleased),
-                textInput: _textInput.ToString(), textInputAvailable: _textInputAvailable);
+                textInput: _textInput.ToString(), textInputAvailable: _textInputAvailable,
+                pointerCaptured: pointerCaptured);
 
             _pressed.Clear();
             _released.Clear();
@@ -160,11 +174,17 @@ namespace KhaozEngine.Windowing
             _mouseReleased.Clear();
             _textInput.Clear();
             _lastMouse = position;
+            _lastCaptured = pointerCaptured;
             // Only a frame that actually read a cursor primes the delta. A window that opens with no mouse
             // attached must still report a zero delta on the first frame one shows up.
             if (hasMouse) _cursorSampled = true;
             _wheelAccum = 0f;
             return input;
         }
+
+        // Framebuffer pixels per window point, with a default or non-positive component read as 1 so a delta
+        // never divides by zero.
+        static Vector2 PointsScale(Vector2 scale) =>
+            new(scale.X > 0f ? scale.X : 1f, scale.Y > 0f ? scale.Y : 1f);
     }
 }

@@ -1353,16 +1353,13 @@ unchanged and stay the right calls from game code already on the host thread.
 ## A payload too large for one game message
 
 `TileFragmentedMessage` splits any `ReadOnlySpan<byte>` into chunks that each fit inside one game message, and
-`TileFragmentReassembler` puts them back. Both are ITEM AGNOSTIC and know nothing about what they carry: the game
-picks the kind, the stream id and the decoder, exactly as it does for an ordinary envelope.
-
-```
-[StreamId: byte]        // which logical stream, the GAME assigns these
-[Sequence: uint16 LE]   // increments per transmission of that stream, wraps
-[ChunkIndex: byte]
-[ChunkCount: byte]      // 1 to 255
-[Bytes: the rest]
-```
+`TileFragmentReassembler` puts them back. They are thin wrappers over `MessageFragmenter` and `MessageReassembler`
+in `KhaozEngine.Netcode`, fixed at the tile width of 1015 bytes, and the wire bytes are the ones these types
+always produced. The five byte header, the chunk rules, the two refusal tokens, the four reassembly rules and what
+throws are the core's and are documented once, in the `KhaozEngine.Netcode` README section on `MessageFragmenter`
+and `MessageReassembler`. Both are ITEM AGNOSTIC and know nothing about what they carry: the game picks the kind,
+the stream id and the decoder, exactly as it does for an ordinary envelope. What this section adds is the tile
+width and how a game uses it.
 
 A chunk is a game message PAYLOAD, not a frame, so the caller wraps each one with
 `TileProtocol.EncodeGameMessage` under its own kind and sends it `ReliableOrdered`.
@@ -1399,35 +1396,12 @@ message kind (a bag, the worn slots and a bank, say) are told apart by the heade
 stream inside the payload that could disagree with it. The three-out overload without it answers identically and
 delegates to this one.
 
-**One reassembler per connection slot.** The type holds the partial assemblies of ONE peer and no connection
-table of its own, so a server keeps an array or a map of them beside its session table and forwards each peer's
-chunks to that peer's instance. `Slot` is carried as identity and `DropConnection(slot)` refuses a slot that is
-not its own, so a mis-wired forward cannot wipe the wrong peer's assemblies.
-
-Four rules, and none of them is a timer, because a timer on a reliable ordered channel measures nothing:
-
-- A chunk whose `Sequence` differs from the assembly in progress for its stream discards that assembly and starts
-  a new one. That is what a server restarting a page mid transmission looks like, and it is not an error.
-- At most `MaxPartialAssemblies` partial assemblies are held at once, which is four. A fifth evicts the one
-  fed longest ago and increments `EvictedAssemblies`. A restart is not an eviction and is not counted as one.
-  The bound is a hard constant with no constructor knob, so a host with more concurrently fragmented streams per
-  peer evicts silently and `EvictedAssemblies` is the only reading that reports it.
-- The last chunk hands the assembled bytes BACK through `TryComplete`. Nothing here decodes them, so a payload
-  that will not decode is the caller's quarantine rather than a throw from the wire. A final chunk cut in its body
-  is the case that reaches the caller, because the header declares no total length.
-- A partial assembly still open when the connection drops goes with an explicit `DropConnection(slot)` the server
-  calls from its own disconnect path.
-
-It does not REORDER, deliberately. The channel is `ReliableOrdered`, so a chunk cannot arrive out of order or be
-lost without the connection failing, and a chunk that is not the next one expected is refused rather than
-buffered. `TryComplete` returns false two ways and the `reason` out tells them apart: null means the chunk was
-accepted and more are expected, non null means it was refused. The two refusal tokens are `ke:fragment-malformed`
-(a chunk this format never produces) and `ke:fragment-out-of-sequence` (a well formed chunk that is not the one
-expected next, which also discards the assembly it contradicts). Both carry the `ke:` prefix for the same reason
-`TileServerReason` does, so a game counting its own tokens alongside them can never collide.
-
-Memory is bounded by what the peer actually SENT: a buffer grows with the bytes that arrive rather than with the
-chunk count a header claims, so a lying `ChunkCount` buys nothing.
+**One reassembler per connection slot,** dropped with `DropConnection(slot)` from the server's disconnect path,
+exactly as the core describes. `TileFragmentReassembler` re-exports the core's `MaxPartialAssemblies` (four),
+`MalformedChunk` (`ke:fragment-malformed`) and `OutOfSequenceChunk` (`ke:fragment-out-of-sequence`) under its own
+names. A server restarting a page mid transmission sends a new `Sequence`, which discards the old assembly and is
+not an error. At the tile width the held partial state peaks at four times `MaxPayloadBytes`, about one megabyte,
+and only for a peer that really sent that much.
 
 **A whole page is the FLOOR, not the steady state.** A game syncing item container pages over this fragmenter
 sends a one frame DELTA for the ordinary case and falls back to a full page send only when the delta will not

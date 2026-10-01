@@ -12794,6 +12794,8 @@ Store the owner against the game's durable ground record and compare that accoun
 account occupying `viewerSlot`. Do not use the slot itself as durable ownership because seats can be
 reused. The callback is synchronous on the simulation tick and must not mutate the world. The game's
 TAKE handler still has to check the same owner rule before moving the item, including for a forged net ID.
+The NetWorld servers carry the same rule for any entity, see
+[Hiding an entity from chosen viewers](#hiding-an-entity-from-chosen-viewers-entityvisibletoslot).
 
 #### An item INSTANCE on a drop (`TileGroundItemInstance`, 19.0.0)
 
@@ -18301,7 +18303,9 @@ still kept verbatim in storage.
 `ContainerPageSyncRequest` is the other half and the ONE new client-to-server message: two bytes,
 `[ContainerId][PageIndex]`, with no field a payload could ride in. A client REFUSES a delta for a page it has
 not fully received and sends this instead, and on the last chunk of a fragmented page the assembled bytes go
-through the SAME decoder the server encoded with. `TileFragmentReassembler.TryComplete` hands back the
+through the SAME decoder the server encoded with. The tile fragment types are the netcode core at the tile width
+(see [A payload too large for one message](#a-payload-too-large-for-one-message-messagefragmenter--messagereassembler)).
+`TileFragmentReassembler.TryComplete` hands back the
 `streamId` those chunks carried beside the bytes, so several containers fragmented under one kind are routed by
 the header rather than by a stream byte repeated inside the page. **Rate limit it at one page per client per
 tick**, which is a server rule rather than engine code, because a server that serves every request it receives
@@ -19988,6 +19992,56 @@ bad address. Brackets are what tell an address's colons apart from the port sepa
 literal keeps every colon in the host and never yields a port. `"fe80::1:9000"` is therefore one whole address on
 the default port, not a host with a port.
 
+### A payload too large for one message (`MessageFragmenter` / `MessageReassembler`)
+
+A message envelope has a cap, and a payload that can exceed it is split into chunks that each fit and put back on
+the far side. `MessageFragmenter` and `MessageReassembler` (in `KhaozEngine.Netcode`) do that for any host and any
+payload. They move bytes and never look at them: the message kind, the stream id, the chunk width and the decoder
+are all the caller's. Each chunk is a message PAYLOAD that the caller wraps in its own envelope and sends on a
+reliable ordered channel.
+
+```csharp
+// The width is the body a full chunk carries beside the five byte header. Pick it from the envelope's cap (here
+// the server's MaxGameMessageBytes, kept in a constant both heads share) and fix it: it is part of the wire contract.
+const int Width = GameWire.MaxGameMessageBytes - MessageFragmenter.HeaderBytes;
+
+foreach (byte[] chunk in MessageFragmenter.Fragment(streamId: 1, sequence: version, payload, Width))
+    client.SendGameMessage(MyKinds.Chunk, chunk, NetChannelReliability.ReliableOrdered);
+
+// Server side: ONE reassembler per connection slot, at the same width.
+var reassemblers = new MessageReassembler?[maxPlayers];
+server.OnGameMessage += (slot, kind, payload) =>
+{
+    if (kind != MyKinds.Chunk) return;
+    MessageReassembler r = reassemblers[slot] ??= new MessageReassembler(slot, Width);
+    if (r.TryComplete(payload, out byte streamId, out ReadOnlyMemory<byte> assembled, out string? reason))
+        Apply(slot, streamId, assembled.Span);   // decode HERE, and quarantine what will not decode
+    else if (reason != null)
+        Telemetry.Count(reason);                 // refused: ke:fragment-malformed or ke:fragment-out-of-sequence
+};
+// From the disconnect path: reassemblers[slot]?.DropConnection(slot); reassemblers[slot] = null;
+```
+
+The header is `[StreamId: byte][Sequence: uint16 LE][ChunkIndex: byte][ChunkCount: byte]`, then the body.
+`MaxChunks` is 255, so `MaxPayloadBytes(width)` is `255 * width`, and `Fragment` throws `ArgumentException` above
+it. Every chunk but the last is exactly full, which is how a reader tells a truncated chunk from a short final
+one, so a reader refuses a non-final chunk of any other length. Both ends must therefore agree on the width, and
+changing it is a protocol migration. A width outside `1` to `65535` throws `ArgumentOutOfRangeException` from every
+entry point, the reassembler constructor and `TryReadChunk` included, because the width is local wiring and never
+comes from the wire. Reading never throws on a chunk.
+
+`TryComplete` answers true with the whole payload when a chunk completes a transmission. A false answer with a null
+`reason` means accepted and waiting for more, and a non-null `reason` is one of the two refusal tokens,
+`MessageReassembler.MalformedChunk` or `MessageReassembler.OutOfSequenceChunk`. The overload without `streamId`
+answers identically. A new `Sequence` on a stream discards the assembly in progress, which is a restart and not an
+error. At most `MaxPartialAssemblies` (four) partial assemblies are held, and another evicts the one fed longest
+ago and counts it in `EvictedAssemblies`. Nothing holds a timer, and nothing reorders: the channel is reliable
+ordered, so a chunk that is not the next one expected is refused. `DropConnection(slot)` frees what a departed peer
+left open and refuses a slot that is not its own.
+
+`TileFragmentedMessage` and `TileFragmentReassembler` in `KhaozEngine.TileWorld.Netcode` are this pair at the tile
+protocol's 1015-byte width, with the same wire bytes they always had.
+
 ### Worker-pool seam (`IJobScheduler`) + parallel cell ticks
 
 **`IJobScheduler`** (in `KhaozEngine.Simulation`) is the engine's one worker-pool abstraction: `For(int count,
@@ -20310,6 +20364,38 @@ one-entity form when you already hold the handle. Both are byte-identical to the
 index, so consumers on the sharded server get it for free. `WorldServer.Tick` wires it the same way for its own
 non-delta fallback clients: one `WorldSnapshotIndex` rebuilt lazily on the first fallback client each tick, shared
 with every other fallback client served that tick.
+
+### Hiding an entity from chosen viewers (`EntityVisibleToSlot`)
+
+`WorldServerConfig.EntityVisibleToSlot` and `ShardedWorldServerConfig.EntityVisibleToSlot` filter each viewer's
+interest set before it is served. The rule takes the viewer's session slot and the candidate entity's net id:
+
+```csharp
+// The game keeps its own table. The rule only looks it up.
+var hidden = new HashSet<(int Slot, long NetId)>();
+
+var cfg = new ShardedWorldServerConfig
+{
+    // ... the usual settings ...
+    EntityVisibleToSlot = (viewerSlot, netId) => !hidden.Contains((viewerSlot, netId)),
+};
+```
+
+- **Null serves today's bytes.** The default is null, and a null rule leaves every frame byte-identical to a
+  server without the property.
+- **The viewer's own player is never hidden.** It is never offered to the rule.
+- **Hiding and showing are whole-entity.** A false answer removes the entity from that viewer's interest for the
+  tick, so a delta client is sent a despawn and a full-snapshot client stops seeing it. A later true answer sends
+  the whole entity again as a fresh spawn carrying all its state.
+- **Ids only, never components.** On `ShardedWorldServer` an entity a viewer sees across a cell boundary is a ghost
+  in the viewer's home cell, and a ghost lacks the owner-only and server-only components its owning cell holds. A
+  rule that read components would answer differently for the same entity on either side of a boundary. Owned
+  entities and ghosts are filtered the same way.
+- **Cheap and allocation-free.** It runs synchronously on the tick, once per candidate entity per viewer per tick.
+  Keep it pure and non-throwing too.
+- **Presentation only.** The game still authorizes every interaction against its own rule.
+
+The tile server's ground-item twin is `TileWorldServerConfig.GroundItemVisibleToSlot`.
 
 ### Server-owned NPCs / consumer components (`ShardedWorldServer.SpawnEntity`, `WorldClient.TryGetComponent`)
 
@@ -22327,6 +22413,11 @@ client.GameMessageReceived += (kind, payload) => { /* opaque bytes; deserialize 
   limiter runs in front of game messages (they share the move flood budget), and a payload over
   `WorldServerConfig.MaxGameMessageBytes` / `ShardedWorldServerConfig.MaxGameMessageBytes` (default 1024) is dropped
   and flagged `SuspiciousReason.OversizedMessage` on `OnSuspiciousActivity` - never thrown.
+- **Size, each direction.** Server to client carries no engine cap, and a large payload goes `ReliableOrdered`,
+  where the transport delivers it whole. Client to server is capped by the configurable `MaxGameMessageBytes`
+  above. A client message that can exceed the cap is fragmented with `MessageFragmenter` and reassembled per slot
+  with `MessageReassembler`, at a width of `MaxGameMessageBytes - MessageFragmenter.HeaderBytes` (see
+  [A payload too large for one message](#a-payload-too-large-for-one-message-messagefragmenter--messagereassembler)).
 - **Version skew.** Server -> client is version-skew-safe downstream: an older client ignores the new frame kind.
   Client -> old server is NOT protected by the framing: a server that predates the feature flags a SHORT
   game-message frame (< 18 bytes) as malformed but MISPARSES one whose total length is >= 18 (a payload of >= 13
@@ -22463,6 +22554,20 @@ across every client it serves (clear it between clients) instead of allocating a
 overload, which is kept and delegates to it. Like `InterestGrid.Query(float, float, float, ICollection<long>)` it
 adds rather than clears: the caller owns the reset. A bare `null` third argument still binds to the older
 `HomeInterest(slot, radius, serveEpoch)` overload, so nothing you already wrote changes meaning.
+
+**Serving a narrowed set.** `SnapshotForClient(slot, world, interest, serveEpoch)` serves exactly the
+`IReadOnlySet<long>` you pass instead of querying the interest itself, so a loop that took the set from
+`HomeInterest` and then narrowed it serves the same set on the snapshot and delta paths. `ShardedWorldServer.Tick`
+uses it to apply `EntityVisibleToSlot`. Pass the `world` `HomeInterest` returned for that slot at the same
+`serveEpoch`, because the indexed snapshot is cached per world within an epoch and shared by every client homed in
+that cell. The radius overload calls this one. It throws for an unbound slot or a null argument.
+
+```csharp
+interest.Clear();
+World home = host.HomeInterest(slot, interestRadius, interest, serveEpoch);
+interest.RemoveWhere(netId => !VisibleTo(slot, netId));          // your narrowing, never the slot's own player
+byte[] aoi = host.SnapshotForClient(slot, home, interest, serveEpoch);
+```
 
 **Reference dedicated server (Phase 3E).** `MmoServerSample` wires the whole stack into a runnable headless
 server: a multi-cell `ShardHost` driven over the `NetServer` session layer (any `INetTransport` - LiteNetLib in

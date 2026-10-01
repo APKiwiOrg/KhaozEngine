@@ -77,6 +77,24 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `Camera.Yaw` as `CameraYaw`
   ([consumer contract](docs/USING-KHAOZENGINE.md#third-person-follow-camera--character-controller-followcamera3d--charactercontroller3d)).
 - The Showcase 3D room opts in, so a left or a right drag orbits its camera with the cursor held.
+- New host-neutral `MessageFragmenter` and `MessageReassembler` in `KhaozEngine.Netcode` split a payload too large
+  for one message into chunks and put it back, at a chunk width the caller passes. The width is part of the wire
+  contract, so both ends must agree on it, and a width outside 1 to 65535 throws. The five byte header, the 255
+  chunk limit, the full non-final chunks, the two `ke:` refusal tokens and the four held assemblies with
+  least-recently-fed eviction are the tile format's. `TryComplete` hands back the stream id, and `DropConnection`
+  frees a departed peer's state
+  ([consumer contract](docs/USING-KHAOZENGINE.md#a-payload-too-large-for-one-message-messagefragmenter--messagereassembler)).
+- `TileFragmentedMessage` and `TileFragmentReassembler` are now wrappers over that core at the tile width of 1015
+  bytes. Their names, members and wire bytes are unchanged.
+- `WorldServerConfig.EntityVisibleToSlot` and `ShardedWorldServerConfig.EntityVisibleToSlot` take a viewer slot
+  and a net id and hide an entity from chosen viewers. A false answer despawns it on the delta path and drops it on
+  the snapshot path, and a later true answer sends the whole entity again. The viewer's own player is never hidden,
+  and a null rule serves the same bytes as before. The rule runs once per candidate entity per viewer per tick and
+  must not read components, because a sharded ghost lacks owner-only and server-only components
+  ([consumer contract](docs/USING-KHAOZENGINE.md#hiding-an-entity-from-chosen-viewers-entityvisibletoslot)).
+- New `ShardHost.SnapshotForClient(slot, world, interest, serveEpoch)` serves exactly a caller's narrowed interest
+  set out of the slot's home-cell world, which must be the one `HomeInterest` returned at that epoch. The radius
+  overload calls it, and `ShardedWorldServer` uses it so its snapshot and delta paths serve one filtered set.
 - Owed before release: a manual check in the Showcase 3D room (`Room3D`), run and recorded separately on macOS,
   Windows, Linux X11 and Linux Wayland. macOS runs without raw mouse motion. On each platform:
   - A left drag orbits with the cursor hidden and held.

@@ -571,3 +571,88 @@ sign and no separators, and a bracketed literal must actually parse as IPv6. A `
 `[1, 65535]` throws `ArgumentOutOfRangeException`, because that is a wiring mistake in the caller rather than
 bad input. Nothing here touches DNS or a socket: the host comes back as written (brackets stripped) and
 resolving it stays the transport's job.
+
+## MessageFragmenter and MessageReassembler: a payload too large for one message
+
+`MessageFragmenter` splits any `ReadOnlySpan<byte>` into chunks that each fit inside the caller's own message
+envelope, and `MessageReassembler` puts them back. Both are payload agnostic and host neutral: the caller picks
+the message kind, the stream id, the chunk width and the decoder. A chunk is a message PAYLOAD, not a frame, so
+the caller wraps each one in its own envelope and sends it on a reliable ordered channel.
+
+Every chunk starts with a fixed five byte header (`MessageFragmenter.HeaderBytes`), so nothing needs a varint
+reader:
+
+```
+[StreamId: byte]        // which logical stream, the CALLER assigns these
+[Sequence: uint16 LE]   // increments per transmission of that stream, wraps
+[ChunkIndex: byte]
+[ChunkCount: byte]      // 1 to 255
+[Bytes: the rest]
+```
+
+**The width is part of the wire contract.** Every call takes `chunkPayloadBytes`, the body a full chunk carries
+beside the header, because only the host knows how much room its envelope leaves. Every chunk but the last carries
+exactly that many bytes, which is what lets a reader tell a truncated chunk from a legitimately short final one.
+A reader refuses a non-final chunk of any other length, so both ends must agree on the width exactly, and changing
+it is a protocol migration. A width outside `1` to `65535` is a local wiring bug and throws
+`ArgumentOutOfRangeException` from every entry point, `TryReadChunk` and the reassembler constructor included.
+
+- `MaxChunks` is 255, because `ChunkCount` is a byte. `MaxPayloadBytes(width)` is `255 * width`.
+- `ChunkCount(payloadLength, width)` answers how many chunks a payload becomes. An empty payload is ONE chunk
+  carrying nothing.
+- `Fragment(streamId, sequence, payload, width)` returns the chunks. The caller owns `sequence` and increments it
+  per transmission of a stream, wrapping freely. A payload above `MaxPayloadBytes(width)` throws
+  `ArgumentException`, because a payload that long is a local caller bug.
+- `TryReadChunk(chunk, width, ...)` reads one header and slices the body without copying. It never throws on the
+  chunk, because those bytes came from a remote peer. It refuses a chunk shorter than the header, a count of zero,
+  an index at or past the count, a body longer than the width, a non-final chunk that is not exactly full and an
+  empty final chunk of a multi-chunk transmission.
+
+```csharp
+const int Width = 1015; // what this host's envelope leaves, agreed by both ends
+
+foreach (byte[] chunk in MessageFragmenter.Fragment(streamId: 1, sequence: version, payload, Width))
+    SendGameMessage(slot, MyKinds.Chunk, chunk);
+
+// On the receiving side, one reassembler per connection slot at the same width.
+var reassembler = new MessageReassembler(slot, Width);
+if (reassembler.TryComplete(chunkPayload, out byte streamId, out ReadOnlyMemory<byte> assembled, out string? reason))
+    Apply(streamId, assembled.Span);   // decode HERE, and quarantine what will not decode
+else if (reason != null)
+    Telemetry.Count(reason);           // refused, and the token says why
+```
+
+**One reassembler per connection slot.** `MessageReassembler(slot, chunkPayloadBytes)` holds the partial
+assemblies of ONE peer at ONE width and no connection table of its own, so a server keeps an array or a map of
+them beside its session table. `Slot` and `ChunkPayloadBytes` are fixed at construction.
+
+`TryComplete` has two overloads. `TryComplete(chunk, out streamId, out assembled, out reason)` hands back the
+`StreamId` the chunk headers carried, so several streams on one message kind are told apart by the header rather
+than by a copy inside the payload that could disagree. `TryComplete(chunk, out assembled, out reason)` answers
+identically and delegates to it. A true answer means the chunk completed a transmission and `assembled` holds the
+whole payload, which the caller owns. A false answer with a null `reason` means the chunk was accepted and more are
+expected. A false answer with a non-null `reason` means the chunk was refused, with one of two tokens:
+
+- `MessageReassembler.MalformedChunk`, `ke:fragment-malformed`: a chunk this format never produces at this width.
+- `MessageReassembler.OutOfSequenceChunk`, `ke:fragment-out-of-sequence`: a well formed chunk that is not the one
+  expected next, which also discards the assembly it contradicts.
+
+Four rules, and none of them is a timer, because a timer on a reliable ordered channel measures nothing:
+
+1. A chunk whose `Sequence` differs from the assembly in progress for its stream discards that assembly and starts
+   a new one. That is a sender restarting a transmission. It is not an error and not an eviction.
+2. At most `MaxPartialAssemblies` partial assemblies are held at once, which is four. Another one evicts the
+   assembly fed longest ago and increments `EvictedAssemblies`. The bound has no constructor knob, so a host with
+   more concurrently fragmented streams per peer evicts silently and `EvictedAssemblies` is the only reading that
+   reports it. `PartialAssemblyCount` is how many are open right now.
+3. The last chunk hands the assembled bytes back. Nothing here decodes them. A final chunk cut in its body reaches
+   the caller's decoder, because the header declares no total length.
+4. `DropConnection(slot)` discards every partial assembly, called from the server's own disconnect path. It
+   refuses a slot that is not `Slot`, so a mis-wired forward cannot wipe another peer's state.
+
+It does not reorder. A chunk that is not the next one expected is refused rather than buffered. Memory grows with
+the bytes that actually arrive rather than with the count a header claims, so the ceiling is
+`MaxPartialAssemblies * MaxPayloadBytes(width)` only for a peer that really sent that much.
+
+`KhaozEngine.TileWorld.Netcode`'s `TileFragmentedMessage` and `TileFragmentReassembler` are this pair at the tile
+protocol's 1015-byte width.

@@ -148,6 +148,14 @@ kept and now delegates to it. The results collection is added to, never cleared,
 `InterestGrid.Query(float, float, float, ICollection<long>)`. A bare `null` third argument still binds to the older
 `HomeInterest(slot, radius, serveEpoch)` overload, so existing calls mean exactly what they did.
 
+**Serving a narrowed interest set.** `SnapshotForClient(slot, world, interest, serveEpoch)` serves exactly the
+caller's `IReadOnlySet<long>` instead of querying the interest itself, so a serve loop that resolved the set through
+`HomeInterest` and then narrowed it (`ShardedWorldServerConfig.EntityVisibleToSlot`) serves one set on the snapshot
+and the delta paths. `world` must be the slot's home-cell world exactly as `HomeInterest` returned it for the same
+`serveEpoch`, because the indexed snapshot below is cached per world within an epoch and shared by every client
+homed in that cell. Owner scoping is the radius overload's, and the radius overload `SnapshotForClient(slot,
+interestRadius, serveEpoch)` now calls this one. It throws for an unbound slot or a null `world` or `interest`.
+
 **Indexed snapshots (perf).** The filtered `SnapshotWriter` calls on the hot cross-cell and serve passes
 (`SyncGhosts` ghost mirroring, `SnapshotForClient` non-delta fallback, `ProcessHandoffs` crossing capture) resolve
 their net-id sets off a per-tick, per-world `WorldSnapshotIndex` (shared across a cell's target neighbours and the

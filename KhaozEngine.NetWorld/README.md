@@ -368,6 +368,13 @@ frames, demuxes, rate-limits and size-caps them, but never deserializes them - t
   than **`WorldServerConfig.MaxGameMessageBytes`** / **`ShardedWorldServerConfig.MaxGameMessageBytes`** (default
   1024) is dropped and flagged `SuspiciousReason.OversizedMessage` via `OnSuspiciousActivity` - never thrown. Its
   token budget advances with simulated ticks, so extra calls to `Poll` do not mint command capacity.
+- **Size, each direction.** Server to client carries no engine cap: `SendGameMessageTo` and
+  `BroadcastGameMessage` frame any payload, and a large one goes `ReliableOrdered`, where the transport delivers it
+  whole. Client to server is capped by the configurable `MaxGameMessageBytes` above, which counts the game payload
+  alone. A client message that can exceed it is split with `MessageFragmenter` from `KhaozEngine.Netcode` and put
+  back on the server with one `MessageReassembler` per slot, dropped from the disconnect path. Pick the width from
+  the cap, `MaxGameMessageBytes - MessageFragmenter.HeaderBytes`, and fix it in both heads, because the width is
+  part of the wire contract. See the Netcode README for the chunk rules.
 - **Framing / version skew.** A client message rides the existing `0xC5` control-marker family with its own
   sub-marker, demuxed ahead of the move; by construction it can never alias the 2 / 6 / 18 byte control / ack /
   move shapes (see the aliasing contract in `MoveProtocol`). Server frames use a new `ServerFrameKind.GameMessage`
@@ -1059,6 +1066,9 @@ per entity. All four pieces are additive and default to today's behaviour.
   that net id (the `EntityRenderState.Id` value). Use it to read a server-assigned discriminator (NPC kind, HP,
   faction) and pick a model. Returns `false` against an older server that never sends `T` (no handshake, no
   disconnect). `MmoServerSample` demonstrates the whole seam with a `Creature` kind component.
+- **Hide from some viewers.** A server-owned entity is filtered per viewer like any other through
+  `EntityVisibleToSlot`, keyed by viewer slot and net id. See the per-viewer visibility bullet under area-of-interest
+  delta replication below.
 
 ## Per-registration replication channels (since 9.28.0)
 
@@ -1235,3 +1245,19 @@ same version-skew bar as 9.16.0.
   strict superset. An older client never advertises `DeltaCapable`, so a new server keeps serving it full snapshots;
   a new client against an older server never receives a `Delta` frame, so it keeps applying full snapshots and sends
   no acks. The 9.16.0 skip-unknown-extension + malformed-length guards are unchanged on the delta wire.
+- **Per-viewer visibility.** **`WorldServerConfig.EntityVisibleToSlot`** /
+  **`ShardedWorldServerConfig.EntityVisibleToSlot`** (`Func<int, long, bool>?`, default null) hides an in-interest
+  entity from chosen viewers. It takes the viewer's session slot and the candidate's net id and runs between the
+  interest query and the writer, once per candidate entity per viewer per tick, so keep it cheap, pure,
+  non-throwing and allocation-free.
+  - A null rule serves exactly today's bytes. The viewer's own player is never offered to the rule, so it is never
+    hidden.
+  - A false answer removes the whole entity from that viewer's interest for the tick: a delta client is sent a
+    despawn and a full-snapshot client simply stops seeing it. A later true answer sends the whole entity again, as
+    a fresh spawn carrying all its state.
+  - Decide from a visibility table the game keeps itself, keyed by those two ids. The rule must not read the
+    entity's components: on `ShardedWorldServer` an entity seen across a cell boundary is a GHOST in the viewer's
+    home cell, and a ghost lacks the owner-only and server-only components its owning cell holds. Owned entities
+    and ghosts are filtered the same way.
+  - It is a presentation gate only. The game still authorizes every interaction. The tile server's ground-item
+    twin is `TileWorldServerConfig.GroundItemVisibleToSlot`.

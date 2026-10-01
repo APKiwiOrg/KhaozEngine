@@ -5,11 +5,12 @@ namespace KhaozEngine.Tests.Windowing
 {
     /// <summary>
     /// Pure, headless coverage of the per-frame pointer capture decision. AppWindow applies the returned action to
-    /// GLFW and threads <see cref="PointerCaptureAction.AwaitingRenewal"/> into the next frame. No window needed.
+    /// GLFW and threads <see cref="PointerCaptureAction.Captured"/> and <see cref="PointerCaptureAction.AwaitingRenewal"/>
+    /// into the next frame. No window needed.
     /// </summary>
     public class PointerCapturePolicyTests
     {
-        // One frame as AppWindow runs it: decide from the live inputs, then carry the new capture and latch forward.
+        // One frame as AppWindow runs it: decide from the live inputs, then carry the policy's capture and latch forward.
         sealed class Window
         {
             public bool Captured;
@@ -19,8 +20,7 @@ namespace KhaozEngine.Tests.Windowing
             {
                 PointerCaptureAction action = PointerCapturePolicy.Decide(
                     requested, focused, Captured, rawMotionSupported, AwaitingRenewal);
-                if (action.SetDisabled) Captured = true;
-                if (action.SetNormal) Captured = false;
+                Captured = action.Captured;
                 AwaitingRenewal = action.AwaitingRenewal;
                 return action;
             }
@@ -35,11 +35,13 @@ namespace KhaozEngine.Tests.Windowing
 
             Assert.True(action.SetDisabled);
             Assert.False(action.SetNormal);
+            Assert.True(action.Captured);
             Assert.True(window.Captured);
 
             var unfocused = new Window();
             PointerCaptureAction refused = unfocused.Frame(requested: true, focused: false);
             Assert.False(refused.SetDisabled);
+            Assert.False(refused.Captured);
             Assert.False(unfocused.Captured);
         }
 
@@ -50,6 +52,7 @@ namespace KhaozEngine.Tests.Windowing
                 requested: true, focused: true, currentlyCaptured: false, rawMotionSupported: false, awaitingRenewal: false);
             Assert.True(unsupported.SetDisabled);
             Assert.False(unsupported.SetRawMotion);
+            Assert.True(unsupported.Captured);
 
             PointerCaptureAction supported = PointerCapturePolicy.Decide(
                 requested: true, focused: true, currentlyCaptured: false, rawMotionSupported: true, awaitingRenewal: false);
@@ -60,9 +63,11 @@ namespace KhaozEngine.Tests.Windowing
             PointerCaptureAction release = PointerCapturePolicy.Decide(
                 requested: false, focused: true, currentlyCaptured: true, rawMotionSupported: true, awaitingRenewal: false);
             Assert.False(release.SetRawMotion);
+            Assert.False(release.Captured);
             PointerCaptureAction hold = PointerCapturePolicy.Decide(
                 requested: true, focused: true, currentlyCaptured: true, rawMotionSupported: true, awaitingRenewal: false);
             Assert.False(hold.SetRawMotion);
+            Assert.True(hold.Captured);
         }
 
         [Fact]
@@ -75,6 +80,7 @@ namespace KhaozEngine.Tests.Windowing
             // Focus goes on the same edge that releases held buttons, with the request still held.
             PointerCaptureAction lost = window.Frame(requested: true, focused: false);
             Assert.True(lost.SetNormal);
+            Assert.False(lost.Captured);
             Assert.False(window.Captured);
 
             // A renewal while still unfocused does not count either.
@@ -84,6 +90,7 @@ namespace KhaozEngine.Tests.Windowing
             // Refocus with the request still true: the cursor stays free.
             PointerCaptureAction refocused = window.Frame(requested: true, focused: true);
             Assert.False(refocused.SetDisabled);
+            Assert.False(refocused.Captured);
             Assert.False(window.Captured);
             Assert.False(window.Frame(requested: true, focused: true).SetDisabled);
 
@@ -91,6 +98,7 @@ namespace KhaozEngine.Tests.Windowing
             Assert.False(window.Frame(requested: false, focused: true).SetDisabled);
             PointerCaptureAction renewed = window.Frame(requested: true, focused: true);
             Assert.True(renewed.SetDisabled);
+            Assert.True(renewed.Captured);
             Assert.True(window.Captured);
         }
 
@@ -105,6 +113,7 @@ namespace KhaozEngine.Tests.Windowing
             Assert.True(action.SetNormal);
             Assert.False(action.SetDisabled);
             Assert.False(action.SetRawMotion);
+            Assert.False(action.Captured);
             Assert.False(window.Captured);
         }
 
@@ -123,6 +132,7 @@ namespace KhaozEngine.Tests.Windowing
             Assert.False(action.SetNormal);
             Assert.False(action.SetRawMotion);
             Assert.False(action.CallsGlfw);
+            Assert.Equal(currentlyCaptured, action.Captured);
         }
     }
 }

@@ -38,6 +38,7 @@ namespace KhaozEngine.Windowing
                 _captureRequested, _accumulator.IsFocused, _pointerCaptured, _rawMotionSupported.Value,
                 _captureAwaitingRenewal);
             _captureAwaitingRenewal = action.AwaitingRenewal;
+            _pointerCaptured = action.Captured;
             if (!action.CallsGlfw) return;
 
             // Set the mode directly. Silk's CursorMode setter also writes raw motion when it is unsupported, which
@@ -45,7 +46,6 @@ namespace KhaozEngine.Windowing
             if (action.SetDisabled) glfw.SetInputMode(handle, CursorStateAttribute.Cursor, CursorModeValue.CursorDisabled);
             if (action.SetRawMotion) glfw.SetInputMode(handle, CursorStateAttribute.RawMouseMotion, true);
             if (action.SetNormal) glfw.SetInputMode(handle, CursorStateAttribute.Cursor, CursorModeValue.CursorNormal);
-            _pointerCaptured = action.SetDisabled || (_pointerCaptured && !action.SetNormal);
         }
 
         /// <summary>Framebuffer pixels per window point on each axis (1 on a 1x display or an empty window). The one

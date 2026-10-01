@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Automation;
 using KhaozEngine.Windowing;
@@ -125,8 +126,8 @@ public class AutomationComposeTests
     public void ACapturedRealPointerStaysCapturedThroughCompose()
     {
         var injector = new AutomationInputInjector();
-        var none = new System.Collections.Generic.HashSet<Key>();
-        var noButtons = new System.Collections.Generic.HashSet<MouseButton>();
+        var none = new HashSet<Key>();
+        var noButtons = new HashSet<MouseButton>();
         var captured = new InputState(
             none, none, none, noButtons, noButtons, Vector2.Zero, Vector2.Zero, 0f, 1280, 720,
             pointerCaptured: true);

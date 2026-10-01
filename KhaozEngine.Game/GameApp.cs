@@ -303,8 +303,6 @@ namespace KhaozEngine.Game
         /// <summary>Request or release pointer capture for mouse-look (see <see cref="AppWindow.SetPointerCaptured"/>).
         /// Applies next frame, only while focused, and a focus loss needs a false then true renewal to capture again.</summary>
         protected void SetPointerCaptured(bool captured) => _window.SetPointerCaptured(captured);
-        /// <summary>True while the window holds the pointer captured (see <see cref="AppWindow.PointerCaptured"/>).</summary>
-        protected bool PointerCaptured => _window.PointerCaptured;
         /// <summary>The 2D drawing surface bound to the window.</summary>
         protected Render2DSurface Surface2D => _surface2D;
         /// <summary>The 2D sprite batch (<see cref="Surface2D"/>.Batch).</summary>

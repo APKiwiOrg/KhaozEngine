@@ -8,10 +8,12 @@ namespace KhaozEngine.Windowing
     /// <param name="SetNormal">Put the cursor back in GLFW's normal mode.</param>
     /// <param name="SetRawMotion">Turn on raw mouse motion. Set only with <paramref name="SetDisabled"/> and only
     /// when the platform supports it.</param>
+    /// <param name="Captured">Whether the cursor is captured once these calls are made. The next frame passes it
+    /// back as <c>currentlyCaptured</c>.</param>
     /// <param name="AwaitingRenewal">The latch for the next frame. True after a focus loss until the request is
     /// seen false while focused, so a request held across the loss cannot capture again on refocus.</param>
     internal readonly record struct PointerCaptureAction(
-        bool SetDisabled, bool SetNormal, bool SetRawMotion, bool AwaitingRenewal)
+        bool SetDisabled, bool SetNormal, bool SetRawMotion, bool Captured, bool AwaitingRenewal)
     {
         /// <summary>True when the frame has at least one GLFW call to make.</summary>
         public bool CallsGlfw => SetDisabled || SetNormal || SetRawMotion;
@@ -28,7 +30,8 @@ namespace KhaozEngine.Windowing
         /// <param name="requested">The latest <see cref="AppWindow.SetPointerCaptured"/> value.</param>
         /// <param name="focused">The window's focus, from the same source that stamps
         /// <see cref="InputState.WindowFocused"/>.</param>
-        /// <param name="currentlyCaptured">Whether GLFW was last told to disable the cursor.</param>
+        /// <param name="currentlyCaptured">The previous frame's <see cref="PointerCaptureAction.Captured"/>.
+        /// Starts false.</param>
         /// <param name="rawMotionSupported">Whether GLFW reports raw mouse motion as supported.</param>
         /// <param name="awaitingRenewal">The previous frame's <see cref="PointerCaptureAction.AwaitingRenewal"/>.
         /// Starts false.</param>
@@ -39,7 +42,7 @@ namespace KhaozEngine.Windowing
             bool target = requested && !awaiting;
             bool capture = target && !currentlyCaptured;
             bool release = !target && currentlyCaptured;
-            return new PointerCaptureAction(capture, release, capture && rawMotionSupported, awaiting);
+            return new PointerCaptureAction(capture, release, capture && rawMotionSupported, target, awaiting);
         }
     }
 }

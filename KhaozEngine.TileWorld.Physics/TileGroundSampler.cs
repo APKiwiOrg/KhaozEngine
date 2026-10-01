@@ -18,9 +18,9 @@ namespace KhaozEngine.TileWorld.Physics;
 /// normal.</item>
 /// </list>
 /// It never answers NaN. A point infinitely far out clamps like any other, and a NaN point, or any point in a world
-/// with no loaded regions, answers height 0 with a straight up normal. The sampler reads the document it was built from on every call, but its
-/// rectangle was captured at build and the colliders it has to agree with were built then too, so a document edited
-/// after <see cref="TileWorldColliders.Build"/> needs a rebuild.
+/// with no loaded regions, answers height 0 with a straight up normal. The sampler reads the document it was built
+/// from on every call, but its rectangle was captured at build and the colliders it has to agree with were built
+/// then too, so a document edited after <see cref="TileWorldColliders.Build"/> needs a rebuild.
 /// </summary>
 public sealed class TileGroundSampler
 {
@@ -136,7 +136,7 @@ public sealed class TileGroundSampler
 
     // Barycentric weights of p on the tile-local triangle (a, b, c). Lattice triangles always have area in plan, so
     // the determinant is never zero. Tile-local and world plan coordinates differ only by scale and a flip of z, so
-    // the weights hold for the world positions too.
+    // the weights hold for the tile-relative positions too.
     static Vector3 Weights(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
     {
         Vector2 ab = b - a, ac = c - a, ap = p - a;

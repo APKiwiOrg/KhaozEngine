@@ -36,10 +36,10 @@ public sealed class TileWorldColliders
     /// SHA-256 over every collider in order: its kind byte, its shape as <see cref="PropCollisionFormat.Write"/>
     /// writes it, and its pose as seven little-endian floats (position x, y, z, then orientation x, y, z, w). The same
     /// world and catalogs hash equal on every rebuild and reload, whatever order the regions were created or loaded
-    /// in. Across machines the hash is exact for every box on a quarter turn. A walk surface on a yaw that is not a
-    /// quarter turn takes its centre and orientation from <see cref="MathF"/> trigonometry, which .NET does not
-    /// promise is bit-identical across x64 and ARM64, so such a world can hash differently on another architecture.
-    /// Each read returns a fresh copy.
+    /// in. Across machines the hash is exact for the ground meshes and every box on a quarter turn, none of which
+    /// uses trigonometry. A walk surface on a yaw that is not a quarter turn takes its centre and orientation from
+    /// <see cref="MathF"/> trigonometry, which .NET does not promise is bit-identical across x64 and ARM64, so such a
+    /// world can hash differently on another architecture. Each read returns a fresh copy.
     /// </summary>
     public byte[] Hash => (byte[])_hash.Clone();
 

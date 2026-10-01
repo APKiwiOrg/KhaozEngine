@@ -765,7 +765,7 @@ KhaozEngine.TileEdit.Tool -> Microsoft.Extensions.Hosting     (the stdio host, c
 ```
 
 It is in no umbrella and nothing in the engine references it. The `TileWorld.Render3D` edge is the whole reason
-the render verbs need a GPU while the other 41 do not, and it is the one edge that would disappear if the
+the render verbs need a GPU while the other 48 do not, and it is the one edge that would disappear if the
 render verbs ever moved to a separate tool.
 
 `KhaozEngine.TileWorld.Physics` is the physics arm, opt-in and in NO umbrella, split off so the document package
@@ -774,12 +774,14 @@ stays physics-free for a server or a tool that never needs a collider:
 ```
 KhaozEngine.TileWorld.Physics -> KhaozEngine.TileWorld    (the document it reads, plus the ground, water and object placement rules)
 KhaozEngine.TileWorld.Physics -> KhaozEngine.Physics      (IPhysicsWorld and the shapes the static colliders are registered as)
-KhaozEngine.TileWorld.Physics -> KhaozEngine.Locomotion   (MovementMedium, and the ground-height and medium delegate shapes CharacterMovement takes)
+KhaozEngine.TileWorld.Physics -> KhaozEngine.Locomotion   (MovementMedium, the one Locomotion type the medium sampler returns)
 ```
 
 Three forward edges and no backend: the caller picks the `IPhysicsWorld`, and only the test project references
-`Physics.Bepu`. `KhaozEngine.TileWorld` grants it `InternalsVisibleTo` for `TileObjectPlacement.PlanarBasis` and
-`AnchorPlanar`, so an object's box uses the quarter-turn basis its drawn model uses.
+`Physics.Bepu`. The `Locomotion` edge exists for `MovementMedium` alone. The height and normal delegates are plain
+`Func` types, so the floor sampler would need no reference by itself. `KhaozEngine.TileWorld` grants it
+`InternalsVisibleTo` for `TileObjectPlacement.PlanarBasis` and `AnchorPlanar`, so an object's box uses the
+quarter-turn basis its drawn model uses.
 `ArchitectureTests.TileWorldPhysics_ReferencesOnlyTileWorldPhysicsAndLocomotion` pins the three edges and the
 absence of any package reference, and `TileWorld.Physics` is on the `OptInBackends` list.
 
@@ -1976,7 +1978,7 @@ To swap or add a backend for a seam that already has the separate-package split:
 | Persistence enumeration | `../KhaozEngine.WorldStore/IEnumerableWorldStore.cs` | `InMemoryWorldStore.cs`, `SqliteWorldStore.cs`, `SqlServerWorldStore.cs` |
 | Player persistence core | `../KhaozEngine.WorldStore/IPersistenceHost.cs`, `PersistenceBinding.cs`, `PersistenceCoreConfig.cs`, `PositionHintCache.cs` | `StatePersistence.cs` (+ `.Load.cs` / `.Save.cs`), bound by `../KhaozEngine.NetWorld/WorldPersistence.cs` and `../KhaozEngine.TileWorld.Netcode/TileWorldPersistence.cs` |
 | Tile-world movement | `../KhaozEngine.TileWorld.Netcode/TileMoveState.cs`, `TileRoute.cs`, `TileCommand.cs`, `TileStepTicks.cs`, `TileMoveOptions.cs`, `TileActorTraversalProfile.cs`, `ITileTargets.cs`, `ITileGroundHeight.cs`, `TileProtocol*.cs`, `TileServerReason.cs`, `TileCells.cs` | `TileMoveSimulator.cs`, `TileReach.cs`, `TileActionQueue.cs`, `TileMovementSystem.cs`, `TileActorTraversalRegistry.cs`, `TileDocumentTargets.cs`, `TileDocumentGroundHeight.cs`, `TileWorldServer*.cs`, `TileWorldClient*.cs`, `TilePresenter.cs`, `TileDrawPriority.cs`, `TileDrawPriority.Footprints.cs`, `TileWorldPersistence.cs`, `TilePlayerRecord.cs`, plus `../KhaozEngine.TileWorld/TileCollisionBaker.cs` for alternate ground topology baking |
-| Tile world physics | `../KhaozEngine.TileWorld.Physics/TileColliderOptions.cs`, registered through `../KhaozEngine.Physics/IPhysicsWorld.cs` | any `IPhysicsWorld`, `../KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs` in its tests |
+| Tile world physics | `../KhaozEngine.TileWorld.Physics/TileWorldColliders.cs`, `TileColliderRegistration.cs`, `TileColliderOptions.cs`, registered through `../KhaozEngine.Physics/IPhysicsWorld.cs` | any `IPhysicsWorld`, `../KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs` in its tests |
 | Server ban list | `../KhaozEngine.Netcode/IBanStore.cs`, `InMemoryBanStore.cs` (forwarded from `../KhaozEngine.NetWorld/TypeForwards.cs`) | `../KhaozEngine.NetWorld/WorldStoreBanStore.cs`, `../KhaozEngine.Accounts/AccountBanStore.cs` |
 | Admin HTTP endpoint | `../KhaozEngine.Netcode/IAdminControllable.cs` (seam, forwarded from `../KhaozEngine.NetWorld/TypeForwards.cs`) | `../KhaozEngine.Server.Admin/` (Kestrel, ASP.NET Core), over `ServerAdmin` and any head: `WorldServer`, `ShardedWorldServer`, `../KhaozEngine.TileWorld.Netcode/TileWorldServer.Admin.cs` |
 | Audio | `../KhaozEngine.Audio/IMusicBackend.cs`, `ISfxBackend.cs`, `Null*Backend.cs` | `../KhaozEngine.Audio/OpenAl*Backend.cs` |

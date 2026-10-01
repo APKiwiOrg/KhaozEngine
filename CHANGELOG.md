@@ -21,6 +21,25 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   4-connected body as a `TileWaterBody(Rects, SurfaceY)`, with `IsWater`, `Components`, `Rectangles` and
   `SurfaceDropMetres` beside it. `TileWaterPlanes.Collect` builds its planes from those bodies with unchanged output,
   and its `SurfaceDropMetres`, `Components` and `Rectangles` remain as forwarders.
+- New opt-in package `KhaozEngine.TileWorld.Physics`, in no umbrella, gives a tile world continuous collision.
+  `TileWorldColliders.Build(document, catalogs, options)` describes plane 0 as one ground mesh per region (the drawn
+  ground triangles, wound for a one-sided backend mesh) plus wall, blocked-tile, object and walk-surface boxes, with
+  a stable SHA-256 `Hash`. `AddTo(world)` registers them in any `IPhysicsWorld`, relative to its origin, and the
+  returned `TileColliderRegistration` removes them again. `Ground` is a floor sampler read from the drawn ground
+  only and `Medium` a water sampler, both handing `CharacterMovement.Step` its delegates. `TileColliderOptions`
+  sets the wall thickness, the blocked-tile height and the walk-surface thickness
+  ([consumer contract](docs/USING-KHAOZENGINE.md#physics-for-a-tile-world-khaozenginetileworldphysics)).
+- Catalog archetypes take an optional `collisionHeight`, the model's height in metres above its local base. A
+  present value must be a finite number above 0, and a JSON `null` is refused. The tile collision map ignores it,
+  and `TileWorldHash.OfCatalogs` digests it only when present, so existing catalogs keep their digest. The physics
+  package requires it on every `Solid`, `Diagonal`, `Wall` and `WallCorner` archetype.
+- `TileWorldCatalogs.ArchetypeSource(id)` returns the catalog file an archetype was loaded from, or null when it did
+  not come from a file, like `MaterialSource`.
+- `ke-tileedit` has 50 verbs. `archetype_measure_heights(kitRoot)` reads each archetype's model top from its glb,
+  and `archetype_set_collision_heights(heights, overwrite)` writes `collisionHeight` into the one catalog file that
+  defines each archetype. Its catalog writer edits the JSON text in place and keeps every byte it does not change.
+  Afterwards only `collisionHeight` is refreshed in the open session, other catalog edits made outside the tool
+  still need `world_open`, and a failed refresh is reported in `sessionRefreshError`.
 
 ## 20.16.0
 

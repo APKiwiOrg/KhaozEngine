@@ -54,6 +54,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Ground-cover scatter and understory companions](#ground-cover-scatter-and-understory-companions)
 - [Map documents (`KhaozEngine.MapDoc`)](#map-documents-khaozenginemapdoc)
 - [Tile world (`KhaozEngine.TileWorld`)](#tile-world-khaozenginetileworld)
+- [Physics for a tile world (`KhaozEngine.TileWorld.Physics`)](#physics-for-a-tile-world-khaozenginetileworldphysics)
 - [Tile world rendering (`KhaozEngine.TileWorld.Render3D`)](#tile-world-rendering-khaozenginetileworldrender3d)
 - [Tile world editing (`KhaozEngine.TileWorld.Editing`)](#tile-world-editing-khaozenginetileworldediting)
 - [ke-tileedit (`KhaozEngine.TileEdit.Tool`)](#ke-tileedit-khaozenginetileedittool)
@@ -9107,6 +9108,45 @@ allocation-free repeated picks, including the per-frame picks made by `TileWorld
 
 ---
 
+## Physics for a tile world (`KhaozEngine.TileWorld.Physics`)
+
+A tile world walks, renders and serves with no physics. A game that wants a continuous body moving over it, a
+capsule driven by `CharacterMovement` rather than a player stepping tile to tile, adds
+`KhaozEngine.TileWorld.Physics` explicitly, with the backend it picks (`KhaozEngine.Physics.Bepu` is the shipped
+one). The package is in no umbrella, renders nothing and references no backend.
+
+```csharp
+TileWorldColliders colliders = TileWorldColliders.Build(document, catalogs);   // or pass TileColliderOptions
+using var world = new BepuPhysicsWorld();
+using TileColliderRegistration registration = colliders.AddTo(world);
+
+body = CharacterMovement.Step(body, command, dt, colliders.Ground.HeightDelegate, MoveTuning.Default,
+                              colliders.Ground.NormalDelegate, world, medium: colliders.Medium.Delegate);
+```
+
+`Build` describes the loaded plane-0 regions as static colliders and registers nothing: one ground mesh per region
+from the same triangles the renderer draws, a box per blocked wall edge, blocked tile and `Solid` or `Diagonal`
+object, and a thin box under each walk surface. `AddTo` registers them, and disposing the registration removes
+them. `Ground` is the floor sampler, read from the drawn ground only, so a deck or a bridge holds a body up as a
+static and never becomes the floor. `Medium` puts feet in water only below a water body's surface. `Hash` is a
+stable digest of the whole collider set.
+
+The contract a consumer has to keep:
+
+- **Every `Solid`, `Diagonal`, `Wall` and `WallCorner` archetype needs a `collisionHeight`**, whose field rules are
+  in the `KhaozEngine.TileWorld` README. `Build` throws a `TileWorldException` naming an archetype placed without
+  one. `ke-tileedit`'s `archetype_measure_heights` and `archetype_set_collision_heights` fill them from the kit.
+- **Rebuild after an edit.** Remove the old registration, `Build` again and `AddTo` again. The samplers answer for
+  the world as it was built.
+- **The samplers speak absolute document coordinates.** `AddTo` subtracts `world.Origin` once, so in a rebased world
+  wrap the three delegates to add the origin back. The package README shows the wrapping.
+
+The collider rules, the defaults, the hash encoding and the limits (plane 0 only, roofs and `NoDraw` tiles, rays
+exactly on the world's outer edge) are in the
+[`KhaozEngine.TileWorld.Physics` README](../KhaozEngine.TileWorld.Physics/README.md).
+
+---
+
 ## Tile world rendering (`KhaozEngine.TileWorld.Render3D`)
 
 The render arm of the tile world, in the `Game3D` umbrella: a ground mesher that emits each tile's four corner
@@ -9246,6 +9286,13 @@ stay resident for the resolver's life.
 `ResolveLod` keeps LOD0 when that file is blank, missing or malformed. `ResolveFlatForHlod` prefers flattened
 LOD1, falls back to flattened LOD0, and returns null only when neither can supply an HLOD source. Missing render
 LOD never changes the full authored footprint, collision, pathing, object identity or server representation.
+
+`TileObjectArchetype.CollisionHeight` (`collisionHeight` in a catalog) is how tall the model stands above its local
+base in metres, which [tile world physics](#physics-for-a-tile-world-khaozenginetileworldphysics) adds to the
+model's standing height for the top of a wall or object box. The renderer never reads it.
+`ke-tileedit`'s `archetype_measure_heights` takes it from the glb as the highest vertex Y, so a kit piece authored
+to the contract below, its origin on its own floor, measures true. The field rules are in the
+`KhaozEngine.TileWorld` README.
 
 **Drawing something that is not a tile object.** `ITileMeshResolver.Resolve(meshRef)` takes the reference on its
 own, for a player avatar, an NPC or a dropped item, so reaching a resolver's cache and its fallback no longer means

@@ -124,7 +124,7 @@ Malformed or duplicate content throws a `TileWorldException` naming the source f
 `TileWorldSchema.GetCatalogJson()` returns the embedded catalog schema. `GroundMaterial` is
 `{ Id, Name, Color, Texture, Kind, TilesPerMetre }` (`Ground` or `Water`, id 0 reserved for void) and
 `TileObjectArchetype` is
-`{ Id, Name, MeshRef, LodMeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags, WalkSurfaces }`, with
+`{ Id, Name, MeshRef, LodMeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags, WalkSurfaces, CollisionHeight }`, with
 `TileCollisionKind` one of `None`, `Solid`, `Wall`, `WallCorner`, `Diagonal`. `TileFootprint.Rotated` and
 `TileFootprint.Of` give the rotated footprint size and the world rect an instance covers.
 
@@ -170,6 +170,15 @@ judged at load, because its resolved edge depends on a tile size the catalog doe
 comes out inverted simply covers nothing. An empty list loads as null. Walk surfaces change no footprint, no
 collision and no pathing. `OfCatalogs` digests them, writing nothing for an archetype without any, so a catalog
 with no walk surfaces keeps the digest it had before the field existed.
+
+`CollisionHeight` is the optional `collisionHeight` catalog field: how tall the object stands for collision, in
+metres above the mesh's local base, so a collider's top is the height the model stands at plus this. Absent loads
+as null, and a present value must be a finite number above 0. The schema refuses 0, a negative number and a JSON
+`null`. `Merge` refuses any such value edited in after load, NaN and infinity included, naming the source and the
+archetype. The tile collision map and pathing never read it. `KhaozEngine.TileWorld.Physics` requires it on every
+`Solid`, `Diagonal`, `Wall` and `WallCorner` archetype, and `ke-tileedit`'s `archetype_measure_heights` and
+`archetype_set_collision_heights` fill it from the kit. `OfCatalogs` digests it only when present, so a catalog
+without heights keeps its digest.
 
 `TilesPerMetre` is the optional `tilesPerMetre` catalog field, the texture repeats per metre the textured ground
 path gives that material, null to take the renderer default of 0.5. `MaterialSource(id)` returns the catalog

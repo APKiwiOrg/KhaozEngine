@@ -122,6 +122,20 @@ public class AutomationComposeTests
     }
 
     [Fact]
+    public void ACapturedRealPointerStaysCapturedThroughCompose()
+    {
+        var injector = new AutomationInputInjector();
+        var none = new System.Collections.Generic.HashSet<Key>();
+        var noButtons = new System.Collections.Generic.HashSet<MouseButton>();
+        var captured = new InputState(
+            none, none, none, noButtons, noButtons, Vector2.Zero, Vector2.Zero, 0f, 1280, 720,
+            pointerCaptured: true);
+
+        Assert.True(injector.Compose(captured).PointerCaptured);
+        Assert.False(injector.Compose(AutomationTestKit.Real()).PointerCaptured);
+    }
+
+    [Fact]
     public void AnEdgeLastsExactlyOneFrame()
     {
         var injector = new AutomationInputInjector();

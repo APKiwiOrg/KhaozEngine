@@ -692,18 +692,11 @@ namespace KhaozEngine.Windowing
 
             return _accumulator.Snapshot(
                 pos, hasMouse, _window.FramebufferSize.X, _window.FramebufferSize.Y,
-                _gamepads.Read(_input.Gamepads));
+                _gamepads.Read(_input.Gamepads), _pointerCaptured, FramebufferScale());
         }
 
         /// <summary>Scale a logical-point cursor position into framebuffer pixels (DPI factor per axis; 1x = identity).</summary>
-        Vector2 ToFramebuffer(Vector2 logical)
-        {
-            var size = _window.Size;
-            var fb = _window.FramebufferSize;
-            float sx = size.X > 0 ? (float)fb.X / size.X : 1f;
-            float sy = size.Y > 0 ? (float)fb.Y / size.Y : 1f;
-            return new Vector2(logical.X * sx, logical.Y * sy);
-        }
+        Vector2 ToFramebuffer(Vector2 logical) => logical * FramebufferScale();
 
         static bool MapMouse(SilkMouseButton b, out MouseButton r)
         {

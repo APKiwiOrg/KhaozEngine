@@ -58,6 +58,8 @@ namespace KhaozEngine.Windowing
             _window.Render += dt =>
             {
                 float fdt = (float)Math.Min(dt, 0.1);
+                // Capture first, so the snapshot reports what GLFW was told this frame. See AppWindow.PointerCapture.cs.
+                ApplyPointerCapture();
                 // The one composition seam: the built snapshot, then the optional filter, then the frame latches it.
                 // Null filter is the raw snapshot with no allocation. See AppWindow.InputFilter.cs.
                 InputState input = ApplyInputFilter(_inputFilter, BuildInput());

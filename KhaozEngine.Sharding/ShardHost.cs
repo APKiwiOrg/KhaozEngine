@@ -549,6 +549,9 @@ public sealed partial class ShardHost : IDisposable
     /// through <see cref="HomeInterest(int, float, ICollection{long}, long?)"/> and then narrowed it (a per-viewer
     /// visibility rule), so the snapshot and the delta paths serve one set. Same owner scoping and the same per-epoch
     /// shared index as the radius overload, which calls this one. Throws if <paramref name="slot"/> is not bound.
+    /// <para><paramref name="world"/> must be the slot's home-cell world, exactly as <c>HomeInterest</c> returned it
+    /// for the same <paramref name="serveEpoch"/>. The netId index is cached per world within an epoch and shared by
+    /// every client homed in that cell, so it is only valid for the world it was built over in that pass.</para>
     /// </summary>
     public byte[] SnapshotForClient(int slot, World world, IReadOnlySet<long> interest, long? serveEpoch = null)
     {

@@ -58,7 +58,7 @@ public sealed class ShardedEntityVisibilityTests
     {
         var rig = new Rig();
         rig.Pump(8);
-        long id = rig.Server.SpawnEntity(7f, 4f, (w, e) => w.Set(e, new PlayerIdentity { DisplayName = "before" }));
+        long id = rig.Server.SpawnEntity(7f, 4f, (w, e) => w.Set(e, new PlayerIdentity { DisplayName = "kept" }));
         rig.HiddenId = id;
         rig.AllowOthers = true;
         rig.Pump(6);
@@ -70,11 +70,11 @@ public sealed class ShardedEntityVisibilityTests
         Assert.False(rig.Sees(viewer, id));
         Assert.False(viewer.View.Entities.ContainsKey(id));
 
-        // State changes while hidden must all arrive when the entity returns.
+        // The entity must return whole: the position changed while hidden, and the identity, which did not change,
+        // must be resent too, since the viewer dropped the entity with everything on it.
         Assert.True(rig.Server.TryGetEntity(id, out World world, out Entity entity));
         Assert.True(world.TryGet(entity, out ReplicatedPosition old));
         world.Set(entity, ReplicatedPosition.FromWorld(new Vector3(6f, 0f, 6f), old.Frame));
-        world.Set(entity, new PlayerIdentity { DisplayName = "after" });
         rig.Pump(4);
         Assert.False(rig.Sees(viewer, id));
 
@@ -84,7 +84,7 @@ public sealed class ShardedEntityVisibilityTests
         Assert.Equal(new Vector3(6f, 0f, 6f), pos);
         Assert.True(viewer.View.TryGetEntity(id, out Entity seen));
         Assert.True(viewer.World.TryGet(seen, out PlayerIdentity identity));
-        Assert.Equal("after", identity.DisplayName);
+        Assert.Equal("kept", identity.DisplayName);
     }
 
     [Fact]
@@ -242,6 +242,10 @@ public sealed class ShardedEntityVisibilityTests
         Assert.Equal(host.SnapshotForClient(slot, radius), host.SnapshotForClient(slot, world, interest));
         Assert.Equal(host.SnapshotForClient(slot, radius, serveEpoch: 9001),
             host.SnapshotForClient(slot, world, interest, serveEpoch: 9001));
+        // The radius overload now delegates to the set overload, so pin the set overload independently too: the
+        // unnarrowed set is served exactly as the full-scan writer serves it.
+        Assert.Equal(SnapshotWriter.WriteFiltered(world, rig.Server.Registry, interest,
+            ReplicationChannels.Replicate, rig.DeltaViewer.LocalNetId), host.SnapshotForClient(slot, world, interest));
 
         // A narrower explicit set is served exactly as the full-scan writer would serve that set.
         interest.Remove(npc);

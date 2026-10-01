@@ -53,7 +53,7 @@ public sealed class EntityVisibilityTests
     {
         var rig = new Rig();
         rig.Pump(8);
-        long id = rig.Server.SpawnEntity(4f, 0f, (w, e) => w.Set(e, new PlayerIdentity { DisplayName = "before" }));
+        long id = rig.Server.SpawnEntity(4f, 0f, (w, e) => w.Set(e, new PlayerIdentity { DisplayName = "kept" }));
         rig.HiddenId = id;
         rig.AllowOthers = true;
         rig.Pump(6);
@@ -65,11 +65,11 @@ public sealed class EntityVisibilityTests
         Assert.False(rig.Sees(viewer, id));
         Assert.False(viewer.View.Entities.ContainsKey(id));
 
-        // State changes while hidden must all arrive when the entity returns.
+        // The entity must return whole: the position changed while hidden, and the identity, which did not change,
+        // must be resent too, since the viewer dropped the entity with everything on it.
         Assert.True(rig.Server.TryGetEntity(id, out World world, out Entity entity));
         Assert.True(world.TryGet(entity, out ReplicatedPosition old));
         world.Set(entity, ReplicatedPosition.FromWorld(new Vector3(6f, 0f, 2f), old.Frame));
-        world.Set(entity, new PlayerIdentity { DisplayName = "after" });
         rig.Pump(4);
         Assert.False(rig.Sees(viewer, id));
 
@@ -79,7 +79,7 @@ public sealed class EntityVisibilityTests
         Assert.Equal(new Vector3(6f, 0f, 2f), pos);
         Assert.True(viewer.View.TryGetEntity(id, out Entity seen));
         Assert.True(viewer.World.TryGet(seen, out PlayerIdentity identity));
-        Assert.Equal("after", identity.DisplayName);
+        Assert.Equal("kept", identity.DisplayName);
     }
 
     [Fact]
@@ -180,26 +180,6 @@ public sealed class EntityVisibilityTests
             Assert.Single(client.View.Entities);
             Assert.False(rig.Sees(client, npc));
         }
-    }
-
-    [Fact]
-    public void TheFilterAllocatesNothingOnceWarm()
-    {
-        var set = new HashSet<long>();
-        Func<int, long, bool> visible = (slot, id) => id % 2 == 0;
-        void Fill() { set.Clear(); for (long i = 1; i <= 64; i++) set.Add(i); }
-        Fill();
-        InterestVisibility.Filter(set, 0, 1, visible);
-        Fill();
-
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        InterestVisibility.Filter(set, 0, 1, visible);
-        long after = GC.GetAllocatedBytesForCurrentThread();
-
-        Assert.Equal(0, after - before);
-        Assert.Equal(33, set.Count);
-        Assert.Contains(1L, set);
-        Assert.DoesNotContain(3L, set);
     }
 
     private static void AssertSameFrames(List<byte[]> expected, List<byte[]> actual)

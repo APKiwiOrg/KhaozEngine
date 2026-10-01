@@ -92,8 +92,32 @@ tag_release_window() {
   printf past-tag
 }
 
+# tag_nonpackable_test <commit> <path> -> 0 for a path owned by a non-packable test project.
+# Read the project at the pushed commit, never from the worktree. A test-looking name alone is not
+# enough. Strip XML comments and require one unconditional literal false declaration. Conditional
+# property groups and conflicting declarations stay version-bearing rather than guessing MSBuild.
+tag_nonpackable_test() {
+  _nt_dir=${2%%/*}
+  case "$_nt_dir" in KhaozEngine.*Tests) ;; *) return 1 ;; esac
+  _nt_project=$_nt_dir/$_nt_dir.csproj
+  git show "$1:$_nt_project" 2>/dev/null | awk '
+    { xml = xml "\n" $0 }
+    END {
+      while ((start = index(xml, "<!--")) > 0) {
+        tail = substr(xml, start + 4)
+        finish = index(tail, "-->")
+        if (!finish) exit 1
+        xml = substr(xml, 1, start - 1) substr(tail, finish + 3)
+      }
+      if (xml ~ /<PropertyGroup[^>]*Condition[[:space:]]*=/) exit 1
+      if (!sub(/<IsPackable>[[:space:]]*false[[:space:]]*<\/IsPackable>/, "", xml)) exit 1
+      if (xml ~ /<IsPackable[[:space:]\/>]/) exit 1
+      exit 0
+    }'
+}
+
 # tag_version_bearing <from> <to> -> 0 when the range changes something that ships inside a package,
-# 1 when every change is documentation, tooling or repository governance.
+# 1 when every change is tests, documentation, tooling or repository governance.
 #
 # The carve-out is not leniency, it is the contributor rule: tooling, documentation and repository
 # governance do not bump the version. Without it, every docs or hook commit landing on top of a release
@@ -108,6 +132,10 @@ tag_release_window() {
 # KhaozEngine.Content's PackagePath for its own validator output, not this directory. If a packable
 # project ever moves under tools/, this line is the one to revisit.
 #
+# Test projects are also non-packable, including the rump KhaozEngine.Tests project. No packable
+# project references them. Match their project declaration at the target commit before excluding a
+# path, so a packable or unknown project cannot evade the guard by taking a test-looking name.
+#
 # .gitignore and .filesize-baseline are governance in the same sense: they decide what is TRACKED and
 # how large a file may be, never what a package contains. .gitignore joined the list the third time
 # this guard refused its own author, which is worth stating plainly. The list is derived by reasoning
@@ -121,5 +149,10 @@ tag_version_bearing() {
   git diff --name-only "$_vb_from" "$_vb_to" -- \
     ':(exclude)docs/**' ':(exclude)*.md' ':(exclude)scripts/**' ':(exclude)tools/**' \
     ':(exclude).github/**' ':(exclude).githooks/**' ':(exclude).claude/**' ':(exclude).codex/**' \
-    ':(exclude).filesize-baseline' ':(exclude).gitignore' 2>/dev/null | grep -q .
+    ':(exclude).filesize-baseline' ':(exclude).gitignore' 2>/dev/null | (
+      while IFS= read -r _vb_path; do
+        tag_nonpackable_test "$_vb_to" "$_vb_path" || exit 0
+      done
+      exit 1
+    )
 }

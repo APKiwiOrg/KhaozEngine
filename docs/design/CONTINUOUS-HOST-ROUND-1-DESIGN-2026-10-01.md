@@ -1,6 +1,6 @@
 # Continuous host, round 1: tile world physics, pointer capture, fragments and visibility
 
-Status: proposal for the owner's review. No code written yet.
+Status: approved by the owner on 2026-10-01. Implementation in four branches, see "Sequencing and release".
 
 Consumer: Grimhollow's move from tile movement to continuous movement, phase P2. The consumer spec is
 `docs/superpowers/specs/2026-10-01-continuous-movement-design.md` in the Grimhollow repository, and its

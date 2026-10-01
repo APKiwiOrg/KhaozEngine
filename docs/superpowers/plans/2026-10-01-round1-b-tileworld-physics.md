@@ -10,6 +10,39 @@
 
 **Spec:** `docs/design/CONTINUOUS-HOST-ROUND-1-DESIGN-2026-10-01.md`, section 1 and decisions D1, D3 and D4. Branch 2 of 4. It needs plan A merged on `main` first.
 
+## Outcome
+
+Executed 2026-10-02 on `feature/round1-tileworld-physics`, commits `110e1d9f8` to the merge, riding 20.17.0. Full suite at `24f2ceac5`: 28 assemblies, 22854 passed, 0 failed. Later commits are docs and the final fix wave, with the package and TileEdit tests re-run. The collider hash over `EveryKindWorld` is pinned at `6aa23030...651851`.
+
+| Ruling | What was decided | Why |
+| --- | --- | --- |
+| B1 | The ground mesh swaps b and c, and the winding test asserts Bepu's front normal `cross(C-A, B-A)` points up | World z is minus tile z, so the tile ground winds like the terrain. The down-ray test is the empirical gate |
+| B2 | The height verbs refuse a non-finite or non-positive height, measured or written | The loader rejects such a value |
+| B3, B3a | An object box's top is the anchor Y plus CollisionHeight, and its bottom is the lower of the lowest ground corner under it and the anchor | The top matches the drawn model, and the box never inverts on a steep slope |
+| B4 | `collisionHeight` follows the optional-field pattern, so a JSON null is refused | Consistency with the schema's other optional numbers |
+| B5 | The collider hash writes a pose as seven floats | `Pose` is a position and a quaternion |
+| B6 | Solid, Diagonal and wall boxes are axis-aligned over the tiles the baker blocks. Walk surfaces are the only yawed boxes | Physics matches the tile collision, and quarter turns stay exact |
+| B7 | `Build` validates the options | A degenerate box fails far from its cause |
+| B8 | NoDraw tiles get no floor | The upper-floor case this round leaves out. Hollowmere has none |
+| B9 | A body is in water only when its feet are below the surface | A body on a bridge over the river is dry |
+| B10 | The ground sampler answers in three cases and never NaN | The plan's "nearest drawn tile" made cheap and defined |
+| B11 | Everything is in document coordinates. `AddTo` subtracts the origin once, and wrapped delegates read `world.Origin` at call time | One coordinate space, origin handled at its two seams |
+| B12, B12a | Heights are written to the one file that defines the archetype, and only `collisionHeight` refreshes in the open session | Ids are unique per file, and a full reload would drop undo history |
+| B13 | `AddTo` rolls back and `Remove` tries every handle | Live edit-time swaps must not orphan statics |
+| B14 | A down ray exactly on the drawn ground's outer edge may miss under Bepu's half-open edge rule | Interior seams always hit, and nothing stands on that line |
+| B15 | A blocked box stands from the lowest corner to the highest corner plus BlockedHeight | The tile map refuses the whole tile, so a cliff tile must not be walkable from above |
+| B16 | The final wave renames `MediumDelegate`, pins the golden hash and writes catalogs through tmp and rename | Each fixes the public contract or the hash before the tag |
+
+Declined with reasons:
+- The ground sampler reads the document live while the medium sampler snapshots it. Both say to rebuild after an edit.
+- A rollback that itself partly fails leaves handles that can't be retried. They are reported in the `AggregateException`.
+- A `//` comment after `collisionKind`, on a line the previous property shares, keeps the plain insert. The JSON stays valid and no catalog uses that layout.
+
+Notes for the first consumer:
+- A nav bake through `PhysicsColumnProbe` may meet the B14 edge rule at the world's outer edge.
+- There is no per-region incremental build, so an edit rebuilds every collider.
+- Author a blocked border around the playable area.
+
 ## Global Constraints
 
 - **Worktree:** `/Users/antonio/KhaozEngine/.worktrees/round1-b` on `feature/round1-tileworld-physics`, created from `origin/main` after plan A is merged. Read `AGENTS.md`, `docs/CONTRIBUTOR-RULES.md` and `docs/DEPENDENCY-SEAMS.md` first.
@@ -94,7 +127,7 @@
   - `public enum TileColliderKind : byte { Ground, Wall, Blocked, Object, WalkSurface }`.
 - **Rules:**
   - **Ground:** one `TriangleMeshShape` per region on plane 0, from `TileGroundTriangles.Build`, with each triangle's second and third index swapped for Bepu's one-sided front face (the `TerrainChunkCollision.cs:75-94` swap). Posed at the region origin.
-  - **Blocked:** one box per tile where `underlay == 0` or `TileSettings.Blocked`, from the tile's lowest corner to `BlockedHeight` above it.
+  - **Blocked:** one box per tile where `underlay == 0` or `TileSettings.Blocked`, from the tile's lowest corner to `BlockedHeight` above it. Executed as ruling B15: up to the highest corner plus `BlockedHeight`.
   - **Walls:** from the placed `Wall` and `WallCorner` objects, never the map's mirrored flags. One box per blocked edge on the anchor tile, `WallThickness` thick, centred on the edge, `CollisionHeight` tall from the ground under the edge.
   - **Objects:** `Solid` gets a box over the rotated footprint. `Diagonal` gets a box over the anchor tile only. Each is `CollisionHeight` tall from the drawn ground at the anchor, yawed with `PlanarBasis`.
   - **Walk surfaces:** a box `WalkSurfaceThickness` thick whose top is the surface height, over the surface rectangle resolved as `TileWalkSurfaces` resolves it.

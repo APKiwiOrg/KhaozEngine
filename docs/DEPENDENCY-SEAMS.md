@@ -766,7 +766,9 @@ KhaozEngine.TileEdit.Tool -> Microsoft.Extensions.Hosting     (the stdio host, c
 
 It is in no umbrella and nothing in the engine references it. The `TileWorld.Render3D` edge is the whole reason
 the render verbs need a GPU while the other 48 do not, and it is the one edge that would disappear if the
-render verbs ever moved to a separate tool.
+render verbs ever moved to a separate tool. `KhaozEngine.TileWorld` also grants the tool its internals for one
+member, `TileWorldFile.WriteAtomic`, so the catalog writer behind `archetype_set_collision_heights` replaces a file
+through the same temporary file and rename the world save uses.
 
 `KhaozEngine.TileWorld.Physics` is the physics arm, opt-in and in NO umbrella, split off so the document package
 stays physics-free for a server or a tool that never needs a collider:

@@ -236,7 +236,7 @@ public class ArchetypeHeightToolsTests
     }
 
     // When the write lands but the session refresh fails (another catalog file broke after world_open), the change
-    // is still reported and one whole-call error says the session needs world_open, with the loader's reason.
+    // is still reported and SessionRefreshError says the session needs world_open, with the loader's reason.
     [Fact]
     public void AFailedSessionRefreshStillReportsTheWrittenHeights()
     {
@@ -248,12 +248,30 @@ public class ArchetypeHeightToolsTests
         CollisionHeightChange tree = Assert.Single(result.Changed);
         Assert.Equal(f.CatalogPath("props.json"), tree.File);
         Assert.Contains("\"collisionHeight\": 4.5 }", File.ReadAllText(f.CatalogPath("props.json")), StringComparison.Ordinal);
-        ArchetypeHeightError error = Assert.Single(result.Errors);
-        Assert.Equal("", error.Id);
-        Assert.Contains("world_open", error.Error, StringComparison.Ordinal);
-        Assert.Contains("ground.json", error.Error, StringComparison.Ordinal);
+        Assert.Empty(result.Errors);
+        Assert.NotNull(result.SessionRefreshError);
+        Assert.Contains("world_open", result.SessionRefreshError, StringComparison.Ordinal);
+        Assert.Contains("ground.json", result.SessionRefreshError, StringComparison.Ordinal);
         // The refresh did not run, which is exactly what the error tells the client.
         Assert.Null(f.Session.Editing!.Catalogs.Archetype("tree")!.CollisionHeight);
+    }
+
+    // A call that writes nothing does not refresh the session, so a catalog that broke after world_open cannot
+    // produce a refresh error claiming files were written.
+    [Fact]
+    public void ACallThatWritesNothingNeverReportsARefreshError()
+    {
+        using var f = new Fixture(("ground.json", Ground), ("props.json", Props));
+        File.WriteAllText(f.CatalogPath("ground.json"), "{ oops");
+        byte[] props = File.ReadAllBytes(f.CatalogPath("props.json"));
+
+        CollisionHeightsResult result = f.Tools.SetCollisionHeights(new[] { new ArchetypeHeight("tree", -1f) });
+
+        Assert.Null(result.SessionRefreshError);
+        Assert.Empty(result.Changed);
+        Assert.Equal("tree", Assert.Single(result.Errors).Id);
+        Assert.Equal(props, File.ReadAllBytes(f.CatalogPath("props.json")));
+        Assert.Equal("{ oops", File.ReadAllText(f.CatalogPath("ground.json")));
     }
 
     // Ruling B12: each height lands in the one catalog file that defines its archetype, a file with nothing to
@@ -269,6 +287,7 @@ public class ArchetypeHeightToolsTests
             new[] { new ArchetypeHeight("tree", 4.5f), new ArchetypeHeight("wall", 2.25f) });
 
         Assert.Empty(result.Errors);
+        Assert.Null(result.SessionRefreshError);
         Assert.Equal(new[] { "tree", "wall" }, result.Changed.Select(c => c.Id));
         Assert.All(result.Changed, c => Assert.Equal(f.CatalogPath("props.json"), c.File));
         Assert.Equal(ground, File.ReadAllBytes(f.CatalogPath("ground.json")));

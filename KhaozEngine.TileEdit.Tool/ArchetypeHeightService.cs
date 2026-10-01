@@ -84,25 +84,27 @@ public sealed class ArchetypeHeightService(TileEditSession session)
     /// 0, an id the open catalogs do not define and an id listed twice are error entries, and nothing is written
     /// for them.
     ///
-    /// <para>Afterwards only <c>collisionHeight</c> is refreshed in the open session. When that refresh fails (another
-    /// of the world's catalog files no longer loads), the files already written stay reported as changed and one
-    /// error entry with an empty id says so, carrying the loader's message: call <c>world_open</c> once the file is
-    /// fixed.</para></summary>
+    /// <para>When a file was written, only <c>collisionHeight</c> is refreshed in the open session afterwards. When
+    /// that refresh fails (another of the world's catalog files no longer loads), the files already written stay
+    /// reported as changed and <see cref="CollisionHeightsResult.SessionRefreshError"/> carries the loader's message
+    /// and says <c>world_open</c> is needed. A call that wrote nothing does not refresh, so it never carries
+    /// one.</para></summary>
     /// <exception cref="TileWorldException">No world is open.</exception>
     public CollisionHeightsResult SetCollisionHeights(IReadOnlyList<ArchetypeHeight> heights, bool overwrite)
     {
         ArgumentNullException.ThrowIfNull(heights);
         return session.EditCatalogFiles(
             catalogs => Write(catalogs, heights, overwrite),
-            (result, ex) => result with
+            outcome => outcome.Wrote,
+            (outcome, ex) => (outcome.Result with
             {
-                Errors = result.Errors.Append(new ArchetypeHeightError("",
-                    "the catalog files were written, but refreshing the open session's collision heights failed, so " +
-                    $"call world_open once the catalogs load again. {ex.Message}")).ToArray(),
-            });
+                SessionRefreshError = "the catalog files were written, but refreshing the open session's collision " +
+                    $"heights failed, so world_open is needed once the catalogs load again. {ex.Message}",
+            }, outcome.Wrote)).Result;
     }
 
-    static CollisionHeightsResult Write(TileWorldCatalogs catalogs, IReadOnlyList<ArchetypeHeight> heights,
+    // The result, and whether any catalog file was actually written, which is what decides the session refresh.
+    static (CollisionHeightsResult Result, bool Wrote) Write(TileWorldCatalogs catalogs, IReadOnlyList<ArchetypeHeight> heights,
         bool overwrite)
     {
         var skipped = new List<CollisionHeightSkip>();
@@ -174,7 +176,7 @@ public sealed class ArchetypeHeightService(TileEditSession session)
             .Where(p => !failedFiles.Contains(p.File))
             .Select(p => new CollisionHeightChange(p.Entry.Id, p.File, p.Previous, p.Entry.Height))
             .ToArray();
-        return new CollisionHeightsResult(changed, skipped, errors);
+        return (new CollisionHeightsResult(changed, skipped, errors, SessionRefreshError: null), prepared.Count > 0);
     }
 
     // Why an archetype measured to nothing, naming its mesh reference and where it was looked for. A glb that is on

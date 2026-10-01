@@ -253,7 +253,7 @@ than a verdict on the world. Widen `maxRadius` before concluding a place is cut 
 | Verb | What it does |
 |---|---|
 | `archetype_measure_heights(kitRoot)` | Every archetype of the open catalogs with its model top in metres above the mesh's local base (max Y of the glb's vertices), its collision kind, the height its catalog already records, and an error when it could not be measured. Read-only. |
-| `archetype_set_collision_heights(heights, overwrite = false)` | Writes `collisionHeight` into the catalog file that defines each archetype. Returns each change with its file, the skips and the errors. |
+| `archetype_set_collision_heights(heights, overwrite = false)` | Writes `collisionHeight` into the catalog file that defines each archetype. Returns each change with its file, the skips, the per-entry errors and `sessionRefreshError`. |
 
 A physics consumer needs a height on every `Solid`, `Diagonal`, `Wall` and `WallCorner` archetype, and these two
 fill it from the kit. `kitRoot` resolves against the world directory when relative and must exist. Measuring has
@@ -273,8 +273,9 @@ error entry, and every file is checked to load before any is written.
 Afterwards ONLY `collisionHeight` is refreshed in the open session, read back from the files, so the next verb sees
 the new heights without a `world_open`. Any other catalog edit made outside the tool (a new archetype, a changed
 footprint or collision kind) still needs `world_open`. If the refresh fails because another of the world's catalog
-files no longer loads, the written files are still reported as changed and one error entry with an empty id says
-the session needs `world_open`, carrying the loader's message.
+files no longer loads, the written files are still reported as changed and `sessionRefreshError` carries the
+loader's message and says `world_open` is needed. It is null otherwise, and a call that wrote nothing does not
+refresh at all. `errors` holds per-entry errors only.
 
 ### Renders
 

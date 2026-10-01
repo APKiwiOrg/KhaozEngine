@@ -161,14 +161,18 @@ public sealed class TileEditSession
     /// no baked collision reads a height, and rebuilding the document to swap its catalogs would drop the history
     /// and report unsaved edits as saved.</para>
     ///
-    /// <para>When the edit succeeded but the refresh fails (a catalog file no longer loads), the edit's result is
-    /// not lost: <paramref name="refreshFailed"/> gets it with the loader's exception and returns what the caller
-    /// reports. When the edit itself throws, the refresh is still attempted, since a failed edit may already have
-    /// written a file, and the edit's own exception is the one that propagates.</para></summary>
+    /// <para>The refresh runs only when <paramref name="wroteFiles"/> says the edit wrote a file, so an edit that
+    /// wrote nothing never reports a refresh failure. When the edit succeeded but the refresh fails (a catalog file
+    /// no longer loads), the edit's result is not lost: <paramref name="refreshFailed"/> gets it with the loader's
+    /// exception and returns what the caller reports. When the edit itself throws, the refresh is still attempted,
+    /// since a failed edit may already have written a file, and the edit's own exception is the one that
+    /// propagates.</para></summary>
     /// <exception cref="TileWorldException">No world is open.</exception>
-    public T EditCatalogFiles<T>(Func<TileWorldCatalogs, T> edit, Func<T, TileWorldException, T> refreshFailed)
+    public T EditCatalogFiles<T>(Func<TileWorldCatalogs, T> edit, Func<T, bool> wroteFiles,
+        Func<T, TileWorldException, T> refreshFailed)
     {
         ArgumentNullException.ThrowIfNull(edit);
+        ArgumentNullException.ThrowIfNull(wroteFiles);
         ArgumentNullException.ThrowIfNull(refreshFailed);
         lock (_lock)
         {
@@ -186,6 +190,7 @@ public sealed class TileEditSession
                 catch (TileWorldException) { }
                 throw;
             }
+            if (!wroteFiles(result)) return result;
             try
             {
                 ReloadCollisionHeightsLocked(e);

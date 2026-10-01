@@ -24,11 +24,13 @@ public sealed record CollisionHeightChange(string Id, string File, float? Previo
 /// for, and why it was left.</summary>
 public sealed record CollisionHeightSkip(string Id, float Recorded, float Requested, string Reason);
 
-/// <summary>An archetype the verb could not measure or write, and why. An empty id is an error about the whole
-/// call rather than one archetype, such as a session refresh that failed after the files were written.</summary>
+/// <summary>An archetype the verb could not measure or write, and why.</summary>
 public sealed record ArchetypeHeightError(string Id, string Error);
 
 /// <summary>Result of <c>archetype_set_collision_heights</c>: what was written, what was left alone and what was
-/// refused, each in the order the request listed it.</summary>
+/// refused, each in the order the request listed it. <see cref="SessionRefreshError"/> is null unless files were
+/// written and the open session's height refresh then failed, in which case it carries the loader's message and
+/// says <c>world_open</c> is needed. The writes it follows still stand in <see cref="Changed"/>.</summary>
 public sealed record CollisionHeightsResult(IReadOnlyList<CollisionHeightChange> Changed,
-    IReadOnlyList<CollisionHeightSkip> Skipped, IReadOnlyList<ArchetypeHeightError> Errors);
+    IReadOnlyList<CollisionHeightSkip> Skipped, IReadOnlyList<ArchetypeHeightError> Errors,
+    string? SessionRefreshError);

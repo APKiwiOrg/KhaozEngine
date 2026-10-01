@@ -16,10 +16,12 @@ public readonly record struct TileGroundCell(TileOverlayShape Cut, int Rotation,
 /// <summary>
 /// The full-detail ground triangle rule, GPU-free: which tiles draw ground, how each drawable tile is cut and split,
 /// and where each of its lattice points sits. The ground mesher draws exactly these triangles, so a headless reader
-/// (a server walk test, a raycast, a bake) can ask what the ground looks like without a renderer.
+/// (a server walk test, a raycast, a bake) can ask what the ground looks like without a renderer. A tile marked
+/// <see cref="TileSettings.FeatherOverlay"/> draws more, smaller triangles, but it subdivides this same surface
+/// without moving it.
 /// <para>A tile has an overlay when its overlay id is not 0, whether or not the catalogs define that material. A
 /// slot map hands every nonzero id a slot, a dangling one landing on the reserved missing slot, so the mesher paints
-/// the cut of an undefined overlay rather than dropping it. The catalogs are therefore not consulted for the cut.</para>
+/// the cut of an undefined overlay rather than dropping it. That is why the rule reads no catalogs.</para>
 /// </summary>
 public static class TileGroundTriangles
 {
@@ -37,25 +39,22 @@ public static class TileGroundTriangles
     /// winding <see cref="TileTriangulation.Triangulate"/> gives them. False, with a default cell and nothing
     /// written, when the tile does not draw.</summary>
     /// <param name="document">The world.</param>
-    /// <param name="catalogs">The catalogs the world's ids resolve through.</param>
     /// <param name="worldX">World tile x.</param>
     /// <param name="worldZ">World tile z.</param>
     /// <param name="plane">The plane.</param>
     /// <param name="cell">The cut, rotation, split and triangle count.</param>
     /// <param name="triangles">Room for <see cref="TileTriangulation.MaxTriangles"/> triangles.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="document"/> or <paramref name="catalogs"/> is null.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="triangles"/> is shorter than
     /// <see cref="TileTriangulation.MaxTriangles"/>.</exception>
     public static bool TryDescribe(
         TileWorldDocument document,
-        TileWorldCatalogs catalogs,
         int worldX,
         int worldZ,
         int plane,
         out TileGroundCell cell,
         Span<TileLatticeTriangle> triangles)
     {
-        ArgumentNullException.ThrowIfNull(catalogs);
         if (triangles.Length < TileTriangulation.MaxTriangles)
             throw new ArgumentException($"Needs room for {TileTriangulation.MaxTriangles} triangles.", nameof(triangles));
         if (!IsDrawable(document, worldX, worldZ, plane))
@@ -111,16 +110,15 @@ public static class TileGroundTriangles
     }
 
     /// <summary>Every full-detail ground triangle of one region-plane, in region-local positions, tile by tile with
-    /// z outer and x inner, each tile's triangles in <see cref="TryDescribe"/> order.</summary>
-    /// <exception cref="ArgumentNullException"><paramref name="document"/> or <paramref name="catalogs"/> is null.</exception>
-    public static TileGroundMesh Build(TileWorldDocument document, TileWorldCatalogs catalogs, RegionCoord region, int plane)
+    /// z outer and x inner, each tile's triangles in <see cref="TryDescribe"/> order and each point placed by
+    /// <see cref="LatticePosition"/>.</summary>
+    /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
+    public static TileGroundMesh Build(TileWorldDocument document, RegionCoord region, int plane)
     {
         ArgumentNullException.ThrowIfNull(document);
-        ArgumentNullException.ThrowIfNull(catalogs);
 
         var positions = new List<Vector3>();
         Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
-        Span<Vector3> corners = stackalloc Vector3[4];
         int originX = region.OriginX;
         int originZ = region.OriginZ;
         for (int lz = 0; lz < TileRegion.Size; lz++)
@@ -128,30 +126,19 @@ public static class TileGroundTriangles
             {
                 int x = originX + lx;
                 int z = originZ + lz;
-                if (!TryDescribe(document, catalogs, x, z, plane, out TileGroundCell cell, triangles)) continue;
+                if (!TryDescribe(document, x, z, plane, out TileGroundCell cell, triangles)) continue;
 
-                for (int c = 0; c < corners.Length; c++)
-                    corners[c] = CornerPosition(document, x, z, plane, (TileLatticePoint)c, originX, originZ);
                 for (int i = 0; i < cell.TriangleCount; i++)
                 {
-                    positions.Add(At(triangles[i].A, corners));
-                    positions.Add(At(triangles[i].B, corners));
-                    positions.Add(At(triangles[i].C, corners));
+                    positions.Add(LatticePosition(document, x, z, plane, triangles[i].A, originX, originZ));
+                    positions.Add(LatticePosition(document, x, z, plane, triangles[i].B, originX, originZ));
+                    positions.Add(LatticePosition(document, x, z, plane, triangles[i].C, originX, originZ));
                 }
             }
 
         var indices = new int[positions.Count];
         for (int i = 0; i < indices.Length; i++) indices[i] = i;
         return new TileGroundMesh(region, plane, positions.ToArray(), indices);
-    }
-
-    // The point from the tile's four corner positions, indexed by TileLatticePoint, the same way LatticePosition
-    // reads them one at a time.
-    static Vector3 At(TileLatticePoint point, ReadOnlySpan<Vector3> corners)
-    {
-        TileTriangulation.Ends(point, out TileLatticePoint first, out TileLatticePoint second);
-        Vector3 a = corners[(int)first];
-        return first == second ? a : (a + corners[(int)second]) * 0.5f;
     }
 
     static Vector3 CornerPosition(

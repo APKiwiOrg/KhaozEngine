@@ -20,17 +20,16 @@ public sealed class TileGroundTrianglesTests
         for (int z = 0; z < TileRegion.Size; z++)
             for (int x = 0; x < TileRegion.Size; x++)
                 doc.SetCornerHeightCm(x, z, 0, 150);
-        TileWorldCatalogs catalogs = TileWorldTestData.EditingCatalogs();
 
         Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
-        Assert.True(TileGroundTriangles.TryDescribe(doc, catalogs, 3, 5, 0, out TileGroundCell cell, triangles));
+        Assert.True(TileGroundTriangles.TryDescribe(doc, 3, 5, 0, out TileGroundCell cell, triangles));
         Assert.Equal(new TileGroundCell(TileOverlayShape.Full, 0, true, 2), cell);
         Assert.Equal(new TileLatticeTriangle(TileLatticePoint.Sw, TileLatticePoint.Se, TileLatticePoint.Ne, true),
                      triangles[0]);
         Assert.Equal(new TileLatticeTriangle(TileLatticePoint.Sw, TileLatticePoint.Ne, TileLatticePoint.Nw, true),
                      triangles[1]);
 
-        TileGroundMesh mesh = TileGroundTriangles.Build(doc, catalogs, new RegionCoord(0, 0), 0);
+        TileGroundMesh mesh = TileGroundTriangles.Build(doc, new RegionCoord(0, 0), 0);
         Assert.Equal(new RegionCoord(0, 0), mesh.Region);
         Assert.Equal(0, mesh.Plane);
         Assert.Equal(Tiles * 6, mesh.Positions.Length);
@@ -54,19 +53,18 @@ public sealed class TileGroundTrianglesTests
         TileWorldDocument doc = TileWorldTestData.FlatWorld();
         doc.SetSettings(1, 1, 0, TileSettings.NoDraw);
         doc.SetUnderlay(2, 1, 0, 0);
-        TileWorldCatalogs catalogs = TileWorldTestData.EditingCatalogs();
 
         Assert.False(TileGroundTriangles.IsDrawable(doc, 1, 1, 0));
         Assert.False(TileGroundTriangles.IsDrawable(doc, 2, 1, 0));
         Assert.True(TileGroundTriangles.IsDrawable(doc, 3, 1, 0));
 
         Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
-        Assert.False(TileGroundTriangles.TryDescribe(doc, catalogs, 1, 1, 0, out TileGroundCell noDraw, triangles));
+        Assert.False(TileGroundTriangles.TryDescribe(doc, 1, 1, 0, out TileGroundCell noDraw, triangles));
         Assert.Equal(default, noDraw);
-        Assert.False(TileGroundTriangles.TryDescribe(doc, catalogs, 2, 1, 0, out TileGroundCell bare, triangles));
+        Assert.False(TileGroundTriangles.TryDescribe(doc, 2, 1, 0, out TileGroundCell bare, triangles));
         Assert.Equal(default, bare);
 
-        TileGroundMesh mesh = TileGroundTriangles.Build(doc, catalogs, new RegionCoord(0, 0), 0);
+        TileGroundMesh mesh = TileGroundTriangles.Build(doc, new RegionCoord(0, 0), 0);
         Assert.Equal((Tiles - 2) * 6, mesh.Positions.Length);
 
         // Tile (0, 1) is drawn, then (1, 1) and (2, 1) are skipped, so (3, 1) follows straight on from it.
@@ -74,7 +72,7 @@ public sealed class TileGroundTrianglesTests
         Assert.Equal(new Vector3(0f, 0f, -1f), mesh.Positions[afterRow - 6]);
         Assert.Equal(new Vector3(3f, 0f, -1f), mesh.Positions[afterRow]);
 
-        TileGroundMesh empty = TileGroundTriangles.Build(doc, catalogs, new RegionCoord(0, 0), 1);
+        TileGroundMesh empty = TileGroundTriangles.Build(doc, new RegionCoord(0, 0), 1);
         Assert.Empty(empty.Positions);
         Assert.Empty(empty.Indices);
     }
@@ -83,18 +81,17 @@ public sealed class TileGroundTrianglesTests
     public void ASlopedTileSplitsOnTheDiagonalTheMesherChooses()
     {
         TileWorldDocument doc = TileWorldTestData.FlatWorld();
-        TileWorldCatalogs catalogs = TileWorldTestData.EditingCatalogs();
         Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
 
         // SE and NW raised: the SW to NE diagonal differs by 0, the other by 0 too, and a tie goes SW to NE.
         doc.SetCornerHeightCm(5, 4, 0, 100);
         doc.SetCornerHeightCm(4, 5, 0, 100);
-        Assert.True(TileGroundTriangles.TryDescribe(doc, catalogs, 4, 4, 0, out TileGroundCell tie, triangles));
+        Assert.True(TileGroundTriangles.TryDescribe(doc, 4, 4, 0, out TileGroundCell tie, triangles));
         Assert.True(tie.SplitSwNe);
 
         // SW raised alone: SW to NE differs by 200, NW to SE by 0, so the split runs NW to SE.
         doc.SetCornerHeightCm(10, 10, 0, 200);
-        Assert.True(TileGroundTriangles.TryDescribe(doc, catalogs, 10, 10, 0, out TileGroundCell sw, triangles));
+        Assert.True(TileGroundTriangles.TryDescribe(doc, 10, 10, 0, out TileGroundCell sw, triangles));
         Assert.Equal(new TileGroundCell(TileOverlayShape.Full, 0, false, 2), sw);
         Assert.Equal(new TileLatticeTriangle(TileLatticePoint.Sw, TileLatticePoint.Se, TileLatticePoint.Nw, true),
                      triangles[0]);
@@ -105,7 +102,7 @@ public sealed class TileGroundTrianglesTests
         // ground that would otherwise tie to SW to NE.
         doc.SetOverlayShape(20, 20, 0, TileOverlayShape.DiagonalHalf);
         doc.SetOverlayRotation(20, 20, 0, 1);
-        Assert.True(TileGroundTriangles.TryDescribe(doc, catalogs, 20, 20, 0, out TileGroundCell forced, triangles));
+        Assert.True(TileGroundTriangles.TryDescribe(doc, 20, 20, 0, out TileGroundCell forced, triangles));
         Assert.Equal(new TileGroundCell(TileOverlayShape.Full, 1, false, 2), forced);
     }
 
@@ -118,11 +115,10 @@ public sealed class TileGroundTrianglesTests
         doc.SetCornerHeightCm(7, 7, 0, 300);
         doc.SetOverlay(6, 6, 0, Road);
         doc.SetOverlayShape(6, 6, 0, TileOverlayShape.CornerQuarter);
-        TileWorldCatalogs catalogs = TileWorldTestData.EditingCatalogs();
 
         // SW to NE differs by 300, NW to SE by 100, so the split runs NW to SE, which a corner cut ignores.
         Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
-        Assert.True(TileGroundTriangles.TryDescribe(doc, catalogs, 6, 6, 0, out TileGroundCell cell, triangles));
+        Assert.True(TileGroundTriangles.TryDescribe(doc, 6, 6, 0, out TileGroundCell cell, triangles));
         Assert.Equal(new TileGroundCell(TileOverlayShape.CornerQuarter, 0, false, 4), cell);
         Assert.Equal(new TileLatticeTriangle(TileLatticePoint.Sw, TileLatticePoint.MidS, TileLatticePoint.MidW, true),
                      triangles[0]);
@@ -146,7 +142,7 @@ public sealed class TileGroundTrianglesTests
         Assert.Equal(midS, Position(doc, TileLatticePoint.MidS));
         Assert.Equal(midW, Position(doc, TileLatticePoint.MidW));
 
-        TileGroundMesh mesh = TileGroundTriangles.Build(doc, catalogs, new RegionCoord(0, 0), 0);
+        TileGroundMesh mesh = TileGroundTriangles.Build(doc, new RegionCoord(0, 0), 0);
         Assert.Equal((Tiles + 1) * 6, mesh.Positions.Length);
         int first = (6 * TileRegion.Size + 6) * 6;
         Vector3[] expected = [sw, midS, midW, midS, se, ne, midS, ne, nw, midS, nw, midW];

@@ -22,9 +22,11 @@ public sealed class TileGroundMesh
     public int Plane { get; }
 
     /// <summary>Region-local positions, x from 0 to 64 tiles and z from 0 to minus 64 tiles (see
-    /// <see cref="TileWorldSpace"/>), with absolute heights in metres. Never shared between triangles.</summary>
+    /// <see cref="TileWorldSpace"/>), with absolute heights in metres. Never shared between triangles. Callers must
+    /// not mutate the array.</summary>
     public Vector3[] Positions { get; }
 
-    /// <summary>Three per triangle, each triangle counter-clockwise on tile x and z.</summary>
+    /// <summary>Three per triangle, each triangle counter-clockwise on tile x and z. Callers must not mutate the
+    /// array.</summary>
     public int[] Indices { get; }
 }

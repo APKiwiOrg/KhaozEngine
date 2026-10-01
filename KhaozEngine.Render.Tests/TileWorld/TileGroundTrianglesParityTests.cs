@@ -87,7 +87,7 @@ public sealed class TileGroundTrianglesParityTests
                     doc.SetOverlayRotation(x, z, 0, rotation);
 
                     // A slotless overlay cuts as the authored shape, and only a missing overlay draws the plain pair.
-                    Assert.True(TileGroundTriangles.TryDescribe(doc, catalogs, x, z, 0, out TileGroundCell cell, triangles));
+                    Assert.True(TileGroundTriangles.TryDescribe(doc, x, z, 0, out TileGroundCell cell, triangles));
                     Assert.Equal(overlay == 0 ? TileOverlayShape.Full : shape, cell.Cut);
                     Assert.Equal(rotation, cell.Rotation);
                     int cut = shape == TileOverlayShape.DiagonalHalf ? 2 : 4;
@@ -145,7 +145,9 @@ public sealed class TileGroundTrianglesParityTests
     }
 
     // Builds every region-plane both ways and compares the raw position and index memory, so a sign of zero or a
-    // last bit of rounding counts. Returns how many triangles the world drew, so a caller can refuse a vacuous pass.
+    // last bit of rounding counts. Every emitted point is also placed one at a time through LatticePosition and held
+    // to the same bits, the per-point answer the mesher will draw through. Returns how many triangles the world drew,
+    // so a caller can refuse a vacuous pass.
     static int AssertMatchesTheMesher(TileWorldDocument doc, TileWorldCatalogs catalogs, ITileGroundSlotMap slots)
     {
         var options = new TileGroundMesherOptions { Slots = slots };
@@ -157,7 +159,7 @@ public sealed class TileGroundTrianglesParityTests
                 Vector3[] expectedPositions = mesher?.Vertices.Select(v => v.Position).ToArray() ?? [];
                 uint[] expectedIndices = mesher?.Indices32 ?? [];
 
-                TileGroundMesh shared = TileGroundTriangles.Build(doc, catalogs, region, plane);
+                TileGroundMesh shared = TileGroundTriangles.Build(doc, region, plane);
 
                 Assert.Equal(region, shared.Region);
                 Assert.Equal(plane, shared.Plane);
@@ -170,10 +172,44 @@ public sealed class TileGroundTrianglesParityTests
                     MemoryMarshal.AsBytes(expectedIndices.AsSpan())
                         .SequenceEqual(MemoryMarshal.AsBytes(shared.Indices.AsSpan())),
                     $"indices differ in region {region} plane {plane}");
+                AssertLatticePositionsMatch(doc, region, plane, shared.Positions);
                 triangles += shared.Indices.Length / 3;
             }
         return triangles;
     }
+
+    // Walks the region-plane in Build's order and checks each triangle's A, B and C, as LatticePosition places them,
+    // against the positions Build emitted for them.
+    static void AssertLatticePositionsMatch(TileWorldDocument doc, RegionCoord region, int plane, Vector3[] positions)
+    {
+        Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
+        int next = 0;
+        for (int lz = 0; lz < TileRegion.Size; lz++)
+            for (int lx = 0; lx < TileRegion.Size; lx++)
+            {
+                int x = region.OriginX + lx;
+                int z = region.OriginZ + lz;
+                if (!TileGroundTriangles.TryDescribe(doc, x, z, plane, out TileGroundCell cell, triangles)) continue;
+                for (int i = 0; i < cell.TriangleCount; i++)
+                {
+                    TileLatticeTriangle t = triangles[i];
+                    foreach (TileLatticePoint point in (ReadOnlySpan<TileLatticePoint>)[t.A, t.B, t.C])
+                    {
+                        Vector3 placed = TileGroundTriangles.LatticePosition(
+                            doc, x, z, plane, point, region.OriginX, region.OriginZ);
+                        Assert.True(SameBits(placed, positions[next]),
+                            $"lattice point {point} of tile ({x}, {z}) plane {plane} is {placed}, Build emitted {positions[next]}");
+                        next++;
+                    }
+                }
+            }
+        Assert.Equal(positions.Length, next);
+    }
+
+    static bool SameBits(Vector3 a, Vector3 b) =>
+        BitConverter.SingleToInt32Bits(a.X) == BitConverter.SingleToInt32Bits(b.X)
+        && BitConverter.SingleToInt32Bits(a.Y) == BitConverter.SingleToInt32Bits(b.Y)
+        && BitConverter.SingleToInt32Bits(a.Z) == BitConverter.SingleToInt32Bits(b.Z);
 
     // The golden tests' patchwork without its feathered block: nine regions of rolling ground under a three-material
     // patchwork, with every overlay shape, NoDraw holes and a dangling id scattered through them. Copied rather than

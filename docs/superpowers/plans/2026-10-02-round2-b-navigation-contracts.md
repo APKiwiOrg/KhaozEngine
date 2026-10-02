@@ -223,8 +223,8 @@ candidate-only rings can cross rejected nodes and report Complete without an adm
 accepted alternatives are refused. Legacy rings remain unchanged.
 
 Ruling B3.1: shared search separates safe priority from region partial progress toward actual member feet.
-Reason: zero safe priority otherwise pins partials to the start. Cost: one member comparison per expanded
-node, while legacy point arithmetic remains unchanged.
+Reason: zero safe priority otherwise pins partials to the start. Cost: one comparison per member for each
+expanded node, while legacy point arithmetic remains unchanged.
 
 Ruling B3.2: actual admitted members are captured once before search instead of inventing Y or substituting
 the anchor. Reason: region queries must reject empty membership and compare partial progress to real feet.

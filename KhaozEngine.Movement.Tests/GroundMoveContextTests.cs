@@ -227,6 +227,8 @@ public class GroundMoveContextTests
 
         MoveState result = context.Step(body, new Vector2(0.0001f, 0f), true, 0.125f, Tuning);
 
+        Assert.Null(context.Physics);
+        Assert.Null(context.MovementQueries);
         Assert.Equal(new Vector3(0f, 5f, -2f), feet);
         Assert.Equal(0.00005f, result.Position.X, 8);
         Assert.Equal(5.75f, result.Position.Y);

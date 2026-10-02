@@ -49,5 +49,7 @@ public sealed partial class GroundMoveContext
     {
         if ((Physics?.Origin ?? Vector3.Zero) != _origin)
             throw new InvalidOperationException("The physics origin changed during a ground movement step.");
+        if (MovementQueries is { } queries && (!ReferenceEquals(queries.SourceWorld, Physics) || queries.Origin != _origin))
+            throw new InvalidOperationException("The movement query source or origin changed during a ground movement step.");
     }
 }

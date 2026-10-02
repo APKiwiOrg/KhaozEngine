@@ -28,7 +28,7 @@ internal static class QueryMobilityGate
 }
 
 /// <summary>Records the nearest ray hit for <see cref="BepuPhysicsWorld.Raycast"/>, gated by
-/// <see cref="Mobility"/> so a query can opt out of statics or dynamics.</summary>
+/// query mobility and static selection.</summary>
 internal struct RayHitHandler : IRayHitHandler
 {
     public float HitT;
@@ -37,8 +37,9 @@ internal struct RayHitHandler : IRayHitHandler
     public bool DidHit;
     public bool HitWasStatic; // the recorded nearest hit was a static (HitStatic is meaningful); false = dynamic
     public KhaozEngine.Physics.QueryMobility Mobility;
+    private readonly StaticQueryExclusions? _exclusions;
 
-    public RayHitHandler(KhaozEngine.Physics.QueryMobility mobility)
+    public RayHitHandler(KhaozEngine.Physics.QueryMobility mobility, StaticQueryExclusions? exclusions = null)
     {
         HitT = float.MaxValue;
         HitNormal = default;
@@ -46,13 +47,15 @@ internal struct RayHitHandler : IRayHitHandler
         DidHit = false;
         HitWasStatic = false;
         Mobility = mobility;
+        _exclusions = exclusions;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool AllowTest(CollidableReference collidable) => QueryMobilityGate.Allows(Mobility, collidable);
+    public bool AllowTest(CollidableReference collidable)
+        => QueryMobilityGate.Allows(Mobility, collidable) && (_exclusions?.Allows(collidable) ?? true);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool AllowTest(CollidableReference collidable, int childIndex) => QueryMobilityGate.Allows(Mobility, collidable);
+    public bool AllowTest(CollidableReference collidable, int childIndex) => AllowTest(collidable);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void OnRayHit(in RayData ray, ref float maximumT, float t, in Vector3 normal, CollidableReference collidable, int childIndex)
@@ -70,7 +73,7 @@ internal struct RayHitHandler : IRayHitHandler
 }
 
 /// <summary>Records the nearest sweep hit for <see cref="BepuPhysicsWorld.SweepCapsule"/>, gated by
-/// <see cref="Mobility"/> so a query can opt out of statics or dynamics.</summary>
+/// query mobility and static selection.</summary>
 internal struct SweepHitHandler : ISweepHitHandler
 {
     public float HitT;
@@ -80,8 +83,9 @@ internal struct SweepHitHandler : ISweepHitHandler
     public bool DidHit;
     public bool HitWasStatic; // the recorded nearest hit was a static (HitStatic is meaningful); false = dynamic
     public KhaozEngine.Physics.QueryMobility Mobility;
+    private readonly StaticQueryExclusions? _exclusions;
 
-    public SweepHitHandler(KhaozEngine.Physics.QueryMobility mobility)
+    public SweepHitHandler(KhaozEngine.Physics.QueryMobility mobility, StaticQueryExclusions? exclusions = null)
     {
         HitT = float.MaxValue;
         HitLocation = default;
@@ -90,13 +94,15 @@ internal struct SweepHitHandler : ISweepHitHandler
         DidHit = false;
         HitWasStatic = false;
         Mobility = mobility;
+        _exclusions = exclusions;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool AllowTest(CollidableReference collidable) => QueryMobilityGate.Allows(Mobility, collidable);
+    public bool AllowTest(CollidableReference collidable)
+        => QueryMobilityGate.Allows(Mobility, collidable) && (_exclusions?.Allows(collidable) ?? true);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool AllowTest(CollidableReference collidable, int childIndex) => QueryMobilityGate.Allows(Mobility, collidable);
+    public bool AllowTest(CollidableReference collidable, int childIndex) => AllowTest(collidable);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void OnHit(ref float maximumT, float t, in Vector3 hitLocation, in Vector3 hitNormal, CollidableReference collidable)

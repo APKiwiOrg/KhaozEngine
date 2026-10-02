@@ -294,19 +294,39 @@ public class TileWorldMovementNavigationTests(ITestOutputHelper output)
             }
             """, "movement-bridge-tests");
         private readonly TileColliderRegistration _registration;
+        private readonly IPhysicsWorldQueryView _movementQueries;
         public BepuPhysicsWorld World { get; } = new();
         public TileWorldColliders Colliders { get; }
         public GroundMoveContext Context { get; }
 
         public Scene(TileWorldDocument doc, Vector3 origin = default, bool afterRegistration = false)
         {
-            Colliders = TileWorldColliders.Build(doc, Catalogs,
-                new TileColliderOptions { WallThickness = 0.1f, BlockedHeight = 3f, WalkSurfaceThickness = 0.1f });
-            if (!afterRegistration && origin != Vector3.Zero) World.Rebase(origin);
-            _registration = Colliders.AddTo(World);
-            if (afterRegistration && origin != Vector3.Zero) World.Rebase(origin);
-            Context = new GroundMoveContext(Colliders.Ground.HeightDelegate, Colliders.Ground.NormalDelegate,
-                World, medium: Colliders.Medium.MediumDelegate);
+            TileColliderRegistration? registration = null;
+            IPhysicsWorldQueryView? movementQueries = null;
+            try
+            {
+                Colliders = TileWorldColliders.Build(doc, Catalogs,
+                    new TileColliderOptions { WallThickness = 0.1f, BlockedHeight = 3f, WalkSurfaceThickness = 0.1f });
+                if (!afterRegistration && origin != Vector3.Zero) World.Rebase(origin);
+                registration = Colliders.AddTo(World);
+                movementQueries = registration.CreateMovementQueryView();
+                if (afterRegistration && origin != Vector3.Zero) World.Rebase(origin);
+                Context = new GroundMoveContext(Colliders.Ground.HeightDelegate, Colliders.Ground.NormalDelegate,
+                    physics: World, clampXz: null, medium: Colliders.Medium.MediumDelegate,
+                    movementQueries: movementQueries);
+                _registration = registration;
+                _movementQueries = movementQueries;
+            }
+            catch
+            {
+                try { movementQueries?.Dispose(); }
+                finally
+                {
+                    try { registration?.Dispose(); }
+                    finally { World.Dispose(); }
+                }
+                throw;
+            }
         }
 
         public PhysicsNavBake Capture(PhysicsNavBakeOptions options, NavAreaClassifier? classify = null)
@@ -314,6 +334,7 @@ public class TileWorldMovementNavigationTests(ITestOutputHelper output)
 
         public void Dispose()
         {
+            _movementQueries.Dispose();
             _registration.Dispose();
             World.Dispose();
         }

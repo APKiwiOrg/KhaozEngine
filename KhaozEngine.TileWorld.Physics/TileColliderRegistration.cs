@@ -15,20 +15,35 @@ public sealed class TileColliderRegistration : IDisposable
 {
     readonly IPhysicsWorld _world;
     readonly StaticHandle[] _handles;
+    readonly StaticHandle[] _groundHandles;
     // Which handles the world has taken back, so a retry after a failed removal skips them.
     readonly bool[] _removed;
 
     internal TileColliderRegistration(IPhysicsWorld world, StaticHandle[] handles)
+        : this(world, handles, Array.Empty<StaticHandle>())
+    {
+    }
+
+    internal TileColliderRegistration(IPhysicsWorld world, StaticHandle[] handles, StaticHandle[] groundHandles)
     {
         _world = world;
         _handles = handles;
+        _groundHandles = groundHandles;
         _removed = new bool[handles.Length];
         Handles = Array.AsReadOnly(handles);
+        GroundHandles = Array.AsReadOnly(groundHandles);
     }
 
     /// <summary>The static handles, index for index with <see cref="TileWorldColliders.Colliders"/>. They still list
     /// the removed statics after <see cref="Remove"/>, and the world no longer knows them.</summary>
     public IReadOnlyList<StaticHandle> Handles { get; }
+
+    /// <summary>The registered ground handles in canonical order, retained after removal.</summary>
+    public IReadOnlyList<StaticHandle> GroundHandles { get; }
+
+    /// <summary>Creates a non-owning movement query view excluding this registration's analytic ground.</summary>
+    public IPhysicsWorldQueryView CreateMovementQueryView() =>
+        _world.CreateQueryViewExcludingStatics(_groundHandles);
 
     /// <summary>Removes every static this registration still holds from the world it was added to. Every handle is
     /// tried even when one fails. A handle the world took back is never removed again, so after a failure a second

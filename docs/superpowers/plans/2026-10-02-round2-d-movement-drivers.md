@@ -297,6 +297,9 @@ test command was separately process-gated by root and the worker, with no runtim
   navigation, physics and server lookup fixes were required for the verified source. Cost: merge and living-guidance
   updates plus one full suite against merged source. Issues 1232, 1236 and 1238 were fixed outside Plan D and are
   not attributed to this implementation.
+- D5.3 synchronizes the `MoveToRange.Tick` XML with validated suspension precedence and removes the repeated design
+  status that said Plan D was pending. Reason: conflicting comments and status text remained after implementation
+  and verification. Cost: comments and status text only, with no runtime change.
 
 ### Remaining gates and adoption boundary
 

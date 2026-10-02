@@ -30,8 +30,9 @@ public sealed partial class MoveToRange
     }
 
     /// <summary>Returns bounded requested input without writing the supplied state or stepping the world.
-    /// Suspended bodies hold before reach is considered. InRange witnesses the current supplied capsule,
-    /// never a waypoint or a predicted destination. Range uses no tolerance.</summary>
+    /// Input validation and current reach evaluation run before status selection. Suspended takes precedence over
+    /// InRange for airborne or committed bodies. InRange witnesses the current supplied capsule, never a waypoint
+    /// or a predicted destination. Range uses no tolerance.</summary>
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context)
     {

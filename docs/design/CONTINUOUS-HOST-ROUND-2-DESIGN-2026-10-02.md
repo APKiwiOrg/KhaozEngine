@@ -543,7 +543,9 @@ rules and server tolerance in the game. Report those integration inputs on epic 
 - The design is approved and four implementation plans are written. Plan A is complete and verified at staged
   20.18.0 with wire generation 13. Plan B code and docs are complete, its task and whole-branch reviews are
   approved, and full branch verification passed. Plan C code, bridge acceptance and docs are complete, with
-  full Release verification, all five guards and whole-branch approval. Plan D remains pending.
+  full Release verification, all five guards and whole-branch approval. Plan D implementation, scoped reviews and
+  full Release verification are complete. Whole-branch final review, delivery, tagging and consumer adoption remain
+  pending.
   The owner authorized the whole round program.
   Engine tagging and consumer adoption remain pending.
 - D2 and the technical decisions are settled by written-design approval.

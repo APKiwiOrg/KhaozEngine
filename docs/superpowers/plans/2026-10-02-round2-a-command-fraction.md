@@ -6,13 +6,13 @@
 
 **Architecture:** Keep the existing constructors and step entry point. Add explicit precise-input overloads, with the player choice carried in a free flags bit of the existing 18-byte frame. Advance the engine wire gate once, while keeping persisted built-in payload layouts unchanged.
 
-**Tech Stack:** C#/.NET 10, xUnit, Locomotion, NetWorld, loopback transport. Nominally opens 20.18.0 through the integration owner.
+**Tech Stack:** C#/.NET 10, xUnit, Locomotion, NetWorld, loopback transport. Uses the integration owner's selected 20.18.0 version.
 
 **Spec:** `docs/design/CONTINUOUS-HOST-ROUND-2-DESIGN-2026-10-02.md`, sections 3 and 9, D7, D8 and D18. Approved 2026-10-02. Branch 1 of 4.
 
 ## Global Constraints
 
-- DESIGN-ONLY AUTHORING. Nothing in this plan has been executed. The owner must explicitly free the build slot before execution. Design approval did not authorize implementation in the planning chat.
+- EXECUTION STATUS. Tasks 1 to 3 and Task 4's documentation/version work are implemented on the task branch. The full branch build and test run remains pending with the controller.
 - Execution worktree `/Users/antonio/KhaozEngine/.worktrees/round2-command-fraction`, branch `feature/round2-command-fraction`. Read AGENTS.md, contributor rules and the approved design. Fetch and reconcile engine main before creating it. Preserve unrelated work.
 - Version authority is the integration owner. At authoring, main and v20.17.0 are `e585b8a01`. A opens 20.18.0 if free, or rides an appropriate staged 20.x version selected by that owner. Select once, update all four plans if the selection changes. Workers do not bump independently. B, C and D ride it.
 - Keep the old MoveCommand constructor and StepTowards signature, legacy resolver arithmetic, command length and unflagged bytes. No new movement component, timestep field or persistence payload.
@@ -46,7 +46,7 @@
 - Add `MoveState CharacterMovement.StepTowards(in MoveState state, Vector2 worldDir, bool run, float dt, Func<float,float,float> groundHeight, in MoveTuning tuning, bool preserveSmallMagnitude, Func<float,float,Vector3>? groundNormal = null, IPhysicsWorld? world = null, Func<float,float,Vector2>? clampXz = null, Func<float,float,float,MovementMedium>? medium = null)`.
 - Both precise forms feed the existing StepCore. Only precise forms use nonzero magnitude below the old dead zone. Clamp fraction to 1. Default idle remains idle.
 
-- [ ] **Step 1: Write the new tests and pin the unchanged baseline.** Use flat ground, grounded state at Y=0.75, radius 0.3, half-height 0.75, walk 2, run 5 and dt=1/30. Capture one legacy movement result before editing production code. Add the five tests in Review Focus 1 and 2, `LegacyFractionalAxesStillMoveAtFullSpeed`, `DefaultCommandIsStillIdle`, `PreciseNpcAndPlayerShareTheGroundCore` and `DirectionalScaleIsAppliedOnce`.
+- [x] **Step 1: Write the new tests and pin the unchanged baseline.** Use flat ground, grounded state at Y=0.75, radius 0.3, half-height 0.75, walk 2, run 5 and dt=1/30. Capture one legacy movement result before editing production code. Add the nine named tests, including the three in Review Focus 1 and 2, `LegacyFractionalAxesStillMoveAtFullSpeed`, `DefaultCommandIsStillIdle`, `PreciseNpcAndPlayerShareTheGroundCore`, `DirectionalScaleIsAppliedOnce`, `FalseOptInMatchesTheRetainedConstructor` and `NonFinitePreciseInputRemainsIdle`.
 
   Representative assertions for axis `(0,0.125)` at yaw 0, run true:
   ```csharp
@@ -58,10 +58,10 @@
   Assert.Equal(precise.Position, npc.Position);
   ```
   Compare old constructor with the new false overload over diagonal, idle, FaceCamera and directional-scale cases. For precise NPC parity use a canonical axis and yaw 0, avoiding a test oracle with a second camera convention. A true command whose axis is zero remains idle. NaN and infinity never poison output.
-- [ ] **Step 2: Run** `dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~PreciseMovementInputTests'`. Expected new API compile failure or failing new behavior, then preserve the baseline values. Do this only after build-slot authorization.
-- [ ] **Step 3: Implement the interfaces.** Scale by the largest absolute component before normalization to avoid squared-length overflow or underflow. Retain the legacy branches unchanged. Precise direction magnitude controls speed, not camera-facing direction. Keep the original StepTowards symbol as a forwarding overload.
-- [ ] **Step 4: Run** the same filter plus `FullyQualifiedName~CharacterMovementStepTowardsTests`. Expected nonzero counts and zero failures. The existing bit-for-bit parity test remains unchanged.
-- [ ] **Step 5: Commit explicit paths.** Subject `feat(locomotion): preserve explicit movement speed fractions`. Obtain the task review.
+- [x] **Step 2: Run** `dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~PreciseMovementInputTests'`. Expected new API compile failure or failing new behavior, then preserve the baseline values. Do this only after build-slot authorization.
+- [x] **Step 3: Implement the interfaces.** Scale by the largest absolute component before normalization to avoid squared-length overflow or underflow. Retain the legacy branches unchanged. Precise direction magnitude controls speed, not camera-facing direction. Keep the original StepTowards symbol as a forwarding overload.
+- [x] **Step 4: Run** the same filter plus `FullyQualifiedName~CharacterMovementStepTowardsTests`. Expected nonzero counts and zero failures. The existing bit-for-bit parity test remains unchanged.
+- [x] **Step 5: Commit explicit paths.** Subject `feat(locomotion): preserve explicit movement speed fractions`. Obtain the task review.
 
 ### Task 2: Codec, connection gate and unchanged persisted bodies
 
@@ -77,7 +77,7 @@
 - Decode with Task 1's six-argument constructor. Retain existing hostile-safe finite checks and ignored unknown bits.
 - Advance `MoveProtocol.WireProtocolVersion` once, nominally 13. Do not change historical `MovementOwnerWireGeneration = 12`, built-in ids or payload sizes.
 
-- [ ] **Step 1: Write failing tests.** On unchanged Task 1 code, pin literal bytes for an unflagged seq 42, forward axis, yaw 0 command. Add precise true/false round trips, all other flags, nonfinite axes/yaw rejection, arbitrary remaining bits and length demux proofs. Test old/new wire Hello admission on both WorldServer and ShardedWorldServer using the existing handshake fixtures. Test generation-12 schema-v4 and unstamped schema-v3 bodies, including owner state, commitment and extension bytes.
+- [x] **Step 1: Write failing tests.** On unchanged Task 1 code, pin literal bytes for an unflagged seq 42, forward axis, yaw 0 command. Add precise true/false round trips, all other flags, nonfinite axes/yaw rejection, arbitrary remaining bits and length demux proofs. Test old/new wire Hello admission on both WorldServer and ShardedWorldServer using the existing handshake fixtures. Test generation-12 schema-v4 and unstamped schema-v3 bodies, including owner state, commitment and extension bytes.
   ```csharp
   Assert.Equal(18, wire.Length);
   Assert.Equal(0x04, wire[12] & 0x04);
@@ -88,10 +88,10 @@
   Assert.Equal(bodyAtTwelve, normalizedBody);
   ```
   Normalizing a persisted header advances its generation stamp to current. Its body bytes must not change. Equivalent inferred generations are equivalent results, not an ambiguity. Retain existing MoveProtocolTests and GameMessageProtocolTests.
-- [ ] **Step 2: Run** `dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~MoveProtocolSpeedFractionTests|FullyQualifiedName~PreciseMovementWireHandshakeTests|FullyQualifiedName~WireGenerationBlobMigrationTests'`. Expected new behavior fails.
-- [ ] **Step 3: Implement codec and generation changes.** Audit MoveCommand constructions and copies with rg. Prediction queues already carry the whole value, so do not add a parallel fraction channel. Extend migration logic only if a proof fails. No game protocol edit.
-- [ ] **Step 4: Run** the same filter plus `FullyQualifiedName~MoveProtocolTests|FullyQualifiedName~GameMessageProtocolTests|FullyQualifiedName~VersionHandshakeTests`. Expected nonzero counts, no failures and unchanged unflagged fixture bytes.
-- [ ] **Step 5: Commit explicit paths.** Subject `feat(networld): carry precise movement intent through the wire gate`. Obtain the task review.
+- [x] **Step 2: Run** `dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~MoveProtocolSpeedFractionTests|FullyQualifiedName~PreciseMovementWireHandshakeTests|FullyQualifiedName~WireGenerationBlobMigrationTests'`. Expected new behavior fails.
+- [x] **Step 3: Implement codec and generation changes.** Audit MoveCommand constructions and copies with rg. Prediction queues already carry the whole value, so do not add a parallel fraction channel. Extend migration logic only if a proof fails. No game protocol edit.
+- [x] **Step 4: Run** the same filter plus `FullyQualifiedName~MoveProtocolTests|FullyQualifiedName~GameMessageProtocolTests|FullyQualifiedName~VersionHandshakeTests`. Expected nonzero counts, no failures and unchanged unflagged fixture bytes.
+- [x] **Step 5: Commit explicit paths.** Subject `feat(networld): carry precise movement intent through the wire gate`. Obtain the task review.
 
 ### Task 3: Prediction and authority consume the same fraction
 
@@ -102,16 +102,16 @@
 **Interfaces:**
 - Consume the real PlayerMoveSimulator, ClientPrediction, InMemoryTransportHub, WorldClient.SendInput and normal WorldServer queue. No fake direct server position writes.
 
-- [ ] **Step 1: Write the proof.** Send mixed ordinary, precise and idle commands at 30 Hz. Introduce one authoritative correction with unacknowledged precise commands and assert their replay position. Exercise speed scale, wading and FaceCamera directional scaling. Use bounded simulated frames with a phase offset between client submission and serving. Add `UnackedPreciseCommandsReplayTheirFraction`, `WireDecodedPreciseInputMatchesPrediction` and `IdleAfterPreciseInputDoesNotKeepMoving`.
+- [x] **Step 1: Write the proof.** Send mixed ordinary, precise and idle commands at 30 Hz. Introduce one authoritative correction with unacknowledged precise commands and assert their replay position. Exercise speed scale, wading and FaceCamera directional scaling. Use bounded simulated frames with a phase offset between client submission and serving. Add `UnackedPreciseCommandsReplayTheirFraction`, `WireDecodedPreciseInputMatchesPrediction` and `IdleAfterPreciseInputDoesNotKeepMoving`.
   ```csharp
   Assert.Equal(authoritativeAtAcknowledgedTick.Position, predictedAtAcknowledgedTick.Position);
   Assert.Equal(expectedPreciseTravel, replayed.Position.Z, 6);
   Assert.Equal(stoppedPosition, afterIdle.Position);
   ```
-- [ ] **Step 2: Run** `dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~PreciseMovementReconcileTests'`. A correctly implemented Task 2 can already pass. This is a wiring proof, not a requirement to manufacture a failure.
-- [ ] **Step 3: Correct any lost flag only at its actual copy site.** Preserve all other command fields. Do not introduce a separate simulation path.
-- [ ] **Step 4: Run** the same filter plus `FullyQualifiedName~ClientReconcileTests|FullyQualifiedName~WorldClientLocalMovementTests`. Expected nonzero, zero failures.
-- [ ] **Step 5: Commit.** Subject `test(networld): prove precise commands survive prediction and reconciliation`. Obtain the task review.
+- [x] **Step 2: Run** `dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~PreciseMovementReconcileTests'`. A correctly implemented Task 2 can already pass. This is a wiring proof, not a requirement to manufacture a failure.
+- [x] **Step 3: Correct any lost flag only at its actual copy site.** Preserve all other command fields. Do not introduce a separate simulation path.
+- [x] **Step 4: Run** the same filter plus `FullyQualifiedName~ClientReconcileTests|FullyQualifiedName~WorldClientLocalMovementTests`. Expected nonzero, zero failures.
+- [x] **Step 5: Commit.** Subject `test(networld): prove precise commands survive prediction and reconciliation`. Obtain the task review.
 
 ### Task 4: Documentation, round version and branch verification
 
@@ -120,7 +120,7 @@
 - Integration owner only, if opening the version, modify Directory.Build.props and every current declaration named by scripts/check-doc-versions.sh in the same version/changelog commit.
 - Update this plan with Outcome and the actual version and wire generation selected.
 
-- [ ] **Step 1: Write and sweep the contract docs.** Explain both opt-ins, the preserved default, flags bit, exact length and automatic wire gate. Search every Markdown file for MoveCommand, StepTowards, wire generation and move frame. Preserve historical release facts. Version subject if opened `release(20.18.0): open the movement kernel round`, adjusted only by the integration owner if another version was selected.
+- [x] **Step 1: Write and sweep the contract docs.** Explain both opt-ins, the preserved default, flags bit, exact length and automatic wire gate. Search every Markdown file for MoveCommand, StepTowards, wire generation and move frame. Preserve historical release facts. Version subject if opened `release(20.18.0): open the movement kernel round`, adjusted only by the integration owner if another version was selected.
 - [ ] **Step 2: Fetch and merge current main into this branch, then run once from its root.** This is deferred until the execution build slot is authorized:
   ```bash
   mkdir -p local-feed
@@ -132,4 +132,23 @@
   bash scripts/check-doc-versions.sh
   ```
   Expected zero warnings, zero failures and every guard passing. Inspect exit codes and nonzero test counts. Report a flake with its issue, never loop. Obtain whole-branch review and record Outcome before landing.
-- [ ] **Step 3: Commit the verified documentation and Outcome.** Subject `docs(movement): document precise commands and round A outcome`. The integration owner merges and pushes main. Pack only after slot authorization and the pushed commit is on main. No tag. B, C and D consume this Outcome and ride the selected version.
+- [ ] **Step 3: Commit the documentation and Outcome.** Subject `release(20.18.0): open the movement kernel round`. The integration owner merges and pushes main. Pack only after slot authorization and the pushed commit is on main. No tag. B, C and D consume this Outcome and ride the selected version.
+
+## Outcome
+
+Tasks 1 to 3 are implemented and reviewed on `feature/round2-command-fraction`. The integration owner selected
+20.18.0 after reconciling current `main` and tags. This branch advances `MoveProtocol.WireProtocolVersion` from 12 to
+13 while retaining the exact 18-byte move frame and the generation-12 persisted payload layout. Task 4 documents the
+two opt-ins, the preserved defaults, the flags mapping, the automatic generation gate and the unchanged persisted
+payloads. The round design and index now record Plan A as implemented on this task branch, with Plans B, C and D not
+started and no release or consumer adoption.
+
+Focused evidence is Task 1: 28 passed, Task 2: 99 passed, and Task 3: 6 focused plus 10 adjacent passed. The full
+branch Release build and test suite remain pending and controller-owned. No full-suite pass is claimed here.
+
+Two execution rulings are carried forward. Task 1 followed the named test cases rather than the erroneous prose count
+of five in the two review-focus rows. The binding behavior and coverage remained unchanged, and the cost of choosing
+the names incorrectly would have been a missed case caught by the task and final review. Task 1 also qualified only
+the two existing XML `StepTowards` cref references to the retained signature because the additive overload caused
+CS0419 under warnings-as-errors. Existing test bodies stayed unchanged. The cost of this departure was two
+comment-only files, with no behavior change.

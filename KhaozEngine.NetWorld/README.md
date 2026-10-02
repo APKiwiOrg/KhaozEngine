@@ -448,7 +448,7 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
   `TryParseClientTooOld` over that detail.
   - **Adopting it is a wire change: bump the game's own `ProtocolVersion` in the same release**, so an old peer on
     either side is turned away at the version gate before it can read the identity layer as an auth token.
-  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 12)
+  - **Wire-format generation (enforced automatically since 10.2.0).** `MoveProtocol.WireProtocolVersion` (= 13)
     labels
     the incompatible on-the-wire generations. 1 was the pre-10.0.0 32-bit line, and 2 was 10.0.0 widening `NetId` to
     64-bit (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes).
@@ -465,7 +465,13 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
     `MovementState.FacingYawQ`, one bump for both. Generation 11 appends `MovementState.Commitment`, the complete
     carried state for a server-authored ballistic move. Generation 12 moves the two feel timers out of
     `MovementState` into the owner-only built-in `MovementOwnerState` at id 6 (see the owner-only movement timers
-    section below), the first change that shrank the movement payload. There is no
+    section below), the first change that shrank the movement payload. Generation 13 adds `MoveCommand.ScaleSpeedByAxis`
+    as bit 2 of the existing flags byte. Run remains bit 0, `FaceCamera` remains bit 1, unknown remaining bits stay
+    ignored, and the move frame remains 18 bytes with yaw at byte 13 and jump at byte 17. Older peers are rejected by
+    the automatic generation gate before player admission because they would ignore precise speed intent and apply full
+    speed. Persisted built-in payloads retain their generation-12 layout: the explicit generation-13 movement size is
+    56 bytes and the generation-12 owner timer frame remains 8 bytes. Restoring a generation-12 body updates the
+    header to current without changing its body bytes, commitments or opaque extension frames. There is no
     dual-format wire, so peers on
     different generations MUST reject each other at connect rather than misparse a frame. As of 10.2.0 the engine
     enforces this for you: `WorldClient` always folds the
@@ -842,7 +848,8 @@ render-state exports.
   reconcile basis from the replicated components ALONE and `ClientPrediction.Reconcile` overwrites
   unconditionally, so a heading missing from that seed does not lag behind the server, it RESETS to 0 on every
   correction and the character restarts its turn from due -Z several times a second.
-- **`MoveCommand.FaceCamera` rides the move frame's flags byte** (bit 0 run, bit 1 faceCamera), which was a bare
+- **`MoveCommand.FaceCamera` rides the move frame's flags byte** (bit 0 run, bit 1 faceCamera, bit 2
+  `ScaleSpeedByAxis`), which was a bare
   run bool through generation 9. Packing rather than appending is load-bearing: the client-to-server demux keys a
   move on LENGTH 18 (the game-message encoder pads specifically to avoid landing on 18), so a 19-byte move frame
   would have been read as a game message by every server. Unknown flag bits are ignored rather than rejected: a
@@ -921,6 +928,21 @@ the owning client's reconciliation replay exact. Nothing a remote observer rende
   blob from an older generation still loads: the bring-forward pass cuts the timer bytes out of its movement payload
   and writes them into an owner frame (`BuiltinBlobLayout.MovementOwnerWireGeneration`), so the restored entity has
   exactly the timers it was saved with.
+
+## Precise movement command fraction (wire generation 13)
+
+`MoveCommand` retains its five-argument constructor and its default behavior. That constructor and `default(MoveCommand)`
+leave `ScaleSpeedByAxis` false. Nonzero player axes remain normalized to full speed and retain the legacy dead zone.
+The six-argument overload adds the final `scaleSpeedByAxis` choice. Set it
+to `true` to preserve a finite nonzero axis length as a speed fraction clamped to 1, including a fraction below the
+legacy dead zone. Set it to `false` to retain the old resolver. Nonfinite precise axes or yaw request idle. Both forms
+use the same movement core, and `default(MoveCommand)` remains idle.
+
+The move codec carries the choice in flags byte 12 bit 2. Run remains bit 0, `FaceCamera` remains bit 1, yaw remains
+at byte 13 and jump remains at byte 17. The exact frame stays 18 bytes, so the existing control and game-message
+demultiplexer remains aligned. The automatic generation-13 handshake rejects an older peer before player admission
+because that peer would ignore the flag and run precise input at full speed. No persisted schema or game
+`ProtocolVersion` change is made by this engine wire-generation bump.
 
 ## Island frames and the frame-relative wire (the floating-origin MAJOR)
 

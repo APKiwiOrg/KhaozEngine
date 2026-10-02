@@ -9,6 +9,13 @@ run identical code.
 Two overloads share one horizontal core (camera-relative WASD axis, normalised diagonals, walk/run speed,
 optional steep-terrain wall slide via a ground-normal delegate):
 
+`MoveCommand` keeps its five-argument constructor and its legacy defaults. That constructor and `default(MoveCommand)`
+leave `ScaleSpeedByAxis` false. A nonzero player axis made with that constructor, or with `scaleSpeedByAxis: false`,
+is normalized to full speed and still uses the legacy dead zone. The
+six-argument constructor opts into `ScaleSpeedByAxis`: the nonzero axis length becomes a speed fraction clamped to 1,
+including fractions below that dead zone. Nonfinite precise axes or yaw request idle. Both choices feed the same
+movement core, and the old default remains unchanged.
+
 - **`Step(Vector3, in MoveCommand, float, groundHeight, in MoveTuning, groundNormal?, medium?) -> Vector3`**
   Horizontal-only step. Y is clamped to `groundHeight(x, z) + halfHeight` every tick. No air, no vertical
   physics. Use for top-down or no-jump scenarios.
@@ -47,8 +54,8 @@ optional steep-terrain wall slide via a ground-normal delegate):
   The world-space kinematic step for **server-authoritative, non-player agents (enemy NPCs)**. It drives the SAME
   collision resolution the player gets - swept collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`,
   the analytic terrain support floor, the `groundNormal` wall slide, and the `clampXz` bounds - but from a
-  **world-space steering direction** instead of a camera yaw. `worldDir` is an XZ direction whose length scales speed
-  in `[0,1]` (unit = full speed, shorter = a slower saunter, longer clamped to full; near-zero = idle). Per-agent
+  **world-space steering direction** instead of a camera yaw. `worldDir` is an XZ direction. The retained signature
+  normalizes finite nonzero input to full speed and keeps the legacy dead zone. Per-agent
   capsule radius / half-height / walk-run speed come from `MoveTuning`, so different creatures get different sizes and
   speeds with no extra plumbing. **No jump bit** (NPCs do not jump in v1) and **no client prediction** (AI is
   server-only). Both the camera-relative player `Step` and this world-space `StepTowards` resolve their input to one
@@ -56,6 +63,11 @@ optional steep-terrain wall slide via a ground-normal delegate):
   apart - the player path stays byte-for-byte identical to before. Since 17.26.0 it also turns
   `MoveState.FacingYaw` toward the steering direction, so an NPC's heading is authoritative with no camera and no
   extra plumbing (the AI path never has a `FaceCamera` target: there is no camera on it).
+
+  The additive overload inserts required `bool preserveSmallMagnitude` immediately after `in MoveTuning` and before
+  the optional providers. Set it to `true` to preserve finite nonzero direction magnitude, including values below the
+  legacy dead zone, through the same terrain, physics, medium and bounds core. Set it to `false` to retain the legacy
+  resolver. Precise direction is normalized safely and its speed fraction is capped at 1.
 
 - **`CameraRelativeDir(in MoveCommand) -> Vector2`** (14.9.0)
   The **commanded** camera-relative travel direction as a unit XZ vector (`Vector2.Zero` when idle, inside the
@@ -356,6 +368,9 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   changes `MoveState.FacingYaw`, so a strafing character keeps its body pointed at the
   camera and - the case that is impossible without it - a character with NO movement input can turn on the spot.
   `false` (the default, and what every pre-facing construction site produces) is the pre-facing behaviour exactly.
+  Its retained constructor also keeps nonzero axes at legacy full speed. The six-argument overload's final
+  `scaleSpeedByAxis` choice opts into preserving the axis length as a speed fraction, including a fraction below the
+  legacy dead zone. Nonfinite precise axes or yaw are idle.
   Since 17.30.0 the flag can also change the SPEED, since a character with a fixed front can be charged for moving
   sideways or backwards relative to it (see "Directional speed under `FaceCamera`"), which is opt-in and neutral by
   default.

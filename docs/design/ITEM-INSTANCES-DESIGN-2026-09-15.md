@@ -154,7 +154,7 @@ oversized game message.
 
 | Type | Shape | Section |
 |---|---|---|
-| `ItemGenerator` | `ctor(ModCandidateTables, IRandomSource)`, `Generate(in GenerationContext)` | 9.4 |
+| `ItemGenerator` | `ctor(GenerationTables, IRandomSource, InstanceIdAllocator)`, `Generate(in GenerationContext)` | 9.4 |
 | `GenerationContext`, `GenerationResult` | inputs and the resolved item | 9.4 |
 | `ModCandidateTables` | built at boot, queried per roll | 9.2 |
 | `CraftPrimitive` | enum of the fourteen v1 primitives | 10.2 |
@@ -1953,11 +1953,11 @@ contracts 4.7 allows because visibility is per field, and needs no child type be
 | `sort` | int | | the socket's index in kind 132, authored order |
 | `socket_type_id` | key reference | `socket_type` | 0 means no restriction |
 
-**A unique is a template plus rolls, not a separate item kind.** The generated item carries kind 129
-naming the template, kind 131 carrying the rolled positions for the template's lines, and kind 130
-carrying the unique rarity rule. Nothing in the payload format is special. That is what lets a craft
-reroll a unique's values without any primitive knowing what a unique is: `reroll values` (10.2) rewrites
-positions and never touches kind 129.
+**A unique is a template with ordinary affix positions, not a separate item kind.** The generated item
+carries kind 129 naming the template and kind 131 carrying its lines at roll position 0, the bottom of
+each range. A forced unique consumes zero draws, including no rare-name draw. Kind 130 carries the
+caller's `ForcedRarityId` when non-zero. Nothing in the payload format is special. The `reroll values`
+craft primitive (10.2) rolls new positions without knowing what a unique is and never touches kind 129.
 
 **A unique's lines are NOT a second line shape: each one NAMES a mod row**, which is the one asymmetry in
 the format and it is worth naming. Kind 131's entries are `(mod id, tier, position, flags)`, so a unique's
@@ -2048,32 +2048,35 @@ catalog's pass 6 walks the band in ascending type-id order and therefore reaches
 Attaching the same validator to all eighteen registrations would run the whole band eighteen times and
 repeat every finding.
 
-1. Every child row's parent reference resolves, and a `currency_guard` naming a `currency_step` names one
-   belonging to the SAME currency.
-2. A `mod_tier`'s `item_level_min <= item_level_max`, and its `ordinal` is 1 to 255 and unique within its
-   mod.
-3. PUBLISH-ONLY: a mod's tier ordinals are unchanged since the previous published version. A REORDER is
-   refused, because the ordinal is in every stored payload (3.4).
-4. A `stat_line`'s `stat_id` resolves, its `combine` is 1, 2 or 3, and `min <= max`.
-5. A `mod_group`'s `max_per_item` is at least 1.
-6. A `rarity_rule`'s `min_affixes <= max_affixes`, `max_prefixes + max_suffixes >= max_affixes`, and its
-   `upgrade_from` chain has no cycle.
-7. A `unique_line`'s `mod_id` resolves, its `tier_ordinal` names a tier of that mod, and that mod carries
-   no `mod_tier_weight` row on any tier, which is the check that keeps a unique line off an ordinary rare.
-8. A `socket_type`'s accept and reject tag sets are disjoint.
-9. A `rare_name_word`'s `position` is at least 1, and for every rarity rule with `name_word_positions = N`
-   and every base tag reachable at that rarity, every position 1 to N has at least one word with a
-   non-zero weight. That last one is the check that stops a publish producing an item whose name cannot
-   be rolled, and it is the expensive one: it is a cross product over rarities, positions and tags, run
-   once per publish, which is the right place for it.
-10. A `crafting_currency` carries at most `max_steps` steps and `max_steps` is at most 16 (10.4), and
-    every step's `sort` is unique within the currency.
-11. PUBLISH-ONLY: a `rarity_rule`'s `id` is unchanged since the previous published version, because kind
-    130 stores it.
-12. PUBLISH-ONLY: no `mod` that any stored payload could name has lost its tier for that ordinal without
-    a remap rule covering it. The validator cannot see stored payloads, so what it actually checks is the
-    weaker and still useful form: every tier ordinal removed since `previous` is named by a rule in the
-    set it was handed.
+The eighteen issued finding codes are stable tokens from `InstanceContentFindings`, never renumbered or reissued. Check 2
+splits because an inverted item-level range and an invalid ordinal need different fixes. Checks 3 and 12
+share `KEC0103` because both refuse a stored ordinal whose meaning changed.
+
+| Check | Code | Validation |
+|---|---|---|
+| 1 | `KEC0100` | Every child row's parent reference resolves, and a `currency_guard` naming a `currency_step` names one belonging to the SAME currency. |
+| 2a | `KEC0101` | A `mod_tier`'s `item_level_min <= item_level_max`. |
+| 2b | `KEC0102` | A `mod_tier`'s `ordinal` is 1 to 255, at most the candidate table's packed ceiling `ModCandidateTables.MaxTierOrdinal` (15), and unique within its mod. |
+| 3 | `KEC0103` | PUBLISH-ONLY: a mod's tier ordinals are unchanged since the previous published version. A REORDER is refused because the ordinal is in every stored payload (3.4). |
+| 4 | `KEC0104` | A `stat_line`'s `stat_id` resolves, its `combine` is 1, 2 or 3, and `min <= max`. |
+| 5 | `KEC0105` | A `mod_group`'s `max_per_item` is at least 1. |
+| 6 | `KEC0106` | A `rarity_rule`'s `min_affixes <= max_affixes`, `max_prefixes + max_suffixes >= max_affixes`, and its `upgrade_from` chain has no cycle. A present `display_rgb` is exactly three RGB bytes. |
+| 7 | `KEC0107` | A `unique_line`'s `mod_id` resolves, its `tier_ordinal` names a tier of that mod, and that mod carries no `mod_tier_weight` row on any tier, which keeps a unique line off an ordinary rare. |
+| 8 | `KEC0108` | A `socket_type`'s accept and reject tag sets are disjoint. |
+| 9 | `KEC0109` | A `rare_name_word`'s `position` is 1 to 255. For every rarity rule with `name_word_positions = N` and every base tag reachable at that rarity, every position 1 to N has at least one word with a non-zero weight. |
+| 10 | `KEC0110` | A `crafting_currency` carries at most `max_steps` steps and `max_steps` is at most 16 (10.4), and every step's `sort` is unique within the currency. |
+| 11 | `KEC0111` | PUBLISH-ONLY: a `rarity_rule`'s `id` is unchanged since the previous published version because kind 130 stores it. |
+| 12 | `KEC0103`, shared with 3 | PUBLISH-ONLY: every tier ordinal removed since `previous` is named by a remap rule in the set handed to the validator. It cannot see stored payloads, so this is the weaker check for a mod losing a tier that a stored payload could name. |
+| 13 | `KEC0112` | No `mod_tier_weight`, `rarity_weight` or `rare_name_word_weight` row has a weight below zero. |
+| 14 | `KEC0113` | Each weight type's bucket of rows sharing one tag sums its positive weights to at most `int.MaxValue`. Negative weights count as zero here and are refused separately by check 13. |
+| 15 | `KEC0114` | An `item` base's authored tag count is at most `ModCandidateTables.MaxGenerationTagPositions` (8). |
+| 16 | `KEC0115` | Every `unique_socket`'s `sort` is unique within its template. |
+| 17 | `KEC0116` | Each `rarity_kind_limit` claims a mod kind only once within its rarity. |
+| 18 | `KEC0117` | No two positive-weight rows of one weight type share the same (parent, tag) pair. A repeated row's weight would be suppressed rather than summed into the first. |
+
+Check 9's coverage half stops a publish producing an item whose name cannot be rolled. Its cross product
+over rarities, positions and tags runs once per publish. Checks 13 and 14 are the Scope B weight bounds
+from [#944](https://github.com/APKiwiOrg/KhaozEngine/issues/944).
 
 ### 8.10 The authoring checklist, and the four reference games on these eighteen types
 
@@ -2135,12 +2138,15 @@ half the contract cares about: a caller anywhere in the fleet could hand a `Seed
 production generator with nothing in any signature to notice.
 
 **A replay tool builds a SECOND generator.** That is the whole cost of taking the source in the
-constructor, and it is one line, because the expensive part of a generator is `ModCandidateTables` (9.2)
-and the two instances SHARE it: the tables are immutable after the boot that built them. So a replay
-harness constructs `new ItemGenerator(tables, new SeededRandomSource(seed))` beside the live
-`new ItemGenerator(tables, new CryptographicRandomSource())`, at the cost of one object and no table
-build. `ICraftOperation` follows the same rule (10.5). `IRandomSource` and both implementations live in
-`KhaozEngine.Primitives` (contracts 14.1), so taking one costs no package reference.
+constructor, and it is one line because both instances SHARE the immutable `GenerationTables` built at
+boot. Those hold the candidate tables (9.2), the content fold and the run ceiling. Here `tables` is the
+boot-built `ModCandidateTablesIndex`, and `allocator` is the host's durable `InstanceIdAllocator` (3.6).
+So a replay harness constructs
+`new ItemGenerator(tables.Generation, new SeededRandomSource(seed), allocator)` beside the live
+`new ItemGenerator(tables.Generation, new CryptographicRandomSource(), allocator)`, at the cost of one
+object and no table build. `ICraftOperation` follows the same random-source rule (10.5). `IRandomSource`
+and both implementations live in `KhaozEngine.Primitives` (contracts 14.1), so taking one costs no
+package reference.
 
 ### 9.2 The precomputed tables, and what they cost
 
@@ -2266,16 +2272,20 @@ public readonly record struct GenerationContext(
     int BaseId, int ItemLevel, int ForcedRarityId, int ForcedUniqueTemplateId, int Quality);
 
 public readonly record struct GenerationResult(
-    int BaseId, long InstanceId, ReadOnlyMemory<byte> Payload, int RarityId, int ContentVersion);
+    int BaseId, long InstanceId, ReadOnlyMemory<byte> Payload, int RarityId, int ContentVersion,
+    int AffixCount, int RequestedAffixCount);
 
 public sealed class ItemGenerator
 {
-    public ItemGenerator(ModCandidateTables tables, IRandomSource random);
+    public ItemGenerator(
+        GenerationTables tables, IRandomSource random, InstanceIdAllocator allocator);
     public GenerationResult Generate(in GenerationContext context);
 }
 ```
 
 Every step is numbered because the ORDER of the draws is the reproducibility contract.
+`AffixCount` reports the affixes placed and `RequestedAffixCount` reports the count the rarity asked for.
+A smaller `AffixCount` records a pool that ran dry. For a forced unique both counts are its placed lines.
 
 1. **Resolve the band and open the pool.** The band is a binary search over the band boundaries from
    `context.ItemLevel`. Opening the pool is reading, for each mod kind and each of the base's two to four
@@ -2285,8 +2295,10 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
    `bucket total - suppressed weight`. Eight scalars in, nothing merged, nothing copied, nothing
    allocated. No draw.
 2. **Resolve the unique**, if `ForcedUniqueTemplateId` is non-zero. Skip to step 9 with the template's
-   `unique_line` rows as the affix list and its `unique_socket` rows as the socket list. No draw. A unique is FORCED by the
-   caller rather than rolled here, because deciding that a unique drops is the loot table's job (9.1).
+   `unique_line` rows as the affix list, each at roll position 0, and its `unique_socket` rows as the
+   socket list. The entire forced-unique path consumes zero draws and skips step 10's rare name. A unique
+   is FORCED by the caller rather than rolled here because deciding that a unique drops is the loot
+   table's job (9.1).
 3. **Roll the rarity**, unless `ForcedRarityId` is non-zero. One `NextInt(0, total)` over the
    `rarity_weight` rows against the base's tags, using 8.3's first-tag-wins rule and the bounded helper
    from 9.3. A total of 0 or 1 calls `Skip`, with 0 producing no rarity.
@@ -2338,11 +2350,13 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
     declaration, in authored order, every socket empty. No draw in v1: a rolled socket COUNT is a craft
     primitive (`add socket`, 10.2) rather than a generation step, so nothing here consumes a draw the
     owner has not asked for.
-12. **Assemble the payload.** Kind 2 item level, kind 3 quality when non-zero, kind 129 when a unique,
+12. **Assemble the payload.** Kind 2 item level, kind 128 identification with state 0 and revealed mask 0
+    on every generated item, kind 3 quality when non-zero, kind 129 when a unique,
     kind 130 rarity, kind 131 affixes, kind 132 sockets when non-empty, kind 134 rare name when rolled,
     plus kind 5 durability at full when the base declares it. Encode canonically (3.2).
 13. **Allocate the instance id** when the payload is non-empty, from `InstanceIdAllocator` (3.6). An
-    empty payload takes id 0 and the item is a plain stack.
+    empty payload takes id 0 and the item is a plain stack. This is a guard rather than a generated
+    outcome: kinds 2 and 128 make every generated payload non-empty, so every generated item takes an id.
 
 **Cost, per rare, and what it is NOT a function of.** Six requested affix picks reserve six kind slots, six mod slots,
 six position slots and up to two name slots, so twenty slots plus the count and any unforced rarity slot.
@@ -3166,6 +3180,10 @@ Custom registrations may assign bit 4 or beyond without moving those four assign
 bit is the only shape that survives an engine release: the mask is durable and the registration set is
 not, so a derived index is a number stored under one meaning and read under another.
 
+`ItemGenerator` writes kind 128 on every new item with state 0 and revealed mask 0 (9.4 step 12). The
+caller can read the initial identification state from the payload instead of guessing from an absent
+field. This also makes a generated payload non-empty even when its affix pool yields nothing.
+
 The mechanic: an unidentified item replicates and tooltips WITHOUT its gated kinds, to everyone including
 its owner, and what a viewer sees in their place is `khaoz.item.unidentified` through
 `ContentStringCatalog` (12.3), never a hardcoded string and never a blank line. The `Identify` primitive
@@ -3417,11 +3435,11 @@ what 9.2's revised table shape did to it.
 | 2 | Bytes per rare item, slot entry | at most 96 | the same, through 4.4 | **69 bytes, MEETS** |
 | 3 | Page commit size, 100 rares | at most 8 KB | encode a full page, count bytes | **6,908 bytes, MEETS** |
 | 4 | Write volume, 20 crafts in one held action | at most 20 KB and 1 commit | `--items` bench, sum `JournalCommit.OwnedByteCount` | **9,519 bytes in 1 commit, MEETS** |
-| 5 | Rare generation time | under 20 microseconds per item | `--items` bench, 1M generations, report p50 and p99 | **p50 1.9, p99 5.8 microseconds, MEETS** |
+| 5 | Rare generation time | under 20 microseconds per item | `--items` bench, 1M generations, report p50 and p99 | **p50 2.667, p99 7.416 microseconds, MEETS** |
 | 6 | Stat evaluation per attack | under 2 microseconds, 0 bytes allocated | evaluate one stat over 11 worn items with 6 affixes each | **444 ns, 0 bytes, MEETS** |
 | 7 | Container page sync size, cold open | at most 8 KB and 8 frames per page | encode and fragment a full page (7.5) | **6,943 bytes in 7 frames, MEETS** |
 | 8 | Steady-state sync after one craft | 1 frame, at most 96 bytes | the delta of 7.5 | **73 bytes in 1 frame, MEETS** |
-| 9 | Generator table build at 2,000 mods | under 500 ms, under 40 MB resident | build the 9.2 tables from a synthetic pack | **266 ms, 24.1 MB, MEETS** |
+| 9 | Generator table build at 2,000 mods | under 500 ms, under 40 MB resident | build the 9.2 tables from a synthetic pack | **395.8 ms, 14.0 MiB resident, MEETS** |
 | 10 | Container load, 10 pages with a full remap pass | under 5 ms, under 200 KB allocated | `Load` over 10 pages and 200 rules | **0.27 ms, 0 bytes, MEETS** |
 | 11 | Ground instance bytes per viewer per second | at most 8 KB per second per viewer at 28 ground instances in interest | public view bytes times instances in interest divided by `TickSeconds` (7.4) | **6,720 bytes per second, MEETS** |
 | 12 | Resident page bytes at 1,000 logged-in players | under 250 MB | sum the decoded page bytes plus the admitted layer's two dictionaries, at a 1,000 stack bank each | **103.0 MB, MEETS** |
@@ -3438,18 +3456,20 @@ Where each number comes from, because a target with no derivation is a guess in 
   a craft that consumes a currency from a second page writes both, at `13.8 + 2.5 = 16.3` KB. An earlier
   draft targeted 16 KB off an 8.6 KB derivation that used the `item-generated` event size, which would
   have made the two-page case a failing budget for the wrong reason.
-- **5** is twenty draws and, since the 9.2 revision, no pass over the candidate array at all: opening the
-  pool is eight scalar reads and a pick is a walk of at most four tag positions, a walk of the dead
-  entries behind the draw and a binary search. The 20 microseconds was set when the answer was expected
-  to be about allocation and a memo. It is now about neither, because there is no memo and the only
-  allocation is the payload.
+- **5** follows 9.3's logical draw schedule and 9.4's pool work: opening the pool is eight scalar reads,
+  and a pick walks tag positions and dead entries behind the draw before a binary search, with no pass
+  over the whole candidate array. The committed full-mode seed 915 baseline in
+  `KhaozEngine.Benchmarks/Baselines/items-sqlite-v1-seed915.json` records 857.7 allocated bytes per
+  generation, including per-field payload-builder allocation. It predates the reusable builder, whose
+  warmed generation allocates only the final payload array. The saved baseline has not been remeasured.
 - **6** is the one that must be checked hardest. Eleven worn items times up to thirteen lines each is about
   140 lines, folded through 11.6's eight steps. Two microseconds is generous, and zero allocation is the
   binding half: an evaluation that allocates per attack is an evaluation that runs per attack.
-- **9** is 9.2's two build passes: 1.5 million table entries at 8 bytes is 11.8 MB, the overlap pass adds
-  5.2 MB and is one merge per (signature, kind, band) over 20.4 million source entries, and the budget
-  adds the build's transient arrays on top. The overlap pass is where budget 5's old per roll merge
-  went, which is why this budget grew by an order of magnitude and budget 5 fell by a factor of 25.
+- **9** is the shipped `ModCandidateTables` build over 1,431,518 tag-kind-band entries and 300 distinct
+  tag signatures in the same committed baseline. A (tier, tag) pair is one `mod_tier_weight` row,
+  whereas the spike's flat array could count a repeated pair twice. The build records 395.8 ms and
+  14,658,536 resident bytes, or 14.0 MiB, against the unchanged 500 ms and 40 MB targets. Resident bytes
+  are the measured resident-memory delta, distinct from the table's self-reported array bytes.
 - **10** is 5.5's one pass over 10 pages with 200 rules, each rule a no-op on a page holding no reference.
 - **11** is the one the design introduces rather than inherits, and it is the cost of the tile serve being
   full state (7.4). A rare's PUBLIC view is its 58 byte payload less the four bytes of `OwnerOnly`

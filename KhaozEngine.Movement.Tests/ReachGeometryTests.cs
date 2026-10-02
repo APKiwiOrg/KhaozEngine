@@ -216,4 +216,98 @@ public class ReachGeometryTests
         Assert.Throws<ArgumentOutOfRangeException>(() => ReachGeometry.Distance(body, target));
         Assert.False(ReachGeometry.Within(body, target, float.MaxValue));
     }
+
+    [Theory]
+    [InlineData(2f)]
+    [InlineData(0.25f)]
+    [InlineData(float.Epsilon)]
+    public void ExtremeCapsuleAxisKeepsLocalPointSeparation(float gap)
+    {
+        var body = new MovementBody(new Vector3(0f, float.MaxValue, 0f), 1f, float.MaxValue);
+        ReachTarget target = ReachTarget.Point(new Vector3(0f, -gap, 0f));
+        Assert.Equal(gap, ReachGeometry.Distance(body, target));
+        Assert.False(ReachGeometry.Within(body, target, 0f));
+        Assert.True(ReachGeometry.Within(body, target, gap));
+    }
+
+    [Fact]
+    public void ExtremeCapsuleAxisKeepsOtherCapsulesLocalSeparation()
+    {
+        var body = new MovementBody(new Vector3(0f, float.MaxValue, 0f), 1f, float.MaxValue);
+        var other = new MovementBody(new Vector3(0f, -3f, 0f), 0.25f, 1f);
+        Assert.Equal(2f, ReachGeometry.Distance(body, ReachTarget.Capsule(other)));
+        Assert.Equal(2f, ReachGeometry.Distance(other, ReachTarget.Capsule(body)));
+        Assert.False(ReachGeometry.Within(body, ReachTarget.Capsule(other), 0f));
+    }
+
+    [Fact]
+    public void ExtremeCapsuleAxisKeepsBoxVerticalSeparation()
+    {
+        var body = new MovementBody(new Vector3(0f, float.MaxValue, 0f), 1f, float.MaxValue);
+        ReachTarget target = ReachTarget.Box(new Vector3(0f, -3f, 0f), new Vector3(1f));
+        Assert.Equal(2f, ReachGeometry.Distance(body, target));
+        Assert.False(ReachGeometry.Within(body, target, 0f));
+    }
+
+    [Fact]
+    public void ExtremeBoxExtentKeepsLocalFaceSeparation()
+    {
+        var body = new MovementBody(new Vector3(float.MaxValue, 0f, 0f), 1f, 1f);
+        ReachTarget target = ReachTarget.Box(new Vector3(-3f, 0f, 0f), new Vector3(float.MaxValue, 1f, 1f));
+        Assert.Equal(2f, ReachGeometry.Distance(body, target));
+        Assert.False(ReachGeometry.Within(body, target, 0f));
+    }
+
+    [Theory]
+    [InlineData(2f)]
+    [InlineData(0.25f)]
+    [InlineData(float.Epsilon)]
+    public void ExtremeSphereRadiusKeepsLocalPointSeparation(float gap)
+    {
+        var body = new MovementBody(new Vector3(0f, float.MaxValue, 0f), float.MaxValue, float.MaxValue);
+        ReachTarget target = ReachTarget.Point(new Vector3(0f, -gap, 0f));
+        Assert.Equal(gap, ReachGeometry.Distance(body, target));
+        Assert.False(ReachGeometry.Within(body, target, 0f));
+        Assert.True(ReachGeometry.Within(body, target, gap));
+    }
+
+    [Fact]
+    public void ExtremeSphereRadiusKeepsDiagonalNormCorrection()
+    {
+        var body = new MovementBody(new Vector3(0f, float.MaxValue, 0f), float.MaxValue, float.MaxValue);
+        ReachTarget target = ReachTarget.Point(new Vector3(1e20f, -2f, 0f));
+        Assert.Equal(16.693682f, ReachGeometry.Distance(body, target));
+        Assert.False(ReachGeometry.Within(body, target, 16.69f));
+        Assert.True(ReachGeometry.Within(body, target, 16.694f));
+    }
+
+    [Fact]
+    public void ExtremeCapsuleAxisKeepsDiagonalLocalSeparation()
+    {
+        var body = new MovementBody(new Vector3(0f, float.MaxValue, 0f), 1f, float.MaxValue);
+        ReachTarget target = ReachTarget.Point(new Vector3(2f, -2f, 0f));
+        Assert.Equal(2.6055512f, ReachGeometry.Distance(body, target));
+        Assert.False(ReachGeometry.Within(body, target, 2.6f));
+    }
+
+    [Theory]
+    [InlineData(float.MaxValue, 1f)]
+    [InlineData(1f, float.MaxValue)]
+    [InlineData(float.MaxValue, float.Epsilon)]
+    [InlineData(float.Epsilon, float.MaxValue)]
+    public void WithinRefusesOverflowEvenWhenDoubleAdditionLosesSmallOperand(float range, float tolerance)
+    {
+        var body = new MovementBody(Vector3.Zero, 0.25f, 0.75f);
+        Assert.Throws<ArgumentOutOfRangeException>(() => ReachGeometry.Within(body, ReachTarget.Point(Vector3.Zero), range, tolerance));
+    }
+
+    [Theory]
+    [InlineData(float.MaxValue, 0f)]
+    [InlineData(0f, float.MaxValue)]
+    [InlineData(float.MaxValue / 2f, float.MaxValue / 2f)]
+    public void WithinAcceptsThresholdExactlyAtFiniteLimit(float range, float tolerance)
+    {
+        var body = new MovementBody(Vector3.Zero, 0.25f, 0.75f);
+        Assert.True(ReachGeometry.Within(body, ReachTarget.Point(Vector3.Zero), range, tolerance));
+    }
 }

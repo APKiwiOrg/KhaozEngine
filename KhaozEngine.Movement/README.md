@@ -30,9 +30,11 @@ bool reached = ReachGeometry.Within(actor, target, 0.75f, tolerance: 0.25f);
 ```
 
 `Distance(in MovementBody, in ReachTarget)` returns the shortest 3D edge distance, clamped to zero for
-overlap. It uses double intermediates and refuses results above `float.MaxValue` with
+overlap. It uses compensated relative components and a stable norm correction in double intermediates,
+so large common coordinates and dimensions do not erase a local edge gap. It refuses results above `float.MaxValue` with
 `ArgumentOutOfRangeException` before returning a float. `Within(in MovementBody, in ReachTarget,
 float range, float tolerance = 0f)` compares the wider distance directly to range plus tolerance.
-Both threshold inputs must be finite and nonnegative. Their sum must fit the finite float range or
+Both threshold inputs must be finite and nonnegative. Addition is checked against the larger operand's
+remaining headroom, including a tiny positive operand added to `float.MaxValue`. Their sum must fit the finite float range or
 `Within` throws `ArgumentOutOfRangeException`. There is no gameplay epsilon. A distance above the
 finite float range simply fails a valid `Within` query.

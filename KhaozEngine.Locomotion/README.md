@@ -196,7 +196,7 @@ construction and both survivors are kept in full.
   **The payout is large, and intended.** The contact keeps the run INTO the face too, so the reach up a face is
   the launch's whole kinetic energy, `v^2 / (2 * Gravity)`, whatever the angle. A running jump at the shipped
   tuning launches at `sqrt(JumpSpeed^2 + RunSpeed^2)` = 15.5 m/s and is worth 4.8 m of reach against a bare
-  vertical apex of 1.92 m, so 2.4x (measured 4.91 m on a near-gate 46 degree face, the best converter there is).
+  continuous vertical apex of 1.92 m, so 2.4x (measured 4.91 m on a near-gate 46 degree face, the best converter there is).
   Players can briefly ride a face upward on jump energy. They cannot keep any of it.
 
 Because the rebuilt velocity lies entirely in the surface plane, the committed drop is precisely the drop the
@@ -485,6 +485,31 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   facing: `Forward` / `Strafe` / `Reverse`. Returned by `CharacterMovement.Sector(cmd)`, and what the directional
   speed scales are charged by while `MoveCommand.FaceCamera` is held. Public so presentation (which locomotion
   animation to play) reads the same answer the movement did rather than a hand-copied predicate.
+
+## Jump apex at a fixed step
+
+`JumpSpeed` is a launch velocity, not a height. `JumpSpeed^2 / (2 * Gravity)` gives the continuous arc's
+apex. `CharacterMovement.Step` applies gravity before moving, so its sampled apex is lower. The unchanged
+default launch of 9.79796 m/s with gravity 25 m/s^2 has a continuous apex near 1.92 m and peaks near 1.76 m
+at a 30 Hz fixed step.
+
+Use `MoveTuning.JumpSpeedForApex(apexMetres, gravity, stepSeconds)` to choose a launch for that fixed step:
+
+```csharp
+const float stepSeconds = 1f / 30f;
+var tuning = MoveTuning.Default;
+tuning = tuning with { JumpSpeed = MoveTuning.JumpSpeedForApex(1f, tuning.Gravity, stepSeconds) };
+```
+
+The helper computes `sqrt(2 * gravity * apexMetres) + gravity * stepSeconds / 2` with double intermediates.
+It accepts a finite nonnegative apex and finite positive gravity and step duration. Invalid arguments throw
+`ArgumentOutOfRangeException`. A launch beyond the finite float range throws `OverflowException`.
+
+Use the same gravity and fixed step when calling `CharacterMovement.Step` on authority and prediction. For
+free flight under constant gravity, with no collision or other vertical intervention, the corrected parabola
+peaks at the requested height. Its sampled peak is lower by at most `gravity * stepSeconds^2 / 8`, before
+float rounding. The helper does not change the default tuning or compensate for variable steps, ceilings,
+swimming, support changes or other forces.
 
 ## Airborne momentum (16.0.0, opt-in)
 

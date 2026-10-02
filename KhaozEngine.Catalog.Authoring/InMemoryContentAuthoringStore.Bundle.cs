@@ -43,6 +43,10 @@ public sealed partial class InMemoryContentAuthoringStore
         ArgumentNullException.ThrowIfNull(operatorId);
         ArgumentNullException.ThrowIfNull(note);
 
+        // A bundle carrying text, or a later format that lost its text section, cannot land through the
+        // row-only import. Refused before anything is read or staged.
+        ContentTextCompatibility.RequireRowOnlyBundle(bundle, nameof(ImportBundleAsync));
+
         // The reset below is destructive by design, so it may not run until this import has actually written
         // something. The two refusals above the staging (a store that already published, a store with no pack
         // target) read and write nothing, and a reset for one of THOSE would empty the live catalog the
@@ -129,6 +133,10 @@ public sealed partial class InMemoryContentAuthoringStore
             {
                 throw UnknownVersion(versionNumber);
             }
+
+            // Format 1 is text free by contract, so a version holding text cannot be exported through it
+            // without dropping the text half.
+            RequireRowOnlyExport(versionNumber);
 
             var types = new List<ContentBundleType>();
             IReadOnlyList<ContentTypeRegistration> registrations = _registry.ByTypeId;
@@ -377,6 +385,8 @@ public sealed partial class InMemoryContentAuthoringStore
             _highWater.Clear();
             _nextFamilyId = 1;
             _draft = null;
+            _textRevisions.Clear();
+            _textLanguages.Clear();
             _activeVersion = NoActiveVersion;
         }
     }

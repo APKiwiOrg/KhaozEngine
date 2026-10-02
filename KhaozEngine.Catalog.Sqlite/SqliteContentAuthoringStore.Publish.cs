@@ -63,6 +63,10 @@ public sealed partial class SqliteContentAuthoringStore
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(request);
 
+        // This provider stores no text yet, so the row half of a text plan is refused before any transaction
+        // rather than committed without its text.
+        ContentTextCompatibility.RequireRowOnlyPlan(plan, nameof(CommitPublishAsync));
+
         if (!plan.IsValid)
         {
             throw new ContentAuthoringException(

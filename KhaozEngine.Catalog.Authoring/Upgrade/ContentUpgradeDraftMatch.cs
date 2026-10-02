@@ -16,6 +16,12 @@ namespace KhaozEngine.Catalog.Authoring;
 /// run that trusted those two would discard work nobody published.
 /// </para>
 /// <para>
+/// <b>Both proofs are ROW-ONLY, so a draft holding text or a language introduction never passes either.</b>
+/// No upgrade plan authors text, so a row comparison cannot establish who owns a translation, and passing it
+/// would let a run publish or discard another writer's text. A draft whose text state is null came from a
+/// row-only route, and the store's own legacy gates refuse to publish or discard text it actually holds.
+/// </para>
+/// <para>
 /// <b>The comparison is order independent.</b> A draft is rebuilt from a stored edit table, and while both
 /// providers do hand the rows back in the order they were written, the proof does not depend on that: two
 /// edits of different targets in either order are the same change set.
@@ -36,7 +42,7 @@ public static class ContentUpgradeDraftMatch
         ArgumentNullException.ThrowIfNull(planned);
 
         IReadOnlyList<ContentEdit> held = draft.Changes.Edits;
-        if (held.Count != planned.Count || planned.Count == 0)
+        if (held.Count != planned.Count || planned.Count == 0 || ContentTextCompatibility.HoldsText(draft))
         {
             return false;
         }
@@ -94,6 +100,11 @@ public static class ContentUpgradeDraftMatch
     {
         ArgumentNullException.ThrowIfNull(draft);
         ArgumentNullException.ThrowIfNull(known);
+
+        if (ContentTextCompatibility.HoldsText(draft))
+        {
+            return false;
+        }
 
         IReadOnlyList<ContentEdit> held = draft.Changes.Edits;
         if (held.Count == 0)

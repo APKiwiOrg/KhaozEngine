@@ -97,7 +97,23 @@ public sealed partial class InMemoryContentAuthoringStore
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(request);
+        ContentTextCompatibility.RequireRowOnlyPlan(plan, nameof(CommitPublishAsync));
+        RequireValid(plan);
 
+        lock (_gate)
+        {
+            ConfirmNumber(plan);
+
+            // The row-only route carries the base version's text forward untouched, and refuses when the
+            // draft or the frozen rows need text it cannot carry.
+            StagedText text = StageRowOnlyText(plan, nameof(CommitPublishAsync));
+            return Task.FromResult(CommitLocked(plan, request, pointers, text, cancellationToken));
+        }
+    }
+
+    /// <summary>The refusal a plan the validator rejected meets before any transaction opens.</summary>
+    static void RequireValid(ContentPublishPlan plan)
+    {
         if (!plan.IsValid)
         {
             throw new ContentAuthoringException(
@@ -108,99 +124,115 @@ public sealed partial class InMemoryContentAuthoringStore
                 ContentAuthoringException.CandidateInvalidReason,
                 plan.Validation.Findings);
         }
+    }
 
-        lock (_gate)
+    /// <summary>
+    /// Step 1 of the commit: CONFIRM the number rather than trusting it, and the rule list the plan extends.
+    /// The caller already holds the gate.
+    /// </summary>
+    void ConfirmNumber(ContentPublishPlan plan)
+    {
+        // The plan digested its version number into both manifest hashes at step 8, so a base that moved
+        // underneath it means those hashes name a version this store would be writing at a different number.
+        int highest = HighestVersionNumber();
+        if (plan.VersionNumber != highest + 1)
         {
-            // 1. CONFIRM the number rather than trusting it. The plan digested its version number into both
-            // manifest hashes at step 8, so a base that moved underneath it means those hashes name a
-            // version this store would be writing at a different number.
-            int highest = HighestVersionNumber();
-            if (plan.VersionNumber != highest + 1)
-            {
-                throw Moved(FormattableString.Invariant(
-                    $"The plan publishes version {plan.VersionNumber} and the highest published version is {highest}, so the next number is {highest + 1}. Another publish landed under this plan and its manifest hashes already carry the wrong number."));
-            }
-
-            // The same statement about the rule list: a plan appends on top of the rules it was built over,
-            // so this store's rules have to be that plan's own prefix or the sequences would collide.
-            ContentRulePrefix.Require(_rules, plan);
-
-            ContentPublishBaseline before = ReadBaseline();
-
-            // BUILD. Nothing below this point until the tail touches a field of this store, so every one of
-            // these may throw and leave the store standing exactly where it was.
-
-            // 2. The version row, stamped from the clock, which is one of the two things here that can fail.
-            var record = new ContentVersionRecord(
-                plan.VersionNumber,
-                plan.ServerManifestHash,
-                plan.ClientManifestHash,
-                plan.MinimumServerBuild,
-                plan.MinimumClientBuild,
-                plan.FormatGeneration,
-                plan.BaseVersion,
-                request.Actor,
-                request.Note,
-                _clock());
-
-            // 3. Every temporal row change, onto a COPY: the closes first, so no insert is mistaken for the
-            // revision it replaces while the walk is half done.
-            var rows = new List<ContentRowRevision>(_rows);
-            Close(rows, plan.Closes);
-            Insert(rows, plan.Inserts);
-
-            // 5. Every chunk row, ONE PER SIDE, the carried-forward ones included, so the version answers
-            // "which chunks do I have, on which side" without recursing back through history.
-            var published = new PublishedVersion(Reused(plan.Chunks), plan.Languages);
-
-            // 6. Every audit row, field level, against the version the rows are leaving. The diff is the
-            // other thing here that can fail.
-            var staged = new List<ContentAuditEntry>();
-            StagePublishAudit(staged, before, plan, request);
-
-            // 6b. The applied ledger row, when this publish carries an upgrade. A duplicate id refuses HERE,
-            // in the build, so the version and its history entry land together or neither does.
-            ContentUpgradeRecord? upgrade = StageAppliedUpgrade(staged, request, plan.VersionNumber);
-
-            // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole
-            // draft, so anything else here survives rather than being deleted unpublished.
-            ContentDraft? draft = DraftAfterCommit(plan);
-
-            // 7b. The pack's version pointer, the last thing the build does and still inside the gate, so the
-            // publisher that passed the confirmation above is the only one that writes it. The gate is a
-            // monitor rather than an async lock, so the write is waited on here: releasing the gate first
-            // would put the write outside this commit, which is the window it has to stay out of.
-            if (pointers is not null)
-            {
-                pointers.PutVersionPointerAsync(
-                    plan.VersionNumber, plan.ServerManifestHash, plan.ClientManifestHash, cancellationToken)
-                    .GetAwaiter().GetResult();
-            }
-
-            // APPLY. List and dictionary writes and four assignments, and the rule append at 4, which is a
-            // walk of a list this store owns. Nothing here can refuse.
-            _versions.Add(record);
-            _rows.Clear();
-            _rows.AddRange(rows);
-            for (int i = _rules.Count; i < plan.Rules.Count; i++)
-            {
-                _rules.Add(plan.Rules[i]);
-            }
-
-            _published[plan.VersionNumber] = published;
-            if (upgrade is not null)
-            {
-                _upgrades.Add(upgrade.Id, upgrade);
-            }
-
-            _audit.Commit(staged);
-            _draft = draft;
-
-            // 8. The active pointer, LAST. It moves for the NEXT boot: a running server keeps serving the
-            // version it loaded.
-            _activeVersion = plan.VersionNumber;
-            return Task.FromResult(record);
+            throw Moved(FormattableString.Invariant(
+                $"The plan publishes version {plan.VersionNumber} and the highest published version is {highest}, so the next number is {highest + 1}. Another publish landed under this plan and its manifest hashes already carry the wrong number."));
         }
+
+        // The same statement about the rule list: a plan appends on top of the rules it was built over,
+        // so this store's rules have to be that plan's own prefix or the sequences would collide.
+        ContentRulePrefix.Require(_rules, plan);
+    }
+
+    /// <summary>
+    /// Steps 2 to 8 of the commit, for a confirmed plan and its staged text. The caller already holds the gate
+    /// and has confirmed the number.
+    /// <para>
+    /// <b>It BUILDS every change into locals and then applies them in a tail that cannot throw</b>, because a
+    /// gate is not a transaction. Everything that can fail is above the tail: the clock the version row is
+    /// stamped from, the diff the audit is rendered out of, and the draft the survivors are rebuilt into.
+    /// </para>
+    /// </summary>
+    ContentVersionRecord CommitLocked(
+        ContentPublishPlan plan,
+        ContentPublishRequest request,
+        IPackVersionPointerStore? pointers,
+        StagedText text,
+        CancellationToken cancellationToken)
+    {
+        ContentPublishBaseline before = ReadBaseline();
+
+        // 2. The version row, stamped from the clock, which is one of the things here that can fail.
+        var record = new ContentVersionRecord(
+            plan.VersionNumber,
+            plan.ServerManifestHash,
+            plan.ClientManifestHash,
+            plan.MinimumServerBuild,
+            plan.MinimumClientBuild,
+            plan.FormatGeneration,
+            plan.BaseVersion,
+            request.Actor,
+            request.Note,
+            _clock());
+
+        // 3. Every temporal row change, onto a COPY: the closes first, so no insert is mistaken for the
+        // revision it replaces while the walk is half done.
+        var rows = new List<ContentRowRevision>(_rows);
+        Close(rows, plan.Closes);
+        Insert(rows, plan.Inserts);
+
+        // 5. Every chunk row, ONE PER SIDE, the carried-forward ones included.
+        var published = new PublishedVersion(Reused(plan.Chunks), plan.Languages);
+
+        // 6. Every audit row, field level, rows then text, against the version they are leaving.
+        var staged = new List<ContentAuditEntry>();
+        StagePublishAudit(staged, before, plan, request);
+        StageTextPublishAudit(staged, text, plan, request);
+
+        // 6b. The applied ledger row, when this publish carries an upgrade. A duplicate id refuses HERE.
+        ContentUpgradeRecord? upgrade = StageAppliedUpgrade(staged, request, plan.VersionNumber);
+
+        // 7. The draft, scoped to the rows and text this plan FROZE.
+        ContentDraft? draft = DraftAfterCommit(plan, text.PublishedText);
+
+        // 7b. The pack's version pointer, the last thing the build does and still inside the gate.
+        if (pointers is not null)
+        {
+            pointers.PutVersionPointerAsync(
+                plan.VersionNumber, plan.ServerManifestHash, plan.ClientManifestHash, cancellationToken)
+                .GetAwaiter().GetResult();
+        }
+
+        // APPLY. List and dictionary writes and assignments. Nothing here can refuse.
+        _versions.Add(record);
+        _rows.Clear();
+        _rows.AddRange(rows);
+        for (int i = _rules.Count; i < plan.Rules.Count; i++)
+        {
+            _rules.Add(plan.Rules[i]);
+        }
+
+        _published[plan.VersionNumber] = published;
+        if (text.Revisions is not null)
+        {
+            _textRevisions.Clear();
+            _textRevisions.AddRange(text.Revisions);
+        }
+
+        _textLanguages[plan.VersionNumber] = text.Languages;
+        if (upgrade is not null)
+        {
+            _upgrades.Add(upgrade.Id, upgrade);
+        }
+
+        _audit.Commit(staged);
+        _draft = draft;
+
+        // 8. The active pointer, LAST.
+        _activeVersion = plan.VersionNumber;
+        return record;
     }
 
     /// <inheritdoc />

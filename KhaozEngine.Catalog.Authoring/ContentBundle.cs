@@ -106,6 +106,35 @@ public sealed class ContentBundle
         Rules = Copy(rules, nameof(rules));
     }
 
+    /// <summary>
+    /// Builds a TEXT-BEARING bundle, carrying its protected text section beside the rows. No row-only import
+    /// or export accepts one, because only its row half would land.
+    /// </summary>
+    /// <param name="formatVersion">The bundle document's format version.</param>
+    /// <param name="storeEpoch">The identity of the database this was exported from.</param>
+    /// <param name="sourceVersion">The content version exported, or 0 for a hand-authored seed.</param>
+    /// <param name="types">The registered type list with their schemas.</param>
+    /// <param name="rows">Every live row.</param>
+    /// <param name="families">Every family with its blocks.</param>
+    /// <param name="rules">The full ordered remap rule list.</param>
+    /// <param name="text">The declared languages and complete values.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="formatVersion"/> is below 1, or <paramref name="sourceVersion"/> is negative.</exception>
+    public ContentBundle(
+        int formatVersion,
+        string storeEpoch,
+        int sourceVersion,
+        IReadOnlyList<ContentBundleType> types,
+        IReadOnlyList<ContentBundleRow> rows,
+        IReadOnlyList<ContentFamily> families,
+        IReadOnlyList<RemapRule> rules,
+        ContentBundleTextState text)
+        : this(formatVersion, storeEpoch, sourceVersion, types, rows, families, rules)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        TextState = text;
+    }
+
     /// <summary>The bundle document's format version.</summary>
     public int FormatVersion { get; }
 
@@ -126,6 +155,12 @@ public sealed class ContentBundle
 
     /// <summary>The full ordered remap rule list, which an import republishes as the new line's rules.</summary>
     public IReadOnlyList<RemapRule> Rules { get; }
+
+    /// <summary>
+    /// The text section, or NULL on a bundle built by a row-only route. Null on format 1 means the document is
+    /// text free by contract. Null on a later format means the section was lost, and the bundle is refused.
+    /// </summary>
+    public ContentBundleTextState? TextState { get; }
 
     static T[] Copy<T>(IReadOnlyList<T> source, string parameterName)
         where T : class

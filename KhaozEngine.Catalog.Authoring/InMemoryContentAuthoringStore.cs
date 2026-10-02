@@ -223,7 +223,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
             }
 
             ContentDraft open = _draft
-                ?? new ContentDraft(_activeVersion, actor, _clock(), note, new ContentChangeSet());
+                ?? new ContentDraft(ContentDraftTextState.Empty, _activeVersion, actor, _clock(), note, new ContentChangeSet());
             var working = new ContentChangeSet(open.Changes.Edits);
             for (int i = 0; i < edits.Count; i++)
             {
@@ -240,7 +240,10 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                 _audit.StageEdit(audited, edits[i], actor, operatorId, note);
             }
 
+            // The held text and introductions travel with the draft untouched: a row-only batch never
+            // rebuilds a draft from its row intents alone.
             _draft = new ContentDraft(
+                open.TextState ?? ContentDraftTextState.Empty,
                 open.BaseVersion,
                 open.OpenedBy,
                 open.OpenedAtUtc,
@@ -264,6 +267,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
         lock (_gate)
         {
             RequireNotFrozen(nameof(DiscardDraftAsync));
+            ContentTextCompatibility.RequireNoHeldText(_draft, nameof(DiscardDraftAsync));
 
             int discarded = _draft?.EditCount ?? 0;
             var staged = new List<ContentAuditEntry>(1);

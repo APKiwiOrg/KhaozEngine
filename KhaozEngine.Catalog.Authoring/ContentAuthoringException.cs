@@ -166,6 +166,43 @@ public sealed class ContentAuthoringException : Exception
     /// </summary>
     public const string UpgradeAlreadyRecordedReason = "upgrade-already-recorded";
 
+    /// <summary>
+    /// A text target names a type or a field that is not CLIENT visible, or a field that is not a localized
+    /// text marker. Text needs both levels visible, because a shared manifest carries every language chunk.
+    /// </summary>
+    public const string TextTargetIneligibleReason = "text-target-ineligible";
+
+    /// <summary>
+    /// A text Remove named a language that is neither declared by the base version nor introduced by the open
+    /// draft. Removing an absent value in a declared language is idempotent, and a Set is what declares one.
+    /// </summary>
+    public const string TextLanguageUndeclaredReason = "text-language-undeclared";
+
+    /// <summary>A derived text key, a value or a language tag exceeds its strict UTF-8 byte bound.</summary>
+    public const string TextBoundsReason = "text-bounds";
+
+    /// <summary>
+    /// A row-only route was refused because the text state it would need to carry cannot be represented on
+    /// it: a draft or base holding text, a plan or bundle carrying a text section, or a format that implies
+    /// one. The route fails closed rather than publishing, discarding or exporting the row half alone.
+    /// </summary>
+    public const string TextUnrepresentedReason = "text-unrepresented";
+
+    /// <summary>
+    /// A text commit or discard found the store's actual state different from the state its plan or proof
+    /// names: another epoch, another base, other frozen rows, other text or other declarations.
+    /// </summary>
+    public const string TextStateMismatchReason = "text-state-mismatch";
+
+    /// <summary>A text operation this build does not yet complete, refused rather than run partially.</summary>
+    public const string TextOperationUnavailableReason = "text-operation-unavailable";
+
+    /// <summary>
+    /// A committed version has no complete text record, so its values and language mappings are unknown. An
+    /// unknown version is never read as empty.
+    /// </summary>
+    public const string TextProvenanceUnknownReason = "text-provenance-unknown";
+
     /// <summary>Creates the exception with no message.</summary>
     public ContentAuthoringException()
     {

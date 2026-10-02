@@ -50,6 +50,10 @@ public sealed partial class SqliteContentAuthoringStore
         ArgumentNullException.ThrowIfNull(operatorId);
         ArgumentNullException.ThrowIfNull(note);
 
+        // This provider stores no text yet, so a text-bearing bundle, or a later format that lost its text
+        // section, is refused before anything is read or staged.
+        ContentTextCompatibility.RequireRowOnlyBundle(bundle, nameof(ImportBundleAsync));
+
         // The reset below is destructive by design, so it may not run until this import has actually written
         // something. The two refusals above the staging (a database that already published, a store with no
         // pack target) read and write nothing, and a reset for one of THOSE would empty the live catalog the

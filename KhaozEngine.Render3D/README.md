@@ -229,6 +229,14 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `CaptureWithBackend` runs the same render path once and returns `Render3DCapture`, whose `Rgba`, `Width`,
   `Height` and `Backend` identify the pixels and the exact device that produced them. A golden caller passes
   `capture.Backend` to `GoldenImage.Check` instead of resolving or guessing a backend separately.
+  `CaptureSequence(width, height, setup, drawFrame, frames, onFrame, warmupFrames, shadows)` streams frames
+  from one device, scene and render target. `setup` runs once. `drawFrame(scene, frame)` runs after `Begin`
+  for every zero-based frame, including warm-up. `frames` includes the skipped `warmupFrames` prefix, so
+  `onFrame(frame, capture)` first receives index `warmupFrames`. Each `Render3DCapture` owns independent
+  top-to-bottom RGBA8 bytes and carries the dimensions and actual backend. Readback fences the GPU and
+  invokes the callback synchronously. The engine retains no frame collection. TAA history survives between
+  frames, and a callback exception stops capture and disposes its resources. Use stable motion keys on moving
+  draws for TAA, as in a windowed scene.
 - `PixelPostProcessSettings` / `Palette` / `Palettes` - palette quantization, Bayer dither, depth/normal
   edge outline, cel bands, all independently toggleable (the smooth look is the default).
 - Anti-aliasing: `PixelPostProcessSettings.Quality.AntiAliasing` (a `RenderQuality` container) is the AA dropdown

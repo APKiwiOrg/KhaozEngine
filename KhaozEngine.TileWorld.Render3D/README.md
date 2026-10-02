@@ -592,7 +592,7 @@ inside the gameplay ring.
 
 ## Headless capture (`TileWorldSnapshot`)
 
-Two RGBA8 captures over `Render3DSnapshot`, both building a throwaway view, loading the regions the shot can see,
+Two single-image RGBA8 captures over `Render3DSnapshot`, both building a throwaway view, loading the regions the shot can see,
 settling every queued rebuild before the first frame, and rendering `CaptureFrames` (2) frames so nothing that
 warms up over a frame is read back cold. Needs a headless GPU device.
 
@@ -613,6 +613,19 @@ warms up over a frame is read back cold. Needs a headless GPU device.
 - Both need the document's regions MATERIALISED first, through `TileWorldFile.Load` or
   `TileWorldSource.EnsureLoaded`. A region the document does not hold is skipped rather than loaded, so a lazily
   opened world captures only the regions resident at the time and the rest come out as void.
+
+`CapturePerspectiveSequence(doc, catalogs, resolver, eye, target, width, height, frames, onFrame, ...)`
+reuses one scene and view for the whole sequence. `frames` includes `warmupFrames`, whose readbacks are
+skipped once at the start, and both callbacks use the rendered frame's zero-based index.
+`onFrame(frame, capture)` receives independent RGBA8 bytes, dimensions and backend.
+`configureScene` runs once and `drawFrame(scene, frame)` adds transient actors after the world on every frame.
+For a moving camera, supply `cameraFrame: frame => (eye, target)` in world metres. It runs once per frame,
+including warm-up, before the world draws. It updates the camera and prop focus, retains overlapping regions,
+unloads regions outside the ring and settles newly visible materialised regions before capture.
+Selected prop-layer builds settle too, so their ordinary frame apply budget cannot leave capture gaps.
+The roof observer follows the target on plane 0 unless a fixed `observer` was supplied.
+Keep the document and catalogs unchanged during capture. Camera poses must be finite and distinct.
+Without `cameraFrame`, the initial pose is fixed and `configureScene` can still replace the camera.
 
 ## Tests and goldens
 

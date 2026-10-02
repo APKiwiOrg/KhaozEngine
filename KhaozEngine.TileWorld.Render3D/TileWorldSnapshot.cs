@@ -6,7 +6,8 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.TileWorld;
 
 /// <summary>Headless RGBA8 captures of a tile world through <see cref="Render3DSnapshot"/>: an orthographic
-/// top-down over a tile rect, and a perspective view from an eye toward a target. Both build a throwaway
+/// top-down over a tile rect, a perspective view from an eye toward a target, and a continuous perspective
+/// sequence. The single-image paths build a throwaway
 /// <see cref="TileWorldView"/> over the captured scene, load the regions the shot can see, settle every queued
 /// rebuild before the first frame, and render two frames so nothing that warms up over a frame is read back cold.
 /// The goldens and the editor's render verbs both come through here, so a tool render and a golden are the same
@@ -43,7 +44,7 @@ public static class TileWorldSnapshot
     /// <summary>Chebyshev radius in REGIONS around the target's region that a perspective capture loads.</summary>
     public const int PerspectiveRegionRadius = 3;
 
-    /// <summary>Frames every capture renders before the pixels are read back.</summary>
+    /// <summary>Frames each single-image capture renders before the pixels are read back.</summary>
     public const int CaptureFrames = 2;
 
     /// <summary>An orthographic map shot of one plane's worth of world: <paramref name="rect"/> at
@@ -209,6 +210,53 @@ public static class TileWorldSnapshot
                 drawFrame?.Invoke(scene);
             },
             frames: CaptureFrames);
+    }
+
+    /// <summary>Capture a continuous perspective sequence with one scene and tile-world view. Its frame
+    /// indices, warm-up and pixel ownership follow <see cref="Render3DSnapshot.CaptureSequence"/>.
+    /// <paramref name="frames"/> includes <paramref name="warmupFrames"/>. The initial camera and region ring
+    /// are ready before <paramref name="configureScene"/> runs once.</summary>
+    /// <param name="doc">The materialised world. Keep its document and catalogs unchanged during capture.</param>
+    /// <param name="catalogs">The world's material and archetype catalogs.</param>
+    /// <param name="resolver">The object mesh resolver.</param>
+    /// <param name="eye">Initial camera position in world metres.</param>
+    /// <param name="target">Initial camera target and prop draw focus in world metres.</param>
+    /// <param name="width">Image width in pixels.</param>
+    /// <param name="height">Image height in pixels.</param>
+    /// <param name="frames">Total rendered frames including warm-up.</param>
+    /// <param name="onFrame">Receives the rendered frame's index and independently owned RGBA8 pixels.</param>
+    /// <param name="observer">Fixed roof-rule observer, or null to follow the current target on plane 0.</param>
+    /// <param name="options">View settings, or null for defaults.</param>
+    /// <param name="configureScene">Configures lighting, post-processing and additional meshes once.</param>
+    /// <param name="drawFrame">Additional draws after the world has drawn on each frame, including warm-up.</param>
+    /// <param name="cameraFrame">Optional indexed camera pose, evaluated once per frame, including warm-up,
+    /// before the world draws. Overrides the initial camera pose. The view reuses the overlapping regions and
+    /// settles newly loaded regions around the current target. Absent document regions remain void.</param>
+    /// <param name="warmupFrames">Initial rendered frames whose readback is skipped.</param>
+    public static void CapturePerspectiveSequence(
+        TileWorldDocument doc, TileWorldCatalogs catalogs, ITileMeshResolver resolver,
+        Vector3 eye, Vector3 target, int width, int height, int frames, Action<int, Render3DCapture> onFrame,
+        TileCoord? observer = null, TileWorldViewOptions? options = null, Action<Scene3D>? configureScene = null,
+        Action<Scene3D, int>? drawFrame = null, Func<int, (Vector3 Eye, Vector3 Target)>? cameraFrame = null,
+        int warmupFrames = 0)
+    {
+        ArgumentNullException.ThrowIfNull(doc);
+        ArgumentNullException.ThrowIfNull(catalogs);
+        ArgumentNullException.ThrowIfNull(resolver);
+        TileWorldSequenceView.RequireCamera(eye, target, nameof(target));
+        TileWorldSequenceView? sequence = null;
+        Render3DSnapshot.CaptureSequence(width, height,
+            setup: scene =>
+            {
+                sequence = new TileWorldSequenceView(scene, doc, catalogs, resolver,
+                    options ?? new TileWorldViewOptions(), eye, target, width, height, observer);
+                configureScene?.Invoke(scene);
+            },
+            drawFrame: (scene, frame) =>
+            {
+                sequence!.Draw(frame, cameraFrame);
+                drawFrame?.Invoke(scene, frame);
+            }, frames, onFrame, warmupFrames);
     }
 
     // The middle and the full spread of the rect's corner heights on one plane, padded top and bottom. Only the

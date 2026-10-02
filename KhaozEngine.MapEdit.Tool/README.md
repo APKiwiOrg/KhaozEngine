@@ -103,7 +103,7 @@ serializer options, instead of exploding into typed parameters. A lake feature:
 ## Renders need a GPU
 
 `render_topdown` and `render_view` are the only two verbs that touch a GPU, via
-`Render3DSnapshot.Capture` (the engine's one public headless render entry). Every other verb (document,
+`Render3DSnapshot.Capture` (the engine's public headless scene-capture helper). Every other verb (document,
 query, mutation) runs on a machine with no display or graphics device. A render on a machine with no
 headless GPU device fails with a precise `McpException` naming the selected backend, instead of hanging
 or crashing the process.

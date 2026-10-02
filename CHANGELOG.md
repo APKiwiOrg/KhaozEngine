@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.18.0
+
+- `Render3DSnapshot.CaptureSequence` streams indexed RGBA8 frames and their backend from one headless device,
+  scene and render target. Setup and TAA warm-up happen once, warm-up readbacks can be skipped, and each output
+  owns its pixel buffer. Existing single-image captures use the same render loop and preserve their output.
+- `TileWorldSnapshot.CapturePerspectiveSequence` reuses its tile-world view and supports a camera pose per frame.
+  Its prop focus, default roof observer and region ring follow the target, retaining overlapping regions and
+  settling new materialised regions and selected prop layers before capture. Resolves
+  [#1231](https://github.com/APKiwiOrg/KhaozEngine/issues/1231).
+
 ## 20.17.0
 
 - Continuous host round 1 opens on this version, and plans B, C and D of the round ride it

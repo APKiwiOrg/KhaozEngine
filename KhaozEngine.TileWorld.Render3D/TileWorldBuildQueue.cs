@@ -131,20 +131,27 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
             _options.MaxHlodAppliesPerPump);
     }
 
-    public void PrimeGameplay(RegionCoord focus)
+    public void PrimeGameplay(RegionCoord focus) => Prime(focus, TileWorldBuildKind.FullGround);
+
+    internal void PrimeHlod(RegionCoord focus) => Prime(focus, TileWorldBuildKind.Hlod);
+
+    void Prime(RegionCoord focus, TileWorldBuildKind kind)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        RunPendingGameplayInline();
-        FinishScheduledGameplay();
+        RunPendingInline(kind);
+        FinishScheduled(kind);
         CollectCompletedCore(reportFailures: true);
-        ApplyReady(focus, int.MaxValue, coarseBudget: 0, hlodBudget: 0);
+        ApplyReady(focus,
+            fullBudget: kind == TileWorldBuildKind.FullGround ? int.MaxValue : 0,
+            coarseBudget: 0,
+            hlodBudget: kind == TileWorldBuildKind.Hlod ? int.MaxValue : 0);
     }
 
-    void RunPendingGameplayInline()
+    void RunPendingInline(TileWorldBuildKind kind)
     {
         foreach (TileWorldBuildRequest<TInput> request in _pending)
         {
-            if (request.Key.Kind != TileWorldBuildKind.FullGround ||
+            if (request.Key.Kind != kind ||
                 !_tracked.TryGetValue(request.Key, out Slot slot) ||
                 slot.Generation != request.Generation || slot.State != WorkState.Pending)
                 continue;
@@ -153,11 +160,11 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
         }
     }
 
-    void FinishScheduledGameplay()
+    void FinishScheduled(TileWorldBuildKind kind)
     {
         var running = new List<ScheduledWork>();
         foreach (KeyValuePair<TileWorldBuildKey, Slot> item in _tracked)
-            if (item.Key.Kind == TileWorldBuildKind.FullGround &&
+            if (item.Key.Kind == kind &&
                 item.Value.State == WorkState.Running && item.Value.Work is { } work)
                 running.Add(work);
         for (int i = 0; i < running.Count; i++) running[i].RunOrWait();

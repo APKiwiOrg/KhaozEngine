@@ -7756,7 +7756,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.17.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.18.0" />
 ```
 
 ```csharp
@@ -9645,6 +9645,15 @@ settings win over everything the helper set. Both also accept `drawFrame: scene 
 the tile view on each frame, so transient game meshes survive the scene's per-frame queue reset. Load meshes
 in `configureScene`, then queue them from `drawFrame`. Full API summary: the `KhaozEngine.TileWorld.Render3D`
 package README.
+
+For a continuous tile-world video, use `TileWorldSnapshot.CapturePerspectiveSequence` with the same document,
+catalogs, resolver and initial eye and target. `configureScene` loads actors and configures TAA once.
+`drawFrame(scene, frame)` queues the actors after the tile-world draws on every frame.
+`cameraFrame: frame => (eye, target)` optionally moves the camera before those draws. It also moves the prop
+focus and default roof observer, keeps the overlapping region ring and settles new materialised regions
+before rendering. A supplied `observer` stays fixed. Keep the document and catalogs unchanged.
+`frames` includes `warmupFrames`, and `onFrame(frame, capture)` streams the remaining frames with the same
+indices and ownership contract as `Render3DSnapshot.CaptureSequence` below.
 
 ---
 
@@ -14538,7 +14547,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.17.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.18.0" />
 ```
 
 ```csharp
@@ -14574,7 +14583,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.17.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.18.0" />
 ```
 
 ```csharp
@@ -14816,7 +14825,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.17.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.18.0" />
 ```
 
 ```csharp
@@ -19041,7 +19050,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.17.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.18.0" />
 </ItemGroup>
 ```
 
@@ -19711,6 +19720,39 @@ a GPU device, so a snapshot tool runs on a dev box / GPU CI, not the headless un
 `Render3DSnapshot.CaptureWithBackend` is the direct path when a caller also needs the exact backend that produced
 the pixels. It returns one `Render3DCapture` containing `Rgba`, `Width`, `Height` and `Backend` without a second
 render. The original `Capture` remains the byte-array convenience and uses the same implementation.
+
+`Render3DSnapshot.CaptureSequence` exports every requested frame of one continuous offscreen run. It creates
+one device, scene and render target, calls `setup` once and keeps meshes and TAA history alive between frames.
+`drawFrame(scene, frame)` runs after `Begin` on every frame, including warm-up. `frames` is the TOTAL rendered
+count. `warmupFrames` is the initial prefix rendered without readback, so the first `onFrame` index is
+`warmupFrames`. Both indices are zero-based. Readback fences the GPU and calls `onFrame(frame, capture)` on
+the same thread before the next draw. Each capture owns independent top-to-bottom RGBA8 pixels, dimensions
+and the actual backend. Keep or save those bytes after the callback returns. The engine accumulates no list.
+Any callback exception stops the run and propagates after capture resources are disposed.
+
+For example, hold the animation at its starting pose during warm-up and write only the output frames
+through `KhaozEngine.Imaging.PngWriter`:
+
+```csharp
+const int warmup = 16;
+const int outputFrames = 120;
+MeshHandle mesh = default;
+Render3DSnapshot.CaptureSequence(1920, 1080,
+    setup: scene =>
+    {
+        mesh = scene.LoadMesh(MeshPrimitives.Box(1f));
+        scene.Camera.Frame(Vector3.Zero, new Vector3(3f));
+        scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
+    },
+    drawFrame: (scene, frame) => scene.Draw(mesh, Matrix4x4.Identity),
+    frames: warmup + outputFrames,
+    onFrame: (frame, capture) => PngWriter.Save($"frame-{frame - warmup:D4}.png",
+        capture.Rgba, capture.Width, capture.Height),
+    warmupFrames: warmup);
+```
+
+When animating, use `Math.Max(0, frame - warmup)` for the output timeline and stable motion keys on moving
+rigid or skinned draws, exactly as in a windowed scene. Warm-up is paid once for the sequence.
 
 ```csharp
 var runner = new SnapshotRunner("/tmp/shots");        // creates the dir; logger defaults to Console.WriteLine

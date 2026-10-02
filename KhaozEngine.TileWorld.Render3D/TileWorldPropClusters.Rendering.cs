@@ -58,6 +58,8 @@ public sealed partial class TileWorldPropClusters
 
     internal void Draw(Vector3 focus) => _clusterOwner?.Draw(focus);
 
+    internal void PrimeForCapture(RegionCoord focus) => _clusterBuilds?.PrimeHlod(focus);
+
     internal void Unload(RegionCoord region, int plane)
     {
         if (_clusterBuilds is null) return;

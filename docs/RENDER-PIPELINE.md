@@ -97,8 +97,10 @@ flowchart LR
 3. Before anything is recorded, `Scene3D.PrepareFrame()` runs the frame's pre-recording phase: the subsystems
    whose per-frame GPU work needs a command list of their OWN (the FFT ocean's priming dispatch, which is a
    compute read-after-write and so needs a submit plus a device wait) do it here, where no frame list is open.
-   `Render3DSurface.Render`, `Render3DPreview.Capture` and both `Render3DSnapshot` capture entry points all call it.
-   `CaptureWithBackend` returns the backend from that same render alongside the pixels. On a windowed
+   `Render3DSurface.Render`, `Render3DPreview.Capture` and every `Render3DSnapshot` capture entry point call it.
+   `CaptureWithBackend` returns the backend from that same render alongside the pixels. `CaptureSequence`
+   retains one scene and target, renders warm-up without readback, then delivers each frame's pixels and
+   backend synchronously. On a windowed
    host the effective call is the one `GameApp3D` makes in the loop's prepare phase, and the surface's is then a
    no-op (issue #429). Opening a second command list while the frame's is recording is refused by the seam's
    open-recording register on every backend, which is why the phase exists and why it stayed when the backend

@@ -13,6 +13,10 @@ It returns `Render3DCapture` with `Rgba`, `Width`, `Height` and the actual `Back
 same capture. Pass those values to `GoldenImage.Check`, including `capture.Backend` as its required final argument.
 `SnapshotRunner.Save` can write `capture.Rgba` when the same pixels also need a PNG.
 
+For animation frames, call `Render3DSnapshot.CaptureSequence` directly and save each callback's capture.
+It builds the scene once, keeps temporal history and skips initial warm-up readbacks. `frames` includes
+`warmupFrames`, and the draw and capture callbacks share the rendered frame's zero-based index.
+
 ```csharp
 return SnapshotHost.Main(args, shots =>
 {

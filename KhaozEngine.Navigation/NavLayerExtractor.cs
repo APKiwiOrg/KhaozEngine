@@ -53,7 +53,7 @@ internal static class NavLayerExtractor
     internal static List<Layer> Extract(
         int width, int height,
         int[] columnStart, float[] surfaceHeight, float[] surfaceHeadroom,
-        float stepHeight, int maxLayerCells = int.MaxValue)
+        float stepHeight, int? maxLayerCells = null)
     {
         int cellCount = width * height;
         int nodeCount = surfaceHeight.Length;
@@ -126,10 +126,10 @@ internal static class NavLayerExtractor
         return layers;
     }
 
-    static void CheckLayerCellBudget(int layerCount, int cellCount, int maxLayerCells)
+    static void CheckLayerCellBudget(int layerCount, int cellCount, int? maxLayerCells)
     {
-        if (checked((long)layerCount * cellCount) > maxLayerCells)
-            throw new ArgumentOutOfRangeException(nameof(maxLayerCells), maxLayerCells, "The extracted layers exceed the layer-cell budget.");
+        if (maxLayerCells is int budget && checked((long)layerCount * cellCount) > budget)
+            throw new ArgumentOutOfRangeException(nameof(maxLayerCells), budget, "The extracted layers exceed the layer-cell budget.");
     }
 
     /// <summary>

@@ -80,7 +80,7 @@ public static partial class NavLayerBaker
     static NavGrid[] BakeLayers(
         INavColumnProvider columns, int width, int height, float cellSize, float minX, float minZ,
         float stepHeight, float agentHeight, int maxSurfacesPerColumn,
-        Func<float, float, bool>? extraBlocked, out bool empty, int maxLayerCells = int.MaxValue)
+        Func<float, float, bool>? extraBlocked, out bool empty, int? maxLayerCells = null)
     {
         int cellCount = width * height;
 

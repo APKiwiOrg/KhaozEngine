@@ -35,8 +35,8 @@ public readonly record struct ColumnSurface(float Height, float Headroom);
 /// </summary>
 public sealed class PhysicsColumnProbe
 {
-    /// <summary>The vertical nudge below each hit the next cast starts from, in world units. Large
-    /// enough to escape the surface just hit, small enough that no two real surfaces fit inside it.</summary>
+    /// <summary>The target vertical nudge below each hit, in world units. When this rounds away,
+    /// the next cast starts at the next representable lower Y.</summary>
     const float DescendEpsilon = 0.01f;
 
     /// <summary>Distance below which a downward hit is treated as an INSIDE-SOLID self-hit rather than a
@@ -80,6 +80,8 @@ public sealed class PhysicsColumnProbe
     /// hit). When the column holds more standable surfaces than the buffer, the LOWEST ones are kept
     /// and the highest dropped, deterministically, matching the <c>INavColumnProvider</c> convention
     /// (the ground is the surface navigation can least afford to lose).
+    /// The sweep uses the next representable lower Y when its usual nudge rounds away. It returns the
+    /// collected surfaces if a finite lower cast origin or reduced remaining range cannot be represented.
     /// </summary>
     public int Sample(float x, float z, Span<ColumnSurface> surfaces)
     {
@@ -135,7 +137,13 @@ public sealed class PhysicsColumnProbe
             // to that underside (a solid deck's underside becomes the ground's ceiling), not to the deck top.
             ceilingAbove = hit.Point.Y;
             float nextY = hit.Point.Y - DescendEpsilon;
-            remaining -= castY - nextY;
+            // At large local heights the nudge can round back to the hit. Every recast must move
+            // strictly down and consume range, or the sweep stops with the surfaces already found.
+            if (nextY >= hit.Point.Y) nextY = MathF.BitDecrement(hit.Point.Y);
+            if (!float.IsFinite(nextY) || !(nextY < castY)) break;
+            float nextRemaining = remaining - (castY - nextY);
+            if (!(nextRemaining < remaining)) break;
+            remaining = nextRemaining;
             castY = nextY;
         }
 

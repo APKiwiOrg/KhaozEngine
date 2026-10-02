@@ -7159,6 +7159,10 @@ NavGrid grid = NavGridBaker.BakeOverworld(
 var space = NavSpace.Single(grid);
 ```
 
+`NavSpace` owns copies of its layer and link containers and exposes read-only `Layers` and `Links` views.
+Later changes to caller arrays or lists cannot change the validated topology. Immutable `NavGrid` instances
+remain shared rather than copied.
+
 A cell is blocked when the terrain slope at its center exceeds `maxSlopeRadians`, an optional
 `extraBlocked(x, z)` gameplay exclusion returns true (a scripted no-go zone), or a nearby `WorldCollider`
 overlaps a conservative center-point probe. One bake serves every agent radius: the walkable rasterization
@@ -7249,6 +7253,8 @@ widening of `INavSurfaceProvider`: every standable surface in the column, bottom
 surface-source seam), so the game glues its own physics probe to the seam. `PhysicsColumnProbe`
 (`KhaozEngine.Physics`) is the shipped physics-side source: a repeated downward raycast sweep that reports
 every standable surface in a column with its headroom to the hit above it.
+When its usual 0.01-unit descent rounds away, the sweep uses the next representable lower Y. It returns the
+surfaces collected so far if a finite lower cast origin or reduced remaining range cannot be represented.
 
 ```csharp
 using KhaozEngine.Navigation;
@@ -11612,6 +11618,12 @@ For scale, swap `WorldServer` for **`ShardedWorldServer`**: the *same* movement 
 without one giant `World`. The **`WorldClient` and `MoveProtocol` are identical** - a client cannot tell it is
 talking to a sharded server (a player's `NetId` is stable across cell handoffs, so its replication view +
 prediction continue without a respawn; there is no cell concept on the client).
+
+`ShardedWorldServer.TryGetSlot(long netId, out int slot)` resolves a joined player's net id through a
+dictionary lookup, complementing `TryGetPlayerNetId`. Call it on the host thread with `Poll` and `Tick`.
+The index is ready before `PlayerJoined` runs and removed when the player leaves, including when a
+`PlayerLeaving` handler throws. Unknown ids, departed players and non-player entities return false with slot
+0. Check the boolean result because 0 is also a valid joined slot. A recycled slot resolves only its new net id.
 
 ```csharp
 using KhaozEngine.NetWorld;

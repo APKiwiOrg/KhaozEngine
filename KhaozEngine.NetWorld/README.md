@@ -37,6 +37,11 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   default (keyed by `NetId`, so a boundary crossing stays a component delta, never a despawn+respawn), or a full
   snapshot for a non-opted-in client. The `WorldClient` and `MoveProtocol` are unchanged - a client cannot tell it
   is talking to a sharded server.
+  **`TryGetSlot(long netId, out int slot)`** resolves a joined player's net id to its connection slot with a
+  dictionary lookup, complementing `TryGetPlayerNetId`. Read it on the host thread with `Poll` and `Tick`.
+  The index is ready before `PlayerJoined` runs and removed when the player leaves, including when a
+  `PlayerLeaving` handler throws. Unknown ids, departed players and non-player entities return false with slot
+  0. Check the boolean result because 0 is also a valid joined slot. A recycled slot resolves only its new net id.
 - **`WorldClient`** wraps `NetClient` + `ClientReplicationView` + `ClientPrediction` and exposes
   `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions - smoothly
   interpolated between snapshots by default, so a remote glides instead of teleporting one ~tick-rate snapshot-step

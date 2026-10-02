@@ -6,7 +6,6 @@ using BepuPhysics;
 using BepuPhysics.Collidables;
 using BepuPhysics.CollisionDetection;
 using BepuPhysics.Constraints;
-using BepuPhysics.Trees;
 using BepuUtilities;
 using BepuUtilities.Memory;
 using KhaozEngine.Physics;
@@ -424,168 +423,10 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
         }
     }
 
-    public bool Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default)
-    {
-        var handler = new RayHitHandler(filter.Mobility);
-        _sim.RayCast(origin, direction, maxDistance, ref handler);
-
-        if (!handler.DidHit)
-        {
-            hit = default;
-            return false;
-        }
-
-        var point = origin + direction * handler.HitT;
-        // RayHit.Body is a nullable static handle. A dynamic hit (only possible with QueryMobility.All/Dynamics)
-        // has no static seam handle, so Body is null rather than reverse-looking-up a non-static hit.
-        var seamHandle = handler.HitWasStatic ? ResolveSeamHandle(handler.HitStatic) : null;
-        hit = new RayHit(handler.HitT, point, handler.HitNormal, seamHandle);
-        return true;
-    }
-
-    public bool SweepCapsule(CapsuleShape capsule, Pose pose, Vector3 direction, float maxDistance, out SweepHit hit, QueryFilter filter = default)
-    {
-        var bepuCapsule = new Capsule(capsule.Radius, capsule.Length);
-        var rigidPose = new RigidPose(pose.Position, pose.Orientation);
-        var velocity = new BodyVelocity(direction);
-        var handler = new SweepHitHandler(filter.Mobility);
-
-        _sim.Sweep(bepuCapsule, rigidPose, velocity, maxDistance, _pool, ref handler);
-
-        if (!handler.DidHit)
-        {
-            hit = default;
-            return false;
-        }
-
-        // SweepHit.Body is a nullable static handle. A dynamic hit (only possible with QueryMobility.All/Dynamics)
-        // has no static seam handle, so Body is null rather than reverse-looking-up a non-static hit.
-        var seamHandle = handler.HitWasStatic ? ResolveSeamHandle(handler.HitStatic) : null;
-        hit = new SweepHit(handler.HitT, handler.HitLocation, handler.HitNormal, seamHandle);
-        return true;
-    }
-
-    public unsafe bool ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv)
-    {
-        // General capsule-vs-static depenetration over EVERY shape type (box, sphere, cylinder, convex
-        // hull, triangle mesh, compound) via one BepuPhysics CollisionBatcher manifold query. This
-        // replaced the per-shape analytic switch (which only handled box/sphere and reported no
-        // penetration for hulls/meshes, trapping the capsule inside rocks). The deepest single contact
-        // across all candidate pairs is the MTV.
-        //
-        // Mesh statics are ONE-SIDED (only front/CW-wound faces generate contacts). That is fine here:
-        // the swept collide-and-slide always precedes this depenetration from a known-outside position,
-        // so the capsule never begins a tick already through a wall.
-        var bepuCapsule = new Capsule(capsule.Radius, capsule.Length);
-        bepuCapsule.ComputeBounds(pose.Orientation, out var bMin, out var bMax);
-
-        var collector = new OverlapCollector();
-        _sim.BroadPhase.GetOverlaps(pose.Position + bMin, pose.Position + bMax, ref collector);
-        if (collector.Found.Count == 0) { mtv = default; return false; }
-
-        var callbacks = new PenetrationCallbacks();
-        // Reuse the live collision-task registry off NarrowPhase. dt = 0 so there is no velocity-bound
-        // expansion; speculativeMargin = 0 below so only real penetration (depth >= 0) reaches the callback.
-        var batcher = new CollisionBatcher<PenetrationCallbacks>(
-            _pool, _sim.Shapes, _sim.NarrowPhase.CollisionTaskRegistry, 0f, callbacks);
-        try
-        {
-            int capsuleType = bepuCapsule.TypeId;
-            int capsuleSize = Unsafe.SizeOf<Capsule>();
-            foreach (var collidable in collector.Found)
-            {
-                if (collidable.Mobility != CollidableMobility.Static) continue;
-                _sim.Statics.GetDescription(collidable.StaticHandle, out var desc);
-                _sim.Shapes[desc.Shape.Type].GetShapeData(desc.Shape.Index, out var staticData, out _);
-
-                // A = static, B = capsule. The capsule is an ephemeral stack value; CacheShapeB copies
-                // it into the batcher's pool so no transient shape registration is needed in _sim.Shapes.
-                batcher.CacheShapeB(desc.Shape.Type, capsuleType,
-                    Unsafe.AsPointer(ref bepuCapsule), capsuleSize, out var cachedCapsule);
-                var offsetB = pose.Position - desc.Pose.Position; // capsule relative to static (A)
-                var staticOrientation = desc.Pose.Orientation;
-                var capsuleOrientation = pose.Orientation;
-                var continuation = new PairContinuation(0);
-                batcher.AddDirectly(desc.Shape.Type, capsuleType, staticData, cachedCapsule,
-                    in offsetB, in staticOrientation, in capsuleOrientation, 0f, in continuation);
-            }
-        }
-        finally
-        {
-            // Flush executes all collision testers synchronously AND returns every pool buffer the
-            // batcher took. It must run on every path, so it lives in finally.
-            batcher.Flush();
-        }
-
-        callbacks = batcher.Callbacks; // read accumulated result AFTER flush
-        if (callbacks.DeepestDepth <= 0f) { mtv = default; return false; }
-        // With A = static, B = capsule, the BepuPhysics 2.4.0 contact normal points from the CAPSULE
-        // toward the STATIC (the "into the surface" direction; verified empirically and locked by the
-        // hull-penetration sign test). The minimum-translation vector that pushes the capsule OUT is the
-        // negation, applied by the caller as capsulePos += mtv.
-        mtv = -callbacks.DeepestNormal * callbacks.DeepestDepth;
-        return true;
-    }
-
-    private SeamHandle? ResolveSeamHandle(BepuStaticHandle bepuHandle)
-    {
-        // O(1) reverse-lookup via _reverseHandles (see its field comment). This used to be a linear scan of
-        // _handles run on every static ray/sweep hit.
-        if (_reverseHandles.TryGetValue(bepuHandle.Value, out int id))
-            return new SeamHandle(id);
-        System.Diagnostics.Debug.Assert(false, "BepuPhysicsWorld: ray/sweep hit a static that cannot be resolved by seam handle - this is a bug");
-        return null;
-    }
-
     public void Dispose()
     {
         _sim.Dispose();
         _pool.Clear();
-    }
-}
-
-// Broad-phase overlap enumerator - collects CollidableReferences from the static tree.
-internal struct OverlapCollector : IBreakableForEach<CollidableReference>
-{
-    public readonly List<CollidableReference> Found = new();
-    public OverlapCollector() { }
-    public bool LoopBody(CollidableReference item) { Found.Add(item); return true; }
-}
-
-// CollisionBatcher callbacks for capsule-vs-static depenetration: keep the single deepest contact
-// across all pairs. With A = static, B = capsule, the contact normal points capsule -> static; the
-// caller negates it to get the push-OUT MTV. We take the deepest single contact, NOT a sum (summing
-// two touching surfaces pushes diagonally into neither; the slide loop resolves any residual next
-// iteration).
-internal struct PenetrationCallbacks : ICollisionCallbacks
-{
-    public Vector3 DeepestNormal;   // unit, points capsule -> static (caller negates for push-out)
-    public float DeepestDepth;      // > 0 = penetrating
-
-    public bool AllowCollisionTesting(int pairId, int childA, int childB) => true;
-
-    public void OnChildPairCompleted(int pairId, int childA, int childB, ref ConvexContactManifold m)
-        => Accumulate(ref m);
-
-    public void OnPairCompleted<TManifold>(int pairId, ref TManifold m)
-        where TManifold : unmanaged, IContactManifold<TManifold>
-        => Accumulate(ref m);
-
-    // Accumulating in BOTH OnChildPairCompleted and OnPairCompleted is safe (deepest-wins is idempotent).
-    // A non-convex (mesh/compound) result fans out per overlapping triangle/child into a
-    // NonconvexContactManifold; the generic IContactManifold<T> handles convex and non-convex alike.
-    private void Accumulate<TManifold>(ref TManifold m)
-        where TManifold : unmanaged, IContactManifold<TManifold>
-    {
-        for (int i = 0; i < m.Count; i++)
-        {
-            m.GetContact(i, out _, out var normal, out float depth, out _);
-            if (depth > DeepestDepth)
-            {
-                DeepestDepth = depth;
-                DeepestNormal = normal;
-            }
-        }
     }
 }
 

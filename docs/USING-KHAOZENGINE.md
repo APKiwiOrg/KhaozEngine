@@ -789,7 +789,8 @@ public sealed class InputState   // immutable per-frame snapshot; InputState.Emp
     IReadOnlySet<Key> KeysDown, KeysPressed, KeysReleased;
     IReadOnlySet<MouseButton> MouseDown, MousePressed;
     Vector2 MousePosition, MouseDelta;  float ScrollDelta;  int Width, Height;
-    IReadOnlyList<GamepadState> Gamepads, Touches;  // ctor args optional, default empty
+    IReadOnlyList<GamepadState> Gamepads;          // ctor arg optional, default empty
+    IReadOnlyList<TouchPoint> Touches;             // ctor arg optional, default empty
     bool WindowFocused;                             // optional trailing ctor arg, default true (Empty = false)
     IReadOnlySet<Key> KeysRepeated;                 // optional trailing ctor arg, default empty
     IReadOnlySet<MouseButton> MouseReleased;        // optional trailing ctor arg, default empty

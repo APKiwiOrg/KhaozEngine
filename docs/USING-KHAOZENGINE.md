@@ -6632,10 +6632,33 @@ movement step: while airborne the character falls under `Gravity` (clamped to `M
 on the ground; a jump launches at `JumpSpeed` only when grounded (or within `CoyoteTime` of leaving the ground),
 and a jump pressed just before landing fires on contact (`JumpBuffer`). `character.Grounded` and
 `character.VerticalVelocity` are exposed (e.g. for jump/land animation or SFX). The feel is tunable via public
-fields - `Gravity` (25), `JumpSpeed` (9.79796, apex ~1.92 m), `MaxFallSpeed` (50), `CoyoteTime` (0.1), `JumpBuffer`
-(0.1), `AirControl` (1, horizontal control while airborne), `GroundedEpsilon` (0.3, the slope skin so a downhill
+fields - `Gravity` (25), `JumpSpeed` (9.79796, continuous apex ~1.92 m and sampled apex ~1.76 m at 30 Hz),
+`MaxFallSpeed` (50), `CoyoteTime` (0.1), `JumpBuffer` (0.1), `AirControl` (1, horizontal control while airborne),
+`GroundedEpsilon` (0.3, the slope skin so a downhill
 run does not flicker grounded/airborne) - matching `MoveTuning`. Run off a cliff or the bounded-clearing rim and
 you fall.
+
+**Choose a jump height for a fixed step.** `MoveTuning.JumpSpeedForApex(apexMetres, gravity, stepSeconds)`
+returns a launch speed for the gravity-first integration used by `CharacterMovement.Step`:
+
+```csharp
+using KhaozEngine.Locomotion;
+
+const float stepSeconds = 1f / 30f;
+var tuning = MoveTuning.Default;
+tuning = tuning with { JumpSpeed = MoveTuning.JumpSpeedForApex(1f, tuning.Gravity, stepSeconds) };
+```
+
+The helper computes `sqrt(2 * gravity * apexMetres) + gravity * stepSeconds / 2` with double intermediates,
+then returns a float. Apex must be finite and nonnegative, and gravity and step duration must be finite and
+positive. Invalid arguments throw `ArgumentOutOfRangeException`. A result beyond the finite float range throws
+`OverflowException`. Use the same gravity and fixed step in authority and prediction. For a controller, assign
+the result to `character.JumpSpeed` and step it at the matching fixed duration.
+
+`JumpSpeed^2 / (2 * Gravity)` is the continuous arc's apex. In constant-gravity free flight, without collision
+or other vertical intervention, the corrected parabola peaks at the requested height. Tick sampling lowers its
+peak by at most `gravity * stepSeconds^2 / 8`, before float rounding. This helper does not change the default
+launch or compensate for variable steps, swimming, ceilings or other forces.
 
 Since 16.0.0 there are two more, both mirroring `MoveTuning` and both OFF by default: `AirMomentum` (false) opts
 the character into airborne horizontal momentum, so a jump travels its whole arc at the speed it launched at and
@@ -7754,7 +7777,7 @@ it (or the fall line) down. Only geometry sheds the carry.
 
 **Riding a face upward is a real, intended payout, and it is big.** Because the contact keeps the run INTO the
 face too, the reach up a face is the launch's whole kinetic energy, `v^2 / (2 * Gravity)`, whatever the angle. A
-running jump at the shipped tuning launches at 15.5 m/s and is worth 4.8 m of reach against a bare vertical apex
+running jump at the shipped tuning launches at 15.5 m/s and is worth 4.8 m of reach against a continuous vertical apex
 of 1.92 m, so about 2.4x (measured 4.91 m on a near-gate 46 degree face). Players keep none of it: with no footing
 up there to re-launch from, the whole rise is handed back on the way down.
 
@@ -21348,8 +21371,8 @@ and must keep the complete store key within 450 characters. Resolver faults refu
 Tokenless guests never invoke it and retain the existing `PersistGuests` policy.
 
 **Since 17.40.0 the machinery is `KhaozEngine.WorldStore.StatePersistence<TState>` and `WorldPersistence` is the
-FLOAT binding of it.** Nothing below changed: the same config type and defaults, the same keys, the same
-`PlayerRecord` JSON, the same cadence, the same events in the same order. What moved down is everything that was
+FLOAT binding of it.** The core split kept the config defaults, keys, `PlayerRecord` JSON, cadence and event order
+unchanged. What moved down is everything that was
 never about a float position (the interval, the dirty pass, the per-session load guard, the per-key write
 ordering, quarantine, the guest policy, the rejoin hints), so a second movement model can bind the same core.
 `TileWorld.Netcode.TileWorldPersistence` is the second binding. `IWorldPersistenceHost` now derives from
@@ -21394,6 +21417,47 @@ using KhaozEngine.WorldStore.SqlServer;
 using var store = new SqlServerWorldStore(
     "Server=tcp:<srv>.database.windows.net,1433;Database=<db>;Authentication=Active Directory Default;Encrypt=True;");
 ```
+
+#### Fallback load for legacy player records
+
+Optional `WorldPersistenceConfig.LoadFallback` is a `PlayerRecordFallbackLoad` delegate returning
+`Task<PlayerRecord?>`. It runs only after a successful primary `IWorldStore.LoadAsync` returns null.
+An existing primary record wins, including a corrupt or invalid record that follows the normal quarantine path.
+A primary read fault never invokes fallback. Null configuration keeps the existing behavior, and a null fallback
+result keeps the join's spawn or resume hint. Guests and boot hint prewarming never invoke the hook.
+
+```csharp
+var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig
+{
+    KeyPrefix = "position:",
+    LoadFallback = async (PersistenceLoadRequest request) =>
+    {
+        byte[]? legacy = await store.LoadAsync("movement:" + request.AuthenticatedAccountId)
+            .ConfigureAwait(false);
+        return legacy is null ? null : ConvertLegacyPlayerRecord(legacy);
+    },
+    CaptureGameState = CapturePlayerBlob,
+    ApplyGameState = ApplyPlayerBlob,
+});
+```
+
+`ConvertLegacyPlayerRecord` is game code returning the current `PlayerRecord` position and optional game blob.
+The example's legacy keys use the captured authenticated account, while the primary key uses the bound durable
+key. `PersistenceLoadRequest` is an immutable value captured before async work: `Slot` is the original seat,
+`AuthenticatedAccountId` is the verified subject, `PersistenceKey` is the bound durable key without its prefix,
+and `StoreKey` is the complete primary key, including `KeyPrefix`.
+
+The hook may continue off the host thread. Use the captured identities to load and convert data, because its
+slot may have been recycled while awaiting. Primary and fallback reads wait behind outstanding writes for the
+same durable key. The host-thread drain checks current-session and seat identity before validation, quarantine,
+live-state and blob restoration, and resume hints. Accepted conversions stay dirty until their first primary
+save, including an unchanged leave or periodic snapshot. Failed saves remain dirty for retry.
+Fallback exceptions surface through `OnStoreError` and retain the load guard until a later rejoin retries.
+The seam leaves legacy data untouched and does not retire or delete it.
+
+The generic `StatePersistence<TState>` contract is `PersistenceCoreConfig.LoadFallback`, a
+`PersistenceFallbackLoad` returning `Task<byte[]?>` in the primary record format, with the same captured request
+and guarded load behavior.
 
 #### Durable per-player game state (XP / inventory / quests)
 

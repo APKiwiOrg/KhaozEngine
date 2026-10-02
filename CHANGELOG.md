@@ -48,6 +48,12 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   repeated inside-solid raycasts at large local heights. It returns collected surfaces if a finite lower origin
   or reduced remaining range cannot be represented, preserving real surfaces and underside headroom
   ([#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)).
+- `MoveTuning.JumpSpeedForApex` chooses a validated launch speed for a requested fixed-step apex. Default jump
+  speed remains unchanged, with continuous and sampled peaks distinguished in the API guidance
+  ([#1235](https://github.com/APKiwiOrg/KhaozEngine/issues/1235)).
+- Optional `WorldPersistenceConfig.LoadFallback` converts legacy records only after a primary miss, using captured
+  session identities and normal validation. Accepted records stay dirty until their first primary save
+  ([#1237](https://github.com/APKiwiOrg/KhaozEngine/issues/1237)).
 
 ## 20.17.0
 

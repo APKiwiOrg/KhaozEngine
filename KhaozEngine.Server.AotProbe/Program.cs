@@ -146,6 +146,7 @@ bool saveOk =
     reloaded.Get<ProbeHealth>(saved0).Value == 42 &&
     reloaded.Has<ProbeElite>(saved0) &&
     reloaded.Get<ProbeFlag>(saved1).Value == 7;
+bool historyOk = ArchetypeHistoryProbe.Matches(saveSer);
 
 // ---- NetWorld durable DTO round-trips (source-generated contexts) ----
 var playerState = new PlayerMoveState { Position = new Vector3(1.5f, 2.5f, -3.5f) };
@@ -160,11 +161,11 @@ var banStore = new WorldStoreBanStore(new InMemoryWorldStore());
 banStore.BanAsync("acct-1", "probe").AsTask().GetAwaiter().GetResult();
 bool banOk = banStore.IsBanned("acct-1") && !banStore.IsBanned("acct-2");
 
-ok = ok && saveOk && playerOk && metaOk && banOk;
+ok = ok && saveOk && historyOk && playerOk && metaOk && banOk;
 
 Console.WriteLine(
     $"AOT PROBE: entities={count} clientEntities={client.Entities.Count} tags={clientTags} lastNetId={lastNetId} " +
-    $"clientX={lastClientX:F4} save={saveOk} player={playerOk} meta={metaOk} ban={banOk} match={ok}");
+    $"clientX={lastClientX:F4} save={saveOk} history={historyOk} player={playerOk} meta={metaOk} ban={banOk} match={ok}");
 return ok ? 0 : 1;
 
 // ---- probe component + system types ----

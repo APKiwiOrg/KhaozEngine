@@ -47,6 +47,7 @@
          one already references WorldStore and both providers. -->
     <ProjectReference Include="../KhaozEngine.ItemInstances.Journal/KhaozEngine.ItemInstances.Journal.csproj" />
     <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
+    <ProjectReference Include="../KhaozEngine.Movement/KhaozEngine.Movement.csproj" />
     <ProjectReference Include="../KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode/KhaozEngine.Netcode.csproj" />
     <ProjectReference Include="../KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj" />

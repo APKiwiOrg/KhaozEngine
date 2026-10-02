@@ -122,7 +122,7 @@ public sealed class PublishPipelineTests
     }
 
     [Fact]
-    public async Task AForkAllocatesPlainlyAndItsCopyInheritsTheSourceRowsFamily()
+    public async Task AFamilyForkAllocatesInsideItsFamilyAndItsCopyRetainsTheFamily()
     {
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing);
         InMemoryContentAuthoringStore store = PublishFixtures.Store(registry);
@@ -152,9 +152,10 @@ public sealed class PublishPipelineTests
                 PublishFixtures.Fields(2))));
 
         ContentIdAllocationEntry copy = Assert.Single(forked.Allocation.Entries);
-        Assert.Equal(ContentIdSource.Plain, copy.Source);
+        Assert.Equal(ContentIdSource.Family, copy.Source);
         Assert.Equal(family.FamilyId, copy.FamilyId);
         Assert.NotEqual(member.DefinitionId, copy.DefinitionId);
+        Assert.Contains(family.Blocks, block => block.Contains(copy.DefinitionId));
 
         // The copy is written FIRST, so the kind 3 rule appended last names a to_id already live at V.
         RemapRule rule = Assert.Single(forked.AppendedRules);

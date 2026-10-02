@@ -66,8 +66,7 @@ static class ContentIdAllocation
             }
             else
             {
-                // Branch 3: the plain per-type counter. A FORK always lands here, because its copy takes
-                // the next free id of the type and may not name a family of its own.
+                // Branch 3: the plain per-type counter, including forks whose source has no family.
                 row.DefinitionId = await allocator
                     .AllocateAsync(type, 1, cancellationToken).ConfigureAwait(false);
             }

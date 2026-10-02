@@ -281,16 +281,15 @@ static class ContentCandidateBuilder
             ParentId = source.ParentId,
             IsRetired = false,
 
-            // The copy inherits the SOURCE row's family, so the legacy row is a member of the same family
-            // the row it came from belongs to. The ID still comes from the plain counter (spec 6.3), because
-            // a fork allocates through branch 3.
+            // The copy inherits the source family and allocates within its blocks. A full family may reserve
+            // another block, so membership is in the same family rather than necessarily the source block.
             FamilyId = source.FamilyId,
             ValidFromVersion = version,
             IsEntering = true,
             EditOrdinal = ordinal,
             IsNewDefinition = true,
             NeedsId = true,
-            Source = ContentIdSource.Plain,
+            Source = source.FamilyId is null ? ContentIdSource.Plain : ContentIdSource.Family,
         };
         rows.Add(copy);
 

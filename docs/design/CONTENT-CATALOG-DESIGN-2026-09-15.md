@@ -1778,11 +1778,11 @@ an export and re-import reproducible (section 10.9) and what fixes Ruinborne's i
 Ids that are CARRIED are kept exactly, which is what makes Grimhollow's import preserve ids 1 to 35 and leave
 every stored container decoding unchanged (section 16.4). Ordering does not preserve an id, carrying it does.
 
-**A `Fork` allocates through branch 3 and never carries an id.** Its copy takes the next free id of the type
-and may not name one, because a fork is only ever authored against a live database and the carry path exists
-for the empty-database import alone. It also may not name a family: the copy inherits the SOURCE row's family
-if it has one, so the legacy copy sits in the same block as the row it came from and `KEC0037` stays quiet. A
-family whose block is full reserves a second block the ordinary way (3.8).
+**A `Fork` never carries an id or names a family override.** Its copy inherits the SOURCE row's family.
+With a family it allocates through branch 2 and belongs to any block of that family. When all blocks are full,
+the allocator reserves another aligned block the ordinary way (3.8), so the copy need not share the source
+row's block. Without a family it allocates through branch 3. The source keeps its id, and the live legacy copy
+receives the new id named by exactly one `MovedToLegacy` rule.
 
 ### 6.4 Step 4, validate
 

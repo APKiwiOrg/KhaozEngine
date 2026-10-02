@@ -39,6 +39,7 @@ public sealed partial class ShardedWorldServer
             cell.World.Set(entity, new PlayerIdentity { DisplayName = displayName });
         EnsureWired(cell);
         netIdBySlot[slot] = netId;
+        slotByNetId[netId] = slot;
         lastAckBySlot[slot] = -1;
         accountIdBySlot[slot] = accountId;
         RateLimiter? limiter = config.AntiCheat.CreateLimiter(config.TickSeconds);
@@ -79,6 +80,7 @@ public sealed partial class ShardedWorldServer
             }
             host.UnbindClient(slot);
             boundPlayerCellsVersion++;
+            if (joined) slotByNetId.Remove(netId);
             netIdBySlot.Remove(slot);
             lastAckBySlot.Remove(slot);
             accountIdBySlot.Remove(slot);

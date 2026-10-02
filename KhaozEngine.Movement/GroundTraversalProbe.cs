@@ -24,9 +24,10 @@ internal static class GroundTraversalProbe
         if (!acceptsFootprint(fromFeet) || !acceptsFootprint(toFeet)) return false;
 
         MoveTuning probe = tuning with { WalkSpeed = 1f, RunSpeed = 1f, AirMomentum = false };
-        // Reuse the absolute adapter with dry medium, preserving ground, normals, bounds and physics.
+        // Reuse the absolute adapter with dry medium, preserving ground, normals, bounds, physics and query selection.
         GroundMoveContext dry = context.Medium is null ? context : new GroundMoveContext(
-            context.GroundHeight, context.GroundNormal, context.Physics, context.ClampXz);
+            context.GroundHeight, context.GroundNormal, context.Physics, context.ClampXz,
+            medium: null, movementQueries: context.MovementQueries);
         var body = new MoveState
         {
             Position = fromFeet + Vector3.UnitY * probe.CapsuleHalfHeight,

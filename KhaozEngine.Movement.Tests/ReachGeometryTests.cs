@@ -310,4 +310,33 @@ public class ReachGeometryTests
         var body = new MovementBody(Vector3.Zero, 0.25f, 0.75f);
         Assert.True(ReachGeometry.Within(body, ReachTarget.Point(Vector3.Zero), range, tolerance));
     }
+
+    [Fact]
+    public void DistanceRefusesResidualBeyondFiniteFloatLimit()
+    {
+        var body = new MovementBody(new Vector3(float.MaxValue, 0f, 0f), 1f, 1f);
+        ReachTarget target = ReachTarget.Point(new Vector3(-3f, 0f, 0f));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ReachGeometry.Distance(body, target));
+    }
+
+    [Fact]
+    public void WithinKeepsResidualBeyondMaximumRange()
+    {
+        var body = new MovementBody(new Vector3(float.MaxValue, 0f, 0f), 1f, 1f);
+        ReachTarget target = ReachTarget.Point(new Vector3(-3f, 0f, 0f));
+        Assert.False(ReachGeometry.Within(body, target, float.MaxValue));
+    }
+
+    [Fact]
+    public void HugeSphereTangentRetainsPositiveSquaredResidual()
+    {
+        const float radius = 1.7014118346046923e38f;
+        const float offset = 1.8446744073709552e19f;
+        const float distance = 2.9387358770557188e-39f;
+        var body = new MovementBody(new Vector3(1f, 0f, 0f), radius, radius);
+        ReachTarget target = ReachTarget.Point(new Vector3(radius, offset, 0f));
+        Assert.False(ReachGeometry.Within(body, target, 0f));
+        Assert.Equal(distance, ReachGeometry.Distance(body, target));
+        Assert.True(ReachGeometry.Within(body, target, distance));
+    }
 }

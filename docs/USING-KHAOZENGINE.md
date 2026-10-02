@@ -6553,7 +6553,9 @@ field rougher than the engine's presets:
 ```csharp
 float depth = TerrainLodConfig.Default.SkirtDepthFor(lod, chunkSize: 60f);        // 0.9375 m at tier 0, 7.5 m at tier 4
 var chunk = TerrainChunkBuilder.Build(field, region, lod, TerrainLodConfig.Default, depth);
-``` With a `SplatMaterialHandle` supplied the weights drive the PBR splat pipeline (five
+```
+
+With a `SplatMaterialHandle` supplied the weights drive the PBR splat pipeline (five
 tileable PBR layers, triplanar). Without one the weights are blended into a vertex-colour ramp (the
 fallback). *Which* chunks exist and *when* they rebuild is the **World streaming** sub-project below
 (`TerrainStreamer`). See "Textured terrain (PBR splat)" below for the material API. For water, see

@@ -1802,6 +1802,12 @@ data lives, and the validator refuses to let the two drift.
 | `item_level_min` | int | | `Client` | yes |
 | `item_level_max` | int | | `Client` | yes |
 
+Check 8's tier lookup depends on the exact type key `mod_tier` and field names `mod_id` and `ordinal`.
+The validator fixes them as `ContentReferences.ModTierTypeKey`, `ModTierModIdField` and
+`ModTierOrdinalField`. The public schema names are `InstanceContentTypeIds.ModTierTypeKey`,
+`ModTierContentType.ModIdField` and `ModTierContentType.OrdinalField`. Registration must preserve these
+names so the stored `(mod id, tier ordinal)` pair resolves through the same schema.
+
 `ordinal` is 1 to 255, unique within the mod, and IMMUTABLE once published. `item_level_min` and
 `item_level_max` are inclusive, 1 to 65535, with `item_level_max = 65535` meaning no ceiling.
 
@@ -2967,19 +2973,19 @@ touch a counter and does not mutate the page. The caller does all three.
 
 | # | Check | Class | Failure | Outcome |
 |---|---|---|---|---|
-| 1 | the payload is canonical: ascending kinds, no duplicate, minimal varints | structural | `field-order`, `field-duplicate`, `varint-nonminimal` | quarantine |
+| 1 | the payload is canonical: ascending kinds, no duplicate, bounded minimal varints | structural | `field-order`, `field-duplicate`, `varint-nonminimal`, `varint-overflow` | quarantine |
 | 2 | every declared length lies inside the payload | structural | `truncated` | quarantine |
 | 3 | a registered kind's bytes decode through its codec | structural | `field-malformed` | quarantine |
 | 4 | kind 132's nested payloads carry no kind 132 | structural | `socket-nesting` | quarantine |
 | 5 | the payload is at most `MaxInstancePayloadBytes` | structural | `payload-too-long` | quarantine |
-| 6 | the entry's definition id, and every socket's `ContainedDefinitionId` at every depth, resolves in the active version | drift | `unknown-definition` | quarantine |
-| 7 | every content id the registry's reference targets name resolves, at every depth (3.3) | drift | `unknown-content-reference` | quarantine |
+| 6 | the entry's definition id and every contained item target in a payload-nesting field resolve in the active version, at every depth | drift | `unknown-definition` | quarantine |
+| 7 | all other registry-declared content reference targets resolve, at every depth (3.3) | drift | `unknown-content-reference` | quarantine |
 | 8 | a `(mod id, tier ordinal)` pair names a live tier | drift | `unknown-content-reference` | quarantine |
 | 9 | a non-empty payload has a non-zero instance id | structural | `instance-id-missing` | quarantine |
-| 10 | the instance id is unique within the page | structural | `instance-id-duplicate` | quarantine |
+| 10 | every non-zero instance id is unique within the page | structural | `instance-id-duplicate` | quarantine every sharing entry |
 | 11 | an entry carrying kind 5 or 132 has count 1 | structural | `stack-not-instanceable` | quarantine |
-| 12 | the entry's count is at most the definition's cap, OR the over-cap shrink rule applies | policy | `over-cap` | tolerated |
-| 13 | the entry's definition id, and every socket's `ContainedDefinitionId`, is not RETIRED in the active version | policy | `definition-retired` | retired |
+| 12 | the entry's count is at most the definition's cap, or a matching `StackCapLowered` rule declares it legal | policy | `over-cap` only without a naming rule | tolerated finding |
+| 13 | the entry's definition id and every contained item target in a payload-nesting field are not RETIRED in the active version | policy | `definition-retired` | retired |
 
 **Checks 6 and 7 are DERIVED from the registry rather than from a list in this section.** They walk the
 same `InstanceReferenceTarget` descriptors the remap pass walks (3.3), in the same recursive order, over
@@ -2989,6 +2995,19 @@ resolves", a closed enumeration that already omitted kind 7's material ids and a
 `ContainedDefinitionId`, and that would have omitted every game kind at or above 1,024 forever. Check 8
 stays hand-written because a tier ordinal is not a content id: it is a key INTO the row check 7 already
 resolved, so it is the one relationship the descriptors cannot express.
+
+The nesting shape distinguishes the two reference checks: an `item` target in a field carrying a nested
+payload is a contained definition and belongs to check 6. Every other target belongs to check 7, including
+kind 7's material ids, which are `item` references in a non-nesting field. This derives containment for
+registered game kinds too, rather than naming only the socket kind.
+
+For check 7, a target content type absent from the active registry does not resolve. It fails closed with
+`unknown-content-reference` rather than skipping the declared target. An unregistered property kind is a
+different case and remains opaque under the retention rule in 3.3.
+
+Check 10 quarantines EVERY entry sharing a duplicated non-zero id, the first included. The stored bytes
+cannot establish which copy is the original. An entry already quarantined keeps its earlier finding and
+is not counted twice. Zero is a plain stack's absent identity and does not collide.
 
 ### 12.3 What each failure does
 
@@ -3034,9 +3053,14 @@ policy rather than a fourth outcome. It increments no counter and adds no log ca
 rides in the validation report the caller already reads, and Scope A's publish diff is where a retire is
 visible in the first place.
 
+Check 13 uses the same containment distinction as check 6. A retired crafting material referenced by
+kind 7 is historical data, not a contained item, so it does not retire the item carrying that reference.
+The material row still resolves through check 7.
+
 **Check 12 is the one tolerated failure and it is tolerated BY CONTRACT.** Contracts 8.2 kind 4's over-cap
-stack rule is legal, may only shrink and is self-healing, so an over-cap count is a state the contract
-declares valid rather than a drift the validator caught. It is counted and it changes nothing.
+stack rule is legal, may only shrink and is self-healing. A matching `StackCapLowered` rule naming the
+definition produces NO finding. Without that rule, an over-cap count produces the tolerated `over-cap`
+finding and changes no count or state. Neither branch quarantines the entry or emits quarantine telemetry.
 
 **Three placeholder presentations are player facing, so all three are `StringId`s and none is a
 literal**, which is AGENTS.md's founding rule and contracts 12.1's derivation applied to the one part of
@@ -3093,7 +3117,7 @@ ordinal cannot drift apart.
 | 3 | `kind-out-of-order` | 1 | 12.2 spells it `field-order` |
 | 4 | `kind-duplicate` | 1 | 12.2 spells it `field-duplicate` |
 | 5 | `varint-not-minimal` | 1 | 12.2 spells it `varint-nonminimal` |
-| 6 | `varint-overflow` | 1, 3 | Raised by the varint reader under either check |
+| 6 | `varint-overflow` | 1 | The varint reader can detect it in either structural path, but the finding reports the canonical-form check |
 | 7 | `socket-nesting` | 4 | |
 | 8 | `field-malformed` | 3 | |
 | 9 | `unknown-definition` | 6 | |
@@ -3164,6 +3188,10 @@ Contracts 10.2 names both and forbids inventing others. Counter
 category `ContentValidation` at Warning, naming the reason code, the stamped version, the active version
 and the owning stream key, and NEVER the payload bytes or a raw account id
 (`DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md:657-660`).
+
+`InstanceValidationTelemetry.Report(report, streamKey, logger, counter)` receives the owning stream key
+from the caller. Neither a page nor its validation report carries that identity, so it cannot be inferred
+from the validated bytes. The argument names the owning projection stream, never a raw account id.
 
 **One line per PAGE, not per entry.** A page that fails wholesale would otherwise emit a hundred identical
 lines, which is how an operator learns to filter the category out. The line names the page, the reason

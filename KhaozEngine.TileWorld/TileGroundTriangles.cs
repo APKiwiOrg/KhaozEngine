@@ -4,7 +4,7 @@ using System.Numerics;
 
 namespace KhaozEngine.TileWorld;
 
-/// <summary>How one drawable tile is cut into ground triangles.</summary>
+/// <summary>How one ground tile is cut into triangles.</summary>
 /// <param name="Cut">The shape the tile is triangulated with: the authored overlay shape when the tile has an
 /// overlay, <see cref="TileOverlayShape.Full"/> when it has none.</param>
 /// <param name="Rotation">The authored overlay rotation, as it stands.</param>
@@ -54,11 +54,35 @@ public static class TileGroundTriangles
         int plane,
         out TileGroundCell cell,
         Span<TileLatticeTriangle> triangles)
+        => TryDescribeCore(document, worldX, worldZ, plane, out cell, triangles, includeNoDraw: false);
+
+    /// <summary>The same geometry as <see cref="TryDescribe"/>, including NoDraw tiles with an underlay so an
+    /// editor can inspect authored ground it did not render. Void tiles still return false.</summary>
+    internal static bool TryDescribeIncludingNoDraw(
+        TileWorldDocument document,
+        int worldX,
+        int worldZ,
+        int plane,
+        out TileGroundCell cell,
+        Span<TileLatticeTriangle> triangles)
+        => TryDescribeCore(document, worldX, worldZ, plane, out cell, triangles, includeNoDraw: true);
+
+    static bool TryDescribeCore(
+        TileWorldDocument document,
+        int worldX,
+        int worldZ,
+        int plane,
+        out TileGroundCell cell,
+        Span<TileLatticeTriangle> triangles,
+        bool includeNoDraw)
     {
         ArgumentNullException.ThrowIfNull(document);
         if (triangles.Length < TileTriangulation.MaxTriangles)
             throw new ArgumentException($"Needs room for {TileTriangulation.MaxTriangles} triangles.", nameof(triangles));
-        if (!IsDrawable(document, worldX, worldZ, plane))
+        bool hasGround = includeNoDraw
+            ? document.GetUnderlay(worldX, worldZ, plane) != 0
+            : IsDrawable(document, worldX, worldZ, plane);
+        if (!hasGround)
         {
             cell = default;
             return false;
@@ -75,7 +99,7 @@ public static class TileGroundTriangles
         return true;
     }
 
-    /// <summary>The <see cref="TryDescribe"/> decision for a tile the caller has already found drawable, from the
+    /// <summary>The cut and split for a ground tile the caller has already selected, from the
     /// four corner heights it has already read (SW, SE, NW, NE), so a mesher holding a corner memo does not read
     /// them again. Hands back the overlay id it read, which the mesher paints the cut with.</summary>
     internal static TileGroundCell Describe(

@@ -11303,8 +11303,10 @@ intended target would sit back at the capsule and the whole legitimate arc would
 every airborne tick. With momentum off the exported velocity is exactly `moveDir * CommandedSpeed`, so the
 measurement is arithmetically identical to the pre-16.0.0 one. Again nothing to configure. If you built your own
 check on the public helper, `CharacterMovement.IntendedHorizontalTargetAtVelocity(position, velocity, dt)` is the
-vector form (`IntendedHorizontalTargetAtSpeed` is unchanged and still correct wherever travel direction is input
-direction).
+vector form. The scalar `IntendedHorizontalTargetAtSpeed` signature and legacy behavior are retained. Precise scalar
+commands share the camera resolver and apply the supplied resolved speed once, including input below the legacy
+dead zone. The tuning convenience form retains legacy delegation and uses the shared resolved fraction and effective
+pace for precise commands. Scalar intent remains correct wherever travel direction is input direction.
 
 ---
 

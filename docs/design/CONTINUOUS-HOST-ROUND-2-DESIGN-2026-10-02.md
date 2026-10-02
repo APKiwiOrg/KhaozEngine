@@ -1,7 +1,9 @@
 # Continuous host, round 2: movement, reach and physics navigation
 
 Status: approved by the owner on 2026-10-02. Plan A is implemented on `feature/round2-command-fraction` at
-20.18.0 with wire generation 13. Plans B, C and D have not started. No release or consumer adoption has occurred.
+20.18.0 with wire generation 13. The owner released the P3 build slot and authorized Plan A execution. Earlier full
+verification passed. Final precise-intent helper re-verification is pending. Plans B, C and D have not started.
+Engine tagging and consumer adoption remain pending.
 
 Consumer: Grimhollow continuous movement phase P4, before P5 NPCs and interactions and P6 combat.
 Engine issue: [#1223](https://github.com/APKiwiOrg/KhaozEngine/issues/1223).
@@ -24,9 +26,10 @@ route from arrival. The owner then releases the engine. Grimhollow adopts that r
 `feature/continuous-movement`, never on its released tile `main` during the pivot.
 Ruinborne adopting these helpers is optional. This round changes no game repository.
 
-This document is a design artifact. Plan A focused evidence exists on its task branch. The full branch build and test
-suite, later plans, bakes, pack commands and release remain pending while the Grimhollow P3 chat owns the dev Mac's
-single build slot. A text review is not full-suite execution evidence.
+This document is a design artifact. The owner released Grimhollow P3's build slot and authorized Plan A execution.
+Plan A's earlier full Release verification built with zero warnings and ran 28 test assemblies with 23,014 passed,
+0 failed and 1,269 skipped. Final precise-intent helper re-verification, later plans, bakes, packing, engine tagging
+and consumer adoption remain pending. Earlier full-suite evidence does not cover the final helper fix.
 
 ## Decisions
 
@@ -525,8 +528,10 @@ rules and server tolerance in the game. Report those integration inputs on epic 
 ## Review state
 
 - The design is approved and four implementation plans are written. Plan A is implemented on its task branch at
-  20.18.0 with wire generation 13. Plans B, C and D are not started, and no release or consumer adoption has occurred.
+  20.18.0 with wire generation 13. Final precise-intent helper re-verification is pending. Plans B, C and D are not
+  started. Engine tagging and consumer adoption remain pending.
 - D2 and the technical decisions are settled by written-design approval.
-- Plan A focused evidence is 28, 99, and 6 focused plus 10 adjacent passing cases. The full branch build and test
-  suite, feed packing and tagging have not run.
-- The build slot remains with Grimhollow P3 until the owner explicitly frees it.
+- Plan A focused evidence is 28, 99, and 6 focused plus 10 adjacent passing cases. Earlier full Release verification
+  built with zero warnings and ran 28 test assemblies with 23,014 passed, 0 failed and 1,269 skipped. Fresh full
+  verification of the final helper fix, feed packing and tagging remain pending.
+- The owner released Grimhollow P3's build slot and authorized Plan A execution. One building worker runs at a time.

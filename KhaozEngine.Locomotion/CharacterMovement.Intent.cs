@@ -21,15 +21,27 @@ public static partial class CharacterMovement
     /// not the scaling. Getting that product wrong is not a rounding error but an inverted signal: a legitimately
     /// hasted player steps far beyond an unscaled "intended" target, so every boosted tick reads as a large
     /// correction and the anti-cheat streak flags them as a speed hacker. Mirrors the basis + speed of
-    /// <see cref="DesiredHorizontalCore"/> (pre-gate).</summary>
+    /// <see cref="DesiredHorizontalCore"/> (pre-gate).
+    /// <para>Precise commands resolve their axis fraction, facing-sector scale and effective run choice through the
+    /// same command resolver as the step. Unflagged commands retain the legacy base-pace helper behavior.</para></summary>
     public static Vector2 IntendedHorizontalTarget(Vector3 position, in MoveCommand cmd, float dt,
         in MoveTuning tuning, float speedScale = 1f)
-        => IntendedHorizontalTargetAtSpeed(position, cmd, dt,
+    {
+        if (cmd.ScaleSpeedByAxis)
+        {
+            (Vector2 dir, float fraction, bool run) = ResolveCameraCommand(cmd, tuning);
+            if (!(fraction > 0f)) return new Vector2(position.X, position.Z);
+            float speed = (run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale * fraction;
+            return new Vector2(position.X + dir.X * speed * dt, position.Z + dir.Y * speed * dt);
+        }
+
+        return IntendedHorizontalTargetAtSpeed(position, cmd, dt,
             (cmd.Run ? tuning.RunSpeed : tuning.WalkSpeed) * speedScale);
+    }
 
     /// <summary>The unconstrained horizontal target a command would reach in one step at an EXPLICIT speed (m/s),
-    /// rather than one rebuilt from <see cref="MoveTuning"/>. Same camera basis and same pre-gate geometry as the
-    /// overload above, which now delegates here so the two can never diverge.
+    /// rather than one rebuilt from <see cref="MoveTuning"/>. Precise commands share the step's camera resolver,
+    /// accepting finite nonzero input below the legacy dead zone and safely normalizing huge finite axes.
     /// <para>The direction comes from the COMMAND and only the magnitude from the caller, which is what makes this
     /// the scalar form. It is correct for any caller whose travel direction is its input direction, which is every
     /// grounded step and every airborne one without <see cref="MoveTuning.AirMomentum"/>. It is NOT what the movement
@@ -46,6 +58,14 @@ public static partial class CharacterMovement
     /// <param name="speed">The unconstrained horizontal speed in m/s the step commanded.</param>
     public static Vector2 IntendedHorizontalTargetAtSpeed(Vector3 position, in MoveCommand cmd, float dt, float speed)
     {
+        if (cmd.ScaleSpeedByAxis)
+        {
+            (Vector2 dir, float fraction) = ResolveCameraRelative(cmd);
+            if (fraction > 0f)
+                return new Vector2(position.X + dir.X * speed * dt, position.Z + dir.Y * speed * dt);
+            return new Vector2(position.X, position.Z);
+        }
+
         float sY = MathF.Sin(cmd.CameraYaw), cY = MathF.Cos(cmd.CameraYaw);
         Vector3 forward = new(-sY, 0f, -cY);
         Vector3 right = new(cY, 0f, -sY);

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- EXECUTION STATUS. Tasks 1 to 3 and Task 4's documentation/version work are implemented on the task branch. The full branch build and test run remains pending with the controller.
+- EXECUTION STATUS. The owner released the P3 build slot and authorized Plan A execution. Tasks 1 to 3 and Task 4's documentation/version work are implemented. Earlier full Release verification passed with 23,014 passed, 0 failed and 1,269 skipped across 28 assemblies. Final precise-intent helper re-verification remains pending with the controller.
 - Execution worktree `/Users/antonio/KhaozEngine/.worktrees/round2-command-fraction`, branch `feature/round2-command-fraction`. Read AGENTS.md, contributor rules and the approved design. Fetch and reconcile engine main before creating it. Preserve unrelated work.
 - Version authority is the integration owner. At authoring, main and v20.17.0 are `e585b8a01`. A opens 20.18.0 if free, or rides an appropriate staged 20.x version selected by that owner. Select once, update all four plans if the selection changes. Workers do not bump independently. B, C and D ride it.
 - Keep the old MoveCommand constructor and StepTowards signature, legacy resolver arithmetic, command length and unflagged bytes. No new movement component, timestep field or persistence payload.
@@ -145,7 +145,10 @@ started and no release or consumer adoption.
 
 Focused evidence is Task 1: 28 passed, Task 2: 99 passed, and Task 3: 6 focused plus 10 adjacent passed. The
 controller's full Release verification then completed with a zero-warning solution build and 28 test assemblies,
-23,014 passed, 0 failed, 1,269 skipped, 24,283 total. Final review, integration, push and release remain pending.
+23,014 passed, 0 failed, 1,269 skipped, 24,283 total. The owner released the P3 build slot and authorized Plan A
+execution. That full run predates the final precise-intent helper fix, whose fresh full verification and scoped
+re-review remain pending with the controller. Integration, push, packing, engine tagging, Plans B/C/D and consumer
+adoption remain pending.
 
 Two execution rulings are carried forward. Task 1 followed the named test cases rather than the erroneous prose count
 of five in the two review-focus rows. The binding behavior and coverage remained unchanged, and the cost of choosing
@@ -160,3 +163,21 @@ with robust normalization. `CameraRelativeDir` likewise has a legacy-only dead z
 unit direction for finite nonzero input below it. The matching XML summary in
 `CharacterMovement.CameraRelativeDir.cs` was qualified without changing its function body. The reason was to avoid
 misleading callers and an XML documentation warning. The cost was two prose edits and one comment-only C# edit.
+
+Final whole-branch review found that the public scalar intent helper still discarded tiny precise input. The scope
+ruling includes precise-only consistency in both public command-direction helpers because the scalar form takes an
+already resolved speed, while the tuning convenience form must resolve the command fraction and effective pace.
+Both now use the shared camera/command resolvers. Supplied scalar speed is applied once. Old false helper arithmetic
+and public signatures remain unchanged, including the legacy convenience form's base-pace behavior. The velocity
+helper used by both authoritative hosts remains untouched. The reason is to keep precise Step travel and public
+intent endpoints consistent. The cost is two bounded opt-in branches and focused tests. A wrong scalar ruling would
+scale the fraction twice, while a wrong tuning ruling would overstate tiny, strafing or reverse travel.
+
+The required helper doc sweep also qualifies two current reference statements in the Locomotion README and USING
+guide. Delegation is legacy-only, and the scalar signature and legacy behavior are retained. Precise convenience
+intent resolves the shared fraction and effective pace. The reason is to avoid misleading callers after the opt-in
+fix. The additional cost is two narrow reference qualifications, with historical momentum facts preserved.
+
+Final helper-fix evidence is 28 new intent cases with 14 expected failures before the fix, followed by 76 passing
+game cases and 52 passing host intent/anomaly cases. Both focused Release commands exited 0 after the fix. Fresh full
+verification remains with the controller and is not inferred from these focused runs.

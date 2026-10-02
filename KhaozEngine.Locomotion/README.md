@@ -434,8 +434,11 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   nothing".
 - **`CharacterMovement.IntendedHorizontalTargetAtSpeed(position, cmd, dt, speed)`** (14.27.0) - the unconstrained
   target a command reaches in one step at an EXPLICIT speed. The existing `IntendedHorizontalTarget(..., tuning,
-  speedScale)` now delegates to it, so the two share one camera basis. Correct for any caller whose travel
-  direction is its input direction, which is every grounded step and every airborne one without momentum.
+  speedScale)` delegates to it for legacy commands. Precise tuning intent uses the shared resolved axis/facing
+  fraction and effective walk/run pace. Precise scalar intent shares the camera resolver, preserves finite nonzero
+  input below the legacy dead zone and applies the caller's already resolved speed once. Public signatures and old
+  unflagged behavior are retained. Correct for any caller whose travel direction is its input direction, which is
+  every grounded step and every airborne one without momentum.
 - **`CharacterMovement.IntendedHorizontalTargetAtVelocity(position, velocity, dt)`** (16.0.0) - the vector form,
   `position.XZ + velocity * dt`. No command and no camera basis, because the direction comes from the velocity.
   Pair it with `CommandedVelocity`. This is the form the movement-anomaly check uses.

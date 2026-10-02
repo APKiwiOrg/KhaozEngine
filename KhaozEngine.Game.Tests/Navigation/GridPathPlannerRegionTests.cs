@@ -122,6 +122,62 @@ public class GridPathPlannerRegionTests
     }
 
     [Fact]
+    public void LargeFiniteCellsRetainUsefulPartialProgress()
+    {
+        NavGrid grid = NavGrid.FromSurfaces(3, 1, 1e20f, 0f, 0f,
+            (_, _) => new NavSurfaceSample(true, 0f, 2f), 0.5f, 1f);
+        NavSpace space = NavSpace.Single(grid);
+        var member = new Vector3(2.5e20f, 0f, 5e19f);
+        var region = new NavGoalRegion(member, 0f, feet => feet == member);
+
+        NavPath path = new GridPathPlanner(space).FindPath(new Vector3(5e19f, 0f, 5e19f), region, 0f,
+            new PathQueryBudget { MaxExpandedNodes = 2, SnapRadius = 0f });
+
+        Assert.Equal(NavPathStatus.Partial, path.Status);
+        Assert.Equal(new[] { new NavWaypoint(new Vector2(1.5e20f, 5e19f), 0) }, path.Waypoints);
+        Assert.False(region.Contains(EndpointFeet(space, path)));
+    }
+
+    [Fact]
+    public void LargeFiniteDistancesKeepRegionPriorityUseful()
+    {
+        NavSpace space = NavSpace.Single(NavGrid.FromSurfaces(3, 3, 1e20f, 0f, 0f,
+            (_, _) => new NavSurfaceSample(true, 0f, 2f), 0.5f, 1f));
+        var member = new Vector3(5e19f, 0f, 2.5e20f);
+        var region = new NavGoalRegion(member, 0f, feet => feet == member);
+
+        NavPath path = new GridPathPlanner(space).FindPath(new Vector3(5e19f, 0f, 5e19f), region, 0f,
+            new PathQueryBudget { MaxExpandedNodes = 3, SnapRadius = 0f });
+
+        Assert.Equal(NavPathStatus.Complete, path.Status);
+        Assert.Equal(new[]
+        {
+            new NavWaypoint(new Vector2(5e19f, 1.5e20f), 0),
+            new NavWaypoint(new Vector2(5e19f, 2.5e20f), 0),
+        }, path.Waypoints);
+        Assert.True(region.Contains(EndpointFeet(space, path)));
+    }
+
+    [Fact]
+    public void DiscoveryBoundsPredicateWorkAndRetainsExactBoundaryMembership()
+    {
+        NavSpace space = NavSpace.Single(SurfaceGrid(5, 5, (_, _) => true, 2f));
+        int predicateCalls = 0;
+        var member = new Vector3(3.5f, 2f, 2.5f);
+        var region = new NavGoalRegion(new Vector3(2.5f, 2f, 2.5f), 1f, feet =>
+        {
+            predicateCalls++;
+            return feet == member;
+        });
+
+        NavPath path = new GridPathPlanner(space).FindPath(new Vector3(0.5f, 2f, 2.5f), region, 0f, Budget);
+
+        Assert.Equal(9, predicateCalls);
+        Assert.Equal(NavPathStatus.Complete, path.Status);
+        Assert.Equal(member, EndpointFeet(space, path));
+    }
+
+    [Fact]
     public void CrossLayerZeroPriorityStillReturnsUsefulBudgetLimitedProgress()
     {
         var space = new NavSpace(new[]

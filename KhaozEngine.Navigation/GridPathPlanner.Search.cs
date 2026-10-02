@@ -36,16 +36,17 @@ public sealed partial class GridPathPlanner
         (int goalX, int goalZ) = goalGrid.CellOf(goalPoint.X, goalPoint.Y);
         float PointHeuristic(int layer, int x, int z)
             => Heuristic(layer, x, z, goalLayer, goalX, goalZ, goalGrid.CellSize);
+        double PointProgress(int layer, int x, int z) => PointHeuristic(layer, x, z);
         return RunSearch(startLayer, startPoint,
             (layer, x, z) => layer == goalLayer && x == goalX && z == goalZ,
-            PointHeuristic, PointHeuristic, goalPoint, agentRadius, budget);
+            PointHeuristic, PointProgress, goalPoint, agentRadius, budget);
     }
 
     // Priority must bound remaining route cost. Progress only chooses a partial endpoint, so region
     // queries can measure useful approach independently when a safe priority has to be zero.
     NavPath RunSearch(int startLayer, Vector2 startPoint,
         Func<int, int, int, bool> isGoal, Func<int, int, int, float> priority,
-        Func<int, int, int, float> progress, Vector2? goalPoint, float agentRadius, PathQueryBudget budget)
+        Func<int, int, int, double> progress, Vector2? goalPoint, float agentRadius, PathQueryBudget budget)
     {
         NavGrid startGrid = _space.Layers[startLayer];
         (int startX, int startZ) = startGrid.CellOf(startPoint.X, startPoint.Y);
@@ -68,7 +69,7 @@ public sealed partial class GridPathPlanner
         open.Enqueue(startId, (startHeuristic, seq++));
 
         int closestNode = startId;
-        float closestHeuristic = progress(startLayer, startX, startZ);
+        double closestHeuristic = progress(startLayer, startX, startZ);
         int expanded = 0;
         bool reachedGoal = false;
 
@@ -93,7 +94,7 @@ public sealed partial class GridPathPlanner
             int width = grid.Width;
             int baseOffset = _layerOffset[layer];
 
-            float heuristic = progress(layer, cx, cz);
+            double heuristic = progress(layer, cx, cz);
             if (heuristic < closestHeuristic)
             {
                 closestHeuristic = heuristic;

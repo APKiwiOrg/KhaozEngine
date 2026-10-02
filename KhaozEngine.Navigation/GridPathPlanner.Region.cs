@@ -36,6 +36,8 @@ public sealed partial class GridPathPlanner
                 {
                     if (Blocks(layer, agentRadius, x, z)) continue;
                     Vector3 feet = CellFeet(layer, x, z);
+                    if (Math.Abs((double)feet.X - goal.Anchor.X) > goal.HorizontalExtent ||
+                        Math.Abs((double)feet.Z - goal.Anchor.Z) > goal.HorizontalExtent) continue;
                     if (!goal.Contains(feet)) continue;
                     isMember[_layerOffset[layer] + z * grid.Width + x] = true;
                     memberLayers[layer] = true;
@@ -48,14 +50,20 @@ public sealed partial class GridPathPlanner
         var anchorXz = new Vector2(goal.Anchor.X, goal.Anchor.Z);
         float Priority(int layer, int x, int z)
             => spatialBound && memberLayers[layer]
-                ? MathF.Max(0f, Vector2.Distance(_space.Layers[layer].CellCenter(x, z), anchorXz) - goal.HorizontalExtent)
+                ? (float)Math.Min(float.MaxValue, Math.Max(0d,
+                    RegionDistanceXz(_space.Layers[layer].CellCenter(x, z), anchorXz) - goal.HorizontalExtent))
                 : 0f;
-        float Progress(int layer, int x, int z)
+        double Progress(int layer, int x, int z)
         {
             Vector3 feet = CellFeet(layer, x, z);
-            float closest = float.PositiveInfinity;
+            double closest = double.PositiveInfinity;
             foreach (Vector3 member in members)
-                closest = MathF.Min(closest, Vector3.DistanceSquared(feet, member));
+            {
+                double dx = (double)feet.X - member.X;
+                double dy = (double)feet.Y - member.Y;
+                double dz = (double)feet.Z - member.Z;
+                closest = Math.Min(closest, dx * dx + dy * dy + dz * dz);
+            }
             return closest;
         }
 
@@ -71,6 +79,13 @@ public sealed partial class GridPathPlanner
         return new Vector3(centre.X, grid.SurfaceHeightAt(x, z)!.Value, centre.Y);
     }
 
+    static double RegionDistanceXz(Vector2 from, Vector2 to)
+    {
+        double dx = (double)from.X - to.X;
+        double dz = (double)from.Y - to.Y;
+        return Math.Sqrt(dx * dx + dz * dz);
+    }
+
     // A cheap same-layer link can undercut XZ distance just like a cross-layer link. Use zero
     // priority for the whole query when any admitted link makes the spatial lower bound uncertain.
     bool RegionLinksPreserveDistance()
@@ -83,7 +98,7 @@ public sealed partial class GridPathPlanner
             {
                 (int targetLayer, int tx, int tz) = Decode(targetId);
                 if (targetLayer != layer || !float.IsFinite(cost) ||
-                    cost < Vector2.Distance(from, _space.Layers[targetLayer].CellCenter(tx, tz))) return false;
+                    cost < RegionDistanceXz(from, _space.Layers[targetLayer].CellCenter(tx, tz))) return false;
             }
         }
         return true;

@@ -183,11 +183,12 @@ Stored: one layer, 16 node slots, 16 accepted nodes, 84 directed exits,
 ```
 
 The timing covers `BuildProfile` only and is one observation, not a startup or wall-clock guarantee. The
-bridge uses small authored surfaces. Existing issues [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)
-and [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238) remain outside this scope. A filtered P3
-world without populated ground statics cannot supply capture ground, and small local physics coordinates or
-rebasing are required for large absolute positions. There is no ground-sampler fallback and no claim of full
-Hollowmere or steep-bank coverage from this profile.
+bridge uses small authored surfaces. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233) remains
+an open adoption prerequisite for steep meshes and filtered ground. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
+is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. A filtered P3 world without
+populated ground statics cannot supply capture ground, and small local physics coordinates or rebasing are
+required for large absolute positions. There is no ground-sampler fallback and no claim of full Hollowmere or
+steep-bank coverage from this profile.
 
 ## Range steering and movement drivers
 
@@ -381,6 +382,7 @@ The game owns target identity and validity, nominal range, run choice, cancellat
 server reach check. Player automation emits ordinary client commands, and the authority simulates those commands.
 There is no server-side player following or action queue. A server consumer reads the authoritative body, applies
 its game tolerance once, and decides whether an action is still legal. Missing capture columns and exact outer-edge
-misses stay blocked. Existing issues [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)
-and [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238) remain caveats. This package has no full
-Hollowmere proof or fix and makes no consumer adoption or release-tag claim.
+misses stay blocked. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233) remains an open adoption
+prerequisite for steep meshes and filtered ground. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
+is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. This package has no full Hollowmere
+proof or fix and makes no consumer adoption or release-tag claim.

@@ -7626,10 +7626,11 @@ accepted nodes, 84 directed exits, zero accepted links and zero candidate links.
 `X=[0,4)`, `Z=[-4,0)`, cell size 1 m, probe height 5 m, range 10 m, slope 0.8, `MaxCells=128`,
 `MaxLayerCells=512`, four surfaces per column, `1 / 30` edge slices and 64 edge steps. The profile tuning was
 radius 0.2 m, half-height 0.75 m, step 0.4 m and slope 0.8. This is one normal fixture observation, not a
-startup or wall-clock guarantee. Existing issues [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)
-and [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238) remain outside scope. Small local physics
-coordinates or rebasing are required for large absolute requests. There is no ground-sampler fallback and no
-full Hollowmere or steep-bank guarantee. The NPC and player driver APIs are documented below.
+startup or wall-clock guarantee. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233) remains an
+open adoption prerequisite for steep meshes and filtered ground. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
+is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. Small local physics coordinates or
+rebasing are required for large absolute requests. There is no ground-sampler fallback and no full Hollowmere or
+steep-bank guarantee. The NPC and player driver APIs are documented below.
 
 ### Range steering, NPC stepping and client path commands
 
@@ -7753,8 +7754,9 @@ follower.Reset();
 
 The capture may be disposed after `BuildProfile`. The profile keeps immutable captured data, while the game
 continues to own `context`, the physics world and the provider lifetime used by each live step. Missing columns
-and exact B14 outer-edge misses remain blocked. There is no sampler fallback. Existing issues [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)
-and [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238) remain caveats.
+and exact B14 outer-edge misses remain blocked. There is no sampler fallback. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)
+remains an open adoption prerequisite for steep meshes and filtered ground. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
+is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix.
 
 The client adapter reads `WorldClient.LocalPredictedState.Move` for the geometry snapshot. That is the current
 simulation state without presentation interpolation or correction offsets. `LocalRenderState` is for the avatar,

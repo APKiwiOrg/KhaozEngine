@@ -31,12 +31,15 @@ public sealed partial class StatePersistence<TState>
         // Read the account's outstanding write, if any, on the SERVER THREAD, before the load task starts: the
         // save-on-leave that has to be waited for was published from this same drain, one event earlier.
         savesInFlight.TryGetValue(persistenceKey, out Task? outstandingSave);
-        Track(LoadOnJoinAsync(slot, accountId, persistenceKey, token, outstandingSave));
+        var request = new PersistenceLoadRequest(slot, accountId, persistenceKey, Key(persistenceKey));
+        Track(LoadOnJoinAsync(request, token, outstandingSave));
     }
 
-    private async Task LoadOnJoinAsync(int slot, string accountId, string persistenceKey, long token,
-        Task? outstandingSave)
+    private async Task LoadOnJoinAsync(PersistenceLoadRequest request, long token, Task? outstandingSave)
     {
+        int slot = request.Slot;
+        string accountId = request.AuthenticatedAccountId;
+        string persistenceKey = request.PersistenceKey;
         if (outstandingSave is not null)
         {
             // A write for this key is still in the air - on the kick path it is the session this one just displaced,
@@ -53,14 +56,14 @@ public sealed partial class StatePersistence<TState>
                     + "session's last state.", ex);
             }
         }
-        byte[]? data = await store.LoadAsync(Key(persistenceKey)).ConfigureAwait(false);
+        (byte[]? data, bool fromFallback) = await LoadRecordAsync(request).ConfigureAwait(false);
         if (data is null)                                  // no save -> keep wherever the join built them (spawn, or this account's hint)
         {
             ClearGuard(persistenceKey, token);             // brand-new player: nothing stored to clobber, drop the guard now
             return;
         }
-        // The baseline is NOT set here any more: it moves to apply time (DrainApplyQueue), so a quarantined record is
-        // never marked clean. A read fault propagates out of this task and the guard deliberately stays set (outage
+        // The baseline moves only at apply time, so a quarantined record is never marked clean and an accepted
+        // fallback stays dirty for its first primary save. A read fault leaves the guard set (outage
         // retry). An undecodable record read fine but won't parse, so route it through quarantine instead of faulting
         // the task and stranding the guard forever.
         TState state;
@@ -72,17 +75,17 @@ public sealed partial class StatePersistence<TState>
             if (!binding.Decode(data, out state, out game))
             {
                 applyQueue.Enqueue(new PendingApply(slot, accountId, persistenceKey, token, data, default!, null,
-                    "undecodable record"));
+                    "undecodable record", fromFallback));
                 return;                                    // guard stays set until the drain quarantines and clears it
             }
         }
         catch (Exception ex)
         {
             applyQueue.Enqueue(new PendingApply(slot, accountId, persistenceKey, token, data, default!, null,
-                $"undecodable record: {ex.Message}"));
+                $"undecodable record: {ex.Message}", fromFallback));
             return;                                        // guard stays set until the drain quarantines and clears it
         }
-        applyQueue.Enqueue(new PendingApply(slot, accountId, persistenceKey, token, data, state, game, null));
+        applyQueue.Enqueue(new PendingApply(slot, accountId, persistenceKey, token, data, state, game, null, fromFallback));
     }
 
     // Drops the guard only when it is still the one THIS session put there. A load left over from a superseded
@@ -100,7 +103,7 @@ public sealed partial class StatePersistence<TState>
     // forgotten, the player is RESET to the host's configured spawn as a teleport, the guard clears and the baseline
     // is untouched (so that fresh state overwrites the bad primary next pass), and OnRecordQuarantined fires. On
     // success: position first (as a teleport only when it actually moves the player - see below), then the opaque
-    // game blob (only when present and a hook is set), then advance the baseline to the loaded bytes, record the
+    // game blob (only when present and a hook is set), then set a primary baseline or keep a fallback dirty, record the
     // resume hint, then clear the guard. Shared by Update and FlushAsync so both paths validate identically.
     private void DrainApplyQueue()
     {
@@ -200,7 +203,9 @@ public sealed partial class StatePersistence<TState>
             server.SetPlayerState(a.Slot, a.State, teleport: moved);
             if (a.Game is { Length: > 0 } && config.ApplyGameState is { } apply)
                 apply(a.Slot, a.PersistenceKey, a.Game);
-            lastSaved[a.PersistenceKey] = a.Raw;
+            // A converted record has not reached the primary store, even if an older session cached identical bytes.
+            if (a.FromFallback) lastSaved.TryRemove(a.PersistenceKey, out _);
+            else lastSaved[a.PersistenceKey] = a.Raw;
             hints.Record(a.PersistenceKey, binding.PositionOf(a.State));
             ClearGuard(a.PersistenceKey, a.Token);
         }

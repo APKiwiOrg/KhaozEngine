@@ -141,7 +141,8 @@ oversized game message.
 | `ItemSlot` | `readonly record struct (ItemStack Stack, ReadOnlyMemory<byte> Payload, bool Quarantined)` | 4.3 |
 | `ItemContainerPage` | one page's slots plus its content version stamp and dirty flag | 5.3 |
 | `PagedItemContainer` | page geometry, capacity gate, page lookup, dirty set | 5.6 |
-| `ItemContainerPageCodec` | `Encode`, `TryDecode`, `Validate`, `Version` | 4.4, 5.3 |
+| `ItemContainerPageCodec` | version 2 writer/reader, `Encode`, `TryDecode`, `Validate`, `Version`, sole `ContainerPageSlots` owner | 4.4, 5.2, 5.3 |
+| `ItemContainerPageReason` | seven transient page-level diagnostic tokens, no durable ordinals | 4.4 |
 | `InstanceIdAllocator` | node-prefixed, durable high-water mark, `Rotate` | 3.6 |
 | `InstanceValidator` | `Validate(page, snapshot)` returning findings | 12.2 |
 | `InstanceValidationReport`, `InstanceValidationFinding` | accumulating, side-effect free | 12.2 |
@@ -190,7 +191,8 @@ This document uses the seam and declares none of it.
 | `ItemStack` | gains a third component, `long InstanceId`, defaulting to 0 | 4.2 |
 | `ItemContainer.SetSlotAt` | the payload-carrying codec door | 4.7 |
 | `ItemContainer.TakeSlotAt` | the payload-carrying take | 4.7 |
-| `ItemContainerCodec.Version` | becomes a `public const ushort` at 2, with the version 1 reader kept | 4.4 |
+| `ItemContainerCodec.Version` | codec family's current `public const ushort` at 2, while this type still reads and writes version 1 | 4.4, 4.5 |
+| `ItemContainerCodec.Version1` | legacy `public const byte` at 1, used by its reader and writer | 4.5 |
 
 `KhaozEngine.TileWorld.Netcode`, modified:
 
@@ -792,6 +794,9 @@ and break every stored v1 bank in the fleet.
 page, which is twenty bytes on a ten page bank, and it catches a page written into the wrong section,
 which is section 13's row 10 and is otherwise silent.
 
+An entry's relative `Slot` must be less than that page's own `SlotCount`. A value at or past the bound
+refuses the page with `page-entry-malformed`, even when it would fit the caller's larger page geometry.
+
 **`EntryCount` is explicit, unlike version 1.** Version 1 derived the entry count from the blob length
 because every entry was exactly ten bytes (`ItemContainerCodec.cs:57`). Version 2's entries are variable
 length, so the count is declared and the decoder refuses a blob that runs out of bytes before the count
@@ -817,6 +822,19 @@ bytes VERBATIM plus eleven bytes of its own header (12.4), so an entry that quar
 - A QUARANTINED entry's payload is the wrapper, and its bound is the page's own: the journal's 2 MiB
   projection section cap less the rest of the page (`JournalLimits.cs:16`). 5.4 carries the arithmetic.
 
+That quarantine bound is only exceeded when the whole page exceeds 2 MiB: a payload cannot be larger
+than the page carrying it. The operative encoder limit is the entire encoded page, enforced by
+`ItemContainerPageCodec.MaxPageBytes`. It is a separate Foundation-layer declaration mirroring
+`KhaozEngine.WorldStore.Journal.JournalLimits.EngineMaximumProjectionSectionBytes` in the Server layer.
+Both currently equal `2 * 1024 * 1024` and must stay aligned when the ceiling changes. This preserves
+the existing layering without moving either constant or adding a project reference.
+
+`ItemContainerPageReason` names seven page-level diagnostics: `page-version`, `page-truncated`,
+`page-slot-origin`, `page-slot-order`, `page-entry-count`, `page-entry-malformed` and
+`page-trailing-bytes`. They are not durable ordinals. A failed page quarantines as a unit at load (5.5),
+while the `KECQ.ReasonCode` byte belongs to the payload/entry quarantine set in 12.4. Malformed varints
+retain their own `ContentVarint` token, and legacy-reader failures retain that reader's message.
+
 The case this exists for is a cap RAISE, which contracts 9.6 makes backward compatible and open question 4
 expects. Engine 20.x raises the cap to 1,024, a six socket item reaches 700 bytes, and a shard still on
 19.x loads the page: check 5 fires, the entry quarantines, the wrapper is about 711 bytes, and it has to
@@ -833,13 +851,16 @@ against `:61-63`, flagged at `a-engine.md:83-101`). `BitConverter` is forbidden.
 **A version 2 reader reads a version 1 blob unchanged, and a version 2 writer never produces one.**
 Concretely:
 
-- `ItemContainerCodec.TryDecode` dispatches on byte 0. Value 1 runs the existing version 1 path verbatim
-  (`ItemContainerCodec.cs:49-68`) and seats every slot with instance id 0, an empty payload and the
-  quarantined flag clear.
-- The version 1 path's `Validate` rules are kept exactly as they are, all eleven of them
-  (`ItemContainerCodec.cs:74-104`), including the refusal of a blob whose declared slot count is not the
-  caller's. That refusal is load bearing for Grimhollow, whose `WidenBag` and `NarrowBag` helpers exist
-  precisely because of it (`b-grimhollow.md:88-102`).
+- `ItemContainerCodec.Encode` remains the version 1 writer and writes the byte `Version1 = 1`.
+  `ItemContainerCodec.Version` is the codec family's current ushort value 2, not the format this legacy
+  writer emits. `ItemContainerPageCodec.Encode` is the version 2 writer in `KhaozEngine.ItemInstances`.
+- `ItemContainerPageCodec.TryDecode` dispatches on byte 0. Value 1 delegates to the legacy
+  `ItemContainerCodec.Validate` and `TryDecode` path and seats every slot with instance id 0, an empty
+  payload and the quarantined flag clear. Other values use the ushort version field.
+- Standalone `ItemContainerCodec.Validate` keeps its strict declared-slot-count check. The page bridge
+  accepts a positive legacy geometry no wider than the requested page, validates against that declared
+  geometry, and exposes page zero at the requested geometry with unused tail slots empty. It does not
+  pre-widen or rewrite the stored bytes. A legacy container wider than the page is refused.
 - A version 1 blob carries no content version stamp. The decoded page takes stamp 0, which is older than
   every published version, so the FULL remap rule set applies to it on the first load (contracts 8.3).
   That is the correct answer and it is free: rule application is a scan that is a no-op on a page holding
@@ -930,7 +951,9 @@ containers and coalesced commits in scope in the same sentence (#882 comment 3).
 
 ### 5.2 Page geometry and section naming
 
-**A page is 100 slots.** `ContainerPageSlots = 100`, a `public const int`.
+**A page is 100 slots.** `ItemContainerPageCodec.ContainerPageSlots = 100` is the sole `public const int`
+declaration. `ItemContainerPage` and `PagedItemContainer` reference it for their geometry rather than
+declaring another copy.
 
 One hundred rather than 128, deliberately. The power of two buys a shift instead of a divide, which a
 compiler turns into a multiply either way, and it costs legibility everywhere a human reads a page

@@ -429,8 +429,10 @@ geometry is refused whole. This widening belongs to `ItemContainerPageCodec` onl
 - `FirstSlot` is redundant against `PageIndex` ON PURPOSE. It costs two bytes per page and it is what catches
   a page written into the wrong section. `SlotCount` is bounded by the caller's geometry in the same breath
   and under the same `page-slot-origin` token, so a page cannot declare more slots than the container it is
-  read into holds. That bound is ONE SIDED: a short last page is legal, so an equality would refuse a
-  container whose slot count is not a whole number of pages.
+  read into holds. The general codec keeps that ONE SIDED bound and accepts shorter version 2 wire pages,
+  with each entry bounded by its own page's declared count. The journal `ContainerLoad` binding requires
+  the full 100-slot version 2 geometry before seating. The version 1 bridge already reports that full
+  geometry, so smaller legacy containers remain readable.
 - `EntryFlagQuarantined` is bit 0 of an entry's flags. Bits 1 to 31 are reserved and 0 in v1. The flag is
   what says a payload is a wrapper, rather than a sniff for the `KECQ` magic.
 - The two payload bounds contradict on purpose. A NON-quarantined payload is capped at
@@ -504,8 +506,9 @@ The four capacity rules, which are one consumer's bag model restated as engine b
 **Every page declares the FULL geometry.** Slot space is always the whole multiple, so a 30 slot bag is ONE
 full page whose capacity is 30 rather than a page declaring 30 slots. Slot 743 is page 7 slot 43 for every
 container in the fleet, a bag that grows from 30 slots to 40 is a capacity edit rather than a re-paging of
-stored bytes, and a stored page declaring fewer slots than the geometry is a codec level anomaly for the load
-path to refuse. `ContainerPageSlots` itself has ONE home, on `ItemContainerPageCodec`, and the page
+stored bytes. `ContainerLoad` refuses any version 2 width other than 100 as a whole-page `page-slot-origin`
+finding after codec and section checks. Stored bytes remain unchanged, and valid sibling pages still load.
+`ContainerPageSlots` itself has ONE home, on `ItemContainerPageCodec`, and the page
 references it rather than declaring a second copy.
 
 **Entries are SPARSE and nothing compacts them.** A hole is the absence of an entry and costs zero bytes, so

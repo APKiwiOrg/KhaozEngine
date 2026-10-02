@@ -9,6 +9,13 @@ run identical code.
 Two overloads share one horizontal core (camera-relative WASD axis, normalised diagonals, walk/run speed,
 optional steep-terrain wall slide via a ground-normal delegate):
 
+`MoveCommand` keeps its five-argument constructor and its legacy defaults. That constructor and `default(MoveCommand)`
+leave `ScaleSpeedByAxis` false. A nonzero player axis made with that constructor, or with `scaleSpeedByAxis: false`,
+is normalized to full speed and still uses the legacy dead zone. The
+six-argument constructor opts into `ScaleSpeedByAxis`: the nonzero axis length becomes a speed fraction clamped to 1,
+including fractions below that dead zone. Nonfinite precise axes or yaw request idle. Both choices feed the same
+movement core, and the old default remains unchanged.
+
 - **`Step(Vector3, in MoveCommand, float, groundHeight, in MoveTuning, groundNormal?, medium?) -> Vector3`**
   Horizontal-only step. Y is clamped to `groundHeight(x, z) + halfHeight` every tick. No air, no vertical
   physics. Use for top-down or no-jump scenarios.
@@ -47,8 +54,9 @@ optional steep-terrain wall slide via a ground-normal delegate):
   The world-space kinematic step for **server-authoritative, non-player agents (enemy NPCs)**. It drives the SAME
   collision resolution the player gets - swept collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`,
   the analytic terrain support floor, the `groundNormal` wall slide, and the `clampXz` bounds - but from a
-  **world-space steering direction** instead of a camera yaw. `worldDir` is an XZ direction whose length scales speed
-  in `[0,1]` (unit = full speed, shorter = a slower saunter, longer clamped to full; near-zero = idle). Per-agent
+  **world-space steering direction** instead of a camera yaw. `worldDir` is an XZ direction. The retained signature
+  normalizes finite input above the legacy dead zone and uses `min(length, 1)` as its speed fraction, so a shorter
+  direction is a slower step and a longer direction is capped at full speed. Per-agent
   capsule radius / half-height / walk-run speed come from `MoveTuning`, so different creatures get different sizes and
   speeds with no extra plumbing. **No jump bit** (NPCs do not jump in v1) and **no client prediction** (AI is
   server-only). Both the camera-relative player `Step` and this world-space `StepTowards` resolve their input to one
@@ -57,10 +65,17 @@ optional steep-terrain wall slide via a ground-normal delegate):
   `MoveState.FacingYaw` toward the steering direction, so an NPC's heading is authoritative with no camera and no
   extra plumbing (the AI path never has a `FaceCamera` target: there is no camera on it).
 
+  The additive overload inserts required `bool preserveSmallMagnitude` immediately after `in MoveTuning` and before
+  the optional providers. Set it to `true` to preserve finite nonzero direction magnitude, including values below the
+  legacy dead zone, through the same terrain, physics, medium and bounds core. Set it to `false` to retain the legacy
+  resolver. Precise direction is normalized safely and its speed fraction is capped at 1.
+
 - **`CameraRelativeDir(in MoveCommand) -> Vector2`** (14.9.0)
-  The **commanded** camera-relative travel direction as a unit XZ vector (`Vector2.Zero` when idle, inside the
-  1e-6 length-squared dead-zone), the exact direction the authoritative/prediction `Step` resolves the command to
-  before it moves. For a consumer driving **explicit model facing** (facing the model toward where it is COMMANDED
+  The **commanded** camera-relative travel direction as a unit XZ vector. Legacy commands return `Vector2.Zero` inside
+  the 1e-6 length-squared dead-zone. Precise commands with `ScaleSpeedByAxis` set return their unit direction for any
+  finite nonzero axis, including one below that legacy dead zone. Nonfinite precise input remains idle. This is the
+  exact direction the authoritative/prediction `Step` resolves the command to before it moves. For a consumer driving
+  **explicit model facing** (facing the model toward where it is COMMANDED
   to travel, distinct from the direction the measured render position drifts): a commanded-facing yaw is just
   `MathF.Atan2(dir.X, dir.Y)` (world radians about +Y, 0 = +Z), gated on the vector being non-zero. Shares the ONE
   camera basis the step uses (`forward = (-sinYaw, -cosYaw)`, `right = (cosYaw, -sinYaw)`), so the public facing and
@@ -356,6 +371,9 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   changes `MoveState.FacingYaw`, so a strafing character keeps its body pointed at the
   camera and - the case that is impossible without it - a character with NO movement input can turn on the spot.
   `false` (the default, and what every pre-facing construction site produces) is the pre-facing behaviour exactly.
+  Its retained constructor also keeps nonzero axes at legacy full speed. The six-argument overload's final
+  `scaleSpeedByAxis` choice opts into preserving the axis length as a speed fraction, including a fraction below the
+  legacy dead zone. Nonfinite precise axes or yaw are idle.
   Since 17.30.0 the flag can also change the SPEED, since a character with a fixed front can be charged for moving
   sideways or backwards relative to it (see "Directional speed under `FaceCamera`"), which is opt-in and neutral by
   default.
@@ -416,8 +434,11 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   nothing".
 - **`CharacterMovement.IntendedHorizontalTargetAtSpeed(position, cmd, dt, speed)`** (14.27.0) - the unconstrained
   target a command reaches in one step at an EXPLICIT speed. The existing `IntendedHorizontalTarget(..., tuning,
-  speedScale)` now delegates to it, so the two share one camera basis. Correct for any caller whose travel
-  direction is its input direction, which is every grounded step and every airborne one without momentum.
+  speedScale)` delegates to it for legacy commands. Precise tuning intent uses the shared resolved axis/facing
+  fraction and effective walk/run pace. Precise scalar intent shares the camera resolver, preserves finite nonzero
+  input below the legacy dead zone and applies the caller's already resolved speed once. Public signatures and old
+  unflagged behavior are retained. Correct for any caller whose travel direction is its input direction, which is
+  every grounded step and every airborne one without momentum.
 - **`CharacterMovement.IntendedHorizontalTargetAtVelocity(position, velocity, dt)`** (16.0.0) - the vector form,
   `position.XZ + velocity * dt`. No command and no camera basis, because the direction comes from the velocity.
   Pair it with `CommandedVelocity`. This is the form the movement-anomaly check uses.

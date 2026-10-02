@@ -6468,7 +6468,8 @@ space, and the default `SamplerSpace.World` silently misses every ray and flatte
 A non-player, server-simulated agent (an enemy NPC) needs the SAME collision the player gets - swept
 collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`, the terrain support floor, the wall slide,
 and the play-area clamp - but it steers by an actual **world heading** (toward its target), not a camera yaw.
-Drive it with `StepTowards`, which takes a world-space XZ direction whose length scales speed in `[0,1]`:
+Drive it with the retained `StepTowards` signature, which takes a world-space XZ direction, normalizes finite input
+above the legacy dead zone and uses `min(length, 1)` as its speed fraction:
 
     // In the authoritative server tick, once per agent. enemyTuning carries this creature's capsule
     // radius/half-height and walk/run speed, so different creatures move at different sizes/speeds.
@@ -6479,12 +6480,22 @@ Drive it with `StepTowards`, which takes a world-space XZ direction whose length
                                           groundNormal: probe.NormalDelegate, world: world,
                                           clampXz: bounds.Clamp);
 
+The additive `StepTowards` overload inserts required `preserveSmallMagnitude` immediately after `enemyTuning` and
+before the optional providers. Pass `true` when the world direction's finite nonzero length is a deliberate speed
+fraction, including a value below the legacy dead zone. It uses the same movement core and caps the fraction at 1.
+Pass `false` to retain the legacy resolver. For example, a path driver can preserve a final partial step as follows:
+
+    Vector2 preciseDirection = new(0f, -0.125f);
+    agent = CharacterMovement.StepTowards(agent, preciseDirection, run: chasing, dt,
+                                          probe.HeightDelegate, enemyTuning, preserveSmallMagnitude: true,
+                                          groundNormal: probe.NormalDelegate, world: world,
+                                          clampXz: bounds.Clamp);
+
 Internally the camera-relative player `Step` and the world-space `StepTowards` resolve their input to the same
 shape (a unit direction + a speed fraction) and share one collision core, so an agent walks into a wall, mounts a
 stair, is denied a too-steep slope, and is held inside the bounds **exactly** as a player would - parity by
 construction. There is no jump bit (NPCs do not jump in v1) and no client-prediction path (AI is server-only).
-Shrink `toTarget` below unit length for a slower saunter (e.g. a patrol), or pass a longer vector (clamped to full
-speed).
+Use the additive overload below when a patrol or final approach needs a deliberate speed fraction.
 
 **Commanded facing without re-deriving the camera basis (`CharacterMovement.CameraRelativeDir`, 14.9.0).** When you
 want the local model to face the direction it is COMMANDED to travel (steadier than the direction the measured
@@ -10669,6 +10680,13 @@ carried `MoveState` (position + vertical velocity + grounded + feel timers). The
 wraps the vertical step; the authoritative server and client prediction run the same `Step`, so the vertical axis
 reconciles identically.
 
+The retained `MoveCommand(move, run, cameraYaw, jump, faceCamera)` constructor and `default(MoveCommand)` leave
+`ScaleSpeedByAxis` false. They keep nonzero player axes normalized to full speed and keep the legacy dead zone. The
+six-argument overload adds `scaleSpeedByAxis`: set it to `true` to
+preserve the finite nonzero axis length as a speed fraction clamped to 1, including a fraction below that dead zone.
+Set it to `false` for the legacy resolver. Nonfinite precise axes or yaw request idle. Both forms use the same movement
+core, so the default manual-input path is unchanged.
+
 **3D collision (swept resolver).** When an `IPhysicsWorld` is supplied, the vertical-physics step resolves
 against static props via a **substepped swept collide-and-slide** (`SweepCapsule`): the capsule is advanced in
 substeps no larger than a fraction of its radius, so a fast jump / sprint / terminal fall cannot tunnel through a
@@ -10689,6 +10707,9 @@ Vector3 next = CharacterMovement.Step(pos, new MoveCommand(move, run, cameraYaw)
 MoveState s = CharacterMovement.Step(s, new MoveCommand(move, run, cameraYaw, jump), dt, terrain.GroundHeight, MoveTuning.Default,
                                      groundNormal: terrain.GroundNormal, world: physicsWorld);
 // s.Position, s.VerticalVelocity, s.Grounded
+
+// Explicit final-step fraction for a path or analog source:
+MoveCommand precise = new(move, run, cameraYaw, jump: false, faceCamera: false, scaleSpeedByAxis: true);
 ```
 
 `KhaozEngine.NetWorld` (`Server` umbrella; deps Locomotion/Netcode/Replication/Ecs, render-free) wires that
@@ -10788,6 +10809,12 @@ var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default
 foreach (EntityRenderState e in client.Snapshot())
     scene.Draw(capsule, Matrix4x4.CreateTranslation(e.Position - up * halfHeight), e.IsLocal ? localTint : remoteTint);
 ```
+
+For a path command that must retain its final speed fraction, send the precise opt-in through the same method:
+`client.SendInput(new MoveCommand(move, run, camera.Yaw, jump: false, faceCamera: false, scaleSpeedByAxis: true))`.
+NetWorld carries that choice in flags byte 12 bit 2 of the fixed 18-byte move frame. Run remains bit 0, `FaceCamera`
+remains bit 1, yaw is at byte 13 and jump is at byte 17. The automatic wire-generation gate rejects an older peer
+before player admission because it would ignore the precise flag and apply full speed.
 
 Client and server must build the **same** terrain field (`TerrainPresets.Clearing()`) and use the same
 `MoveTuning` so prediction matches authority. Props are **not** replicated - each client scatters them
@@ -11285,8 +11312,10 @@ intended target would sit back at the capsule and the whole legitimate arc would
 every airborne tick. With momentum off the exported velocity is exactly `moveDir * CommandedSpeed`, so the
 measurement is arithmetically identical to the pre-16.0.0 one. Again nothing to configure. If you built your own
 check on the public helper, `CharacterMovement.IntendedHorizontalTargetAtVelocity(position, velocity, dt)` is the
-vector form (`IntendedHorizontalTargetAtSpeed` is unchanged and still correct wherever travel direction is input
-direction).
+vector form. The scalar `IntendedHorizontalTargetAtSpeed` signature and legacy behavior are retained. Precise scalar
+commands share the camera resolver and apply the supplied resolved speed once, including input below the legacy
+dead zone. The tuning convenience form retains legacy delegation and uses the shared resolved fraction and effective
+pace for precise commands. Scalar intent remains correct wherever travel direction is input direction.
 
 ---
 
@@ -21623,7 +21652,7 @@ var server = new WorldServer(transport, config, terrain.SampleHeight, MoveTuning
 
 3. *Graceful decode (last resort).* Even if both above are bypassed, an undecodable snapshot (an unregistered BUILT-IN component type id from a newer core protocol) becomes a clean `DisconnectReason.IncompatibleVersion` disconnect plus a `SnapshotDecodeFailed` event - never an unhandled exception in your frame loop. (An unregistered consumer *extension* id, at/above `ReplicationRegistry.FirstExtensionTypeId`, is skipped instead, so a newer server's added component never disconnects an older client - see the server-owned NPCs section above.)
 
-**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 12 as of the owner-only movement timers, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, 10 the move frame's flags byte plus `MovementState.FacingYawQ` together, 11 `MovementState.Commitment`, and 12 moving the two feel timers into the owner-only `MovementOwnerState` built-in) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
+**Engine wire generation (enforced automatically since 10.2.0).** 10.0.0 widened `NetId` to 64-bit on the wire (the snapshot/delta id field and the frame header, `[localNetId:long][ackSeq:int]`, grown 8 -> 12 bytes) with NO dual-format wire, so a 10.0.0 peer and a pre-10.0.0 peer MUST reject each other at connect rather than misparse a 64-bit frame as 32-bit. As of 10.2.0 the engine does this for you, independent of your `ProtocolVersion`: `WorldClient` always folds `MoveProtocol.WireProtocolVersion` (= 13 as of precise movement command fractions, up from 1 for the pre-10.0.0 32-bit line, with generations 3 to 7 each adding a field to the movement built-in codec, 8 adding the whole new `PickupState` built-in, 9 the floating-origin frame-relative position, 10 the move frame's flags byte plus `MovementState.FacingYawQ` together, 11 `MovementState.Commitment`, 12 moving the two feel timers into the owner-only `MovementOwnerState` built-in, and 13 adding `MoveCommand.ScaleSpeedByAxis` as bit 2 of the existing flags byte) into its Hello even with no `ProtocolVersion`, and `WorldServer` / `ShardedWorldServer` always install a `WireGenerationAuthenticator` that rejects a wire-generation mismatch, or a peer that presents none (a pre-10.2.0 / 9.x client), cleanly as `DisconnectReason.IncompatibleVersion`. Generation 13 keeps the move frame at 18 bytes, with run bit 0, `FaceCamera` bit 1, precise speed bit 2, yaw at byte 13 and jump at byte 17. Persisted built-in payloads retain their generation-12 layout, including the 56-byte movement payload and 8-byte owner timer frame. You no longer fold `;wire{N}` into your `ProtocolVersion` (the pre-10.2.0 advice is obsolete): the `ProtocolVersion` gate above is now purely your GAME version, checked on top of the automatic wire gate. Both skew directions produce the clean disconnect. Consequences are unchanged from 10.0.0: adopt client and server together across a wire bump (the break is not one-sided), and a server that has written 64-bit cell blobs cannot be downgraded (an old build treats a v2 blob as `SkippedTooNew` and quarantines it). A bare `NetClient` driven straight into a `WorldServer` / `ShardedWorldServer`, bypassing `WorldClient`, must present the wire layer itself via `ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, consumerVersion, innerToken)`.
 
 ```csharp
 client.SnapshotDecodeFailed += err => ShowOutOfDateUI(err);   // "client out of date, please update"

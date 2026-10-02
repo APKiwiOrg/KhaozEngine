@@ -11,8 +11,10 @@ namespace KhaozEngine.NetWorld;
 public static class MoveProtocol
 {
     /// <summary>
-    /// The engine wire-format generation. Bumped only on a breaking change to the on-the-wire snapshot / delta /
-    /// frame-header layout, so it labels the incompatible generations. It is <c>12</c> as of the owner-only movement
+    /// The engine wire-format generation. Bumped when a wire layout or command interpretation changes incompatibly.
+    /// Generation <c>13</c> adds <see cref="MoveCommand.ScaleSpeedByAxis"/> at bit 2 of the move flags byte. Older
+    /// peers would silently apply full speed to precise input, so they must reject at connect. Move frames stay
+    /// 18 bytes and persisted built-in payloads keep their generation-12 layout. <c>12</c> was the owner-only movement
     /// split, which moved <see cref="MovementOwnerState.TimeSinceGrounded"/> and
     /// <see cref="MovementOwnerState.JumpBufferRemaining"/> out of the movement built-in (8 bytes fewer to every AoI
     /// observer) into a new built-in, <see cref="MovementOwnerState"/> at id <see cref="MovementOwnerTypeId"/>, which
@@ -63,7 +65,7 @@ public static class MoveProtocol
     /// <see cref="WorldClientConfig.ProtocolVersion"/> game-version gate still layers on top via
     /// <see cref="VersionCheckingAuthenticator"/>.
     /// </summary>
-    public const int WireProtocolVersion = 12;
+    public const int WireProtocolVersion = 13;
 
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
@@ -287,19 +289,21 @@ public static class MoveProtocol
     // when MoveCommand.FaceCamera arrived. Packing into it rather than appending a byte is deliberate and load-bearing:
     // the client-to-server demux keys a move on LENGTH 18 (see the aliasing contract at the game-message encoder, which
     // pads specifically to avoid landing on 18), so a 19-byte move frame would have been read as a game message by
-    // every server. Bit 0 is run, bit 1 is faceCamera, and the remaining six are free for the next command bit.
+    // every server. Bit 0 is run, bit 1 is faceCamera, and bit 2 is ScaleSpeedByAxis from generation 13.
     private const int MoveSize = 4 + 4 + 4 + 1 + 4 + 1;
     private const byte MoveFlagRun = 0x01;
     private const byte MoveFlagFaceCamera = 0x02;
+    private const byte MoveFlagScaleSpeedByAxis = 0x04;
 
-    /// <summary>Encodes a client move command (including the jump bit and the flags byte's run + face-camera bits).</summary>
+    /// <summary>Encodes a client move command with jump, run, face-camera and precise speed intent.</summary>
     public static byte[] EncodeMove(int seq, in MoveCommand cmd)
     {
         var b = new byte[MoveSize];
         BitConverter.TryWriteBytes(b.AsSpan(0, 4), seq);
         BitConverter.TryWriteBytes(b.AsSpan(4, 4), cmd.Move.X);
         BitConverter.TryWriteBytes(b.AsSpan(8, 4), cmd.Move.Y);
-        b[12] = (byte)((cmd.Run ? MoveFlagRun : 0) | (cmd.FaceCamera ? MoveFlagFaceCamera : 0));
+        b[12] = (byte)((cmd.Run ? MoveFlagRun : 0) | (cmd.FaceCamera ? MoveFlagFaceCamera : 0)
+            | (cmd.ScaleSpeedByAxis ? MoveFlagScaleSpeedByAxis : 0));
         BitConverter.TryWriteBytes(b.AsSpan(13, 4), cmd.CameraYaw);
         b[17] = cmd.Jump ? (byte)1 : (byte)0;
         return b;
@@ -330,7 +334,7 @@ public static class MoveProtocol
             byte flags = data[12];
             bool jump = data[17] != 0;
             cmd = new MoveCommand(new Vector2(moveX, moveY), (flags & MoveFlagRun) != 0, yaw, jump,
-                (flags & MoveFlagFaceCamera) != 0);
+                (flags & MoveFlagFaceCamera) != 0, (flags & MoveFlagScaleSpeedByAxis) != 0);
             return true;
         }
         seq = -1;

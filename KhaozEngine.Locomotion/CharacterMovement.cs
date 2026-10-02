@@ -138,12 +138,8 @@ public static partial class CharacterMovement
         Func<float, float, Vector3>? groundNormal = null, IPhysicsWorld? world = null,
         Func<float, float, Vector2>? clampXz = null,
         Func<float, float, float, MovementMedium>? medium = null)
-    {
-        if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
-        (Vector2 moveDir, float speedFraction) = ResolveWorldDir(worldDir);
-        return StepCore(state, moveDir, speedFraction, run, jump: false, dt, groundHeight, tuning,
+        => StepTowards(state, worldDir, run, dt, groundHeight, tuning, preserveSmallMagnitude: false,
             groundNormal, world, clampXz, medium);
-    }
 
     /// <summary>The shared vertical-physics collision core behind both the camera-relative player
     /// <see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>

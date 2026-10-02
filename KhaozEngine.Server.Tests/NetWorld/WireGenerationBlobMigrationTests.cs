@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Threading.Tasks;
 using KhaozEngine.Ecs;
+using KhaozEngine.Locomotion;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
 using KhaozEngine.Sharding;
@@ -43,7 +44,8 @@ public class WireGenerationBlobMigrationTests
 
     // One player as a build at that generation stored it. From the owner split on, the timers are a frame of their
     // own, which the writer (and the rewrite that brings an older body forward) always emits for a player.
-    private static byte[] BodyAt(int generation, MovementState m, MovementOwnerState owner = default)
+    private static byte[] BodyAt(int generation, MovementState m, MovementOwnerState owner = default,
+        params (ushort, byte[])[] extensions)
     {
         var components = new List<(ushort, byte[])>
         {
@@ -52,7 +54,83 @@ public class WireGenerationBlobMigrationTests
         };
         if (generation >= BuiltinBlobLayout.MovementOwnerWireGeneration)
             components.Add((MoveProtocol.MovementOwnerTypeId, CellBlobFixtures.MovementOwner(owner)));
+        components.AddRange(extensions);
         return new CellBlobFixtures.BodyBuilder().Entity(11, components.ToArray()).ToBody();
+    }
+
+    [Fact]
+    public void GenerationThirteenPreservesTheGenerationTwelveMovementAndOwnerLayout()
+    {
+        byte[] atTwelve = BodyAt(12, CommittedMovement(), Owner());
+
+        Assert.Equal(56, BuiltinBlobLayout.MovementPayloadLength(13));
+        Assert.Equal(BuiltinBlobLayout.NotPresent, BuiltinBlobLayout.PayloadLength(MoveProtocol.MovementOwnerTypeId, 11));
+        Assert.Equal(8, BuiltinBlobLayout.PayloadLength(MoveProtocol.MovementOwnerTypeId, 12));
+        Assert.Equal(8, BuiltinBlobLayout.PayloadLength(MoveProtocol.MovementOwnerTypeId, 13));
+        Assert.Equal(atTwelve, CellBlobRewriter.Rewrite(atTwelve, 12, 13, widenNetIds: false));
+    }
+
+    [Fact]
+    public void UnstampedGenerationTwelveBodyWithEquivalentCandidatesIsUnchanged()
+    {
+        byte[] atTwelve = BodyAt(12, CommittedMovement(), Owner(),
+            (16, CellBlobFixtures.Extension(new byte[] { 0x04, 0x0C, 0x80, 0xFF })));
+
+        byte[] normalized = WireGenerationBlobMigration.NormalizeV3ToV4(atTwelve);
+
+        Assert.Equal(atTwelve, normalized);
+        Assert.Equal(atTwelve, BuiltinBlobLayout.NormalizeToCurrent(atTwelve, 12));
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task GenerationTwelvePersistedBodyAdvancesItsHeaderWithoutChangingCarriedState(int schema)
+    {
+        MovementState m = CommittedMovement();
+        byte[] atTwelve = BodyAt(12, m, Owner(),
+            (16, CellBlobFixtures.Extension(new byte[] { 0x04, 0x0C, 0x80, 0xFF })));
+        var store = new InMemoryWorldStore();
+        await store.SaveAsync("cell:0:0", CellBlobFixtures.Wrap(schema, 12, atTwelve));
+        var host = new ShardPersistenceHost(MoveProtocol.CreateRegistry(), exposeRegistry: true);
+        var persistence = new CellPersistence(host, store);
+        var issues = new List<CellPersistenceIssue>();
+        persistence.Issue += issues.Add;
+
+        await persistence.PreloadAsync();
+        persistence.SaveDirtyPass();
+        await persistence.FlushAsync();
+
+        Assert.Equal(CellBlobFixtures.Wrap(4, 13, atTwelve), await store.LoadAsync("cell:0:0"));
+        Assert.DoesNotContain(issues, i => i.Kind == CellPersistenceIssueKind.QuarantinedCorrupt);
+        Assert.DoesNotContain(issues, i => i.Kind == CellPersistenceIssueKind.SkippedTooNew);
+        Assert.Contains(issues, i => i.Kind == CellPersistenceIssueKind.Migrated);
+        Assert.Contains(issues, i => i.Kind == CellPersistenceIssueKind.RetainedUnknownExtensions && i.RetainedFrameCount == 1);
+        Assert.True(host.Shard.TryGetCell(C00, out CellSim cell));
+        Assert.True(cell.TryGetOwned(11, out Entity entity));
+        Assert.Equal(m, cell.World.Get<MovementState>(entity));
+        Assert.Equal(m.Commitment, cell.World.Get<MovementState>(entity).Commitment);
+        Assert.Equal(Owner(), cell.World.Get<MovementOwnerState>(entity));
+        Assert.Equal(atTwelve, host.SnapshotCell(C00));
+    }
+
+    private static MovementState CommittedMovement()
+    {
+        MovementState movement = Movement();
+        movement.Commitment = new MovementCommitment
+        {
+            Sequence = 77,
+            Phase = MovementCommitmentPhase.Airborne,
+            Direction = new Vector2(0.6f, -0.8f),
+            HorizontalSpeed = 3.25f,
+            VerticalSpeed = 7.5f,
+            Gravity = 17f,
+            PreparationRemaining = 0.125f,
+            RecoveryRemaining = 0.5f,
+            TimeoutRemaining = 4.75f,
+            EndReason = MovementCommitmentEndReason.Blocked,
+        };
+        return movement;
     }
 
     [Fact]

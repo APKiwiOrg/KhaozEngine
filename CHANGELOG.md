@@ -14,6 +14,17 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Its prop focus, default roof observer and region ring follow the target, retaining overlapping regions and
   settling new materialised regions and selected prop layers before capture. Resolves
   [#1231](https://github.com/APKiwiOrg/KhaozEngine/issues/1231).
+- Round 2 A opens the movement kernel's precise command support. The retained five-argument `MoveCommand`
+  constructor keeps legacy full-speed normalization and its dead zone. The six-argument overload opts into
+  `ScaleSpeedByAxis`, which preserves finite nonzero axis length as a speed fraction, including fractions below the
+  legacy dead zone. The additive `StepTowards` overload takes `preserveSmallMagnitude` after tuning so NPC steering
+  can retain the same small fractions through the shared movement core.
+- Precise intent uses bit 2 of the existing move flags byte. Run remains bit 0, `FaceCamera` remains bit 1, yaw
+  remains at byte 13, jump remains at byte 17, and the move frame remains exactly 18 bytes. Wire generation 13 is
+  enforced automatically at connect, rejecting older peers before they can apply precise input at full speed.
+- Persisted built-in payloads keep their generation-12 layout. The explicit generation-13 movement payload remains
+  56 bytes, the owner timer frame remains 8 bytes, and restoring a generation-12 body updates the header without
+  changing body bytes, commitments or opaque extension frames.
 
 ## 20.17.0
 

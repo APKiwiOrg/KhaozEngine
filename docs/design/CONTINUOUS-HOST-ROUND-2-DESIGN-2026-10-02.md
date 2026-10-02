@@ -1,7 +1,8 @@
 # Continuous host, round 2: movement, reach and physics navigation
 
-Status: approved by the owner on 2026-10-02. Four implementation plans are written.
-No implementation has started. The build slot remains with Grimhollow P3.
+Status: approved by the owner on 2026-10-02. Plan A is complete and verified at staged 20.18.0 with wire generation 13.
+The owner released the P3 build slot and authorized Plan A execution. Plans B, C and D have not started.
+Engine tagging and consumer adoption remain pending.
 
 Consumer: Grimhollow continuous movement phase P4, before P5 NPCs and interactions and P6 combat.
 Engine issue: [#1223](https://github.com/APKiwiOrg/KhaozEngine/issues/1223).
@@ -24,8 +25,10 @@ route from arrival. The owner then releases the engine. Grimhollow adopts that r
 `feature/continuous-movement`, never on its released tile `main` during the pivot.
 Ruinborne adopting these helpers is optional. This round changes no game repository.
 
-This document is a design artifact. Builds, tests, bakes and pack commands are deferred while the
-Grimhollow P3 chat owns the dev Mac's single build slot. A text review is not execution evidence.
+This document is a design artifact. The owner released Grimhollow P3's build slot and authorized Plan A execution.
+Plan A's final full Release verification, including the precise-intent helper fix, built with zero warnings and ran
+28 test assemblies with 23,042 passed, 0 failed and 1,269 skipped. Later plans, their bakes, engine tagging and consumer
+adoption remain pending.
 
 ## Decisions
 
@@ -51,7 +54,7 @@ Existing O and T rulings are not reopened.
 | D15 | State lifetime | One follower per moving body or client automation request. Reset on target identity, shape, range or traversal-profile changes, teleport and cancellation. Position drift uses the follower's cooldown. |
 | D16 | Facing and brains | Travel facing remains the mover's output. Target-facing holds, wander, leash, retaliation, conversation freeze and action dispatch stay game-owned. |
 | D17 | Branches | Four plans and branches. Command fraction, navigation contracts, reach plus physics bake, then movement drivers and acceptance. One building worker at a time when authorized. |
-| D18 | Version and release | Target one additive minor, 20.18.0 if free. The integration owner opens or selects the staged version once. Later branches ride it. Docs do not bump. Only the owner starts tagging. |
+| D18 | Version and release | The integration owner selected additive minor 20.18.0 once. Later branches ride it. Plan A records the version and wire generation 13 on its task branch. There is no release or consumer adoption yet. Only the owner starts tagging. |
 
 ## Approaches considered
 
@@ -105,7 +108,8 @@ architecture test file owns its exact references, keeping the existing file-size
 
 ## 2. Shape reach
 
-API sketches below are proposed new public contracts, not claims that these names ship in 20.17.0.
+API sketches below are proposed public contracts. Plan A's command fraction APIs are implemented on its task branch at 20.18.0,
+the remaining sketches are not claims that all names ship before Plans B, C and D start.
 
 ```csharp
 public readonly struct MovementBody
@@ -500,11 +504,9 @@ and finishes with review, main reconciliation and one full verification. The imp
 records every departure, its reason and cost if wrong in that plan's Outcome before landing it.
 Integration, feed packing and any later release are serialized with the build slot.
 
-At design time engine main and v20.17.0 both point to `e585b8a01`. The docs branch changes no version
-or changelog. Before A starts, inspect main, tags and any staged version again. Ride a suitable staged
-20.x version if another approved engine batch opened one. Otherwise the integration owner opens the
-next free additive minor once, with the matching changelog and guarded version declarations. The
-remaining plans record that selected version and never bump independently.
+At design time engine main and v20.17.0 both point to `e585b8a01`. Before A started, the integration owner
+reconciled current main and tags and selected 20.18.0, with the matching changelog and guarded version declarations.
+The remaining plans ride that selected version and never bump independently.
 
 Only the owner starts `scripts/tag-release.sh`. Do not tag because P5 is waiting, and do not repin a
 consumer to untagged local packages. After release, Grimhollow's P4 adoption moves its engine pin and
@@ -524,7 +526,10 @@ rules and server tolerance in the game. Report those integration inputs on epic 
 
 ## Review state
 
-- The design is approved and four implementation plans are written for the owner's review.
+- The design is approved and four implementation plans are written. Plan A is complete and verified at staged
+  20.18.0 with wire generation 13. Plans B, C and D are not started. Engine tagging and consumer adoption remain pending.
 - D2 and the technical decisions are settled by written-design approval.
-- Plan authoring and self-review are textual. Implementation, executable verification, feed packing and tagging have not run.
-- The build slot remains with Grimhollow P3 until the owner explicitly frees it.
+- Plan A focused evidence is 28, 99, and 6 focused plus 10 adjacent passing cases, with 76 game and 52 server cases
+  for the final helper fix. Final full Release verification built with zero warnings and ran 28 test assemblies with
+  23,042 passed, 0 failed and 1,269 skipped. Final whole-branch review and scoped fix review are approved.
+- The owner released Grimhollow P3's build slot and authorized Plan A execution. One building worker runs at a time.

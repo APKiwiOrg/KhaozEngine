@@ -7623,7 +7623,198 @@ radius 0.2 m, half-height 0.75 m, step 0.4 m and slope 0.8. This is one normal f
 startup or wall-clock guarantee. Existing issues [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)
 and [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238) remain outside scope. Small local physics
 coordinates or rebasing are required for large absolute requests. There is no ground-sampler fallback and no
-full Hollowmere or steep-bank guarantee. NPC and player driver APIs are outside this package update.
+full Hollowmere or steep-bank guarantee. The NPC and player driver APIs are documented below.
+
+### Range steering, NPC stepping and client path commands
+
+Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
+
+```xml
+<PackageReference Include="KhaozEngine.Movement" Version="20.18.0" />
+```
+
+`MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
+It observes the mover's current capsule against the target's exact capsule, box or point shape with zero client
+tolerance. `MoveState.Position` is the mover's capsule centre. Navigation receives feet, using the mover's own
+half-height, and a capsule target uses its own half-height. The tick validates and evaluates current reach, then
+`Suspended` takes precedence over `InRange` for an airborne or committed body. `Following` is the only status
+that can carry a nonzero `WorldDirection`.
+`WaitingForPath`, `Unreachable` and `UnsupportedTransition` hold with zero input. A `Hop` waypoint is an
+unsupported transition for this ground driver.
+
+The exact driver surface is:
+
+```csharp
+public readonly record struct RangeSteering(Vector2 WorldDirection, RangeMoveStatus Status);
+
+public sealed class MoveToRange
+{
+    public MoveToRange(GroundNavigation navigation, PathFollowConfig? follow = null);
+    public MoveToRange(IRegionPathPlanner planner, NavSpace space,
+        Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow = null);
+    public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
+        float range, bool run, float dt, GroundMoveContext context);
+    public void Reset();
+}
+
+public static class NpcGroundMovement
+{
+    public static MoveState Step(in MoveState body, in RangeSteering steering,
+        bool run, float dt, in MoveTuning tuning, GroundMoveContext context);
+    public static MoveState Hold(in MoveState body, float dt,
+        in MoveTuning tuning, GroundMoveContext context);
+}
+
+public static class PlayerPathMovement
+{
+    public static MoveCommand Command(in RangeSteering steering, bool run, float cameraYaw);
+}
+```
+
+`MoveToRange` copies its follower controls and caps `AcceptRadius` to `0.00001f`, including a supplied zero.
+The near-ring check resolves copies through the live context, with up to 32 bisection candidates plus endpoint
+and final checks. It does not step the world or publish an entity. The travel cap includes the requested pace,
+the body's `SpeedScale` and medium boosts above one. A slowing medium only shortens core travel. A blocked
+near-field shortcut keeps the detour. Area or graph guards apply to direct approaches and all route edges, so an
+exhausted partial route waiting on cooldown, an unreachable or refused route, or an unsupported Hop route holds
+with zero input. A valid partial corridor still requests bounded travel until it is exhausted.
+Target translation follows the follower's configured drift and replan cooldown while the route remains valid.
+
+The profile must match the tuning's radius, half-height, slope and step. Walk and run pace, climb pace and
+effect scale may differ. The game owns nominal ranges, target validity, target identity, cancellation and the
+authoritative server tolerance, which it applies once after the engine's exact observed reach. The engine owns
+no NPC brain, action queue or combat rule. Shape kind, dimensions, box yaw and range changes reset internally.
+A changed immutable profile requires a new `MoveToRange` instance. Call `Reset` before the next tick for a target
+identity change, teleport, manual input, target death or invalidity, or cancellation. The strict `AcceptRadius`
+cap can hold at float resolution, including when the caller supplies zero.
+
+The NPC composition below uses the existing world providers and physics world. The game owns the lifetime of
+the world, providers, area masks and state publication:
+
+```csharp
+using System.Numerics;
+using KhaozEngine.Locomotion;
+using KhaozEngine.Movement;
+using KhaozEngine.Navigation;
+using KhaozEngine.Physics;
+
+IPhysicsWorld physicsWorld = gamePhysics.World;
+Func<float, float, float> groundHeight = gameGround.Height;
+Func<float, float, Vector3> groundNormal = gameGround.Normal;
+Func<float, float, Vector2> clampXz = gameBounds.Clamp;
+Func<float, float, float, MovementMedium> medium = gameMedium.Sample;
+Func<Vector3, uint> classifyAreas = gameAreas.ClassifyAbsoluteFeet;
+var context = new GroundMoveContext(
+    groundHeight, groundNormal, physicsWorld, clampXz, medium);
+
+MoveTuning npcTuning = gameTuning.Npc;
+uint requiredAreas = gameAreas.NpcRequiredMask;
+uint excludedAreas = gameAreas.NpcExcludedMask;
+GroundNavigation profile;
+using (PhysicsNavBake capture = PhysicsNavBake.Capture(
+    context, gameNavigation.ProfileOptions, feet => classifyAreas(feet)))
+{
+    profile = capture.BuildProfile(
+        npcTuning, new NavAreaFilter(requiredAreas, excludedAreas));
+}
+
+var follower = new MoveToRange(profile);
+MoveState npcState = gameNpc.InitialMoveState;
+const float dt = 1f / 30f;
+
+// Every simulation tick uses caller-owned body and target snapshots.
+MovementBody npcBody = new(npcState.Position,
+    npcTuning.CapsuleRadius, npcTuning.CapsuleHalfHeight);
+Vector3 npcFeet = npcBody.Centre
+    - new Vector3(0f, npcTuning.CapsuleHalfHeight, 0f);
+MovementBody targetBody = gameTarget.BodySnapshot;
+ReachTarget target = ReachTarget.Capsule(in targetBody);
+RangeSteering steering = follower.Tick(
+    in npcState, in npcTuning, in target, gameNpc.NominalRange, gameNpc.Run, dt, context);
+MoveState next = steering.Status == RangeMoveStatus.Following
+    ? NpcGroundMovement.Step(in npcState, in steering, gameNpc.Run, dt, in npcTuning, context)
+    : NpcGroundMovement.Hold(in npcState, dt, in npcTuning, context);
+npcState = next;
+gameNpc.PublishMoveState(npcState); // publish once for this simulation tick
+MovementBody acceptedBody = new(npcState.Position,
+    npcTuning.CapsuleRadius, npcTuning.CapsuleHalfHeight);
+bool acceptedReach = ReachGeometry.Within(
+    in acceptedBody, in target, gameNpc.NominalRange); // game applies tolerance once on authority
+
+// Target identity, teleport, manual input, target death or invalidity, or cancellation:
+follower.Reset();
+```
+
+The capture may be disposed after `BuildProfile`. The profile keeps immutable captured data, while the game
+continues to own `context`, the physics world and the provider lifetime used by each live step. Missing columns
+and exact B14 outer-edge misses remain blocked. There is no sampler fallback. Existing issues [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)
+and [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238) remain caveats.
+
+The client adapter reads `WorldClient.LocalPredictedState.Move` for the geometry snapshot. That is the current
+simulation state without presentation interpolation or correction offsets. `LocalRenderState` is for the avatar,
+camera and other presentation consumers. Build and submit one ordinary command per simulation tick:
+
+```csharp
+using System.Numerics;
+using KhaozEngine.Locomotion;
+using KhaozEngine.Movement;
+using KhaozEngine.NetWorld;
+
+WorldClient client = gameClient;
+MoveTuning playerTuning = gameTuning.Player;
+GroundNavigation playerProfile = gameNavigation.PlayerProfile;
+GroundMoveContext playerContext = gameWorld.PlayerGroundContext;
+var follower = new MoveToRange(playerProfile);
+const float dt = 1f / 30f;
+
+// These flags and the manual command are caller-supplied game state.
+bool manualInputWins = gameInput.ManualMoveActive;
+MoveCommand manualCommand = gameInput.ManualCommand;
+bool automationCancelled = gameTarget.Cancelled || gameTarget.Dead || !gameTarget.IsValid;
+MoveCommand command;
+if (manualInputWins)
+{
+    follower.Reset();
+    command = manualCommand;
+}
+else if (automationCancelled)
+{
+    follower.Reset();
+    command = PlayerPathMovement.Command(
+        new RangeSteering(Vector2.Zero, RangeMoveStatus.InRange), false, gameCamera.Yaw);
+}
+else
+{
+    PlayerMoveState predicted = client.LocalPredictedState;
+    MoveState body = predicted.Move;
+    MovementBody bodyShape = new(body.Position,
+        playerTuning.CapsuleRadius, playerTuning.CapsuleHalfHeight);
+    Vector3 bodyFeet = body.Position
+        - new Vector3(0f, playerTuning.CapsuleHalfHeight, 0f);
+    ReachTarget target = gameTarget.CurrentShapeSnapshot;
+    bool observedReach = ReachGeometry.Within(
+        in bodyShape, in target, gameTarget.NominalRange);
+    RangeSteering steering = follower.Tick(
+        in body, in playerTuning, in target, gameTarget.NominalRange,
+        gameTarget.Run, dt, playerContext);
+    command = PlayerPathMovement.Command(
+        in steering, gameTarget.Run, gameCamera.Yaw);
+}
+
+client.SendInput(in command); // exactly one normal submission per simulation tick
+
+PlayerMoveState presentation = client.LocalRenderState;
+gameAvatar.DrawAt(presentation.Move.Position);
+```
+
+`bodyShape` is the caller's own body snapshot for an exact geometry check when needed. `PlayerPathMovement`
+uses the engine camera basis where yaw zero faces world negative Z. It sets `ScaleSpeedByAxis` true, `Jump` false
+and `FaceCamera` false. `CharacterMovement.CameraRelativeDir` reports the unit heading. The actual simulation
+consumes the preserved fraction from the command axes. `run` remains caller-owned. Stopped, unknown, unsupported
+and nonfinite requests become finite idle commands. A nonfinite yaw is encoded as zero, and an oversized finite
+direction is clamped to unit length. Player automation emits ordinary client commands, and the authority
+simulates those commands. There is no server-side player following. The game still owns manual cancellation,
+target death, action dispatch and any final authoritative tolerance check.
 
 ---
 

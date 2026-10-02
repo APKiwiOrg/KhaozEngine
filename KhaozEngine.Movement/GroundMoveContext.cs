@@ -14,10 +14,22 @@ public sealed partial class GroundMoveContext
         Func<float, float, Vector3>? groundNormal = null, IPhysicsWorld? physics = null,
         Func<float, float, Vector2>? clampXz = null,
         Func<float, float, float, MovementMedium>? medium = null)
+        : this(groundHeight, groundNormal, physics, clampXz, medium, movementQueries: null)
+    {
+    }
+
+    public GroundMoveContext(Func<float, float, float> groundHeight,
+        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? physics,
+        Func<float, float, Vector2>? clampXz,
+        Func<float, float, float, MovementMedium>? medium,
+        IPhysicsWorldQueryView? movementQueries)
     {
         GroundHeight = groundHeight ?? throw new ArgumentNullException(nameof(groundHeight));
+        if (movementQueries is not null && (physics is null || !ReferenceEquals(movementQueries.SourceWorld, physics)))
+            throw new ArgumentException("Movement queries must belong to the complete physics world.", nameof(movementQueries));
         GroundNormal = groundNormal;
         Physics = physics;
+        MovementQueries = movementQueries;
         ClampXz = clampXz;
         Medium = medium;
         _localHeight = LocalHeight;
@@ -34,6 +46,9 @@ public sealed partial class GroundMoveContext
 
     /// <summary>Caller-owned physics world whose poses and queries are local to its Origin.</summary>
     public IPhysicsWorld? Physics { get; }
+
+    /// <summary>Optional non-owning query selection for movement through the complete physics world.</summary>
+    public IPhysicsWorldQueryView? MovementQueries { get; }
 
     /// <summary>Absolute XZ bounds applied to an absolute XZ candidate.</summary>
     public Func<float, float, Vector2>? ClampXz { get; }
@@ -52,10 +67,11 @@ public sealed partial class GroundMoveContext
         _stepping = true;
         try
         {
+            EnsureOrigin();
             MoveState local = body;
             local.Position -= _origin;
             MoveState result = CharacterMovement.StepTowards(local, worldDirection, run, dt, _localHeight,
-                tuning, preserveSmallMagnitude: true, _localNormal, Physics, _localClamp, _localMedium);
+                tuning, preserveSmallMagnitude: true, _localNormal, MovementQueries ?? Physics, _localClamp, _localMedium);
             EnsureOrigin();
             result.Position += _origin;
             return result;

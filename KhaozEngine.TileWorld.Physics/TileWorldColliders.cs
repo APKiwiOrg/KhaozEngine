@@ -133,6 +133,7 @@ public sealed class TileWorldColliders
         ArgumentNullException.ThrowIfNull(world);
         Vector3 origin = world.Origin;
         var handles = new StaticHandle[Colliders.Count];
+        var groundHandles = new List<StaticHandle>(Colliders.Count(collider => collider.Kind == TileColliderKind.Ground));
         int added = 0;
         try
         {
@@ -141,6 +142,7 @@ public sealed class TileWorldColliders
                 TileCollider collider = Colliders[added];
                 handles[added] = world.AddStatic(collider.Shape,
                     new Pose(collider.Pose.Position - origin, collider.Pose.Orientation));
+                if (collider.Kind == TileColliderKind.Ground) groundHandles.Add(handles[added]);
             }
         }
         catch (Exception addFailure)
@@ -155,7 +157,7 @@ public sealed class TileWorldColliders
             }
             throw;
         }
-        return new TileColliderRegistration(world, handles);
+        return new TileColliderRegistration(world, handles, groundHandles.ToArray());
     }
 
     static void RequirePositive(float value, string option)

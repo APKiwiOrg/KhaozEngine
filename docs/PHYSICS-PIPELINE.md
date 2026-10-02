@@ -21,11 +21,11 @@ flowchart TD
     end
 
     subgraph loco["KhaozEngine.Locomotion - the consumer of the seam"]
-        STEP["CharacterMovement.Step(in MoveState, cmd, dt,<br/>groundDelegate, tuning, groundNormal?, IPhysicsWorld?, clampXz?)<br/>horizontal core + vertical physics; resolves vs world"]
+        STEP["CharacterMovement.Step(in MoveState, cmd, dt,<br/>groundDelegate, tuning, groundNormal?, IPhysicsWorld?, clampXz?)<br/>horizontal core + vertical physics; resolves vs complete world or selected query view"]
     end
 
     subgraph seam["KhaozEngine.Physics - the backend seam (nothing above touches BepuPhysics)"]
-        IPW["IPhysicsWorld<br/>AddStatic / RemoveStatic / Step<br/>Raycast / SweepCapsule / ComputePenetration<br/>AddDynamic / RemoveDynamic / GetDynamicPose /<br/>GetDynamicVelocity / IsAwake<br/>AddConstraint / RemoveConstraint / SetConstraintTarget"]
+        IPW["IPhysicsWorld and IPhysicsWorldQueryView<br/>AddStatic / RemoveStatic / Step<br/>Raycast / SweepCapsule / ComputePenetration<br/>AddDynamic / RemoveDynamic / GetDynamicPose /<br/>GetDynamicVelocity / IsAwake<br/>AddConstraint / RemoveConstraint / SetConstraintTarget"]
         SHAPE["PhysicsShape (value types)<br/>Sphere / Capsule / Box / Cylinder /<br/>ConvexHull / TriangleMesh / Compound"]
         AUX["Pose / PhysicsMaterial / QueryFilter<br/>StaticHandle / RayHit / SweepHit<br/>DynamicBodyHandle / DynamicBodyDescription<br/>ConstraintHandle / ConstraintDescription"]
     end
@@ -115,6 +115,16 @@ flowchart LR
 Because client prediction resolves against the same `IPhysicsWorld` (and same optional `WorldBounds`) as the
 server, it predicts around solid props and clamps at the wall, so reconciliation stays a no-op instead of
 snapping the player back.
+
+**Analytic terrain keeps one complete owner.** A TileWorld registration puts its ground meshes, props, walls,
+decks and blocked shapes in one complete `IPhysicsWorld`. When point-height terrain also supplies the character
+ground, the movement caller creates a non-owning `IPhysicsWorldQueryView` that excludes only the registration's
+ground handles and passes that view to `CharacterMovement.Step` or `StepTowards`. The complete owner remains the
+source for simulation contacts, dynamic observations, general queries and `PhysicsNavBake.Capture`, whose real
+ground columns have no analytic missing-column fallback. `GroundMoveContext` keeps the complete world in
+`Physics` and accepts the selected view through `MovementQueries`, with exact `SourceWorld` identity and origin
+checks at step boundaries. The view does not change collision math, geometry or query layers. Physical-only
+unified terrain through `PhysicsGroundProbe` remains a separate valid path.
 
 **A dynamic body replicated to clients (server-authoritative, no client-side prediction of the body):**
 

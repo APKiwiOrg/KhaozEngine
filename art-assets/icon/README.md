@@ -1,10 +1,12 @@
 # icon/
 
-The KhaozEngine brand mark (a stylised gold "K" badge) and everything generated from it. This is the
-icon the engine's sample / showcase apps show in the window, taskbar, and macOS Dock.
+The KhaozEngine Rift mark, an ivory and orange diamond with a lightning-shaped cut, on a charcoal
+tile. This is the icon the engine's sample / showcase apps show in the window, taskbar, and macOS Dock.
+Matching standalone marks, logos and favicon artwork live in [../brand/](../brand/README.md).
 
+- `KhaozEngine-icon-master.aseprite`: editable 1024 x 1024 artwork, with separate tile and mark layers.
 - `KhaozEngine-icon-master.png`: the master, the single source of truth. To change the mark, replace
-  this file (or pass `--master`) and re-run the generator.
+  this file by exporting the Aseprite artwork (or pass `--master`) and re-run the generator.
 - `generated/`: produced by `scripts/generate-icons.py`. Do not hand-edit.
   - `windowicon/icon_<N>.png` (16..256): the runtime window icon set the samples point at
   - `png/icon_<N>.png` (16..1024): generic square PNGs

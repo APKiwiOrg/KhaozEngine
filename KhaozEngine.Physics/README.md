@@ -13,6 +13,20 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   `SweepCapsule` (nearest time of impact, what the swept collide-and-slide in `Locomotion` uses),
   `ComputePenetration` (minimum translation to separate an overlapping capsule). Dynamic-body stepping is
   deterministic under a fixed dt.
+- **`IPhysicsWorldQueryView` / `CreateQueryViewExcludingStatics`** - a non-owning, read-only view over the
+  same simulation. `SourceWorld` is the exact logical `IPhysicsWorld` that received the factory call. The
+  default factory throws `NotSupportedException`, including for an empty selection, and the Bepu backend
+  supports it. A view snapshots source-local `StaticHandle` values, applies exclusions before nearest or
+  deepest selection, keeps the existing mobility gates independent, forwards dynamic observations, and does
+  not filter simulation contacts. `CanRebase` is false while `Origin` follows the source live. Mutations and
+  nested factories throw. `Dispose` is idempotent and disposes only the view. After disposal, operations and
+  `Origin` throw `ObjectDisposedException`, while `SourceWorld` and `CanRebase` remain inspectable. The source
+  must outlive the view.
+- **Static handle provenance for query views** - the factory rejects invalid, missing and stale handles at
+  creation. Handles are numeric identities local to their source world, so equal values from different worlds
+  are not interchangeable. Use handles returned by that source, and do not reuse removed exclusions to infer
+  a later Bepu static: a recycled backend id belongs to the new live seam handle. A logical decorator that
+  offers the factory must wrap the delegated view and expose the decorator itself as `SourceWorld`.
 - **Floating origin: `Origin` / `CanRebase` / `Rebase(newOrigin)`** - default interface members, so an existing
   backend or test double keeps compiling and correctly reports that it cannot rebase. `Origin` is the world-space
   point this world's coordinates are expressed against: every pose passed in, every query coordinate, and every

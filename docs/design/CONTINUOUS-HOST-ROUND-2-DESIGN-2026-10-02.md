@@ -1,7 +1,7 @@
 # Continuous host, round 2: movement, reach and physics navigation
 
-Status: proposal for written-design review. D2 approved by the owner on 2026-10-02.
-No implementation has started.
+Status: approved by the owner on 2026-10-02. Four implementation plans are written.
+No implementation has started. The build slot remains with Grimhollow P3.
 
 Consumer: Grimhollow continuous movement phase P4, before P5 NPCs and interactions and P6 combat.
 Engine issue: [#1223](https://github.com/APKiwiOrg/KhaozEngine/issues/1223).
@@ -29,8 +29,8 @@ Grimhollow P3 chat owns the dev Mac's single build slot. A text review is not ex
 
 ## Decisions
 
-Technical calls are proposed here for the owner's written-design review. The owner approved D2
-separately before that review. Existing O and T rulings are not reopened.
+The owner approved the written design on 2026-10-02, after separately approving D2.
+Existing O and T rulings are not reopened.
 
 | # | Decision | Recommendation or fixed constraint |
 | --- | --- | --- |
@@ -483,16 +483,16 @@ verification command. No outcome says a test ran unless its output and nonzero c
 
 ## 9. Sequencing, version and handoff
 
-Four implementation plans will be written only after the owner approves this written design:
+The owner approved this written design on 2026-10-02. Four implementation plans are written:
 
-1. `round2-a-command-fraction`, branch `feature/round2-command-fraction`. Opt-in axis scaling, codec,
+1. [Round 2 A](../superpowers/plans/2026-10-02-round2-a-command-fraction.md), branch `feature/round2-command-fraction`. Opt-in axis scaling, codec,
    wire handshake and persistence compatibility. Opens the round's selected version through its
    integration owner, nominally 20.18.0. No worker selects a different bump on its own.
-2. `round2-b-navigation-contracts`, branch `feature/round2-navigation-contracts`. Goal-region search,
+2. [Round 2 B](../superpowers/plans/2026-10-02-round2-b-navigation-contracts.md), branch `feature/round2-navigation-contracts`. Goal-region search,
    region follower, guarded traversal graph and grounded layered bake. Rides the same version.
-3. `round2-c-reach-physics-nav`, branch `feature/round2-reach-physics-nav`. Movement package and shape
+3. [Round 2 C](../superpowers/plans/2026-10-02-round2-c-reach-physics-nav.md), branch `feature/round2-reach-physics-nav`. Movement package and shape
    reach, physics capture, area filters, capsule profiles and bridge acceptance. Needs B and rides.
-4. `round2-d-movement-drivers`, branch `feature/round2-movement-drivers`. Shared range steering, NPC
+4. [Round 2 D](../superpowers/plans/2026-10-02-round2-d-movement-drivers.md), branch `feature/round2-movement-drivers`. Shared range steering, NPC
    and player adapters, complete real-command-path acceptance and consumer docs. Needs A, B and C.
 
 Each branch starts from current reconciled engine main, consumes its prerequisite's verified Outcome,
@@ -524,7 +524,7 @@ rules and server tolerance in the game. Report those integration inputs on epic 
 
 ## Review state
 
-- Read-only source investigation and the design proposal are complete.
-- D2 is approved. The full written design needs approval before implementation plans are written.
-- Implementation plans, implementation, executable verification, feed packing and tagging have not run.
+- The design is approved and four implementation plans are written for the owner's review.
+- D2 and the technical decisions are settled by written-design approval.
+- Plan authoring and self-review are textual. Implementation, executable verification, feed packing and tagging have not run.
 - The build slot remains with Grimhollow P3 until the owner explicitly frees it.

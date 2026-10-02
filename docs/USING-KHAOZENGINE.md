@@ -6468,8 +6468,8 @@ space, and the default `SamplerSpace.World` silently misses every ray and flatte
 A non-player, server-simulated agent (an enemy NPC) needs the SAME collision the player gets - swept
 collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`, the terrain support floor, the wall slide,
 and the play-area clamp - but it steers by an actual **world heading** (toward its target), not a camera yaw.
-Drive it with the retained `StepTowards` signature, which takes a world-space XZ direction and preserves its legacy
-full-speed normalization and dead zone:
+Drive it with the retained `StepTowards` signature, which takes a world-space XZ direction, normalizes finite input
+above the legacy dead zone and uses `min(length, 1)` as its speed fraction:
 
     // In the authoritative server tick, once per agent. enemyTuning carries this creature's capsule
     // radius/half-height and walk/run speed, so different creatures move at different sizes/speeds.

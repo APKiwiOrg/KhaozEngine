@@ -121,7 +121,7 @@
 - Update this plan with Outcome and the actual version and wire generation selected.
 
 - [x] **Step 1: Write and sweep the contract docs.** Explain both opt-ins, the preserved default, flags bit, exact length and automatic wire gate. Search every Markdown file for MoveCommand, StepTowards, wire generation and move frame. Preserve historical release facts. Version subject if opened `release(20.18.0): open the movement kernel round`, adjusted only by the integration owner if another version was selected.
-- [ ] **Step 2: Fetch and merge current main into this branch, then run once from its root.** This is deferred until the execution build slot is authorized:
+- [x] **Step 2: Fetch and merge current main into this branch, then run once from its root.** The controller completed the full Release verification after reconciliation:
   ```bash
   mkdir -p local-feed
   dotnet build KhaozEngine.slnx -c Release
@@ -143,8 +143,9 @@ two opt-ins, the preserved defaults, the flags mapping, the automatic generation
 payloads. The round design and index now record Plan A as implemented on this task branch, with Plans B, C and D not
 started and no release or consumer adoption.
 
-Focused evidence is Task 1: 28 passed, Task 2: 99 passed, and Task 3: 6 focused plus 10 adjacent passed. The full
-branch Release build and test suite remain pending and controller-owned. No full-suite pass is claimed here.
+Focused evidence is Task 1: 28 passed, Task 2: 99 passed, and Task 3: 6 focused plus 10 adjacent passed. The
+controller's full Release verification then completed with a zero-warning solution build and 28 test assemblies,
+23,014 passed, 0 failed, 1,269 skipped, 24,283 total. Final review, integration, push and release remain pending.
 
 Two execution rulings are carried forward. Task 1 followed the named test cases rather than the erroneous prose count
 of five in the two review-focus rows. The binding behavior and coverage remained unchanged, and the cost of choosing
@@ -152,3 +153,10 @@ the names incorrectly would have been a missed case caught by the task and final
 the two existing XML `StepTowards` cref references to the retained signature because the additive overload caused
 CS0419 under warnings-as-errors. Existing test bodies stayed unchanged. The cost of this departure was two
 comment-only files, with no behavior change.
+
+Task 4 review corrected two retained-contract statements. The retained `StepTowards` signature already uses
+`min(length, 1)` above its legacy dead zone, while the new overload is what preserves sub-dead-zone nonzero input
+with robust normalization. `CameraRelativeDir` likewise has a legacy-only dead zone, while precise commands return a
+unit direction for finite nonzero input below it. The matching XML summary in
+`CharacterMovement.CameraRelativeDir.cs` was qualified without changing its function body. The reason was to avoid
+misleading callers and an XML documentation warning. The cost was two prose edits and one comment-only C# edit.

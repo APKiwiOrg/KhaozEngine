@@ -55,7 +55,8 @@ movement core, and the old default remains unchanged.
   collision resolution the player gets - swept collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`,
   the analytic terrain support floor, the `groundNormal` wall slide, and the `clampXz` bounds - but from a
   **world-space steering direction** instead of a camera yaw. `worldDir` is an XZ direction. The retained signature
-  normalizes finite nonzero input to full speed and keeps the legacy dead zone. Per-agent
+  normalizes finite input above the legacy dead zone and uses `min(length, 1)` as its speed fraction, so a shorter
+  direction is a slower step and a longer direction is capped at full speed. Per-agent
   capsule radius / half-height / walk-run speed come from `MoveTuning`, so different creatures get different sizes and
   speeds with no extra plumbing. **No jump bit** (NPCs do not jump in v1) and **no client prediction** (AI is
   server-only). Both the camera-relative player `Step` and this world-space `StepTowards` resolve their input to one
@@ -70,9 +71,11 @@ movement core, and the old default remains unchanged.
   resolver. Precise direction is normalized safely and its speed fraction is capped at 1.
 
 - **`CameraRelativeDir(in MoveCommand) -> Vector2`** (14.9.0)
-  The **commanded** camera-relative travel direction as a unit XZ vector (`Vector2.Zero` when idle, inside the
-  1e-6 length-squared dead-zone), the exact direction the authoritative/prediction `Step` resolves the command to
-  before it moves. For a consumer driving **explicit model facing** (facing the model toward where it is COMMANDED
+  The **commanded** camera-relative travel direction as a unit XZ vector. Legacy commands return `Vector2.Zero` inside
+  the 1e-6 length-squared dead-zone. Precise commands with `ScaleSpeedByAxis` set return their unit direction for any
+  finite nonzero axis, including one below that legacy dead zone. Nonfinite precise input remains idle. This is the
+  exact direction the authoritative/prediction `Step` resolves the command to before it moves. For a consumer driving
+  **explicit model facing** (facing the model toward where it is COMMANDED
   to travel, distinct from the direction the measured render position drifts): a commanded-facing yaw is just
   `MathF.Atan2(dir.X, dir.Y)` (world radians about +Y, 0 = +Z), gated on the vector being non-zero. Shares the ONE
   camera basis the step uses (`forward = (-sinYaw, -cosYaw)`, `right = (cosYaw, -sinYaw)`), so the public facing and

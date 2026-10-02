@@ -285,6 +285,6 @@ resolution. The plan names the exact tests and file owners.
 
 This does not fix #919's pin reason or duplicated audit renderer, #1065's type-adoption republish, sharding, empty
 read-layer construction, hot reload or game adoption. Existing catalog and item-instance designs remain history.
-[#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908) tracks a separate unresolved family-fork allocation
-round-trip gap. Text binds copies only after the final approved fork ids and preserves a row-plan refusal. It
-does not select an allocation branch or implement that adjacent fork fix.
+[#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908) settled family-fork allocation separately, so a family
+copy now allocates inside its family's blocks. Text binds copies only after the final approved fork ids and never
+selects an allocation branch.

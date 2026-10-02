@@ -149,6 +149,13 @@ ContentPublishCommit selects the explicit companion commit, and legacy pack writ
 The text writer uses a scoped internal row/rule/manifest write entry after text puts, rather than bypassing the
 legacy public writer's guard.
 
+Preparation runs in two internal phases so row ids are allocated exactly once. Phase one allocates ids and builds
+the row and rule chunks. The candidate and chunk builders then run against the phase-one row ids. Phase two encodes
+both manifests once with the complete output language list. Public signatures stay unchanged, and the task 1
+invariant that the row plan's languages equal the output chunks holds by construction rather than by a rebuild.
+Text-only work prepares with zero row edits. Held text targets are rechecked against the final row plan, because
+row-only edits never recheck them, and an inherited value whose marker is no longer eligible refuses.
+
 - [ ] Write real publish tests for text-only changes, unchanged row/rule bytes, changed-language-only reuse,
   deterministic hashes despite text input order and both manifest language lists. Compare against literal keys and
   existing codec bytes, not the new builder as both expectation and result. Set empty resolves empty, Remove of
@@ -169,8 +176,8 @@ dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Releas
 - [ ] Implement strict producer preflight, ordinal derived-key sorting and actual wire-tag manifest ordering.
   Copy Fork text before original edits, encode one chunk per declared language through the existing codec and put
   text before manifests. Rebuild compares recorded text and both manifest hashes before any pointer.
-  Preserve the separate [#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908) family-fork refusal/gap rather
-  than choosing plain ids or repairing core allocation inside this task.
+  Bind fork copies to the final row-plan ids. [#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908) is
+  settled on main, family copies allocate inside their family's blocks, and text never compensates for allocation.
 - [ ] Request GREEN with the same filter, review failure atomicity/legacy dispatch and commit explicit owned paths.
   Existing unsupported-text recovery tests must become meaningful supported-version or missing-capability cases,
   without weakening their before-write refusal assertions.

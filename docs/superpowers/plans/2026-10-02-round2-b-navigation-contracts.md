@@ -12,8 +12,8 @@
 
 ## Global Constraints
 
-- Owner-authorized execution is complete for Tasks 1 through 4 and is in progress for Task 5. Scoped task
-  reviews are approved. Full branch verification and integration remain with the controller.
+- Owner-authorized execution and full branch verification are complete. Scoped and whole-branch reviews
+  are approved. The integration owner merges and pushes this verified branch, then packs from main.
 - Execution worktree `/Users/antonio/KhaozEngine/.worktrees/round2-navigation-contracts`, branch `feature/round2-navigation-contracts`, based on reconciled engine main containing A. Read AGENTS.md, contributor rules and DEPENDENCY-SEAMS.md.
 - Ride the exact 20.x version the round's integration owner selected in A, nominally 20.18.0. No independent bump. Extend its changelog. Only the owner starts a release tag.
 - Navigation references Primitives, Collision and Terrain only. New goal and traversal types use numbers, immutable data and a pure region predicate. No physics query delegate in a graph.
@@ -150,7 +150,7 @@
 - Update this plan's Outcome with the actual interfaces C must consume.
 
 - [x] **Step 1: Sweep docs for IPathPlanner, PathFollower, NavLayerBaker, clearance and string pulling.** Document the explicit guarded exception to smoothing and radius handling, goal-region feet convention, new waiting state and grounded bake. Confirm Navigation's three project references remain unchanged.
-- [ ] **Step 2: Fetch and merge current main into this branch, then verify once, only after slot authorization.**
+- [x] **Step 2: Fetch and merge current main into this branch, then verify once, only after slot authorization.**
   ```bash
   mkdir -p local-feed
   dotnet build KhaozEngine.slnx -c Release
@@ -168,7 +168,7 @@
 Owner-authorized execution replaced the stale design-only notice. The branch started from reconciled
 engine main `4a0c3aa9f` with staged version 20.18.0. Main was fetched and merged with no changes. Tasks 1
 through 4 are implemented, their scoped reviews are approved, and Task 5 has completed the living-document
-sweep. No version bump, tag, pack, dependency edge, baseline change, or Grimhollow edit was made.
+sweep. No version bump, tag, pre-merge pack, dependency edge, baseline change, or Grimhollow edit was made.
 Navigation has no Physics or Locomotion reference. This branch makes no Movement package claim. C creates
 that package.
 
@@ -204,6 +204,11 @@ requires admitted raw-passable own cells even with positive SnapRadius, and retu
 without shortcuts or string pulling. `NavLayerBaker.BakeGroundedLayered` and
 `NavLayerLinks.GenerateGrounded` provide the finite, pre-allocation-budgeted Stair-only bake. Existing hop
 baking and unlimited legacy extraction remain available.
+
+The bake signature is `NavSpace BakeGroundedLayered(INavColumnProvider columns, float minX, float minZ,
+float maxX, float maxZ, float cellSize, float stepHeight, float agentHeight, int maxSurfacesPerColumn = 4,
+Func<float, float, bool>? extraBlocked = null, int maxLayerCells = int.MaxValue)`. The grounded link
+signature is `IReadOnlyList<NavLink> GenerateGrounded(IReadOnlyList<NavGrid> layers, float stepHeight)`.
 
 Ruling B1.1: `NavLayerLinks.cs` shares grounded generation with the existing scan instead of passing a
 dummy jump height. Reason: grounded links must be Stair-only while preserving the old valid-input ordering.
@@ -274,5 +279,7 @@ departure, not as evidence of serialized RED execution.
 
 The controller's branch Release build and test evidence is available at `2a08495e8`: build exit 0 with zero
 warnings and errors, and full test exit 0 across 28 assemblies with 23,208 passed, 0 failed, 1,275 skipped,
-and 24,483 total cases. Final Task 5 guards, whole-branch review, integration, and packaging remain pending
-with the controller. This Outcome is ready for C to consume after that gate.
+and 24,483 total cases. All five repository guards passed. Final whole-branch review approved
+`4a0c3aa9f..abaa081de` with no findings. This final metadata change introduces no code. The branch is
+verified and ready for the authorized merge and push, followed by canonical packaging on main. C can
+consume these contracts from reconciled main after integration.

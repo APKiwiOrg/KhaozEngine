@@ -14,42 +14,42 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Mental model: one data flow](#mental-model-one-data-flow)
 - [Hard rules](#hard-rules)
 - [Game head build settings (CETCompat)](#game-head-build-settings-cetcompat)
-- [Wiring a game (`KhaozEngine.Game` + `KhaozEngine.Game.Render3D`)](#wiring-a-game-khaozenginegame-khaozenginegamerender3d)
+- [Wiring a game (`KhaozEngine.Game` + `KhaozEngine.Game.Render3D`)](#wiring-a-game-khaozenginegame--khaozenginegamerender3d)
 - [Input (`KhaozEngine.Windowing`)](#input-khaozenginewindowing)
 - [Gui (`KhaozEngine.Gui`)](#gui-khaozenginegui)
 - [Retained chat (`ChatHistory` / `ChatBox`, 18.21.0)](#retained-chat-chathistory--chatbox-18210)
 - [Drag and drop across widgets (`GuiDragContext` / `DragPayload`)](#drag-and-drop-across-widgets-guidragcontext--dragpayload-1790)
 - [Interaction radial menus and source-target use (`RadialMenu` / `GuiUseContext`, 18.36.0)](#interaction-radial-menus-and-source-target-use-radialmenu--guiusecontext-18360)
-- [Toast notifications (`ToastStack` / `ToastView` / `ToastTheme`)](#toast-notifications-toaststack-toastview-toasttheme)
-- [Action-bar icons and cooldowns (SlotContent + CooldownOverlay)](#action-bar-icons-and-cooldowns-slotcontent-cooldownoverlay)
-- [Number + duration formatting (`NumberFormatter` / `TimeFormatter`)](#number-duration-formatting-numberformatter-timeformatter)
+- [Toast notifications (`ToastStack` / `ToastView` / `ToastTheme`)](#toast-notifications-toaststack--toastview--toasttheme)
+- [Action-bar icons and cooldowns (SlotContent + CooldownOverlay)](#action-bar-icons-and-cooldowns-slotcontent--cooldownoverlay)
+- [Number + duration formatting (`NumberFormatter` / `TimeFormatter`)](#number--duration-formatting-numberformatter--timeformatter)
 - [Version comparison (`VersionComparer`)](#version-comparison-versioncomparer)
-- [Compile-time localization enforcement (`StringId` / `LocalizedText`)](#compile-time-localization-enforcement-stringid-localizedtext)
+- [Compile-time localization enforcement (`StringId` / `LocalizedText`)](#compile-time-localization-enforcement-stringid--localizedtext)
 - [File-size ratchet (KESIZE analyzer)](#file-size-ratchet-kesize-analyzer)
-- [In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)](#in-game-patch-notes-patchnotesloader-patchnotesview-patchnotesscreen-10450)
-- [Reconnect / connection-outage screen (`ConnectionStatusController` / `ReconnectScreen`, 13.2.0)](#reconnect-connection-outage-screen-connectionstatuscontroller-reconnectscreen-1320)
+- [In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)](#in-game-patch-notes-patchnotesloader--patchnotesview--patchnotesscreen-10450)
+- [Reconnect / connection-outage screen (`ConnectionStatusController` / `ReconnectScreen`, 13.2.0)](#reconnect--connection-outage-screen-connectionstatuscontroller--reconnectscreen-1320)
 - [Render2D (`KhaozEngine.Render2D`)](#render2d-khaozenginerender2d)
-- [DPI-aware / crisp UI (the point-space path)](#dpi-aware-crisp-ui-the-point-space-path)
+- [DPI-aware / crisp UI (the point-space path)](#dpi-aware--crisp-ui-the-point-space-path)
 - [Floating world text (`FloatingTextStore` / `FloatingBannerStore`, 18.16.0)](#floating-world-text-floatingtextstore--floatingbannerstore-18160)
 - [Render3D (`KhaozEngine.Render3D`)](#render3d-khaozenginerender3d)
-- [Skinned / deformable meshes (runtime bone control)](#skinned-deformable-meshes-runtime-bone-control)
-- [Animated characters (glTF clip playback + locomotion blend)](#animated-characters-gltf-clip-playback-locomotion-blend)
-- [Attack telegraphs / danger zones](#attack-telegraphs-danger-zones)
+- [Skinned / deformable meshes (runtime bone control)](#skinned--deformable-meshes-runtime-bone-control)
+- [Animated characters (glTF clip playback + locomotion blend)](#animated-characters-gltf-clip-playback--locomotion-blend)
+- [Attack telegraphs / danger zones](#attack-telegraphs--danger-zones)
 - [Modern particle VFX](#modern-particle-vfx)
-- [Particle attractors (`ParticleAttractor` / absorb-on-arrival, 14.7.0)](#particle-attractors-particleattractor-absorb-on-arrival-1470)
+- [Particle attractors (`ParticleAttractor` / absorb-on-arrival, 14.7.0)](#particle-attractors-particleattractor--absorb-on-arrival-1470)
 - [Screen-space distortion](#screen-space-distortion)
-- [Terrain (`KhaozEngine.Terrain` / `KhaozEngine.Terrain.Render3D`)](#terrain-khaozengineterrain-khaozengineterrainrender3d)
-- [Third-person follow camera + character controller (`FollowCamera3D` / `CharacterController3D`)](#third-person-follow-camera-character-controller-followcamera3d-charactercontroller3d)
-- [Prop scatter + asset pipeline (`AssetManifest` / `PropScatter` / `Scene3D.DrawProps`)](#prop-scatter-asset-pipeline-assetmanifest-propscatter-scene3ddrawprops)
+- [Terrain (`KhaozEngine.Terrain` / `KhaozEngine.Terrain.Render3D`)](#terrain-khaozengineterrain--khaozengineterrainrender3d)
+- [Third-person follow camera + character controller (`FollowCamera3D` / `CharacterController3D`)](#third-person-follow-camera--character-controller-followcamera3d--charactercontroller3d)
+- [Prop scatter + asset pipeline (`AssetManifest` / `PropScatter` / `Scene3D.DrawProps`)](#prop-scatter--asset-pipeline-assetmanifest--propscatter--scene3ddrawprops)
 - [Procedural dungeons (`KhaozEngine.Dungeon`)](#procedural-dungeons-khaozenginedungeon)
 - [NPC navigation (`KhaozEngine.Navigation`)](#npc-navigation-khaozenginenavigation)
 - [Body reach and physics-ground profiles (`KhaozEngine.Movement`)](#body-reach-and-physics-ground-profiles-khaozenginemovement)
-- [Bounded zones (`RimFeature` + `WorldBounds` + steep terrain)](#bounded-zones-rimfeature-worldbounds-steep-terrain)
-- [3D physics (`KhaozEngine.Physics` / `KhaozEngine.Physics.Bepu`)](#3d-physics-khaozenginephysics-khaozenginephysicsbepu)
+- [Bounded zones (`RimFeature` + `WorldBounds` + steep terrain)](#bounded-zones-rimfeature--worldbounds--steep-terrain)
+- [3D physics (`KhaozEngine.Physics` / `KhaozEngine.Physics.Bepu`)](#3d-physics-khaozenginephysics--khaozenginephysicsbepu)
 - [Baking prop collision (`ke-propbake`)](#baking-prop-collision-ke-propbake)
-- [Static world collision (`WorldColliders` / `WorldSurfaces`) - legacy](#static-world-collision-worldcolliders-worldsurfaces---legacy)
-- [Social / Discord presence (`KhaozEngine.Social` / `KhaozEngine.Social.Discord`)](#social-discord-presence-khaozenginesocial-khaozenginesocialdiscord)
-- [World streaming (`TerrainStreamer` / `Scene3DChunkSink`)](#world-streaming-terrainstreamer-scene3dchunksink)
+- [Static world collision (`WorldColliders` / `WorldSurfaces`) - legacy](#static-world-collision-worldcolliders--worldsurfaces---legacy)
+- [Social / Discord presence (`KhaozEngine.Social` / `KhaozEngine.Social.Discord`)](#social--discord-presence-khaozenginesocial--khaozenginesocialdiscord)
+- [World streaming (`TerrainStreamer` / `Scene3DChunkSink`)](#world-streaming-terrainstreamer--scene3dchunksink)
 - [Textured terrain (PBR splat)](#textured-terrain-pbr-splat)
 - [Textured props](#textured-props)
 - [Ground-cover scatter and understory companions](#ground-cover-scatter-and-understory-companions)
@@ -59,10 +59,10 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Tile world rendering (`KhaozEngine.TileWorld.Render3D`)](#tile-world-rendering-khaozenginetileworldrender3d)
 - [Tile world editing (`KhaozEngine.TileWorld.Editing`)](#tile-world-editing-khaozenginetileworldediting)
 - [ke-tileedit (`KhaozEngine.TileEdit.Tool`)](#ke-tileedit-khaozenginetileedittool)
-- [Editor building blocks (`NumberField` / `TreeView` / `PropertyGrid` / `FlyCamera3D` / `RayMath` / `TerrainRaycast`)](#editor-building-blocks-numberfield-treeview-propertygrid-flycamera3d-raymath-terrainraycast)
+- [Editor building blocks (`NumberField` / `TreeView` / `PropertyGrid` / `FlyCamera3D` / `RayMath` / `TerrainRaycast`)](#editor-building-blocks-numberfield--treeview--propertygrid--flycamera3d--raymath--terrainraycast)
 - [Map editor (`KhaozEngine.MapEditor`)](#map-editor-khaozenginemapeditor)
 - [ke-mapedit (`KhaozEngine.MapEdit.Tool`)](#ke-mapedit-khaozenginemapedittool)
-- [Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)](#networked-overworld-khaozenginelocomotion-khaozenginenetworld)
+- [Networked overworld (`KhaozEngine.Locomotion` + `KhaozEngine.NetWorld`)](#networked-overworld-khaozenginelocomotion--khaozenginenetworld)
 - [Rigid-segment character poses (`KhaozEngine.SegmentRig`)](#rigid-segment-character-poses-khaozenginesegmentrig)
 - [Tile-world netcode (`KhaozEngine.TileWorld.Netcode`)](#tile-world-netcode-khaozenginetileworldnetcode)
 - [Authoritative attack preparation (20.14.1)](#authoritative-attack-preparation-20141)
@@ -73,28 +73,28 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [HTTP retry (`KhaozEngine.Http`)](#http-retry-khaozenginehttp)
 - [ECS (`KhaozEngine.Ecs`)](#ecs-khaozengineecs)
 - [Audio (`KhaozEngine.Audio`)](#audio-khaozengineaudio)
-- [Diagnostics / logging (`KhaozEngine.Diagnostics`)](#diagnostics-logging-khaozenginediagnostics)
-- [Seeing where the frame goes (turn-key HUD + frame counters)](#seeing-where-the-frame-goes-turn-key-hud-frame-counters)
-- [Diagnostics overlay + telemetry recording (`DiagnosticsOverlay` / `FrameStats` / `TelemetryRecorder` / `WorldClient.NetStats`)](#diagnostics-overlay-telemetry-recording-diagnosticsoverlay-framestats-telemetryrecorder-worldclientnetstats)
-- [Per-pass frame timing (`Scene3D.EnableTiming` / `PassTimings`)](#per-pass-frame-timing-scene3denabletiming-passtimings)
+- [Diagnostics / logging (`KhaozEngine.Diagnostics`)](#diagnostics--logging-khaozenginediagnostics)
+- [Seeing where the frame goes (turn-key HUD + frame counters)](#seeing-where-the-frame-goes-turn-key-hud--frame-counters)
+- [Diagnostics overlay + telemetry recording (`DiagnosticsOverlay` / `FrameStats` / `TelemetryRecorder` / `WorldClient.NetStats`)](#diagnostics-overlay--telemetry-recording-diagnosticsoverlay--framestats--telemetryrecorder--worldclientnetstats)
+- [Per-pass frame timing (`Scene3D.EnableTiming` / `PassTimings`)](#per-pass-frame-timing-scene3denabletiming--passtimings)
 - [Which graphics backend actually ran (`GpuBackendSelection`, 17.21.0)](#which-graphics-backend-actually-ran-gpubackendselection-17210)
 - [Letting the player choose the graphics backend (17.23.0)](#letting-the-player-choose-the-graphics-backend-17230)
 - [Is the D3D11 driver emulating command lists (`GpuThreadingCaps`, 17.22.0)](#is-the-d3d11-driver-emulating-command-lists-gputhreadingcaps-17220)
-- [Which card ran, and what was hooked into the process (`AdapterDescription` / `GpuInjectedModules`, 17.24.0)](#which-card-ran-and-what-was-hooked-into-the-process-adapterdescription-gpuinjectedmodules-17240)
-- [Collision-shape debug overlay (`CollisionShapeOverlay` / `OverlayLegend`)](#collision-shape-debug-overlay-collisionshapeoverlay-overlaylegend)
-- [Install / update stamp (`KhaozEngine.App.AppInstallStamp`)](#install-update-stamp-khaozengineappappinstallstamp)
+- [Which card ran, and what was hooked into the process (`AdapterDescription` / `GpuInjectedModules`, 17.24.0)](#which-card-ran-and-what-was-hooked-into-the-process-adapterdescription--gpuinjectedmodules-17240)
+- [Collision-shape debug overlay (`CollisionShapeOverlay` / `OverlayLegend`)](#collision-shape-debug-overlay-collisionshapeoverlay--overlaylegend)
+- [Install / update stamp (`KhaozEngine.App.AppInstallStamp`)](#install--update-stamp-khaozengineappappinstallstamp)
 - [Clean self-restart (`KhaozEngine.App.AppRelaunch`)](#clean-self-restart-khaozengineappapprelaunch)
 - [Single-instance guard (`KhaozEngine.App.SingleInstanceGuard`, 10.110.0)](#single-instance-guard-khaozengineappsingleinstanceguard-101100)
 - [Foundation packages (brief)](#foundation-packages-brief)
 - [Wall-clock periodic rewards (`KhaozEngine.Progression`)](#wall-clock-periodic-rewards-khaozengineprogression)
-- [Objective / goal tracking (`KhaozEngine.Objectives`)](#objective-goal-tracking-khaozengineobjectives)
+- [Objective / goal tracking (`KhaozEngine.Objectives`)](#objective--goal-tracking-khaozengineobjectives)
 - [Stat channels (`KhaozEngine.Stats`)](#stat-channels-khaozenginestats)
 - [Skill progression (`KhaozEngine.Skills`)](#skill-progression-khaozengineskills)
 - [Content catalog (`KhaozEngine.Catalog`)](#content-catalog-khaozenginecatalog)
 - [Shared game content types (`KhaozEngine.Catalog.GameTypes`)](#shared-game-content-types-khaozenginecataloggametypes)
 - [Item instances (`KhaozEngine.ItemInstances`)](#item-instances-khaozengineiteminstances)
-- [Commerce / wallet (`KhaozEngine.Commerce`)](#commerce-wallet-khaozenginecommerce)
-- [Identity / sign-in (`KhaozEngine.Identity`)](#identity-sign-in-khaozengineidentity)
+- [Commerce / wallet (`KhaozEngine.Commerce`)](#commerce--wallet-khaozenginecommerce)
+- [Identity / sign-in (`KhaozEngine.Identity`)](#identity--sign-in-khaozengineidentity)
 - [Save data (`GameStorage`)](#save-data-gamestorage)
 - [Versioned save migrations (`MigrationChain<T>`)](#versioned-save-migrations-migrationchaint)
 - [Batched async writes (`BatchedWriter<T>`)](#batched-async-writes-batchedwritert)
@@ -103,9 +103,9 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Device-free shader validation (`KhaozEngine.Gpu.ShaderValidation`)](#device-free-shader-validation-khaozenginegpushadervalidation)
 - [GPU compute shaders (`KhaozEngine.Gpu`, 15.2.0)](#gpu-compute-shaders-khaozenginegpu-1520)
 - [Deferred GPU resource disposal (`IGpuDevice.WaitForIdle` and completion fences)](#deferred-gpu-resource-disposal-igpudevicewaitforidle-and-completion-fences)
-- [Headless snapshots / screenshots (`KhaozEngine.Snapshot`)](#headless-snapshots-screenshots-khaozenginesnapshot)
-- [Multiplayer: transport seam + fixed-tick host (`KhaozEngine.Netcode` / `KhaozEngine.Simulation`)](#multiplayer-transport-seam-fixed-tick-host-khaozenginenetcode-khaozenginesimulation)
-- [Versioning & change process](#versioning-change-process)
+- [Headless snapshots / screenshots (`KhaozEngine.Snapshot`)](#headless-snapshots--screenshots-khaozenginesnapshot)
+- [Multiplayer: transport seam + fixed-tick host (`KhaozEngine.Netcode` / `KhaozEngine.Simulation`)](#multiplayer-transport-seam--fixed-tick-host-khaozenginenetcode--khaozenginesimulation)
+- [Versioning & change process](#versioning--change-process)
 
 ---
 
@@ -6553,7 +6553,9 @@ field rougher than the engine's presets:
 ```csharp
 float depth = TerrainLodConfig.Default.SkirtDepthFor(lod, chunkSize: 60f);        // 0.9375 m at tier 0, 7.5 m at tier 4
 var chunk = TerrainChunkBuilder.Build(field, region, lod, TerrainLodConfig.Default, depth);
-``` With a `SplatMaterialHandle` supplied the weights drive the PBR splat pipeline (five
+```
+
+With a `SplatMaterialHandle` supplied the weights drive the PBR splat pipeline (five
 tileable PBR layers, triplanar). Without one the weights are blended into a vertex-colour ramp (the
 fallback). *Which* chunks exist and *when* they rebuild is the **World streaming** sub-project below
 (`TerrainStreamer`). See "Textured terrain (PBR splat)" below for the material API. For water, see
@@ -6632,10 +6634,33 @@ movement step: while airborne the character falls under `Gravity` (clamped to `M
 on the ground; a jump launches at `JumpSpeed` only when grounded (or within `CoyoteTime` of leaving the ground),
 and a jump pressed just before landing fires on contact (`JumpBuffer`). `character.Grounded` and
 `character.VerticalVelocity` are exposed (e.g. for jump/land animation or SFX). The feel is tunable via public
-fields - `Gravity` (25), `JumpSpeed` (9.79796, apex ~1.92 m), `MaxFallSpeed` (50), `CoyoteTime` (0.1), `JumpBuffer`
-(0.1), `AirControl` (1, horizontal control while airborne), `GroundedEpsilon` (0.3, the slope skin so a downhill
+fields - `Gravity` (25), `JumpSpeed` (9.79796, continuous apex ~1.92 m and sampled apex ~1.76 m at 30 Hz),
+`MaxFallSpeed` (50), `CoyoteTime` (0.1), `JumpBuffer` (0.1), `AirControl` (1, horizontal control while airborne),
+`GroundedEpsilon` (0.3, the slope skin so a downhill
 run does not flicker grounded/airborne) - matching `MoveTuning`. Run off a cliff or the bounded-clearing rim and
 you fall.
+
+**Choose a jump height for a fixed step.** `MoveTuning.JumpSpeedForApex(apexMetres, gravity, stepSeconds)`
+returns a launch speed for the gravity-first integration used by `CharacterMovement.Step`:
+
+```csharp
+using KhaozEngine.Locomotion;
+
+const float stepSeconds = 1f / 30f;
+var tuning = MoveTuning.Default;
+tuning = tuning with { JumpSpeed = MoveTuning.JumpSpeedForApex(1f, tuning.Gravity, stepSeconds) };
+```
+
+The helper computes `sqrt(2 * gravity * apexMetres) + gravity * stepSeconds / 2` with double intermediates,
+then returns a float. Apex must be finite and nonnegative, and gravity and step duration must be finite and
+positive. Invalid arguments throw `ArgumentOutOfRangeException`. A result beyond the finite float range throws
+`OverflowException`. Use the same gravity and fixed step in authority and prediction. For a controller, assign
+the result to `character.JumpSpeed` and step it at the matching fixed duration.
+
+`JumpSpeed^2 / (2 * Gravity)` is the continuous arc's apex. In constant-gravity free flight, without collision
+or other vertical intervention, the corrected parabola peaks at the requested height. Tick sampling lowers its
+peak by at most `gravity * stepSeconds^2 / 8`, before float rounding. This helper does not change the default
+launch or compensate for variable steps, swimming, ceilings or other forces.
 
 Since 16.0.0 there are two more, both mirroring `MoveTuning` and both OFF by default: `AirMomentum` (false) opts
 the character into airborne horizontal momentum, so a jump travels its whole arc at the speed it launched at and
@@ -7626,10 +7651,203 @@ accepted nodes, 84 directed exits, zero accepted links and zero candidate links.
 `X=[0,4)`, `Z=[-4,0)`, cell size 1 m, probe height 5 m, range 10 m, slope 0.8, `MaxCells=128`,
 `MaxLayerCells=512`, four surfaces per column, `1 / 30` edge slices and 64 edge steps. The profile tuning was
 radius 0.2 m, half-height 0.75 m, step 0.4 m and slope 0.8. This is one normal fixture observation, not a
-startup or wall-clock guarantee. Existing issues [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)
-and [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238) remain outside scope. Small local physics
-coordinates or rebasing are required for large absolute requests. There is no ground-sampler fallback and no
-full Hollowmere or steep-bank guarantee. NPC and player driver APIs are outside this package update.
+startup or wall-clock guarantee. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233) remains an
+open adoption prerequisite for steep meshes and filtered ground. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
+is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. Small local physics coordinates or
+rebasing are required for large absolute requests. There is no ground-sampler fallback and no full Hollowmere or
+steep-bank guarantee. The NPC and player driver APIs are documented below.
+
+### Range steering, NPC stepping and client path commands
+
+Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
+
+```xml
+<PackageReference Include="KhaozEngine.Movement" Version="20.18.0" />
+```
+
+`MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
+It observes the mover's current capsule against the target's exact capsule, box or point shape with zero client
+tolerance. `MoveState.Position` is the mover's capsule centre. Navigation receives feet, using the mover's own
+half-height, and a capsule target uses its own half-height. The tick validates and evaluates current reach, then
+`Suspended` takes precedence over `InRange` for an airborne or committed body. `Following` is the only status
+that can carry a nonzero `WorldDirection`.
+`WaitingForPath`, `Unreachable` and `UnsupportedTransition` hold with zero input. A `Hop` waypoint is an
+unsupported transition for this ground driver.
+
+The exact driver surface is:
+
+```csharp
+public readonly record struct RangeSteering(Vector2 WorldDirection, RangeMoveStatus Status);
+
+public sealed class MoveToRange
+{
+    public MoveToRange(GroundNavigation navigation, PathFollowConfig? follow = null);
+    public MoveToRange(IRegionPathPlanner planner, NavSpace space,
+        Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow = null);
+    public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
+        float range, bool run, float dt, GroundMoveContext context);
+    public void Reset();
+}
+
+public static class NpcGroundMovement
+{
+    public static MoveState Step(in MoveState body, in RangeSteering steering,
+        bool run, float dt, in MoveTuning tuning, GroundMoveContext context);
+    public static MoveState Hold(in MoveState body, float dt,
+        in MoveTuning tuning, GroundMoveContext context);
+}
+
+public static class PlayerPathMovement
+{
+    public static MoveCommand Command(in RangeSteering steering, bool run, float cameraYaw);
+}
+```
+
+`MoveToRange` copies its follower controls and caps `AcceptRadius` to `0.00001f`, including a supplied zero.
+The near-ring check resolves copies through the live context, with up to 32 bisection candidates plus endpoint
+and final checks. It does not step the world or publish an entity. The travel cap includes the requested pace,
+the body's `SpeedScale` and medium boosts above one. A slowing medium only shortens core travel. A blocked
+near-field shortcut keeps the detour. Area or graph guards apply to direct approaches and all route edges, so an
+exhausted partial route waiting on cooldown, an unreachable or refused route, or an unsupported Hop route holds
+with zero input. A valid partial corridor still requests bounded travel until it is exhausted.
+Target translation follows the follower's configured drift and replan cooldown while the route remains valid.
+
+The profile must match the tuning's radius, half-height, slope and step. Walk and run pace, climb pace and
+effect scale may differ. The game owns nominal ranges, target validity, target identity, cancellation and the
+authoritative server tolerance, which it applies once after the engine's exact observed reach. The engine owns
+no NPC brain, action queue or combat rule. Shape kind, dimensions, box yaw and range changes reset internally.
+A changed immutable profile requires a new `MoveToRange` instance. Call `Reset` before the next tick for a target
+identity change, teleport, manual input, target death or invalidity, or cancellation. The strict `AcceptRadius`
+cap can hold at float resolution, including when the caller supplies zero.
+
+The NPC composition below uses the existing world providers and physics world. The game owns the lifetime of
+the world, providers, area masks and state publication:
+
+```csharp
+using System.Numerics;
+using KhaozEngine.Locomotion;
+using KhaozEngine.Movement;
+using KhaozEngine.Navigation;
+using KhaozEngine.Physics;
+
+IPhysicsWorld physicsWorld = gamePhysics.World;
+Func<float, float, float> groundHeight = gameGround.Height;
+Func<float, float, Vector3> groundNormal = gameGround.Normal;
+Func<float, float, Vector2> clampXz = gameBounds.Clamp;
+Func<float, float, float, MovementMedium> medium = gameMedium.Sample;
+Func<Vector3, uint> classifyAreas = gameAreas.ClassifyAbsoluteFeet;
+var context = new GroundMoveContext(
+    groundHeight, groundNormal, physicsWorld, clampXz, medium);
+
+MoveTuning npcTuning = gameTuning.Npc;
+uint requiredAreas = gameAreas.NpcRequiredMask;
+uint excludedAreas = gameAreas.NpcExcludedMask;
+GroundNavigation profile;
+using (PhysicsNavBake capture = PhysicsNavBake.Capture(
+    context, gameNavigation.ProfileOptions, feet => classifyAreas(feet)))
+{
+    profile = capture.BuildProfile(
+        npcTuning, new NavAreaFilter(requiredAreas, excludedAreas));
+}
+
+var follower = new MoveToRange(profile);
+MoveState npcState = gameNpc.InitialMoveState;
+const float dt = 1f / 30f;
+
+// Every simulation tick uses caller-owned body and target snapshots.
+MovementBody npcBody = new(npcState.Position,
+    npcTuning.CapsuleRadius, npcTuning.CapsuleHalfHeight);
+Vector3 npcFeet = npcBody.Centre
+    - new Vector3(0f, npcTuning.CapsuleHalfHeight, 0f);
+MovementBody targetBody = gameTarget.BodySnapshot;
+ReachTarget target = ReachTarget.Capsule(in targetBody);
+RangeSteering steering = follower.Tick(
+    in npcState, in npcTuning, in target, gameNpc.NominalRange, gameNpc.Run, dt, context);
+MoveState next = steering.Status == RangeMoveStatus.Following
+    ? NpcGroundMovement.Step(in npcState, in steering, gameNpc.Run, dt, in npcTuning, context)
+    : NpcGroundMovement.Hold(in npcState, dt, in npcTuning, context);
+npcState = next;
+gameNpc.PublishMoveState(npcState); // publish once for this simulation tick
+MovementBody acceptedBody = new(npcState.Position,
+    npcTuning.CapsuleRadius, npcTuning.CapsuleHalfHeight);
+bool acceptedReach = ReachGeometry.Within(
+    in acceptedBody, in target, gameNpc.NominalRange); // game applies tolerance once on authority
+
+// Target identity, teleport, manual input, target death or invalidity, or cancellation:
+follower.Reset();
+```
+
+The capture may be disposed after `BuildProfile`. The profile keeps immutable captured data, while the game
+continues to own `context`, the physics world and the provider lifetime used by each live step. Missing columns
+and exact B14 outer-edge misses remain blocked. There is no sampler fallback. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)
+remains an open adoption prerequisite for steep meshes and filtered ground. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
+is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix.
+
+The client adapter reads `WorldClient.LocalPredictedState.Move` for the geometry snapshot. That is the current
+simulation state without presentation interpolation or correction offsets. `LocalRenderState` is for the avatar,
+camera and other presentation consumers. Build and submit one ordinary command per simulation tick:
+
+```csharp
+using System.Numerics;
+using KhaozEngine.Locomotion;
+using KhaozEngine.Movement;
+using KhaozEngine.NetWorld;
+
+WorldClient client = gameClient;
+MoveTuning playerTuning = gameTuning.Player;
+GroundNavigation playerProfile = gameNavigation.PlayerProfile;
+GroundMoveContext playerContext = gameWorld.PlayerGroundContext;
+var follower = new MoveToRange(playerProfile);
+const float dt = 1f / 30f;
+
+// These flags and the manual command are caller-supplied game state.
+bool manualInputWins = gameInput.ManualMoveActive;
+MoveCommand manualCommand = gameInput.ManualCommand;
+bool automationCancelled = gameTarget.Cancelled || gameTarget.Dead || !gameTarget.IsValid;
+MoveCommand command;
+if (manualInputWins)
+{
+    follower.Reset();
+    command = manualCommand;
+}
+else if (automationCancelled)
+{
+    follower.Reset();
+    command = PlayerPathMovement.Command(
+        new RangeSteering(Vector2.Zero, RangeMoveStatus.InRange), false, gameCamera.Yaw);
+}
+else
+{
+    PlayerMoveState predicted = client.LocalPredictedState;
+    MoveState body = predicted.Move;
+    MovementBody bodyShape = new(body.Position,
+        playerTuning.CapsuleRadius, playerTuning.CapsuleHalfHeight);
+    Vector3 bodyFeet = body.Position
+        - new Vector3(0f, playerTuning.CapsuleHalfHeight, 0f);
+    ReachTarget target = gameTarget.CurrentShapeSnapshot;
+    bool observedReach = ReachGeometry.Within(
+        in bodyShape, in target, gameTarget.NominalRange);
+    RangeSteering steering = follower.Tick(
+        in body, in playerTuning, in target, gameTarget.NominalRange,
+        gameTarget.Run, dt, playerContext);
+    command = PlayerPathMovement.Command(
+        in steering, gameTarget.Run, gameCamera.Yaw);
+}
+
+client.SendInput(in command); // exactly one normal submission per simulation tick
+
+PlayerMoveState presentation = client.LocalRenderState;
+gameAvatar.DrawAt(presentation.Move.Position);
+```
+
+`bodyShape` is the caller's own body snapshot for an exact geometry check when needed. `PlayerPathMovement`
+uses the engine camera basis where yaw zero faces world negative Z. It sets `ScaleSpeedByAxis` true, `Jump` false
+and `FaceCamera` false. `CharacterMovement.CameraRelativeDir` reports the unit heading. The actual simulation
+consumes the preserved fraction from the command axes. `run` remains caller-owned. Stopped, unknown, unsupported
+and nonfinite requests become finite idle commands. A nonfinite yaw is encoded as zero, and an oversized finite
+direction is clamped to unit length. Player automation emits ordinary client commands, and the authority
+simulates those commands. There is no server-side player following. The game still owns manual cancellation,
+target death, action dispatch and any final authoritative tolerance check.
 
 ---
 
@@ -7754,7 +7972,7 @@ it (or the fall line) down. Only geometry sheds the carry.
 
 **Riding a face upward is a real, intended payout, and it is big.** Because the contact keeps the run INTO the
 face too, the reach up a face is the launch's whole kinetic energy, `v^2 / (2 * Gravity)`, whatever the angle. A
-running jump at the shipped tuning launches at 15.5 m/s and is worth 4.8 m of reach against a bare vertical apex
+running jump at the shipped tuning launches at 15.5 m/s and is worth 4.8 m of reach against a continuous vertical apex
 of 1.92 m, so about 2.4x (measured 4.91 m on a near-gate 46 degree face). Players keep none of it: with no footing
 up there to re-launch from, the whole rise is handed back on the way down.
 
@@ -21348,8 +21566,8 @@ and must keep the complete store key within 450 characters. Resolver faults refu
 Tokenless guests never invoke it and retain the existing `PersistGuests` policy.
 
 **Since 17.40.0 the machinery is `KhaozEngine.WorldStore.StatePersistence<TState>` and `WorldPersistence` is the
-FLOAT binding of it.** Nothing below changed: the same config type and defaults, the same keys, the same
-`PlayerRecord` JSON, the same cadence, the same events in the same order. What moved down is everything that was
+FLOAT binding of it.** The core split kept the config defaults, keys, `PlayerRecord` JSON, cadence and event order
+unchanged. What moved down is everything that was
 never about a float position (the interval, the dirty pass, the per-session load guard, the per-key write
 ordering, quarantine, the guest policy, the rejoin hints), so a second movement model can bind the same core.
 `TileWorld.Netcode.TileWorldPersistence` is the second binding. `IWorldPersistenceHost` now derives from
@@ -21394,6 +21612,47 @@ using KhaozEngine.WorldStore.SqlServer;
 using var store = new SqlServerWorldStore(
     "Server=tcp:<srv>.database.windows.net,1433;Database=<db>;Authentication=Active Directory Default;Encrypt=True;");
 ```
+
+#### Fallback load for legacy player records
+
+Optional `WorldPersistenceConfig.LoadFallback` is a `PlayerRecordFallbackLoad` delegate returning
+`Task<PlayerRecord?>`. It runs only after a successful primary `IWorldStore.LoadAsync` returns null.
+An existing primary record wins, including a corrupt or invalid record that follows the normal quarantine path.
+A primary read fault never invokes fallback. Null configuration keeps the existing behavior, and a null fallback
+result keeps the join's spawn or resume hint. Guests and boot hint prewarming never invoke the hook.
+
+```csharp
+var persistence = new WorldPersistence(server, store, new WorldPersistenceConfig
+{
+    KeyPrefix = "position:",
+    LoadFallback = async (PersistenceLoadRequest request) =>
+    {
+        byte[]? legacy = await store.LoadAsync("movement:" + request.AuthenticatedAccountId)
+            .ConfigureAwait(false);
+        return legacy is null ? null : ConvertLegacyPlayerRecord(legacy);
+    },
+    CaptureGameState = CapturePlayerBlob,
+    ApplyGameState = ApplyPlayerBlob,
+});
+```
+
+`ConvertLegacyPlayerRecord` is game code returning the current `PlayerRecord` position and optional game blob.
+The example's legacy keys use the captured authenticated account, while the primary key uses the bound durable
+key. `PersistenceLoadRequest` is an immutable value captured before async work: `Slot` is the original seat,
+`AuthenticatedAccountId` is the verified subject, `PersistenceKey` is the bound durable key without its prefix,
+and `StoreKey` is the complete primary key, including `KeyPrefix`.
+
+The hook may continue off the host thread. Use the captured identities to load and convert data, because its
+slot may have been recycled while awaiting. Primary and fallback reads wait behind outstanding writes for the
+same durable key. The host-thread drain checks current-session and seat identity before validation, quarantine,
+live-state and blob restoration, and resume hints. Accepted conversions stay dirty until their first primary
+save, including an unchanged leave or periodic snapshot. Failed saves remain dirty for retry.
+Fallback exceptions surface through `OnStoreError` and retain the load guard until a later rejoin retries.
+The seam leaves legacy data untouched and does not retire or delete it.
+
+The generic `StatePersistence<TState>` contract is `PersistenceCoreConfig.LoadFallback`, a
+`PersistenceFallbackLoad` returning `Task<byte[]?>` in the primary record format, with the same captured request
+and guarded load behavior.
 
 #### Durable per-player game state (XP / inventory / quests)
 

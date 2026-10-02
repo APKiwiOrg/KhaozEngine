@@ -12,6 +12,12 @@ public sealed class WorldPersistenceConfig
     /// <summary>Optional resolver that binds an authenticated session to its durable player key before spawn.</summary>
     public PersistenceKeyResolver? PersistenceKeyResolver { get; init; }
 
+    /// <summary>Optional legacy player load when the primary record is missing. Null preserves existing behavior.
+    /// Primary corruption, validation rejection and read failures never invoke it. Accepted converted records stay
+    /// dirty so an unchanged first leave or periodic save creates the primary record. Guests and boot hint prewarming
+    /// never invoke it. Fallback failures surface through OnStoreError and keep the load guarded for a later rejoin.</summary>
+    public PlayerRecordFallbackLoad? LoadFallback { get; init; }
+
     /// <summary>How often the periodic snapshot saves dirty players, seconds. A crash loses at most this much.</summary>
     public float SaveIntervalSeconds { get; init; } = 30f;
 
@@ -155,6 +161,7 @@ public sealed class WorldPersistence
         {
             SaveIntervalSeconds = c.SaveIntervalSeconds,
             PersistenceKeyResolver = c.PersistenceKeyResolver,
+            LoadFallback = PlayerRecordFallbackAdapter.Bind(c.LoadFallback),
             KeyPrefix = c.KeyPrefix,
             QuarantineKeyPrefix = c.QuarantineKeyPrefix,
             PersistGuests = c.PersistGuests,

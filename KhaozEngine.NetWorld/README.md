@@ -134,6 +134,18 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   the keying note under the resume-hint bullet). The periodic pass batches every dirty
   player's record into one `IWorldStore.SaveManyAsync` call instead of one `SaveAsync` per player. A faulted batch
   leaves every player in it dirty for the next pass (save-on-leave still uses a single-record `SaveAsync`).
+  - **Fallback load for legacy records.** Optional `WorldPersistenceConfig.LoadFallback` is a
+    `PlayerRecordFallbackLoad` returning `Task<PlayerRecord?>`. It runs only when a successful primary
+    `IWorldStore.LoadAsync` returns null. Primary records win, including corrupt or invalid records which follow
+    normal quarantine instead. Null means no legacy record and keeps the join's spawn.
+    `PersistenceLoadRequest` captures `Slot`, `AuthenticatedAccountId`, the bound `PersistenceKey` without its
+    prefix, and the complete primary `StoreKey` before async work begins. Use those identities to read and convert
+    legacy data. The slot may be recycled while awaiting, so the hook must not query or alter live player state.
+    Converted records enter the normal session and seat guards, validation, quarantine, host-thread position and
+    blob restore, and resume hints. Only an accepted fallback stays dirty for its first primary save, even if
+    unchanged at leave or the next interval. Failed saves stay dirty and retry. Fallback exceptions surface through
+    `OnStoreError` and retain the load guard for a later rejoin. The hook defaults to null, never runs for guests or
+    boot hint prewarming, and does not retire or delete legacy data.
   - **A rejoin is SEEDED, not only restored (since 17.37.0).** Every position this layer persists is also kept as
     an in-process hint (`WorldPersistence.ResumeHints`, a bounded `ResumePositionCache` installed on the host via
     `IWorldPersistenceHost.SetResumePositionProvider`), and both server heads build a known account's entity there
@@ -203,8 +215,8 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
     that player's persistence for the rest of the session.
   - **Where the machinery actually lives.** Everything described above is
     `KhaozEngine.WorldStore.StatePersistence<TState>`, generic over a head's state and over its record shape, and
-    `WorldPersistence` is the FLOAT binding of it (17.40.0). The public surface here is unchanged, byte for byte and line for
-    line: the same config type and defaults, the same `player:{accountId}` and `quarantine:` keys, the same
+    `WorldPersistence` is the FLOAT binding of it. Existing config defaults, `player:{accountId}` and `quarantine:`
+    keys are preserved, alongside the additive fallback hook. The binding keeps the same
     `PlayerRecord` JSON, the same cadence, the same events in the same order, the same log lines under the same
     `WorldPersistence` category. What this package supplies is the four `PlayerMoveState`-shaped answers (a position
     is a `Vector3` of world metres, a record is a `PlayerRecord`, and `WorldPersistenceConfig.Bounds` is what makes a
@@ -948,6 +960,41 @@ at byte 13 and jump remains at byte 17. The exact frame stays 18 bytes, so the e
 demultiplexer remains aligned. The automatic generation-13 handshake rejects an older peer before player admission
 because that peer would ignore the flag and run precise input at full speed. No persisted schema or game
 `ProtocolVersion` change is made by this engine wire-generation bump.
+
+## Client simulation state versus presentation state
+
+`WorldClient.LocalPredictedState` is the local player's current predicted simulation state, returned as an
+absolute-world copy. Use its `Move` value for exact geometry, range checks and generating the next ordinary
+`MoveCommand`. It excludes presentation interpolation and correction offsets. The client prediction path remains
+the only local movement authority, and `SendInput(in MoveCommand)` still queues the command through prediction,
+codec and the authoritative server.
+
+`WorldClient.LocalRenderState` is the presentation copy. It includes the render correction and is the right source
+for the avatar, camera and other visual consumers. Do not use its position to decide whether a target is in range or
+to feed `MoveToRange`, because a presentation offset can differ from the current simulation state during
+reconciliation.
+
+```csharp
+using KhaozEngine.Locomotion;
+using KhaozEngine.Movement;
+
+PlayerMoveState predicted = client.LocalPredictedState;
+MoveState body = predicted.Move;
+RangeSteering steering = rangeFollower.Tick(
+    in body, in playerTuning, in targetSnapshot, nominalRange,
+    run, tickSeconds, playerGroundContext);
+MoveCommand command = PlayerPathMovement.Command(
+    in steering, run, cameraYaw);
+client.SendInput(in command); // once per simulation tick
+
+PlayerMoveState presentation = client.LocalRenderState;
+avatar.DrawAt(presentation.Move.Position);
+```
+
+The game owns the target snapshot, nominal range, target validity, cancellation and any authoritative tolerance.
+Player automation emits ordinary client commands, and the authority simulates those commands. There is no
+server-side player following or action queue. A manual command or cancellation resets the game's `MoveToRange`
+instance before the next automated tick, and the game may send an idle command through the same normal client path.
 
 ## Island frames and the frame-relative wire (the floating-origin MAJOR)
 

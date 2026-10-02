@@ -4,8 +4,16 @@ Status: approved by the owner on 2026-10-02. Plan A is complete and verified at 
 Plan B is implemented, reviewed, fully verified and integrated on engine main at `4431781f6`.
 Plan C code, bridge acceptance and living documentation are complete on `feature/round2-reach-physics-nav` at
 `f7a1ec497`, with full Release verification, all five guards and whole-branch approval.
+Plan D implementation, acceptance and living documentation are complete on the reconciled
+`feature/round2-movement-drivers` branch. Its full Release verification passed against staged 20.18.0 with
+23,580 passed, 0 failed, 1,275 skipped and 24,855 total cases across 29 assemblies, with zero build warnings and
+errors. Whole-branch review approved after two comment and status corrections. Root merges and pushes this
+verified branch and refreshes canonical packages. Engine tagging and consumer adoption remain owner-owned.
 The owner authorized the whole round program.
-Plan D remains pending. Engine tagging and consumer adoption remain pending.
+Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238) is resolved by the concurrent reconciled
+`PhysicsColumnProbe` representable-progress fix outside Plan D. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)
+remains an open adoption prerequisite for steep meshes and filtered ground. No full Hollowmere startup guarantee
+is claimed.
 
 Consumer: Grimhollow continuous movement phase P4, before P5 NPCs and interactions and P6 combat.
 Engine issue: [#1223](https://github.com/APKiwiOrg/KhaozEngine/issues/1223).
@@ -401,8 +409,10 @@ The game passes per-archetype and per-effect tuning. Neither adapter mutates fac
 Hold calls the core with zero steering and still settles gravity and support.
 
 Tick receives an immutable target snapshot for this simulation tick. First validate inputs and the
-profile, then measure current shape reach. If in range, return zero requested horizontal motion and
-`InRange`. Otherwise tick the region follower with this body's feet. Route waypoints also use feet,
+profile, then validate and evaluate current shape reach. If an eligible grounded body is in range, return zero
+requested horizontal motion and `InRange`. For an airborne or committed body, report `Suspended` in preference
+to `InRange` with zero requested input after that validation and reach evaluation. Otherwise tick the region
+follower with this body's feet. Route waypoints also use feet,
 and a target capsule's feet come from its own half-height, not the mover's.
 
 Far-field movement follows the validated corridor. Cap the requested travel to the active waypoint
@@ -430,10 +440,12 @@ world -Z. It preserves direction magnitude through `ScaleSpeedByAxis=true`, sets
 `CharacterMovement.CameraRelativeDir`, real command encode/decode and both prediction and server
 simulation. Do not use Ruinborne's separate visual-yaw convention as the command basis.
 
-Waiting, unreachable, unsupported transition and exhausted partial corridors return zero requested
-input and preserve normal follower cooldowns. The game chooses retry, leash, an error message or
-interaction cancellation. It also owns target identity and lifecycle. On target replacement, new
-shape or range, traversal replacement, teleport or manual steering, reset before the next tick.
+Waiting, unreachable, unsupported transition and exhausted partial corridors waiting on cooldown return zero
+requested input and preserve normal follower cooldowns. A valid partial corridor continues bounded travel until
+it is exhausted. The game chooses retry, leash, an error message or interaction cancellation. It also owns target
+identity and lifecycle. On target replacement, teleport or manual steering, reset before the next tick. Shape,
+dimensions, box yaw and range changes reset internally. A changed immutable profile requires a new follower
+instance.
 The kernel holds no target ids, world entities, wall clock, random generator or action queue.
 
 ## 7. What stays in the games
@@ -532,7 +544,9 @@ rules and server tolerance in the game. Report those integration inputs on epic 
 - The design is approved and four implementation plans are written. Plan A is complete and verified at staged
   20.18.0 with wire generation 13. Plan B code and docs are complete, its task and whole-branch reviews are
   approved, and full branch verification passed. Plan C code, bridge acceptance and docs are complete, with
-  full Release verification, all five guards and whole-branch approval. Plan D remains pending.
+  full Release verification, all five guards and whole-branch approval. Plan D implementation, scoped reviews and
+  full Release verification are complete. Whole-branch review approved after its scoped comment and status fix.
+  Root finishes delivery. Tagging and consumer adoption remain pending.
   The owner authorized the whole round program.
   Engine tagging and consumer adoption remain pending.
 - D2 and the technical decisions are settled by written-design approval.
@@ -554,3 +568,19 @@ rules and server tolerance in the game. Report those integration inputs on epic 
   0 failed, 1,275 skipped and 24,729 total cases. All five guards passed, whole-branch review approved without
   findings and a final current-main reconciliation required no changes. Existing issues 1233 and 1238 remain
   outside scope, and no NPC or player driver API is claimed by Plan C.
+- Plan D focused evidence is 33 range and corridor cases plus 105 adjacent profile and reach cases for Task 1,
+  26 NPC adapter and physics cases for Task 2, 38 player command cases for Task 3, and 7 acceptance plus 8
+  adjacent reconciliation cases for Task 4. All four task reviews approved without findings. The full Release
+  verification against the reconciled source built with zero warnings and errors and ran 29 assemblies with
+  23,580 passed, 0 failed, 1,275 skipped and 24,855 total cases. All five final guards passed. First failed
+  focused runs were fixture assumptions or expected missing API RED runs and were corrected without a runtime
+  kernel fix. No stress or repeated full run was used.
+- Plan D's reconciled main includes concurrent fixes for navigation containers, sharded slot lookup and
+  `PhysicsColumnProbe` representable progress. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
+  is resolved outside Plan D. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233) remains an
+  adoption prerequisite for steep meshes and filtered ground. Small local physics coordinates or rebasing remain
+  required for physics precision, and no full Hollowmere startup guarantee is claimed.
+- Plan D whole-branch review approved through `9f4cb6da0` after one scoped fix wave. A final main reconciliation
+  included only unrelated item-design documentation through `4ba0ee9e9`. Runtime source remains identical to the
+  full verified source. Root merges, pushes and refreshes the canonical feed as the normal finish. Only the owner
+  starts an engine tag, followed by released-pin game adoption.

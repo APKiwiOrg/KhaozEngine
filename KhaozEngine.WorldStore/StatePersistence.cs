@@ -218,7 +218,7 @@ public sealed partial class StatePersistence<TState>
     private readonly struct PendingApply
     {
         public PendingApply(int slot, string accountId, string persistenceKey, long token, byte[] raw, TState state,
-            byte[]? game, string? decodeFailure)
+            byte[]? game, string? decodeFailure, bool fromFallback)
         {
             Slot = slot;
             AccountId = accountId;
@@ -228,6 +228,7 @@ public sealed partial class StatePersistence<TState>
             State = state;
             Game = game;
             DecodeFailure = decodeFailure;
+            FromFallback = fromFallback;
         }
 
         public int Slot { get; }
@@ -240,6 +241,7 @@ public sealed partial class StatePersistence<TState>
         public TState State { get; }
         public byte[]? Game { get; }
         public string? DecodeFailure { get; }
+        public bool FromFallback { get; }
     }
 
     /// <summary>Subscribes to the host's join/leave events and installs the rejoin seed, so the layer is live the

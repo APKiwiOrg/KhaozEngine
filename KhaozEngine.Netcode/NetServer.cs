@@ -238,12 +238,32 @@ public sealed class NetServer
     /// <summary>Drains one session event. False when none remain this poll.</summary>
     public bool TryDequeueEvent(out ServerSessionEvent ev) => inbox.TryDequeue(out ev);
 
-    /// <summary>Sends game data to one slot. No-op for an unknown slot.</summary>
-    public void SendTo(int slot, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
+    /// <summary>Sends game data to one slot. No-op for an unknown slot. Forwards to <see cref="TrySendTo"/> and
+    /// ignores its answer.</summary>
+    public void SendTo(int slot, ReadOnlySpan<byte> payload, NetChannelReliability reliability) =>
+        TrySendTo(slot, payload, reliability);
+
+    /// <summary>Sends game data to one slot and reports whether it was HANDED TO THE TRANSPORT, never whether it was
+    /// delivered. False only when the slot holds no connection, and then nothing reached the transport. Otherwise
+    /// calls <see cref="INetTransport.Send"/> exactly once and answers true when it returns. A transport may still
+    /// drop the frame after that, as both shipped bindings do for a peer they no longer know. Nothing is caught: an
+    /// exception from the transport propagates unchanged and is never a send.</summary>
+    public bool TrySendTo(int slot, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
     {
-        if (!connectionBySlot.TryGetValue(slot, out NetConnectionId conn)) return;
+        if (!connectionBySlot.TryGetValue(slot, out NetConnectionId conn)) return false;
         transport.Send(conn, FrameForSend(payload), reliability);
+        return true;
     }
+
+    /// <summary>The transport's unfragmented payload limit toward <paramref name="slot"/> on
+    /// <paramref name="reliability"/>, as <see cref="INetTransport.MaxUnfragmentedPayloadBytes"/> answers it for the
+    /// connection the transport assigned that slot. The limit counts the session frame byte. Zero means unknown. Zero
+    /// or less from a transport means unknown, and this reports 0 for it. Also 0 for a slot that holds no connection,
+    /// in which case the transport is not asked.</summary>
+    public int MaxUnfragmentedPayloadBytes(int slot, NetChannelReliability reliability) =>
+        connectionBySlot.TryGetValue(slot, out NetConnectionId conn)
+            ? Math.Max(0, transport.MaxUnfragmentedPayloadBytes(conn, reliability))
+            : 0;
 
     /// <summary>Disconnects one slot's connection (a kick). The transport surfaces the resulting Disconnected event
     /// on a later poll, which frees the slot (and a recycling join may reuse it). No-op for an unknown slot.</summary>

@@ -76,7 +76,8 @@ public sealed record CatalogRowPayload(
 /// </summary>
 /// <param name="ValidFrom">The version the row became valid in.</param>
 /// <param name="ReplacedIn">The version it was replaced in, or null while it is still live.</param>
-/// <param name="FamilyId">The family its id was allocated from, or null.</param>
+/// <param name="FamilyId">The family the row names, or null. Rows allocated since 20.18.1 hold an id inside one of
+/// its blocks. A legacy fork copy from 19.0.0 through 20.18.0 names its source's family with a plain id.</param>
 /// <param name="Retired">Whether the row was retired at this revision.</param>
 /// <param name="Fields">The values as they stood.</param>
 public sealed record CatalogRowRevisionPayload(

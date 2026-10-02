@@ -103,6 +103,18 @@ The flag field is the CALLER's and the engine does not name it. The engine check
 on the type's schema and is `Bool`, which keeps `Fork` a generic operation over the row model rather than a
 feature of whichever package motivated it.
 
+The copy inherits the source row's `FamilyId`. A family fork allocates through `AllocateInFamilyAsync`, so its
+id belongs to one of that family's blocks. A full family can reserve another block, and the copy need not occupy
+the source row's block. A non-family fork uses the plain counter. The source keeps its id and new values, and
+exactly one `MovedToLegacy` rule targets the live flagged copy.
+
+This policy applies to newly allocated copies. A copy forked by 19.0.0 through 20.18.0 has a plain id and
+still names the source row's family. It is never renumbered or repaired automatically, and a live store keeps
+using it as stored. Re-importing its export is refused with `KEC0037` before any write. To move such a store,
+remove the copy's `familyKey` from the exported bundle, then import. The copy keeps its id, key and
+`MovedToLegacy` rule. Design section 6.3 and [#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908) hold
+the reasoning.
+
 ### The key shape rule
 
 `ContentKeyShape` preserves the public authoring entry point for the key rule of contracts 5.3:
@@ -285,7 +297,8 @@ declared ceiling, and one that disagrees with the type's family blocks, under `K
 Allocation runs BEFORE validation, because `KEC0006` resolves references and `KEC0010` asks about family
 membership, and neither can be asked of a row whose id does not exist yet.
 
-A `Fork` allocates through the plain counter and its copy inherits the SOURCE row's family. The copy is
+A `Fork` inherits the SOURCE row's family. A family copy allocates within that family's blocks, reserving
+another when needed, while a non-family copy uses the plain counter. The copy is
 written first, so the `MovedToLegacy` rule appended last names a destination that is already live.
 
 ### Chunk selection and reuse

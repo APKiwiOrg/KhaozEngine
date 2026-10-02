@@ -466,4 +466,14 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     [CatalogSqlServerFact]
     public override Task TwoRecordersOfOneUpgradeIdWriteExactlyOneRow()
         => base.TwoRecordersOfOneUpgradeIdWriteExactlyOneRow();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task AFamilyForkRoundTripsThroughExportAndImportWithTheCopyInsideTheBlock()
+        => base.AFamilyForkRoundTripsThroughExportAndImportWithTheCopyInsideTheBlock();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ALegacyFamilyForkCopyOutsideEveryBlockIsRefusedOnImportAndLeavesNothing()
+        => base.ALegacyFamilyForkCopyOutsideEveryBlockIsRefusedOnImportAndLeavesNothing();
 }

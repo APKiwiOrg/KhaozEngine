@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.18.1
+
+- A `Fork` of a family row now allocates its legacy copy inside that family's blocks, reserving another aligned
+  block when they are full, so the copy is a member by id as well as by column and its bundle re-imports. A
+  non-family fork still takes a plain id. Copies forked by 19.0.0 through 20.18.0 keep their plain ids and family
+  column, and re-importing them stays refused with `KEC0037`. Removing the copy's `familyKey` from the exported
+  bundle is the documented remedy ([#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908)).
+
 ## 20.18.0
 
 - `Render3DSnapshot.CaptureSequence` streams indexed RGBA8 frames and their backend from one headless device,
